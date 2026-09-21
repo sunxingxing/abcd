@@ -147,6 +147,10 @@ void HandlesGrowingMethodsAndBudgets() {
           count);
     Fails(Decode(code, {}, 0, 1, 0, {8}), BodyError::kResourceLimit);
   }
+  std::vector<std::uint8_t> dense(1024, 0xd5);  // nop
+  dense.back() = 0x64;
+  Check(std::get<MethodBody>(Decode(dense, {}, 0, 1, 0, {250000}))
+            .instructions.size() == dense.size());
 }
 }  // namespace
 

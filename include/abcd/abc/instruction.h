@@ -29,9 +29,9 @@ enum class OperandAccess : std::uint8_t {
 };
 
 struct InstructionOperand {
+  std::uint64_t raw_bits = 0;
   OperandKind kind = OperandKind::kImmediate;
   OperandAccess access = OperandAccess::kRead;
-  std::uint64_t raw_bits = 0;
   std::uint8_t width_bits = 0;
   bool is_signed = false;
   bool is_float = false;
