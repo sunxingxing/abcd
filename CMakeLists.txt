@@ -77,6 +77,9 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(linear_constants_test tests/unit/source/linear_constants_test.cc)
+  target_link_libraries(linear_constants_test PRIVATE abcd_source)
+  add_test(NAME linear_constants_test COMMAND linear_constants_test)
   add_executable(linear_body_test tests/unit/source/linear_body_test.cc)
   target_link_libraries(linear_body_test PRIVATE abcd_source)
   add_test(NAME linear_body_test COMMAND linear_body_test)
@@ -97,6 +100,11 @@ if(BUILD_TESTING)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   find_program(ABCD_NODE_EXECUTABLE node)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME linear_constants_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:linear_constants_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_executable(scalar_source_fixture tests/integration/scalar_source_fixture.cc)
     target_link_libraries(scalar_source_fixture PRIVATE abcd_source)
     add_test(NAME scalar_source_js_test COMMAND ${CMAKE_COMMAND}

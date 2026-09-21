@@ -4,6 +4,9 @@
 #include <streambuf>
 #include <type_traits>
 
+#include "abcd/abc/pool_reference.h"
+#include "abcd/source/string_literal.h"
+
 namespace abcd::source {
 namespace {
 using namespace analysis;
@@ -33,8 +36,12 @@ bool ReadsAccumulator(const ScalarExpression& expression) {
 
 class BodyWriter {
  public:
-  BodyWriter(ScalarNames names, std::ostream& output, EmitBudget budget)
-      : names_(names), output_(output), remaining_(budget.bytes) {}
+  BodyWriter(ScalarNames names, std::ostream& output, EmitBudget budget,
+             const MethodConstants* constants)
+      : names_(names),
+        output_(output),
+        remaining_(budget.bytes),
+        constants_(constants) {}
 
   BodyEmitResult Write(const abc::MethodBody& body) {
     if (!body.tries.empty() || !body.handlers.empty())
@@ -48,7 +55,10 @@ class BodyWriter {
         using abc::Opcode;
         const auto opcode = instruction.decoded.opcode;
         if (opcode == Opcode::kNOP) continue;
-        if (opcode == Opcode::kRETURNUNDEFINED) {
+        if (opcode == Opcode::kLDA_STR_ID16) {
+          StringLoad(instruction.decoded);
+          accumulator_defined = true;
+        } else if (opcode == Opcode::kRETURNUNDEFINED) {
           Text("return;\n");
           terminated = true;
         } else if (opcode == Opcode::kRETURN ||
@@ -87,6 +97,46 @@ class BodyWriter {
   }
 
  private:
+  void StringLoad(const abc::DecodedInstruction& instruction) {
+    if (!constants_) {
+      error_ = Fail(BodyEmitError::kMissingConstants);
+      return;
+    }
+    constexpr std::uint64_t kStringSlotMax = UINT16_MAX;
+    if (instruction.operand_count != 1 ||
+        instruction.operands[0].kind != abc::OperandKind::kString ||
+        instruction.operands[0].raw_bits > kStringSlotMax) {
+      error_ = BodyEmitFailure{BodyEmitError::kUnsupportedInstruction,
+                               offset_,
+                               ScalarError::kMalformedInstruction,
+                               {}};
+      return;
+    }
+    const auto& context = *constants_;
+    const auto reference = abc::ResolvePoolReference(
+        context.file, context.header, context.index, context.method,
+        {static_cast<std::uint32_t>(instruction.operands[0].raw_bits)},
+        abc::PoolEntityKind::kString);
+    if (const auto* failure = std::get_if<abc::MetadataError>(&reference)) {
+      error_ =
+          BodyEmitFailure{BodyEmitError::kConstant, offset_, {}, {}, *failure};
+      return;
+    }
+    const auto string = abc::ReadStringEntity(
+        context.file, context.header,
+        std::get<abc::PoolReference>(reference).offset, context.string_budget);
+    if (const auto* failure = std::get_if<abc::MetadataError>(&string)) {
+      error_ =
+          BodyEmitFailure{BodyEmitError::kConstant, offset_, {}, {}, *failure};
+      return;
+    }
+    Expression(ScalarValue{Accumulator{}});
+    Text(" = ");
+    if (error_) return;
+    Account(WriteStringLiteral(std::get<std::u16string>(string), output_,
+                               {remaining_}));
+    Text(";\n");
+  }
   BodyEmitFailure Fail(BodyEmitError kind) const {
     return {kind, offset_, {}, {}};
   }
@@ -110,6 +160,9 @@ class BodyWriter {
     if (error_) return;
     const auto result =
         WriteScalarExpression(expression, names_, output_, {remaining_});
+    Account(result);
+  }
+  void Account(const std::variant<std::size_t, EmitError>& result) {
     if (const auto* failure = std::get_if<EmitError>(&result)) {
       error_ =
           BodyEmitFailure{BodyEmitError::kExpression, offset_, {}, *failure};
@@ -125,17 +178,20 @@ class BodyWriter {
   std::size_t written_ = 0;
   abc::CodeOffset offset_;
   std::optional<BodyEmitFailure> error_;
+  const MethodConstants* constants_;
 };
 }  // namespace
 
 BodyEmitResult WriteLinearBody(const abc::MethodBody& body, ScalarNames names,
-                               std::ostream& output, EmitBudget budget) {
+                               std::ostream& output, EmitBudget budget,
+                               const MethodConstants* constants) {
   // Validation is streaming too: do not retain a second copy of a large body
   // or leak a syntactically valid prefix when a late opcode cannot be lifted.
   DiscardBuffer buffer;
   std::ostream discard(&buffer);
-  const auto checked = BodyWriter(names, discard, budget).Write(body);
+  const auto checked =
+      BodyWriter(names, discard, budget, constants).Write(body);
   if (std::holds_alternative<BodyEmitFailure>(checked)) return checked;
-  return BodyWriter(names, output, budget).Write(body);
+  return BodyWriter(names, output, budget, constants).Write(body);
 }
 }  // namespace abcd::source
