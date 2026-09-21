@@ -25,14 +25,22 @@ std::optional<ScanFailure> Collect(
   constexpr std::size_t kMaxCorpusIdBytes = 64;
   for (const auto& root : roots) {
     std::error_code error;
+    auto checked_root = std::filesystem::absolute(root.path, error);
+    if (error) return ScanFailure{ScanIssue::kInvalidRoot, root.path, {}, {}};
+    // A trailing slash or dot makes symlink_status follow a directory link.
+    // Remove only those suffixes; lexical '..' removal could change the target.
+    while (checked_root != checked_root.root_path() &&
+           (!checked_root.has_filename() || checked_root.filename() == ".")) {
+      checked_root = checked_root.parent_path();
+    }
     if (root.id.empty() || root.id.size() > kMaxCorpusIdBytes ||
         root.id.find('\0') != std::string::npos ||
         !selected->insert(root.id).second ||
-        std::filesystem::is_symlink(root.path, error) || error ||
-        !std::filesystem::is_directory(root.path, error) || error) {
+        std::filesystem::is_symlink(checked_root, error) || error ||
+        !std::filesystem::is_directory(checked_root, error) || error) {
       return ScanFailure{ScanIssue::kInvalidRoot, root.path, {}, {}};
     }
-    const auto absolute = std::filesystem::absolute(root.path, error).lexically_normal();
+    const auto absolute = std::filesystem::canonical(checked_root, error);
     if (error) return ScanFailure{ScanIssue::kFilesystem, root.path, {}, {}};
     std::filesystem::recursive_directory_iterator it(absolute, error), end;
     if (error) return ScanFailure{ScanIssue::kFilesystem, absolute, {}, {}};

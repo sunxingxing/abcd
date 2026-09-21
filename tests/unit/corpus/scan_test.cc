@@ -117,10 +117,14 @@ void RejectsSymlinkRoots() {
   const auto alias = fixture.directory / "alias";
   std::filesystem::create_directory_symlink(
       std::filesystem::absolute(fixture.roots[0].path), alias);
-  const std::array roots{CorpusRoot{"alias", alias}};
-  const auto result = ScanCorpus(fixture.manifest, roots);
-  Check(std::holds_alternative<ScanFailure>(result));
-  Check(std::get<ScanFailure>(result).issue == ScanIssue::kInvalidRoot);
+  const std::array spellings{alias, std::filesystem::path(alias.string() + "/"),
+                             alias / "."};
+  for (const auto& spelling : spellings) {
+    const std::array roots{CorpusRoot{"alias", spelling}};
+    const auto result = ScanCorpus(fixture.manifest, roots);
+    Check(std::holds_alternative<ScanFailure>(result));
+    Check(std::get<ScanFailure>(result).issue == ScanIssue::kInvalidRoot);
+  }
 }
 }  // namespace
 
