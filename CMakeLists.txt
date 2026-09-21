@@ -12,6 +12,7 @@ add_library(abcd_abc
   src/abc/metadata_index.cc
   src/abc/method_body.cc
   src/abc/pool_reference.cc
+  src/abc/string_entity.cc
 )
 target_compile_features(abcd_abc PUBLIC cxx_std_20)
 target_include_directories(abcd_abc PUBLIC include "${ABCD_ISA_GENERATED_DIR}")
@@ -88,6 +89,10 @@ if(BUILD_TESTING)
   add_executable(pool_reference_test tests/unit/abc/pool_reference_test.cc)
   target_link_libraries(pool_reference_test PRIVATE abcd_abc)
   add_test(NAME pool_reference_test COMMAND pool_reference_test)
+
+  add_executable(string_entity_test tests/unit/abc/string_entity_test.cc)
+  target_link_libraries(string_entity_test PRIVATE abcd_abc)
+  add_test(NAME string_entity_test COMMAND string_entity_test)
 
   add_executable(method_body_test tests/unit/abc/method_body_test.cc)
   target_link_libraries(method_body_test PRIVATE abcd_abc)

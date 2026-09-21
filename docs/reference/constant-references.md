@@ -84,6 +84,20 @@ unverified combinations explicitly.
 
 ## Implementation Checks
 
+ReadStringEntity now accepts a direct EntityOffset and returns UTF-16 code
+units. It reuses the metadata MUTF-8 validator, then converts validated bytes
+in a second linear pass. Encoded NUL, individual surrogate units and canonical
+four-byte supplementary scalars are preserved without normalization. Raw
+bytes and UTF-16 capacity (including its terminator) share a per-call budget;
+allocation failure is a typed resource error. This is a synchronous bounded
+reader, not the asynchronous function decompilation service. Source escaping
+and choosing identifier versus string-literal syntax remain separate work.
+String tests cover ASCII, two/three/four-byte sequences, encoded NUL, lone
+surrogates, equivalent surrogate-pair encodings, malformed/truncated input,
+budgets and lengths 200/201/1024/8192. After this addition, Debug CTest passed
+20/20 and ASan/UBSan CTest passed 15/15. Full-corpus string reference validation
+has not yet been run.
+
 - Test two regions sharing an index but targeting different entities; include
   gaps, adjacent boundaries, index overflow and absent-table sentinels.
 - Test one shared pool table containing method, string and literal references;
