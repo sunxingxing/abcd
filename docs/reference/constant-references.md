@@ -4,7 +4,7 @@ Evidence inspected against OpenHarmony-v7.0-Release: runtime_core
 `3e147bb76e0b622cc2e4399ef954b030c0639691` and ets_runtime
 `f04900cf951c66c2ea18b2bab5b591d5336c34b9`. Both use Apache-2.0.
 Paths below are relative to those repositories. This is a reference audit,
-not a claim that constant resolution or source recovery is implemented.
+not a claim that source recovery or literal payload interpretation is complete.
 
 ## Regional Indexes Are Not Entity Types
 
@@ -21,12 +21,24 @@ pool, infer a method from membership in method_idx, or treat an index as a file
 offset. Regional class/field/proto tables remain distinct. Different regions
 can map the same numeric index to different entities.
 
-The existing metadata index already validates and sorts regional headers, but
-discards them on return. Its private Resolve function handles class/proto
-references only. Extract and reuse that bounded regional reader rather than
-introducing a second interpretation of table bounds and absent-table sentinels.
-Use binary region lookup followed by a positional table read: O(log R) lookup
+The metadata index validates, sorts and retains regional headers within its
+existing memory budget. Its private Resolve function handles class/proto
+references. ResolvePoolReference reuses the retained headers, using binary
+region lookup followed by a four-byte positional table read: O(log R) lookup
 for R regions, without loading every referenced entity or scanning the table.
+PoolIndex is distinct from EntityOffset; PoolReference retains the requested
+method/string/literal-array role. A resolved offset is not a payload-type
+certification. Callers must supply the unmodified index for the same open file
+and header. File identity is checked before and after successful resolution.
+These are existing stat-based checks, not a guarantee against same-size writes
+with unchanged observed timestamps. Inputs must remain immutable while read;
+the corpus driver additionally verifies their content hash before inspection.
+
+The initial resolver unit fixture covers mixed roles, equal indexes in adjacent
+regions, half-open boundaries, invalid target offsets, index overflow, static
+profile rejection and deterministic file-size mutation. Debug CTest passed
+19/19 and ASan/UBSan CTest passed 14/14 after integration. These tests do not
+yet establish full-corpus reference coverage or payload semantics.
 
 ## Literal Payloads Use a Different Coordinate System
 

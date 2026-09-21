@@ -57,14 +57,7 @@ enum class MethodTag : std::uint8_t {
   kRuntimeTypeAnnotation = 9,
 };
 
-struct Region {
-  std::uint32_t start = 0;
-  std::uint32_t end = 0;
-  IndexSection classes;
-  IndexSection methods;
-  IndexSection fields;
-  IndexSection protos;
-};
+using Region = IndexRegion;
 
 template <typename T>
 bool Take(const std::variant<T, MetadataError>& result, T* value,
@@ -512,6 +505,7 @@ MetadataResult BuildMetadataIndex(const corpus::AbcFile& file,
     index.records.push_back(std::move(record));
   }
   if (file.CheckUnchanged()) return MetadataError::kFileChanged;
+  index.regions = std::move(std::get<std::vector<Region>>(region_result));
   return index;
 }
 

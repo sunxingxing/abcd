@@ -50,9 +50,22 @@ struct MethodInfo {
   std::optional<CodeInfo> code;
 };
 
+struct IndexRegion {
+  std::uint32_t start = 0;
+  std::uint32_t end = 0;
+  IndexSection classes;
+  IndexSection methods;
+  IndexSection fields;
+  IndexSection protos;
+};
+
 struct MetadataIndex {
   std::vector<RecordInfo> records;
   std::vector<MethodInfo> methods;
+  // Sorted, nonoverlapping half-open regions validated by BuildMetadataIndex.
+  // Retain these for lazy constant resolution; do not infer entity types from
+  // table names. Their storage is included in MetadataBudget.
+  std::vector<IndexRegion> regions;
 };
 
 enum class MetadataError {
