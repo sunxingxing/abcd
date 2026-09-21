@@ -58,6 +58,26 @@ int main() {
   header.profile = ProfileId::kDynamic1206;
   header.layout = DynamicLayout{};
   header.file_size = bytes.size();
+  Check(std::get<FilePackaging>(DetectFilePackaging(file, header, index)) ==
+        FilePackaging::kMerged);
+  MetadataIndex packaging;
+  Check(std::get<FilePackaging>(DetectFilePackaging(file, header, packaging)) ==
+        FilePackaging::kBundle);
+  packaging.fields.push_back(index.fields[1]);  // JSON alone is not a witness.
+  Check(std::get<FilePackaging>(DetectFilePackaging(file, header, packaging)) ==
+        FilePackaging::kBundle);
+  packaging.fields.push_back(index.fields[2]);
+  packaging.fields.back().value.reset();  // Packaging depends on name only.
+  Check(std::get<FilePackaging>(DetectFilePackaging(file, header, packaging)) ==
+        FilePackaging::kMerged);
+  Check(
+      std::get<AttributeFailure>(DetectFilePackaging(file, header, index, {0}))
+          .kind == AttributeError::kName);
+  auto unsupported = header;
+  unsupported.profile = ProfileId::kStatic0107;
+  Check(std::get<AttributeFailure>(
+            DetectFilePackaging(file, unsupported, packaging))
+            .kind == AttributeError::kUnsupportedProfile);
   auto result = ReadMergedRecordAttributes(file, header, index, record);
   const auto attributes = std::get<RecordAttributes>(result);
   Check(attributes.common_js.has_value() && !*attributes.common_js);

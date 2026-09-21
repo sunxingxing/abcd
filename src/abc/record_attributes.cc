@@ -87,6 +87,33 @@ std::optional<AttributeError> CheckWordType(const corpus::AbcFile& file,
 }
 }  // namespace
 
+PackagingResult DetectFilePackaging(const corpus::AbcFile& file,
+                                    const Header& header,
+                                    const MetadataIndex& index,
+                                    StringBudget name_budget) {
+  if (header.kind != AbcKind::kDynamic || !Supported(header.profile) ||
+      !std::holds_alternative<DynamicLayout>(header.layout))
+    return AttributeFailure{
+        AttributeError::kUnsupportedProfile, {}, std::nullopt};
+  if (file.Size() != header.file_size || file.CheckUnchanged())
+    return AttributeFailure{AttributeError::kFileChanged, {}, std::nullopt};
+  FilePackaging packaging = FilePackaging::kBundle;
+  for (const auto& field : index.fields) {
+    const auto name =
+        ReadStringEntity(file, header, field.name_offset, name_budget);
+    if (const auto* error = std::get_if<MetadataError>(&name))
+      return AttributeFailure{AttributeError::kName, field.offset, *error};
+    const auto kind = DecodeName(std::get<std::u16string>(name));
+    if (kind == RecordField::kCommonJs || kind == RecordField::kModule) {
+      packaging = FilePackaging::kMerged;
+      break;
+    }
+  }
+  if (file.CheckUnchanged())
+    return AttributeFailure{AttributeError::kFileChanged, {}, std::nullopt};
+  return packaging;
+}
+
 AttributeResult ReadMergedRecordAttributes(const corpus::AbcFile& file,
                                            const Header& header,
                                            const MetadataIndex& index,

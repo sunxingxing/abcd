@@ -33,6 +33,15 @@ struct AttributeFailure {
 };
 using AttributeResult = std::variant<RecordAttributes, AttributeFailure>;
 
+enum class FilePackaging { kMerged, kBundle };
+using PackagingResult = std::variant<FilePackaging, AttributeFailure>;
+
+// Requires a local-field index from this immutable file. Mirrors the pinned
+// CheckIsBundlePack name-presence rule, independent of values and path names.
+[[nodiscard]] PackagingResult DetectFilePackaging(
+    const corpus::AbcFile& file, const Header& header,
+    const MetadataIndex& index, StringBudget name_budget = {});
+
 // Merged-record field convention only. Does not discover file packaging or
 // implement legacy unmerged special classes. Names are decoded one at a time;
 // runtime-recognized duplicates overwrite in file order, as in the pinned VM.

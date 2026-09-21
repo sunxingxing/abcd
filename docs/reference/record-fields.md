@@ -61,11 +61,15 @@ recognized values, invalid field slices/owners/names and invalid type references
 return typed failures. Field names are read one at a time under a StringBudget;
 no map of semantic strings or eagerly loaded field-name catalog is created.
 
-This API is specifically for merged records. Packaging discovery is still
-required: CheckIsBundlePack in the pinned JSPandaFile changes to merged mode
+This API is specifically for merged records. DetectFilePackaging now mirrors
+CheckIsBundlePack in the pinned JSPandaFile, which changes to merged mode
 when any local field is named isCommonjs or moduleRecordIdx. It does not test
 the field's boolean value, and jsonFileContent alone is not this packaging
-witness. Unmerged special-class rules must use a separate path. Package-name,
+witness. The detector scans indexed local-field names with only one bounded
+name buffer live and stops at the first witness. It does not require a value
+or attempt to interpret malformed values during classification. Empty local
+field sets are bundle packaging, not evidence that the ABC is static.
+Unmerged special-class rules must use a separate path. Package-name,
 npm-entry and scope-name handling also remain separate work.
 
 For F fields, W recognized word-valued fields, R regions and total decoded name
@@ -78,3 +82,8 @@ booleans, pointer sentinels/ranges, duplicate overwrite order, missing values,
 inline word types versus all three wide types, type-index bounds, name budget
 and field-slice bounds. Debug CTest passed 26/26 and ASan/UBSan passed 20/20.
 Full-corpus attribute/module discovery has not yet been run.
+
+Packaging regressions cover false-valued CommonJS presence, valueless module
+presence, JSON-only and empty-field bundle classification, unsupported profiles
+and name budgets. After detector integration, Debug CTest again passed 26/26
+and ASan/UBSan passed 20/20.
