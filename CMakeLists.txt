@@ -15,6 +15,7 @@ add_library(abcd_abc
   src/abc/method_references.cc
   src/abc/module_info.cc
   src/abc/pool_reference.cc
+  src/abc/record_attributes.cc
   src/abc/string_entity.cc
 )
 target_compile_features(abcd_abc PUBLIC cxx_std_20)
@@ -121,6 +122,10 @@ if(BUILD_TESTING)
   add_executable(module_info_test tests/unit/abc/module_info_test.cc)
   target_link_libraries(module_info_test PRIVATE abcd_abc)
   add_test(NAME module_info_test COMMAND module_info_test)
+
+  add_executable(record_attributes_test tests/unit/abc/record_attributes_test.cc)
+  target_link_libraries(record_attributes_test PRIVATE abcd_abc)
+  add_test(NAME record_attributes_test COMMAND record_attributes_test)
 
   add_executable(method_body_test tests/unit/abc/method_body_test.cc)
   target_link_libraries(method_body_test PRIVATE abcd_abc)

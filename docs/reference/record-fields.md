@@ -44,5 +44,37 @@ now implemented by ReadModuleInfo, as documented in module-layout.md.
 Do not feed moduleRecordIdx to ReadLiteralArray
 merely because the old implementation locates it through a literal index.
 
-This change retains the evidence needed for module parsing. It does not yet
-classify record fields, resolve imports/exports or produce record source files.
+## Merged Attributes
+
+ReadMergedRecordAttributes now maps the six runtime names at the UTF-16 input
+boundary into typed attributes. Boolean presence is distinct from false;
+nonzero values convert to true. Recognized duplicate fields overwrite in file
+order. A module value of U32_MAX means absent and a request-phase value of zero
+means absent. Other pointer values are range-checked. JSON presence retains a
+string entity offset, not eagerly parsed JSON or source text.
+
+For VALUE encoding, the field's type index resolves through the enclosing
+region's class table. F64/I64/U64 encodings are rejected as incompatible with
+the runtime consumer's U32 access; their inline word is not misread as a module
+pointer. INT_VALUE preserves its direct signed-LEB bits independently. Missing
+recognized values, invalid field slices/owners/names and invalid type references
+return typed failures. Field names are read one at a time under a StringBudget;
+no map of semantic strings or eagerly loaded field-name catalog is created.
+
+This API is specifically for merged records. Packaging discovery is still
+required: CheckIsBundlePack in the pinned JSPandaFile changes to merged mode
+when any local field is named isCommonjs or moduleRecordIdx. It does not test
+the field's boolean value, and jsonFileContent alone is not this packaging
+witness. Unmerged special-class rules must use a separate path. Package-name,
+npm-entry and scope-name handling also remain separate work.
+
+For F fields, W recognized word-valued fields, R regions and total decoded name
+bytes N, the pass costs O(F + N + W log R), with only one name buffer live. It
+does not yet resolve imports/exports, validate module payloads across the corpus
+or produce record source files.
+
+Attribute tests cover all six recognized fields, false versus absence, nonzero
+booleans, pointer sentinels/ranges, duplicate overwrite order, missing values,
+inline word types versus all three wide types, type-index bounds, name budget
+and field-slice bounds. Debug CTest passed 26/26 and ASan/UBSan passed 20/20.
+Full-corpus attribute/module discovery has not yet been run.
