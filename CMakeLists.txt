@@ -5,6 +5,7 @@ include(cmake/IsaDependency.cmake)
 
 add_library(abcd_abc
   src/abc/byte_reader.cc
+  src/abc/call_type.cc
   src/abc/control_transfer.cc
   src/abc/frame_layout.cc
   src/abc/header.cc
@@ -72,6 +73,9 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(call_type_test tests/unit/abc/call_type_test.cc)
+  target_link_libraries(call_type_test PRIVATE abcd_abc)
+  add_test(NAME call_type_test COMMAND call_type_test)
   add_executable(frame_layout_test tests/unit/abc/frame_layout_test.cc)
   target_link_libraries(frame_layout_test PRIVATE abcd_abc)
   add_test(NAME frame_layout_test COMMAND frame_layout_test)

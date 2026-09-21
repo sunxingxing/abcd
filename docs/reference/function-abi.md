@@ -71,15 +71,40 @@ in `MethodAnnotations`. Ordered method tags make these entries contiguous;
 runtime, parameter and type annotations are excluded. The fixed-size range
 does not allocate per annotation and is included in the existing method-vector
 capacity budget. Tests cover empty, mixed categories, and 1/200/201/4096 entries.
-Annotation payloads still require lazy reads before the index can recover ABI
-flags; the range alone is not annotation-payload validation.
+The range alone is not annotation-payload validation.
+
+`abc/call_type.h` now provides `ReadCallType` for lazy payload reads. It returns
+a typed `CallType` with an optional raw value, or a `MetadataError`; absence
+cannot be confused with a failed read. It resolves class references in each
+annotation's own region, validates element/tag-array bounds, matches the raw
+name view used by the runtime, takes the first matching element per annotation,
+and allows later matching annotations to overwrite. A later annotation with
+no matching element does not clear a previous value. Unrelated annotation
+element payloads and elements after a match are not semantically validated.
+As in the pinned runtime, element type tags do not select call-type semantics.
+
+Temporary strings are charged against `MetadataBudget` and released before the
+next name read; there is no annotation vector/cache. At most four fixed 4 KiB
+metadata cursors coexist, plus bounded string storage and ordinary stack state.
+For A annotation references and R index regions, work is O(A log R + E + S),
+where E counts visited elements and S counts name bytes read across those
+visits (including repeated references). No per-method all-region scan occurs.
+Input identity is checked before/after successful reads. Header/index/file must
+come from the same immutable input; this is not a concurrent-mutation snapshot.
+
+Reader tests include selection/overwrite rules, nonmatching names, invalid
+references and tags, truncated element storage, unsupported profiles, resource
+limits, 200/201/4096 annotation references, and connection to frame layout.
+Historical-profile tests establish container acceptance only. Corpus-wide ABI
+validation and wiring this reader into function decompilation remain pending.
 
 `abc/frame_layout.h` now exposes `CallFlags`, `DecodeCallFlags`, and
 `BuildFrameLayout`. The allocation-free layout calculation covers all sixteen
 flag combinations, missing-annotation defaults, high-bit masking, hidden-slot
 order, argument underflow, and the runtime's two 28-bit count fields. It rejects
 counts that the runtime would truncate. This standalone calculation is not yet
-connected to annotation reading or function source emission.
+connected to function source emission. Callers can pass a successfully read
+`CallType::value` to `DecodeCallFlags`; never replace an error with absence.
 
 Required checks and tests for the complete annotation integration:
 
