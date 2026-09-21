@@ -36,6 +36,14 @@ using AttributeResult = std::variant<RecordAttributes, AttributeFailure>;
 enum class FilePackaging { kMerged, kBundle };
 using PackagingResult = std::variant<FilePackaging, AttributeFailure>;
 
+// Bundle special-class convention. runtime_descriptor is the exact byte string
+// passed to JSPandaFile, not necessarily the host path of this ABC. Caller must
+// first establish bundle packaging. Returns the single runtime entry record.
+[[nodiscard]] AttributeResult ReadBundleRecordAttributes(
+    const corpus::AbcFile& file, const Header& header,
+    const MetadataIndex& index, std::string_view runtime_descriptor,
+    StringBudget name_budget = {});
+
 // Requires a local-field index from this immutable file. Mirrors the pinned
 // CheckIsBundlePack name-presence rule, independent of values and path names.
 [[nodiscard]] PackagingResult DetectFilePackaging(

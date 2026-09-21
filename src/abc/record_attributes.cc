@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <array>
 #include <iterator>
+#include <new>
 #include <span>
 
 #include "abcd/abc/byte_reader.h"
 #include "abcd/corpus/abc_file.h"
+#include "metadata_cursor.h"
 
 namespace abcd::abc {
 namespace {
@@ -187,6 +189,77 @@ AttributeResult ReadMergedRecordAttributes(const corpus::AbcFile& file,
   }
   if (file.CheckUnchanged())
     return fail(AttributeError::kFileChanged, record.offset);
+  return attributes;
+}
+
+AttributeResult ReadBundleRecordAttributes(const corpus::AbcFile& file,
+                                           const Header& header,
+                                           const MetadataIndex& index,
+                                           std::string_view runtime_descriptor,
+                                           StringBudget name_budget) {
+  const auto fail = [](AttributeError kind, EntityOffset field) {
+    return AttributeFailure{kind, field, std::nullopt};
+  };
+  if (header.kind != AbcKind::kDynamic || !Supported(header.profile) ||
+      !std::holds_alternative<DynamicLayout>(header.layout))
+    return fail(AttributeError::kUnsupportedProfile, {});
+  if (file.Size() != header.file_size || file.CheckUnchanged())
+    return fail(AttributeError::kFileChanged, {});
+  RecordAttributes attributes;
+  attributes.common_js = false;
+  attributes.shared = false;
+  attributes.top_level_await = false;
+  for (const auto& record : index.records) {
+    // External class-name schema of InitializeUnMergedPF. Field enumeration
+    // does not short-circuit: the last non-excluded value in this class wins.
+    if (!attributes.module && record.descriptor == "L_ESModuleRecord;") {
+      if (record.first_field > index.fields.size() ||
+          record.field_count > index.fields.size() - record.first_field)
+        return fail(AttributeError::kFieldRange, record.offset);
+      for (const auto& field :
+           std::span(index.fields)
+               .subspan(record.first_field, record.field_count)) {
+        if (field.owner_offset != record.offset)
+          return fail(AttributeError::kOwnerMismatch, field.offset);
+        MetadataCursor cursor(file, field.name_offset.value, header.file_size);
+        std::uint32_t units = 0;
+        std::size_t spent = 0;
+        const auto name = [&]() -> std::variant<std::string, MetadataError> {
+          try {
+            return ReadMetadataString(&cursor, &units, &spent, name_budget.bytes);
+          } catch (const std::bad_alloc&) {
+            return MetadataError::kResourceLimit;
+          }
+        }();
+        if (const auto* error = std::get_if<MetadataError>(&name))
+          return AttributeFailure{AttributeError::kName, field.offset, *error};
+        // Pinned VM compares a MUTF-8 byte view whose length is utf16_length.
+        // Do not normalize or replace this with decoded Unicode comparison.
+        if (std::string_view(std::get<std::string>(name)).substr(0, units) ==
+            runtime_descriptor)
+          continue;
+        if (!field.value)
+          return fail(AttributeError::kMissingValue, field.offset);
+        if (field.value->encoding == FieldValueEncoding::kWord) {
+          if (const auto error = CheckWordType(file, header, index, field))
+            return fail(*error, field.offset);
+        }
+        const auto bits = field.value->bits;
+        if (bits == kNoModule) {
+          attributes.module.reset();
+        } else {
+          if (bits < kDynamicHeaderSize || bits >= header.file_size)
+            return fail(AttributeError::kReference, field.offset);
+          attributes.module = EntityOffset{bits};
+        }
+      }
+    }
+    if (record.descriptor == "L_CommonJsRecord;") attributes.common_js = true;
+    if (record.descriptor == "isSharedModule") attributes.shared = true;
+    if (record.descriptor == "L_HasTopLevelAwait;")
+      attributes.top_level_await = true;
+  }
+  if (file.CheckUnchanged()) return fail(AttributeError::kFileChanged, {});
   return attributes;
 }
 

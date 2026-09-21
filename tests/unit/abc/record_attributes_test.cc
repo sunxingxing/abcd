@@ -129,5 +129,56 @@ int main() {
   Check(std::get<AttributeFailure>(
             ReadMergedRecordAttributes(file, header, index, record))
             .kind == AttributeError::kFieldRange);
+  MetadataIndex bundle;
+  auto module_record = record;
+  module_record.descriptor = "L_ESModuleRecord;";
+  module_record.field_count = 2;
+  bundle.records.push_back(module_record);
+  bundle.fields.assign(index.fields.begin(), index.fields.begin() + 2);
+  bundle.fields[0].value->bits = 420;
+  bundle.fields[1].value->bits = 440;
+  auto read_bundle = [&](std::string_view descriptor) {
+    return ReadBundleRecordAttributes(file, header, bundle, descriptor);
+  };
+  Check(std::get<RecordAttributes>(read_bundle("entry.abc")).module->value ==
+        440);
+  Check(std::get<RecordAttributes>(read_bundle("jsonFileContent"))
+            .module->value == 420);
+  bundle.fields[1].value->bits = UINT32_MAX;
+  Check(!std::get<RecordAttributes>(read_bundle("entry.abc")).module);
+  bundle.fields[1].value.reset();
+  Check(std::get<RecordAttributes>(read_bundle("jsonFileContent"))
+            .module->value == 420);
+  Check(std::get<AttributeFailure>(read_bundle("entry.abc")).kind ==
+        AttributeError::kMissingValue);
+  bundle.fields[1].value = FieldValue{FieldValueEncoding::kSignedLeb, 440};
+  bundle.records.push_back(module_record);
+  bundle.records.back().first_field = 2;
+  bundle.records.back().field_count = 1;
+  bundle.fields.push_back(bundle.fields[0]);
+  bundle.fields.back().value->bits = 460;
+  Check(std::get<RecordAttributes>(read_bundle("entry.abc")).module->value ==
+        440);
+  bundle.fields[1].value->bits = UINT32_MAX;
+  Check(std::get<RecordAttributes>(read_bundle("entry.abc")).module->value ==
+        460);
+  bundle.records.pop_back();
+  bundle.fields[0].owner_offset = {};
+  Check(std::get<AttributeFailure>(read_bundle("entry.abc")).kind ==
+        AttributeError::kOwnerMismatch);
+  bundle.fields[0].owner_offset = record.offset;
+  bundle.fields[0].name_offset = {header.file_size};
+  Check(std::get<AttributeFailure>(read_bundle("entry.abc")).kind ==
+        AttributeError::kName);
+  bundle.fields[0].name_offset = index.fields[0].name_offset;
+  Check(std::get<AttributeFailure>(
+            ReadBundleRecordAttributes(file, unsupported, bundle, "entry.abc"))
+            .kind == AttributeError::kUnsupportedProfile);
+  bundle.records[0].descriptor = "L_CommonJsRecord;";
+  Check(*std::get<RecordAttributes>(read_bundle("entry.abc")).common_js);
+  bundle.records[0].descriptor = "isSharedModule";
+  Check(*std::get<RecordAttributes>(read_bundle("entry.abc")).shared);
+  bundle.records[0].descriptor = "L_HasTopLevelAwait;";
+  Check(*std::get<RecordAttributes>(read_bundle("entry.abc")).top_level_await);
   unlink(path);
 }
