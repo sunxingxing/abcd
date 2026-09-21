@@ -10,7 +10,5 @@ include(CTest)
 if(BUILD_TESTING)
   add_executable(byte_reader_test tests/unit/abc/byte_reader_test.cc)
   target_link_libraries(byte_reader_test PRIVATE abcd_abc)
-  target_compile_options(byte_reader_test PRIVATE
-    $<$<AND:$<CONFIG:Release>,$<CXX_COMPILER_ID:GNU,Clang,AppleClang>>:-UNDEBUG>)
   add_test(NAME byte_reader_test COMMAND byte_reader_test)
 endif()

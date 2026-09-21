@@ -8,6 +8,8 @@
 namespace abcd::abc {
 namespace {
 
+// OpenHarmony runtime_core: libpandabase/include/libpandabase/utils/leb128.h
+// and docs/file_format.md define these fixed-width and ULEB128 encoding limits.
 constexpr std::size_t kU32Width = 4;
 constexpr std::size_t kBitsPerByte = 8;
 constexpr std::size_t kUleb128U32MaxBytes = 5;
