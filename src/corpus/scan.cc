@@ -19,9 +19,10 @@ struct CachedDetection {
   Detection detection;
 };
 
-std::optional<ScanFailure> Collect(
-    std::span<const CorpusRoot> roots, std::vector<InputFile>* inputs,
-    std::set<std::string>* selected, ScanStats* stats) {
+std::optional<ScanFailure> Collect(std::span<const CorpusRoot> roots,
+                                   std::vector<InputFile>* inputs,
+                                   std::set<std::string>* selected,
+                                   ScanStats* stats) {
   constexpr std::size_t kMaxCorpusIdBytes = 64;
   for (const auto& root : roots) {
     std::error_code error;
@@ -64,19 +65,28 @@ std::optional<ScanFailure> Collect(
     }
     if (error) return ScanFailure{ScanIssue::kFilesystem, absolute, {}, {}};
   }
-  std::sort(inputs->begin(), inputs->end(), [](const auto& left, const auto& right) {
-    return std::tie(left.corpus_id, left.relative) <
-           std::tie(right.corpus_id, right.relative);
-  });
+  std::sort(inputs->begin(), inputs->end(),
+            [](const auto& left, const auto& right) {
+              return std::tie(left.corpus_id, left.relative) <
+                     std::tie(right.corpus_id, right.relative);
+            });
   return std::nullopt;
 }
 
 void CountKind(SampleKind kind, ScanStats* stats) {
   switch (kind) {
-    case SampleKind::kDynamic: ++stats->dynamic; break;
-    case SampleKind::kStatic: ++stats->static_abc; break;
-    case SampleKind::kUnknown: ++stats->unknown; break;
-    case SampleKind::kInvalid: ++stats->invalid; break;
+    case SampleKind::kDynamic:
+      ++stats->dynamic;
+      break;
+    case SampleKind::kStatic:
+      ++stats->static_abc;
+      break;
+    case SampleKind::kUnknown:
+      ++stats->unknown;
+      break;
+    case SampleKind::kInvalid:
+      ++stats->invalid;
+      break;
   }
 }
 }  // namespace
@@ -96,7 +106,8 @@ ScanResult ScanCorpus(const std::filesystem::path& manifest,
   ScanStats stats;
   std::vector<InputFile> inputs;
   std::set<std::string> selected;
-  if (const auto error = Collect(roots, &inputs, &selected, &stats)) return *error;
+  if (const auto error = Collect(roots, &inputs, &selected, &stats))
+    return *error;
   std::vector<CorpusEntry> output;
   std::map<Sha256, CachedDetection> cache;
   for (auto& entry : std::get<std::vector<CorpusEntry>>(loaded)) {
@@ -109,7 +120,8 @@ ScanResult ScanCorpus(const std::filesystem::path& manifest,
     return ScanFailure{ScanIssue::kLimit, manifest, {}, {}};
   }
   const auto now = std::chrono::duration_cast<std::chrono::seconds>(
-      std::chrono::system_clock::now().time_since_epoch()).count();
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
   if (now < 0) return ScanFailure{ScanIssue::kClock, {}, {}, {}};
   std::set<Sha256> unique;
   for (const auto& input : inputs) {
@@ -144,7 +156,8 @@ ScanResult ScanCorpus(const std::filesystem::path& manifest,
         return ScanFailure{ScanIssue::kFile, input.absolute, *error, {}};
       }
       entry.detection = std::get<Detection>(detected);
-      cache.insert_or_assign(entry.sha256, CachedDetection{entry.size, entry.detection});
+      cache.insert_or_assign(entry.sha256,
+                             CachedDetection{entry.size, entry.detection});
       ++stats.classified;
     }
     if (const auto error = file->CheckUnchanged()) {
@@ -155,10 +168,11 @@ ScanResult ScanCorpus(const std::filesystem::path& manifest,
     ++stats.files;
   }
   stats.unique_contents = unique.size();
-  std::sort(output.begin(), output.end(), [](const auto& left, const auto& right) {
-    return std::tie(left.corpus_id, left.relative_path) <
-           std::tie(right.corpus_id, right.relative_path);
-  });
+  std::sort(output.begin(), output.end(),
+            [](const auto& left, const auto& right) {
+              return std::tie(left.corpus_id, left.relative_path) <
+                     std::tie(right.corpus_id, right.relative_path);
+            });
   if (const auto error = store->Save(output)) {
     return ScanFailure{ScanIssue::kManifest, manifest, {}, *error};
   }

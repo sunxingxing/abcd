@@ -1,7 +1,7 @@
 #include "abcd/corpus/abc_file.h"
 
-#include <unistd.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include <array>
 #include <cerrno>
@@ -41,6 +41,7 @@ class FixtureFile {
     stream.close();
     Check(!stream.fail());
   }
+
  private:
   std::filesystem::path path_;
 };
@@ -73,8 +74,9 @@ void HashesKnownEmptyDigest() {
   Check(std::holds_alternative<FileFingerprint>(result));
   const auto& fingerprint = std::get<FileFingerprint>(result);
   constexpr std::array<std::uint8_t, 32> kEmptySha256 = {
-      0xe3,0xb0,0xc4,0x42,0x98,0xfc,0x1c,0x14,0x9a,0xfb,0xf4,0xc8,0x99,0x6f,0xb9,0x24,
-      0x27,0xae,0x41,0xe4,0x64,0x9b,0x93,0x4c,0xa4,0x95,0x99,0x1b,0x78,0x52,0xb8,0x55};
+      0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4,
+      0xc8, 0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b,
+      0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b, 0x78, 0x52, 0xb8, 0x55};
   Check(fingerprint.sha256.bytes == kEmptySha256);
   Check(fingerprint.size == 0 && fingerprint.prefix_size == 0);
   Check(fingerprint.adler32 == 1);
@@ -89,8 +91,9 @@ void HashesMultipleChunksAndPreservesPrefix() {
   Check(std::holds_alternative<FileFingerprint>(result));
   const auto& fingerprint = std::get<FileFingerprint>(result);
   constexpr std::array<std::uint8_t, 32> kSha256 = {
-      0x6d,0x1c,0xf2,0x2d,0x7c,0xc0,0x9b,0x08,0x5d,0xfc,0x25,0xee,0x1a,0x1f,0x3a,0xe0,
-      0x26,0x58,0x04,0xc6,0x07,0xbc,0x20,0x74,0xad,0x25,0x3b,0xcc,0x82,0xfd,0x81,0xee};
+      0x6d, 0x1c, 0xf2, 0x2d, 0x7c, 0xc0, 0x9b, 0x08, 0x5d, 0xfc, 0x25,
+      0xee, 0x1a, 0x1f, 0x3a, 0xe0, 0x26, 0x58, 0x04, 0xc6, 0x07, 0xbc,
+      0x20, 0x74, 0xad, 0x25, 0x3b, 0xcc, 0x82, 0xfd, 0x81, 0xee};
   Check(fingerprint.sha256.bytes == kSha256);
   Check(fingerprint.size == 100000);
   Check(fingerprint.prefix_size == abcd::abc::kMaxHeaderSize);
@@ -131,7 +134,8 @@ void RejectsFifoWithoutBlocking() {
     alarm(kHangGuardSeconds);
     const auto result = AbcFile::Open(fixture.path());
     const auto* error = std::get_if<FileError>(&result);
-    _exit(error && *error == FileError::kNotRegular ? EXIT_SUCCESS : EXIT_FAILURE);
+    _exit(error && *error == FileError::kNotRegular ? EXIT_SUCCESS
+                                                    : EXIT_FAILURE);
   }
   int status = 0;
   pid_t waited;
@@ -139,7 +143,8 @@ void RejectsFifoWithoutBlocking() {
     waited = waitpid(child, &status, 0);
   } while (waited < 0 && errno == EINTR);
   Check(std::filesystem::remove(fixture.path()));
-  Check(waited == child && WIFEXITED(status) && WEXITSTATUS(status) == EXIT_SUCCESS);
+  Check(waited == child && WIFEXITED(status) &&
+        WEXITSTATUS(status) == EXIT_SUCCESS);
 }
 }  // namespace
 

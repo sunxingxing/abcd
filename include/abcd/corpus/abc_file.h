@@ -16,7 +16,15 @@
 
 namespace abcd::corpus {
 
-enum class FileError { kOpen, kStat, kNotRegular, kRead, kBounds, kChanged, kHash };
+enum class FileError {
+  kOpen,
+  kStat,
+  kNotRegular,
+  kRead,
+  kBounds,
+  kChanged,
+  kHash
+};
 
 struct Sha256 {
   std::array<std::uint8_t, 32> bytes{};
@@ -31,8 +39,9 @@ struct FileFingerprint {
   std::size_t prefix_size = 0;
 };
 
-// Owns one read-only descriptor. Readers use positional IO, never a shared cursor.
-// Invariant: hash and classification use this same open file, not a reopened path.
+// Owns one read-only descriptor. Readers use positional IO, never a shared
+// cursor. Invariant: hash and classification use this same open file, not a
+// reopened path.
 class AbcFile {
  public:
   static std::variant<std::unique_ptr<AbcFile>, FileError> Open(
@@ -43,7 +52,7 @@ class AbcFile {
 
   std::uint64_t Size() const;
   std::optional<FileError> ReadAt(std::uint64_t offset,
-                                std::span<std::uint8_t> bytes) const;
+                                  std::span<std::uint8_t> bytes) const;
   std::optional<FileError> CheckUnchanged() const;
   std::variant<FileFingerprint, FileError> Fingerprint() const;
 

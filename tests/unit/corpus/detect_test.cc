@@ -1,6 +1,7 @@
 #include "abcd/corpus/detect.h"
 
 #include <unistd.h>
+#include <zlib.h>
 
 #include <array>
 #include <cstdlib>
@@ -10,8 +11,6 @@
 #include <memory>
 #include <string>
 #include <vector>
-
-#include <zlib.h>
 
 namespace {
 using abcd::corpus::AbcFile;
@@ -35,9 +34,9 @@ void Put32(std::vector<std::uint8_t>* bytes, std::size_t offset,
 }
 
 std::vector<std::uint8_t> Header(std::array<std::uint8_t, 4> version,
-                                  std::size_t size = 72) {
+                                 std::size_t size = 72) {
   std::vector<std::uint8_t> bytes(size);
-  const std::array<std::uint8_t, 8> magic = {'P','A','N','D','A',0,0,0};
+  const std::array<std::uint8_t, 8> magic = {'P', 'A', 'N', 'D', 'A', 0, 0, 0};
   std::copy(magic.begin(), magic.end(), bytes.begin());
   std::copy(version.begin(), version.end(), bytes.begin() + 12);
   Put32(&bytes, 16, static_cast<std::uint32_t>(size));
@@ -46,8 +45,8 @@ std::vector<std::uint8_t> Header(std::array<std::uint8_t, 4> version,
 
 void Seal(std::vector<std::uint8_t>* bytes) {
   Put32(bytes, 16, static_cast<std::uint32_t>(bytes->size()));
-  const auto checksum = adler32(1, bytes->data() + 12,
-                                static_cast<uInt>(bytes->size() - 12));
+  const auto checksum =
+      adler32(1, bytes->data() + 12, static_cast<uInt>(bytes->size() - 12));
   Put32(bytes, 8, checksum);
 }
 
@@ -72,11 +71,12 @@ class Fixture {
     auto file = std::move(std::get<std::unique_ptr<AbcFile>>(opened));
     auto fingerprint = file->Fingerprint();
     Check(std::holds_alternative<abcd::corpus::FileFingerprint>(fingerprint));
-    auto detection = DetectAbc(*file,
-        std::get<abcd::corpus::FileFingerprint>(fingerprint));
+    auto detection =
+        DetectAbc(*file, std::get<abcd::corpus::FileFingerprint>(fingerprint));
     Check(std::holds_alternative<Detection>(detection));
     return std::get<Detection>(detection);
   }
+
  private:
   std::filesystem::path path_;
 };
@@ -118,8 +118,8 @@ void ProbesOnlyParsedClasses() {
   Fixture fixture;
   // StringItem length ("LFoo;" = five UTF-16 units), terminated name,
   // superclass ID, access/field/method counts, SOURCE_LANG and ETS value.
-  const std::vector<std::uint8_t> valid =
-      {11, 'L','F','o','o',';',0, 0,0,0,0, 1,0,0, 2,5};
+  const std::vector<std::uint8_t> valid = {11, 'L', 'F', 'o', 'o', ';', 0, 0,
+                                           0,  0,   0,   1,   0,   0,   2, 5};
   auto witness = fixture.Detect(Legacy(valid));
   Check(witness.kind == SampleKind::kStatic &&
         witness.evidence.rule == EvidenceRule::kEtsClass &&
@@ -168,7 +168,8 @@ void ProbesOnlyParsedClasses() {
   Put32(&byte_limited, 32, 17);
   Put32(&byte_limited, 36, 72);
   for (std::size_t i = 0; i < 17; ++i) Put32(&byte_limited, 72 + i * 4, 256);
-  Check(fixture.Detect(byte_limited).evidence.rule == EvidenceRule::kProbeLimit);
+  Check(fixture.Detect(byte_limited).evidence.rule ==
+        EvidenceRule::kProbeLimit);
 }
 }  // namespace
 

@@ -25,7 +25,14 @@ struct ScanStats {
   std::uint64_t symlinks_skipped = 0;
 };
 
-enum class ScanIssue { kManifest, kFilesystem, kFile, kInvalidRoot, kLimit, kClock };
+enum class ScanIssue {
+  kManifest,
+  kFilesystem,
+  kFile,
+  kInvalidRoot,
+  kLimit,
+  kClock
+};
 struct ScanFailure {
   ScanIssue issue;
   std::filesystem::path path;
@@ -34,9 +41,10 @@ struct ScanFailure {
 };
 
 using ScanResult = std::variant<ScanStats, ScanFailure>;
-// Selected corpus roots are replaced as snapshots; other corpus entries survive.
-// Content hashes are always recomputed, while current-revision detections reuse
-// immutable values by hash. Classification is not decompilation support.
+// Selected corpus roots are replaced as snapshots; other corpus entries
+// survive. Content hashes are always recomputed, while current-revision
+// detections reuse immutable values by hash. Classification is not
+// decompilation support.
 ScanResult ScanCorpus(const std::filesystem::path& manifest,
                       std::span<const CorpusRoot> roots);
 

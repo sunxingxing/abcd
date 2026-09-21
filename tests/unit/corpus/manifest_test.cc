@@ -30,6 +30,7 @@ class FixtureDirectory {
   }
   ~FixtureDirectory() { std::filesystem::remove_all(path_); }
   std::filesystem::path manifest() const { return path_ / "index.json"; }
+
  private:
   std::filesystem::path path_;
 };
@@ -107,7 +108,8 @@ void FailedWritePreservesCommittedManifest() {
     std::signal(SIGXFSZ, SIG_IGN);
     const rlimit limit{1, 1};
     if (setrlimit(RLIMIT_FSIZE, &limit) != 0) _exit(EXIT_FAILURE);
-    _exit(store->Save({}) == ManifestError::kWrite ? EXIT_SUCCESS : EXIT_FAILURE);
+    _exit(store->Save({}) == ManifestError::kWrite ? EXIT_SUCCESS
+                                                   : EXIT_FAILURE);
   }
   int status = 0;
   Check(waitpid(child, &status, 0) == child);

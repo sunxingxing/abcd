@@ -20,7 +20,8 @@ constexpr std::size_t kUleb128BitsPerByte = 7;
 
 }  // namespace
 
-ByteReader::ByteReader(const std::span<const std::uint8_t> bytes) : bytes_(bytes) {}
+ByteReader::ByteReader(const std::span<const std::uint8_t> bytes)
+    : bytes_(bytes) {}
 
 ByteReaderResult<std::uint32_t> ByteReader::ReadU32Le() {
   if (kU32Width > bytes_.size() - position_) {
@@ -77,12 +78,8 @@ ByteReaderResult<std::uint32_t> ByteReader::ReadUleb128U32() {
   return ByteReaderError::kOverflow;
 }
 
-std::size_t ByteReader::Position() const {
-  return position_;
-}
+std::size_t ByteReader::Position() const { return position_; }
 
-bool ByteReader::AtEnd() const {
-  return position_ == bytes_.size();
-}
+bool ByteReader::AtEnd() const { return position_ == bytes_.size(); }
 
 }  // namespace abcd::abc

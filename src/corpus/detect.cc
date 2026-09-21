@@ -50,8 +50,7 @@ std::uint32_t U32(std::span<const std::uint8_t> bytes, std::size_t offset) {
 std::uint32_t PackedVersion(const abc::AbcVersion& version) {
   return (static_cast<std::uint32_t>(version.bytes[0]) << 24) |
          (static_cast<std::uint32_t>(version.bytes[1]) << 16) |
-         (static_cast<std::uint32_t>(version.bytes[2]) << 8) |
-         version.bytes[3];
+         (static_cast<std::uint32_t>(version.bytes[2]) << 8) | version.bytes[3];
 }
 
 bool Uleb(std::span<const std::uint8_t> bytes, std::size_t* pos,
@@ -97,9 +96,9 @@ bool ClassName(std::span<const std::uint8_t> bytes, std::size_t* pos) {
     }
     if (++units > expected) return false;
   }
-  if (*pos == bytes.size() || units != expected ||
-      *pos - name_start < 3 || bytes[name_start] != 'L' ||
-      bytes[*pos - 1] != ';') return false;
+  if (*pos == bytes.size() || units != expected || *pos - name_start < 3 ||
+      bytes[name_start] != 'L' || bytes[*pos - 1] != ';')
+    return false;
   ++*pos;
   return true;
 }
@@ -119,11 +118,13 @@ std::optional<std::uint32_t> EtsTagOffset(std::span<const std::uint8_t> bytes,
     ++pos;
     std::uint32_t count = 0;
     if (!Uleb(bytes, &pos, &count) ||
-        count > (bytes.size() - pos) / kInterfaceIndexWidth) return std::nullopt;
+        count > (bytes.size() - pos) / kInterfaceIndexWidth)
+      return std::nullopt;
     pos += static_cast<std::size_t>(count) * kInterfaceIndexWidth;
   }
   if (bytes.size() - pos < 2 || bytes[pos] != kSourceLangTag ||
-      bytes[pos + 1] != kEtsSourceLang) return std::nullopt;
+      bytes[pos + 1] != kEtsSourceLang)
+    return std::nullopt;
   return class_offset + static_cast<std::uint32_t>(pos);
 }
 
@@ -142,25 +143,31 @@ ProbeResult ProbeClasses(const AbcFile& file, const abc::Header& header) {
       return {.tag_offset = {}, .limit = true, .error = {}};
     }
     std::array<std::uint8_t, kClassIndexWidth> entry{};
-    if (const auto error = file.ReadAt(
-            layout.classes.offset + kClassIndexWidth * static_cast<std::uint64_t>(i), entry))
+    if (const auto error =
+            file.ReadAt(layout.classes.offset +
+                            kClassIndexWidth * static_cast<std::uint64_t>(i),
+                        entry))
       return {.tag_offset = {}, .limit = false, .error = *error};
     consumed += entry.size();
     const std::uint32_t offset = U32(entry, 0);
     if (offset < abc::kStaticHeaderSize || offset >= file.Size() ||
         (offset >= header.foreign_offset &&
-         offset - header.foreign_offset < header.foreign_size)) continue;
+         offset - header.foreign_offset < header.foreign_size))
+      continue;
     if (visited == kClassLimit) {
       return {.tag_offset = {}, .limit = true, .error = {}};
     }
     ++visited;
-    const std::size_t length = static_cast<std::size_t>(std::min<std::uint64_t>(
-        kClassProbeBytes, file.Size() - offset));
-    if (length > kTotalProbeBytes - consumed) return {.tag_offset = {}, .limit = true, .error = {}};
+    const std::size_t length = static_cast<std::size_t>(
+        std::min<std::uint64_t>(kClassProbeBytes, file.Size() - offset));
+    if (length > kTotalProbeBytes - consumed)
+      return {.tag_offset = {}, .limit = true, .error = {}};
     std::vector<std::uint8_t> bytes(length);
-    if (const auto error = file.ReadAt(offset, bytes)) return {.tag_offset = {}, .limit = false, .error = *error};
+    if (const auto error = file.ReadAt(offset, bytes))
+      return {.tag_offset = {}, .limit = false, .error = *error};
     consumed += length;
-    if (const auto tag = EtsTagOffset(bytes, offset)) return {.tag_offset = tag, .limit = false, .error = {}};
+    if (const auto tag = EtsTagOffset(bytes, offset))
+      return {.tag_offset = tag, .limit = false, .error = {}};
   }
   return {};
 }
@@ -170,8 +177,9 @@ DetectResult DetectAbc(const AbcFile& file,
                        const FileFingerprint& fingerprint) {
   if (const auto error = file.CheckUnchanged()) return *error;
   Detection result;
-  const auto prefix = std::span(fingerprint.prefix).first(
-      std::min(fingerprint.prefix_size, fingerprint.prefix.size()));
+  const auto prefix =
+      std::span(fingerprint.prefix)
+          .first(std::min(fingerprint.prefix_size, fingerprint.prefix.size()));
   if (prefix.size() >= kVersionOffset + kVersionWidth) {
     abc::AbcVersion version;
     std::copy_n(prefix.begin() + kVersionOffset, kVersionWidth,
@@ -182,7 +190,8 @@ DetectResult DetectAbc(const AbcFile& file,
   if (const auto* error = std::get_if<abc::HeaderError>(&parsed)) {
     result.header_error = *error;
     result.kind = *error == abc::HeaderError::kIncompatibleVersion
-                      ? SampleKind::kUnknown : SampleKind::kInvalid;
+                      ? SampleKind::kUnknown
+                      : SampleKind::kInvalid;
     result.evidence = {EvidenceRule::kHeaderFailure, 0,
                        static_cast<std::uint64_t>(*error)};
   } else {
@@ -192,18 +201,19 @@ DetectResult DetectAbc(const AbcFile& file,
     if (prefix.size() >= kChecksumOffset + 4 &&
         U32(prefix, kChecksumOffset) != fingerprint.adler32) {
       result.kind = SampleKind::kInvalid;
-      result.evidence = {EvidenceRule::kChecksumMismatch,
-                         kChecksumOffset, fingerprint.adler32};
+      result.evidence = {EvidenceRule::kChecksumMismatch, kChecksumOffset,
+                         fingerprint.adler32};
     } else if (header.kind == abc::AbcKind::kDynamic ||
                header.kind == abc::AbcKind::kStatic) {
-      result.kind = header.kind == abc::AbcKind::kDynamic
-                        ? SampleKind::kDynamic : SampleKind::kStatic;
+      result.kind = header.kind == abc::AbcKind::kDynamic ? SampleKind::kDynamic
+                                                          : SampleKind::kStatic;
       result.evidence = {result.kind == SampleKind::kDynamic
                              ? EvidenceRule::kDynamicHeader
                              : EvidenceRule::kStaticHeader,
                          kVersionOffset, PackedVersion(header.version)};
     } else if (header.version == kLegacyStatic) {
-      const auto static_parsed = abc::ParseStaticHeader(prefix, fingerprint.size);
+      const auto static_parsed =
+          abc::ParseStaticHeader(prefix, fingerprint.size);
       if (const auto* candidate = std::get_if<abc::Header>(&static_parsed)) {
         const ProbeResult probe = ProbeClasses(file, *candidate);
         if (probe.error) return *probe.error;

@@ -1,11 +1,11 @@
 #include "abcd/corpus/scan.h"
 
+#include <zlib.h>
+
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <vector>
-
-#include <zlib.h>
 
 namespace {
 using namespace abcd::corpus;
@@ -36,17 +36,18 @@ class Fixture {
 
 void WriteWord(std::vector<std::uint8_t>& bytes, std::size_t offset,
                std::uint32_t value) {
-  for (unsigned int i = 0; i < 4; ++i) bytes[offset+i] = value >> (8*i);
+  for (unsigned int i = 0; i < 4; ++i) bytes[offset + i] = value >> (8 * i);
 }
 
-void WriteAbc(const std::filesystem::path& path, abcd::abc::AbcVersion version) {
+void WriteAbc(const std::filesystem::path& path,
+              abcd::abc::AbcVersion version) {
   constexpr abcd::abc::AbcVersion kStatic{{0, 1, 0, 7}};
   std::vector<std::uint8_t> bytes(version == kStatic ? 72 : 60);
   const std::string magic = "PANDA";
   std::copy(magic.begin(), magic.end(), bytes.begin());
   std::copy(version.bytes.begin(), version.bytes.end(), bytes.begin() + 12);
   WriteWord(bytes, 16, bytes.size());
-  WriteWord(bytes, 8, adler32(1, bytes.data()+12, bytes.size()-12));
+  WriteWord(bytes, 8, adler32(1, bytes.data() + 12, bytes.size() - 12));
   std::ofstream output(path, std::ios::binary);
   output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
   output.close();
@@ -73,7 +74,8 @@ void ReusesContentAndInvalidatesChangedBytesAndRules() {
   Check(stats.bytes_hashed == 120);
   WriteAbc(first, {{9, 0, 0, 0}});
   stats = Scan(fixture);
-  Check(stats.classified == 1 && stats.reused == 1 && stats.unique_contents == 2);
+  Check(stats.classified == 1 && stats.reused == 1 &&
+        stats.unique_contents == 2);
   {
     auto opened = ManifestStore::Open(fixture.manifest);
     auto store = std::move(std::get<std::unique_ptr<ManifestStore>>(opened));
@@ -89,7 +91,10 @@ void PreservesOtherRootsAndSeparatesKinds() {
   Fixture fixture;
   WriteAbc(fixture.roots[0].path / "static.abc", {{0, 1, 0, 7}});
   WriteAbc(fixture.roots[0].path / "unknown.abc", {{99, 0, 0, 0}});
-  { std::ofstream output(fixture.roots[1].path / "bad.abc"); output << "bad"; }
+  {
+    std::ofstream output(fixture.roots[1].path / "bad.abc");
+    output << "bad";
+  }
   auto stats = Scan(fixture);
   Check(stats.static_abc == 1 && stats.unknown == 1 && stats.invalid == 1);
   stats = Scan(fixture);
@@ -104,7 +109,8 @@ void PreservesOtherRootsAndSeparatesKinds() {
 
 void RejectsBadRootsAndDoesNotFollowSymlinks() {
   Fixture fixture;
-  std::filesystem::create_symlink("missing.abc", fixture.roots[0].path / "link.abc");
+  std::filesystem::create_symlink("missing.abc",
+                                  fixture.roots[0].path / "link.abc");
   auto stats = Scan(fixture);
   Check(stats.files == 0 && stats.symlinks_skipped == 1);
   fixture.roots[0].path /= "missing";

@@ -15,8 +15,8 @@ namespace {
 
 // Pinned source: runtime_core 3e147bb libpandafile/file.h and
 // docs/file_format.md. Static offsets are from static_core/libarkfile/file.h.
-constexpr std::array<std::uint8_t, 8> kMagic = {'P', 'A', 'N', 'D', 'A', 0,
-                                                  0, 0};
+constexpr std::array<std::uint8_t, 8> kMagic = {'P', 'A', 'N', 'D',
+                                                'A', 0,   0,   0};
 constexpr AbcVersion kDynamic9 = {{9, 0, 0, 0}};
 constexpr AbcVersion kDynamic1100 = {{11, 0, 0, 0}};
 constexpr AbcVersion kDynamic1101 = {{11, 0, 1, 0}};
@@ -180,9 +180,8 @@ HeaderResult ValidateDynamic(Header header) {
       }
       continue;
     }
-    const std::optional<HeaderError> error =
-        ValidateSection(section, kIndexEntrySize, kDynamicHeaderSize,
-                        header.file_size);
+    const std::optional<HeaderError> error = ValidateSection(
+        section, kIndexEntrySize, kDynamicHeaderSize, header.file_size);
     if (error.has_value()) {
       return *error;
     }
@@ -196,9 +195,8 @@ HeaderResult ValidateDynamic(Header header) {
     }
     return header;
   }
-  const std::optional<HeaderError> error =
-      ValidateSection(regions, kRegionHeaderSize, kDynamicHeaderSize,
-                      header.file_size);
+  const std::optional<HeaderError> error = ValidateSection(
+      regions, kRegionHeaderSize, kDynamicHeaderSize, header.file_size);
   return error.has_value() ? HeaderResult(*error) : HeaderResult(header);
 }
 
@@ -215,18 +213,16 @@ HeaderResult ValidateStatic(Header header, const bool legacy_export_count) {
       }
       continue;
     }
-    const std::optional<HeaderError> error =
-        ValidateSection(section, kIndexEntrySize, kStaticHeaderSize,
-                        header.file_size);
+    const std::optional<HeaderError> error = ValidateSection(
+        section, kIndexEntrySize, kStaticHeaderSize, header.file_size);
     if (error.has_value()) {
       return *error;
     }
   }
   const std::uint32_t export_width = legacy_export_count ? kIndexEntrySize : 1;
-  const std::array<IndexSection, 2> remaining = {
-      layout.export_table, layout.index_regions};
-  const std::array<std::uint32_t, 2> widths = {export_width,
-                                                kRegionHeaderSize};
+  const std::array<IndexSection, 2> remaining = {layout.export_table,
+                                                 layout.index_regions};
+  const std::array<std::uint32_t, 2> widths = {export_width, kRegionHeaderSize};
   for (std::size_t index = 0; index < remaining.size(); ++index) {
     const IndexSection section = remaining[index];
     if (section.count == 0) {
@@ -237,9 +233,8 @@ HeaderResult ValidateStatic(Header header, const bool legacy_export_count) {
       }
       continue;
     }
-    const std::optional<HeaderError> error =
-        ValidateSection(section, widths[index], kStaticHeaderSize,
-                        header.file_size);
+    const std::optional<HeaderError> error = ValidateSection(
+        section, widths[index], kStaticHeaderSize, header.file_size);
     if (error.has_value()) {
       return *error;
     }
@@ -286,14 +281,15 @@ HeaderResult ParseHeader(const std::span<const std::uint8_t> prefix,
       return HeaderError::kReservedLiteralFields;
     }
     if (header.version > kDynamic1206) {
-      const DynamicLayout validation_layout = {
-          layout.classes, layout.line_number_programs, {0, 0},
-          layout.index_regions};
+      const DynamicLayout validation_layout = {layout.classes,
+                                               layout.line_number_programs,
+                                               {0, 0},
+                                               layout.index_regions};
       Header validation_header = header;
       validation_header.layout = validation_layout;
       HeaderResult validated = ValidateDynamic(validation_header);
       return std::holds_alternative<Header>(validated) ? HeaderResult(header)
-                                                        : validated;
+                                                       : validated;
     }
     return ValidateDynamic(header);
   }

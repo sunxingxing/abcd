@@ -1,10 +1,10 @@
+#include "abcd/abc/byte_reader.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <span>
 #include <variant>
-
-#include "abcd/abc/byte_reader.h"
 
 namespace {
 

@@ -18,12 +18,12 @@ using ByteReaderResult = std::variant<T, ByteReaderError>;
 
 class ByteReader {
  public:
-  // The caller retains ownership of bytes and must keep them alive while reading.
+  // The caller retains ownership of bytes and must keep them alive while
+  // reading.
   explicit ByteReader(std::span<const std::uint8_t> bytes);
 
   ByteReaderResult<std::uint32_t> ReadU32Le();
-  ByteReaderResult<std::span<const std::uint8_t>> ReadBytes(
-      std::size_t length);
+  ByteReaderResult<std::span<const std::uint8_t>> ReadBytes(std::size_t length);
   ByteReaderResult<std::uint32_t> ReadUleb128U32();
 
   std::size_t Position() const;

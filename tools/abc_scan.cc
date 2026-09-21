@@ -4,9 +4,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <new>
-#include <vector>
-
 #include <nlohmann/json.hpp>
+#include <vector>
 
 #include "abcd/corpus/scan.h"
 
@@ -27,7 +26,8 @@ bool LimitAddressSpace() {
 
 int Run(int argc, char** argv) {
   if (argc < kRequiredArguments || (argc - 2) % kRootArgumentWidth != 0) {
-    std::cerr << "usage: abc_scan MANIFEST CORPUS_ID ROOT [CORPUS_ID ROOT ...]\n";
+    std::cerr
+        << "usage: abc_scan MANIFEST CORPUS_ID ROOT [CORPUS_ID ROOT ...]\n";
     return EXIT_FAILURE;
   }
   if (!LimitAddressSpace()) {
@@ -35,12 +35,14 @@ int Run(int argc, char** argv) {
     return EXIT_FAILURE;
   }
   std::vector<abcd::corpus::CorpusRoot> roots;
-  for (int i = 2; i < argc; i += kRootArgumentWidth) roots.push_back({argv[i], argv[i+1]});
+  for (int i = 2; i < argc; i += kRootArgumentWidth)
+    roots.push_back({argv[i], argv[i + 1]});
   const auto result = abcd::corpus::ScanCorpus(argv[1], roots);
   if (const auto* failure = std::get_if<abcd::corpus::ScanFailure>(&result)) {
     nlohmann::json diagnostic{{"issue", static_cast<int>(failure->issue)},
                               {"path", failure->path.generic_string()}};
-    if (failure->file_error) diagnostic["file_error"] = static_cast<int>(*failure->file_error);
+    if (failure->file_error)
+      diagnostic["file_error"] = static_cast<int>(*failure->file_error);
     if (failure->manifest_error) {
       diagnostic["manifest_error"] = static_cast<int>(*failure->manifest_error);
     }
@@ -53,14 +55,23 @@ int Run(int argc, char** argv) {
     std::cerr << "cannot measure process memory\n";
     return EXIT_FAILURE;
   }
-  std::cout << nlohmann::json{
-      {"files", stats.files}, {"unique_contents", stats.unique_contents},
-      {"bytes_hashed", stats.bytes_hashed}, {"classified", stats.classified},
-      {"reused", stats.reused}, {"dynamic", stats.dynamic},
-      {"static", stats.static_abc}, {"unknown", stats.unknown},
-      {"invalid", stats.invalid}, {"symlinks_skipped", stats.symlinks_skipped},
-      {"peak_rss_bytes", static_cast<std::uint64_t>(usage.ru_maxrss) * kBytesPerKibibyte},
-      {"address_space_limit_bytes", kProcessMemoryLimit}}.dump(2) << '\n';
+  std::cout << nlohmann::json{{"files", stats.files},
+                              {"unique_contents", stats.unique_contents},
+                              {"bytes_hashed", stats.bytes_hashed},
+                              {"classified", stats.classified},
+                              {"reused", stats.reused},
+                              {"dynamic", stats.dynamic},
+                              {"static", stats.static_abc},
+                              {"unknown", stats.unknown},
+                              {"invalid", stats.invalid},
+                              {"symlinks_skipped", stats.symlinks_skipped},
+                              {"peak_rss_bytes",
+                               static_cast<std::uint64_t>(usage.ru_maxrss) *
+                                   kBytesPerKibibyte},
+                              {"address_space_limit_bytes",
+                               kProcessMemoryLimit}}
+                   .dump(2)
+            << '\n';
   return EXIT_SUCCESS;
 }
 }  // namespace

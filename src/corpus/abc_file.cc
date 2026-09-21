@@ -1,15 +1,14 @@
 #include "abcd/corpus/abc_file.h"
 
 #include <fcntl.h>
+#include <openssl/evp.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include <algorithm>
 #include <array>
 #include <cerrno>
 #include <memory>
-
-#include <openssl/evp.h>
-#include <zlib.h>
 
 namespace abcd::corpus {
 namespace {
@@ -34,8 +33,10 @@ std::variant<std::unique_ptr<AbcFile>, FileError> AbcFile::Open(
     const std::filesystem::path& path) {
   // Allocate ownership before opening: allocation failure must not leak a fd.
   auto file = std::unique_ptr<AbcFile>(new AbcFile(-1, {}));
-  // Reject special files after fstat without hanging on a FIFO before that check.
-  file->fd_ = open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+  // Reject special files after fstat without hanging on a FIFO before that
+  // check.
+  file->fd_ =
+      open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
   if (file->fd_ < 0) return FileError::kOpen;
   if (fstat(file->fd_, &file->stamp_) != 0) return FileError::kStat;
   if (!S_ISREG(file->stamp_.st_mode) || file->stamp_.st_size < 0) {
@@ -48,15 +49,15 @@ std::uint64_t AbcFile::Size() const {
   return static_cast<std::uint64_t>(stamp_.st_size);
 }
 
-std::optional<FileError> AbcFile::ReadAt(
-    std::uint64_t offset, std::span<std::uint8_t> bytes) const {
+std::optional<FileError> AbcFile::ReadAt(std::uint64_t offset,
+                                         std::span<std::uint8_t> bytes) const {
   if (offset > Size() || bytes.size() > Size() - offset) {
     return FileError::kBounds;
   }
   while (!bytes.empty()) {
-    const auto count = pread(fd_, bytes.data(),
-                             std::min(bytes.size(), kStreamBytes),
-                             static_cast<off_t>(offset));
+    const auto count =
+        pread(fd_, bytes.data(), std::min(bytes.size(), kStreamBytes),
+              static_cast<off_t>(offset));
     if (count < 0 && errno == EINTR) continue;
     if (count <= 0) return FileError::kRead;
     const auto consumed = static_cast<std::size_t>(count);
@@ -102,16 +103,18 @@ std::variant<FileFingerprint, FileError> AbcFile::Fingerprint() const {
       std::copy_n(chunk.begin(), result.prefix_size, result.prefix.begin());
     }
     const auto skip = static_cast<std::size_t>(
-        offset < kChecksumStart ?
-            std::min<std::uint64_t>(kChecksumStart - offset, chunk.size()) : 0);
+        offset < kChecksumStart
+            ? std::min<std::uint64_t>(kChecksumStart - offset, chunk.size())
+            : 0);
     const auto payload = chunk.subspan(skip);
-    result.adler32 = static_cast<std::uint32_t>(
-        adler32(result.adler32, payload.data(), static_cast<uInt>(payload.size())));
+    result.adler32 = static_cast<std::uint32_t>(adler32(
+        result.adler32, payload.data(), static_cast<uInt>(payload.size())));
     offset += count;
   }
   unsigned int digest_size = 0;
-  if (EVP_DigestFinal_ex(digest.get(), result.sha256.bytes.data(), &digest_size)
-          != 1 || digest_size != result.sha256.bytes.size()) {
+  if (EVP_DigestFinal_ex(digest.get(), result.sha256.bytes.data(),
+                         &digest_size) != 1 ||
+      digest_size != result.sha256.bytes.size()) {
     return FileError::kHash;
   }
   if (const auto error = CheckUnchanged()) return *error;

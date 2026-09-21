@@ -11,8 +11,14 @@ namespace abcd::corpus {
 
 enum class SampleKind { kDynamic, kStatic, kUnknown, kInvalid };
 enum class EvidenceRule {
-  kDynamicHeader, kStaticHeader, kEtsClass, kUnknownVersion,
-  kHeaderFailure, kChecksumMismatch, kNoStaticWitness, kProbeLimit
+  kDynamicHeader,
+  kStaticHeader,
+  kEtsClass,
+  kUnknownVersion,
+  kHeaderFailure,
+  kChecksumMismatch,
+  kNoStaticWitness,
+  kProbeLimit
 };
 
 struct Evidence {

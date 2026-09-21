@@ -1,8 +1,8 @@
-#include "manifest_json.h"
-
 #include <array>
 #include <map>
 #include <set>
+
+#include "manifest_json.h"
 
 namespace abcd::corpus {
 namespace {
@@ -37,7 +37,8 @@ bool VersionEvidence(const Detection& detection, EvidenceRule rule) {
   if (!detection.version) return false;
   constexpr unsigned int kByteBits = 8;
   std::uint32_t packed = 0;
-  for (const auto byte : detection.version->bytes) packed = packed << kByteBits | byte;
+  for (const auto byte : detection.version->bytes)
+    packed = packed << kByteBits | byte;
   return detection.evidence == Evidence{rule, kVersionOffset, packed};
 }
 
@@ -45,56 +46,71 @@ bool ValidDetection(const CorpusEntry& entry) {
   const auto& d = entry.detection;
   if (d.version.has_value() != (entry.size >= kVersionEnd)) return false;
   const auto expected_profile = ProfileFor(d.version);
-  const bool compatible_size = entry.size >= abc::kDynamicHeaderSize && entry.size <= UINT32_MAX;
-  const bool incompatible = d.version == kIncompatible1100 || d.version == kIncompatible1101;
-  const bool header_failure = d.header_error &&
+  const bool compatible_size =
+      entry.size >= abc::kDynamicHeaderSize && entry.size <= UINT32_MAX;
+  const bool incompatible =
+      d.version == kIncompatible1100 || d.version == kIncompatible1101;
+  const bool header_failure =
+      d.header_error &&
       d.evidence == Evidence{EvidenceRule::kHeaderFailure, 0,
                              static_cast<std::uint64_t>(*d.header_error)};
   switch (d.kind) {
     case SampleKind::kDynamic:
-      return compatible_size && !d.header_error && d.profile == expected_profile &&
-          expected_profile != abc::ProfileId::kUnknown &&
-          expected_profile != abc::ProfileId::kStatic0107 &&
-          VersionEvidence(d, EvidenceRule::kDynamicHeader);
+      return compatible_size && !d.header_error &&
+             d.profile == expected_profile &&
+             expected_profile != abc::ProfileId::kUnknown &&
+             expected_profile != abc::ProfileId::kStatic0107 &&
+             VersionEvidence(d, EvidenceRule::kDynamicHeader);
     case SampleKind::kStatic:
-      if (!compatible_size || entry.size < abc::kStaticHeaderSize || d.header_error) return false;
+      if (!compatible_size || entry.size < abc::kStaticHeaderSize ||
+          d.header_error)
+        return false;
       if (d.version == kCurrentStatic) {
         return d.profile == abc::ProfileId::kStatic0107 &&
-            VersionEvidence(d, EvidenceRule::kStaticHeader);
+               VersionEvidence(d, EvidenceRule::kStaticHeader);
       }
-      return d.version == kLegacyStatic && d.profile == abc::ProfileId::kUnknown &&
-          d.evidence.rule == EvidenceRule::kEtsClass && d.evidence.observed == kEtsLanguage &&
-          d.evidence.offset >= abc::kStaticHeaderSize &&
-          d.evidence.offset <= entry.size - kLanguageTagWidth;
+      return d.version == kLegacyStatic &&
+             d.profile == abc::ProfileId::kUnknown &&
+             d.evidence.rule == EvidenceRule::kEtsClass &&
+             d.evidence.observed == kEtsLanguage &&
+             d.evidence.offset >= abc::kStaticHeaderSize &&
+             d.evidence.offset <= entry.size - kLanguageTagWidth;
     case SampleKind::kUnknown:
-      if (!compatible_size || d.profile != abc::ProfileId::kUnknown) return false;
+      if (!compatible_size || d.profile != abc::ProfileId::kUnknown)
+        return false;
       if (d.header_error) {
-        return incompatible && *d.header_error == abc::HeaderError::kIncompatibleVersion &&
-            header_failure;
+        return incompatible &&
+               *d.header_error == abc::HeaderError::kIncompatibleVersion &&
+               header_failure;
       }
-      if (incompatible || expected_profile != abc::ProfileId::kUnknown) return false;
+      if (incompatible || expected_profile != abc::ProfileId::kUnknown)
+        return false;
       if (d.version == kLegacyStatic) {
         return (d.evidence.rule == EvidenceRule::kNoStaticWitness ||
                 d.evidence.rule == EvidenceRule::kProbeLimit) &&
-            d.evidence.offset == 0 && d.evidence.observed == 0;
+               d.evidence.offset == 0 && d.evidence.observed == 0;
       }
       return VersionEvidence(d, EvidenceRule::kUnknownVersion);
     case SampleKind::kInvalid:
       if (d.header_error) {
         return header_failure && d.profile == abc::ProfileId::kUnknown &&
-            *d.header_error != abc::HeaderError::kIncompatibleVersion &&
-            *d.header_error != abc::HeaderError::kStaticCandidateVersion;
+               *d.header_error != abc::HeaderError::kIncompatibleVersion &&
+               *d.header_error != abc::HeaderError::kStaticCandidateVersion;
       }
-      return compatible_size && !incompatible && d.profile == expected_profile &&
-          (d.version != kCurrentStatic || entry.size >= abc::kStaticHeaderSize) &&
-          d.evidence.rule == EvidenceRule::kChecksumMismatch &&
-          d.evidence.offset == kChecksumOffset && d.evidence.observed <= UINT32_MAX;
+      return compatible_size && !incompatible &&
+             d.profile == expected_profile &&
+             (d.version != kCurrentStatic ||
+              entry.size >= abc::kStaticHeaderSize) &&
+             d.evidence.rule == EvidenceRule::kChecksumMismatch &&
+             d.evidence.offset == kChecksumOffset &&
+             d.evidence.observed <= UINT32_MAX;
   }
   return false;
 }
 }  // namespace
 
-std::optional<ManifestError> ValidateEntries(const std::vector<CorpusEntry>& entries) {
+std::optional<ManifestError> ValidateEntries(
+    const std::vector<CorpusEntry>& entries) {
   if (entries.size() > kMaxManifestEntries) return ManifestError::kTooLarge;
   std::set<std::pair<std::string, std::filesystem::path>> paths;
   std::map<Sha256, std::uint64_t> sizes;
@@ -107,16 +123,21 @@ std::optional<ManifestError> ValidateEntries(const std::vector<CorpusEntry>& ent
         entry.corpus_id.find('\0') != std::string::npos || path.empty() ||
         path.size() > kMaxPathBytes || path.find('\0') != std::string::npos ||
         entry.relative_path.is_absolute() || entry.checked_at < 0 ||
-        entry.detector_revision == 0 || !ValidDetection(entry)) return ManifestError::kSchema;
+        entry.detector_revision == 0 || !ValidDetection(entry))
+      return ManifestError::kSchema;
     for (const auto& part : entry.relative_path) {
-      if (part == ".." || part == "." || part.empty()) return ManifestError::kSchema;
+      if (part == ".." || part == "." || part.empty())
+        return ManifestError::kSchema;
     }
-    if (!paths.emplace(entry.corpus_id, entry.relative_path).second) return ManifestError::kSchema;
+    if (!paths.emplace(entry.corpus_id, entry.relative_path).second)
+      return ManifestError::kSchema;
     const auto [size_at, new_size] = sizes.emplace(entry.sha256, entry.size);
-    if (!new_size && size_at->second != entry.size) return ManifestError::kSchema;
+    if (!new_size && size_at->second != entry.size)
+      return ManifestError::kSchema;
     const auto [at, inserted] = contents.emplace(
         std::pair{entry.sha256, entry.detector_revision}, entry.detection);
-    if (!inserted && at->second != entry.detection) return ManifestError::kSchema;
+    if (!inserted && at->second != entry.detection)
+      return ManifestError::kSchema;
   }
   return std::nullopt;
 }

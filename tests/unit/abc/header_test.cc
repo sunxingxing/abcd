@@ -1,11 +1,11 @@
+#include "abcd/abc/header.h"
+
 #include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <span>
 #include <variant>
-
-#include "abcd/abc/header.h"
 
 namespace {
 
@@ -86,12 +86,19 @@ void ExpectError(const HeaderResult& result, const HeaderError error) {
 
 void RecognizesEveryDynamicProfile() {
   constexpr std::array<std::array<std::uint8_t, 4>, 6> kVersions = {{
-      {9, 0, 0, 0}, {11, 0, 2, 0}, {12, 0, 2, 0},
-      {12, 0, 6, 0}, {13, 0, 1, 0}, {24, 0, 0, 0},
+      {9, 0, 0, 0},
+      {11, 0, 2, 0},
+      {12, 0, 2, 0},
+      {12, 0, 6, 0},
+      {13, 0, 1, 0},
+      {24, 0, 0, 0},
   }};
   constexpr std::array<ProfileId, 6> kProfiles = {{
-      ProfileId::kDynamic9, ProfileId::kDynamic1102, ProfileId::kDynamic1202,
-      ProfileId::kDynamic1206, ProfileId::kDynamic1301,
+      ProfileId::kDynamic9,
+      ProfileId::kDynamic1102,
+      ProfileId::kDynamic1202,
+      ProfileId::kDynamic1206,
+      ProfileId::kDynamic1301,
       ProfileId::kDynamic2400,
   }};
 
@@ -141,7 +148,8 @@ void RejectsMalformedAndIncompatibleHeaders() {
   ExpectError(ParseHeader(truncated, complete.size()), HeaderError::kTruncated);
 
   bytes = MakeHeader<kDynamicHeaderSize>({11, 0, 0, 0});
-  ExpectError(ParseHeader(bytes, bytes.size()), HeaderError::kIncompatibleVersion);
+  ExpectError(ParseHeader(bytes, bytes.size()),
+              HeaderError::kIncompatibleVersion);
 
   bytes = MakeHeader<kDynamicHeaderSize>({12, 0, 6, 0});
   WriteU32(bytes, kFileSizeOffset, 61);

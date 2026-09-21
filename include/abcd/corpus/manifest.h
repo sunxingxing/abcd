@@ -30,7 +30,13 @@ struct CorpusEntry {
 };
 
 enum class ManifestError {
-  kOpen, kLockBusy, kRead, kTooLarge, kSchema, kWrite, kRename,
+  kOpen,
+  kLockBusy,
+  kRead,
+  kTooLarge,
+  kSchema,
+  kWrite,
+  kRename,
   kCommittedNotDurable
 };
 
@@ -47,7 +53,8 @@ class ManifestStore {
   ManifestStore& operator=(const ManifestStore&) = delete;
 
   ManifestResult Load() const;
-  std::optional<ManifestError> Save(const std::vector<CorpusEntry>& entries) const;
+  std::optional<ManifestError> Save(
+      const std::vector<CorpusEntry>& entries) const;
 
  private:
   explicit ManifestStore(std::filesystem::path path);
