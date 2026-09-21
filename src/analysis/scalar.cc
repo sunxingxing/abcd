@@ -67,6 +67,14 @@ std::optional<UnarySpec> UnaryOp(Opcode opcode) {
   // proof before treating it as the language-level unary minus operation.
   using enum UnaryInput;
   switch (opcode) {
+    case Opcode::kINC_IMM8:
+      return UnarySpec{UnaryOperator::kIncrement, kCachedAccumulator};
+    case Opcode::kDEC_IMM8:
+      return UnarySpec{UnaryOperator::kDecrement, kCachedAccumulator};
+    case Opcode::kDEPRECATED_INC_PREF_V8:
+      return UnarySpec{UnaryOperator::kIncrement, kRegister};
+    case Opcode::kDEPRECATED_DEC_PREF_V8:
+      return UnarySpec{UnaryOperator::kDecrement, kRegister};
     case Opcode::kNEG_IMM8:
       return UnarySpec{UnaryOperator::kNegate, kCachedAccumulator};
     case Opcode::kNOT_IMM8:

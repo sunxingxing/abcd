@@ -22,7 +22,8 @@ int main() {
   const std::array<std::string_view, 1> registers{"left"};
   const ScalarNames names{"right", registers};
   for (const auto predicate :
-       {UnaryOperator::kFalseOrZero, UnaryOperator::kTrueOrNonzeroNumber}) {
+       {UnaryOperator::kFalseOrZero, UnaryOperator::kTrueOrNonzeroNumber,
+        UnaryOperator::kIncrement, UnaryOperator::kDecrement}) {
     const ScalarExpression branch = UnaryExpression{predicate, Accumulator{}};
     std::ostringstream full;
     Check(std::holds_alternative<std::size_t>(

@@ -96,6 +96,8 @@ std::optional<std::string_view> UnaryToken(UnaryOperator op) {
       return "+";
     case UnaryOperator::kFalseOrZero:
     case UnaryOperator::kTrueOrNonzeroNumber:
+    case UnaryOperator::kIncrement:
+    case UnaryOperator::kDecrement:
       return std::nullopt;
   }
   return std::nullopt;
@@ -203,6 +205,18 @@ class ExpressionWriter {
     if (!error_) std::visit([&](const auto& atom) { Value(atom); }, value);
   }
   void Expression(const UnaryExpression& unary) {
+    if (unary.op == UnaryOperator::kIncrement ||
+        unary.op == UnaryOperator::kDecrement) {
+      // Ark updates acc, not the source register. A private parameter keeps
+      // ToNumeric/BigInt semantics without mutating the input slot or exposing
+      // a partial destination on coercion failure. The argument is outside
+      // the parameter scope, so a caller binding named value is safe too.
+      Append(unary.op == UnaryOperator::kIncrement ? "((value) => ++value)("
+                                                   : "((value) => --value)(");
+      Expression(unary.input);
+      Append(")");
+      return;
+    }
     // Inputs are side-effect-free values/local slots, never arbitrary source
     // expressions. Repeated references here must not duplicate a computation.
     if (unary.op == UnaryOperator::kFalseOrZero) {

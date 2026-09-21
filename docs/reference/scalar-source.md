@@ -10,8 +10,9 @@ name array.
 Operators are selected by enums at the source serialization boundary. Binary
 expressions retain operand order. Parentheses avoid precedence changes and the
 special exponentiation restriction on an unparenthesized negative base. Unary
-ToBoolean renders `!!`, bitwise complement `~`, and ToNumber unary `+`; increment
-and ToNumeric are not silently substituted with different operations.
+ToBoolean renders `!!`, bitwise complement `~`, and ToNumber unary `+`.
+Increment/decrement update a private parameter to preserve source slots and
+ToNumeric behavior; see [numeric-updates.md](numeric-updates.md).
 
 Names are checked as conservative strict-safe ASCII identifiers, including a
 reserved-word check. Unicode/escaped names and expression fragments are rejected,
@@ -31,8 +32,8 @@ function/output budgets and whole-process memory enforcement.
 
 The integration fixture decodes actual instruction encodings, lifts them, emits
 JS functions around the resulting expressions, and executes them with Node.
-Independent JS operator functions check 20 binary and 8 unary encodings over
-20-by-20 input pairs including strings, signed zero, BigInt and Symbol. Object
+Independent JS operator functions check 20 binary and 12 unary encodings over
+24-by-24 input pairs including strings, signed zero, BigInt and Symbol. Object
 ToPrimitive traces and throwing conversions test evaluation order and errors.
 More than 4,000 finite/infinite numeric bit patterns, including subnormal values,
 round-trip through emitted source and DataView comparison. A negative numeric

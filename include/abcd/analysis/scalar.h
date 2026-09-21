@@ -44,6 +44,8 @@ enum class UnaryOperator {
   kLogicalNot,
   kTypeOf,
   kToNumber,
+  kIncrement,
+  kDecrement,
   kFalseOrZero,
   kTrueOrNonzeroNumber
 };

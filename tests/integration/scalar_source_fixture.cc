@@ -17,14 +17,18 @@ void Emit(const analysis::ScalarExpression& expression) {
           expression, {"right", registers}, std::cout)))
     std::abort();
 }
-void Bytecode(std::initializer_list<std::uint8_t> bytes) {
+void Bytecode(std::initializer_list<std::uint8_t> bytes, bool capture = false) {
   const std::vector<std::uint8_t> storage(bytes);
   const auto decoded = std::get<abc::DecodedInstruction>(
       abc::DecodeInstruction(storage, abc::ProfileId::kDynamic1206));
   const auto assignment = std::get<analysis::ScalarAssignment>(
       analysis::LiftScalarInstruction(decoded, 1));
   std::cout << "(left,right)=>";
+  if (capture) std::cout << "{try {right = ";
   Emit(assignment.expression);
+  if (capture)
+    std::cout
+        << "; return [left,right];} catch(error) {return [left,right,error];}}";
   std::cout << ",\n";
 }
 void FunctionBody(std::initializer_list<std::uint8_t> bytes) {
@@ -52,6 +56,14 @@ int main() {
   FunctionBody({0x60, 0, 0x0a, 0, 0, 0x64});
   std::cout << "export const throwValue = ";
   FunctionBody({0x60, 0, 0xfe, 0});
+  std::cout << "export const increment = ";
+  FunctionBody({0x60, 0, 0x21, 0, 0x64});
+  std::cout << "export const decrement = ";
+  FunctionBody({0x60, 0, 0x22, 0, 0x64});
+  std::cout << "export const legacyIncrement = ";
+  FunctionBody({0xfc, 9, 0, 0x64});
+  std::cout << "export const legacyDecrement = ";
+  FunctionBody({0xfc, 10, 0, 0x64});
   std::cout << "export const branches = [\n";
   for (const std::uint8_t opcode : {0x4f, 0x50, 0x9a, 0x51, 0x9b, 0x9c}) {
     const std::array<std::uint8_t, 5> bytes{opcode, 0, 0, 0, 0};
@@ -77,6 +89,15 @@ int main() {
   Bytecode({0x1d, 0});
   Bytecode({0xfc, 8, 0});
   Bytecode({0xfc, 5, 0});
+  Bytecode({0x21, 0});
+  Bytecode({0x22, 0});
+  Bytecode({0xfc, 9, 0});
+  Bytecode({0xfc, 10, 0});
+  std::cout << "];\nexport const updates = [\n";
+  Bytecode({0x21, 0}, true);
+  Bytecode({0x22, 0}, true);
+  Bytecode({0xfc, 9, 0}, true);
+  Bytecode({0xfc, 10, 0}, true);
   std::cout << "];\nexport const special = [\n";
   for (const std::uint8_t opcode : {0, 1, 2, 3, 0x6a, 0x6b}) Bytecode({opcode});
   std::cout << "];\nexport const numbers = [\n";

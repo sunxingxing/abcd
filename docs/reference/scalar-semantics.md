@@ -13,12 +13,12 @@ Reference: pinned OpenHarmony-v7.0-Release `isa.yaml`,
 
 ## Covered Forms
 
-The current mapping covers 44 encodings:
+The current mapping covers 48 encodings:
 
 - Twenty binary arithmetic, equality, comparison, shift and bitwise operations.
   The register is the left input and the accumulator is the right input.
-- Eleven unary encodings: modern negation, bitwise complement, ToBoolean,
-  logical negation, typeof and ToNumber, including verified wide/cache and
+- Fifteen unary encodings: modern negation, bitwise complement, ToBoolean,
+  logical negation, typeof, ToNumber and numeric increment/decrement, including wide/cache and
   deprecated register-input forms where applicable.
 - Three move encodings plus accumulator load/store.
 - Signed 32-bit integer and raw binary64 immediate loads.
@@ -45,8 +45,9 @@ before JS source emission. `ldhole` therefore does not map to undefined.
 The pinned C++ `DEPRECATED_NEG_PREF_V8` handler lacks the modern INT32_MIN guard.
 It is explicitly unsupported until execution-mode/profile-specific behavior can
 be established, rather than silently equating it with JS unary minus.
-Increment/decrement and ToNumeric also remain unsupported: `x + 1` and unary `+`
-are not valid generic replacements because string and BigInt behavior differs.
+Standalone ToNumeric remains unsupported: unary `+` is not a valid generic
+replacement because BigInt behavior differs. Increment/decrement use dedicated
+operators; see [numeric-updates.md](numeric-updates.md).
 
 Other opcodes return a typed unsupported result. A caller must not replace these
 with empty statements or report partial expression mapping as completed function

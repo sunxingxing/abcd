@@ -40,13 +40,21 @@ const binary = [
 const unary = [
   (a,b)=>-b, (a,b)=>~b, (a,b)=>!!b, (a,b)=>!b, (a,b)=>typeof b, (a,b)=>+b,
   (a,b)=>~a, (a,b)=>+a,
+  (a,b)=>++b, (a,b)=>--b, (a,b)=>++a, (a,b)=>--a,
 ];
 function run(fn, a, b) {
   try { return {value: fn(a,b)}; }
   catch (error) { return {error: error.constructor}; }
 }
 const values = [undefined, null, false, true, 0, -0, 1, -2, 31, 32, 2147483648,
-  NaN, Infinity, -Infinity, '', '2', 'bad', 0n, 2n, Symbol('value')];
+  NaN, Infinity, -Infinity, '', '2', 'bad', 0n, 2n, Symbol('value'),
+  2147483647, -2147483648, Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER];
+for (const fn of [generated.increment, generated.legacyIncrement])
+  for (const value of values)
+    assert.deepEqual(run(fn, value), run(value => ++value, value));
+for (const fn of [generated.decrement, generated.legacyDecrement])
+  for (const value of values)
+    assert.deepEqual(run(fn, value), run(value => --value, value));
 assert.equal(generated.binary.length, binary.length);
 assert.equal(generated.unary.length, unary.length);
 for (const [expected, actual] of [[binary, generated.binary], [unary, generated.unary]]) {
@@ -75,3 +83,30 @@ for (const [expected, value] of generated.numbers) {
   assert.equal(bits.getBigUint64(0, true), expected);
 }
 assert.ok(generated.numbers.length > 4000);
+// Both encoding families publish only the accumulator. User conversion runs
+// exactly once with a numeric hint; abrupt conversion leaves both slots intact.
+for (let i = 0; i < generated.updates.length; ++i) {
+  const modern = i < 2;
+  const increment = i % 2 === 0;
+  for (const primitive of [3n, '3', -0, 2147483647, -2147483648]) {
+    const hints = [];
+    const input = {[Symbol.toPrimitive](hint) {
+      hints.push(hint);
+      return primitive;
+    }};
+    const left = modern ? 'untouched' : input;
+    const right = modern ? input : 'untouched';
+    let numeric = primitive;
+    const expected = increment ? ++numeric : --numeric;
+    const actual = generated.updates[i](left, right);
+    assert.equal(actual.length, 2);
+    assert.equal(actual[0], left);
+    assert.ok(Object.is(actual[1], expected));
+    assert.deepEqual(hints, ['number']);
+  }
+  const error = {};
+  const input = {[Symbol.toPrimitive]() {throw error;}};
+  const left = modern ? 'unchanged' : input;
+  const right = modern ? input : 'unchanged';
+  assert.deepEqual(generated.updates[i](left, right), [left, right, error]);
+}
