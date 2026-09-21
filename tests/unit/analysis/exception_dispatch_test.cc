@@ -83,8 +83,12 @@ void BasicCases() {
   auto identical = Body(8);
   Add(identical, 2, 4, 2);
   Add(identical, 2, 4);
+  identical.handlers[0].offset.value = 1;
+  identical.handlers[1].offset.value = 7;
   Check(Build(identical).Find({3})->region.value == 0);
   Check(Build(identical).Find({3})->handler.value == 0);
+  Check(Build(identical).Find({3})->handler_pc.value == 1);
+  Check(Build(identical).Find({6}) == std::nullopt);
 
   auto empty = Body(8);
   Add(empty, 2, 4, 0);
@@ -170,7 +174,7 @@ void RandomOracle() {
 }
 
 void Scaling() {
-  for (std::uint32_t count : {200u, 201u, 2000u}) {
+  for (std::uint32_t count : {200u, 201u, 1024u, 8192u}) {
     auto body = Body(count + 2);
     for (std::uint32_t i = 0; i < count; ++i) {
       Add(body, count - i, 1);
@@ -178,6 +182,23 @@ void Scaling() {
     auto dispatch = Build(body);
     Check(dispatch.spans.size() == count);
     Check(dispatch.Find({1})->region.value == count - 1);
+
+    auto outer_first = Body(count + 1);
+    for (std::uint32_t i = 0; i < count; ++i) {
+      Add(outer_first, i, count - i);
+    }
+    auto masked = Build(outer_first);
+    Check(masked.spans.size() == 1);
+    Check(masked.Find({count - 1})->region.value == 0);
+
+    auto inner_first = Body(count + 1);
+    for (std::uint32_t i = 0; i < count; ++i) {
+      Add(inner_first, count - 1 - i, i + 1);
+    }
+    auto nested = Build(inner_first);
+    Check(nested.spans.size() == count);
+    Check(nested.Find({0})->region.value == count - 1);
+    Check(nested.Find({count - 1})->region.value == 0);
   }
 }
 

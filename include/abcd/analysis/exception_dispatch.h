@@ -36,10 +36,14 @@ struct DispatchSpan {
 
 struct ExceptionDispatch {
   std::vector<DispatchSpan> spans;
+  // Maps a bytecode PC to the pinned dynamic runtime's selected catch. This
+  // does not determine whether the instruction at that PC can throw.
   [[nodiscard]] std::optional<DispatchTarget> Find(abc::CodeOffset pc) const;
 };
 
 struct DispatchBudget {
+  // Additional peak storage owned by construction; the input body remains
+  // caller-owned and immutable throughout this call.
   std::size_t bytes = 64 * 1024 * 1024;
 };
 
@@ -58,6 +62,7 @@ struct DispatchFailure {
 
 using DispatchResult = std::variant<ExceptionDispatch, DispatchFailure>;
 
+// Borrows an already decoded body without modifying or retaining it.
 [[nodiscard]] DispatchResult BuildExceptionDispatch(const abc::MethodBody& body,
                                                     abc::ProfileId profile,
                                                     DispatchBudget budget = {});

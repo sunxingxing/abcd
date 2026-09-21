@@ -53,6 +53,20 @@ bool FitsBudget(std::size_t regions, std::size_t bytes) {
   return regions <= bytes / kPerRegion;
 }
 
+template <typename T>
+bool ReserveCharged(std::vector<T>* values, std::size_t count,
+                    std::size_t* charged, std::size_t limit) {
+  if (count > (limit - *charged) / sizeof(T)) {
+    return false;
+  }
+  values->reserve(count);
+  if (values->capacity() > (limit - *charged) / sizeof(T)) {
+    return false;
+  }
+  *charged += values->capacity() * sizeof(T);
+  return true;
+}
+
 }  // namespace
 
 std::optional<DispatchTarget> ExceptionDispatch::Find(
@@ -78,6 +92,10 @@ DispatchResult BuildExceptionDispatch(const abc::MethodBody& body,
   }
   if (body.instructions.empty()) {
     return DispatchFailure{DispatchError::kEmptyBody, {0}};
+  }
+  if (body.tries.size() > std::numeric_limits<std::uint32_t>::max() ||
+      body.handlers.size() > std::numeric_limits<std::uint32_t>::max()) {
+    return DispatchFailure{DispatchError::kResourceLimit, {0}};
   }
 
   std::uint32_t code_end = 0;
@@ -117,9 +135,7 @@ DispatchResult BuildExceptionDispatch(const abc::MethodBody& body,
       return DispatchFailure{DispatchError::kInvalidBoundary, handler.offset};
     }
   }
-  if (body.tries.size() > std::numeric_limits<std::uint32_t>::max() ||
-      body.handlers.size() > std::numeric_limits<std::uint32_t>::max() ||
-      !FitsBudget(eligible, budget.bytes)) {
+  if (!FitsBudget(eligible, budget.bytes)) {
     return DispatchFailure{DispatchError::kResourceLimit, {0}};
   }
 
@@ -127,9 +143,13 @@ DispatchResult BuildExceptionDispatch(const abc::MethodBody& body,
     std::vector<Event> events;
     std::vector<std::uint32_t> active;
     ExceptionDispatch dispatch;
-    events.reserve(2 * eligible);
-    active.reserve(eligible);
-    dispatch.spans.reserve(2 * eligible);
+    std::size_t charged = 0;
+    if (!ReserveCharged(&events, 2 * eligible, &charged, budget.bytes) ||
+        !ReserveCharged(&active, eligible, &charged, budget.bytes) ||
+        !ReserveCharged(&dispatch.spans, 2 * eligible, &charged,
+                        budget.bytes)) {
+      return DispatchFailure{DispatchError::kResourceLimit, {0}};
+    }
     for (std::uint32_t region = 0; region < body.tries.size(); ++region) {
       const auto& trial = body.tries[region];
       if (trial.length == 0 || trial.handler_count == 0) {
