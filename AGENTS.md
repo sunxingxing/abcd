@@ -29,6 +29,12 @@ authorized. Linked specialist contracts remain binding.
   selecting a quadratic production algorithm.
 
 ## 2. Performance
+- Entire decompiler process peak memory must not exceed 1,000,000,000 bytes
+  (conservative interpretation of 1G), including all workers, file mappings,
+  caches, IR, dependencies, and output buffers. Bound admission and memory;
+  stream or spill when needed, report typed resource exhaustion rather than
+  silently changing semantics. Verify peak RSS on full-corpus runs; allocator
+  counters alone do not prove compliance. Aggregate child processes if used.
 - Prioritize performance within correctness; define input/output dimensions and
   measure latency, allocations, and peak memory. Above 200 items, avoid O(n^2)
   or worse, including hidden repeated scans, copying, and per-variable graph walks.
