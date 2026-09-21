@@ -21,6 +21,26 @@ int main() {
   using namespace abcd::source;
   const std::array<std::string_view, 1> registers{"left"};
   const ScalarNames names{"right", registers};
+  for (const auto predicate :
+       {UnaryOperator::kFalseOrZero, UnaryOperator::kTrueOrNonzeroNumber}) {
+    const ScalarExpression branch = UnaryExpression{predicate, Accumulator{}};
+    std::ostringstream full;
+    Check(std::holds_alternative<std::size_t>(
+        WriteScalarExpression(branch, names, full)));
+    std::ostringstream exact;
+    Check(std::get<std::size_t>(WriteScalarExpression(
+              branch, names, exact, {full.str().size()})) == full.str().size());
+    Check(exact.str() == full.str());
+    std::ostringstream short_output;
+    Check(std::get<EmitError>(WriteScalarExpression(branch, names, short_output,
+                                                    {full.str().size() - 1})) ==
+          EmitError::kOutputLimit);
+    Check(short_output.str().empty());
+    Check(std::get<EmitError>(
+              WriteScalarExpression(branch, {"bad.name", {}}, short_output)) ==
+          EmitError::kInvalidBinding);
+    Check(short_output.str().empty());
+  }
   const ScalarExpression expression = BinaryExpression{
       BinaryOperator::kSubtract, abcd::abc::RegisterId{0}, Accumulator{}};
   std::ostringstream output;

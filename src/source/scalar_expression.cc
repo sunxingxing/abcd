@@ -94,6 +94,9 @@ std::optional<std::string_view> UnaryToken(UnaryOperator op) {
       return "typeof ";
     case UnaryOperator::kToNumber:
       return "+";
+    case UnaryOperator::kFalseOrZero:
+    case UnaryOperator::kTrueOrNonzeroNumber:
+      return std::nullopt;
   }
   return std::nullopt;
 }
@@ -200,6 +203,26 @@ class ExpressionWriter {
     if (!error_) std::visit([&](const auto& atom) { Value(atom); }, value);
   }
   void Expression(const UnaryExpression& unary) {
+    // Inputs are side-effect-free values/local slots, never arbitrary source
+    // expressions. Repeated references here must not duplicate a computation.
+    if (unary.op == UnaryOperator::kFalseOrZero) {
+      Append("(");
+      Expression(unary.input);
+      Append(" === false || ");
+      Expression(unary.input);
+      Append(" === 0)");
+      return;
+    }
+    if (unary.op == UnaryOperator::kTrueOrNonzeroNumber) {
+      Append("(");
+      Expression(unary.input);
+      Append(" === true || (typeof ");
+      Expression(unary.input);
+      Append(" === \"number\" && ");
+      Expression(unary.input);
+      Append(" !== 0))");
+      return;
+    }
     const auto token = UnaryToken(unary.op);
     if (!token) {
       error_ = EmitError::kInvalidExpression;

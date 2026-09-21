@@ -43,7 +43,9 @@ enum class UnaryOperator {
   kToBoolean,
   kLogicalNot,
   kTypeOf,
-  kToNumber
+  kToNumber,
+  kFalseOrZero,
+  kTrueOrNonzeroNumber
 };
 struct UnaryExpression {
   UnaryOperator op;

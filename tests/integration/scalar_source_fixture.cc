@@ -5,6 +5,7 @@
 #include <random>
 #include <vector>
 
+#include "abcd/analysis/branch_condition.h"
 #include "abcd/source/scalar_expression.h"
 
 namespace {
@@ -28,6 +29,17 @@ void Bytecode(std::initializer_list<std::uint8_t> bytes) {
 }  // namespace
 int main() {
   using namespace abcd::analysis;
+  std::cout << "export const branches = [\n";
+  for (const std::uint8_t opcode : {0x4f, 0x50, 0x9a, 0x51, 0x9b, 0x9c}) {
+    const std::array<std::uint8_t, 5> bytes{opcode, 0, 0, 0, 0};
+    const auto decoded =
+        std::get<abcd::abc::DecodedInstruction>(abcd::abc::DecodeInstruction(
+            bytes, abcd::abc::ProfileId::kDynamic1206));
+    std::cout << "(right)=>";
+    Emit(std::get<UnaryExpression>(LiftBranchCondition(decoded)));
+    std::cout << ",\n";
+  }
+  std::cout << "];\n";
   std::cout << "export const binary = [\n";
   for (const std::uint8_t opcode :
        {0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x1b, 0x0f, 0x10, 0x11, 0x12,

@@ -2,6 +2,22 @@ import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 
 const generated = await import(pathToFileURL(process.argv[2]).href);
+// Independent type dispatch mirrors the pinned runtime's tagged-value tests.
+const branchOracle = value => {
+  switch (typeof value) {
+    case 'boolean': return [value === false, value === true];
+    case 'number': return [value === 0, value !== 0];
+    default: return [false, false];
+  }
+};
+assert.equal(generated.branches.length, 6);
+const hostile = new Proxy({}, {get() { throw new Error('unexpected property access'); }});
+for (const value of [undefined, null, false, true, 0, -0, 1, -1, NaN,
+    Infinity, -Infinity, '', '0', '1', 0n, 1n, Symbol(), {}, [], hostile]) {
+  const expected = branchOracle(value);
+  for (let i = 0; i < generated.branches.length; ++i)
+    assert.equal(generated.branches[i](value), expected[i < 3 ? 0 : 1]);
+}
 const binary = [
   (a,b)=>a+b, (a,b)=>a-b, (a,b)=>a*b, (a,b)=>a/b, (a,b)=>a%b, (a,b)=>a**b,
   (a,b)=>a==b, (a,b)=>a!=b, (a,b)=>a<b, (a,b)=>a<=b, (a,b)=>a>b, (a,b)=>a>=b,
