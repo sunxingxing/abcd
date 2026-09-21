@@ -106,6 +106,9 @@ const char* StageLabel(InspectionStage stage) {
 }
 
 MethodCounts& MethodCounts::operator+=(const MethodCounts& other) {
+  for (std::size_t i = 0; i < function_kinds.size(); ++i)
+    function_kinds[i] += other.function_kinds[i];
+  sendable_methods += other.sendable_methods;
   frame_methods += other.frame_methods;
   failed_frame_methods += other.failed_frame_methods;
   default_call_type_methods += other.default_call_type_methods;
@@ -151,7 +154,9 @@ std::uint64_t MethodCounts::FailureCount() const {
 }
 
 nlohmann::json SerializeCounts(const MethodCounts& counts) {
-  return {{"frame_methods", counts.frame_methods},
+  return {{"function_kinds", counts.function_kinds},
+          {"sendable_methods", counts.sendable_methods},
+          {"frame_methods", counts.frame_methods},
           {"failed_frame_methods", counts.failed_frame_methods},
           {"default_call_type_methods", counts.default_call_type_methods},
           {"hidden_slots", counts.hidden_slots},
@@ -214,6 +219,11 @@ MethodCounts InspectMethods(const corpus::AbcFile& file,
         continue;
       }
       const auto value = std::get<abc::CallType>(call_type).value;
+      const auto attributes = abc::DecodeMethodAttributes(method.access_flags, header.profile);
+      if (const auto* error = std::get_if<abc::MethodAttributeError>(&attributes)) {
+        fail("attribute_error", static_cast<int>(*error));
+        continue;
+      }
       const auto layout = abc::BuildFrameLayout(
           method.code->registers, method.code->arguments, abc::DecodeCallFlags(value));
       if (const auto* error = std::get_if<abc::FrameError>(&layout)) {
@@ -222,6 +232,9 @@ MethodCounts InspectMethods(const corpus::AbcFile& file,
       }
       const auto& frame = std::get<abc::FrameLayout>(layout);
       ++counts.frame_methods;
+      const auto& flags = std::get<abc::MethodAttributes>(attributes);
+      ++counts.function_kinds[static_cast<std::size_t>(flags.kind)];
+      if (flags.sendable) ++counts.sendable_methods;
       if (!value) ++counts.default_call_type_methods;
       counts.hidden_slots += frame.first_parameter.value - frame.locals;
       counts.user_parameters += frame.parameters;

@@ -14,6 +14,7 @@ add_library(abcd_abc
   src/abc/metadata_cursor.cc
   src/abc/metadata_index.cc
   src/abc/method_body.cc
+  src/abc/method_attributes.cc
   src/abc/method_references.cc
   src/abc/module_info.cc
   src/abc/pool_reference.cc
@@ -77,6 +78,9 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(method_attributes_test tests/unit/abc/method_attributes_test.cc)
+  target_link_libraries(method_attributes_test PRIVATE abcd_abc)
+  add_test(NAME method_attributes_test COMMAND method_attributes_test)
   add_executable(linear_constants_test tests/unit/source/linear_constants_test.cc)
   target_link_libraries(linear_constants_test PRIVATE abcd_source)
   add_test(NAME linear_constants_test COMMAND linear_constants_test)

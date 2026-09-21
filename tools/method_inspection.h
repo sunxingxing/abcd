@@ -1,17 +1,21 @@
 #ifndef ABCD_TOOLS_METHOD_INSPECTION_H_
 #define ABCD_TOOLS_METHOD_INSPECTION_H_
 
+#include <array>
 #include <cstdint>
 #include <iosfwd>
 #include <nlohmann/json.hpp>
 #include <span>
 
 #include "abcd/abc/metadata_index.h"
+#include "abcd/abc/method_attributes.h"
 #include "corpus_inspection.h"
 
 namespace abcd::tools {
 
 struct MethodCounts {
+  std::array<std::uint64_t, abc::kFunctionKindCount> function_kinds{};
+  std::uint64_t sendable_methods = 0;
   std::uint64_t frame_methods = 0;
   std::uint64_t failed_frame_methods = 0;
   std::uint64_t default_call_type_methods = 0;
