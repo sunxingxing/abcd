@@ -90,12 +90,13 @@ struct Fixture {
            static_cast<ssize_t>(bytes.size()));
     close(fd);
     auto opened = abcd::corpus::AbcFile::Open(path);
-    unlink(path);
     Check(std::holds_alternative<std::unique_ptr<abcd::corpus::AbcFile>>(
         opened));
-    return abcd::abc::BuildMetadataIndex(
+    auto result = abcd::abc::BuildMetadataIndex(
         *std::get<std::unique_ptr<abcd::corpus::AbcFile>>(opened), header,
         {budget});
+    unlink(path);
+    return result;
   }
 };
 
@@ -118,6 +119,43 @@ int main() {
   Check(index.methods[0].code->offset.value == 360);
   Check(index.methods[0].code->instruction_offset.value == 364);
   Check(index.methods[0].code->instruction_bytes == 3);
+
+  Fixture ordered;
+  ordered.bytes[174] = 5;
+  ordered.bytes[179] = 1;
+  Put32(ordered.bytes, 180, 360);
+  Check(std::get<abcd::abc::MetadataError>(ordered.Build()) ==
+        abcd::abc::MetadataError::kTagOrder);
+  ordered = Fixture();
+  ordered.bytes[140] = 0;
+  ordered.bytes[141] = 0;
+  ordered.bytes[142] = 7;
+  Put32(ordered.bytes, 143, 350);
+  ordered.bytes[147] = 2;
+  ordered.bytes[148] = 0;
+  ordered.bytes[149] = 0;
+  Check(std::get<abcd::abc::MetadataError>(ordered.Build()) ==
+        abcd::abc::MetadataError::kTagOrder);
+  ordered = Fixture();
+  ordered.bytes[141] = 0;
+  ordered.bytes[152] = 3;
+  Put32(ordered.bytes, 153, 350);
+  ordered.bytes[157] = 2;
+  Put32(ordered.bytes, 158, 1);
+  ordered.bytes[162] = 0;
+  Check(std::get<abcd::abc::MetadataError>(ordered.Build()) ==
+        abcd::abc::MetadataError::kTagOrder);
+
+  Fixture capacity;
+  capacity.bytes[330] = 41;
+  for (std::size_t i = 0; i < 20; ++i) capacity.bytes[331 + i] = 'm';
+  capacity.bytes[351] = 0;
+  constexpr std::size_t kBaseBudget =
+      sizeof(abcd::abc::RecordInfo) + sizeof(abcd::abc::MethodInfo) +
+      sizeof(std::uint32_t) + 40 + 5;
+  Check(std::get<abcd::abc::MetadataError>(capacity.Build(kBaseBudget + 20)) ==
+        abcd::abc::MetadataError::kResourceLimit);
+
   fixture.bytes[129] = 'X';
   Check(std::get<abcd::abc::MetadataError>(fixture.Build()) ==
         abcd::abc::MetadataError::kBadString);
@@ -155,7 +193,7 @@ int main() {
   fixture.bytes[363] = 0;
   fixture.bytes[179] = 1;
   Check(std::get<abcd::abc::MetadataError>(fixture.Build()) ==
-        abcd::abc::MetadataError::kUnknownTag);
+        abcd::abc::MetadataError::kDuplicateTag);
   fixture.bytes[179] = 3;
   fixture.bytes[340] = 2;
   fixture.bytes[341] = 0xc3;
@@ -170,6 +208,34 @@ int main() {
   Check(std::get<abcd::abc::MetadataError>(fixture.Build()) ==
         abcd::abc::MetadataError::kBadString);
   fixture.bytes[342] = 0xa9;
+  fixture.bytes[340] = 4;
+  fixture.bytes[341] = 0xf0;
+  fixture.bytes[342] = 0x9f;
+  fixture.bytes[343] = 0x98;
+  fixture.bytes[344] = 0x80;
+  fixture.bytes[345] = 0;
+  result = fixture.Build();
+  Check(std::holds_alternative<abcd::abc::MetadataIndex>(result));
+  Check(std::get<abcd::abc::MetadataIndex>(result).methods[0].name ==
+        std::string("\xf0\x9f\x98\x80"));
+  fixture.bytes[342] = 0x8f;
+  Check(std::get<abcd::abc::MetadataError>(fixture.Build()) ==
+        abcd::abc::MetadataError::kBadString);
+  fixture.bytes[341] = 0xf4;
+  fixture.bytes[342] = 0x90;
+  Check(std::get<abcd::abc::MetadataError>(fixture.Build()) ==
+        abcd::abc::MetadataError::kBadString);
+  fixture.bytes[341] = 0xed;
+  fixture.bytes[342] = 0xa0;
+  fixture.bytes[343] = 0xbd;
+  fixture.bytes[344] = 0xed;
+  fixture.bytes[345] = 0xb8;
+  fixture.bytes[346] = 0x80;
+  fixture.bytes[347] = 0;
+  result = fixture.Build();
+  Check(std::holds_alternative<abcd::abc::MetadataIndex>(result));
+  Check(std::get<abcd::abc::MetadataIndex>(result).methods[0].name ==
+        std::string("\xed\xa0\xbd\xed\xb8\x80"));
   fixture.header.layout = abcd::abc::DynamicLayout{{2, 64}, {0, 0},
                                                     {0, 0}, {1, 72}};
   Put32(fixture.bytes, 68, 128);

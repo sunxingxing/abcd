@@ -173,14 +173,18 @@ std::optional<MetadataError> SkipClassTags(MetadataCursor* cursor,
   bool seen_interfaces = false;
   bool seen_language = false;
   bool seen_source_file = false;
+  std::uint8_t last_tag = 0;
   for (;;) {
     const auto raw = cursor->U8();
     if (std::holds_alternative<MetadataError>(raw))
       return std::get<MetadataError>(raw);
-    switch (static_cast<ClassTag>(std::get<std::uint8_t>(raw))) {
+    const auto tag = std::get<std::uint8_t>(raw);
+    if (tag != 0 && tag < last_tag) return MetadataError::kTagOrder;
+    if (tag != 0) last_tag = tag;
+    switch (static_cast<ClassTag>(tag)) {
       case ClassTag::kEnd: return std::nullopt;
       case ClassTag::kInterfaces: {
-        if (seen_interfaces) return MetadataError::kUnknownTag;
+        if (seen_interfaces) return MetadataError::kDuplicateTag;
         seen_interfaces = true;
         const auto count = cursor->Uleb();
         if (std::holds_alternative<MetadataError>(count))
@@ -191,7 +195,7 @@ std::optional<MetadataError> SkipClassTags(MetadataCursor* cursor,
         break;
       }
       case ClassTag::kSourceLanguage:
-        if (seen_language) return MetadataError::kUnknownTag;
+        if (seen_language) return MetadataError::kDuplicateTag;
         seen_language = true;
         if (std::holds_alternative<MetadataError>(cursor->U8()))
           return MetadataError::kTruncated;
@@ -203,7 +207,7 @@ std::optional<MetadataError> SkipClassTags(MetadataCursor* cursor,
       case ClassTag::kSourceFile: {
         if (static_cast<ClassTag>(std::get<std::uint8_t>(raw)) ==
             ClassTag::kSourceFile) {
-          if (seen_source_file) return MetadataError::kUnknownTag;
+          if (seen_source_file) return MetadataError::kDuplicateTag;
           seen_source_file = true;
         }
         const auto ref = cursor->U32();
@@ -218,7 +222,8 @@ std::optional<MetadataError> SkipClassTags(MetadataCursor* cursor,
   }
 }
 
-std::optional<MetadataError> SkipField(MetadataCursor* cursor, const Header& header,
+std::optional<MetadataError> SkipField(MetadataCursor* cursor,
+                                        const Header& header,
                                         const corpus::AbcFile& file,
                                         const std::vector<Region>& regions,
                                         std::uint32_t owner) {
@@ -239,14 +244,18 @@ std::optional<MetadataError> SkipField(MetadataCursor* cursor, const Header& hea
     return MetadataError::kOwnerMismatch;
   if (!ValidEntity(header, name)) return MetadataError::kReference;
   bool seen_value = false;
+  std::uint8_t last_tag = 0;
   for (;;) {
     const auto raw = cursor->U8();
     if (std::holds_alternative<MetadataError>(raw))
       return std::get<MetadataError>(raw);
-    switch (static_cast<FieldTag>(std::get<std::uint8_t>(raw))) {
+    const auto tag = std::get<std::uint8_t>(raw);
+    if (tag != 0 && tag < last_tag) return MetadataError::kTagOrder;
+    if (tag != 0) last_tag = tag;
+    switch (static_cast<FieldTag>(tag)) {
       case FieldTag::kEnd: return std::nullopt;
       case FieldTag::kIntValue:
-        if (seen_value) return MetadataError::kUnknownTag;
+        if (seen_value) return MetadataError::kDuplicateTag;
         seen_value = true;
         if (const auto failure = cursor->SkipSleb()) return failure;
         break;
@@ -257,7 +266,7 @@ std::optional<MetadataError> SkipField(MetadataCursor* cursor, const Header& hea
       case FieldTag::kTypeAnnotation: {
         if (static_cast<FieldTag>(std::get<std::uint8_t>(raw)) ==
             FieldTag::kValue) {
-          if (seen_value) return MetadataError::kUnknownTag;
+          if (seen_value) return MetadataError::kDuplicateTag;
           seen_value = true;
         }
         const auto value = cursor->U32();
@@ -326,14 +335,18 @@ std::variant<MethodInfo, MetadataError> ReadMethod(
   bool seen_code = false;
   bool seen_language = false;
   bool seen_debug = false;
+  std::uint8_t last_tag = 0;
   for (;;) {
     const auto raw = cursor->U8();
     if (std::holds_alternative<MetadataError>(raw))
       return std::get<MetadataError>(raw);
-    switch (static_cast<MethodTag>(std::get<std::uint8_t>(raw))) {
+    const auto tag = std::get<std::uint8_t>(raw);
+    if (tag != 0 && tag < last_tag) return MetadataError::kTagOrder;
+    if (tag != 0) last_tag = tag;
+    switch (static_cast<MethodTag>(tag)) {
       case MethodTag::kEnd: return method;
       case MethodTag::kCode: {
-        if (seen_code) return MetadataError::kUnknownTag;
+        if (seen_code) return MetadataError::kDuplicateTag;
         seen_code = true;
         std::uint32_t code_offset = 0;
         if (!Take(cursor->U32(), &code_offset, &error)) return error;
@@ -344,7 +357,7 @@ std::variant<MethodInfo, MetadataError> ReadMethod(
         break;
       }
       case MethodTag::kSourceLanguage:
-        if (seen_language) return MetadataError::kUnknownTag;
+        if (seen_language) return MetadataError::kDuplicateTag;
         seen_language = true;
         if (std::holds_alternative<MetadataError>(cursor->U8()))
           return MetadataError::kTruncated;
@@ -358,7 +371,7 @@ std::variant<MethodInfo, MetadataError> ReadMethod(
       case MethodTag::kRuntimeTypeAnnotation: {
         if (static_cast<MethodTag>(std::get<std::uint8_t>(raw)) ==
             MethodTag::kDebugInfo) {
-          if (seen_debug) return MetadataError::kUnknownTag;
+          if (seen_debug) return MetadataError::kDuplicateTag;
           seen_debug = true;
         }
         const auto ref = cursor->U32();

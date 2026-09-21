@@ -70,6 +70,8 @@ enum class MetadataError {
   kOwnerMismatch,
   kCodeRange,
   kResourceLimit,
+  kTagOrder,
+  kDuplicateTag,
 };
 
 struct MetadataBudget {
