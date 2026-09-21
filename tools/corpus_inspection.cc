@@ -55,6 +55,8 @@ enum class IndexOutcome {
   kFlowFailure,
   kDispatchBuilt,
   kDispatchFailure,
+  kReferencesChecked,
+  kReferenceFailure,
 };
 
 const char* ToolName(InspectionStage stage) {
@@ -67,6 +69,8 @@ const char* ToolName(InspectionStage stage) {
       return "abc_flow";
     case InspectionStage::kExceptionDispatch:
       return "abc_exceptions";
+    case InspectionStage::kReferences:
+      return "abc_references";
   }
   std::abort();
 }
@@ -101,6 +105,10 @@ const char* OutcomeLabel(IndexOutcome outcome) {
       return "dispatch_built";
     case IndexOutcome::kDispatchFailure:
       return "dispatch_failure";
+    case IndexOutcome::kReferencesChecked:
+      return "references_checked";
+    case IndexOutcome::kReferenceFailure:
+      return "reference_failure";
   }
   std::abort();
 }
@@ -180,7 +188,7 @@ FileReport IndexFile(const std::filesystem::path& root,
   report.records = index.records.size();
   report.methods = index.methods.size();
   report.inspection =
-      InspectMethods(*file, header.profile, index.methods, stage, diagnostics);
+      InspectMethods(*file, header, index, stage, diagnostics);
   // A file reports the earliest failed stage, independent of method order.
   // Per-stage totals and every diagnostic remain available for mixed failures.
   if (report.inspection.failed_methods != 0) {
@@ -189,6 +197,8 @@ FileReport IndexFile(const std::filesystem::path& root,
     report.outcome = IndexOutcome::kFlowFailure;
   } else if (report.inspection.failed_dispatch_methods != 0) {
     report.outcome = IndexOutcome::kDispatchFailure;
+  } else if (report.inspection.failed_reference_methods != 0) {
+    report.outcome = IndexOutcome::kReferenceFailure;
   } else {
     switch (stage) {
       case InspectionStage::kMetadata:
@@ -202,6 +212,9 @@ FileReport IndexFile(const std::filesystem::path& root,
         break;
       case InspectionStage::kExceptionDispatch:
         report.outcome = IndexOutcome::kDispatchBuilt;
+        break;
+      case InspectionStage::kReferences:
+        report.outcome = IndexOutcome::kReferencesChecked;
         break;
     }
   }
@@ -289,6 +302,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
       case IndexOutcome::kDecoded:
       case IndexOutcome::kFlowBuilt:
       case IndexOutcome::kDispatchBuilt:
+      case IndexOutcome::kReferencesChecked:
         ++indexed;
         break;
       case IndexOutcome::kStaticSkipped:
@@ -297,6 +311,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
       case IndexOutcome::kBodyFailure:
       case IndexOutcome::kFlowFailure:
       case IndexOutcome::kDispatchFailure:
+      case IndexOutcome::kReferenceFailure:
         ++indexed;
         ++failed;
         break;

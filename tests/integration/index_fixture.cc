@@ -33,7 +33,9 @@ enum class FixtureKind {
   kFallthroughMethod,
   kMixedMethods,
   kMixedMethodsReversed,
-  kExceptionMethod
+  kExceptionMethod,
+  kReferenceMethod,
+  kInvalidReference
 };
 
 void WriteWord(std::span<std::uint8_t> bytes, std::size_t offset,
@@ -79,6 +81,10 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kMixedMethodsReversed;
     else if (option == "--exception-method")
       kind = FixtureKind::kExceptionMethod;
+    else if (option == "--reference-method")
+      kind = FixtureKind::kReferenceMethod;
+    else if (option == "--invalid-reference")
+      kind = FixtureKind::kInvalidReference;
     else
       return EXIT_FAILURE;
   }
@@ -117,7 +123,24 @@ int main(int argc, char** argv) {
       const bool fallthrough =
           kind == FixtureKind::kFallthroughMethod ||
           (mixed && ((i == 0) == (kind == FixtureKind::kMixedMethodsReversed)));
-      if (kind == FixtureKind::kExceptionMethod) {
+      if (kind == FixtureKind::kReferenceMethod ||
+          kind == FixtureKind::kInvalidReference) {
+        // lda.str id16, createarraywithbuffer imm8/id16, returnundefined.
+        dynamic.insert(dynamic.end(),
+                       {0, 0, 8, 0, 0x3e,
+                        static_cast<std::uint8_t>(
+                            kind == FixtureKind::kInvalidReference ? 2 : 0),
+                        0, 0x06, 0, 1, 0, 0x65});
+        const auto literal_offset = dynamic.size();
+        dynamic.insert(dynamic.end(), {2, 0, 0, 0, 0x05, 0, 0, 0, 0});
+        WriteWord(dynamic, literal_offset + 5, name_offset);
+        const auto pool_offset = dynamic.size();
+        dynamic.resize(dynamic.size() + 2 * kWordBytes);
+        WriteWord(dynamic, pool_offset, name_offset);
+        WriteWord(dynamic, pool_offset + kWordBytes, literal_offset);
+        WriteWord(dynamic, kRegionOffset + 4 * kWordBytes, 2);
+        WriteWord(dynamic, kRegionOffset + 5 * kWordBytes, pool_offset);
+      } else if (kind == FixtureKind::kExceptionMethod) {
         // Four prefix ULEBs; [ldundefined, throw, returnundefined,
         // returnundefined]. Try [0,3), first typed catch at [3,4), then
         // catch-all at [4,5).

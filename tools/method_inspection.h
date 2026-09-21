@@ -29,6 +29,13 @@ struct MethodCounts {
   std::uint64_t dispatch_spans = 0;
   std::uint64_t protected_blocks = 0;
   std::uint64_t protected_instructions = 0;
+  std::uint64_t reference_methods = 0;
+  std::uint64_t failed_reference_methods = 0;
+  std::uint64_t reference_operands = 0;
+  std::uint64_t unique_references = 0;
+  std::uint64_t string_literals = 0;
+  std::uint64_t literal_arrays = 0;
+  std::uint64_t literal_entries = 0;
 
   MethodCounts& operator+=(const MethodCounts& other);
   [[nodiscard]] std::uint64_t FailureCount() const;
@@ -39,8 +46,9 @@ nlohmann::json SerializeCounts(const MethodCounts& counts);
 
 // Caller owns the file and the JSON failure array delimiters. Diagnostics are
 // streamed without truncation; only one method body and its analyses are live.
-MethodCounts InspectMethods(const corpus::AbcFile& file, abc::ProfileId profile,
-                            std::span<const abc::MethodInfo> methods,
+MethodCounts InspectMethods(const corpus::AbcFile& file,
+                            const abc::Header& header,
+                            const abc::MetadataIndex& index,
                             InspectionStage stage, std::ostream& diagnostics);
 
 }  // namespace abcd::tools

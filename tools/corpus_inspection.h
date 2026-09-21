@@ -6,7 +6,8 @@ enum class InspectionStage {
   kMetadata,
   kInstructions,
   kNormalFlow,
-  kExceptionDispatch
+  kExceptionDispatch,
+  kReferences
 };
 int RunCorpusInspection(int argc, char** argv, InspectionStage stage);
 }  // namespace abcd::tools

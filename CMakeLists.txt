@@ -47,7 +47,7 @@ option(ABCD_BUILD_TOOLS "Build standalone ABC command-line tools" ON)
 if(ABCD_BUILD_TOOLS)
   add_executable(abc_scan tools/abc_scan.cc)
   target_link_libraries(abc_scan PRIVATE abcd_corpus abcd_json)
-  add_library(abcd_inspection tools/corpus_inspection.cc tools/method_inspection.cc)
+  add_library(abcd_inspection tools/corpus_inspection.cc tools/method_inspection.cc tools/reference_inspection.cc)
   target_link_libraries(abcd_inspection PUBLIC abcd_corpus PRIVATE abcd_json abcd_analysis)
   add_executable(abc_index tools/abc_index.cc)
   target_link_libraries(abc_index PRIVATE abcd_inspection)
@@ -57,6 +57,8 @@ if(ABCD_BUILD_TOOLS)
   target_link_libraries(abc_flow PRIVATE abcd_inspection)
   add_executable(abc_exceptions tools/abc_exceptions.cc)
   target_link_libraries(abc_exceptions PRIVATE abcd_inspection)
+  add_executable(abc_references tools/abc_references.cc)
+  target_link_libraries(abc_references PRIVATE abcd_inspection)
 endif()
 
 include(CTest)
@@ -141,6 +143,11 @@ if(BUILD_TESTING)
   add_test(NAME scan_test COMMAND scan_test)
 
   if(TARGET abc_scan)
+    add_test(NAME references_cli_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_SCAN=$<TARGET_FILE:abc_scan>
+      -DABCD_REFERENCES=$<TARGET_FILE:abc_references>
+      -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/references_cli.cmake)
     add_test(NAME scan_cli_test COMMAND ${CMAKE_COMMAND}
       -DABCD_SCAN=$<TARGET_FILE:abc_scan>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/scan_cli.cmake)

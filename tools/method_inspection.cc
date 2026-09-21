@@ -7,6 +7,7 @@
 #include "abcd/abc/method_body.h"
 #include "abcd/analysis/exception_dispatch.h"
 #include "abcd/analysis/normal_flow.h"
+#include "reference_inspection.h"
 
 namespace abcd::tools {
 namespace {
@@ -89,6 +90,8 @@ const char* StageLabel(InspectionStage stage) {
       return "normal_flow";
     case InspectionStage::kExceptionDispatch:
       return "exception_dispatch";
+    case InspectionStage::kReferences:
+      return "references";
   }
   std::abort();
 }
@@ -111,11 +114,19 @@ MethodCounts& MethodCounts::operator+=(const MethodCounts& other) {
   dispatch_spans += other.dispatch_spans;
   protected_blocks += other.protected_blocks;
   protected_instructions += other.protected_instructions;
+  reference_methods += other.reference_methods;
+  failed_reference_methods += other.failed_reference_methods;
+  reference_operands += other.reference_operands;
+  unique_references += other.unique_references;
+  string_literals += other.string_literals;
+  literal_arrays += other.literal_arrays;
+  literal_entries += other.literal_entries;
   return *this;
 }
 
 std::uint64_t MethodCounts::FailureCount() const {
-  return failed_methods + failed_flow_methods + failed_dispatch_methods;
+  return failed_methods + failed_flow_methods + failed_dispatch_methods +
+         failed_reference_methods;
 }
 
 nlohmann::json SerializeCounts(const MethodCounts& counts) {
@@ -135,19 +146,28 @@ nlohmann::json SerializeCounts(const MethodCounts& counts) {
           {"failed_dispatch_methods", counts.failed_dispatch_methods},
           {"dispatch_spans", counts.dispatch_spans},
           {"protected_blocks", counts.protected_blocks},
-          {"protected_instructions", counts.protected_instructions}};
+          {"protected_instructions", counts.protected_instructions},
+          {"reference_methods", counts.reference_methods},
+          {"failed_reference_methods", counts.failed_reference_methods},
+          {"reference_operands", counts.reference_operands},
+          {"unique_references", counts.unique_references},
+          {"string_literals", counts.string_literals},
+          {"literal_arrays", counts.literal_arrays},
+          {"literal_entries", counts.literal_entries}};
 }
 
-MethodCounts InspectMethods(const corpus::AbcFile& file, abc::ProfileId profile,
-                            std::span<const abc::MethodInfo> methods,
+MethodCounts InspectMethods(const corpus::AbcFile& file,
+                            const abc::Header& header,
+                            const abc::MetadataIndex& index,
                             InspectionStage stage, std::ostream& diagnostics) {
   MethodCounts counts;
-  for (const auto& method : methods) {
+  for (const auto& method : index.methods) {
     if (!method.code) continue;
     ++counts.code_methods;
     counts.instruction_bytes += method.code->instruction_bytes;
     if (stage == InspectionStage::kMetadata) continue;
-    const auto decoded = abc::DecodeMethodBody(file, profile, *method.code);
+    const auto decoded =
+        abc::DecodeMethodBody(file, header.profile, *method.code);
     if (const auto* failure = std::get_if<abc::BodyFailure>(&decoded)) {
       // Stream every failure rather than retaining or truncating diagnostics.
       if (counts.FailureCount() != 0) diagnostics << ',';
@@ -178,7 +198,8 @@ MethodCounts InspectMethods(const corpus::AbcFile& file, abc::ProfileId profile,
         if (edge.kind == analysis::FlowEdgeKind::kResume) ++counts.resume_edges;
     }
     if (stage == InspectionStage::kNormalFlow) continue;
-    const auto dispatched = analysis::BuildExceptionDispatch(body, profile);
+    const auto dispatched =
+        analysis::BuildExceptionDispatch(body, header.profile);
     if (const auto* failure =
             std::get_if<analysis::DispatchFailure>(&dispatched)) {
       if (counts.FailureCount() != 0) diagnostics << ',';
@@ -195,6 +216,15 @@ MethodCounts InspectMethods(const corpus::AbcFile& file, abc::ProfileId profile,
     }
     ++counts.dispatch_methods;
     counts.dispatch_spans += dispatch.spans.size();
+    if (stage == InspectionStage::kExceptionDispatch) continue;
+    if (const auto failure =
+            InspectReferences(file, header, index, method, body, &counts)) {
+      if (counts.FailureCount() != 0) diagnostics << ',';
+      diagnostics << *failure;
+      ++counts.failed_reference_methods;
+      continue;
+    }
+    ++counts.reference_methods;
   }
   return counts;
 }

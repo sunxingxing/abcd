@@ -97,7 +97,10 @@ O(I + K log K + U log R), with O(K) admitted vector capacity. Erasing duplicate
 entries does not pretend to release the original capacity. This function
 requires the index/header/body from the same immutable file. It validates
 entity ranges only, not target payloads, method membership, nested literals
-or source-level bindings. Batch-tool integration remains pending.
+or source-level bindings. The abc_references batch tool additionally reads
+direct string and literal-array targets, but does not recursively inspect
+nested targets or certify method membership. Counts are per-method aggregates;
+failed methods may contribute partial successfully checked payload counts.
 Resolver regression coverage includes duplicate uses, distinct roles sharing
 one slot, retained first-use PCs, overflow and invalid-target diagnostics,
 malformed operand counts, unsupported roles, zero-budget empty input and
