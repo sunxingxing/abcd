@@ -9,6 +9,7 @@ add_library(abcd_abc
   src/abc/instruction.cc
   src/abc/metadata_cursor.cc
   src/abc/metadata_index.cc
+  src/abc/method_body.cc
 )
 target_compile_features(abcd_abc PUBLIC cxx_std_20)
 target_include_directories(abcd_abc PUBLIC include "${ABCD_ISA_GENERATED_DIR}")
@@ -53,6 +54,10 @@ if(BUILD_TESTING)
   add_executable(metadata_index_test tests/unit/abc/metadata_index_test.cc)
   target_link_libraries(metadata_index_test PRIVATE abcd_abc)
   add_test(NAME metadata_index_test COMMAND metadata_index_test)
+
+  add_executable(method_body_test tests/unit/abc/method_body_test.cc)
+  target_link_libraries(method_body_test PRIVATE abcd_abc)
+  add_test(NAME method_body_test COMMAND method_body_test)
 
   add_executable(instruction_test tests/unit/abc/instruction_test.cc)
   target_link_libraries(instruction_test PRIVATE abcd_abc)
