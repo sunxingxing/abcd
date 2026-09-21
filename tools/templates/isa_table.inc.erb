@@ -8,10 +8,25 @@ roles = {
 instructions = Panda.instructions
 max_operands = instructions.map { |instruction| instruction.operands.size }.max
 raise 'operand count changed between templates' unless max_operands > 0
+primary_ordinals = Array.new(256, 'kInvalidInstructionOrdinal')
+prefixes = Panda.prefixes
+prefix_groups = Array.new(256, 'kInvalidPrefixGroup')
+prefixed_ordinals = prefixes.map { Array.new(256, 'kInvalidInstructionOrdinal') }
+prefixes.each_with_index { |prefix, group| prefix_groups[prefix.opcode_idx] = group.to_s }
+instructions.each_with_index do |instruction, ordinal|
+  opcode = instruction.opcode_idx
+  if instruction.prefix
+    group = prefixes.index { |prefix| prefix.opcode_idx == (opcode & 0xff) }
+    raise 'instruction has unknown prefix' unless group
+    secondary = opcode >> 8
+    raise 'duplicate prefixed opcode' unless prefixed_ordinals[group][secondary] == 'kInvalidInstructionOrdinal'
+    prefixed_ordinals[group][secondary] = ordinal.to_s
+  else
+    raise 'duplicate primary opcode' unless primary_ordinals[opcode] == 'kInvalidInstructionOrdinal'
+    primary_ordinals[opcode] = ordinal.to_s
+  end
+end
 %>
-inline constexpr std::array<std::uint8_t, <%= Panda.prefixes.size %>>
-    kPrefixBytes = {<%= Panda.prefixes.map(&:opcode_idx).join(', ') %>};
-
 inline constexpr std::array<InstructionSpec, <%= instructions.size %>>
     kInstructionSpecs = {{
 <% instructions.each do |instruction| %>
@@ -28,5 +43,28 @@ inline constexpr std::array<InstructionSpec, <%= instructions.size %>>
        },
        <%= instruction.jump? %>, <%= instruction.conditional? %>,
        <%= instruction.acc_read? %>, <%= instruction.acc_write? %>},
+<% end %>
+    }};
+
+inline constexpr std::array<std::uint16_t, 256> kPrimaryOrdinals = {
+<% primary_ordinals.each_slice(8) do |slice| %>
+    <%= slice.join(', ') %>,
+<% end %>
+};
+
+inline constexpr std::array<std::uint8_t, 256> kPrefixGroups = {
+<% prefix_groups.each_slice(8) do |slice| %>
+    <%= slice.join(', ') %>,
+<% end %>
+};
+
+inline constexpr std::array<std::array<std::uint16_t, 256>, <%= prefixes.size %>>
+    kPrefixedOrdinals = {{
+<% prefixed_ordinals.each do |ordinals| %>
+        {
+<% ordinals.each_slice(8) do |slice| %>
+            <%= slice.join(', ') %>,
+<% end %>
+        },
 <% end %>
     }};

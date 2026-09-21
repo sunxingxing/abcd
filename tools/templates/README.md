@@ -11,8 +11,12 @@ build tree. Ruby 3.2.3 is the pinned generator prerequisite.
 Generation keeps the upstream opcode assignment, format widths, and operand bit
 offsets authoritative. Adding or changing an instruction requires updating the
 pinned reference and hashes, then reviewing the generated diff and the known
-encoding tests. The decoder performs a binary search over generated opcode
-descriptors and reads at most 64 bits for each of at most six operands. Its
-worst-case work per instruction is O(log N + operand bits), where N is the ISA
-opcode count. Acceptance of a historical dynamic container profile establishes
-structural decode only; historical semantic availability needs separate rules.
+encoding tests. The decoder uses generated primary/prefix ordinal tables
+(2,816 bytes) to select one of 332 descriptors, then reads at most 64 bits for
+each of at most six operands. Its lookup is O(1); operand extraction is
+O(operand bits). On this workspace's Release build, a ten-million-instruction
+mixed microbenchmark measured 31.11 ns/instruction with binary search and
+26.04-26.95 ns/instruction with ordinal tables. This measures decoder throughput,
+not whole-file decompilation. Acceptance of a historical dynamic container
+profile establishes structural decode only; historical semantic availability
+needs separate rules.

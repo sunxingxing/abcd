@@ -1,6 +1,5 @@
 #include "abcd/abc/instruction.h"
 
-#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstddef>
@@ -14,6 +13,8 @@ namespace {
 constexpr std::size_t kBitsPerByte = 8;
 constexpr std::size_t kPrefixWidth = 2;
 constexpr std::size_t kMaxOperandBits = 64;
+constexpr std::uint16_t kInvalidInstructionOrdinal = UINT16_MAX;
+constexpr std::uint8_t kInvalidPrefixGroup = UINT8_MAX;
 
 struct OperandSpec {
   OperandKind kind;
@@ -55,23 +56,6 @@ bool IsSupported(ProfileId profile) {
   return false;
 }
 
-bool IsPrefix(std::uint8_t byte) {
-  return std::find(kPrefixBytes.begin(), kPrefixBytes.end(), byte) !=
-         kPrefixBytes.end();
-}
-
-const InstructionSpec* FindSpec(std::uint16_t opcode) {
-  const auto it = std::lower_bound(
-      kInstructionSpecs.begin(), kInstructionSpecs.end(), opcode,
-      [](const InstructionSpec& spec, std::uint16_t value) {
-        return static_cast<std::uint16_t>(spec.opcode) < value;
-      });
-  return it == kInstructionSpecs.end() ||
-                 static_cast<std::uint16_t>(it->opcode) != opcode
-             ? nullptr
-             : &*it;
-}
-
 std::uint64_t ExtractBits(std::span<const std::uint8_t> bytes,
                           std::uint16_t offset, std::uint8_t width) {
   std::uint64_t value = 0;
@@ -98,15 +82,16 @@ InstructionResult DecodeInstruction(std::span<const std::uint8_t> remaining,
   if (!IsSupported(profile)) return InstructionError::kUnsupportedProfile;
   if (remaining.empty()) return InstructionError::kTruncated;
   const std::uint8_t primary = remaining.front();
-  const bool prefixed = IsPrefix(primary);
+  const std::uint8_t prefix_group = kPrefixGroups[primary];
+  const bool prefixed = prefix_group != kInvalidPrefixGroup;
   if (prefixed && remaining.size() < kPrefixWidth)
     return InstructionError::kTruncated;
-  const std::uint16_t opcode =
-      prefixed
-          ? (static_cast<std::uint16_t>(remaining[1]) << kBitsPerByte) | primary
-          : primary;
-  const InstructionSpec* spec = FindSpec(opcode);
-  if (!spec) return InstructionError::kInvalidOpcode;
+  const std::uint16_t ordinal =
+      prefixed ? kPrefixedOrdinals[prefix_group][remaining[1]]
+               : kPrimaryOrdinals[primary];
+  if (ordinal == kInvalidInstructionOrdinal)
+    return InstructionError::kInvalidOpcode;
+  const InstructionSpec* spec = &kInstructionSpecs[ordinal];
   if (remaining.size() < spec->size) return InstructionError::kTruncated;
   if (spec->operand_count > kMaxInstructionOperands)
     return InstructionError::kInvalidEncoding;
