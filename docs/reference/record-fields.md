@@ -39,8 +39,9 @@ module entity offset for IsNewVersion, but as a global literal-array index on
 the older path. A module payload is not an ordinary tagged literal array:
 libpandafile/module_data_accessor.cpp skips a leading word, then reads the
 module-request count and U32 string references before the module-entry tables.
-The dynamic runtime has its own module accessor, which must be inspected before
-implementing those entry tables. Do not feed moduleRecordIdx to ReadLiteralArray
+The dynamic runtime has its own module accessor; its ordered entry tables are
+now implemented by ReadModuleInfo, as documented in module-layout.md.
+Do not feed moduleRecordIdx to ReadLiteralArray
 merely because the old implementation locates it through a literal index.
 
 This change retains the evidence needed for module parsing. It does not yet

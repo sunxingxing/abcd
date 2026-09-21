@@ -13,6 +13,7 @@ add_library(abcd_abc
   src/abc/metadata_index.cc
   src/abc/method_body.cc
   src/abc/method_references.cc
+  src/abc/module_info.cc
   src/abc/pool_reference.cc
   src/abc/string_entity.cc
 )
@@ -116,6 +117,10 @@ if(BUILD_TESTING)
   add_executable(literal_array_test tests/unit/abc/literal_array_test.cc)
   target_link_libraries(literal_array_test PRIVATE abcd_abc)
   add_test(NAME literal_array_test COMMAND literal_array_test)
+
+  add_executable(module_info_test tests/unit/abc/module_info_test.cc)
+  target_link_libraries(module_info_test PRIVATE abcd_abc)
+  add_test(NAME module_info_test COMMAND module_info_test)
 
   add_executable(method_body_test tests/unit/abc/method_body_test.cc)
   target_link_libraries(method_body_test PRIVATE abcd_abc)
