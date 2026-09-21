@@ -146,6 +146,31 @@ void RejectsFifoWithoutBlocking() {
   Check(waited == child && WIFEXITED(status) &&
         WEXITSTATUS(status) == EXIT_SUCCESS);
 }
+
+void OpensBeneathRootWithoutParentOrSymlinkTraversal() {
+  FixtureFile fixture;
+  fixture.Write("abc");
+  auto opened = AbcFile::OpenBeneath(".", fixture.path());
+  Check(std::holds_alternative<std::unique_ptr<AbcFile>>(opened));
+  Check(std::get<std::unique_ptr<AbcFile>>(opened)->Size() == 3);
+  const std::array invalid{std::filesystem::path{},
+                           std::filesystem::path("."),
+                           std::filesystem::path(".."),
+                           std::filesystem::absolute(fixture.path()),
+                           std::filesystem::path(".") / fixture.path(),
+                           std::filesystem::path("..") / fixture.path(),
+                           fixture.path() / "",
+                           std::filesystem::path(std::string("a\0b", 3))};
+  for (const auto& path : invalid)
+    Check(std::get<FileError>(AbcFile::OpenBeneath(".", path)) ==
+          FileError::kOpen);
+  FixtureFile alias;
+  Check(std::filesystem::remove(alias.path()));
+  std::filesystem::create_symlink(std::filesystem::absolute(fixture.path()),
+                                  alias.path());
+  Check(std::get<FileError>(AbcFile::OpenBeneath(".", alias.path())) ==
+        FileError::kOpen);
+}
 }  // namespace
 
 int main() {
@@ -154,4 +179,5 @@ int main() {
   HashesMultipleChunksAndPreservesPrefix();
   DetectsMutationAndRejectsNonfiles();
   RejectsFifoWithoutBlocking();
+  OpensBeneathRootWithoutParentOrSymlinkTraversal();
 }

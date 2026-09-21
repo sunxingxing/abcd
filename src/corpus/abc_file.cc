@@ -8,7 +8,9 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <iterator>
 #include <memory>
+#include <string>
 
 namespace abcd::corpus {
 namespace {
@@ -38,11 +40,43 @@ std::variant<std::unique_ptr<AbcFile>, FileError> AbcFile::Open(
   file->fd_ =
       open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
   if (file->fd_ < 0) return FileError::kOpen;
-  if (fstat(file->fd_, &file->stamp_) != 0) return FileError::kStat;
-  if (!S_ISREG(file->stamp_.st_mode) || file->stamp_.st_size < 0) {
-    return FileError::kNotRegular;
-  }
+  if (const auto error = file->ValidateRegular()) return *error;
   return file;
+}
+
+std::variant<std::unique_ptr<AbcFile>, FileError> AbcFile::OpenBeneath(
+    const std::filesystem::path& root, const std::filesystem::path& relative) {
+  if (relative.empty() || relative.has_root_path() ||
+      !relative.has_filename() ||
+      relative.native().find('\0') != std::string::npos ||
+      root.native().find('\0') != std::string::npos)
+    return FileError::kOpen;
+  for (const auto& part : relative) {
+    if (part.empty() || part == "." || part == "..") return FileError::kOpen;
+  }
+  auto file = std::unique_ptr<AbcFile>(new AbcFile(-1, {}));
+  constexpr int kReadFlags = O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK;
+  file->fd_ = open(root.c_str(), kReadFlags | O_DIRECTORY);
+  if (file->fd_ < 0) return FileError::kOpen;
+  // openat plus O_NOFOLLOW applies to every component, not just the last one.
+  // An opened directory fd remains the anchor if its pathname is replaced.
+  for (auto part = relative.begin(); part != relative.end(); ++part) {
+    const bool last = std::next(part) == relative.end();
+    const int next =
+        openat(file->fd_, part->c_str(), kReadFlags | (last ? 0 : O_DIRECTORY));
+    if (next < 0) return FileError::kOpen;
+    close(file->fd_);
+    file->fd_ = next;
+  }
+  if (const auto error = file->ValidateRegular()) return *error;
+  return file;
+}
+
+std::optional<FileError> AbcFile::ValidateRegular() {
+  if (fstat(fd_, &stamp_) != 0) return FileError::kStat;
+  if (!S_ISREG(stamp_.st_mode) || stamp_.st_size < 0)
+    return FileError::kNotRegular;
+  return std::nullopt;
 }
 
 std::uint64_t AbcFile::Size() const {

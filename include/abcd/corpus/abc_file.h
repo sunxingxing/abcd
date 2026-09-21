@@ -46,6 +46,10 @@ class AbcFile {
  public:
   static std::variant<std::unique_ptr<AbcFile>, FileError> Open(
       const std::filesystem::path& path);
+  // Pin each directory while traversing an untrusted relative corpus path;
+  // reject symlinks and parent components rather than checking then reopening.
+  static std::variant<std::unique_ptr<AbcFile>, FileError> OpenBeneath(
+      const std::filesystem::path& root, const std::filesystem::path& relative);
   ~AbcFile();
   AbcFile(const AbcFile&) = delete;
   AbcFile& operator=(const AbcFile&) = delete;
@@ -58,6 +62,7 @@ class AbcFile {
 
  private:
   AbcFile(int fd, const struct stat& stamp);
+  std::optional<FileError> ValidateRegular();
   int fd_;
   struct stat stamp_;
 };

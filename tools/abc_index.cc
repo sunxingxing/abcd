@@ -80,10 +80,10 @@ struct FileReport {
   std::optional<abcd::abc::MetadataError> metadata_error;
 };
 
-FileReport IndexFile(const std::filesystem::path& path,
+FileReport IndexFile(const std::filesystem::path& root,
                      const CorpusEntry& entry) {
   FileReport report;
-  auto opened = AbcFile::Open(path);
+  auto opened = AbcFile::OpenBeneath(root, entry.relative_path);
   if (const auto* error = std::get_if<FileError>(&opened)) {
     report.outcome = IndexOutcome::kFileFailure;
     report.file_error = *error;
@@ -219,7 +219,7 @@ int Run(int argc, char** argv) {
     const auto root = roots.find(entry.corpus_id);
     if (root == roots.end()) continue;
     ++files;
-    const auto report = IndexFile(root->second / entry.relative_path, entry);
+    const auto report = IndexFile(root->second, entry);
     switch (report.outcome) {
       case IndexOutcome::kIndexed:
         ++indexed;
