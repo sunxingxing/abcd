@@ -231,11 +231,11 @@ std::optional<MetadataError> SkipClassTags(MetadataCursor* cursor,
   }
 }
 
-std::optional<MetadataError> SkipField(MetadataCursor* cursor,
+std::optional<MetadataError> ReadField(MetadataCursor* cursor,
                                        const Header& header,
                                        const corpus::AbcFile& file,
                                        const std::vector<Region>& regions,
-                                       std::uint32_t owner) {
+                                       std::uint32_t owner, FieldInfo* info) {
   const std::uint32_t field = cursor->Position();
   std::uint16_t class_index = 0, type_index = 0;
   std::uint32_t name = 0, flags = 0;
@@ -245,8 +245,11 @@ std::optional<MetadataError> SkipField(MetadataCursor* cursor,
       !Take(cursor->U32(), &name, &error) ||
       !Take(cursor->Uleb(), &flags, &error))
     return error;
-  (void)type_index;
-  (void)flags;
+  info->offset.value = field;
+  info->owner_offset.value = owner;
+  info->name_offset.value = name;
+  info->type_index.value = type_index;
+  info->access_flags = flags;
   const auto resolved =
       Resolve(file, header, regions, field, class_index, false);
   if (std::holds_alternative<MetadataError>(resolved))
@@ -269,7 +272,13 @@ std::optional<MetadataError> SkipField(MetadataCursor* cursor,
       case FieldTag::kIntValue:
         if (seen_value) return MetadataError::kDuplicateTag;
         seen_value = true;
-        if (const auto failure = cursor->SkipSleb()) return failure;
+        {
+          const auto value = cursor->SlebBits();
+          if (const auto* failure = std::get_if<MetadataError>(&value))
+            return *failure;
+          info->value = FieldValue{FieldValueEncoding::kSignedLeb,
+                                   std::get<std::uint32_t>(value)};
+        }
         break;
       case FieldTag::kValue:
       case FieldTag::kRuntimeAnnotation:
@@ -284,6 +293,9 @@ std::optional<MetadataError> SkipField(MetadataCursor* cursor,
         const auto value = cursor->U32();
         if (std::holds_alternative<MetadataError>(value))
           return std::get<MetadataError>(value);
+        if (static_cast<FieldTag>(tag) == FieldTag::kValue)
+          info->value = FieldValue{FieldValueEncoding::kWord,
+                                   std::get<std::uint32_t>(value)};
         if (static_cast<FieldTag>(std::get<std::uint8_t>(raw)) !=
                 FieldTag::kValue &&
             !ValidEntity(header, std::get<std::uint32_t>(value)))
@@ -455,6 +467,7 @@ MetadataResult BuildMetadataIndex(const corpus::AbcFile& file,
     RecordInfo record;
     record.offset.value = offset;
     record.first_method = index.methods.size();
+    record.first_field = index.fields.size();
     auto descriptor =
         ReadMetadataString(&cursor, &record.utf16_length, &spent, budget.bytes);
     if (std::holds_alternative<MetadataError>(descriptor))
@@ -477,9 +490,24 @@ MetadataResult BuildMetadataIndex(const corpus::AbcFile& file,
         record.method_count > remaining / kLocalMethodHeaderBytes)
       return MetadataError::kTruncated;
     for (std::uint32_t field = 0; field < record.field_count; ++field) {
+      if (index.fields.size() == index.fields.capacity()) {
+        const auto old_capacity = index.fields.capacity();
+        if (old_capacity > std::numeric_limits<std::size_t>::max() / 2)
+          return MetadataError::kResourceLimit;
+        const auto requested = old_capacity == 0 ? 1 : old_capacity * 2;
+        // Admit both old and new allocations while growing the retained index.
+        if (requested > (budget.bytes - spent) / sizeof(FieldInfo))
+          return MetadataError::kResourceLimit;
+        index.fields.reserve(requested);
+        if (index.fields.capacity() > (budget.bytes - spent) / sizeof(FieldInfo))
+          return MetadataError::kResourceLimit;
+        spent += (index.fields.capacity() - old_capacity) * sizeof(FieldInfo);
+      }
+      FieldInfo info;
       if (const auto failure =
-              SkipField(&cursor, header, file, regions, offset))
+              ReadField(&cursor, header, file, regions, offset, &info))
         return *failure;
+      index.fields.push_back(info);
     }
     for (std::uint32_t method = 0; method < record.method_count; ++method) {
       if (index.methods.size() == index.methods.capacity()) {

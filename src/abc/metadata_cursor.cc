@@ -104,7 +104,8 @@ std::variant<std::uint32_t, MetadataError> MetadataCursor::Uleb() {
   return MetadataError::kMalformedLeb;
 }
 
-std::optional<MetadataError> MetadataCursor::SkipSleb() {
+std::variant<std::uint32_t, MetadataError> MetadataCursor::SlebBits() {
+  std::uint32_t bits = 0;
   for (std::size_t i = 0; i < kMaxLebBytes; ++i) {
     const auto byte = U8();
     if (std::holds_alternative<MetadataError>(byte))
@@ -116,7 +117,13 @@ std::optional<MetadataError> MetadataCursor::SkipSleb() {
       if ((raw & kContinuation) || (high != (sign ? kSlebHighMask : 0)))
         return MetadataError::kMalformedLeb;
     }
-    if (!(raw & kContinuation)) return std::nullopt;
+    bits |= static_cast<std::uint32_t>(raw & kPayloadMask) << (i * kLebBits);
+    if (!(raw & kContinuation)) {
+      constexpr std::uint8_t kLebSign = 0x40;
+      if (i < kMaxLebBytes - 1 && (raw & kLebSign))
+        bits |= UINT32_MAX << ((i + 1) * kLebBits);
+      return bits;
+    }
   }
   return MetadataError::kMalformedLeb;
 }

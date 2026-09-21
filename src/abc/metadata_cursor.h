@@ -27,7 +27,7 @@ class MetadataCursor {
   std::variant<std::uint16_t, MetadataError> U16();
   std::variant<std::uint32_t, MetadataError> U32();
   std::variant<std::uint32_t, MetadataError> Uleb();
-  std::optional<MetadataError> SkipSleb();
+  std::variant<std::uint32_t, MetadataError> SlebBits();
   bool Skip(std::uint64_t count);
 
  private:

@@ -117,6 +117,7 @@ struct FileReport {
   IndexOutcome outcome = IndexOutcome::kIndexed;
   std::uint64_t records = 0;
   std::uint64_t methods = 0;
+  std::uint64_t fields = 0;
   std::optional<FileError> file_error;
   std::optional<abcd::abc::HeaderError> header_error;
   std::optional<abcd::abc::MetadataError> metadata_error;
@@ -187,6 +188,7 @@ FileReport IndexFile(const std::filesystem::path& root,
   const auto& index = std::get<abcd::abc::MetadataIndex>(indexed);
   report.records = index.records.size();
   report.methods = index.methods.size();
+  report.fields = index.fields.size();
   report.inspection =
       InspectMethods(*file, header, index, stage, diagnostics);
   // A file reports the earliest failed stage, independent of method order.
@@ -226,7 +228,8 @@ nlohmann::json Serialize(const CorpusEntry& entry, const FileReport& report) {
                         {"path", entry.relative_path.generic_string()},
                         {"outcome", OutcomeLabel(report.outcome)},
                         {"records", report.records},
-                        {"methods", report.methods}};
+                        {"methods", report.methods},
+                        {"fields", report.fields}};
   if (report.file_error)
     result["file_error"] = static_cast<int>(*report.file_error);
   if (report.header_error)
@@ -281,7 +284,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
     }
   }
   std::uint64_t files = 0, indexed = 0, skipped = 0, failed = 0;
-  std::uint64_t records = 0, methods = 0;
+  std::uint64_t records = 0, methods = 0, fields = 0;
   MethodCounts inspection;
   std::cout << "{\"results\":[";
   for (const auto& entry : std::get<std::vector<CorpusEntry>>(loaded)) {
@@ -326,6 +329,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
     }
     records += report.records;
     methods += report.methods;
+    fields += report.fields;
     inspection += report.inspection;
   }
   // Per-file reports and failures are already streamed, with no full-corpus
@@ -341,6 +345,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
       {"failed", failed},
       {"records", records},
       {"methods", methods},
+      {"fields", fields},
       {"peak_rss_bytes",
        static_cast<std::uint64_t>(usage.ru_maxrss) * kBytesPerKibibyte},
       {"address_space_limit_bytes", limit.rlim_cur}};

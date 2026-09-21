@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -132,6 +133,16 @@ int main() {
   Check(index.records.size() == 1);
   Check(index.records[0].descriptor == "Lfoo;");
   Check(index.records[0].field_count == 1);
+  Check(index.records[0].first_field == 0);
+  Check(index.fields.size() == 1);
+  Check(index.fields[0].offset.value == 143);
+  Check(index.fields[0].owner_offset.value == 128);
+  Check(index.fields[0].name_offset.value == 320);
+  Check(index.fields[0].type_index.value == 0);
+  Check(index.fields[0].access_flags == 1);
+  Check(index.fields[0].value->encoding ==
+        abcd::abc::FieldValueEncoding::kSignedLeb);
+  Check(index.fields[0].value->bits == UINT32_MAX);
   Check(index.records[0].method_count == 1);
   Check(index.methods.size() == 1);
   Check(index.methods[0].name == "m");
@@ -141,6 +152,79 @@ int main() {
   Check(index.methods[0].code->offset.value == 360);
   Check(index.methods[0].code->instruction_offset.value == 364);
   Check(index.methods[0].code->instruction_bytes == 3);
+
+  for (const auto bits : {0U, 1U, 0x7fffffffU, 0x80000000U, UINT32_MAX}) {
+    Fixture value;
+    value.bytes[152] = 2;  // VALUE stores an inline word, possibly an offset.
+    Put32(value.bytes, 153, bits);
+    value.bytes[157] = 0;
+    // Relocate the following method to immediately follow the shortened field.
+    std::copy(fixture.bytes.begin() + 165, fixture.bytes.begin() + 185,
+              value.bytes.begin() + 158);
+    const auto parsed = value.Build();
+    Check(std::holds_alternative<abcd::abc::MetadataIndex>(parsed));
+    const auto& field =
+        std::get<abcd::abc::MetadataIndex>(parsed).fields.front();
+    Check(field.value->encoding == abcd::abc::FieldValueEncoding::kWord);
+    Check(field.value->bits == bits);
+
+    value = Fixture{};
+    std::int64_t signed_value =
+        bits <= INT32_MAX
+            ? static_cast<std::int64_t>(bits)
+            : static_cast<std::int64_t>(bits) - (INT64_C(1) << 32);
+    std::size_t position = 153;
+    for (;;) {
+      auto byte = static_cast<std::uint8_t>(signed_value & 0x7f);
+      signed_value >>= 7;
+      const bool done = (signed_value == 0 && !(byte & 0x40)) ||
+                        (signed_value == -1 && (byte & 0x40));
+      value.bytes[position++] = byte | (done ? 0 : 0x80);
+      if (done) break;
+    }
+    value.bytes[position++] = 0;
+    std::copy(fixture.bytes.begin() + 165, fixture.bytes.begin() + 185,
+              value.bytes.begin() + position);
+    const auto signed_parsed = value.Build();
+    Check(std::holds_alternative<abcd::abc::MetadataIndex>(signed_parsed));
+    const auto& signed_field =
+        std::get<abcd::abc::MetadataIndex>(signed_parsed).fields.front();
+    Check(signed_field.value->encoding ==
+          abcd::abc::FieldValueEncoding::kSignedLeb);
+    Check(signed_field.value->bits == bits);
+  }
+
+  for (const std::uint32_t count : {200U, 201U, 1024U}) {
+    Fixture fields;
+    constexpr std::uint32_t kFieldStart = 144;
+    constexpr std::uint32_t kFieldBytes = 10;
+    const auto name = kFieldStart + count * kFieldBytes;
+    fields.bytes.resize(name + 3);
+    fields.header.file_size = fields.bytes.size();
+    fields.header.foreign_offset = 0;
+    fields.header.foreign_size = 0;
+    Put32(fields.bytes, 76, fields.header.file_size);
+    fields.bytes[140] = static_cast<std::uint8_t>((count & 0x7f) | 0x80);
+    fields.bytes[141] = static_cast<std::uint8_t>(count >> 7);
+    fields.bytes[142] = 0;  // No methods.
+    fields.bytes[143] = 0;
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const auto at = kFieldStart + i * kFieldBytes;
+      Put16(fields.bytes, at, 0);
+      Put16(fields.bytes, at + 2, 0);
+      Put32(fields.bytes, at + 4, name);
+      fields.bytes[at + 8] = 0;
+      fields.bytes[at + 9] = 0;
+    }
+    fields.bytes[name] = 3;
+    fields.bytes[name + 1] = 'f';
+    fields.bytes[name + 2] = 0;
+    const auto parsed = fields.Build();
+    Check(std::holds_alternative<abcd::abc::MetadataIndex>(parsed));
+    const auto& entries = std::get<abcd::abc::MetadataIndex>(parsed).fields;
+    Check(entries.size() == count);
+    for (const auto& field : entries) Check(!field.value.has_value());
+  }
 
   Fixture bad_owner;
   Put32(bad_owner.bytes, 112, 129);
@@ -212,7 +296,8 @@ int main() {
   for (std::size_t i = 0; i < 20; ++i) capacity.bytes[331 + i] = 'm';
   capacity.bytes[351] = 0;
   constexpr std::size_t kBaseBudget = sizeof(abcd::abc::RecordInfo) +
-                                      sizeof(abcd::abc::MethodInfo) +
+                                    sizeof(abcd::abc::MethodInfo) +
+                                    sizeof(abcd::abc::FieldInfo) +
                                       sizeof(std::uint32_t) + 40 + 5;
   Check(std::get<abcd::abc::MetadataError>(capacity.Build(kBaseBudget + 20)) ==
         abcd::abc::MetadataError::kResourceLimit);

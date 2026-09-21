@@ -38,6 +38,26 @@ struct RecordInfo {
   std::uint32_t field_count = 0;
   std::uint32_t method_count = 0;
   std::size_t first_method = 0;
+  std::size_t first_field = 0;
+};
+
+struct FieldTypeIndex {
+  std::uint16_t value = 0;
+};
+enum class FieldValueEncoding { kSignedLeb, kWord };
+struct FieldValue {
+  FieldValueEncoding encoding;
+  // VALUE can be an inline value or an offset to a wide value depending on
+  // field type. Retain encoding; do not interpret this word as a JS number.
+  std::uint32_t bits = 0;
+};
+struct FieldInfo {
+  EntityOffset offset;
+  EntityOffset owner_offset;
+  EntityOffset name_offset;
+  FieldTypeIndex type_index;
+  std::uint32_t access_flags = 0;
+  std::optional<FieldValue> value;
 };
 
 struct MethodInfo {
@@ -62,6 +82,7 @@ struct IndexRegion {
 struct MetadataIndex {
   std::vector<RecordInfo> records;
   std::vector<MethodInfo> methods;
+  std::vector<FieldInfo> fields;
   // Sorted, nonoverlapping half-open regions validated by BuildMetadataIndex.
   // Retain these for lazy constant resolution; do not infer entity types from
   // table names. Their storage is included in MetadataBudget.
