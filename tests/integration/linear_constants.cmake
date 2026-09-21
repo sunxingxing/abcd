@@ -1,4 +1,7 @@
-set(output "${CMAKE_CURRENT_BINARY_DIR}/linear-constants.mjs")
+if(NOT DEFINED ABCD_OUTPUT_NAME)
+  set(ABCD_OUTPUT_NAME "linear-constants.mjs")
+endif()
+set(output "${CMAKE_CURRENT_BINARY_DIR}/${ABCD_OUTPUT_NAME}")
 execute_process(COMMAND "${ABCD_CONSTANT_FIXTURE}" --emit OUTPUT_FILE "${output}"
   RESULT_VARIABLE emitted)
 if(NOT emitted EQUAL 0)

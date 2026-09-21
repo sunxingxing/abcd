@@ -46,6 +46,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/accumulator_flow.cc src/analys
 target_link_libraries(abcd_analysis PUBLIC abcd_abc)
 add_library(abcd_source src/source/string_literal.cc src/source/scalar_expression.cc)
 target_sources(abcd_source PRIVATE src/source/linear_body.cc)
+target_sources(abcd_source PRIVATE src/source/acyclic_body.cc)
 target_link_libraries(abcd_source PUBLIC abcd_analysis)
 target_compile_features(abcd_source PUBLIC cxx_std_20)
 target_include_directories(abcd_source PUBLIC include)
@@ -85,6 +86,9 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(acyclic_body_test tests/unit/source/acyclic_body_test.cc)
+  target_link_libraries(acyclic_body_test PRIVATE abcd_source)
+  add_test(NAME acyclic_body_test COMMAND acyclic_body_test)
   add_executable(accumulator_flow_test tests/unit/analysis/accumulator_flow_test.cc)
   target_link_libraries(accumulator_flow_test PRIVATE abcd_analysis)
   add_test(NAME accumulator_flow_test COMMAND accumulator_flow_test)
@@ -132,6 +136,12 @@ if(BUILD_TESTING)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   find_program(ABCD_NODE_EXECUTABLE node)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME acyclic_body_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:acyclic_body_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/acyclic_body.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=acyclic-body.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME linear_constants_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:linear_constants_test>
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.mjs

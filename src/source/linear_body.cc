@@ -1,11 +1,15 @@
 #include "abcd/source/linear_body.h"
 
+#include <array>
+#include <charconv>
 #include <ostream>
 #include <streambuf>
 
 #include "abcd/abc/pool_reference.h"
+#include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/source/string_literal.h"
+#include "ordered_body.h"
 
 namespace abcd::source {
 namespace {
@@ -28,10 +32,65 @@ class BodyWriter {
   BodyEmitResult Write(const abc::MethodBody& body) {
     if (!body.tries.empty() || !body.handlers.empty())
       return BodyEmitFailure{BodyEmitError::kExceptionRegions, {}, {}, {}};
-    bool accumulator_defined = false;
+    return Sequence(body.instructions, false, true);
+  }
+
+  BodyEmitResult Ordered(const abc::MethodBody& body, const NormalFlow& graph,
+                         const AccumulatorFlow& flow) {
+    try {
+      // Each label surrounds the prefix ending immediately before its target.
+      // Topological order makes every edge forward, so breaking that label
+      // executes exactly its target next. Shared blocks are emitted only once.
+      const auto& order = flow.order.blocks;
+      for (std::size_t i = order.size(); i > 1; --i) {
+        Label(order[i - 1]);
+        Text(": {\n");
+      }
+      for (std::size_t position = 0; position < order.size(); ++position) {
+        const auto id = order[position];
+        const auto& block = graph.blocks[id.value];
+        if (position != 0) Text("}\n");
+        const bool branch = block.transfer == abc::ControlTransfer::kBranch;
+        const bool jump = block.transfer == abc::ControlTransfer::kJump;
+        const auto instructions =
+            std::span(body.instructions)
+                .subspan(block.first_instruction, block.instruction_count);
+        const auto sequence =
+            Sequence(instructions.first(instructions.size() - (branch || jump)),
+                     flow.entries[id.value] == AccumulatorState::kValue, false);
+        if (std::holds_alternative<BodyEmitFailure>(sequence)) return sequence;
+        offset_ = instructions.back().offset;
+        if (branch) {
+          const auto condition =
+              LiftBranchCondition(instructions.back().decoded);
+          if (!std::holds_alternative<UnaryExpression>(condition))
+            return Fail(BodyEmitError::kUnsupportedInstruction);
+          for (std::size_t i = 0; i < block.successor_count; ++i)
+            if (block.successors[i].kind == FlowEdgeKind::kTaken) {
+              Text("if (");
+              Expression(std::get<UnaryExpression>(condition));
+              Text(") ");
+              Break(block.successors[i].target);
+            }
+        }
+        for (std::size_t i = 0; i < block.successor_count; ++i)
+          if (!branch || block.successors[i].kind == FlowEdgeKind::kFallthrough)
+            Break(block.successors[i].target);
+        if (error_) return *error_;
+      }
+      return written_;
+    } catch (const std::ios_base::failure&) {
+      return BodyEmitFailure{
+          BodyEmitError::kExpression, offset_, {}, EmitError::kWrite};
+    }
+  }
+
+ private:
+  BodyEmitResult Sequence(std::span<const abc::BodyInstruction> instructions,
+                          bool accumulator_defined, bool require_terminator) {
     bool terminated = false;
     try {
-      for (const auto& instruction : body.instructions) {
+      for (const auto& instruction : instructions) {
         offset_ = instruction.offset;
         if (terminated) return Fail(BodyEmitError::kTrailingInstructions);
         using abc::Opcode;
@@ -75,7 +134,9 @@ class BodyWriter {
         }
         if (error_) return *error_;
       }
-      if (!terminated) return Fail(BodyEmitError::kMissingTerminator);
+      if (error_) return *error_;
+      if (require_terminator && !terminated)
+        return Fail(BodyEmitError::kMissingTerminator);
       return written_;
     } catch (const std::ios_base::failure&) {
       return BodyEmitFailure{
@@ -83,7 +144,19 @@ class BodyWriter {
     }
   }
 
- private:
+  void Label(BlockId id) {
+    constexpr std::size_t kLabelDigits = 10;
+    std::array<char, kLabelDigits> buffer{};
+    const auto converted =
+        std::to_chars(buffer.data(), buffer.data() + buffer.size(), id.value);
+    Text("next_");
+    Text(std::string_view(buffer.data(), converted.ptr - buffer.data()));
+  }
+  void Break(BlockId target) {
+    Text("break ");
+    Label(target);
+    Text(";\n");
+  }
   void StringLoad(const abc::DecodedInstruction& instruction) {
     constexpr std::uint64_t kStringSlotMax = UINT16_MAX;
     if (instruction.operand_count != 1 ||
@@ -199,5 +272,19 @@ BodyEmitResult WriteLinearBody(const abc::MethodBody& body, ScalarNames names,
       BodyWriter(names, discard, budget, constants).Write(body);
   if (std::holds_alternative<BodyEmitFailure>(checked)) return checked;
   return BodyWriter(names, output, budget, constants).Write(body);
+}
+
+BodyEmitResult WriteOrderedBody(const abc::MethodBody& body,
+                                const NormalFlow& graph,
+                                const AccumulatorFlow& flow, ScalarNames names,
+                                std::ostream& output, EmitBudget budget,
+                                const MethodConstants* constants) {
+  DiscardBuffer buffer;
+  std::ostream discard(&buffer);
+  const auto checked =
+      BodyWriter(names, discard, budget, constants).Ordered(body, graph, flow);
+  if (std::holds_alternative<BodyEmitFailure>(checked)) return checked;
+  return BodyWriter(names, output, budget, constants)
+      .Ordered(body, graph, flow);
 }
 }  // namespace abcd::source
