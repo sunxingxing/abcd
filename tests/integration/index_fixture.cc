@@ -39,6 +39,8 @@ enum class FixtureKind {
   kSourceMethod,
   kSourceString,
   kSourceNameBudget,
+  kEnvironmentMethod,
+  kEnvironmentConflict,
   kSourceLoop,
   kSourceException,
   kInvalidReference,
@@ -99,6 +101,10 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kSourceString;
     else if (option == "--source-name-budget")
       kind = FixtureKind::kSourceNameBudget;
+    else if (option == "--environment-method")
+      kind = FixtureKind::kEnvironmentMethod;
+    else if (option == "--environment-conflict")
+      kind = FixtureKind::kEnvironmentConflict;
     else if (option == "--source-loop")
       kind = FixtureKind::kSourceLoop;
     else if (option == "--source-exception")
@@ -200,6 +206,12 @@ int main(int argc, char** argv) {
         WriteWord(dynamic, pool_offset + kWordBytes, literal_offset);
         WriteWord(dynamic, kRegionOffset + 4 * kWordBytes, 2);
         WriteWord(dynamic, kRegionOffset + 5 * kWordBytes, pool_offset);
+      } else if (kind == FixtureKind::kEnvironmentMethod) {
+        dynamic.insert(dynamic.end(), {0, 3, 10, 0, 0x09, 2, 0x3c, 0,
+                                       0x3d, 0x10, 0x69, 0x3c, 0, 0x65});
+      } else if (kind == FixtureKind::kEnvironmentConflict) {
+        dynamic.insert(dynamic.end(), {0, 3, 14, 0, 0x09, 1, 0x02, 0x4f, 7,
+                                       0x09, 1, 0xd5, 0x4d, 3, 0xd5, 0x3c, 0, 0x65});
       } else if (kind == FixtureKind::kSourceLoop) {
         dynamic.insert(dynamic.end(), {0, 3, 2, 0, 0x4d, 0});
       } else if (kind == FixtureKind::kSourceNameBudget) {

@@ -39,6 +39,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/branch_condition.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/function_creation.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/lexical.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/environment_index.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/environment_flow.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/hole_guard.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/indexed_read.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/named_read.cc)
@@ -67,6 +68,7 @@ if(ABCD_BUILD_TOOLS)
   target_link_libraries(abc_scan PRIVATE abcd_corpus abcd_json)
   add_library(abcd_inspection tools/corpus_inspection.cc tools/method_inspection.cc tools/reference_inspection.cc tools/module_inspection.cc)
   target_sources(abcd_inspection PRIVATE tools/source_inspection.cc)
+  target_sources(abcd_inspection PRIVATE tools/environment_inspection.cc)
   target_link_libraries(abcd_inspection PUBLIC abcd_corpus PRIVATE abcd_json abcd_source)
   add_executable(abc_index tools/abc_index.cc)
   target_link_libraries(abc_index PRIVATE abcd_inspection)
@@ -86,10 +88,15 @@ if(ABCD_BUILD_TOOLS)
   target_link_libraries(abc_frames PRIVATE abcd_inspection)
   add_executable(abc_source_probe tools/abc_source_probe.cc)
   target_link_libraries(abc_source_probe PRIVATE abcd_inspection)
+  add_executable(abc_environments tools/abc_environments.cc)
+  target_link_libraries(abc_environments PRIVATE abcd_inspection)
 endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(environment_flow_test tests/unit/analysis/environment_flow_test.cc)
+  target_link_libraries(environment_flow_test PRIVATE abcd_analysis)
+  add_test(NAME environment_flow_test COMMAND environment_flow_test)
   add_executable(environment_index_test tests/unit/analysis/environment_index_test.cc)
   target_link_libraries(environment_index_test PRIVATE abcd_analysis)
   add_test(NAME environment_index_test COMMAND environment_index_test)
@@ -253,6 +260,11 @@ if(BUILD_TESTING)
   add_test(NAME scan_test COMMAND scan_test)
 
   if(TARGET abc_scan)
+    add_test(NAME environments_cli_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_SCAN=$<TARGET_FILE:abc_scan>
+      -DABCD_ENVIRONMENTS=$<TARGET_FILE:abc_environments>
+      -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/environments_cli.cmake)
     add_test(NAME source_probe_cli_test COMMAND ${CMAKE_COMMAND}
       -DABCD_SCAN=$<TARGET_FILE:abc_scan>
       -DABCD_PROBE=$<TARGET_FILE:abc_source_probe>

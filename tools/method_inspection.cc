@@ -103,11 +103,14 @@ const char* StageLabel(InspectionStage stage) {
       return "frames";
     case InspectionStage::kSourceBodies:
       return "source_body_probe";
+    case InspectionStage::kEnvironments:
+      return "environment_bindings";
   }
   std::abort();
 }
 
 MethodCounts& MethodCounts::operator+=(const MethodCounts& other) {
+  environments += other.environments;
   source += other.source;
   for (std::size_t i = 0; i < function_kinds.size(); ++i)
     function_kinds[i] += other.function_kinds[i];
@@ -196,6 +199,7 @@ nlohmann::json SerializeCounts(const MethodCounts& counts) {
           {"dominator_eval_steps", counts.dominator_eval_steps},
           {"dominator_peak_bytes", counts.dominator_peak_bytes}};
   result.update(SerializeCounts(counts.source));
+  result.update(SerializeCounts(counts.environments));
   return result;
 }
 
@@ -282,6 +286,12 @@ MethodCounts InspectMethods(const corpus::AbcFile& file,
         if (edge.kind == analysis::FlowEdgeKind::kResume) ++counts.resume_edges;
     }
     if (stage == InspectionStage::kNormalFlow) continue;
+    if (stage == InspectionStage::kEnvironments) {
+      InspectEnvironments(body, graph,
+                          std::uint64_t(method.code->registers) + method.code->arguments,
+                          &counts.environments);
+      continue;
+    }
     if (stage == InspectionStage::kDominators) {
       const auto built = analysis::BuildNormalDominators(graph);
       if (const auto* error = std::get_if<analysis::DominatorError>(&built)) {

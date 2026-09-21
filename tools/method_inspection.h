@@ -11,10 +11,12 @@
 #include "abcd/abc/method_attributes.h"
 #include "corpus_inspection.h"
 #include "source_inspection.h"
+#include "environment_inspection.h"
 
 namespace abcd::tools {
 
 struct MethodCounts {
+  EnvironmentCounts environments;
   SourceCounts source;
   std::array<std::uint64_t, abc::kFunctionKindCount> function_kinds{};
   std::uint64_t sendable_methods = 0;
