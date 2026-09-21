@@ -11,9 +11,15 @@ target_include_directories(abcd_abc PUBLIC include)
 
 find_package(OpenSSL 3.0 REQUIRED COMPONENTS Crypto)
 find_package(ZLIB REQUIRED)
-add_library(abcd_corpus src/corpus/abc_file.cc)
+include(cmake/JsonDependency.cmake)
+add_library(abcd_corpus
+  src/corpus/abc_file.cc
+  src/corpus/detect.cc
+  src/corpus/manifest.cc
+  src/corpus/manifest_json.cc
+)
 target_link_libraries(abcd_corpus PUBLIC abcd_abc
-  PRIVATE OpenSSL::Crypto ZLIB::ZLIB)
+  PRIVATE OpenSSL::Crypto ZLIB::ZLIB abcd_json)
 
 include(CTest)
 if(BUILD_TESTING)
@@ -28,4 +34,12 @@ if(BUILD_TESTING)
   add_executable(abc_file_test tests/unit/corpus/abc_file_test.cc)
   target_link_libraries(abc_file_test PRIVATE abcd_corpus)
   add_test(NAME abc_file_test COMMAND abc_file_test)
+
+  add_executable(detect_test tests/unit/corpus/detect_test.cc)
+  target_link_libraries(detect_test PRIVATE abcd_corpus ZLIB::ZLIB)
+  add_test(NAME detect_test COMMAND detect_test)
+
+  add_executable(manifest_test tests/unit/corpus/manifest_test.cc)
+  target_link_libraries(manifest_test PRIVATE abcd_corpus)
+  add_test(NAME manifest_test COMMAND manifest_test)
 endif()

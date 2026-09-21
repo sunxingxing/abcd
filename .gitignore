@@ -1,3 +1,4 @@
 /build/
 /.worktrees/
 /out/
+/tests/corpus/*.lock
