@@ -65,7 +65,8 @@ add_custom_command(
           -d "${ABCD_ISA_YAML}" -r "${ABCD_ISA_API}"
           -t "${CMAKE_CURRENT_SOURCE_DIR}/tools/templates/isa_flow.inc.erb"
           -o "${ABCD_ISA_FLOW}"
-  DEPENDS "${ABCD_ISA_GEN}" "${ABCD_ISA_API}" "${ABCD_ISA_YAML}"
+  DEPENDS abcd_isa_pin_check
+          "${ABCD_ISA_GEN}" "${ABCD_ISA_API}" "${ABCD_ISA_YAML}"
           "${CMAKE_CURRENT_SOURCE_DIR}/tools/templates/isa_opcode.h.erb"
           "${CMAKE_CURRENT_SOURCE_DIR}/tools/templates/isa_table.inc.erb"
           "${CMAKE_CURRENT_SOURCE_DIR}/tools/templates/isa_cases.inc.erb"

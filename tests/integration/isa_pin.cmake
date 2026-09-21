@@ -1,15 +1,18 @@
-if(NOT DEFINED ABCD_SOURCE_DIR OR NOT DEFINED ABCD_TEST_BINARY_DIR)
-  message(FATAL_ERROR "ABCD_SOURCE_DIR and ABCD_TEST_BINARY_DIR are required")
+if(NOT DEFINED ABCD_SOURCE_DIR OR NOT DEFINED ABCD_TEST_BINARY_DIR
+    OR NOT DEFINED ABCD_ISA_ROOT)
+  message(FATAL_ERROR
+          "ABCD_SOURCE_DIR, ABCD_TEST_BINARY_DIR, and ABCD_ISA_ROOT are required")
 endif()
 
-set(root "${ABCD_TEST_BINARY_DIR}/isa-pin")
+string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef nonce)
+set(root "${ABCD_TEST_BINARY_DIR}/isa-pin-${nonce}")
 set(source "${root}/source")
 set(build "${root}/build")
 set(isa "${root}/isa")
 file(REMOVE_RECURSE "${root}")
 file(MAKE_DIRECTORY "${source}/tools/templates" "${isa}")
 
-set(pinned "${ABCD_SOURCE_DIR}/../arkruntime/arkcompiler/runtime_core/isa")
+set(pinned "${ABCD_ISA_ROOT}")
 foreach(name IN ITEMS isa.yaml isapi.rb gen.rb)
   file(COPY "${pinned}/${name}" DESTINATION "${isa}")
 endforeach()
@@ -37,14 +40,20 @@ if(NOT status EQUAL 0)
 endif()
 
 foreach(name IN ITEMS isa.yaml isapi.rb gen.rb)
+  file(TIMESTAMP "${build}/generated/abcd/abc/generated_isa.h" before "%s")
+  execute_process(COMMAND "${CMAKE_COMMAND}" -E sleep 1)
   file(APPEND "${isa}/${name}" "\n# pin-change regression fixture\n")
-  execute_process(COMMAND "${CMAKE_COMMAND}" --build "${build}"
+  execute_process(COMMAND "${CMAKE_COMMAND}" --build "${build}" --parallel 2
                           --target abcd_isa_generated
                   RESULT_VARIABLE status OUTPUT_VARIABLE output ERROR_VARIABLE error)
   if(status EQUAL 0 OR NOT "${output}${error}" MATCHES "Pinned ISA input changed")
     message(FATAL_ERROR "changed ${name} was not rejected:\n${output}\n${error}")
   endif()
-  file(COPY_FILE "${pinned}/${name}" "${isa}/${name}")
+  file(TIMESTAMP "${build}/generated/abcd/abc/generated_isa.h" after "%s")
+  if(NOT before STREQUAL after)
+    message(FATAL_ERROR "generator ran before ${name} pin verification")
+  endif()
+  file(COPY "${pinned}/${name}" DESTINATION "${isa}")
   execute_process(COMMAND "${CMAKE_COMMAND}" -S "${source}" -B "${build}"
                           "-DABCD_ISA_ROOT=${isa}"
                   RESULT_VARIABLE status OUTPUT_VARIABLE output ERROR_VARIABLE error)
@@ -52,3 +61,4 @@ foreach(name IN ITEMS isa.yaml isapi.rb gen.rb)
     message(FATAL_ERROR "restored ${name} configure failed:\n${output}\n${error}")
   endif()
 endforeach()
+file(REMOVE_RECURSE "${root}")
