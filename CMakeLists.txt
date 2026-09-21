@@ -6,6 +6,7 @@ include(cmake/IsaDependency.cmake)
 add_library(abcd_abc
   src/abc/byte_reader.cc
   src/abc/control_transfer.cc
+  src/abc/frame_layout.cc
   src/abc/header.cc
   src/abc/instruction.cc
   src/abc/literal_array.cc
@@ -71,6 +72,9 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(frame_layout_test tests/unit/abc/frame_layout_test.cc)
+  target_link_libraries(frame_layout_test PRIVATE abcd_abc)
+  add_test(NAME frame_layout_test COMMAND frame_layout_test)
   add_executable(string_literal_test tests/unit/source/string_literal_test.cc)
   target_link_libraries(string_literal_test PRIVATE abcd_source)
   add_test(NAME string_literal_test COMMAND string_literal_test)

@@ -71,7 +71,14 @@ indexing does not yet recover the ABI. The next implementation must preserve
 ordinary-annotation location information or reread method tags lazily; avoid
 one heap allocation per method across the multi-million-method corpus.
 
-Required checks and tests for that implementation:
+`abc/frame_layout.h` now exposes `CallFlags`, `DecodeCallFlags`, and
+`BuildFrameLayout`. The allocation-free layout calculation covers all sixteen
+flag combinations, missing-annotation defaults, high-bit masking, hidden-slot
+order, argument underflow, and the runtime's two 28-bit count fields. It rejects
+counts that the runtime would truncate. This standalone calculation is not yet
+connected to annotation reading or function source emission.
+
+Required checks and tests for the complete annotation integration:
 
 - Typed call flags and optional register IDs, never semantic string dispatch.
 - Missing annotation default, all sixteen low-bit combinations, duplicate
