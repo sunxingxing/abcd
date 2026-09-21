@@ -95,8 +95,10 @@ come from the same immutable input; this is not a concurrent-mutation snapshot.
 Reader tests include selection/overwrite rules, nonmatching names, invalid
 references and tags, truncated element storage, unsupported profiles, resource
 limits, 200/201/4096 annotation references, and connection to frame layout.
-Historical-profile tests establish container acceptance only. Corpus-wide ABI
-validation and wiring this reader into function decompilation remain pending.
+Historical-profile tests establish container acceptance only. `abc_frames`
+checks call-type reads and declared layouts across the corpus; see
+`../validation/2026-09-22-frames.md` for results and limits. Wiring this reader
+into function decompilation remains pending.
 
 `abc/frame_layout.h` now exposes `CallFlags`, `DecodeCallFlags`, and
 `BuildFrameLayout`. The allocation-free layout calculation covers all sixteen
