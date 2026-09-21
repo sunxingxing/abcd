@@ -37,8 +37,12 @@ option(ABCD_BUILD_TOOLS "Build standalone ABC command-line tools" ON)
 if(ABCD_BUILD_TOOLS)
   add_executable(abc_scan tools/abc_scan.cc)
   target_link_libraries(abc_scan PRIVATE abcd_corpus abcd_json)
+  add_library(abcd_inspection tools/corpus_inspection.cc)
+  target_link_libraries(abcd_inspection PUBLIC abcd_corpus PRIVATE abcd_json)
   add_executable(abc_index tools/abc_index.cc)
-  target_link_libraries(abc_index PRIVATE abcd_corpus abcd_json)
+  target_link_libraries(abc_index PRIVATE abcd_inspection)
+  add_executable(abc_decode tools/abc_decode.cc)
+  target_link_libraries(abc_decode PRIVATE abcd_inspection)
 endif()
 
 include(CTest)
@@ -91,5 +95,10 @@ if(BUILD_TESTING)
       -DABCD_INDEX=$<TARGET_FILE:abc_index>
       -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/index_cli.cmake)
+    add_test(NAME decode_cli_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_SCAN=$<TARGET_FILE:abc_scan>
+      -DABCD_DECODE=$<TARGET_FILE:abc_decode>
+      -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decode_cli.cmake)
   endif()
 endif()
