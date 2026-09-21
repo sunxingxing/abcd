@@ -1,0 +1,15 @@
+<%# Generated switch cases from pinned runtime_core isapi.rb predicates. %>
+<% Panda.instructions.each do |instruction| %>
+case Opcode::k<%= instruction.opcode.upcase %>:
+  return ControlTransfer::<%=
+    if instruction.jump?
+      instruction.conditional? ? 'kBranch' : 'kJump'
+    elsif instruction.is_return_instruction?
+      'kReturn'
+    elsif instruction.is_unconditional_throw_instruction?
+      'kThrow'
+    else
+      'kFallthrough'
+    end
+  %>;
+<% end %>
