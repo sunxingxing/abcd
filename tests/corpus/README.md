@@ -71,3 +71,12 @@
 已验证的具体范围和实测结果见
 [分类验证记录](../../docs/validation/2026-09-22-corpus-ingestion.md)。第二次完整扫描
 对 900 个文件全部复用分类，分类器调用为 0；静态类型仍不计入动态反编译成功数。
+
+## Record Index Evidence
+
+`record-index.json` is the generated per-file metadata-index validation report,
+not another classification cache and not evidence of successful source recovery.
+Its validation section pins the implementation and classification-manifest hash.
+Static entries are skipped from cached classifications after content rehashing.
+See the [validation record](../../docs/validation/2026-09-22-record-index.md)
+for reproduction and limitations.

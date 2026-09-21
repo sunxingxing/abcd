@@ -30,6 +30,11 @@ This is preparation for the record index, not an implemented decoder.
 - Code prefix: four ULEBs for vreg count, argument count, code size and try count,
   followed by instruction bytes (`code_data_accessor.cpp:37-49`). Metadata index
   construction must not eagerly decode instruction streams.
+- `libpandabase/utils/utf.cpp:102-141` emits four-byte UTF-8 for a valid UTF-16
+  surrogate pair despite the MUtf8 function name. Its reader accepts that form
+  as two UTF-16 units (`utf.cpp:70-88`). Metadata names must support both this
+  form and three-byte surrogate units, plus encoded NUL (`c0 80`), without
+  accepting overlong non-NUL encodings or scalars beyond U+10FFFF.
 
 ## Regional Indexes
 

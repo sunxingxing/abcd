@@ -8,7 +8,8 @@ C++20 项目，目标是从动态 ABC 恢复语义可信的 JS/TS/ArkTS，并为
 
 ## 构建与测试
 
-环境：Linux/POSIX、CMake 3.20+、C++20 编译器、OpenSSL 3、zlib。
+环境：Linux/POSIX、CMake 3.20+、C++20 编译器、OpenSSL 3、zlib；集成测试还使用
+util-linux 的 `prlimit` 验证继承的内存限制。
 nlohmann/json 使用已固定的本地参考仓，并在配置时验证头文件 SHA-256，见
 [依赖说明](docs/reference/dependencies.md)。默认路径为相邻的
 `../arkruntime/third_party/json`，可通过 `-DABCD_JSON_ROOT=...` 指定相同版本的位置。
@@ -74,6 +75,8 @@ ASan 需要巨大的虚拟 shadow 映射，因此该配置验证库和扫描工�
 - [项目规则](AGENTS.md)
 - [总体设计](docs/superpowers/specs/2026-09-22-abc-decompiler-design.md)
 - [语料分类验证记录](docs/validation/2026-09-22-corpus-ingestion.md)
+- [Record 索引验证记录](docs/validation/2026-09-22-record-index.md)：402 个动态文件，
+  281,067 个 record、5,486,254 个方法；索引阶段峰值 RSS 约 151MB。
 - 下一步：按需方法体解码、异步有界调度与语义恢复。
 
 尚未输出任何反编译源码。不得将汇编、占位函数或配套源码复制品作为最终结果。
