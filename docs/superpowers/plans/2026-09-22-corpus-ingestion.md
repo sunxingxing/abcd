@@ -7,7 +7,7 @@
 expose validated dynamic headers for subsequent lazy record/method decoding.
 This is input infrastructure, not completion of the source decompiler.
 
-**Architecture:** Allocation-free header parsing consumes a 60-byte prefix plus
+**Architecture:** Allocation-free header parsing consumes a bounded prefix plus
 the actual file size. Typed profiles separate known dynamic, known static and
 unknown versions; malformed data is a distinct error. A streaming scanner hashes
 each file, reuses classifications by SHA-256 and detector revision, and atomically
@@ -22,12 +22,16 @@ Files: `include/abcd/abc/header.h`, `src/abc/header.cc`,
 
 - [ ] Declare `AbcVersion` (four bytes), `AbcKind` (dynamic/static/unknown),
   `HeaderError`, `Header`, and `ParseHeader(span, uint64_t actual_size)` returning
-  `variant<Header, HeaderError>`. Store named fields for every header word and
+  `variant<Header, HeaderError>`. Dynamic headers are 60 bytes; current static
+  headers are 72 bytes, with quickening and export-table fields. Never apply
+  the dynamic offsets to a static candidate. Store named fields for every word and
   preserve numeric versions. A valid header is not a valid method or file body.
 - [ ] Write always-active tests first: bad magic; short prefix; mismatched file
   size; size over uint32; foreign range overflow; misaligned/out-of-file index;
   count overflow; zero-count empty indexes; dynamic 9/11.0.2/12.0.2/12.0.6/13.0.1/24;
-  static 0.1.0.7; unknown 0.0.0.6 and future versions. Incompatible 11.0.0/11.0.1
+  static 0.1.0.7; unknown 0.0.0.6 and future versions. An explicit static-candidate
+  parser may validate the 72-byte layout of 0.0.0.6 without certifying its kind.
+  Incompatible 11.0.0/11.0.1
   must not acquire a supported profile. Test post-12.0.6 reserved literal fields.
 - [ ] Verify missing implementation fails with `cmake --build build/ingestion`.
 - [ ] Parse little endian through ByteReader, not struct reinterpret casts.
