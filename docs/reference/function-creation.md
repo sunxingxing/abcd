@@ -38,6 +38,11 @@ distinct from lexical this and an ordinary enumerable object property.
 The lifting operation is constant time and allocation-free. Tests decode all
 four encodings, cover method slots 0/200/201/65535 and lengths 0/1/200/201/255,
 and reject operand count/kind/range errors and unsupported opcodes. Historical
-creation encodings, class-buffer construction, target binding, exception/effect
+creation encodings, class-buffer construction, exception/effect
 analysis and generated closure semantics remain pending. No corpus-wide source
 or runtime differential validation is implied by these structural tests.
+
+[Creation binding](creation-binding.md) now connects the modern operations to
+validated target methods and incoming ordinary/sendable capture categories.
+Captured values, cross-function binding substitution and source wrappers remain
+unresolved.

@@ -66,6 +66,8 @@ enum class IndexOutcome {
   kFrameFailure,
   kSourceBodiesProbed,
   kEnvironmentsProbed,
+  kCreationsProbed,
+  kCreationFailure,
 };
 
 const char* ToolName(InspectionStage stage) {
@@ -90,6 +92,8 @@ const char* ToolName(InspectionStage stage) {
       return "abc_source_probe";
     case InspectionStage::kEnvironments:
       return "abc_environments";
+    case InspectionStage::kCreations:
+      return "abc_creations";
   }
   std::abort();
 }
@@ -144,6 +148,10 @@ const char* OutcomeLabel(IndexOutcome outcome) {
       return "source_bodies_probed";
     case IndexOutcome::kEnvironmentsProbed:
       return "environments_probed";
+    case IndexOutcome::kCreationsProbed:
+      return "creations_probed";
+    case IndexOutcome::kCreationFailure:
+      return "creation_failure";
   }
   std::abort();
 }
@@ -236,7 +244,9 @@ FileReport IndexFile(const std::filesystem::path& root,
       InspectMethods(*file, header, index, stage, diagnostics);
   // A file reports the earliest failed stage, independent of method order.
   // Per-stage totals and every diagnostic remain available for mixed failures.
-  if (report.inspection.failed_frame_methods != 0) {
+  if (report.inspection.failed_creation_indexes != 0) {
+    report.outcome = IndexOutcome::kCreationFailure;
+  } else if (report.inspection.failed_frame_methods != 0) {
     report.outcome = IndexOutcome::kFrameFailure;
   } else if (report.inspection.failed_methods != 0) {
     report.outcome = IndexOutcome::kBodyFailure;
@@ -278,6 +288,9 @@ FileReport IndexFile(const std::filesystem::path& root,
         break;
       case InspectionStage::kEnvironments:
         report.outcome = IndexOutcome::kEnvironmentsProbed;
+        break;
+      case InspectionStage::kCreations:
+        report.outcome = IndexOutcome::kCreationsProbed;
         break;
     }
   }
@@ -383,6 +396,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
       case IndexOutcome::kFramesChecked:
       case IndexOutcome::kSourceBodiesProbed:
       case IndexOutcome::kEnvironmentsProbed:
+      case IndexOutcome::kCreationsProbed:
         ++indexed;
         break;
       case IndexOutcome::kStaticSkipped:
@@ -395,6 +409,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
       case IndexOutcome::kModuleFailure:
       case IndexOutcome::kDominatorFailure:
       case IndexOutcome::kFrameFailure:
+      case IndexOutcome::kCreationFailure:
         ++indexed;
         ++failed;
         break;

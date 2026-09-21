@@ -2,8 +2,9 @@
 
 Closure capture recovery requires a validated target method, not merely an
 in-file pool offset. This increment implements that dependency under the
-approved binding/capture recovery design. It does not emit closures or connect
-caller environments to callee captures yet.
+approved binding/capture recovery design. The [creation binder](creation-binding.md)
+now records the creating caller's environment with the validated target.
+It does not emit closures or substitute callee captured bindings yet.
 
 ## Design and Implementation
 

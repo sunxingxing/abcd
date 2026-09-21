@@ -39,6 +39,7 @@ target_link_libraries(abcd_abc PUBLIC abcd_file)
 add_library(abcd_analysis src/analysis/normal_flow.cc src/analysis/exception_dispatch.cc src/analysis/dominators.cc src/analysis/scalar.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/branch_condition.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/function_creation.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/creation_binding.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/lexical.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/environment_index.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/environment_flow.cc)
@@ -71,6 +72,7 @@ if(ABCD_BUILD_TOOLS)
   add_library(abcd_inspection tools/corpus_inspection.cc tools/method_inspection.cc tools/reference_inspection.cc tools/module_inspection.cc)
   target_sources(abcd_inspection PRIVATE tools/source_inspection.cc)
   target_sources(abcd_inspection PRIVATE tools/environment_inspection.cc)
+  target_sources(abcd_inspection PRIVATE tools/creation_inspection.cc)
   target_link_libraries(abcd_inspection PUBLIC abcd_corpus PRIVATE abcd_json abcd_source)
   add_executable(abc_index tools/abc_index.cc)
   target_link_libraries(abc_index PRIVATE abcd_inspection)
@@ -92,10 +94,15 @@ if(ABCD_BUILD_TOOLS)
   target_link_libraries(abc_source_probe PRIVATE abcd_inspection)
   add_executable(abc_environments tools/abc_environments.cc)
   target_link_libraries(abc_environments PRIVATE abcd_inspection)
+  add_executable(abc_creations tools/abc_creations.cc)
+  target_link_libraries(abc_creations PRIVATE abcd_inspection)
 endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(creation_binding_test tests/unit/analysis/creation_binding_test.cc)
+  target_link_libraries(creation_binding_test PRIVATE abcd_analysis)
+  add_test(NAME creation_binding_test COMMAND creation_binding_test)
   add_executable(method_lookup_test tests/unit/abc/method_lookup_test.cc)
   target_link_libraries(method_lookup_test PRIVATE abcd_abc)
   add_test(NAME method_lookup_test COMMAND method_lookup_test)
@@ -265,6 +272,11 @@ if(BUILD_TESTING)
   add_test(NAME scan_test COMMAND scan_test)
 
   if(TARGET abc_scan)
+    add_test(NAME creations_cli_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_SCAN=$<TARGET_FILE:abc_scan>
+      -DABCD_CREATIONS=$<TARGET_FILE:abc_creations>
+      -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/creations_cli.cmake)
     add_test(NAME environments_cli_test COMMAND ${CMAKE_COMMAND}
       -DABCD_SCAN=$<TARGET_FILE:abc_scan>
       -DABCD_ENVIRONMENTS=$<TARGET_FILE:abc_environments>

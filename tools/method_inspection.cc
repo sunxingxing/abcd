@@ -105,11 +105,15 @@ const char* StageLabel(InspectionStage stage) {
       return "source_body_probe";
     case InspectionStage::kEnvironments:
       return "environment_bindings";
+    case InspectionStage::kCreations:
+      return "creation_bindings";
   }
   std::abort();
 }
 
 MethodCounts& MethodCounts::operator+=(const MethodCounts& other) {
+  creations += other.creations;
+  failed_creation_indexes += other.failed_creation_indexes;
   environments += other.environments;
   source += other.source;
   for (std::size_t i = 0; i < function_kinds.size(); ++i)
@@ -155,7 +159,7 @@ MethodCounts& MethodCounts::operator+=(const MethodCounts& other) {
 }
 
 std::uint64_t MethodCounts::FailureCount() const {
-  return failed_methods + failed_flow_methods + failed_dispatch_methods +
+  return failed_creation_indexes + failed_methods + failed_flow_methods + failed_dispatch_methods +
          failed_reference_methods + failed_dominator_methods + failed_frame_methods;
 }
 
@@ -200,6 +204,8 @@ nlohmann::json SerializeCounts(const MethodCounts& counts) {
           {"dominator_peak_bytes", counts.dominator_peak_bytes}};
   result.update(SerializeCounts(counts.source));
   result.update(SerializeCounts(counts.environments));
+  result.update(SerializeCounts(counts.creations));
+  result["failed_creation_indexes"] = counts.failed_creation_indexes;
   return result;
 }
 
@@ -208,6 +214,17 @@ MethodCounts InspectMethods(const corpus::AbcFile& file,
                             const abc::MetadataIndex& index,
                             InspectionStage stage, std::ostream& diagnostics) {
   MethodCounts counts;
+  std::optional<abc::MethodLookup> lookup;
+  if (stage == InspectionStage::kCreations) {
+    auto built = abc::MethodLookup::Build(index.methods);
+    if (const auto* error = std::get_if<abc::MethodLookupError>(&built)) {
+      ++counts.failed_creation_indexes;
+      diagnostics << nlohmann::json{{"stage", StageLabel(stage)},
+                                    {"lookup_error", static_cast<int>(*error)}};
+      return counts;
+    }
+    lookup.emplace(std::move(std::get<abc::MethodLookup>(built)));
+  }
   for (const auto& method : index.methods) {
     if (!method.code) continue;
     ++counts.code_methods;
@@ -286,6 +303,11 @@ MethodCounts InspectMethods(const corpus::AbcFile& file,
         if (edge.kind == analysis::FlowEdgeKind::kResume) ++counts.resume_edges;
     }
     if (stage == InspectionStage::kNormalFlow) continue;
+    if (stage == InspectionStage::kCreations) {
+      InspectCreations(file, header, index, *lookup, method, body, graph,
+                       &counts.creations);
+      continue;
+    }
     if (stage == InspectionStage::kEnvironments) {
       InspectEnvironments(body, graph,
                           std::uint64_t(method.code->registers) + method.code->arguments,

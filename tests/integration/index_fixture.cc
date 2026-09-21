@@ -41,6 +41,9 @@ enum class FixtureKind {
   kSourceNameBudget,
   kEnvironmentMethod,
   kEnvironmentConflict,
+  kCreationMethod,
+  kCreationNonmethod,
+  kCreationUnreachable,
   kSourceLoop,
   kSourceException,
   kInvalidReference,
@@ -105,6 +108,12 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kEnvironmentMethod;
     else if (option == "--environment-conflict")
       kind = FixtureKind::kEnvironmentConflict;
+    else if (option == "--creation-method")
+      kind = FixtureKind::kCreationMethod;
+    else if (option == "--creation-nonmethod")
+      kind = FixtureKind::kCreationNonmethod;
+    else if (option == "--creation-unreachable")
+      kind = FixtureKind::kCreationUnreachable;
     else if (option == "--source-loop")
       kind = FixtureKind::kSourceLoop;
     else if (option == "--source-exception")
@@ -205,6 +214,21 @@ int main(int argc, char** argv) {
         WriteWord(dynamic, pool_offset, name_offset);
         WriteWord(dynamic, pool_offset + kWordBytes, literal_offset);
         WriteWord(dynamic, kRegionOffset + 4 * kWordBytes, 2);
+        WriteWord(dynamic, kRegionOffset + 5 * kWordBytes, pool_offset);
+      } else if (kind == FixtureKind::kCreationUnreachable) {
+        // No pool is needed: the creation is normal-unreachable, not bound.
+        dynamic.insert(dynamic.end(),
+                       {0, 3, 8, 0, 0x4d, 7, 0x33, 0, 0, 0, 2, 0x65});
+      } else if (kind == FixtureKind::kCreationMethod ||
+                 kind == FixtureKind::kCreationNonmethod) {
+        // Same target created before and after popping the new environment.
+        dynamic.insert(dynamic.end(), {0, 3, 14, 0, 0x09, 1,
+            0x33, 0, 0, 0, 2, 0x69, 0x33, 0, 0, 0, 3, 0x65});
+        const auto pool_offset = dynamic.size();
+        dynamic.resize(dynamic.size() + kWordBytes);
+        WriteWord(dynamic, pool_offset,
+                  kind == FixtureKind::kCreationMethod ? method_offset : name_offset);
+        WriteWord(dynamic, kRegionOffset + 4 * kWordBytes, 1);
         WriteWord(dynamic, kRegionOffset + 5 * kWordBytes, pool_offset);
       } else if (kind == FixtureKind::kEnvironmentMethod) {
         dynamic.insert(dynamic.end(), {0, 3, 10, 0, 0x09, 2, 0x3c, 0,

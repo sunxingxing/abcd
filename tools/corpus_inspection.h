@@ -12,7 +12,8 @@ enum class InspectionStage {
   kDominators,
   kFrames,
   kSourceBodies,
-  kEnvironments
+  kEnvironments,
+  kCreations
 };
 int RunCorpusInspection(int argc, char** argv, InspectionStage stage);
 }  // namespace abcd::tools
