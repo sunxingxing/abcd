@@ -1,0 +1,32 @@
+<%# Included by src/abc/instruction.cc. Source is pinned ISA only. %>
+<%
+roles = {
+  v: 'kRegister', imm: 'kImmediate', method_id: 'kMethod',
+  type_id: 'kType', field_id: 'kField', string_id: 'kString',
+  literalarray_id: 'kLiteralArray'
+}
+instructions = Panda.instructions
+max_operands = instructions.map { |instruction| instruction.operands.size }.max
+raise 'operand count changed between templates' unless max_operands > 0
+%>
+inline constexpr std::array<std::uint8_t, <%= Panda.prefixes.size %>>
+    kPrefixBytes = {<%= Panda.prefixes.map(&:opcode_idx).join(', ') %>};
+
+inline constexpr std::array<InstructionSpec, <%= instructions.size %>>
+    kInstructionSpecs = {{
+<% instructions.each do |instruction| %>
+      {Opcode::k<%= instruction.opcode.upcase %>,
+       <%= instruction.format.size %>, <%= instruction.operands.size %>,
+       std::array<OperandSpec, kMaxInstructionOperands>{
+<% instruction.operands.each do |operand| %>
+           OperandSpec{OperandKind::<%= roles.fetch(operand.name) %>,
+                       OperandAccess::<%= operand.src? && operand.dst? ? 'kReadWrite' : operand.dst? ? 'kWrite' : 'kRead' %>,
+                       <%= operand.width %>, <%= operand.offset %>,
+                       <%= operand.is_signed_imm? %>,
+                       <%= operand.is_float_imm? %>},
+<% end %>
+       },
+       <%= instruction.jump? %>, <%= instruction.conditional? %>,
+       <%= instruction.acc_read? %>, <%= instruction.acc_write? %>},
+<% end %>
+    }};

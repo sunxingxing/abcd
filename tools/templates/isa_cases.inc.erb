@@ -1,0 +1,7 @@
+<%# Test inventory generated independently from ISA public enum/table. %>
+inline constexpr std::array<EncodingCase, <%= Panda.instructions.size %>>
+    kEncodingCases = {{
+<% Panda.instructions.each do |instruction| %>
+      {<%= instruction.opcode_idx %>, <%= instruction.format.size %>},
+<% end %>
+    }};

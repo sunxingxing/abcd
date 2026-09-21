@@ -1,0 +1,30 @@
+<%# Generated from pinned runtime_core ISA; do not edit output. %>
+<%
+instructions = Panda.instructions
+names = instructions.map { |instruction| instruction.opcode.upcase }
+raise 'duplicate opcode name' unless names.uniq.size == names.size
+raise 'duplicate opcode value' unless instructions.map(&:opcode_idx).uniq.size == instructions.size
+max_operands = instructions.map { |instruction| instruction.operands.size }.max
+raise 'invalid operand count' unless max_operands && max_operands > 0
+%>
+#ifndef ABCD_ABC_GENERATED_ISA_H_
+#define ABCD_ABC_GENERATED_ISA_H_
+
+#include <cstddef>
+#include <cstdint>
+
+namespace abcd::abc {
+
+inline constexpr std::size_t kMaxInstructionOperands = <%= max_operands %>;
+inline constexpr std::size_t kMaxInstructionBytes =
+    <%= instructions.map { |instruction| instruction.format.size }.max %>;
+
+enum class Opcode : std::uint16_t {
+<% instructions.each do |instruction| %>
+  k<%= instruction.opcode.upcase %> = <%= instruction.opcode_idx %>,
+<% end %>
+};
+
+}  // namespace abcd::abc
+
+#endif  // ABCD_ABC_GENERATED_ISA_H_

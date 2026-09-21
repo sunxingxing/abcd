@@ -1,15 +1,18 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(abcd LANGUAGES CXX)
+include(cmake/IsaDependency.cmake)
 
 add_library(abcd_abc
   src/abc/byte_reader.cc
   src/abc/header.cc
+  src/abc/instruction.cc
   src/abc/metadata_cursor.cc
   src/abc/metadata_index.cc
 )
 target_compile_features(abcd_abc PUBLIC cxx_std_20)
-target_include_directories(abcd_abc PUBLIC include)
+target_include_directories(abcd_abc PUBLIC include "${ABCD_ISA_GENERATED_DIR}")
+add_dependencies(abcd_abc abcd_isa_generated)
 
 find_package(OpenSSL 3.0 REQUIRED COMPONENTS Crypto)
 find_package(ZLIB REQUIRED)
@@ -50,6 +53,11 @@ if(BUILD_TESTING)
   add_executable(metadata_index_test tests/unit/abc/metadata_index_test.cc)
   target_link_libraries(metadata_index_test PRIVATE abcd_abc)
   add_test(NAME metadata_index_test COMMAND metadata_index_test)
+
+  add_executable(instruction_test tests/unit/abc/instruction_test.cc)
+  target_link_libraries(instruction_test PRIVATE abcd_abc)
+  add_dependencies(instruction_test abcd_isa_generated)
+  add_test(NAME instruction_test COMMAND instruction_test)
 
   add_executable(abc_file_test tests/unit/corpus/abc_file_test.cc)
   target_link_libraries(abc_file_test PRIVATE abcd_corpus)
