@@ -32,35 +32,35 @@ evidence; static/unknown profiles must not silently use this policy.
 
 ## Implementation
 
-- [ ] Add `include/abcd/analysis/exception_dispatch.h` and
+- [x] Add `include/abcd/analysis/exception_dispatch.h` and
   `src/analysis/exception_dispatch.cc`. Use `TryId`, `HandlerId`, `DispatchSpan`
   and typed failure/budget records; expose
   `BuildExceptionDispatch(const MethodBody&, ProfileId, DispatchBudget)` and
   `ExceptionDispatch::Find(CodeOffset)` returning optional selected target.
-- [ ] Test before implementation in `tests/unit/analysis/exception_dispatch_test.cc`:
+- [x] Test before implementation in `tests/unit/analysis/exception_dispatch_test.cc`:
   no tries, disjoint/overlapping/nested/identical ranges, encoded-order priority,
   typed first catch versus later catch-all, empty catch lists, zero lengths,
   half-open ends, malformed slices/targets/layout, unsupported profile and budget
   rejection. Compare a tiny slow reference scanner against generated cases.
-- [ ] Validate all source ranges against sorted instruction boundaries, with
+- [x] Validate all source ranges against sorted instruction boundaries, with
   checked arithmetic. Sort at most two events per eligible try; maintain a
   min-heap of encoded try indexes with lazy expiry. Every try is pushed/popped
   at most once. Merge adjacent spans only when selected try/handler is identical.
   Exact-reserve bounded event, heap and output vectors; catch allocation failure.
   Time O(I+(R+H)log(I+1)+Rlog(R+1)), storage O(R). Query O(log(R+1)).
-- [ ] Test 200/201 and geometric overlapping ranges without a quadratic oracle
+- [x] Test 200/201 and geometric overlapping ranges without a quadratic oracle
   at large sizes. Do not sort/rewrite the source try or catch arrays.
-- [ ] Extract method-stage inspection from `tools/corpus_inspection.cc` into
+- [x] Extract method-stage inspection from `tools/corpus_inspection.cc` into
   `tools/method_inspection.h/.cc` so adding the stage does not grow the corpus
   driver into a monolith. Preserve streamed diagnostics and existing counters.
-- [ ] Add `abc_exceptions` and an explicit exception-dispatch stage. Count
+- [x] Add `abc_exceptions` and an explicit exception-dispatch stage. Count
   successful maps, spans and protected blocks/instructions separately from
   normal edges. Check each selected handler is an existing normal block entry.
   No exception effect claims or fabricated source output.
-- [ ] Add CLI fixtures with real try metadata and first-handler selection,
+- [x] Add CLI fixtures with real try metadata and first-handler selection,
   stream all failure stages without diagnostic caps, reuse static classifications
   and enforce the same 1,000,000,000-byte process cap.
-- [ ] Run Debug/Release/ASan/UBSan, independent reviews and the complete dynamic
+- [x] Run Debug/Release/ASan/UBSan, independent reviews and the complete dynamic
   corpus. Persist implementation/input identities, coverage, failures and RSS;
   commit coherent verified changes promptly.
 

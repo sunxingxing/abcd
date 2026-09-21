@@ -88,3 +88,10 @@ control-flow report, pinned to an implementation and manifest digest. All
 5,486,254 dynamic methods passed these stages. Static exclusions are not source
 decompilations, and normal-flow coverage is not behavioral-equivalence evidence.
 See [normal-flow validation](../../docs/validation/2026-09-22-normal-flow.md).
+
+`exception-dispatch.json` extends validation through the pinned dynamic-runtime
+handler selection map and checks its boundaries against normal blocks. It pins
+the implementation and manifest digest independently of the earlier report.
+Protected instruction counts are conditional routing coverage, not may-throw
+or source-equivalence evidence. See
+[exception validation](../../docs/validation/2026-09-22-exception-dispatch.md).
