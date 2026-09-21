@@ -26,20 +26,35 @@ constexpr std::uint32_t kLocalMethodHeaderBytes = 8;
 constexpr std::uint16_t kNoProtoIndex = UINT16_MAX;
 
 enum class ClassTag : std::uint8_t {
-  kEnd = 0, kInterfaces = 1, kSourceLanguage = 2,
-  kRuntimeAnnotation = 3, kAnnotation = 4,
-  kRuntimeTypeAnnotation = 5, kTypeAnnotation = 6, kSourceFile = 7,
+  kEnd = 0,
+  kInterfaces = 1,
+  kSourceLanguage = 2,
+  kRuntimeAnnotation = 3,
+  kAnnotation = 4,
+  kRuntimeTypeAnnotation = 5,
+  kTypeAnnotation = 6,
+  kSourceFile = 7,
 };
 enum class FieldTag : std::uint8_t {
-  kEnd = 0, kIntValue = 1, kValue = 2,
-  kRuntimeAnnotation = 3, kAnnotation = 4,
-  kRuntimeTypeAnnotation = 5, kTypeAnnotation = 6,
+  kEnd = 0,
+  kIntValue = 1,
+  kValue = 2,
+  kRuntimeAnnotation = 3,
+  kAnnotation = 4,
+  kRuntimeTypeAnnotation = 5,
+  kTypeAnnotation = 6,
 };
 enum class MethodTag : std::uint8_t {
-  kEnd = 0, kCode = 1, kSourceLanguage = 2,
-  kRuntimeAnnotation = 3, kRuntimeParamAnnotation = 4,
-  kDebugInfo = 5, kAnnotation = 6, kParamAnnotation = 7,
-  kTypeAnnotation = 8, kRuntimeTypeAnnotation = 9,
+  kEnd = 0,
+  kCode = 1,
+  kSourceLanguage = 2,
+  kRuntimeAnnotation = 3,
+  kRuntimeParamAnnotation = 4,
+  kDebugInfo = 5,
+  kAnnotation = 6,
+  kParamAnnotation = 7,
+  kTypeAnnotation = 8,
+  kRuntimeTypeAnnotation = 9,
 };
 
 struct Region {
@@ -85,10 +100,9 @@ std::variant<std::uint32_t, MetadataError> TableEntry(
     std::uint32_t index) {
   if (index >= table.count || !ValidTable(table, header.file_size))
     return MetadataError::kIndexRange;
-  if (IsAbsentTable(table))
-    return MetadataError::kIndexRange;
+  if (IsAbsentTable(table)) return MetadataError::kIndexRange;
   MetadataCursor cursor(file, table.offset + index * kIndexWordBytes,
-                header.file_size);
+                        header.file_size);
   return cursor.U32();
 }
 
@@ -116,7 +130,8 @@ std::variant<std::vector<Region>, MetadataError> ReadRegions(
         !Take(cursor.U32(), &region.fields.count, &error) ||
         !Take(cursor.U32(), &region.fields.offset, &error) ||
         !Take(cursor.U32(), &region.protos.count, &error) ||
-        !Take(cursor.U32(), &region.protos.offset, &error)) return error;
+        !Take(cursor.U32(), &region.protos.offset, &error))
+      return error;
     if (region.start < kDynamicHeaderSize || region.start >= region.end ||
         region.end > header.file_size)
       return MetadataError::kRegionRange;
@@ -142,11 +157,11 @@ std::variant<std::vector<Region>, MetadataError> ReadRegions(
 
 const Region* FindRegion(const std::vector<Region>& regions,
                          std::uint32_t offset) {
-  const auto it = std::upper_bound(
-      regions.begin(), regions.end(), offset,
-      [](std::uint32_t value, const Region& region) {
-        return value < region.start;
-      });
+  const auto it =
+      std::upper_bound(regions.begin(), regions.end(), offset,
+                       [](std::uint32_t value, const Region& region) {
+                         return value < region.start;
+                       });
   if (it == regions.begin()) return nullptr;
   const Region& prior = *std::prev(it);
   return offset < prior.end ? &prior : nullptr;
@@ -158,9 +173,8 @@ std::variant<std::uint32_t, MetadataError> Resolve(
     std::uint16_t index, bool proto) {
   const Region* region = FindRegion(regions, entity);
   if (!region) return MetadataError::kRegionRange;
-  const auto offset = TableEntry(file, header,
-                                 proto ? region->protos : region->classes,
-                                 index);
+  const auto offset =
+      TableEntry(file, header, proto ? region->protos : region->classes, index);
   if (std::holds_alternative<MetadataError>(offset))
     return std::get<MetadataError>(offset);
   if (!ValidEntity(header, std::get<std::uint32_t>(offset)))
@@ -182,15 +196,16 @@ std::optional<MetadataError> SkipClassTags(MetadataCursor* cursor,
     if (tag != 0 && tag < last_tag) return MetadataError::kTagOrder;
     if (tag != 0) last_tag = tag;
     switch (static_cast<ClassTag>(tag)) {
-      case ClassTag::kEnd: return std::nullopt;
+      case ClassTag::kEnd:
+        return std::nullopt;
       case ClassTag::kInterfaces: {
         if (seen_interfaces) return MetadataError::kDuplicateTag;
         seen_interfaces = true;
         const auto count = cursor->Uleb();
         if (std::holds_alternative<MetadataError>(count))
           return std::get<MetadataError>(count);
-        if (!cursor->Skip(static_cast<std::uint64_t>(
-                              std::get<std::uint32_t>(count)) * 2))
+        if (!cursor->Skip(
+                static_cast<std::uint64_t>(std::get<std::uint32_t>(count)) * 2))
           return MetadataError::kTruncated;
         break;
       }
@@ -217,16 +232,17 @@ std::optional<MetadataError> SkipClassTags(MetadataCursor* cursor,
           return MetadataError::kReference;
         break;
       }
-      default: return MetadataError::kUnknownTag;
+      default:
+        return MetadataError::kUnknownTag;
     }
   }
 }
 
 std::optional<MetadataError> SkipField(MetadataCursor* cursor,
-                                        const Header& header,
-                                        const corpus::AbcFile& file,
-                                        const std::vector<Region>& regions,
-                                        std::uint32_t owner) {
+                                       const Header& header,
+                                       const corpus::AbcFile& file,
+                                       const std::vector<Region>& regions,
+                                       std::uint32_t owner) {
   const std::uint32_t field = cursor->Position();
   std::uint16_t class_index = 0, type_index = 0;
   std::uint32_t name = 0, flags = 0;
@@ -234,10 +250,12 @@ std::optional<MetadataError> SkipField(MetadataCursor* cursor,
   if (!Take(cursor->U16(), &class_index, &error) ||
       !Take(cursor->U16(), &type_index, &error) ||
       !Take(cursor->U32(), &name, &error) ||
-      !Take(cursor->Uleb(), &flags, &error)) return error;
-  (void)type_index; (void)flags;
-  const auto resolved = Resolve(file, header, regions, field, class_index,
-                                false);
+      !Take(cursor->Uleb(), &flags, &error))
+    return error;
+  (void)type_index;
+  (void)flags;
+  const auto resolved =
+      Resolve(file, header, regions, field, class_index, false);
   if (std::holds_alternative<MetadataError>(resolved))
     return std::get<MetadataError>(resolved);
   if (std::get<std::uint32_t>(resolved) != owner)
@@ -253,7 +271,8 @@ std::optional<MetadataError> SkipField(MetadataCursor* cursor,
     if (tag != 0 && tag < last_tag) return MetadataError::kTagOrder;
     if (tag != 0) last_tag = tag;
     switch (static_cast<FieldTag>(tag)) {
-      case FieldTag::kEnd: return std::nullopt;
+      case FieldTag::kEnd:
+        return std::nullopt;
       case FieldTag::kIntValue:
         if (seen_value) return MetadataError::kDuplicateTag;
         seen_value = true;
@@ -278,13 +297,15 @@ std::optional<MetadataError> SkipField(MetadataCursor* cursor,
           return MetadataError::kReference;
         break;
       }
-      default: return MetadataError::kUnknownTag;
+      default:
+        return MetadataError::kUnknownTag;
     }
   }
 }
 
-std::variant<CodeInfo, MetadataError> ReadCode(
-    const corpus::AbcFile& file, const Header& header, std::uint32_t offset) {
+std::variant<CodeInfo, MetadataError> ReadCode(const corpus::AbcFile& file,
+                                               const Header& header,
+                                               std::uint32_t offset) {
   if (!ValidEntity(header, offset)) return MetadataError::kReference;
   MetadataCursor cursor(file, offset, header.file_size);
   CodeInfo code;
@@ -293,7 +314,8 @@ std::variant<CodeInfo, MetadataError> ReadCode(
   if (!Take(cursor.Uleb(), &code.registers, &error) ||
       !Take(cursor.Uleb(), &code.arguments, &error) ||
       !Take(cursor.Uleb(), &code.instruction_bytes, &error) ||
-      !Take(cursor.Uleb(), &code.try_count, &error)) return error;
+      !Take(cursor.Uleb(), &code.try_count, &error))
+    return error;
   code.instruction_offset.value = cursor.Position();
   if (!cursor.Skip(code.instruction_bytes)) return MetadataError::kCodeRange;
   return code;
@@ -301,8 +323,8 @@ std::variant<CodeInfo, MetadataError> ReadCode(
 
 std::variant<MethodInfo, MetadataError> ReadMethod(
     MetadataCursor* cursor, const Header& header, const corpus::AbcFile& file,
-    const std::vector<Region>& regions, std::uint32_t owner,
-    std::size_t* spent, std::size_t budget) {
+    const std::vector<Region>& regions, std::uint32_t owner, std::size_t* spent,
+    std::size_t budget) {
   MethodInfo method;
   method.offset.value = cursor->Position();
   std::uint16_t class_index = 0, proto_index = 0;
@@ -311,24 +333,25 @@ std::variant<MethodInfo, MetadataError> ReadMethod(
   if (!Take(cursor->U16(), &class_index, &error) ||
       !Take(cursor->U16(), &proto_index, &error) ||
       !Take(cursor->U32(), &name_offset, &error) ||
-      !Take(cursor->Uleb(), &method.access_flags, &error)) return error;
-  const auto class_offset = Resolve(file, header, regions,
-                                    method.offset.value, class_index, false);
+      !Take(cursor->Uleb(), &method.access_flags, &error))
+    return error;
+  const auto class_offset =
+      Resolve(file, header, regions, method.offset.value, class_index, false);
   if (std::holds_alternative<MetadataError>(class_offset))
     return std::get<MetadataError>(class_offset);
   method.owner_offset.value = std::get<std::uint32_t>(class_offset);
   if (method.owner_offset.value != owner) return MetadataError::kOwnerMismatch;
   if (proto_index != kNoProtoIndex) {
-    const auto proto = Resolve(file, header, regions,
-                               method.offset.value, proto_index, true);
+    const auto proto =
+        Resolve(file, header, regions, method.offset.value, proto_index, true);
     if (std::holds_alternative<MetadataError>(proto))
       return std::get<MetadataError>(proto);
     method.proto_offset = EntityOffset{std::get<std::uint32_t>(proto)};
   }
   if (!ValidEntity(header, name_offset)) return MetadataError::kReference;
   MetadataCursor name_reader(file, name_offset, header.file_size);
-  auto name = ReadMetadataString(&name_reader, &method.name_utf16_length,
-                         spent, budget);
+  auto name = ReadMetadataString(&name_reader, &method.name_utf16_length, spent,
+                                 budget);
   if (std::holds_alternative<MetadataError>(name))
     return std::get<MetadataError>(name);
   method.name = std::move(std::get<std::string>(name));
@@ -344,7 +367,8 @@ std::variant<MethodInfo, MetadataError> ReadMethod(
     if (tag != 0 && tag < last_tag) return MetadataError::kTagOrder;
     if (tag != 0) last_tag = tag;
     switch (static_cast<MethodTag>(tag)) {
-      case MethodTag::kEnd: return method;
+      case MethodTag::kEnd:
+        return method;
       case MethodTag::kCode: {
         if (seen_code) return MetadataError::kDuplicateTag;
         seen_code = true;
@@ -381,7 +405,8 @@ std::variant<MethodInfo, MetadataError> ReadMethod(
           return MetadataError::kReference;
         break;
       }
-      default: return MetadataError::kUnknownTag;
+      default:
+        return MetadataError::kUnknownTag;
     }
   }
 }
@@ -389,8 +414,7 @@ std::variant<MethodInfo, MetadataError> ReadMethod(
 }  // namespace
 
 MetadataResult BuildMetadataIndex(const corpus::AbcFile& file,
-                                  const Header& header,
-                                  MetadataBudget budget) {
+                                  const Header& header, MetadataBudget budget) {
   if (header.kind != AbcKind::kDynamic ||
       !std::holds_alternative<DynamicLayout>(header.layout) ||
       header.profile == ProfileId::kUnknown)
@@ -401,8 +425,8 @@ MetadataResult BuildMetadataIndex(const corpus::AbcFile& file,
   if (!ValidTable(layout.classes, header.file_size))
     return MetadataError::kIndexRange;
   std::size_t spent = 0;
-  auto region_result = ReadRegions(file, header, layout.index_regions,
-                                   &spent, budget.bytes);
+  auto region_result =
+      ReadRegions(file, header, layout.index_regions, &spent, budget.bytes);
   if (std::holds_alternative<MetadataError>(region_result))
     return std::get<MetadataError>(region_result);
   const auto& regions = std::get<std::vector<Region>>(region_result);
@@ -415,8 +439,8 @@ MetadataResult BuildMetadataIndex(const corpus::AbcFile& file,
     return MetadataError::kResourceLimit;
   std::vector<std::uint32_t> class_offsets;
   class_offsets.reserve(layout.classes.count);
-  spent += static_cast<std::size_t>(layout.classes.count) *
-           sizeof(std::uint32_t);
+  spent +=
+      static_cast<std::size_t>(layout.classes.count) * sizeof(std::uint32_t);
   for (std::uint32_t i = 0; i < layout.classes.count; ++i) {
     const auto class_entry = TableEntry(file, header, layout.classes, i);
     if (std::holds_alternative<MetadataError>(class_entry))
@@ -427,7 +451,8 @@ MetadataResult BuildMetadataIndex(const corpus::AbcFile& file,
   }
   std::sort(class_offsets.begin(), class_offsets.end());
   if (std::adjacent_find(class_offsets.begin(), class_offsets.end()) !=
-      class_offsets.end()) return MetadataError::kIndexRange;
+      class_offsets.end())
+    return MetadataError::kIndexRange;
   MetadataIndex index;
   index.records.reserve(layout.classes.count);
   for (const std::uint32_t offset : class_offsets) {
@@ -437,8 +462,8 @@ MetadataResult BuildMetadataIndex(const corpus::AbcFile& file,
     RecordInfo record;
     record.offset.value = offset;
     record.first_method = index.methods.size();
-    auto descriptor = ReadMetadataString(&cursor, &record.utf16_length,
-                                 &spent, budget.bytes);
+    auto descriptor =
+        ReadMetadataString(&cursor, &record.utf16_length, &spent, budget.bytes);
     if (std::holds_alternative<MetadataError>(descriptor))
       return std::get<MetadataError>(descriptor);
     record.descriptor = std::move(std::get<std::string>(descriptor));
@@ -450,7 +475,8 @@ MetadataResult BuildMetadataIndex(const corpus::AbcFile& file,
     if (!Take(cursor.U32(), &super, &error) ||
         !Take(cursor.Uleb(), &record.access_flags, &error) ||
         !Take(cursor.Uleb(), &record.field_count, &error) ||
-        !Take(cursor.Uleb(), &record.method_count, &error)) return error;
+        !Take(cursor.Uleb(), &record.method_count, &error))
+      return error;
     if (super && !ValidEntity(header, super)) return MetadataError::kReference;
     if (const auto failure = SkipClassTags(&cursor, header)) return *failure;
     const auto remaining = header.file_size - cursor.Position();
@@ -458,14 +484,16 @@ MetadataResult BuildMetadataIndex(const corpus::AbcFile& file,
         record.method_count > remaining / kLocalMethodHeaderBytes)
       return MetadataError::kTruncated;
     for (std::uint32_t field = 0; field < record.field_count; ++field) {
-      if (const auto failure = SkipField(&cursor, header, file, regions,
-                                         offset)) return *failure;
+      if (const auto failure =
+              SkipField(&cursor, header, file, regions, offset))
+        return *failure;
     }
     for (std::uint32_t method = 0; method < record.method_count; ++method) {
       if (index.methods.size() == index.methods.capacity()) {
         const std::size_t old_capacity = index.methods.capacity();
-        const std::size_t new_capacity = old_capacity == 0 ? 1 :
-            old_capacity > std::numeric_limits<std::size_t>::max() / 2
+        const std::size_t new_capacity =
+            old_capacity == 0 ? 1
+            : old_capacity > std::numeric_limits<std::size_t>::max() / 2
                 ? std::numeric_limits<std::size_t>::max()
                 : old_capacity * 2;
         const std::size_t added = new_capacity - old_capacity;
@@ -475,8 +503,8 @@ MetadataResult BuildMetadataIndex(const corpus::AbcFile& file,
         index.methods.reserve(new_capacity);
         spent += added * sizeof(MethodInfo);
       }
-      auto parsed = ReadMethod(&cursor, header, file, regions, offset,
-                               &spent, budget.bytes);
+      auto parsed = ReadMethod(&cursor, header, file, regions, offset, &spent,
+                               budget.bytes);
       if (std::holds_alternative<MetadataError>(parsed))
         return std::get<MetadataError>(parsed);
       index.methods.push_back(std::move(std::get<MethodInfo>(parsed)));

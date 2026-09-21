@@ -41,8 +41,8 @@ class MetadataCursor {
 };
 
 std::variant<std::string, MetadataError> ReadMetadataString(
-    MetadataCursor* cursor, std::uint32_t* utf16_length,
-    std::size_t* spent, std::size_t budget);
+    MetadataCursor* cursor, std::uint32_t* utf16_length, std::size_t* spent,
+    std::size_t budget);
 
 }  // namespace abcd::abc
 

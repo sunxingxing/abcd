@@ -3,8 +3,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include <cstdlib>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <variant>
@@ -39,8 +39,7 @@ struct Fixture {
     header.file_size = bytes.size();
     header.foreign_offset = 480;
     header.foreign_size = 32;
-    header.layout = abcd::abc::DynamicLayout{{1, 64}, {0, 0}, {0, 0},
-                                              {1, 72}};
+    header.layout = abcd::abc::DynamicLayout{{1, 64}, {0, 0}, {0, 0}, {1, 72}};
     Put32(bytes, 64, 128);
     Put32(bytes, 72, 120);
     Put32(bytes, 76, 480);
@@ -56,28 +55,51 @@ struct Fixture {
     Put32(bytes, 116, 300);
     // Class: Lfoo;, one field and one method.
     bytes[128] = 11;  // (UTF-16 length 5 << 1) | ASCII.
-    bytes[129] = 'L'; bytes[130] = 'f'; bytes[131] = 'o';
-    bytes[132] = 'o'; bytes[133] = ';'; bytes[134] = 0;
+    bytes[129] = 'L';
+    bytes[130] = 'f';
+    bytes[131] = 'o';
+    bytes[132] = 'o';
+    bytes[133] = ';';
+    bytes[134] = 0;
     Put32(bytes, 135, 0);
-    bytes[139] = 1; bytes[140] = 1; bytes[141] = 1;
+    bytes[139] = 1;
+    bytes[140] = 1;
+    bytes[141] = 1;
     bytes[142] = 0;
     // Field: signed LEB -1, followed by two annotations.
-    Put16(bytes, 143, 0); Put16(bytes, 145, 0);
+    Put16(bytes, 143, 0);
+    Put16(bytes, 145, 0);
     Put32(bytes, 147, 320);
-    bytes[151] = 1; bytes[152] = 1; bytes[153] = 0x7f;
-    bytes[154] = 3; Put32(bytes, 155, 350);
-    bytes[159] = 3; Put32(bytes, 160, 354);
+    bytes[151] = 1;
+    bytes[152] = 1;
+    bytes[153] = 0x7f;
+    bytes[154] = 3;
+    Put32(bytes, 155, 350);
+    bytes[159] = 3;
+    Put32(bytes, 160, 354);
     bytes[164] = 0;
     // Method with regional owner and proto resolution, plus code prefix.
-    Put16(bytes, 165, 0); Put16(bytes, 167, 0);
+    Put16(bytes, 165, 0);
+    Put16(bytes, 167, 0);
     Put32(bytes, 169, 330);
-    bytes[173] = 1; bytes[174] = 1; Put32(bytes, 175, 360);
-    bytes[179] = 3; Put32(bytes, 180, 370);
+    bytes[173] = 1;
+    bytes[174] = 1;
+    Put32(bytes, 175, 360);
+    bytes[179] = 3;
+    Put32(bytes, 180, 370);
     bytes[184] = 0;
-    bytes[320] = 3; bytes[321] = 'f'; bytes[322] = 0;
-    bytes[330] = 3; bytes[331] = 'm'; bytes[332] = 0;
-    bytes[360] = 2; bytes[361] = 1; bytes[362] = 3;
-    bytes[363] = 0; bytes[364] = 0xaa; bytes[365] = 0xbb;
+    bytes[320] = 3;
+    bytes[321] = 'f';
+    bytes[322] = 0;
+    bytes[330] = 3;
+    bytes[331] = 'm';
+    bytes[332] = 0;
+    bytes[360] = 2;
+    bytes[361] = 1;
+    bytes[362] = 3;
+    bytes[363] = 0;
+    bytes[364] = 0xaa;
+    bytes[365] = 0xbb;
     bytes[366] = 0xcc;
   }
 
@@ -87,11 +109,11 @@ struct Fixture {
     const int fd = mkstemp(path);
     Check(fd >= 0);
     Check(write(fd, bytes.data(), bytes.size()) ==
-           static_cast<ssize_t>(bytes.size()));
+          static_cast<ssize_t>(bytes.size()));
     close(fd);
     auto opened = abcd::corpus::AbcFile::Open(path);
-    Check(std::holds_alternative<std::unique_ptr<abcd::corpus::AbcFile>>(
-        opened));
+    Check(
+        std::holds_alternative<std::unique_ptr<abcd::corpus::AbcFile>>(opened));
     auto result = abcd::abc::BuildMetadataIndex(
         *std::get<std::unique_ptr<abcd::corpus::AbcFile>>(opened), header,
         {budget});
@@ -150,9 +172,9 @@ int main() {
   capacity.bytes[330] = 41;
   for (std::size_t i = 0; i < 20; ++i) capacity.bytes[331 + i] = 'm';
   capacity.bytes[351] = 0;
-  constexpr std::size_t kBaseBudget =
-      sizeof(abcd::abc::RecordInfo) + sizeof(abcd::abc::MethodInfo) +
-      sizeof(std::uint32_t) + 40 + 5;
+  constexpr std::size_t kBaseBudget = sizeof(abcd::abc::RecordInfo) +
+                                      sizeof(abcd::abc::MethodInfo) +
+                                      sizeof(std::uint32_t) + 40 + 5;
   Check(std::get<abcd::abc::MetadataError>(capacity.Build(kBaseBudget + 20)) ==
         abcd::abc::MetadataError::kResourceLimit);
 
@@ -169,7 +191,8 @@ int main() {
   result = fixture.Build();
   Check(std::holds_alternative<abcd::abc::MetadataIndex>(result));
   Check(!std::get<abcd::abc::MetadataIndex>(result)
-             .methods[0].proto_offset.has_value());
+             .methods[0]
+             .proto_offset.has_value());
   fixture.header.profile = abcd::abc::ProfileId::kDynamic9;
   Check(std::get<abcd::abc::MetadataError>(fixture.Build()) ==
         abcd::abc::MetadataError::kIndexRange);
@@ -177,18 +200,18 @@ int main() {
 
   fixture.bytes[174] = 0xff;
   Check(std::get<abcd::abc::MetadataError>(fixture.Build()) ==
-         abcd::abc::MetadataError::kUnknownTag);
+        abcd::abc::MetadataError::kUnknownTag);
   fixture.bytes[174] = 1;
   Check(std::get<abcd::abc::MetadataError>(fixture.Build(64)) ==
-         abcd::abc::MetadataError::kResourceLimit);
+        abcd::abc::MetadataError::kResourceLimit);
   fixture.bytes[165] = 1;
   Check(std::get<abcd::abc::MetadataError>(fixture.Build()) ==
-         abcd::abc::MetadataError::kIndexRange);
+        abcd::abc::MetadataError::kIndexRange);
   fixture.bytes[165] = 0;
   fixture.bytes[362] = 0xff;
   fixture.bytes[363] = 0x7f;
   Check(std::get<abcd::abc::MetadataError>(fixture.Build()) ==
-         abcd::abc::MetadataError::kCodeRange);
+        abcd::abc::MetadataError::kCodeRange);
   fixture.bytes[362] = 3;
   fixture.bytes[363] = 0;
   fixture.bytes[179] = 1;
@@ -236,24 +259,24 @@ int main() {
   Check(std::holds_alternative<abcd::abc::MetadataIndex>(result));
   Check(std::get<abcd::abc::MetadataIndex>(result).methods[0].name ==
         std::string("\xed\xa0\xbd\xed\xb8\x80"));
-  fixture.header.layout = abcd::abc::DynamicLayout{{2, 64}, {0, 0},
-                                                    {0, 0}, {1, 72}};
+  fixture.header.layout =
+      abcd::abc::DynamicLayout{{2, 64}, {0, 0}, {0, 0}, {1, 72}};
   Put32(fixture.bytes, 68, 128);
   Check(std::get<abcd::abc::MetadataError>(fixture.Build()) ==
         abcd::abc::MetadataError::kIndexRange);
-  fixture.header.layout = abcd::abc::DynamicLayout{{1, 64}, {0, 0},
-                                                    {0, 0}, {1, 72}};
+  fixture.header.layout =
+      abcd::abc::DynamicLayout{{1, 64}, {0, 0}, {0, 0}, {1, 72}};
   fixture.bytes[72] = 0;
   Check(std::get<abcd::abc::MetadataError>(fixture.Build()) ==
-         abcd::abc::MetadataError::kRegionRange);
+        abcd::abc::MetadataError::kRegionRange);
 
   Fixture many;
   many.bytes.resize(16000);
   many.header.file_size = many.bytes.size();
   many.header.foreign_offset = 15000;
   many.header.foreign_size = 1000;
-  many.header.layout = abcd::abc::DynamicLayout{{201, 1024}, {0, 0},
-                                                 {0, 0}, {1, 72}};
+  many.header.layout =
+      abcd::abc::DynamicLayout{{201, 1024}, {0, 0}, {0, 0}, {1, 72}};
   Put32(many.bytes, 76, 15000);
   Put32(many.bytes, 84, 2000);
   Put32(many.bytes, 2000, 128);
@@ -271,8 +294,8 @@ int main() {
   result = many.Build();
   Check(std::holds_alternative<abcd::abc::MetadataIndex>(result));
   Check(std::get<abcd::abc::MetadataIndex>(result).records.size() == 201);
-  many.header.layout = abcd::abc::DynamicLayout{{202, 1024}, {0, 0},
-                                                 {0, 0}, {1, 72}};
+  many.header.layout =
+      abcd::abc::DynamicLayout{{202, 1024}, {0, 0}, {0, 0}, {1, 72}};
   Put32(many.bytes, 1024 + 201 * 4, 15010);
   result = many.Build();
   Check(std::holds_alternative<abcd::abc::MetadataIndex>(result));
@@ -284,8 +307,8 @@ int main() {
   regions.header.foreign_offset = 32000;
   regions.header.foreign_size = 768;
   constexpr std::uint32_t kRegionTable = 16384;
-  regions.header.layout = abcd::abc::DynamicLayout{
-      {1, 64}, {0, 0}, {0, 0}, {200, kRegionTable}};
+  regions.header.layout =
+      abcd::abc::DynamicLayout{{1, 64}, {0, 0}, {0, 0}, {200, kRegionTable}};
   for (std::uint32_t i = 0; i < 201; ++i) {
     const auto base = kRegionTable + i * 40;
     Put32(regions.bytes, base, i == 0 ? 120 : 1000 + i * 50);
@@ -299,8 +322,8 @@ int main() {
   }
   result = regions.Build();
   Check(std::holds_alternative<abcd::abc::MetadataIndex>(result));
-  regions.header.layout = abcd::abc::DynamicLayout{
-      {1, 64}, {0, 0}, {0, 0}, {201, kRegionTable}};
+  regions.header.layout =
+      abcd::abc::DynamicLayout{{1, 64}, {0, 0}, {0, 0}, {201, kRegionTable}};
   result = regions.Build();
   Check(std::holds_alternative<abcd::abc::MetadataIndex>(result));
 }

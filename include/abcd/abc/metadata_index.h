@@ -82,9 +82,9 @@ struct MetadataBudget {
 
 using MetadataResult = std::variant<MetadataIndex, MetadataError>;
 
-[[nodiscard]] MetadataResult BuildMetadataIndex(
-    const corpus::AbcFile& file, const Header& header,
-    MetadataBudget budget = {});
+[[nodiscard]] MetadataResult BuildMetadataIndex(const corpus::AbcFile& file,
+                                                const Header& header,
+                                                MetadataBudget budget = {});
 
 }  // namespace abcd::abc
 

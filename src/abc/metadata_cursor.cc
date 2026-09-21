@@ -72,8 +72,8 @@ std::variant<std::uint16_t, MetadataError> MetadataCursor::U16() {
     return std::get<MetadataError>(low);
   if (std::holds_alternative<MetadataError>(high))
     return std::get<MetadataError>(high);
-  return static_cast<std::uint16_t>(
-      std::get<std::uint8_t>(low) | (std::get<std::uint8_t>(high) << 8));
+  return static_cast<std::uint16_t>(std::get<std::uint8_t>(low) |
+                                    (std::get<std::uint8_t>(high) << 8));
 }
 
 std::variant<std::uint32_t, MetadataError> MetadataCursor::U32() {
@@ -96,11 +96,9 @@ std::variant<std::uint32_t, MetadataError> MetadataCursor::Uleb() {
       return std::get<MetadataError>(byte);
     const auto raw = std::get<std::uint8_t>(byte);
     if (i == kMaxLebBytes - 1 &&
-        ((raw & kContinuation) ||
-         (raw & kPayloadMask) > kFinalUlebPayloadMax))
+        ((raw & kContinuation) || (raw & kPayloadMask) > kFinalUlebPayloadMax))
       return MetadataError::kMalformedLeb;
-    value |= static_cast<std::uint32_t>(raw & kPayloadMask)
-             << (i * kLebBits);
+    value |= static_cast<std::uint32_t>(raw & kPayloadMask) << (i * kLebBits);
     if (!(raw & kContinuation)) return value;
   }
   return MetadataError::kMalformedLeb;
@@ -115,8 +113,7 @@ std::optional<MetadataError> MetadataCursor::SkipSleb() {
     if (i == kMaxLebBytes - 1) {
       const auto high = raw & kSlebHighMask;
       const auto sign = raw & kSlebSignBit;
-      if ((raw & kContinuation) ||
-          (high != (sign ? kSlebHighMask : 0)))
+      if ((raw & kContinuation) || (high != (sign ? kSlebHighMask : 0)))
         return MetadataError::kMalformedLeb;
     }
     if (!(raw & kContinuation)) return std::nullopt;
@@ -131,8 +128,8 @@ bool MetadataCursor::Skip(std::uint64_t count) {
 }
 
 std::variant<std::string, MetadataError> ReadMetadataString(
-    MetadataCursor* cursor, std::uint32_t* utf16_length,
-    std::size_t* spent, std::size_t budget) {
+    MetadataCursor* cursor, std::uint32_t* utf16_length, std::size_t* spent,
+    std::size_t budget) {
   const auto prefix = cursor->Uleb();
   if (std::holds_alternative<MetadataError>(prefix))
     return std::get<MetadataError>(prefix);
@@ -145,8 +142,8 @@ std::variant<std::string, MetadataError> ReadMetadataString(
     if (value.size() >= kMaxStringBytes) return false;
     if (value.size() == value.capacity()) {
       const std::size_t old_capacity = value.capacity();
-      const std::size_t target = old_capacity >
-          (std::numeric_limits<std::size_t>::max() - 1) / 2
+      const std::size_t target =
+          old_capacity > (std::numeric_limits<std::size_t>::max() - 1) / 2
               ? std::numeric_limits<std::size_t>::max()
               : old_capacity * 2 + 1;
       // During reserve, both old and new heap buffers may be live.
@@ -177,23 +174,21 @@ std::variant<std::string, MetadataError> ReadMetadataString(
     if (raw >= kUtf8ContinuationValue) {
       if (raw < kTwoByteLeadMin || raw > kFourByteLeadMax)
         return MetadataError::kBadString;
-      const std::size_t followers = raw < kThreeByteLeadMin
-                                        ? 1
-                                        : raw < kFourByteLeadMin ? 2 : 3;
-      std::uint32_t decoded = raw &
-          (followers == 1 ? kTwoByteLeadMask
-                          : followers == 2 ? kThreeByteLeadMask
-                                           : kFourByteLeadMask);
+      const std::size_t followers = raw < kThreeByteLeadMin  ? 1
+                                    : raw < kFourByteLeadMin ? 2
+                                                             : 3;
+      std::uint32_t decoded = raw & (followers == 1   ? kTwoByteLeadMask
+                                     : followers == 2 ? kThreeByteLeadMask
+                                                      : kFourByteLeadMask);
       for (std::size_t part = 0; part < followers; ++part) {
         const auto next = cursor->U8();
         if (std::holds_alternative<MetadataError>(next))
           return std::get<MetadataError>(next);
         const auto continuation = std::get<std::uint8_t>(next);
-        if ((continuation & kUtf8ContinuationMask) !=
-            kUtf8ContinuationValue)
+        if ((continuation & kUtf8ContinuationMask) != kUtf8ContinuationValue)
           return MetadataError::kBadString;
-        decoded = (decoded << kUtf8PayloadBits) |
-                  (continuation & kUtf8PayloadMask);
+        decoded =
+            (decoded << kUtf8PayloadBits) | (continuation & kUtf8PayloadMask);
         if (!append(continuation)) return MetadataError::kResourceLimit;
       }
       if ((followers == 1 && decoded < kTwoByteMinValue && decoded != 0) ||
