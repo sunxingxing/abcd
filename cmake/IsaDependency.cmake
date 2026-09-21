@@ -5,6 +5,9 @@ set(ABCD_ISA_ROOT
 set(ABCD_ISA_YAML "${ABCD_ISA_ROOT}/isa.yaml")
 set(ABCD_ISA_API "${ABCD_ISA_ROOT}/isapi.rb")
 set(ABCD_ISA_GEN "${ABCD_ISA_ROOT}/gen.rb")
+# Re-run the pin check on an ordinary build after any generator input changes.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${ABCD_ISA_YAML}" "${ABCD_ISA_API}" "${ABCD_ISA_GEN}")
 
 foreach(input IN ITEMS
     "${ABCD_ISA_YAML}|690d960793e07d18c94d81a644e916592bb29962c48c7e2f5f48376989f530f9"
@@ -21,6 +24,15 @@ foreach(input IN ITEMS
     message(FATAL_ERROR "Pinned ISA input changed: ${path}")
   endif()
 endforeach()
+
+if(ABCD_VERIFY_ISA_ONLY)
+  return()
+endif()
+
+add_custom_target(abcd_isa_pin_check
+  COMMAND ${CMAKE_COMMAND} -DABCD_ISA_ROOT=${ABCD_ISA_ROOT}
+          -DABCD_VERIFY_ISA_ONLY=ON -P ${CMAKE_CURRENT_LIST_FILE}
+  VERBATIM)
 
 find_package(Ruby 3.2.3 EXACT REQUIRED)
 set(ABCD_ISA_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -62,3 +74,4 @@ add_custom_command(
 add_custom_target(abcd_isa_generated
   DEPENDS "${ABCD_ISA_OPCODE_HEADER}" "${ABCD_ISA_TABLE}"
           "${ABCD_ISA_CASES}" "${ABCD_ISA_FLOW}")
+add_dependencies(abcd_isa_generated abcd_isa_pin_check)
