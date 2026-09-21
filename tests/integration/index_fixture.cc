@@ -30,7 +30,9 @@ enum class FixtureKind {
   kMethod,
   kInvalidMethod,
   kManyInvalidMethods,
-  kFallthroughMethod
+  kFallthroughMethod,
+  kMixedMethods,
+  kMixedMethodsReversed
 };
 
 void WriteWord(std::span<std::uint8_t> bytes, std::size_t offset,
@@ -70,6 +72,10 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kManyInvalidMethods;
     else if (option == "--fallthrough-method")
       kind = FixtureKind::kFallthroughMethod;
+    else if (option == "--mixed-methods")
+      kind = FixtureKind::kMixedMethods;
+    else if (option == "--mixed-methods-reversed")
+      kind = FixtureKind::kMixedMethodsReversed;
     else
       return EXIT_FAILURE;
   }
@@ -89,24 +95,31 @@ int main(int argc, char** argv) {
     constexpr std::array<std::uint8_t, 15> kMethod{0, 0, 0xff, 0xff, 0, 0, 0, 0,
                                                    0, 1, 0,    0,    0, 0, 0};
     constexpr std::uint8_t kDiagnosticOverflowCount = 65;
-    const std::uint8_t method_count =
-        kind == FixtureKind::kManyInvalidMethods ? kDiagnosticOverflowCount : 1;
+    const bool mixed = kind == FixtureKind::kMixedMethods ||
+                       kind == FixtureKind::kMixedMethodsReversed;
+    const std::uint8_t method_count = kind == FixtureKind::kManyInvalidMethods
+                                          ? kDiagnosticOverflowCount
+                                      : mixed ? 2
+                                              : 1;
     const auto method_offset = dynamic.size();
     dynamic[kClassOffset + kMethodCountInClass] = method_count;
     for (std::uint8_t i = 0; i < method_count; ++i)
       dynamic.insert(dynamic.end(), kMethod.begin(), kMethod.end());
     const auto name_offset = dynamic.size();
     dynamic.insert(dynamic.end(), {9, 'm', 'a', 'i', 'n', 0});
-    const auto code_offset = dynamic.size();
     // Zero frame slots, one instruction, no tries. 0x65 is returnundefined;
     // 0xff is unassigned in the pinned dynamic ISA, not a static-file marker.
-    dynamic.insert(dynamic.end(),
-                   {0, 0, 1, 0,
-                    static_cast<std::uint8_t>(
-                        kind == FixtureKind::kMethod              ? 0x65
-                        : kind == FixtureKind::kFallthroughMethod ? 0xd5
-                                                                  : 0xff)});
     for (std::uint8_t i = 0; i < method_count; ++i) {
+      const auto code_offset = dynamic.size();
+      const bool fallthrough =
+          kind == FixtureKind::kFallthroughMethod ||
+          (mixed && ((i == 0) == (kind == FixtureKind::kMixedMethodsReversed)));
+      dynamic.insert(
+          dynamic.end(),
+          {0, 0, 1, 0,
+           static_cast<std::uint8_t>(kind == FixtureKind::kMethod ? 0x65
+                                     : fallthrough                ? 0xd5
+                                                                  : 0xff)});
       const auto offset = method_offset + i * kMethod.size();
       WriteWord(dynamic, offset + kNameOffsetInMethod, name_offset);
       WriteWord(dynamic, offset + kCodeOffsetInMethod, code_offset);

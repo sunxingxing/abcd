@@ -1,0 +1,42 @@
+#ifndef ABCD_TOOLS_METHOD_INSPECTION_H_
+#define ABCD_TOOLS_METHOD_INSPECTION_H_
+
+#include <cstdint>
+#include <iosfwd>
+#include <nlohmann/json.hpp>
+#include <span>
+
+#include "abcd/abc/metadata_index.h"
+#include "corpus_inspection.h"
+
+namespace abcd::tools {
+
+struct MethodCounts {
+  std::uint64_t code_methods = 0;
+  std::uint64_t instruction_bytes = 0;
+  std::uint64_t decoded_methods = 0;
+  std::uint64_t failed_methods = 0;
+  std::uint64_t instructions = 0;
+  std::uint64_t try_regions = 0;
+  std::uint64_t catch_handlers = 0;
+  std::uint64_t flow_methods = 0;
+  std::uint64_t failed_flow_methods = 0;
+  std::uint64_t blocks = 0;
+  std::uint64_t edges = 0;
+  std::uint64_t resume_edges = 0;
+
+  MethodCounts& operator+=(const MethodCounts& other);
+};
+
+const char* StageLabel(InspectionStage stage);
+nlohmann::json SerializeCounts(const MethodCounts& counts);
+
+// Caller owns the file and the JSON failure array delimiters. Diagnostics are
+// streamed without truncation; only one method body and its analyses are live.
+MethodCounts InspectMethods(const corpus::AbcFile& file, abc::ProfileId profile,
+                            std::span<const abc::MethodInfo> methods,
+                            InspectionStage stage, std::ostream& diagnostics);
+
+}  // namespace abcd::tools
+
+#endif  // ABCD_TOOLS_METHOD_INSPECTION_H_
