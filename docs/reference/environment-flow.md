@@ -43,6 +43,8 @@ backward edges, unreachable code, capture/local slot bounds, admission budgets,
 and geometric scaling through 65,536 environments. CLI fixtures cover success,
 semantic refusal, decoding failure and cached static exclusions.
 
-The current Debug build passed all 54 CTest tests on 2026-09-22. Full-corpus
-environment-flow measurements and complete-decompiler memory verification
-remain pending; no application record source-recovery claim is made.
+The current Debug build passed all 54 CTest tests on 2026-09-22. Environment
+flow and index tests also passed ASan/UBSan. Full-corpus measurements are in
+[the validation report](../validation/2026-09-22-environment-bindings.md).
+Complete-decompiler memory verification remains pending; no application record
+source-recovery claim is made.

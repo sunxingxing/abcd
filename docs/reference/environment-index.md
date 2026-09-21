@@ -89,8 +89,10 @@ Debug CTest passed 52/52; the new index test also passed ASan/UBSan. Running
 with peak RSS 14,983,168 bytes. This is a synthetic index test measurement, not
 the memory cost or semantic validation of full-corpus source recovery.
 
-The next integration must derive definitions and incoming environment states
-from real method CFGs, resolve joins rather than guessing, connect function
-creation to the correct captured context, and preserve Hole/TDZ checks before
-emitting source bindings. No sample method becomes source-ready solely by
-constructing this index. Full record recovery remains required.
+The [environment-flow analysis](environment-flow.md) now derives definitions and
+incoming states from real method CFGs, accepting matching joins and refusing
+conflicting ones. The next integration must connect function creation to the
+correct captured context and preserve Hole/TDZ checks before emitting source
+bindings. Exception/resume flow and conflicting joins remain unresolved.
+No sample method becomes source-ready solely by constructing this index.
+Full record recovery remains required.
