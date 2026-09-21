@@ -142,6 +142,45 @@ int main() {
   Check(index.methods[0].code->instruction_offset.value == 364);
   Check(index.methods[0].code->instruction_bytes == 3);
 
+  Fixture bad_owner;
+  Put32(bad_owner.bytes, 112, 129);
+  Check(std::get<abcd::abc::MetadataError>(bad_owner.Build()) ==
+        abcd::abc::MetadataError::kOwnerMismatch);
+
+  Fixture truncated_name;
+  Put32(truncated_name.bytes, 169, 511);
+  truncated_name.bytes[511] = 0x80;
+  Check(std::get<abcd::abc::MetadataError>(truncated_name.Build()) ==
+        abcd::abc::MetadataError::kTruncated);
+
+  Fixture overlapping;
+  overlapping.header.layout =
+      abcd::abc::DynamicLayout{{1, 64}, {0, 0}, {0, 0}, {2, 400}};
+  for (std::size_t i = 0; i < 40; ++i) {
+    overlapping.bytes[400 + i] = overlapping.bytes[72 + i];
+  }
+  Put32(overlapping.bytes, 440, 400);
+  Put32(overlapping.bytes, 444, 500);
+  Check(std::get<abcd::abc::MetadataError>(overlapping.Build()) ==
+        abcd::abc::MetadataError::kRegionOverlap);
+
+  Fixture malformed_sleb;
+  for (std::size_t i = 153; i < 157; ++i) {
+    malformed_sleb.bytes[i] = 0xff;
+  }
+  malformed_sleb.bytes[157] = 0x08;
+  Check(std::get<abcd::abc::MetadataError>(malformed_sleb.Build()) ==
+        abcd::abc::MetadataError::kMalformedLeb);
+
+  Fixture partial_absence;
+  Put32(partial_absence.bytes, 96, UINT32_MAX);
+  Check(std::get<abcd::abc::MetadataError>(partial_absence.Build()) ==
+        abcd::abc::MetadataError::kIndexRange);
+  partial_absence = Fixture();
+  Put32(partial_absence.bytes, 108, UINT32_MAX);
+  Check(std::get<abcd::abc::MetadataError>(partial_absence.Build()) ==
+        abcd::abc::MetadataError::kIndexRange);
+
   Fixture ordered;
   ordered.bytes[174] = 5;
   ordered.bytes[179] = 1;
