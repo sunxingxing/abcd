@@ -72,10 +72,12 @@ bool ClassName(std::span<const std::uint8_t> bytes, std::size_t* pos) {
     } else if (!ascii && (head & 0xe0U) == 0xc0U &&
                bytes.size() - *pos >= 2 &&
                (bytes[*pos + 1] & 0xc0U) == 0x80U &&
-               (head > 0xc0U || bytes[*pos + 1] == 0x80U)) {
+               (head >= 0xc2U ||
+                (head == 0xc0U && bytes[*pos + 1] == 0x80U))) {
       *pos += 2;
     } else if (!ascii && (head & 0xf0U) == 0xe0U &&
                bytes.size() - *pos >= 3 &&
+               (head != 0xe0U || bytes[*pos + 1] >= 0xa0U) &&
                (bytes[*pos + 1] & 0xc0U) == 0x80U &&
                (bytes[*pos + 2] & 0xc0U) == 0x80U) {
       *pos += 3;
