@@ -20,26 +20,26 @@ writes a locked JSON manifest. Unknown old formats need positive language eviden
 Files: `include/abcd/abc/header.h`, `src/abc/header.cc`,
 `tests/unit/abc/header_test.cc`, `CMakeLists.txt`.
 
-- [ ] Declare `AbcVersion` (four bytes), `AbcKind` (dynamic/static/unknown),
+- [x] Declare `AbcVersion` (four bytes), `AbcKind` (dynamic/static/unknown),
   `HeaderError`, `Header`, and `ParseHeader(span, uint64_t actual_size)` returning
   `variant<Header, HeaderError>`. Dynamic headers are 60 bytes; current static
   headers are 72 bytes, with quickening and export-table fields. Never apply
   the dynamic offsets to a static candidate. Store named fields for every word and
   preserve numeric versions. A valid header is not a valid method or file body.
-- [ ] Write always-active tests first: bad magic; short prefix; mismatched file
+- [x] Write always-active tests first: bad magic; short prefix; mismatched file
   size; size over uint32; foreign range overflow; misaligned/out-of-file index;
   count overflow; zero-count empty indexes; dynamic 9/11.0.2/12.0.2/12.0.6/13.0.1/24;
   static 0.1.0.7; unknown 0.0.0.6 and future versions. An explicit static-candidate
   parser may validate the 72-byte layout of 0.0.0.6 without certifying its kind.
   Incompatible 11.0.0/11.0.1
   must not acquire a supported profile. Test post-12.0.6 reserved literal fields.
-- [ ] Verify missing implementation fails with `cmake --build build/ingestion`.
-- [ ] Parse little endian through ByteReader, not struct reinterpret casts.
+- [x] Verify missing implementation fails with `cmake --build build/ingestion`.
+- [x] Parse little endian through ByteReader, not struct reinterpret casts.
   Bounds use checked subtraction/division. Index widths: 4-byte offsets and
   40-byte region headers. Unknown layouts are not validated as a known profile.
   Current static and old dynamic profiles use literal indexes; new dynamic
   headers reserve both literal words. Cite pinned upstream constants.
-- [ ] Build and run `ctest --test-dir build/ingestion --output-on-failure`,
+- [x] Build and run `ctest --test-dir build/ingestion --output-on-failure`,
   repeat sanitized build, review and commit.
 
 ## Task 2: Streaming Corpus Manifest
@@ -48,26 +48,32 @@ Files: `include/abcd/corpus/scan.h`, `src/corpus/scan.cc`,
 `src/corpus/manifest.cc`, `tools/abc_scan.cc`,
 `tests/unit/corpus/scan_test.cc`, `tests/corpus/abc-index.json`, CMake configuration.
 
-- [ ] Use fixed-size streaming buffers; typed hash/detection evidence, SHA-256
+- [x] Use fixed-size streaming buffers; typed hash/detection evidence, SHA-256
   key, file size, numeric version, kind, revision and checked_at. No whole-file
   loading for hashing. Parse JSON at serialization boundary only. File paths and
   textual labels are allowed boundary data, not internal semantic dispatch.
-- [ ] Tests first: initial scan, exact-content cache reuse, duplicate contents,
+- [x] Tests first: initial scan, exact-content cache reuse, duplicate contents,
   changed contents at the same path, detector revision invalidation, corrupt
   manifest rejection, unknown and malformed inputs distinct from static,
   filesystem failure, lock contention, and interrupted-write preservation.
-- [ ] Add explicit old-static language evidence only after reviewing the pinned
+- [x] Add explicit old-static language evidence only after reviewing the pinned
   static and dynamic formats. Never infer static from directory, size or failed
   dynamic decoding. Persist the exact observed offset and value for each rule.
-- [ ] Lock a sibling lock file, bound manifest input size, and write to a unique
+- [x] Lock a sibling lock file, bound manifest input size, and write to a unique
   sibling temporary file; flush and rename atomically. Never modify corpus ABCs.
   Preserve entries from other corpus roots when updating one root.
-- [ ] Run the actual 900-file corpus twice; second run must rehash bytes but
+- [x] Run the actual 900-file corpus twice; second run must rehash bytes but
   reuse classification. Persist classifications, report every category separately,
   and record peak RSS under 1,000,000,000 bytes. This measurement covers scanning
   only, not future full decompilation. Review and commit.
 
 ## Remaining Objective
+
+Tasks 1 and 2 are implemented and reviewed. Actual artifact/test evidence is in
+`docs/validation/2026-09-22-corpus-ingestion.md`; the committed manifest contains
+all 900 files. Scanner, JSON schema validation and file fingerprinting were split
+into focused modules. Atomic replacement distinguishes post-commit durability
+failure from pre-commit failure; it does not promise rollback after rename.
 
 Lazy record/method indexes, profile-specific ISA decoding, bounded asynchronous
 method tasks, semantic IR, source generation, one output per record and behavior
