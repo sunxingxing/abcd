@@ -14,6 +14,11 @@ verified equal to peeled `OpenHarmony-v7.0-Release` on 2026-09-22.
 - `libabckit/src/abckit_impl.cpp`, `OpenAbc`: tries static reader then dynamic.
   Neither a failed reader nor this fallback order establishes classification
   evidence sufficient for our persistent skip manifest.
+- `libpandafile/file.cpp`, `GetFileType`: checks minimum header length, declared
+  file size and magic, then compares version exactly with `STATIC_VERSION`.
+  Its catch-all dynamic branch is unsuitable for our historical/unknown-version
+  classification: absence of the current static version is not positive proof
+  that an arbitrary version belongs to the dynamic format.
 
 These are reference-source observations, not corpus classification results.
 The corpus classifier must verify header structure and record evidence before
