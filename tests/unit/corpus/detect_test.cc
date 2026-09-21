@@ -124,6 +124,12 @@ void ProbesOnlyParsedClasses() {
   Check(witness.kind == SampleKind::kStatic &&
         witness.evidence.rule == EvidenceRule::kEtsClass &&
         witness.evidence.offset == 94 && witness.evidence.observed == 5);
+  auto many = Header({0, 0, 0, 6}, 72 + 257 * 4 + valid.size());
+  Put32(&many, 32, 257);
+  Put32(&many, 36, 72);
+  Put32(&many, 72, 72 + 257 * 4);
+  std::copy(valid.begin(), valid.end(), many.begin() + 72 + 257 * 4);
+  Check(fixture.Detect(many).kind == SampleKind::kStatic);
   auto absent = valid;
   absent.back() = 4;
   Check(fixture.Detect(Legacy(absent)).kind == SampleKind::kUnknown);
@@ -144,6 +150,9 @@ void ProbesOnlyParsedClasses() {
   random[81] = 2;
   random[82] = 5;
   Check(fixture.Detect(random).kind == SampleKind::kUnknown);
+  auto header_offset = Legacy(valid);
+  Put32(&header_offset, 72, 0);
+  Check(fixture.Detect(header_offset).kind == SampleKind::kUnknown);
   auto foreign = Legacy(valid);
   Put32(&foreign, 20, 80);
   Put32(&foreign, 24, static_cast<std::uint32_t>(valid.size()));
@@ -153,7 +162,13 @@ void ProbesOnlyParsedClasses() {
   Put32(&limited, 36, 72);
   // Layout validator rejects an index outside the file, so use a real table.
   limited.resize(72 + 257 * 4);
+  for (std::size_t i = 0; i < 257; ++i) Put32(&limited, 72 + i * 4, 72);
   Check(fixture.Detect(limited).evidence.rule == EvidenceRule::kProbeLimit);
+  auto byte_limited = Header({0, 0, 0, 6}, 256 + 64 * 1024);
+  Put32(&byte_limited, 32, 17);
+  Put32(&byte_limited, 36, 72);
+  for (std::size_t i = 0; i < 17; ++i) Put32(&byte_limited, 72 + i * 4, 256);
+  Check(fixture.Detect(byte_limited).evidence.rule == EvidenceRule::kProbeLimit);
 }
 }  // namespace
 

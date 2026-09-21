@@ -7,6 +7,8 @@
 #include <span>
 #include <vector>
 
+#include "abcd/abc/byte_reader.h"
+
 namespace abcd::corpus {
 namespace {
 // Pinned runtime_core static_core/libarkfile/{file_items.cpp,
@@ -23,13 +25,26 @@ constexpr std::uint8_t kInterfacesTag = 1;
 constexpr std::uint8_t kSourceLangTag = 2;
 constexpr std::uint8_t kEtsSourceLang = 5;
 constexpr std::size_t kSuperclassWidth = 4;
+constexpr std::size_t kClassIndexWidth = 4;
 constexpr std::size_t kInterfaceIndexWidth = 2;
+constexpr std::uint8_t kContinuationMask = 0xc0;
+constexpr std::uint8_t kContinuationValue = 0x80;
+constexpr std::uint8_t kTwoByteMask = 0xe0;
+constexpr std::uint8_t kTwoByteValue = 0xc0;
+constexpr std::uint8_t kThreeByteMask = 0xf0;
+constexpr std::uint8_t kThreeByteValue = 0xe0;
+constexpr std::uint8_t kAsciiLimit = 0x80;
+constexpr std::uint8_t kFirstValidTwoByte = 0xc2;
+constexpr std::uint8_t kEncodedNullHead = 0xc0;
+constexpr std::uint8_t kOverlongThreeHead = 0xe0;
+constexpr std::uint8_t kFirstValidThreeContinuation = 0xa0;
+constexpr std::uint8_t kEncodedNullTail = 0x80;
+constexpr std::uint32_t kAsciiFlag = 1;
+constexpr unsigned kStringLengthShift = 1;
 
 std::uint32_t U32(std::span<const std::uint8_t> bytes, std::size_t offset) {
-  return static_cast<std::uint32_t>(bytes[offset]) |
-         (static_cast<std::uint32_t>(bytes[offset + 1]) << 8) |
-         (static_cast<std::uint32_t>(bytes[offset + 2]) << 16) |
-         (static_cast<std::uint32_t>(bytes[offset + 3]) << 24);
+  abc::ByteReader reader(bytes.subspan(offset));
+  return std::get<std::uint32_t>(reader.ReadU32Le());
 }
 
 std::uint32_t PackedVersion(const abc::AbcVersion& version) {
@@ -41,18 +56,12 @@ std::uint32_t PackedVersion(const abc::AbcVersion& version) {
 
 bool Uleb(std::span<const std::uint8_t> bytes, std::size_t* pos,
           std::uint32_t* value) {
-  std::uint32_t result = 0;
-  for (unsigned i = 0; i < 5; ++i) {
-    if (*pos == bytes.size()) return false;
-    const std::uint8_t byte = bytes[(*pos)++];
-    if (i == 4 && (byte & 0xf0U) != 0) return false;
-    result |= static_cast<std::uint32_t>(byte & 0x7fU) << (7 * i);
-    if ((byte & 0x80U) == 0) {
-      *value = result;
-      return true;
-    }
-  }
-  return false;
+  abc::ByteReader reader(bytes.subspan(*pos));
+  auto decoded = reader.ReadUleb128U32();
+  if (!std::holds_alternative<std::uint32_t>(decoded)) return false;
+  *pos += reader.Position();
+  *value = std::get<std::uint32_t>(decoded);
+  return true;
 }
 
 // Check name encoding and UTF-16 unit count before interpreting subsequent
@@ -61,25 +70,27 @@ bool Uleb(std::span<const std::uint8_t> bytes, std::size_t* pos,
 bool ClassName(std::span<const std::uint8_t> bytes, std::size_t* pos) {
   std::uint32_t encoded_length = 0;
   if (!Uleb(bytes, pos, &encoded_length)) return false;
-  const std::uint32_t expected = encoded_length >> 1;
-  const bool ascii = (encoded_length & 1U) != 0;
+  const std::uint32_t expected = encoded_length >> kStringLengthShift;
+  const bool ascii = (encoded_length & kAsciiFlag) != 0;
   std::uint32_t units = 0;
   std::size_t name_start = *pos;
   while (*pos < bytes.size() && bytes[*pos] != 0) {
     const std::uint8_t head = bytes[*pos];
-    if (head < 0x80U) {
+    if (head < kAsciiLimit) {
       ++*pos;
-    } else if (!ascii && (head & 0xe0U) == 0xc0U &&
+    } else if (!ascii && (head & kTwoByteMask) == kTwoByteValue &&
                bytes.size() - *pos >= 2 &&
-               (bytes[*pos + 1] & 0xc0U) == 0x80U &&
-               (head >= 0xc2U ||
-                (head == 0xc0U && bytes[*pos + 1] == 0x80U))) {
+               (bytes[*pos + 1] & kContinuationMask) == kContinuationValue &&
+               (head >= kFirstValidTwoByte ||
+                (head == kEncodedNullHead &&
+                 bytes[*pos + 1] == kEncodedNullTail))) {
       *pos += 2;
-    } else if (!ascii && (head & 0xf0U) == 0xe0U &&
+    } else if (!ascii && (head & kThreeByteMask) == kThreeByteValue &&
                bytes.size() - *pos >= 3 &&
-               (head != 0xe0U || bytes[*pos + 1] >= 0xa0U) &&
-               (bytes[*pos + 1] & 0xc0U) == 0x80U &&
-               (bytes[*pos + 2] & 0xc0U) == 0x80U) {
+               (head != kOverlongThreeHead ||
+                bytes[*pos + 1] >= kFirstValidThreeContinuation) &&
+               (bytes[*pos + 1] & kContinuationMask) == kContinuationValue &&
+               (bytes[*pos + 2] & kContinuationMask) == kContinuationValue) {
       *pos += 3;
     } else {
       return false;
@@ -124,17 +135,25 @@ struct ProbeResult {
 
 ProbeResult ProbeClasses(const AbcFile& file, const abc::Header& header) {
   const auto& layout = std::get<abc::StaticLayout>(header.layout);
-  if (layout.classes.count > kClassLimit) return {.tag_offset = {}, .limit = true, .error = {}};
   std::size_t consumed = 0;
+  std::uint32_t visited = 0;
   for (std::uint32_t i = 0; i < layout.classes.count; ++i) {
-    std::array<std::uint8_t, 4> entry{};
-    if (const auto error = file.ReadAt(layout.classes.offset + 4ULL * i, entry))
+    if (consumed > kTotalProbeBytes - kClassIndexWidth) {
+      return {.tag_offset = {}, .limit = true, .error = {}};
+    }
+    std::array<std::uint8_t, kClassIndexWidth> entry{};
+    if (const auto error = file.ReadAt(
+            layout.classes.offset + kClassIndexWidth * static_cast<std::uint64_t>(i), entry))
       return {.tag_offset = {}, .limit = false, .error = *error};
     consumed += entry.size();
     const std::uint32_t offset = U32(entry, 0);
-    if (offset >= file.Size() ||
+    if (offset < abc::kStaticHeaderSize || offset >= file.Size() ||
         (offset >= header.foreign_offset &&
          offset - header.foreign_offset < header.foreign_size)) continue;
+    if (visited == kClassLimit) {
+      return {.tag_offset = {}, .limit = true, .error = {}};
+    }
+    ++visited;
     const std::size_t length = static_cast<std::size_t>(std::min<std::uint64_t>(
         kClassProbeBytes, file.Size() - offset));
     if (length > kTotalProbeBytes - consumed) return {.tag_offset = {}, .limit = true, .error = {}};
