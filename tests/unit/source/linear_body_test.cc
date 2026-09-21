@@ -42,6 +42,17 @@ int main() {
             WriteLinearBody(body, names, limited, {output.str().size() - 1}))
             .emit_error == EmitError::kOutputLimit);
   Check(limited.str().empty());
+  // Indexed runtime reads need receiver/path evidence before JS lowering.
+  // Even a valid scalar prefix must not leak when one appears later.
+  for (const auto& indexed : {
+           Body({0x60, 0, 0x3a, 0, 0, 0, 0x64}),
+           Body({0x60, 0, 0x88, 0, 0, 0, 0, 0x64}),
+           Body({0x60, 0, 0xfd, 8, 0xff, 0xff, 0xff, 0xff, 0x64}),
+           Body({0x60, 0, 0xfc, 29, 0, 0xff, 0xff, 0xff, 0xff, 0x64})}) {
+    Check(std::get<BodyEmitFailure>(WriteLinearBody(indexed, names, limited))
+              .kind == BodyEmitError::kUnsupportedInstruction);
+    Check(limited.str().empty());
+  }
   std::ostringstream exact;
   Check(std::get<std::size_t>(WriteLinearBody(
             body, names, exact, {output.str().size()})) == output.str().size());

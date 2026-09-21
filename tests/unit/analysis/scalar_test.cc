@@ -47,8 +47,11 @@ int main() {
     Check(std::get<ScalarError>(LiftScalarInstruction(malformed, 8)) ==
           ScalarError::kMalformedInstruction);
   }
-  Check(std::get<ScalarError>(LiftScalarInstruction(
-            Decode({0xfc, 28, 0, 1}), 2)) == ScalarError::kUnsupportedOpcode);
+  const auto legacy_property = Decode({0xfc, 27, 0, 1});
+  Check(legacy_property.opcode ==
+        abcd::abc::Opcode::kDEPRECATED_LDOBJBYVALUE_PREF_V8_V8);
+  Check(std::get<ScalarError>(LiftScalarInstruction(legacy_property, 2)) ==
+        ScalarError::kUnsupportedOpcode);
   struct BinaryCase {
     std::uint8_t opcode;
     BinaryOperator op;
