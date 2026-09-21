@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "abcd/analysis/branch_condition.h"
+#include "abcd/source/linear_body.h"
 #include "abcd/source/scalar_expression.h"
 
 namespace {
@@ -26,9 +27,31 @@ void Bytecode(std::initializer_list<std::uint8_t> bytes) {
   Emit(assignment.expression);
   std::cout << ",\n";
 }
+void FunctionBody(std::initializer_list<std::uint8_t> bytes) {
+  const std::vector<std::uint8_t> storage(bytes);
+  abc::MethodBody body;
+  for (std::size_t offset = 0; offset < storage.size();) {
+    const auto decoded =
+        std::get<abc::DecodedInstruction>(abc::DecodeInstruction(
+            std::span(storage).subspan(offset), abc::ProfileId::kDynamic1206));
+    body.instructions.push_back(
+        {{static_cast<std::uint32_t>(offset)}, decoded, {}});
+    offset += decoded.size;
+  }
+  const std::array<std::string_view, 1> registers{"left"};
+  std::cout << "(left)=>{let right;\n";
+  if (!std::holds_alternative<std::size_t>(
+          source::WriteLinearBody(body, {"right", registers}, std::cout)))
+    std::abort();
+  std::cout << "};\n";
+}
 }  // namespace
 int main() {
   using namespace abcd::analysis;
+  std::cout << "export const linear = ";
+  FunctionBody({0x60, 0, 0x0a, 0, 0, 0x64});
+  std::cout << "export const throwValue = ";
+  FunctionBody({0x60, 0, 0xfe, 0});
   std::cout << "export const branches = [\n";
   for (const std::uint8_t opcode : {0x4f, 0x50, 0x9a, 0x51, 0x9b, 0x9c}) {
     const std::array<std::uint8_t, 5> bytes{opcode, 0, 0, 0, 0};
