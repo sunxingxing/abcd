@@ -38,15 +38,15 @@ struct MethodConstants {
 // for all registers and accumulator, initializes registers according to ABI,
 // and guarantees language values (no VM sentinels). Accumulator reads must be
 // dominated by a write here; caller initialization cannot bypass that check.
-// Only straight-line scalar/string assignments, nop, return and unconditional
-// throw are supported. Exceptions, branches and trailing code are explicit
-// errors. Full preflight leaves output untouched on semantic/budget/binding
-// failure; IO failure may leave a prefix. String loads require same-file
-// constants and one transient string allowance within the process memory
-// budget. Work is O(instructions * log(regions) + visited string bytes +
-// emitted bytes), with no body-sized output buffer. Inputs must stay stable
-// across both passes; second-pass read failures can leave a prefix and require
-// atomic output.
+// Only straight-line scalar/string/property assignments, nop, return and
+// unconditional throw are supported. Exceptions, branches and trailing code are
+// explicit errors. Full preflight leaves output untouched on
+// semantic/budget/binding failure; IO failure may leave a prefix. String loads
+// require same-file constants and one transient string allowance within the
+// process memory budget. Work is O(instructions * log(regions) + visited string
+// bytes + emitted bytes), with no body-sized output buffer. Inputs must stay
+// stable across both passes; second-pass read failures can leave a prefix and
+// require atomic output.
 [[nodiscard]] BodyEmitResult WriteLinearBody(
     const abc::MethodBody& body, ScalarNames names, std::ostream& output,
     EmitBudget budget = {}, const MethodConstants* constants = nullptr);

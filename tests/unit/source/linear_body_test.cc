@@ -54,7 +54,8 @@ int main() {
             .scalar_error == abcd::analysis::ScalarError::kRegisterRange);
   Check(limited.str().empty());
   for (const auto& invalid :
-       {Body({0x64}), Body({0x0a, 0, 0, 0x64}), Body({0xfe, 0})}) {
+       {Body({0x64}), Body({0x0a, 0, 0, 0x64}), Body({0xfe, 0}),
+        Body({0x37, 0, 0, 0x64}), Body({0x85, 0, 0, 0, 0x64})}) {
     Check(std::get<BodyEmitFailure>(WriteLinearBody(invalid, names, limited))
               .kind == BodyEmitError::kAccumulatorHole);
     Check(limited.str().empty());
@@ -95,7 +96,7 @@ int main() {
     FailingBuffer buffer;
     std::ostream failed(&buffer);
     if (exceptions) failed.exceptions(std::ios::badbit | std::ios::failbit);
-    Check(std::get<BodyEmitFailure>(WriteLinearBody(body, names, failed)).emit_error ==
-          EmitError::kWrite);
+    Check(std::get<BodyEmitFailure>(WriteLinearBody(body, names, failed))
+              .emit_error == EmitError::kWrite);
   }
 }

@@ -21,6 +21,26 @@ int main() {
   using namespace abcd::source;
   const std::array<std::string_view, 1> registers{"left"};
   const ScalarNames names{"right", registers};
+  const ScalarExpression property =
+      PropertyRead{abcd::abc::RegisterId{0}, Accumulator{}};
+  std::ostringstream property_output;
+  Check(std::get<std::size_t>(WriteScalarExpression(
+            property, names, property_output)) == property_output.str().size());
+  Check(property_output.str() == "(left)[right]");
+  std::ostringstream property_short;
+  Check(std::get<EmitError>(WriteScalarExpression(
+            property, names, property_short,
+            {property_output.str().size() - 1})) == EmitError::kOutputLimit);
+  Check(property_short.str().empty());
+  Check(std::get<EmitError>(WriteScalarExpression(
+            property, {"bad.name", registers}, property_short)) ==
+        EmitError::kInvalidBinding);
+  Check(property_short.str().empty());
+  std::ostringstream property_exact;
+  Check(std::get<std::size_t>(WriteScalarExpression(
+            property, names, property_exact, {property_output.str().size()})) ==
+        property_output.str().size());
+  Check(property_exact.str() == property_output.str());
   for (const auto predicate :
        {UnaryOperator::kFalseOrZero, UnaryOperator::kTrueOrNonzeroNumber,
         UnaryOperator::kIncrement, UnaryOperator::kDecrement}) {

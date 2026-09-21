@@ -27,8 +27,11 @@ bool ReadsAccumulator(const ScalarExpression& expression) {
           return reads(node);
         } else if constexpr (std::is_same_v<Node, UnaryExpression>) {
           return reads(node.input);
-        } else {
+        } else if constexpr (std::is_same_v<Node, BinaryExpression>) {
           return reads(node.left) || reads(node.right);
+        } else {
+          static_assert(std::is_same_v<Node, PropertyRead>);
+          return reads(node.receiver) || reads(node.key);
         }
       },
       expression);

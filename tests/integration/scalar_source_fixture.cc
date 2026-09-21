@@ -64,6 +64,15 @@ int main() {
   FunctionBody({0xfc, 9, 0, 0x64});
   std::cout << "export const legacyDecrement = ";
   FunctionBody({0xfc, 10, 0, 0x64});
+  std::cout << "export const firstElement = ";
+  FunctionBody({0x62, 0, 0, 0, 0, 0x37, 0, 0, 0x64});
+  std::cout << "export const propertyReads = [\n";
+  Bytecode({0x37, 0, 0});
+  Bytecode({0x85, 0xff, 0xff, 0});
+  std::cout << "];\nexport const propertyStates = [\n";
+  Bytecode({0x37, 0, 0}, true);
+  Bytecode({0x85, 0xff, 0xff, 0}, true);
+  std::cout << "];\n";
   std::cout << "export const branches = [\n";
   for (const std::uint8_t opcode : {0x4f, 0x50, 0x9a, 0x51, 0x9b, 0x9c}) {
     const std::array<std::uint8_t, 5> bytes{opcode, 0, 0, 0, 0};

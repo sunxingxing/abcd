@@ -2,6 +2,42 @@ import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 
 const generated = await import(pathToFileURL(process.argv[2]).href);
+assert.equal(generated.firstElement([42]), 42);
+assert.equal(generated.firstElement('text'), 't');
+assert.equal(generated.firstElement({}), undefined);
+assert.throws(() => generated.firstElement(null), TypeError);
+assert.equal(generated.propertyReads.length, 2);
+for (let i = 0; i < generated.propertyReads.length; ++i) {
+  const read = generated.propertyReads[i];
+  const state = generated.propertyStates[i];
+  const symbol = Symbol('key');
+  const object = {answer: 42, [symbol]: 'symbol', 0: 'zero'};
+  for (const key of ['answer', symbol, -0, 0n, 'absent', undefined])
+    assert.equal(read(object, key), object[key]);
+  const trace = [];
+  const key = {[Symbol.toPrimitive](hint) {trace.push(hint); return 'answer';}};
+  const receiver = new Proxy(object, {get(target, key, actualReceiver) {
+    trace.push(['get', key, actualReceiver === receiver]);
+    return Reflect.get(target, key, actualReceiver);
+  }});
+  assert.equal(read(receiver, key), 42);
+  assert.deepEqual(trace, ['string', ['get', 'answer', true]]);
+  trace.length = 0;
+  for (const receiver of [null, undefined]) {
+    assert.throws(() => read(receiver, key), TypeError);
+    assert.deepEqual(trace, []);
+  }
+  const error = {};
+  const throwingKey = {[Symbol.toPrimitive]() {throw error;}};
+  assert.deepEqual(state(object, throwingKey), [object, throwingKey, error]);
+  const getter = {get answer() {assert.equal(this, getter); throw error;}};
+  assert.deepEqual(state(getter, 'answer'), [getter, 'answer', error]);
+  const inherited = Object.create({get answer() {return this.result;}});
+  inherited.result = 19;
+  assert.equal(read(inherited, 'answer'), 19);
+  assert.equal(read('abc', 'length'), 3);
+  assert.equal(read(12, 'missing'), undefined);
+}
 assert.equal(generated.linear(7), 14);
 assert.equal(generated.linear('a'), 'aa');
 assert.equal(generated.linear(4n), 8n);

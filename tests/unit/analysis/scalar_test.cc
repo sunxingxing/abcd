@@ -17,6 +17,38 @@ abcd::abc::DecodedInstruction Decode(
 }  // namespace
 int main() {
   using namespace abcd::analysis;
+  for (const auto encoded :
+       {std::initializer_list<std::uint8_t>{0x37, 0xff, 7},
+        std::initializer_list<std::uint8_t>{0x85, 0xff, 0xff, 7}}) {
+    const auto decoded = Decode(encoded);
+    const auto assignment =
+        std::get<ScalarAssignment>(LiftScalarInstruction(decoded, 8));
+    const auto read = std::get<PropertyRead>(assignment.expression);
+    Check(std::get<abcd::abc::RegisterId>(read.receiver).value == 7);
+    Check(std::holds_alternative<Accumulator>(read.key));
+    Check(std::holds_alternative<Accumulator>(assignment.destination));
+    Check(assignment.completion == CompletionEffect::kMayThrow);
+    Check(std::get<ScalarError>(LiftScalarInstruction(decoded, 7)) ==
+          ScalarError::kRegisterRange);
+    auto malformed = decoded;
+    malformed.operands[0].raw_bits = 65536;
+    Check(std::get<ScalarError>(LiftScalarInstruction(malformed, 8)) ==
+          ScalarError::kMalformedInstruction);
+    malformed = decoded;
+    malformed.operands[1].raw_bits = 256;
+    Check(std::get<ScalarError>(LiftScalarInstruction(malformed, 257)) ==
+          ScalarError::kMalformedInstruction);
+    malformed = decoded;
+    malformed.operand_count = 1;
+    Check(std::get<ScalarError>(LiftScalarInstruction(malformed, 8)) ==
+          ScalarError::kMalformedInstruction);
+    malformed = decoded;
+    malformed.operands[1].kind = abcd::abc::OperandKind::kImmediate;
+    Check(std::get<ScalarError>(LiftScalarInstruction(malformed, 8)) ==
+          ScalarError::kMalformedInstruction);
+  }
+  Check(std::get<ScalarError>(LiftScalarInstruction(
+            Decode({0xfc, 28, 0, 1}), 2)) == ScalarError::kUnsupportedOpcode);
   struct BinaryCase {
     std::uint8_t opcode;
     BinaryOperator op;

@@ -175,6 +175,28 @@ ScalarResult LiftScalarInstruction(const DecodedInstruction& instruction,
                             completion};
   }
   switch (instruction.opcode) {
+    case Opcode::kLDOBJBYVALUE_IMM8_V8:
+    case Opcode::kLDOBJBYVALUE_IMM16_V8: {
+      if (const auto error = CheckOperands(
+              instruction, {OperandKind::kImmediate, OperandKind::kRegister},
+              frame_size))
+        return *error;
+      constexpr std::size_t kCacheOperand = 0;
+      constexpr std::size_t kReceiverOperand = 1;
+      const auto cache_max = instruction.opcode == Opcode::kLDOBJBYVALUE_IMM8_V8
+                                 ? UINT8_MAX
+                                 : UINT16_MAX;
+      if (instruction.operands[kCacheOperand].raw_bits >
+              static_cast<std::uint64_t>(cache_max) ||
+          instruction.operands[kReceiverOperand].raw_bits > UINT8_MAX)
+        return ScalarError::kMalformedInstruction;
+      // Legacy LDOBJBYVALUE is deliberately absent: the pinned interpreter's
+      // slow path reads acc instead of its encoded key register.
+      return ScalarAssignment{
+          Accumulator{},
+          PropertyRead{Register(instruction, kReceiverOperand), Accumulator{}},
+          CompletionEffect::kMayThrow};
+    }
     case Opcode::kMOV_V4_V4:
     case Opcode::kMOV_V8_V8:
     case Opcode::kMOV_V16_V16: {

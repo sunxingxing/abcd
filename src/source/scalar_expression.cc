@@ -261,6 +261,13 @@ class ExpressionWriter {
     Expression(binary.right);
     Append(")");
   }
+  void Expression(const PropertyRead& property) {
+    Append("(");
+    Expression(property.receiver);
+    Append(")[");
+    Expression(property.key);
+    Append("]");
+  }
   ScalarNames names_;
   std::size_t limit_;
   std::ostream* output_;

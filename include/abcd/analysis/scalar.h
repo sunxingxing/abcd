@@ -58,9 +58,17 @@ struct BinaryExpression {
   ScalarValue left;
   ScalarValue right;
 };
+// Computed ordinary property access, not an own-property lookup or a pure
+// expression: key coercion, proxies and getters can execute arbitrary code.
+// Produces a value, not a call receiver/reference. Fusing a later call must
+// preserve that call's explicit this argument, not infer it from this node.
+struct PropertyRead {
+  ScalarValue receiver;
+  ScalarValue key;
+};
 enum class CompletionEffect { kNormal, kMayThrow };
 using ScalarExpression =
-    std::variant<ScalarValue, UnaryExpression, BinaryExpression>;
+    std::variant<ScalarValue, UnaryExpression, BinaryExpression, PropertyRead>;
 struct ScalarAssignment {
   ScalarSlot destination;
   ScalarExpression expression;

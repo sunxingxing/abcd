@@ -13,7 +13,7 @@ Reference: pinned OpenHarmony-v7.0-Release `isa.yaml`,
 
 ## Covered Forms
 
-The current mapping covers 48 encodings:
+The current mapping covers 50 encodings:
 
 - Twenty binary arithmetic, equality, comparison, shift and bitwise operations.
   The register is the left input and the accumulator is the right input.
@@ -23,6 +23,8 @@ The current mapping covers 48 encodings:
 - Three move encodings plus accumulator load/store.
 - Signed 32-bit integer and raw binary64 immediate loads.
 - Undefined, null, true, false, canonical NaN and positive infinity loads.
+- Two modern computed property reads, with effectful `PropertyRead` nodes;
+  see [property-reads.md](property-reads.md) for legacy differences.
 
 `shr2` maps to unsigned right shift, `ashr2` to signed right shift, `not` to
 bitwise complement, and `istrue/isfalse` to truth conversion/negation. Operands
