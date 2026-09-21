@@ -8,6 +8,7 @@
 #include <variant>
 #include <vector>
 
+#include "abcd/abc/method_references.h"
 #include "abcd/corpus/abc_file.h"
 
 namespace {
@@ -53,6 +54,67 @@ int main() {
   Check(std::holds_alternative<MetadataIndex>(built));
   const auto& index = std::get<MetadataIndex>(built);
   Check(index.regions.size() == 2);
+  MethodBody body;
+  BodyInstruction instruction;
+  instruction.decoded.operand_count = 3;
+  instruction.decoded.operands[0].kind = OperandKind::kMethod;
+  instruction.decoded.operands[1].kind = OperandKind::kString;
+  instruction.decoded.operands[1].raw_bits = 1;
+  instruction.decoded.operands[2].kind = OperandKind::kLiteralArray;
+  instruction.decoded.operands[2].raw_bits = 2;
+  body.instructions.push_back(instruction);
+  instruction.offset.value = 10;
+  body.instructions.push_back(instruction);
+  auto references = ResolveMethodReferences(file, header, index, {200}, body);
+  Check(std::holds_alternative<MethodReferences>(references));
+  const auto& resolved = std::get<MethodReferences>(references);
+  Check(resolved.references.size() == 3);
+  Check(resolved.operand_count == 6);
+  for (std::size_t i = 0; i < resolved.references.size(); ++i) {
+    Check(resolved.references[i].slot.value == i);
+    Check(resolved.references[i].target.offset.value == 400 + i * 10);
+    Check(resolved.references[i].first_use.value == 0);
+  }
+  Check(std::get<ReferenceFailure>(
+            ResolveMethodReferences(file, header, index, {200}, body, {0}))
+            .kind == ReferenceError::kResourceLimit);
+  body.instructions.back().decoded.operands[2].raw_bits = UINT64_MAX;
+  const auto overflow = std::get<ReferenceFailure>(
+      ResolveMethodReferences(file, header, index, {200}, body));
+  Check(overflow.kind == ReferenceError::kIndexOverflow);
+  Check(overflow.pc.value == 10);
+  body.instructions.back().decoded.operands[2].raw_bits = 3;
+  const auto invalid = std::get<ReferenceFailure>(
+      ResolveMethodReferences(file, header, index, {200}, body));
+  Check(invalid.kind == ReferenceError::kResolution);
+  Check(invalid.metadata_error == MetadataError::kReference);
+  Check(invalid.pc.value == 10);
+  for (const std::size_t length : {200U, 201U, 1024U, 8192U}) {
+    body.instructions.assign(length, instruction);
+    const auto many = std::get<MethodReferences>(
+        ResolveMethodReferences(file, header, index, {200}, body));
+    Check(many.references.size() == 3);
+    Check(many.operand_count == length * 3);
+  }
+  body.instructions.assign(1, instruction);
+  for (auto& operand : body.instructions.front().decoded.operands)
+    operand.raw_bits = 0;
+  const auto mixed = std::get<MethodReferences>(
+      ResolveMethodReferences(file, header, index, {200}, body));
+  Check(mixed.references.size() == 3);  // Same slot, different semantic roles.
+  body.instructions.front().decoded.operand_count = kMaxInstructionOperands + 1;
+  Check(std::get<ReferenceFailure>(
+            ResolveMethodReferences(file, header, index, {200}, body))
+            .kind == ReferenceError::kMalformedOperands);
+  body.instructions.assign(1, instruction);
+  body.instructions.front().decoded.operands[0].kind = OperandKind::kField;
+  Check(std::get<ReferenceFailure>(
+            ResolveMethodReferences(file, header, index, {200}, body))
+            .kind == ReferenceError::kUnsupportedOperand);
+  body.instructions.clear();
+  Check(std::get<MethodReferences>(
+            ResolveMethodReferences(file, header, index, {200}, body, {0}))
+            .references.empty());
   const std::array kinds{PoolEntityKind::kMethod, PoolEntityKind::kString,
                          PoolEntityKind::kLiteralArray};
   for (std::uint32_t region = 0; region < 2; ++region) {

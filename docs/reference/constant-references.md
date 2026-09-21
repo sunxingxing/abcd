@@ -84,6 +84,26 @@ unverified combinations explicitly.
 
 ## Implementation Checks
 
+ResolveMethodReferences connects decoded instruction operands to regional
+resolution. It counts reference operands within a capacity budget, sorts by
+typed role, pool slot and byte PC, then deduplicates before resolving each
+unique role/slot pair. The result retains the earliest use and direct target
+offset for later lazy payload loading. Equal slots with distinct roles never
+merge. Register/immediate operands are ignored; unsupported type/field roles,
+oversized pool indexes and malformed operand counts fail explicitly.
+
+For I instructions, K reference operands, U unique pairs and R regions, time is
+O(I + K log K + U log R), with O(K) admitted vector capacity. Erasing duplicate
+entries does not pretend to release the original capacity. This function
+requires the index/header/body from the same immutable file. It validates
+entity ranges only, not target payloads, method membership, nested literals
+or source-level bindings. Batch-tool integration remains pending.
+Resolver regression coverage includes duplicate uses, distinct roles sharing
+one slot, retained first-use PCs, overflow and invalid-target diagnostics,
+malformed operand counts, unsupported roles, zero-budget empty input and
+200/201/1024/8192 instruction collections. Debug CTest 23/23 and ASan/UBSan
+CTest 18/18 passed after this integration.
+
 ReadStringEntity now accepts a direct EntityOffset and returns UTF-16 code
 units. It reuses the metadata MUTF-8 validator, then converts validated bytes
 in a second linear pass. Encoded NUL, individual surrogate units and canonical

@@ -12,6 +12,7 @@ add_library(abcd_abc
   src/abc/metadata_cursor.cc
   src/abc/metadata_index.cc
   src/abc/method_body.cc
+  src/abc/method_references.cc
   src/abc/pool_reference.cc
   src/abc/string_entity.cc
 )
