@@ -22,3 +22,10 @@
   version in build/validation evidence. EVP calls must check return statuses.
 - Hash incrementally in bounded buffers. This avoids both a custom cryptographic
   implementation and whole-file allocation for the multi-gigabyte corpus.
+
+## zlib
+
+- System zlib supplies incremental Adler32, the checksum specified by ABC.
+- Seed 1; process bytes from offset 12 through EOF, excluding magic/checksum.
+- License: zlib license. CMake records the discovered package version in its
+  configure output. Checksum correctness tests use an independent bounded oracle.
