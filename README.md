@@ -113,8 +113,11 @@ build/release/abc_modules tests/corpus/abc-index.json \
 ```
 
 该工具只运行字段、封装和模块元数据检查，不重复方法体分析。merged 文件按运行时
-规则选择 record，检查模块请求、导入导出表及其字符串引用；bundle 路径当前明确
-报告不支持并返回非零状态，不作为成功或静态跳过。请求阶段表、JSON 内容语法、
+规则选择 record，检查模块请求、导入导出表及其字符串引用。bundle 文件按特殊类
+发现单个运行时 record；含模块字段时须在 MANIFEST 前传入
+`--bundle-descriptor VALUE`，VALUE 必须是运行时构造器收到的描述符，不能猜成
+宿主路径。该值应用于本次命令的所有 bundle 文件；不同描述符应分批运行。
+缺失所需描述符会返回非零状态，不作为成功或静态跳过。请求阶段表、JSON 内容语法、
 跨模块绑定和源码行为等价尚未验证。
 
 ## Sanitizer

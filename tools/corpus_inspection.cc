@@ -136,7 +136,8 @@ struct FileReport {
 
 FileReport IndexFile(const std::filesystem::path& root,
                      const CorpusEntry& entry, InspectionStage stage,
-                     std::ostream& diagnostics) {
+                     std::ostream& diagnostics,
+                     std::optional<std::string_view> bundle_descriptor) {
   FileReport report;
   auto opened = AbcFile::OpenBeneath(root, entry.relative_path);
   if (const auto* error = std::get_if<FileError>(&opened)) {
@@ -200,7 +201,7 @@ FileReport IndexFile(const std::filesystem::path& root,
   report.methods = index.methods.size();
   report.fields = index.fields.size();
   if (stage == InspectionStage::kModules) {
-    report.modules = InspectModules(*file, header, index, diagnostics);
+    report.modules = InspectModules(*file, header, index, diagnostics, bundle_descriptor);
     report.outcome = report.modules.failed_module_records
                          ? IndexOutcome::kModuleFailure : IndexOutcome::kModulesChecked;
     return report;
@@ -261,9 +262,17 @@ nlohmann::json Serialize(const CorpusEntry& entry, const FileReport& report) {
 }
 
 int Run(int argc, char** argv, InspectionStage stage) {
+  std::optional<std::string_view> bundle_descriptor;
+  constexpr int kDescriptorArguments = 2;
+  if (stage == InspectionStage::kModules && argc > kDescriptorArguments &&
+      std::string_view(argv[1]) == "--bundle-descriptor") {
+    bundle_descriptor = argv[2];
+    argc -= kDescriptorArguments;
+    argv += kDescriptorArguments;
+  }
   if (argc < kRequiredArguments || (argc - 2) % kRootArgumentWidth != 0) {
     std::cerr << "usage: " << ToolName(stage)
-              << " MANIFEST CORPUS_ID ROOT [CORPUS_ID ROOT ...]\n";
+              << " [--bundle-descriptor VALUE (modules only)] MANIFEST CORPUS_ID ROOT [CORPUS_ID ROOT ...]\n";
     return EXIT_FAILURE;
   }
   rlimit limit{};
@@ -314,7 +323,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
     if (files != 0) std::cout << ',';
     ++files;
     std::cout << (stage == InspectionStage::kModules ? "{\"module_failures\":[" : "{\"method_failures\":[");
-    const auto report = IndexFile(root->second, entry, stage, std::cout);
+    const auto report = IndexFile(root->second, entry, stage, std::cout, bundle_descriptor);
     std::cout << ']';
     const auto serialized = Serialize(entry, report);
     for (const auto& [key, value] : serialized.items())
@@ -374,6 +383,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
        static_cast<std::uint64_t>(usage.ru_maxrss) * kBytesPerKibibyte},
       {"address_space_limit_bytes", limit.rlim_cur}};
   summary.update(SerializeCounts(inspection));
+  if (bundle_descriptor) summary["bundle_descriptor"] = *bundle_descriptor;
   if (stage == InspectionStage::kModules) summary.update(SerializeCounts(modules));
   for (const auto& [key, value] : summary.items())
     std::cout << ',' << nlohmann::json(key) << ':' << value;

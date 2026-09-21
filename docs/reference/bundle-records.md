@@ -28,6 +28,10 @@ regional lookup for word-encoded fields. No method bodies are loaded.
 
 Unit coverage includes overwrite order, descriptor exclusion even for a missing
 value, sentinel reset, later-class selection, early selected-class retention,
-flags, unsupported profiles, bad names and owner mismatch. Corpus CLI wiring
-and runtime descriptor provenance remain pending; the previous 113 explicit
-bundle failures are not reclassified as passing by this library addition.
+flags, unsupported profiles, bad names and owner mismatch. The corpus CLI now
+uses this reader for bundle files. When a module class carries fields, it
+requires `--bundle-descriptor VALUE` before MANIFEST; the value applies to all
+bundle files selected by that invocation. Without module fields, no descriptor
+can affect discovery, so no option is required. Descriptor provenance remains
+the caller's responsibility. Integration tests exercise missing, valid and
+invalid descriptor selections as well as descriptor-independent bundles.

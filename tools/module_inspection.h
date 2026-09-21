@@ -2,6 +2,8 @@
 #define ABCD_TOOLS_MODULE_INSPECTION_H_
 
 #include <iosfwd>
+#include <optional>
+#include <string_view>
 #include <nlohmann/json.hpp>
 
 #include "abcd/abc/metadata_index.h"
@@ -23,6 +25,7 @@ nlohmann::json SerializeCounts(const ModuleCounts& counts);
 ModuleCounts InspectModules(const corpus::AbcFile& file,
                             const abc::Header& header,
                             const abc::MetadataIndex& index,
-                            std::ostream& diagnostics);
+                            std::ostream& diagnostics,
+                            std::optional<std::string_view> bundle_descriptor = {});
 }  // namespace abcd::tools
 #endif

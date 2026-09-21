@@ -36,7 +36,8 @@ enum class FixtureKind {
   kExceptionMethod,
   kReferenceMethod,
   kInvalidReference,
-  kModuleRecord
+  kModuleRecord,
+  kBundleModule
 };
 
 void WriteWord(std::span<std::uint8_t> bytes, std::size_t offset,
@@ -88,6 +89,8 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kInvalidReference;
     else if (option == "--module-record")
       kind = FixtureKind::kModuleRecord;
+    else if (option == "--bundle-module")
+      kind = FixtureKind::kBundleModule;
     else
       return EXIT_FAILURE;
   }
@@ -99,8 +102,16 @@ int main(int argc, char** argv) {
       13, 'L', 'd', 'e', 'm', 'o', ';', 0, 0, 0, 0, 0, 0, 0, 0, 0};
   std::vector<std::uint8_t> dynamic(kClassOffset);
   dynamic.insert(dynamic.end(), kClass.begin(), kClass.end());
-  if (kind == FixtureKind::kModuleRecord) {
-    dynamic[kClassOffset + 13] = 2;
+  if (kind == FixtureKind::kModuleRecord || kind == FixtureKind::kBundleModule) {
+    if (kind == FixtureKind::kBundleModule) {
+      dynamic.resize(kClassOffset);
+      constexpr std::string_view kDescriptor = "L_ESModuleRecord;";
+      dynamic.push_back((kDescriptor.size() << 1) | 1);
+      dynamic.insert(dynamic.end(), kDescriptor.begin(), kDescriptor.end());
+      dynamic.insert(dynamic.end(), {0, 0, 0, 0, 0, 0, 2, 0, 0});
+    } else {
+      dynamic[kClassOffset + 13] = 2;
+    }
     const auto first_field = dynamic.size();
     dynamic.insert(dynamic.end(), {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0});
     const auto second_field = dynamic.size();
@@ -112,8 +123,8 @@ int main(int argc, char** argv) {
       dynamic.push_back(0);
       return offset;
     };
-    const auto common_name = name("isCommonjs");
-    const auto module_name = name("moduleRecordIdx");
+    const auto common_name = name(kind == FixtureKind::kBundleModule ? "ignored" : "isCommonjs");
+    const auto module_name = name(kind == FixtureKind::kBundleModule ? "entry.abc" : "moduleRecordIdx");
     WriteWord(dynamic, first_field + 4, common_name);
     WriteWord(dynamic, second_field + 4, module_name);
     const auto module = dynamic.size();

@@ -9,7 +9,7 @@ namespace abcd::tools {
 namespace {
 enum class ModuleFault {
   kPackaging,
-  kBundleUnsupported,
+  kDescriptorRequired,
   kAttributes,
   kPayload,
   kString
@@ -41,7 +41,8 @@ nlohmann::json SerializeCounts(const ModuleCounts& c) {
 ModuleCounts InspectModules(const corpus::AbcFile& file,
                             const abc::Header& header,
                             const abc::MetadataIndex& index,
-                            std::ostream& diagnostics) {
+                            std::ostream& diagnostics,
+                            std::optional<std::string_view> bundle_descriptor) {
   ModuleCounts counts;
   const auto fail = [&](ModuleFault kind, abc::EntityOffset offset,
                         int detail) {
@@ -57,23 +58,16 @@ ModuleCounts InspectModules(const corpus::AbcFile& file,
          static_cast<int>(failure->kind));
     return counts;
   }
-  if (std::get<abc::FilePackaging>(packaging) == abc::FilePackaging::kBundle) {
-    ++counts.bundle_files;
-    fail(ModuleFault::kBundleUnsupported, {}, 0);
-    return counts;
-  }
-  ++counts.merged_files;
-  for (const auto& record : index.records) {
-    const auto parsed =
-        abc::ReadMergedRecordAttributes(file, header, index, record);
+  const auto inspect = [&](const abc::AttributeResult& parsed) {
     if (const auto* failure = std::get_if<abc::AttributeFailure>(&parsed)) {
       fail(ModuleFault::kAttributes, failure->field,
            static_cast<int>(failure->kind));
-      continue;
+      return;
     }
     const auto& attributes = std::get<abc::RecordAttributes>(parsed);
-    // InitializeMergedPF only publishes records carrying CommonJS/JSON fields.
-    if (!attributes.common_js.has_value() && !attributes.json_content) continue;
+    // Bundle attributes always carry flag presence; merged runtime publishes
+    // only records carrying CommonJS/JSON fields.
+    if (!attributes.common_js.has_value() && !attributes.json_content) return;
     bool valid = true;
     const auto string = [&](abc::EntityOffset offset) {
       if (!valid) return;
@@ -93,7 +87,7 @@ ModuleCounts InspectModules(const corpus::AbcFile& file,
         if (valid)
           fail(ModuleFault::kPayload, failure->offset,
                static_cast<int>(failure->kind));
-        continue;
+        return;
       }
       const auto& module = std::get<abc::ModuleInfo>(decoded);
       for (const auto offset : module.requests) string(offset);
@@ -110,7 +104,7 @@ ModuleCounts InspectModules(const corpus::AbcFile& file,
         string(entry.exported);
         string(entry.imported);
       }
-      if (!valid) continue;
+      if (!valid) return;
       ++counts.modules;
       counts.module_requests += module.requests.size();
       counts.module_imports +=
@@ -120,6 +114,25 @@ ModuleCounts InspectModules(const corpus::AbcFile& file,
                                module.star_exports.size();
     }
     if (valid) ++counts.checked_records;
+  };
+  if (std::get<abc::FilePackaging>(packaging) == abc::FilePackaging::kBundle) {
+    ++counts.bundle_files;
+    // No module fields means descriptor-independent selection. Otherwise do
+    // not silently substitute a host path for the runtime constructor argument.
+    if (!bundle_descriptor) {
+      for (const auto& record : index.records) {
+        if (record.descriptor == "L_ESModuleRecord;" && record.field_count != 0) {
+          fail(ModuleFault::kDescriptorRequired, record.offset, 0);
+          return counts;
+        }
+      }
+    }
+    inspect(abc::ReadBundleRecordAttributes(
+        file, header, index, bundle_descriptor.value_or(std::string_view{})));
+  } else {
+    ++counts.merged_files;
+    for (const auto& record : index.records)
+      inspect(abc::ReadMergedRecordAttributes(file, header, index, record));
   }
   return counts;
 }
