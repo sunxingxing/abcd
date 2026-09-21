@@ -44,6 +44,18 @@ and use binary search or an appropriate cached interval, not repeat that linear
 search for every entity/reference when collections exceed 200 items.
 Primitive field-type encodings must remain distinct from ordinary entity IDs.
 
+`file_item_container.cpp:928-963` writes `(0xffffffff, 0xffffffff)` for an
+index table whose `NeedsEmit()` is false (field/proto tables). This is a paired
+absence sentinel, not a huge table count or an arbitrary out-of-range table.
+Both words must agree; attempts to resolve entries through absent tables fail.
+`file_item_container.h:291-297` restricts this omission to field/proto tables
+for bytecode major versions >= 12; version 9/11 profiles retain real tables.
+The first full-corpus indexing run found this in 399 of 402 dynamic files,
+including `/home/rabbit/sample/abc/002974edf05b0ed8068861109aba3d33.abc`.
+Its first region has class table `(1110, 263812)`, method table
+`(65531, 268252)`, and both field/proto pairs absent. Rejecting these pairs as
+ordinary bounds failures would incorrectly reject supported dynamic files.
+
 ## Runtime Records
 
 ets_runtime `ecmascript/jspandafile/js_pandafile.cpp:250-310` builds JSRecordInfo

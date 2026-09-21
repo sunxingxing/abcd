@@ -3,8 +3,8 @@
 C++20 项目，目标是从动态 ABC 恢复语义可信的 JS/TS/ArkTS，并为每个 record
 分别输出文件。参考版本固定为官方 `OpenHarmony-v7.0-Release`，旧版 ABC 仍在范围内。
 
-**当前只完成读取和语料分类基础，不具备源码反编译能力。** 分类成功、头部识别、
-静态跳过均不代表方法解码成功或行为等价。
+**当前实现读取、语料分类和 record/方法元数据索引，不具备源码反编译能力。**
+分类成功、静态跳过或索引成功均不代表指令解码成功或行为等价。
 
 ## 构建与测试
 
@@ -40,6 +40,22 @@ build/release/abc_scan tests/corpus/abc-index.json \
 CLI 使用 1,000,000,000 字节的虚拟地址空间上限，并报告峰值 RSS；不会放宽更低的
 继承限制。当前扫描器无子进程。后续完整反编译仍须独立通过同一内存上限验收。
 
+## Record 与方法索引
+
+```sh
+build/release/abc_index tests/corpus/abc-index.json \
+  batch /home/rabbit/sample/abc \
+  paired /home/rabbit/sample/abc_with_code
+```
+
+索引器核对清单中的文件哈希及检测规则版本，直接跳过已确认的静态文件；内容变化
+会报错，需先重新运行分类扫描。输出 JSON 包含每个文件的索引结果、record/方法
+数量、方法体字节数和进程峰值 RSS，不写入或改动输入 ABC。
+
+每次只构建一个文件的元数据索引；函数指令保留在文件中，索引只保存位置与长度。
+区域引用通过有序区间查询，方法归属从 class 内联成员序列和区域引用交叉校验。
+此工具同样施加 1G 进程地址空间限制，尚未承担函数语义恢复或源码生成。
+
 ## Sanitizer
 
 ```sh
@@ -58,6 +74,6 @@ ASan 需要巨大的虚拟 shadow 映射，因此该配置验证库和扫描工�
 - [项目规则](AGENTS.md)
 - [总体设计](docs/superpowers/specs/2026-09-22-abc-decompiler-design.md)
 - [语料分类验证记录](docs/validation/2026-09-22-corpus-ingestion.md)
-- 下一步：动态 record/方法元数据索引、按需方法体解码、异步有界调度与语义恢复。
+- 下一步：按需方法体解码、异步有界调度与语义恢复。
 
 尚未输出任何反编译源码。不得将汇编、占位函数或配套源码复制品作为最终结果。
