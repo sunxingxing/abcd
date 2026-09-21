@@ -13,6 +13,20 @@ struct OrdinaryCapture {
 // chain. The generated sendable module's separate environment is unresolved.
 struct SendableCapture {};
 using CreationCapture = std::variant<OrdinaryCapture, SendableCapture>;
+struct CapturedSlot {
+  CapturedDepth depth;
+  LexicalSlot slot;
+};
+enum class CaptureRebaseError { kSendableEnvironment };
+
+// One ordinary creation edge: input is a target-method captured binding;
+// result belongs to the caller index. Local target bindings are not inputs.
+// Preserve creation-site context with the result; neither shared target methods
+// nor equal allocation-site IDs imply shared runtime cells. No TDZ/value proof.
+[[nodiscard]] std::variant<LexicalBinding, EnvironmentError, CaptureRebaseError>
+RebaseCapture(const EnvironmentIndex& caller, const CreationCapture& creation,
+              CapturedSlot captured);
+
 struct CreationBinding {
   abc::CodeOffset offset;
   FunctionCreation creation;

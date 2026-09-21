@@ -44,8 +44,10 @@ The jump-pointer technique is described in section 3.2 of Bender and Farach-Colt
 [The Level Ancestor Problem simplified](https://www3.cs.stonybrook.edu/~bender/newpub/2004-level.pdf),
 TCS 321 (2004), DOI 10.1016/j.tcs.2003.05.002. We use an original implementation
 of bounded doubling, not copied code or the paper's more elaborate optimal
-macro/micro-tree implementation. With the ISA's 16-bit distance, at most 16
-table levels are needed; this avoids extra ladder/decomposition machinery while
+macro/micro-tree implementation. ISA distances remain 16 bits, but environment
+pops and cross-context capture offsets use the 32-bit `CapturedDepth` domain.
+The table therefore has 32 levels to avoid truncating rebased distances; this
+avoids extra ladder/decomposition machinery while
 keeping both memory and query work explicitly bounded. No new dependency or
 third-party code license is introduced.
 
@@ -61,9 +63,9 @@ Captured arithmetic is deferred until query time. A definition whose parent is
 only a query beyond that representable depth fails. Precomputing every captured
 jump must not cause spurious construction failures.
 
-For N definitions and D=65,536 depth values, construction/storage are
+For N definitions and D=2^32 captured-depth values, construction/storage are
 O(N log D), query is O(log D), and slot validation is O(1) after ancestor lookup.
-Thus the fixed-width implementation has linear construction and at most 16
+Thus the fixed-width implementation has linear construction and at most 32
 query iterations. It has no all-pairs table or per-variable whole-tree walk.
 
 The fixed node-array payload is admitted before allocation and reported by
@@ -84,7 +86,8 @@ seeded 64-node forests are checked against an independent parent-walking oracle.
 Chains at 1/200/201/4,096/65,537 nodes query the maximum encoded distance for every
 node and verify linear payload growth.
 
-Debug CTest passed 52/52; the new index test also passed ASan/UBSan. Running
+The original 16-level implementation passed Debug CTest 52/52 and its new
+index test passed ASan/UBSan. Running
 `/usr/bin/time -v build/decode/environment_index_test` completed in 0.10 seconds
 with peak RSS 14,983,168 bytes. This is a synthetic index test measurement, not
 the memory cost or semantic validation of full-corpus source recovery.

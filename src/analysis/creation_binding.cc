@@ -1,6 +1,18 @@
 #include "abcd/analysis/creation_binding.h"
 
 namespace abcd::analysis {
+std::variant<LexicalBinding, EnvironmentError, CaptureRebaseError>
+RebaseCapture(const EnvironmentIndex& caller, const CreationCapture& creation,
+              CapturedSlot captured) {
+  const auto* ordinary = std::get_if<OrdinaryCapture>(&creation);
+  if (!ordinary) return CaptureRebaseError::kSendableEnvironment;
+  const auto resolved = caller.ResolveCapture(ordinary->environment,
+                                              captured.depth, captured.slot);
+  if (const auto* error = std::get_if<EnvironmentError>(&resolved))
+    return *error;
+  return std::get<LexicalBinding>(resolved);
+}
+
 CreationBindingResult BindCreation(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,

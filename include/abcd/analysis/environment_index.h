@@ -50,9 +50,11 @@ struct EnvironmentBudget {
 // check. Distinct allocations never merge by slot/depth.
 // The caller must still preserve dynamic freshness in loops, resolve CFG joins,
 // connect captures across functions, and keep sendable environments separate.
-// O(N * log D) construction/storage, O(log D) query, D = 2^16 ISA depth range.
-// Fixed-array payload is admitted before allocation; caller admits definitions,
-// allocator overhead and all other work into the whole-process memory limit.
+// O(N * log D) construction/storage, O(log D) query, D = 2^32 captured-depth
+// domain. ISA depth remains 16 bits; composed capture offsets must not
+// truncate. Fixed-array payload is admitted before allocation; caller admits
+// definitions, allocator overhead and all other work into the whole-process
+// memory limit.
 class EnvironmentIndex {
  public:
   EnvironmentIndex(EnvironmentIndex&&) noexcept = default;
@@ -67,6 +69,11 @@ class EnvironmentIndex {
       EnvironmentRef current, LexicalDepth distance) const;
   [[nodiscard]] std::variant<LexicalBinding, EnvironmentError> Resolve(
       EnvironmentRef current, LexicalAddress address) const;
+  // Reinterpret a callee entry-chain depth relative to its creation environment
+  // in THIS caller index. This is one context edge, not global closure
+  // identity.
+  [[nodiscard]] std::variant<LexicalBinding, EnvironmentError> ResolveCapture(
+      EnvironmentRef current, CapturedDepth depth, LexicalSlot slot) const;
   [[nodiscard]] const EnvironmentDefinition* Find(EnvironmentId id) const;
   [[nodiscard]] std::size_t Size() const;
   [[nodiscard]] std::size_t AllocatedBytes() const;
@@ -74,7 +81,9 @@ class EnvironmentIndex {
  private:
   EnvironmentIndex() = default;
   static constexpr std::size_t kAncestorLevels =
-      std::numeric_limits<decltype(LexicalDepth{}.value)>::digits;
+      std::numeric_limits<decltype(CapturedDepth{}.value)>::digits;
+  [[nodiscard]] std::variant<EnvironmentRef, EnvironmentError> AncestorAt(
+      EnvironmentRef current, CapturedDepth distance) const;
   struct Node {
     EnvironmentDefinition definition;
     std::array<std::optional<EnvironmentId>, kAncestorLevels> ancestors;

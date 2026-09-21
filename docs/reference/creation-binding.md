@@ -82,10 +82,11 @@ environment refusal from invalid bytecode. Sendable counters and lookup-build
 failure reporting still lack direct CLI fixtures; their underlying operations
 are covered by unit tests.
 
-The next source-recovery step must translate target captured-depth/slot uses
-through each ordinary creation context, preserving instance freshness and
-multiple parents, then recover values and Hole/TDZ semantics. None of these
-counts constitutes a recovered record.
+The [capture substitution primitive](capture-rebase.md) now translates one
+target captured-depth/slot use through one ordinary creation context. The next
+integration must schedule and reuse these queries across methods, preserving
+instance freshness and multiple parents, then recover values and Hole/TDZ
+semantics. None of these counts constitutes a recovered record.
 
 Full-corpus target resolution and memory measurements are recorded in the
 [validation report](../validation/2026-09-22-creation-bindings.md).

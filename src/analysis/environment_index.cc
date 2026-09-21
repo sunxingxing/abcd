@@ -57,6 +57,11 @@ std::variant<EnvironmentIndex, EnvironmentError> EnvironmentIndex::Build(
 
 std::variant<EnvironmentRef, EnvironmentError> EnvironmentIndex::Ancestor(
     EnvironmentRef current, LexicalDepth depth) const {
+  return AncestorAt(current, {depth.value});
+}
+
+std::variant<EnvironmentRef, EnvironmentError> EnvironmentIndex::AncestorAt(
+    EnvironmentRef current, CapturedDepth depth) const {
   if (const auto* capture = std::get_if<CapturedDepth>(&current))
     return CapturedAncestor(*capture, depth.value);
   auto id = std::get<EnvironmentId>(current);
@@ -76,14 +81,19 @@ std::variant<EnvironmentRef, EnvironmentError> EnvironmentIndex::Ancestor(
 
 std::variant<LexicalBinding, EnvironmentError> EnvironmentIndex::Resolve(
     EnvironmentRef current, LexicalAddress address) const {
-  const auto resolved = Ancestor(current, address.depth);
+  return ResolveCapture(current, {address.depth.value}, address.slot);
+}
+
+std::variant<LexicalBinding, EnvironmentError> EnvironmentIndex::ResolveCapture(
+    EnvironmentRef current, CapturedDepth depth, LexicalSlot slot) const {
+  const auto resolved = AncestorAt(current, depth);
   if (const auto* error = std::get_if<EnvironmentError>(&resolved))
     return *error;
   const auto environment = std::get<EnvironmentRef>(resolved);
   if (const auto* local = std::get_if<EnvironmentId>(&environment))
-    if (address.slot.value >= nodes_[local->value].definition.allocation.slots)
+    if (slot.value >= nodes_[local->value].definition.allocation.slots)
       return EnvironmentError::kSlotRange;
-  return LexicalBinding{environment, address.slot};
+  return LexicalBinding{environment, slot};
 }
 
 const EnvironmentDefinition* EnvironmentIndex::Find(EnvironmentId id) const {

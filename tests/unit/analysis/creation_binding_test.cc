@@ -66,6 +66,31 @@ int main() {
         EnvironmentRef{EnvironmentId{0}});
   Check(std::get<OrdinaryCapture>(captured.capture).environment ==
         EnvironmentRef{CapturedDepth{0}});
+  // The same callee entry-chain read maps through each actual creation site.
+  // Its local environment IDs must never be reused as caller-local IDs.
+  const std::uint8_t target_code[]{0x3c, 0, 0x65};
+  abc::MethodBody target_body;
+  for (std::size_t pc = 0; pc < sizeof(target_code);) {
+    const auto decoded =
+        std::get<abc::DecodedInstruction>(abc::DecodeInstruction(
+            std::span(target_code).subspan(pc), header.profile));
+    target_body.instructions.push_back(
+        {{static_cast<std::uint32_t>(pc)}, decoded, {}});
+    pc += decoded.size;
+  }
+  const auto target_graph = std::get<NormalFlow>(BuildNormalFlow(target_body));
+  const auto target_flow = std::get<EnvironmentFlow>(
+      AnalyzeEnvironments(target_body, target_graph, 1));
+  Check(target_flow.bindings.size() == 1);
+  const auto target_slot = target_flow.bindings[0].binding;
+  const CapturedSlot capture_slot{
+      std::get<CapturedDepth>(target_slot.environment), target_slot.slot};
+  const auto local_use = std::get<LexicalBinding>(
+      RebaseCapture(flow.environments, local.capture, capture_slot));
+  const auto external_use = std::get<LexicalBinding>(
+      RebaseCapture(flow.environments, captured.capture, capture_slot));
+  Check(local_use.environment == EnvironmentRef{EnvironmentId{0}});
+  Check(external_use.environment == EnvironmentRef{CapturedDepth{0}});
   // Mutating only attributes leaves lookup positions valid for this fixture.
   metadata.methods[1].access_flags = 8U << 8;
   Check(std::holds_alternative<SendableCapture>(
