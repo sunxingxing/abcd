@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "abcd/abc/method_references.h"
+#include "abcd/abc/method_target.h"
 #include "abcd/corpus/abc_file.h"
 
 namespace {
@@ -29,6 +30,8 @@ int main() {
   header.kind = AbcKind::kDynamic;
   header.profile = ProfileId::kDynamic1206;
   header.file_size = bytes.size();
+  header.foreign_offset = 410;
+  header.foreign_size = 10;
   header.layout = DynamicLayout{{}, {}, {}, {2, 64}};
   // Same pool slots in adjacent regions have different targets. The pool
   // contains heterogeneous entities, not just methods.
@@ -52,7 +55,7 @@ int main() {
   const auto& file = *std::get<std::unique_ptr<abcd::corpus::AbcFile>>(opened);
   auto built = BuildMetadataIndex(file, header);
   Check(std::holds_alternative<MetadataIndex>(built));
-  const auto& index = std::get<MetadataIndex>(built);
+  auto& index = std::get<MetadataIndex>(built);
   Check(index.regions.size() == 2);
   MethodBody body;
   BodyInstruction instruction;
@@ -145,6 +148,51 @@ int main() {
   Check(std::get<MetadataError>(ResolvePoolReference(
             file, unsupported, index, {200}, {0}, PoolEntityKind::kString)) ==
         MetadataError::kUnsupportedProfile);
+  // Supply method membership separately from the heterogeneous pool fixture.
+  // Offset 410 is foreign; 420 is in-file but not a local method either.
+  for (const auto offset : {430U, 200U, 400U, 300U}) {
+    MethodInfo method;
+    method.offset = {offset};
+    index.methods.push_back(std::move(method));
+  }
+  // Pinned method access layout: low access byte, kind/sendable byte, region.
+  constexpr std::uint32_t kAsyncSendableFlags = (4U | 8U) << 8;
+  constexpr std::uint32_t kAccess = 0x21;
+  constexpr std::uint32_t kRegion = 201;
+  index.methods[0].access_flags =
+      (kRegion << 16) | kAsyncSendableFlags | kAccess;
+  const auto lookup =
+      std::get<MethodLookup>(MethodLookup::Build(index.methods));
+  const auto first = std::get<MethodTarget>(
+      ResolveMethodTarget(file, header, index, lookup, {200}, {0}));
+  Check(first.position.value == 2 &&
+        first.attributes.kind == FunctionKind::kNone);
+  const auto second = std::get<MethodTarget>(
+      ResolveMethodTarget(file, header, index, lookup, {300}, {0}));
+  Check(second.position.value == 0 &&
+        second.attributes.kind == FunctionKind::kAsync);
+  Check(second.attributes.sendable && second.attributes.access == kAccess &&
+        second.attributes.pool_region.value == kRegion);
+  Check(std::get<MethodTargetError>(
+            ResolveMethodTarget(file, header, index, lookup, {200}, {1})) ==
+        MethodTargetError::kTargetMissing);
+  Check(std::get<MethodTargetError>(
+            ResolveMethodTarget(file, header, index, lookup, {200}, {2})) ==
+        MethodTargetError::kTargetMissing);
+  Check(std::get<MethodTargetError>(
+            ResolveMethodTarget(file, header, index, lookup, {201}, {0})) ==
+        MethodTargetError::kCallerMissing);
+  Check(std::get<MetadataError>(
+            ResolveMethodTarget(file, header, index, lookup, {200}, {4})) ==
+        MetadataError::kIndexRange);
+  index.methods[0].access_flags = 0xffU << 8;
+  Check(std::get<MethodAttributeError>(
+            ResolveMethodTarget(file, header, index, lookup, {300}, {0})) ==
+        MethodAttributeError::kUnknownKind);
+  index.methods[0].offset = {431};
+  Check(std::get<MethodTargetError>(
+            ResolveMethodTarget(file, header, index, lookup, {300}, {0})) ==
+        MethodTargetError::kIndexMismatch);
   // A size change is deterministic even on filesystems whose timestamps
   // coalesce two writes within the same clock tick.
   const std::uint8_t changed = 1;

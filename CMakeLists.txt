@@ -15,6 +15,8 @@ add_library(abcd_abc
   src/abc/metadata_index.cc
   src/abc/method_body.cc
   src/abc/method_attributes.cc
+  src/abc/method_lookup.cc
+  src/abc/method_target.cc
   src/abc/method_references.cc
   src/abc/module_info.cc
   src/abc/pool_reference.cc
@@ -94,6 +96,9 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(method_lookup_test tests/unit/abc/method_lookup_test.cc)
+  target_link_libraries(method_lookup_test PRIVATE abcd_abc)
+  add_test(NAME method_lookup_test COMMAND method_lookup_test)
   add_executable(environment_flow_test tests/unit/analysis/environment_flow_test.cc)
   target_link_libraries(environment_flow_test PRIVATE abcd_analysis)
   add_test(NAME environment_flow_test COMMAND environment_flow_test)
