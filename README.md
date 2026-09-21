@@ -105,6 +105,18 @@ build/release/abc_references tests/corpus/abc-index.json \
 计数按方法累计，同一实体跨方法出现会重复计数；失败方法可能贡献部分已验证计数。
 字符串和字面量逐个读取并释放，不缓存全语料。进程仍受同一 1G 地址空间限制。
 
+## 模块元数据验证
+
+```sh
+build/release/abc_modules tests/corpus/abc-index.json \
+  batch /home/rabbit/sample/abc paired /home/rabbit/sample/abc_with_code
+```
+
+该工具只运行字段、封装和模块元数据检查，不重复方法体分析。merged 文件按运行时
+规则选择 record，检查模块请求、导入导出表及其字符串引用；bundle 路径当前明确
+报告不支持并返回非零状态，不作为成功或静态跳过。请求阶段表、JSON 内容语法、
+跨模块绑定和源码行为等价尚未验证。
+
 ## Sanitizer
 
 ```sh

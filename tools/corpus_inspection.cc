@@ -21,6 +21,7 @@
 #include "abcd/abc/metadata_index.h"
 #include "abcd/corpus/manifest.h"
 #include "method_inspection.h"
+#include "module_inspection.h"
 
 namespace abcd::tools {
 namespace {
@@ -57,6 +58,8 @@ enum class IndexOutcome {
   kDispatchFailure,
   kReferencesChecked,
   kReferenceFailure,
+  kModulesChecked,
+  kModuleFailure,
 };
 
 const char* ToolName(InspectionStage stage) {
@@ -71,6 +74,8 @@ const char* ToolName(InspectionStage stage) {
       return "abc_exceptions";
     case InspectionStage::kReferences:
       return "abc_references";
+    case InspectionStage::kModules:
+      return "abc_modules";
   }
   std::abort();
 }
@@ -109,6 +114,10 @@ const char* OutcomeLabel(IndexOutcome outcome) {
       return "references_checked";
     case IndexOutcome::kReferenceFailure:
       return "reference_failure";
+    case IndexOutcome::kModulesChecked:
+      return "modules_checked";
+    case IndexOutcome::kModuleFailure:
+      return "module_failure";
   }
   std::abort();
 }
@@ -122,6 +131,7 @@ struct FileReport {
   std::optional<abcd::abc::HeaderError> header_error;
   std::optional<abcd::abc::MetadataError> metadata_error;
   MethodCounts inspection;
+  ModuleCounts modules;
 };
 
 FileReport IndexFile(const std::filesystem::path& root,
@@ -189,6 +199,12 @@ FileReport IndexFile(const std::filesystem::path& root,
   report.records = index.records.size();
   report.methods = index.methods.size();
   report.fields = index.fields.size();
+  if (stage == InspectionStage::kModules) {
+    report.modules = InspectModules(*file, header, index, diagnostics);
+    report.outcome = report.modules.failed_module_records
+                         ? IndexOutcome::kModuleFailure : IndexOutcome::kModulesChecked;
+    return report;
+  }
   report.inspection =
       InspectMethods(*file, header, index, stage, diagnostics);
   // A file reports the earliest failed stage, independent of method order.
@@ -218,6 +234,8 @@ FileReport IndexFile(const std::filesystem::path& root,
       case InspectionStage::kReferences:
         report.outcome = IndexOutcome::kReferencesChecked;
         break;
+      case InspectionStage::kModules:
+        std::abort();  // Handled before method inspection.
     }
   }
   return report;
@@ -237,6 +255,8 @@ nlohmann::json Serialize(const CorpusEntry& entry, const FileReport& report) {
   if (report.metadata_error)
     result["metadata_error"] = static_cast<int>(*report.metadata_error);
   result.update(SerializeCounts(report.inspection));
+  if (report.outcome == IndexOutcome::kModulesChecked || report.outcome == IndexOutcome::kModuleFailure)
+    result.update(SerializeCounts(report.modules));
   return result;
 }
 
@@ -285,6 +305,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
   }
   std::uint64_t files = 0, indexed = 0, skipped = 0, failed = 0;
   std::uint64_t records = 0, methods = 0, fields = 0;
+  ModuleCounts modules;
   MethodCounts inspection;
   std::cout << "{\"results\":[";
   for (const auto& entry : std::get<std::vector<CorpusEntry>>(loaded)) {
@@ -292,7 +313,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
     if (root == roots.end()) continue;
     if (files != 0) std::cout << ',';
     ++files;
-    std::cout << "{\"method_failures\":[";
+    std::cout << (stage == InspectionStage::kModules ? "{\"module_failures\":[" : "{\"method_failures\":[");
     const auto report = IndexFile(root->second, entry, stage, std::cout);
     std::cout << ']';
     const auto serialized = Serialize(entry, report);
@@ -306,6 +327,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
       case IndexOutcome::kFlowBuilt:
       case IndexOutcome::kDispatchBuilt:
       case IndexOutcome::kReferencesChecked:
+      case IndexOutcome::kModulesChecked:
         ++indexed;
         break;
       case IndexOutcome::kStaticSkipped:
@@ -315,6 +337,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
       case IndexOutcome::kFlowFailure:
       case IndexOutcome::kDispatchFailure:
       case IndexOutcome::kReferenceFailure:
+      case IndexOutcome::kModuleFailure:
         ++indexed;
         ++failed;
         break;
@@ -331,6 +354,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
     methods += report.methods;
     fields += report.fields;
     inspection += report.inspection;
+    modules += report.modules;
   }
   // Per-file reports and failures are already streamed, with no full-corpus
   // report buffer. Include output allocations in the measured peak.
@@ -350,6 +374,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
        static_cast<std::uint64_t>(usage.ru_maxrss) * kBytesPerKibibyte},
       {"address_space_limit_bytes", limit.rlim_cur}};
   summary.update(SerializeCounts(inspection));
+  if (stage == InspectionStage::kModules) summary.update(SerializeCounts(modules));
   for (const auto& [key, value] : summary.items())
     std::cout << ',' << nlohmann::json(key) << ':' << value;
   std::cout << "}\n";

@@ -1,0 +1,126 @@
+#include "module_inspection.h"
+
+#include <ostream>
+
+#include "abcd/abc/module_info.h"
+#include "abcd/abc/record_attributes.h"
+
+namespace abcd::tools {
+namespace {
+enum class ModuleFault {
+  kPackaging,
+  kBundleUnsupported,
+  kAttributes,
+  kPayload,
+  kString
+};
+}
+ModuleCounts& ModuleCounts::operator+=(const ModuleCounts& other) {
+  merged_files += other.merged_files;
+  bundle_files += other.bundle_files;
+  checked_records += other.checked_records;
+  modules += other.modules;
+  module_requests += other.module_requests;
+  module_imports += other.module_imports;
+  module_exports += other.module_exports;
+  module_strings += other.module_strings;
+  failed_module_records += other.failed_module_records;
+  return *this;
+}
+nlohmann::json SerializeCounts(const ModuleCounts& c) {
+  return {{"merged_files", c.merged_files},
+          {"bundle_files", c.bundle_files},
+          {"checked_records", c.checked_records},
+          {"modules", c.modules},
+          {"module_requests", c.module_requests},
+          {"module_imports", c.module_imports},
+          {"module_exports", c.module_exports},
+          {"module_strings", c.module_strings},
+          {"failed_module_records", c.failed_module_records}};
+}
+ModuleCounts InspectModules(const corpus::AbcFile& file,
+                            const abc::Header& header,
+                            const abc::MetadataIndex& index,
+                            std::ostream& diagnostics) {
+  ModuleCounts counts;
+  const auto fail = [&](ModuleFault kind, abc::EntityOffset offset,
+                        int detail) {
+    if (counts.failed_module_records++) diagnostics << ',';
+    diagnostics << nlohmann::json{{"stage", "modules"},
+                                  {"kind", static_cast<int>(kind)},
+                                  {"entity_offset", offset.value},
+                                  {"detail", detail}};
+  };
+  const auto packaging = abc::DetectFilePackaging(file, header, index);
+  if (const auto* failure = std::get_if<abc::AttributeFailure>(&packaging)) {
+    fail(ModuleFault::kPackaging, failure->field,
+         static_cast<int>(failure->kind));
+    return counts;
+  }
+  if (std::get<abc::FilePackaging>(packaging) == abc::FilePackaging::kBundle) {
+    ++counts.bundle_files;
+    fail(ModuleFault::kBundleUnsupported, {}, 0);
+    return counts;
+  }
+  ++counts.merged_files;
+  for (const auto& record : index.records) {
+    const auto parsed =
+        abc::ReadMergedRecordAttributes(file, header, index, record);
+    if (const auto* failure = std::get_if<abc::AttributeFailure>(&parsed)) {
+      fail(ModuleFault::kAttributes, failure->field,
+           static_cast<int>(failure->kind));
+      continue;
+    }
+    const auto& attributes = std::get<abc::RecordAttributes>(parsed);
+    // InitializeMergedPF only publishes records carrying CommonJS/JSON fields.
+    if (!attributes.common_js.has_value() && !attributes.json_content) continue;
+    bool valid = true;
+    const auto string = [&](abc::EntityOffset offset) {
+      if (!valid) return;
+      const auto value = abc::ReadStringEntity(file, header, offset);
+      if (const auto* failure = std::get_if<abc::MetadataError>(&value)) {
+        fail(ModuleFault::kString, offset, static_cast<int>(*failure));
+        valid = false;
+      } else {
+        ++counts.module_strings;
+      }
+    };
+    if (attributes.json_content) string(*attributes.json_content);
+    if (attributes.module) {
+      const auto decoded =
+          abc::ReadModuleInfo(file, header, *attributes.module);
+      if (const auto* failure = std::get_if<abc::ModuleFailure>(&decoded)) {
+        if (valid)
+          fail(ModuleFault::kPayload, failure->offset,
+               static_cast<int>(failure->kind));
+        continue;
+      }
+      const auto& module = std::get<abc::ModuleInfo>(decoded);
+      for (const auto offset : module.requests) string(offset);
+      for (const auto& entry : module.imports) {
+        string(entry.local);
+        string(entry.imported);
+      }
+      for (const auto& entry : module.namespace_imports) string(entry.local);
+      for (const auto& entry : module.local_exports) {
+        string(entry.local);
+        string(entry.exported);
+      }
+      for (const auto& entry : module.indirect_exports) {
+        string(entry.exported);
+        string(entry.imported);
+      }
+      if (!valid) continue;
+      ++counts.modules;
+      counts.module_requests += module.requests.size();
+      counts.module_imports +=
+          module.imports.size() + module.namespace_imports.size();
+      counts.module_exports += module.local_exports.size() +
+                               module.indirect_exports.size() +
+                               module.star_exports.size();
+    }
+    if (valid) ++counts.checked_records;
+  }
+  return counts;
+}
+}  // namespace abcd::tools

@@ -92,6 +92,8 @@ const char* StageLabel(InspectionStage stage) {
       return "exception_dispatch";
     case InspectionStage::kReferences:
       return "references";
+    case InspectionStage::kModules:
+      return "modules";
   }
   std::abort();
 }

@@ -35,7 +35,8 @@ enum class FixtureKind {
   kMixedMethodsReversed,
   kExceptionMethod,
   kReferenceMethod,
-  kInvalidReference
+  kInvalidReference,
+  kModuleRecord
 };
 
 void WriteWord(std::span<std::uint8_t> bytes, std::size_t offset,
@@ -85,6 +86,8 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kReferenceMethod;
     else if (option == "--invalid-reference")
       kind = FixtureKind::kInvalidReference;
+    else if (option == "--module-record")
+      kind = FixtureKind::kModuleRecord;
     else
       return EXIT_FAILURE;
   }
@@ -96,7 +99,28 @@ int main(int argc, char** argv) {
       13, 'L', 'd', 'e', 'm', 'o', ';', 0, 0, 0, 0, 0, 0, 0, 0, 0};
   std::vector<std::uint8_t> dynamic(kClassOffset);
   dynamic.insert(dynamic.end(), kClass.begin(), kClass.end());
-  if (kind != FixtureKind::kEmptyRecord) {
+  if (kind == FixtureKind::kModuleRecord) {
+    dynamic[kClassOffset + 13] = 2;
+    const auto first_field = dynamic.size();
+    dynamic.insert(dynamic.end(), {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0});
+    const auto second_field = dynamic.size();
+    dynamic.insert(dynamic.end(), {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0});
+    const auto name = [&](std::string_view text) {
+      const auto offset = dynamic.size();
+      dynamic.push_back(static_cast<std::uint8_t>((text.size() << 1) | 1));
+      dynamic.insert(dynamic.end(), text.begin(), text.end());
+      dynamic.push_back(0);
+      return offset;
+    };
+    const auto common_name = name("isCommonjs");
+    const auto module_name = name("moduleRecordIdx");
+    WriteWord(dynamic, first_field + 4, common_name);
+    WriteWord(dynamic, second_field + 4, module_name);
+    const auto module = dynamic.size();
+    dynamic[second_field + 10] = (module & 0x7f) | 0x80;
+    dynamic[second_field + 11] = module >> 7;
+    dynamic.resize(dynamic.size() + 7 * kWordBytes);  // Empty module tables.
+  } else if (kind != FixtureKind::kEmptyRecord) {
     constexpr std::size_t kMethodCountInClass = 14;
     constexpr std::size_t kNameOffsetInMethod = 4;
     constexpr std::size_t kCodeOffsetInMethod = 10;
