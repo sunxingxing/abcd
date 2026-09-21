@@ -39,7 +39,6 @@ constexpr std::size_t kIndexMemoryBudget = 256 * 1024 * 1024;
 constexpr std::uint64_t kBytesPerKibibyte = 1024;
 constexpr int kRequiredArguments = 4;
 constexpr int kRootArgumentWidth = 2;
-constexpr std::size_t kMaxMethodDiagnostics = 64;
 
 enum class IndexOutcome {
   kIndexed,
@@ -80,11 +79,19 @@ const char* OutcomeLabel(IndexOutcome outcome) {
   std::abort();
 }
 
-struct MethodFailure {
-  abc::EntityOffset method;
-  abc::EntityOffset code;
-  abc::BodyFailure failure;
-};
+void WriteFailure(std::ostream& output, const abc::MethodInfo& method,
+                  const abc::BodyFailure& failure) {
+  nlohmann::json diagnostic{{"method_offset", method.offset.value},
+                            {"code_offset", method.code->offset.value},
+                            {"pc", failure.offset.value},
+                            {"kind", static_cast<int>(failure.kind)}};
+  if (failure.instruction_error)
+    diagnostic["instruction_error"] =
+        static_cast<int>(*failure.instruction_error);
+  if (failure.file_error)
+    diagnostic["file_error"] = static_cast<int>(*failure.file_error);
+  output << diagnostic;
+}
 
 struct DecodeCounts {
   std::uint64_t decoded_methods = 0;
@@ -104,11 +111,11 @@ struct FileReport {
   std::optional<abcd::abc::HeaderError> header_error;
   std::optional<abcd::abc::MetadataError> metadata_error;
   DecodeCounts decoded;
-  std::vector<MethodFailure> method_failures;
 };
 
 FileReport IndexFile(const std::filesystem::path& root,
-                     const CorpusEntry& entry, InspectionStage stage) {
+                     const CorpusEntry& entry, InspectionStage stage,
+                     std::ostream& diagnostics) {
   FileReport report;
   auto opened = AbcFile::OpenBeneath(root, entry.relative_path);
   if (const auto* error = std::get_if<FileError>(&opened)) {
@@ -179,12 +186,11 @@ FileReport IndexFile(const std::filesystem::path& root,
           abc::DecodeMethodBody(*file, header.profile, *method.code);
       if (const auto* failure = std::get_if<abc::BodyFailure>(&decoded)) {
         report.outcome = IndexOutcome::kBodyFailure;
+        // Stream every failure. Keeping a capped vector loses method evidence;
+        // retaining all failures would let malformed input exhaust the budget.
+        if (report.decoded.failed_methods != 0) diagnostics << ',';
+        WriteFailure(diagnostics, method, *failure);
         ++report.decoded.failed_methods;
-        // Bound retained diagnostics, not validation coverage: every method is
-        // still visited and contributes to failed_methods.
-        if (report.method_failures.size() < kMaxMethodDiagnostics)
-          report.method_failures.push_back(
-              {method.offset, method.code->offset, *failure});
       } else {
         const auto& body = std::get<abc::MethodBody>(decoded);
         ++report.decoded.decoded_methods;
@@ -223,19 +229,6 @@ nlohmann::json Serialize(const CorpusEntry& entry, const FileReport& report) {
   if (report.metadata_error)
     result["metadata_error"] = static_cast<int>(*report.metadata_error);
   result.update(SerializeCounts(report.decoded));
-  result["method_failures"] = nlohmann::json::array();
-  for (const auto& failure : report.method_failures) {
-    nlohmann::json diagnostic{{"method_offset", failure.method.value},
-                              {"code_offset", failure.code.value},
-                              {"pc", failure.failure.offset.value},
-                              {"kind", static_cast<int>(failure.failure.kind)}};
-    if (failure.failure.instruction_error)
-      diagnostic["instruction_error"] =
-          static_cast<int>(*failure.failure.instruction_error);
-    if (failure.failure.file_error)
-      diagnostic["file_error"] = static_cast<int>(*failure.failure.file_error);
-    result["method_failures"].push_back(std::move(diagnostic));
-  }
   return result;
 }
 
@@ -288,12 +281,20 @@ int Run(int argc, char** argv, InspectionStage stage) {
   std::uint64_t records = 0, methods = 0, code_methods = 0;
   std::uint64_t instruction_bytes = 0;
   DecodeCounts decoded;
-  auto reports = nlohmann::json::array();
+  std::cout << "{\"results\":[";
   for (const auto& entry : std::get<std::vector<CorpusEntry>>(loaded)) {
     const auto root = roots.find(entry.corpus_id);
     if (root == roots.end()) continue;
+    if (files != 0) std::cout << ',';
     ++files;
-    const auto report = IndexFile(root->second, entry, stage);
+    std::cout << "{\"method_failures\":[";
+    const auto report = IndexFile(root->second, entry, stage, std::cout);
+    std::cout << ']';
+    const auto serialized = Serialize(entry, report);
+    for (const auto& [key, value] : serialized.items())
+      std::cout << ',' << nlohmann::json(key) << ':' << value;
+    std::cout << '}';
+    if (!std::cout.good()) return EXIT_FAILURE;
     switch (report.outcome) {
       case IndexOutcome::kIndexed:
       case IndexOutcome::kDecoded:
@@ -324,11 +325,10 @@ int Run(int argc, char** argv, InspectionStage stage) {
     decoded.instructions += report.decoded.instructions;
     decoded.try_regions += report.decoded.try_regions;
     decoded.catch_handlers += report.decoded.catch_handlers;
-    reports.push_back(Serialize(entry, report));
   }
-  // Stream the potentially large results before measuring RSS; do not create
-  // a second full-size JSON string merely to print the report.
-  std::cout << "{\"results\":" << reports;
+  // Per-file reports and failures are already streamed, with no full-corpus
+  // report buffer. Include output allocations in the measured peak.
+  std::cout << ']';
   rusage usage{};
   if (getrusage(RUSAGE_SELF, &usage) != 0) return EXIT_FAILURE;
   nlohmann::json summary{

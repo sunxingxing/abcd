@@ -25,7 +25,12 @@ constexpr unsigned kByteBits = 8;
 constexpr std::uint32_t kRegionOffset =
     abcd::abc::kDynamicHeaderSize + kWordBytes;
 constexpr std::uint32_t kClassOffset = kRegionOffset + kRegionBytes;
-enum class FixtureKind { kEmptyRecord, kMethod, kInvalidMethod };
+enum class FixtureKind {
+  kEmptyRecord,
+  kMethod,
+  kInvalidMethod,
+  kManyInvalidMethods
+};
 
 void WriteWord(std::span<std::uint8_t> bytes, std::size_t offset,
                std::uint32_t value) {
@@ -60,6 +65,8 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kMethod;
     else if (option == "--invalid-method")
       kind = FixtureKind::kInvalidMethod;
+    else if (option == "--many-invalid-methods")
+      kind = FixtureKind::kManyInvalidMethods;
     else
       return EXIT_FAILURE;
   }
@@ -78,9 +85,13 @@ int main(int argc, char** argv) {
     // u16 owner, absent proto, name offset, flags, CODE + offset, end.
     constexpr std::array<std::uint8_t, 15> kMethod{0, 0, 0xff, 0xff, 0, 0, 0, 0,
                                                    0, 1, 0,    0,    0, 0, 0};
+    constexpr std::uint8_t kDiagnosticOverflowCount = 65;
+    const std::uint8_t method_count =
+        kind == FixtureKind::kManyInvalidMethods ? kDiagnosticOverflowCount : 1;
     const auto method_offset = dynamic.size();
-    dynamic[kClassOffset + kMethodCountInClass] = 1;
-    dynamic.insert(dynamic.end(), kMethod.begin(), kMethod.end());
+    dynamic[kClassOffset + kMethodCountInClass] = method_count;
+    for (std::uint8_t i = 0; i < method_count; ++i)
+      dynamic.insert(dynamic.end(), kMethod.begin(), kMethod.end());
     const auto name_offset = dynamic.size();
     dynamic.insert(dynamic.end(), {9, 'm', 'a', 'i', 'n', 0});
     const auto code_offset = dynamic.size();
@@ -90,8 +101,11 @@ int main(int argc, char** argv) {
                    {0, 0, 1, 0,
                     static_cast<std::uint8_t>(
                         kind == FixtureKind::kMethod ? 0x65 : 0xff)});
-    WriteWord(dynamic, method_offset + kNameOffsetInMethod, name_offset);
-    WriteWord(dynamic, method_offset + kCodeOffsetInMethod, code_offset);
+    for (std::uint8_t i = 0; i < method_count; ++i) {
+      const auto offset = method_offset + i * kMethod.size();
+      WriteWord(dynamic, offset + kNameOffsetInMethod, name_offset);
+      WriteWord(dynamic, offset + kCodeOffsetInMethod, code_offset);
+    }
   }
   WriteWord(dynamic, kClassCountOffset, 1);
   WriteWord(dynamic, kClassTableOffset, abcd::abc::kDynamicHeaderSize);
