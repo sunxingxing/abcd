@@ -1,7 +1,8 @@
 # Instruction Decoding Evidence
 
 Reference: runtime_core `3e147bb76e0b622cc2e4399ef954b030c0639691`.
-This records inputs for the next implementation stage, not an existing decoder.
+The generated instruction decoder and bounded method-body reader implement the
+encoding rules below. Encoding coverage is not historical semantic certification.
 
 ## Generated Encodings
 
@@ -36,6 +37,13 @@ This records inputs for the next implementation stage, not an existing decoder.
   and reserve memory before loading/decode. Record indexing currently only
   saves offsets/counts; it does not establish an asynchronous task executor.
 
-The next milestone must decode real method instructions and exception metadata,
-then feed semantic recovery. Instruction coverage alone is not source fidelity;
-the final result still requires verified JS/TS/ArkTS files per record.
+The decoder currently covers all 332 format/opcode identities in the pinned
+dynamic ISA. Compact operand layout avoids per-operand alignment padding;
+method admission still includes old and new vectors during geometric growth.
+Reference operand indexes are retained as typed raw indexes, not yet resolved.
+
+Normal control flow uses generated ISA transfer categories with explicit
+generator suspension overrides from the pinned interpreter. It preserves
+exception boundaries but does not implement exception dispatch. Instruction
+coverage alone is not source fidelity; the final result still requires verified
+JS/TS/ArkTS files per record.

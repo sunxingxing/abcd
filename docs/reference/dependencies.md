@@ -1,5 +1,19 @@
 # Dependency Baseline
 
+## OpenHarmony ISA Generator
+
+- Reference: runtime_core `3e147bb76e0b622cc2e4399ef954b030c0639691`,
+  OpenHarmony-v7.0-Release, Apache-2.0.
+- Inputs: `isa/isa.yaml`, `isa/isapi.rb`, `isa/gen.rb`; SHA-256 identities are
+  enforced at configure time and before build-time generation by
+  `cmake/IsaDependency.cmake`. No runtime dependency on Ruby.
+- Host Ruby 3.2.3 is pinned for reproducible generation of opcode, operand,
+  transfer and test-inventory tables. Generated files stay in the build tree.
+- The upstream generator uses deprecated positional `ERB.new` arguments and
+  emits Ruby warnings. Reference files are not patched to hide those warnings.
+- Project templates interpret upstream identifiers at this generation boundary;
+  production decoding and control flow use typed opcodes and fields only.
+
 ## nlohmann/json
 
 - Local source: `/home/rabbit/arkruntime/third_party/json`.

@@ -52,6 +52,12 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_test(NAME isa_pin_test COMMAND ${CMAKE_COMMAND}
+    -DABCD_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+    -DABCD_TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}
+    -DABCD_ISA_ROOT=${ABCD_ISA_ROOT}
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/isa_pin.cmake)
+
   add_executable(control_transfer_test tests/unit/abc/control_transfer_test.cc)
   target_link_libraries(control_transfer_test PRIVATE abcd_abc)
   add_test(NAME control_transfer_test COMMAND control_transfer_test)

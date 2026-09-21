@@ -1,5 +1,24 @@
 # Method Encoding Validation
 
+## Completed Compact-Layout Run
+
+The follow-up at `9595858` reorders operand fields to remove alignment padding:
+`InstructionOperand` is 16 bytes instead of 24 and `BodyInstruction` is 144
+instead of 192 on the measured x86-64 build. The 64 MiB per-method budget and
+1,000,000,000-byte process limit were not raised. A tight-budget regression
+failed before the layout change and passed afterward.
+
+With the streaming CLI from `295dbb8`, the same full-corpus command completed
+with exit status 0: all 5,486,254 methods decoded, 264,106,514 instructions,
+868,111 try regions and 868,114 catch handlers. Peak RSS was 150,249,472 bytes;
+elapsed time was 46.95 seconds. No methods failed. The initial four failures
+below are retained as historical evidence, not current coverage gaps.
+
+Subsequent normal-flow validation also decodes every method; its per-file
+results are preserved in `tests/corpus/normal-flow.json`.
+
+## Initial Run
+
 Reference: pinned OpenHarmony-v7.0-Release ISA. This run validates instruction
 encoding and exception boundaries, not recovered source semantics or independent
 historical ISA equivalence.

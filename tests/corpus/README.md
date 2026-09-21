@@ -80,3 +80,11 @@ Its validation section pins the implementation and classification-manifest hash.
 Static entries are skipped from cached classifications after content rehashing.
 See the [validation record](../../docs/validation/2026-09-22-record-index.md)
 for reproduction and limitations.
+
+## Method and Normal Flow Evidence
+
+`normal-flow.json` contains the generated per-file method-encoding and normal
+control-flow report, pinned to an implementation and manifest digest. All
+5,486,254 dynamic methods passed these stages. Static exclusions are not source
+decompilations, and normal-flow coverage is not behavioral-equivalence evidence.
+See [normal-flow validation](../../docs/validation/2026-09-22-normal-flow.md).

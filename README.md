@@ -3,16 +3,18 @@
 C++20 项目，目标是从动态 ABC 恢复语义可信的 JS/TS/ArkTS，并为每个 record
 分别输出文件。参考版本固定为官方 `OpenHarmony-v7.0-Release`，旧版 ABC 仍在范围内。
 
-**当前实现读取、语料分类和 record/方法元数据索引，不具备源码反编译能力。**
-分类成功、静态跳过或索引成功均不代表指令解码成功或行为等价。
+**当前实现读取、分类、元数据索引、方法体解码和普通控制流构建，尚不具备源码反编译能力。**
+解码和构图成功不代表行为等价；异常派发、引用解析及源码恢复仍需实现。
 
 ## 构建与测试
 
-环境：Linux/POSIX、CMake 3.20+、C++20 编译器、OpenSSL 3、zlib；集成测试还使用
+环境：Linux/POSIX、CMake 3.20+、C++20 编译器、Ruby 3.2.3、OpenSSL 3、zlib；集成测试还使用
 util-linux 的 `prlimit` 验证继承的内存限制。
 nlohmann/json 使用已固定的本地参考仓，并在配置时验证头文件 SHA-256，见
 [依赖说明](docs/reference/dependencies.md)。默认路径为相邻的
 `../arkruntime/third_party/json`，可通过 `-DABCD_JSON_ROOT=...` 指定相同版本的位置。
+ISA 枚举及格式表通过固定版本的上游 Ruby API 生成，默认参考路径为
+`../arkruntime/arkcompiler/runtime_core/isa`，可通过 `-DABCD_ISA_ROOT=...` 指定。
 
 ```sh
 cmake -S . -B build/release -DCMAKE_BUILD_TYPE=Release
@@ -57,6 +59,24 @@ build/release/abc_index tests/corpus/abc-index.json \
 区域引用通过有序区间查询，方法归属从 class 内联成员序列和区域引用交叉校验。
 此工具同样施加 1G 进程地址空间限制，尚未承担函数语义恢复或源码生成。
 
+## 方法解码与普通控制流
+
+```sh
+build/release/abc_decode tests/corpus/abc-index.json \
+  batch /home/rabbit/sample/abc paired /home/rabbit/sample/abc_with_code
+build/release/abc_flow tests/corpus/abc-index.json \
+  batch /home/rabbit/sample/abc paired /home/rabbit/sample/abc_with_code
+```
+
+解码保留强类型操作数、原始数值位模式、分支目标以及有序异常范围与处理器。
+构图保留不可达代码和条件分支的两个结果，生成器恢复边与普通顺序边分别表示。
+异常范围边界会分块，但普通图不含异常派发边，不可用于直接证明完整函数语义。
+
+验证工具顺序处理文件和方法，同时只保留一个方法体及其图；输出 JSON 流式记录
+每个文件的计数和所有方法失败位置，不截断诊断。单方法解码和额外构图预算各为
+64 MiB，进程总地址空间仍限制在 1,000,000,000 字节。同步验证工具不是未来默认的
+异步、并行、懒加载函数反编译接口。
+
 ## Sanitizer
 
 ```sh
@@ -77,6 +97,9 @@ ASan 需要巨大的虚拟 shadow 映射，因此该配置验证库和扫描工�
 - [语料分类验证记录](docs/validation/2026-09-22-corpus-ingestion.md)
 - [Record 索引验证记录](docs/validation/2026-09-22-record-index.md)：402 个动态文件，
   281,067 个 record、5,486,254 个方法；索引阶段峰值 RSS 约 151MB。
-- 下一步：按需方法体解码、异步有界调度与语义恢复。
+- [方法解码验证记录](docs/validation/2026-09-22-method-decode.md)
+- [普通控制流验证记录](docs/validation/2026-09-22-normal-flow.md)：全部动态方法通过
+  编码与普通构图验证，尚不代表源码语义正确。
+- 下一步：异常派发、实体/常量引用解析、异步有界调度与语义恢复。
 
 尚未输出任何反编译源码。不得将汇编、占位函数或配套源码复制品作为最终结果。
