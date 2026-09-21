@@ -50,7 +50,8 @@ are not valid generic replacements because string and BigInt behavior differs.
 
 Other opcodes return a typed unsupported result. A caller must not replace these
 with empty statements or report partial expression mapping as completed function
-or record recovery. There is no source file output in this increment.
+or record recovery. Isolated expression output is now implemented separately;
+see [scalar-source.md](scalar-source.md). No complete record source is emitted.
 
 Tests cover all mapped encodings, operand order, explicit source/destination
 slots, IC exclusion, INT32_MIN literals, signed-zero bits, malformed operands,

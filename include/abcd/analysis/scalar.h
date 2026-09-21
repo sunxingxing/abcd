@@ -55,9 +55,11 @@ struct BinaryExpression {
   ScalarValue right;
 };
 enum class CompletionEffect { kNormal, kMayThrow };
+using ScalarExpression =
+    std::variant<ScalarValue, UnaryExpression, BinaryExpression>;
 struct ScalarAssignment {
   ScalarSlot destination;
-  std::variant<ScalarValue, UnaryExpression, BinaryExpression> expression;
+  ScalarExpression expression;
   CompletionEffect completion = CompletionEffect::kNormal;
 };
 enum class ScalarError {

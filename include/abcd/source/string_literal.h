@@ -6,13 +6,9 @@
 #include <string_view>
 #include <variant>
 
+#include "abcd/source/emission.h"
+
 namespace abcd::source {
-
-enum class EmitError { kOutputLimit, kWrite };
-
-struct EmitBudget {
-  std::size_t bytes = 64 * 1024 * 1024;
-};
 
 // Emits one double-quoted, ASCII-only JS string expression, preserving UTF-16
 // units exactly. This is JS source escaping, not HTML/script-element escaping.

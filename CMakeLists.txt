@@ -33,7 +33,8 @@ target_link_libraries(abcd_file PUBLIC OpenSSL::Crypto ZLIB::ZLIB)
 target_link_libraries(abcd_abc PUBLIC abcd_file)
 add_library(abcd_analysis src/analysis/normal_flow.cc src/analysis/exception_dispatch.cc src/analysis/dominators.cc src/analysis/scalar.cc)
 target_link_libraries(abcd_analysis PUBLIC abcd_abc)
-add_library(abcd_source src/source/string_literal.cc)
+add_library(abcd_source src/source/string_literal.cc src/source/scalar_expression.cc)
+target_link_libraries(abcd_source PUBLIC abcd_analysis)
 target_compile_features(abcd_source PUBLIC cxx_std_20)
 target_include_directories(abcd_source PUBLIC include)
 add_library(abcd_corpus
@@ -73,14 +74,24 @@ if(BUILD_TESTING)
   add_executable(string_literal_test tests/unit/source/string_literal_test.cc)
   target_link_libraries(string_literal_test PRIVATE abcd_source)
   add_test(NAME string_literal_test COMMAND string_literal_test)
+  add_executable(scalar_expression_test tests/unit/source/scalar_expression_test.cc)
+  target_link_libraries(scalar_expression_test PRIVATE abcd_source)
+  add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   find_program(ABCD_NODE_EXECUTABLE node)
   if(ABCD_NODE_EXECUTABLE)
+    add_executable(scalar_source_fixture tests/integration/scalar_source_fixture.cc)
+    target_link_libraries(scalar_source_fixture PRIVATE abcd_source)
+    add_test(NAME scalar_source_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_SCALAR_FIXTURE=$<TARGET_FILE:scalar_source_fixture>
+      -DABCD_SCALAR_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/scalar_source.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/scalar_source.cmake)
     add_test(NAME string_literal_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_STRING_TEST=$<TARGET_FILE:string_literal_test>
       -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/string_literal.cmake)
   else()
-    message(WARNING "Node unavailable: JS string roundtrip test not registered")
+    message(WARNING "Node unavailable: JS source oracle tests not registered")
   endif()
   add_test(NAME isa_pin_test COMMAND ${CMAKE_COMMAND}
     -DABCD_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
