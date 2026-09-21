@@ -37,6 +37,13 @@ int main() {
   const auto result = WriteLinearBody(body, names, output);
   Check(std::get<std::size_t>(result) == output.str().size());
   Check(output.str() == "acc = r0;\nacc = (r0 + acc);\nreturn acc;\n");
+  const std::array<std::string_view, 2> membership_registers{"key", "object"};
+  std::ostringstream membership;
+  Check(std::holds_alternative<std::size_t>(
+      WriteLinearBody(Body({0x60, 1, 0x25, 0, 0, 0x64}),
+                      {"acc", membership_registers}, membership)));
+  Check(membership.str() ==
+        "acc = object;\nacc = (key in acc);\nreturn acc;\n");
   std::ostringstream limited;
   Check(std::get<BodyEmitFailure>(
             WriteLinearBody(body, names, limited, {output.str().size() - 1}))
@@ -44,11 +51,11 @@ int main() {
   Check(limited.str().empty());
   // Indexed runtime reads need receiver/path evidence before JS lowering.
   // Even a valid scalar prefix must not leak when one appears later.
-  for (const auto& indexed : {
-           Body({0x60, 0, 0x3a, 0, 0, 0, 0x64}),
-           Body({0x60, 0, 0x88, 0, 0, 0, 0, 0x64}),
-           Body({0x60, 0, 0xfd, 8, 0xff, 0xff, 0xff, 0xff, 0x64}),
-           Body({0x60, 0, 0xfc, 29, 0, 0xff, 0xff, 0xff, 0xff, 0x64})}) {
+  for (const auto& indexed :
+       {Body({0x60, 0, 0x3a, 0, 0, 0, 0x64}),
+        Body({0x60, 0, 0x88, 0, 0, 0, 0, 0x64}),
+        Body({0x60, 0, 0xfd, 8, 0xff, 0xff, 0xff, 0xff, 0x64}),
+        Body({0x60, 0, 0xfc, 29, 0, 0xff, 0xff, 0xff, 0xff, 0x64})}) {
     Check(std::get<BodyEmitFailure>(WriteLinearBody(indexed, names, limited))
               .kind == BodyEmitError::kUnsupportedInstruction);
     Check(limited.str().empty());
@@ -66,7 +73,8 @@ int main() {
   Check(limited.str().empty());
   for (const auto& invalid :
        {Body({0x64}), Body({0x0a, 0, 0, 0x64}), Body({0xfe, 0}),
-        Body({0x37, 0, 0, 0x64}), Body({0x85, 0, 0, 0, 0x64})}) {
+        Body({0x37, 0, 0, 0x64}), Body({0x85, 0, 0, 0, 0x64}),
+        Body({0x25, 0, 0, 0x64})}) {
     Check(std::get<BodyEmitFailure>(WriteLinearBody(invalid, names, limited))
               .kind == BodyEmitError::kAccumulatorHole);
     Check(limited.str().empty());

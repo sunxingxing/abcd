@@ -75,7 +75,8 @@ int main() {
                               {0x1a, BinaryOperator::kBitXor},
                               {0x1b, BinaryOperator::kExponent},
                               {0x27, BinaryOperator::kStrictNotEqual},
-                              {0x28, BinaryOperator::kStrictEqual}};
+                              {0x28, BinaryOperator::kStrictEqual},
+                              {0x25, BinaryOperator::kIn}};
   for (const auto& test : binaries) {
     const auto assignment = std::get<ScalarAssignment>(
         LiftScalarInstruction(Decode({test.opcode, 255, 7}), 8));
@@ -175,6 +176,22 @@ int main() {
         ScalarError::kUnsupportedOpcode);  // Legacy INT_MIN path needs a
                                            // runtime profile.
   auto malformed = Decode({0x0a, 0, 0});
+  const auto membership = Decode({0x25, 0xff, 0xff});
+  Check(membership.opcode == abcd::abc::Opcode::kISIN_IMM8_V8);
+  Check(std::holds_alternative<ScalarAssignment>(
+      LiftScalarInstruction(membership, 256)));
+  Check(std::get<ScalarError>(LiftScalarInstruction(membership, 255)) ==
+        ScalarError::kRegisterRange);
+  for (const auto operand : {0U, 1U}) {
+    auto invalid = membership;
+    invalid.operands[operand].raw_bits = 256;
+    Check(std::get<ScalarError>(LiftScalarInstruction(invalid, 257)) ==
+          ScalarError::kMalformedInstruction);
+  }
+  const auto instance = Decode({0x26, 0, 0});
+  Check(instance.opcode == abcd::abc::Opcode::kINSTANCEOF_IMM8_V8);
+  Check(std::get<ScalarError>(LiftScalarInstruction(instance, 1)) ==
+        ScalarError::kUnsupportedOpcode);
   malformed.operand_count = 1;
   Check(std::get<ScalarError>(LiftScalarInstruction(malformed, 1)) ==
         ScalarError::kMalformedInstruction);

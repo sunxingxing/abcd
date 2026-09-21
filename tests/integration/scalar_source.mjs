@@ -72,6 +72,7 @@ const binary = [
   (a,b)=>a==b, (a,b)=>a!=b, (a,b)=>a<b, (a,b)=>a<=b, (a,b)=>a>b, (a,b)=>a>=b,
   (a,b)=>a<<b, (a,b)=>a>>>b, (a,b)=>a>>b, (a,b)=>a&b, (a,b)=>a|b, (a,b)=>a^b,
   (a,b)=>a===b, (a,b)=>a!==b,
+  (a,b)=>a in b,
 ];
 const unary = [
   (a,b)=>-b, (a,b)=>~b, (a,b)=>!!b, (a,b)=>!b, (a,b)=>typeof b, (a,b)=>+b,
@@ -92,6 +93,40 @@ for (const fn of [generated.decrement, generated.legacyDecrement])
   for (const value of values)
     assert.deepEqual(run(fn, value), run(value => --value, value));
 assert.equal(generated.binary.length, binary.length);
+const membership = generated.binary.at(-1);
+const membershipState = generated.membershipStates[0];
+const inherited = Object.create({get inherited() {throw new Error('getter must not run');}});
+assert.equal(membership('inherited', inherited), true);
+assert.equal(membership('missing', inherited), false);
+const symbolKey = Symbol('key');
+assert.equal(membership(symbolKey, {[symbolKey]: undefined}), true);
+assert.equal(membership(0n, {0: null}), true);
+assert.equal(membership(-0, {0: null}), true);
+const membershipTrace = [];
+const membershipKey = {[Symbol.toPrimitive](hint) {
+  membershipTrace.push(hint);
+  return 'found';
+}};
+const membershipObject = new Proxy({}, {has(target, key) {
+  membershipTrace.push(['has', key]);
+  return true;
+}, get() {throw new Error('get must not run');}});
+assert.equal(membership(membershipKey, membershipObject), true);
+assert.deepEqual(membershipTrace, ['string', ['has', 'found']]);
+membershipTrace.length = 0;
+for (const receiver of [undefined, null, false, 1, 1n, 'abc', Symbol()]) {
+  assert.throws(() => membership(membershipKey, receiver), TypeError);
+  assert.deepEqual(membershipTrace, []);
+}
+const membershipError = {};
+const failingKey = {[Symbol.toPrimitive]() {throw membershipError;}};
+assert.deepEqual(membershipState(failingKey, inherited),
+  [failingKey, inherited, membershipError]);
+const failingHas = new Proxy({}, {has() {throw membershipError;}});
+assert.deepEqual(membershipState('found', failingHas),
+  ['found', failingHas, membershipError]);
+const fixed = Object.defineProperty({}, 'fixed', {value: 1, configurable: false});
+assert.throws(() => membership('fixed', new Proxy(fixed, {has() {return false;}})), TypeError);
 assert.equal(generated.unary.length, unary.length);
 for (const [expected, actual] of [[binary, generated.binary], [unary, generated.unary]]) {
   for (let i = 0; i < expected.length; ++i) {

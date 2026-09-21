@@ -32,7 +32,7 @@ function/output budgets and whole-process memory enforcement.
 
 The integration fixture decodes actual instruction encodings, lifts them, emits
 JS functions around the resulting expressions, and executes them with Node.
-Independent JS operator functions check 20 binary and 12 unary encodings over
+Independent JS operator functions check 21 binary and 12 unary encodings over
 24-by-24 input pairs including strings, signed zero, BigInt and Symbol. Object
 ToPrimitive traces and throwing conversions test evaluation order and errors.
 More than 4,000 finite/infinite numeric bit patterns, including subnormal values,

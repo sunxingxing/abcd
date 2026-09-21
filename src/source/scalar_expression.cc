@@ -37,6 +37,8 @@ bool Identifier(std::string_view name) {
 
 std::optional<std::string_view> BinaryToken(BinaryOperator op) {
   switch (op) {
+    case BinaryOperator::kIn:
+      return "in";
     case BinaryOperator::kAdd:
       return "+";
     case BinaryOperator::kSubtract:
