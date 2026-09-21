@@ -36,6 +36,12 @@ struct MethodCounts {
   std::uint64_t string_literals = 0;
   std::uint64_t literal_arrays = 0;
   std::uint64_t literal_entries = 0;
+  std::uint64_t dominator_methods = 0;
+  std::uint64_t failed_dominator_methods = 0;
+  std::uint64_t reachable_blocks = 0;
+  std::uint64_t dominator_edge_visits = 0;
+  std::uint64_t dominator_eval_steps = 0;
+  std::size_t dominator_peak_bytes = 0;
 
   MethodCounts& operator+=(const MethodCounts& other);
   [[nodiscard]] std::uint64_t FailureCount() const;

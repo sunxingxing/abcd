@@ -31,7 +31,7 @@ target_compile_features(abcd_file PUBLIC cxx_std_20)
 target_include_directories(abcd_file PUBLIC include)
 target_link_libraries(abcd_file PUBLIC OpenSSL::Crypto ZLIB::ZLIB)
 target_link_libraries(abcd_abc PUBLIC abcd_file)
-add_library(abcd_analysis src/analysis/normal_flow.cc src/analysis/exception_dispatch.cc)
+add_library(abcd_analysis src/analysis/normal_flow.cc src/analysis/exception_dispatch.cc src/analysis/dominators.cc)
 target_link_libraries(abcd_analysis PUBLIC abcd_abc)
 add_library(abcd_source src/source/string_literal.cc)
 target_compile_features(abcd_source PUBLIC cxx_std_20)
@@ -64,6 +64,8 @@ if(ABCD_BUILD_TOOLS)
   target_link_libraries(abc_references PRIVATE abcd_inspection)
   add_executable(abc_modules tools/abc_modules.cc)
   target_link_libraries(abc_modules PRIVATE abcd_inspection)
+  add_executable(abc_dominators tools/abc_dominators.cc)
+  target_link_libraries(abc_dominators PRIVATE abcd_inspection)
 endif()
 
 include(CTest)
@@ -96,6 +98,9 @@ if(BUILD_TESTING)
   add_executable(normal_flow_test tests/unit/analysis/normal_flow_test.cc)
   target_link_libraries(normal_flow_test PRIVATE abcd_analysis)
   add_test(NAME normal_flow_test COMMAND normal_flow_test)
+  add_executable(dominators_test tests/unit/analysis/dominators_test.cc)
+  target_link_libraries(dominators_test PRIVATE abcd_analysis)
+  add_test(NAME dominators_test COMMAND dominators_test)
 
   add_executable(exception_dispatch_test tests/unit/analysis/exception_dispatch_test.cc)
   target_link_libraries(exception_dispatch_test PRIVATE abcd_analysis)
@@ -164,6 +169,11 @@ if(BUILD_TESTING)
       -DABCD_MODULES=$<TARGET_FILE:abc_modules>
       -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/modules_cli.cmake)
+    add_test(NAME dominators_cli_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_SCAN=$<TARGET_FILE:abc_scan>
+      -DABCD_DOMINATORS=$<TARGET_FILE:abc_dominators>
+      -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/dominators_cli.cmake)
     add_test(NAME references_cli_test COMMAND ${CMAKE_COMMAND}
       -DABCD_SCAN=$<TARGET_FILE:abc_scan>
       -DABCD_REFERENCES=$<TARGET_FILE:abc_references>

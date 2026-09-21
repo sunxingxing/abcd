@@ -120,6 +120,12 @@ build/release/abc_modules tests/corpus/abc-index.json \
 缺失所需描述符会返回非零状态，不作为成功或静态跳过。请求阶段表、JSON 内容语法、
 跨模块绑定和源码行为等价尚未验证。
 
+## 普通控制流支配树
+
+普通控制流支配树可用 `abc_dominators` 验证，参数与 `abc_flow` 相同。
+输出直接支配树构建数量、可达块数、算法操作计数及额外分配峰值；暂不包含异常边，
+不能用该结果证明异常路径上的 SSA 或源码语义正确。
+
 ## Sanitizer
 
 ```sh

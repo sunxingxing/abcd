@@ -60,6 +60,8 @@ enum class IndexOutcome {
   kReferenceFailure,
   kModulesChecked,
   kModuleFailure,
+  kDominatorsBuilt,
+  kDominatorFailure,
 };
 
 const char* ToolName(InspectionStage stage) {
@@ -76,6 +78,8 @@ const char* ToolName(InspectionStage stage) {
       return "abc_references";
     case InspectionStage::kModules:
       return "abc_modules";
+    case InspectionStage::kDominators:
+      return "abc_dominators";
   }
   std::abort();
 }
@@ -118,6 +122,10 @@ const char* OutcomeLabel(IndexOutcome outcome) {
       return "modules_checked";
     case IndexOutcome::kModuleFailure:
       return "module_failure";
+    case IndexOutcome::kDominatorsBuilt:
+      return "dominators_built";
+    case IndexOutcome::kDominatorFailure:
+      return "dominator_failure";
   }
   std::abort();
 }
@@ -214,6 +222,8 @@ FileReport IndexFile(const std::filesystem::path& root,
     report.outcome = IndexOutcome::kBodyFailure;
   } else if (report.inspection.failed_flow_methods != 0) {
     report.outcome = IndexOutcome::kFlowFailure;
+  } else if (report.inspection.failed_dominator_methods != 0) {
+    report.outcome = IndexOutcome::kDominatorFailure;
   } else if (report.inspection.failed_dispatch_methods != 0) {
     report.outcome = IndexOutcome::kDispatchFailure;
   } else if (report.inspection.failed_reference_methods != 0) {
@@ -237,6 +247,9 @@ FileReport IndexFile(const std::filesystem::path& root,
         break;
       case InspectionStage::kModules:
         std::abort();  // Handled before method inspection.
+      case InspectionStage::kDominators:
+        report.outcome = IndexOutcome::kDominatorsBuilt;
+        break;
     }
   }
   return report;
@@ -337,6 +350,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
       case IndexOutcome::kDispatchBuilt:
       case IndexOutcome::kReferencesChecked:
       case IndexOutcome::kModulesChecked:
+      case IndexOutcome::kDominatorsBuilt:
         ++indexed;
         break;
       case IndexOutcome::kStaticSkipped:
@@ -347,6 +361,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
       case IndexOutcome::kDispatchFailure:
       case IndexOutcome::kReferenceFailure:
       case IndexOutcome::kModuleFailure:
+      case IndexOutcome::kDominatorFailure:
         ++indexed;
         ++failed;
         break;

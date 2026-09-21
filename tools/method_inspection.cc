@@ -7,6 +7,7 @@
 #include "abcd/abc/method_body.h"
 #include "abcd/analysis/exception_dispatch.h"
 #include "abcd/analysis/normal_flow.h"
+#include "abcd/analysis/dominators.h"
 #include "reference_inspection.h"
 
 namespace abcd::tools {
@@ -94,6 +95,8 @@ const char* StageLabel(InspectionStage stage) {
       return "references";
     case InspectionStage::kModules:
       return "modules";
+    case InspectionStage::kDominators:
+      return "normal_dominators";
   }
   std::abort();
 }
@@ -123,12 +126,18 @@ MethodCounts& MethodCounts::operator+=(const MethodCounts& other) {
   string_literals += other.string_literals;
   literal_arrays += other.literal_arrays;
   literal_entries += other.literal_entries;
+  dominator_methods += other.dominator_methods;
+  failed_dominator_methods += other.failed_dominator_methods;
+  reachable_blocks += other.reachable_blocks;
+  dominator_edge_visits += other.dominator_edge_visits;
+  dominator_eval_steps += other.dominator_eval_steps;
+  dominator_peak_bytes = std::max(dominator_peak_bytes, other.dominator_peak_bytes);
   return *this;
 }
 
 std::uint64_t MethodCounts::FailureCount() const {
   return failed_methods + failed_flow_methods + failed_dispatch_methods +
-         failed_reference_methods;
+         failed_reference_methods + failed_dominator_methods;
 }
 
 nlohmann::json SerializeCounts(const MethodCounts& counts) {
@@ -155,7 +164,13 @@ nlohmann::json SerializeCounts(const MethodCounts& counts) {
           {"unique_references", counts.unique_references},
           {"string_literals", counts.string_literals},
           {"literal_arrays", counts.literal_arrays},
-          {"literal_entries", counts.literal_entries}};
+          {"literal_entries", counts.literal_entries},
+          {"dominator_methods", counts.dominator_methods},
+          {"failed_dominator_methods", counts.failed_dominator_methods},
+          {"reachable_blocks", counts.reachable_blocks},
+          {"dominator_edge_visits", counts.dominator_edge_visits},
+          {"dominator_eval_steps", counts.dominator_eval_steps},
+          {"dominator_peak_bytes", counts.dominator_peak_bytes}};
 }
 
 MethodCounts InspectMethods(const corpus::AbcFile& file,
@@ -200,6 +215,28 @@ MethodCounts InspectMethods(const corpus::AbcFile& file,
         if (edge.kind == analysis::FlowEdgeKind::kResume) ++counts.resume_edges;
     }
     if (stage == InspectionStage::kNormalFlow) continue;
+    if (stage == InspectionStage::kDominators) {
+      const auto built = analysis::BuildNormalDominators(graph);
+      if (const auto* error = std::get_if<analysis::DominatorError>(&built)) {
+        if (counts.FailureCount() != 0) diagnostics << ',';
+        diagnostics << nlohmann::json{
+            {"method_offset", method.offset.value},
+            {"code_offset", method.code->offset.value},
+            {"kind", static_cast<int>(*error)},
+            {"stage", StageLabel(stage)}};
+        ++counts.failed_dominator_methods;
+      } else {
+        const auto& tree = std::get<analysis::DominatorTree>(built);
+        ++counts.dominator_methods;
+        for (const auto& node : tree.nodes)
+          if (node.begin != 0) ++counts.reachable_blocks;
+        counts.dominator_edge_visits += tree.work.edge_visits;
+        counts.dominator_eval_steps += tree.work.eval_steps;
+        counts.dominator_peak_bytes =
+            std::max(counts.dominator_peak_bytes, tree.work.allocated_bytes);
+      }
+      continue;
+    }
     const auto dispatched =
         analysis::BuildExceptionDispatch(body, header.profile);
     if (const auto* failure =
