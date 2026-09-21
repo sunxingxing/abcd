@@ -6,7 +6,8 @@ primitive, not a complete decompiler or an alternative definition of success.
 The caller still needs to recover the function kind, declarations, ABI bindings,
 module/record placement, names, dependencies and control-flow structure.
 
-Supported bodies contain the scalar lifter's supported assignments, lda.str, nop,
+Supported bodies contain the scalar lifter's supported assignments, lda.str,
+modern ldobjbyname (see [named-reads.md](named-reads.md)), nop,
 return, returnundefined and unconditional throw. Unsupported instructions,
 exception regions, absent terminators and instructions after a terminator
 produce typed failures with bytecode offsets. Nothing is silently discarded
@@ -27,7 +28,7 @@ object identity. The pinned interpreter's RETURN, RETURNUNDEFINED, NOP and
 THROW_PREF_NONE handlers provide reference behavior. Function wrapper kinds
 such as constructors/generators require additional semantics outside this API.
 
-String loads require `MethodConstants` from the same immutable ABC as the body:
+String loads and named reads require `MethodConstants` from the same immutable ABC as the body:
 file, header, index, enclosing method and a transient string budget. Each load
 uses the enclosing method's regional method-index table to resolve its string
 slot, then reads and escapes the direct UTF-16 entity. Names, NUL and lone

@@ -74,7 +74,8 @@ int main() {
   for (const auto& invalid :
        {Body({0x64}), Body({0x0a, 0, 0, 0x64}), Body({0xfe, 0}),
         Body({0x37, 0, 0, 0x64}), Body({0x85, 0, 0, 0, 0x64}),
-        Body({0x25, 0, 0, 0x64})}) {
+        Body({0x25, 0, 0, 0x64}), Body({0x42, 0, 0, 0, 0x64}),
+        Body({0x90, 0, 0, 0, 0, 0x64})}) {
     Check(std::get<BodyEmitFailure>(WriteLinearBody(invalid, names, limited))
               .kind == BodyEmitError::kAccumulatorHole);
     Check(limited.str().empty());

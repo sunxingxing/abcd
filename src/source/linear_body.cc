@@ -5,6 +5,7 @@
 #include <type_traits>
 
 #include "abcd/abc/pool_reference.h"
+#include "abcd/analysis/named_read.h"
 #include "abcd/source/string_literal.h"
 
 namespace abcd::source {
@@ -61,6 +62,11 @@ class BodyWriter {
         if (opcode == Opcode::kLDA_STR_ID16) {
           StringLoad(instruction.decoded);
           accumulator_defined = true;
+        } else if (opcode == Opcode::kLDOBJBYNAME_IMM8_ID16 ||
+                   opcode == Opcode::kLDOBJBYNAME_IMM16_ID16) {
+          if (!accumulator_defined)
+            return Fail(BodyEmitError::kAccumulatorHole);
+          NamedLoad(instruction.decoded);
         } else if (opcode == Opcode::kRETURNUNDEFINED) {
           Text("return;\n");
           terminated = true;
@@ -101,10 +107,6 @@ class BodyWriter {
 
  private:
   void StringLoad(const abc::DecodedInstruction& instruction) {
-    if (!constants_) {
-      error_ = Fail(BodyEmitError::kMissingConstants);
-      return;
-    }
     constexpr std::uint64_t kStringSlotMax = UINT16_MAX;
     if (instruction.operand_count != 1 ||
         instruction.operands[0].kind != abc::OperandKind::kString ||
@@ -115,10 +117,37 @@ class BodyWriter {
                                {}};
       return;
     }
+    Expression(ScalarValue{Accumulator{}});
+    Text(" = ");
+    StringConstant(
+        {static_cast<std::uint32_t>(instruction.operands[0].raw_bits)});
+    Text(";\n");
+  }
+  void NamedLoad(const abc::DecodedInstruction& instruction) {
+    const auto lifted = LiftNamedRead(instruction);
+    if (std::holds_alternative<NamedReadError>(lifted)) {
+      error_ = BodyEmitFailure{BodyEmitError::kUnsupportedInstruction,
+                               offset_,
+                               ScalarError::kMalformedInstruction,
+                               {}};
+      return;
+    }
+    Expression(ScalarValue{Accumulator{}});
+    Text(" = (");
+    Expression(ScalarValue{Accumulator{}});
+    Text(")[");
+    StringConstant(std::get<NamedRead>(lifted).name);
+    Text("];\n");
+  }
+  void StringConstant(abc::PoolIndex slot) {
+    if (error_) return;
+    if (!constants_) {
+      error_ = Fail(BodyEmitError::kMissingConstants);
+      return;
+    }
     const auto& context = *constants_;
     const auto reference = abc::ResolvePoolReference(
-        context.file, context.header, context.index, context.method,
-        {static_cast<std::uint32_t>(instruction.operands[0].raw_bits)},
+        context.file, context.header, context.index, context.method, slot,
         abc::PoolEntityKind::kString);
     if (const auto* failure = std::get_if<abc::MetadataError>(&reference)) {
       error_ =
@@ -133,12 +162,8 @@ class BodyWriter {
           BodyEmitFailure{BodyEmitError::kConstant, offset_, {}, {}, *failure};
       return;
     }
-    Expression(ScalarValue{Accumulator{}});
-    Text(" = ");
-    if (error_) return;
     Account(WriteStringLiteral(std::get<std::u16string>(string), output_,
                                {remaining_}));
-    Text(";\n");
   }
   BodyEmitFailure Fail(BodyEmitError kind) const {
     return {kind, offset_, {}, {}};
