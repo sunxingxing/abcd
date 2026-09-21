@@ -12,6 +12,12 @@
 namespace abcd::tools {
 
 struct MethodCounts {
+  std::uint64_t frame_methods = 0;
+  std::uint64_t failed_frame_methods = 0;
+  std::uint64_t default_call_type_methods = 0;
+  std::uint64_t hidden_slots = 0;
+  std::uint64_t user_parameters = 0;
+  std::uint64_t extra_argument_methods = 0;
   std::uint64_t code_methods = 0;
   std::uint64_t instruction_bytes = 0;
   std::uint64_t decoded_methods = 0;

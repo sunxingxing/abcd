@@ -5,6 +5,8 @@
 #include <ostream>
 
 #include "abcd/abc/method_body.h"
+#include "abcd/abc/call_type.h"
+#include "abcd/abc/frame_layout.h"
 #include "abcd/analysis/exception_dispatch.h"
 #include "abcd/analysis/normal_flow.h"
 #include "abcd/analysis/dominators.h"
@@ -97,11 +99,19 @@ const char* StageLabel(InspectionStage stage) {
       return "modules";
     case InspectionStage::kDominators:
       return "normal_dominators";
+    case InspectionStage::kFrames:
+      return "frames";
   }
   std::abort();
 }
 
 MethodCounts& MethodCounts::operator+=(const MethodCounts& other) {
+  frame_methods += other.frame_methods;
+  failed_frame_methods += other.failed_frame_methods;
+  default_call_type_methods += other.default_call_type_methods;
+  hidden_slots += other.hidden_slots;
+  user_parameters += other.user_parameters;
+  extra_argument_methods += other.extra_argument_methods;
   code_methods += other.code_methods;
   instruction_bytes += other.instruction_bytes;
   decoded_methods += other.decoded_methods;
@@ -137,11 +147,17 @@ MethodCounts& MethodCounts::operator+=(const MethodCounts& other) {
 
 std::uint64_t MethodCounts::FailureCount() const {
   return failed_methods + failed_flow_methods + failed_dispatch_methods +
-         failed_reference_methods + failed_dominator_methods;
+         failed_reference_methods + failed_dominator_methods + failed_frame_methods;
 }
 
 nlohmann::json SerializeCounts(const MethodCounts& counts) {
-  return {{"code_methods", counts.code_methods},
+  return {{"frame_methods", counts.frame_methods},
+          {"failed_frame_methods", counts.failed_frame_methods},
+          {"default_call_type_methods", counts.default_call_type_methods},
+          {"hidden_slots", counts.hidden_slots},
+          {"user_parameters", counts.user_parameters},
+          {"extra_argument_methods", counts.extra_argument_methods},
+          {"code_methods", counts.code_methods},
           {"instruction_bytes", counts.instruction_bytes},
           {"decoded_methods", counts.decoded_methods},
           {"failed_methods", counts.failed_methods},
@@ -183,6 +199,35 @@ MethodCounts InspectMethods(const corpus::AbcFile& file,
     ++counts.code_methods;
     counts.instruction_bytes += method.code->instruction_bytes;
     if (stage == InspectionStage::kMetadata) continue;
+    if (stage == InspectionStage::kFrames) {
+      const auto call_type = abc::ReadCallType(file, header, index, method.annotations);
+      const auto fail = [&](const char* category, int error) {
+        if (counts.FailureCount() != 0) diagnostics << ',';
+        diagnostics << nlohmann::json{
+            {"method_offset", method.offset.value},
+            {"code_offset", method.code->offset.value},
+            {"stage", StageLabel(stage)}, {category, error}};
+        ++counts.failed_frame_methods;
+      };
+      if (const auto* error = std::get_if<abc::MetadataError>(&call_type)) {
+        fail("metadata_error", static_cast<int>(*error));
+        continue;
+      }
+      const auto value = std::get<abc::CallType>(call_type).value;
+      const auto layout = abc::BuildFrameLayout(
+          method.code->registers, method.code->arguments, abc::DecodeCallFlags(value));
+      if (const auto* error = std::get_if<abc::FrameError>(&layout)) {
+        fail("frame_error", static_cast<int>(*error));
+        continue;
+      }
+      const auto& frame = std::get<abc::FrameLayout>(layout);
+      ++counts.frame_methods;
+      if (!value) ++counts.default_call_type_methods;
+      counts.hidden_slots += frame.first_parameter.value - frame.locals;
+      counts.user_parameters += frame.parameters;
+      if (frame.extra_arguments) ++counts.extra_argument_methods;
+      continue;
+    }
     const auto decoded =
         abc::DecodeMethodBody(file, header.profile, *method.code);
     if (const auto* failure = std::get_if<abc::BodyFailure>(&decoded)) {

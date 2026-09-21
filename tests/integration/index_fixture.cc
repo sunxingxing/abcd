@@ -28,6 +28,7 @@ constexpr std::uint32_t kClassOffset = kRegionOffset + kRegionBytes;
 enum class FixtureKind {
   kEmptyRecord,
   kMethod,
+  kFrameMethod,
   kInvalidMethod,
   kManyInvalidMethods,
   kFallthroughMethod,
@@ -71,6 +72,8 @@ int main(int argc, char** argv) {
     const std::string_view option(argv[2]);
     if (option == "--method")
       kind = FixtureKind::kMethod;
+    else if (option == "--frame-method")
+      kind = FixtureKind::kFrameMethod;
     else if (option == "--invalid-method")
       kind = FixtureKind::kInvalidMethod;
     else if (option == "--many-invalid-methods")
@@ -190,6 +193,10 @@ int main(int argc, char** argv) {
                                                                     : 0xff)});
       }
       const auto offset = method_offset + i * kMethod.size();
+      if (kind == FixtureKind::kFrameMethod) {
+        dynamic[code_offset + 1] = 3;  // Missing annotation enables 3 hidden slots.
+        dynamic[code_offset + 4] = 0x65;
+      }
       WriteWord(dynamic, offset + kNameOffsetInMethod, name_offset);
       WriteWord(dynamic, offset + kCodeOffsetInMethod, code_offset);
     }

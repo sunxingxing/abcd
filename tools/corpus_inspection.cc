@@ -62,6 +62,8 @@ enum class IndexOutcome {
   kModuleFailure,
   kDominatorsBuilt,
   kDominatorFailure,
+  kFramesChecked,
+  kFrameFailure,
 };
 
 const char* ToolName(InspectionStage stage) {
@@ -80,6 +82,8 @@ const char* ToolName(InspectionStage stage) {
       return "abc_modules";
     case InspectionStage::kDominators:
       return "abc_dominators";
+    case InspectionStage::kFrames:
+      return "abc_frames";
   }
   std::abort();
 }
@@ -126,6 +130,10 @@ const char* OutcomeLabel(IndexOutcome outcome) {
       return "dominators_built";
     case IndexOutcome::kDominatorFailure:
       return "dominator_failure";
+    case IndexOutcome::kFramesChecked:
+      return "frames_checked";
+    case IndexOutcome::kFrameFailure:
+      return "frame_failure";
   }
   std::abort();
 }
@@ -218,7 +226,9 @@ FileReport IndexFile(const std::filesystem::path& root,
       InspectMethods(*file, header, index, stage, diagnostics);
   // A file reports the earliest failed stage, independent of method order.
   // Per-stage totals and every diagnostic remain available for mixed failures.
-  if (report.inspection.failed_methods != 0) {
+  if (report.inspection.failed_frame_methods != 0) {
+    report.outcome = IndexOutcome::kFrameFailure;
+  } else if (report.inspection.failed_methods != 0) {
     report.outcome = IndexOutcome::kBodyFailure;
   } else if (report.inspection.failed_flow_methods != 0) {
     report.outcome = IndexOutcome::kFlowFailure;
@@ -249,6 +259,9 @@ FileReport IndexFile(const std::filesystem::path& root,
         std::abort();  // Handled before method inspection.
       case InspectionStage::kDominators:
         report.outcome = IndexOutcome::kDominatorsBuilt;
+        break;
+      case InspectionStage::kFrames:
+        report.outcome = IndexOutcome::kFramesChecked;
         break;
     }
   }
@@ -351,6 +364,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
       case IndexOutcome::kReferencesChecked:
       case IndexOutcome::kModulesChecked:
       case IndexOutcome::kDominatorsBuilt:
+      case IndexOutcome::kFramesChecked:
         ++indexed;
         break;
       case IndexOutcome::kStaticSkipped:
@@ -362,6 +376,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
       case IndexOutcome::kReferenceFailure:
       case IndexOutcome::kModuleFailure:
       case IndexOutcome::kDominatorFailure:
+      case IndexOutcome::kFrameFailure:
         ++indexed;
         ++failed;
         break;

@@ -69,6 +69,8 @@ if(ABCD_BUILD_TOOLS)
   target_link_libraries(abc_modules PRIVATE abcd_inspection)
   add_executable(abc_dominators tools/abc_dominators.cc)
   target_link_libraries(abc_dominators PRIVATE abcd_inspection)
+  add_executable(abc_frames tools/abc_frames.cc)
+  target_link_libraries(abc_frames PRIVATE abcd_inspection)
 endif()
 
 include(CTest)
@@ -186,6 +188,11 @@ if(BUILD_TESTING)
   add_test(NAME scan_test COMMAND scan_test)
 
   if(TARGET abc_scan)
+    add_test(NAME frames_cli_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_SCAN=$<TARGET_FILE:abc_scan>
+      -DABCD_FRAMES=$<TARGET_FILE:abc_frames>
+      -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/frames_cli.cmake)
     add_test(NAME modules_cli_test COMMAND ${CMAKE_COMMAND}
       -DABCD_SCAN=$<TARGET_FILE:abc_scan>
       -DABCD_MODULES=$<TARGET_FILE:abc_modules>
