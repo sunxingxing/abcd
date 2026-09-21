@@ -64,6 +64,7 @@ enum class IndexOutcome {
   kDominatorFailure,
   kFramesChecked,
   kFrameFailure,
+  kSourceBodiesProbed,
 };
 
 const char* ToolName(InspectionStage stage) {
@@ -84,6 +85,8 @@ const char* ToolName(InspectionStage stage) {
       return "abc_dominators";
     case InspectionStage::kFrames:
       return "abc_frames";
+    case InspectionStage::kSourceBodies:
+      return "abc_source_probe";
   }
   std::abort();
 }
@@ -134,6 +137,8 @@ const char* OutcomeLabel(IndexOutcome outcome) {
       return "frames_checked";
     case IndexOutcome::kFrameFailure:
       return "frame_failure";
+    case IndexOutcome::kSourceBodiesProbed:
+      return "source_bodies_probed";
   }
   std::abort();
 }
@@ -263,6 +268,9 @@ FileReport IndexFile(const std::filesystem::path& root,
       case InspectionStage::kFrames:
         report.outcome = IndexOutcome::kFramesChecked;
         break;
+      case InspectionStage::kSourceBodies:
+        report.outcome = IndexOutcome::kSourceBodiesProbed;
+        break;
     }
   }
   return report;
@@ -365,6 +373,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
       case IndexOutcome::kModulesChecked:
       case IndexOutcome::kDominatorsBuilt:
       case IndexOutcome::kFramesChecked:
+      case IndexOutcome::kSourceBodiesProbed:
         ++indexed;
         break;
       case IndexOutcome::kStaticSkipped:

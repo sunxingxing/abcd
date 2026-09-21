@@ -101,11 +101,14 @@ const char* StageLabel(InspectionStage stage) {
       return "normal_dominators";
     case InspectionStage::kFrames:
       return "frames";
+    case InspectionStage::kSourceBodies:
+      return "source_body_probe";
   }
   std::abort();
 }
 
 MethodCounts& MethodCounts::operator+=(const MethodCounts& other) {
+  source += other.source;
   for (std::size_t i = 0; i < function_kinds.size(); ++i)
     function_kinds[i] += other.function_kinds[i];
   sendable_methods += other.sendable_methods;
@@ -154,7 +157,7 @@ std::uint64_t MethodCounts::FailureCount() const {
 }
 
 nlohmann::json SerializeCounts(const MethodCounts& counts) {
-  return {{"function_kinds", counts.function_kinds},
+  nlohmann::json result{{"function_kinds", counts.function_kinds},
           {"sendable_methods", counts.sendable_methods},
           {"frame_methods", counts.frame_methods},
           {"failed_frame_methods", counts.failed_frame_methods},
@@ -192,6 +195,8 @@ nlohmann::json SerializeCounts(const MethodCounts& counts) {
           {"dominator_edge_visits", counts.dominator_edge_visits},
           {"dominator_eval_steps", counts.dominator_eval_steps},
           {"dominator_peak_bytes", counts.dominator_peak_bytes}};
+  result.update(SerializeCounts(counts.source));
+  return result;
 }
 
 MethodCounts InspectMethods(const corpus::AbcFile& file,
@@ -255,6 +260,10 @@ MethodCounts InspectMethods(const corpus::AbcFile& file,
     counts.instructions += body.instructions.size();
     counts.try_regions += body.tries.size();
     counts.catch_handlers += body.handlers.size();
+    if (stage == InspectionStage::kSourceBodies) {
+      InspectSource(file, header, index, method, body, &counts.source);
+      continue;
+    }
     if (stage == InspectionStage::kInstructions) continue;
     const auto flow = analysis::BuildNormalFlow(body);
     if (const auto* failure = std::get_if<analysis::FlowFailure>(&flow)) {

@@ -36,6 +36,11 @@ enum class FixtureKind {
   kMixedMethodsReversed,
   kExceptionMethod,
   kReferenceMethod,
+  kSourceMethod,
+  kSourceString,
+  kSourceNameBudget,
+  kSourceLoop,
+  kSourceException,
   kInvalidReference,
   kModuleRecord,
   kBundleModule
@@ -88,6 +93,16 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kExceptionMethod;
     else if (option == "--reference-method")
       kind = FixtureKind::kReferenceMethod;
+    else if (option == "--source-method")
+      kind = FixtureKind::kSourceMethod;
+    else if (option == "--source-string")
+      kind = FixtureKind::kSourceString;
+    else if (option == "--source-name-budget")
+      kind = FixtureKind::kSourceNameBudget;
+    else if (option == "--source-loop")
+      kind = FixtureKind::kSourceLoop;
+    else if (option == "--source-exception")
+      kind = FixtureKind::kSourceException;
     else if (option == "--invalid-reference")
       kind = FixtureKind::kInvalidReference;
     else if (option == "--module-record")
@@ -162,13 +177,20 @@ int main(int argc, char** argv) {
           kind == FixtureKind::kFallthroughMethod ||
           (mixed && ((i == 0) == (kind == FixtureKind::kMixedMethodsReversed)));
       if (kind == FixtureKind::kReferenceMethod ||
+          kind == FixtureKind::kSourceMethod ||
+          kind == FixtureKind::kSourceString ||
           kind == FixtureKind::kInvalidReference) {
-        // lda.str id16, createarraywithbuffer imm8/id16, returnundefined.
-        dynamic.insert(dynamic.end(),
-                       {0, 0, 8, 0, 0x3e,
-                        static_cast<std::uint8_t>(
-                            kind == FixtureKind::kInvalidReference ? 2 : 0),
-                        0, 0x06, 0, 1, 0, 0x65});
+        if (kind == FixtureKind::kSourceString) {
+          // A successful source path must resolve the regional string slot.
+          dynamic.insert(dynamic.end(), {0, 3, 4, 0, 0x3e, 0, 0, 0x64});
+        } else {
+          // lda.str id16, createarraywithbuffer imm8/id16, returnundefined.
+          dynamic.insert(dynamic.end(),
+                         {0, 0, 8, 0, 0x3e,
+                          static_cast<std::uint8_t>(
+                              kind == FixtureKind::kInvalidReference ? 2 : 0),
+                          0, 0x06, 0, 1, 0, 0x65});
+        }
         const auto literal_offset = dynamic.size();
         dynamic.insert(dynamic.end(), {2, 0, 0, 0, 0x05, 0, 0, 0, 0});
         WriteWord(dynamic, literal_offset + 5, name_offset);
@@ -178,7 +200,16 @@ int main(int argc, char** argv) {
         WriteWord(dynamic, pool_offset + kWordBytes, literal_offset);
         WriteWord(dynamic, kRegionOffset + 4 * kWordBytes, 2);
         WriteWord(dynamic, kRegionOffset + 5 * kWordBytes, pool_offset);
-      } else if (kind == FixtureKind::kExceptionMethod) {
+      } else if (kind == FixtureKind::kSourceLoop) {
+        dynamic.insert(dynamic.end(), {0, 3, 2, 0, 0x4d, 0});
+      } else if (kind == FixtureKind::kSourceNameBudget) {
+        // ULEB 2^22 local registers: valid frame, exceeds the name budget.
+        // No large fixture allocation or register operand is necessary.
+        constexpr std::array<std::uint8_t, 8> kLargeFrame{
+            0x80, 0x80, 0x80, 0x02, 3, 1, 0, 0x65};
+        dynamic.insert(dynamic.end(), kLargeFrame.begin(), kLargeFrame.end());
+      } else if (kind == FixtureKind::kExceptionMethod ||
+                 kind == FixtureKind::kSourceException) {
         // Four prefix ULEBs; [ldundefined, throw, returnundefined,
         // returnundefined]. Try [0,3), first typed catch at [3,4), then
         // catch-all at [4,5).
@@ -193,6 +224,9 @@ int main(int argc, char** argv) {
                                                                     : 0xff)});
       }
       const auto offset = method_offset + i * kMethod.size();
+      if (kind == FixtureKind::kSourceMethod ||
+          kind == FixtureKind::kSourceException)
+        dynamic[code_offset + 1] = 3;
       if (kind == FixtureKind::kFrameMethod) {
         dynamic[code_offset + 1] = 3;  // Missing annotation enables 3 hidden slots.
         dynamic[code_offset + 4] = 0x65;

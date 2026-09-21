@@ -1,0 +1,559 @@
+{
+  "address_space_limit_bytes": 1000000000,
+  "blocks": 0,
+  "catch_handlers": 868114,
+  "code_methods": 5486254,
+  "decoded_methods": 5486254,
+  "default_call_type_methods": 0,
+  "dispatch_methods": 0,
+  "dispatch_spans": 0,
+  "dominator_edge_visits": 0,
+  "dominator_eval_steps": 0,
+  "dominator_methods": 0,
+  "dominator_peak_bytes": 0,
+  "edges": 0,
+  "extra_argument_methods": 0,
+  "failed": 0,
+  "failed_dispatch_methods": 0,
+  "failed_dominator_methods": 0,
+  "failed_flow_methods": 0,
+  "failed_frame_methods": 0,
+  "failed_methods": 0,
+  "failed_reference_methods": 0,
+  "fields": 1675075,
+  "files": 900,
+  "flow_methods": 0,
+  "frame_methods": 0,
+  "function_kinds": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "hidden_slots": 0,
+  "indexed": 402,
+  "instruction_bytes": 712869853,
+  "instructions": 264106514,
+  "literal_arrays": 0,
+  "literal_entries": 0,
+  "methods": 5486254,
+  "peak_rss_bytes": 163364864,
+  "protected_blocks": 0,
+  "protected_instructions": 0,
+  "reachable_blocks": 0,
+  "records": 281067,
+  "reference_methods": 0,
+  "reference_operands": 0,
+  "resume_edges": 0,
+  "sendable_methods": 0,
+  "source_body_ready": 562473,
+  "source_body_rejected": 4923781,
+  "source_bytes": 37582413,
+  "source_obstacles": [
+    {
+      "category": "accumulator",
+      "count": 17744,
+      "error": 3,
+      "opcode": 4
+    },
+    {
+      "category": "accumulator",
+      "count": 19882,
+      "error": 3,
+      "opcode": 5
+    },
+    {
+      "category": "accumulator",
+      "count": 1840,
+      "error": 3,
+      "opcode": 6
+    },
+    {
+      "category": "accumulator",
+      "count": 119008,
+      "error": 3,
+      "opcode": 7
+    },
+    {
+      "category": "accumulator",
+      "count": 242,
+      "error": 3,
+      "opcode": 8
+    },
+    {
+      "category": "accumulator",
+      "count": 415889,
+      "error": 3,
+      "opcode": 9
+    },
+    {
+      "category": "accumulator",
+      "count": 80,
+      "error": 3,
+      "opcode": 38
+    },
+    {
+      "category": "accumulator",
+      "count": 1333,
+      "error": 3,
+      "opcode": 41
+    },
+    {
+      "category": "accumulator",
+      "count": 1140,
+      "error": 3,
+      "opcode": 42
+    },
+    {
+      "category": "accumulator",
+      "count": 104,
+      "error": 3,
+      "opcode": 43
+    },
+    {
+      "category": "accumulator",
+      "count": 18,
+      "error": 3,
+      "opcode": 44
+    },
+    {
+      "category": "accumulator",
+      "count": 475596,
+      "error": 3,
+      "opcode": 45
+    },
+    {
+      "category": "accumulator",
+      "count": 410732,
+      "error": 3,
+      "opcode": 46
+    },
+    {
+      "category": "accumulator",
+      "count": 36865,
+      "error": 3,
+      "opcode": 47
+    },
+    {
+      "category": "accumulator",
+      "count": 11513,
+      "error": 3,
+      "opcode": 48
+    },
+    {
+      "category": "accumulator",
+      "count": 2526,
+      "error": 3,
+      "opcode": 49
+    },
+    {
+      "category": "accumulator",
+      "count": 29818,
+      "error": 3,
+      "opcode": 50
+    },
+    {
+      "category": "accumulator",
+      "count": 40993,
+      "error": 3,
+      "opcode": 51
+    },
+    {
+      "category": "accumulator",
+      "count": 104,
+      "error": 3,
+      "opcode": 53
+    },
+    {
+      "category": "accumulator",
+      "count": 64565,
+      "error": 3,
+      "opcode": 56
+    },
+    {
+      "category": "accumulator",
+      "count": 1,
+      "error": 3,
+      "opcode": 57
+    },
+    {
+      "category": "accumulator",
+      "count": 6551,
+      "error": 3,
+      "opcode": 58
+    },
+    {
+      "category": "accumulator",
+      "count": 759060,
+      "error": 3,
+      "opcode": 60
+    },
+    {
+      "category": "accumulator",
+      "count": 929,
+      "error": 3,
+      "opcode": 61
+    },
+    {
+      "category": "accumulator",
+      "count": 558344,
+      "error": 3,
+      "opcode": 63
+    },
+    {
+      "category": "accumulator",
+      "count": 1,
+      "error": 3,
+      "opcode": 64
+    },
+    {
+      "category": "accumulator",
+      "count": 10,
+      "error": 3,
+      "opcode": 65
+    },
+    {
+      "category": "accumulator",
+      "count": 255268,
+      "error": 3,
+      "opcode": 67
+    },
+    {
+      "category": "accumulator",
+      "count": 7521,
+      "error": 3,
+      "opcode": 70
+    },
+    {
+      "category": "accumulator",
+      "count": 2622,
+      "error": 3,
+      "opcode": 108
+    },
+    {
+      "category": "accumulator",
+      "count": 3317,
+      "error": 3,
+      "opcode": 109
+    },
+    {
+      "category": "accumulator",
+      "count": 66,
+      "error": 3,
+      "opcode": 115
+    },
+    {
+      "category": "accumulator",
+      "count": 40,
+      "error": 3,
+      "opcode": 116
+    },
+    {
+      "category": "accumulator",
+      "count": 641,
+      "error": 3,
+      "opcode": 123
+    },
+    {
+      "category": "accumulator",
+      "count": 23555,
+      "error": 3,
+      "opcode": 124
+    },
+    {
+      "category": "accumulator",
+      "count": 128836,
+      "error": 3,
+      "opcode": 125
+    },
+    {
+      "category": "accumulator",
+      "count": 587415,
+      "error": 3,
+      "opcode": 126
+    },
+    {
+      "category": "accumulator",
+      "count": 72,
+      "error": 3,
+      "opcode": 127
+    },
+    {
+      "category": "accumulator",
+      "count": 36,
+      "error": 3,
+      "opcode": 128
+    },
+    {
+      "category": "accumulator",
+      "count": 1,
+      "error": 3,
+      "opcode": 129
+    },
+    {
+      "category": "accumulator",
+      "count": 68,
+      "error": 3,
+      "opcode": 130
+    },
+    {
+      "category": "accumulator",
+      "count": 9,
+      "error": 3,
+      "opcode": 134
+    },
+    {
+      "category": "accumulator",
+      "count": 19129,
+      "error": 3,
+      "opcode": 138
+    },
+    {
+      "category": "accumulator",
+      "count": 567,
+      "error": 3,
+      "opcode": 139
+    },
+    {
+      "category": "accumulator",
+      "count": 60,
+      "error": 3,
+      "opcode": 140
+    },
+    {
+      "category": "accumulator",
+      "count": 26,
+      "error": 3,
+      "opcode": 145
+    },
+    {
+      "category": "accumulator",
+      "count": 4,
+      "error": 3,
+      "opcode": 146
+    },
+    {
+      "category": "accumulator",
+      "count": 11,
+      "error": 3,
+      "opcode": 179
+    },
+    {
+      "category": "accumulator",
+      "count": 553,
+      "error": 3,
+      "opcode": 182
+    },
+    {
+      "category": "accumulator",
+      "count": 1285,
+      "error": 3,
+      "opcode": 189
+    },
+    {
+      "category": "accumulator",
+      "count": 81,
+      "error": 3,
+      "opcode": 194
+    },
+    {
+      "category": "accumulator",
+      "count": 20049,
+      "error": 3,
+      "opcode": 207
+    },
+    {
+      "category": "accumulator",
+      "count": 16,
+      "error": 3,
+      "opcode": 208
+    },
+    {
+      "category": "accumulator",
+      "count": 172,
+      "error": 3,
+      "opcode": 211
+    },
+    {
+      "category": "accumulator",
+      "count": 164,
+      "error": 3,
+      "opcode": 216
+    },
+    {
+      "category": "accumulator",
+      "count": 51,
+      "error": 3,
+      "opcode": 217
+    },
+    {
+      "category": "accumulator",
+      "count": 5525,
+      "error": 3,
+      "opcode": 219
+    },
+    {
+      "category": "accumulator",
+      "count": 40640,
+      "error": 3,
+      "opcode": 220
+    },
+    {
+      "category": "accumulator",
+      "count": 3,
+      "error": 3,
+      "opcode": 251
+    },
+    {
+      "category": "accumulator",
+      "count": 47,
+      "error": 3,
+      "opcode": 765
+    },
+    {
+      "category": "accumulator",
+      "count": 10,
+      "error": 3,
+      "opcode": 766
+    },
+    {
+      "category": "accumulator",
+      "count": 52,
+      "error": 3,
+      "opcode": 1531
+    },
+    {
+      "category": "accumulator",
+      "count": 3,
+      "error": 3,
+      "opcode": 2046
+    },
+    {
+      "category": "accumulator",
+      "count": 11887,
+      "error": 3,
+      "opcode": 2299
+    },
+    {
+      "category": "accumulator",
+      "count": 10965,
+      "error": 3,
+      "opcode": 2555
+    },
+    {
+      "category": "accumulator",
+      "count": 700,
+      "error": 3,
+      "opcode": 3067
+    },
+    {
+      "category": "accumulator",
+      "count": 1,
+      "error": 3,
+      "opcode": 3323
+    },
+    {
+      "category": "accumulator",
+      "count": 29048,
+      "error": 3,
+      "opcode": 3325
+    },
+    {
+      "category": "accumulator",
+      "count": 452,
+      "error": 3,
+      "opcode": 3581
+    },
+    {
+      "category": "accumulator",
+      "count": 7,
+      "error": 3,
+      "opcode": 3837
+    },
+    {
+      "category": "accumulator",
+      "count": 1,
+      "error": 3,
+      "opcode": 4093
+    },
+    {
+      "category": "accumulator",
+      "count": 71,
+      "error": 3,
+      "opcode": 4347
+    },
+    {
+      "category": "accumulator",
+      "count": 2166,
+      "error": 3,
+      "opcode": 4349
+    },
+    {
+      "category": "accumulator",
+      "count": 4289,
+      "error": 3,
+      "opcode": 4605
+    },
+    {
+      "category": "accumulator",
+      "count": 74129,
+      "error": 3,
+      "opcode": 5627
+    },
+    {
+      "category": "accumulator",
+      "count": 583,
+      "error": 3,
+      "opcode": 5883
+    },
+    {
+      "category": "accumulator",
+      "count": 47,
+      "error": 3,
+      "opcode": 6139
+    },
+    {
+      "category": "accumulator",
+      "count": 14727,
+      "error": 3,
+      "opcode": 6651
+    },
+    {
+      "category": "accumulator",
+      "count": 82,
+      "error": 3,
+      "opcode": 6907
+    },
+    {
+      "category": "accumulator",
+      "count": 46829,
+      "error": 4,
+      "opcode": 97
+    },
+    {
+      "category": "order",
+      "count": 91294,
+      "error": 4
+    },
+    {
+      "category": "body",
+      "count": 563695,
+      "error": 0
+    },
+    {
+      "category": "acyclic",
+      "count": 5,
+      "error": 1
+    }
+  ],
+  "stage": "source_body_probe",
+  "static_skipped": 498,
+  "string_literals": 0,
+  "try_regions": 868111,
+  "unique_references": 0,
+  "user_parameters": 0
+}
