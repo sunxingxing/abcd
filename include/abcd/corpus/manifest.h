@@ -30,7 +30,8 @@ struct CorpusEntry {
 };
 
 enum class ManifestError {
-  kOpen, kLockBusy, kRead, kTooLarge, kSchema, kWrite, kRename, kSync
+  kOpen, kLockBusy, kRead, kTooLarge, kSchema, kWrite, kRename,
+  kCommittedNotDurable
 };
 
 using ManifestResult = std::variant<std::vector<CorpusEntry>, ManifestError>;

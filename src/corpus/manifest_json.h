@@ -6,6 +6,7 @@
 #include "abcd/corpus/manifest.h"
 
 namespace abcd::corpus {
+std::optional<ManifestError> ValidateEntries(const std::vector<CorpusEntry>& entries);
 ManifestResult DecodeManifest(std::string_view bytes);
 std::variant<std::string, ManifestError> EncodeManifest(
     const std::vector<CorpusEntry>& entries);

@@ -102,6 +102,9 @@ std::optional<ManifestError> ManifestStore::Save(
   auto encoded = EncodeManifest(entries);
   if (const auto* error = std::get_if<ManifestError>(&encoded)) return *error;
   const auto& bytes = std::get<std::string>(encoded);
+  const auto parent = path_.has_parent_path() ? path_.parent_path() : std::filesystem::path(".");
+  ScopedFd directory(open(parent.c_str(), O_RDONLY | O_CLOEXEC | O_DIRECTORY));
+  if (directory.Get() < 0) return ManifestError::kWrite;
   TempManifest temporary(path_);
   if (temporary.Get() < 0) return ManifestError::kWrite;
   std::size_t position = 0;
@@ -114,9 +117,8 @@ std::optional<ManifestError> ManifestStore::Save(
   }
   if (fsync(temporary.Get()) != 0) return ManifestError::kWrite;
   if (!temporary.Rename(path_)) return ManifestError::kRename;
-  const auto parent = path_.has_parent_path() ? path_.parent_path() : std::filesystem::path(".");
-  ScopedFd directory(open(parent.c_str(), O_RDONLY | O_CLOEXEC | O_DIRECTORY));
-  if (directory.Get() < 0 || fsync(directory.Get()) != 0) return ManifestError::kSync;
+  // Rename committed a complete file. Sync failure cannot promise rollback.
+  if (fsync(directory.Get()) != 0) return ManifestError::kCommittedNotDurable;
   return std::nullopt;
 }
 }  // namespace abcd::corpus

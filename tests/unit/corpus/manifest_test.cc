@@ -114,6 +114,38 @@ void FailedWritePreservesCommittedManifest() {
   Check(WIFEXITED(status) && WEXITSTATUS(status) == EXIT_SUCCESS);
   Check(std::get<std::vector<CorpusEntry>>(store->Load()) == entries);
 }
+
+void RejectsContradictoryClassifications() {
+  FixtureDirectory fixture;
+  auto store = Open(fixture);
+  auto entry = StaticEntry();
+  entry.detection.version = abcd::abc::AbcVersion{{0, 1, 0, 7}};
+  entry.detection.profile = abcd::abc::ProfileId::kStatic0107;
+  entry.detection.evidence = {EvidenceRule::kStaticHeader, 12, 0x00010007};
+  Check(!store->Save({entry}));
+  entry.size = 0;
+  Check(store->Save({entry}) == ManifestError::kSchema);
+  entry.size = 100;
+  entry.detection.evidence.offset = 30;
+  Check(store->Save({entry}) == ManifestError::kSchema);
+
+  entry = StaticEntry();
+  auto duplicate = entry;
+  duplicate.relative_path = "another.abc";
+  ++duplicate.size;
+  Check(store->Save({entry, duplicate}) == ManifestError::kSchema);
+
+  entry.detection.kind = SampleKind::kDynamic;
+  Check(store->Save({entry}) == ManifestError::kSchema);
+  entry.detection.version = abcd::abc::AbcVersion{{12, 0, 6, 0}};
+  entry.detection.profile = abcd::abc::ProfileId::kDynamic1206;
+  entry.detection.evidence = {EvidenceRule::kDynamicHeader, 12, 0x0c000600};
+  Check(!store->Save({entry}));
+  entry.detection.kind = SampleKind::kUnknown;
+  Check(store->Save({entry}) == ManifestError::kSchema);
+  entry.detection.kind = SampleKind::kInvalid;
+  Check(store->Save({entry}) == ManifestError::kSchema);
+}
 }  // namespace
 
 int main() {
@@ -121,4 +153,5 @@ int main() {
   RejectsCorruptAndOversizedInput();
   RejectsInvalidPathsAndDuplicateEntries();
   FailedWritePreservesCommittedManifest();
+  RejectsContradictoryClassifications();
 }

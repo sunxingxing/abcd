@@ -100,51 +100,6 @@ Sha256 ParseHex(const Json& json) {
   return result;
 }
 
-void Validate(const std::vector<CorpusEntry>& entries) {
-  if (entries.size() > kMaxManifestEntries) throw ManifestError::kTooLarge;
-  std::set<std::pair<std::string, std::filesystem::path>> paths;
-  std::map<std::pair<Sha256, std::uint32_t>, Detection> contents;
-  constexpr std::size_t kMaxPathBytes = 4096;
-  constexpr std::size_t kMaxCorpusIdBytes = 64;
-  for (const auto& entry : entries) {
-    const auto path = entry.relative_path.generic_string();
-    if (entry.corpus_id.empty() || entry.corpus_id.size() > kMaxCorpusIdBytes ||
-        entry.corpus_id.find('\0') != std::string::npos || path.empty() ||
-        path.size() > kMaxPathBytes || path.find('\0') != std::string::npos ||
-        entry.relative_path.is_absolute() || entry.checked_at < 0 ||
-        entry.detector_revision == 0) throw ManifestError::kSchema;
-    for (const auto& part : entry.relative_path) {
-      if (part == ".." || part == "." || part.empty()) throw ManifestError::kSchema;
-    }
-    if (!paths.emplace(entry.corpus_id, entry.relative_path).second) {
-      throw ManifestError::kSchema;
-    }
-    const auto [position, inserted] = contents.emplace(
-        std::pair{entry.sha256, entry.detector_revision}, entry.detection);
-    if (!inserted && position->second != entry.detection) throw ManifestError::kSchema;
-    const auto& detection = entry.detection;
-    if (detection.kind == SampleKind::kStatic) {
-      constexpr abc::AbcVersion kLegacyStatic{{0, 0, 0, 6}};
-      constexpr abc::AbcVersion kCurrentStatic{{0, 1, 0, 7}};
-      constexpr std::uint64_t kEtsLanguage = 5;
-      constexpr std::uint32_t kLanguageTagSize = 2;
-      if (detection.evidence.rule == EvidenceRule::kEtsClass) {
-        if (detection.version != kLegacyStatic || detection.evidence.observed != kEtsLanguage ||
-            detection.profile != abc::ProfileId::kUnknown ||
-            detection.evidence.offset < abc::kStaticHeaderSize ||
-            entry.size < kLanguageTagSize ||
-            detection.evidence.offset > entry.size - kLanguageTagSize) {
-          throw ManifestError::kSchema;
-        }
-      } else if (detection.evidence.rule != EvidenceRule::kStaticHeader ||
-                 detection.version != kCurrentStatic ||
-                 detection.profile != abc::ProfileId::kStatic0107) {
-        throw ManifestError::kSchema;
-      }
-      if (detection.header_error) throw ManifestError::kSchema;
-    }
-  }
-}
 
 Json EncodeEntry(const CorpusEntry& entry) {
   const auto& detection = entry.detection;
@@ -212,7 +167,7 @@ ManifestResult DecodeManifest(std::string_view bytes) {
     std::vector<CorpusEntry> entries;
     entries.reserve(json.at("entries").size());
     for (const auto& value : json.at("entries")) entries.push_back(DecodeEntry(value));
-    Validate(entries);
+    if (const auto error = ValidateEntries(entries)) throw *error;
     return entries;
   } catch (ManifestError error) {
     return error;
@@ -224,7 +179,7 @@ ManifestResult DecodeManifest(std::string_view bytes) {
 std::variant<std::string, ManifestError> EncodeManifest(
     const std::vector<CorpusEntry>& entries) {
   try {
-    Validate(entries);
+    if (const auto error = ValidateEntries(entries)) throw *error;
     Json array = Json::array();
     for (const auto& entry : entries) array.push_back(EncodeEntry(entry));
     auto text = Json{{"schema_version", kManifestSchema}, {"entries", std::move(array)}}.dump(2);

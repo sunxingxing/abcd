@@ -17,9 +17,17 @@ add_library(abcd_corpus
   src/corpus/detect.cc
   src/corpus/manifest.cc
   src/corpus/manifest_json.cc
+  src/corpus/manifest_entry.cc
+  src/corpus/scan.cc
 )
 target_link_libraries(abcd_corpus PUBLIC abcd_abc
   PRIVATE OpenSSL::Crypto ZLIB::ZLIB abcd_json)
+
+option(ABCD_BUILD_TOOLS "Build standalone ABC command-line tools" ON)
+if(ABCD_BUILD_TOOLS)
+  add_executable(abc_scan tools/abc_scan.cc)
+  target_link_libraries(abc_scan PRIVATE abcd_corpus abcd_json)
+endif()
 
 include(CTest)
 if(BUILD_TESTING)
@@ -42,4 +50,14 @@ if(BUILD_TESTING)
   add_executable(manifest_test tests/unit/corpus/manifest_test.cc)
   target_link_libraries(manifest_test PRIVATE abcd_corpus)
   add_test(NAME manifest_test COMMAND manifest_test)
+
+  add_executable(scan_test tests/unit/corpus/scan_test.cc)
+  target_link_libraries(scan_test PRIVATE abcd_corpus ZLIB::ZLIB)
+  add_test(NAME scan_test COMMAND scan_test)
+
+  if(TARGET abc_scan)
+    add_test(NAME scan_cli_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_SCAN=$<TARGET_FILE:abc_scan>
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/scan_cli.cmake)
+  endif()
 endif()
