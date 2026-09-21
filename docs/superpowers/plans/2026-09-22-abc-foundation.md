@@ -20,20 +20,30 @@ selected and pinned only when required.
 Files: `CMakeLists.txt`, `include/abcd/abc/byte_reader.h`,
 `src/abc/byte_reader.cc`, `tests/unit/abc/byte_reader_test.cc`.
 
-- [ ] Define typed read failures and a span-backed reader for little-endian
+- [x] Define typed read failures and a span-backed reader for little-endian
   uint32, byte slices, and unsigned LEB128 uint32. Failure must not advance
   the cursor. Empty reads are permitted at EOF. Overflow/truncation are distinct.
-- [ ] Write standalone CTest assertions that remain enabled in Release, covering
+- [x] Write standalone CTest assertions that remain enabled in Release, covering
   byte order, empty/exact-end/oversized spans, truncated words, zero/max LEB128,
   fifth-byte overflow and continuation, truncated LEB128, and nonzero cursors.
   Example invariant: after a failed `ReadU32()`, `position()` is unchanged.
-- [ ] Configure/build and record the expected missing-implementation failure:
+- [x] Configure/build and record the expected missing-implementation failure:
   `cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug`, `cmake --build build`.
-- [ ] Implement bounded operations using remaining-length subtraction (not
+- [x] Implement bounded operations using remaining-length subtraction (not
   unchecked offset addition), named format constants, typed results and no
   semantic strings. LEB128 reads at most five bytes; no allocation.
-- [ ] Run `ctest --test-dir build --output-on-failure`; repeat in Release and
+- [x] Run `ctest --test-dir build --output-on-failure`; repeat in Release and
   ASan/UBSan builds, review specification then quality, and commit.
+
+### Verification Record
+
+Implemented in `f97f3e1`, test hardening in `f1d3a04`. Tests were written before
+implementation; the initial build failed because the reader header did not exist.
+Actual build directories are `build/byte-reader-debug`, `build/byte-reader-release`,
+`build/byte-reader-relwithdebinfo`, and `build/byte-reader-asan`. Parent independently
+reran CTest in all four: 1/1 executable passed in each. Spec and subsequent quality
+reviews approved. These checks validate only the reader, not ABC decoding,
+decompilation, corpus coverage, or the complete-process 1G requirement.
 
 ## Following Milestones
 
