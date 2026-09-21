@@ -16,6 +16,7 @@ add_library(abcd_abc
   src/abc/module_info.cc
   src/abc/pool_reference.cc
   src/abc/record_attributes.cc
+  src/abc/register_access.cc
   src/abc/string_entity.cc
 )
 target_compile_features(abcd_abc PUBLIC cxx_std_20)
@@ -88,6 +89,9 @@ if(BUILD_TESTING)
   add_executable(control_transfer_test tests/unit/abc/control_transfer_test.cc)
   target_link_libraries(control_transfer_test PRIVATE abcd_abc)
   add_test(NAME control_transfer_test COMMAND control_transfer_test)
+  add_executable(register_access_test tests/unit/abc/register_access_test.cc)
+  target_link_libraries(register_access_test PRIVATE abcd_abc)
+  add_test(NAME register_access_test COMMAND register_access_test)
 
   add_executable(normal_flow_test tests/unit/analysis/normal_flow_test.cc)
   target_link_libraries(normal_flow_test PRIVATE abcd_analysis)

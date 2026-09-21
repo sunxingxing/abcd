@@ -1,4 +1,5 @@
 #include "abcd/abc/method_body.h"
+#include "abcd/abc/register_access.h"
 
 #include <algorithm>
 #include <limits>
@@ -187,12 +188,9 @@ BodyResult DecodeBody(const corpus::AbcFile& file, ProfileId profile,
     const auto& instruction = std::get<DecodedInstruction>(decoded);
     if (instruction.size == 0 || instruction.size > code.instruction_bytes - pc)
       return Failure(BodyError::kCodeRange, pc);
-    for (const auto& operand :
-         std::span(instruction.operands).first(instruction.operand_count)) {
-      if (operand.kind == OperandKind::kRegister &&
-          operand.raw_bits >= frame_size)
-        return Failure(BodyError::kRegisterRange, pc);
-    }
+    if (std::holds_alternative<RegisterAccessError>(
+            GetRegisterAccesses(instruction, frame_size)))
+      return Failure(BodyError::kRegisterRange, pc);
     BodyInstruction located{CodeOffset{pc}, instruction, {}};
     if (instruction.branch_delta) {
       const auto delta = *instruction.branch_delta;

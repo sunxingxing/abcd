@@ -94,6 +94,11 @@ void ValidatesInstructionBoundariesAndRegisters() {
   const std::uint8_t bad_register[]{0x60, 1, 0x64};
   Fails(Decode(bad_register), BodyError::kRegisterRange);
   Check(std::holds_alternative<MethodBody>(Decode(bad_register, {}, 0, 1, 1)));
+  const std::uint8_t range_overflow[]{0x31, 0, 2, 0, 0x64};
+  Fails(Decode(range_overflow, {}, 0, 2), BodyError::kRegisterRange);
+  Check(std::holds_alternative<MethodBody>(Decode(range_overflow, {}, 0, 2, 1)));
+  const std::uint8_t empty_range[]{0x73, 0, 0, 255, 0x64};
+  Check(std::holds_alternative<MethodBody>(Decode(empty_range, {}, 0, 0)));
   const std::uint8_t truncated[]{0x62};  // ldai requires a 32-bit immediate.
   Fails(Decode(truncated), BodyError::kInstruction);
   Fails(Decode({}), BodyError::kEmptyBody);
