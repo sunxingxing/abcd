@@ -408,6 +408,14 @@ std::variant<MethodInfo, MetadataError> ReadMethod(
           return std::get<MetadataError>(ref);
         if (!ValidEntity(header, std::get<std::uint32_t>(ref)))
           return MetadataError::kReference;
+        if (static_cast<MethodTag>(tag) == MethodTag::kAnnotation) {
+          constexpr std::uint32_t kTaggedReferenceBytes =
+              sizeof(std::uint8_t) + sizeof(std::uint32_t);
+          if (method.annotations.count == 0)
+            method.annotations.first_tag =
+                EntityOffset{cursor->Position() - kTaggedReferenceBytes};
+          ++method.annotations.count;
+        }
         break;
       }
       default:
@@ -499,7 +507,8 @@ MetadataResult BuildMetadataIndex(const corpus::AbcFile& file,
         if (requested > (budget.bytes - spent) / sizeof(FieldInfo))
           return MetadataError::kResourceLimit;
         index.fields.reserve(requested);
-        if (index.fields.capacity() > (budget.bytes - spent) / sizeof(FieldInfo))
+        if (index.fields.capacity() >
+            (budget.bytes - spent) / sizeof(FieldInfo))
           return MetadataError::kResourceLimit;
         spent += (index.fields.capacity() - old_capacity) * sizeof(FieldInfo);
       }

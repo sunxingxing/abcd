@@ -60,6 +60,15 @@ struct FieldInfo {
   std::optional<FieldValue> value;
 };
 
+struct MethodAnnotations {
+  // Ordinary ANNOTATION tag stream only. Each entry is tag + u32 reference.
+  // Empty when count == 0; first_tag must not then be dereferenced. Tags are
+  // contiguous because ReadMethod validates ordering. Keep file-backed rather
+  // than allocating an annotation vector for every method.
+  EntityOffset first_tag;
+  std::uint32_t count = 0;
+};
+
 struct MethodInfo {
   EntityOffset offset;
   EntityOffset owner_offset;
@@ -68,6 +77,7 @@ struct MethodInfo {
   std::uint32_t name_utf16_length = 0;
   std::uint32_t access_flags = 0;
   std::optional<CodeInfo> code;
+  MethodAnnotations annotations;
 };
 
 struct IndexRegion {

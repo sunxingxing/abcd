@@ -152,6 +152,62 @@ int main() {
   Check(index.methods[0].code->offset.value == 360);
   Check(index.methods[0].code->instruction_offset.value == 364);
   Check(index.methods[0].code->instruction_bytes == 3);
+  Check(index.methods[0].annotations.count == 0);
+
+  {
+    Fixture annotated;
+    // Preserve the existing runtime annotation, then add runtime parameter,
+    // debug, two ordinary annotations, parameter and type annotations.
+    constexpr std::uint32_t kFirstTag = 184;
+    constexpr std::uint32_t kTaggedReferenceBytes = 5;
+    const std::uint8_t tags[]{4, 5, 6, 6, 7, 8, 9};
+    for (std::size_t i = 0; i < std::size(tags); ++i) {
+      const auto at = kFirstTag + i * kTaggedReferenceBytes;
+      annotated.bytes[at] = tags[i];
+      Put32(annotated.bytes, at + 1, 370 + i);
+    }
+    annotated.bytes[kFirstTag + std::size(tags) * kTaggedReferenceBytes] = 0;
+    const auto parsed = annotated.Build();
+    Check(std::holds_alternative<abcd::abc::MetadataIndex>(parsed));
+    const auto& annotations =
+        std::get<abcd::abc::MetadataIndex>(parsed).methods[0].annotations;
+    Check(annotations.first_tag.value == 194 && annotations.count == 2);
+  }
+
+  for (const std::uint32_t count : {1U, 200U, 201U, 4096U}) {
+    Fixture annotated;
+    constexpr std::uint32_t kFirstTag = 184;
+    constexpr std::uint32_t kTaggedReferenceBytes = 5;
+    const auto after = kFirstTag + count * kTaggedReferenceBytes;
+    // Relocate payloads out of the enlarged method tag stream.
+    const auto payload = after + 32;
+    annotated.bytes.resize(std::max<std::size_t>(512, payload + 64));
+    annotated.header.file_size = annotated.bytes.size();
+    annotated.header.foreign_offset = 0;
+    annotated.header.foreign_size = 0;
+    Put32(annotated.bytes, 76, annotated.header.file_size);
+    Put32(annotated.bytes, 169, payload);
+    annotated.bytes[payload] = 3;
+    annotated.bytes[payload + 1] = 'm';
+    Put32(annotated.bytes, 147, payload);
+    Put32(annotated.bytes, 175, payload + 4);
+    annotated.bytes[payload + 4] = 0;
+    annotated.bytes[payload + 5] = 0;
+    annotated.bytes[payload + 6] = 0;
+    annotated.bytes[payload + 7] = 0;
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const auto at = kFirstTag + i * kTaggedReferenceBytes;
+      annotated.bytes[at] = 6;
+      Put32(annotated.bytes, at + 1, payload + 16);
+    }
+    annotated.bytes[after] = 0;
+    const auto parsed = annotated.Build();
+    Check(std::holds_alternative<abcd::abc::MetadataIndex>(parsed));
+    const auto& annotations =
+        std::get<abcd::abc::MetadataIndex>(parsed).methods[0].annotations;
+    Check(annotations.first_tag.value == kFirstTag &&
+          annotations.count == count);
+  }
 
   for (const auto bits : {0U, 1U, 0x7fffffffU, 0x80000000U, UINT32_MAX}) {
     Fixture value;
@@ -295,10 +351,9 @@ int main() {
   capacity.bytes[330] = 41;
   for (std::size_t i = 0; i < 20; ++i) capacity.bytes[331 + i] = 'm';
   capacity.bytes[351] = 0;
-  constexpr std::size_t kBaseBudget = sizeof(abcd::abc::RecordInfo) +
-                                    sizeof(abcd::abc::MethodInfo) +
-                                    sizeof(abcd::abc::FieldInfo) +
-                                      sizeof(std::uint32_t) + 40 + 5;
+  constexpr std::size_t kBaseBudget =
+      sizeof(abcd::abc::RecordInfo) + sizeof(abcd::abc::MethodInfo) +
+      sizeof(abcd::abc::FieldInfo) + sizeof(std::uint32_t) + 40 + 5;
   Check(std::get<abcd::abc::MetadataError>(capacity.Build(kBaseBudget + 20)) ==
         abcd::abc::MetadataError::kResourceLimit);
 

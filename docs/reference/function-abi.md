@@ -65,11 +65,14 @@ Elements are fixed-width name-reference/value pairs followed by a separate
 type-tag array. Names are string entity references. Runtime call-type reading
 uses the scalar value without consulting its type tag.
 
-The current `ReadMethod` in `src/abc/metadata_index.cc` validates annotation
-reference ranges but discards the references. Therefore existing method
-indexing does not yet recover the ABI. The next implementation must preserve
-ordinary-annotation location information or reread method tags lazily; avoid
-one heap allocation per method across the multi-million-method corpus.
+`ReadMethod` in `src/abc/metadata_index.cc` validates annotation reference
+ranges and retains the first ordinary annotation tag's file offset and count
+in `MethodAnnotations`. Ordered method tags make these entries contiguous;
+runtime, parameter and type annotations are excluded. The fixed-size range
+does not allocate per annotation and is included in the existing method-vector
+capacity budget. Tests cover empty, mixed categories, and 1/200/201/4096 entries.
+Annotation payloads still require lazy reads before the index can recover ABI
+flags; the range alone is not annotation-payload validation.
 
 `abc/frame_layout.h` now exposes `CallFlags`, `DecodeCallFlags`, and
 `BuildFrameLayout`. The allocation-free layout calculation covers all sixteen
