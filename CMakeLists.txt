@@ -28,6 +28,9 @@ target_link_libraries(abcd_file PUBLIC OpenSSL::Crypto ZLIB::ZLIB)
 target_link_libraries(abcd_abc PUBLIC abcd_file)
 add_library(abcd_analysis src/analysis/normal_flow.cc src/analysis/exception_dispatch.cc)
 target_link_libraries(abcd_analysis PUBLIC abcd_abc)
+add_library(abcd_source src/source/string_literal.cc)
+target_compile_features(abcd_source PUBLIC cxx_std_20)
+target_include_directories(abcd_source PUBLIC include)
 add_library(abcd_corpus
   src/corpus/detect.cc
   src/corpus/manifest.cc
@@ -56,6 +59,18 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(string_literal_test tests/unit/source/string_literal_test.cc)
+  target_link_libraries(string_literal_test PRIVATE abcd_source)
+  add_test(NAME string_literal_test COMMAND string_literal_test)
+  find_program(ABCD_NODE_EXECUTABLE node)
+  if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME string_literal_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_STRING_TEST=$<TARGET_FILE:string_literal_test>
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/string_literal.cmake)
+  else()
+    message(WARNING "Node unavailable: JS string roundtrip test not registered")
+  endif()
   add_test(NAME isa_pin_test COMMAND ${CMAKE_COMMAND}
     -DABCD_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
     -DABCD_TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}
