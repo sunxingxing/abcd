@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "recorded_on": "2026-09-22",
+  "tag": "OpenHarmony-v7.0-Release",
+  "source": "https://gitcode.com/openharmony/",
+  "manifest": {
+    "commit": "2cf9dc1ee5c1738f1aa5ef31a96c4de705e8bd1f",
+    "tag_object": "af9147402dd7f7ad1c0cd6e7adabf73bfe9cfcdf"
+  },
+  "reference_root": "/home/rabbit/arkruntime",
+  "backup_root": "/home/rabbit/arkruntime-backup-before-v7.0-20260922",
+  "repositories": [
+    {
+      "name": "arkcompiler_runtime_core",
+      "path": "arkcompiler/runtime_core",
+      "remote": "https://gitcode.com/openharmony/arkcompiler_runtime_core.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "ed0911b48feffa06489bda3d482f57f57c30c48d",
+      "commit": "3e147bb76e0b622cc2e4399ef954b030c0639691"
+    },
+    {
+      "name": "arkcompiler_ets_runtime",
+      "path": "arkcompiler/ets_runtime",
+      "remote": "https://gitcode.com/openharmony/arkcompiler_ets_runtime.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "b2f1b16da347f09f27a75933e31a3f635f5d895b",
+      "commit": "f04900cf951c66c2ea18b2bab5b591d5336c34b9"
+    },
+    {
+      "name": "arkcompiler_ets_frontend",
+      "path": "arkcompiler/ets_frontend",
+      "remote": "https://gitcode.com/openharmony/arkcompiler_ets_frontend.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "0be0dee10fa8891d0bd1ef003fd0adefa0b100f2",
+      "commit": "c754cf6300873cdd8cdb71c7340a98abfd885389"
+    },
+    {
+      "name": "arkcompiler_toolchain",
+      "path": "arkcompiler/toolchain",
+      "remote": "https://gitcode.com/openharmony/arkcompiler_toolchain.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "39010a081e180c56f3a95cbf031fcaba99d58686",
+      "commit": "82671745a88cc0cce78ba1e6f6266a9ef5cea045"
+    },
+    {
+      "name": "arkui_napi",
+      "path": "foundation/arkui/napi",
+      "remote": "https://gitcode.com/openharmony/arkui_napi.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "4874be4601392261e120520da6c716824f1deb43",
+      "commit": "464170c9c1faba39f56549a13d232d51740a49d3"
+    },
+    {
+      "name": "kernel_linux_patches",
+      "path": "kernel/linux/patches",
+      "remote": "https://gitcode.com/openharmony/kernel_linux_patches.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "66d04eef3235e0df2b696390f5d9a42d35f75571",
+      "commit": "083cce1466a7e4dc5e365bbc095b379fa50908f1"
+    },
+    {
+      "name": "developtools_profiler",
+      "path": "developtools/profiler",
+      "remote": "https://gitcode.com/openharmony/developtools_profiler.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "ce4af1867e0d777dc1397695264173acb2672491",
+      "commit": "d296fc944663c80e1c8f0b0d56bbf5065ad15b58"
+    },
+    {
+      "name": "third_party_bounds_checking_function",
+      "path": "third_party/bounds_checking_function",
+      "remote": "https://gitcode.com/openharmony/third_party_bounds_checking_function.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "f9cc78bab6e03d25dad0eb56e6461e25f93e7a6c",
+      "commit": "2ae82839ecaaa7d031e66ccbd2076d671acfd615"
+    },
+    {
+      "name": "third_party_cJSON",
+      "path": "third_party/cJSON",
+      "remote": "https://gitcode.com/openharmony/third_party_cJSON.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "34e6d20a3ca3489ad57a65708431c4d48d1b293a",
+      "commit": "388cfc96925e4fb41a30735b270736626d26615d"
+    },
+    {
+      "name": "third_party_FreeBSD",
+      "path": "third_party/FreeBSD",
+      "remote": "https://gitcode.com/openharmony/third_party_FreeBSD.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "234e25e05d8b0ae8d06c00ae518eaf866af6949d",
+      "commit": "74f769337b059bc4ee13123e7ce159b8b7447e71"
+    },
+    {
+      "name": "third_party_googletest",
+      "path": "third_party/googletest",
+      "remote": "https://gitcode.com/openharmony/third_party_googletest.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "bee285515c72755081e73790e7f2f528c7dc5f08",
+      "commit": "cc04e6f4e30df6a3e1c913ee14ffb30eee203c30"
+    },
+    {
+      "name": "third_party_icu",
+      "path": "third_party/icu",
+      "remote": "https://gitcode.com/openharmony/third_party_icu.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "f9206931d004439ca0b25d8699ff5fef9b30f13f",
+      "commit": "8fbe6d772367852638e267e20d9aee2ce05fc61e"
+    },
+    {
+      "name": "third_party_libuv",
+      "path": "third_party/libuv",
+      "remote": "https://gitcode.com/openharmony/third_party_libuv.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "b814a429260702cab931ba71d6aa29cb6d8e1b36",
+      "commit": "26cb8e7ae51f0d1ee65a390e3225224c28fca2fe"
+    },
+    {
+      "name": "third_party_musl",
+      "path": "third_party/musl",
+      "remote": "https://gitcode.com/openharmony/third_party_musl.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "570a0a83abef56e15104ea7a56c52a154594f78b",
+      "commit": "415a7e7e24c2e1a97ca1cc4c4122f3b12a032cee"
+    },
+    {
+      "name": "third_party_openssl",
+      "path": "third_party/openssl",
+      "remote": "https://gitcode.com/openharmony/third_party_openssl.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "b0ede1141e4757477cd69d895ff13b230cb6dd71",
+      "commit": "448a110352e8c36cc29828f53ffe0a44c1d56500"
+    },
+    {
+      "name": "third_party_optimized_routines",
+      "path": "third_party/optimized-routines",
+      "remote": "https://gitcode.com/openharmony/third_party_optimized_routines.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "421cdbe9131f154a43d75be2974861dc31c0c2a2",
+      "commit": "a52a7d4792ef1618a854271e2421e2ab66d24f99"
+    },
+    {
+      "name": "third_party_protobuf",
+      "path": "third_party/protobuf",
+      "remote": "https://gitcode.com/openharmony/third_party_protobuf.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "64bbaad2482bca84f237f02455a24621471672c5",
+      "commit": "b2b048e719a814046e58e1c1bdd20cfe2bbf340a"
+    },
+    {
+      "name": "third_party_zlib",
+      "path": "third_party/zlib",
+      "remote": "https://gitcode.com/openharmony/third_party_zlib.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "585fcde1f4a9b02e2a0f2574bb1caa07011739a3",
+      "commit": "511031649072e0ab25558c5b837243fff35f4fc3"
+    },
+    {
+      "name": "third_party_json",
+      "path": "third_party/json",
+      "remote": "https://gitcode.com/openharmony/third_party_json.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "80706224ca5c267c12ce44a5c50523923dbd2771",
+      "commit": "82f689380591b58b99578e6744a4f5afd2162084"
+    },
+    {
+      "name": "third_party_node",
+      "path": "third_party/node",
+      "remote": "https://gitcode.com/openharmony/third_party_node.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "8a6023009c281a3c16b2baca440efa8b072678de",
+      "commit": "d6bfaf5c015d29fee58e3c94f01d463fb87a9497"
+    },
+    {
+      "name": "third_party_vixl",
+      "path": "third_party/vixl",
+      "remote": "https://gitcode.com/openharmony/third_party_vixl.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "2bd1a811836f6bd9ddec900cb60f4fb415da7e98",
+      "commit": "c13ff2348108b3c33aef1456051f1530d1ea2742"
+    },
+    {
+      "name": "third_party_pcre2",
+      "path": "third_party/pcre2",
+      "remote": "https://gitcode.com/openharmony/third_party_pcre2.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "c8b90ca0d83f27e7e8d03b11b5d1805216942552",
+      "commit": "c71a58667e17dbd058fbce53b203d5ec6600ade5"
+    },
+    {
+      "name": "third_party_elfio",
+      "path": "third_party/elfio",
+      "remote": "https://gitcode.com/openharmony/third_party_elfio.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "886aee5e83b10ce9e27349877d83067d6f52d118",
+      "commit": "170523065b93acc77b163a87a7bbb9872037becf"
+    },
+    {
+      "name": "third_party_flatbuffers",
+      "path": "third_party/flatbuffers",
+      "remote": "https://gitcode.com/openharmony/third_party_flatbuffers.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "60bca8fc22733271112d7455ae743ef795fba3c3",
+      "commit": "c3e4d69cbd5950e43f775ba76eadb30750d6e0b7"
+    }
+  ],
+  "retained_not_release_tagged": [
+    "build",
+    "docs",
+    "third_party/asmjit",
+    "third_party/zydis",
+    "prebuilts"
+  ],
+  "validation": {
+    "tag_commit_matches_head": true,
+    "clean_worktrees": true,
+    "git_connectivity": true,
+    "build_tested": false
+  }
+}

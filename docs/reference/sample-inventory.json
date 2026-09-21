@@ -1,0 +1,42 @@
+{
+  "recorded_on": "2026-09-22",
+  "root": "/home/rabbit/sample/abc_with_code",
+  "inspection_scope": "File headers, hashes, source-sidecar inventory only; methods and instructions not yet decoded.",
+  "files": [
+    {
+      "path": "Immersive/modules.abc",
+      "bytes": 293544,
+      "version": "13.0.1.0",
+      "header_class_count": 45,
+      "sha256": "8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a"
+    },
+    {
+      "path": "MultiCommunityApplication/modules.abc",
+      "bytes": 514872,
+      "version": "12.0.2.0",
+      "header_class_count": 54,
+      "sha256": "45ffdc7d5075b4de3f1c6860dcbc929bae048097af4478d09136afbec1b6c5a8"
+    },
+    {
+      "path": "pasteboard/modules.abc",
+      "bytes": 112024,
+      "version": "12.0.6.0",
+      "header_class_count": 19,
+      "sha256": "854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e"
+    },
+    {
+      "path": "push-kit-sample-code-clientdemo-arkts/modules.abc",
+      "bytes": 113684,
+      "version": "12.0.6.0",
+      "header_class_count": 24,
+      "sha256": "b2074425e0e2a4a20b547c8b711727b0160d299efc8eeb2af266aa6983eab44f"
+    },
+    {
+      "path": "push-kit-sample-code-clientdemo-arkts/widgets.abc",
+      "bytes": 12476,
+      "version": "12.0.6.0",
+      "header_class_count": 10,
+      "sha256": "ea57a51cb1c6c474363410ec48fd014249fe3bf55d178de3d9544eff6b426687"
+    }
+  ]
+}
