@@ -2,7 +2,12 @@
 #define ABCD_TOOLS_CORPUS_INSPECTION_H_
 
 namespace abcd::tools {
-enum class InspectionStage { kMetadata, kInstructions, kNormalFlow };
+enum class InspectionStage {
+  kMetadata,
+  kInstructions,
+  kNormalFlow,
+  kExceptionDispatch
+};
 int RunCorpusInspection(int argc, char** argv, InspectionStage stage);
 }  // namespace abcd::tools
 #endif  // ABCD_TOOLS_CORPUS_INSPECTION_H_

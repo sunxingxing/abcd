@@ -53,6 +53,8 @@ enum class IndexOutcome {
   kBodyFailure,
   kFlowBuilt,
   kFlowFailure,
+  kDispatchBuilt,
+  kDispatchFailure,
 };
 
 const char* ToolName(InspectionStage stage) {
@@ -63,6 +65,8 @@ const char* ToolName(InspectionStage stage) {
       return "abc_decode";
     case InspectionStage::kNormalFlow:
       return "abc_flow";
+    case InspectionStage::kExceptionDispatch:
+      return "abc_exceptions";
   }
   std::abort();
 }
@@ -93,6 +97,10 @@ const char* OutcomeLabel(IndexOutcome outcome) {
       return "flow_built";
     case IndexOutcome::kFlowFailure:
       return "flow_failure";
+    case IndexOutcome::kDispatchBuilt:
+      return "dispatch_built";
+    case IndexOutcome::kDispatchFailure:
+      return "dispatch_failure";
   }
   std::abort();
 }
@@ -179,6 +187,8 @@ FileReport IndexFile(const std::filesystem::path& root,
     report.outcome = IndexOutcome::kBodyFailure;
   } else if (report.inspection.failed_flow_methods != 0) {
     report.outcome = IndexOutcome::kFlowFailure;
+  } else if (report.inspection.failed_dispatch_methods != 0) {
+    report.outcome = IndexOutcome::kDispatchFailure;
   } else {
     switch (stage) {
       case InspectionStage::kMetadata:
@@ -189,6 +199,9 @@ FileReport IndexFile(const std::filesystem::path& root,
         break;
       case InspectionStage::kNormalFlow:
         report.outcome = IndexOutcome::kFlowBuilt;
+        break;
+      case InspectionStage::kExceptionDispatch:
+        report.outcome = IndexOutcome::kDispatchBuilt;
         break;
     }
   }
@@ -275,6 +288,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
       case IndexOutcome::kIndexed:
       case IndexOutcome::kDecoded:
       case IndexOutcome::kFlowBuilt:
+      case IndexOutcome::kDispatchBuilt:
         ++indexed;
         break;
       case IndexOutcome::kStaticSkipped:
@@ -282,6 +296,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
         break;
       case IndexOutcome::kBodyFailure:
       case IndexOutcome::kFlowFailure:
+      case IndexOutcome::kDispatchFailure:
         ++indexed;
         ++failed;
         break;

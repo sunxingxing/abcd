@@ -24,8 +24,14 @@ struct MethodCounts {
   std::uint64_t blocks = 0;
   std::uint64_t edges = 0;
   std::uint64_t resume_edges = 0;
+  std::uint64_t dispatch_methods = 0;
+  std::uint64_t failed_dispatch_methods = 0;
+  std::uint64_t dispatch_spans = 0;
+  std::uint64_t protected_blocks = 0;
+  std::uint64_t protected_instructions = 0;
 
   MethodCounts& operator+=(const MethodCounts& other);
+  [[nodiscard]] std::uint64_t FailureCount() const;
 };
 
 const char* StageLabel(InspectionStage stage);

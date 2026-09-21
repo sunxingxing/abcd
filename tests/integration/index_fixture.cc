@@ -32,7 +32,8 @@ enum class FixtureKind {
   kManyInvalidMethods,
   kFallthroughMethod,
   kMixedMethods,
-  kMixedMethodsReversed
+  kMixedMethodsReversed,
+  kExceptionMethod
 };
 
 void WriteWord(std::span<std::uint8_t> bytes, std::size_t offset,
@@ -76,6 +77,8 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kMixedMethods;
     else if (option == "--mixed-methods-reversed")
       kind = FixtureKind::kMixedMethodsReversed;
+    else if (option == "--exception-method")
+      kind = FixtureKind::kExceptionMethod;
     else
       return EXIT_FAILURE;
   }
@@ -114,12 +117,20 @@ int main(int argc, char** argv) {
       const bool fallthrough =
           kind == FixtureKind::kFallthroughMethod ||
           (mixed && ((i == 0) == (kind == FixtureKind::kMixedMethodsReversed)));
-      dynamic.insert(
-          dynamic.end(),
-          {0, 0, 1, 0,
-           static_cast<std::uint8_t>(kind == FixtureKind::kMethod ? 0x65
-                                     : fallthrough                ? 0xd5
-                                                                  : 0xff)});
+      if (kind == FixtureKind::kExceptionMethod) {
+        // Four prefix ULEBs; [ldundefined, throw, returnundefined,
+        // returnundefined]. Try [0,3), first typed catch at [3,4), then
+        // catch-all at [4,5).
+        dynamic.insert(dynamic.end(), {0, 0, 5, 1, 0x00, 0xfe, 0x00, 0x65, 0x65,
+                                       0, 3, 2, 2, 3, 1, 0, 4, 1});
+      } else {
+        dynamic.insert(
+            dynamic.end(),
+            {0, 0, 1, 0,
+             static_cast<std::uint8_t>(kind == FixtureKind::kMethod ? 0x65
+                                       : fallthrough                ? 0xd5
+                                                                    : 0xff)});
+      }
       const auto offset = method_offset + i * kMethod.size();
       WriteWord(dynamic, offset + kNameOffsetInMethod, name_offset);
       WriteWord(dynamic, offset + kCodeOffsetInMethod, code_offset);

@@ -48,6 +48,8 @@ if(ABCD_BUILD_TOOLS)
   target_link_libraries(abc_decode PRIVATE abcd_inspection)
   add_executable(abc_flow tools/abc_flow.cc)
   target_link_libraries(abc_flow PRIVATE abcd_inspection)
+  add_executable(abc_exceptions tools/abc_exceptions.cc)
+  target_link_libraries(abc_exceptions PRIVATE abcd_inspection)
 endif()
 
 include(CTest)
@@ -128,5 +130,10 @@ if(BUILD_TESTING)
       -DABCD_FLOW=$<TARGET_FILE:abc_flow>
       -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/flow_cli.cmake)
+    add_test(NAME exceptions_cli_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_SCAN=$<TARGET_FILE:abc_scan>
+      -DABCD_EXCEPTIONS=$<TARGET_FILE:abc_exceptions>
+      -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/exceptions_cli.cmake)
   endif()
 endif()
