@@ -8,6 +8,7 @@ add_library(abcd_abc
   src/abc/control_transfer.cc
   src/abc/header.cc
   src/abc/instruction.cc
+  src/abc/literal_array.cc
   src/abc/metadata_cursor.cc
   src/abc/metadata_index.cc
   src/abc/method_body.cc
@@ -108,6 +109,10 @@ if(BUILD_TESTING)
   add_executable(string_entity_test tests/unit/abc/string_entity_test.cc)
   target_link_libraries(string_entity_test PRIVATE abcd_abc)
   add_test(NAME string_entity_test COMMAND string_entity_test)
+
+  add_executable(literal_array_test tests/unit/abc/literal_array_test.cc)
+  target_link_libraries(literal_array_test PRIVATE abcd_abc)
+  add_test(NAME literal_array_test COMMAND literal_array_test)
 
   add_executable(method_body_test tests/unit/abc/method_body_test.cc)
   target_link_libraries(method_body_test PRIVATE abcd_abc)
