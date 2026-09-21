@@ -96,6 +96,10 @@ std::optional<UnarySpec> UnaryOp(Opcode opcode) {
       return UnarySpec{UnaryOperator::kTypeOf, kCachedAccumulator};
     case Opcode::kTONUMBER_IMM8:
       return UnarySpec{UnaryOperator::kToNumber, kCachedAccumulator};
+    case Opcode::kTONUMERIC_IMM8:
+      return UnarySpec{UnaryOperator::kToNumeric, kCachedAccumulator};
+    case Opcode::kDEPRECATED_TONUMERIC_PREF_V8:
+      return UnarySpec{UnaryOperator::kToNumeric, kRegister};
     case Opcode::kDEPRECATED_TONUMBER_PREF_V8:
       return UnarySpec{UnaryOperator::kToNumber, kRegister};
     default:

@@ -64,6 +64,10 @@ int main() {
   FunctionBody({0xfc, 9, 0, 0x64});
   std::cout << "export const legacyDecrement = ";
   FunctionBody({0xfc, 10, 0, 0x64});
+  std::cout << "export const toNumeric = ";
+  FunctionBody({0x60, 0, 0x1e, 0, 0x64});
+  std::cout << "export const legacyToNumeric = ";
+  FunctionBody({0xfc, 6, 0, 0x64});
   std::cout << "export const firstElement = ";
   FunctionBody({0x62, 0, 0, 0, 0, 0x37, 0, 0, 0x64});
   std::cout << "export const propertyReads = [\n";
@@ -104,6 +108,11 @@ int main() {
   Bytecode({0x22, 0});
   Bytecode({0xfc, 9, 0});
   Bytecode({0xfc, 10, 0});
+  Bytecode({0x1e, 0});
+  Bytecode({0xfc, 6, 0});
+  std::cout << "];\nexport const numericStates = [\n";
+  Bytecode({0x1e, 0}, true);
+  Bytecode({0xfc, 6, 0}, true);
   std::cout << "];\nexport const updates = [\n";
   Bytecode({0x21, 0}, true);
   Bytecode({0x22, 0}, true);

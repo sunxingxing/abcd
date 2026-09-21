@@ -43,7 +43,8 @@ int main() {
   Check(property_exact.str() == property_output.str());
   for (const auto predicate :
        {UnaryOperator::kFalseOrZero, UnaryOperator::kTrueOrNonzeroNumber,
-        UnaryOperator::kIncrement, UnaryOperator::kDecrement}) {
+        UnaryOperator::kIncrement, UnaryOperator::kDecrement,
+        UnaryOperator::kToNumeric}) {
     const ScalarExpression branch = UnaryExpression{predicate, Accumulator{}};
     std::ostringstream full;
     Check(std::holds_alternative<std::size_t>(

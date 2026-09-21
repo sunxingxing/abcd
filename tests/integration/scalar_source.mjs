@@ -78,6 +78,7 @@ const unary = [
   (a,b)=>-b, (a,b)=>~b, (a,b)=>!!b, (a,b)=>!b, (a,b)=>typeof b, (a,b)=>+b,
   (a,b)=>~a, (a,b)=>+a,
   (a,b)=>++b, (a,b)=>--b, (a,b)=>++a, (a,b)=>--a,
+  (a,b)=>b++, (a,b)=>a++,
 ];
 function run(fn, a, b) {
   try { return {value: fn(a,b)}; }
@@ -92,6 +93,9 @@ for (const fn of [generated.increment, generated.legacyIncrement])
 for (const fn of [generated.decrement, generated.legacyDecrement])
   for (const value of values)
     assert.deepEqual(run(fn, value), run(value => --value, value));
+for (const fn of [generated.toNumeric, generated.legacyToNumeric])
+  for (const value of values)
+    assert.deepEqual(run(fn, value), run(value => value++, value));
 assert.equal(generated.binary.length, binary.length);
 const membership = generated.binary.at(-1);
 const membershipState = generated.membershipStates[0];
@@ -154,6 +158,32 @@ for (const [expected, value] of generated.numbers) {
   assert.equal(bits.getBigUint64(0, true), expected);
 }
 assert.ok(generated.numbers.length > 4000);
+for (let i = 0; i < generated.numericStates.length; ++i) {
+  const convert = generated.numericStates[i];
+  for (const primitive of [3n, '3', -0, Infinity, -Infinity, NaN, null, true]) {
+    const hints = [];
+    const input = {[Symbol.toPrimitive](hint) {hints.push(hint); return primitive;}};
+    const left = i === 0 ? 'unchanged' : input;
+    const right = i === 0 ? input : 'unchanged';
+    let oracle = primitive;
+    const expected = oracle++;
+    const actual = convert(left, right);
+    assert.equal(actual.length, 2);
+    assert.equal(actual[0], left);
+    assert.ok(Object.is(actual[1], expected));
+    assert.deepEqual(hints, ['number']);
+  }
+  const trace = [];
+  const ordinary = {valueOf() {trace.push('valueOf'); return {};},
+    toString() {trace.push('toString'); return '42';}};
+  assert.equal(convert(i === 0 ? null : ordinary, i === 0 ? ordinary : null)[1], 42);
+  assert.deepEqual(trace, ['valueOf', 'toString']);
+  const error = {};
+  const failed = {[Symbol.toPrimitive]() {throw error;}};
+  const left = i === 0 ? 'unchanged' : failed;
+  const right = i === 0 ? failed : 'unchanged';
+  assert.deepEqual(convert(left, right), [left, right, error]);
+}
 // Both encoding families publish only the accumulator. User conversion runs
 // exactly once with a numeric hint; abrupt conversion leaves both slots intact.
 for (let i = 0; i < generated.updates.length; ++i) {

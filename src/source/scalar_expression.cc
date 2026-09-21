@@ -100,6 +100,7 @@ std::optional<std::string_view> UnaryToken(UnaryOperator op) {
     case UnaryOperator::kTrueOrNonzeroNumber:
     case UnaryOperator::kIncrement:
     case UnaryOperator::kDecrement:
+    case UnaryOperator::kToNumeric:
       return std::nullopt;
   }
   return std::nullopt;
@@ -207,6 +208,23 @@ class ExpressionWriter {
     if (!error_) std::visit([&](const auto& atom) { Value(atom); }, value);
   }
   void Expression(const UnaryExpression& unary) {
+    if (unary.op == UnaryOperator::kToNumeric) {
+      // Slots/literals have no read effects. Preserve existing numeric values
+      // without arithmetic; otherwise the inner negation performs ToNumeric
+      // once and the outer negation restores its numeric value (also BigInt
+      // and signed zero). Do not replace this with unary + or duplicated
+      // coercion of an object. No mutable global numeric helper is required.
+      Append("((typeof ");
+      Expression(unary.input);
+      Append(" === \"number\" || typeof ");
+      Expression(unary.input);
+      Append(" === \"bigint\") ? ");
+      Expression(unary.input);
+      Append(" : (-(-");
+      Expression(unary.input);
+      Append(")))");
+      return;
+    }
     if (unary.op == UnaryOperator::kIncrement ||
         unary.op == UnaryOperator::kDecrement) {
       // Ark updates acc, not the source register. A private parameter keeps

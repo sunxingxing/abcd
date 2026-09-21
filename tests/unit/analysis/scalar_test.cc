@@ -95,6 +95,8 @@ int main() {
     bool reg;
   };
   const UnaryCase unaries[]{
+      {{0x1e, 99}, UnaryOperator::kToNumeric, false},
+      {{0xfc, 6, 7}, UnaryOperator::kToNumeric, true},
       {{0x21, 99}, UnaryOperator::kIncrement, false},
       {{0x22, 99}, UnaryOperator::kDecrement, false},
       {{0xfc, 9, 7}, UnaryOperator::kIncrement, true},
@@ -117,7 +119,8 @@ int main() {
     Check(expression.op == test.op);
     Check(std::holds_alternative<Accumulator>(assignment.destination));
     if (test.op == UnaryOperator::kIncrement ||
-        test.op == UnaryOperator::kDecrement)
+        test.op == UnaryOperator::kDecrement ||
+        test.op == UnaryOperator::kToNumeric)
       Check(assignment.completion == CompletionEffect::kMayThrow);
     if (test.reg)
       Check(std::get<abcd::abc::RegisterId>(expression.input).value == 7);
