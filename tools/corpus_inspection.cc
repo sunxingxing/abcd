@@ -20,6 +20,7 @@
 
 #include "abcd/abc/metadata_index.h"
 #include "abcd/abc/method_body.h"
+#include "abcd/analysis/normal_flow.h"
 #include "abcd/corpus/manifest.h"
 
 namespace abcd::tools {
@@ -51,7 +52,33 @@ enum class IndexOutcome {
   kHeaderFailure,
   kMetadataFailure,
   kBodyFailure,
+  kFlowBuilt,
+  kFlowFailure,
 };
+
+const char* StageLabel(InspectionStage stage) {
+  switch (stage) {
+    case InspectionStage::kMetadata:
+      return "metadata";
+    case InspectionStage::kInstructions:
+      return "method_encoding";
+    case InspectionStage::kNormalFlow:
+      return "normal_flow";
+  }
+  std::abort();
+}
+
+const char* ToolName(InspectionStage stage) {
+  switch (stage) {
+    case InspectionStage::kMetadata:
+      return "abc_index";
+    case InspectionStage::kInstructions:
+      return "abc_decode";
+    case InspectionStage::kNormalFlow:
+      return "abc_flow";
+  }
+  std::abort();
+}
 
 const char* OutcomeLabel(IndexOutcome outcome) {
   switch (outcome) {
@@ -75,6 +102,10 @@ const char* OutcomeLabel(IndexOutcome outcome) {
       return "metadata_failure";
     case IndexOutcome::kBodyFailure:
       return "body_failure";
+    case IndexOutcome::kFlowBuilt:
+      return "flow_built";
+    case IndexOutcome::kFlowFailure:
+      return "flow_failure";
   }
   std::abort();
 }
@@ -85,6 +116,7 @@ void WriteFailure(std::ostream& output, const abc::MethodInfo& method,
                             {"code_offset", method.code->offset.value},
                             {"pc", failure.offset.value},
                             {"kind", static_cast<int>(failure.kind)}};
+  diagnostic["stage"] = StageLabel(InspectionStage::kInstructions);
   if (failure.instruction_error)
     diagnostic["instruction_error"] =
         static_cast<int>(*failure.instruction_error);
@@ -93,12 +125,26 @@ void WriteFailure(std::ostream& output, const abc::MethodInfo& method,
   output << diagnostic;
 }
 
+void WriteFailure(std::ostream& output, const abc::MethodInfo& method,
+                  const analysis::FlowFailure& failure) {
+  output << nlohmann::json{{"method_offset", method.offset.value},
+                           {"code_offset", method.code->offset.value},
+                           {"pc", failure.offset.value},
+                           {"kind", static_cast<int>(failure.kind)},
+                           {"stage", StageLabel(InspectionStage::kNormalFlow)}};
+}
+
 struct DecodeCounts {
   std::uint64_t decoded_methods = 0;
   std::uint64_t failed_methods = 0;
   std::uint64_t instructions = 0;
   std::uint64_t try_regions = 0;
   std::uint64_t catch_handlers = 0;
+  std::uint64_t flow_methods = 0;
+  std::uint64_t failed_flow_methods = 0;
+  std::uint64_t blocks = 0;
+  std::uint64_t edges = 0;
+  std::uint64_t resume_edges = 0;
 };
 
 struct FileReport {
@@ -181,14 +227,17 @@ FileReport IndexFile(const std::filesystem::path& root,
     if (!method.code) continue;
     ++report.code_methods;
     report.instruction_bytes += method.code->instruction_bytes;
-    if (stage == InspectionStage::kInstructions) {
+    if (stage != InspectionStage::kMetadata) {
       const auto decoded =
           abc::DecodeMethodBody(*file, header.profile, *method.code);
       if (const auto* failure = std::get_if<abc::BodyFailure>(&decoded)) {
         report.outcome = IndexOutcome::kBodyFailure;
         // Stream every failure. Keeping a capped vector loses method evidence;
         // retaining all failures would let malformed input exhaust the budget.
-        if (report.decoded.failed_methods != 0) diagnostics << ',';
+        if (report.decoded.failed_methods +
+                report.decoded.failed_flow_methods !=
+            0)
+          diagnostics << ',';
         WriteFailure(diagnostics, method, *failure);
         ++report.decoded.failed_methods;
       } else {
@@ -197,12 +246,39 @@ FileReport IndexFile(const std::filesystem::path& root,
         report.decoded.instructions += body.instructions.size();
         report.decoded.try_regions += body.tries.size();
         report.decoded.catch_handlers += body.handlers.size();
+        if (stage == InspectionStage::kNormalFlow) {
+          const auto flow = analysis::BuildNormalFlow(body);
+          if (const auto* failure = std::get_if<analysis::FlowFailure>(&flow)) {
+            report.outcome = IndexOutcome::kFlowFailure;
+            if (report.decoded.failed_methods +
+                    report.decoded.failed_flow_methods !=
+                0)
+              diagnostics << ',';
+            WriteFailure(diagnostics, method, *failure);
+            ++report.decoded.failed_flow_methods;
+          } else {
+            ++report.decoded.flow_methods;
+            const auto& graph = std::get<analysis::NormalFlow>(flow);
+            report.decoded.blocks += graph.blocks.size();
+            for (const auto& block : graph.blocks) {
+              report.decoded.edges += block.successor_count;
+              for (const auto& edge :
+                   std::span(block.successors).first(block.successor_count))
+                if (edge.kind == analysis::FlowEdgeKind::kResume)
+                  ++report.decoded.resume_edges;
+            }
+          }
+        }
       }
     }
   }
   if (stage == InspectionStage::kInstructions &&
       report.decoded.failed_methods == 0)
     report.outcome = IndexOutcome::kDecoded;
+  if (stage == InspectionStage::kNormalFlow &&
+      report.decoded.failed_methods == 0 &&
+      report.decoded.failed_flow_methods == 0)
+    report.outcome = IndexOutcome::kFlowBuilt;
   return report;
 }
 
@@ -211,7 +287,12 @@ nlohmann::json SerializeCounts(const DecodeCounts& counts) {
           {"failed_methods", counts.failed_methods},
           {"instructions", counts.instructions},
           {"try_regions", counts.try_regions},
-          {"catch_handlers", counts.catch_handlers}};
+          {"catch_handlers", counts.catch_handlers},
+          {"flow_methods", counts.flow_methods},
+          {"failed_flow_methods", counts.failed_flow_methods},
+          {"blocks", counts.blocks},
+          {"edges", counts.edges},
+          {"resume_edges", counts.resume_edges}};
 }
 
 nlohmann::json Serialize(const CorpusEntry& entry, const FileReport& report) {
@@ -234,9 +315,7 @@ nlohmann::json Serialize(const CorpusEntry& entry, const FileReport& report) {
 
 int Run(int argc, char** argv, InspectionStage stage) {
   if (argc < kRequiredArguments || (argc - 2) % kRootArgumentWidth != 0) {
-    std::cerr << "usage: "
-              << (stage == InspectionStage::kMetadata ? "abc_index"
-                                                      : "abc_decode")
+    std::cerr << "usage: " << ToolName(stage)
               << " MANIFEST CORPUS_ID ROOT [CORPUS_ID ROOT ...]\n";
     return EXIT_FAILURE;
   }
@@ -298,12 +377,14 @@ int Run(int argc, char** argv, InspectionStage stage) {
     switch (report.outcome) {
       case IndexOutcome::kIndexed:
       case IndexOutcome::kDecoded:
+      case IndexOutcome::kFlowBuilt:
         ++indexed;
         break;
       case IndexOutcome::kStaticSkipped:
         ++skipped;
         break;
       case IndexOutcome::kBodyFailure:
+      case IndexOutcome::kFlowFailure:
         ++indexed;
         ++failed;
         break;
@@ -325,6 +406,11 @@ int Run(int argc, char** argv, InspectionStage stage) {
     decoded.instructions += report.decoded.instructions;
     decoded.try_regions += report.decoded.try_regions;
     decoded.catch_handlers += report.decoded.catch_handlers;
+    decoded.flow_methods += report.decoded.flow_methods;
+    decoded.failed_flow_methods += report.decoded.failed_flow_methods;
+    decoded.blocks += report.decoded.blocks;
+    decoded.edges += report.decoded.edges;
+    decoded.resume_edges += report.decoded.resume_edges;
   }
   // Per-file reports and failures are already streamed, with no full-corpus
   // report buffer. Include output allocations in the measured peak.
@@ -332,8 +418,7 @@ int Run(int argc, char** argv, InspectionStage stage) {
   rusage usage{};
   if (getrusage(RUSAGE_SELF, &usage) != 0) return EXIT_FAILURE;
   nlohmann::json summary{
-      {"stage",
-       stage == InspectionStage::kMetadata ? "metadata" : "method_encoding"},
+      {"stage", StageLabel(stage)},
       {"files", files},
       {"indexed", indexed},
       {"static_skipped", skipped},

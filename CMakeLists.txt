@@ -5,6 +5,7 @@ include(cmake/IsaDependency.cmake)
 
 add_library(abcd_abc
   src/abc/byte_reader.cc
+  src/abc/control_transfer.cc
   src/abc/header.cc
   src/abc/instruction.cc
   src/abc/metadata_cursor.cc
@@ -23,6 +24,8 @@ target_compile_features(abcd_file PUBLIC cxx_std_20)
 target_include_directories(abcd_file PUBLIC include)
 target_link_libraries(abcd_file PUBLIC OpenSSL::Crypto ZLIB::ZLIB)
 target_link_libraries(abcd_abc PUBLIC abcd_file)
+add_library(abcd_analysis src/analysis/normal_flow.cc)
+target_link_libraries(abcd_analysis PUBLIC abcd_abc)
 add_library(abcd_corpus
   src/corpus/detect.cc
   src/corpus/manifest.cc
@@ -38,15 +41,25 @@ if(ABCD_BUILD_TOOLS)
   add_executable(abc_scan tools/abc_scan.cc)
   target_link_libraries(abc_scan PRIVATE abcd_corpus abcd_json)
   add_library(abcd_inspection tools/corpus_inspection.cc)
-  target_link_libraries(abcd_inspection PUBLIC abcd_corpus PRIVATE abcd_json)
+  target_link_libraries(abcd_inspection PUBLIC abcd_corpus PRIVATE abcd_json abcd_analysis)
   add_executable(abc_index tools/abc_index.cc)
   target_link_libraries(abc_index PRIVATE abcd_inspection)
   add_executable(abc_decode tools/abc_decode.cc)
   target_link_libraries(abc_decode PRIVATE abcd_inspection)
+  add_executable(abc_flow tools/abc_flow.cc)
+  target_link_libraries(abc_flow PRIVATE abcd_inspection)
 endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(control_transfer_test tests/unit/abc/control_transfer_test.cc)
+  target_link_libraries(control_transfer_test PRIVATE abcd_abc)
+  add_test(NAME control_transfer_test COMMAND control_transfer_test)
+
+  add_executable(normal_flow_test tests/unit/analysis/normal_flow_test.cc)
+  target_link_libraries(normal_flow_test PRIVATE abcd_analysis)
+  add_test(NAME normal_flow_test COMMAND normal_flow_test)
+
   add_executable(byte_reader_test tests/unit/abc/byte_reader_test.cc)
   target_link_libraries(byte_reader_test PRIVATE abcd_abc)
   add_test(NAME byte_reader_test COMMAND byte_reader_test)
@@ -100,5 +113,10 @@ if(BUILD_TESTING)
       -DABCD_DECODE=$<TARGET_FILE:abc_decode>
       -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decode_cli.cmake)
+    add_test(NAME flow_cli_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_SCAN=$<TARGET_FILE:abc_scan>
+      -DABCD_FLOW=$<TARGET_FILE:abc_flow>
+      -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/flow_cli.cmake)
   endif()
 endif()

@@ -29,7 +29,8 @@ enum class FixtureKind {
   kEmptyRecord,
   kMethod,
   kInvalidMethod,
-  kManyInvalidMethods
+  kManyInvalidMethods,
+  kFallthroughMethod
 };
 
 void WriteWord(std::span<std::uint8_t> bytes, std::size_t offset,
@@ -67,6 +68,8 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kInvalidMethod;
     else if (option == "--many-invalid-methods")
       kind = FixtureKind::kManyInvalidMethods;
+    else if (option == "--fallthrough-method")
+      kind = FixtureKind::kFallthroughMethod;
     else
       return EXIT_FAILURE;
   }
@@ -100,7 +103,9 @@ int main(int argc, char** argv) {
     dynamic.insert(dynamic.end(),
                    {0, 0, 1, 0,
                     static_cast<std::uint8_t>(
-                        kind == FixtureKind::kMethod ? 0x65 : 0xff)});
+                        kind == FixtureKind::kMethod              ? 0x65
+                        : kind == FixtureKind::kFallthroughMethod ? 0xd5
+                                                                  : 0xff)});
     for (std::uint8_t i = 0; i < method_count; ++i) {
       const auto offset = method_offset + i * kMethod.size();
       WriteWord(dynamic, offset + kNameOffsetInMethod, name_offset);
