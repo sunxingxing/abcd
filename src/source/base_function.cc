@@ -7,11 +7,19 @@
 #include <ostream>
 #include <streambuf>
 
+#include "abcd/source/base_constructor.h"
 #include "capture_stream.h"
 #include "function_template.h"
 
 namespace abcd::source {
 namespace {
+enum class CallableSyntax { kFunctionExpression, kBaseConstructor };
+struct CallableShape {
+  abc::FrameLayout frame;
+  std::string_view name;
+  std::uint16_t length;
+  CallableSyntax syntax;
+};
 constexpr std::size_t kIndexDigits =
     std::numeric_limits<std::uint32_t>::digits10 + 1;
 using RegisterName = std::array<char, kIndexDigits + 2>;
@@ -34,7 +42,7 @@ bool CanonicalFrame(const abc::FrameLayout& frame) {
 
 class FunctionWriter {
  public:
-  FunctionWriter(const BaseFunction& function, ScalarNames names,
+  FunctionWriter(const CallableShape& function, ScalarNames names,
                  std::ostream& output, LocalLexicalBudget budget,
                  const MethodConstants* constants,
                  const abc::MethodLookup* methods,
@@ -49,9 +57,13 @@ class FunctionWriter {
 
   FunctionEmitResult Write(const abc::MethodBody& body) {
     try {
-      Text("(function ");
-      Text(function_.name);
-      Text("(");
+      if (function_.syntax == CallableSyntax::kBaseConstructor) {
+        Text("constructor(");
+      } else {
+        Text("(function ");
+        Text(function_.name);
+        Text("(");
+      }
       const auto& frame = function_.frame;
       for (std::uint32_t i = 0; i < frame.parameters && !error_; ++i) {
         if (i != 0) Text(", ");
@@ -91,7 +103,7 @@ class FunctionWriter {
       else
         return std::visit(
             [](auto value) -> FunctionEmitResult { return value; }, result);
-      Text("})");
+      Text(function_.syntax == CallableSyntax::kBaseConstructor ? "}" : "})");
       if (error_) return *error_;
       return written_;
     } catch (const std::ios_base::failure&) {
@@ -120,7 +132,7 @@ class FunctionWriter {
         std::to_chars(digits.data(), digits.data() + digits.size(), index).ptr;
     Text({digits.data(), static_cast<std::size_t>(end - digits.data())});
   }
-  const BaseFunction& function_;
+  const CallableShape& function_;
   ScalarNames names_;
   std::ostream& output_;
   LocalLexicalBudget budget_;
@@ -130,22 +142,15 @@ class FunctionWriter {
   std::size_t written_ = 0;
   std::optional<EmitError> error_;
 };
-FunctionEmitResult WriteFunction(const BaseFunction& function,
+FunctionEmitResult WriteCallable(const CallableShape& function,
                                  const abc::MethodBody& body,
                                  std::ostream& output,
                                  LocalLexicalBudget budget,
                                  const MethodConstants* constants,
                                  const abc::MethodLookup* methods,
                                  analysis::CapturedValues captured_values) {
-  if (function.creation.kind != analysis::CreationKind::kFunction ||
-      function.creation.home_object !=
-          analysis::HomeObjectInput::kCurrentFunction)
-    return FunctionEmitError::kCreation;
-  if (function.attributes.sendable) return FunctionEmitError::kSendable;
-  if (function.attributes.kind != abc::FunctionKind::kBaseConstructor)
-    return FunctionEmitError::kKind;
   if (!CanonicalFrame(function.frame)) return FunctionEmitError::kFrame;
-  if (function.creation.length.value != function.frame.parameters)
+  if (function.length != function.frame.parameters)
     return FunctionEmitError::kLength;
   // Reuse the expression emitter's strict-safe binding validation. '$' is our
   // private source namespace; never let a supplied function name shadow it.
@@ -188,7 +193,38 @@ FunctionEmitResult WriteFunction(const BaseFunction& function,
     return FunctionEmitError::kResourceLimit;
   }
 }
+FunctionEmitResult WriteFunction(const BaseFunction& function,
+                                 const abc::MethodBody& body,
+                                 std::ostream& output,
+                                 LocalLexicalBudget budget,
+                                 const MethodConstants* constants,
+                                 const abc::MethodLookup* methods,
+                                 analysis::CapturedValues captured_values) {
+  if (function.creation.kind != analysis::CreationKind::kFunction ||
+      function.creation.home_object !=
+          analysis::HomeObjectInput::kCurrentFunction)
+    return FunctionEmitError::kCreation;
+  if (function.attributes.sendable) return FunctionEmitError::kSendable;
+  if (function.attributes.kind != abc::FunctionKind::kBaseConstructor)
+    return FunctionEmitError::kKind;
+  return WriteCallable(
+      {function.frame, function.name, function.creation.length.value,
+       CallableSyntax::kFunctionExpression},
+      body, output, budget, constants, methods, captured_values);
+}
 }  // namespace
+FunctionEmitResult WriteBaseConstructor(const BaseConstructor& constructor,
+                                        const abc::MethodBody& body,
+                                        std::ostream& output,
+                                        LocalLexicalBudget budget,
+                                        const MethodConstants* constants) {
+  if (constructor.attributes.sendable) return FunctionEmitError::kSendable;
+  return WriteCallable(
+      {constructor.frame, constructor.class_binding,
+       constructor.creation.length, CallableSyntax::kBaseConstructor},
+      body, output, budget, constants, nullptr,
+      analysis::CapturedValues::kReject);
+}
 FunctionEmitResult WriteBaseFunction(const BaseFunction& function,
                                      const abc::MethodBody& body,
                                      std::ostream& output,

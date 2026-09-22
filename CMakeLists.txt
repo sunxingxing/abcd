@@ -248,6 +248,10 @@ if(BUILD_TESTING)
   target_link_libraries(linear_body_test PRIVATE abcd_source)
   add_test(NAME linear_body_test COMMAND linear_body_test)
   add_executable(base_function_test tests/unit/source/base_function_test.cc)
+  add_executable(base_constructor_test tests/unit/source/base_constructor_test.cc)
+  target_include_directories(base_constructor_test PRIVATE tests/support)
+  target_link_libraries(base_constructor_test PRIVATE abcd_source)
+  add_test(NAME base_constructor_test COMMAND base_constructor_test)
   target_include_directories(base_function_test PRIVATE tests/support)
   target_link_libraries(base_function_test PRIVATE abcd_source)
   add_test(NAME base_function_test COMMAND base_function_test)
@@ -276,6 +280,12 @@ if(BUILD_TESTING)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   find_program(ABCD_NODE_EXECUTABLE node)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME base_constructor_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:base_constructor_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/base_constructor.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=base-constructor.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME created_function_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:created_function_test>
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/created_function.mjs

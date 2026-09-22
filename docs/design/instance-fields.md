@@ -58,3 +58,26 @@ normal-completion register effect replaces acc but preserves caller registers
 and frame.thisObj, allowing receiver aliases to survive. Loaded values remain
 unknown and may be Hole; initialization guards are not removed. Modern narrow
 and wide encodings are lifted separately from deprecated name-based accesses.
+
+## Base Constructor Source
+
+WriteBaseConstructor emits a native constructor method with simple parameters,
+canonical ABI register initialization and the existing local lexical body
+writer. It shares the ordinary function writer's bounded two-pass preflight;
+semantic and budget rejection publish no bytes. Assignment statements stay in
+execution order, preserving inherited setters and abrupt completion instead of
+being hoisted into field initializers.
+
+This is a source component, not a class/record exporter. The caller must prove
+the ordinary creation site, matching target/ABI, actual no-extends runtime
+heritage, and a stable private enclosing class name. An initial method-kind
+attribute does not establish runtime heritage. Derived constructors, unresolved
+outer captures, non-simple signatures and unsupported bodies remain rejected
+or outside the contract. Record integration must establish these prerequisites
+before invoking the writer; metadata-only receiver evidence is insufficient.
+
+Native syntax supplies new-only calls, constructor return substitution,
+new.target and prototype descriptor behavior. Tests execute generated methods
+in Node, including alternate new.target and inherited setter/throw cases.
+Constructor and ordinary-function emission share register/name allocation and
+body budgets; no additional whole-output buffer or unbounded cache is added.
