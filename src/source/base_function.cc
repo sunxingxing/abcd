@@ -8,17 +8,25 @@
 #include <streambuf>
 
 #include "abcd/source/base_constructor.h"
+#include "abcd/source/class_method.h"
+#include "abcd/source/string_literal.h"
 #include "capture_stream.h"
 #include "function_template.h"
 
 namespace abcd::source {
 namespace {
-enum class CallableSyntax { kFunctionExpression, kBaseConstructor };
+enum class CallableSyntax {
+  kFunctionExpression,
+  kBaseConstructor,
+  kClassMethod
+};
 struct CallableShape {
   abc::FrameLayout frame;
   std::string_view name;
   std::uint16_t length;
   CallableSyntax syntax;
+  std::u16string_view key{};
+  abc::ClassPlacement placement = abc::ClassPlacement::kPrototype;
 };
 constexpr std::size_t kIndexDigits =
     std::numeric_limits<std::uint32_t>::digits10 + 1;
@@ -57,7 +65,17 @@ class FunctionWriter {
 
   FunctionEmitResult Write(const abc::MethodBody& body) {
     try {
-      if (function_.syntax == CallableSyntax::kBaseConstructor) {
+      if (function_.syntax == CallableSyntax::kClassMethod) {
+        if (function_.placement == abc::ClassPlacement::kStatic)
+          Text("static ");
+        Text("[");
+        if (error_) return *error_;
+        const auto key = WriteStringLiteral(function_.key, output_,
+                                            {budget_.output.bytes - written_});
+        if (const auto* error = std::get_if<EmitError>(&key)) return *error;
+        written_ += std::get<std::size_t>(key);
+        Text("](");
+      } else if (function_.syntax == CallableSyntax::kBaseConstructor) {
         Text("constructor(");
       } else {
         Text("(function ");
@@ -103,7 +121,8 @@ class FunctionWriter {
       else
         return std::visit(
             [](auto value) -> FunctionEmitResult { return value; }, result);
-      Text(function_.syntax == CallableSyntax::kBaseConstructor ? "}" : "})");
+      Text(function_.syntax == CallableSyntax::kFunctionExpression ? "})"
+                                                                   : "}");
       if (error_) return *error_;
       return written_;
     } catch (const std::ios_base::failure&) {
@@ -213,6 +232,22 @@ FunctionEmitResult WriteFunction(const BaseFunction& function,
       body, output, budget, constants, methods, captured_values);
 }
 }  // namespace
+FunctionEmitResult WriteClassMethod(const ClassMethod& method,
+                                    const abc::MethodBody& body,
+                                    std::ostream& output,
+                                    LocalLexicalBudget budget,
+                                    const MethodConstants* constants) {
+  if (method.attributes.sendable) return FunctionEmitError::kSendable;
+  if (method.attributes.kind != abc::FunctionKind::kNone ||
+      method.member.kind != abc::ClassMethodKind::kOrdinary ||
+      method.effective_kind != EffectiveMethodKind::kOrdinary)
+    return FunctionEmitError::kKind;
+  return WriteCallable(
+      {method.frame, method.self_binding, method.member.length,
+       CallableSyntax::kClassMethod, method.key, method.placement},
+      body, output, budget, constants, nullptr,
+      analysis::CapturedValues::kReject);
+}
 FunctionEmitResult WriteBaseConstructor(const BaseConstructor& constructor,
                                         const abc::MethodBody& body,
                                         std::ostream& output,

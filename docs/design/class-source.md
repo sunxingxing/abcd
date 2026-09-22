@@ -39,3 +39,30 @@ home objects and stable method-self identity; emitting constructible function
 expressions as native methods is not an acceptable substitute. Derived classes,
 captures, complex signatures and caller module flow remain required future work,
 not reasons to publish partial classes as complete records.
+
+## Ordinary Method Emission
+
+WriteClassMethod emits native computed-key methods, including static placement,
+using the shared parameter/register/body writer. Its private immutable self
+binding must hold the exact method before invocation. A caller may capture that
+value after a side-effect-free class definition, but cannot look up a mutable
+prototype/static property each time the method executes. This preserves self
+identity after replacement/deletion and keeps methods nonconstructible.
+
+The primitive requires an ordinary buffer template, initial NONE and explicit
+proven effective ordinary kind. These are different facts: the pinned
+LiteralDataExtractor::DefineFunctionTemplate and DefineMethodInLiteral mutate
+shared MethodLiteral state. An earlier generator/accessor/object-literal role
+can invalidate inference from an initial NONE flag. EffectiveMethodKind means
+the template/method kind at materialization, and defaults to unknown/rejected.
+Production class-member admission must build a cross-role index including
+object literals, or otherwise establish the effective kind; checking only this
+class's buffer is insufficient. The primitive does not itself establish that
+proof and is not yet connected to WriteCreatedClass.
+
+Body home-object operations, unresolved captures, async/generator/accessor
+semantics and complex formals remain unsupported. Runtime method name must
+equal the supplied property key; descriptor/reserved-property compatibility is
+also a class integration obligation. UTF-16 keys are source-escaped, not used
+as semantic dispatch strings. Semantic and configured-budget rejection leaves
+the output untouched under the shared preflight contract.
