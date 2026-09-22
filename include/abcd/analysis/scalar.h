@@ -12,9 +12,12 @@ struct IntegerLiteral {
 struct Float64Bits {
   std::uint64_t value;
 };
+// CREATEEMPTYARRAY creates a fresh ordinary JS array. The encoded operand is
+// an inline-cache slot, not an array length; keep it out of source semantics.
+struct EmptyArray {};
 using ScalarSlot = std::variant<Accumulator, abc::RegisterId>;
 using ScalarValue = std::variant<Accumulator, abc::RegisterId, SpecialValue,
-                                 IntegerLiteral, Float64Bits>;
+                                 IntegerLiteral, Float64Bits, EmptyArray>;
 enum class BinaryOperator {
   kAdd,
   kSubtract,

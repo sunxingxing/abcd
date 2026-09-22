@@ -17,6 +17,9 @@ struct ReceiverCall {
 struct NamedInvocation {
   NamedRead property;
   ReceiverCall call;
+  // Number of bytecode instructions consumed by the fused source call.
+  // Direct read/call is two; compiler spill/reload form is four.
+  std::uint8_t instruction_count = 2;
 };
 // Input span is ONE unchanged basic block (or validated straight-line body).
 // Copy from/to the receiver; named read; call with exactly that receiver.

@@ -43,6 +43,12 @@ int main(int argc, char** argv) {
   const auto result =
       source::WriteLinearBody(body, {"acc", registers}, output, {}, &constants);
   test::Check(std::holds_alternative<std::size_t>(result));
+  const auto spilled =
+      test::Body({0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 1, 0x2d, 0, 0, 0x64});
+  std::ostringstream spilled_output;
+  test::Check(std::holds_alternative<std::size_t>(source::WriteLinearBody(
+      spilled, {"acc", registers}, spilled_output, {}, &constants)));
+  test::Check(spilled_output.str() == output.str());
   const bool emit = argc == 2 && std::string_view(argv[1]) == "--emit";
   const std::array<std::vector<std::uint8_t>, 4> calls{
       {{0x2d, 0xff, 0},

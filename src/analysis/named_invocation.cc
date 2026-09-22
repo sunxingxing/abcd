@@ -50,9 +50,6 @@ std::optional<NamedInvocation> MatchNamedInvocation(
     std::uint64_t frame_size) {
   if (property == 0 || property >= block.size() || property + 1 >= block.size())
     return {};
-  const auto lifted = LiftReceiverCall(block[property + 1].decoded, frame_size);
-  const auto* call = std::get_if<ReceiverCall>(&lifted);
-  if (!call) return {};
   const auto read = LiftNamedRead(block[property].decoded);
   const auto* named = std::get_if<NamedRead>(&read);
   if (!named) return {};
@@ -62,14 +59,49 @@ std::optional<NamedInvocation> MatchNamedInvocation(
   if (!copy) return {};
   const auto* value = std::get_if<ScalarValue>(&copy->expression);
   if (!value) return {};
+  std::optional<abc::RegisterId> receiver;
   if (std::holds_alternative<Accumulator>(copy->destination)) {
     const auto* reg = std::get_if<abc::RegisterId>(value);
-    if (!reg || *reg != call->receiver) return {};
+    if (!reg) return {};
+    receiver = *reg;
   } else {
-    if (std::get<abc::RegisterId>(copy->destination) != call->receiver ||
-        !std::holds_alternative<Accumulator>(*value))
-      return {};
+    if (!std::holds_alternative<Accumulator>(*value)) return {};
+    receiver = std::get<abc::RegisterId>(copy->destination);
   }
-  return NamedInvocation{*named, *call};
+  const auto direct = LiftReceiverCall(block[property + 1].decoded, frame_size);
+  if (const auto* call = std::get_if<ReceiverCall>(&direct)) {
+    if (call->receiver != *receiver) return {};
+    return NamedInvocation{*named, *call, 2};
+  }
+
+  // The v7.0 translator commonly spills a named callee through one register
+  // before CALLTHIS. Require the exact typed store/load pair and no intervening
+  // operation; this preserves one property read and the original receiver.
+  if (property + 3 >= block.size()) return {};
+  const auto stored =
+      LiftScalarInstruction(block[property + 1].decoded, frame_size);
+  const auto* store = std::get_if<ScalarAssignment>(&stored);
+  const auto* store_value =
+      store ? std::get_if<ScalarValue>(&store->expression) : nullptr;
+  if (!store || !store_value ||
+      !std::holds_alternative<abc::RegisterId>(store->destination) ||
+      !std::holds_alternative<Accumulator>(*store_value))
+    return {};
+  const auto loaded =
+      LiftScalarInstruction(block[property + 2].decoded, frame_size);
+  const auto* load = std::get_if<ScalarAssignment>(&loaded);
+  const auto* load_value =
+      load ? std::get_if<ScalarValue>(&load->expression) : nullptr;
+  if (!load || !load_value ||
+      !std::holds_alternative<Accumulator>(load->destination) ||
+      !std::holds_alternative<abc::RegisterId>(*load_value) ||
+      std::get<abc::RegisterId>(*load_value) !=
+          std::get<abc::RegisterId>(store->destination))
+    return {};
+  const auto spilled_call =
+      LiftReceiverCall(block[property + 3].decoded, frame_size);
+  const auto* call = std::get_if<ReceiverCall>(&spilled_call);
+  if (!call || call->receiver != *receiver) return {};
+  return NamedInvocation{*named, *call, 4};
 }
 }  // namespace abcd::analysis

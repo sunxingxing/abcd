@@ -5,6 +5,7 @@
 
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/hole_guard.h"
+#include "abcd/analysis/named_invocation.h"
 #include "idf_scratch.h"
 #include "register_value_rule.h"
 
@@ -202,6 +203,33 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
         if (!state(store->value).IsLanguage())
           return fail(Error::kInternalValue);
         continue;
+      }
+      // The v7.0 translator may spill a named callee through one register
+      // before CALLTHIS. The source writer fuses this complete typed sequence
+      // at the named read; consume the call here instead of rejecting the
+      // otherwise unsupported raw CALLTHIS opcode.
+      if (i >= 2) {
+        bool fused_call = false;
+        for (const auto lookback : {std::size_t{1}, std::size_t{3}}) {
+          if (i < lookback) continue;
+          const auto invocation = MatchNamedInvocation(
+              std::span(body.instructions), i - lookback, frame_size);
+          if (!invocation || invocation->instruction_count != lookback + 1)
+            continue;
+          if (!state(invocation->call.receiver).IsLanguage())
+            return fail(Error::kInternalValue);
+          for (std::size_t argument = 0;
+               argument < invocation->call.arguments.count; ++argument) {
+            if (!state(invocation->call.arguments.values[argument])
+                     .IsLanguage())
+              return fail(Error::kInternalValue);
+          }
+          accumulator = ValueKinds::Language();
+          statement = OmitInstruction{};
+          fused_call = true;
+          break;
+        }
+        if (fused_call) continue;
       }
       if (!std::holds_alternative<LexicalError>(lexical) ||
           std::get<LexicalError>(lexical) != LexicalError::kUnsupportedOpcode)

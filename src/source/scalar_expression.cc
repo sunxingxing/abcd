@@ -181,6 +181,7 @@ class ExpressionWriter {
     }
     NumberToken(std::bit_cast<double>(number.value));
   }
+  void Value(EmptyArray) { Append("[]"); }
   void Value(SpecialValue value) {
     switch (value) {
       case SpecialValue::kUndefined:

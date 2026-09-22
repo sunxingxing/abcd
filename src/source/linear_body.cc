@@ -143,7 +143,7 @@ class BodyWriter {
           if (const auto invocation = MatchNamedInvocation(
                   instructions, i, names_.registers.size())) {
             NamedCall(*invocation);
-            ++i;
+            i += invocation->instruction_count - 1;
           } else {
             NamedLoad(instruction.decoded);
           }

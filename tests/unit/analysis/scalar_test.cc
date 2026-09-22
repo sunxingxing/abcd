@@ -52,6 +52,21 @@ int main() {
         abcd::abc::Opcode::kDEPRECATED_LDOBJBYVALUE_PREF_V8_V8);
   Check(std::get<ScalarError>(LiftScalarInstruction(legacy_property, 2)) ==
         ScalarError::kUnsupportedOpcode);
+  {
+    abcd::abc::DecodedInstruction array;
+    array.opcode = abcd::abc::Opcode::kCREATEEMPTYARRAY_IMM8;
+    array.operand_count = 1;
+    array.operands[0].kind = abcd::abc::OperandKind::kImmediate;
+    array.operands[0].raw_bits = 7;
+    const auto assignment =
+        std::get<ScalarAssignment>(LiftScalarInstruction(array, 8));
+    Check(std::holds_alternative<EmptyArray>(
+        std::get<ScalarValue>(assignment.expression)));
+    Check(std::holds_alternative<Accumulator>(assignment.destination));
+    array.operands[0].raw_bits = 256;
+    Check(std::get<ScalarError>(LiftScalarInstruction(array, 8)) ==
+          ScalarError::kMalformedInstruction);
+  }
   struct BinaryCase {
     std::uint8_t opcode;
     BinaryOperator op;

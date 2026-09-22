@@ -65,8 +65,13 @@ int main() {
     const auto kinds = std::get<RegisterValueFlow>(
         RegisterValueFlow::Build(input, named, 4, {}, work));
     for (std::uint32_t i = 0; i < input.instructions.size(); ++i)
-      if (const auto value = named.Write({i}))
+      if (const auto value = named.Write({i})) {
+        if (kinds.At(*value) != item.kind)
+          std::fprintf(
+              stderr, "mismatch i=%u opcode=%u\n", i,
+              static_cast<unsigned>(input.instructions[i].decoded.opcode));
         Check(kinds.At(*value) == item.kind);
+      }
   }
   const auto cyclic = Body({0x45, 0, 0, 0x4d, 0xfd});
   const auto cyclic_ssa = std::get<RegisterSsa>(RegisterSsa::Build(

@@ -2,7 +2,9 @@
 
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/hole_guard.h"
+#include "abcd/analysis/indexed_read.h"
 #include "abcd/analysis/lexical.h"
+#include "abcd/analysis/named_read.h"
 
 namespace abcd::analysis::detail {
 namespace {
@@ -76,8 +78,14 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
       }
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
     }
-    if (std::holds_alternative<PropertyRead>(assignment->expression))
-      return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
+    // Successful ECMAScript property reads expose language values. The pinned
+    // v7.0 JSObject::GetProperty returns undefined for a missing data property;
+    // Hole/environment sentinels are not observable through this API. Receiver
+    // and key reads remain checked by RegisterEffect, and abrupt getters still
+    // preserve the normal/throwing control semantics of the instruction.
+    if (std::holds_alternative<PropertyRead>(assignment->expression)) {
+      return ValueRule{ValueRuleKind::kLanguageOperation, {}};
+    }
     // Language includes accepted noncanonical NaNs. NEG can flip such a NaN
     // into an impure encoding; numeric results need stronger numeric facts.
     bool language = false;
@@ -96,7 +104,12 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
   if (std::holds_alternative<PushEnvironment>(
           LiftLexicalInstruction(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Environment()};
+  if (std::holds_alternative<NamedRead>(LiftNamedRead(instruction)) ||
+      std::holds_alternative<IndexedRead>(
+          LiftIndexedRead(instruction, frame_size)))
+    return ValueRule{ValueRuleKind::kLanguageOperation, {}};
   if (instruction.opcode == abc::Opcode::kLDA_STR_ID16 ||
+      instruction.opcode == abc::Opcode::kCREATEEMPTYARRAY_IMM8 ||
       std::holds_alternative<FunctionCreation>(
           LiftFunctionCreation(instruction)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};

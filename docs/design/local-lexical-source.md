@@ -35,10 +35,14 @@ rejected because their scope literal-array lookup is actual runtime work, not a
 conditional diagnostic lookup that can be skipped on a proven successful guard.
 
 Every generic instruction's reads must be language-only. Result classification
-uses existing conservative rules: unknown numeric/call/property outputs cannot
-subsequently be used without proof. Dead results may still be emitted to retain
-instruction effects. This is not a new proof of scalar operation equivalence;
-generic emission retains the existing reviewed instruction contracts.
+uses existing conservative rules: calls and unsupported numeric results remain
+unknown, while a successful ordinary property read is a language value under
+the pinned `JSObject::GetProperty` contract (a missing property is `undefined`).
+Receiver/key inputs are still checked and getter/Proxy abrupt completion remains
+part of the instruction's normal/throwing contract. Dead results may still be
+emitted to retain instruction effects. This is not a proof of field identity,
+heap immutability or scalar operation equivalence; generic emission retains the
+existing reviewed instruction contracts.
 
 A Hole guard is omitted ONLY when its tested value is already language-only.
 Do not inspect the conditional name register/string pool on that path. Guards

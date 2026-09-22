@@ -16,7 +16,11 @@ including method-entry operands. Constants are language values; LDHOLE is Hole;
 NEWLEXENV writes an internal environment. Current environment and lexical loads
 remain top without scope/cell facts. Function creation produces a language
 function on normal completion; that fact does not prove wrapper/home/capture
-equivalence. Calls and property results remain top without callee/heap proofs.
+equivalence. Calls remain top without callee proofs. Successful ordinary
+property reads are language values under the pinned v7.0 GetProperty contract:
+missing properties return undefined, while getter/proxy abrupt completion is
+retained as a possible throw. Receiver/key operands are still checked as
+language values; this does not prove field identity or heap immutability.
 Selected boolean/string-producing scalar operations have language results when
 all operand categories are language-only; otherwise top, or bottom until each
 dependency has evidence. Numeric results need stronger numeric facts: accepted

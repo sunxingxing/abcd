@@ -185,6 +185,13 @@ ScalarResult LiftScalarInstruction(const DecodedInstruction& instruction,
                             completion};
   }
   switch (instruction.opcode) {
+    case Opcode::kCREATEEMPTYARRAY_IMM8:
+      if (const auto error =
+              CheckOperands(instruction, {OperandKind::kImmediate}, frame_size))
+        return *error;
+      if (instruction.operands[0].raw_bits > UINT8_MAX)
+        return ScalarError::kMalformedInstruction;
+      return AssignAccumulator(EmptyArray{});
     case Opcode::kLDOBJBYVALUE_IMM8_V8:
     case Opcode::kLDOBJBYVALUE_IMM16_V8: {
       if (const auto error = CheckOperands(

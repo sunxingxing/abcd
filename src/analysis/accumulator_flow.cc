@@ -105,12 +105,23 @@ std::variant<AccumulatorFlow, AccumulatorFailure> AnalyzeAccumulator(
           ++result.instruction_visits;
           const auto& instruction = body.instructions[i];
           auto transfer = Access(instruction.decoded, frame_size);
-          if (!transfer && i >= std::size_t(block.first_instruction) + 2 &&
-              MatchNamedInvocation(std::span(body.instructions)
-                                       .subspan(block.first_instruction,
-                                                block.instruction_count),
-                                   i - block.first_instruction - 1, frame_size))
-            transfer = Transfer{true, AccumulatorWrite::kValue};
+          if (!transfer && i >= std::size_t(block.first_instruction) + 2) {
+            const auto local = i - block.first_instruction;
+            const auto span =
+                std::span(body.instructions)
+                    .subspan(block.first_instruction, block.instruction_count);
+            for (const auto lookback : {std::size_t{1}, std::size_t{3}}) {
+              if (local >= lookback) {
+                const auto invocation =
+                    MatchNamedInvocation(span, local - lookback, frame_size);
+                if (invocation &&
+                    invocation->instruction_count == lookback + 1) {
+                  transfer = Transfer{true, AccumulatorWrite::kValue};
+                  break;
+                }
+              }
+            }
+          }
           if (!transfer)
             return AccumulatorFailure{AccumulatorError::kUnsupportedInstruction,
                                       instruction.offset};
