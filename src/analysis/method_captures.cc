@@ -93,12 +93,10 @@ std::variant<MethodCaptures, MethodCaptureFailure> MethodCaptures::Build(
   }
 }
 
-std::variant<LexicalBinding, MethodCaptureError, EnvironmentError,
-             CaptureRebaseError>
-MethodCaptures::Resolve(abc::CodeOffset creation, const MethodCaptures& target,
-                        CapturedSlot captured) const {
-  if (origin_.file != target.origin_.file ||
-      origin_.profile != target.origin_.profile)
+std::variant<const CreationBinding*, MethodCaptureError>
+MethodCaptures::FindCreation(abc::CodeOffset creation,
+                             const CaptureOrigin& target) const {
+  if (origin_.file != target.file || origin_.profile != target.profile)
     return MethodCaptureError::kContextMismatch;
   const auto sites = Creations();
   if (sites.empty()) return MethodCaptureError::kCreationMissing;
@@ -109,16 +107,36 @@ MethodCaptures::Resolve(abc::CodeOffset creation, const MethodCaptures& target,
                        });
   if (found == sites.end() || found->offset != creation)
     return MethodCaptureError::kCreationMissing;
-  if (found->target.position != target.origin_.method)
+  if (found->target.position != target.method)
     return MethodCaptureError::kTargetMismatch;
+  return &*found;
+}
+
+MethodCaptureResolution MethodCaptures::Resolve(abc::CodeOffset creation,
+                                                const MethodCaptures& target,
+                                                CapturedSlot captured) const {
+  const auto found = FindCreation(creation, target.Origin());
+  if (const auto* error = std::get_if<MethodCaptureError>(&found))
+    return *error;
   if (!target.captures_.Find(captured))
     return MethodCaptureError::kCaptureMissing;
-  const auto rebased = RebaseCapture(environments_, found->capture, captured);
-  if (const auto* binding = std::get_if<LexicalBinding>(&rebased))
-    return *binding;
-  if (const auto* error = std::get_if<EnvironmentError>(&rebased))
+  return std::visit(
+      [](auto value) -> MethodCaptureResolution { return value; },
+      RebaseCapture(environments_,
+                    std::get<const CreationBinding*>(found)->capture,
+                    captured));
+}
+
+MethodCaptureResolution MethodCaptures::Rebase(abc::CodeOffset creation,
+                                               const CaptureOrigin& target,
+                                               CapturedSlot demand) const {
+  const auto found = FindCreation(creation, target);
+  if (const auto* error = std::get_if<MethodCaptureError>(&found))
     return *error;
-  return std::get<CaptureRebaseError>(rebased);
+  return std::visit(
+      [](auto value) -> MethodCaptureResolution { return value; },
+      RebaseCapture(environments_,
+                    std::get<const CreationBinding*>(found)->capture, demand));
 }
 
 std::size_t MethodCaptures::AllocatedBytes() const {

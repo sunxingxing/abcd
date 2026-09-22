@@ -30,10 +30,26 @@ summary before calling `RebaseCapture`. The result is relative to the caller.
 The query performs no allocation, file access, target decoding or recursive
 graph traversal. Sendable environments remain a typed refusal.
 
+`Rebase(creation, target_origin, demand)` transfers a target-entry-relative
+requirement supplied by a demand analysis without requiring a direct target use.
+It shares Resolve's context/creation/target checks, then applies the same
+ancestry/known-slot validation. The caller owns provenance and reachability
+evidence; success does not prove that a use exists or a value is initialized.
+Its cost is O(log C + log D), with constant auxiliary space and no allocation.
+
+This distinction matters when a leaf reads an outer variable but its immediate
+parent only creates the leaf. Resolve can establish the leaf's direct use and
+return a captured demand in the parent's context. Rebase then maps that demand
+through the parent's creation even though the parent's direct summary is empty.
+A local result is discharged at a caller allocation site; a captured result
+remains an unresolved outward demand. Preserve the creation context with either
+result, rather than interpreting method position or site ID as runtime identity.
+
 Only the four modern DEFINEFUNC/DEFINEMETHOD encodings are collected. Class,
 literal-hidden and historical creation semantics are not inferred from their
-absence. Captures used only by deeper closures require later transitive demand
-propagation. `kCaptureMissing` means absent direct-use proof, not malformed ABC.
+absence. Captures used only by deeper closures require transitive demand
+propagation; Rebase provides its single-edge transfer, not its graph solver.
+`kCaptureMissing` means absent direct-use proof, not malformed ABC.
 This API alone does not recover a complete closure graph or lexical source names.
 
 ## Budget and Complexity
@@ -90,3 +106,29 @@ yet exercise inter-method Resolve queries; those remain fixture-tested.
 
 See the [corpus validation report](../validation/2026-09-22-method-captures.md)
 for construction counts, limitations and process memory evidence.
+
+## Demand Transfer Verification
+
+`capture_demand_test` decodes a three-method fixture in which only the leaf reads
+the captured slot. It checks root-local and outward mappings through an empty
+middle summary, pop-induced depth shifts, local discharge, slot bounds, depth
+overflow, file/profile/target/site mismatch, sendable refusal and unchanged
+Resolve error precedence. Sets of 200/201/4096/65535 demands preserve slot IDs
+without growing retained result payload. The test initially failed compilation
+because Rebase was absent, then passed with the implementation. Both this test
+and creation_binding_test passed under ASan/UBSan. Independent read-only review
+found no correctness issues.
+
+The complete Debug build and all 60 CTest cases passed after this change.
+
+On 2026-09-22 the Debug demand test took 0.04 seconds with peak process RSS
+8,126,464 bytes. This is synthetic query evidence, not full-corpus transitive
+recovery or complete-pipeline memory evidence.
+
+The next solver must use a bounded sparse worklist, deduplicate admitted
+context/depth/slot requirements and retain provenance separately. It must charge
+pending facts, indexes, provenance and retained snapshots, and report demand-edge
+work honestly. Do not walk the entire creation graph separately for every
+variable, eagerly construct a site/use cross-product, or assume a small number
+of fixed-point rounds. Recursive creation contexts and depth-increasing cycles
+need a separate summary/termination contract; deduplication alone is insufficient.

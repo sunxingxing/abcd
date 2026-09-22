@@ -21,6 +21,9 @@ using MethodCaptureFailure =
     std::variant<MethodCaptureError, CaptureSummaryError, CreationError,
                  CreationBindingError, abc::MethodTargetError,
                  abc::MetadataError, abc::MethodAttributeError>;
+using MethodCaptureResolution =
+    std::variant<LexicalBinding, MethodCaptureError, EnvironmentError,
+                 CaptureRebaseError>;
 struct MethodCaptureBudget {
   std::size_t bytes = 64 * 1024 * 1024;
 };
@@ -44,10 +47,18 @@ class MethodCaptures {
   // Resolve a direct captured use recorded by target.Captures(). A requirement
   // used only by a nested closure needs later demand propagation; absence here
   // is not proof of invalid bytecode. No graph traversal or target decoding.
-  [[nodiscard]] std::variant<LexicalBinding, MethodCaptureError,
-                             EnvironmentError, CaptureRebaseError>
-  Resolve(abc::CodeOffset creation, const MethodCaptures& target,
-          CapturedSlot captured) const;
+  [[nodiscard]] MethodCaptureResolution Resolve(abc::CodeOffset creation,
+                                                const MethodCaptures& target,
+                                                CapturedSlot captured) const;
+  // Transfer a target-entry-relative demand without claiming direct use.
+  // Caller supplies demand provenance/reachability and retains creation
+  // context. Success proves ancestry/known slot bounds only, not use or
+  // initialization. A captured result remains an outward demand; a local result
+  // is a caller allocation site, NOT a shared runtime cell. No graph walk or
+  // target load.
+  [[nodiscard]] MethodCaptureResolution Rebase(abc::CodeOffset creation,
+                                               const CaptureOrigin& target,
+                                               CapturedSlot demand) const;
   [[nodiscard]] const CaptureOrigin& Origin() const { return origin_; }
   [[nodiscard]] const CaptureSummary& Captures() const { return captures_; }
   [[nodiscard]] std::span<const CreationBinding> Creations() const {
@@ -59,6 +70,8 @@ class MethodCaptures {
   }
 
  private:
+  [[nodiscard]] std::variant<const CreationBinding*, MethodCaptureError>
+  FindCreation(abc::CodeOffset creation, const CaptureOrigin& target) const;
   MethodCaptures(CaptureOrigin origin, EnvironmentIndex&& environments,
                  CaptureSummary&& captures,
                  std::unique_ptr<CreationBinding[]>&& creations,
