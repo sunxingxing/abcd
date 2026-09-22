@@ -27,6 +27,8 @@ void WriteDebugStructure(const RecordText& text, const abc::MethodInfo& method,
   }
   out << "],\"constant_pool\":{\"offset\":" << debug.constant_pool.value
       << ",\"bytes\":" << debug.constant_pool_bytes
-      << "},\"line_program\":" << debug.line_program.value << '}';
+      << "},\"line_program\":" << debug.line_program.value;
+  WriteScopeStructure(text, method, debug, out);
+  out << '}';
 }
 }  // namespace abcd::structure

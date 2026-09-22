@@ -6,6 +6,7 @@ const ts = require(path.resolve(process.argv[2]));
 assert.equal(ts.version, '5.9.3');
 const totals = { records: 0, methods: 0, record_fields: 0,
   module_requests: 0, module_imports: 0, module_exports: 0 };
+const debugTotals = { parsed: 0, failed: 0, locals: 0, positions: 0, source_files: 0 };
 for (const root of process.argv.slice(3)) {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));
   const counts = Object.fromEntries(Object.keys(totals).map(key => [key, 0]));
@@ -33,6 +34,20 @@ for (const root of process.argv.slice(3)) {
         assert(Array.isArray(method.debug.parameter_names));
         assert(Number.isInteger(method.debug.line_start));
         assert(Number.isInteger(method.debug.line_program));
+        assert(Object.hasOwn(method.debug, 'scopes'));
+        if (method.debug.scopes) {
+          debugTotals.parsed++;
+          debugTotals.locals += method.debug.scopes.locals.length;
+          debugTotals.positions += method.debug.scopes.positions.length;
+          if (method.debug.scopes.terminal_file !== null) debugTotals.source_files++;
+          assert(Array.isArray(method.debug.scopes.locals));
+          assert(Array.isArray(method.debug.scopes.positions));
+          for (const local of method.debug.scopes.locals) {
+            assert(Number.isInteger(local.register));
+            assert(local.end === null || local.end >= local.start);
+          }
+        }
+        if (method.debug.scope_error) debugTotals.failed++;
       }
     }
     counts.record_fields += record.record_fields.length;
@@ -45,4 +60,4 @@ for (const root of process.argv.slice(3)) {
   assert.deepEqual(counts, manifest.counts);
   for (const key of Object.keys(totals)) totals[key] += counts[key];
 }
-console.log(JSON.stringify({ typescript: ts.version, counts: totals }));
+console.log(JSON.stringify({ typescript: ts.version, counts: totals, debug: debugTotals }));

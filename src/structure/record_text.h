@@ -1,6 +1,7 @@
 #ifndef ABCD_STRUCTURE_RECORD_TEXT_H_
 #define ABCD_STRUCTURE_RECORD_TEXT_H_
 
+#include "abcd/abc/debug_info.h"
 #include "abcd/structure/record_writer.h"
 
 namespace abcd::structure {
@@ -21,5 +22,7 @@ void WriteModuleStructure(const RecordText& text, const abc::ModuleInfo& module,
                           std::ostream& metadata, std::ostream& declarations);
 void WriteDebugStructure(const RecordText& text, const abc::MethodInfo& method,
                          std::ostream& metadata);
+void WriteScopeStructure(const RecordText& text, const abc::MethodInfo& method,
+                         const abc::DebugInfo& debug, std::ostream& metadata);
 }  // namespace abcd::structure
 #endif

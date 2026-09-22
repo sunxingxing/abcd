@@ -39,6 +39,23 @@ int main() {
   Check(a.value < 128);
   bytes.insert(bytes.end(), {1, 3, static_cast<std::uint8_t>(a.value),
                              static_cast<std::uint8_t>(empty.value), 0, 0, 0});
+  const auto bad_string = static_cast<std::uint8_t>(bytes.size());
+  Check(bytes.size() < 128);
+  bytes.insert(bytes.end(), {1, 0xff, 0});
+  std::vector<abc::DebugInfo> bad_scopes;
+  for (const bool local : {false, true}) {
+    abc::DebugInfo info;
+    info.constant_pool = {static_cast<std::uint32_t>(bytes.size())};
+    bytes.push_back(bad_string);
+    if (local) bytes.push_back(static_cast<std::uint8_t>(a.value));
+    info.constant_pool_bytes = local ? 2 : 1;
+    info.line_program = {static_cast<std::uint32_t>(bytes.size())};
+    if (local)
+      bytes.insert(bytes.end(), {3, 0, 0});
+    else
+      bytes.insert(bytes.end(), {9, 0});
+    bad_scopes.push_back(info);
+  }
   char path[] = "/tmp/abcd-structure-XXXXXX";
   const auto fd = mkstemp(path);
   Check(fd >= 0);
@@ -58,10 +75,18 @@ int main() {
   structure::RecordText text(file, header, {});
   abc::MethodInfo method;
   method.debug_info = debug_offset;
+  method.code = abc::CodeInfo{};
   std::ostringstream debug;
   structure::WriteDebugStructure(text, method, debug);
   Check(debug.str().find("\"parameter_names\":[\"a\",\"\",null]") !=
         std::string::npos);
+  Check(debug.str().find("\"scopes\":{\"terminal_pc\":0,\"locals\":[]") !=
+        std::string::npos);
+  for (const auto& info : bad_scopes) {
+    std::ostringstream failed_scope;
+    structure::WriteScopeStructure(text, method, info, failed_scope);
+    Check(failed_scope.str().starts_with(",\"scopes\":null,\"scope_error\":"));
+  }
   abc::ModuleInfo module;
   module.requests = {request};
   module.imports = {{a, star, {0}}};
