@@ -48,7 +48,7 @@ std::variant<std::vector<OwnReceiver>, ReceiverError> ProveOwnReceivers(
     ReceiverOrigin accumulator = ReceiverOrigin::kUnknown;
     std::vector<OwnReceiver> result;
     result.reserve(count);
-    bool active = entry_this.has_value();
+    bool active = true;
     const auto read = [&](const ScalarValue& value) -> ReceiverOrigin {
       if (std::holds_alternative<Accumulator>(value)) return accumulator;
       if (const auto* reg = std::get_if<abc::RegisterId>(&value))
@@ -76,6 +76,16 @@ std::variant<std::vector<OwnReceiver>, ReceiverError> ProveOwnReceivers(
       const auto transfer = abc::GetControlTransfer(instruction.decoded.opcode);
       if (!transfer || *transfer != abc::ControlTransfer::kFallthrough) {
         active = false;
+        continue;
+      }
+      if (instruction.decoded.opcode == abc::Opcode::kLDTHIS) {
+        if (instruction.decoded.operand_count != 0)
+          return ReceiverError::kMalformedInstruction;
+        // v7.0 EcmaInterpreter/InterpreterAssembly::GetThis reads
+        // frame.thisObj, independent of the optional, writable ABI register
+        // copy. Unsupported super/resume operations end this prefix before
+        // changing it.
+        accumulator = ReceiverOrigin::kEntryThis;
         continue;
       }
       const auto scalar = LiftScalarInstruction(instruction.decoded, registers);

@@ -50,10 +50,20 @@ int main() {
             ProveOwnReceivers(body, 3, abc::RegisterId{2}, {0})) ==
         ReceiverError::kResourceLimit);
   auto unknown = Body({0x60, 2, 0x61, 0, 0xd5, 0xdb, 0, 0, 0, 0, 0x65});
-  unknown.instructions[2].decoded.opcode = abc::Opcode::kLDTHIS;
+  unknown.instructions[2].decoded.opcode = abc::Opcode::kLDNEWTARGET;
   result = std::get<std::vector<OwnReceiver>>(
       ProveOwnReceivers(unknown, 3, abc::RegisterId{2}));
   Check(result.size() == 1 && result[0].origin == ReceiverOrigin::kUnknown);
+  // LDTHIS reads frame.thisObj, not the optional ABI register copy.
+  constexpr std::uint8_t kLoadThis = 0x6f;
+  const auto frame_this =
+      Body({0x00, 0x61, 2, kLoadThis, 0x61, 0, 0xdb, 0, 0, 0, 0, 0x65});
+  for (const auto slot : {std::optional<abc::RegisterId>{},
+                          std::optional<abc::RegisterId>{{2}}}) {
+    result = std::get<std::vector<OwnReceiver>>(
+        ProveOwnReceivers(frame_this, 3, slot));
+    Check(result.size() == 1 && result[0].origin == ReceiverOrigin::kEntryThis);
+  }
   const auto direct = Body({0x7a, 0, 0, 0, 0, 0x65});
   for (const std::uint32_t registers : {200, 201, 400, 800, 1600, 40000}) {
     result = std::get<std::vector<OwnReceiver>>(

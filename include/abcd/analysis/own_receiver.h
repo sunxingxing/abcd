@@ -20,6 +20,9 @@ struct ReceiverBudget {
 // Hole in a derived constructor: this API does not prove an instance or move
 // field writes. O(instructions + registers), O(registers + own writes), bounded
 // extra storage.
+// entry_this names an optional ABI register copy. LDTHIS reads the independent
+// frame.thisObj, including when that register is absent or has been
+// overwritten.
 [[nodiscard]] std::variant<std::vector<OwnReceiver>, ReceiverError>
 ProveOwnReceivers(const abc::MethodBody& body, std::uint32_t registers,
                   std::optional<abc::RegisterId> entry_this,

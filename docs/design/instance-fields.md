@@ -31,3 +31,9 @@ their previous rejection boundaries. Time is O(instructions + registers), space
 O(registers + own-write sites), capped by a byte budget. This is a prerequisite,
 not a replacement for CFG/SSA joins, derived-this initialization or class-owner
 proof. `entry_this` does not imply a non-Hole instance or a field declaration.
+
+The optional ABI this register and the frame's thisObj are distinct storage.
+Pinned EcmaInterpreter and InterpreterAssembly GetThis both read thisObj.
+LDTHIS therefore recovers entry-frame identity even without an ABI this slot,
+or after that register copy is overwritten. Unknown super/resume effects still
+stop propagation; no post-super identity is inferred from this rule.
