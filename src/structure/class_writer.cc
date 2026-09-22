@@ -153,7 +153,8 @@ void Class(const RecordText& text, const abc::MetadataIndex& index,
 
 void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
                      const abc::MethodLookup& lookup,
-                     const abc::MethodInfo& method, std::ostream& out) {
+                     const abc::MethodInfo& method, std::ostream& out,
+                     const abc::FrameLayout* frame) {
   out << ",\"class_sites\":";
   if (!method.code) {
     out << "null,\"property_writes\":null";
@@ -193,6 +194,7 @@ void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
     out << '}';
   }
   out << ']';
-  WriteOwnSites(text, index, method, std::get<abc::MethodBody>(decoded), out);
+  WriteOwnSites(text, index, method, std::get<abc::MethodBody>(decoded), out,
+                frame);
 }
 }  // namespace abcd::structure

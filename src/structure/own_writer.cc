@@ -1,10 +1,23 @@
+#include "abcd/analysis/own_receiver.h"
 #include "abcd/analysis/own_write.h"
 #include "record_text.h"
 
 namespace abcd::structure {
 void WriteOwnSites(const RecordText& text, const abc::MetadataIndex& index,
                    const abc::MethodInfo& method, const abc::MethodBody& body,
-                   std::ostream& out) {
+                   std::ostream& out, const abc::FrameLayout* frame) {
+  std::vector<analysis::OwnReceiver> receivers;
+  if (frame) {
+    auto proof =
+        analysis::ProveOwnReceivers(body, frame->registers, frame->this_value,
+                                    {text.budget.receiver_bytes});
+    if (const auto* error = std::get_if<analysis::ReceiverError>(&proof)) {
+      out << ",\"receiver_scan_error\":" << static_cast<unsigned>(*error);
+    } else
+      receivers =
+          std::get<std::vector<analysis::OwnReceiver>>(std::move(proof));
+  }
+  std::size_t receiver_index = 0;
   out << ",\"property_writes\":[";
   bool comma = false;
   const auto frame_size = static_cast<std::uint64_t>(method.code->registers) +
@@ -19,6 +32,9 @@ void WriteOwnSites(const RecordText& text, const abc::MetadataIndex& index,
     comma = true;
     out << "{\"pc\":" << instruction.offset.value;
     const auto& write = std::get<analysis::OwnWrite>(lifted);
+    const auto origin = receivers.empty() ? analysis::ReceiverOrigin::kUnknown
+                                          : receivers[receiver_index].origin;
+    ++receiver_index;
     try {
       const auto reference = abc::ResolvePoolReference(
           text.file, text.header, index, method.offset, write.name,
@@ -36,6 +52,10 @@ void WriteOwnSites(const RecordText& text, const abc::MetadataIndex& index,
       text.String(out, name);
       // Receiver identity is not proven by the opcode or property name.
       out << ",\"instance\":null";
+      out << ",\"receiver_origin\":\""
+          << (origin == analysis::ReceiverOrigin::kEntryThis ? "entry_this"
+                                                             : "unknown")
+          << '\"';
     } catch (const StructureFailure& failure) {
       const auto* error = std::get_if<abc::MetadataError>(&failure.error);
       if (!error || *error == abc::MetadataError::kRead ||

@@ -27,9 +27,10 @@ void WriteScopeStructure(const RecordText& text, const abc::MethodInfo& method,
                          const abc::DebugInfo& debug, std::ostream& metadata);
 void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
                      const abc::MethodLookup& lookup,
-                     const abc::MethodInfo& method, std::ostream& metadata);
+                     const abc::MethodInfo& method, std::ostream& metadata,
+                     const abc::FrameLayout* frame = nullptr);
 void WriteOwnSites(const RecordText& text, const abc::MetadataIndex& index,
                    const abc::MethodInfo& method, const abc::MethodBody& body,
-                   std::ostream& metadata);
+                   std::ostream& metadata, const abc::FrameLayout* frame);
 }  // namespace abcd::structure
 #endif

@@ -21,3 +21,13 @@ across super calls or observable operations.
 Tests first for supported encodings, operand roles/widths/frame bounds and
 ordinary assignment exclusion. Record output keeps receiver and write-kind
 evidence explicit. This first primitive does not complete field recovery.
+
+Entry-receiver proof uses copy propagation over the normal-entry straight-line
+prefix, stopping before the earliest incoming branch/handler target and at any
+non-fallthrough or unsupported operation. Scalar slot copies preserve identity;
+reviewed register definitions kill it. Own writes preserve receiver and acc.
+No shared register-effect coverage is widened, so heap-escape analyses retain
+their previous rejection boundaries. Time is O(instructions + registers), space
+O(registers + own-write sites), capped by a byte budget. This is a prerequisite,
+not a replacement for CFG/SSA joins, derived-this initialization or class-owner
+proof. `entry_this` does not imply a non-Hole instance or a field declaration.

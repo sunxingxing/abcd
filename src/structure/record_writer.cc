@@ -123,6 +123,7 @@ void WriteMethod(const RecordText& text, const abc::MetadataIndex& index,
   declaration << "// method " << method.offset.value << " ";
   text.String(declaration, name);
   declaration << " kind=" << Kind(attributes.kind);
+  std::optional<abc::FrameLayout> method_frame;
   if (method.code) {
     const auto call =
         abc::ReadCallType(text.file, text.header, index, method.annotations,
@@ -135,6 +136,7 @@ void WriteMethod(const RecordText& text, const abc::MetadataIndex& index,
     if (const auto* error = std::get_if<abc::FrameError>(&frame))
       throw StructureFailure{method.offset, *error};
     const auto& layout = std::get<abc::FrameLayout>(frame);
+    method_frame = layout;
     out << "{\"local_slots\":" << layout.locals
         << ",\"parameter_slots\":" << layout.parameters
         << ",\"first_parameter\":" << layout.first_parameter.value
@@ -143,7 +145,8 @@ void WriteMethod(const RecordText& text, const abc::MetadataIndex& index,
     declaration << " parameter_slots=" << layout.parameters;
   } else
     out << "null";
-  WriteClassSites(text, index, lookup, method, out);
+  WriteClassSites(text, index, lookup, method, out,
+                  method_frame ? &*method_frame : nullptr);
   out << '}';
   declaration << " (scope and source signature unresolved)\n";
 }

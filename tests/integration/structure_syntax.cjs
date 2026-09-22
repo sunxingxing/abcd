@@ -8,7 +8,7 @@ const totals = { records: 0, methods: 0, record_fields: 0,
   module_requests: 0, module_imports: 0, module_exports: 0 };
 const debugTotals = { parsed: 0, failed: 0, locals: 0, positions: 0, source_files: 0 };
 const classTotals = { sites: 0, failed: 0, scan_failed: 0, prototype: 0, static: 0, methods: 0 };
-const writeTotals = { own_store: 0, define_field: 0, failed: 0 };
+const writeTotals = { own_store: 0, define_field: 0, failed: 0, entry_this: 0 };
 for (const root of process.argv.slice(3)) {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));
   const methods = new Map();
@@ -43,6 +43,8 @@ for (const root of process.argv.slice(3)) {
         assert(Number.isInteger(write.object_register));
         assert.equal(typeof write.name, 'string');
         assert.equal(write.instance, null);
+        assert(['unknown', 'entry_this'].includes(write.receiver_origin));
+        if (write.receiver_origin === 'entry_this') writeTotals.entry_this++;
         writeTotals[write.kind]++;
       }
       assert(Object.hasOwn(method, 'class_sites'));
