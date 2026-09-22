@@ -10,6 +10,7 @@
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
+#include "abcd/analysis/ordinary_call.h"
 #include "abcd/source/string_literal.h"
 #include "ordered_body.h"
 
@@ -127,6 +128,14 @@ class BodyWriter {
           if (!accumulator_defined)
             return Fail(BodyEmitError::kAccumulatorHole);
           NamedStore(instruction.decoded);
+        } else if (opcode == Opcode::kCALLARG0_IMM8 ||
+                   opcode == Opcode::kCALLARG1_IMM8_V8 ||
+                   opcode == Opcode::kCALLARGS2_IMM8_V8_V8 ||
+                   opcode == Opcode::kCALLARGS3_IMM8_V8_V8_V8 ||
+                   opcode == Opcode::kCALLRANGE_IMM8_IMM8_V8) {
+          if (!accumulator_defined)
+            return Fail(BodyEmitError::kAccumulatorHole);
+          Call(instruction.decoded);
         } else if (opcode == Opcode::kRETURNUNDEFINED) {
           Text("return;\n");
           terminated = true;
@@ -212,6 +221,30 @@ class BodyWriter {
     Text(")[");
     StringConstant(std::get<NamedRead>(lifted).name, StringUse::kPropertyName);
     Text("];\n");
+  }
+  void Call(const abc::DecodedInstruction& instruction) {
+    const auto lifted = LiftOrdinaryCall(instruction, names_.registers.size());
+    if (const auto* error = std::get_if<CallError>(&lifted)) {
+      error_ = BodyEmitFailure{BodyEmitError::kUnsupportedInstruction,
+                               offset_,
+                               *error == CallError::kRegisterRange
+                                   ? ScalarError::kRegisterRange
+                                   : ScalarError::kMalformedInstruction,
+                               {}};
+      return;
+    }
+    const auto& call = std::get<OrdinaryCall>(lifted);
+    Expression(ScalarValue{Accumulator{}});
+    // Force a value call even if the supplied binding happens to be "eval".
+    // No .call/.apply lookup, mutable intrinsic or spread iteration is allowed.
+    Text(" = (0, ");
+    Expression(ScalarValue{Accumulator{}});
+    Text(")(");
+    for (std::uint32_t i = 0; i < call.Count() && !error_; ++i) {
+      if (i) Text(", ");
+      Expression(ScalarValue{*call.At(i)});
+    }
+    Text(");\n");
   }
   void NamedStore(const abc::DecodedInstruction& instruction) {
     const auto lifted = LiftNamedWrite(instruction, names_.registers.size());

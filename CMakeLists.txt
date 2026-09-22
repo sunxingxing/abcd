@@ -50,6 +50,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/hole_guard.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/indexed_read.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/named_read.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/named_write.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/ordinary_call.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/block_order.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/accumulator_flow.cc src/analysis/scalar_access.cc)
 target_link_libraries(abcd_analysis PUBLIC abcd_abc)
@@ -143,6 +144,9 @@ if(BUILD_TESTING)
   add_executable(named_write_test tests/unit/analysis/named_write_test.cc)
   target_link_libraries(named_write_test PRIVATE abcd_analysis)
   add_test(NAME named_write_test COMMAND named_write_test)
+  add_executable(ordinary_call_test tests/unit/analysis/ordinary_call_test.cc)
+  target_link_libraries(ordinary_call_test PRIVATE abcd_source)
+  add_test(NAME ordinary_call_test COMMAND ordinary_call_test)
   add_executable(indexed_read_test tests/unit/analysis/indexed_read_test.cc)
   target_link_libraries(indexed_read_test PRIVATE abcd_analysis)
   add_test(NAME indexed_read_test COMMAND indexed_read_test)
@@ -181,6 +185,12 @@ if(BUILD_TESTING)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   find_program(ABCD_NODE_EXECUTABLE node)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME ordinary_call_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:ordinary_call_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ordinary_call.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=ordinary-call.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME acyclic_body_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:acyclic_body_test>
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/acyclic_body.mjs
