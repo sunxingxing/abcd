@@ -58,7 +58,7 @@ the template/method kind at materialization, and defaults to unknown/rejected.
 Production class-member admission must build a cross-role index including
 object literals, or otherwise establish the effective kind; checking only this
 class's buffer is insufficient. The primitive does not itself establish that
-proof and is not yet connected to WriteCreatedClass.
+proof. Its integration is described below.
 
 Body home-object operations, unresolved captures, async/generator/accessor
 semantics and complex formals remain unsupported. Runtime method name must
@@ -93,6 +93,51 @@ the final bounded asynchronous service integration remains unfinished.
 
 This index discharges the cross-role premise, not source admission by itself.
 The caller must still check initial attributes, member template/name/descriptor,
-private self identity, frame/signature and body support. Current class creation
-generation continues to reject nonempty member buffers until these are wired
-together.
+private self identity, frame/signature and body support.
+
+## Ordinary Members In Complete Class Expressions
+
+WriteCreatedClass accepts an optional whole-file MethodRoleIndex from the same
+immutable file/index context. Empty buffers need no role certificate. Nonempty
+buffers require ordinary templates, initial NONE/non-sendable attributes,
+ordinary-only target roles and exact ASCII runtime-name/UTF-16-key equality.
+Targets must be real indexed methods with supported ABI/signature/body.
+Duplicate keys within a placement, numeric element names, prototype constructor
+and static name/length/prototype remain rejected; no members are dropped.
+
+Pinned jspandafile/class_info_extractor.cpp uses Default(true,false,true) for
+ordinary members in both fast and dictionary layouts. Native computed-key
+methods therefore preserve these descriptors, strict invocation and lack of
+constructibility. Prototype members remain methods, not instance fields.
+Instance assignments are still emitted in constructor order without hoisting
+or bypassing inherited setters.
+
+A nonempty class is created inside an immediate arrow call. After the complete,
+side-effect-free class definition, private const bindings capture each own data
+method exactly once, before the class escapes. Bodies initialize their function
+register from those bindings, never from a mutable member lookup. Generated
+binding names avoid the inner class name. No method can run during capture:
+keys are constants, heritage is absent and accessors/static initializers are
+not admitted. Empty class output retains its existing direct expression form.
+
+Whole-class dry emission validates constructor, every method, captures and
+total output limit before the real stream receives any bytes. IO/file mutation
+or actual allocation failure still requires atomic publication by the caller.
+ClassBuffer capacity remains admitted throughout, but literal input, duplicate
+index and individual decoded bodies have separate nonoverlapping lifetimes.
+The retained current UTF-16 key is charged against body scratch while constant
+reads retain their separately admitted string allowance. Metadata, role index,
+stream buffers and constant-size writer/allocator overhead are caller-owned.
+
+For P properties, M indexed methods and total admitted body/key bytes B, member
+admission uses O(P log M) lookups and O(P log P) name comparisons (including
+the actual compared character lengths). A fixed number of streaming body/key
+passes is O(B) plus existing per-body proof costs; no collection of all bodies
+or all output is retained. Duplicate validation sorts borrowed name views and
+preserves the original property order for emission.
+
+This integration does not finish the current source gate: unresolved captures,
+branching constructors, derived classes, complex/async signatures, globals and
+record publication remain required. The five paired samples still produce nine
+accepted class expressions, not nine complete modules or newly recovered
+member-bearing real classes.

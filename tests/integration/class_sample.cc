@@ -72,7 +72,8 @@ int main(int argc, char** argv) {
       std::ostringstream source;
       const auto result = source::WriteCreatedClass(
           file, header, index, lookup, method.offset, body.instructions[at],
-          site, source, budget);
+          site, source, budget, {},
+          std::get_if<analysis::MethodRoleIndex>(&role_result));
       if (std::holds_alternative<std::size_t>(result)) {
         ++ready;
         std::cout << "export function site_" << method.offset.value << '_'
@@ -82,6 +83,13 @@ int main(int argc, char** argv) {
         std::cerr << "rejected caller=" << method.offset.value
                   << " pc=" << site.pc.value << " variant=" << result.index()
                   << '\n';
+        if (const auto* failure =
+                std::get_if<analysis::LinearLexicalFailure>(&result))
+          std::cerr << "  lexical_kind=" << static_cast<int>(failure->kind)
+                    << " body_pc=" << failure->offset.value << '\n';
+        if (const auto* failure =
+                std::get_if<source::FunctionEmitError>(&result))
+          std::cerr << "  function_kind=" << static_cast<int>(*failure) << '\n';
       }
     }
   }

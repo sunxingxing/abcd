@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_CREATED_CLASS_H_
 #include "abcd/abc/class_buffer.h"
 #include "abcd/analysis/class_heritage.h"
+#include "abcd/analysis/method_roles.h"
 #include "abcd/source/created_function.h"
 
 namespace abcd::source {
@@ -24,8 +25,10 @@ using CreatedClassResult =
 // WriteCreatedFunction. Caller supplies heritage proven from this caller body
 // and matching site; matching PC alone is not provenance authentication.
 // Resolves real constructor, buffer, name, ABI and body. Emits a fresh complete
-// class expression only for proven no-extends classes with an empty member
-// buffer and supported constructor. Members are rejected, never dropped.
+// class expression only for proven no-extends classes with supported bodies.
+// Nonempty buffers require a whole-file role index from the same immutable
+// context, ordinary methods, matching runtime names, and nonreserved unique
+// keys per placement. Unsupported members reject the entire class.
 // Parent/control flow and later field/member assignments remain caller work.
 // Outer captures and derived constructors are not supported. Internal class
 // name supplies an immutable self binding without consulting mutable exports.
@@ -38,6 +41,7 @@ using CreatedClassResult =
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     abc::EntityOffset caller, const abc::BodyInstruction& instruction,
     analysis::ClassHeritage heritage, std::ostream& output,
-    LocalLexicalBudget budget = {}, abc::StringBudget strings = {});
+    LocalLexicalBudget budget = {}, abc::StringBudget strings = {},
+    const analysis::MethodRoleIndex* roles = nullptr);
 }  // namespace abcd::source
 #endif

@@ -81,7 +81,7 @@ target_sources(abcd_source PRIVATE src/source/acyclic_body.cc)
 target_sources(abcd_source PRIVATE src/source/local_lexical_body.cc)
 target_sources(abcd_source PRIVATE src/source/base_function.cc)
 target_sources(abcd_source PRIVATE src/source/created_function.cc)
-target_sources(abcd_source PRIVATE src/source/created_class.cc)
+target_sources(abcd_source PRIVATE src/source/created_class.cc src/source/class_members.cc)
 target_sources(abcd_source PRIVATE src/source/leaf_creation.cc)
 target_sources(abcd_source PRIVATE src/source/leaf_sources.cc)
 target_link_libraries(abcd_source PUBLIC abcd_analysis)
@@ -278,6 +278,14 @@ if(BUILD_TESTING)
   target_include_directories(created_class_test PRIVATE tests/support)
   target_link_libraries(created_class_test PRIVATE abcd_source)
   add_test(NAME created_class_test COMMAND created_class_test)
+  add_executable(created_members_test tests/unit/source/created_members_test.cc)
+  target_include_directories(created_members_test PRIVATE tests/support)
+  target_link_libraries(created_members_test PRIVATE abcd_source)
+  add_test(NAME created_members_test COMMAND created_members_test)
+  add_executable(created_members_scale_test tests/unit/source/created_members_scale_test.cc)
+  target_include_directories(created_members_scale_test PRIVATE tests/support)
+  target_link_libraries(created_members_scale_test PRIVATE abcd_source)
+  add_test(NAME created_members_scale_test COMMAND created_members_scale_test)
   add_executable(class_sample_fixture tests/integration/class_sample.cc)
   target_include_directories(class_sample_fixture PRIVATE tests/support)
   target_link_libraries(class_sample_fixture PRIVATE abcd_source abcd_corpus)
@@ -302,6 +310,18 @@ if(BUILD_TESTING)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   find_program(ABCD_NODE_EXECUTABLE node)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME created_members_scale_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:created_members_scale_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/created_members_scale.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=created-members-scale.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
+    add_test(NAME created_members_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:created_members_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/created_members.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=created-members.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME class_method_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:class_method_test>
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_method.mjs
