@@ -34,6 +34,7 @@ class IdfQuota {
   friend class RegisterUses;
   friend class RegisterSsa;
   friend class RegisterValueFlow;
+  friend class GuardedReads;
   bool Take(std::uint64_t units) {
     if (units > remaining_) {
       remaining_ = 0;
