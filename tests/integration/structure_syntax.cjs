@@ -8,15 +8,20 @@ const totals = { records: 0, methods: 0, record_fields: 0,
   module_requests: 0, module_imports: 0, module_exports: 0 };
 const debugTotals = { parsed: 0, failed: 0, locals: 0, positions: 0, source_files: 0 };
 const classTotals = { sites: 0, failed: 0, scan_failed: 0, prototype: 0, static: 0, methods: 0 };
-const writeTotals = { own_store: 0, define_field: 0, failed: 0, entry_this: 0 };
+const writeTotals = { assignment: 0, own_store: 0, define_field: 0, failed: 0,
+  entry_this: 0, constructor_assignments: 0, constructor_entry_this: 0 };
 const globalTotals = { name_read: 0, var_read: 0, name_write: 0, var_write: 0,
   const_record_init: 0, mutable_record_init: 0, failed: 0 };
 for (const root of process.argv.slice(3)) {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));
   const methods = new Map();
+  const constructors = new Set();
   for (const entry of manifest.records) {
     const record = JSON.parse(fs.readFileSync(path.join(root, entry.metadata)));
-    for (const method of record.methods) methods.set(method.entity, record.entity);
+    for (const method of record.methods) {
+      methods.set(method.entity, record.entity);
+      for (const site of method.class_sites ?? []) if (!site.error) constructors.add(site.constructor);
+    }
   }
   const counts = Object.fromEntries(Object.keys(totals).map(key => [key, 0]));
   const paths = new Set();
@@ -48,13 +53,17 @@ for (const root of process.argv.slice(3)) {
       assert(Object.hasOwn(method, 'property_writes'));
       for (const write of method.property_writes ?? []) {
         if (write.error) { writeTotals.failed++; continue; }
-        assert(['own_store', 'define_field'].includes(write.kind));
+        assert(['assignment', 'own_store', 'define_field'].includes(write.kind));
         assert(Number.isInteger(write.pc));
         assert(Number.isInteger(write.object_register));
         assert.equal(typeof write.name, 'string');
         assert.equal(write.instance, null);
         assert(['unknown', 'entry_this'].includes(write.receiver_origin));
         if (write.receiver_origin === 'entry_this') writeTotals.entry_this++;
+        if (write.kind === 'assignment' && constructors.has(method.entity)) {
+          writeTotals.constructor_assignments++;
+          if (write.receiver_origin === 'entry_this') writeTotals.constructor_entry_this++;
+        }
         writeTotals[write.kind]++;
       }
       assert(Object.hasOwn(method, 'class_sites'));

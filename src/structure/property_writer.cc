@@ -1,21 +1,35 @@
-#include "abcd/analysis/own_receiver.h"
-#include "abcd/analysis/own_write.h"
+#include "abcd/analysis/property_receiver.h"
+#include "abcd/analysis/property_write.h"
 #include "record_text.h"
 
 namespace abcd::structure {
-void WriteOwnSites(const RecordText& text, const abc::MetadataIndex& index,
-                   const abc::MethodInfo& method, const abc::MethodBody& body,
-                   std::ostream& out, const abc::FrameLayout* frame) {
-  std::vector<analysis::OwnReceiver> receivers;
+namespace {
+const char* Kind(analysis::PropertyWriteKind kind) {
+  switch (kind) {
+    case analysis::PropertyWriteKind::kAssignment:
+      return "assignment";
+    case analysis::PropertyWriteKind::kOwnStore:
+      return "own_store";
+    case analysis::PropertyWriteKind::kDefineField:
+      return "define_field";
+  }
+  std::terminate();
+}
+}  // namespace
+void WritePropertySites(const RecordText& text, const abc::MetadataIndex& index,
+                        const abc::MethodInfo& method,
+                        const abc::MethodBody& body, std::ostream& out,
+                        const abc::FrameLayout* frame) {
+  std::vector<analysis::PropertyReceiver> receivers;
   if (frame) {
-    auto proof =
-        analysis::ProveOwnReceivers(body, frame->registers, frame->this_value,
-                                    {text.budget.receiver_bytes});
+    auto proof = analysis::ProvePropertyReceivers(body, frame->registers,
+                                                  frame->this_value,
+                                                  {text.budget.receiver_bytes});
     if (const auto* error = std::get_if<analysis::ReceiverError>(&proof)) {
       out << ",\"receiver_scan_error\":" << static_cast<unsigned>(*error);
     } else
       receivers =
-          std::get<std::vector<analysis::OwnReceiver>>(std::move(proof));
+          std::get<std::vector<analysis::PropertyReceiver>>(std::move(proof));
   }
   std::size_t receiver_index = 0;
   out << ",\"property_writes\":[";
@@ -23,15 +37,17 @@ void WriteOwnSites(const RecordText& text, const abc::MetadataIndex& index,
   const auto frame_size = static_cast<std::uint64_t>(method.code->registers) +
                           method.code->arguments;
   for (const auto& instruction : body.instructions) {
-    const auto lifted = analysis::LiftOwnWrite(instruction.decoded, frame_size);
-    if (const auto* error = std::get_if<analysis::OwnWriteError>(&lifted)) {
-      if (*error == analysis::OwnWriteError::kUnsupportedOpcode) continue;
+    const auto lifted =
+        analysis::LiftPropertyWrite(instruction.decoded, frame_size);
+    if (const auto* error =
+            std::get_if<analysis::PropertyWriteError>(&lifted)) {
+      if (*error == analysis::PropertyWriteError::kUnsupportedOpcode) continue;
       throw StructureFailure{method.offset, StructureFault::kBindings};
     }
     if (comma) out << ',';
     comma = true;
     out << "{\"pc\":" << instruction.offset.value;
-    const auto& write = std::get<analysis::OwnWrite>(lifted);
+    const auto& write = std::get<analysis::PropertyWrite>(lifted);
     const auto origin = receivers.empty() ? analysis::ReceiverOrigin::kUnknown
                                           : receivers[receiver_index].origin;
     ++receiver_index;
@@ -45,9 +61,7 @@ void WriteOwnSites(const RecordText& text, const abc::MetadataIndex& index,
       // site-local.
       const auto name =
           text.Read(std::get<abc::PoolReference>(reference).offset);
-      out << ",\"kind\":\""
-          << (write.kind == analysis::OwnWriteKind::kStore ? "own_store"
-                                                           : "define_field")
+      out << ",\"kind\":\"" << Kind(write.kind)
           << "\",\"object_register\":" << write.object.value << ",\"name\":";
       text.String(out, name);
       // Receiver identity is not proven by the opcode or property name.

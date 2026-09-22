@@ -29,9 +29,10 @@ void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
                      const abc::MethodLookup& lookup,
                      const abc::MethodInfo& method, std::ostream& metadata,
                      const abc::FrameLayout* frame = nullptr);
-void WriteOwnSites(const RecordText& text, const abc::MetadataIndex& index,
-                   const abc::MethodInfo& method, const abc::MethodBody& body,
-                   std::ostream& metadata, const abc::FrameLayout* frame);
+void WritePropertySites(const RecordText& text, const abc::MetadataIndex& index,
+                        const abc::MethodInfo& method,
+                        const abc::MethodBody& body, std::ostream& metadata,
+                        const abc::FrameLayout* frame);
 void WriteGlobalSites(const RecordText& text, const abc::MetadataIndex& index,
                       const abc::MethodInfo& method,
                       const abc::MethodBody& body, std::ostream& metadata);

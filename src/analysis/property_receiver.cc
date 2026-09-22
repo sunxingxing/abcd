@@ -1,4 +1,4 @@
-#include "abcd/analysis/own_receiver.h"
+#include "abcd/analysis/property_receiver.h"
 
 #include <algorithm>
 #include <new>
@@ -6,13 +6,13 @@
 #include "abcd/abc/control_transfer.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/named_invocation.h"
-#include "abcd/analysis/own_write.h"
+#include "abcd/analysis/property_write.h"
 #include "abcd/analysis/register_effect.h"
 
 namespace abcd::analysis {
 namespace {
-ReceiverError Error(OwnWriteError error) {
-  return error == OwnWriteError::kRegisterRange
+ReceiverError Error(PropertyWriteError error) {
+  return error == PropertyWriteError::kRegisterRange
              ? ReceiverError::kFrameRange
              : ReceiverError::kMalformedInstruction;
 }
@@ -22,9 +22,10 @@ ReceiverError Error(ScalarError error) {
              : ReceiverError::kMalformedInstruction;
 }
 }  // namespace
-std::variant<std::vector<OwnReceiver>, ReceiverError> ProveOwnReceivers(
-    const abc::MethodBody& body, std::uint32_t registers,
-    std::optional<abc::RegisterId> entry_this, ReceiverBudget budget) {
+std::variant<std::vector<PropertyReceiver>, ReceiverError>
+ProvePropertyReceivers(const abc::MethodBody& body, std::uint32_t registers,
+                       std::optional<abc::RegisterId> entry_this,
+                       ReceiverBudget budget) {
   if (entry_this && entry_this->value >= registers)
     return ReceiverError::kFrameRange;
   std::uint32_t stop = UINT32_MAX;
@@ -32,23 +33,23 @@ std::variant<std::vector<OwnReceiver>, ReceiverError> ProveOwnReceivers(
   for (const auto& instruction : body.instructions) {
     if (instruction.branch_target)
       stop = std::min(stop, instruction.branch_target->value);
-    const auto write = LiftOwnWrite(instruction.decoded, registers);
-    if (std::holds_alternative<OwnWrite>(write))
+    const auto write = LiftPropertyWrite(instruction.decoded, registers);
+    if (std::holds_alternative<PropertyWrite>(write))
       ++count;
-    else if (const auto error = std::get<OwnWriteError>(write);
-             error != OwnWriteError::kUnsupportedOpcode)
+    else if (const auto error = std::get<PropertyWriteError>(write);
+             error != PropertyWriteError::kUnsupportedOpcode)
       return Error(error);
   }
   for (const auto& handler : body.handlers)
     stop = std::min(stop, handler.offset.value);
   if (registers > budget.bytes ||
-      count > (budget.bytes - registers) / sizeof(OwnReceiver))
+      count > (budget.bytes - registers) / sizeof(PropertyReceiver))
     return ReceiverError::kResourceLimit;
   try {
     std::vector<ReceiverOrigin> aliases(registers, ReceiverOrigin::kUnknown);
     if (entry_this) aliases[entry_this->value] = ReceiverOrigin::kEntryThis;
     ReceiverOrigin accumulator = ReceiverOrigin::kUnknown;
-    std::vector<OwnReceiver> result;
+    std::vector<PropertyReceiver> result;
     result.reserve(count);
     bool active = true;
     const auto read = [&](const ScalarValue& value) -> ReceiverOrigin {
@@ -65,8 +66,8 @@ std::variant<std::vector<OwnReceiver>, ReceiverError> ProveOwnReceivers(
     };
     for (const auto& instruction : body.instructions) {
       if (instruction.offset.value >= stop) active = false;
-      const auto own = LiftOwnWrite(instruction.decoded, registers);
-      if (const auto* write = std::get_if<OwnWrite>(&own)) {
+      const auto own = LiftPropertyWrite(instruction.decoded, registers);
+      if (const auto* write = std::get_if<PropertyWrite>(&own)) {
         result.push_back(
             {instruction.offset, active && aliases[write->object.value] ==
                                                ReceiverOrigin::kEntryThis

@@ -41,9 +41,10 @@ stop propagation; no post-super identity is inferred from this rule.
 Actual paired constructors use STOBJBYNAME assignments, not the own-store and
 define-field subset: all 101 class-site constructor targets have zero own-write
 sites. BreakpointType (Immersive entity 7586) has four STOBJBYNAME writes, while
-WindowInfo (8371) has eight, including module-derived values. The next recovery
-step must include typed ordinary property assignments, retain setter-capable
-semantics, and correlate their receiver proof with constructor ownership.
+WindowInfo (8371) has eight, including module-derived values. The unified
+PropertyWrite entry now includes ordinary assignments and retains setter-capable
+semantics. Constructor ownership is correlated during paired validation;
+source integration still needs the corresponding typed class-instance proof.
 These assignments must remain in constructor bodies; they cannot be rewritten
 as field declarations/initializers merely because their receiver is this.
 

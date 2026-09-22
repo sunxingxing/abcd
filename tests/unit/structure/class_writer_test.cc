@@ -82,6 +82,9 @@ int main() {
     code.insert(code.end() - 1, {kReadGlobalName, 0, 7, 0, kReadGlobalName, 0,
                                  6, 0, kReadGlobalName, 0, 3, 0});
     code[2] = 46;
+    constexpr std::uint8_t kAssignProperty = 0x43;
+    code.insert(code.end() - 1, {kAssignProperty, 0, 3, 0, 0});
+    code[2] = 51;
     std::copy(code.begin(), code.end(), bytes.begin() + 200);
     char path[] = "/tmp/abcd-class-writer-XXXXXX";
     const auto fd = mkstemp(path);
@@ -99,7 +102,7 @@ int main() {
     abc::MetadataIndex index;
     abc::MethodInfo caller, ctor;
     caller.offset = {96};
-    caller.code = abc::CodeInfo{{200}, {204}, 1, 0, 46, 0};
+    caller.code = abc::CodeInfo{{200}, {204}, 1, 0, 51, 0};
     ctor.offset = {100};
     index.methods = {caller, ctor};
     abc::IndexRegion region;
@@ -113,7 +116,6 @@ int main() {
     std::ostringstream out;
     out << "{\"known_module\":true";
     structure::WriteClassSites(text, index, lookup, caller, out);
-    unlink(path);
     out << '}';
     const auto json = nlohmann::json::parse(out.str());
     Check(json["known_module"] == true);
@@ -122,7 +124,8 @@ int main() {
     Check(!json["class_sites"][0].contains("constructor"));
     Check(json["class_sites"][1]["constructor"] == 100);
     Check(json["class_sites"][1]["properties"].size() == 1);
-    Check(json["property_writes"].size() == 3);
+    Check(json["property_writes"].size() == 4);
+    Check(json["property_writes"][3]["kind"] == "assignment");
     Check(json["property_writes"][0].contains("error"));
     Check(json["property_writes"][1].contains("error"));
     Check(!json["property_writes"][1].contains("name"));
@@ -134,5 +137,45 @@ int main() {
     Check(json["global_accesses"][1].contains("error"));
     Check(json["global_accesses"][2]["operation"] == "name_read");
     Check(json["global_accesses"][2]["name"] == "x");
+    const std::vector<std::uint8_t> mixed{kStoreOwnName,
+                                          0,
+                                          3,
+                                          0,
+                                          0,
+                                          0xdb,
+                                          0,
+                                          6,
+                                          0,
+                                          0,
+                                          0x00,
+                                          0x61,
+                                          0,
+                                          kAssignProperty,
+                                          0,
+                                          3,
+                                          0,
+                                          0,
+                                          kReturnUndefined};
+    abc::MethodBody body;
+    for (std::size_t at = 0; at < mixed.size();) {
+      const auto instruction = std::get<abc::DecodedInstruction>(
+          abc::DecodeInstruction(std::span(mixed).subspan(at), header.profile));
+      body.instructions.push_back(
+          {{static_cast<std::uint32_t>(at)}, instruction, {}});
+      at += instruction.size;
+    }
+    abc::FrameLayout frame;
+    frame.registers = 1;
+    frame.this_value = abc::RegisterId{0};
+    std::ostringstream mixed_out;
+    mixed_out << "{\"mixed\":true";
+    structure::WritePropertySites(text, index, caller, body, mixed_out, &frame);
+    mixed_out << '}';
+    const auto mixed_json = nlohmann::json::parse(mixed_out.str());
+    Check(mixed_json["property_writes"][0]["receiver_origin"] == "entry_this");
+    Check(mixed_json["property_writes"][1].contains("error"));
+    Check(mixed_json["property_writes"][2]["receiver_origin"] == "unknown");
+    Check(mixed_json["property_writes"][2]["kind"] == "assignment");
+    unlink(path);
   }
 }

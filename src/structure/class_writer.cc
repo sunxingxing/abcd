@@ -195,7 +195,7 @@ void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
     out << '}';
   }
   out << ']';
-  WriteOwnSites(text, index, method, std::get<abc::MethodBody>(decoded), out,
+  WritePropertySites(text, index, method, std::get<abc::MethodBody>(decoded), out,
                 frame);
   WriteGlobalSites(text, index, method, std::get<abc::MethodBody>(decoded),
                    out);
