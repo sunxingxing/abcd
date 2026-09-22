@@ -2,10 +2,10 @@
 
 #include "abcd/abc/call_type.h"
 #include "function_template.h"
+#include "runtime_name.h"
 
 namespace abcd::source {
 namespace {
-constexpr unsigned char kAsciiLimit = 0x80;
 CreatedFunctionResult WriteCreation(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
@@ -28,19 +28,8 @@ CreatedFunctionResult WriteCreation(
   const auto& method = index.methods[target.position.value];
   if (!method.code) return CreatedFunctionError::kMissingCode;
 
-  // Pinned MethodLiteral::ParseFunctionNameView and JSPandaFile::GetMethodName.
-  // Non-ASCII uses a UTF-16-length byte view upstream: do not silently replace
-  // that behavior with Unicode-aware substring processing. No copy is needed.
-  std::string_view name = method.name;
-  if (name.empty() || name.size() != method.name_utf16_length)
-    return CreatedFunctionError::kName;
-  for (const unsigned char byte : name)
-    if (byte == 0 || byte >= kAsciiLimit) return CreatedFunctionError::kName;
-  if (name.front() == '#') {
-    name.remove_prefix(name.find_last_of('#') + 1);
-    const auto suffix = name.find_last_of('^');
-    if (suffix != std::string_view::npos) name = name.substr(0, suffix);
-  }
+  const auto name = RuntimeName(method);
+  if (!name) return CreatedFunctionError::kName;
   const auto call = abc::ReadCallType(file, header, index, method.annotations,
                                       {budget.bytes});
   if (const auto* error = std::get_if<abc::MetadataError>(&call)) return *error;
@@ -66,7 +55,7 @@ CreatedFunctionResult WriteCreation(
     return CreatedFunctionError::kResourceLimit;
   const MethodConstants constants{file, header, index, method.offset, strings};
   const BaseFunction function{creation, target.attributes,
-                              std::get<abc::FrameLayout>(frame), name};
+                              std::get<abc::FrameLayout>(frame), *name};
   const auto emitted =
       captured_values == analysis::CapturedValues::kLanguage
           ? WriteBaseFunctionTemplate(function, body, output, budget,

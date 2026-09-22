@@ -80,6 +80,7 @@ target_sources(abcd_source PRIVATE src/source/acyclic_body.cc)
 target_sources(abcd_source PRIVATE src/source/local_lexical_body.cc)
 target_sources(abcd_source PRIVATE src/source/base_function.cc)
 target_sources(abcd_source PRIVATE src/source/created_function.cc)
+target_sources(abcd_source PRIVATE src/source/created_class.cc)
 target_sources(abcd_source PRIVATE src/source/leaf_creation.cc)
 target_sources(abcd_source PRIVATE src/source/leaf_sources.cc)
 target_link_libraries(abcd_source PUBLIC abcd_analysis)
@@ -264,6 +265,13 @@ if(BUILD_TESTING)
   target_include_directories(created_function_test PRIVATE tests/support src/source)
   target_link_libraries(created_function_test PRIVATE abcd_source)
   add_test(NAME created_function_test COMMAND created_function_test)
+  add_executable(created_class_test tests/unit/source/created_class_test.cc)
+  target_include_directories(created_class_test PRIVATE tests/support)
+  target_link_libraries(created_class_test PRIVATE abcd_source)
+  add_test(NAME created_class_test COMMAND created_class_test)
+  add_executable(class_sample_fixture tests/integration/class_sample.cc)
+  target_include_directories(class_sample_fixture PRIVATE tests/support)
+  target_link_libraries(class_sample_fixture PRIVATE abcd_source abcd_corpus)
   add_executable(local_lexical_body_test tests/unit/source/local_lexical_body_test.cc tests/support/analysis/local_lexical_scaling.cc)
   target_include_directories(local_lexical_body_test PRIVATE tests/support)
   target_link_libraries(local_lexical_body_test PRIVATE abcd_source)
@@ -285,6 +293,12 @@ if(BUILD_TESTING)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   find_program(ABCD_NODE_EXECUTABLE node)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME created_class_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:created_class_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/created_class.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=created-class.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME base_constructor_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:base_constructor_test>
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/base_constructor.mjs
