@@ -7,6 +7,7 @@ add_library(abcd_abc
   src/abc/byte_reader.cc
   src/abc/call_type.cc
   src/abc/control_transfer.cc
+  src/abc/debug_info.cc
   src/abc/frame_layout.cc
   src/abc/header.cc
   src/abc/instruction.cc
@@ -76,6 +77,7 @@ target_link_libraries(abcd_source PUBLIC abcd_analysis)
 target_compile_features(abcd_source PUBLIC cxx_std_20)
 target_include_directories(abcd_source PUBLIC include)
 add_library(abcd_structure src/structure/record_path.cc src/structure/record_writer.cc src/structure/module_writer.cc)
+target_sources(abcd_structure PRIVATE src/structure/debug_writer.cc)
 target_link_libraries(abcd_structure PUBLIC abcd_source)
 add_library(abcd_corpus
   src/corpus/detect.cc
@@ -131,6 +133,9 @@ if(BUILD_TESTING)
   target_include_directories(module_writer_test PRIVATE src/structure)
   target_link_libraries(module_writer_test PRIVATE abcd_structure)
   add_test(NAME module_writer_test COMMAND module_writer_test)
+  add_executable(debug_info_test tests/unit/abc/debug_info_test.cc)
+  target_link_libraries(debug_info_test PRIVATE abcd_abc)
+  add_test(NAME debug_info_test COMMAND debug_info_test)
   add_executable(capture_summary_test tests/unit/analysis/capture_summary_test.cc)
   target_link_libraries(capture_summary_test PRIVATE abcd_analysis)
   add_test(NAME capture_summary_test COMMAND capture_summary_test)

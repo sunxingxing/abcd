@@ -115,6 +115,8 @@ void WriteMethod(const RecordText& text, const abc::MetadataIndex& index,
       << "\",\"sendable\":" << (attributes.sendable ? "true" : "false")
       << ",\"debug_info\":";
   OptionalOffset(out, method.debug_info);
+  out << ",\"debug\":";
+  WriteDebugStructure(text, method, out);
   out << ",\"proto\":";
   OptionalOffset(out, method.proto_offset);
   out << ",\"abi\":";

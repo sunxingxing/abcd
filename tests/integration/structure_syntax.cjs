@@ -26,6 +26,15 @@ for (const root of process.argv.slice(3)) {
     assert.equal(parsed.parseDiagnostics.length, 0, filename);
     counts.records++;
     counts.methods += record.methods.length;
+    for (const method of record.methods) {
+      assert(Object.hasOwn(method, 'debug'));
+      if (method.debug_info === null) assert.equal(method.debug, null);
+      else {
+        assert(Array.isArray(method.debug.parameter_names));
+        assert(Number.isInteger(method.debug.line_start));
+        assert(Number.isInteger(method.debug.line_program));
+      }
+    }
     counts.record_fields += record.record_fields.length;
     if (record.module) {
       counts.module_requests += record.module.requests.length;

@@ -26,6 +26,19 @@ int main() {
   const auto star = string("*");
   const auto a = string("a"), b = string("b");
   const auto x = string("x"), y = string("y"), z = string("z");
+  const auto empty = string("");
+  constexpr auto kIndexBytes = sizeof(std::uint32_t);
+  bytes.resize((bytes.size() + kIndexBytes - 1) / kIndexBytes * kIndexBytes);
+  const auto table_offset = static_cast<std::uint32_t>(bytes.size());
+  const auto program_offset = table_offset + kIndexBytes;
+  for (std::size_t i = 0; i < kIndexBytes; ++i)
+    bytes.push_back(static_cast<std::uint8_t>(program_offset >> (8 * i)));
+  bytes.push_back(0);  // END_SEQUENCE.
+  const abc::EntityOffset debug_offset{
+      static_cast<std::uint32_t>(bytes.size())};
+  Check(a.value < 128);
+  bytes.insert(bytes.end(), {1, 3, static_cast<std::uint8_t>(a.value),
+                             static_cast<std::uint8_t>(empty.value), 0, 0, 0});
   char path[] = "/tmp/abcd-structure-XXXXXX";
   const auto fd = mkstemp(path);
   Check(fd >= 0);
@@ -39,8 +52,16 @@ int main() {
   header.kind = abc::AbcKind::kDynamic;
   header.profile = abc::ProfileId::kDynamic1206;
   header.file_size = bytes.size();
-  header.layout = abc::DynamicLayout{};
+  abc::DynamicLayout layout;
+  layout.line_number_programs = {1, table_offset};
+  header.layout = layout;
   structure::RecordText text(file, header, {});
+  abc::MethodInfo method;
+  method.debug_info = debug_offset;
+  std::ostringstream debug;
+  structure::WriteDebugStructure(text, method, debug);
+  Check(debug.str().find("\"parameter_names\":[\"a\",\"\",null]") !=
+        std::string::npos);
   abc::ModuleInfo module;
   module.requests = {request};
   module.imports = {{a, star, {0}}};

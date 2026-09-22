@@ -19,5 +19,7 @@ class RecordText {
 };
 void WriteModuleStructure(const RecordText& text, const abc::ModuleInfo& module,
                           std::ostream& metadata, std::ostream& declarations);
+void WriteDebugStructure(const RecordText& text, const abc::MethodInfo& method,
+                         std::ostream& metadata);
 }  // namespace abcd::structure
 #endif

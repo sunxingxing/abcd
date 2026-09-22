@@ -33,6 +33,7 @@ struct RecordCounts {
   std::size_t exports = 0;
 };
 struct StructureBudget {
+  std::size_t debug_bytes = 1024 * 1024;
   std::size_t module_bytes = 64 * 1024 * 1024;
   std::size_t binding_bytes = 32 * 1024 * 1024;
   std::size_t string_bytes = 1024 * 1024;
