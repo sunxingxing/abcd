@@ -210,6 +210,7 @@ nlohmann::json SerializeCounts(const MethodCounts& counts) {
 }
 
 MethodCounts InspectMethods(const corpus::AbcFile& file,
+                            const corpus::Sha256& fingerprint,
                             const abc::Header& header,
                             const abc::MetadataIndex& index,
                             InspectionStage stage, std::ostream& diagnostics) {
@@ -304,8 +305,8 @@ MethodCounts InspectMethods(const corpus::AbcFile& file,
     }
     if (stage == InspectionStage::kNormalFlow) continue;
     if (stage == InspectionStage::kCreations) {
-      InspectCreations(file, header, index, *lookup, method, body, graph,
-                       &counts.creations);
+      InspectCreations(file, header, index, *lookup, fingerprint, method, body,
+                       graph, &counts.creations);
       continue;
     }
     if (stage == InspectionStage::kEnvironments) {

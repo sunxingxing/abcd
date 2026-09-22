@@ -6,6 +6,7 @@
 
 #include "abcd/analysis/capture_summary.h"
 #include "abcd/analysis/creation_binding.h"
+#include "abcd/analysis/method_captures.h"
 
 namespace abcd::tools {
 using CreationObstacle =
@@ -15,6 +16,10 @@ using CreationObstacle =
                  abc::MetadataError, abc::MethodAttributeError,
                  analysis::CaptureSummaryError>;
 struct CreationCounts {
+  std::uint64_t method_capture_results = 0;
+  std::uint64_t method_capture_failures = 0;
+  std::size_t method_capture_peak_bytes = 0;
+  std::map<analysis::MethodCaptureFailure, std::uint64_t> capture_obstacles;
   std::uint64_t capture_summary_methods = 0;
   std::uint64_t capture_summary_failures = 0;
   std::uint64_t capture_unique_slots = 0;
@@ -36,6 +41,7 @@ struct CreationCounts {
 void InspectCreations(const corpus::AbcFile& file, const abc::Header& header,
                       const abc::MetadataIndex& index,
                       const abc::MethodLookup& lookup,
+                      const corpus::Sha256& fingerprint,
                       const abc::MethodInfo& method,
                       const abc::MethodBody& body,
                       const analysis::NormalFlow& graph,

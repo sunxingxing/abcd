@@ -66,6 +66,27 @@ context guard; fingerprint authenticity remains the caller's contract.
 
 `/usr/bin/time -v build/decode/creation_binding_test` completed in 0.03 seconds
 with peak RSS 9,129,984 bytes. This is a fixture measurement, not full-corpus or
-complete-pipeline evidence. The existing corpus creation probe does not yet
-construct these owned results. Next steps are bounded task/cache admission and
-transitive capture requirements, followed by value/Hole/TDZ and source integration.
+complete-pipeline evidence.
+
+## Corpus Integration
+
+`abc_creations` now constructs one owned result after its independent summary
+and creation-site probes. It reuses the validated once-per-file SHA-256, never
+loads target bodies, and releases the result before advancing to the next
+method. This deliberately repeats a bounded number of analysis passes to retain
+independent baseline counters; it does not add a per-target body scan.
+
+`method_capture_results + method_capture_failures = creation_methods` counts
+every environment-accepted method. Environment-rejected methods do not reach
+construction. `method_capture_obstacles` counts one typed failure per refused
+construction, separately from the existing mixed-unit creation histogram.
+`method_capture_peak_bytes` is the maximum successful construction payload, not
+process RSS or a bound on unsuccessful allocation attempts. Exit zero continues
+to mean inspection completed, not that every method can be decompiled.
+
+Next steps are bounded task/cache admission and transitive capture requirements,
+followed by value/Hole/TDZ and source integration. Corpus construction does not
+yet exercise inter-method Resolve queries; those remain fixture-tested.
+
+See the [corpus validation report](../validation/2026-09-22-method-captures.md)
+for construction counts, limitations and process memory evidence.

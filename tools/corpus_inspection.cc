@@ -241,7 +241,7 @@ FileReport IndexFile(const std::filesystem::path& root,
     return report;
   }
   report.inspection =
-      InspectMethods(*file, header, index, stage, diagnostics);
+      InspectMethods(*file, fingerprint.sha256, header, index, stage, diagnostics);
   // A file reports the earliest failed stage, independent of method order.
   // Per-stage totals and every diagnostic remain available for mixed failures.
   if (report.inspection.failed_creation_indexes != 0) {

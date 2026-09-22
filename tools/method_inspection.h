@@ -70,6 +70,7 @@ nlohmann::json SerializeCounts(const MethodCounts& counts);
 // Caller owns the file and the JSON failure array delimiters. Diagnostics are
 // streamed without truncation; only one method body and its analyses are live.
 MethodCounts InspectMethods(const corpus::AbcFile& file,
+                            const corpus::Sha256& fingerprint,
                             const abc::Header& header,
                             const abc::MetadataIndex& index,
                             InspectionStage stage, std::ostream& diagnostics);

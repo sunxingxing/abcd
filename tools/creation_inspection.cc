@@ -18,9 +18,16 @@ const char* Category(abc::MethodAttributeError) { return "attribute"; }
 const char* Category(analysis::CaptureSummaryError) {
   return "capture_summary";
 }
+const char* Category(analysis::MethodCaptureError) { return "method_capture"; }
 }  // namespace
 
 CreationCounts& CreationCounts::operator+=(const CreationCounts& other) {
+  method_capture_results += other.method_capture_results;
+  method_capture_failures += other.method_capture_failures;
+  method_capture_peak_bytes =
+      std::max(method_capture_peak_bytes, other.method_capture_peak_bytes);
+  for (const auto& [error, count] : other.capture_obstacles)
+    capture_obstacles[error] += count;
   capture_summary_methods += other.capture_summary_methods;
   capture_summary_failures += other.capture_summary_failures;
   capture_unique_slots += other.capture_unique_slots;
@@ -45,11 +52,12 @@ CreationCounts& CreationCounts::operator+=(const CreationCounts& other) {
 void InspectCreations(const corpus::AbcFile& file, const abc::Header& header,
                       const abc::MetadataIndex& index,
                       const abc::MethodLookup& lookup,
+                      const corpus::Sha256& fingerprint,
                       const abc::MethodInfo& method,
                       const abc::MethodBody& body,
                       const analysis::NormalFlow& graph,
                       CreationCounts* counts) {
-  const auto analyzed = analysis::AnalyzeEnvironments(
+  auto analyzed = analysis::AnalyzeEnvironments(
       body, graph,
       std::uint64_t(method.code->registers) + method.code->arguments);
   if (const auto* error =
@@ -62,7 +70,7 @@ void InspectCreations(const corpus::AbcFile& file, const abc::Header& header,
     return;
   }
   ++counts->methods;
-  const auto& flow = std::get<analysis::EnvironmentFlow>(analyzed);
+  auto& flow = std::get<analysis::EnvironmentFlow>(analyzed);
   {
     const auto summarized = analysis::CaptureSummary::Build(flow.bindings);
     if (const auto* error =
@@ -123,9 +131,39 @@ void InspectCreations(const corpus::AbcFile& file, const abc::Header& header,
           result);
     }
   }
+  // The independent site probe is finished before ownership transfer. Retain
+  // one result only; never decode all targets or keep a corpus-sized cache here.
+  const auto position = lookup.Find(method.offset);
+  if (!position) {
+    ++counts->method_capture_failures;
+    ++counts->capture_obstacles[abc::MethodTargetError::kCallerMissing];
+    return;
+  }
+  const auto retained = analysis::MethodCaptures::Build(
+      file, header, index, lookup, {fingerprint, header.profile, *position},
+      body, std::move(flow));
+  if (const auto* error =
+          std::get_if<analysis::MethodCaptureFailure>(&retained)) {
+    ++counts->method_capture_failures;
+    ++counts->capture_obstacles[*error];
+  } else {
+    ++counts->method_capture_results;
+    counts->method_capture_peak_bytes = std::max(
+        counts->method_capture_peak_bytes,
+        std::get<analysis::MethodCaptures>(retained).PeakBytes());
+  }
 }
 
 nlohmann::json SerializeCounts(const CreationCounts& counts) {
+  auto capture_obstacles = nlohmann::json::array();
+  for (const auto& [error, count] : counts.capture_obstacles)
+    capture_obstacles.push_back(std::visit(
+        [&](auto kind) {
+          return nlohmann::json{{"category", Category(kind)},
+                                {"error", static_cast<int>(kind)},
+                                {"count", count}};
+        },
+        error));
   auto obstacles = nlohmann::json::array();
   for (const auto& [error, count] : counts.obstacles)
     obstacles.push_back(std::visit(
@@ -139,7 +177,11 @@ nlohmann::json SerializeCounts(const CreationCounts& counts) {
   for (const auto& [opcode, count] : counts.other_method_instructions)
     other.push_back(
         {{"opcode", static_cast<std::uint16_t>(opcode)}, {"count", count}});
-  return {{"capture_summary_methods", counts.capture_summary_methods},
+  return {{"method_capture_results", counts.method_capture_results},
+          {"method_capture_failures", counts.method_capture_failures},
+          {"method_capture_peak_bytes", counts.method_capture_peak_bytes},
+          {"method_capture_obstacles", std::move(capture_obstacles)},
+          {"capture_summary_methods", counts.capture_summary_methods},
           {"capture_summary_failures", counts.capture_summary_failures},
           {"capture_unique_slots", counts.capture_unique_slots},
           {"capture_access_sites", counts.capture_access_sites},
