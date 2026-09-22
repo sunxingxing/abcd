@@ -91,6 +91,9 @@ int Export(const std::filesystem::path& input,
   const auto indexed = abc::BuildMetadataIndex(file, *header, {kIndexBytes});
   const auto* index = std::get_if<abc::MetadataIndex>(&indexed);
   if (!index) return Fail(ExportError::kIndex);
+  const auto looked_up = abc::MethodLookup::Build(index->methods);
+  const auto* lookup = std::get_if<abc::MethodLookup>(&looked_up);
+  if (!lookup) return Fail(ExportError::kIndex);
   const auto packed = abc::DetectFilePackaging(file, *header, *index);
   const auto* packaging = std::get_if<abc::FilePackaging>(&packed);
   if (!packaging) return Fail(ExportError::kPackaging);
@@ -117,8 +120,9 @@ int Export(const std::filesystem::path& input,
     std::ofstream declarations(tree.path / declaration_path, std::ios::binary);
     if (!metadata || !declarations)
       return Fail(ExportError::kOutput, record.offset.value);
-    const auto result = structure::WriteRecordStructure(
-        file, *header, *index, record, *packaging, metadata, declarations);
+    const auto result =
+        structure::WriteRecordStructure(file, *header, *index, *lookup, record,
+                                        *packaging, metadata, declarations);
     const auto* counts = std::get_if<structure::RecordCounts>(&result);
     if (!counts) {
       const auto& failure = std::get<structure::StructureFailure>(result);

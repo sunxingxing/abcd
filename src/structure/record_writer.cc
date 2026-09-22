@@ -87,8 +87,8 @@ void Flag(std::ostream& out, std::optional<bool> value) {
     out << "null";
 }
 void WriteMethod(const RecordText& text, const abc::MetadataIndex& index,
-                 const abc::MethodInfo& method, std::ostream& out,
-                 std::ostream& declaration) {
+                 const abc::MethodLookup& lookup, const abc::MethodInfo& method,
+                 std::ostream& out, std::ostream& declaration) {
   const auto parsed =
       abc::DecodeMethodAttributes(method.access_flags, text.header.profile);
   if (const auto* error = std::get_if<abc::MethodAttributeError>(&parsed))
@@ -143,6 +143,7 @@ void WriteMethod(const RecordText& text, const abc::MetadataIndex& index,
     declaration << " parameter_slots=" << layout.parameters;
   } else
     out << "null";
+  WriteClassSites(text, index, lookup, method, out);
   out << '}';
   declaration << " (scope and source signature unresolved)\n";
 }
@@ -150,9 +151,10 @@ void WriteMethod(const RecordText& text, const abc::MetadataIndex& index,
 
 std::variant<RecordCounts, StructureFailure> WriteRecordStructure(
     const corpus::AbcFile& file, const abc::Header& header,
-    const abc::MetadataIndex& index, const abc::RecordInfo& record,
-    abc::FilePackaging packaging, std::ostream& metadata,
-    std::ostream& declarations, StructureBudget budget) {
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const abc::RecordInfo& record, abc::FilePackaging packaging,
+    std::ostream& metadata, std::ostream& declarations,
+    StructureBudget budget) {
   OutputQuota quota{budget.output_bytes};
   OutputBuffer json_buffer(metadata, quota),
       declaration_buffer(declarations, quota);
@@ -230,7 +232,7 @@ std::variant<RecordCounts, StructureFailure> WriteRecordStructure(
         throw StructureFailure{method.offset, StructureFault::kOwner};
       if (comma) out << ',';
       comma = true;
-      WriteMethod(text, index, method, out, declaration);
+      WriteMethod(text, index, lookup, method, out, declaration);
     }
     out << "],\"pending\":[\"class_layout\",\"globals\",\"local_scopes\","
            "\"source_signatures\",\"bodies\"]}\n";

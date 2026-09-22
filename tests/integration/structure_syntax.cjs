@@ -7,8 +7,14 @@ assert.equal(ts.version, '5.9.3');
 const totals = { records: 0, methods: 0, record_fields: 0,
   module_requests: 0, module_imports: 0, module_exports: 0 };
 const debugTotals = { parsed: 0, failed: 0, locals: 0, positions: 0, source_files: 0 };
+const classTotals = { sites: 0, failed: 0, scan_failed: 0, prototype: 0, static: 0, methods: 0 };
 for (const root of process.argv.slice(3)) {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));
+  const methods = new Map();
+  for (const entry of manifest.records) {
+    const record = JSON.parse(fs.readFileSync(path.join(root, entry.metadata)));
+    for (const method of record.methods) methods.set(method.entity, record.entity);
+  }
   const counts = Object.fromEntries(Object.keys(totals).map(key => [key, 0]));
   const paths = new Set();
   for (const entry of manifest.records) {
@@ -28,6 +34,22 @@ for (const root of process.argv.slice(3)) {
     counts.records++;
     counts.methods += record.methods.length;
     for (const method of record.methods) {
+      assert(Object.hasOwn(method, 'class_sites'));
+      if (method.class_scan_error) classTotals.scan_failed++;
+      for (const site of method.class_sites ?? []) {
+        classTotals.sites++;
+        if (site.error) { classTotals.failed++; continue; }
+        assert(methods.has(site.constructor));
+        assert(Number.isInteger(site.constructor_length));
+        for (const property of site.properties) {
+          assert(['prototype', 'static'].includes(property.placement));
+          classTotals[property.placement]++;
+          if (property.method) {
+            classTotals.methods++;
+            assert.equal(methods.get(property.method.entity), property.method.record);
+          }
+        }
+      }
       assert(Object.hasOwn(method, 'debug'));
       if (method.debug_info === null) assert.equal(method.debug, null);
       else {
@@ -60,4 +82,4 @@ for (const root of process.argv.slice(3)) {
   assert.deepEqual(counts, manifest.counts);
   for (const key of Object.keys(totals)) totals[key] += counts[key];
 }
-console.log(JSON.stringify({ typescript: ts.version, counts: totals, debug: debugTotals }));
+console.log(JSON.stringify({ typescript: ts.version, counts: totals, debug: debugTotals, classes: classTotals }));

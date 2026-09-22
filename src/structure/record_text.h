@@ -24,5 +24,8 @@ void WriteDebugStructure(const RecordText& text, const abc::MethodInfo& method,
                          std::ostream& metadata);
 void WriteScopeStructure(const RecordText& text, const abc::MethodInfo& method,
                          const abc::DebugInfo& debug, std::ostream& metadata);
+void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
+                     const abc::MethodLookup& lookup,
+                     const abc::MethodInfo& method, std::ostream& metadata);
 }  // namespace abcd::structure
 #endif

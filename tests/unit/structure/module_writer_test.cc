@@ -124,13 +124,15 @@ int main() {
     Check(declaration.str().find("declare let $local1") == std::string::npos);
   }
   abc::MetadataIndex index;
+  const auto lookup =
+      std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   abc::RecordInfo record;
   record.offset = request;
   structure::StructureBudget budget;
   budget.output_bytes = 1;
   const auto limited = structure::WriteRecordStructure(
-      file, header, index, record, abc::FilePackaging::kBundle, metadata,
-      declarations, budget);
+      file, header, index, lookup, record, abc::FilePackaging::kBundle,
+      metadata, declarations, budget);
   Check(std::get<structure::StructureFault>(
             std::get<structure::StructureFailure>(limited).error) ==
         structure::StructureFault::kOutputLimit);

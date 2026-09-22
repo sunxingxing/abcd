@@ -5,6 +5,7 @@
 
 #include "abcd/abc/frame_layout.h"
 #include "abcd/abc/method_attributes.h"
+#include "abcd/abc/method_lookup.h"
 #include "abcd/abc/module_info.h"
 #include "abcd/abc/record_attributes.h"
 #include "abcd/source/string_literal.h"
@@ -33,6 +34,9 @@ struct RecordCounts {
   std::size_t exports = 0;
 };
 struct StructureBudget {
+  std::size_t body_bytes = 64 * 1024 * 1024;
+  std::size_t literal_bytes = 16 * 1024 * 1024;
+  std::size_t class_bytes = 16 * 1024 * 1024;
   std::size_t scope_bytes = 4 * 1024 * 1024;
   std::size_t scope_events = 1024 * 1024;
   std::size_t debug_bytes = 1024 * 1024;
@@ -47,8 +51,9 @@ struct StructureBudget {
 // the record table. Bundle module ownership remains explicitly unresolved.
 [[nodiscard]] std::variant<RecordCounts, StructureFailure> WriteRecordStructure(
     const corpus::AbcFile& file, const abc::Header& header,
-    const abc::MetadataIndex& index, const abc::RecordInfo& record,
-    abc::FilePackaging packaging, std::ostream& metadata,
-    std::ostream& declarations, StructureBudget budget = {});
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const abc::RecordInfo& record, abc::FilePackaging packaging,
+    std::ostream& metadata, std::ostream& declarations,
+    StructureBudget budget = {});
 }  // namespace abcd::structure
 #endif

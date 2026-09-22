@@ -6,6 +6,7 @@ include(cmake/IsaDependency.cmake)
 add_library(abcd_abc
   src/abc/byte_reader.cc
   src/abc/call_type.cc
+  src/abc/class_buffer.cc
   src/abc/control_transfer.cc
   src/abc/debug_info.cc
   src/abc/debug_scopes.cc
@@ -41,6 +42,7 @@ target_link_libraries(abcd_abc PUBLIC abcd_file)
 add_library(abcd_analysis src/analysis/normal_flow.cc src/analysis/exception_dispatch.cc src/analysis/dominators.cc src/analysis/scalar.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/branch_condition.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/function_creation.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/class_creation.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/creation_binding.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/capture_summary.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/method_captures.cc)
@@ -80,6 +82,7 @@ target_include_directories(abcd_source PUBLIC include)
 add_library(abcd_structure src/structure/record_path.cc src/structure/record_writer.cc src/structure/module_writer.cc)
 target_sources(abcd_structure PRIVATE src/structure/debug_writer.cc)
 target_sources(abcd_structure PRIVATE src/structure/scope_writer.cc)
+target_sources(abcd_structure PRIVATE src/structure/class_writer.cc)
 target_link_libraries(abcd_structure PUBLIC abcd_source)
 add_library(abcd_corpus
   src/corpus/detect.cc
@@ -141,6 +144,16 @@ if(BUILD_TESTING)
   add_executable(debug_scopes_test tests/unit/abc/debug_scopes_test.cc)
   target_link_libraries(debug_scopes_test PRIVATE abcd_abc)
   add_test(NAME debug_scopes_test COMMAND debug_scopes_test)
+  add_executable(class_buffer_test tests/unit/abc/class_buffer_test.cc)
+  target_link_libraries(class_buffer_test PRIVATE abcd_abc)
+  add_test(NAME class_buffer_test COMMAND class_buffer_test)
+  add_executable(class_creation_test tests/unit/analysis/class_creation_test.cc)
+  target_link_libraries(class_creation_test PRIVATE abcd_analysis)
+  add_test(NAME class_creation_test COMMAND class_creation_test)
+  add_executable(class_writer_test tests/unit/structure/class_writer_test.cc)
+  target_include_directories(class_writer_test PRIVATE src/structure)
+  target_link_libraries(class_writer_test PRIVATE abcd_structure abcd_json)
+  add_test(NAME class_writer_test COMMAND class_writer_test)
   add_executable(capture_summary_test tests/unit/analysis/capture_summary_test.cc)
   target_link_libraries(capture_summary_test PRIVATE abcd_analysis)
   add_test(NAME capture_summary_test COMMAND capture_summary_test)
