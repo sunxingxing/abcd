@@ -38,12 +38,14 @@ class FunctionWriter {
  public:
   FunctionWriter(const BaseFunction& function, ScalarNames names,
                  std::ostream& output, LocalLexicalBudget budget,
-                 const MethodConstants* constants)
+                 const MethodConstants* constants,
+                 const abc::MethodLookup* methods)
       : function_(function),
         names_(names),
         output_(output),
         budget_(budget),
-        constants_(constants) {}
+        constants_(constants),
+        methods_(methods) {}
 
   FunctionEmitResult Write(const abc::MethodBody& body) {
     try {
@@ -78,8 +80,8 @@ class FunctionWriter {
       if (error_) return *error_;
       auto body_budget = budget_;
       body_budget.output.bytes -= written_;
-      const auto result =
-          WriteLocalLexicalBody(body, names_, output_, body_budget, constants_);
+      const auto result = WriteLocalLexicalBody(
+          body, names_, output_, body_budget, constants_, methods_);
       if (const auto* bytes = std::get_if<std::size_t>(&result))
         written_ += *bytes;
       else
@@ -119,6 +121,7 @@ class FunctionWriter {
   std::ostream& output_;
   LocalLexicalBudget budget_;
   const MethodConstants* constants_;
+  const abc::MethodLookup* methods_;
   std::size_t written_ = 0;
   std::optional<EmitError> error_;
 };
@@ -128,7 +131,8 @@ FunctionEmitResult WriteBaseFunction(const BaseFunction& function,
                                      const abc::MethodBody& body,
                                      std::ostream& output,
                                      LocalLexicalBudget budget,
-                                     const MethodConstants* constants) {
+                                     const MethodConstants* constants,
+                                     const abc::MethodLookup* methods) {
   if (function.creation.kind != analysis::CreationKind::kFunction ||
       function.creation.home_object !=
           analysis::HomeObjectInput::kCurrentFunction)
@@ -168,10 +172,11 @@ FunctionEmitResult WriteBaseFunction(const BaseFunction& function,
     }
     const ScalarNames bindings{"$acc", {names.get(), count}};
     const auto checked =
-        FunctionWriter(function, bindings, discard, budget, constants)
+        FunctionWriter(function, bindings, discard, budget, constants, methods)
             .Write(body);
     if (!std::holds_alternative<std::size_t>(checked)) return checked;
-    return FunctionWriter(function, bindings, output, budget, constants)
+    return FunctionWriter(function, bindings, output, budget, constants,
+                          methods)
         .Write(body);
   } catch (const std::bad_alloc&) {
     return FunctionEmitError::kResourceLimit;

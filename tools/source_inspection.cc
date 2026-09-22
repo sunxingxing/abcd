@@ -11,6 +11,7 @@
 
 #include "abcd/abc/call_type.h"
 #include "abcd/analysis/hole_guard.h"
+#include "abcd/analysis/function_creation.h"
 #include "abcd/source/local_lexical_body.h"
 
 namespace abcd::tools {
@@ -44,7 +45,9 @@ bool IsLexicalCandidate(const abc::MethodBody& body, std::uint64_t frame) {
     lexical |= !std::holds_alternative<analysis::LexicalError>(
                    analysis::LiftLexicalInstruction(site.decoded, frame)) ||
                !std::holds_alternative<analysis::HoleError>(
-                   analysis::LiftHoleInstruction(site.decoded, frame));
+                   analysis::LiftHoleInstruction(site.decoded, frame)) ||
+               std::holds_alternative<analysis::FunctionCreation>(
+                   analysis::LiftFunctionCreation(site.decoded));
   }
   return lexical;
 }
@@ -81,6 +84,7 @@ nlohmann::json SerializeCounts(const SourceCounts& counts) {
 
 void InspectSource(const corpus::AbcFile& file, const abc::Header& header,
                    const abc::MetadataIndex& index,
+                   const abc::MethodLookup& lookup,
                    const abc::MethodInfo& method, const abc::MethodBody& body,
                    SourceCounts* counts) {
   const auto reject = [&](SourceError error,
@@ -142,7 +146,8 @@ void InspectSource(const corpus::AbcFile& file, const abc::Header& header,
   if (!std::holds_alternative<std::size_t>(result) &&
       IsLexicalCandidate(body, registers)) {
     const auto local = source::WriteLocalLexicalBody(
-        body, {"acc", std::span(names.get(), registers)}, sink, {}, &constants);
+        body, {"acc", std::span(names.get(), registers)}, sink, {}, &constants,
+        &lookup);
     if (const auto* bytes = std::get_if<std::size_t>(&local)) {
       ++counts->ready;
       counts->bytes += *bytes;

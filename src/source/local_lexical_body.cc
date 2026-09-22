@@ -6,6 +6,7 @@
 #include <ostream>
 #include <streambuf>
 
+#include "leaf_sources.h"
 #include "linear_instruction.h"
 
 namespace abcd::source {
@@ -19,11 +20,12 @@ class DiscardBuffer : public std::streambuf {
 class LexicalWriter {
  public:
   LexicalWriter(ScalarNames names, std::ostream& output, EmitBudget budget,
-                const MethodConstants* constants)
+                const MethodConstants* constants, const LeafSources* functions)
       : names_(names),
         output_(output),
         remaining_(budget.bytes),
-        constants_(constants) {}
+        constants_(constants),
+        functions_(functions) {}
   BodyEmitResult Write(const abc::MethodBody& body,
                        const analysis::LinearLexicals& plan) {
     try {
@@ -42,6 +44,11 @@ class LexicalWriter {
             error_ = *failure;
           else
             Count(std::get<std::size_t>(result));
+        } else if (std::holds_alternative<analysis::LocalFunction>(statement)) {
+          Slot(analysis::Accumulator{});
+          Text(" = ");
+          Text(functions_->Source(next_function_++));
+          Text(";\n");
         } else if (const auto* load =
                        std::get_if<analysis::LocalLoad>(&statement)) {
           Slot(analysis::Accumulator{});
@@ -114,6 +121,8 @@ class LexicalWriter {
   std::ostream& output_;
   std::size_t remaining_;
   const MethodConstants* constants_;
+  const LeafSources* functions_;
+  std::size_t next_function_ = 0;
   std::size_t written_ = 0;
   abc::CodeOffset offset_{};
   std::optional<BodyEmitFailure> error_;
@@ -123,7 +132,8 @@ LocalLexicalResult WriteLocalLexicalBody(const abc::MethodBody& body,
                                          ScalarNames names,
                                          std::ostream& output,
                                          LocalLexicalBudget budget,
-                                         const MethodConstants* constants) {
+                                         const MethodConstants* constants,
+                                         const abc::MethodLookup* methods) {
   const auto resource = [] {
     return analysis::LinearLexicalFailure{
         analysis::LinearLexicalError::kResourceLimit, {}};
@@ -136,6 +146,21 @@ LocalLexicalResult WriteLocalLexicalBody(const abc::MethodBody& body,
       return BodyEmitFailure{
           BodyEmitError::kExpression, {}, {}, EmitError::kInvalidBinding};
   try {
+    DiscardBuffer buffer;
+    std::ostream discard(&buffer);
+    std::optional<LeafSources> functions;
+    std::span<const analysis::IndependentCreation> creations;
+    if (methods) {
+      if (!constants)
+        return BodyEmitFailure{BodyEmitError::kMissingConstants, {}, {}, {}};
+      auto prepared = LeafSources::Build(body, *constants, *methods, budget);
+      if (const auto* failure = std::get_if<BodyEmitFailure>(&prepared))
+        return *failure;
+      functions = std::get<LeafSources>(std::move(prepared));
+      if (functions->AllocatedBytes() > budget.bytes) return resource();
+      budget.bytes -= functions->AllocatedBytes();
+      creations = functions->Facts();
+    }
     const auto built = analysis::BuildNormalFlow(body, {budget.bytes});
     if (const auto* failure = std::get_if<analysis::FlowFailure>(&built))
       return *failure;
@@ -154,18 +179,18 @@ LocalLexicalResult WriteLocalLexicalBody(const abc::MethodBody& body,
     analysis::IdfQuota quota{budget.work};
     const auto planned = analysis::LinearLexicals::Build(
         body, environments, names.registers.size(), quota,
-        {budget.bytes - graph_bytes - environments.allocated_bytes});
+        {budget.bytes - graph_bytes - environments.allocated_bytes}, creations);
     if (const auto* failure =
             std::get_if<analysis::LinearLexicalFailure>(&planned))
       return *failure;
     const auto& plan = std::get<analysis::LinearLexicals>(planned);
-    DiscardBuffer buffer;
-    std::ostream discard(&buffer);
-    const auto checked = LexicalWriter(names, discard, budget.output, constants)
+    const auto checked = LexicalWriter(names, discard, budget.output, constants,
+                                       functions ? &*functions : nullptr)
                              .Write(body, plan);
     if (const auto* failure = std::get_if<BodyEmitFailure>(&checked))
       return *failure;
-    const auto result = LexicalWriter(names, output, budget.output, constants)
+    const auto result = LexicalWriter(names, output, budget.output, constants,
+                                      functions ? &*functions : nullptr)
                             .Write(body, plan);
     if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
       return *failure;

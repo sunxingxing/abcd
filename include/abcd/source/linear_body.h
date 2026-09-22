@@ -15,7 +15,10 @@ enum class BodyEmitError {
   kExpression,
   kMissingConstants,
   kConstant,
-  kIndexedName
+  kIndexedName,
+  kCreation,
+  kResourceLimit,
+  kWorkLimit
 };
 struct BodyEmitFailure {
   BodyEmitError kind;

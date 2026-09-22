@@ -34,11 +34,14 @@ using FunctionEmitResult =
 // are supported. Inputs remain unchanged; preflight rejects semantic/configured
 // budget errors before output. IO, backing-file changes, or actual allocation
 // failure during repeated body preparation can leave a prefix: use atomic file
-// publication. Scratch shares budget.bytes with body analysis; caller separately
-// admits inputs, transient strings and output.
+// publication. Scratch shares budget.bytes with body analysis; caller
+// separately admits inputs, transient strings and output. Optional same-context
+// methods/constants enable independent leaf creations in this body;
+// WriteCreatedFunction remains leaf-only to avoid recursive preflight.
 [[nodiscard]] FunctionEmitResult WriteBaseFunction(
     const BaseFunction& function, const abc::MethodBody& body,
     std::ostream& output, LocalLexicalBudget budget = {},
-    const MethodConstants* constants = nullptr);
+    const MethodConstants* constants = nullptr,
+    const abc::MethodLookup* methods = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_BASE_FUNCTION_H_

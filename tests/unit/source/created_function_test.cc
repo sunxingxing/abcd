@@ -6,6 +6,7 @@
 #include <sstream>
 
 #include "analysis/ssa_fixture.h"
+#include "source/leaf_function_checks.h"
 
 int main(int argc, char** argv) {
   using namespace abcd;
@@ -13,7 +14,9 @@ int main(int argc, char** argv) {
   constexpr std::uint32_t kCaller = 200;
   constexpr std::uint32_t kTarget = 300;
   constexpr std::uint32_t kCode = 400;
-  std::vector<std::uint8_t> bytes(1024);
+  constexpr std::uint32_t kLargeCode = 800;
+  constexpr std::uint32_t kLargeInstructions = 65536;
+  std::vector<std::uint8_t> bytes(kLargeCode + kLargeInstructions + 16);
   const auto word = [&](std::size_t offset, std::uint32_t value) {
     for (unsigned i = 0; i < sizeof(value); ++i)
       bytes[offset + i] = static_cast<std::uint8_t>(value >> (8 * i));
@@ -34,6 +37,30 @@ int main(int argc, char** argv) {
   bytes[268] = 'I';
   string(560, "L_ESCallTypeAnnotation;");
   string(600, "callType");
+  word(kPool + sizeof(kTarget), kTarget);
+  word(kPool + 2 * sizeof(kTarget), 350);
+  const std::uint8_t captured[]{0, 4, 3, 0, 0x3c, 0, 0x64};
+  const std::uint8_t nested[]{0, 4, 6, 0, 0x33, 0, 0, 0, 1, 0x64};
+  std::copy(std::begin(captured), std::end(captured), bytes.begin() + 700);
+  std::copy(std::begin(nested), std::end(nested), bytes.begin() + 720);
+  const std::uint8_t empty[]{0, 4, 1, 0, 0x65};
+  std::copy(std::begin(empty), std::end(empty), bytes.begin() + 740);
+  std::size_t large_start = kLargeCode;
+  const auto uleb = [&](std::uint32_t value) {
+    do {
+      auto byte = static_cast<std::uint8_t>(value & 0x7f);
+      value >>= 7;
+      bytes[large_start++] = value ? byte | 0x80 : byte;
+    } while (value);
+  };
+  uleb(0);
+  uleb(4);
+  uleb(kLargeInstructions);
+  uleb(0);
+  std::fill_n(bytes.begin() + large_start, kLargeInstructions, 0xd5);
+  bytes[large_start + kLargeInstructions - 3] = 0x60;
+  bytes[large_start + kLargeInstructions - 2] = 3;
+  bytes[large_start + kLargeInstructions - 1] = 0x64;
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kTarget >> (8 * i));
   // Missing callType defaults to self/new.target/this plus one parameter.
@@ -53,8 +80,8 @@ int main(int argc, char** argv) {
   header.file_size = bytes.size();
   header.layout = abc::DynamicLayout{};
   abc::MetadataIndex index;
-  index.regions.push_back({kCaller, kCode, {1, 128}, {1, kPool}, {}, {}});
-  index.methods.resize(2);
+  index.regions.push_back({kCaller, kCode, {1, 128}, {3, kPool}, {}, {}});
+  index.methods.resize(3);
   index.methods[0].offset = {kCaller};
   auto& target = index.methods[1];
   target.offset = {kTarget};
@@ -62,6 +89,12 @@ int main(int argc, char** argv) {
   target.name_utf16_length = target.name.size();
   target.access_flags = 1U << 8;
   target.code = abc::CodeInfo{{kCode}, {kCode + 4}, 0, 4, 3, 0};
+  auto& other = index.methods[2];
+  other.offset = {350};
+  other.name = "Other";
+  other.name_utf16_length = other.name.size();
+  other.access_flags = target.access_flags;
+  other.code = abc::CodeInfo{{740}, {744}, 0, 4, 1, 0};
   const auto lookup =
       std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto creation = test::Body({0x33, 0, 0, 0, 1}).instructions[0].decoded;
@@ -85,6 +118,30 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
     std::cout << "export const annotated = " << annotated.str() << ";\n";
   target.annotations = {};
+  const source::BaseFunction parent{
+      std::get<analysis::FunctionCreation>(
+          analysis::LiftFunctionCreation(creation)),
+      std::get<abc::MethodAttributes>(
+          abc::DecodeMethodAttributes(target.access_flags, header.profile)),
+      std::get<abc::FrameLayout>(
+          abc::BuildFrameLayout(0, 4, abc::DecodeCallFlags({}))),
+      "Factory"};
+  const source::MethodConstants parent_constants{
+      file, header, index, {kCaller}, {}};
+  const auto parent_body = test::Body({0x09, 1, 0x33, 0, 0, 0, 1, 0x64});
+  std::ostringstream factory;
+  test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
+      parent, parent_body, factory, {}, &parent_constants, &lookup)));
+  if (argc == 2 && std::string_view(argv[1]) == "--emit")
+    std::cout << "export const factory = " << factory.str() << ";\n";
+  test::CheckLeafFunctions(file, header, index, lookup,
+                           {{kLargeCode},
+                            {static_cast<std::uint32_t>(large_start)},
+                            0,
+                            4,
+                            kLargeInstructions,
+                            0},
+                           argc == 2 && std::string_view(argv[1]) == "--emit");
   const auto render = [&](source::LocalLexicalBudget budget = {}) {
     std::ostringstream rendered;
     const auto result = source::WriteCreatedFunction(
@@ -157,7 +214,7 @@ int main(int argc, char** argv) {
                   file, header, index, lookup, {kCaller + 1}, creation,
                   rejected)) == abc::MethodTargetError::kCallerMissing);
   auto invalid_creation = creation;
-  invalid_creation.operands[1].raw_bits = 1;
+  invalid_creation.operands[1].raw_bits = 3;
   test::Check(std::get<abc::MetadataError>(source::WriteCreatedFunction(
                   file, header, index, lookup, {kCaller}, invalid_creation,
                   rejected)) == abc::MetadataError::kIndexRange);

@@ -47,6 +47,8 @@ enum class FixtureKind {
   kCreationUnreachable,
   kSourceLoop,
   kSourceLocalLexicals,
+  kSourceLeafFunctions,
+  kSourceCapturedLeaf,
   kSourceUninitialized,
   kSourceMultiBlockLoop,
   kSourceException,
@@ -124,6 +126,10 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kSourceLoop;
     else if (option == "--source-local-lexicals")
       kind = FixtureKind::kSourceLocalLexicals;
+    else if (option == "--source-leaf-functions")
+      kind = FixtureKind::kSourceLeafFunctions;
+    else if (option == "--source-captured-leaf")
+      kind = FixtureKind::kSourceCapturedLeaf;
     else if (option == "--source-uninitialized")
       kind = FixtureKind::kSourceUninitialized;
     else if (option == "--source-multiblock-loop")
@@ -147,7 +153,35 @@ int main(int argc, char** argv) {
       13, 'L', 'd', 'e', 'm', 'o', ';', 0, 0, 0, 0, 0, 0, 0, 0, 0};
   std::vector<std::uint8_t> dynamic(kClassOffset);
   dynamic.insert(dynamic.end(), kClass.begin(), kClass.end());
-  if (kind == FixtureKind::kModuleRecord || kind == FixtureKind::kBundleModule) {
+  if (kind == FixtureKind::kSourceLeafFunctions ||
+      kind == FixtureKind::kSourceCapturedLeaf) {
+    dynamic[kClassOffset + 14] = 2;
+    // FUNCTION kind is access_flags 1 << 8, encoded as two ULEB bytes.
+    constexpr std::array<std::uint8_t, 16> kFunction{
+        0, 0, 0xff, 0xff, 0, 0, 0, 0, 0x80, 2, 1, 0, 0, 0, 0, 0};
+    const auto parent = dynamic.size();
+    dynamic.insert(dynamic.end(), kFunction.begin(), kFunction.end());
+    const auto child = dynamic.size();
+    dynamic.insert(dynamic.end(), kFunction.begin(), kFunction.end());
+    const auto name = dynamic.size();
+    dynamic.insert(dynamic.end(), {9, 'm', 'a', 'i', 'n', 0});
+    const auto parent_code = dynamic.size();
+    dynamic.insert(dynamic.end(), {0, 3, 6, 0, 0x33, 0, 0, 0, 0, 0x64});
+    const auto child_code = dynamic.size();
+    if (kind == FixtureKind::kSourceCapturedLeaf)
+      dynamic.insert(dynamic.end(), {0, 3, 3, 0, 0x3c, 0, 0x64});
+    else
+      dynamic.insert(dynamic.end(), {0, 3, 1, 0, 0x65});
+    WriteWord(dynamic, parent + 4, name);
+    WriteWord(dynamic, child + 4, name);
+    WriteWord(dynamic, parent + 11, parent_code);
+    WriteWord(dynamic, child + 11, child_code);
+    const auto pool = dynamic.size();
+    dynamic.resize(dynamic.size() + kWordBytes);
+    WriteWord(dynamic, pool, child);
+    WriteWord(dynamic, kRegionOffset + 4 * kWordBytes, 1);
+    WriteWord(dynamic, kRegionOffset + 5 * kWordBytes, pool);
+  } else if (kind == FixtureKind::kModuleRecord || kind == FixtureKind::kBundleModule) {
     if (kind == FixtureKind::kBundleModule) {
       dynamic.resize(kClassOffset);
       constexpr std::string_view kDescriptor = "L_ESModuleRecord;";

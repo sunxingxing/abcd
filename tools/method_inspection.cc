@@ -216,7 +216,8 @@ MethodCounts InspectMethods(const corpus::AbcFile& file,
                             InspectionStage stage, std::ostream& diagnostics) {
   MethodCounts counts;
   std::optional<abc::MethodLookup> lookup;
-  if (stage == InspectionStage::kCreations) {
+  if (stage == InspectionStage::kCreations ||
+      stage == InspectionStage::kSourceBodies) {
     auto built = abc::MethodLookup::Build(index.methods);
     if (const auto* error = std::get_if<abc::MethodLookupError>(&built)) {
       ++counts.failed_creation_indexes;
@@ -283,7 +284,7 @@ MethodCounts InspectMethods(const corpus::AbcFile& file,
     counts.try_regions += body.tries.size();
     counts.catch_handlers += body.handlers.size();
     if (stage == InspectionStage::kSourceBodies) {
-      InspectSource(file, header, index, method, body, &counts.source);
+      InspectSource(file, header, index, *lookup, method, body, &counts.source);
       continue;
     }
     if (stage == InspectionStage::kInstructions) continue;

@@ -14,6 +14,13 @@ struct LocalCell {
 };
 struct KeepInstruction {};
 struct OmitInstruction {};
+struct IndependentCreation {
+  // Caller-proven: this exact instruction's emitted target does not access the
+  // incoming lexical environment or home object. Same unchanged body/context;
+  // sorted unique offsets, ordinary DEFINEFUNC only. Not a cached object value.
+  abc::CodeOffset offset;
+};
+struct LocalFunction {};
 struct LocalLoad {
   LocalCellId cell;
 };
@@ -21,8 +28,8 @@ struct LocalStore {
   LocalCellId cell;
   ScalarSlot value;
 };
-using LinearStatement =
-    std::variant<KeepInstruction, OmitInstruction, LocalLoad, LocalStore>;
+using LinearStatement = std::variant<KeepInstruction, OmitInstruction,
+                                     LocalLoad, LocalStore, LocalFunction>;
 enum class LinearLexicalError {
   kExceptionRegions,
   kControlFlow,
@@ -50,14 +57,16 @@ struct LinearLexicalWork {
 // initialized local cells and language reads can reach emitted statements.
 // Omissions exclude GC/OOM timing/debugger observability, not language effects.
 // Named allocations, capture, branches, handlers and possibly failing guards
-// are rejected. This is neither general CFG promotion nor a function service.
+// are rejected. Creations require explicit independent-target facts. This is
+// neither general CFG promotion nor a function service.
 class LinearLexicals {
  public:
   LinearLexicals(LinearLexicals&&) noexcept = default;
   LinearLexicals& operator=(LinearLexicals&&) noexcept = default;
   static std::variant<LinearLexicals, LinearLexicalFailure> Build(
       const abc::MethodBody& body, const EnvironmentFlow& environments,
-      std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {});
+      std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {},
+      std::span<const IndependentCreation> creations = {});
   std::span<const LinearStatement> Statements() const {
     return {statements_.get(), statements_ ? statement_count_ : 0};
   }

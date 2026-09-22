@@ -17,7 +17,8 @@ bool Less(const LocalCell& a, const LocalCell& b) {
 }  // namespace
 std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
     const abc::MethodBody& body, const EnvironmentFlow& environments,
-    std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget) {
+    std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget,
+    std::span<const IndependentCreation> creations) {
   using Error = LinearLexicalError;
   abc::CodeOffset offset{};
   const auto fail = [&](Error kind) {
@@ -33,6 +34,11 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
     const auto charge = [&](std::uint64_t count = 1) {
       if (!quota.Take(count)) throw detail::IdfWorkLimit{};
     };
+    for (std::size_t i = 1; i < creations.size(); ++i) {
+      charge();
+      if (creations[i - 1].offset >= creations[i].offset)
+        return fail(Error::kInstruction);
+    }
     for (std::size_t i = 0; i < body.instructions.size(); ++i) {
       charge();
       offset = body.instructions[i].offset;
@@ -112,11 +118,26 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
       }
       return accumulator;
     };
+    std::size_t creation_cursor = 0;
     for (std::size_t i = 0; i < body.instructions.size(); ++i) {
       charge();
       offset = body.instructions[i].offset;
       auto& statement = statements[i];
       const auto& instruction = body.instructions[i].decoded;
+      if (creation_cursor < creations.size() &&
+          creations[creation_cursor].offset <= offset) {
+        const auto lifted = LiftFunctionCreation(instruction);
+        const auto* creation = std::get_if<FunctionCreation>(&lifted);
+        if (creations[creation_cursor].offset != offset || !creation ||
+            creation->kind != CreationKind::kFunction)
+          return fail(Error::kInstruction);
+        ++creation_cursor;
+        // Caller proves the child independent of the current environment and
+        // home object. Do not deduplicate the new runtime function identity.
+        accumulator = ValueKinds::Language();
+        statement = LocalFunction{};
+        continue;
+      }
       const auto lexical = LiftLexicalInstruction(instruction, frame_size);
       if (const auto* push = std::get_if<PushEnvironment>(&lexical)) {
         if (push->scope) return fail(Error::kInstruction);
@@ -211,6 +232,7 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
                 : rule.seed;
       }
     }
+    if (creation_cursor != creations.size()) return fail(Error::kInstruction);
     LinearLexicals result;
     const auto copy = [&]<class T>(const std::pmr::vector<T>& from,
                                    std::unique_ptr<T[]>& to) {

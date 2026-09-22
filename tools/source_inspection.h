@@ -1,6 +1,8 @@
 #ifndef ABCD_TOOLS_SOURCE_INSPECTION_H_
 #define ABCD_TOOLS_SOURCE_INSPECTION_H_
 
+#include "abcd/abc/method_lookup.h"
+
 #include <map>
 #include <nlohmann/json.hpp>
 
@@ -33,6 +35,7 @@ struct SourceCounts {
 // Stores only first-obstacle histograms, never source text or per-method logs.
 void InspectSource(const corpus::AbcFile& file, const abc::Header& header,
                    const abc::MetadataIndex& index,
+                   const abc::MethodLookup& lookup,
                    const abc::MethodInfo& method, const abc::MethodBody& body,
                    SourceCounts* counts);
 nlohmann::json SerializeCounts(const SourceCounts& counts);
