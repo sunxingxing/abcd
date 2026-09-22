@@ -64,7 +64,6 @@ int main() {
   close(fd);
   auto opened = corpus::AbcFile::Open(path);
   auto& file = *std::get<std::unique_ptr<corpus::AbcFile>>(opened);
-  unlink(path);
   abc::Header header;
   header.kind = abc::AbcKind::kDynamic;
   header.profile = abc::ProfileId::kDynamic1206;
@@ -136,4 +135,6 @@ int main() {
   Check(std::get<structure::StructureFault>(
             std::get<structure::StructureFailure>(limited).error) ==
         structure::StructureFault::kOutputLimit);
+  // Keep ctime stable until all lazy readers and identity checks finish.
+  unlink(path);
 }
