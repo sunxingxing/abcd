@@ -6,6 +6,7 @@
 #include <sstream>
 #include <vector>
 
+#include "abcd/source/acyclic_body.h"
 #include "abcd/source/linear_body.h"
 
 namespace {
@@ -22,6 +23,23 @@ int main(int argc, char** argv) {
   std::vector<std::uint8_t> bytes(1024);
   Word(bytes, 64, 512);
   Word(bytes, 68, 1023);  // Invalid string payload at second slot.
+  struct NameCase {
+    std::string_view name;
+    bool element;
+  };
+  constexpr std::array name_cases{
+      NameCase{"0", true},           NameCase{"4294967294", true},
+      NameCase{"4294967295", false}, NameCase{"01", false},
+      NameCase{"-0", false},         NameCase{"9999999999", false},
+      NameCase{"", false},           NameCase{"1.0", false}};
+  std::size_t string_at = 600;
+  for (std::size_t i = 0; i < name_cases.size(); ++i) {
+    Word(bytes, 72 + i * sizeof(std::uint32_t), string_at);
+    bytes[string_at++] =
+        static_cast<std::uint8_t>(name_cases[i].name.size() * 2 + 1);
+    for (const auto ch : name_cases[i].name) bytes[string_at++] = ch;
+    bytes[string_at++] = 0;
+  }
   const std::array<std::uint8_t, 10> text{10,   'A',  0xc0, 0x80, 0xed,
                                           0xa0, 0x80, '"',  '\\', 0};
   std::copy(text.begin(), text.end(), bytes.begin() + 512);
@@ -39,7 +57,7 @@ int main(int argc, char** argv) {
   header.layout = abc::DynamicLayout{};
   header.file_size = bytes.size();
   abc::MetadataIndex index;
-  index.regions.push_back({200, 300, {}, {2, 64}, {}, {}});
+  index.regions.push_back({200, 300, {}, {2 + name_cases.size(), 64}, {}, {}});
   source::MethodConstants constants{file, header, index, {210}, {1024}};
   abc::MethodBody body;
   const std::array<std::uint8_t, 3> load{0x3e, 0, 0};
@@ -60,6 +78,67 @@ int main(int argc, char** argv) {
   Check(output.str() == "acc = \"A\\u0000\\ud800\\\"\\\\\";\nreturn acc;\n");
   const std::array<std::string_view, 1> registers{"object"};
   std::array<std::string, 2> named_sources;
+  std::array<std::string, 2> store_sources;
+  std::string collision_source;
+  const std::array<std::string_view, 2> store_registers{"object", "value"};
+  for (std::size_t form = 0; form < store_sources.size(); ++form) {
+    const std::vector<std::uint8_t> encoded =
+        form == 0 ? std::vector<std::uint8_t>{0x60, 1, 0x43, 0, 0, 0, 0, 0x64}
+                  : std::vector<std::uint8_t>{0x60, 1, 0x91, 0xff, 0xff,
+                                              0,    0, 0,    0x64};
+    abc::MethodBody store;
+    for (std::size_t pc = 0; pc < encoded.size();) {
+      const auto decoded =
+          std::get<abc::DecodedInstruction>(abc::DecodeInstruction(
+              std::span(encoded).subspan(pc), header.profile));
+      store.instructions.push_back(
+          {{static_cast<std::uint32_t>(pc)}, decoded, {}});
+      pc += decoded.size;
+    }
+    std::ostringstream rendered;
+    Check(std::holds_alternative<std::size_t>(source::WriteLinearBody(
+        store, {"acc", store_registers}, rendered, {}, &constants)));
+    store_sources[form] = rendered.str();
+    std::ostringstream ordered;
+    Check(std::holds_alternative<std::size_t>(source::WriteAcyclicBody(
+        store, {"acc", store_registers}, ordered, {}, &constants)));
+    Check(ordered.str() == rendered.str());
+    if (form == 0) {
+      const std::array<std::string_view, 2> collision_names{"$object",
+                                                            "$value"};
+      std::ostringstream collision;
+      Check(std::holds_alternative<std::size_t>(source::WriteLinearBody(
+          store, {"$acc", collision_names}, collision, {}, &constants)));
+      collision_source = collision.str();
+    }
+    for (std::size_t i = 0; i < name_cases.size(); ++i) {
+      store.instructions[1].decoded.operands[1].raw_bits = i + 2;
+      std::ostringstream checked;
+      const auto emitted = source::WriteLinearBody(
+          store, {"acc", store_registers}, checked, {}, &constants);
+      if (name_cases[i].element) {
+        Check(std::get<source::BodyEmitFailure>(emitted).kind ==
+              source::BodyEmitError::kIndexedName);
+        Check(checked.str().empty());
+      } else {
+        Check(std::holds_alternative<std::size_t>(emitted));
+      }
+    }
+    store.instructions[1].decoded.operands[1].raw_bits = 0;
+    std::ostringstream rejected_store;
+    Check(std::get<source::BodyEmitFailure>(
+              source::WriteLinearBody(
+                  store, {"acc", store_registers}, rejected_store,
+                  {store_sources[form].size() - 1}, &constants))
+              .emit_error == source::EmitError::kOutputLimit);
+    Check(rejected_store.str().empty());
+    store.instructions.erase(store.instructions.begin());
+    Check(std::get<source::BodyEmitFailure>(
+              source::WriteLinearBody(store, {"acc", store_registers},
+                                      rejected_store, {}, &constants))
+              .kind == source::BodyEmitError::kAccumulatorHole);
+    Check(rejected_store.str().empty());
+  }
   for (std::size_t form = 0; form < named_sources.size(); ++form) {
     const std::vector<std::uint8_t> encoded =
         form == 0
@@ -81,6 +160,20 @@ int main(int argc, char** argv) {
     Check(named_sources[form] ==
           "acc = object;\nacc = (acc)[\"A\\u0000\\ud800\\\"\\\\\"];\nreturn "
           "acc;\n");
+    for (std::size_t i = 0; i < name_cases.size(); ++i) {
+      named.instructions[1].decoded.operands[1].raw_bits = i + 2;
+      std::ostringstream checked;
+      const auto emitted = source::WriteLinearBody(named, {"acc", registers},
+                                                   checked, {}, &constants);
+      if (name_cases[i].element) {
+        Check(std::get<source::BodyEmitFailure>(emitted).kind ==
+              source::BodyEmitError::kIndexedName);
+        Check(checked.str().empty());
+      } else {
+        Check(std::holds_alternative<std::size_t>(emitted));
+      }
+    }
+    named.instructions[1].decoded.operands[1].raw_bits = 0;
     std::ostringstream invalid;
     Check(std::get<source::BodyEmitFailure>(
               source::WriteLinearBody(named, {"acc", registers}, invalid))
@@ -134,5 +227,10 @@ int main(int argc, char** argv) {
     for (std::size_t i = 0; i < named_sources.size(); ++i)
       std::cout << "export function named" << i << "(object){let acc;\n"
                 << named_sources[i] << "}\n";
+    for (std::size_t i = 0; i < store_sources.size(); ++i)
+      std::cout << "export function write" << i << "(object,value){let acc;\n"
+                << store_sources[i] << "}\n";
+    std::cout << "export function writeCollision($object,$value){let $acc;\n"
+              << collision_source << "}\n";
   }
 }

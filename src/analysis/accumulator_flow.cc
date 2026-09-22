@@ -5,6 +5,7 @@
 
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/named_read.h"
+#include "abcd/analysis/named_write.h"
 
 namespace abcd::analysis {
 namespace {
@@ -26,6 +27,9 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
     return Transfer{true, AccumulatorWrite::kPreserve};
   if (std::holds_alternative<NamedRead>(LiftNamedRead(instruction)))
     return Transfer{true, AccumulatorWrite::kValue};
+  if (std::holds_alternative<NamedWrite>(
+          LiftNamedWrite(instruction, frame_size)))
+    return Transfer{true, AccumulatorWrite::kPreserve};
   switch (instruction.opcode) {
     case Opcode::kLDHOLE:
       if (instruction.operand_count != 0) return std::nullopt;

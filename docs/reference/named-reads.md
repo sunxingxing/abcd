@@ -25,6 +25,12 @@ Lifting takes fixed time/storage. Each constant access adds O(log regions +
 string bytes + output bytes) work, without caching all names or accumulating
 body output. Accumulator reads before initialization are rejected.
 
+Canonical element names are now explicitly refused at the source boundary:
+the pinned name fast path can bypass element storage, so JS bracket reads are
+not generally equivalent for those names. See the
+[indexed-name analysis](named-writes.md#indexed-name-refusal). String literal
+loads and typed name lifting are unaffected.
+
 Tests exercise both encodings, pool/cache boundaries, invalid operands,
 missing context, malformed constant payloads with the originating PC,
 exact/short output budgets, and no leaked prefix on failure. Generated

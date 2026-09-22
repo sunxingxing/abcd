@@ -14,7 +14,8 @@ enum class BodyEmitError {
   kTrailingInstructions,
   kExpression,
   kMissingConstants,
-  kConstant
+  kConstant,
+  kIndexedName
 };
 struct BodyEmitFailure {
   BodyEmitError kind;
@@ -38,10 +39,13 @@ struct MethodConstants {
 // for all registers and accumulator, initializes registers according to ABI,
 // and guarantees language values (no VM sentinels). Accumulator reads must be
 // dominated by a write here; caller initialization cannot bypass that check.
-// Only straight-line scalar/string/property assignments, nop, return and
-// unconditional throw are supported. Exceptions, branches and trailing code are
-// explicit errors. Full preflight leaves output untouched on
-// semantic/budget/binding failure; IO failure may leave a prefix. String loads
+// Only straight-line scalar/string/property reads and strict named stores,
+// nop, return and unconditional throw are supported. Exceptions, branches and
+// trailing code are
+// explicit errors, as are canonical element names on named property operations
+// whose pinned fast path is not equivalent to native JS indexed access.
+// Full preflight leaves output untouched on semantic/budget/binding failure;
+// IO failure may leave a prefix. String loads
 // require same-file constants and one transient string allowance within the
 // process memory budget. Work is O(instructions * log(regions) + visited string
 // bytes + emitted bytes), with no body-sized output buffer. Inputs must stay

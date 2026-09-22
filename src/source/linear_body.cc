@@ -2,18 +2,36 @@
 
 #include <array>
 #include <charconv>
+#include <limits>
 #include <ostream>
 #include <streambuf>
 
 #include "abcd/abc/pool_reference.h"
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/named_read.h"
+#include "abcd/analysis/named_write.h"
 #include "abcd/source/string_literal.h"
 #include "ordered_body.h"
 
 namespace abcd::source {
 namespace {
 using namespace analysis;
+enum class StringUse { kLiteral, kPropertyName };
+bool IsElementName(std::u16string_view name) {
+  constexpr auto kIndexDigits =
+      std::numeric_limits<std::uint32_t>::digits10 + 1;
+  constexpr std::uint64_t kMaxElementIndex = UINT32_MAX - 1;
+  constexpr std::uint64_t kDecimalRadix = 10;
+  if (name.empty() || name.size() > kIndexDigits ||
+      (name.size() > 1 && name.front() == u'0'))
+    return false;
+  std::uint64_t value = 0;
+  for (const auto digit : name) {
+    if (digit < u'0' || digit > u'9') return false;
+    value = value * kDecimalRadix + (digit - u'0');
+  }
+  return value <= kMaxElementIndex;
+}
 class DiscardBuffer : public std::streambuf {
   std::streamsize xsputn(const char*, std::streamsize count) override {
     return count;
@@ -104,6 +122,11 @@ class BodyWriter {
           if (!accumulator_defined)
             return Fail(BodyEmitError::kAccumulatorHole);
           NamedLoad(instruction.decoded);
+        } else if (opcode == Opcode::kSTOBJBYNAME_IMM8_ID16_V8 ||
+                   opcode == Opcode::kSTOBJBYNAME_IMM16_ID16_V8) {
+          if (!accumulator_defined)
+            return Fail(BodyEmitError::kAccumulatorHole);
+          NamedStore(instruction.decoded);
         } else if (opcode == Opcode::kRETURNUNDEFINED) {
           Text("return;\n");
           terminated = true;
@@ -187,10 +210,34 @@ class BodyWriter {
     Text(" = (");
     Expression(ScalarValue{Accumulator{}});
     Text(")[");
-    StringConstant(std::get<NamedRead>(lifted).name);
+    StringConstant(std::get<NamedRead>(lifted).name, StringUse::kPropertyName);
     Text("];\n");
   }
-  void StringConstant(abc::PoolIndex slot) {
+  void NamedStore(const abc::DecodedInstruction& instruction) {
+    const auto lifted = LiftNamedWrite(instruction, names_.registers.size());
+    if (const auto* error = std::get_if<NamedWriteError>(&lifted)) {
+      error_ = BodyEmitFailure{BodyEmitError::kUnsupportedInstruction,
+                               offset_,
+                               *error == NamedWriteError::kRegisterRange
+                                   ? ScalarError::kRegisterRange
+                                   : ScalarError::kMalformedInstruction,
+                               {}};
+      return;
+    }
+    const auto store = std::get<NamedWrite>(lifted);
+    // RuntimeStObjByName requires throwing [[Set]] even in a sloppy caller.
+    // Private parameters are fresh bindings; arguments are evaluated outside
+    // their scope. Do not assign the setter/Proxy result back into acc.
+    Text("(($object, $value) => { \"use strict\"; $object[");
+    StringConstant(store.name, StringUse::kPropertyName);
+    Text("] = $value; })(");
+    Expression(ScalarValue{store.object});
+    Text(", ");
+    Expression(ScalarValue{Accumulator{}});
+    Text(");\n");
+  }
+  void StringConstant(abc::PoolIndex slot,
+                      StringUse use = StringUse::kLiteral) {
     if (error_) return;
     if (!constants_) {
       error_ = Fail(BodyEmitError::kMissingConstants);
@@ -213,8 +260,14 @@ class BodyWriter {
           BodyEmitFailure{BodyEmitError::kConstant, offset_, {}, {}, *failure};
       return;
     }
-    Account(WriteStringLiteral(std::get<std::u16string>(string), output_,
-                               {remaining_}));
+    const auto& text = std::get<std::u16string>(string);
+    // Pinned ObjectFastOperator's name path bypasses ordinary element storage.
+    // Native JS [] would silently change indexed-name reads/writes on arrays.
+    if (use == StringUse::kPropertyName && IsElementName(text)) {
+      error_ = Fail(BodyEmitError::kIndexedName);
+      return;
+    }
+    Account(WriteStringLiteral(text, output_, {remaining_}));
   }
   BodyEmitFailure Fail(BodyEmitError kind) const {
     return {kind, offset_, {}, {}};
