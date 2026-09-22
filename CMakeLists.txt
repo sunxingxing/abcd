@@ -51,6 +51,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/indexed_read.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/named_read.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/named_write.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/ordinary_call.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/named_invocation.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/phi_placement.cc src/analysis/iterated_frontier.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/binding_liveness.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/register_effect.cc)
@@ -183,6 +184,10 @@ if(BUILD_TESTING)
   add_executable(linear_constants_test tests/unit/source/linear_constants_test.cc)
   target_link_libraries(linear_constants_test PRIVATE abcd_source)
   add_test(NAME linear_constants_test COMMAND linear_constants_test)
+  add_executable(named_call_test tests/unit/source/named_call_test.cc)
+  target_include_directories(named_call_test PRIVATE tests/support)
+  target_link_libraries(named_call_test PRIVATE abcd_source)
+  add_test(NAME named_call_test COMMAND named_call_test)
   add_executable(linear_body_test tests/unit/source/linear_body_test.cc)
   target_link_libraries(linear_body_test PRIVATE abcd_source)
   add_test(NAME linear_body_test COMMAND linear_body_test)
@@ -250,6 +255,12 @@ if(BUILD_TESTING)
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/acyclic_body.mjs
       -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
       -DABCD_OUTPUT_NAME=acyclic-body.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
+    add_test(NAME named_call_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:named_call_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/named_call.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=named-call.mjs
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME linear_constants_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:linear_constants_test>

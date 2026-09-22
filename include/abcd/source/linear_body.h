@@ -43,8 +43,10 @@ struct MethodConstants {
 // and guarantees language values (no VM sentinels). Accumulator reads must be
 // dominated by a write here; caller initialization cannot bypass that check.
 // Only straight-line scalar/string/property reads, strict named stores,
-// fixed/narrow-range ordinary calls, nop, return and unconditional throw are
-// supported. Exceptions, branches and trailing code are
+// fixed/narrow-range ordinary calls, proven same-block named invocations, nop,
+// return and unconditional throw are supported. Named-call fusion requires
+// private temporaries inaccessible to called code; no external catch may
+// observe their intermediate state on abrupt exit. Exceptions, branches and trailing code are
 // explicit errors, as are canonical element names on named property operations
 // whose pinned fast path is not equivalent to native JS indexed access.
 // Full preflight leaves output untouched on semantic/budget/binding failure;

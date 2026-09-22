@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "abcd/analysis/branch_condition.h"
+#include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/ordinary_call.h"
@@ -103,7 +104,13 @@ std::variant<AccumulatorFlow, AccumulatorFailure> AnalyzeAccumulator(
              ++i) {
           ++result.instruction_visits;
           const auto& instruction = body.instructions[i];
-          const auto transfer = Access(instruction.decoded, frame_size);
+          auto transfer = Access(instruction.decoded, frame_size);
+          if (!transfer && i >= std::size_t(block.first_instruction) + 2 &&
+              MatchNamedInvocation(std::span(body.instructions)
+                                       .subspan(block.first_instruction,
+                                                block.instruction_count),
+                                   i - block.first_instruction - 1, frame_size))
+            transfer = Transfer{true, AccumulatorWrite::kValue};
           if (!transfer)
             return AccumulatorFailure{AccumulatorError::kUnsupportedInstruction,
                                       instruction.offset};

@@ -8,6 +8,7 @@
 
 #include "abcd/abc/pool_reference.h"
 #include "abcd/analysis/branch_condition.h"
+#include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/ordinary_call.h"
@@ -125,7 +126,8 @@ class BodyWriter {
                           bool accumulator_defined, bool require_terminator) {
     bool terminated = false;
     try {
-      for (const auto& instruction : instructions) {
+      for (std::size_t i = 0; i < instructions.size(); ++i) {
+        const auto& instruction = instructions[i];
         offset_ = instruction.offset;
         if (terminated) return Fail(BodyEmitError::kTrailingInstructions);
         using abc::Opcode;
@@ -138,7 +140,13 @@ class BodyWriter {
                    opcode == Opcode::kLDOBJBYNAME_IMM16_ID16) {
           if (!accumulator_defined)
             return Fail(BodyEmitError::kAccumulatorHole);
-          NamedLoad(instruction.decoded);
+          if (const auto invocation = MatchNamedInvocation(
+                  instructions, i, names_.registers.size())) {
+            NamedCall(*invocation);
+            ++i;
+          } else {
+            NamedLoad(instruction.decoded);
+          }
         } else if (opcode == Opcode::kSTOBJBYNAME_IMM8_ID16_V8 ||
                    opcode == Opcode::kSTOBJBYNAME_IMM16_ID16_V8) {
           if (!accumulator_defined)
@@ -259,6 +267,23 @@ class BodyWriter {
     for (std::uint32_t i = 0; i < call.Count() && !error_; ++i) {
       if (i) Text(", ");
       Expression(ScalarValue{*call.At(i)});
+    }
+    Text(");\n");
+  }
+  void NamedCall(const NamedInvocation& invocation) {
+    // The immediately preceding copy proves acc == explicit receiver. Native
+    // Reference-call syntax preserves exactly one getter and the original this;
+    // do not split the member expression or consult mutable call intrinsics.
+    Expression(ScalarValue{Accumulator{}});
+    Text(" = (");
+    Expression(ScalarValue{Accumulator{}});
+    Text(")[");
+    StringConstant(invocation.property.name, StringUse::kPropertyName);
+    Text("](");
+    for (std::size_t i = 0; i < invocation.call.arguments.count && !error_;
+         ++i) {
+      if (i) Text(", ");
+      Expression(ScalarValue{invocation.call.arguments.values[i]});
     }
     Text(");\n");
   }

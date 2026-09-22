@@ -38,6 +38,8 @@ enum class FixtureKind {
   kReferenceMethod,
   kSourceMethod,
   kSourceString,
+  kSourceNamedCall,
+  kSourceMismatchedReceiver,
   kSourceNameBudget,
   kEnvironmentMethod,
   kCaptureSummary,
@@ -109,6 +111,10 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kSourceMethod;
     else if (option == "--source-string")
       kind = FixtureKind::kSourceString;
+    else if (option == "--source-named-call")
+      kind = FixtureKind::kSourceNamedCall;
+    else if (option == "--source-mismatched-receiver")
+      kind = FixtureKind::kSourceMismatchedReceiver;
     else if (option == "--source-name-budget")
       kind = FixtureKind::kSourceNameBudget;
     else if (option == "--environment-method")
@@ -248,10 +254,17 @@ int main(int argc, char** argv) {
       if (kind == FixtureKind::kReferenceMethod ||
           kind == FixtureKind::kSourceMethod ||
           kind == FixtureKind::kSourceString ||
+          kind == FixtureKind::kSourceNamedCall ||
+          kind == FixtureKind::kSourceMismatchedReceiver ||
           kind == FixtureKind::kInvalidReference) {
         if (kind == FixtureKind::kSourceString) {
           // A successful source path must resolve the regional string slot.
           dynamic.insert(dynamic.end(), {0, 3, 4, 0, 0x3e, 0, 0, 0x64});
+        } else if (kind == FixtureKind::kSourceNamedCall ||
+                   kind == FixtureKind::kSourceMismatchedReceiver) {
+          dynamic.insert(dynamic.end(), {0, 4, 10, 0, 0x60, 3,
+              0x42, 0, 0, 0, 0x2d, 0,
+              static_cast<std::uint8_t>(kind == FixtureKind::kSourceNamedCall ? 3 : 2), 0x64});
         } else {
           // lda.str id16, createarraywithbuffer imm8/id16, returnundefined.
           dynamic.insert(dynamic.end(),
