@@ -40,6 +40,7 @@ enum class FixtureKind {
   kSourceString,
   kSourceNameBudget,
   kEnvironmentMethod,
+  kCaptureSummary,
   kEnvironmentConflict,
   kCreationMethod,
   kCreationNonmethod,
@@ -106,6 +107,8 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kSourceNameBudget;
     else if (option == "--environment-method")
       kind = FixtureKind::kEnvironmentMethod;
+    else if (option == "--capture-summary")
+      kind = FixtureKind::kCaptureSummary;
     else if (option == "--environment-conflict")
       kind = FixtureKind::kEnvironmentConflict;
     else if (option == "--creation-method")
@@ -233,6 +236,9 @@ int main(int argc, char** argv) {
       } else if (kind == FixtureKind::kEnvironmentMethod) {
         dynamic.insert(dynamic.end(), {0, 3, 10, 0, 0x09, 2, 0x3c, 0,
                                        0x3d, 0x10, 0x69, 0x3c, 0, 0x65});
+      } else if (kind == FixtureKind::kCaptureSummary) {
+        dynamic.insert(dynamic.end(),
+                       {0, 3, 7, 0, 0x3c, 0, 0x3c, 0, 0x3c, 0x10, 0x65});
       } else if (kind == FixtureKind::kEnvironmentConflict) {
         dynamic.insert(dynamic.end(), {0, 3, 14, 0, 0x09, 1, 0x02, 0x4f, 7,
                                        0x09, 1, 0xd5, 0x4d, 3, 0xd5, 0x3c, 0, 0x65});

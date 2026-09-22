@@ -1,5 +1,6 @@
 #include "creation_inspection.h"
 
+#include <algorithm>
 #include <type_traits>
 
 namespace abcd::tools {
@@ -14,9 +15,18 @@ const char* Category(analysis::CreationBindingError) { return "binding"; }
 const char* Category(abc::MethodTargetError) { return "target"; }
 const char* Category(abc::MetadataError) { return "metadata"; }
 const char* Category(abc::MethodAttributeError) { return "attribute"; }
+const char* Category(analysis::CaptureSummaryError) {
+  return "capture_summary";
+}
 }  // namespace
 
 CreationCounts& CreationCounts::operator+=(const CreationCounts& other) {
+  capture_summary_methods += other.capture_summary_methods;
+  capture_summary_failures += other.capture_summary_failures;
+  capture_unique_slots += other.capture_unique_slots;
+  capture_access_sites += other.capture_access_sites;
+  capture_summary_peak_bytes =
+      std::max(capture_summary_peak_bytes, other.capture_summary_peak_bytes);
   methods += other.methods;
   rejected_methods += other.rejected_methods;
   sites += other.sites;
@@ -53,6 +63,21 @@ void InspectCreations(const corpus::AbcFile& file, const abc::Header& header,
   }
   ++counts->methods;
   const auto& flow = std::get<analysis::EnvironmentFlow>(analyzed);
+  {
+    const auto summarized = analysis::CaptureSummary::Build(flow.bindings);
+    if (const auto* error =
+            std::get_if<analysis::CaptureSummaryError>(&summarized)) {
+      ++counts->capture_summary_failures;
+      ++counts->obstacles[*error];
+    } else {
+      const auto& summary = std::get<analysis::CaptureSummary>(summarized);
+      ++counts->capture_summary_methods;
+      counts->capture_unique_slots += summary.Uses().size();
+      counts->capture_access_sites += summary.Sites();
+      counts->capture_summary_peak_bytes =
+          std::max(counts->capture_summary_peak_bytes, summary.PeakBytes());
+    }
+  }
   for (std::size_t i = 0; i < body.instructions.size(); ++i) {
     const auto result = analysis::BindCreation(file, header, index, lookup,
                                                method.offset, body, flow, i);
@@ -114,7 +139,12 @@ nlohmann::json SerializeCounts(const CreationCounts& counts) {
   for (const auto& [opcode, count] : counts.other_method_instructions)
     other.push_back(
         {{"opcode", static_cast<std::uint16_t>(opcode)}, {"count", count}});
-  return {{"creation_methods", counts.methods},
+  return {{"capture_summary_methods", counts.capture_summary_methods},
+          {"capture_summary_failures", counts.capture_summary_failures},
+          {"capture_unique_slots", counts.capture_unique_slots},
+          {"capture_access_sites", counts.capture_access_sites},
+          {"capture_summary_peak_bytes", counts.capture_summary_peak_bytes},
+          {"creation_methods", counts.methods},
           {"creation_rejected_methods", counts.rejected_methods},
           {"creation_sites", counts.sites},
           {"creation_bound_sites", counts.bound},

@@ -57,8 +57,9 @@ The existing 1,000,000,000-byte process address-space limit remains enabled.
 - Bound sites partition into local ordinary, external ordinary and sendable
   capture categories. External means relative to the caller's entry environment,
   not resolved across the complete closure graph.
-- The obstacle histogram combines one error per rejected method with one per
-  failed site; these are different units and must not be called failed methods.
+- The obstacle histogram combines one error per rejected method, failed site
+  and failed capture summary; these are different units and must not be called
+  failed methods.
 - `other_method_instructions` records other opcodes with method operands,
   including unreachable ones, within environment-accepted methods. It is not
   an exhaustive inventory of every closure creation hidden in literal arrays.
@@ -90,3 +91,7 @@ semantics. None of these counts constitutes a recovered record.
 
 Full-corpus target resolution and memory measurements are recorded in the
 [validation report](../validation/2026-09-22-creation-bindings.md).
+
+The probe also constructs [per-method capture summaries](capture-summary.md)
+for reusable captured-slot requirements; those counts are separate from
+creation-site binding results.

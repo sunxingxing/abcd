@@ -4,6 +4,7 @@
 #include <map>
 #include <nlohmann/json.hpp>
 
+#include "abcd/analysis/capture_summary.h"
 #include "abcd/analysis/creation_binding.h"
 
 namespace abcd::tools {
@@ -11,8 +12,14 @@ using CreationObstacle =
     std::variant<analysis::EnvironmentFlowError, analysis::LexicalError,
                  analysis::EnvironmentError, analysis::CreationError,
                  analysis::CreationBindingError, abc::MethodTargetError,
-                 abc::MetadataError, abc::MethodAttributeError>;
+                 abc::MetadataError, abc::MethodAttributeError,
+                 analysis::CaptureSummaryError>;
 struct CreationCounts {
+  std::uint64_t capture_summary_methods = 0;
+  std::uint64_t capture_summary_failures = 0;
+  std::uint64_t capture_unique_slots = 0;
+  std::uint64_t capture_access_sites = 0;
+  std::size_t capture_summary_peak_bytes = 0;
   std::uint64_t methods = 0;
   std::uint64_t rejected_methods = 0;
   std::uint64_t sites = 0;
