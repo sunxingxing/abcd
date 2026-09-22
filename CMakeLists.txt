@@ -67,6 +67,7 @@ add_library(abcd_source src/source/string_literal.cc src/source/scalar_expressio
 target_sources(abcd_source PRIVATE src/source/linear_body.cc)
 target_sources(abcd_source PRIVATE src/source/acyclic_body.cc)
 target_sources(abcd_source PRIVATE src/source/local_lexical_body.cc)
+target_sources(abcd_source PRIVATE src/source/base_function.cc)
 target_link_libraries(abcd_source PUBLIC abcd_analysis)
 target_compile_features(abcd_source PUBLIC cxx_std_20)
 target_include_directories(abcd_source PUBLIC include)
@@ -182,6 +183,10 @@ if(BUILD_TESTING)
   add_executable(linear_body_test tests/unit/source/linear_body_test.cc)
   target_link_libraries(linear_body_test PRIVATE abcd_source)
   add_test(NAME linear_body_test COMMAND linear_body_test)
+  add_executable(base_function_test tests/unit/source/base_function_test.cc)
+  target_include_directories(base_function_test PRIVATE tests/support)
+  target_link_libraries(base_function_test PRIVATE abcd_source)
+  add_test(NAME base_function_test COMMAND base_function_test)
   add_executable(local_lexical_body_test tests/unit/source/local_lexical_body_test.cc tests/support/analysis/local_lexical_scaling.cc)
   target_include_directories(local_lexical_body_test PRIVATE tests/support)
   target_link_libraries(local_lexical_body_test PRIVATE abcd_source)
@@ -203,6 +208,12 @@ if(BUILD_TESTING)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   find_program(ABCD_NODE_EXECUTABLE node)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME base_function_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:base_function_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/base_function.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=base-function.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME local_lexical_body_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:local_lexical_body_test>
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/local_lexical_body.mjs
