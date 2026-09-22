@@ -9,7 +9,8 @@
 namespace abcd::analysis {
 std::size_t IdfIndex::AllocatedBytes() const {
   return nodes_ ? count_ * (sizeof(Node) + sizeof(BlockId)) +
-                      2 * leaves_ * sizeof(std::uint32_t)
+                      2 * leaves_ * sizeof(std::uint32_t) +
+                      edges_ * sizeof(BlockId)
                 : 0;
 }
 
@@ -49,22 +50,31 @@ std::variant<IdfIndex, IdfError> IdfIndex::Build(const NormalFlow& graph,
   const auto& tree = std::get<DominatorTree>(built);
   const auto retained = tree.nodes.capacity() * sizeof(DominatorNode);
   const auto count = graph.blocks.size();
+  std::size_t edges = 0;
+  for (std::size_t i = 0; i < count; ++i)
+    if (tree.nodes[i].begin != 0) edges += graph.blocks[i].successor_count;
   constexpr auto kSnapshotBytes = sizeof(Node) + sizeof(BlockId);
   if (retained > budget.bytes ||
       count > (budget.bytes - retained) / kSnapshotBytes)
     return IdfError::kResourceLimit;
   const auto snapshot_bytes = count * kSnapshotBytes;
+  if (edges > (budget.bytes - retained - snapshot_bytes) / sizeof(BlockId))
+    return IdfError::kResourceLimit;
+  const auto pred_bytes = edges * sizeof(BlockId);
   const auto leaves = std::bit_ceil(count);
   constexpr auto kTreeBytesPerLeaf = 2 * sizeof(std::uint32_t);
-  if (leaves > (budget.bytes - retained - snapshot_bytes) / kTreeBytesPerLeaf)
+  if (leaves > (budget.bytes - retained - snapshot_bytes - pred_bytes) /
+                   kTreeBytesPerLeaf)
     return IdfError::kResourceLimit;
   try {
     IdfIndex index;
     index.count_ = count;
     index.leaves_ = leaves;
+    index.edges_ = edges;
     index.nodes_ = std::make_unique<Node[]>(count);
     index.preorder_ = std::make_unique<BlockId[]>(count);
     index.min_depth_ = std::make_unique<std::uint32_t[]>(2 * leaves);
+    if (edges != 0) index.predecessors_ = std::make_unique<BlockId[]>(edges);
     std::fill_n(index.min_depth_.get(), 2 * leaves, kNoDepth);
     index.peak_bytes_ =
         std::max(tree.work.allocated_bytes, retained + index.AllocatedBytes());
@@ -78,8 +88,31 @@ std::variant<IdfIndex, IdfError> IdfIndex::Build(const NormalFlow& graph,
         ++reachable;
       }
       node.successor_count = graph.blocks[i].successor_count;
-      for (std::size_t j = 0; j < node.successor_count; ++j)
+      for (std::size_t j = 0; j < node.successor_count; ++j) {
         node.successors[j] = graph.blocks[i].successors[j].target;
+        if (node.preorder != 0)
+          ++index.nodes_[node.successors[j].value].pred_count;
+      }
+    }
+    // BuildNormalDominators admitted fewer than UINT32_MAX total edges, so
+    // the reachable subset's CSR offsets/counts cannot overflow this domain.
+    std::uint32_t offset = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+      auto& node = index.nodes_[i];
+      node.pred_begin = offset;
+      offset += node.pred_count;
+      node.pred_count = 0;
+    }
+    // Reachability is from the owned dominator snapshot. An unreachable
+    // predecessor must not make a normal-reachable binding live on a dead path.
+    for (std::size_t i = 0; i < count; ++i) {
+      const auto& node = index.nodes_[i];
+      if (node.preorder == 0) continue;
+      for (std::size_t j = 0; j < node.successor_count; ++j) {
+        auto& target = index.nodes_[node.successors[j].value];
+        index.predecessors_[target.pred_begin + target.pred_count++] = {
+            static_cast<std::uint32_t>(i)};
+      }
     }
     // Dominator preorder puts every parent before its children, even when
     // physical block IDs are unrelated. No recursion or per-node parent climb.

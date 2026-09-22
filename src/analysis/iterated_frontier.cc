@@ -10,42 +10,15 @@
 #include <tuple>
 
 #include "abcd/analysis/phi_placement.h"
+#include "idf_scratch.h"
 
 namespace abcd::analysis {
 namespace {
-class IdfScratch final : public std::pmr::memory_resource {
- public:
-  explicit IdfScratch(std::size_t limit) : limit_(limit) {}
-  std::size_t Live() const { return live_; }
-  std::size_t Peak() const { return peak_; }
-
- private:
-  void* do_allocate(std::size_t bytes, std::size_t alignment) override {
-    if (bytes > limit_ - live_) throw std::bad_alloc{};
-    auto* memory = std::pmr::new_delete_resource()->allocate(bytes, alignment);
-    live_ += bytes;
-    peak_ = std::max(peak_, live_);
-    return memory;
-  }
-  void do_deallocate(void* memory, std::size_t bytes,
-                     std::size_t alignment) override {
-    std::pmr::new_delete_resource()->deallocate(memory, bytes, alignment);
-    live_ -= bytes;
-  }
-  bool do_is_equal(
-      const std::pmr::memory_resource& other) const noexcept override {
-    return this == &other;
-  }
-  std::size_t limit_;
-  std::size_t live_ = 0;
-  std::size_t peak_ = 0;
-};
 struct Marks {
   bool definition = false;
   bool live = false;
   bool frontier = false;
 };
-struct WorkLimit {};
 }  // namespace
 
 std::variant<PhiPlacement, IdfError> IdfIndex::Place(
@@ -54,9 +27,9 @@ std::variant<PhiPlacement, IdfError> IdfIndex::Place(
   try {
     const auto consumed = quota.Consumed();
     const auto charge = [&](std::uint64_t units = 1) {
-      if (!quota.Take(units)) throw WorkLimit{};
+      if (!quota.Take(units)) throw detail::IdfWorkLimit{};
     };
-    IdfScratch memory{budget.bytes};
+    detail::IdfScratch memory{budget.bytes};
     std::pmr::map<BlockId, Marks> marks{&memory};
     std::pmr::map<std::uint32_t, std::uint32_t> covered{&memory};
     std::pmr::vector<BlockId> roots{&memory}, placed{&memory};
@@ -169,7 +142,7 @@ std::variant<PhiPlacement, IdfError> IdfIndex::Place(
         std::max(memory.Peak(), memory.Live() + result.AllocatedBytes());
     result.work.units = quota.Consumed() - consumed;
     return result;
-  } catch (const WorkLimit&) {
+  } catch (const detail::IdfWorkLimit&) {
     return IdfError::kWorkLimit;
   } catch (const std::bad_alloc&) {
     return IdfError::kResourceLimit;

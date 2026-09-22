@@ -54,6 +54,31 @@ struct IdfWork {
   std::size_t marked_blocks = 0;
   std::size_t peak_bytes = 0;
 };
+struct LivenessWork {
+  std::uint64_t block_visits = 0;
+  std::uint64_t edge_visits = 0;
+  std::uint64_t units = 0;
+  std::size_t marked_blocks = 0;
+  std::size_t peak_bytes = 0;
+};
+class BindingLiveness {
+ public:
+  BindingLiveness(BindingLiveness&&) noexcept = default;
+  BindingLiveness& operator=(BindingLiveness&&) noexcept = default;
+  [[nodiscard]] std::span<const BlockId> Blocks() const {
+    return {blocks_.get(), blocks_ ? count_ : 0};
+  }
+  [[nodiscard]] std::size_t AllocatedBytes() const {
+    return Blocks().size_bytes();
+  }
+  LivenessWork work;
+
+ private:
+  friend class IdfIndex;
+  BindingLiveness() = default;
+  std::unique_ptr<BlockId[]> blocks_;
+  std::size_t count_ = 0;
+};
 class PhiPlacement {
  public:
   PhiPlacement(PhiPlacement&&) noexcept = default;
@@ -83,6 +108,16 @@ class IdfIndex {
   IdfIndex& operator=(IdfIndex&&) noexcept = default;
   [[nodiscard]] static std::variant<IdfIndex, IdfError> Build(
       const NormalFlow& graph, BlockId entry = {}, IdfBudget budget = {});
+  // Upward uses read the old value BEFORE any definition in that block.
+  // A block in both spans is live-in. Later reads after a first definition are
+  // NOT seeds. Normal-reachable input only; invalid IDs fail, duplicates and
+  // unreachable IDs are ignored. O((D+U+L+E_L) log(2+D+U+L)), sparse storage;
+  // each live block and incoming edge visited once. Does not derive def/use or
+  // model closure aliasing. Reuse quota across this and Place for all bindings.
+  [[nodiscard]] std::variant<BindingLiveness, IdfError> LiveIn(
+      std::span<const BlockId> definitions,
+      std::span<const BlockId> upward_uses, IdfQuota& quota,
+      IdfBudget budget = {}) const;
   // One binding's IDF, optionally pruned by caller-proven live-in blocks.
   // nullopt is unpruned; empty span prunes all. Duplicates are accepted;
   // unreachable IDs are ignored, invalid IDs fail. Result is sorted and owned.
@@ -108,12 +143,16 @@ class IdfIndex {
     std::uint32_t depth = 0;
     std::uint32_t preorder = 0;
     std::uint32_t end = 0;
+    std::uint32_t pred_begin = 0;
+    std::uint32_t pred_count = 0;
     std::uint8_t successor_count = 0;
   };
   std::unique_ptr<Node[]> nodes_;
   std::unique_ptr<BlockId[]> preorder_;
   std::unique_ptr<std::uint32_t[]> min_depth_;
+  std::unique_ptr<BlockId[]> predecessors_;
   std::size_t count_ = 0;
+  std::size_t edges_ = 0;
   std::size_t leaves_ = 0;
   std::size_t peak_bytes_ = 0;
 };

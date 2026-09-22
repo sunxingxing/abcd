@@ -10,7 +10,8 @@ Build an owned `IdfIndex` once from a normal CFG and its chosen entry, computing
 dominators internally so a mismatched tree cannot silently be used. Reject
 resume edges; exceptional edges are not present and must not be inferred.
 The snapshot owns compact successors, dominator subtree intervals, depths,
-inverse preorder and a segment tree of minimum successor depths.
+inverse preorder and a segment tree of minimum successor depths. It now also
+owns a flat reachable-predecessor index for `LiveIn`; see `binding-liveness.md`.
 It may outlive the input graph and serve concurrent immutable queries.
 
 Each `Place` query takes defining blocks and optional live-in blocks for ONE
