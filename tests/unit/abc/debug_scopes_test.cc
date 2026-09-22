@@ -45,13 +45,15 @@ abcd::abc::DebugScopeResult Read(std::vector<std::uint8_t> program,
   close(fd);
   auto opened = corpus::AbcFile::Open(path);
   const auto& file = *std::get<std::unique_ptr<corpus::AbcFile>>(opened);
-  unlink(path);
   abc::Header header;
   header.kind = abc::AbcKind::kDynamic;
   header.profile = abc::ProfileId::kDynamic1206;
   header.layout = abc::DynamicLayout{};
   header.file_size = bytes.size();
-  return abc::ReadDebugScopes(file, header, debug, code_bytes, budget);
+  auto result = abc::ReadDebugScopes(file, header, debug, code_bytes, budget);
+  // Unlink changes ctime; retain the input until immutable-file checks finish.
+  unlink(path);
+  return result;
 }
 }  // namespace
 int main() {

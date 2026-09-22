@@ -87,7 +87,6 @@ int main() {
     close(fd);
     auto opened = corpus::AbcFile::Open(path);
     const auto& file = *std::get<std::unique_ptr<corpus::AbcFile>>(opened);
-    unlink(path);
     abc::Header header;
     header.kind = abc::AbcKind::kDynamic;
     header.profile = abc::ProfileId::kDynamic1206;
@@ -110,6 +109,7 @@ int main() {
     std::ostringstream out;
     out << "{\"known_module\":true";
     structure::WriteClassSites(text, index, lookup, caller, out);
+    unlink(path);
     out << '}';
     const auto json = nlohmann::json::parse(out.str());
     Check(json["known_module"] == true);
