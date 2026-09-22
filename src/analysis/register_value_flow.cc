@@ -5,14 +5,18 @@
 #include <stdexcept>
 
 #include "idf_scratch.h"
+#include "lexical_value_index.h"
 #include "register_value_rule.h"
 
 namespace abcd::analysis {
 namespace {
 inline constexpr std::size_t kScalarInputs = 2;
+struct ValueNodeId {
+  std::uint32_t value = 0;
+};
 struct ValueDependency {
-  SsaValueId source;
-  SsaValueId target;
+  ValueNodeId source;
+  ValueNodeId target;
 };
 struct ValueNode {
   detail::ValueRuleKind kind = detail::ValueRuleKind::kFixed;
@@ -26,10 +30,27 @@ bool SameSlot(ScalarSlot a, ScalarSlot b) {
 }
 }  // namespace
 
+std::variant<RegisterValueFlow, ValueFlowFailure>
+RegisterValueFlow::BuildWithLexicals(const abc::MethodBody& body,
+                                     const RegisterSsa& ssa,
+                                     std::uint64_t frame_size,
+                                     std::span<const EntryValueFact> entries,
+                                     const LexicalValueContext& lexicals,
+                                     IdfQuota& quota, IdfBudget budget) {
+  return Analyze(body, ssa, frame_size, entries, &lexicals, quota, budget);
+}
+
 std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Build(
     const abc::MethodBody& body, const RegisterSsa& ssa,
     std::uint64_t frame_size, std::span<const EntryValueFact> entries,
     IdfQuota& quota, IdfBudget budget) {
+  return Analyze(body, ssa, frame_size, entries, nullptr, quota, budget);
+}
+
+std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
+    const abc::MethodBody& body, const RegisterSsa& ssa,
+    std::uint64_t frame_size, std::span<const EntryValueFact> entries,
+    const LexicalValueContext* lexicals, IdfQuota& quota, IdfBudget budget) {
   using Kind = detail::ValueRuleKind;
   using Error = ValueFlowError;
   try {
@@ -38,13 +59,21 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Build(
       if (!quota.Take(units)) throw detail::IdfWorkLimit{};
     };
     detail::IdfScratch memory{budget.bytes};
-    const auto count = ssa.Values().size();
+    LexicalIndex cells{body, ssa, frame_size, quota, &memory};
+    if (lexicals) cells.Collect(*lexicals);
+    const auto value_count = ssa.Values().size();
+    // Keep graph edges as compact as register-only SSA IDs. A graph beyond
+    // this representable range cannot fit the engine's process memory bound.
+    if (value_count > UINT32_MAX ||
+        cells.cells.size() > UINT32_MAX - value_count)
+      throw std::bad_alloc{};
+    const auto count = value_count + cells.cells.size();
     charge(count);
     std::pmr::vector<ValueNode> nodes(count, {}, &memory);
     std::pmr::vector<ValueKinds> facts(count, {}, &memory);
     std::pmr::vector<std::uint8_t> marked(count, 0, &memory);
     std::pmr::vector<ValueDependency> edges{&memory};
-    for (std::size_t i = 0; i < count; ++i) {
+    for (std::size_t i = 0; i < value_count; ++i) {
       charge();
       const auto& value = ssa.Values()[i];
       const SsaValueId target{static_cast<std::uint32_t>(i)};
@@ -54,10 +83,10 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Build(
         nodes[i].kind = Kind::kJoin;
         for (const auto& input : ssa.Inputs(target)) {
           charge();
-          if (input.value.value >= count ||
+          if (input.value.value >= value_count ||
               !SameSlot(ssa.Values()[input.value.value].slot, value.slot))
             return ValueFlowFailure{Error::kInvalidSsa, {}, {}};
-          edges.push_back({input.value, target});
+          edges.push_back({{input.value.value}, {target.value}});
         }
       } else {
         const auto instruction =
@@ -79,17 +108,41 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Build(
           return ValueFlowFailure{Error::kInvalidSsa, instruction, {}};
         for (const auto& read : reads) {
           charge();
-          if (read.value.value >= count)
+          if (read.value.value >= value_count)
             return ValueFlowFailure{Error::kInvalidSsa, instruction, {}};
           nodes[i].inputs[nodes[i].input_count++] = read.value;
-          edges.push_back({read.value, target});
+          edges.push_back({{read.value.value}, {target.value}});
         }
+      }
+    }
+    // Flow-insensitive CELL categories, not last-store forwarding. Every fresh
+    // dynamic instance starts Hole, including a repeatedly executed allocation.
+    // Joining all stores preserves that possibility; never seed JS undefined.
+    for (std::size_t i = value_count; i < count; ++i) {
+      charge();
+      nodes[i].kind = Kind::kJoin;
+      facts[i] = ValueKinds::Hole();
+    }
+    for (const auto access : cells.accesses) {
+      charge();
+      const ValueNodeId cell{
+          static_cast<std::uint32_t>(value_count + access.cell.value)};
+      const ValueNodeId value{access.value.value};
+      switch (access.kind) {
+        case LexicalIndex::AccessKind::kLoad:
+          nodes[value.value].kind = Kind::kJoin;
+          facts[value.value] = {};
+          edges.push_back({cell, value});
+          break;
+        case LexicalIndex::AccessKind::kStore:
+          edges.push_back({value, cell});
+          break;
       }
     }
     for (const auto& entry : entries) {
       charge();
       const auto id = entry.value.value;
-      if (id >= count || entry.kinds.IsEmpty() ||
+      if (id >= value_count || entry.kinds.IsEmpty() ||
           !std::holds_alternative<MethodEntry>(ssa.Values()[id].origin))
         return ValueFlowFailure{Error::kInvalidEntryFact, {}, {}};
       if (marked[id])
@@ -108,14 +161,15 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Build(
       begin[i] += begin[i - 1];
       cursor[i - 1] = begin[i - 1];
     }
-    std::pmr::vector<SsaValueId> targets(edges.size(), {}, &memory);
+    std::pmr::vector<ValueNodeId> targets(edges.size(), {}, &memory);
     for (const auto edge : edges) {
       charge();
       targets[cursor[edge.source.value]++] = edge.target;
     }
     RegisterValueFlow result;
     result.work.dependencies = edges.size();
-    std::pmr::vector<SsaValueId> pending{&memory};
+    result.work.cells = cells.cells.size();
+    std::pmr::vector<ValueNodeId> pending{&memory};
     for (std::size_t i = 0; i < count; ++i) {
       charge();
       marked[i] = !facts[i].IsEmpty();
@@ -160,17 +214,20 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Build(
         }
       }
     }
-    charge(count);
-    if (count > memory.Available() / sizeof(ValueKinds)) throw std::bad_alloc{};
-    if (count != 0) {
-      result.facts_ = std::make_unique<ValueKinds[]>(count);
-      std::copy(facts.begin(), facts.end(), result.facts_.get());
+    charge(value_count);
+    if (value_count > memory.Available() / sizeof(ValueKinds))
+      throw std::bad_alloc{};
+    if (value_count != 0) {
+      result.facts_ = std::make_unique<ValueKinds[]>(value_count);
+      std::copy_n(facts.begin(), value_count, result.facts_.get());
     }
-    result.count_ = count;
+    result.count_ = value_count;
     memory.Observe(result.AllocatedBytes());
     result.work.peak_bytes = memory.Peak();
     result.work.units = quota.Consumed() - consumed;
     return result;
+  } catch (const ValueFlowFailure& failure) {
+    return failure;
   } catch (const detail::IdfWorkLimit&) {
     return ValueFlowFailure{Error::kWorkLimit, {}, {}};
   } catch (const std::bad_alloc&) {

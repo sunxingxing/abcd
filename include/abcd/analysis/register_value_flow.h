@@ -5,6 +5,12 @@
 #include "abcd/analysis/value_kinds.h"
 
 namespace abcd::analysis {
+struct EnvironmentFlow;
+class EnvironmentEscape;
+struct LexicalValueContext {
+  const EnvironmentFlow& environments;
+  const EnvironmentEscape& escape;
+};
 struct EntryValueFact {
   SsaValueId value;
   ValueKinds kinds;
@@ -14,6 +20,7 @@ enum class ValueFlowError {
   kInstruction,
   kInvalidEntryFact,
   kDuplicateEntryFact,
+  kInvalidLexicals,
   kWorkLimit,
   kResourceLimit
 };
@@ -29,6 +36,7 @@ struct ValueFlowWork {
   std::uint64_t dependencies = 0;
   std::uint64_t units = 0;
   std::size_t peak_bytes = 0;
+  std::size_t cells = 0;
 };
 
 // Requires SSA from this unchanged validated body/frame. Supplied entry facts
@@ -45,6 +53,14 @@ class RegisterValueFlow {
       const abc::MethodBody& body, const RegisterSsa& ssa,
       std::uint64_t frame_size, std::span<const EntryValueFact> entries,
       IdfQuota& quota, IdfBudget budget = {});
+  // Same unchanged inputs as the escape proof. Nonescaping local cells join
+  // Hole and ALL stores, not reaching stores. Captured/escaped cells stay top.
+  [[nodiscard]] static std::variant<RegisterValueFlow, ValueFlowFailure>
+  BuildWithLexicals(const abc::MethodBody& body, const RegisterSsa& ssa,
+                    std::uint64_t frame_size,
+                    std::span<const EntryValueFact> entries,
+                    const LexicalValueContext& lexicals, IdfQuota& quota,
+                    IdfBudget budget = {});
   [[nodiscard]] std::span<const ValueKinds> Facts() const {
     return {facts_.get(), facts_ ? count_ : 0};
   }
@@ -58,6 +74,11 @@ class RegisterValueFlow {
   ValueFlowWork work;
 
  private:
+  struct LexicalIndex;
+  static std::variant<RegisterValueFlow, ValueFlowFailure> Analyze(
+      const abc::MethodBody& body, const RegisterSsa& ssa,
+      std::uint64_t frame_size, std::span<const EntryValueFact> entries,
+      const LexicalValueContext* lexicals, IdfQuota& quota, IdfBudget budget);
   RegisterValueFlow() = default;
   std::unique_ptr<ValueKinds[]> facts_;
   std::size_t count_ = 0;

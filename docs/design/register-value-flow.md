@@ -38,6 +38,11 @@ Hole checks do NOT globally narrow their input SSA value: a use before the
 check, another path or the exceptional outcome could still observe Hole.
 Use-site/path refinement and exception execution need separate analyses.
 
+The optional `BuildWithLexicals` entry point adds nonescaping local cell facts
+to this same solver; see [local lexical categories](lexical-value-flow.md).
+The original `Build` remains register-only. Neither entry point claims an exact
+reaching store or globally removes Hole because a guard exists.
+
 ## Algorithm and Cost
 
 Use the standard finite-lattice monotone worklist, independently implemented.
