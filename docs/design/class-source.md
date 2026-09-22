@@ -66,3 +66,33 @@ equal the supplied property key; descriptor/reserved-property compatibility is
 also a class integration obligation. UTF-16 keys are source-escaped, not used
 as semantic dispatch strings. Semantic and configured-budget rejection leaves
 the output untouched under the shared preflight contract.
+
+## Whole-File Role Admission
+
+MethodRoleIndex now scans all decoded methods in an unchanged indexed ABC,
+collects typed literal references, sorts/deduplicates payload offsets, and joins
+method-bearing tags by actual target membership. Object and array literals are
+included, not just class buffers. Ordinary tags alone yield kOrdinary; mixing
+ordinary with getter/setter/generator/async-generator roles yields kConflict.
+Other-only targets remain kOther. Even unused tags conservatively contribute.
+
+Ordinary and sendable class constructor targets contribute kOther as well:
+JitCompilationEnv can copy CLASS_CONSTRUCTOR into shared MethodLiteral state.
+The three deprecated implicit-literal instructions, nested literals and any
+unreadable/unsupported payload fail the whole proof. No incomplete scan is
+published as an ordinary-only certificate. Historical compatibility of these
+runtime semantics is not inferred from container recognition.
+
+Two bounded method-body passes count references and then fill an exact-sized
+offset array; literal payloads are read once each after sorting. One role byte
+per method, reference offsets and current body/literal scratch share the
+configured budget. There is no growing hash table, per-target rescan of methods,
+or retained collection of all decoded bodies. Moved-from indexes are queryable
+as empty. Build once per immutable file context, before dependent admission;
+the final bounded asynchronous service integration remains unfinished.
+
+This index discharges the cross-role premise, not source admission by itself.
+The caller must still check initial attributes, member template/name/descriptor,
+private self identity, frame/signature and body support. Current class creation
+generation continues to reject nonempty member buffers until these are wired
+together.

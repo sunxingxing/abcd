@@ -5,6 +5,7 @@
 #include <sstream>
 
 #include "abcd/abc/call_type.h"
+#include "abcd/analysis/method_roles.h"
 #include "abcd/corpus/detect.h"
 #include "abcd/source/created_class.h"
 #include "analysis/ssa_fixture.h"
@@ -33,6 +34,22 @@ int main(int argc, char** argv) {
       abc::BuildMetadataIndex(file, header, {kIndexBytes}));
   const auto lookup =
       std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
+  const auto role_result =
+      analysis::MethodRoleIndex::Build(file, header, index, lookup);
+  if (const auto* failure =
+          std::get_if<analysis::MethodRoleFailure>(&role_result)) {
+    std::cerr << "method_roles_error_variant=" << failure->error.index()
+              << '\n';
+  } else {
+    const auto& roles = std::get<analysis::MethodRoleIndex>(role_result);
+    std::size_t ordinary = 0, conflicts = 0;
+    for (std::uint32_t i = 0; i < index.methods.size(); ++i) {
+      if (roles.At({i}) == analysis::MethodRole::kOrdinary) ++ordinary;
+      if (roles.At({i}) == analysis::MethodRole::kConflict) ++conflicts;
+    }
+    std::cerr << "ordinary_roles=" << ordinary
+              << " conflicting_roles=" << conflicts << '\n';
+  }
   std::size_t sites = 0, ready = 0;
   for (const auto& method : index.methods) {
     if (!method.code) continue;
