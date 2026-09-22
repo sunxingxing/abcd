@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 
+#include "abcd/analysis/method_captures.h"
 #include "abcd/corpus/abc_file.h"
 
 namespace {
@@ -79,7 +80,7 @@ int main() {
     pc += decoded.size;
   }
   const auto target_graph = std::get<NormalFlow>(BuildNormalFlow(target_body));
-  const auto target_flow = std::get<EnvironmentFlow>(
+  auto target_flow = std::get<EnvironmentFlow>(
       AnalyzeEnvironments(target_body, target_graph, 1));
   Check(target_flow.bindings.size() == 1);
   const auto target_slot = target_flow.bindings[0].binding;
@@ -91,8 +92,107 @@ int main() {
       RebaseCapture(flow.environments, captured.capture, capture_slot));
   Check(local_use.environment == EnvironmentRef{EnvironmentId{0}});
   Check(external_use.environment == EnvironmentRef{CapturedDepth{0}});
+  const auto fingerprint =
+      std::get<corpus::FileFingerprint>(file.Fingerprint());
+  auto target_snapshot = std::get<MethodCaptures>(MethodCaptures::Build(
+      file, header, metadata, lookup, {fingerprint.sha256, header.profile, {1}},
+      target_body, std::move(target_flow)));
+  const auto capture_only = [&](MethodCaptureBudget budget) {
+    auto incoming = std::get<EnvironmentFlow>(
+        AnalyzeEnvironments(target_body, target_graph, 1));
+    return MethodCaptures::Build(file, header, metadata, lookup,
+                                 {fingerprint.sha256, header.profile, {1}},
+                                 target_body, std::move(incoming), budget);
+  };
+  Check(target_snapshot.PeakBytes() > target_snapshot.AllocatedBytes());
+  Check(std::holds_alternative<MethodCaptures>(
+      capture_only({target_snapshot.PeakBytes()})));
+  Check(std::get<CaptureSummaryError>(std::get<MethodCaptureFailure>(
+            capture_only({target_snapshot.PeakBytes() - 1}))) ==
+        CaptureSummaryError::kResourceLimit);
+  const auto snapshot = [&](MethodCaptureBudget budget =
+                                MethodCaptureBudget{}) {
+    auto incoming =
+        std::get<EnvironmentFlow>(AnalyzeEnvironments(body, graph, 1));
+    return MethodCaptures::Build(file, header, metadata, lookup,
+                                 {fingerprint.sha256, header.profile, {0}},
+                                 body, std::move(incoming), budget);
+  };
+  auto caller_snapshot = std::get<MethodCaptures>(snapshot());
+  Check(caller_snapshot.Creations().size() == 3);
+  Check(std::get<LexicalBinding>(
+            caller_snapshot.Resolve({2}, target_snapshot, capture_slot))
+            .environment == EnvironmentRef{EnvironmentId{0}});
+  Check(std::get<LexicalBinding>(
+            caller_snapshot.Resolve({8}, target_snapshot, capture_slot))
+            .environment == EnvironmentRef{CapturedDepth{0}});
+  Check(std::get<MethodCaptureError>(
+            caller_snapshot.Resolve({0}, target_snapshot, capture_slot)) ==
+        MethodCaptureError::kCreationMissing);
+  Check(std::get<MethodCaptureError>(
+            caller_snapshot.Resolve({2}, caller_snapshot, capture_slot)) ==
+        MethodCaptureError::kTargetMismatch);
+  Check(std::get<MethodCaptureError>(
+            caller_snapshot.Resolve({2}, target_snapshot, {{0}, {1}})) ==
+        MethodCaptureError::kCaptureMissing);
+  Check(std::holds_alternative<MethodCaptures>(
+      snapshot({caller_snapshot.PeakBytes()})));
+  Check(std::get<MethodCaptureError>(std::get<MethodCaptureFailure>(
+            snapshot({caller_snapshot.PeakBytes() - 1}))) ==
+        MethodCaptureError::kResourceLimit);
+  auto moved_snapshot = std::move(caller_snapshot);
+  Check(caller_snapshot.Creations().empty());
+  Check(std::get<MethodCaptureError>(
+            caller_snapshot.Resolve({2}, target_snapshot, capture_slot)) ==
+        MethodCaptureError::kCreationMissing);
+  Check(std::get<LexicalBinding>(
+            moved_snapshot.Resolve({2}, target_snapshot, capture_slot))
+            .slot.value == 0);
+  auto alternate = fingerprint.sha256;
+  alternate.bytes[0] ^=
+      1;  // Simulate a distinct caller-provided file identity.
+  auto another_flow = std::get<EnvironmentFlow>(
+      AnalyzeEnvironments(target_body, target_graph, 1));
+  const auto another_target = std::get<MethodCaptures>(MethodCaptures::Build(
+      file, header, metadata, lookup, {alternate, header.profile, {1}},
+      target_body, std::move(another_flow)));
+  Check(std::get<MethodCaptureError>(
+            moved_snapshot.Resolve({2}, another_target, capture_slot)) ==
+        MethodCaptureError::kContextMismatch);
+  for (const std::uint32_t count : {200U, 201U, 4096U}) {
+    abc::MethodBody many;
+    many.instructions.push_back(body.instructions[0]);
+    auto site = body.instructions[1];
+    auto pc = site.offset.value;
+    for (std::uint32_t i = 0; i < count; ++i) {
+      site.offset = {pc};
+      many.instructions.push_back(site);
+      pc += site.decoded.size;
+    }
+    auto end = body.instructions.back();
+    end.offset = {pc};
+    many.instructions.push_back(end);
+    const auto many_graph = std::get<NormalFlow>(BuildNormalFlow(many));
+    auto many_flow =
+        std::get<EnvironmentFlow>(AnalyzeEnvironments(many, many_graph, 1));
+    const auto ancestry_bytes = many_flow.environments.AllocatedBytes();
+    const auto stored = std::get<MethodCaptures>(MethodCaptures::Build(
+        file, header, metadata, lookup,
+        {fingerprint.sha256, header.profile, {0}}, many, std::move(many_flow)));
+    Check(stored.Creations().size() == count);
+    Check(stored.AllocatedBytes() ==
+          ancestry_bytes + count * sizeof(CreationBinding));
+    for (const auto& creation : stored.Creations())
+      Check(std::get<LexicalBinding>(
+                stored.Resolve(creation.offset, target_snapshot, capture_slot))
+                .environment == EnvironmentRef{EnvironmentId{0}});
+  }
   // Mutating only attributes leaves lookup positions valid for this fixture.
   metadata.methods[1].access_flags = 8U << 8;
+  const auto sendable_snapshot = std::get<MethodCaptures>(snapshot());
+  Check(std::get<CaptureRebaseError>(
+            sendable_snapshot.Resolve({2}, target_snapshot, capture_slot)) ==
+        CaptureRebaseError::kSendableEnvironment);
   Check(std::holds_alternative<SendableCapture>(
       std::get<CreationBinding>(bind(1)).capture));
   const auto method = std::get<CreationBinding>(bind(4));
@@ -100,6 +200,14 @@ int main() {
   Check(method.creation.home_object == HomeObjectInput::kAccumulator);
   Check(std::holds_alternative<OrdinaryCapture>(method.capture));
   metadata.methods[1].access_flags = 0xffU << 8;
+  auto failed_flow =
+      std::get<EnvironmentFlow>(AnalyzeEnvironments(body, graph, 1));
+  const auto failed_build = MethodCaptures::Build(
+      file, header, metadata, lookup, {fingerprint.sha256, header.profile, {0}},
+      body, std::move(failed_flow));
+  Check(std::get<abc::MethodAttributeError>(std::get<MethodCaptureFailure>(
+            failed_build)) == abc::MethodAttributeError::kUnknownKind);
+  Check(failed_flow.environments.Size() == 1);
   Check(std::get<abc::MethodAttributeError>(bind(1)) ==
         abc::MethodAttributeError::kUnknownKind);
   metadata.methods[1].access_flags = 0;
@@ -130,6 +238,13 @@ int main() {
   flow.before.pop_back();
   Check(std::get<CreationBindingError>(bind(1)) ==
         CreationBindingError::kInvalidFlow);
+  std::get<std::unique_ptr<corpus::AbcFile>>(opened).reset();
+  metadata = {};
+  body = {};
+  target_body = {};
+  Check(std::get<LexicalBinding>(
+            moved_snapshot.Resolve({2}, target_snapshot, capture_slot))
+            .environment == EnvironmentRef{EnvironmentId{0}});
   close(fd);
   unlink(path);
 }

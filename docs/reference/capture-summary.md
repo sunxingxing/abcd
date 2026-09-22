@@ -64,9 +64,10 @@ retained payload. The CLI test first failed on missing summary fields, then
 checks summary counts from a decoded ABC fixture alongside existing creation
 and static-exclusion tests.
 
-The next integration must publish/reuse method summaries under bounded lifetime
-and cache admission, attach caller contexts to creation edges and query
-`RebaseCapture` lazily. Missing exception/sendable/class coverage and value/TDZ
+[MethodCaptures](method-captures.md) now owns summaries and caller contexts and
+queries direct captured uses at creation sites without retaining input bodies.
+Bounded cache/task admission and transitive requirements remain unimplemented.
+Missing exception/sendable/class coverage and value/TDZ
 recovery remain separate obstacles. Neither a compact summary nor a successful
 lookup constitutes generated source or a recovered record.
 
