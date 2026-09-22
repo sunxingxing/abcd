@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 
-const {recovered, annotated, factory, different, preserved, reverse} = await import(pathToFileURL(process.argv[2]));
+const {recovered, annotated, factory, different, preserved, reverse, captured,
+       changed, siblings, separated, setter, shadowed, ancestor} =
+    await import(pathToFileURL(process.argv[2]));
 assert.equal(recovered.name, 'Recovered');
 assert.equal(recovered.length, 1);
 for (const value of [undefined, null, true, 0, -0, NaN, 42n,
@@ -29,3 +31,35 @@ assert.equal(different(), false);
 assert.equal(preserved(replacement), replacement);
 assert.equal(reverse().name, 'Other');
 assert.equal(reverse()(42), undefined);
+assert.equal(captured(replacement)(), replacement);
+assert.equal(changed(replacement)(), undefined);
+const independent = captured(42);
+assert.equal(captured(17)(), 17);
+assert.equal(independent(), 42);
+let getter, writer;
+assert.equal(siblings((read, write) => {
+  getter = read;
+  writer = write;
+  assert.equal(read(), undefined);
+  assert.equal(write(replacement), replacement);
+  assert.equal(read(), replacement);
+}), replacement);
+assert.equal(writer(17), 17);
+assert.equal(getter(), 17);
+// A reentrant factory invocation gets its own cell and cannot change ours.
+siblings((read, write) => {
+  write(42);
+  assert.equal(getter(), 17);
+  writer(replacement);
+  assert.equal(read(), 42);
+});
+assert.equal(getter(), replacement);
+separated((first, second) => {
+  assert.equal(first(), true);
+  assert.equal(second(), false);
+});
+const writeOnly = setter(42);
+assert.equal(writeOnly(replacement), replacement);
+assert.equal(writeOnly(undefined), undefined);
+assert.equal(shadowed(replacement)(17), replacement);
+assert.equal(ancestor(replacement)(), replacement);

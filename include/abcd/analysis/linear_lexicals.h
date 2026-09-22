@@ -1,6 +1,7 @@
 #ifndef ABCD_ANALYSIS_LINEAR_LEXICALS_H_
 #define ABCD_ANALYSIS_LINEAR_LEXICALS_H_
 
+#include "abcd/analysis/creation_binding.h"
 #include "abcd/analysis/environment_flow.h"
 #include "abcd/analysis/phi_placement.h"
 
@@ -14,12 +15,17 @@ struct LocalCell {
 };
 struct KeepInstruction {};
 struct OmitInstruction {};
-struct IndependentCreation {
-  // Caller-proven: this exact instruction's emitted target does not access the
-  // incoming lexical environment or home object. Same unchanged body/context;
+struct ClosureCreation {
+  // Caller-proven: the child only accesses these captured language cells and
+  // never exposes the environment/home object; all child stores are Language.
+  // Same unchanged body/context;
   // sorted unique offsets, ordinary DEFINEFUNC only. Not a cached object value.
   abc::CodeOffset offset;
+  std::span<const LocalCell> captures = {};
 };
+// Parametric child analysis only. Its caller must discharge every captured
+// binding's Language premise before publishing any executable source.
+enum class CapturedValues { kReject, kLanguage };
 struct LocalFunction {};
 struct LocalLoad {
   LocalCellId cell;
@@ -28,8 +34,16 @@ struct LocalStore {
   LocalCellId cell;
   ScalarSlot value;
 };
-using LinearStatement = std::variant<KeepInstruction, OmitInstruction,
-                                     LocalLoad, LocalStore, LocalFunction>;
+struct CapturedLoad {
+  CapturedSlot cell;
+};
+struct CapturedStore {
+  CapturedSlot cell;
+  ScalarSlot value;
+};
+using LinearStatement =
+    std::variant<KeepInstruction, OmitInstruction, LocalLoad, LocalStore,
+                 LocalFunction, CapturedLoad, CapturedStore>;
 enum class LinearLexicalError {
   kExceptionRegions,
   kControlFlow,
@@ -56,8 +70,9 @@ struct LinearLexicalWork {
 // Entry registers are caller-PROVEN language values; acc starts Hole. Only
 // initialized local cells and language reads can reach emitted statements.
 // Omissions exclude GC/OOM timing/debugger observability, not language effects.
-// Named allocations, capture, branches, handlers and possibly failing guards
-// are rejected. Creations require explicit independent-target facts. This is
+// Named allocations, branches, handlers and possibly failing guards are
+// rejected. Capture requires an explicit Language premise; creations require
+// complete child binding proofs and initialized parent cells. This is
 // neither general CFG promotion nor a function service.
 class LinearLexicals {
  public:
@@ -66,7 +81,8 @@ class LinearLexicals {
   static std::variant<LinearLexicals, LinearLexicalFailure> Build(
       const abc::MethodBody& body, const EnvironmentFlow& environments,
       std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {},
-      std::span<const IndependentCreation> creations = {});
+      std::span<const ClosureCreation> creations = {},
+      CapturedValues captured_values = CapturedValues::kReject);
   std::span<const LinearStatement> Statements() const {
     return {statements_.get(), statements_ ? statement_count_ : 0};
   }

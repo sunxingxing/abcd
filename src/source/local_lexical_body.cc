@@ -6,26 +6,26 @@
 #include <ostream>
 #include <streambuf>
 
+#include "capture_stream.h"
+#include "function_template.h"
 #include "leaf_sources.h"
 #include "linear_instruction.h"
 
 namespace abcd::source {
 namespace {
 constexpr std::string_view kCellPrefix = "$lex";
-class DiscardBuffer : public std::streambuf {
-  std::streamsize xsputn(const char*, std::streamsize count) override {
-    return count;
-  }
-};
+constexpr std::string_view kInnerPrefix = "$inner";
 class LexicalWriter {
  public:
   LexicalWriter(ScalarNames names, std::ostream& output, EmitBudget budget,
-                const MethodConstants* constants, const LeafSources* functions)
+                const MethodConstants* constants, const LeafSources* functions,
+                analysis::CapturedValues captured_values)
       : names_(names),
         output_(output),
         remaining_(budget.bytes),
         constants_(constants),
-        functions_(functions) {}
+        functions_(functions),
+        captured_values_(captured_values) {}
   BodyEmitResult Write(const abc::MethodBody& body,
                        const analysis::LinearLexicals& plan) {
     try {
@@ -47,7 +47,14 @@ class LexicalWriter {
         } else if (std::holds_alternative<analysis::LocalFunction>(statement)) {
           Slot(analysis::Accumulator{});
           Text(" = ");
-          Text(functions_->Source(next_function_++));
+          if (!error_) {
+            const auto result =
+                functions_->Write(next_function_++, output_, {remaining_});
+            if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
+              error_ = *failure;
+            else
+              Count(std::get<std::size_t>(result));
+          }
           Text(";\n");
         } else if (const auto* load =
                        std::get_if<analysis::LocalLoad>(&statement)) {
@@ -58,6 +65,18 @@ class LexicalWriter {
         } else if (const auto* store =
                        std::get_if<analysis::LocalStore>(&statement)) {
           Cell(plan.Cells()[store->cell.value]);
+          Text(" = ");
+          Slot(store->value);
+          Text(";\n");
+        } else if (const auto* load =
+                       std::get_if<analysis::CapturedLoad>(&statement)) {
+          Slot(analysis::Accumulator{});
+          Text(" = ");
+          Capture(load->cell);
+          Text(";\n");
+        } else if (const auto* store =
+                       std::get_if<analysis::CapturedStore>(&statement)) {
+          Capture(store->cell);
           Text(" = ");
           Slot(store->value);
           Text(";\n");
@@ -98,10 +117,18 @@ class LexicalWriter {
     Text(std::string_view(text.data(), end - text.data()));
   }
   void Cell(analysis::LocalCell cell) {
-    Text(kCellPrefix);
+    Text(captured_values_ == analysis::CapturedValues::kLanguage ? kInnerPrefix
+                                                                 : kCellPrefix);
     Number(cell.environment.value);
     Text("_");
     Number(cell.slot.value);
+  }
+  void Capture(analysis::CapturedSlot cell) {
+    if (error_) return;
+    auto* buffer = dynamic_cast<CaptureBuffer*>(output_.rdbuf());
+    if (!buffer || !buffer->Capture(cell))
+      error_ = BodyEmitFailure{
+          BodyEmitError::kExpression, offset_, {}, EmitError::kWrite};
   }
   void Slot(analysis::ScalarSlot slot) {
     if (error_) return;
@@ -122,45 +149,35 @@ class LexicalWriter {
   std::size_t remaining_;
   const MethodConstants* constants_;
   const LeafSources* functions_;
+  analysis::CapturedValues captured_values_;
   std::size_t next_function_ = 0;
   std::size_t written_ = 0;
   abc::CodeOffset offset_{};
   std::optional<BodyEmitFailure> error_;
 };
-}  // namespace
-LocalLexicalResult WriteLocalLexicalBody(const abc::MethodBody& body,
-                                         ScalarNames names,
-                                         std::ostream& output,
-                                         LocalLexicalBudget budget,
-                                         const MethodConstants* constants,
-                                         const abc::MethodLookup* methods) {
+LocalLexicalResult WriteLexicals(const abc::MethodBody& body, ScalarNames names,
+                                 std::ostream& output,
+                                 LocalLexicalBudget budget,
+                                 const MethodConstants* constants,
+                                 const abc::MethodLookup* methods,
+                                 analysis::CapturedValues captured_values) {
   const auto resource = [] {
     return analysis::LinearLexicalFailure{
         analysis::LinearLexicalError::kResourceLimit, {}};
   };
-  if (names.accumulator.starts_with(kCellPrefix))
+  if (names.accumulator.starts_with(kCellPrefix) ||
+      names.accumulator.starts_with(kInnerPrefix))
     return BodyEmitFailure{
         BodyEmitError::kExpression, {}, {}, EmitError::kInvalidBinding};
   for (const auto name : names.registers)
-    if (name.starts_with(kCellPrefix))
+    if (name.starts_with(kCellPrefix) || name.starts_with(kInnerPrefix))
       return BodyEmitFailure{
           BodyEmitError::kExpression, {}, {}, EmitError::kInvalidBinding};
   try {
-    DiscardBuffer buffer;
+    CaptureDiscard buffer;
     std::ostream discard(&buffer);
     std::optional<LeafSources> functions;
-    std::span<const analysis::IndependentCreation> creations;
-    if (methods) {
-      if (!constants)
-        return BodyEmitFailure{BodyEmitError::kMissingConstants, {}, {}, {}};
-      auto prepared = LeafSources::Build(body, *constants, *methods, budget);
-      if (const auto* failure = std::get_if<BodyEmitFailure>(&prepared))
-        return *failure;
-      functions = std::get<LeafSources>(std::move(prepared));
-      if (functions->AllocatedBytes() > budget.bytes) return resource();
-      budget.bytes -= functions->AllocatedBytes();
-      creations = functions->Facts();
-    }
+    std::span<const analysis::ClosureCreation> creations;
     const auto built = analysis::BuildNormalFlow(body, {budget.bytes});
     if (const auto* failure = std::get_if<analysis::FlowFailure>(&built))
       return *failure;
@@ -176,22 +193,37 @@ LocalLexicalResult WriteLocalLexicalBody(const abc::MethodBody& body,
     const auto& environments = std::get<analysis::EnvironmentFlow>(bound);
     if (environments.allocated_bytes > budget.bytes - graph_bytes)
       return resource();
+    budget.bytes -= graph_bytes + environments.allocated_bytes;
+    if (methods) {
+      if (!constants)
+        return BodyEmitFailure{BodyEmitError::kMissingConstants, {}, {}, {}};
+      auto prepared =
+          LeafSources::Build(body, environments, *constants, *methods, budget);
+      if (const auto* failure = std::get_if<BodyEmitFailure>(&prepared))
+        return *failure;
+      functions = std::get<LeafSources>(std::move(prepared));
+      if (functions->AllocatedBytes() > budget.bytes) return resource();
+      budget.bytes -= functions->AllocatedBytes();
+      creations = functions->Facts();
+    }
     analysis::IdfQuota quota{budget.work};
     const auto planned = analysis::LinearLexicals::Build(
-        body, environments, names.registers.size(), quota,
-        {budget.bytes - graph_bytes - environments.allocated_bytes}, creations);
+        body, environments, names.registers.size(), quota, {budget.bytes},
+        creations, captured_values);
     if (const auto* failure =
             std::get_if<analysis::LinearLexicalFailure>(&planned))
       return *failure;
     const auto& plan = std::get<analysis::LinearLexicals>(planned);
-    const auto checked = LexicalWriter(names, discard, budget.output, constants,
-                                       functions ? &*functions : nullptr)
-                             .Write(body, plan);
+    const auto checked =
+        LexicalWriter(names, discard, budget.output, constants,
+                      functions ? &*functions : nullptr, captured_values)
+            .Write(body, plan);
     if (const auto* failure = std::get_if<BodyEmitFailure>(&checked))
       return *failure;
-    const auto result = LexicalWriter(names, output, budget.output, constants,
-                                      functions ? &*functions : nullptr)
-                            .Write(body, plan);
+    const auto result =
+        LexicalWriter(names, output, budget.output, constants,
+                      functions ? &*functions : nullptr, captured_values)
+            .Write(body, plan);
     if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
       return *failure;
     return std::get<std::size_t>(result);
@@ -200,5 +232,23 @@ LocalLexicalResult WriteLocalLexicalBody(const abc::MethodBody& body,
   } catch (const std::length_error&) {
     return resource();
   }
+}
+}  // namespace
+LocalLexicalResult WriteLocalLexicalBody(const abc::MethodBody& body,
+                                         ScalarNames names,
+                                         std::ostream& output,
+                                         LocalLexicalBudget budget,
+                                         const MethodConstants* constants,
+                                         const abc::MethodLookup* methods) {
+  return WriteLexicals(body, names, output, budget, constants, methods,
+                       analysis::CapturedValues::kReject);
+}
+LocalLexicalResult WriteLocalLexicalTemplate(const abc::MethodBody& body,
+                                             ScalarNames names,
+                                             std::ostream& output,
+                                             LocalLexicalBudget budget,
+                                             const MethodConstants* constants) {
+  return WriteLexicals(body, names, output, budget, constants, nullptr,
+                       analysis::CapturedValues::kLanguage);
 }
 }  // namespace abcd::source

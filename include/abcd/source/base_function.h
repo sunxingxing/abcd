@@ -36,7 +36,7 @@ using FunctionEmitResult =
 // failure during repeated body preparation can leave a prefix: use atomic file
 // publication. Scratch shares budget.bytes with body analysis; caller
 // separately admits inputs, transient strings and output. Optional same-context
-// methods/constants enable independent leaf creations in this body;
+// methods/constants enable leaf creations with proven initialized captures;
 // WriteCreatedFunction remains leaf-only to avoid recursive preflight.
 [[nodiscard]] FunctionEmitResult WriteBaseFunction(
     const BaseFunction& function, const abc::MethodBody& body,

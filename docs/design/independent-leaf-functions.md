@@ -1,5 +1,8 @@
 # Independent Leaf Functions
 
+Historical first increment. `initialized-captures.md` extends capture support,
+renames the creation facts and supersedes the preparation/budget order below.
+
 Permit ordinary function creation at its original straight-line parent position
 only after the target successfully passes WriteCreatedFunction's leaf-only
 source checks. That proves no external lexical read, outer environment walk,

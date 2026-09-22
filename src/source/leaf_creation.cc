@@ -3,6 +3,7 @@
 #include <type_traits>
 
 #include "abcd/source/created_function.h"
+#include "function_template.h"
 
 namespace abcd::source {
 BodyEmitResult WriteLeafCreation(const abc::BodyInstruction& site,
@@ -10,7 +11,7 @@ BodyEmitResult WriteLeafCreation(const abc::BodyInstruction& site,
                                  const abc::MethodLookup& methods,
                                  std::ostream& output,
                                  LocalLexicalBudget budget) {
-  const auto result = WriteCreatedFunction(
+  const auto result = WriteCreatedFunctionTemplate(
       constants.file, constants.header, constants.index, methods,
       constants.method, site.decoded, output, budget, constants.string_budget);
   return std::visit(

@@ -7,6 +7,9 @@
 #include <ostream>
 #include <streambuf>
 
+#include "capture_stream.h"
+#include "function_template.h"
+
 namespace abcd::source {
 namespace {
 constexpr std::size_t kIndexDigits =
@@ -14,11 +17,6 @@ constexpr std::size_t kIndexDigits =
 using RegisterName = std::array<char, kIndexDigits + 2>;
 constexpr std::size_t kRegisterBytes =
     sizeof(RegisterName) + sizeof(std::string_view);
-class DiscardBuffer : public std::streambuf {
-  std::streamsize xsputn(const char*, std::streamsize count) override {
-    return count;
-  }
-};
 
 bool CanonicalFrame(const abc::FrameLayout& frame) {
   if (frame.registers < frame.locals) return false;
@@ -39,13 +37,15 @@ class FunctionWriter {
   FunctionWriter(const BaseFunction& function, ScalarNames names,
                  std::ostream& output, LocalLexicalBudget budget,
                  const MethodConstants* constants,
-                 const abc::MethodLookup* methods)
+                 const abc::MethodLookup* methods,
+                 analysis::CapturedValues captured_values)
       : function_(function),
         names_(names),
         output_(output),
         budget_(budget),
         constants_(constants),
-        methods_(methods) {}
+        methods_(methods),
+        captured_values_(captured_values) {}
 
   FunctionEmitResult Write(const abc::MethodBody& body) {
     try {
@@ -80,8 +80,12 @@ class FunctionWriter {
       if (error_) return *error_;
       auto body_budget = budget_;
       body_budget.output.bytes -= written_;
-      const auto result = WriteLocalLexicalBody(
-          body, names_, output_, body_budget, constants_, methods_);
+      const auto result =
+          captured_values_ == analysis::CapturedValues::kLanguage
+              ? WriteLocalLexicalTemplate(body, names_, output_, body_budget,
+                                          constants_)
+              : WriteLocalLexicalBody(body, names_, output_, body_budget,
+                                      constants_, methods_);
       if (const auto* bytes = std::get_if<std::size_t>(&result))
         written_ += *bytes;
       else
@@ -122,17 +126,17 @@ class FunctionWriter {
   LocalLexicalBudget budget_;
   const MethodConstants* constants_;
   const abc::MethodLookup* methods_;
+  analysis::CapturedValues captured_values_;
   std::size_t written_ = 0;
   std::optional<EmitError> error_;
 };
-}  // namespace
-
-FunctionEmitResult WriteBaseFunction(const BaseFunction& function,
-                                     const abc::MethodBody& body,
-                                     std::ostream& output,
-                                     LocalLexicalBudget budget,
-                                     const MethodConstants* constants,
-                                     const abc::MethodLookup* methods) {
+FunctionEmitResult WriteFunction(const BaseFunction& function,
+                                 const abc::MethodBody& body,
+                                 std::ostream& output,
+                                 LocalLexicalBudget budget,
+                                 const MethodConstants* constants,
+                                 const abc::MethodLookup* methods,
+                                 analysis::CapturedValues captured_values) {
   if (function.creation.kind != analysis::CreationKind::kFunction ||
       function.creation.home_object !=
           analysis::HomeObjectInput::kCurrentFunction)
@@ -145,7 +149,7 @@ FunctionEmitResult WriteBaseFunction(const BaseFunction& function,
     return FunctionEmitError::kLength;
   // Reuse the expression emitter's strict-safe binding validation. '$' is our
   // private source namespace; never let a supplied function name shadow it.
-  DiscardBuffer buffer;
+  CaptureDiscard buffer;
   std::ostream discard(&buffer);
   if (function.name.starts_with('$')) return FunctionEmitError::kName;
   const auto name_check =
@@ -171,17 +175,35 @@ FunctionEmitResult WriteBaseFunction(const BaseFunction& function,
       names[i] = {name.data(), static_cast<std::size_t>(end - name.data())};
     }
     const ScalarNames bindings{"$acc", {names.get(), count}};
-    const auto checked =
-        FunctionWriter(function, bindings, discard, budget, constants, methods)
-            .Write(body);
+    const auto checked = FunctionWriter(function, bindings, discard, budget,
+                                        constants, methods, captured_values)
+                             .Write(body);
     if (!std::holds_alternative<std::size_t>(checked)) return checked;
     return FunctionWriter(function, bindings, output, budget, constants,
-                          methods)
+                          methods, captured_values)
         .Write(body);
   } catch (const std::bad_alloc&) {
     return FunctionEmitError::kResourceLimit;
   } catch (const std::length_error&) {
     return FunctionEmitError::kResourceLimit;
   }
+}
+}  // namespace
+FunctionEmitResult WriteBaseFunction(const BaseFunction& function,
+                                     const abc::MethodBody& body,
+                                     std::ostream& output,
+                                     LocalLexicalBudget budget,
+                                     const MethodConstants* constants,
+                                     const abc::MethodLookup* methods) {
+  return WriteFunction(function, body, output, budget, constants, methods,
+                       analysis::CapturedValues::kReject);
+}
+FunctionEmitResult WriteBaseFunctionTemplate(const BaseFunction& function,
+                                             const abc::MethodBody& body,
+                                             std::ostream& output,
+                                             LocalLexicalBudget budget,
+                                             const MethodConstants* constants) {
+  return WriteFunction(function, body, output, budget, constants, nullptr,
+                       analysis::CapturedValues::kLanguage);
 }
 }  // namespace abcd::source

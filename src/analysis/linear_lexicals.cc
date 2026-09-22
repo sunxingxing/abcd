@@ -18,7 +18,8 @@ bool Less(const LocalCell& a, const LocalCell& b) {
 std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
     const abc::MethodBody& body, const EnvironmentFlow& environments,
     std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget,
-    std::span<const IndependentCreation> creations) {
+    std::span<const ClosureCreation> creations,
+    CapturedValues captured_values) {
   using Error = LinearLexicalError;
   abc::CodeOffset offset{};
   const auto fail = [&](Error kind) {
@@ -61,7 +62,11 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
         return fail(Error::kEnvironment);
       offset = body.instructions[site.instruction].offset;
       const auto* local = std::get_if<EnvironmentId>(&site.binding.environment);
-      if (!local) return fail(Error::kCaptured);
+      if (!local) {
+        if (captured_values == CapturedValues::kReject)
+          return fail(Error::kCaptured);
+        continue;
+      }
       cells.push_back({*local, site.binding.slot});
     }
     std::sort(cells.begin(), cells.end(), [&](const auto& a, const auto& b) {
@@ -91,6 +96,20 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
       if (previous && *previous >= site.instruction)
         return fail(Error::kEnvironment);
       previous = site.instruction;
+      const auto operation = LiftLexicalInstruction(
+          body.instructions[site.instruction].decoded, frame_size);
+      if (const auto* depth =
+              std::get_if<CapturedDepth>(&site.binding.environment)) {
+        // Use the normalized outer binding, never the instruction's raw depth.
+        const CapturedSlot cell{*depth, site.binding.slot};
+        if (std::holds_alternative<LexicalLoad>(operation))
+          statements[site.instruction] = CapturedLoad{cell};
+        else if (const auto* store = std::get_if<LexicalStore>(&operation))
+          statements[site.instruction] = CapturedStore{cell, store->value};
+        else
+          return fail(Error::kEnvironment);
+        continue;
+      }
       const LocalCell key{std::get<EnvironmentId>(site.binding.environment),
                           site.binding.slot};
       const auto found = std::lower_bound(cells.begin(), cells.end(), key,
@@ -101,8 +120,6 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
       if (found == cells.end() || Less(key, *found))
         return fail(Error::kEnvironment);
       const LocalCellId id{static_cast<std::uint32_t>(found - cells.begin())};
-      const auto operation = LiftLexicalInstruction(
-          body.instructions[site.instruction].decoded, frame_size);
       if (std::holds_alternative<LexicalLoad>(operation))
         statements[site.instruction] = LocalLoad{id};
       else if (const auto* store = std::get_if<LexicalStore>(&operation))
@@ -131,9 +148,21 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
         if (creations[creation_cursor].offset != offset || !creation ||
             creation->kind != CreationKind::kFunction)
           return fail(Error::kInstruction);
+        for (const auto cell : creations[creation_cursor].captures) {
+          charge();
+          const auto found =
+              std::lower_bound(cells.begin(), cells.end(), cell,
+                               [&](const auto& a, const auto& b) {
+                                 charge();
+                                 return Less(a, b);
+                               });
+          if (found == cells.end() || Less(cell, *found) ||
+              !initialized[found - cells.begin()])
+            return fail(Error::kUninitialized);
+        }
         ++creation_cursor;
-        // Caller proves the child independent of the current environment and
-        // home object. Do not deduplicate the new runtime function identity.
+        // Child calls preserve Language in the same mutable cells, including
+        // reentrant calls. Never deduplicate the new runtime function identity.
         accumulator = ValueKinds::Language();
         statement = LocalFunction{};
         continue;
@@ -163,6 +192,15 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
         if (!state(store->value).IsLanguage())
           return fail(Error::kInternalValue);
         initialized[store->cell.value] = 1;
+        continue;
+      }
+      if (std::holds_alternative<CapturedLoad>(statement)) {
+        accumulator = ValueKinds::Language();
+        continue;
+      }
+      if (const auto* store = std::get_if<CapturedStore>(&statement)) {
+        if (!state(store->value).IsLanguage())
+          return fail(Error::kInternalValue);
         continue;
       }
       if (!std::holds_alternative<LexicalError>(lexical) ||

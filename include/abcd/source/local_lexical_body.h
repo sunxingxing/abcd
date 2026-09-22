@@ -18,12 +18,13 @@ using LocalLexicalResult =
                  analysis::LinearLexicalFailure>;
 // Straight-line local lexical recovery; same register ABI and constant-file
 // contracts as WriteLinearBody. Does not infer a function wrapper or record.
-// The prefix $lex is reserved for generated function-local cell names.
+// The prefixes $lex/$inner are reserved for generated lexical cell names.
 // Register/acc bindings are private temporaries, not exposed to called code.
 // Analysis graph/environment/plan share bytes. Output streams in two passes;
 // semantic/budget/binding failures leave output untouched, not IO/file changes.
 // Inputs, name storage and transient constants have separately admitted costs.
-// Optional methods plus constants enable independent ordinary leaf functions.
+// Optional methods plus constants enable ordinary leaf functions, including
+// parent-local captures initialized at creation and kept Language by all stores.
 // Targets are verified and source artifacts cached by target/length, not
 // runtime objects. Cache and preparation scratch share bytes. No recursive
 // creations.

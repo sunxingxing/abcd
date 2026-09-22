@@ -1,17 +1,17 @@
 #include "abcd/source/created_function.h"
 
 #include "abcd/abc/call_type.h"
+#include "function_template.h"
 
 namespace abcd::source {
 namespace {
 constexpr unsigned char kAsciiLimit = 0x80;
-}  // namespace
-CreatedFunctionResult WriteCreatedFunction(
+CreatedFunctionResult WriteCreation(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     abc::EntityOffset caller, const abc::DecodedInstruction& instruction,
-    std::ostream& output, LocalLexicalBudget budget,
-    abc::StringBudget strings) {
+    std::ostream& output, LocalLexicalBudget budget, abc::StringBudget strings,
+    analysis::CapturedValues captured_values) {
   const auto lifted = analysis::LiftFunctionCreation(instruction);
   if (const auto* error = std::get_if<analysis::CreationError>(&lifted))
     return *error;
@@ -65,10 +65,33 @@ CreatedFunctionResult WriteCreatedFunction(
       !admit(body.handlers.capacity(), sizeof(abc::CatchHandler)))
     return CreatedFunctionError::kResourceLimit;
   const MethodConstants constants{file, header, index, method.offset, strings};
-  const auto emitted = WriteBaseFunction(
-      {creation, target.attributes, std::get<abc::FrameLayout>(frame), name},
-      body, output, budget, &constants);
+  const BaseFunction function{creation, target.attributes,
+                              std::get<abc::FrameLayout>(frame), name};
+  const auto emitted =
+      captured_values == analysis::CapturedValues::kLanguage
+          ? WriteBaseFunctionTemplate(function, body, output, budget,
+                                      &constants)
+          : WriteBaseFunction(function, body, output, budget, &constants);
   return std::visit([](auto value) -> CreatedFunctionResult { return value; },
                     emitted);
+}
+}  // namespace
+CreatedFunctionResult WriteCreatedFunction(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    abc::EntityOffset caller, const abc::DecodedInstruction& instruction,
+    std::ostream& output, LocalLexicalBudget budget,
+    abc::StringBudget strings) {
+  return WriteCreation(file, header, index, lookup, caller, instruction, output,
+                       budget, strings, analysis::CapturedValues::kReject);
+}
+CreatedFunctionResult WriteCreatedFunctionTemplate(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    abc::EntityOffset caller, const abc::DecodedInstruction& instruction,
+    std::ostream& output, LocalLexicalBudget budget,
+    abc::StringBudget strings) {
+  return WriteCreation(file, header, index, lookup, caller, instruction, output,
+                       budget, strings, analysis::CapturedValues::kLanguage);
 }
 }  // namespace abcd::source

@@ -4,7 +4,7 @@
 #include "abcd/source/local_lexical_body.h"
 
 namespace abcd::source {
-// Private: WriteCreatedFunction is deliberately invoked without nested support.
+// Private: the created-function template has no nested creation support.
 // Full callee diagnostics remain available through that public API; this bridge
 // reports the parent creation PC and preserves resource/output/work failures.
 BodyEmitResult WriteLeafCreation(const abc::BodyInstruction& site,

@@ -45,6 +45,19 @@ int main(int argc, char** argv) {
   std::copy(std::begin(nested), std::end(nested), bytes.begin() + 720);
   const std::uint8_t empty[]{0, 4, 1, 0, 0x65};
   std::copy(std::begin(empty), std::end(empty), bytes.begin() + 740);
+  const auto fixture = [&](std::size_t offset,
+                           std::initializer_list<std::uint8_t> code) {
+    bytes[offset] = 0;
+    bytes[offset + 1] = 4;
+    bytes[offset + 2] = code.size();
+    bytes[offset + 3] = 0;
+    std::copy(code.begin(), code.end(), bytes.begin() + offset + 4);
+  };
+  fixture(450, {0x60, 3, 0x3d, 0, 0x3c, 0, 0x64});           // captured setter
+  fixture(470, {0x09, 1, 0x60, 3, 0x3d, 0, 0x3c, 1, 0x64});  // local + outer
+  fixture(490, {0x3c, 1, 0x64});                             // outer ancestor
+  fixture(510, {0x70, 0x3d, 0, 0x65});  // forbidden internal store
+  fixture(530, {0x3c, 0x10, 0x64});     // captured slot 1
   std::size_t large_start = kLargeCode;
   const auto uleb = [&](std::uint32_t value) {
     do {
@@ -58,8 +71,8 @@ int main(int argc, char** argv) {
   uleb(kLargeInstructions);
   uleb(0);
   std::fill_n(bytes.begin() + large_start, kLargeInstructions, 0xd5);
-  bytes[large_start + kLargeInstructions - 3] = 0x60;
-  bytes[large_start + kLargeInstructions - 2] = 3;
+  bytes[large_start + kLargeInstructions - 3] = 0x3c;
+  bytes[large_start + kLargeInstructions - 2] = 0;
   bytes[large_start + kLargeInstructions - 1] = 0x64;
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kTarget >> (8 * i));

@@ -49,6 +49,7 @@ enum class FixtureKind {
   kSourceLocalLexicals,
   kSourceLeafFunctions,
   kSourceCapturedLeaf,
+  kSourceInitializedCapture,
   kSourceUninitialized,
   kSourceMultiBlockLoop,
   kSourceException,
@@ -130,6 +131,8 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kSourceLeafFunctions;
     else if (option == "--source-captured-leaf")
       kind = FixtureKind::kSourceCapturedLeaf;
+    else if (option == "--source-initialized-capture")
+      kind = FixtureKind::kSourceInitializedCapture;
     else if (option == "--source-uninitialized")
       kind = FixtureKind::kSourceUninitialized;
     else if (option == "--source-multiblock-loop")
@@ -154,7 +157,8 @@ int main(int argc, char** argv) {
   std::vector<std::uint8_t> dynamic(kClassOffset);
   dynamic.insert(dynamic.end(), kClass.begin(), kClass.end());
   if (kind == FixtureKind::kSourceLeafFunctions ||
-      kind == FixtureKind::kSourceCapturedLeaf) {
+      kind == FixtureKind::kSourceCapturedLeaf ||
+      kind == FixtureKind::kSourceInitializedCapture) {
     dynamic[kClassOffset + 14] = 2;
     // FUNCTION kind is access_flags 1 << 8, encoded as two ULEB bytes.
     constexpr std::array<std::uint8_t, 16> kFunction{
@@ -166,9 +170,13 @@ int main(int argc, char** argv) {
     const auto name = dynamic.size();
     dynamic.insert(dynamic.end(), {9, 'm', 'a', 'i', 'n', 0});
     const auto parent_code = dynamic.size();
-    dynamic.insert(dynamic.end(), {0, 3, 6, 0, 0x33, 0, 0, 0, 0, 0x64});
+    if (kind == FixtureKind::kSourceInitializedCapture)
+      dynamic.insert(dynamic.end(), {0, 3, 11, 0, 0x09, 1, 0x00, 0x3d, 0,
+                                     0x33, 0, 0, 0, 0, 0x64});
+    else
+      dynamic.insert(dynamic.end(), {0, 3, 6, 0, 0x33, 0, 0, 0, 0, 0x64});
     const auto child_code = dynamic.size();
-    if (kind == FixtureKind::kSourceCapturedLeaf)
+    if (kind != FixtureKind::kSourceLeafFunctions)
       dynamic.insert(dynamic.end(), {0, 3, 3, 0, 0x3c, 0, 0x64});
     else
       dynamic.insert(dynamic.end(), {0, 3, 1, 0, 0x65});
