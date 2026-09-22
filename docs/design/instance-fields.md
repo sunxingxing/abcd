@@ -51,3 +51,10 @@ as field declarations/initializers merely because their receiver is this.
 Fixed receiver calls reuse LiftReceiverCall and preserve private caller register
 identity while killing accumulator identity on normal return. No heap property
 fact survives by implication, and this does not authorize source .call rewriting.
+
+Local/external module loads now carry typed ModuleSpace and ModuleSlot. These
+are module value slots, not string pool entries or module request IDs. Their
+normal-completion register effect replaces acc but preserves caller registers
+and frame.thisObj, allowing receiver aliases to survive. Loaded values remain
+unknown and may be Hole; initialization guards are not removed. Modern narrow
+and wide encodings are lifted separately from deprecated name-based accesses.

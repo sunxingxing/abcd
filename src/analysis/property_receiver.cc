@@ -5,6 +5,7 @@
 
 #include "abcd/abc/control_transfer.h"
 #include "abcd/analysis/global_access.h"
+#include "abcd/analysis/module_load.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/property_write.h"
 #include "abcd/analysis/register_effect.h"
@@ -104,6 +105,14 @@ ProvePropertyReceivers(const abc::MethodBody& body, std::uint32_t registers,
         return error == CallError::kRegisterRange
                    ? ReceiverError::kFrameRange
                    : ReceiverError::kMalformedInstruction;
+      const auto module = LiftModuleLoad(instruction.decoded);
+      if (std::holds_alternative<ModuleLoad>(module)) {
+        accumulator = ReceiverOrigin::kUnknown;
+        continue;
+      }
+      if (std::get<ModuleLoadError>(module) !=
+          ModuleLoadError::kUnsupportedOpcode)
+        return ReceiverError::kMalformedInstruction;
       const auto global = LiftGlobalAccess(instruction.decoded);
       if (const auto* access = std::get_if<GlobalAccess>(&global)) {
         if (ReadsGlobal(access->operation))

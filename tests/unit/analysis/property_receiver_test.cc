@@ -65,6 +65,12 @@ int main() {
     Check(result.size() == 1 && result[0].origin == ReceiverOrigin::kEntryThis);
   }
   const auto direct = Body({0x7a, 0, 0, 0, 0, 0x65});
+  const auto module_load = Body(
+      {0x45, 0, 2, 0x7e, 0, 0x61, 1, 0x43, 0, 0, 0, 0, 0x43, 0, 0, 0, 1, 0x65});
+  result = std::get<std::vector<PropertyReceiver>>(
+      ProvePropertyReceivers(module_load, 3, abc::RegisterId{2}));
+  Check(result.size() == 2 && result[0].origin == ReceiverOrigin::kEntryThis &&
+        result[1].origin == ReceiverOrigin::kUnknown);
   const auto assigned = Body({0x45, 0, 2, 0x43, 0, 0, 0, 0, 0x65});
   result = std::get<std::vector<PropertyReceiver>>(
       ProvePropertyReceivers(assigned, 3, abc::RegisterId{2}));

@@ -1,0 +1,33 @@
+#include "abcd/analysis/module_load.h"
+
+namespace abcd::analysis {
+std::variant<ModuleLoad, ModuleLoadError> LiftModuleLoad(
+    const abc::DecodedInstruction& instruction) {
+  ModuleSpace space;
+  std::uint64_t limit = UINT8_MAX;
+  switch (instruction.opcode) {
+    case abc::Opcode::kWIDE_LDLOCALMODULEVAR_PREF_IMM16:
+      limit = UINT16_MAX;
+      [[fallthrough]];
+    case abc::Opcode::kLDLOCALMODULEVAR_IMM8:
+      space = ModuleSpace::kLocal;
+      break;
+    case abc::Opcode::kWIDE_LDEXTERNALMODULEVAR_PREF_IMM16:
+      limit = UINT16_MAX;
+      [[fallthrough]];
+    case abc::Opcode::kLDEXTERNALMODULEVAR_IMM8:
+      space = ModuleSpace::kExternal;
+      break;
+    default:
+      return ModuleLoadError::kUnsupportedOpcode;
+  }
+  constexpr std::size_t kSlot = 0, kOperands = 1;
+  if (instruction.operand_count != kOperands ||
+      instruction.operands[kSlot].kind != abc::OperandKind::kImmediate ||
+      instruction.operands[kSlot].raw_bits > limit)
+    return ModuleLoadError::kMalformedInstruction;
+  return ModuleLoad{
+      space,
+      {static_cast<std::uint16_t>(instruction.operands[kSlot].raw_bits)}};
+}
+}  // namespace abcd::analysis
