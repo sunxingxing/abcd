@@ -146,6 +146,8 @@ int main() {
   Check(index.records[0].method_count == 1);
   Check(index.methods.size() == 1);
   Check(index.methods[0].name == "m");
+  Check(index.methods[0].name_offset.value == 330);
+  Check(!index.methods[0].debug_info);
   Check(index.methods[0].owner_offset.value == 128);
   Check(index.methods[0].proto_offset->value == 300);
   Check(index.methods[0].code.has_value());
@@ -172,6 +174,7 @@ int main() {
     const auto& annotations =
         std::get<abcd::abc::MetadataIndex>(parsed).methods[0].annotations;
     Check(annotations.first_tag.value == 194 && annotations.count == 2);
+    Check(std::get<abcd::abc::MetadataIndex>(parsed).methods[0].debug_info->value == 371);
   }
 
   for (const std::uint32_t count : {1U, 200U, 201U, 4096U}) {

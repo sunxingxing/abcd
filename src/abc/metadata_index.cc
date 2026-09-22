@@ -354,6 +354,7 @@ std::variant<MethodInfo, MetadataError> ReadMethod(
     method.proto_offset = EntityOffset{std::get<std::uint32_t>(proto)};
   }
   if (!ValidEntity(header, name_offset)) return MetadataError::kReference;
+  method.name_offset = {name_offset};
   MetadataCursor name_reader(file, name_offset, header.file_size);
   auto name = ReadMetadataString(&name_reader, &method.name_utf16_length, spent,
                                  budget);
@@ -408,6 +409,8 @@ std::variant<MethodInfo, MetadataError> ReadMethod(
           return std::get<MetadataError>(ref);
         if (!ValidEntity(header, std::get<std::uint32_t>(ref)))
           return MetadataError::kReference;
+        if (static_cast<MethodTag>(tag) == MethodTag::kDebugInfo)
+          method.debug_info = EntityOffset{std::get<std::uint32_t>(ref)};
         if (static_cast<MethodTag>(tag) == MethodTag::kAnnotation) {
           constexpr std::uint32_t kTaggedReferenceBytes =
               sizeof(std::uint8_t) + sizeof(std::uint32_t);

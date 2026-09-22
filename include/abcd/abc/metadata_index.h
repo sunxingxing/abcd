@@ -78,6 +78,10 @@ struct MethodInfo {
   std::uint32_t access_flags = 0;
   std::optional<CodeInfo> code;
   MethodAnnotations annotations;
+  EntityOffset name_offset{};
+  // Keep debug payload lazy; structure recovery must not lose the only
+  // evidence for original parameter/local names and lexical lifetimes.
+  std::optional<EntityOffset> debug_info = {};
 };
 
 struct IndexRegion {

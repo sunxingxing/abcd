@@ -4,6 +4,11 @@ Applies to code, tests, tools, documentation, and agents. Implementation is
 authorized. Linked specialist contracts remain binding.
 
 ## 0. Goal and Reference
+- Current priority: recover record paths/file names, module imports/exports,
+  class layouts/fields, globals/locals, function names (including async) and
+  signatures before expanding function-body decompilation. Publish structural
+  artifacts as explicitly incomplete; never fake executable bodies or confuse
+  record metadata fields/register slots with source class fields/variables.
 - C++20; semantically faithful, analyzable JS/TS/ArkTS, one file per record.
   Assembly, fake bodies, and copying sidecar source are not successful
   decompilation. Keep evaluation source outside engine inputs.

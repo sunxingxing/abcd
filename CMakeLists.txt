@@ -75,6 +75,8 @@ target_sources(abcd_source PRIVATE src/source/leaf_sources.cc)
 target_link_libraries(abcd_source PUBLIC abcd_analysis)
 target_compile_features(abcd_source PUBLIC cxx_std_20)
 target_include_directories(abcd_source PUBLIC include)
+add_library(abcd_structure src/structure/record_path.cc src/structure/record_writer.cc src/structure/module_writer.cc)
+target_link_libraries(abcd_structure PUBLIC abcd_source)
 add_library(abcd_corpus
   src/corpus/detect.cc
   src/corpus/manifest.cc
@@ -87,6 +89,8 @@ target_link_libraries(abcd_corpus PUBLIC abcd_abc
 
 option(ABCD_BUILD_TOOLS "Build standalone ABC command-line tools" ON)
 if(ABCD_BUILD_TOOLS)
+  add_executable(abc_structure tools/abc_structure.cc)
+  target_link_libraries(abc_structure PRIVATE abcd_structure abcd_corpus abcd_json)
   add_executable(abc_scan tools/abc_scan.cc)
   target_link_libraries(abc_scan PRIVATE abcd_corpus abcd_json)
   add_library(abcd_inspection tools/corpus_inspection.cc tools/method_inspection.cc tools/reference_inspection.cc tools/module_inspection.cc)
@@ -120,6 +124,13 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(record_path_test tests/unit/structure/record_path_test.cc)
+  target_link_libraries(record_path_test PRIVATE abcd_structure)
+  add_test(NAME record_path_test COMMAND record_path_test)
+  add_executable(module_writer_test tests/unit/structure/module_writer_test.cc)
+  target_include_directories(module_writer_test PRIVATE src/structure)
+  target_link_libraries(module_writer_test PRIVATE abcd_structure)
+  add_test(NAME module_writer_test COMMAND module_writer_test)
   add_executable(capture_summary_test tests/unit/analysis/capture_summary_test.cc)
   target_link_libraries(capture_summary_test PRIVATE abcd_analysis)
   add_test(NAME capture_summary_test COMMAND capture_summary_test)
@@ -398,6 +409,10 @@ if(BUILD_TESTING)
   add_test(NAME scan_test COMMAND scan_test)
 
   if(TARGET abc_scan)
+    add_test(NAME structure_cli_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>
+      -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/structure_cli.cmake)
     add_test(NAME creations_cli_test COMMAND ${CMAKE_COMMAND}
       -DABCD_SCAN=$<TARGET_FILE:abc_scan>
       -DABCD_CREATIONS=$<TARGET_FILE:abc_creations>
