@@ -81,3 +81,30 @@ new.target and prototype descriptor behavior. Tests execute generated methods
 in Node, including alternate new.target and inherited setter/throw cases.
 Constructor and ordinary-function emission share register/name allocation and
 body budgets; no additional whole-output buffer or unbounded cache is added.
+
+## Class Heritage Proof
+
+ProveClassHeritage tracks only Hole (absent parent), null and unknown across
+scalar copies inside straight-line regions. The pinned runtime's
+RuntimeSetClassInheritanceRelationship in ecmascript/stubs/runtime_stubs-inl.h
+sets CLASS_CONSTRUCTOR for Hole, DERIVED_CONSTRUCTOR for null, and validates
+other values as constructors. No-extends is therefore not an inference from
+the target's initial method kind, and not the enum BASE_CONSTRUCTOR.
+
+All branch and exception-handler entries discard incoming facts. Unknown
+instructions and non-fallthrough transfers also discard them; later explicit
+definitions may establish fresh facts. Known register effects kill their
+destination, while ordinary class creation reads its parent then kills acc.
+Private caller-register values survive class creation even when runtime code
+executes getters. This does not preserve heap facts or prove class identity.
+
+Sorted incoming targets cost O(E log E); scanning and epoch-tagged registers
+cost O(N + R). Resetting an epoch is constant time, avoiding O(N R) clearing.
+Register cells, edge targets and output sites share an explicit byte budget.
+Class-site serialization matches evidence by PC, including around failed,
+deprecated and sendable sites. Failure leaves heritage unknown and reports a
+typed scan error at the serialization boundary.
+
+This proof discharges only the inheritance premise of constructor source
+integration. Binding identity, member descriptors, constructor target/ABI,
+captures, full signature shape and body admission remain separate obligations.

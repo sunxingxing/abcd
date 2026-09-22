@@ -15,7 +15,7 @@ void Check(bool value) {
 int main() {
   using namespace abcd;
   for (const bool bad_key : {false, true}) {
-    std::vector<std::uint8_t> bytes(256);
+    std::vector<std::uint8_t> bytes(512);
     const auto word = [&](std::size_t at, std::uint32_t value) {
       for (std::size_t i = 0; i < sizeof(value); ++i)
         bytes[at + i] = value >> (8 * i);
@@ -85,6 +85,8 @@ int main() {
     constexpr std::uint8_t kAssignProperty = 0x43;
     code.insert(code.end() - 1, {kAssignProperty, 0, 3, 0, 0});
     code[2] = 51;
+    code.insert(code.begin() + 4, {0x70, 0x61, 0});
+    code[2] = 54;
     std::copy(code.begin(), code.end(), bytes.begin() + 200);
     char path[] = "/tmp/abcd-class-writer-XXXXXX";
     const auto fd = mkstemp(path);
@@ -102,7 +104,7 @@ int main() {
     abc::MetadataIndex index;
     abc::MethodInfo caller, ctor;
     caller.offset = {96};
-    caller.code = abc::CodeInfo{{200}, {204}, 1, 0, 51, 0};
+    caller.code = abc::CodeInfo{{200}, {204}, 1, 0, 54, 0};
     ctor.offset = {100};
     index.methods = {caller, ctor};
     abc::IndexRegion region;
@@ -115,7 +117,9 @@ int main() {
     structure::RecordText text(file, header, {});
     std::ostringstream out;
     out << "{\"known_module\":true";
-    structure::WriteClassSites(text, index, lookup, caller, out);
+    abc::FrameLayout class_frame;
+    class_frame.registers = 1;
+    structure::WriteClassSites(text, index, lookup, caller, out, &class_frame);
     out << '}';
     const auto json = nlohmann::json::parse(out.str());
     Check(json["known_module"] == true);
@@ -123,6 +127,18 @@ int main() {
     Check(json["class_sites"][0].contains("error"));
     Check(!json["class_sites"][0].contains("constructor"));
     Check(json["class_sites"][1]["constructor"] == 100);
+    Check(json["class_sites"][1]["heritage"] == "absent");
+    structure::StructureBudget denied;
+    denied.heritage_bytes = 0;
+    structure::RecordText denied_text(file, header, denied);
+    std::ostringstream denied_out;
+    denied_out << "{\"limited\":true";
+    structure::WriteClassSites(denied_text, index, lookup, caller, denied_out,
+                               &class_frame);
+    denied_out << '}';
+    const auto denied_json = nlohmann::json::parse(denied_out.str());
+    Check(denied_json.contains("heritage_scan_error"));
+    Check(denied_json["class_sites"][1]["heritage"] == "unknown");
     Check(json["class_sites"][1]["properties"].size() == 1);
     Check(json["property_writes"].size() == 4);
     Check(json["property_writes"][3]["kind"] == "assignment");

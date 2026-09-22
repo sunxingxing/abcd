@@ -34,6 +34,7 @@ struct RecordCounts {
   std::size_t exports = 0;
 };
 struct StructureBudget {
+  std::size_t heritage_bytes = 16 * 1024 * 1024;
   std::size_t receiver_bytes = 16 * 1024 * 1024;
   std::size_t body_bytes = 64 * 1024 * 1024;
   std::size_t literal_bytes = 16 * 1024 * 1024;

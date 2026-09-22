@@ -4,6 +4,7 @@
 #include "abcd/abc/method_body.h"
 #include "abcd/abc/method_target.h"
 #include "abcd/analysis/class_creation.h"
+#include "abcd/analysis/class_heritage.h"
 #include "record_text.h"
 
 namespace abcd::structure {
@@ -91,7 +92,8 @@ void ValidateString(const RecordText& text, const abc::LiteralEntry& literal) {
 }
 void Class(const RecordText& text, const abc::MetadataIndex& index,
            const abc::MethodLookup& lookup, const abc::MethodInfo& caller,
-           const abc::DecodedInstruction& instruction, std::ostream& out) {
+           const abc::DecodedInstruction& instruction, std::ostream& out,
+           analysis::HeritageKind heritage) {
   const auto site =
       Take<analysis::ClassCreation>(analysis::LiftClassCreation(instruction));
   const auto constructor = Take<abc::MethodTarget>(abc::ResolveMethodTarget(
@@ -120,8 +122,19 @@ void Class(const RecordText& text, const abc::MetadataIndex& index,
   out << "\"constructor\":"
       << index.methods[constructor.position.value].offset.value
       << ",\"constructor_length\":" << site.length
-      << ",\"parent_register\":" << site.parent.value
-      << ",\"buffer\":" << buffer.offset.value << ",\"properties\":[";
+      << ",\"parent_register\":" << site.parent.value << ",\"heritage\":\"";
+  switch (heritage) {
+    case analysis::HeritageKind::kUnknown:
+      out << "unknown";
+      break;
+    case analysis::HeritageKind::kAbsent:
+      out << "absent";
+      break;
+    case analysis::HeritageKind::kNull:
+      out << "null";
+      break;
+  }
+  out << "\",\"buffer\":" << buffer.offset.value << ",\"properties\":[";
   bool comma = false;
   for (const auto& property : layout.properties) {
     if (comma) out << ',';
@@ -171,16 +184,33 @@ void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
         << "},\"property_writes\":null,\"global_accesses\":null";
     return;
   }
+  const auto& body = std::get<abc::MethodBody>(decoded);
+  std::variant<std::vector<analysis::ClassHeritage>, analysis::HeritageError>
+      heritage = std::vector<analysis::ClassHeritage>{};
+  if (frame)
+    heritage = analysis::ProveClassHeritage(body, frame->registers,
+                                            {text.budget.heritage_bytes});
+  const auto* facts =
+      std::get_if<std::vector<analysis::ClassHeritage>>(&heritage);
+  std::size_t fact = 0;
   out << '[';
   bool comma = false;
   for (const auto& instruction :
        std::get<abc::MethodBody>(decoded).instructions) {
     if (!ClassOpcode(instruction.decoded.opcode)) continue;
+    auto kind = analysis::HeritageKind::kUnknown;
+    if (facts) {
+      while (fact < facts->size() &&
+             (*facts)[fact].pc.value < instruction.offset.value)
+        ++fact;
+      if (fact < facts->size() && (*facts)[fact].pc == instruction.offset)
+        kind = (*facts)[fact].kind;
+    }
     if (comma) out << ',';
     comma = true;
     out << "{\"pc\":" << instruction.offset.value << ',';
     try {
-      Class(text, index, lookup, method, instruction.decoded, out);
+      Class(text, index, lookup, method, instruction.decoded, out, kind);
     } catch (const SiteFailure& failure) {
       if (const auto* error = std::get_if<abc::MetadataError>(&failure.error))
         if (*error == abc::MetadataError::kRead ||
@@ -195,8 +225,11 @@ void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
     out << '}';
   }
   out << ']';
-  WritePropertySites(text, index, method, std::get<abc::MethodBody>(decoded), out,
-                frame);
+  if (const auto* error = std::get_if<analysis::HeritageError>(&heritage))
+    out << ",\"heritage_scan_error\":{\"code\":"
+        << static_cast<unsigned>(*error) << '}';
+  WritePropertySites(text, index, method, std::get<abc::MethodBody>(decoded),
+                     out, frame);
   WriteGlobalSites(text, index, method, std::get<abc::MethodBody>(decoded),
                    out);
 }

@@ -8,6 +8,7 @@ const totals = { records: 0, methods: 0, record_fields: 0,
   module_requests: 0, module_imports: 0, module_exports: 0 };
 const debugTotals = { parsed: 0, failed: 0, locals: 0, positions: 0, source_files: 0 };
 const classTotals = { sites: 0, failed: 0, scan_failed: 0, prototype: 0, static: 0, methods: 0 };
+const heritageTotals = { absent: 0, null: 0, unknown: 0, scan_failed: 0 };
 const writeTotals = { assignment: 0, own_store: 0, define_field: 0, failed: 0,
   entry_this: 0, constructor_assignments: 0, constructor_entry_this: 0 };
 const globalTotals = { name_read: 0, var_read: 0, name_write: 0, var_write: 0,
@@ -68,11 +69,14 @@ for (const root of process.argv.slice(3)) {
       }
       assert(Object.hasOwn(method, 'class_sites'));
       if (method.class_scan_error) classTotals.scan_failed++;
+      if (method.heritage_scan_error) heritageTotals.scan_failed++;
       for (const site of method.class_sites ?? []) {
         classTotals.sites++;
         if (site.error) { classTotals.failed++; continue; }
         assert(methods.has(site.constructor));
         assert(Number.isInteger(site.constructor_length));
+        assert(['absent', 'null', 'unknown'].includes(site.heritage));
+        heritageTotals[site.heritage]++;
         for (const property of site.properties) {
           assert(['prototype', 'static'].includes(property.placement));
           classTotals[property.placement]++;
@@ -114,4 +118,4 @@ for (const root of process.argv.slice(3)) {
   assert.deepEqual(counts, manifest.counts);
   for (const key of Object.keys(totals)) totals[key] += counts[key];
 }
-console.log(JSON.stringify({ typescript: ts.version, counts: totals, debug: debugTotals, classes: classTotals, property_writes: writeTotals, globals: globalTotals }));
+console.log(JSON.stringify({ typescript: ts.version, counts: totals, debug: debugTotals, classes: classTotals, heritage: heritageTotals, property_writes: writeTotals, globals: globalTotals }));
