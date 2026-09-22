@@ -125,10 +125,9 @@ On 2026-09-22 the Debug demand test took 0.04 seconds with peak process RSS
 8,126,464 bytes. This is synthetic query evidence, not full-corpus transitive
 recovery or complete-pipeline memory evidence.
 
-The next solver must use a bounded sparse worklist, deduplicate admitted
-context/depth/slot requirements and retain provenance separately. It must charge
-pending facts, indexes, provenance and retained snapshots, and report demand-edge
-work honestly. Do not walk the entire creation graph separately for every
-variable, eagerly construct a site/use cross-product, or assume a small number
-of fixed-point rounds. Recursive creation contexts and depth-increasing cycles
-need a separate summary/termination contract; deduplication alone is insufficient.
+[CapturePropagation](../design/capture-propagation.md) now applies this transfer
+with a bounded worklist over a supplied finite context forest, deduplicating
+context/depth/slot facts and retaining their shared dependency DAG. It does not
+walk the graph independently per variable or construct a site/use cross-product.
+Automatic context discovery and recursive context expansion still need a separate
+summary/termination contract; deduplication alone is insufficient.
