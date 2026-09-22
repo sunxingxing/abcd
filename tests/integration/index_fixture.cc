@@ -46,6 +46,8 @@ enum class FixtureKind {
   kCreationNonmethod,
   kCreationUnreachable,
   kSourceLoop,
+  kSourceLocalLexicals,
+  kSourceUninitialized,
   kSourceMultiBlockLoop,
   kSourceException,
   kInvalidReference,
@@ -120,6 +122,10 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kCreationUnreachable;
     else if (option == "--source-loop")
       kind = FixtureKind::kSourceLoop;
+    else if (option == "--source-local-lexicals")
+      kind = FixtureKind::kSourceLocalLexicals;
+    else if (option == "--source-uninitialized")
+      kind = FixtureKind::kSourceUninitialized;
     else if (option == "--source-multiblock-loop")
       kind = FixtureKind::kSourceMultiBlockLoop;
     else if (option == "--source-exception")
@@ -247,6 +253,11 @@ int main(int argc, char** argv) {
                                        0x09, 1, 0xd5, 0x4d, 3, 0xd5, 0x3c, 0, 0x65});
       } else if (kind == FixtureKind::kSourceLoop) {
         dynamic.insert(dynamic.end(), {0, 3, 2, 0, 0x4d, 0});
+      } else if (kind == FixtureKind::kSourceLocalLexicals) {
+        dynamic.insert(dynamic.end(), {0, 3, 12, 0, 0x09, 1, 0, 0x3d, 0,
+                                       0x3c, 0, 0xfe, 9, 0xff, 0xff, 0x64});
+      } else if (kind == FixtureKind::kSourceUninitialized) {
+        dynamic.insert(dynamic.end(), {0, 3, 5, 0, 0x09, 1, 0x3c, 0, 0x64});
       } else if (kind == FixtureKind::kSourceMultiBlockLoop) {
         dynamic.insert(dynamic.end(), {0, 3, 6, 0, 0xd5, 0x4d, 2,
                                        0xd5, 0x4d, 0xfc});

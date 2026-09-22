@@ -10,6 +10,8 @@
 #include <type_traits>
 
 #include "abcd/abc/call_type.h"
+#include "abcd/analysis/hole_guard.h"
+#include "abcd/source/local_lexical_body.h"
 
 namespace abcd::tools {
 namespace {
@@ -31,6 +33,21 @@ const char* Category(source::BodyEmitError) { return "body"; }
 const char* Category(source::AcyclicError) { return "acyclic"; }
 const char* Category(source::EmitError) { return "emission"; }
 const char* Category(SourceProbeError) { return "probe"; }
+bool IsLexicalCandidate(const abc::MethodBody& body, std::uint64_t frame) {
+  bool lexical = false;
+  for (const auto& site : body.instructions) {
+    const auto transfer = abc::GetControlTransfer(site.decoded.opcode);
+    if (!transfer || (*transfer != abc::ControlTransfer::kFallthrough &&
+                      *transfer != abc::ControlTransfer::kReturn &&
+                      *transfer != abc::ControlTransfer::kThrow))
+      return false;
+    lexical |= !std::holds_alternative<analysis::LexicalError>(
+                   analysis::LiftLexicalInstruction(site.decoded, frame)) ||
+               !std::holds_alternative<analysis::HoleError>(
+                   analysis::LiftHoleInstruction(site.decoded, frame));
+  }
+  return lexical;
+}
 }  // namespace
 
 SourceCounts& SourceCounts::operator+=(const SourceCounts& other) {
@@ -122,6 +139,18 @@ void InspectSource(const corpus::AbcFile& file, const abc::Header& header,
       file, header, index, method.offset, {}};
   const auto result = source::WriteBlockLoopBody(
       body, {"acc", std::span(names.get(), registers)}, sink, {}, &constants);
+  if (!std::holds_alternative<std::size_t>(result) &&
+      IsLexicalCandidate(body, registers)) {
+    const auto local = source::WriteLocalLexicalBody(
+        body, {"acc", std::span(names.get(), registers)}, sink, {}, &constants);
+    if (const auto* bytes = std::get_if<std::size_t>(&local)) {
+      ++counts->ready;
+      counts->bytes += *bytes;
+      return;
+    }
+    // Neither path is source-ready. Keep the original typed obstacle rather
+    // than changing corpus diagnostics merely because a fallback was tried.
+  }
   std::visit(
       [&](const auto& value) {
         using T = std::decay_t<decltype(value)>;

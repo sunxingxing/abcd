@@ -12,6 +12,7 @@
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/ordinary_call.h"
 #include "abcd/source/string_literal.h"
+#include "linear_instruction.h"
 #include "ordered_body.h"
 
 namespace abcd::source {
@@ -52,6 +53,9 @@ class BodyWriter {
     if (!body.tries.empty() || !body.handlers.empty())
       return BodyEmitFailure{BodyEmitError::kExceptionRegions, {}, {}, {}};
     return Sequence(body.instructions, false, true);
+  }
+  BodyEmitResult Instruction(const abc::BodyInstruction& instruction) {
+    return Sequence(std::span(&instruction, 1), true, false);
   }
 
   BodyEmitResult Ordered(const abc::MethodBody& body, const NormalFlow& graph,
@@ -358,6 +362,13 @@ class BodyWriter {
   const MethodConstants* constants_;
 };
 }  // namespace
+
+BodyEmitResult WriteLinearInstruction(const abc::BodyInstruction& instruction,
+                                      ScalarNames names, std::ostream& output,
+                                      EmitBudget budget,
+                                      const MethodConstants* constants) {
+  return BodyWriter(names, output, budget, constants).Instruction(instruction);
+}
 
 BodyEmitResult WriteLinearBody(const abc::MethodBody& body, ScalarNames names,
                                std::ostream& output, EmitBudget budget,

@@ -1,0 +1,80 @@
+#ifndef ABCD_ANALYSIS_LINEAR_LEXICALS_H_
+#define ABCD_ANALYSIS_LINEAR_LEXICALS_H_
+
+#include "abcd/analysis/environment_flow.h"
+#include "abcd/analysis/phi_placement.h"
+
+namespace abcd::analysis {
+struct LocalCellId {
+  std::uint32_t value = 0;
+};
+struct LocalCell {
+  EnvironmentId environment;
+  LexicalSlot slot;
+};
+struct KeepInstruction {};
+struct OmitInstruction {};
+struct LocalLoad {
+  LocalCellId cell;
+};
+struct LocalStore {
+  LocalCellId cell;
+  ScalarSlot value;
+};
+using LinearStatement =
+    std::variant<KeepInstruction, OmitInstruction, LocalLoad, LocalStore>;
+enum class LinearLexicalError {
+  kExceptionRegions,
+  kControlFlow,
+  kTerminator,
+  kEnvironment,
+  kCaptured,
+  kUninitialized,
+  kInternalValue,
+  kMayThrowGuard,
+  kInstruction,
+  kWorkLimit,
+  kResourceLimit
+};
+struct LinearLexicalFailure {
+  LinearLexicalError kind;
+  abc::CodeOffset offset{};
+};
+struct LinearLexicalWork {
+  std::uint64_t instructions = 0;
+  std::uint64_t units = 0;
+  std::size_t peak_bytes = 0;
+};
+// Same validated straight-line body/frame and unchanged environment flow.
+// Entry registers are caller-PROVEN language values; acc starts Hole. Only
+// initialized local cells and language reads can reach emitted statements.
+// Omissions exclude GC/OOM timing/debugger observability, not language effects.
+// Named allocations, capture, branches, handlers and possibly failing guards
+// are rejected. This is neither general CFG promotion nor a function service.
+class LinearLexicals {
+ public:
+  LinearLexicals(LinearLexicals&&) noexcept = default;
+  LinearLexicals& operator=(LinearLexicals&&) noexcept = default;
+  static std::variant<LinearLexicals, LinearLexicalFailure> Build(
+      const abc::MethodBody& body, const EnvironmentFlow& environments,
+      std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {});
+  std::span<const LinearStatement> Statements() const {
+    return {statements_.get(), statements_ ? statement_count_ : 0};
+  }
+  std::span<const LocalCell> Cells() const {
+    return {cells_.get(), cells_ ? cell_count_ : 0};
+  }
+  std::size_t AllocatedBytes() const {
+    return Statements().size_bytes() + Cells().size_bytes();
+  }
+  LinearLexicalWork work;
+
+ private:
+  LinearLexicals() = default;
+  std::unique_ptr<LinearStatement[]> statements_;
+  std::unique_ptr<LocalCell[]> cells_;
+  std::size_t statement_count_ = 0;
+  std::size_t cell_count_ = 0;
+};
+}  // namespace abcd::analysis
+#endif  // ABCD_ANALYSIS_LINEAR_LEXICALS_H_

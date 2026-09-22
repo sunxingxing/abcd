@@ -59,12 +59,14 @@ target_sources(abcd_analysis PRIVATE src/analysis/register_ssa.cc src/analysis/r
 target_sources(abcd_analysis PRIVATE src/analysis/register_value_flow.cc src/analysis/register_value_rule.cc src/analysis/lexical_value_index.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/guarded_reads.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/environment_escape.cc src/analysis/environment_escape_aliases.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/linear_lexicals.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/block_order.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/accumulator_flow.cc src/analysis/scalar_access.cc)
 target_link_libraries(abcd_analysis PUBLIC abcd_abc)
 add_library(abcd_source src/source/string_literal.cc src/source/scalar_expression.cc)
 target_sources(abcd_source PRIVATE src/source/linear_body.cc)
 target_sources(abcd_source PRIVATE src/source/acyclic_body.cc)
+target_sources(abcd_source PRIVATE src/source/local_lexical_body.cc)
 target_link_libraries(abcd_source PUBLIC abcd_analysis)
 target_compile_features(abcd_source PUBLIC cxx_std_20)
 target_include_directories(abcd_source PUBLIC include)
@@ -180,6 +182,10 @@ if(BUILD_TESTING)
   add_executable(linear_body_test tests/unit/source/linear_body_test.cc)
   target_link_libraries(linear_body_test PRIVATE abcd_source)
   add_test(NAME linear_body_test COMMAND linear_body_test)
+  add_executable(local_lexical_body_test tests/unit/source/local_lexical_body_test.cc tests/support/analysis/local_lexical_scaling.cc)
+  target_include_directories(local_lexical_body_test PRIVATE tests/support)
+  target_link_libraries(local_lexical_body_test PRIVATE abcd_source)
+  add_test(NAME local_lexical_body_test COMMAND local_lexical_body_test)
   add_executable(branch_condition_test tests/unit/analysis/branch_condition_test.cc)
   target_link_libraries(branch_condition_test PRIVATE abcd_analysis)
   add_test(NAME branch_condition_test COMMAND branch_condition_test)
@@ -197,6 +203,12 @@ if(BUILD_TESTING)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   find_program(ABCD_NODE_EXECUTABLE node)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME local_lexical_body_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:local_lexical_body_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/local_lexical_body.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=local-lexical-body.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME block_loop_body_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:block_loop_body_test>
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/block_loop_body.mjs
