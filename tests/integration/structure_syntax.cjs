@@ -8,6 +8,7 @@ const totals = { records: 0, methods: 0, record_fields: 0,
   module_requests: 0, module_imports: 0, module_exports: 0 };
 const debugTotals = { parsed: 0, failed: 0, locals: 0, positions: 0, source_files: 0 };
 const classTotals = { sites: 0, failed: 0, scan_failed: 0, prototype: 0, static: 0, methods: 0 };
+const writeTotals = { own_store: 0, define_field: 0, failed: 0 };
 for (const root of process.argv.slice(3)) {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));
   const methods = new Map();
@@ -34,6 +35,16 @@ for (const root of process.argv.slice(3)) {
     counts.records++;
     counts.methods += record.methods.length;
     for (const method of record.methods) {
+      assert(Object.hasOwn(method, 'property_writes'));
+      for (const write of method.property_writes ?? []) {
+        if (write.error) { writeTotals.failed++; continue; }
+        assert(['own_store', 'define_field'].includes(write.kind));
+        assert(Number.isInteger(write.pc));
+        assert(Number.isInteger(write.object_register));
+        assert.equal(typeof write.name, 'string');
+        assert.equal(write.instance, null);
+        writeTotals[write.kind]++;
+      }
       assert(Object.hasOwn(method, 'class_sites'));
       if (method.class_scan_error) classTotals.scan_failed++;
       for (const site of method.class_sites ?? []) {
@@ -82,4 +93,4 @@ for (const root of process.argv.slice(3)) {
   assert.deepEqual(counts, manifest.counts);
   for (const key of Object.keys(totals)) totals[key] += counts[key];
 }
-console.log(JSON.stringify({ typescript: ts.version, counts: totals, debug: debugTotals, classes: classTotals }));
+console.log(JSON.stringify({ typescript: ts.version, counts: totals, debug: debugTotals, classes: classTotals, property_writes: writeTotals }));

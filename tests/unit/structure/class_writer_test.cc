@@ -24,6 +24,8 @@ int main() {
     word(64, 100);
     word(68, 128);
     word(72, 160);
+    word(76, 80);
+    word(88, 84);
     bytes[80] = 3;
     bytes[81] = 'x';
     bytes[82] = 0;
@@ -43,10 +45,39 @@ int main() {
     literal(128, bad_key ? 84 : 80, bad_key ? 80 : 84);
     literal(160, 80, 80);
     constexpr std::uint8_t kDefineClass = 0x35, kReturnUndefined = 0x65;
-    const std::vector<std::uint8_t> code{
-        1, 0, 19, 0, kDefineClass,    0, 0, 0, 1,
-        0, 0, 0,  0, kDefineClass,    0, 0, 0, 2,
-        0, 0, 0,  0, kReturnUndefined};
+    std::vector<std::uint8_t> code{1,
+                                         0,
+                                         24,
+                                         0,
+                                         kDefineClass,
+                                         0,
+                                         0,
+                                         0,
+                                         1,
+                                         0,
+                                         0,
+                                         0,
+                                         0,
+                                         kDefineClass,
+                                         0,
+                                         0,
+                                         0,
+                                         2,
+                                         0,
+                                         0,
+                                         0,
+                                         0,
+                                         0x7a,
+                                         0,
+                                         3,
+                                         0,
+                                         0,
+                                         kReturnUndefined};
+    constexpr std::uint8_t kStoreOwnName = 0x7a;
+    constexpr std::size_t kOwnSiteOffset = 22;
+    code.insert(code.begin() + kOwnSiteOffset,
+                {kStoreOwnName, 0, 7, 0, 0, kStoreOwnName, 0, 6, 0, 0});
+    code[2] = 34;
     std::copy(code.begin(), code.end(), bytes.begin() + 200);
     char path[] = "/tmp/abcd-class-writer-XXXXXX";
     const auto fd = mkstemp(path);
@@ -65,13 +96,13 @@ int main() {
     abc::MetadataIndex index;
     abc::MethodInfo caller, ctor;
     caller.offset = {96};
-    caller.code = abc::CodeInfo{{200}, {204}, 1, 0, 19, 0};
+    caller.code = abc::CodeInfo{{200}, {204}, 1, 0, 34, 0};
     ctor.offset = {100};
     index.methods = {caller, ctor};
     abc::IndexRegion region;
     region.start = 60;
     region.end = bytes.size();
-    region.methods = {3, 64};
+    region.methods = {7, 64};
     index.regions.push_back(region);
     const auto lookup =
         std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
@@ -87,5 +118,12 @@ int main() {
     Check(!json["class_sites"][0].contains("constructor"));
     Check(json["class_sites"][1]["constructor"] == 100);
     Check(json["class_sites"][1]["properties"].size() == 1);
+    Check(json["property_writes"].size() == 3);
+    Check(json["property_writes"][0].contains("error"));
+    Check(json["property_writes"][1].contains("error"));
+    Check(!json["property_writes"][1].contains("name"));
+    Check(json["property_writes"][2]["name"] == "x");
+    Check(json["property_writes"][2]["kind"] == "own_store");
+    Check(json["property_writes"][2]["instance"] == nullptr);
   }
 }

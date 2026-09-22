@@ -2,6 +2,7 @@
 #define ABCD_STRUCTURE_RECORD_TEXT_H_
 
 #include "abcd/abc/debug_info.h"
+#include "abcd/abc/method_body.h"
 #include "abcd/structure/record_writer.h"
 
 namespace abcd::structure {
@@ -27,5 +28,8 @@ void WriteScopeStructure(const RecordText& text, const abc::MethodInfo& method,
 void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
                      const abc::MethodLookup& lookup,
                      const abc::MethodInfo& method, std::ostream& metadata);
+void WriteOwnSites(const RecordText& text, const abc::MetadataIndex& index,
+                   const abc::MethodInfo& method, const abc::MethodBody& body,
+                   std::ostream& metadata);
 }  // namespace abcd::structure
 #endif

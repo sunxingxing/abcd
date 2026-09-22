@@ -9,6 +9,9 @@ authorized. Linked specialist contracts remain binding.
   signatures before expanding function-body decompilation. Publish structural
   artifacts as explicitly incomplete; never fake executable bodies or confuse
   record metadata fields/register slots with source class fields/variables.
+- Current gate: finish instance fields, global variables, complete source
+  signatures and function-body integration before resuming broader corpus
+  completion work. Evidence-only metadata is not completion of this gate.
 - C++20; semantically faithful, analyzable JS/TS/ArkTS, one file per record.
   Assembly, fake bodies, and copying sidecar source are not successful
   decompilation. Keep evaluation source outside engine inputs.
