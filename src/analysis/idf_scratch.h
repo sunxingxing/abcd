@@ -13,6 +13,19 @@ class IdfScratch final : public std::pmr::memory_resource {
   explicit IdfScratch(std::size_t limit) : limit_(limit) {}
   std::size_t Live() const { return live_; }
   std::size_t Peak() const { return peak_; }
+  std::size_t Available() const { return limit_ - live_; }
+  // External analyses receive Available() as their own budget. Observe their
+  // temporary peak, then retain ONLY their surviving payload until destruction.
+  // Reservations must not outlive this resource; releases require prior retain.
+  void Observe(std::size_t bytes) {
+    if (bytes > Available()) throw std::bad_alloc{};
+    peak_ = std::max(peak_, live_ + bytes);
+  }
+  void Retain(std::size_t bytes) {
+    Observe(bytes);
+    live_ += bytes;
+  }
+  void Release(std::size_t bytes) { live_ -= bytes; }
 
  private:
   void* do_allocate(std::size_t bytes, std::size_t alignment) override {
