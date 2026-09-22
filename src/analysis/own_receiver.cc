@@ -5,6 +5,7 @@
 
 #include "abcd/abc/control_transfer.h"
 #include "abcd/analysis/global_access.h"
+#include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/own_write.h"
 #include "abcd/analysis/register_effect.h"
 
@@ -89,6 +90,19 @@ std::variant<std::vector<OwnReceiver>, ReceiverError> ProveOwnReceivers(
         accumulator = ReceiverOrigin::kEntryThis;
         continue;
       }
+      const auto receiver_call =
+          LiftReceiverCall(instruction.decoded, registers);
+      if (std::holds_alternative<ReceiverCall>(receiver_call)) {
+        // Calls can mutate reachable objects, but not the caller's private
+        // register slots. Only identity survives; no property fact or purity.
+        accumulator = ReceiverOrigin::kUnknown;
+        continue;
+      }
+      if (const auto error = std::get<CallError>(receiver_call);
+          error != CallError::kUnsupportedOpcode)
+        return error == CallError::kRegisterRange
+                   ? ReceiverError::kFrameRange
+                   : ReceiverError::kMalformedInstruction;
       const auto global = LiftGlobalAccess(instruction.decoded);
       if (const auto* access = std::get_if<GlobalAccess>(&global)) {
         if (ReadsGlobal(access->operation))

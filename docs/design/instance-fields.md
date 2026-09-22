@@ -37,3 +37,16 @@ Pinned EcmaInterpreter and InterpreterAssembly GetThis both read thisObj.
 LDTHIS therefore recovers entry-frame identity even without an ABI this slot,
 or after that register copy is overwritten. Unknown super/resume effects still
 stop propagation; no post-super identity is inferred from this rule.
+
+Actual paired constructors use STOBJBYNAME assignments, not the own-store and
+define-field subset: all 101 class-site constructor targets have zero own-write
+sites. BreakpointType (Immersive entity 7586) has four STOBJBYNAME writes, while
+WindowInfo (8371) has eight, including module-derived values. The next recovery
+step must include typed ordinary property assignments, retain setter-capable
+semantics, and correlate their receiver proof with constructor ownership.
+These assignments must remain in constructor bodies; they cannot be rewritten
+as field declarations/initializers merely because their receiver is this.
+
+Fixed receiver calls reuse LiftReceiverCall and preserve private caller register
+identity while killing accumulator identity on normal return. No heap property
+fact survives by implication, and this does not authorize source .call rewriting.

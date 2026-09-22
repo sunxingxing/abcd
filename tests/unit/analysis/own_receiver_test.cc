@@ -65,6 +65,18 @@ int main() {
     Check(result.size() == 1 && result[0].origin == ReceiverOrigin::kEntryThis);
   }
   const auto direct = Body({0x7a, 0, 0, 0, 0, 0x65});
+  // Receiver calls preserve the caller's register aliases, not accumulator.
+  const auto receiver_call =
+      Body({0x45, 0, 2, 0x2e, 0,    0, 2, 0x61, 1, 0xdb,
+            0,    0, 0, 0,    0xdb, 0, 0, 0,    1, 0x65});
+  result = std::get<std::vector<OwnReceiver>>(
+      ProveOwnReceivers(receiver_call, 3, abc::RegisterId{2}));
+  Check(result.size() == 2 && result[0].origin == ReceiverOrigin::kEntryThis &&
+        result[1].origin == ReceiverOrigin::kUnknown);
+  auto bad_call = receiver_call;
+  bad_call.instructions[1].decoded.operands[1].raw_bits = 3;
+  Check(std::get<ReceiverError>(ProveOwnReceivers(
+            bad_call, 3, abc::RegisterId{2})) == ReceiverError::kFrameRange);
   const auto global_write =
       Body({0x60, 2, 0x40, 0, 0, 0, 0x61, 0, 0xdb, 0, 0, 0, 0, 0x65});
   result = std::get<std::vector<OwnReceiver>>(
