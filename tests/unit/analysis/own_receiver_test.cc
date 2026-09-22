@@ -65,6 +65,17 @@ int main() {
     Check(result.size() == 1 && result[0].origin == ReceiverOrigin::kEntryThis);
   }
   const auto direct = Body({0x7a, 0, 0, 0, 0, 0x65});
+  const auto global_write =
+      Body({0x60, 2, 0x40, 0, 0, 0, 0x61, 0, 0xdb, 0, 0, 0, 0, 0x65});
+  result = std::get<std::vector<OwnReceiver>>(
+      ProveOwnReceivers(global_write, 3, abc::RegisterId{2}));
+  Check(result.size() == 1 && result[0].origin == ReceiverOrigin::kEntryThis);
+  const auto global_read = Body({0x45, 0,    2, 0x3f, 0, 0, 0, 0xdb, 0,   0, 0,
+                                 0,    0x61, 1, 0xdb, 0, 0, 0, 1,    0x65});
+  result = std::get<std::vector<OwnReceiver>>(
+      ProveOwnReceivers(global_read, 3, abc::RegisterId{2}));
+  Check(result.size() == 2 && result[0].origin == ReceiverOrigin::kEntryThis &&
+        result[1].origin == ReceiverOrigin::kUnknown);
   for (const std::uint32_t registers : {200, 201, 400, 800, 1600, 40000}) {
     result = std::get<std::vector<OwnReceiver>>(
         ProveOwnReceivers(direct, registers, abc::RegisterId{0}));

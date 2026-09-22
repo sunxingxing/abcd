@@ -4,6 +4,7 @@
 #include <new>
 
 #include "abcd/abc/control_transfer.h"
+#include "abcd/analysis/global_access.h"
 #include "abcd/analysis/own_write.h"
 #include "abcd/analysis/register_effect.h"
 
@@ -88,6 +89,15 @@ std::variant<std::vector<OwnReceiver>, ReceiverError> ProveOwnReceivers(
         accumulator = ReceiverOrigin::kEntryThis;
         continue;
       }
+      const auto global = LiftGlobalAccess(instruction.decoded);
+      if (const auto* access = std::get_if<GlobalAccess>(&global)) {
+        if (ReadsGlobal(access->operation))
+          accumulator = ReceiverOrigin::kUnknown;
+        continue;
+      }
+      if (std::get<GlobalAccessError>(global) !=
+          GlobalAccessError::kUnsupportedOpcode)
+        return ReceiverError::kMalformedInstruction;
       const auto scalar = LiftScalarInstruction(instruction.decoded, registers);
       if (const auto* assignment = std::get_if<ScalarAssignment>(&scalar)) {
         const auto* value = std::get_if<ScalarValue>(&assignment->expression);

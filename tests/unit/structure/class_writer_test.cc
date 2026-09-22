@@ -46,38 +46,42 @@ int main() {
     literal(160, 80, 80);
     constexpr std::uint8_t kDefineClass = 0x35, kReturnUndefined = 0x65;
     std::vector<std::uint8_t> code{1,
-                                         0,
-                                         24,
-                                         0,
-                                         kDefineClass,
-                                         0,
-                                         0,
-                                         0,
-                                         1,
-                                         0,
-                                         0,
-                                         0,
-                                         0,
-                                         kDefineClass,
-                                         0,
-                                         0,
-                                         0,
-                                         2,
-                                         0,
-                                         0,
-                                         0,
-                                         0,
-                                         0x7a,
-                                         0,
-                                         3,
-                                         0,
-                                         0,
-                                         kReturnUndefined};
+                                   0,
+                                   24,
+                                   0,
+                                   kDefineClass,
+                                   0,
+                                   0,
+                                   0,
+                                   1,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   kDefineClass,
+                                   0,
+                                   0,
+                                   0,
+                                   2,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   0x7a,
+                                   0,
+                                   3,
+                                   0,
+                                   0,
+                                   kReturnUndefined};
     constexpr std::uint8_t kStoreOwnName = 0x7a;
     constexpr std::size_t kOwnSiteOffset = 22;
     code.insert(code.begin() + kOwnSiteOffset,
                 {kStoreOwnName, 0, 7, 0, 0, kStoreOwnName, 0, 6, 0, 0});
     code[2] = 34;
+    constexpr std::uint8_t kReadGlobalName = 0x3f;
+    code.insert(code.end() - 1, {kReadGlobalName, 0, 7, 0, kReadGlobalName, 0,
+                                 6, 0, kReadGlobalName, 0, 3, 0});
+    code[2] = 46;
     std::copy(code.begin(), code.end(), bytes.begin() + 200);
     char path[] = "/tmp/abcd-class-writer-XXXXXX";
     const auto fd = mkstemp(path);
@@ -95,7 +99,7 @@ int main() {
     abc::MetadataIndex index;
     abc::MethodInfo caller, ctor;
     caller.offset = {96};
-    caller.code = abc::CodeInfo{{200}, {204}, 1, 0, 34, 0};
+    caller.code = abc::CodeInfo{{200}, {204}, 1, 0, 46, 0};
     ctor.offset = {100};
     index.methods = {caller, ctor};
     abc::IndexRegion region;
@@ -125,5 +129,10 @@ int main() {
     Check(json["property_writes"][2]["name"] == "x");
     Check(json["property_writes"][2]["kind"] == "own_store");
     Check(json["property_writes"][2]["instance"] == nullptr);
+    Check(json["global_accesses"].size() == 3);
+    Check(json["global_accesses"][0].contains("error"));
+    Check(json["global_accesses"][1].contains("error"));
+    Check(json["global_accesses"][2]["operation"] == "name_read");
+    Check(json["global_accesses"][2]["name"] == "x");
   }
 }

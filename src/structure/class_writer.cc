@@ -157,7 +157,7 @@ void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
                      const abc::FrameLayout* frame) {
   out << ",\"class_sites\":";
   if (!method.code) {
-    out << "null,\"property_writes\":null";
+    out << "null,\"property_writes\":null,\"global_accesses\":null";
     return;
   }
   const auto decoded = abc::DecodeMethodBody(
@@ -167,7 +167,8 @@ void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
       throw StructureFailure{method.offset, abc::MetadataError::kRead};
     out << "null,\"class_scan_error\":{\"code\":"
         << static_cast<unsigned>(failure->kind)
-        << ",\"pc\":" << failure->offset.value << "},\"property_writes\":null";
+        << ",\"pc\":" << failure->offset.value
+        << "},\"property_writes\":null,\"global_accesses\":null";
     return;
   }
   out << '[';
@@ -196,5 +197,7 @@ void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
   out << ']';
   WriteOwnSites(text, index, method, std::get<abc::MethodBody>(decoded), out,
                 frame);
+  WriteGlobalSites(text, index, method, std::get<abc::MethodBody>(decoded),
+                   out);
 }
 }  // namespace abcd::structure

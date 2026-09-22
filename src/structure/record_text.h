@@ -32,5 +32,8 @@ void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
 void WriteOwnSites(const RecordText& text, const abc::MetadataIndex& index,
                    const abc::MethodInfo& method, const abc::MethodBody& body,
                    std::ostream& metadata, const abc::FrameLayout* frame);
+void WriteGlobalSites(const RecordText& text, const abc::MetadataIndex& index,
+                      const abc::MethodInfo& method,
+                      const abc::MethodBody& body, std::ostream& metadata);
 }  // namespace abcd::structure
 #endif
