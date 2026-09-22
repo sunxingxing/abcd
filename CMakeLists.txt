@@ -139,6 +139,10 @@ if(BUILD_TESTING)
   add_executable(acyclic_body_test tests/unit/source/acyclic_body_test.cc)
   target_link_libraries(acyclic_body_test PRIVATE abcd_source)
   add_test(NAME acyclic_body_test COMMAND acyclic_body_test)
+  add_executable(block_loop_body_test tests/unit/source/block_loop_body_test.cc tests/support/analysis/block_loop_order.cc)
+  target_include_directories(block_loop_body_test PRIVATE tests/support)
+  target_link_libraries(block_loop_body_test PRIVATE abcd_source)
+  add_test(NAME block_loop_body_test COMMAND block_loop_body_test)
   add_executable(accumulator_flow_test tests/unit/analysis/accumulator_flow_test.cc)
   target_link_libraries(accumulator_flow_test PRIVATE abcd_analysis)
   add_test(NAME accumulator_flow_test COMMAND accumulator_flow_test)
@@ -192,6 +196,12 @@ if(BUILD_TESTING)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   find_program(ABCD_NODE_EXECUTABLE node)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME block_loop_body_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:block_loop_body_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/block_loop_body.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=block-loop-body.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME ordinary_call_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:ordinary_call_test>
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ordinary_call.mjs

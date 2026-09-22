@@ -40,5 +40,13 @@ struct AccumulatorBudget {
 AnalyzeAcyclicAccumulator(const abc::MethodBody& body, const NormalFlow& graph,
                           std::uint64_t frame_size,
                           AccumulatorBudget budget = {});
+// Same value/register contracts, allowing only single-block loops. Joining
+// first entry with the backedge needs at most two block scans; a
+// first-iteration value must not mask a later Hole read. O(I+B+E), same memory
+// bound.
+[[nodiscard]] std::variant<AccumulatorFlow, AccumulatorFailure>
+AnalyzeBlockLoopAccumulator(const abc::MethodBody& body,
+                            const NormalFlow& graph, std::uint64_t frame_size,
+                            AccumulatorBudget budget = {});
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_ACCUMULATOR_FLOW_H_

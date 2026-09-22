@@ -3,9 +3,11 @@
 #include <new>
 
 namespace abcd::analysis {
-std::variant<BlockOrder, OrderError> OrderAcyclicBlocks(const NormalFlow& graph,
-                                                        BlockId entry,
-                                                        OrderBudget budget) {
+namespace {
+std::variant<BlockOrder, OrderError> OrderBlocks(const NormalFlow& graph,
+                                                 BlockId entry,
+                                                 OrderBudget budget,
+                                                 bool self_loops) {
   const auto count = graph.blocks.size();
   if (count == 0) return OrderError::kEmptyGraph;
   if (entry.value >= count) return OrderError::kInvalidEntry;
@@ -54,6 +56,7 @@ std::variant<BlockOrder, OrderError> OrderAcyclicBlocks(const NormalFlow& graph,
       for (std::size_t i = 0; i < block.successor_count; ++i) {
         ++result.work.edge_visits;
         const auto target = block.successors[i].target;
+        if (self_loops && target == discovery[cursor]) continue;
         ++incoming[target.value];
         if (!seen[target.value]) {
           seen[target.value] = true;
@@ -73,6 +76,7 @@ std::variant<BlockOrder, OrderError> OrderAcyclicBlocks(const NormalFlow& graph,
       for (std::size_t i = 0; i < block.successor_count; ++i) {
         ++result.work.edge_visits;
         const auto target = block.successors[i].target;
+        if (self_loops && target == result.blocks[cursor]) continue;
         if (--incoming[target.value] == 0) result.blocks[ready++] = target;
       }
     }
@@ -83,5 +87,16 @@ std::variant<BlockOrder, OrderError> OrderAcyclicBlocks(const NormalFlow& graph,
   } catch (const std::bad_alloc&) {
     return OrderError::kResourceLimit;
   }
+}
+}  // namespace
+std::variant<BlockOrder, OrderError> OrderAcyclicBlocks(const NormalFlow& graph,
+                                                        BlockId entry,
+                                                        OrderBudget budget) {
+  return OrderBlocks(graph, entry, budget, false);
+}
+std::variant<BlockOrder, OrderError> OrderBlockLoops(const NormalFlow& graph,
+                                                     BlockId entry,
+                                                     OrderBudget budget) {
+  return OrderBlocks(graph, entry, budget, true);
 }
 }  // namespace abcd::analysis

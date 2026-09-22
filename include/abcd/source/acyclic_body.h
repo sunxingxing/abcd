@@ -28,5 +28,12 @@ using AcyclicResult =
 [[nodiscard]] AcyclicResult WriteAcyclicBody(
     const abc::MethodBody& body, ScalarNames names, std::ostream& output,
     AcyclicBudget budget = {}, const MethodConstants* constants = nullptr);
+
+// Same contracts and resource budgets, but permits single-block self loops.
+// Removing self edges must leave a DAG. Emits while/continue/labeled break,
+// never a program-counter dispatcher; multi-block cycles remain unsupported.
+[[nodiscard]] AcyclicResult WriteBlockLoopBody(
+    const abc::MethodBody& body, ScalarNames names, std::ostream& output,
+    AcyclicBudget budget = {}, const MethodConstants* constants = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_ACYCLIC_BODY_H_

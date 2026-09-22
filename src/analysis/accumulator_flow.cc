@@ -57,10 +57,9 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
       return std::nullopt;
   }
 }
-}  // namespace
-std::variant<AccumulatorFlow, AccumulatorFailure> AnalyzeAcyclicAccumulator(
+std::variant<AccumulatorFlow, AccumulatorFailure> AnalyzeAccumulator(
     const abc::MethodBody& body, const NormalFlow& graph,
-    std::uint64_t frame_size, AccumulatorBudget budget) {
+    std::uint64_t frame_size, AccumulatorBudget budget, bool self_loops) {
   if (!body.tries.empty() || !body.handlers.empty())
     return AccumulatorFailure{AccumulatorError::kExceptionRegions, {}};
   std::size_t covered = 0;
@@ -83,7 +82,10 @@ std::variant<AccumulatorFlow, AccumulatorFailure> AnalyzeAcyclicAccumulator(
       return AccumulatorFailure{AccumulatorError::kResourceLimit, {}};
     const auto state_bytes =
         result.entries.capacity() * sizeof(AccumulatorState);
-    auto ordered = OrderAcyclicBlocks(graph, {}, {budget.bytes - state_bytes});
+    auto ordered =
+        self_loops
+            ? OrderBlockLoops(graph, {}, {budget.bytes - state_bytes})
+            : OrderAcyclicBlocks(graph, {}, {budget.bytes - state_bytes});
     if (const auto* error = std::get_if<OrderError>(&ordered))
       return AccumulatorFailure{AccumulatorError::kOrder, {}, *error};
     result.order = std::get<BlockOrder>(std::move(ordered));
@@ -92,30 +94,47 @@ std::variant<AccumulatorFlow, AccumulatorFailure> AnalyzeAcyclicAccumulator(
     for (const auto id : result.order.blocks) {
       auto state = result.entries[id.value];
       const auto& block = graph.blocks[id.value];
-      for (std::size_t i = block.first_instruction;
-           i < std::size_t(block.first_instruction) + block.instruction_count;
-           ++i) {
-        ++result.instruction_visits;
-        const auto& instruction = body.instructions[i];
-        const auto transfer = Access(instruction.decoded, frame_size);
-        if (!transfer)
-          return AccumulatorFailure{AccumulatorError::kUnsupportedInstruction,
-                                    instruction.offset};
-        if (transfer->reads && state != AccumulatorState::kValue)
-          return AccumulatorFailure{AccumulatorError::kReadBeforeValue,
-                                    instruction.offset};
-        switch (transfer->writes) {
-          case AccumulatorWrite::kPreserve:
-            break;
-          case AccumulatorWrite::kValue:
-            state = AccumulatorState::kValue;
-            break;
-          case AccumulatorWrite::kHole:
-            state = AccumulatorState::kMayBeHole;
-            break;
+      bool repeats = false;
+      for (std::size_t i = 0; i < block.successor_count; ++i)
+        repeats |= block.successors[i].target == id;
+      const auto scan = [&]() -> std::optional<AccumulatorFailure> {
+        for (std::size_t i = block.first_instruction;
+             i < std::size_t(block.first_instruction) + block.instruction_count;
+             ++i) {
+          ++result.instruction_visits;
+          const auto& instruction = body.instructions[i];
+          const auto transfer = Access(instruction.decoded, frame_size);
+          if (!transfer)
+            return AccumulatorFailure{AccumulatorError::kUnsupportedInstruction,
+                                      instruction.offset};
+          if (transfer->reads && state != AccumulatorState::kValue)
+            return AccumulatorFailure{AccumulatorError::kReadBeforeValue,
+                                      instruction.offset};
+          switch (transfer->writes) {
+            case AccumulatorWrite::kPreserve:
+              break;
+            case AccumulatorWrite::kValue:
+              state = AccumulatorState::kValue;
+              break;
+            case AccumulatorWrite::kHole:
+              state = AccumulatorState::kMayBeHole;
+              break;
+          }
         }
+        return {};
+      };
+      if (const auto error = scan()) return *error;
+      // Transfer is preserve or constant write. Only Value -> MayBeHole can
+      // weaken entry; one replay checks the resulting fixed point. Never
+      // assume an externally initialized accumulator stays initialized forever.
+      if (repeats && result.entries[id.value] == AccumulatorState::kValue &&
+          state != AccumulatorState::kValue) {
+        result.entries[id.value] = AccumulatorState::kMayBeHole;
+        state = AccumulatorState::kMayBeHole;
+        if (const auto error = scan()) return *error;
       }
       for (std::size_t i = 0; i < block.successor_count; ++i) {
+        if (block.successors[i].target == id) continue;
         auto& entry = result.entries[block.successors[i].target.value];
         if (entry == AccumulatorState::kUnreachable)
           entry = state;
@@ -127,5 +146,16 @@ std::variant<AccumulatorFlow, AccumulatorFailure> AnalyzeAcyclicAccumulator(
   } catch (const std::bad_alloc&) {
     return AccumulatorFailure{AccumulatorError::kResourceLimit, {}};
   }
+}
+}  // namespace
+std::variant<AccumulatorFlow, AccumulatorFailure> AnalyzeAcyclicAccumulator(
+    const abc::MethodBody& body, const NormalFlow& graph,
+    std::uint64_t frame_size, AccumulatorBudget budget) {
+  return AnalyzeAccumulator(body, graph, frame_size, budget, false);
+}
+std::variant<AccumulatorFlow, AccumulatorFailure> AnalyzeBlockLoopAccumulator(
+    const abc::MethodBody& body, const NormalFlow& graph,
+    std::uint64_t frame_size, AccumulatorBudget budget) {
+  return AnalyzeAccumulator(body, graph, frame_size, budget, true);
 }
 }  // namespace abcd::analysis

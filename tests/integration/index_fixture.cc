@@ -46,6 +46,7 @@ enum class FixtureKind {
   kCreationNonmethod,
   kCreationUnreachable,
   kSourceLoop,
+  kSourceMultiBlockLoop,
   kSourceException,
   kInvalidReference,
   kModuleRecord,
@@ -119,6 +120,8 @@ int main(int argc, char** argv) {
       kind = FixtureKind::kCreationUnreachable;
     else if (option == "--source-loop")
       kind = FixtureKind::kSourceLoop;
+    else if (option == "--source-multiblock-loop")
+      kind = FixtureKind::kSourceMultiBlockLoop;
     else if (option == "--source-exception")
       kind = FixtureKind::kSourceException;
     else if (option == "--invalid-reference")
@@ -244,6 +247,9 @@ int main(int argc, char** argv) {
                                        0x09, 1, 0xd5, 0x4d, 3, 0xd5, 0x3c, 0, 0x65});
       } else if (kind == FixtureKind::kSourceLoop) {
         dynamic.insert(dynamic.end(), {0, 3, 2, 0, 0x4d, 0});
+      } else if (kind == FixtureKind::kSourceMultiBlockLoop) {
+        dynamic.insert(dynamic.end(), {0, 3, 6, 0, 0xd5, 0x4d, 2,
+                                       0xd5, 0x4d, 0xfc});
       } else if (kind == FixtureKind::kSourceNameBudget) {
         // ULEB 2^22 local registers: valid frame, exceeds the name budget.
         // No large fixture allocation or register operand is necessary.

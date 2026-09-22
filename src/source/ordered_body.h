@@ -6,7 +6,9 @@
 
 namespace abcd::source {
 // Private rendering boundary. Graph/state/order must be validated together by
-// WriteAcyclicBody. Shares instruction emission with WriteLinearBody.
+// WriteAcyclicBody/WriteBlockLoopBody. Only self edges may repeat blocks;
+// accumulator entries include the backedge fixed point. Shares instruction
+// emission with WriteLinearBody.
 BodyEmitResult WriteOrderedBody(const abc::MethodBody& body,
                                 const analysis::NormalFlow& graph,
                                 const analysis::AccumulatorFlow& flow,

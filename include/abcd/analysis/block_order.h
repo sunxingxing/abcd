@@ -34,5 +34,10 @@ struct OrderBudget {
 // of instructions or permission to discard blocks from recovered source.
 [[nodiscard]] std::variant<BlockOrder, OrderError> OrderAcyclicBlocks(
     const NormalFlow& graph, BlockId entry = {}, OrderBudget budget = {});
+// Same validation/bounds, but orders the quotient after removing self edges.
+// A reachable cycle involving distinct blocks is still rejected. The original
+// self edges remain executable; consumers must model their repeated effects.
+[[nodiscard]] std::variant<BlockOrder, OrderError> OrderBlockLoops(
+    const NormalFlow& graph, BlockId entry = {}, OrderBudget budget = {});
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_BLOCK_ORDER_H_

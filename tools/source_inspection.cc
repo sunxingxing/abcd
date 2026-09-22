@@ -120,7 +120,7 @@ void InspectSource(const corpus::AbcFile& file, const abc::Header& header,
   std::ostream sink(&buffer);
   const source::MethodConstants constants{
       file, header, index, method.offset, {}};
-  const auto result = source::WriteAcyclicBody(
+  const auto result = source::WriteBlockLoopBody(
       body, {"acc", std::span(names.get(), registers)}, sink, {}, &constants);
   std::visit(
       [&](const auto& value) {

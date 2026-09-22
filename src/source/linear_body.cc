@@ -58,8 +58,9 @@ class BodyWriter {
                          const AccumulatorFlow& flow) {
     try {
       // Each label surrounds the prefix ending immediately before its target.
-      // Topological order makes every edge forward, so breaking that label
-      // executes exactly its target next. Shared blocks are emitted only once.
+      // Quotient order makes every non-self edge forward: breaking that label
+      // executes its target next. A self edge repeats only its enclosing while.
+      // Shared blocks are emitted once, without duplicating effectful code.
       const auto& order = flow.order.blocks;
       for (std::size_t i = order.size(); i > 1; --i) {
         Label(order[i - 1]);
@@ -69,6 +70,16 @@ class BodyWriter {
         const auto id = order[position];
         const auto& block = graph.blocks[id.value];
         if (position != 0) Text("}\n");
+        bool repeats = false;
+        for (std::size_t i = 0; i < block.successor_count; ++i)
+          repeats |= block.successors[i].target == id;
+        if (repeats) Text("while (true) {\n");
+        const auto transfer = [&](BlockId target) {
+          if (target == id)
+            Text("continue;\n");
+          else
+            Break(target);
+        };
         const bool branch = block.transfer == abc::ControlTransfer::kBranch;
         const bool jump = block.transfer == abc::ControlTransfer::kJump;
         const auto instructions =
@@ -89,12 +100,13 @@ class BodyWriter {
               Text("if (");
               Expression(std::get<UnaryExpression>(condition));
               Text(") ");
-              Break(block.successors[i].target);
+              transfer(block.successors[i].target);
             }
         }
         for (std::size_t i = 0; i < block.successor_count; ++i)
           if (!branch || block.successors[i].kind == FlowEdgeKind::kFallthrough)
-            Break(block.successors[i].target);
+            transfer(block.successors[i].target);
+        if (repeats) Text("}\n");
         if (error_) return *error_;
       }
       return written_;
