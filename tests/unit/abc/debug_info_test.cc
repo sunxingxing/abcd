@@ -38,7 +38,6 @@ abcd::abc::DebugResult Read(
   close(fd);
   auto opened = corpus::AbcFile::Open(path);
   const auto& file = *std::get<std::unique_ptr<corpus::AbcFile>>(opened);
-  unlink(path);
   abc::Header header;
   header.kind = abc::AbcKind::kDynamic;
   header.profile = profile;
@@ -46,7 +45,10 @@ abcd::abc::DebugResult Read(
   abc::DynamicLayout layout;
   layout.line_number_programs = table;
   header.layout = layout;
-  return abc::ReadDebugInfo(file, header, {kDebug}, {budget});
+  // Keep the input unchanged until all lazy reads and identity checks finish.
+  auto result = abc::ReadDebugInfo(file, header, {kDebug}, {budget});
+  unlink(path);
+  return result;
 }
 }  // namespace
 int main() {
