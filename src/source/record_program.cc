@@ -240,6 +240,10 @@ class ProgramWriter {
         case Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8:
           DefineObjectField(instruction.decoded);
           break;
+        case Opcode::kCALLRUNTIME_DEFINEFIELDBYVALUE_PREF_IMM8_V8_V8:
+        case Opcode::kCALLRUNTIME_DEFINEFIELDBYINDEX_PREF_IMM8_IMM32_V8:
+          DefineComputedField(instruction.decoded);
+          break;
         case Opcode::kSTOWNBYINDEX_IMM8_V8_IMM16:
         case Opcode::kSTOWNBYINDEX_IMM16_V8_IMM16:
         case Opcode::kWIDE_STOWNBYINDEX_PREF_V8_IMM32:
@@ -487,14 +491,53 @@ class ProgramWriter {
     const auto* write = std::get_if<analysis::OwnWrite>(&lifted);
     if (!write || write->kind != analysis::OwnWriteKind::kDefineField)
       throw Fail(Error::kObject, pc_);
-    const auto object = registers_[write->object.value];
+    AddObjectField(write->object, ReadPoolString(write->name));
+  }
+  static std::u16string Decimal(std::uint32_t number) {
+    std::array<char, std::numeric_limits<std::uint32_t>::digits10 + 2> chars{};
+    const auto result = std::to_chars(chars.data(), chars.data() + chars.size(),
+                                      number);
+    std::u16string name;
+    name.reserve(static_cast<std::size_t>(result.ptr - chars.data()));
+    for (const char* pos = chars.data(); pos != result.ptr; ++pos)
+      name.push_back(static_cast<char16_t>(*pos));
+    return name;
+  }
+  std::u16string ConstantKey(Value key) {
+    if (key.kind == Value::Kind::kString)
+      return ReadPoolString({static_cast<std::uint32_t>(key.ordinal)});
+    if (key.kind == Value::Kind::kAtom && key.ordinal < atoms_.size()) {
+      const auto& atom = atoms_[key.ordinal];
+      if (const auto* integer = std::get_if<std::int32_t>(&atom);
+          integer && *integer >= 0)
+        return Decimal(static_cast<std::uint32_t>(*integer));
+    }
+    throw Fail(Error::kObject, pc_);
+  }
+  void DefineComputedField(const abc::DecodedInstruction& instruction) {
+    const auto lifted = analysis::LiftDefineInstruction(
+        instruction, registers_.size());
+    if (const auto* indexed =
+            std::get_if<analysis::DefineFieldByIndex>(&lifted)) {
+      AddObjectField(indexed->object, Decimal(indexed->index));
+      return;
+    }
+    if (const auto* computed =
+            std::get_if<analysis::DefineFieldByValue>(&lifted)) {
+      AddObjectField(computed->object,
+                     ConstantKey(registers_[computed->key.value]));
+      return;
+    }
+    throw Fail(Error::kInstruction, pc_);
+  }
+  void AddObjectField(abc::RegisterId receiver, std::u16string name) {
+    const auto object = registers_[receiver.value];
     if (object.kind != Value::Kind::kLiteral ||
         object.ordinal >= nodes_.size() ||
         nodes_[object.ordinal].kind != RecordLiteralKind::kObject ||
         nodes_[object.ordinal].attached || nodes_[object.ordinal].emitted)
       throw Fail(Error::kObject, pc_);
-    RecordLiteralField field{ReadPoolString(write->name),
-                             LiteralValue(object.ordinal)};
+    RecordLiteralField field{std::move(name), LiteralValue(object.ordinal)};
     if (field.key.capacity() > budget_.bytes / sizeof(char16_t))
       throw Fail(Error::kResourceLimit, pc_);
     budget_.bytes -= field.key.capacity() * sizeof(char16_t);

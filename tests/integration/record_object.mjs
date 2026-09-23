@@ -4,11 +4,19 @@ import {pathToFileURL} from 'node:url';
 const {config, alias, routes} = await import(pathToFileURL(process.argv[2]));
 assert.equal(config, alias);
 assert.equal(config.answer, 42);
+assert.equal(config.plain, 42);
+assert.equal(config[5], 7);
 assert.equal(Object.getPrototypeOf(config), Object.prototype);
 assert.equal(Object.getOwnPropertyDescriptor(config, '__proto__').value,
              'plain');
 assert.deepEqual(Object.getOwnPropertyDescriptor(config, 'answer'), {
   value: 42, writable: true, enumerable: true, configurable: true,
+});
+assert.deepEqual(Object.getOwnPropertyDescriptor(config, 'plain'), {
+  value: 42, writable: true, enumerable: true, configurable: true,
+});
+assert.deepEqual(Object.getOwnPropertyDescriptor(config, '5'), {
+  value: 7, writable: true, enumerable: true, configurable: true,
 });
 assert.equal(routes.length, 1);
 assert.equal(routes[0].id, 42);

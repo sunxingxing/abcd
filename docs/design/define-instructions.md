@@ -12,8 +12,8 @@ format decoding but require a separate execution-semantics proof.
 | `DEFINEMETHOD` narrow/wide | `FunctionCreation`: pool method, observable length, accumulator home | Fresh-class constant static initializer or a proved native class accessor subsequently consumed by `DEFINEGETTERSETTERBYVALUE` |
 | `DEFINECLASSWITHBUFFER` narrow/wide | `ClassCreation`: constructor, literal, length, parent register | Ordinary unescaped class with proved absent heritage and supported constructor/members |
 | `DEFINEFIELDBYNAME`, `DEFINEPROPERTYBYNAME` | `OwnWrite`: string pool name, receiver register, accumulator value; both call `DefineField` | Constant or single-parent literal-node definitions on an unescaped record object, or proved static initializer on fresh class |
-| `CALLRUNTIME_DEFINEFIELDBYVALUE` | `DefineFieldByValue`: key/object registers, accumulator value; calls `DefineField`, preserves accumulator | Static initializer only when receiver is its own class and key is a proved string or nonnegative integer constant |
-| `CALLRUNTIME_DEFINEFIELDBYINDEX` | `DefineFieldByIndex`: unsigned 32-bit key, object register, accumulator value; calls `DefineField`, preserves accumulator | Static initializer on its own class; index rendered as a decimal computed property name |
+| `CALLRUNTIME_DEFINEFIELDBYVALUE` | `DefineFieldByValue`: key/object registers, accumulator value; calls `DefineField`, preserves accumulator | Static initializer on its own class, or a fresh unescaped record object; key must be a proved string or nonnegative integer constant |
+| `CALLRUNTIME_DEFINEFIELDBYINDEX` | `DefineFieldByIndex`: unsigned 32-bit key, object register, accumulator value; calls `DefineField`, preserves accumulator | Static initializer on its own class, or a fresh unescaped record object; index rendered as a decimal computed property name |
 | `DEFINEGETTERSETTERBYVALUE` | `DefineAccessor`: object/key/getter/setter registers, accumulator enumerable flag; replaces accumulator with runtime result | Native get/set output for a fresh unescaped class/prototype, constant string key, one getter or setter method, false flag and proved v7 target/ABI/body |
 | `CALLRUNTIME_DEFINEPRIVATEPROPERTY` | `DefinePrivateProperty`: lexical level/slot, object register, accumulator value; preserves accumulator | Not yet emitted: must resolve private name and brand from lexical environment |
 | `CALLRUNTIME_DEFINESENDABLECLASS` | `DefineSendableClass`: constructor/literal/length/parent; creates a shared class | Not emitted as ordinary JS class; shared-function identity and runtime restrictions are observable |
@@ -55,6 +55,9 @@ oracle is not evidence of full real-app source coverage.
 
 Fresh object/array identity, buffered constants and dense indexed writes for
 record source are specified in [record-literals.md](record-literals.md).
+The synthetic record oracle also exercises both runtime computed-field forms
+through decoded ABC and Node descriptors. Dynamic keys requiring `ToPropertyKey`
+effects are refused rather than converted from printed source.
 
 Next source work: handle the real UI record preludes and static-field/accessor
 ordering; recover private lexical names/brands; represent sendable classes without falsely

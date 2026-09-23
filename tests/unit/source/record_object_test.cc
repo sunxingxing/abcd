@@ -44,6 +44,11 @@ int main(int argc, char** argv) {
       0xdc, 0, 0, 0, 0,
       0x3e, 2, 0,
       0xdb, 0, 1, 0, 0,
+      0x3e, 2, 0, 0x61, 3,
+      0x62, kIntegerValue, 0, 0, 0,
+      0xfb, 1, 0, 3, 0,
+      0x62, 7, 0, 0, 0,
+      0xfb, 2, 0, 5, 0, 0, 0, 0,
       0x60, 0, 0x7c, 0,
       0x7c, 1,
       0x05, 0, 0x61, 1,
@@ -138,6 +143,8 @@ int main(int argc, char** argv) {
   Check(output.str().find("[\"answer\"]: (42)") != std::string::npos);
   Check(output.str().find("[\"__proto__\"]: \"plain\"") !=
         std::string::npos);
+  Check(output.str().find("[\"plain\"]: (42)") != std::string::npos);
+  Check(output.str().find("[\"5\"]: (7)") != std::string::npos);
   Check(output.str().find("[\"params\"]: []") != std::string::npos);
   Check(std::get<std::size_t>(result) == output.str().size());
   source::RecordProgramBudget limited;
