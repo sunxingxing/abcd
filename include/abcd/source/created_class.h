@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_CREATED_CLASS_H_
 #include <optional>
 #include <span>
+#include <variant>
 
 #include "abcd/abc/class_buffer.h"
 #include "abcd/analysis/class_heritage.h"
@@ -20,6 +21,10 @@ struct ClassAccessor {
 struct ImportedClassParent {
   std::size_t snapshot = 0;
 };
+struct GlobalClassParent {
+  std::size_t snapshot = 0;
+};
+using ClassParent = std::variant<ImportedClassParent, GlobalClassParent>;
 enum class CreatedClassError {
   kHeritage,
   kMembers,
@@ -46,8 +51,8 @@ using CreatedClassResult =
 // WriteCreatedFunction. Caller supplies heritage proven from this caller body
 // and matching site; matching PC alone is not provenance authentication.
 // Resolves real constructor, buffer, name, ABI and body. Emits a fresh complete
-// class expression for a proven no-extends class, or a pinned v7 imported-base
-// class whose caller owns the import snapshot and whose length-zero constructor
+// class expression for a proven no-extends class, or a pinned v7 derived class
+// whose caller owns an import/global snapshot and whose length-zero constructor
 // passes ProveForwardingDerivedConstructor. This API does not prove parent
 // identity on its own; the record interpreter supplies that provenance.
 // Nonempty buffers require a whole-file role index from the same immutable
@@ -76,6 +81,6 @@ using CreatedClassResult =
     const GlobalScope* enclosing_scope = nullptr,
     const StaticFields* static_fields = nullptr,
     std::span<const ClassAccessor> accessors = {},
-    std::optional<ImportedClassParent> parent = {});
+    std::optional<ClassParent> parent = {});
 }  // namespace abcd::source
 #endif

@@ -18,11 +18,12 @@ with an explicit register-state byte budget. Unit tests cover malformed wire
 forms, false proofs, resource refusal and 200/201-instruction inputs. The
 actual Immersive `EntryAbility` and `EntryBackupAbility` constructors both pass.
 
-The source writer now admits a pinned v7 imported-base class when the record
-interpreter proves the parent register holds a guarded import snapshot, the
-observable constructor length is zero, the constructor passes this proof, and
-every class member is fully sourceable. It emits `extends $loadedN` at the
-DEFINE site, preserving parent evaluation and exception order, and uses
+The source writer now admits a pinned v7 imported-base or global-base class
+when the record interpreter proves the parent register holds a snapshot from
+a guarded import or `TRYLDGLOBALBYNAME`, the observable constructor length is
+zero, the constructor passes this proof, and every class member is fully
+sourceable. It emits `extends $loadedN` or `extends $globalN` at the DEFINE
+site, preserving parent evaluation and exception order, and uses
 `constructor() { super(...arguments); }`. Node oracles cover argument and
 `new.target` forwarding, prototype chain, length, and a later import read.
 Initial method kind alone still does not prove base/derived heritage. Other
@@ -30,7 +31,10 @@ parent origins, constructors, static initializers/accessors after creation,
 and unsupported member bodies remain whole-record refusals.
 On the real Immersive sample, both `EntryAbility` and `EntryBackupAbility`
 pass their import-parent and constructor checks. `EntryAbility` still stops
-at class-member source admission (`kClass` at entry PC 14).
+at class-member source admission (`kClass` at entry PC 14). The Shopping
+entry's guarded global call is followed by a global parent read and class
+creation; the record interpreter now reaches class admission instead of
+refusing the global read. This is not whole-record source success.
 
 For pinned v7 async ordinary class members, `ProveAsyncCompletion` recognizes
 the compiler's no-await template: private `ASYNCFUNCTIONENTER` result, one

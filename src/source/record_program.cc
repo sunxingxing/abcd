@@ -18,6 +18,7 @@
 #include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/guarded_global_call.h"
+#include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/module_load.h"
 #include "abcd/analysis/named_read.h"
@@ -26,6 +27,7 @@
 #include "abcd/analysis/indexed_write.h"
 #include "abcd/analysis/scalar.h"
 #include "abcd/source/created_function.h"
+#include "abcd/source/global_reference.h"
 #include "abcd/source/module_imports.h"
 #include "abcd/source/static_fields.h"
 #include "record_buffer.h"
@@ -50,13 +52,14 @@ struct Value {
     kAtom,
     kLiteral,
     kImportSnapshot,
+    kGlobalSnapshot,
     kPrototype
   } kind;
   std::size_t ordinal = 0;
 };
 struct ClassState {
   const abc::BodyInstruction* site = nullptr;
-  std::optional<ImportedClassParent> parent;
+  std::optional<ClassParent> parent;
   std::optional<StaticFields> fields;
   std::vector<ClassAccessor> accessors;
   bool emitted = false;
@@ -246,6 +249,10 @@ class ProgramWriter {
           break;
         case Opcode::kLDA_STR_ID16:
           String(instruction.decoded);
+          break;
+        case Opcode::kTRYLDGLOBALBYNAME_IMM8_ID16:
+        case Opcode::kTRYLDGLOBALBYNAME_IMM16_ID16:
+          LoadGlobal(instruction.decoded);
           break;
         case Opcode::kLDEXTERNALMODULEVAR_IMM8:
         case Opcode::kWIDE_LDEXTERNALMODULEVAR_PREF_IMM16:
@@ -511,6 +518,36 @@ class ProgramWriter {
       throw Fail(Metadata(*error), pc_);
     return std::get<std::u16string>(std::move(decoded));
   }
+  void LoadGlobal(const abc::DecodedInstruction& instruction) {
+    const auto lifted = analysis::LiftGlobalAccess(instruction);
+    const auto* access = std::get_if<analysis::GlobalAccess>(&lifted);
+    if (!access || access->operation != analysis::GlobalOp::kReadName)
+      throw Fail(Error::kInstruction, pc_);
+    const auto name = ReadPoolString(access->name);
+    GlobalScope scope{};
+    scope.module_slots = exports_.slot_count();
+    if (!AllowsGlobalReference(name, scope))
+      throw Fail(Error::kValue, pc_);
+    if (name.capacity() > budget_.bytes / sizeof(char16_t))
+      throw Fail(Error::kResourceLimit, pc_);
+    budget_.bytes -= name.capacity() * sizeof(char16_t);
+    Text("const $global");
+    Number(global_count_);
+    Text(" = ");
+    constexpr std::size_t kChunkBytes = 256;
+    std::array<char, kChunkBytes> chunk{};
+    std::size_t length = 0;
+    for (const char16_t ch : name) {
+      chunk[length++] = static_cast<char>(ch);
+      if (length == chunk.size()) {
+        Text({chunk.data(), length});
+        length = 0;
+      }
+    }
+    if (length != 0) Text({chunk.data(), length});
+    Text(";\n");
+    accumulator_ = {Value::Kind::kGlobalSnapshot, global_count_++};
+  }
   void EmptyObject(const abc::DecodedInstruction& instruction) {
     if (!std::holds_alternative<analysis::EmptyObjectCreation>(
             analysis::LiftObjectCreation(instruction)))
@@ -707,18 +744,21 @@ class ProgramWriter {
     if (!creation || creation->parent.value >= registers_.size())
       throw Fail(Error::kValue, pc_);
     const auto parent = registers_[creation->parent.value];
-    std::optional<ImportedClassParent> imported;
+    std::optional<ClassParent> parent_origin;
     if (parent.kind == Value::Kind::kImportSnapshot &&
         parent.ordinal < import_load_count_)
-      imported = ImportedClassParent{parent.ordinal};
+      parent_origin = ImportedClassParent{parent.ordinal};
+    else if (parent.kind == Value::Kind::kGlobalSnapshot &&
+             parent.ordinal < global_count_)
+      parent_origin = GlobalClassParent{parent.ordinal};
     else if (parent.kind != Value::Kind::kHole)
       throw Fail(Error::kValue, pc_);
-    // Ordinary classes may have a later proved initializer. An imported
-    // superclass is evaluated at DEFINE time, so emit that narrower class
-    // immediately; any later initializer/accessor is still refused.
+    // Ordinary classes may have a later proved initializer. A snapshot base
+    // is already evaluated at DEFINE time, so emit that narrower class now;
+    // any later initializer/accessor is still refused.
     const auto id = classes_.size();
-    Append(classes_, ClassState{&instruction, imported});
-    if (imported) EmitClass(id);
+    Append(classes_, ClassState{&instruction, parent_origin});
+    if (parent_origin) EmitClass(id);
     accumulator_ = {Value::Kind::kClass, id};
   }
   void EmitClass(std::size_t id) {
@@ -990,6 +1030,7 @@ class ProgramWriter {
   abc::CodeOffset pc_{};
   std::size_t function_count_ = 0;
   std::size_t import_load_count_ = 0;
+  std::size_t global_count_ = 0;
   std::optional<std::size_t> pending_import_guard_;
   std::size_t written_ = 0;
 };

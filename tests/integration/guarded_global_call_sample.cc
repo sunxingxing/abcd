@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
         file, header, index, lookup, record, *module, roles, record_source);
     Check(std::holds_alternative<source::RecordProgramFailure>(record_result));
     Check(std::get<source::RecordProgramFailure>(record_result).pc >=
-          body.instructions[found->after].offset);
+          body.instructions[found->after + 2].offset);
     auto malformed = body;
     malformed.instructions[11].branch_target = {};
     Check(!analysis::MatchGuardedGlobalCall(

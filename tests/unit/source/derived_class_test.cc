@@ -94,6 +94,14 @@ int main(int argc, char** argv) {
   Check(output.str().find("constructor() { super(...arguments); }") !=
         std::string::npos);
   Check(std::get<std::size_t>(result) == output.str().size());
+  std::ostringstream global_output;
+  const auto global_result = source::WriteCreatedClass(
+      file, header, index, lookup, {kCaller}, caller.instructions[0],
+      heritage, global_output, {}, {}, nullptr, nullptr, nullptr, nullptr,
+      {}, source::GlobalClassParent{0});
+  Check(std::holds_alternative<std::size_t>(global_result));
+  Check(global_output.str().find("class Derived extends $global0") !=
+        std::string::npos);
   auto historical = header;
   historical.profile = abc::ProfileId::kDynamic1206;
   std::ostringstream wrong_profile;
@@ -104,6 +112,14 @@ int main(int argc, char** argv) {
   Check(std::get<source::CreatedClassError>(rejected) ==
         source::CreatedClassError::kHeritage);
   Check(wrong_profile.str().empty());
+  std::ostringstream wrong_global_profile;
+  const auto rejected_global = source::WriteCreatedClass(
+      file, historical, index, lookup, {kCaller}, caller.instructions[0],
+      heritage, wrong_global_profile, {}, {}, nullptr, nullptr, nullptr,
+      nullptr, {}, source::GlobalClassParent{0});
+  Check(std::get<source::CreatedClassError>(rejected_global) ==
+        source::CreatedClassError::kHeritage);
+  Check(wrong_global_profile.str().empty());
   source::LocalLexicalBudget limited;
   limited.output.bytes = output.str().size() - 1;
   std::ostringstream short_output;
@@ -117,6 +133,10 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
     std::cout << "const $loaded0 = class Base { constructor(...values) {"
                  " this.values = values; } };\nexport const Derived = "
-              << output.str() << ";\n";
+              << output.str() << ";\n"
+              << "const $global0 = class Base { constructor(...values) {"
+                 " this.values = values; } };\n"
+              << "export const GlobalDerived = " << global_output.str()
+              << ";\n";
   Check(unlink(path) == 0);
 }

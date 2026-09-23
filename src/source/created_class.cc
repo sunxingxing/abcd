@@ -116,7 +116,7 @@ class ClassWriter {
               const GlobalScope* enclosing_scope,
               const StaticFields* static_fields,
               std::span<const ClassAccessor> accessors,
-              std::optional<ImportedClassParent> parent,
+              std::optional<ClassParent> parent,
               std::ostream& output,
               LocalLexicalBudget budget, abc::StringBudget strings)
       : file_(file),
@@ -142,8 +142,14 @@ class ClassWriter {
     Text("(class ");
     Text(name);
     if (parent_) {
-      Text(" extends $loaded");
-      Number(parent_->snapshot);
+      std::visit([&](const auto& origin) {
+        using Origin = std::decay_t<decltype(origin)>;
+        if constexpr (std::is_same_v<Origin, ImportedClassParent>)
+          Text(" extends $loaded");
+        else
+          Text(" extends $global");
+        Number(origin.snapshot);
+      }, *parent_);
     }
     Text(" {\n");
     Constructor(creation, target, name);
@@ -398,7 +404,7 @@ class ClassWriter {
   const GlobalScope* enclosing_scope_;
   const StaticFields* static_fields_;
   std::span<const ClassAccessor> accessors_;
-  std::optional<ImportedClassParent> parent_;
+  std::optional<ClassParent> parent_;
   std::ostream& output_;
   LocalLexicalBudget budget_;
   abc::StringBudget strings_;
@@ -415,7 +421,7 @@ CreatedClassResult WriteCreatedClass(
     const GlobalScope* enclosing_scope,
     const StaticFields* static_fields,
     std::span<const ClassAccessor> accessors,
-    std::optional<ImportedClassParent> parent) {
+    std::optional<ClassParent> parent) {
   try {
     if (heritage.pc != instruction.offset ||
         (parent ? heritage.kind != analysis::HeritageKind::kUnknown ||
