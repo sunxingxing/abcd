@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 const source = await import(pathToFileURL(process.argv[2]));
 for (const [key, C] of Object.entries(source)) {
+  if (key === 'asyncMethod') continue;
   const owner = key === 'staticSelf' ? C : C.prototype;
   const name = key === 'escaped' ? 'quoted"key' : 'method';
   const method = owner[name];
@@ -13,6 +14,17 @@ for (const [key, C] of Object.entries(source)) {
     value: method, writable: true, enumerable: false, configurable: true
   });
 }
+const asyncMethod = source.asyncMethod.prototype.method;
+assert.equal(asyncMethod.constructor.name, 'AsyncFunction');
+assert.equal(asyncMethod.length, 1);
+assert.equal(Object.hasOwn(asyncMethod, 'prototype'), false);
+assert.equal(await asyncMethod(42), 42);
+assert.equal(await asyncMethod(Promise.resolve(7)), 7);
+const input = Promise.resolve(7);
+assert.notEqual(asyncMethod(input), input);
+const failure = new Error('async rejection');
+await assert.rejects(asyncMethod(Promise.reject(failure)),
+                     error => error === failure);
 for (const value of [undefined, null, 42, 1n, Symbol(), {}, () => {}]) {
   assert.equal(source.parameter.prototype.method(value), value);
   assert.equal(source.escaped.prototype['quoted"key'](value), value);

@@ -228,6 +228,11 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
         continue;
       }
       if (tail_call && i == tail_call->call) {
+        bool arguments_ready = true;
+        for (std::size_t argument = 0;
+             argument < tail_call->invoke.arguments.count; ++argument)
+          arguments_ready &=
+              state(tail_call->invoke.arguments.values[argument]).IsLanguage();
         if (tail_call->property >= tail_call->spill ||
             tail_call->spill >= tail_call->reload ||
             tail_call->reload + 1 != i ||
@@ -238,7 +243,7 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
             !std::holds_alternative<KeepInstruction>(
                 statements[tail_call->reload]) ||
             !state(tail_call->invoke.receiver).IsLanguage() ||
-            !state(tail_call->invoke.arguments.values[0]).IsLanguage() ||
+            !arguments_ready ||
             !state(tail_call->callee).IsLanguage())
           return fail(Error::kInstruction);
         accumulator = ValueKinds::Language();

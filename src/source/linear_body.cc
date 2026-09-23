@@ -99,7 +99,13 @@ class BodyWriter {
     try {
       Text("return ");
       Expression(ScalarValue{invocation.invoke.arguments.values[0]});
-      Text(";\n})());\n");
+      Text(";\n})()");
+      for (std::size_t i = 1;
+           i < invocation.invoke.arguments.count && !error_; ++i) {
+        Text(", ");
+        Expression(ScalarValue{invocation.invoke.arguments.values[i]});
+      }
+      Text(");\n");
       if (error_) return *error_;
       return written_;
     } catch (const std::ios_base::failure&) {

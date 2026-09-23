@@ -28,7 +28,7 @@ with-name and range variants require separate evidence and are not accepted.
 
 ## Deferred Tail Calls
 
-The lexical-body path additionally admits a handler-free, terminal `CALLTHIS1`
+The lexical-body path additionally admits a handler-free, terminal `CALLTHIS1..3`
 whose callee came from a named read, was spilled to a private register, and is
 reloaded immediately before the call. A backward register-access scan proves
 the spill has no intervening readers or writers; a forward scan proves the
@@ -38,8 +38,10 @@ overwrite the accumulator without reading it. Only operandless `NOP` and
 shapes stay unsupported.
 
 The writer emits the native receiver call at the original getter position and
-evaluates intervening argument-building statements inside an arrow IIFE. This
-keeps getter effects before argument effects, retains the original receiver,
+evaluates intervening argument-building statements inside the first argument's
+arrow IIFE. Remaining arguments read their proved language-valued registers
+after that IIFE. This keeps getter effects before argument effects, retains the
+original receiver,
 and avoids mutable `.call`, `.apply`, and `Reflect.apply` dependencies. The
 extra arrow frame/closure is an implementation limitation for stack-sensitive
 code and allocation failure timing; the matcher does not claim general

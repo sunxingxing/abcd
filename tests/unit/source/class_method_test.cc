@@ -47,6 +47,19 @@ int main(int argc, char** argv) {
     Emit("thrown", test::Body({0x60, 3, 0xfe, 0}));
     Emit("staticSelf", test::Body({0x60, 0, 0x64}),
          abc::ClassPlacement::kStatic);
+    auto async = Method();
+    async.attributes.kind = abc::FunctionKind::kAsync;
+    async.frame = std::get<abc::FrameLayout>(
+        abc::BuildFrameLayout(2, 4, abc::DecodeCallFlags({})));
+    auto async_body = test::Body({0xae, 0x61, 0, 0x60, 5, 0xcd, 0,
+                                  0x64, 0x61, 1, 0xce, 0, 0x64});
+    async_body.tries.push_back({{3}, 5, 0, 1});
+    async_body.handlers.push_back({{}, {8}, 5});
+    std::cout << "export const asyncMethod = (() => { const C = class {\n";
+    test::Check(std::holds_alternative<std::size_t>(
+        source::WriteClassMethod(async, async_body, std::cout)));
+    std::cout << "\n}; const MethodSelf = C.prototype.method;"
+                 " return C; })();\n";
     return 0;
   }
   const auto body = test::Body({0x60, 3, 0x64});
@@ -67,6 +80,72 @@ int main(int argc, char** argv) {
   wrong = Method();
   wrong.attributes.kind = abc::FunctionKind::kAsync;
   reject(wrong, source::FunctionEmitError::kKind);
+  auto async = wrong;
+  async.frame = std::get<abc::FrameLayout>(
+      abc::BuildFrameLayout(2, 4, abc::DecodeCallFlags({})));
+  auto async_body = test::Body({0xae, 0x61, 0, 0x60, 5, 0xcd, 0,
+                                0x64, 0x61, 1, 0xce, 0, 0x64});
+  async_body.tries.push_back({{3}, 5, 0, 1});
+  async_body.handlers.push_back({{}, {8}, 5});
+  std::ostringstream async_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteClassMethod(async, async_body, async_source)));
+  test::Check(async_source.str().starts_with("async [\"method\"]($p0)"));
+  const auto reject_async = [&](const abc::MethodBody& candidate) {
+    std::ostringstream rejected;
+    test::Check(std::get<source::FunctionEmitError>(
+                    source::WriteClassMethod(async, candidate, rejected)) ==
+                source::FunctionEmitError::kKind);
+    test::Check(rejected.str().empty());
+  };
+  auto missing_handler = async_body;
+  missing_handler.handlers.clear();
+  reject_async(missing_handler);
+  auto wrong_region = async_body;
+  wrong_region.tries[0].length--;
+  reject_async(wrong_region);
+  auto wrong_promise = async_body;
+  wrong_promise.instructions[3].decoded.operands[0].raw_bits = 1;
+  reject_async(wrong_promise);
+  auto read_promise = async_body;
+  read_promise.instructions[2].decoded.operands[0].raw_bits = 0;
+  reject_async(read_promise);
+  auto wrong_catch = async_body;
+  wrong_catch.handlers[0].type = abc::CatchTypeIndex{1};
+  reject_async(wrong_catch);
+  auto copied_abi = test::Body({0x44, 0x21, 0xae, 0x61, 0,
+                                0x60, 5, 0xcd, 0, 0x64,
+                                0x61, 1, 0xce, 0, 0x64});
+  copied_abi.tries.push_back({{5}, 5, 0, 1});
+  copied_abi.handlers.push_back({{}, {10}, 5});
+  std::ostringstream copied_source;
+  test::Check(std::holds_alternative<std::size_t>(source::WriteClassMethod(
+      async, copied_abi, copied_source)));
+  auto copied_local = copied_abi;
+  copied_local.instructions[0].decoded.operands[1].raw_bits = 1;
+  reject_async(copied_local);
+  auto async_getter = async;
+  async_getter.member.kind = abc::ClassMethodKind::kGetter;
+  async_getter.member.length = 0;
+  async_getter.effective_kind = source::EffectiveMethodKind::kGetter;
+  std::ostringstream getter_rejected;
+  test::Check(std::get<source::FunctionEmitError>(source::WriteClassMethod(
+                  async_getter, async_body, getter_rejected)) ==
+              source::FunctionEmitError::kKind);
+  test::Check(getter_rejected.str().empty());
+  for (const std::size_t count : {200, 201, 400}) {
+    std::vector<std::uint8_t> bytes{0xae, 0x61, 0};
+    bytes.insert(bytes.end(), count, 0xd5);
+    bytes.insert(bytes.end(), {0x60, 5, 0xcd, 0, 0x64,
+                               0x61, 1, 0xce, 0, 0x64});
+    auto many = test::Body(bytes);
+    many.tries.push_back({{3}, static_cast<std::uint32_t>(count + 5), 0, 1});
+    many.handlers.push_back({{}, {static_cast<std::uint32_t>(count + 8)},
+                             5});
+    std::ostringstream many_source;
+    test::Check(std::holds_alternative<std::size_t>(source::WriteClassMethod(
+        async, many, many_source)));
+  }
   wrong = Method();
   wrong.member.kind = abc::ClassMethodKind::kGetter;
   reject(wrong, source::FunctionEmitError::kKind);

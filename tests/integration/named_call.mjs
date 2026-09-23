@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 const source = await import(pathToFileURL(process.argv[2]));
+const threeEvents = [];
+const threeReceiver = {
+  get method() {
+    threeEvents.push('get');
+    return function(...args) {
+      threeEvents.push('call');
+      assert.equal(this, threeReceiver);
+      assert.deepEqual(args, [42, 'second', 'third']);
+      return 99;
+    };
+  },
+};
+assert.equal(source.threeDeferred(threeReceiver, 0, 'second', 'third'),
+             undefined);
+assert.deepEqual(threeEvents, ['get', 'call']);
 const {method0} = source;
 const receiver = {method() { return this; }};
 assert.equal(method0(receiver), receiver);

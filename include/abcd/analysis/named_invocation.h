@@ -37,7 +37,7 @@ struct TailNamedInvocation {
 [[nodiscard]] std::optional<NamedInvocation> MatchNamedInvocation(
     std::span<const abc::BodyInstruction> block, std::size_t property,
     std::uint64_t frame_size);
-// Straight-line tail CALLTHIS1 whose callee is a single named property read.
+// Straight-line tail CALLTHIS1..3 whose callee is one named property read.
 // The first post-spill operation must overwrite acc without reading it; the
 // callee register is dead except for the final reload, and the receiver
 // register is not overwritten. Source may put intervening statements inside

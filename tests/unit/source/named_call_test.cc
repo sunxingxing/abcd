@@ -96,6 +96,24 @@ int main(int argc, char** argv) {
                                     discard_source, {}, &constants)));
   test::Check(discard_source.str().ends_with(
       "})());\nacc = (void 0);\nreturn;\n"));
+  const std::array<std::string_view, 5> three_registers{
+      "object", "callee", "a", "b", "c"};
+  const auto three_arguments = test::Body({
+      0x60, 0, 0x42, 0, 0, 0, 0x61, 1,
+      0x62, 42, 0, 0, 0, 0x61, 2, 0x60, 1,
+      0x30, 0, 0, 2, 3, 4, 0x00, 0x64});
+  const auto three_match = analysis::MatchTailNamedInvocation(
+      three_arguments, three_registers.size());
+  test::Check(three_match && three_match->invoke.arguments.count == 3);
+  std::ostringstream three_source;
+  const auto three_result = source::WriteLocalLexicalBody(
+      three_arguments, {"acc", three_registers}, three_source, {}, &constants);
+  test::Check(std::holds_alternative<std::size_t>(three_result));
+  test::Check(three_source.str().find(
+      "return a;\n})(), b, c);\n") != std::string::npos);
+  if (argc == 2 && std::string_view(argv[1]) == "--emit")
+    std::cout << "export function threeDeferred(object,a,b,c){let acc,callee;\n"
+              << three_source.str() << "}\n";
   for (const auto& unsafe_tail : {
            test::Body({0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 3,
                        0x61, 0, 0x60, 2, 0x60, 1, 0x2e, 0, 0, 2, 0x64}),

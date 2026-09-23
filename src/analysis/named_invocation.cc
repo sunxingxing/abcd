@@ -163,7 +163,7 @@ std::optional<TailNamedInvocation> MatchTailNamedInvocation(
   const auto lifted =
       LiftReceiverCall(instructions[call_index].decoded, frame_size);
   const auto* invoke = std::get_if<ReceiverCall>(&lifted);
-  if (!invoke || invoke->arguments.count != 1) return {};
+  if (!invoke || invoke->arguments.count == 0) return {};
   const auto reload = call_index - 1;
   const auto loaded =
       LiftScalarInstruction(instructions[reload].decoded, frame_size);
@@ -174,9 +174,10 @@ std::optional<TailNamedInvocation> MatchTailNamedInvocation(
       load_value ? std::get_if<abc::RegisterId>(load_value) : nullptr;
   if (!load || !callee ||
       !std::holds_alternative<Accumulator>(load->destination) ||
-      *callee == invoke->receiver ||
-      *callee == invoke->arguments.values[0])
+      *callee == invoke->receiver)
     return {};
+  for (std::size_t i = 0; i < invoke->arguments.count; ++i)
+    if (*callee == invoke->arguments.values[i]) return {};
   std::optional<std::size_t> spill;
   for (std::size_t i = reload; i-- > 0;) {
     const auto accesses =

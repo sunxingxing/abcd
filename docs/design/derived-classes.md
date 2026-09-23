@@ -32,3 +32,24 @@ On the real Immersive sample, `EntryAbility` and `EntryBackupAbility` now pass
 their import-parent and constructor checks but stop at class-member source
 admission (`kClass` at entry PC 14). Complete executable records remain 4/45;
 the synthetic Node oracle is not evidence that those real methods are ready.
+
+For pinned v7 async ordinary class members, `ProveAsyncCompletion` recognizes
+the compiler's no-await template: private `ASYNCFUNCTIONENTER` result, one
+catch-all region covering the entire normal body, a matching resolve/return,
+and an exact reject/return handler. The promise register must be a private
+local and unread by the normal body. The native `async` method provides the
+same promise assimilation and implicit exception rejection; the internal
+promise operations and handler are removed before normal body analysis. This
+is a linear, bounded transformation with no branch relocation. Await/resume,
+partial handlers, and historical semantics remain refused. The v7 interpreter
+handlers for `ASYNCFUNCTIONENTER`, `ASYNCFUNCTIONRESOLVE_V8`, and
+`ASYNCFUNCTIONREJECT_V8` are the semantic reference. Node tests check async
+method identity, promise adoption, and rejection-safe publication.
+
+The real Immersive `EntryBackupAbility.onBackup` body (method entity 9488) now
+passes member emission. Its three-argument named call uses the existing
+getter-before-argument IIFE proof extended from `CALLTHIS1` to `CALLTHIS3`;
+the source oracle checks receiver, argument order, and discarded return.
+`onRestore` (entity 9516) still has a `CALLTHISRANGE` after a nested
+`JSON.stringify` call, which the receiver-call lift does not yet admit. Thus
+the whole record remains unpublished and the complete-record count stays 4/45.

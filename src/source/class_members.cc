@@ -25,7 +25,12 @@ MemberTarget ResolveClassMember(const abc::Header& header,
   const auto& method = index.methods[position->value];
   const auto attributes = TakeClassValue<abc::MethodAttributes>(
       abc::DecodeMethodAttributes(method.access_flags, header.profile));
-  if (attributes.sendable || attributes.kind != abc::FunctionKind::kNone)
+  if (attributes.sendable ||
+      (attributes.kind != abc::FunctionKind::kNone &&
+       attributes.kind != abc::FunctionKind::kAsync))
+    throw ClassFailure{CreatedClassError::kMembers};
+  if (attributes.kind == abc::FunctionKind::kAsync &&
+      header.profile != abc::ProfileId::kDynamic1301)
     throw ClassFailure{CreatedClassError::kMembers};
   const auto name = RuntimeName(method);
   if (!name) throw ClassFailure{CreatedClassError::kName};

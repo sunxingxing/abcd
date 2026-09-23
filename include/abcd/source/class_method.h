@@ -29,7 +29,9 @@ struct ClassMethod {
 // Caller must prove the effective runtime kind, including cross-role conflicts;
 // initial NONE alone is not evidence. Unknown evidence is rejected by default.
 // Placement/key descriptor and reserved-property compatibility are caller
-// obligations. Does not emit home-object operations or async/generator methods.
+// obligations. A v7 no-await async ordinary method requires an exact
+// completion-template proof; await/resume, async accessors, home-object
+// operations, and generators remain unsupported.
 // Simple formal count, preflight, budgets and publication match BaseFunction.
 // A supplied method lookup enables typed nested ordinary closures. Unsupported
 // child kinds reject the entire method instead of changing function semantics.

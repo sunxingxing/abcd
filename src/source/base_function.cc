@@ -15,6 +15,7 @@
 #include "abcd/source/base_constructor.h"
 #include "abcd/source/class_method.h"
 #include "abcd/source/string_literal.h"
+#include "async_completion.h"
 #include "capture_stream.h"
 #include "branch_value_proof.h"
 #include "function_template.h"
@@ -27,6 +28,7 @@ enum class CallableSyntax {
   kArrowExpression,
   kBaseConstructor,
   kClassMethod,
+  kAsyncClassMethod,
   kClassGetter,
   kClassSetter
 };
@@ -205,11 +207,14 @@ class FunctionWriter {
   FunctionEmitResult Write(const abc::MethodBody& body) {
     try {
       if (function_.syntax == CallableSyntax::kClassMethod ||
+          function_.syntax == CallableSyntax::kAsyncClassMethod ||
           function_.syntax == CallableSyntax::kClassGetter ||
           function_.syntax == CallableSyntax::kClassSetter) {
         if (function_.placement == abc::ClassPlacement::kStatic)
           Text("static ");
-        Text(function_.syntax == CallableSyntax::kClassGetter
+        Text(function_.syntax == CallableSyntax::kAsyncClassMethod
+                 ? "async ["
+             : function_.syntax == CallableSyntax::kClassGetter
                  ? "get ["
              : function_.syntax == CallableSyntax::kClassSetter ? "set ["
                                                                 : "[");
@@ -510,14 +515,20 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
                                     const MethodConstants* constants,
                                     const abc::MethodLookup* methods) {
   if (method.attributes.sendable) return FunctionEmitError::kSendable;
-  if (method.attributes.kind != abc::FunctionKind::kNone)
+  if (method.attributes.kind != abc::FunctionKind::kNone &&
+      method.attributes.kind != abc::FunctionKind::kAsync)
+    return FunctionEmitError::kKind;
+  if (method.attributes.kind == abc::FunctionKind::kAsync &&
+      method.member.kind != abc::ClassMethodKind::kOrdinary)
     return FunctionEmitError::kKind;
   CallableSyntax syntax;
   switch (method.member.kind) {
     case abc::ClassMethodKind::kOrdinary:
       if (method.effective_kind != EffectiveMethodKind::kOrdinary)
         return FunctionEmitError::kKind;
-      syntax = CallableSyntax::kClassMethod;
+      syntax = method.attributes.kind == abc::FunctionKind::kAsync
+                   ? CallableSyntax::kAsyncClassMethod
+                   : CallableSyntax::kClassMethod;
       break;
     case abc::ClassMethodKind::kGetter:
       if (method.effective_kind != EffectiveMethodKind::kGetter)
@@ -538,6 +549,19 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
     if (const auto failure = AccessorFunctionSlot(
             body, method.frame, budget.bytes))
       return *failure;
+  if (syntax == CallableSyntax::kAsyncClassMethod) {
+    const auto checked = ProveAsyncCompletion(body, method.frame, budget.bytes);
+    if (const auto* error = std::get_if<FunctionEmitError>(&checked))
+      return *error;
+    const auto& normalized = std::get<abc::MethodBody>(checked);
+    budget.bytes -= normalized.instructions.capacity() *
+                    sizeof(abc::BodyInstruction);
+    return WriteCallable(
+        {method.frame, method.self_binding, method.member.length,
+         syntax, method.key, method.placement},
+        normalized, output, budget, constants, methods,
+        analysis::CapturedValues::kReject);
+  }
   return WriteCallable(
       {method.frame, method.self_binding, method.member.length,
        syntax, method.key, method.placement},
