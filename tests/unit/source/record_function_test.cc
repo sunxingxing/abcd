@@ -65,7 +65,6 @@ int main(int argc, char** argv) {
         static_cast<ssize_t>(bytes.size()));
   Check(close(fd) == 0);
   auto opened = corpus::AbcFile::Open(path);
-  Check(unlink(path) == 0);
   Check(std::holds_alternative<std::unique_ptr<corpus::AbcFile>>(opened));
   const auto& file = *std::get<std::unique_ptr<corpus::AbcFile>>(opened);
   abc::Header header;
@@ -144,4 +143,5 @@ int main(int argc, char** argv) {
     std::cout << source_text.str();
   if (argc == 2 && std::string_view(argv[1]) == "--emit-async")
     std::cout << async_text.str();
+  Check(unlink(path) == 0);
 }
