@@ -70,9 +70,76 @@ int main(int argc, char** argv) {
       returned_receiver, {"acc", registers}, returned_lexical, {},
       &constants)));
   test::Check(returned_lexical.str() == returned_output.str());
+  const auto deferred = test::Body({
+      0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 3, 0x29, 0,
+      0x60, 2, 0x60, 1, 0x2e, 0, 0, 2, 0x64});
+  const auto matched =
+      analysis::MatchTailNamedInvocation(deferred, registers.size());
+  test::Check(matched && matched->property == 1 && matched->call == 7);
+  std::ostringstream deferred_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(deferred, {"acc", registers},
+                                    deferred_source, {}, &constants)));
+  test::Check(deferred_source.str().find(
+      "acc = (object)[\"method\"]((() => {\n") != std::string::npos);
+  test::Check(deferred_source.str().find("return b;\n})());\n") !=
+              std::string::npos);
+  const auto deferred_discard = test::Body({
+      0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 3, 0x29, 0,
+      0x60, 2, 0x60, 1, 0x2e, 0, 0, 2, 0x00, 0x65});
+  test::Check(analysis::MatchTailNamedInvocation(deferred_discard,
+                                                 registers.size())
+                  .has_value());
+  std::ostringstream discard_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(deferred_discard, {"acc", registers},
+                                    discard_source, {}, &constants)));
+  test::Check(discard_source.str().ends_with(
+      "})());\nacc = (void 0);\nreturn;\n"));
+  for (const auto& unsafe_tail : {
+           test::Body({0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 3,
+                       0x61, 0, 0x60, 2, 0x60, 1, 0x2e, 0, 0, 2, 0x64}),
+           test::Body({0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 3,
+                       0x60, 1, 0x60, 2, 0x60, 1, 0x2e, 0, 0, 2, 0x64}),
+           test::Body({0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x61, 2,
+                       0x60, 2, 0x60, 1, 0x2e, 0, 0, 2, 0x64}),
+           test::Body({0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 3,
+                       0x60, 2, 0x60, 1, 0x2e, 0, 2, 2, 0x64}),
+           test::Body({0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 3,
+                       0x60, 2, 0x60, 1, 0x2e, 0, 0, 2, 0x61, 2, 0x64}),
+       })
+    test::Check(!analysis::MatchTailNamedInvocation(unsafe_tail,
+                                                    registers.size()));
+  std::ostringstream limited_tail;
+  const auto short_tail = source::WriteLocalLexicalBody(
+      deferred, {"acc", registers}, limited_tail,
+      {.output = {deferred_source.str().size() - 1}}, &constants);
+  test::Check(std::get<source::BodyEmitFailure>(short_tail).emit_error ==
+              source::EmitError::kOutputLimit);
+  test::Check(limited_tail.str().empty());
+  for (const std::size_t count : {200U, 201U, 402U}) {
+    std::vector<std::uint8_t> encoded{
+        0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 3};
+    encoded.insert(encoded.end(), count, 0xd5);
+    encoded.insert(encoded.end(),
+                   {0x60, 2, 0x60, 1, 0x2e, 0, 0, 2, 0x64});
+    const auto many = test::Body(encoded);
+    test::Check(analysis::MatchTailNamedInvocation(many, registers.size())
+                    .has_value());
+    std::ostringstream many_source;
+    test::Check(std::holds_alternative<std::size_t>(
+        source::WriteLocalLexicalBody(many, {"acc", registers}, many_source,
+                                      {}, &constants)));
+    test::Check(many_source.str() ==
+                "acc = object;\nacc = (object)[\"method\"]((() => {\n"
+                "acc = c;\nacc = b;\nreturn b;\n})());\nreturn acc;\n");
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
     std::cout << "export function returnedReceiver(object){let acc;\n"
               << returned_output.str() << "}\n";
+  if (argc == 2 && std::string_view(argv[1]) == "--emit")
+    std::cout << "export function deferred(object,b,c){let acc,a;\n"
+              << deferred_source.str() << "}\n";
   for (const auto* candidate : {&body, &spilled}) {
     std::ostringstream lexical;
     test::Check(

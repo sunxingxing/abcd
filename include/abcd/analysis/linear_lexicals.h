@@ -91,7 +91,8 @@ class LinearLexicals {
       std::span<const ClosureCreation> creations = {},
       CapturedValues captured_values = CapturedValues::kReject,
       std::span<const std::uint8_t> named_scopes = {},
-      std::span<const std::uint8_t> guarded_imports = {});
+      std::span<const std::uint8_t> guarded_imports = {},
+      std::optional<TailNamedInvocation> tail_call = {});
   std::span<const LinearStatement> Statements() const {
     return {statements_.get(), statements_ ? statement_count_ : 0};
   }

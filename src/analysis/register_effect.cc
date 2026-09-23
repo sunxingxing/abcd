@@ -5,6 +5,7 @@
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/indexed_read.h"
 #include "abcd/analysis/lexical.h"
+#include "abcd/analysis/module_load.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/object_creation.h"
@@ -90,6 +91,11 @@ RegisterEffect AccumulatorDefinition() {
   effect.write = Accumulator{};
   return effect;
 }
+RegisterEffect EffectOf(const ModuleLoad&) {
+  // A module binding may be Hole, but its normal return only replaces acc.
+  // Private caller registers remain valid across the possibly throwing load.
+  return AccumulatorDefinition();
+}
 RegisterEffect EffectOf(const LexicalLoad&) { return AccumulatorDefinition(); }
 RegisterEffect EffectOf(const PushEnvironment&) {
   return AccumulatorDefinition();
@@ -164,6 +170,8 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
     return result;
   if (auto result = Adapt(LiftLexicalInstruction(instruction, frame_size));
       !Unsupported(result))
+    return result;
+  if (auto result = Adapt(LiftModuleLoad(instruction)); !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftHoleInstruction(instruction, frame_size));
       !Unsupported(result))

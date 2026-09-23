@@ -26,6 +26,27 @@ General SSA/effect-aware expression scheduling is a later extension of this
 proof, not a reason to speculate across writes or branch entries now. Legacy,
 with-name and range variants require separate evidence and are not accepted.
 
+## Deferred Tail Calls
+
+The lexical-body path additionally admits a handler-free, terminal `CALLTHIS1`
+whose callee came from a named read, was spilled to a private register, and is
+reloaded immediately before the call. A backward register-access scan proves
+the spill has no intervening readers or writers; a forward scan proves the
+receiver register is not written. The first instruction after the spill must
+overwrite the accumulator without reading it. Only operandless `NOP` and
+`LDUNDEFINED` may occur between the call and terminal return/throw. Other
+shapes stay unsupported.
+
+The writer emits the native receiver call at the original getter position and
+evaluates intervening argument-building statements inside an arrow IIFE. This
+keeps getter effects before argument effects, retains the original receiver,
+and avoids mutable `.call`, `.apply`, and `Reflect.apply` dependencies. The
+extra arrow frame/closure is an implementation limitation for stack-sensitive
+code and allocation failure timing; the matcher does not claim general
+effect-aware scheduling. The proof and emission are O(I + source bytes) with
+constant matcher storage. `LinearLexicals` validates the planned call before
+output publication.
+
 ## Implementation Plan
 
 1. Add `named_call_test` with a real constant-file fixture, a failing LDA /

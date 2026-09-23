@@ -199,6 +199,13 @@ int main(int argc, char** argv) {
                                     redefine_source, {}, &constants)));
   test::Check(redefine_source.str().find("const $abcdField0 = acc;\n") !=
               std::string::npos);
+  const auto imported_between = test::Body({
+      0x07, 0, 0, 0, 0x61, 0, 0x60, 1, 0xdc, 0, 8, 0, 0,
+      0x7e, 0, 0x60, 2, 0xdc, 0, 10, 0, 0, 0x60, 0, 0x64});
+  const auto imported_fields = source::BuildFreshFieldPlan(
+      imported_between, more_fields.size(), 1024);
+  test::Check(std::get<source::FreshFieldPlan>(imported_fields).sites.size() ==
+              2);
   test::Check(redefine_source.str().find(
                   "object = ({...object, [\"field\"]: $abcdField0, "
                   "[\"text\"]: acc});") != std::string::npos);

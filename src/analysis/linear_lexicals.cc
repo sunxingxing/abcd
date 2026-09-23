@@ -22,7 +22,8 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
     std::span<const ClosureCreation> creations,
     CapturedValues captured_values,
     std::span<const std::uint8_t> named_scopes,
-    std::span<const std::uint8_t> guarded_imports) {
+    std::span<const std::uint8_t> guarded_imports,
+    std::optional<TailNamedInvocation> tail_call) {
   using Error = LinearLexicalError;
   abc::CodeOffset offset{};
   const auto fail = [&](Error kind) {
@@ -217,6 +218,24 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
           return fail(Error::kInstruction);
         accumulator = ValueKinds::Language();
         statement = ExternalImport{load->slot};
+        continue;
+      }
+      if (tail_call && i == tail_call->call) {
+        if (tail_call->property >= tail_call->spill ||
+            tail_call->spill >= tail_call->reload ||
+            tail_call->reload + 1 != i ||
+            !std::holds_alternative<KeepInstruction>(
+                statements[tail_call->property]) ||
+            !std::holds_alternative<KeepInstruction>(
+                statements[tail_call->spill]) ||
+            !std::holds_alternative<KeepInstruction>(
+                statements[tail_call->reload]) ||
+            !state(tail_call->invoke.receiver).IsLanguage() ||
+            !state(tail_call->invoke.arguments.values[0]).IsLanguage() ||
+            !state(tail_call->callee).IsLanguage())
+          return fail(Error::kInstruction);
+        accumulator = ValueKinds::Language();
+        statement = OmitInstruction{};
         continue;
       }
       // The v7.0 translator may spill a named callee through one register

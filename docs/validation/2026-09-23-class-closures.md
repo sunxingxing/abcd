@@ -20,15 +20,19 @@ MultiCommunityApplication class-site fixture, 6/32 sites were ready and peak
 process RSS was 9,984 KiB (`/usr/bin/time -f '%M'`). This is not a full-corpus
 or whole-decompiler memory bound measurement.
 
-Immersive record 16474, caller 16638, still rejects its HomeModel class at
-member `initTabBarList` offset 36. That `DEFINEFUNC` resolves to method 16610
-with initial `kArrow` kind. Its entry `MOV` copies of ABI context are dead and
-now pass the two-pass proof, but this nested creation still fails at the arrow
-body's pc30 `CREATEOBJECTWITHBUFFER` (typed
-`LinearLexicalError::kInstruction`). Later data-object-buffer source support
-passed that instruction. Guarded fresh-object field recovery then passed the
-three `DEFINEPROPERTYBYNAME` operations at pc38, pc68 and pc98; the next
-rejected operation in target method 16610 is pc109 `CALLTHIS1`
-(`LinearLexicalError::kInstruction`). The class site is still not ready.
-No executable record exporter, instance-field lifting, or full-source
-signature recovery is claimed.
+Immersive record 16474, caller 16638, defines `HomeModel` and an arrow target
+at method 16610. Its entry ABI-context copies are dead. Data-object-buffer
+creation and guarded fresh-object fields recover the three property writes at
+pc38, pc68 and pc98. The module load between writes has a typed normal
+register effect: it replaces acc and leaves private caller registers intact.
+The deferred named `CALLTHIS1` at pc109 is now recovered as a native receiver
+call with its intervening argument construction. pc113 is `LDUNDEFINED`, not
+`NOP`; the narrow tail proof permits both operandless instructions. The class
+site now reports `sites=1 ready=1`, and `home_model.mjs` checks constructor
+state, imported constants, callback fields, and repeated initialization.
+After this extension, `ctest --test-dir build/decode --output-on-failure -j4`
+passed 116/116. The class-site fixture measured 9,088 KiB peak process RSS
+(`time -f '%M'`), not a full-corpus or whole-decompiler memory bound.
+This is a class-site fixture, not an executable record exporter. Instance-field
+lifting outside this constructor pattern, global variables, complete source
+signatures and full function-body integration remain open.

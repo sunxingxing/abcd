@@ -339,7 +339,17 @@ if(BUILD_TESTING)
       add_test(NAME paired_record_import_class_js_test COMMAND ${CMAKE_COMMAND}
         "-DABCD_CLASS_FIXTURE=$<TARGET_FILE:class_sample_fixture>"
         "-DABCD_PAIRED_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc"
+        "-DABCD_RECORD=44106"
         "-DABCD_RECORD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_import_class.mjs"
+        "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/paired_record_import_class.cmake)
+    endif()
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+      add_test(NAME paired_home_model_js_test COMMAND ${CMAKE_COMMAND}
+        "-DABCD_CLASS_FIXTURE=$<TARGET_FILE:class_sample_fixture>"
+        "-DABCD_PAIRED_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        "-DABCD_RECORD=16474"
+        "-DABCD_RECORD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/home_model.mjs"
         "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/paired_record_import_class.cmake)
     endif()

@@ -1,5 +1,7 @@
 #include "abcd/analysis/named_invocation.h"
 
+#include "abcd/abc/register_access.h"
+#include "abcd/analysis/register_effect.h"
 #include "abcd/analysis/scalar.h"
 
 namespace abcd::analysis {
@@ -135,5 +137,117 @@ std::optional<NamedInvocation> MatchNamedInvocation(
       return {};
   }
   return NamedInvocation{*named, *call, 4};
+}
+
+std::optional<TailNamedInvocation> MatchTailNamedInvocation(
+    const abc::MethodBody& body, std::uint64_t frame_size) {
+  const auto& instructions = body.instructions;
+  if (!body.tries.empty() || !body.handlers.empty() || instructions.size() < 7)
+    return {};
+  using abc::Opcode;
+  const auto terminal = instructions.back().decoded.opcode;
+  if (terminal != Opcode::kRETURN && terminal != Opcode::kRETURNUNDEFINED &&
+      terminal != Opcode::kTHROW_PREF_NONE)
+    return {};
+  std::size_t call_index = instructions.size() - 1;
+  while (call_index != 0) {
+    const auto& suffix = instructions[call_index - 1].decoded;
+    if (suffix.operand_count != 0 ||
+        (suffix.opcode != Opcode::kNOP &&
+         suffix.opcode != Opcode::kLDUNDEFINED))
+      break;
+    --call_index;
+  }
+  if (call_index < 5) return {};
+  --call_index;
+  const auto lifted =
+      LiftReceiverCall(instructions[call_index].decoded, frame_size);
+  const auto* invoke = std::get_if<ReceiverCall>(&lifted);
+  if (!invoke || invoke->arguments.count != 1) return {};
+  const auto reload = call_index - 1;
+  const auto loaded =
+      LiftScalarInstruction(instructions[reload].decoded, frame_size);
+  const auto* load = std::get_if<ScalarAssignment>(&loaded);
+  const auto* load_value =
+      load ? std::get_if<ScalarValue>(&load->expression) : nullptr;
+  const auto* callee =
+      load_value ? std::get_if<abc::RegisterId>(load_value) : nullptr;
+  if (!load || !callee ||
+      !std::holds_alternative<Accumulator>(load->destination) ||
+      *callee == invoke->receiver ||
+      *callee == invoke->arguments.values[0])
+    return {};
+  std::optional<std::size_t> spill;
+  for (std::size_t i = reload; i-- > 0;) {
+    const auto accesses =
+        abc::GetRegisterAccesses(instructions[i].decoded, frame_size);
+    const auto* known = std::get_if<abc::RegisterAccesses>(&accesses);
+    if (!known) return {};
+    bool writes = false;
+    for (std::size_t window = 0; window < known->count; ++window) {
+      const auto& access = known->windows[window];
+      if (callee->value < access.first.value ||
+          callee->value - access.first.value >= access.count)
+        continue;
+      if (access.access == abc::OperandAccess::kRead)
+        return {};
+      writes = true;
+    }
+    if (writes) {
+      spill = i;
+      break;
+    }
+  }
+  if (!spill || *spill < 2 || *spill + 2 >= reload) return {};
+  const auto stored =
+      LiftScalarInstruction(instructions[*spill].decoded, frame_size);
+  const auto* store = std::get_if<ScalarAssignment>(&stored);
+  const auto* store_value =
+      store ? std::get_if<ScalarValue>(&store->expression) : nullptr;
+  const auto* destination =
+      store ? std::get_if<abc::RegisterId>(&store->destination) : nullptr;
+  if (!store || !store_value || !destination || *destination != *callee ||
+      !std::holds_alternative<Accumulator>(*store_value) ||
+      instructions[*spill].decoded.opcode != Opcode::kSTA_V8)
+    return {};
+  const auto property = *spill - 1;
+  const auto named = LiftNamedRead(instructions[property].decoded);
+  const auto* read = std::get_if<NamedRead>(&named);
+  if (!read) return {};
+  const auto copied =
+      LiftScalarInstruction(instructions[property - 1].decoded, frame_size);
+  const auto* copy = std::get_if<ScalarAssignment>(&copied);
+  const auto* copy_value =
+      copy ? std::get_if<ScalarValue>(&copy->expression) : nullptr;
+  const auto* receiver =
+      copy_value ? std::get_if<abc::RegisterId>(copy_value) : nullptr;
+  if (!copy || !receiver || *receiver != invoke->receiver ||
+      !std::holds_alternative<Accumulator>(copy->destination))
+    return {};
+  const auto overwrite = LiftRegisterEffect(
+      instructions[*spill + 1].decoded, frame_size);
+  const auto* effect = std::get_if<RegisterEffect>(&overwrite);
+  if (!effect || !effect->write ||
+      !std::holds_alternative<Accumulator>(*effect->write))
+    return {};
+  for (std::size_t read_index = 0; read_index < effect->read_count;
+       ++read_index)
+    if (std::holds_alternative<Accumulator>(effect->reads[read_index]))
+      return {};
+  for (std::size_t i = *spill + 1; i < call_index; ++i) {
+    const auto accesses =
+        abc::GetRegisterAccesses(instructions[i].decoded, frame_size);
+    const auto* known = std::get_if<abc::RegisterAccesses>(&accesses);
+    if (!known) return {};
+    for (std::size_t window = 0; window < known->count; ++window) {
+      const auto& access = known->windows[window];
+      if (invoke->receiver.value >= access.first.value &&
+          invoke->receiver.value - access.first.value < access.count &&
+          access.access != abc::OperandAccess::kRead)
+        return {};
+    }
+  }
+  return TailNamedInvocation{property, *spill, reload, call_index, *read,
+                             *invoke, *callee};
 }
 }  // namespace abcd::analysis

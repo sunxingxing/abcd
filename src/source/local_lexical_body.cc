@@ -26,14 +26,16 @@ class LexicalWriter {
                 const MethodConstants* constants, const LeafSources* functions,
                 analysis::CapturedValues captured_values,
                 ObjectBufferBudget object_budget,
-                std::span<const FreshFieldSite> fields)
+                std::span<const FreshFieldSite> fields,
+                std::optional<analysis::TailNamedInvocation> tail_call)
       : names_(names),
         output_(output),
         remaining_(budget.bytes),
         constants_(constants),
         functions_(functions),
         captured_values_(captured_values),
-        object_budget_(object_budget), fields_(fields) {}
+        object_budget_(object_budget), fields_(fields),
+        tail_call_(tail_call) {}
   BodyEmitResult Write(const abc::MethodBody& body,
                        const analysis::LinearLexicals& plan) {
     try {
@@ -45,6 +47,27 @@ class LexicalWriter {
       for (std::size_t i = 0; i < plan.Statements().size() && !error_; ++i) {
         offset_ = body.instructions[i].offset;
         const auto& statement = plan.Statements()[i];
+        if (tail_call_ && i == tail_call_->property) {
+          const auto result = WriteTailCallHead(*tail_call_, offset_, names_,
+                                                output_, {remaining_}, constants_);
+          if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
+            error_ = *failure;
+          else
+            Count(std::get<std::size_t>(result));
+          continue;
+        }
+        if (tail_call_ &&
+            (i == tail_call_->spill || i == tail_call_->reload))
+          continue;
+        if (tail_call_ && i == tail_call_->call) {
+          const auto result = WriteTailCallEnd(*tail_call_, offset_, names_,
+                                               output_, {remaining_});
+          if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
+            error_ = *failure;
+          else
+            Count(std::get<std::size_t>(result));
+          continue;
+        }
         if (field_cursor_ < fields_.size() &&
             fields_[field_cursor_].instruction == i) {
           if (!std::holds_alternative<analysis::KeepInstruction>(statement))
@@ -204,6 +227,7 @@ class LexicalWriter {
   analysis::CapturedValues captured_values_;
   ObjectBufferBudget object_budget_;
   std::span<const FreshFieldSite> fields_;
+  std::optional<analysis::TailNamedInvocation> tail_call_;
   std::size_t field_cursor_ = 0;
   std::size_t next_function_ = 0;
   std::size_t written_ = 0;
@@ -278,10 +302,12 @@ LocalLexicalResult WriteLexicals(const abc::MethodBody& body, ScalarNames names,
     }
     analysis::IdfQuota quota{budget.work - named_scopes.work_units -
                              guarded_imports.work_units};
+    const auto tail_call = analysis::MatchTailNamedInvocation(
+        body, names.registers.size());
     const auto planned = analysis::LinearLexicals::Build(
         body, environments, names.registers.size(), quota, {budget.bytes},
         creations, captured_values, named_scopes.admitted,
-        guarded_imports.admitted);
+        guarded_imports.admitted, tail_call);
     if (const auto* failure =
             std::get_if<analysis::LinearLexicalFailure>(&planned))
       return *failure;
@@ -307,14 +333,14 @@ LocalLexicalResult WriteLexicals(const abc::MethodBody& body, ScalarNames names,
     const auto checked =
         LexicalWriter(names, discard, budget.output, constants,
                       functions ? &*functions : nullptr, captured_values,
-                      object_budget, fields.sites)
+                      object_budget, fields.sites, tail_call)
             .Write(body, plan);
     if (const auto* failure = std::get_if<BodyEmitFailure>(&checked))
       return *failure;
     const auto result =
         LexicalWriter(names, output, budget.output, constants,
                       functions ? &*functions : nullptr, captured_values,
-                      object_budget, fields.sites)
+                      object_budget, fields.sites, tail_call)
             .Write(body, plan);
     if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
       return *failure;

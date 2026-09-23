@@ -74,6 +74,39 @@ class BodyWriter {
     }
   }
 
+  BodyEmitResult TailCallHead(const TailNamedInvocation& invocation,
+                              abc::CodeOffset offset) {
+    offset_ = offset;
+    try {
+      Expression(ScalarValue{Accumulator{}});
+      Text(" = (");
+      Expression(ScalarValue{invocation.invoke.receiver});
+      Text(")[");
+      StringConstant(invocation.read.name, StringUse::kPropertyName);
+      Text("]((() => {\n");
+      if (error_) return *error_;
+      return written_;
+    } catch (const std::ios_base::failure&) {
+      return BodyEmitFailure{BodyEmitError::kExpression, offset_, {},
+                             EmitError::kWrite};
+    }
+  }
+
+  BodyEmitResult TailCallEnd(const TailNamedInvocation& invocation,
+                             abc::CodeOffset offset) {
+    offset_ = offset;
+    try {
+      Text("return ");
+      Expression(ScalarValue{invocation.invoke.arguments.values[0]});
+      Text(";\n})());\n");
+      if (error_) return *error_;
+      return written_;
+    } catch (const std::ios_base::failure&) {
+      return BodyEmitFailure{BodyEmitError::kExpression, offset_, {},
+                             EmitError::kWrite};
+    }
+  }
+
   BodyEmitResult FieldBatch(std::span<const FreshFieldSite> fields,
                             std::size_t first_ordinal,
                             abc::CodeOffset offset) {
@@ -479,6 +512,21 @@ BodyEmitResult WriteFreshFieldBatch(
     EmitBudget budget, const MethodConstants* constants) {
   return BodyWriter(names, output, budget, constants, {})
       .FieldBatch(fields, first_ordinal, offset);
+}
+
+BodyEmitResult WriteTailCallHead(
+    const analysis::TailNamedInvocation& invocation, abc::CodeOffset offset,
+    ScalarNames names, std::ostream& output, EmitBudget budget,
+    const MethodConstants* constants) {
+  return BodyWriter(names, output, budget, constants, {})
+      .TailCallHead(invocation, offset);
+}
+
+BodyEmitResult WriteTailCallEnd(
+    const analysis::TailNamedInvocation& invocation, abc::CodeOffset offset,
+    ScalarNames names, std::ostream& output, EmitBudget budget) {
+  return BodyWriter(names, output, budget, nullptr, {})
+      .TailCallEnd(invocation, offset);
 }
 
 BodyEmitResult WriteNamedInvocation(const analysis::NamedInvocation& invocation,

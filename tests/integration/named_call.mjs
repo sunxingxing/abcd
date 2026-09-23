@@ -61,6 +61,86 @@ assert.equal(source.returnedReceiver(returnedReceiver), returnedReceiver);
 assert.equal(returnedReads, 1);
 assert.throws(() => source.returnedReceiver({method() { throw failure; }}),
     error => error === failure);
+const deferredEvents = [];
+const deferredReceiver = {
+  get method() {
+    deferredEvents.push('get');
+    const callable = function(value) {
+      deferredEvents.push('call');
+      assert.equal(this, deferredReceiver);
+      return value;
+    };
+    Object.defineProperty(callable, 'call', {
+      get() { throw new Error('call lookup'); },
+    });
+    Object.defineProperty(callable, 'apply', {
+      get() { throw new Error('apply lookup'); },
+    });
+    return callable;
+  },
+};
+const deferredValue = source.deferred(deferredReceiver, 17, () => {
+  deferredEvents.push('argument');
+  Object.defineProperty(deferredReceiver, 'method', {
+    value() { throw new Error('second lookup'); }, configurable: true,
+  });
+});
+assert.equal(deferredValue, 17);
+assert.deepEqual(deferredEvents, ['get', 'argument', 'call']);
+const deferredFailure = new Error('argument failed');
+let reached = false;
+assert.throws(() => source.deferred({
+  get method() { reached = true; return () => 0; },
+}, 17, () => { throw deferredFailure; }), error => error === deferredFailure);
+assert.equal(reached, true);
+let argumentReached = false;
+assert.throws(() => source.deferred({
+  get method() { throw deferredFailure; },
+}, 17, () => { argumentReached = true; }),
+              error => error === deferredFailure);
+assert.equal(argumentReached, false);
+for (const method of [undefined, 42, class NotCallableWithoutNew {}]) {
+  const events = [];
+  assert.throws(() => source.deferred({
+    get method() { events.push('get'); return method; },
+  }, 17, () => { events.push('argument'); }), TypeError);
+  assert.deepEqual(events, ['get', 'argument']);
+}
+const deferredProxyEvents = [];
+const deferredProxy = new Proxy(function(value) { return value; }, {
+  apply(target, receiver, args) {
+    deferredProxyEvents.push('call');
+    assert.equal(receiver, proxyReceiverForDeferred);
+    assert.deepEqual(args, [23]);
+    return args[0];
+  },
+});
+const proxyReceiverForDeferred = {
+  get method() { deferredProxyEvents.push('get'); return deferredProxy; },
+};
+assert.equal(source.deferred(proxyReceiverForDeferred, 23, () => {
+  deferredProxyEvents.push('argument');
+}), 23);
+assert.deepEqual(deferredProxyEvents, ['get', 'argument', 'call']);
+const primitiveForDeferred = 'deferred primitive';
+let primitiveGetterCalls = 0;
+const savedStringMethod = Object.getOwnPropertyDescriptor(String.prototype,
+                                                         'method');
+Object.defineProperty(String.prototype, 'method', {
+  configurable: true,
+  get() { ++primitiveGetterCalls; return function() { return this; }; },
+});
+try {
+  assert.equal(source.deferred(primitiveForDeferred, 23, () => {}),
+               primitiveForDeferred);
+} finally {
+  if (savedStringMethod) {
+    Object.defineProperty(String.prototype, 'method', savedStringMethod);
+  } else {
+    delete String.prototype.method;
+  }
+}
+assert.equal(primitiveGetterCalls, 1);
 let applies = 0;
 const proxyReceiver = {
   method: new Proxy(function() {}, {
