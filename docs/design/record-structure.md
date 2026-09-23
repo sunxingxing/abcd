@@ -67,12 +67,23 @@ Both the complete module and every created class are preflighted before any
 source byte reaches the caller. The paired Breakpoint record executes under
 Node with the recovered four instance assignments and branching method.
 
-This writer is not yet a per-record publication command or broad record
-coverage. The caller still must bind the module to the unchanged record,
-provide the whole-file role proof and atomically stage the output. Unproved
-branches, reentrant/cyclic reads, unsupported bodies, indirect/star exports,
-historical execution semantics and bundle ownership remain explicit refusal
-cases, not partial executable files.
+`abc_structure INPUT.abc OUTPUT_DIR --source` now adds a `.mjs` file at the
+record path only when the whole-file role proof, record-owned module context,
+and `WriteRecordProgram` all succeed. It retains the `.d.ts` and metadata
+files for every record. The manifest uses view
+`declarations_with_verified_source`; each record has a numeric `source_status`:
+0 written, 1 module-context refusal, 2 no module entity, 3 program refusal.
+Program refusal also records `source_error` as `RecordProgramError`'s enum
+ordinal and `source_pc`; module-context refusal records the reason variant
+index. These are diagnostics, not source semantics. Unsupported records have
+no `source` path, and failed staged `.mjs` files are deleted. A resource,
+read, write, or file-identity failure aborts publication of the whole tree.
+
+This is still narrow record coverage, not completion of the user gate. The
+same-file record ownership and whole-file role proof are supplied by the CLI;
+unproved branches, reentrant/cyclic reads, unsupported bodies, indirect/star
+exports, historical execution semantics and bundle ownership remain explicit
+refusal cases, not partial executable files.
 
 ## Staged Implementation
 

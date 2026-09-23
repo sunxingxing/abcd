@@ -7,8 +7,12 @@
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <optional>
+#include <string_view>
 
 #include "abcd/corpus/detect.h"
+#include "abcd/source/record_module_context.h"
+#include "abcd/source/record_program.h"
 #include "abcd/structure/record_path.h"
 #include "abcd/structure/record_writer.h"
 
@@ -25,8 +29,31 @@ enum class ExportError {
   kRecord,
   kOutput,
   kChanged,
-  kDestination
+  kDestination,
+  kRoles
 };
+enum class SourceStatus : unsigned {
+  kWritten = 0,
+  kModuleContext = 1,
+  kNoModule = 2,
+  kProgram = 3
+};
+bool FatalMetadata(abc::MetadataError error) {
+  return error == abc::MetadataError::kResourceLimit ||
+         error == abc::MetadataError::kRead ||
+         error == abc::MetadataError::kFileChanged;
+}
+bool FatalContext(const source::RecordModuleFailure& failure) {
+  if (const auto* error = std::get_if<source::RecordModuleError>(&failure.reason))
+    return *error == source::RecordModuleError::kResourceLimit;
+  if (const auto* error = std::get_if<abc::AttributeFailure>(&failure.reason))
+    return error->kind == abc::AttributeError::kFileChanged ||
+           (error->metadata_error && FatalMetadata(*error->metadata_error));
+  const auto kind = std::get<abc::ModuleFailure>(failure.reason).kind;
+  return kind == abc::ModuleError::kFileChanged ||
+         kind == abc::ModuleError::kRead ||
+         kind == abc::ModuleError::kResourceLimit;
+}
 int Fail(ExportError kind, std::uint32_t entity = 0) {
   std::cerr << nlohmann::json{{"error", static_cast<unsigned>(kind)},
                               {"entity", entity}}
@@ -67,7 +94,7 @@ std::string Hex(const corpus::Sha256& hash) {
   return result;
 }
 int Export(const std::filesystem::path& input,
-           const std::filesystem::path& output) {
+           const std::filesystem::path& output, bool emit_source) {
   if (output.filename().empty() ||
       std::filesystem::exists(std::filesystem::symlink_status(output)))
     return Fail(ExportError::kDestination);
@@ -97,13 +124,24 @@ int Export(const std::filesystem::path& input,
   const auto packed = abc::DetectFilePackaging(file, *header, *index);
   const auto* packaging = std::get_if<abc::FilePackaging>(&packed);
   if (!packaging) return Fail(ExportError::kPackaging);
+  std::optional<analysis::MethodRoleIndex> roles;
+  if (emit_source && header->profile == abc::ProfileId::kDynamic1301) {
+    auto built =
+        analysis::MethodRoleIndex::Build(file, *header, *index, *lookup);
+    if (auto* ready = std::get_if<analysis::MethodRoleIndex>(&built))
+      roles.emplace(std::move(*ready));
+    else
+      return Fail(ExportError::kRoles);
+  }
   const auto parent = output.parent_path();
   if (!parent.empty()) std::filesystem::create_directories(parent);
   StagedTree tree(output);
   if (tree.path.empty()) return Fail(ExportError::kOutput);
   std::ofstream manifest(tree.path / "manifest.json", std::ios::binary);
-  manifest << "{\"schema\":1,\"view\":\"declarations_only\",\"sha256\":\""
-           << Hex(hash->sha256)
+  manifest << "{\"schema\":1,\"view\":\""
+           << (emit_source ? "declarations_with_verified_source"
+                           : "declarations_only")
+           << "\",\"sha256\":\"" << Hex(hash->sha256)
            << "\",\"packaging\":" << static_cast<unsigned>(*packaging)
            << ",\"records\":[";
   structure::RecordCounts totals;
@@ -140,11 +178,67 @@ int Export(const std::filesystem::path& input,
     totals.requests += counts->requests;
     totals.imports += counts->imports;
     totals.exports += counts->exports;
+    nlohmann::json record_manifest{{"entity", record.offset.value},
+                                   {"metadata", metadata_path},
+                                   {"declarations", declaration_path}};
+    if (emit_source) {
+      if (!roles) {
+        record_manifest["source_status"] =
+            static_cast<unsigned>(SourceStatus::kProgram);
+        record_manifest["source_error"] =
+            static_cast<unsigned>(source::RecordProgramError::kProfile);
+      } else {
+        const auto context = source::ReadRecordModuleContext(
+            file, *header, *index, record, *packaging);
+        if (const auto* ready =
+                std::get_if<source::RecordModuleContext>(&context)) {
+          const auto module = ready->ForOwner(file, record.offset);
+          if (!module) {
+            record_manifest["source_status"] =
+                static_cast<unsigned>(SourceStatus::kNoModule);
+          } else {
+            const auto source_path = stem.string() + ".mjs";
+            std::ofstream program(tree.path / source_path, std::ios::binary);
+            if (!program) return Fail(ExportError::kOutput, record.offset.value);
+            const auto written = source::WriteRecordProgram(
+                file, *header, *index, *lookup, record, *module, *roles,
+                program);
+            program.close();
+            if (!program) return Fail(ExportError::kOutput, record.offset.value);
+            if (const auto* failure =
+                    std::get_if<source::RecordProgramFailure>(&written)) {
+              if (failure->kind == source::RecordProgramError::kWrite ||
+                  failure->kind == source::RecordProgramError::kRead ||
+                  failure->kind == source::RecordProgramError::kFileChanged ||
+                  failure->kind == source::RecordProgramError::kResourceLimit)
+                return Fail(ExportError::kRecord, record.offset.value);
+              std::error_code removed;
+              std::filesystem::remove(tree.path / source_path, removed);
+              if (removed) return Fail(ExportError::kOutput, record.offset.value);
+              record_manifest["source_status"] =
+                  static_cast<unsigned>(SourceStatus::kProgram);
+              record_manifest["source_error"] =
+                  static_cast<unsigned>(failure->kind);
+              record_manifest["source_pc"] = failure->pc.value;
+            } else {
+              record_manifest["source_status"] =
+                  static_cast<unsigned>(SourceStatus::kWritten);
+              record_manifest["source"] = source_path;
+            }
+          }
+        } else {
+          const auto& failure = std::get<source::RecordModuleFailure>(context);
+          if (FatalContext(failure))
+            return Fail(ExportError::kRecord, record.offset.value);
+          record_manifest["source_status"] =
+              static_cast<unsigned>(SourceStatus::kModuleContext);
+          record_manifest["source_error"] = failure.reason.index();
+        }
+      }
+    }
     if (comma) manifest << ',';
     comma = true;
-    manifest << nlohmann::json{{"entity", record.offset.value},
-                               {"metadata", metadata_path},
-                               {"declarations", declaration_path}};
+    manifest << record_manifest;
     if (!manifest) return Fail(ExportError::kOutput);
   }
   const nlohmann::json counts{
@@ -171,8 +265,9 @@ int Export(const std::filesystem::path& input,
 }
 }  // namespace
 int main(int argc, char** argv) {
-  if (argc != 3) {
-    std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR\n";
+  if (argc != 3 &&
+      !(argc == 4 && std::string_view(argv[3]) == "--source")) {
+    std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR [--source]\n";
     return EXIT_FAILURE;
   }
   constexpr rlim_t kProcessBytes = 1000000000;
@@ -181,7 +276,7 @@ int main(int argc, char** argv) {
   limit.rlim_cur = std::min(limit.rlim_cur, kProcessBytes);
   if (setrlimit(RLIMIT_AS, &limit) != 0) return EXIT_FAILURE;
   try {
-    return Export(argv[1], argv[2]);
+    return Export(argv[1], argv[2], argc == 4);
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
     return EXIT_FAILURE;

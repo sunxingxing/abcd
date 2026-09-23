@@ -623,6 +623,16 @@ if(BUILD_TESTING)
       -DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>
       -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/structure_cli.cmake)
+    if(ABCD_NODE_EXECUTABLE AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+      add_test(NAME structure_source_cli_test COMMAND ${CMAKE_COMMAND}
+        -DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>
+        -DABCD_FIXTURE=$<TARGET_FILE:index_fixture>
+        -DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc
+        -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+        -DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_program_sample.mjs
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/structure_source_cli.cmake)
+    endif()
     add_test(NAME creations_cli_test COMMAND ${CMAKE_COMMAND}
       -DABCD_SCAN=$<TARGET_FILE:abc_scan>
       -DABCD_CREATIONS=$<TARGET_FILE:abc_creations>

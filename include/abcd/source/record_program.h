@@ -6,21 +6,21 @@
 #include "abcd/source/module_exports.h"
 
 namespace abcd::source {
-enum class RecordProgramError {
-  kProfile,
-  kEntry,
-  kModule,
-  kBody,
-  kFrame,
-  kInstruction,
-  kValue,
-  kClass,
-  kExport,
-  kResourceLimit,
-  kOutputLimit,
-  kRead,
-  kWrite,
-  kFileChanged
+enum class RecordProgramError : unsigned {
+  kProfile = 0,
+  kEntry = 1,
+  kModule = 2,
+  kBody = 3,
+  kFrame = 4,
+  kInstruction = 5,
+  kValue = 6,
+  kClass = 7,
+  kExport = 8,
+  kResourceLimit = 9,
+  kOutputLimit = 10,
+  kRead = 11,
+  kWrite = 12,
+  kFileChanged = 13
 };
 struct RecordProgramFailure {
   RecordProgramError kind;
