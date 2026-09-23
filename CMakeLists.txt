@@ -42,6 +42,7 @@ target_link_libraries(abcd_abc PUBLIC abcd_file)
 add_library(abcd_analysis src/analysis/normal_flow.cc src/analysis/exception_dispatch.cc src/analysis/dominators.cc src/analysis/scalar.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/branch_condition.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/constant_object.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/guarded_global_call.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/function_creation.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/define_instruction.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/class_creation.cc)
@@ -665,6 +666,14 @@ if(BUILD_TESTING)
   add_executable(constant_object_test tests/unit/analysis/constant_object_test.cc)
   target_link_libraries(constant_object_test PRIVATE abcd_analysis)
   add_test(NAME constant_object_test COMMAND constant_object_test)
+  if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+    add_executable(guarded_global_call_sample_test
+      tests/integration/guarded_global_call_sample.cc)
+    target_link_libraries(guarded_global_call_sample_test PRIVATE abcd_analysis)
+    add_test(NAME guarded_global_call_sample_test
+      COMMAND guarded_global_call_sample_test
+      ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
+  endif()
 
   add_executable(exception_dispatch_test tests/unit/analysis/exception_dispatch_test.cc)
   target_link_libraries(exception_dispatch_test PRIVATE abcd_analysis)
