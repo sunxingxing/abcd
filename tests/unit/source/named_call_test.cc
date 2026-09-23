@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
       0x30, 0, 0, 2, 3, 4, 0x00, 0x64});
   const auto three_match = analysis::MatchTailNamedInvocation(
       three_arguments, three_registers.size());
-  test::Check(three_match && three_match->invoke.arguments.count == 3);
+  test::Check(three_match && three_match->invoke.Count() == 3);
   std::ostringstream three_source;
   const auto three_result = source::WriteLocalLexicalBody(
       three_arguments, {"acc", three_registers}, three_source, {}, &constants);
@@ -114,6 +114,42 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
     std::cout << "export function threeDeferred(object,a,b,c){let acc,callee;\n"
               << three_source.str() << "}\n";
+  const std::array<std::string_view, 6> range_registers{
+      "object", "a", "b", "c", "d", "callee"};
+  const auto direct_range = test::Body(
+      {0x60, 0, 0x42, 0, 0, 0, 0x31, 0, 4, 0, 0x64});
+  std::ostringstream direct_range_source;
+  test::Check(std::holds_alternative<std::size_t>(source::WriteLinearBody(
+      direct_range, {"acc", range_registers}, direct_range_source, {},
+      &constants)));
+  test::Check(direct_range_source.str().find(
+      "(acc)[\"method\"](a, b, c, d)") != std::string::npos);
+  if (argc == 2 && std::string_view(argv[1]) == "--emit")
+    std::cout << "export function rangeDirect(object,a,b,c,d){let acc;\n"
+              << direct_range_source.str() << "}\n";
+  const auto range_body = test::Body({
+      0x60, 0, 0x42, 0, 0, 0, 0x61, 5,
+      0x62, 42, 0, 0, 0, 0x61, 1, 0x60, 5,
+      0x31, 0, 4, 0, 0x00, 0x64});
+  const auto range_match = analysis::MatchTailNamedInvocation(
+      range_body, range_registers.size());
+  test::Check(range_match.has_value());
+  std::ostringstream range_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(range_body, {"acc", range_registers},
+                                    range_source, {}, &constants)));
+  test::Check(range_source.str().find(
+      "return a;\n})(), b, c, d);\n") != std::string::npos);
+  if (argc == 2 && std::string_view(argv[1]) == "--emit")
+    std::cout << "export function rangeDeferred(object,a,b,c,d){"
+                 "let acc,callee;\n"
+              << range_source.str() << "}\n";
+  for (const std::uint8_t count : {std::uint8_t{200}, std::uint8_t{201}}) {
+    auto encoded = test::Body({0x31, 0, count, 0});
+    const auto lifted = analysis::LiftReceiverCall(
+        encoded.instructions[0].decoded, std::uint32_t{count} + 1);
+    test::Check(std::holds_alternative<analysis::ReceiverCall>(lifted));
+  }
   for (const auto& unsafe_tail : {
            test::Body({0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 3,
                        0x61, 0, 0x60, 2, 0x60, 1, 0x2e, 0, 0, 2, 0x64}),
@@ -193,9 +229,9 @@ int main(int argc, char** argv) {
     const auto decoded = test::Body(calls[arity]).instructions[0].decoded;
     const auto lifted = analysis::LiftReceiverCall(decoded, registers.size());
     const auto& call = std::get<analysis::ReceiverCall>(lifted);
-    test::Check(call.receiver.value == 0 && call.arguments.count == arity);
+    test::Check(call.receiver.value == 0 && call.Count() == arity);
     for (std::size_t i = 0; i < arity; ++i)
-      test::Check(call.arguments.values[i].value == expected[arity][i]);
+      test::Check(call.At(i)->value == expected[arity][i]);
     for (std::size_t i = 0; i < decoded.operand_count; ++i) {
       auto malformed = decoded;
       malformed.operands[i].raw_bits = 256;
@@ -290,11 +326,30 @@ int main(int argc, char** argv) {
                                           rejected, {}, &constants))
                   .kind == source::BodyEmitError::kExceptionRegions);
   test::Check(rejected.str().empty());
-  for (const auto& unsupported :
-       {test::Body({0x73, 0, 0, 0}), test::Body({0x31, 0, 0, 0})})
+  for (const auto& unsupported : {test::Body({0x73, 0, 0, 0})})
     test::Check(std::get<analysis::CallError>(analysis::LiftReceiverCall(
                     unsupported.instructions[0].decoded, 4)) ==
                 analysis::CallError::kUnsupportedOpcode);
+  const auto empty_range = test::Body({0x31, 0, 0, 0});
+  const auto empty_call = std::get<analysis::ReceiverCall>(
+      analysis::LiftReceiverCall(empty_range.instructions[0].decoded, 4));
+  test::Check(empty_call.Count() == 0 && !empty_call.At(0));
+  const auto bad_range = test::Body({0x31, 0, 4, 0});
+  test::Check(std::get<analysis::CallError>(analysis::LiftReceiverCall(
+                  bad_range.instructions[0].decoded, 4)) ==
+              analysis::CallError::kRegisterRange);
+  for (std::size_t operand = 0; operand < 3; ++operand) {
+    auto malformed = bad_range.instructions[0].decoded;
+    malformed.operands[operand].kind = abc::OperandKind::kString;
+    test::Check(std::get<analysis::CallError>(analysis::LiftReceiverCall(
+                    malformed, 8)) ==
+                analysis::CallError::kMalformedInstruction);
+    malformed = bad_range.instructions[0].decoded;
+    malformed.operands[operand].raw_bits = 256;
+    test::Check(std::get<analysis::CallError>(analysis::LiftReceiverCall(
+                    malformed, 300)) ==
+                analysis::CallError::kMalformedInstruction);
+  }
   const auto wide_name =
       test::Body({0x60, 0, 0x90, 0xff, 0xff, 0, 0, 0x2d, 0, 0, 0x64});
   std::ostringstream wide;

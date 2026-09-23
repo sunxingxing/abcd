@@ -50,6 +50,8 @@ The real Immersive `EntryBackupAbility.onBackup` body (method entity 9488) now
 passes member emission. Its three-argument named call uses the existing
 getter-before-argument IIFE proof extended from `CALLTHIS1` to `CALLTHIS3`;
 the source oracle checks receiver, argument order, and discarded return.
-`onRestore` (entity 9516) still has a `CALLTHISRANGE` after a nested
-`JSON.stringify` call, which the receiver-call lift does not yet admit. Thus
+`onRestore` (entity 9516) also has a four-argument `CALLTHISRANGE`. Direct
+and terminal range calls are now admitted, but its earlier nested
+`JSON.stringify` uses a nonterminal delayed property call which the current
+named-invocation proof does not yet admit. Thus
 the whole record remains unpublished and the complete-record count stays 4/45.

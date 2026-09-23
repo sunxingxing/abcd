@@ -98,12 +98,12 @@ class BodyWriter {
     offset_ = offset;
     try {
       Text("return ");
-      Expression(ScalarValue{invocation.invoke.arguments.values[0]});
+      Expression(ScalarValue{*invocation.invoke.At(0)});
       Text(";\n})()");
-      for (std::size_t i = 1;
-           i < invocation.invoke.arguments.count && !error_; ++i) {
+      for (std::uint32_t i = 1;
+           i < invocation.invoke.Count() && !error_; ++i) {
         Text(", ");
-        Expression(ScalarValue{invocation.invoke.arguments.values[i]});
+        Expression(ScalarValue{*invocation.invoke.At(i)});
       }
       Text(");\n");
       if (error_) return *error_;
@@ -440,10 +440,10 @@ class BodyWriter {
     Text(")[");
     StringConstant(invocation.property.name, StringUse::kPropertyName);
     Text("](");
-    for (std::size_t i = 0; i < invocation.call.arguments.count && !error_;
+    for (std::uint32_t i = 0; i < invocation.call.Count() && !error_;
          ++i) {
       if (i) Text(", ");
-      Expression(ScalarValue{invocation.call.arguments.values[i]});
+      Expression(ScalarValue{*invocation.call.At(i)});
     }
     Text(");\n");
   }

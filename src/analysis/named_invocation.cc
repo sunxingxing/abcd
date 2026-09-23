@@ -5,6 +5,21 @@
 #include "abcd/analysis/scalar.h"
 
 namespace abcd::analysis {
+std::uint32_t ReceiverCall::Count() const {
+  return std::visit([](const auto& args) -> std::uint32_t {
+    return args.count;
+  }, arguments);
+}
+
+std::optional<abc::RegisterId> ReceiverCall::At(
+    std::uint32_t position) const {
+  if (position >= Count()) return {};
+  if (const auto* fixed = std::get_if<CallRegisters>(&arguments))
+    return fixed->values[position];
+  const auto range = std::get<CallRange>(arguments);
+  return abc::RegisterId{range.first.value + position};
+}
+
 std::variant<ReceiverCall, CallError> LiftReceiverCall(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
   std::uint8_t count = 0;
@@ -20,6 +35,29 @@ std::variant<ReceiverCall, CallError> LiftReceiverCall(
     case abc::Opcode::kCALLTHIS3_IMM8_V8_V8_V8_V8:
       count = 3;
       break;
+    case abc::Opcode::kCALLTHISRANGE_IMM8_IMM8_V8: {
+      constexpr std::size_t kRangeCount = 1;
+      constexpr std::size_t kRangeReceiver = 2;
+      if (instruction.operand_count != 3 ||
+          instruction.operands[0].kind != abc::OperandKind::kImmediate ||
+          instruction.operands[0].raw_bits > UINT8_MAX ||
+          instruction.operands[kRangeCount].kind !=
+              abc::OperandKind::kImmediate ||
+          instruction.operands[kRangeCount].raw_bits > UINT8_MAX ||
+          instruction.operands[kRangeReceiver].kind !=
+              abc::OperandKind::kRegister ||
+          instruction.operands[kRangeReceiver].raw_bits > UINT8_MAX)
+        return CallError::kMalformedInstruction;
+      const auto base = instruction.operands[kRangeReceiver].raw_bits;
+      const auto range_count =
+          instruction.operands[kRangeCount].raw_bits;
+      if (base >= frame_size || range_count > frame_size - base - 1)
+        return CallError::kRegisterRange;
+      return ReceiverCall{
+          abc::RegisterId{static_cast<std::uint32_t>(base)},
+          CallRange{{static_cast<std::uint32_t>(base + 1)},
+                    static_cast<std::uint8_t>(range_count)}};
+    }
     default:
       return CallError::kUnsupportedOpcode;
   }
@@ -31,7 +69,8 @@ std::variant<ReceiverCall, CallError> LiftReceiverCall(
       instruction.operands[kCache].raw_bits > UINT8_MAX)
     return CallError::kMalformedInstruction;
   ReceiverCall result{};
-  result.arguments.count = count;
+  CallRegisters arguments;
+  arguments.count = count;
   for (std::size_t i = kReceiver; i < kArguments + count; ++i) {
     const auto& operand = instruction.operands[i];
     if (operand.kind != abc::OperandKind::kRegister ||
@@ -42,8 +81,9 @@ std::variant<ReceiverCall, CallError> LiftReceiverCall(
     if (i == kReceiver)
       result.receiver = reg;
     else
-      result.arguments.values[i - kArguments] = reg;
+      arguments.values[i - kArguments] = reg;
   }
+  result.arguments = arguments;
   return result;
 }
 
@@ -106,8 +146,8 @@ std::optional<NamedInvocation> MatchNamedInvocation(
   if (!call || call->receiver != *receiver) return {};
   const auto temporary = std::get<abc::RegisterId>(store->destination);
   if (temporary == call->receiver) return {};
-  for (std::size_t i = 0; i < call->arguments.count; ++i)
-    if (temporary == call->arguments.values[i]) return {};
+  for (std::uint32_t i = 0; i < call->Count(); ++i)
+    if (temporary == *call->At(i)) return {};
   // Eliminating the spill is valid only when its value cannot escape through
   // later register reads or a successor block. These bounded tails prove that
   // the temporary is dead without a per-call liveness scan.
@@ -163,7 +203,7 @@ std::optional<TailNamedInvocation> MatchTailNamedInvocation(
   const auto lifted =
       LiftReceiverCall(instructions[call_index].decoded, frame_size);
   const auto* invoke = std::get_if<ReceiverCall>(&lifted);
-  if (!invoke || invoke->arguments.count == 0) return {};
+  if (!invoke || invoke->Count() == 0) return {};
   const auto reload = call_index - 1;
   const auto loaded =
       LiftScalarInstruction(instructions[reload].decoded, frame_size);
@@ -176,8 +216,8 @@ std::optional<TailNamedInvocation> MatchTailNamedInvocation(
       !std::holds_alternative<Accumulator>(load->destination) ||
       *callee == invoke->receiver)
     return {};
-  for (std::size_t i = 0; i < invoke->arguments.count; ++i)
-    if (*callee == invoke->arguments.values[i]) return {};
+  for (std::uint32_t i = 0; i < invoke->Count(); ++i)
+    if (*callee == *invoke->At(i)) return {};
   std::optional<std::size_t> spill;
   for (std::size_t i = reload; i-- > 0;) {
     const auto accesses =

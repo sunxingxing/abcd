@@ -8,10 +8,15 @@
 namespace abcd::analysis {
 struct ReceiverCall {
   abc::RegisterId receiver;
-  CallRegisters arguments;
+  std::variant<CallRegisters, CallRange> arguments;
+  [[nodiscard]] std::uint32_t Count() const;
+  [[nodiscard]] std::optional<abc::RegisterId> At(
+      std::uint32_t position) const;
 };
-// Fixed CALLTHIS0..3: accumulator callee, explicit raw this, undefined
-// new.target. Lifting alone does not permit source .call/.apply synthesis.
+// Fixed CALLTHIS0..3 or narrow CALLTHISRANGE: accumulator callee, explicit
+// raw this, undefined new.target. Range count excludes the receiver and
+// begins at receiver + 1 (pinned v7 CALL_PUSH_ARGS_THISRANGE).
+// Lifting alone does not permit source .call/.apply synthesis.
 [[nodiscard]] std::variant<ReceiverCall, CallError> LiftReceiverCall(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size);
 struct NamedInvocation {
@@ -37,7 +42,8 @@ struct TailNamedInvocation {
 [[nodiscard]] std::optional<NamedInvocation> MatchNamedInvocation(
     std::span<const abc::BodyInstruction> block, std::size_t property,
     std::uint64_t frame_size);
-// Straight-line tail CALLTHIS1..3 whose callee is one named property read.
+// Straight-line tail CALLTHIS1..3 or narrow CALLTHISRANGE with at least one
+// argument, whose callee is one named property read.
 // The first post-spill operation must overwrite acc without reading it; the
 // callee register is dead except for the final reload, and the receiver
 // register is not overwritten. Source may put intervening statements inside

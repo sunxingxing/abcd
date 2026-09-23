@@ -1,6 +1,25 @@
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 const source = await import(pathToFileURL(process.argv[2]));
+const rangeEvents = [];
+const rangeReceiver = {
+  get method() {
+    rangeEvents.push('get');
+    return function(...args) {
+      rangeEvents.push('call');
+      assert.equal(this, rangeReceiver);
+      assert.deepEqual(args, [42, 'second', 'third', 'fourth']);
+      return 'result';
+    };
+  },
+};
+assert.equal(source.rangeDeferred(rangeReceiver, 0, 'second', 'third',
+                                  'fourth'), undefined);
+assert.deepEqual(rangeEvents, ['get', 'call']);
+rangeEvents.length = 0;
+assert.equal(source.rangeDirect(rangeReceiver, 42, 'second', 'third',
+                                'fourth'), 'result');
+assert.deepEqual(rangeEvents, ['get', 'call']);
 const threeEvents = [];
 const threeReceiver = {
   get method() {
