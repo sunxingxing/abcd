@@ -14,6 +14,7 @@ for(const value of [undefined,null,0,42,'text',true,Symbol('value'),1n,{},()=>{}
   assert.throws(()=>new source.thrown(value),error=>Object.is(error,value));
 }
 assert.equal(new source.self(),source.self);
+assert.equal(new source.intrinsicSelf(),source.intrinsicSelf);
 assert.equal(new source.newTarget(),source.newTarget);
 assert.equal(Object.getPrototypeOf(new source.receiver()),source.receiver.prototype);
 function Other() {}

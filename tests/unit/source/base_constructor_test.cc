@@ -59,6 +59,7 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--emit") {
     Emit("parameter", test::Body({0x60, 3, 0x64}));
     Emit("self", test::Body({0x60, 0, 0x64}));
+    Emit("intrinsicSelf", test::Body({0xaf, 0x64}));
     Emit("newTarget", test::Body({0x60, 1, 0x64}));
     Emit("receiver", test::Body({0x60, 2, 0x64}));
     Emit("thrown", test::Body({0x60, 3, 0xfe, 0}));
