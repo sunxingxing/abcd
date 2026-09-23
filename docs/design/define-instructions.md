@@ -74,9 +74,10 @@ accessors; same-position key collisions and constant static fields combined
 with accessors remain conservatively rejected.
 The Immersive corpus has 5/45 executable records after nested record literals
 admit `Constants` and the v7 async/range-call proof admits
-`EntryBackupAbility`; the UI entries with
-accessors fail earlier at global/branch prelude instructions, so the synthetic
-oracle is not evidence of full real-app source coverage.
+`EntryBackupAbility`. Sixteen UI entries now have a typed, semantically tested
+global/branch prelude, but later class-body and record instructions still
+refuse whole-record source output. The synthetic accessor oracle is not
+evidence of full real-app source coverage.
 
 Fresh object/array identity, buffered constants and dense indexed writes for
 record source are specified in [record-literals.md](record-literals.md).
@@ -84,8 +85,9 @@ The synthetic record oracle also exercises both runtime computed-field forms
 through decoded ABC and Node descriptors. Dynamic keys requiring `ToPropertyKey`
 effects are refused rather than converted from printed source.
 
-Next source work: handle the real UI record preludes and static-field/accessor
-ordering; recover private lexical names/brands; represent sendable classes
+Next source work: handle later real UI record instructions and
+static-field/accessor ordering; recover private lexical names/brands;
+represent sendable classes
 without falsely lowering to ordinary JS; and add historical execution
 profiles for the remaining historical versions. Corpus coverage must report
 these as semantic refusals until those proofs and tests exist.

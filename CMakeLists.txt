@@ -96,6 +96,7 @@ target_sources(abcd_source PRIVATE src/source/module_binding.cc)
 target_sources(abcd_source PRIVATE src/source/module_imports.cc)
 target_sources(abcd_source PRIVATE src/source/module_exports.cc)
 target_sources(abcd_source PRIVATE src/source/record_program.cc)
+target_sources(abcd_source PRIVATE src/source/record_prelude.cc)
 target_sources(abcd_source PRIVATE src/source/record_literal.cc)
 target_sources(abcd_source PRIVATE src/source/record_buffer.cc)
 target_sources(abcd_source PRIVATE src/source/static_fields.cc)
@@ -669,10 +670,19 @@ if(BUILD_TESTING)
   if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
     add_executable(guarded_global_call_sample_test
       tests/integration/guarded_global_call_sample.cc)
-    target_link_libraries(guarded_global_call_sample_test PRIVATE abcd_analysis)
+    target_include_directories(guarded_global_call_sample_test PRIVATE src/source)
+    target_link_libraries(guarded_global_call_sample_test PRIVATE abcd_source)
     add_test(NAME guarded_global_call_sample_test
       COMMAND guarded_global_call_sample_test
       ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
+    if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME guarded_global_call_js_test COMMAND ${CMAKE_COMMAND}
+        -DABCD_FIXTURE=$<TARGET_FILE:guarded_global_call_sample_test>
+        -DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc
+        -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+        -DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_global_call.mjs
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_global_call.cmake)
+    endif()
   endif()
 
   add_executable(exception_dispatch_test tests/unit/analysis/exception_dispatch_test.cc)

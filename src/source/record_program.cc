@@ -17,6 +17,7 @@
 #include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/function_creation.h"
+#include "abcd/analysis/guarded_global_call.h"
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/module_load.h"
 #include "abcd/analysis/named_read.h"
@@ -29,6 +30,7 @@
 #include "abcd/source/static_fields.h"
 #include "record_buffer.h"
 #include "record_literal.h"
+#include "record_prelude.h"
 
 namespace abcd::source {
 namespace {
@@ -219,6 +221,21 @@ class ProgramWriter {
     for (std::size_t i = 0; i < body_.instructions.size(); ++i) {
       const auto& instruction = body_.instructions[i];
       pc_ = instruction.offset;
+      // The pinned v7 entry ABI starts with three register moves. This
+      // compiler prelude is admitted once; its matcher checks all CFG edges
+      // and that transient registers are dead before the next instruction.
+      constexpr std::size_t kEntryMoveCount = 3;
+      if (header_.profile == abc::ProfileId::kDynamic1301 &&
+          i == kEntryMoveCount) {
+        const auto guard = analysis::MatchGuardedGlobalCall(
+            body_, i, registers_.size());
+        if (guard) {
+          GuardedCall(*guard);
+          i = guard->after - 1;
+          accumulator_ = {Value::Kind::kUnknown};
+          continue;
+        }
+      }
       if (instruction.branch_target) throw Fail(Error::kInstruction, pc_);
       using abc::Opcode;
       switch (instruction.decoded.opcode) {
@@ -324,6 +341,41 @@ class ProgramWriter {
   }
 
  private:
+  void GuardedCall(const analysis::GuardedGlobalCall& guard) {
+    LocalLexicalBudget child;
+    child.bytes = budget_.bytes;
+    child.output.bytes = Remaining();
+    GlobalScope scope{};
+    scope.module_slots = exports_.slot_count();
+    const auto result = WriteGuardedGlobalCall(
+        file_, header_, index_, lookup_, entry_, body_, guard, module_,
+        roles_, scope, output_, child, budget_.strings);
+    if (const auto* size = std::get_if<std::size_t>(&result)) {
+      Account(*size);
+      return;
+    }
+    const auto error = std::get<RecordPreludeError>(result);
+    switch (error) {
+      case RecordPreludeError::kResourceLimit:
+        throw Fail(Error::kResourceLimit, pc_);
+      case RecordPreludeError::kOutputLimit:
+        throw Fail(Error::kOutputLimit, pc_);
+      case RecordPreludeError::kWrite:
+        throw Fail(Error::kWrite, pc_);
+      case RecordPreludeError::kFunction:
+        throw Fail(Error::kFunction, pc_);
+      case RecordPreludeError::kMetadata:
+        throw Fail(Error::kInstruction, pc_);
+      case RecordPreludeError::kRead:
+        throw Fail(Error::kRead, pc_);
+      case RecordPreludeError::kFileChanged:
+        throw Fail(Error::kFileChanged, pc_);
+      case RecordPreludeError::kProfile:
+      case RecordPreludeError::kGlobalName:
+      case RecordPreludeError::kPropertyName:
+        throw Fail(Error::kInstruction, pc_);
+    }
+  }
   template <typename T>
   void Append(std::vector<T>& values, T value) {
     if (values.size() == values.capacity()) {
