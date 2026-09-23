@@ -179,6 +179,89 @@ std::optional<NamedInvocation> MatchNamedInvocation(
   return NamedInvocation{*named, *call, 4};
 }
 
+std::optional<CopiedArgumentInvocation> MatchCopiedArgumentInvocation(
+    std::span<const abc::BodyInstruction> block, std::size_t call,
+    std::uint64_t frame_size) {
+  constexpr std::size_t kPropertyToCall = 5;
+  if (call <= kPropertyToCall || call + 1 >= block.size()) return {};
+  const auto property = call - kPropertyToCall;
+  const auto named = LiftNamedRead(block[property].decoded);
+  const auto* read = std::get_if<NamedRead>(&named);
+  if (!read) return {};
+  const auto receiver_copy =
+      LiftScalarInstruction(block[property - 1].decoded, frame_size);
+  const auto* copied = std::get_if<ScalarAssignment>(&receiver_copy);
+  const auto* copied_value =
+      copied ? std::get_if<ScalarValue>(&copied->expression) : nullptr;
+  const auto* receiver = copied_value
+                             ? std::get_if<abc::RegisterId>(copied_value)
+                             : nullptr;
+  if (!copied || !receiver ||
+      !std::holds_alternative<Accumulator>(copied->destination))
+    return {};
+  const auto stored =
+      LiftScalarInstruction(block[property + 1].decoded, frame_size);
+  const auto* spill = std::get_if<ScalarAssignment>(&stored);
+  const auto* spill_value =
+      spill ? std::get_if<ScalarValue>(&spill->expression) : nullptr;
+  const auto* callee =
+      spill ? std::get_if<abc::RegisterId>(&spill->destination) : nullptr;
+  if (!spill || !spill_value || !callee ||
+      !std::holds_alternative<Accumulator>(*spill_value) ||
+      *callee == *receiver)
+    return {};
+  const auto loaded_argument =
+      LiftScalarInstruction(block[property + 2].decoded, frame_size);
+  const auto* load = std::get_if<ScalarAssignment>(&loaded_argument);
+  const auto* load_value =
+      load ? std::get_if<ScalarValue>(&load->expression) : nullptr;
+  const auto* source =
+      load_value ? std::get_if<abc::RegisterId>(load_value) : nullptr;
+  if (!load || !source || *source == *callee ||
+      !std::holds_alternative<Accumulator>(load->destination))
+    return {};
+  const auto stored_argument =
+      LiftScalarInstruction(block[property + 3].decoded, frame_size);
+  const auto* store = std::get_if<ScalarAssignment>(&stored_argument);
+  const auto* store_value =
+      store ? std::get_if<ScalarValue>(&store->expression) : nullptr;
+  const auto* argument =
+      store ? std::get_if<abc::RegisterId>(&store->destination) : nullptr;
+  if (!store || !store_value || !argument ||
+      !std::holds_alternative<Accumulator>(*store_value) ||
+      *argument == *receiver || *argument == *callee)
+    return {};
+  const auto reloaded =
+      LiftScalarInstruction(block[property + 4].decoded, frame_size);
+  const auto* reload = std::get_if<ScalarAssignment>(&reloaded);
+  const auto* reload_value =
+      reload ? std::get_if<ScalarValue>(&reload->expression) : nullptr;
+  const auto* reloaded_callee =
+      reload_value ? std::get_if<abc::RegisterId>(reload_value) : nullptr;
+  if (!reload || !reloaded_callee || *reloaded_callee != *callee ||
+      !std::holds_alternative<Accumulator>(reload->destination))
+    return {};
+  const auto invoked = LiftReceiverCall(block[call].decoded, frame_size);
+  const auto* call_value = std::get_if<ReceiverCall>(&invoked);
+  if (!call_value || call_value->Count() != 1 ||
+      call_value->receiver != *receiver || *call_value->At(0) != *argument)
+    return {};
+  const auto captured =
+      LiftScalarInstruction(block[call + 1].decoded, frame_size);
+  const auto* capture = std::get_if<ScalarAssignment>(&captured);
+  const auto* capture_value =
+      capture ? std::get_if<ScalarValue>(&capture->expression) : nullptr;
+  const auto* destination =
+      capture ? std::get_if<abc::RegisterId>(&capture->destination) : nullptr;
+  if (!capture || !capture_value || !destination ||
+      *destination != *callee ||
+      !std::holds_alternative<Accumulator>(*capture_value))
+    return {};
+  return CopiedArgumentInvocation{
+      property, property + 1, property + 4,
+      NamedInvocation{*read, *call_value, 1}};
+}
+
 std::optional<TailNamedInvocation> MatchTailNamedInvocation(
     const abc::MethodBody& body, std::uint64_t frame_size) {
   const auto& instructions = body.instructions;

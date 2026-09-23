@@ -431,12 +431,12 @@ class BodyWriter {
     Text(");\n");
   }
   void NamedCall(const NamedInvocation& invocation) {
-    // The immediately preceding copy proves acc == explicit receiver. Native
-    // Reference-call syntax preserves exactly one getter and the original this;
-    // do not split the member expression or consult mutable call intrinsics.
+    // The typed match proves a private receiver register. A delayed pure-copy
+    // match may no longer have that receiver in acc at this emission site.
+    // Native Reference-call syntax keeps the original this and one getter.
     Expression(ScalarValue{Accumulator{}});
     Text(" = (");
-    Expression(ScalarValue{Accumulator{}});
+    Expression(ScalarValue{invocation.call.receiver});
     Text(")[");
     StringConstant(invocation.property.name, StringUse::kPropertyName);
     Text("](");

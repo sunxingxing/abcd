@@ -114,6 +114,52 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
     std::cout << "export function threeDeferred(object,a,b,c){let acc,callee;\n"
               << three_source.str() << "}\n";
+  const std::array<std::string_view, 4> copied_registers{
+      "object", "callee", "value", "argument"};
+  const auto copied_argument = test::Body({
+      0x60, 0, 0x42, 0, 0, 0, 0x61, 1,
+      0x60, 2, 0x61, 3, 0x60, 1,
+      0x2e, 0, 0, 3, 0x61, 1, 0x60, 1, 0x64});
+  std::ostringstream copied_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(copied_argument,
+                                    {"acc", copied_registers}, copied_source,
+                                    {}, &constants)));
+  test::Check(copied_source.str().find(
+      "(object)[\"method\"](argument)") != std::string::npos);
+  const auto reject_copied = [&](abc::MethodBody candidate) {
+    test::Check(!analysis::MatchCopiedArgumentInvocation(
+        candidate.instructions, 6, copied_registers.size()));
+    std::ostringstream rejected;
+    test::Check(!std::holds_alternative<std::size_t>(
+        source::WriteLocalLexicalBody(candidate,
+                                      {"acc", copied_registers}, rejected,
+                                      {}, &constants)));
+    test::Check(rejected.str().empty());
+  };
+  auto clobbered_receiver = copied_argument;
+  clobbered_receiver.instructions[4].decoded.operands[0].raw_bits = 0;
+  reject_copied(clobbered_receiver);
+  auto clobbered_callee = copied_argument;
+  clobbered_callee.instructions[4].decoded.operands[0].raw_bits = 1;
+  reject_copied(clobbered_callee);
+  auto read_callee = copied_argument;
+  read_callee.instructions[3].decoded.operands[0].raw_bits = 1;
+  reject_copied(read_callee);
+  auto wrong_capture = copied_argument;
+  wrong_capture.instructions[7].decoded.operands[0].raw_bits = 2;
+  reject_copied(wrong_capture);
+  auto wrong_receiver = copied_argument;
+  wrong_receiver.instructions[6].decoded.operands[1].raw_bits = 2;
+  reject_copied(wrong_receiver);
+  auto impure_argument = copied_argument;
+  impure_argument.instructions[3].decoded =
+      test::Body({0x29, 0}).instructions[0].decoded;
+  reject_copied(impure_argument);
+  if (argc == 2 && std::string_view(argv[1]) == "--emit")
+    std::cout << "export function copiedArgument(object,value){"
+                 "let acc,callee,argument;\n"
+              << copied_source.str() << "}\n";
   const std::array<std::string_view, 6> range_registers{
       "object", "a", "b", "c", "d", "callee"};
   const auto direct_range = test::Body(
@@ -123,7 +169,7 @@ int main(int argc, char** argv) {
       direct_range, {"acc", range_registers}, direct_range_source, {},
       &constants)));
   test::Check(direct_range_source.str().find(
-      "(acc)[\"method\"](a, b, c, d)") != std::string::npos);
+      "(object)[\"method\"](a, b, c, d)") != std::string::npos);
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
     std::cout << "export function rangeDirect(object,a,b,c,d){let acc;\n"
               << direct_range_source.str() << "}\n";
@@ -365,7 +411,7 @@ int main(int argc, char** argv) {
     test::Check(std::holds_alternative<std::size_t>(source::WriteLinearBody(
         test::Body(code), {"acc", registers}, source, {}, &constants)));
     constexpr std::string_view statement =
-        "acc = object;\nacc = (acc)[\"method\"]();\n";
+        "acc = object;\nacc = (object)[\"method\"]();\n";
     test::Check(source.str().size() ==
                 count * statement.size() +
                     std::string_view("return acc;\n").size());

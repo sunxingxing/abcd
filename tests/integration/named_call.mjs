@@ -1,6 +1,22 @@
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 const source = await import(pathToFileURL(process.argv[2]));
+const copiedEvents = [];
+const copiedValue = Object.freeze({id: 'argument'});
+const copiedResult = Symbol('result');
+const copiedReceiver = {
+  get method() {
+    copiedEvents.push('get');
+    return function(value) {
+      copiedEvents.push('call');
+      assert.equal(this, copiedReceiver);
+      assert.equal(value, copiedValue);
+      return copiedResult;
+    };
+  },
+};
+assert.equal(source.copiedArgument(copiedReceiver, copiedValue), copiedResult);
+assert.deepEqual(copiedEvents, ['get', 'call']);
 const rangeEvents = [];
 const rangeReceiver = {
   get method() {

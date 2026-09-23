@@ -35,12 +35,25 @@ struct TailNamedInvocation {
   ReceiverCall invoke;
   abc::RegisterId callee;
 };
+struct CopiedArgumentInvocation {
+  std::size_t property;
+  std::size_t spill;
+  std::size_t reload;
+  NamedInvocation invoke;
+};
 // Input span is ONE unchanged basic block (or validated straight-line body).
 // Copy from/to the receiver; named read; call with exactly that receiver.
 // Private register bindings cannot be mutated by the getter. No operation or
 // control-flow entry may be crossed. O(1), fixed storage, no name-string proof.
 [[nodiscard]] std::optional<NamedInvocation> MatchNamedInvocation(
     std::span<const abc::BodyInstruction> block, std::size_t property,
+    std::uint64_t frame_size);
+// One private argument copy may be commuted before a named getter only when
+// the saved callee is dead at the call's next instruction. No effectful work,
+// exception entry, or receiver/argument alias may be crossed. O(1).
+[[nodiscard]] std::optional<CopiedArgumentInvocation>
+MatchCopiedArgumentInvocation(
+    std::span<const abc::BodyInstruction> block, std::size_t call,
     std::uint64_t frame_size);
 // Straight-line tail CALLTHIS1..3 or narrow CALLTHISRANGE with at least one
 // argument, whose callee is one named property read.

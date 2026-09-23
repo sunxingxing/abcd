@@ -227,6 +227,24 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
         accumulator = ValueKinds::Language();
         continue;
       }
+      if (const auto copied = MatchCopiedArgumentInvocation(
+              std::span(body.instructions), i, frame_size)) {
+        if (!std::holds_alternative<KeepInstruction>(
+                statements[copied->property]) ||
+            !std::holds_alternative<KeepInstruction>(
+                statements[copied->spill]) ||
+            !std::holds_alternative<KeepInstruction>(
+                statements[copied->reload]) ||
+            !state(copied->invoke.call.receiver).IsLanguage() ||
+            !state(*copied->invoke.call.At(0)).IsLanguage())
+          return fail(Error::kInstruction);
+        statements[copied->property] = OmitInstruction{};
+        statements[copied->spill] = OmitInstruction{};
+        statements[copied->reload] = OmitInstruction{};
+        accumulator = ValueKinds::Language();
+        statement = copied->invoke;
+        continue;
+      }
       if (tail_call && i == tail_call->call) {
         bool arguments_ready = true;
         for (std::uint32_t argument = 0;

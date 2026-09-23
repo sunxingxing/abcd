@@ -56,6 +56,27 @@ effect-aware scheduling. The proof and emission are O(I + source bytes) with
 constant matcher storage. `LinearLexicals` validates the planned call before
 output publication.
 
+## Nonterminal Pure Copy
+
+`MatchCopiedArgumentInvocation` admits one additional fixed, nonterminal
+shape: load receiver; named getter; spill callee; load one register; store it
+to a distinct argument register; reload callee; `CALLTHIS1`; immediately
+overwrite the spilled callee register with the result. The receiver and
+argument registers cannot alias the callee, and argument preparation cannot
+write the receiver. The copied register must already hold a language value.
+Only private register copies move before the getter, so the getter remains
+before every observable effect. No exception region survives source emission;
+the async completion normalizer separately proves its catch/reject tail.
+
+The call is emitted at the call site as native `receiver[name](argument)`;
+the original getter, spill and reload are omitted, while the pure argument
+copy remains. This preserves the callee result's later register use because
+the next instruction overwrites its old slot. The matcher is O(1) per call,
+with no backward liveness walk. Other deferred nonterminal calls remain
+refusals. A synthetic Node oracle and the real Immersive
+`EntryBackupAbility.onRestore` record oracle check receiver, getter order,
+argument order, result and Promise rejection.
+
 ## Implementation Plan
 
 1. Add `named_call_test` with a real constant-file fixture, a failing LDA /

@@ -52,8 +52,9 @@ record validates the full bytecode-to-ESM chain and its negative kind path.
 Disjoint class-buffer ordinary members can coexist with these later
 accessors; same-position key collisions and constant static fields combined
 with accessors remain conservatively rejected.
-The Immersive corpus has 4/45 executable records after nested record literals
-admit `Constants`; the UI entries with
+The Immersive corpus has 5/45 executable records after nested record literals
+admit `Constants` and the v7 async/range-call proof admits
+`EntryBackupAbility`; the UI entries with
 accessors fail earlier at global/branch prelude instructions, so the synthetic
 oracle is not evidence of full real-app source coverage.
 

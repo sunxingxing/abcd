@@ -28,10 +28,9 @@ DEFINE site, preserving parent evaluation and exception order, and uses
 Initial method kind alone still does not prove base/derived heritage. Other
 parent origins, constructors, static initializers/accessors after creation,
 and unsupported member bodies remain whole-record refusals.
-On the real Immersive sample, `EntryAbility` and `EntryBackupAbility` now pass
-their import-parent and constructor checks but stop at class-member source
-admission (`kClass` at entry PC 14). Complete executable records remain 4/45;
-the synthetic Node oracle is not evidence that those real methods are ready.
+On the real Immersive sample, both `EntryAbility` and `EntryBackupAbility`
+pass their import-parent and constructor checks. `EntryAbility` still stops
+at class-member source admission (`kClass` at entry PC 14).
 
 For pinned v7 async ordinary class members, `ProveAsyncCompletion` recognizes
 the compiler's no-await template: private `ASYNCFUNCTIONENTER` result, one
@@ -50,8 +49,9 @@ The real Immersive `EntryBackupAbility.onBackup` body (method entity 9488) now
 passes member emission. Its three-argument named call uses the existing
 getter-before-argument IIFE proof extended from `CALLTHIS1` to `CALLTHIS3`;
 the source oracle checks receiver, argument order, and discarded return.
-`onRestore` (entity 9516) also has a four-argument `CALLTHISRANGE`. Direct
-and terminal range calls are now admitted, but its earlier nested
-`JSON.stringify` uses a nonterminal delayed property call which the current
-named-invocation proof does not yet admit. Thus
-the whole record remains unpublished and the complete-record count stays 4/45.
+`onRestore` (entity 9516) also has a four-argument `CALLTHISRANGE` after a
+nested `JSON.stringify`. The range call and one pure-copy nonterminal named
+call are now proven. `EntryBackupAbility` publishes one `.mjs` file, and the
+complete-record count is 5/45. A VM module oracle links synthetic platform
+imports and executes both async methods, including getter order, receivers,
+argument lists, constructor forwarding and rejection identity.

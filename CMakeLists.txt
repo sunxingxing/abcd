@@ -733,6 +733,7 @@ if(BUILD_TESTING)
         -DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_program_sample.mjs
         -DABCD_STATIC_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/static_fields_sample.mjs
         -DABCD_ROUTES_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_constants_sample.mjs
+        -DABCD_BACKUP_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/entry_backup_ability.mjs
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/structure_source_cli.cmake)
     endif()
     add_test(NAME creations_cli_test COMMAND ${CMAKE_COMMAND}
