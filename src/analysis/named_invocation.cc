@@ -107,16 +107,33 @@ std::optional<NamedInvocation> MatchNamedInvocation(
   for (std::size_t i = 0; i < call->arguments.count; ++i)
     if (temporary == call->arguments.values[i]) return {};
   // Eliminating the spill is valid only when its value cannot escape through
-  // later register reads or a successor block. This bounded terminal pattern
-  // avoids a per-call liveness scan; broader patterns need shared liveness.
+  // later register reads or a successor block. These bounded tails prove that
+  // the temporary is dead without a per-call liveness scan.
   constexpr std::size_t kSpilledSequence = 4;
-  if (block.size() - property != kSpilledSequence + 1) return {};
+  constexpr std::size_t kDirectTerminal = 1;
+  constexpr std::size_t kReloadedTerminal = 2;
+  const auto tail = block.size() - property - kSpilledSequence;
+  if (tail != kDirectTerminal && tail != kReloadedTerminal) return {};
   const auto& terminal = block.back().decoded;
   if (terminal.operand_count != 0 ||
       (terminal.opcode != abc::Opcode::kRETURN &&
        terminal.opcode != abc::Opcode::kRETURNUNDEFINED &&
        terminal.opcode != abc::Opcode::kTHROW_PREF_NONE))
     return {};
+  if (tail == kReloadedTerminal) {
+    const auto reloaded =
+        LiftScalarInstruction(block[block.size() - kReloadedTerminal].decoded,
+                              frame_size);
+    const auto* assignment = std::get_if<ScalarAssignment>(&reloaded);
+    const auto* value = assignment
+                            ? std::get_if<ScalarValue>(&assignment->expression)
+                            : nullptr;
+    const auto* reg = value ? std::get_if<abc::RegisterId>(value) : nullptr;
+    if (!assignment ||
+        !std::holds_alternative<Accumulator>(assignment->destination) ||
+        !reg || *reg == temporary)
+      return {};
+  }
   return NamedInvocation{*named, *call, 4};
 }
 }  // namespace abcd::analysis

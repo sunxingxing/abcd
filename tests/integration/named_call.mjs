@@ -47,6 +47,20 @@ const changing = {
 };
 assert.equal(method0(changing), changing);
 assert.equal(reads, 1);
+let returnedReads = 0;
+const returnedReceiver = {
+  get method() {
+    ++returnedReads;
+    return function() {
+      assert.equal(this, returnedReceiver);
+      return Symbol('discarded result');
+    };
+  },
+};
+assert.equal(source.returnedReceiver(returnedReceiver), returnedReceiver);
+assert.equal(returnedReads, 1);
+assert.throws(() => source.returnedReceiver({method() { throw failure; }}),
+    error => error === failure);
 let applies = 0;
 const proxyReceiver = {
   method: new Proxy(function() {}, {

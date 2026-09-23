@@ -50,6 +50,29 @@ int main(int argc, char** argv) {
   test::Check(std::holds_alternative<std::size_t>(source::WriteLinearBody(
       spilled, {"acc", registers}, spilled_output, {}, &constants)));
   test::Check(spilled_output.str() == output.str());
+  const auto returned_receiver = test::Body(
+      {0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 1, 0x2d, 0, 0,
+       0x60, 0, 0x64});
+  const auto returned = analysis::MatchNamedInvocation(
+      returned_receiver.instructions, 1, registers.size());
+  test::Check(returned && returned->instruction_count == 4);
+  std::ostringstream returned_output;
+  test::Check(std::holds_alternative<std::size_t>(source::WriteLinearBody(
+      returned_receiver, {"acc", registers}, returned_output, {}, &constants)));
+  const std::string_view terminal = "return acc;\n";
+  test::Check(output.str().ends_with(terminal));
+  auto expected_returned = output.str();
+  expected_returned.resize(expected_returned.size() - terminal.size());
+  expected_returned += "acc = object;\nreturn acc;\n";
+  test::Check(returned_output.str() == expected_returned);
+  std::ostringstream returned_lexical;
+  test::Check(std::holds_alternative<std::size_t>(source::WriteLocalLexicalBody(
+      returned_receiver, {"acc", registers}, returned_lexical, {},
+      &constants)));
+  test::Check(returned_lexical.str() == returned_output.str());
+  if (argc == 2 && std::string_view(argv[1]) == "--emit")
+    std::cout << "export function returnedReceiver(object){let acc;\n"
+              << returned_output.str() << "}\n";
   for (const auto* candidate : {&body, &spilled}) {
     std::ostringstream lexical;
     test::Check(
