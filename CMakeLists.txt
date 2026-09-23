@@ -82,6 +82,7 @@ target_sources(abcd_source PRIVATE src/source/local_lexical_body.cc)
 target_sources(abcd_source PRIVATE src/source/named_scope.cc)
 target_sources(abcd_source PRIVATE src/source/module_binding.cc)
 target_sources(abcd_source PRIVATE src/source/module_imports.cc)
+target_sources(abcd_source PRIVATE src/source/record_module_context.cc)
 target_sources(abcd_source PRIVATE src/source/base_function.cc)
 target_sources(abcd_source PRIVATE src/source/created_function.cc)
 target_sources(abcd_source PRIVATE src/source/created_class.cc src/source/class_members.cc)
@@ -305,6 +306,10 @@ if(BUILD_TESTING)
   target_include_directories(module_import_body_test PRIVATE tests/support src/source)
   target_link_libraries(module_import_body_test PRIVATE abcd_source)
   add_test(NAME module_import_body_test COMMAND module_import_body_test)
+  add_executable(record_module_context_test
+    tests/unit/source/record_module_context_test.cc)
+  target_link_libraries(record_module_context_test PRIVATE abcd_source)
+  add_test(NAME record_module_context_test COMMAND record_module_context_test)
   add_executable(branch_condition_test tests/unit/analysis/branch_condition_test.cc)
   target_link_libraries(branch_condition_test PRIVATE abcd_analysis)
   add_test(NAME branch_condition_test COMMAND branch_condition_test)
@@ -320,8 +325,17 @@ if(BUILD_TESTING)
   add_executable(scalar_expression_test tests/unit/source/scalar_expression_test.cc)
   target_link_libraries(scalar_expression_test PRIVATE abcd_source)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
+  set(ABCD_PAIRED_CORPUS_ROOT "" CACHE PATH "Paired ABC sample root")
   find_program(ABCD_NODE_EXECUTABLE node)
   if(ABCD_NODE_EXECUTABLE)
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")
+      add_test(NAME paired_record_import_class_js_test COMMAND ${CMAKE_COMMAND}
+        "-DABCD_CLASS_FIXTURE=$<TARGET_FILE:class_sample_fixture>"
+        "-DABCD_PAIRED_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc"
+        "-DABCD_RECORD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_import_class.mjs"
+        "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/paired_record_import_class.cmake)
+    endif()
     add_test(NAME module_import_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_IMPORT_FIXTURE=$<TARGET_FILE:module_import_body_test>
       -DABCD_IMPORT_DEPENDENCY=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module-import-dep.mjs
