@@ -16,14 +16,22 @@
 #include "abcd/analysis/class_creation.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/scalar.h"
+#include "abcd/source/created_function.h"
 #include "abcd/source/module_imports.h"
 
 namespace abcd::source {
 namespace {
 using Error = RecordProgramError;
 struct Value {
-  enum class Kind { kUnknown, kUndefined, kHole, kClass, kPrototype } kind;
-  std::size_t class_id = 0;
+  enum class Kind {
+    kUnknown,
+    kUndefined,
+    kHole,
+    kClass,
+    kFunction,
+    kPrototype
+  } kind;
+  std::size_t ordinal = 0;
 };
 class DiscardBuffer : public std::streambuf {
   std::streamsize xsputn(const char*, std::streamsize count) override {
@@ -48,67 +56,60 @@ Error Metadata(abc::MetadataError error) {
       return Error::kBody;
   }
 }
-Error ClassError(const CreatedClassResult& result) {
+template <typename Result>
+Error CreationError(const Result& result, Error semantic) {
   return std::visit(
-      [](const auto& value) -> Error {
+      [semantic](const auto& value) -> Error {
         using T = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<T, CreatedClassError>) {
           return value == CreatedClassError::kResourceLimit
-                     ? Error::kResourceLimit
-                     : Error::kClass;
+                     ? Error::kResourceLimit : semantic;
+        } else if constexpr (std::is_same_v<T, CreatedFunctionError>) {
+          return value == CreatedFunctionError::kResourceLimit
+                     ? Error::kResourceLimit : semantic;
         } else if constexpr (std::is_same_v<T, FunctionEmitError>) {
           return value == FunctionEmitError::kResourceLimit
-                     ? Error::kResourceLimit
-                     : Error::kClass;
+                     ? Error::kResourceLimit : semantic;
         } else if constexpr (std::is_same_v<T, EmitError>) {
           return value == EmitError::kOutputLimit
                      ? Error::kOutputLimit
                      : value == EmitError::kWrite ? Error::kWrite
-                                                  : Error::kClass;
+                                                  : semantic;
         } else if constexpr (std::is_same_v<T, BodyEmitFailure>) {
           return value.kind == BodyEmitError::kResourceLimit
-                     ? Error::kResourceLimit
-                     : Error::kClass;
+                     ? Error::kResourceLimit : semantic;
         } else if constexpr (std::is_same_v<T, abc::MetadataError>) {
           return Metadata(value);
         } else if constexpr (std::is_same_v<T, abc::BodyFailure>) {
           return value.kind == abc::BodyError::kResourceLimit
-                     ? Error::kResourceLimit
-                     : Error::kClass;
+                     ? Error::kResourceLimit : semantic;
         } else if constexpr (std::is_same_v<T, analysis::FlowFailure>) {
           return value.kind == analysis::FlowError::kResourceLimit
-                     ? Error::kResourceLimit
-                     : Error::kClass;
+                     ? Error::kResourceLimit : semantic;
         } else if constexpr (
             std::is_same_v<T, analysis::EnvironmentFlowFailure>) {
           return value.kind ==
                          analysis::EnvironmentFlowError::kResourceLimit
-                     ? Error::kResourceLimit
-                     : Error::kClass;
+                     ? Error::kResourceLimit : semantic;
         } else if constexpr (
             std::is_same_v<T, analysis::LinearLexicalFailure>) {
           return value.kind == analysis::LinearLexicalError::kResourceLimit
-                     ? Error::kResourceLimit
-                     : Error::kClass;
+                     ? Error::kResourceLimit : semantic;
         } else if constexpr (
             std::is_same_v<T, analysis::AccumulatorFailure>) {
           return value.kind == analysis::AccumulatorError::kResourceLimit
-                     ? Error::kResourceLimit
-                     : Error::kClass;
+                     ? Error::kResourceLimit : semantic;
         } else if constexpr (std::is_same_v<T, AcyclicError>) {
           return value == AcyclicError::kResourceLimit
-                     ? Error::kResourceLimit
-                     : Error::kClass;
+                     ? Error::kResourceLimit : semantic;
         } else if constexpr (std::is_same_v<T, abc::LiteralFailure>) {
           return value.kind == abc::LiteralError::kResourceLimit
-                     ? Error::kResourceLimit
-                     : Error::kClass;
+                     ? Error::kResourceLimit : semantic;
         } else if constexpr (std::is_same_v<T, abc::ClassBufferError>) {
           return value == abc::ClassBufferError::kResourceLimit
-                     ? Error::kResourceLimit
-                     : Error::kClass;
+                     ? Error::kResourceLimit : semantic;
         } else {
-          return Error::kClass;
+          return semantic;
         }
       },
       result);
@@ -187,6 +188,10 @@ class ProgramWriter {
         case Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8:
         case Opcode::kDEFINECLASSWITHBUFFER_IMM16_ID16_ID16_IMM16_V8:
           Class(instruction);
+          break;
+        case Opcode::kDEFINEFUNC_IMM8_ID16_IMM8:
+        case Opcode::kDEFINEFUNC_IMM16_ID16_IMM8:
+          Function(instruction);
           break;
         case Opcode::kLDOBJBYNAME_IMM8_ID16:
         case Opcode::kLDOBJBYNAME_IMM16_ID16:
@@ -276,16 +281,35 @@ class ProgramWriter {
     if (const auto* size = std::get_if<std::size_t>(&result))
       Account(*size);
     else
-      throw Fail(ClassError(result), pc_);
+      throw Fail(CreationError(result, Error::kClass), pc_);
     Text(";\n");
     accumulator_ = {Value::Kind::kClass, id};
+  }
+  void Function(const abc::BodyInstruction& instruction) {
+    const auto id = function_count_++;
+    Text("const $function");
+    Number(id);
+    Text(" = ");
+    LocalLexicalBudget child;
+    child.bytes = budget_.bytes;
+    child.output.bytes = Remaining();
+    const GlobalScope scope{{}, {}};
+    const auto result = WriteCreatedFunction(
+        file_, header_, index_, lookup_, entry_.offset, instruction.decoded,
+        output_, child, budget_.strings, &module_, &roles_, &scope);
+    if (const auto* size = std::get_if<std::size_t>(&result))
+      Account(*size);
+    else
+      throw Fail(CreationError(result, Error::kFunction), pc_);
+    Text(";\n");
+    accumulator_ = {Value::Kind::kFunction, id};
   }
   void Prototype(const abc::BodyInstruction& instruction) {
     const auto read = analysis::LiftNamedRead(instruction.decoded);
     const auto* named = std::get_if<analysis::NamedRead>(&read);
     if (!named || accumulator_.kind != Value::Kind::kClass ||
-        accumulator_.class_id >= escaped_.size() ||
-        escaped_[accumulator_.class_id])
+        accumulator_.ordinal >= escaped_.size() ||
+        escaped_[accumulator_.ordinal])
       throw Fail(Error::kValue, pc_);
     const auto reference = abc::ResolvePoolReference(
         file_, header_, index_, entry_.offset, named->name,
@@ -301,18 +325,22 @@ class ProgramWriter {
     // this read is pure only before the fresh class has escaped.
     if (std::get<std::u16string>(name) != u"prototype")
       throw Fail(Error::kInstruction, pc_);
-    accumulator_ = {Value::Kind::kPrototype, accumulator_.class_id};
+    accumulator_ = {Value::Kind::kPrototype, accumulator_.ordinal};
   }
   void Store(const abc::BodyInstruction& instruction) {
     const auto lifted = analysis::LiftModuleStore(instruction.decoded);
     const auto* store = std::get_if<analysis::ModuleStore>(&lifted);
     if (!store || (accumulator_.kind != Value::Kind::kClass &&
+                   accumulator_.kind != Value::Kind::kFunction &&
                    accumulator_.kind != Value::Kind::kUndefined))
       throw Fail(Error::kValue, pc_);
     Text("$acc = ");
     if (accumulator_.kind == Value::Kind::kClass) {
       Text("$class");
-      Number(accumulator_.class_id);
+      Number(accumulator_.ordinal);
+    } else if (accumulator_.kind == Value::Kind::kFunction) {
+      Text("$function");
+      Number(accumulator_.ordinal);
     } else {
       Text("void 0");
     }
@@ -329,7 +357,7 @@ class ProgramWriter {
                  pc_);
     Account(std::get<std::size_t>(result));
     if (accumulator_.kind == Value::Kind::kClass)
-      escaped_[accumulator_.class_id] = 1;
+      escaped_[accumulator_.ordinal] = 1;
   }
   const corpus::AbcFile& file_;
   const abc::Header& header_;
@@ -347,6 +375,7 @@ class ProgramWriter {
   Value accumulator_{Value::Kind::kUnknown};
   abc::CodeOffset pc_{};
   std::size_t class_count_ = 0;
+  std::size_t function_count_ = 0;
   std::size_t written_ = 0;
 };
 }  // namespace

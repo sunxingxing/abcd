@@ -22,6 +22,7 @@ namespace abcd::source {
 namespace {
 enum class CallableSyntax {
   kFunctionExpression,
+  kAsyncFunctionExpression,
   kArrowExpression,
   kBaseConstructor,
   kClassMethod
@@ -157,7 +158,8 @@ class FunctionWriter {
         ArrowName();
         Text("]: (");
       } else {
-        Text("(function ");
+        Text(function_.syntax == CallableSyntax::kAsyncFunctionExpression
+                 ? "(async function " : "(function ");
         Text(function_.name);
         Text("(");
       }
@@ -199,7 +201,8 @@ class FunctionWriter {
       const MethodConstants* body_constants = constants_;
       if (constants_ && constants_->global_scope) {
         scoped_constants.emplace(*constants_);
-        if (function_.syntax == CallableSyntax::kFunctionExpression)
+        if (function_.syntax == CallableSyntax::kFunctionExpression ||
+            function_.syntax == CallableSyntax::kAsyncFunctionExpression)
           scoped_constants->global_scope->self_binding = function_.name;
         body_constants = &*scoped_constants;
       }
@@ -238,8 +241,9 @@ class FunctionWriter {
         ArrowName();
         Text("];\nreturn $arrow;\n})()");
       } else {
-        Text(function_.syntax == CallableSyntax::kFunctionExpression ? "})"
-                                                                     : "}");
+        Text(function_.syntax == CallableSyntax::kFunctionExpression ||
+                     function_.syntax == CallableSyntax::kAsyncFunctionExpression
+                 ? "})" : "}");
       }
       if (error_) return *error_;
       return written_;
@@ -412,11 +416,17 @@ FunctionEmitResult WriteFunction(const BaseFunction& function,
           analysis::HomeObjectInput::kCurrentFunction)
     return FunctionEmitError::kCreation;
   if (function.attributes.sendable) return FunctionEmitError::kSendable;
-  if (function.attributes.kind != abc::FunctionKind::kBaseConstructor)
+  if (function.attributes.kind != abc::FunctionKind::kBaseConstructor &&
+      function.attributes.kind != abc::FunctionKind::kAsync)
     return FunctionEmitError::kKind;
+  // A v7 ASYNC_FUNCTION created by DEFINEFUNC has async call semantics;
+  // the body verifier still refuses await/resume opcodes it cannot recover.
+  const auto syntax = function.attributes.kind == abc::FunctionKind::kAsync
+                          ? CallableSyntax::kAsyncFunctionExpression
+                          : CallableSyntax::kFunctionExpression;
   return WriteCallable(
       {function.frame, function.name, function.creation.length.value,
-       CallableSyntax::kFunctionExpression},
+       syntax},
       body, output, budget, constants, methods, captured_values);
 }
 }  // namespace

@@ -81,9 +81,17 @@ int main(int argc, char** argv) {
   for (std::size_t i = 0; i < abc::kFunctionKindCount; ++i) {
     invalid = Function();
     invalid.attributes.kind = static_cast<abc::FunctionKind>(i);
-    if (invalid.attributes.kind != abc::FunctionKind::kBaseConstructor)
+    if (invalid.attributes.kind != abc::FunctionKind::kBaseConstructor &&
+        invalid.attributes.kind != abc::FunctionKind::kAsync)
       reject(invalid, source::FunctionEmitError::kKind);
   }
+  invalid = Function();
+  invalid.attributes.kind = abc::FunctionKind::kAsync;
+  std::ostringstream async_output;
+  test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
+      invalid, body, async_output)));
+  test::Check(async_output.str().find("async function Recovered($p0)") !=
+              std::string::npos);
   for (const auto name : {"", "eval", "arguments", "await", "class", "a-b",
                           "1x", "$r0", "$acc", "$p0", "$lex0_0", "x);evil("}) {
     invalid = Function();

@@ -31,7 +31,7 @@ using FunctionEmitResult =
 
 // Caller proves matching creation, target, decoded body, ABI and runtime-parsed
 // name under the pinned 7.0 semantics. Emits a strict named function
-// expression, not a record. Only non-sendable BASE_CONSTRUCTOR DEFINEFUNC,
+// expression, not a record. Only non-sendable BASE_CONSTRUCTOR/ASYNC DEFINEFUNC,
 // simple formals with matching length, and the local lexical linear body subset
 // are supported. Inputs remain unchanged; preflight rejects semantic/configured
 // budget errors before output. IO, backing-file changes, or actual allocation

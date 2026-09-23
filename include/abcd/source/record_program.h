@@ -20,7 +20,8 @@ enum class RecordProgramError : unsigned {
   kOutputLimit = 10,
   kRead = 11,
   kWrite = 12,
-  kFileChanged = 13
+  kFileChanged = 13,
+  kFunction = 14
 };
 struct RecordProgramFailure {
   RecordProgramError kind;

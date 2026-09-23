@@ -59,13 +59,17 @@ timing is not moved ahead of the bytecode write, and aliases stay live.
 
 `WriteRecordProgram` now completes one narrow executable record shape: pinned
 v7 merged modules with a unique `func_main_0`, a straight-line entry, pure
-ABI/scalar copies, Hole/undefined, admitted ordinary class creation, a
+ABI/scalar copies, Hole/undefined, admitted ordinary class/function creation, a
 pre-escape own `prototype` read, and local export stores. It interprets values
 with typed states rather than printing instruction names, emits each class at
 its creation point, and rejects all unknown side effects and incomplete slots.
 Both the complete module and every created class are preflighted before any
 source byte reaches the caller. The paired Breakpoint record executes under
 Node with the recovered four instance assignments and branching method.
+Top-level `DEFINEFUNC` now retains creation order and exports the admitted
+function body/signature. The ordinary and simple async-function cases execute
+under Node; `DEFINEMETHOD` home-object behavior and unhandled async-body
+opcodes remain refusal cases.
 
 `abc_structure INPUT.abc OUTPUT_DIR --source` now adds a `.mjs` file at the
 record path only when the whole-file role proof, record-owned module context,

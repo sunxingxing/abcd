@@ -367,6 +367,17 @@ if(BUILD_TESTING)
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_program_sample.cmake)
     endif()
   endif()
+  add_executable(record_function_test
+    tests/unit/source/record_function_test.cc)
+  target_link_libraries(record_function_test PRIVATE abcd_source)
+  add_test(NAME record_function_test COMMAND record_function_test)
+  if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME record_function_js_test COMMAND ${CMAKE_COMMAND}
+      "-DABCD_FIXTURE=$<TARGET_FILE:record_function_test>"
+      "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"
+      "-DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_function.mjs"
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_function.cmake)
+  endif()
   if(ABCD_NODE_EXECUTABLE)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")
       add_test(NAME paired_record_import_class_js_test COMMAND ${CMAKE_COMMAND}
