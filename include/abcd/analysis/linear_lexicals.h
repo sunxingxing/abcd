@@ -3,6 +3,7 @@
 
 #include "abcd/analysis/creation_binding.h"
 #include "abcd/analysis/environment_flow.h"
+#include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/phi_placement.h"
 
 namespace abcd::analysis {
@@ -43,7 +44,7 @@ struct CapturedStore {
 };
 using LinearStatement =
     std::variant<KeepInstruction, OmitInstruction, LocalLoad, LocalStore,
-                 LocalFunction, CapturedLoad, CapturedStore>;
+                 LocalFunction, CapturedLoad, CapturedStore, NamedInvocation>;
 enum class LinearLexicalError {
   kExceptionRegions,
   kControlFlow,

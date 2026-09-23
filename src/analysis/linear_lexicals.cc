@@ -225,6 +225,10 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
               return fail(Error::kInternalValue);
           }
           accumulator = ValueKinds::Language();
+          const auto property = i - lookback;
+          statements[property] = *invocation;
+          for (auto consumed = property + 1; consumed < i; ++consumed)
+            statements[consumed] = OmitInstruction{};
           statement = OmitInstruction{};
           fused_call = true;
           break;

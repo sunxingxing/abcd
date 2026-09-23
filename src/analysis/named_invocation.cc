@@ -102,6 +102,21 @@ std::optional<NamedInvocation> MatchNamedInvocation(
       LiftReceiverCall(block[property + 3].decoded, frame_size);
   const auto* call = std::get_if<ReceiverCall>(&spilled_call);
   if (!call || call->receiver != *receiver) return {};
+  const auto temporary = std::get<abc::RegisterId>(store->destination);
+  if (temporary == call->receiver) return {};
+  for (std::size_t i = 0; i < call->arguments.count; ++i)
+    if (temporary == call->arguments.values[i]) return {};
+  // Eliminating the spill is valid only when its value cannot escape through
+  // later register reads or a successor block. This bounded terminal pattern
+  // avoids a per-call liveness scan; broader patterns need shared liveness.
+  constexpr std::size_t kSpilledSequence = 4;
+  if (block.size() - property != kSpilledSequence + 1) return {};
+  const auto& terminal = block.back().decoded;
+  if (terminal.operand_count != 0 ||
+      (terminal.opcode != abc::Opcode::kRETURN &&
+       terminal.opcode != abc::Opcode::kRETURNUNDEFINED &&
+       terminal.opcode != abc::Opcode::kTHROW_PREF_NONE))
+    return {};
   return NamedInvocation{*named, *call, 4};
 }
 }  // namespace abcd::analysis

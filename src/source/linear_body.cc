@@ -58,6 +58,18 @@ class BodyWriter {
   BodyEmitResult Instruction(const abc::BodyInstruction& instruction) {
     return Sequence(std::span(&instruction, 1), true, false);
   }
+  BodyEmitResult Invocation(const NamedInvocation& invocation,
+                            abc::CodeOffset offset) {
+    offset_ = offset;
+    try {
+      NamedCall(invocation);
+      if (error_) return *error_;
+      return written_;
+    } catch (const std::ios_base::failure&) {
+      return BodyEmitFailure{
+          BodyEmitError::kExpression, offset_, {}, EmitError::kWrite};
+    }
+  }
 
   BodyEmitResult Ordered(const abc::MethodBody& body, const NormalFlow& graph,
                          const AccumulatorFlow& flow) {
@@ -393,6 +405,14 @@ BodyEmitResult WriteLinearInstruction(const abc::BodyInstruction& instruction,
                                       EmitBudget budget,
                                       const MethodConstants* constants) {
   return BodyWriter(names, output, budget, constants).Instruction(instruction);
+}
+
+BodyEmitResult WriteNamedInvocation(const analysis::NamedInvocation& invocation,
+                                    abc::CodeOffset offset, ScalarNames names,
+                                    std::ostream& output, EmitBudget budget,
+                                    const MethodConstants* constants) {
+  return BodyWriter(names, output, budget, constants)
+      .Invocation(invocation, offset);
 }
 
 BodyEmitResult WriteLinearBody(const abc::MethodBody& body, ScalarNames names,

@@ -9,7 +9,9 @@ constructors and methods:
   is an inline-cache slot, not an array length, so the source value is `[]`.
 - A named method call may spill the property result through `STA_V8` and
   `LDA_V8` before `CALLTHIS`. The source writer fuses the complete four-
-  instruction sequence and preserves the receiver and argument registers.
+  instruction sequence only when the spill register is neither receiver nor
+  argument and an immediate terminal return/throw proves it dead afterward.
+  Other spill patterns require shared liveness before admission.
 
 Successful ordinary property reads now produce a language value in the typed
 register analysis. This follows the pinned v7.0 `JSObject::GetProperty` path:
@@ -39,3 +41,26 @@ and are not hoisted into class declarations or metadata fields.
 
 This increment does not claim complete per-record source output, global binding
 identity, full source parameter names/types, or asynchronous function recovery.
+
+## Integration Correction
+
+Review of the implementation found that the lexical writer emitted individual
+instructions while its plan omitted CALLTHIS, losing the actual call. The plan
+now retains a typed NamedInvocation at the property read; the writer emits that
+complete operation once. Spill/reload instructions are omitted only after the
+terminal dead-register check above. Regressions cover direct/spilled lexical
+emission, overwritten receiver, callee passed as argument and later callee use.
+
+An uncommitted globalThis lowering was removed during review: global lexical
+records, missing-name exceptions, const writes and initialization are not
+equivalent to object-property accesses. Global source integration still needs
+binding resolution and explicit operation-specific semantics.
+
+Correction verification: full Debug CTest passed 108/108 in 31.43 seconds.
+The five paired class fixtures admitted 11 of 101 creation sites (4 Immersive,
+5 MultiCommunityApplication, 1 pasteboard, 1 push modules, 0 widgets).
+`class_samples.mjs` passed on all 11 expressions, including constructor argument
+identity through the four recovered field-read methods. A separate Immersive
+run measured 9,216 KiB peak RSS and 0.10 seconds under the fixture's 1 GB cap.
+These are class-expression tests, not complete record or Ark runtime differential
+validation. Sanitizers were not rerun for this correction.

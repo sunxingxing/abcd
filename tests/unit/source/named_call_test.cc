@@ -6,6 +6,7 @@
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/source/acyclic_body.h"
 #include "abcd/source/linear_body.h"
+#include "abcd/source/local_lexical_body.h"
 #include "analysis/ssa_fixture.h"
 
 int main(int argc, char** argv) {
@@ -49,6 +50,29 @@ int main(int argc, char** argv) {
   test::Check(std::holds_alternative<std::size_t>(source::WriteLinearBody(
       spilled, {"acc", registers}, spilled_output, {}, &constants)));
   test::Check(spilled_output.str() == output.str());
+  for (const auto* candidate : {&body, &spilled}) {
+    std::ostringstream lexical;
+    test::Check(
+        std::holds_alternative<std::size_t>(source::WriteLocalLexicalBody(
+            *candidate, {"acc", registers}, lexical, {}, &constants)));
+    test::Check(lexical.str() == output.str());
+  }
+  for (const auto& unsafe : {test::Body({0x60, 0, 0x42, 0, 0, 0, 0x61, 0, 0x60,
+                                         0, 0x2d, 0, 0, 0x64}),
+                             test::Body({0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60,
+                                         1, 0x2e, 0, 0, 1, 0x64}),
+                             test::Body({0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60,
+                                         1, 0x2d, 0, 0, 0x60, 1, 0x64})}) {
+    test::Check(!analysis::MatchNamedInvocation(unsafe.instructions, 1, 4));
+    std::ostringstream rejected;
+    test::Check(!std::holds_alternative<std::size_t>(source::WriteLinearBody(
+        unsafe, {"acc", registers}, rejected, {}, &constants)));
+    test::Check(rejected.str().empty());
+    test::Check(
+        !std::holds_alternative<std::size_t>(source::WriteLocalLexicalBody(
+            unsafe, {"acc", registers}, rejected, {}, &constants)));
+    test::Check(rejected.str().empty());
+  }
   const bool emit = argc == 2 && std::string_view(argv[1]) == "--emit";
   const std::array<std::vector<std::uint8_t>, 4> calls{
       {{0x2d, 0xff, 0},

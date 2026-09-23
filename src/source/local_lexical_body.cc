@@ -44,6 +44,14 @@ class LexicalWriter {
             error_ = *failure;
           else
             Count(std::get<std::size_t>(result));
+        } else if (const auto* invocation =
+                       std::get_if<analysis::NamedInvocation>(&statement)) {
+          const auto result = WriteNamedInvocation(
+              *invocation, offset_, names_, output_, {remaining_}, constants_);
+          if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
+            error_ = *failure;
+          else
+            Count(std::get<std::size_t>(result));
         } else if (std::holds_alternative<analysis::LocalFunction>(statement)) {
           Slot(analysis::Accumulator{});
           Text(" = ");
