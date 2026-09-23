@@ -185,6 +185,13 @@ int main(int argc, char** argv) {
               "acc = ({[\"text\"]: null});\nobject = acc;\nacc = value;\n"
               "object = ({...object, [\"field\"]: acc});\n"
               "acc = object;\nreturn acc;\n");
+  const auto define_field = test::Body({0x04, 0x61, 0, 0x60, 1,
+                                        0xdb, 0, 8, 0, 0, 0x60, 0, 0x64});
+  std::ostringstream define_field_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(define_field, {"acc", fields},
+                                    define_field_source, {}, &constants)));
+  test::Check(define_field_source.str() == empty_field_source.str());
   const std::array<std::string_view, 3> more_fields{"object", "first", "last"};
   const auto redefine = test::Body({
       0x07, 0, 0, 0, 0x61, 0, 0x60, 1, 0xdc, 0, 8, 0, 0,
@@ -256,10 +263,17 @@ int main(int argc, char** argv) {
               reused_source.str().find("object = ({...object", first_chain + 1) !=
                   std::string::npos);
   std::size_t previous_size = 0;
+  constexpr std::array kNamedDefinitions{
+      static_cast<std::uint8_t>(
+          abc::Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8),
+      static_cast<std::uint8_t>(
+          abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8)};
   for (const std::uint32_t count : {200U, 201U, 402U}) {
     std::vector<std::uint8_t> encoded{0x07, 0, 0, 0, 0x61, 0};
     for (std::uint32_t i = 0; i < count; ++i)
-      encoded.insert(encoded.end(), {0x60, 1, 0xdc, 0, 8, 0, 0});
+      encoded.insert(encoded.end(),
+                     {0x60, 1, kNamedDefinitions[i % kNamedDefinitions.size()],
+                      0, 8, 0, 0});
     encoded.insert(encoded.end(), {0x60, 0, 0x64});
     const auto many = test::Body(std::span(encoded));
     std::ostringstream many_source;
@@ -350,6 +364,8 @@ int main(int argc, char** argv) {
               << "}\n";
     std::cout << "export function emptyField(value) { let acc, object;\n"
               << empty_field_source.str() << "}\n";
+    std::cout << "export function definedField(value) { let acc, object;\n"
+              << define_field_source.str() << "}\n";
     std::cout << "export function object() { let acc;\n" << output.str()
               << "}\n";
     std::cout << "export function proto() { let acc;\n" << proto_source.str()

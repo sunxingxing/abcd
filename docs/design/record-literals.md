@@ -15,6 +15,11 @@ cannot escape before its complete graph is published at module export.
 Repeated exports of that root reuse one binding. Whole-record dry emission
 prevents semantic and budget failures from publishing partial source.
 
+For function bodies, the bounded fresh-object field planner admits both
+`DEFINEPROPERTYBYNAME` and `DEFINEFIELDBYNAME` after a proved fresh object and
+stable receiver register. The pinned handlers share `DefineField`; the output
+oracle checks own descriptors and inherited-setter exclusion for both forms.
+
 The v7 `STOWNBYINDEX` runtime defines writable, enumerable, configurable own
 properties and preserves acc. Dense array syntax reproduces those properties
 and final length. Computed-key object literal syntax reproduces named

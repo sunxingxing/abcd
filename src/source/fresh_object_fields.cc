@@ -9,6 +9,15 @@
 
 namespace abcd::source {
 namespace {
+bool NamedDefinition(abc::Opcode opcode) {
+  switch (opcode) {
+    case abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8:
+    case abc::Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8:
+      return true;
+    default:
+      return false;
+  }
+}
 class FreshObjectFields {
  public:
   std::optional<analysis::OwnWrite> Step(
@@ -48,9 +57,7 @@ class FreshObjectFields {
       created_ = true;
       return {};
     }
-    if (instruction.opcode ==
-            abc::Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8 &&
-        active_) {
+    if (NamedDefinition(instruction.opcode) && active_) {
       const auto field = analysis::LiftOwnWrite(instruction, frame_size);
       if (const auto* write = std::get_if<analysis::OwnWrite>(&field);
           write && write->kind == analysis::OwnWriteKind::kDefineField &&
@@ -102,8 +109,7 @@ std::variant<FreshFieldPlan, BodyEmitFailure> BuildFreshFieldPlan(
   try {
     std::size_t count = 0;
     for (const auto& instruction : body.instructions)
-      count += instruction.decoded.opcode ==
-               abc::Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8;
+      count += NamedDefinition(instruction.decoded.opcode);
     if (count > budget_bytes / sizeof(FreshFieldSite) || count > UINT32_MAX)
       return resource({});
     FreshFieldPlan plan;
