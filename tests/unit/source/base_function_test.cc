@@ -151,6 +151,22 @@ int main(int argc, char** argv) {
         source::WriteBaseFunction(Function(), unsupported, rejected)));
     test::Check(rejected.str().empty());
   }
+  {
+    // The branch emitter accepts NEG syntactically, but its result can be an
+    // impure NaN encoding. A later CFG read must fail before publishing text.
+    const auto unsafe = test::Body({0x00, 0x1f, 0, 0x4f, 3, 0x64, 0x65});
+    std::ostringstream rejected;
+    const auto proof = source::WriteBaseFunction(Function(), unsafe, rejected);
+    test::Check(std::get<source::BodyEmitFailure>(proof).kind ==
+                source::BodyEmitError::kInternalValue);
+    test::Check(rejected.str().empty());
+    const auto joined = test::Body(
+        {0x00, 0x4f, 6, 0x1f, 0, 0x4d, 3, 0x00, 0x64});
+    const auto mixed = source::WriteBaseFunction(Function(), joined, rejected);
+    test::Check(std::get<source::BodyEmitFailure>(mixed).kind ==
+                source::BodyEmitError::kInternalValue);
+    test::Check(rejected.str().empty());
+  }
   for (const auto count : {200u, 201u, 4096u, 65536u}) {
     std::ostringstream rendered;
     const auto result = source::WriteBaseFunction(Function(count, 0),

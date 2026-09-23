@@ -16,7 +16,9 @@ using CreatedFunctionResult =
     std::variant<std::size_t, CreatedFunctionError, FunctionEmitError,
                  EmitError, BodyEmitFailure, analysis::FlowFailure,
                  analysis::EnvironmentFlowFailure,
-                 analysis::LinearLexicalFailure, analysis::CreationError,
+                 analysis::LinearLexicalFailure,
+                 analysis::AccumulatorFailure, AcyclicError,
+                 analysis::CreationError,
                  abc::MethodTargetError, abc::MetadataError,
                  abc::MethodAttributeError, abc::FrameError, abc::BodyFailure>;
 

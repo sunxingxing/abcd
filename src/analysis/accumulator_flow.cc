@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "abcd/analysis/branch_condition.h"
+#include "abcd/analysis/global_access.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
@@ -37,6 +38,10 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
   if (std::holds_alternative<OrdinaryCall>(
           LiftOrdinaryCall(instruction, frame_size)))
     return Transfer{true, AccumulatorWrite::kValue};
+  const auto global_access = LiftGlobalAccess(instruction);
+  if (const auto* global = std::get_if<GlobalAccess>(&global_access);
+      global && global->operation == GlobalOp::kReadName)
+    return Transfer{false, AccumulatorWrite::kValue};
   if (std::holds_alternative<OwnWrite>(
           LiftOwnWrite(instruction, frame_size)))
     return Transfer{true, AccumulatorWrite::kPreserve};

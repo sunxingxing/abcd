@@ -137,7 +137,10 @@ or all output is retained. Duplicate validation sorts borrowed name views and
 preserves the original property order for emission.
 
 This integration does not finish the current source gate: unresolved captures,
-branching constructors, derived classes, complex/async signatures, globals and
-record publication remain required. The five paired samples still produce nine
-accepted class expressions, not nine complete modules or newly recovered
-member-bearing real classes.
+derived classes, complex/async signatures, global declarations and record
+publication remain required. A separately proven global name-read and bounded
+branch-body path now admit the paired BreakpointType class site, including its
+four ordered constructor assignments and branching `getValue` method. These
+are class expressions, not complete modules or inferred source field
+declarations; inherited setters remain observable and the assignments must
+stay in the constructor body.

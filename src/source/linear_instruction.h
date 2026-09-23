@@ -6,6 +6,11 @@
 #include "fresh_object_fields.h"
 
 namespace abcd::source {
+// Call once per method before global loads; private '$' slots cannot shadow
+// admitted ASCII global identifiers. The per-instruction emitter trusts this.
+std::optional<BodyEmitFailure> ValidateGlobalScalarNames(
+    const abc::MethodBody& body, ScalarNames names,
+    const MethodConstants* constants);
 BodyEmitResult WriteNamedInvocation(const analysis::NamedInvocation& invocation,
                                     abc::CodeOffset offset, ScalarNames names,
                                     std::ostream& output, EmitBudget budget,

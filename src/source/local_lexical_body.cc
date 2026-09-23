@@ -240,6 +240,8 @@ LocalLexicalResult WriteLexicals(const abc::MethodBody& body, ScalarNames names,
                                  const MethodConstants* constants,
                                  const abc::MethodLookup* methods,
                                  analysis::CapturedValues captured_values) {
+  if (const auto failure = ValidateGlobalScalarNames(body, names, constants))
+    return *failure;
   const auto resource = [] {
     return analysis::LinearLexicalFailure{
         analysis::LinearLexicalError::kResourceLimit, {}};

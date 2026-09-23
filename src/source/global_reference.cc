@@ -1,0 +1,55 @@
+#include "abcd/source/global_reference.h"
+
+#include <algorithm>
+
+namespace abcd::source {
+namespace {
+bool EqualsAscii(std::u16string_view name, std::string_view ascii) {
+  return name.size() == ascii.size() &&
+         std::equal(name.begin(), name.end(), ascii.begin());
+}
+bool IdentifierStart(char16_t ch) {
+  return (ch >= u'a' && ch <= u'z') ||
+         (ch >= u'A' && ch <= u'Z') || ch == u'_';
+}
+bool IdentifierPart(char16_t ch) {
+  return IdentifierStart(ch) || (ch >= u'0' && ch <= u'9');
+}
+}  // namespace
+
+bool AllowsGlobalReference(std::u16string_view name, GlobalScope scope) {
+  if (name.empty() || !IdentifierStart(name.front()) ||
+      !std::all_of(name.begin() + 1, name.end(), IdentifierPart) ||
+      EqualsAscii(name, scope.class_binding) ||
+      EqualsAscii(name, scope.self_binding) || name == u"ClassValue" ||
+      name.starts_with(u"MethodSelf"))
+    return false;
+  const auto found = std::lower_bound(
+      scope.enclosing_bindings.begin(), scope.enclosing_bindings.end(), name,
+      [](std::string_view binding, std::u16string_view candidate) {
+        return std::lexicographical_compare(binding.begin(), binding.end(),
+                                            candidate.begin(), candidate.end(),
+                                            [](char left, char16_t right) {
+                                              return static_cast<unsigned char>(left) <
+                                                     right;
+                                            });
+      });
+  if (found != scope.enclosing_bindings.end() && EqualsAscii(name, *found))
+    return false;
+  // Matches the strict/module reserved binding set. Generated private names
+  // all start with '$', rejected by IdentifierStart above.
+  constexpr std::u16string_view reserved[]{
+      u"arguments", u"await",      u"break",     u"case",    u"catch",
+      u"class",     u"const",      u"continue",  u"debugger", u"default",
+      u"delete",    u"do",         u"else",      u"enum",     u"eval",
+      u"export",    u"extends",    u"false",     u"finally",  u"for",
+      u"function",  u"if",         u"implements", u"import",  u"in",
+      u"instanceof", u"interface", u"let",       u"new",     u"null",
+      u"package",   u"private",    u"protected", u"public",  u"return",
+      u"static",    u"super",      u"switch",    u"this",    u"throw",
+      u"true",      u"try",        u"typeof",    u"var",      u"void",
+      u"while",     u"with",       u"yield"};
+  return std::find(std::begin(reserved), std::end(reserved), name) ==
+         std::end(reserved);
+}
+}  // namespace abcd::source

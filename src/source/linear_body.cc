@@ -8,6 +8,7 @@
 
 #include "abcd/abc/pool_reference.h"
 #include "abcd/analysis/branch_condition.h"
+#include "abcd/analysis/global_access.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
@@ -237,6 +238,10 @@ class BodyWriter {
         } else if (opcode == Opcode::kLDA_STR_ID16) {
           StringLoad(instruction.decoded);
           accumulator_defined = true;
+        } else if (opcode == Opcode::kTRYLDGLOBALBYNAME_IMM8_ID16 ||
+                   opcode == Opcode::kTRYLDGLOBALBYNAME_IMM16_ID16) {
+          GlobalLoad(instruction.decoded);
+          accumulator_defined = true;
         } else if (opcode == Opcode::kLDOBJBYNAME_IMM8_ID16 ||
                    opcode == Opcode::kLDOBJBYNAME_IMM16_ID16) {
           if (!accumulator_defined)
@@ -329,6 +334,54 @@ class BodyWriter {
     Text(" = ");
     StringConstant(
         {static_cast<std::uint32_t>(instruction.operands[0].raw_bits)});
+    Text(";\n");
+  }
+  void GlobalLoad(const abc::DecodedInstruction& instruction) {
+    const auto lifted = LiftGlobalAccess(instruction);
+    const auto* load = std::get_if<GlobalAccess>(&lifted);
+    if (!load || load->operation != GlobalOp::kReadName) {
+      error_ = Fail(BodyEmitError::kUnsupportedInstruction);
+      return;
+    }
+    if (!constants_ || !constants_->global_scope) {
+      error_ = Fail(BodyEmitError::kGlobalScope);
+      return;
+    }
+    const auto& context = *constants_;
+    const auto reference = abc::ResolvePoolReference(
+        context.file, context.header, context.index, context.method,
+        load->name, abc::PoolEntityKind::kString);
+    if (const auto* failure = std::get_if<abc::MetadataError>(&reference)) {
+      error_ = BodyEmitFailure{BodyEmitError::kConstant, offset_, {}, {},
+                               *failure};
+      return;
+    }
+    const auto string = abc::ReadStringEntity(
+        context.file, context.header,
+        std::get<abc::PoolReference>(reference).offset, context.string_budget);
+    if (const auto* failure = std::get_if<abc::MetadataError>(&string)) {
+      error_ = BodyEmitFailure{BodyEmitError::kConstant, offset_, {}, {},
+                               *failure};
+      return;
+    }
+    const auto& name = std::get<std::u16string>(string);
+    if (!AllowsGlobalReference(name, *context.global_scope)) {
+      error_ = Fail(BodyEmitError::kGlobalReference);
+      return;
+    }
+    Expression(ScalarValue{Accumulator{}});
+    Text(" = ");
+    constexpr std::size_t kNameChunkBytes = 256;
+    std::array<char, kNameChunkBytes> chunk{};
+    std::size_t used = 0;
+    for (const auto ch : name) {
+      chunk[used++] = static_cast<char>(ch);
+      if (used == chunk.size()) {
+        Text({chunk.data(), used});
+        used = 0;
+      }
+    }
+    Text({chunk.data(), used});
     Text(";\n");
   }
   void NamedLoad(const abc::DecodedInstruction& instruction) {
@@ -537,10 +590,34 @@ BodyEmitResult WriteNamedInvocation(const analysis::NamedInvocation& invocation,
       .Invocation(invocation, offset);
 }
 
+std::optional<BodyEmitFailure> ValidateGlobalScalarNames(
+    const abc::MethodBody& body, ScalarNames names,
+    const MethodConstants* constants) {
+  if (!constants || !constants->global_scope) return {};
+  bool reads_global = false;
+  for (const auto& instruction : body.instructions) {
+    const auto access = LiftGlobalAccess(instruction.decoded);
+    if (const auto* global = std::get_if<GlobalAccess>(&access);
+        global && global->operation == GlobalOp::kReadName) {
+      reads_global = true;
+      break;
+    }
+  }
+  if (!reads_global) return {};
+  if (!names.accumulator.starts_with('$'))
+    return BodyEmitFailure{BodyEmitError::kGlobalReference, {}};
+  for (const auto name : names.registers)
+    if (!name.starts_with('$'))
+      return BodyEmitFailure{BodyEmitError::kGlobalReference, {}};
+  return {};
+}
+
 BodyEmitResult WriteLinearBody(const abc::MethodBody& body, ScalarNames names,
                                std::ostream& output, EmitBudget budget,
                                const MethodConstants* constants,
                                ObjectBufferBudget object_budget) {
+  if (const auto failure = ValidateGlobalScalarNames(body, names, constants))
+    return *failure;
   // Validation is streaming too: do not retain a second copy of a large body
   // or leak a syntactically valid prefix when a late opcode cannot be lifted.
   DiscardBuffer buffer;
@@ -557,6 +634,8 @@ BodyEmitResult WriteOrderedBody(const abc::MethodBody& body,
                                 std::ostream& output, EmitBudget budget,
                                 const MethodConstants* constants,
                                 ObjectBufferBudget object_budget) {
+  if (const auto failure = ValidateGlobalScalarNames(body, names, constants))
+    return *failure;
   DiscardBuffer buffer;
   std::ostream discard(&buffer);
   const auto checked =

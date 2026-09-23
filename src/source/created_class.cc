@@ -33,6 +33,7 @@ class ClassWriter {
               const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
               const analysis::MethodRoleIndex* roles,
               const abc::ModuleInfo* module, abc::EntityOffset owner,
+              const GlobalScope* enclosing_scope,
               std::ostream& output,
               LocalLexicalBudget budget, abc::StringBudget strings)
       : file_(file),
@@ -42,6 +43,7 @@ class ClassWriter {
         roles_(roles),
         module_(module),
         owner_(owner),
+        enclosing_scope_(enclosing_scope),
         output_(output),
         budget_(budget),
         strings_(strings) {}
@@ -57,7 +59,7 @@ class ClassWriter {
     Constructor(creation, target, name);
     for (std::size_t i = 0; i < members.properties.size(); ++i) {
       Text("\n");
-      Member(members.properties[i], SelfName(i, name));
+      Member(members.properties[i], SelfName(i, name), name);
     }
     Text("\n})");
     if (has_members) {
@@ -102,7 +104,7 @@ class ClassWriter {
   }
   template <typename Emit>
   void Body(const abc::MethodInfo& method, LocalLexicalBudget budget,
-            Emit emit) {
+            std::string_view class_name, Emit emit) {
     if (module_ && method.owner_offset != owner_)
       throw ClassFailure{CreatedClassError::kModuleOwner};
     if (!method.code) throw ClassFailure{CreatedClassError::kMissingCode};
@@ -119,15 +121,20 @@ class ClassWriter {
                     budget.bytes);
     AdmitClassBytes(body.handlers.capacity(), sizeof(abc::CatchHandler),
                     budget.bytes);
+    std::optional<GlobalScope> global_scope;
+    if (enclosing_scope_) {
+      global_scope = *enclosing_scope_;
+      global_scope->class_binding = class_name;
+    }
     const MethodConstants constants{file_, header_, index_, method.offset,
-                                    strings_, module_, roles_};
+                                    strings_, module_, roles_, global_scope};
     Account(TakeClassValue<std::size_t>(emit(frame, body, budget, constants)));
   }
   void Constructor(const analysis::ClassCreation& creation,
                    const abc::MethodTarget& target, std::string_view name) {
     // Preserve the caller's target index for nested DEFINEFUNC in class bodies;
     // each child still passes the leaf emitter's kind/capture/owner checks.
-    Body(index_.methods[target.position.value], budget_,
+    Body(index_.methods[target.position.value], budget_, name,
          [&](const abc::FrameLayout& frame, const abc::MethodBody& body,
              LocalLexicalBudget budget, const MethodConstants& constants) {
            return WriteBaseConstructor(
@@ -135,7 +142,8 @@ class ClassWriter {
                budget, &constants, &lookup_);
          });
   }
-  void Member(const abc::ClassProperty& property, std::string_view self) {
+  void Member(const abc::ClassProperty& property, std::string_view self,
+              std::string_view class_name) {
     const auto target =
         ResolveClassMember(header_, index_, lookup_, property, roles_);
     const auto key = ReadClassKey(file_, header_, property, strings_);
@@ -143,7 +151,7 @@ class ClassWriter {
     // Key survives body emission; body constant-string scratch uses a separate
     // admitted string allowance, so the retained key must also be accounted.
     AdmitClassBytes(key.capacity(), sizeof(char16_t), budget.bytes);
-    Body(index_.methods[target.position.value], budget,
+    Body(index_.methods[target.position.value], budget, class_name,
          [&](const abc::FrameLayout& frame, const abc::MethodBody& body,
              LocalLexicalBudget remaining, const MethodConstants& constants) {
            const ClassMethod method{std::get<abc::ClassMethod>(property.value),
@@ -164,6 +172,7 @@ class ClassWriter {
   const analysis::MethodRoleIndex* roles_;
   const abc::ModuleInfo* module_;
   abc::EntityOffset owner_;
+  const GlobalScope* enclosing_scope_;
   std::ostream& output_;
   LocalLexicalBudget budget_;
   abc::StringBudget strings_;
@@ -176,7 +185,8 @@ CreatedClassResult WriteCreatedClass(
     abc::EntityOffset caller, const abc::BodyInstruction& instruction,
     analysis::ClassHeritage heritage, std::ostream& output,
     LocalLexicalBudget budget, abc::StringBudget strings,
-    const analysis::MethodRoleIndex* roles, const abc::ModuleInfo* module) {
+    const analysis::MethodRoleIndex* roles, const abc::ModuleInfo* module,
+    const GlobalScope* enclosing_scope) {
   try {
     if (heritage.pc != instruction.offset ||
         heritage.kind != analysis::HeritageKind::kAbsent)
@@ -203,10 +213,12 @@ CreatedClassResult WriteCreatedClass(
     }
     CaptureDiscard discard;
     std::ostream dry(&discard);
-    ClassWriter(file, header, index, lookup, roles, module, caller_owner, dry,
+    ClassWriter(file, header, index, lookup, roles, module, caller_owner,
+                enclosing_scope, dry,
                 budget, strings)
         .Write(creation, target, members, *name);
     return ClassWriter(file, header, index, lookup, roles, module, caller_owner,
+                       enclosing_scope,
                        output, budget, strings)
         .Write(creation, target, members, *name);
   } catch (const ClassFailure& failure) {

@@ -5,6 +5,7 @@
 #include "abcd/abc/literal_array.h"
 #include "abcd/abc/module_info.h"
 #include "abcd/abc/string_entity.h"
+#include "abcd/source/global_reference.h"
 #include "abcd/source/scalar_expression.h"
 
 namespace abcd::analysis {
@@ -26,7 +27,10 @@ enum class BodyEmitError {
   kResourceLimit,
   kWorkLimit,
   kMissingModule,
-  kModuleBinding
+  kModuleBinding,
+  kGlobalScope,
+  kGlobalReference,
+  kInternalValue
 };
 enum class ObjectBufferError {
   kShape,
@@ -50,6 +54,15 @@ struct ObjectBufferBudget {
 };
 
 struct MethodConstants {
+  MethodConstants(const corpus::AbcFile& input, const abc::Header& profile,
+                  const abc::MetadataIndex& metadata, abc::EntityOffset target,
+                  abc::StringBudget strings,
+                  const abc::ModuleInfo* owner_module = nullptr,
+                  const analysis::MethodRoleIndex* method_roles = nullptr,
+                  std::optional<GlobalScope> scope = {})
+      : file(input), header(profile), index(metadata), method(target),
+        string_budget(strings), module(owner_module), roles(method_roles),
+        global_scope(scope) {}
   const corpus::AbcFile& file;
   const abc::Header& header;
   const abc::MetadataIndex& index;
@@ -59,6 +72,7 @@ struct MethodConstants {
   // from inventing a lexical import binding.
   const abc::ModuleInfo* module = nullptr;
   const analysis::MethodRoleIndex* roles = nullptr;
+  std::optional<GlobalScope> global_scope;
 };
 
 // Emits statements inside a function, not a wrapper or record. Requires a

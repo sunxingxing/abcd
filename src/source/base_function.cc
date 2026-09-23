@@ -13,6 +13,7 @@
 #include "abcd/source/class_method.h"
 #include "abcd/source/string_literal.h"
 #include "capture_stream.h"
+#include "branch_value_proof.h"
 #include "function_template.h"
 
 namespace abcd::source {
@@ -192,17 +193,44 @@ class FunctionWriter {
       if (error_) return *error_;
       auto body_budget = budget_;
       body_budget.output.bytes -= written_;
-      const auto result =
+      std::optional<MethodConstants> scoped_constants;
+      const MethodConstants* body_constants = constants_;
+      if (constants_ && constants_->global_scope) {
+        scoped_constants.emplace(*constants_);
+        if (function_.syntax == CallableSyntax::kFunctionExpression)
+          scoped_constants->global_scope->self_binding = function_.name;
+        body_constants = &*scoped_constants;
+      }
+      const auto lexical =
           captured_values_ == analysis::CapturedValues::kLanguage
               ? WriteLocalLexicalTemplate(body, names_, output_, body_budget,
-                                          constants_)
+                                          body_constants)
               : WriteLocalLexicalBody(body, names_, output_, body_budget,
-                                      constants_, methods_);
+                                      body_constants, methods_);
+      FunctionEmitResult result = std::visit(
+          [](auto value) -> FunctionEmitResult { return value; }, lexical);
+      if (const auto* failure =
+              std::get_if<analysis::LinearLexicalFailure>(&lexical);
+          failure && failure->kind == analysis::LinearLexicalError::kControlFlow &&
+          captured_values_ == analysis::CapturedValues::kReject) {
+        // The ordered path has no lexical-environment synthesis. It is only a
+        // fallback after the straight-line planner rejects control flow; its
+        // own opcode proof must accept every live instruction before emission.
+        AcyclicBudget ordered_budget;
+        ordered_budget.bytes = body_budget.bytes;
+        ordered_budget.output = body_budget.output;
+        if (const auto unsafe = ProveBranchValues(
+                body, names_.registers.size(), body_budget))
+          return *unsafe;
+        result = std::visit(
+            [](auto value) -> FunctionEmitResult { return value; },
+            WriteBlockLoopBody(body, names_, output_, ordered_budget,
+                               body_constants));
+      }
       if (const auto* bytes = std::get_if<std::size_t>(&result))
         written_ += *bytes;
       else
-        return std::visit(
-            [](auto value) -> FunctionEmitResult { return value; }, result);
+        return result;
       if (function_.syntax == CallableSyntax::kArrowExpression) {
         Text("}})[");
         ArrowName();

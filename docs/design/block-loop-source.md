@@ -50,3 +50,13 @@ remain in force. No new body-sized copy or generated-output buffering.
    preserve static classifications and commit evidence with the implementation.
 
 Body readiness is not a recovered function wrapper or a complete record file.
+
+Function/class wrappers now use this ordered emitter after the straight-line
+planner rejects control flow, but only when captures are absent. Before
+emission they build bounded register SSA and sparse value-category flow on the
+same normal CFG. Every reachable read must be a language value; ordinary entry
+registers are seeded language from the pinned interpreter's Undefined/ABI
+initialization, while the entry accumulator remains unproven. Numeric results
+that can encode VM-internal values are rejected at subsequent reads, including
+through joins. Work and scratch share the function budget. This proof does not
+admit handlers, async/generator bodies, multi-block cycles or incomplete scopes.

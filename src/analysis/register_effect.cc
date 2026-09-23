@@ -2,6 +2,7 @@
 
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/function_creation.h"
+#include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/indexed_read.h"
 #include "abcd/analysis/lexical.h"
@@ -173,6 +174,14 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
     return result;
   if (auto result = Adapt(LiftModuleLoad(instruction)); !Unsupported(result))
     return result;
+  const auto global = LiftGlobalAccess(instruction);
+  if (const auto* access = std::get_if<GlobalAccess>(&global)) {
+    if (access->operation == GlobalOp::kReadName)
+      return AccumulatorDefinition();
+  } else if (std::get<GlobalAccessError>(global) ==
+             GlobalAccessError::kMalformedInstruction) {
+    return ScalarError::kMalformedInstruction;
+  }
   if (auto result = Adapt(LiftHoleInstruction(instruction, frame_size));
       !Unsupported(result))
     return result;

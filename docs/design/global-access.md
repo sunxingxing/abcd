@@ -27,3 +27,21 @@ publication. It shares the existing decoded method and uses O(instructions)
 additional time, one bounded string at a time. Future source integration must
 connect these operations to actual global binding identity and initialization,
 not deduplicate solely by name across unrelated records or realms.
+
+## Bounded Name-Read Source
+
+TRYLDGLOBALBYNAME narrow/wide now emits a native free identifier only with a
+caller-proven complete, sorted ASCII enclosing-binding set. The name must be a
+strict-safe ASCII identifier, not reserved, and must not collide with the
+generated class binding or named-function self binding. Accumulator/register
+bindings must use the private `$` namespace when this operation occurs. These
+checks are per method, not a scan of all registers for every global access.
+All other typed global operations remain unsupported by source emission.
+
+Under those premises, the pinned v7.0 runtime's record-first lookup, own/global
+object fallback, inherited property lookup and missing-name ReferenceError
+match free-identifier evaluation. This does not infer or emit a source global
+declaration. A record exporter must build the complete enclosing-binding set,
+including other generated factory names and module aliases, before using this
+primitive. A missing proof rejects the site. The paired BreakpointType oracle
+exercises record precedence, inherited setter behavior and missing globals.

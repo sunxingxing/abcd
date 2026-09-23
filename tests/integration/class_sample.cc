@@ -8,8 +8,10 @@
 #include <optional>
 #include <sstream>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "abcd/abc/call_type.h"
 #include "abcd/analysis/method_roles.h"
@@ -84,6 +86,33 @@ int main(int argc, char** argv) {
   for (const auto& record : index.records) {
     if (selected_record && record.offset != *selected_record) continue;
     ++visited_records;
+    std::vector<std::string> factory_names;
+    std::vector<std::string_view> enclosing_bindings;
+    if (selected_record) {
+      // The selected fixture publishes every site as a sibling module binding.
+      // Certify that complete set before allowing any unqualified global read.
+      for (const auto& method : std::span(index.methods).subspan(
+               record.first_method, record.method_count)) {
+        if (!method.code) continue;
+        const auto body = std::get<abc::MethodBody>(
+            abc::DecodeMethodBody(file, header.profile, *method.code));
+        const auto call = std::get<abc::CallType>(
+            abc::ReadCallType(file, header, index, method.annotations));
+        const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(
+            method.code->registers, method.code->arguments,
+            abc::DecodeCallFlags(call.value)));
+        const auto heritage = std::get<std::vector<analysis::ClassHeritage>>(
+            analysis::ProveClassHeritage(body, frame.registers));
+        for (const auto& site : heritage)
+          factory_names.push_back("site_" +
+                                  std::to_string(method.offset.value) + "_" +
+                                  std::to_string(site.pc.value));
+      }
+      std::sort(factory_names.begin(), factory_names.end());
+      enclosing_bindings.reserve(factory_names.size());
+      for (const auto& name : factory_names)
+        enclosing_bindings.push_back(name);
+    }
     std::optional<source::RecordModuleContext> context;
     std::ostringstream prelude;
     if (module_aware) {
@@ -123,6 +152,9 @@ int main(int argc, char** argv) {
         constexpr std::size_t kOutputBytes = 1024 * 1024;
         budget.output.bytes = kOutputBytes;
         std::ostringstream source;
+        const auto factory_name = "site_" + std::to_string(method.offset.value) +
+                                  "_" + std::to_string(site.pc.value);
+        const source::GlobalScope enclosing_scope{enclosing_bindings, {}};
         const auto module = context
                                 ? context->ForOwner(file, method.owner_offset)
                                 : std::shared_ptr<const abc::ModuleInfo>{};
@@ -130,12 +162,12 @@ int main(int argc, char** argv) {
             file, header, index, lookup, method.offset, body.instructions[at],
             site, source, budget, {},
             std::get_if<analysis::MethodRoleIndex>(&role_result),
-            module.get());
+            module.get(), selected_record ? &enclosing_scope : nullptr);
         if (std::holds_alternative<std::size_t>(result)) {
           ++ready;
           if (!module_aware || selected_record)
-            std::cout << "export function site_" << method.offset.value << '_'
-                      << site.pc.value << "() { return " << source.str()
+            std::cout << "export function " << factory_name
+                      << "() { return " << source.str()
                       << "; }\n";
         } else {
           test::Check(source.str().empty());

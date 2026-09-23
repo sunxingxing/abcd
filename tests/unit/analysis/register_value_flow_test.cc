@@ -55,6 +55,8 @@ int main() {
         Case{{0x33, 0, 0, 0, 0, 0x64}, ValueKinds::Language()},
         Case{{0x34, 0, 0, 0, 0, 0x64}, ValueKinds::Language()},
         Case{{0x3e, 0, 0, 0x64}, ValueKinds::Language()},
+        Case{{0x3f, 0, 0, 0, 0x64}, ValueKinds::Language()},
+        Case{{0x8c, 0, 0, 0, 0, 0x64}, ValueKinds::Language()},
         Case{{0, 0x23, 0x64}, ValueKinds::Language()},
         Case{{0, 0x61, 0, 0x28, 0, 0, 0x64}, ValueKinds::Language()},
         Case{{0x70, 0xfe, 9, 0, 0, 0x64}, ValueKinds::Hole()}}) {

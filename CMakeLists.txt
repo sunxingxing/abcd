@@ -77,6 +77,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/block_order.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/accumulator_flow.cc src/analysis/scalar_access.cc)
 target_link_libraries(abcd_analysis PUBLIC abcd_abc)
 add_library(abcd_source src/source/string_literal.cc src/source/scalar_expression.cc)
+target_sources(abcd_source PRIVATE src/source/global_reference.cc)
 target_sources(abcd_source PRIVATE src/source/linear_body.cc)
 target_sources(abcd_source PRIVATE src/source/fresh_object_fields.cc)
 target_sources(abcd_source PRIVATE src/source/object_buffer.cc)
@@ -87,6 +88,7 @@ target_sources(abcd_source PRIVATE src/source/module_binding.cc)
 target_sources(abcd_source PRIVATE src/source/module_imports.cc)
 target_sources(abcd_source PRIVATE src/source/record_module_context.cc)
 target_sources(abcd_source PRIVATE src/source/base_function.cc)
+target_sources(abcd_source PRIVATE src/source/branch_value_proof.cc)
 target_sources(abcd_source PRIVATE src/source/created_function.cc)
 target_sources(abcd_source PRIVATE src/source/created_class.cc src/source/class_members.cc)
 target_sources(abcd_source PRIVATE src/source/leaf_creation.cc)
@@ -350,6 +352,13 @@ if(BUILD_TESTING)
         "-DABCD_PAIRED_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
         "-DABCD_RECORD=16474"
         "-DABCD_RECORD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/home_model.mjs"
+        "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/paired_record_import_class.cmake)
+      add_test(NAME paired_breakpoint_type_js_test COMMAND ${CMAKE_COMMAND}
+        "-DABCD_CLASS_FIXTURE=$<TARGET_FILE:class_sample_fixture>"
+        "-DABCD_PAIRED_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        "-DABCD_RECORD=7395"
+        "-DABCD_RECORD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/breakpoint_type.mjs"
         "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/paired_record_import_class.cmake)
     endif()

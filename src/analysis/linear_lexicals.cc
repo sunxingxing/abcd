@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include "abcd/analysis/function_creation.h"
+#include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/named_invocation.h"
 #include "idf_scratch.h"
@@ -218,6 +219,12 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
           return fail(Error::kInstruction);
         accumulator = ValueKinds::Language();
         statement = ExternalImport{load->slot};
+        continue;
+      }
+      const auto global = LiftGlobalAccess(instruction);
+      if (const auto* load = std::get_if<GlobalAccess>(&global);
+          load && load->operation == GlobalOp::kReadName) {
+        accumulator = ValueKinds::Language();
         continue;
       }
       if (tail_call && i == tail_call->call) {

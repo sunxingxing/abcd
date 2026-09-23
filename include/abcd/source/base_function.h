@@ -5,6 +5,7 @@
 #include "abcd/abc/method_attributes.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/source/local_lexical_body.h"
+#include "abcd/source/acyclic_body.h"
 
 namespace abcd::source {
 enum class FunctionEmitError {
@@ -25,7 +26,8 @@ struct BaseFunction {
 using FunctionEmitResult =
     std::variant<std::size_t, FunctionEmitError, EmitError, BodyEmitFailure,
                  analysis::FlowFailure, analysis::EnvironmentFlowFailure,
-                 analysis::LinearLexicalFailure>;
+                 analysis::LinearLexicalFailure,
+                 analysis::AccumulatorFailure, AcyclicError>;
 
 // Caller proves matching creation, target, decoded body, ABI and runtime-parsed
 // name under the pinned 7.0 semantics. Emits a strict named function

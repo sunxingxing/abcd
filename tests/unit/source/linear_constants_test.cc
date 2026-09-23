@@ -1,5 +1,6 @@
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <iostream>
@@ -7,7 +8,9 @@
 #include <vector>
 
 #include "abcd/source/acyclic_body.h"
+#include "abcd/source/base_function.h"
 #include "abcd/source/linear_body.h"
+#include "abcd/source/local_lexical_body.h"
 
 namespace {
 void Check(bool condition) {
@@ -31,7 +34,8 @@ int main(int argc, char** argv) {
       NameCase{"0", true},           NameCase{"4294967294", true},
       NameCase{"4294967295", false}, NameCase{"01", false},
       NameCase{"-0", false},         NameCase{"9999999999", false},
-      NameCase{"", false},           NameCase{"1.0", false}};
+      NameCase{"", false},           NameCase{"1.0", false},
+      NameCase{"globalValue", false}};
   std::size_t string_at = 600;
   for (std::size_t i = 0; i < name_cases.size(); ++i) {
     Word(bytes, 72 + i * sizeof(std::uint32_t), string_at);
@@ -59,6 +63,31 @@ int main(int argc, char** argv) {
   abc::MetadataIndex index;
   index.regions.push_back({200, 300, {}, {2 + name_cases.size(), 64}, {}, {}});
   source::MethodConstants constants{file, header, index, {210}, {1024}};
+  Check(source::AllowsGlobalReference(u"globalValue", {{}, "Container"}));
+  for (const auto invalid : {u"", u"1name", u"a-b", u"$acc", u"await",
+                             u"eval", u"arguments", u"ClassValue",
+                             u"MethodSelf0", u"Container", u"名"})
+    Check(!source::AllowsGlobalReference(invalid, {{}, "Container"}));
+  const std::array<std::string_view, 2> outer{"Other", "globalValue"};
+  Check(!source::AllowsGlobalReference(u"globalValue",
+                                       {outer, "Container"}));
+  Check(!source::AllowsGlobalReference(u"globalValue",
+                                       {{}, "Container", "globalValue"}));
+  for (const std::size_t count : {200U, 201U, 402U}) {
+    std::vector<std::string> stored;
+    stored.reserve(count);
+    for (std::size_t i = 0; i < count; ++i)
+      stored.push_back("binding" + std::to_string(i));
+    std::sort(stored.begin(), stored.end());
+    std::vector<std::string_view> names;
+    names.reserve(count);
+    for (const auto& name : stored) names.push_back(name);
+    Check(source::AllowsGlobalReference(u"globalValue",
+                                        {names, "Container"}));
+    Check(!source::AllowsGlobalReference(u"binding200",
+                                         {names, "Container"}) ==
+          (count > 200));
+  }
   abc::MethodBody body;
   const std::array<std::uint8_t, 3> load{0x3e, 0, 0};
   const std::array<std::uint8_t, 1> ret{0x64};
@@ -195,6 +224,89 @@ int main(int argc, char** argv) {
             named, {"acc", registers}, invalid, {}, &constants));
     Check(failure.offset.value == 2 && failure.metadata_error.has_value());
     Check(invalid.str().empty());
+  }
+  const auto global_body = [&](std::span<const std::uint8_t> encoded) {
+    abc::MethodBody result;
+    for (std::size_t pc = 0; pc < encoded.size();) {
+      const auto decoded = std::get<abc::DecodedInstruction>(
+          abc::DecodeInstruction(encoded.subspan(pc), header.profile));
+      result.instructions.push_back(
+          {{static_cast<std::uint32_t>(pc)}, decoded, {}});
+      pc += decoded.size;
+    }
+    return result;
+  };
+  constexpr auto kGlobalSlot = name_cases.size() + 1;
+  for (const auto& code : {
+           std::vector<std::uint8_t>{0x3f, 0,
+                                     static_cast<std::uint8_t>(kGlobalSlot),
+                                     0, 0x64},
+           std::vector<std::uint8_t>{0x8c, 0, 0,
+                                     static_cast<std::uint8_t>(kGlobalSlot),
+                                     0, 0x64}}) {
+    auto global = global_body(code);
+    std::ostringstream refused;
+    Check(std::get<source::BodyEmitFailure>(source::WriteLinearBody(
+              global, {"acc", {}}, refused, {}, &constants)).kind ==
+          source::BodyEmitError::kGlobalScope);
+    Check(refused.str().empty());
+    constants.global_scope = source::GlobalScope{{}, "Container"};
+    std::ostringstream shadowed;
+    Check(std::get<source::BodyEmitFailure>(source::WriteLinearBody(
+              global, {"globalValue", {}}, shadowed, {}, &constants)).kind ==
+          source::BodyEmitError::kGlobalReference);
+    Check(shadowed.str().empty());
+    const std::array<std::string_view, 1> colliding_register{"globalValue"};
+    Check(std::get<source::BodyEmitFailure>(source::WriteLinearBody(
+              global, {"$acc", colliding_register}, shadowed, {},
+              &constants)).kind == source::BodyEmitError::kGlobalReference);
+    Check(shadowed.str().empty());
+    std::ostringstream accepted;
+    Check(std::holds_alternative<std::size_t>(source::WriteLinearBody(
+        global, {"$acc", {}}, accepted, {}, &constants)));
+    Check(accepted.str() == "$acc = globalValue;\nreturn $acc;\n");
+    std::ostringstream ordered;
+    Check(std::holds_alternative<std::size_t>(source::WriteAcyclicBody(
+        global, {"$acc", {}}, ordered, {}, &constants)));
+    Check(ordered.str() == accepted.str());
+    std::ostringstream lexical;
+    Check(std::holds_alternative<std::size_t>(source::WriteLocalLexicalBody(
+        global, {"$acc", {}}, lexical, {}, &constants)));
+    Check(lexical.str() == accepted.str());
+    const auto frame = std::get<abc::FrameLayout>(
+        abc::BuildFrameLayout(0, 0, {false, false, false, false}));
+    const source::BaseFunction self{
+        {analysis::CreationKind::kFunction, {}, {0},
+         analysis::HomeObjectInput::kCurrentFunction},
+        {abc::FunctionKind::kBaseConstructor, false, 0, {}},
+        frame, "globalValue"};
+    std::ostringstream self_shadowed;
+    Check(std::get<source::BodyEmitFailure>(source::WriteBaseFunction(
+              self, global, self_shadowed, {}, &constants)).kind ==
+          source::BodyEmitError::kGlobalReference);
+    Check(self_shadowed.str().empty());
+    std::ostringstream short_output;
+    Check(std::get<source::BodyEmitFailure>(source::WriteLinearBody(
+              global, {"$acc", {}}, short_output,
+              {accepted.str().size() - 1}, &constants)).emit_error ==
+          source::EmitError::kOutputLimit);
+    Check(short_output.str().empty());
+    constants.global_scope = source::GlobalScope{{}, "globalValue"};
+    Check(std::get<source::BodyEmitFailure>(source::WriteLinearBody(
+              global, {"$acc", {}}, refused, {}, &constants)).kind ==
+          source::BodyEmitError::kGlobalReference);
+    Check(refused.str().empty());
+    constants.global_scope = source::GlobalScope{{}, "Container"};
+    global.instructions.front().decoded.operands[1].raw_bits = 0;
+    Check(std::get<source::BodyEmitFailure>(source::WriteLinearBody(
+              global, {"$acc", {}}, refused, {}, &constants)).kind ==
+          source::BodyEmitError::kGlobalReference);
+    global.instructions.front().decoded.operands[1].raw_bits = 1;
+    Check(std::get<source::BodyEmitFailure>(source::WriteLinearBody(
+              global, {"$acc", {}}, refused, {}, &constants)).kind ==
+          source::BodyEmitError::kConstant);
+    Check(refused.str().empty());
+    constants.global_scope.reset();
   }
   std::ostringstream rejected;
   Check(std::get<source::BodyEmitFailure>(

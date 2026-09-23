@@ -18,7 +18,9 @@ using CreatedClassResult =
     std::variant<std::size_t, CreatedClassError, FunctionEmitError, EmitError,
                  BodyEmitFailure, analysis::FlowFailure,
                  analysis::EnvironmentFlowFailure,
-                 analysis::LinearLexicalFailure, analysis::CreationError,
+                 analysis::LinearLexicalFailure,
+                 analysis::AccumulatorFailure, AcyclicError,
+                 analysis::CreationError,
                  abc::MethodTargetError, abc::MetadataError,
                  abc::MethodAttributeError, abc::FrameError, abc::BodyFailure,
                  abc::LiteralFailure, abc::ClassBufferError>;
@@ -39,6 +41,9 @@ using CreatedClassResult =
 // publication.
 // A supplied module belongs to the caller's record. Constructors and members
 // in other records are rejected before receiving its import environment.
+// Optional enclosing_scope certifies every outer source binding, sorted by
+// name; absent proof rejects global free-identifier recovery. The class writer
+// adds its own generated inner bindings to this check.
 [[nodiscard]] CreatedClassResult WriteCreatedClass(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
@@ -46,6 +51,7 @@ using CreatedClassResult =
     analysis::ClassHeritage heritage, std::ostream& output,
     LocalLexicalBudget budget = {}, abc::StringBudget strings = {},
     const analysis::MethodRoleIndex* roles = nullptr,
-    const abc::ModuleInfo* module = nullptr);
+    const abc::ModuleInfo* module = nullptr,
+    const GlobalScope* enclosing_scope = nullptr);
 }  // namespace abcd::source
 #endif

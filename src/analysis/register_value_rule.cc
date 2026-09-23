@@ -1,6 +1,7 @@
 #include "register_value_rule.h"
 
 #include "abcd/analysis/function_creation.h"
+#include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/indexed_read.h"
 #include "abcd/analysis/lexical.h"
@@ -117,6 +118,10 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
           LiftObjectCreation(instruction)) ||
       std::holds_alternative<FunctionCreation>(
           LiftFunctionCreation(instruction)))
+    return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
+  const auto global = LiftGlobalAccess(instruction);
+  if (const auto* access = std::get_if<GlobalAccess>(&global);
+      access && access->operation == GlobalOp::kReadName)
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
   return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
 }

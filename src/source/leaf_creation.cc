@@ -37,6 +37,11 @@ BodyEmitResult WriteLeafCreation(const abc::BodyInstruction& site,
             resource = value.kind == abc::BodyError::kResourceLimit;
           } else if constexpr (std::is_same_v<T, analysis::FlowFailure>) {
             resource = value.kind == analysis::FlowError::kResourceLimit;
+          } else if constexpr (std::is_same_v<T, analysis::AccumulatorFailure>) {
+            resource = value.kind ==
+                       analysis::AccumulatorError::kResourceLimit;
+          } else if constexpr (std::is_same_v<T, AcyclicError>) {
+            resource = value == AcyclicError::kResourceLimit;
           } else if constexpr (std::is_same_v<
                                    T, analysis::EnvironmentFlowFailure>) {
             resource =
