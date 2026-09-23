@@ -1,5 +1,6 @@
 #include "register_value_rule.h"
 
+#include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
@@ -110,8 +111,21 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
       std::holds_alternative<IndexedRead>(
           LiftIndexedRead(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kLanguageOperation, {}};
-  if (instruction.opcode == abc::Opcode::kLDFUNCTION)
-    return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
+  const auto constant = LiftConstantObjectInstruction(instruction);
+  if (const auto* value = std::get_if<ConstantObjectInstruction>(&constant)) {
+    // These pinned handlers return ordinary ECMAScript objects on normal
+    // completion. This is a value-kind fact, not source-emission permission.
+    switch (value->kind) {
+      case ConstantObjectKind::kSymbolConstructor:
+      case ConstantObjectKind::kGlobalObject:
+      case ConstantObjectKind::kUnmappedArguments:
+      case ConstantObjectKind::kAsyncFunctionEnter:
+      case ConstantObjectKind::kCurrentFunction:
+        return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
+      default:
+        break;
+    }
+  }
   if (instruction.opcode == abc::Opcode::kLDA_STR_ID16 ||
       instruction.opcode == abc::Opcode::kCREATEEMPTYARRAY_IMM8 ||
       std::holds_alternative<EmptyObjectCreation>(

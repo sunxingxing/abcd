@@ -178,6 +178,11 @@ RegisterEffect EffectOf(const BufferedObjectCreation&) {
 RegisterEffect EffectOf(const EmptyObjectCreation&) {
   return AccumulatorDefinition();
 }
+RegisterEffect EffectOf(const ConstantObjectInstruction& value) {
+  if (value.accumulator == AccumulatorEffect::kPreserve)
+    return {};
+  return AccumulatorDefinition();
+}
 template <class Error>
 ScalarError EffectOf(Error error) {
   if (error == Error::kUnsupportedOpcode)
@@ -260,12 +265,17 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   if (auto result = Adapt(LiftObjectCreation(instruction));
       !Unsupported(result))
     return result;
-  if (instruction.opcode == abc::Opcode::kLDFUNCTION) {
-    if (std::holds_alternative<ConstantObjectError>(
-            LiftConstantObjectInstruction(instruction)))
-      return ScalarError::kMalformedInstruction;
-    return AccumulatorDefinition();
+  const auto constant = LiftConstantObjectInstruction(instruction);
+  if (const auto* value = std::get_if<ConstantObjectInstruction>(&constant)) {
+    // Pinned v7 LDNEWTARGET is a fatal, unimplemented handler. Do not
+    // publish a normal-path definition for an execution that cannot occur.
+    if (value->completion == ConstantCompletion::kUnimplemented)
+      return ScalarError::kUnsupportedOpcode;
+    return EffectOf(*value);
   }
+  if (std::get<ConstantObjectError>(constant) ==
+      ConstantObjectError::kMalformedInstruction)
+    return ScalarError::kMalformedInstruction;
   using abc::Opcode;
   switch (instruction.opcode) {
     case Opcode::kLDA_STR_ID16:

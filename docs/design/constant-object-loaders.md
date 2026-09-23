@@ -33,3 +33,12 @@ remain typed refusals in the plain linear writer; specific planners may consume
 them under their own proofs. Historical ABC uses the same format decoder, but
 source admission remains constrained by the enclosing profile and method proof.
 The lift is O(1) per instruction and stores no per-method state.
+
+The register-effect and accumulator-flow passes also consume the typed lift.
+Pinned normal-completion `ldsymbol`, `ldglobal`, `getunmappedargs` and
+`asyncfunctionenter` define the accumulator without reading its old value;
+`debugger` preserves it. SSA marks the four object/function results as
+language values, but this does not admit their direct source rendering.
+`ldnewtarget` remains unsupported in normal-flow analysis because the pinned
+v7 interpreter handler is fatal. Tests cover these transfers and retain the
+source writer's explicit refusal for unproved equivalents.

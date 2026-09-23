@@ -64,6 +64,15 @@ int main() {
   Check(std::holds_alternative<AccumulatorFlow>(Analyze(Body(restore))));
   const std::uint8_t this_value[]{0x6f, 0xb0, 0x64};
   Check(std::holds_alternative<AccumulatorFlow>(Analyze(Body(this_value))));
+  for (const std::uint8_t loader : {0xad, 0x6d, 0x6c, 0xae}) {
+    const std::array<std::uint8_t, 2> code{loader, 0x64};
+    Check(std::holds_alternative<AccumulatorFlow>(Analyze(Body(code))));
+  }
+  const std::uint8_t unsupported_constant[]{0x6e, 0x64};
+  const auto unimplemented =
+      std::get<AccumulatorFailure>(Analyze(Body(unsupported_constant)));
+  Check(unimplemented.kind == AccumulatorError::kUnsupportedInstruction &&
+        unimplemented.offset.value == 0);
   const std::uint8_t debugger_hole[]{0xb0, 0x64};
   Check(std::get<AccumulatorFailure>(Analyze(Body(debugger_hole))).kind ==
         AccumulatorError::kReadBeforeValue);

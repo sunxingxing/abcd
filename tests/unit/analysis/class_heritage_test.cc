@@ -19,9 +19,12 @@ int main() {
   check({}, HeritageKind::kUnknown);
   check({0x70, 0x61, 1, 0x60, 1, 0x61, 0}, HeritageKind::kAbsent);
   check({0x70, 0x61, 0, 0x00, 0x61, 0}, HeritageKind::kUnknown);
-  // An unsupported operation kills old facts, but new definitions recover.
-  check({0x70, 0x61, 0, 0x6f}, HeritageKind::kUnknown);
+  // LDTHIS only replaces the accumulator; it cannot change a private slot.
+  check({0x70, 0x61, 0, 0x6f}, HeritageKind::kAbsent);
   check({0x6f, 0x70, 0x61, 0}, HeritageKind::kAbsent);
+  // An unsupported operation kills old facts, but new definitions recover.
+  check({0x70, 0x61, 0, 0xfc, 7, 0}, HeritageKind::kUnknown);
+  check({0xfc, 7, 0, 0x70, 0x61, 0}, HeritageKind::kAbsent);
   // A supported call clobbers acc, not a caller-private parent register.
   check({0x70, 0x61, 0, 0x29, 0}, HeritageKind::kAbsent);
   check({0x70, 0x29, 0, 0x61, 0}, HeritageKind::kUnknown);

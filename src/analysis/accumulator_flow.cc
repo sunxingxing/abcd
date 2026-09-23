@@ -33,7 +33,11 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
   if (const auto* operation =
           std::get_if<ConstantObjectInstruction>(&constant)) {
     if (operation->kind == ConstantObjectKind::kThis ||
-        operation->kind == ConstantObjectKind::kCurrentFunction)
+        operation->kind == ConstantObjectKind::kCurrentFunction ||
+        operation->kind == ConstantObjectKind::kSymbolConstructor ||
+        operation->kind == ConstantObjectKind::kGlobalObject ||
+        operation->kind == ConstantObjectKind::kUnmappedArguments ||
+        operation->kind == ConstantObjectKind::kAsyncFunctionEnter)
       return Transfer{false, AccumulatorWrite::kValue};
     if (operation->kind == ConstantObjectKind::kDebugger)
       return Transfer{false, AccumulatorWrite::kPreserve};

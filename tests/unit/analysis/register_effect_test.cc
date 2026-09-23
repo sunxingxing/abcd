@@ -72,6 +72,12 @@ int main() {
                      {{0xfc, 0}, {}, acc},
                      {{0x70}, {}, acc},
                      {{0xaf}, {}, acc},
+                     {{0xad}, {}, acc},
+                     {{0x6d}, {}, acc},
+                     {{0x6c}, {}, acc},
+                     {{0xae}, {}, acc},
+                     {{0x6f}, {}, acc},
+                     {{0xb0}, {}, {}},
                      {{0xfe, 6, 2, 3}, {reg, abc::RegisterId{3}}, {}},
                      {{0xfe, 9, 0, 0}, {acc}, {}},
                      {{0x33, 0, 0, 0, 0}, {}, acc},
@@ -147,4 +153,6 @@ int main() {
                           {0xfc, 27, 0, 1}})
     Check(std::get<ScalarError>(LiftRegisterEffect(Decode(code), 2)) ==
           ScalarError::kUnsupportedOpcode);
+  Check(std::get<ScalarError>(LiftRegisterEffect(Decode({0x6e}), 2)) ==
+        ScalarError::kUnsupportedOpcode);
 }
