@@ -8,6 +8,7 @@
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/object_creation.h"
+#include "abcd/analysis/own_write.h"
 #include "abcd/analysis/ordinary_call.h"
 
 namespace abcd::analysis {
@@ -36,6 +37,9 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
   if (std::holds_alternative<OrdinaryCall>(
           LiftOrdinaryCall(instruction, frame_size)))
     return Transfer{true, AccumulatorWrite::kValue};
+  if (std::holds_alternative<OwnWrite>(
+          LiftOwnWrite(instruction, frame_size)))
+    return Transfer{true, AccumulatorWrite::kPreserve};
   if (std::holds_alternative<ObjectCreation>(LiftObjectCreation(instruction)))
     return Transfer{false, AccumulatorWrite::kValue};
   switch (instruction.opcode) {

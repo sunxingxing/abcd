@@ -7,6 +7,7 @@
 #include "abcd/abc/literal_array.h"
 #include "abcd/source/acyclic_body.h"
 #include "abcd/source/linear_body.h"
+#include "abcd/source/local_lexical_body.h"
 #include "analysis/ssa_fixture.h"
 
 int main(int argc, char** argv) {
@@ -18,6 +19,7 @@ int main(int argc, char** argv) {
   constexpr std::uint32_t kPrimitiveLiteral = 11000;
   constexpr std::uint32_t kPrimitiveKeys = 900;
   constexpr std::uint32_t kPrimitiveValue = 980;
+  constexpr std::uint32_t kFieldName = 1080;
   std::vector<std::uint8_t> bytes(50000);
   const auto word = [&](std::size_t at, std::uint32_t value) {
     for (std::size_t i = 0; i < sizeof(value); ++i)
@@ -28,6 +30,9 @@ int main(int argc, char** argv) {
   word(kPool + 8, 360);
   word(kPool + 12, 380);
   word(kPool + 7 * sizeof(std::uint32_t), kPrimitiveLiteral);
+  word(kPool + 8 * sizeof(std::uint32_t), kFieldName);
+  word(kPool + 9 * sizeof(std::uint32_t), 520);
+  word(kPool + 10 * sizeof(std::uint32_t), kKey);
   constexpr std::array<std::uint32_t, 3> kScaleLiterals{2000, 5000, 8000};
   for (std::size_t scale = 0; scale < kScaleLiterals.size(); ++scale)
     word(kPool + (scale + 4) * sizeof(std::uint32_t), kScaleLiterals[scale]);
@@ -80,6 +85,7 @@ int main(int argc, char** argv) {
     string(kPrimitiveKeys + i * 20,
            std::array<std::string_view, 4>{"bool", "uint", "double", "str"}[i]);
   string(kPrimitiveValue, "hello");
+  string(kFieldName, "field");
   word(kPrimitiveLiteral, 16);
   std::size_t at = kPrimitiveLiteral + sizeof(std::uint32_t);
   const auto key = [&](std::size_t index) {
@@ -116,7 +122,7 @@ int main(int argc, char** argv) {
   header.file_size = bytes.size();
   header.layout = abc::DynamicLayout{};
   abc::MetadataIndex index;
-  index.regions.push_back({200, 300, {}, {8, kPool}, {}, {}});
+  index.regions.push_back({200, 300, {}, {11, kPool}, {}, {}});
   const source::MethodConstants constants{file, header, index, {kMethod},
                                           {1024}};
   const auto body = test::Body({0x07, 0, 0, 0, 0x64});
@@ -151,6 +157,52 @@ int main(int argc, char** argv) {
   test::Check(primitive_source.str() ==
               "acc = ({[\"bool\"]: true, [\"uint\"]: 4294967295, "
               "[\"double\"]: (1.5), [\"str\"]: \"hello\"});\nreturn acc;\n");
+  const std::array<std::string_view, 2> fields{"object", "value"};
+  const auto field = test::Body({0x07, 0, 0, 0, 0x61, 0, 0x60, 1,
+                                 0xdc, 0, 8, 0, 0, 0x60, 0, 0x64});
+  std::ostringstream field_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(field, {"acc", fields}, field_source, {},
+                                    &constants)));
+  test::Check(field_source.str() ==
+              "acc = ({[\"text\"]: null});\nobject = acc;\nacc = value;\n"
+              "object = ({...object, [\"field\"]: acc});\n"
+              "acc = object;\nreturn acc;\n");
+  const std::array<std::string_view, 3> more_fields{"object", "first", "last"};
+  const auto redefine = test::Body({
+      0x07, 0, 0, 0, 0x61, 0, 0x60, 1, 0xdc, 0, 8, 0, 0,
+      0x60, 2, 0xdc, 0, 10, 0, 0, 0x60, 0, 0x64});
+  std::ostringstream redefine_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(redefine, {"acc", more_fields},
+                                    redefine_source, {}, &constants)));
+  test::Check(redefine_source.str().find(
+                  "object = ({...object, [\"text\"]: acc});") !=
+              std::string::npos);
+  const auto own_proto = test::Body({0x07, 0, 0, 0, 0x61, 0, 0x60, 1,
+                                     0xdc, 0, 9, 0, 0, 0x60, 0, 0x64});
+  std::ostringstream own_proto_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(own_proto, {"acc", fields},
+                                    own_proto_source, {}, &constants)));
+  test::Check(own_proto_source.str().find("[\"__proto__\"]: acc") !=
+              std::string::npos);
+  const auto preserved = test::Body({0x07, 0, 0, 0, 0x61, 0, 0x60, 1,
+                                     0xdc, 0, 8, 0, 0, 0x64});
+  std::ostringstream preserved_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(preserved, {"acc", fields},
+                                    preserved_source, {}, &constants)));
+  test::Check(preserved_source.str().ends_with("return acc;\n"));
+  const std::array<std::string_view, 3> aliased{"object", "value", "alias"};
+  const auto escaped = test::Body({0x07, 0, 0, 0, 0x61, 0, 0x60, 0,
+                                   0x61, 2, 0x60, 1, 0xdc, 0, 8, 0, 0,
+                                   0x60, 2, 0x64});
+  std::ostringstream escaped_source;
+  test::Check(!std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(escaped, {"acc", aliased}, escaped_source,
+                                    {}, &constants)));
+  test::Check(escaped_source.str().empty());
   const auto built = analysis::BuildNormalFlow(body, {1024 * 1024});
   test::Check(std::holds_alternative<analysis::NormalFlow>(built));
   const auto& graph = std::get<analysis::NormalFlow>(built);
@@ -194,6 +246,14 @@ int main(int argc, char** argv) {
               << "}\n";
     std::cout << "export function primitive() { let acc;\n"
               << primitive_source.str() << "}\n";
+    std::cout << "export function field(value) { let acc, object;\n"
+              << field_source.str() << "}\n";
+    std::cout << "export function redefine(first, last) { let acc, object;\n"
+              << redefine_source.str() << "}\n";
+    std::cout << "export function ownProto(value) { let acc, object;\n"
+              << own_proto_source.str() << "}\n";
+    std::cout << "export function preserved(value) { let acc, object;\n"
+              << preserved_source.str() << "}\n";
   }
   test::Check(unlink(path) == 0);
 }

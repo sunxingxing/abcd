@@ -9,7 +9,7 @@ void Check(bool value) {
 }  // namespace
 int main() {
   using namespace abcd;
-  for (const auto opcode : {0x7a, 0xcc, 0xdb}) {
+  for (const auto opcode : {0x7a, 0xcc, 0xdb, 0xdc}) {
     const bool wide = opcode == 0xcc;
     std::vector<std::uint8_t> bytes{static_cast<std::uint8_t>(opcode), 0xff};
     if (wide) bytes.push_back(0xff);
@@ -19,7 +19,8 @@ int main() {
     const auto write =
         std::get<analysis::OwnWrite>(analysis::LiftOwnWrite(decoded, 202));
     Check(write.name.value == 65535 && write.object.value == 201);
-    Check(write.kind == (opcode == 0xdb ? analysis::OwnWriteKind::kDefineField
+    Check(write.kind == (opcode == 0xdb || opcode == 0xdc
+                             ? analysis::OwnWriteKind::kDefineField
                                         : analysis::OwnWriteKind::kStore));
     Check(std::get<analysis::OwnWriteError>(analysis::LiftOwnWrite(
               decoded, 201)) == analysis::OwnWriteError::kRegisterRange);

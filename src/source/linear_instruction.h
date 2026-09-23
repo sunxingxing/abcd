@@ -16,6 +16,7 @@ BodyEmitResult WriteLinearInstruction(const abc::BodyInstruction& instruction,
                                       ScalarNames names, std::ostream& output,
                                       EmitBudget budget,
                                       const MethodConstants* constants,
-                                      ObjectBufferBudget object_budget = {});
+                                      ObjectBufferBudget object_budget = {},
+                                      std::optional<abc::RegisterId> fresh_object = {});
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_LINEAR_INSTRUCTION_H_

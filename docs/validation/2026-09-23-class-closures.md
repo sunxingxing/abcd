@@ -26,8 +26,9 @@ with initial `kArrow` kind. Its entry `MOV` copies of ABI context are dead and
 now pass the two-pass proof, but this nested creation still fails at the arrow
 body's pc30 `CREATEOBJECTWITHBUFFER` (typed
 `LinearLexicalError::kInstruction`). Later data-object-buffer source support
-passes that instruction, but the next rejected operation is pc38
-`DEFINEPROPERTYBYNAME` (`LinearLexicalError::kInstruction`). That operation
-remains unimplemented, so this is not a ready class site.
+passed that instruction. Guarded fresh-object field recovery then passed the
+three `DEFINEPROPERTYBYNAME` operations at pc38, pc68 and pc98; the next
+rejected operation in target method 16610 is pc109 `CALLTHIS1`
+(`LinearLexicalError::kInstruction`). The class site is still not ready.
 No executable record exporter, instance-field lifting, or full-source
 signature recovery is claimed.

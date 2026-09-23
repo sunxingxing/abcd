@@ -20,7 +20,8 @@ int main() {
                      {0x91, true, PropertyWriteKind::kAssignment},
                      {0x7a, false, PropertyWriteKind::kOwnStore},
                      {0xcc, true, PropertyWriteKind::kOwnStore},
-                     {0xdb, false, PropertyWriteKind::kDefineField}};
+                     {0xdb, false, PropertyWriteKind::kDefineField},
+                     {0xdc, false, PropertyWriteKind::kDefineField}};
   for (const auto& item : cases) {
     std::vector<std::uint8_t> bytes{item.opcode, 0xff};
     if (item.wide) bytes.push_back(0xff);

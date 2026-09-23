@@ -14,8 +14,9 @@ enum class OwnWriteError {
   kMalformedInstruction,
   kRegisterRange
 };
-// STOWNBYNAME and DEFINEFIELDBYNAME are different runtime operations. Both
-// read receiver and acc, preserve them on normal completion, and may throw.
+// STOWNBYNAME differs from DEFINEFIELDBYNAME/DEFINEPROPERTYBYNAME; the latter
+// two share pinned DefineField. All read receiver and acc, preserve them on
+// normal completion, and may throw.
 // No proof of receiver=this, declaration placement or JS source equivalence.
 [[nodiscard]] std::variant<OwnWrite, OwnWriteError> LiftOwnWrite(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size);

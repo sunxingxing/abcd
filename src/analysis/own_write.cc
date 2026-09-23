@@ -15,6 +15,7 @@ std::variant<OwnWrite, OwnWriteError> LiftOwnWrite(
       cache_max = UINT16_MAX;
       break;
     case abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8:
+    case abc::Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8:
       kind = OwnWriteKind::kDefineField;
       cache_max = UINT8_MAX;
       break;

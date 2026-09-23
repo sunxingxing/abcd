@@ -8,6 +8,7 @@
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/object_creation.h"
+#include "abcd/analysis/own_write.h"
 
 namespace abcd::analysis {
 namespace {
@@ -48,6 +49,12 @@ RegisterEffect EffectOf(const NamedRead&) {
   return effect;
 }
 RegisterEffect EffectOf(const NamedWrite& value) {
+  RegisterEffect effect;
+  effect.reads[effect.read_count++] = value.object;
+  effect.reads[effect.read_count++] = Accumulator{};
+  return effect;
+}
+RegisterEffect EffectOf(const OwnWrite& value) {
   RegisterEffect effect;
   effect.reads[effect.read_count++] = value.object;
   effect.reads[effect.read_count++] = Accumulator{};
@@ -141,6 +148,9 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   if (auto result = Adapt(LiftNamedRead(instruction)); !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftNamedWrite(instruction, frame_size));
+      !Unsupported(result))
+    return result;
+  if (auto result = Adapt(LiftOwnWrite(instruction, frame_size));
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftIndexedRead(instruction, frame_size));

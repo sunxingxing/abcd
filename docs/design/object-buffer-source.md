@@ -35,3 +35,25 @@ operands, duplicate/method rejection, `__proto__`, fresh identity, own
 descriptors, 200/201/402 properties, and exhausted object scratch allowance.
 This is not object-method source recovery, historical
 opcode certification or a record exporter.
+
+## Fresh Property Definitions
+
+Pinned v7 `DEFINEPROPERTYBYNAME` calls `RuntimeDefineField`, which creates a
+writable, enumerable, configurable own data property and preserves the
+accumulator. Ordinary assignment would invoke an inherited setter; calling
+`Object.defineProperty` would depend on a mutable global intrinsic. The
+straight-line lexical writer therefore admits only a buffered object that is
+immediately stored in one register, then has the accumulator overwritten
+without reading that object. Any receiver read, copy, write, unknown effect or
+new object candidate ends the proof. For an admitted definition it replaces
+the as-yet-unobserved object with `({...object, [key]: value})`. The buffered
+object has only own data properties, so spread cannot invoke a getter; computed
+keys preserve `__proto__` and index-key semantics. Unproved definitions remain
+explicit source failures. The proof tracks constant state and costs O(I) for I
+instructions; it never compares every property pair.
+
+Repeated distinct definitions make the generated program copy growing objects
+repeatedly (up to quadratic runtime work). This is a known output-performance
+gap, not a claim of complete class-field or object-initializer recovery. A
+future linear-runtime emitter must defer definitions and prove all retained
+field values and object aliases before one final object construction.

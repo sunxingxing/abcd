@@ -12,6 +12,7 @@
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/ordinary_call.h"
+#include "abcd/analysis/own_write.h"
 #include "abcd/source/string_literal.h"
 #include "linear_instruction.h"
 #include "object_buffer.h"
@@ -46,12 +47,14 @@ class BodyWriter {
  public:
   BodyWriter(ScalarNames names, std::ostream& output, EmitBudget budget,
              const MethodConstants* constants,
-             ObjectBufferBudget object_budget)
+             ObjectBufferBudget object_budget,
+             std::optional<abc::RegisterId> fresh_object = {})
       : names_(names),
         output_(output),
         remaining_(budget.bytes),
         constants_(constants),
-        object_budget_(object_budget) {}
+        object_budget_(object_budget),
+        fresh_object_(fresh_object) {}
 
   BodyEmitResult Write(const abc::MethodBody& body) {
     if (!body.tries.empty() || !body.handlers.empty())
@@ -187,6 +190,10 @@ class BodyWriter {
           if (!accumulator_defined)
             return Fail(BodyEmitError::kAccumulatorHole);
           NamedStore(instruction.decoded);
+        } else if (opcode == Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8) {
+          if (!accumulator_defined)
+            return Fail(BodyEmitError::kAccumulatorHole);
+          DefineFreshField(instruction.decoded);
         } else if (opcode == Opcode::kCALLARG0_IMM8 ||
                    opcode == Opcode::kCALLARG1_IMM8_V8 ||
                    opcode == Opcode::kCALLARGS2_IMM8_V8_V8 ||
@@ -345,6 +352,25 @@ class BodyWriter {
     Expression(ScalarValue{Accumulator{}});
     Text(");\n");
   }
+  void DefineFreshField(const abc::DecodedInstruction& instruction) {
+    const auto lifted = LiftOwnWrite(instruction, names_.registers.size());
+    const auto* field = std::get_if<OwnWrite>(&lifted);
+    if (!field || field->kind != OwnWriteKind::kDefineField ||
+        !fresh_object_ || field->object != *fresh_object_) {
+      error_ = Fail(BodyEmitError::kUnsupportedInstruction);
+      return;
+    }
+    // Only an unaliased, getter-free object reaches this path. Replacing it
+    // before escape preserves own-data definition without mutable intrinsics.
+    Expression(ScalarValue{field->object});
+    Text(" = ({...");
+    Expression(ScalarValue{field->object});
+    Text(", [");
+    StringConstant(field->name);
+    Text("]: ");
+    Expression(ScalarValue{Accumulator{}});
+    Text("});\n");
+  }
   void StringConstant(abc::PoolIndex slot,
                       StringUse use = StringUse::kLiteral) {
     if (error_) return;
@@ -421,6 +447,7 @@ class BodyWriter {
   std::optional<BodyEmitFailure> error_;
   const MethodConstants* constants_;
   ObjectBufferBudget object_budget_;
+  std::optional<abc::RegisterId> fresh_object_;
 };
 }  // namespace
 
@@ -428,8 +455,10 @@ BodyEmitResult WriteLinearInstruction(const abc::BodyInstruction& instruction,
                                       ScalarNames names, std::ostream& output,
                                       EmitBudget budget,
                                       const MethodConstants* constants,
-                                      ObjectBufferBudget object_budget) {
-  return BodyWriter(names, output, budget, constants, object_budget)
+                                      ObjectBufferBudget object_budget,
+                                      std::optional<abc::RegisterId> fresh_object) {
+  return BodyWriter(names, output, budget, constants, object_budget,
+                    fresh_object)
       .Instruction(instruction);
 }
 
