@@ -9,12 +9,12 @@ format decoding but require a separate execution-semantics proof.
 | Family | Typed operands and effect | Executable-source admission |
 | --- | --- | --- |
 | `DEFINEFUNC` narrow/wide | `FunctionCreation`: pool method, observable length, current-function home; target attributes/capture checked separately | Verified created functions only |
-| `DEFINEMETHOD` narrow/wide | `FunctionCreation`: pool method, observable length, accumulator home | Only a fresh-class static initializer proved to perform constant field definitions, invoked once with that class as `this` |
+| `DEFINEMETHOD` narrow/wide | `FunctionCreation`: pool method, observable length, accumulator home | Fresh-class constant static initializer or a proved native class accessor subsequently consumed by `DEFINEGETTERSETTERBYVALUE` |
 | `DEFINECLASSWITHBUFFER` narrow/wide | `ClassCreation`: constructor, literal, length, parent register | Ordinary unescaped class with proved absent heritage and supported constructor/members |
 | `DEFINEFIELDBYNAME`, `DEFINEPROPERTYBYNAME` | `OwnWrite`: string pool name, receiver register, accumulator value; both call `DefineField` | Fresh-object definitions or proved static initializer on fresh class |
 | `CALLRUNTIME_DEFINEFIELDBYVALUE` | `DefineFieldByValue`: key/object registers, accumulator value; calls `DefineField`, preserves accumulator | Static initializer only when receiver is its own class and key is a proved string or nonnegative integer constant |
 | `CALLRUNTIME_DEFINEFIELDBYINDEX` | `DefineFieldByIndex`: unsigned 32-bit key, object register, accumulator value; calls `DefineField`, preserves accumulator | Static initializer on its own class; index rendered as a decimal computed property name |
-| `DEFINEGETTERSETTERBYVALUE` | `DefineAccessor`: object/key/getter/setter registers, accumulator enumerable flag; replaces accumulator with runtime result | Native get/set body emitter and descriptor oracle exist; record-level creation-chain provenance and integration remain unfinished |
+| `DEFINEGETTERSETTERBYVALUE` | `DefineAccessor`: object/key/getter/setter registers, accumulator enumerable flag; replaces accumulator with runtime result | Native get/set output for a fresh unescaped class/prototype, constant string key, one getter or setter method, false flag and proved v7 target/ABI/body |
 | `CALLRUNTIME_DEFINEPRIVATEPROPERTY` | `DefinePrivateProperty`: lexical level/slot, object register, accumulator value; preserves accumulator | Not yet emitted: must resolve private name and brand from lexical environment |
 | `CALLRUNTIME_DEFINESENDABLECLASS` | `DefineSendableClass`: constructor/literal/length/parent; creates a shared class | Not emitted as ordinary JS class; shared-function identity and runtime restrictions are observable |
 | `DEPRECATED_DEFINECLASSWITHBUFFER` | `DefineLegacyClass`: constructor, encoded literal, length, lexical environment and parent registers; runtime uses constructor slot + 1 as literal | Not yet emitted: explicit legacy profile and lexical-environment proof required |
@@ -37,16 +37,22 @@ keys, side effects, exceptions, and control flow are rejected. The real
 forms have a dedicated bytecode recovery test but need a record-level source
 oracle.
 
-`WriteClassMethod` can now emit native getter/setter syntax when the caller
-proves method kind and placement and the function ABI slot is unobservable.
+`WriteClassMethod` emits native getter/setter syntax when the caller proves
+method kind and placement and the function ABI slot is unobservable.
 Its register-window proof permits dead copies of the function slot in linear
 time and memory. A Node oracle checks getter/setter names, lengths,
-nonconstructibility, descriptors and calls. This is a reusable primitive, not
-yet an admission rule for post-class `DEFINEMETHOD` and
-`DEFINEGETTERSETTERBYVALUE` sequences in a record.
+nonconstructibility, descriptors and calls. The record writer now tracks fresh
+class/prototype identity, method creation, string keys and the false
+enumerability flag through each `DEFINEGETTERSETTERBYVALUE`. A synthetic ABC
+record validates the full bytecode-to-ESM chain and its negative kind path.
+Class-buffer members or constant static fields combined with these later
+accessors remain conservatively rejected until definition order is proved.
+The Immersive corpus still has 3/45 executable records: the UI entries with
+accessors fail earlier at global/branch prelude instructions, so the synthetic
+oracle is not evidence of full real-app source coverage.
 
-Next source work: prove getter/setter object and callable identity; recover
-private lexical names/brands; represent sendable classes without falsely
+Next source work: handle the real UI record preludes and mixed class-member
+ordering; recover private lexical names/brands; represent sendable classes without falsely
 lowering to ordinary JS; add historical execution profiles and a record-level
 computed-key execution oracle. Corpus coverage must report these as semantic
 refusals until those proofs and tests exist.

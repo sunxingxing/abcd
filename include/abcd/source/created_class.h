@@ -1,5 +1,7 @@
 #ifndef ABCD_SOURCE_CREATED_CLASS_H_
 #define ABCD_SOURCE_CREATED_CLASS_H_
+#include <span>
+
 #include "abcd/abc/class_buffer.h"
 #include "abcd/analysis/class_heritage.h"
 #include "abcd/analysis/method_roles.h"
@@ -7,6 +9,13 @@
 #include "abcd/source/static_fields.h"
 
 namespace abcd::source {
+struct ClassAccessor {
+  std::u16string key;
+  abc::MethodPosition method;
+  abc::ClassPlacement placement;
+  abc::ClassMethodKind kind;
+  std::uint16_t length = 0;
+};
 enum class CreatedClassError {
   kHeritage,
   kMembers,
@@ -15,7 +24,9 @@ enum class CreatedClassError {
   kResourceLimit,
   kModuleOwner,
   kStaticFieldOrder,
-  kStaticFieldValue
+  kStaticFieldValue,
+  kAccessorOrder,
+  kAccessorTarget
 };
 using CreatedClassResult =
     std::variant<std::size_t, CreatedClassError, FunctionEmitError, EmitError,
@@ -56,6 +67,7 @@ using CreatedClassResult =
     const analysis::MethodRoleIndex* roles = nullptr,
     const abc::ModuleInfo* module = nullptr,
     const GlobalScope* enclosing_scope = nullptr,
-    const StaticFields* static_fields = nullptr);
+    const StaticFields* static_fields = nullptr,
+    std::span<const ClassAccessor> accessors = {});
 }  // namespace abcd::source
 #endif

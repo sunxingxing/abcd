@@ -389,7 +389,17 @@ if(BUILD_TESTING)
     tests/unit/source/record_function_test.cc)
   target_link_libraries(record_function_test PRIVATE abcd_source)
   add_test(NAME record_function_test COMMAND record_function_test)
+  add_executable(record_accessor_test
+    tests/unit/source/record_accessor_test.cc)
+  target_link_libraries(record_accessor_test PRIVATE abcd_source)
+  add_test(NAME record_accessor_test COMMAND record_accessor_test)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME record_accessor_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:record_accessor_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_accessor.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=record-accessor.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME record_function_js_test COMMAND ${CMAKE_COMMAND}
       "-DABCD_FIXTURE=$<TARGET_FILE:record_function_test>"
       "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"

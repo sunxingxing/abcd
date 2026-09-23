@@ -60,8 +60,9 @@ object literals, or otherwise establish the effective kind; checking only this
 class's buffer is insufficient. The primitive does not itself establish that
 proof. Its integration is described below.
 
-Body home-object operations, unresolved captures, async/generator/accessor
-semantics and complex formals remain unsupported. Runtime method name must
+Body home-object operations, unresolved captures, async/generator semantics
+and complex formals remain unsupported in this ordinary-member path. Native
+accessor admission is described below. Runtime method name must
 equal the supplied property key; descriptor/reserved-property compatibility is
 also a class integration obligation. UTF-16 keys are source-escaped, not used
 as semantic dispatch strings. Semantic and configured-budget rejection leaves
@@ -118,7 +119,8 @@ method exactly once, before the class escapes. Bodies initialize their function
 register from those bindings, never from a mutable member lookup. Generated
 binding names avoid the inner class name. No method can run during capture:
 keys are constants, heritage is absent and accessors/static initializers are
-not admitted. Empty class output retains its existing direct expression form.
+not admitted alongside these buffer members. Empty class output retains its
+existing direct expression form.
 
 Whole-class dry emission validates constructor, every method, captures and
 total output limit before the real stream receives any bytes. IO/file mutation
@@ -144,3 +146,22 @@ four ordered constructor assignments and branching `getValue` method. These
 are class expressions, not complete modules or inferred source field
 declarations; inherited setters remain observable and the assignments must
 stay in the constructor body.
+
+## Post-Class Accessors
+
+The record writer can now consume a `DEFINEMETHOD` result exactly once through
+`DEFINEGETTERSETTERBYVALUE` when its home object and destination are the same
+fresh unescaped class or prototype. It preserves the method pool target,
+length, constant key, and false enumerable flag. The pinned v7 runtime marks
+the method as getter/setter and sets enumerable=false for class receivers;
+native computed get/set syntax reproduces those descriptors and function
+names. The class is emitted only after the accessor sequence is proved.
+
+Accessor bodies must not observe their own function ABI slot; dead compiler
+copies are permitted through a linear register-window proof. Reusing a target
+method, duplicate accessor kind/key, unsupported body, foreign owner,
+non-NONE initial kind, sendable target, malformed key, mixed class-buffer
+members, mixed static-field definitions, or class escape rejects the complete
+record source. A synthetic ABC and Node oracle cover a getter/setter pair;
+real UI entries are still blocked by earlier unsupported global/control-flow
+operations.

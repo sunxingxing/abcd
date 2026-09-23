@@ -2,6 +2,8 @@
 
 #include <new>
 #include <ostream>
+#include <algorithm>
+#include <tuple>
 #include <type_traits>
 #include <vector>
 
@@ -30,6 +32,56 @@ abc::ClassBuffer ReadMembers(const corpus::AbcFile& file,
   return TakeClassValue<abc::ClassBuffer>(abc::DecodeClassBuffer(raw, {bytes}));
 }
 
+void CheckAccessors(const abc::Header& header,
+                    const abc::MetadataIndex& index,
+                    const analysis::MethodRoleIndex* roles,
+                    abc::EntityOffset owner,
+                    std::span<const ClassAccessor> accessors,
+                    std::size_t& bytes) {
+  using Key = std::tuple<abc::ClassPlacement, std::u16string_view,
+                         abc::ClassMethodKind>;
+  if (!accessors.empty() && header.profile != abc::ProfileId::kDynamic1301)
+    throw ClassFailure{CreatedClassError::kAccessorTarget};
+  AdmitClassBytes(accessors.size(), sizeof(Key), bytes);
+  AdmitClassBytes(accessors.size(), sizeof(abc::MethodPosition), bytes);
+  std::vector<Key> keys;
+  std::vector<abc::MethodPosition> methods;
+  keys.reserve(accessors.size());
+  methods.reserve(accessors.size());
+  AdmitClassBytes(keys.capacity() - accessors.size(), sizeof(Key), bytes);
+  AdmitClassBytes(methods.capacity() - accessors.size(),
+                  sizeof(abc::MethodPosition), bytes);
+  for (const auto& accessor : accessors) {
+    if (accessor.method.value >= index.methods.size() || !roles ||
+        roles->At(accessor.method) != analysis::MethodRole::kUnseen ||
+        (accessor.kind != abc::ClassMethodKind::kGetter &&
+         accessor.kind != abc::ClassMethodKind::kSetter) ||
+        accessor.length !=
+            (accessor.kind == abc::ClassMethodKind::kGetter ? 0 : 1) ||
+        (accessor.placement == abc::ClassPlacement::kStatic &&
+         accessor.key == u"prototype"))
+      throw ClassFailure{CreatedClassError::kAccessorTarget};
+    const auto& method = index.methods[accessor.method.value];
+    if (method.owner_offset != owner || !method.code)
+      throw ClassFailure{CreatedClassError::kAccessorTarget};
+    const auto attributes = TakeClassValue<abc::MethodAttributes>(
+        abc::DecodeMethodAttributes(method.access_flags, header.profile));
+    if (attributes.sendable || attributes.kind != abc::FunctionKind::kNone)
+      throw ClassFailure{CreatedClassError::kAccessorTarget};
+    const auto name = RuntimeName(method);
+    if (!name || name->size() != accessor.key.size() ||
+        !std::equal(name->begin(), name->end(), accessor.key.begin()))
+      throw ClassFailure{CreatedClassError::kAccessorTarget};
+    keys.emplace_back(accessor.placement, accessor.key, accessor.kind);
+    methods.push_back(accessor.method);
+  }
+  std::sort(keys.begin(), keys.end());
+  std::sort(methods.begin(), methods.end());
+  if (std::adjacent_find(keys.begin(), keys.end()) != keys.end() ||
+      std::adjacent_find(methods.begin(), methods.end()) != methods.end())
+    throw ClassFailure{CreatedClassError::kAccessorTarget};
+}
+
 class ClassWriter {
  public:
   ClassWriter(const corpus::AbcFile& file, const abc::Header& header,
@@ -38,6 +90,7 @@ class ClassWriter {
               const abc::ModuleInfo* module, abc::EntityOffset owner,
               const GlobalScope* enclosing_scope,
               const StaticFields* static_fields,
+              std::span<const ClassAccessor> accessors,
               std::ostream& output,
               LocalLexicalBudget budget, abc::StringBudget strings)
       : file_(file),
@@ -49,6 +102,7 @@ class ClassWriter {
         owner_(owner),
         enclosing_scope_(enclosing_scope),
         static_fields_(static_fields),
+        accessors_(accessors),
         output_(output),
         budget_(budget),
         strings_(strings) {}
@@ -65,6 +119,10 @@ class ClassWriter {
     for (std::size_t i = 0; i < members.properties.size(); ++i) {
       Text("\n");
       Member(members.properties[i], SelfName(i, name), name);
+    }
+    for (const auto& accessor : accessors_) {
+      Text("\n");
+      Accessor(accessor, name);
     }
     if (static_fields_)
       for (const auto& field : static_fields_->fields) {
@@ -247,6 +305,29 @@ class ClassWriter {
                                    &constants, &lookup_);
          });
   }
+  void Accessor(const ClassAccessor& accessor, std::string_view class_name) {
+    const auto& target = index_.methods[accessor.method.value];
+    const auto attributes = TakeClassValue<abc::MethodAttributes>(
+        abc::DecodeMethodAttributes(target.access_flags, header_.profile));
+    auto budget = budget_;
+    AdmitClassBytes(accessor.key.capacity(), sizeof(char16_t), budget.bytes);
+    Body(target, budget, class_name,
+         [&](const abc::FrameLayout& frame, const abc::MethodBody& body,
+             LocalLexicalBudget remaining, const MethodConstants& constants) {
+           const ClassMethod method{{target.offset, accessor.kind,
+                                     accessor.length},
+                                    attributes,
+                                    frame,
+                                    accessor.placement,
+                                    accessor.key,
+                                    "AccessorSelf",
+                                    accessor.kind == abc::ClassMethodKind::kGetter
+                                        ? EffectiveMethodKind::kGetter
+                                        : EffectiveMethodKind::kSetter};
+           return WriteClassMethod(method, body, output_, remaining,
+                                   &constants, &lookup_);
+         });
+  }
   const corpus::AbcFile& file_;
   const abc::Header& header_;
   const abc::MetadataIndex& index_;
@@ -256,6 +337,7 @@ class ClassWriter {
   abc::EntityOffset owner_;
   const GlobalScope* enclosing_scope_;
   const StaticFields* static_fields_;
+  std::span<const ClassAccessor> accessors_;
   std::ostream& output_;
   LocalLexicalBudget budget_;
   abc::StringBudget strings_;
@@ -270,7 +352,8 @@ CreatedClassResult WriteCreatedClass(
     LocalLexicalBudget budget, abc::StringBudget strings,
     const analysis::MethodRoleIndex* roles, const abc::ModuleInfo* module,
     const GlobalScope* enclosing_scope,
-    const StaticFields* static_fields) {
+    const StaticFields* static_fields,
+    std::span<const ClassAccessor> accessors) {
   try {
     if (heritage.pc != instruction.offset ||
         heritage.kind != analysis::HeritageKind::kAbsent)
@@ -291,6 +374,10 @@ CreatedClassResult WriteCreatedClass(
     if (static_fields && !static_fields->fields.empty() &&
         !members.properties.empty())
       return CreatedClassError::kStaticFieldOrder;
+    if (!accessors.empty() &&
+        (!members.properties.empty() ||
+         (static_fields && !static_fields->fields.empty())))
+      return CreatedClassError::kAccessorOrder;
     AdmitClassBytes(members.properties.capacity(), sizeof(abc::ClassProperty),
                     budget.bytes);
     CheckClassMembers(file, header, index, lookup, members, roles, budget.bytes,
@@ -298,19 +385,21 @@ CreatedClassResult WriteCreatedClass(
     const auto name = RuntimeName(index.methods[target.position.value]);
     if (!name) return CreatedClassError::kName;
     abc::EntityOffset caller_owner{};
-    if (module) {
+    if (module || !accessors.empty()) {
       const auto caller_position = lookup.Find(caller);
       if (!caller_position) return abc::MethodTargetError::kCallerMissing;
       caller_owner = index.methods[caller_position->value].owner_offset;
     }
+    CheckAccessors(header, index, roles, caller_owner, accessors,
+                   budget.bytes);
     CaptureDiscard discard;
     std::ostream dry(&discard);
     ClassWriter(file, header, index, lookup, roles, module, caller_owner,
-                enclosing_scope, static_fields, dry,
+                enclosing_scope, static_fields, accessors, dry,
                 budget, strings)
         .Write(creation, target, members, *name);
     return ClassWriter(file, header, index, lookup, roles, module, caller_owner,
-                       enclosing_scope, static_fields,
+                       enclosing_scope, static_fields, accessors,
                        output, budget, strings)
         .Write(creation, target, members, *name);
   } catch (const ClassFailure& failure) {
