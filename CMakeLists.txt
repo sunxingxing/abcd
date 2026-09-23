@@ -741,6 +741,17 @@ if(BUILD_TESTING)
         -DABCD_BACKUP_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/entry_backup_ability.mjs
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/structure_source_cli.cmake)
     endif()
+    if(ABCD_NODE_EXECUTABLE AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")
+      add_test(NAME historical_record_source_test COMMAND ${CMAKE_COMMAND}
+        -DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>
+        -DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc
+        -DABCD_UNSUPPORTED_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc
+        -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+        -DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/historical_common_constants.mjs
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/historical_record_source.cmake)
+    endif()
     add_test(NAME creations_cli_test COMMAND ${CMAKE_COMMAND}
       -DABCD_SCAN=$<TARGET_FILE:abc_scan>
       -DABCD_CREATIONS=$<TARGET_FILE:abc_creations>

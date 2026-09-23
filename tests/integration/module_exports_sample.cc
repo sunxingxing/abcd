@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
     Check(text.str().empty());
   };
   auto wrong_profile = header;
-  wrong_profile.profile = abc::ProfileId::kDynamic1206;
+  wrong_profile.profile = abc::ProfileId::kDynamic1202;
   rejected(wrong_profile, *found, *module, {},
            source::RecordProgramError::kProfile);
   auto missing_entry = *found;

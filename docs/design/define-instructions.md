@@ -55,8 +55,11 @@ oracle in `record_object_test` / `record_object.mjs`.
 The same bounded constant-only initializer reader now admits dynamic 12.0.6.
 The paired pasteboard `CommonConstants` ABC test resolves its initializer
 through the actual creation pool and verifies all three field names and
-values. This does not yet admit a 12.0.6 record to executable-source export:
-entry, class and method semantics still require profile-specific review.
+values. The record interpreter now admits dynamic 12.0.6, while every entry,
+class and method still undergoes its ordinary semantic proof. The paired
+pasteboard record `CommonConstants` produces executable ESM checked by Node;
+other 12.0.6 records can and do refuse source output. Dynamic 12.0.2 remains
+unadmitted.
 
 `WriteClassMethod` emits native getter/setter syntax when the caller proves
 method kind and placement and the function ABI slot is unobservable.
@@ -84,5 +87,5 @@ effects are refused rather than converted from printed source.
 Next source work: handle the real UI record preludes and static-field/accessor
 ordering; recover private lexical names/brands; represent sendable classes
 without falsely lowering to ordinary JS; and add historical execution
-profiles. Corpus coverage must report these as semantic refusals until those
-proofs and tests exist.
+profiles for the remaining historical versions. Corpus coverage must report
+these as semantic refusals until those proofs and tests exist.

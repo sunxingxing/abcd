@@ -929,6 +929,22 @@ class ProgramWriter {
 };
 }  // namespace
 
+bool SupportsRecordProgramProfile(abc::ProfileId profile) {
+  switch (profile) {
+    case abc::ProfileId::kDynamic1206:
+    case abc::ProfileId::kDynamic1301:
+      return true;
+    case abc::ProfileId::kDynamic9:
+    case abc::ProfileId::kDynamic1102:
+    case abc::ProfileId::kDynamic1202:
+    case abc::ProfileId::kDynamic2400:
+    case abc::ProfileId::kStatic0107:
+    case abc::ProfileId::kUnknown:
+      return false;
+  }
+  return false;
+}
+
 RecordProgramResult WriteRecordProgram(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
@@ -936,7 +952,7 @@ RecordProgramResult WriteRecordProgram(
     const analysis::MethodRoleIndex& roles, std::ostream& output,
     RecordProgramBudget budget) {
   if (header.kind != abc::AbcKind::kDynamic ||
-      header.profile != abc::ProfileId::kDynamic1301)
+      !SupportsRecordProgramProfile(header.profile))
     return Fail(Error::kProfile);
   if (record.first_method > index.methods.size() ||
       record.method_count > index.methods.size() - record.first_method)

@@ -125,7 +125,7 @@ int Export(const std::filesystem::path& input,
   const auto* packaging = std::get_if<abc::FilePackaging>(&packed);
   if (!packaging) return Fail(ExportError::kPackaging);
   std::optional<analysis::MethodRoleIndex> roles;
-  if (emit_source && header->profile == abc::ProfileId::kDynamic1301) {
+  if (emit_source && source::SupportsRecordProgramProfile(header->profile)) {
     auto built =
         analysis::MethodRoleIndex::Build(file, *header, *index, *lookup);
     if (auto* ready = std::get_if<analysis::MethodRoleIndex>(&built))

@@ -39,11 +39,15 @@ struct RecordProgramBudget {
 using RecordProgramResult =
     std::variant<std::size_t, RecordProgramFailure>;
 
+// Admission to the record-source interpreter, not blanket source admission
+// for every instruction or method in either profile.
+[[nodiscard]] bool SupportsRecordProgramProfile(abc::ProfileId profile);
+
 // Emits one complete ESM record only when every entry instruction and all
 // transitively created class bodies pass source admission. The caller supplies
 // an unchanged merged-module record, its own module table and whole-file role
-// index. Current semantic profile is pinned v7 dynamic 13.0.1.0; older ABC
-// containers remain parseable but require separate execution proofs here.
+// index. Dynamic 12.0.6 and 13.0.1.0 use separately admitted semantics;
+// other historical ABC containers remain parseable but not source-admitted.
 // Semantic/budget refusal writes nothing. IO/file mutation during the second
 // pass can leave a prefix; publish only through a staged atomic file.
 [[nodiscard]] RecordProgramResult WriteRecordProgram(
