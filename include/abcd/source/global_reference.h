@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_GLOBAL_REFERENCE_H_
 #define ABCD_SOURCE_GLOBAL_REFERENCE_H_
 
+#include <cstddef>
 #include <span>
 #include <string_view>
 
@@ -16,6 +17,9 @@ struct GlobalScope {
   std::string_view self_binding{};
   // Source formal names, sorted by byte name for O(log P) collision checks.
   std::span<const std::string_view> parameter_bindings{};
+  // Caller-proven same-record $local slots that will be declared by
+  // STMODULEVAR. Zero forbids local module reads in detached method source.
+  std::size_t module_slots = 0;
 };
 
 // A free identifier reaches the v7 global record/object only if the generated

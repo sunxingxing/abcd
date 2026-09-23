@@ -46,10 +46,13 @@ struct CapturedStore {
 struct ExternalImport {
   ModuleSlot slot;
 };
+struct LocalModuleLoad {
+  ModuleSlot slot;
+};
 using LinearStatement =
     std::variant<KeepInstruction, OmitInstruction, LocalLoad, LocalStore,
                  LocalFunction, CapturedLoad, CapturedStore, NamedInvocation,
-                 ExternalImport>;
+                 ExternalImport, LocalModuleLoad>;
 enum class LinearLexicalError {
   kExceptionRegions,
   kControlFlow,
@@ -91,7 +94,7 @@ class LinearLexicals {
       std::span<const ClosureCreation> creations = {},
       CapturedValues captured_values = CapturedValues::kReject,
       std::span<const std::uint8_t> named_scopes = {},
-      std::span<const std::uint8_t> guarded_imports = {},
+      std::span<const std::uint8_t> guarded_module_loads = {},
       std::optional<TailNamedInvocation> tail_call = {});
   std::span<const LinearStatement> Statements() const {
     return {statements_.get(), statements_ ? statement_count_ : 0};

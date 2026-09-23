@@ -23,7 +23,7 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
     std::span<const ClosureCreation> creations,
     CapturedValues captured_values,
     std::span<const std::uint8_t> named_scopes,
-    std::span<const std::uint8_t> guarded_imports,
+    std::span<const std::uint8_t> guarded_module_loads,
     std::optional<TailNamedInvocation> tail_call) {
   using Error = LinearLexicalError;
   abc::CodeOffset offset{};
@@ -213,12 +213,13 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
       }
       const auto module = LiftModuleLoad(instruction);
       if (const auto* load = std::get_if<ModuleLoad>(&module)) {
-        if (load->space != ModuleSpace::kExternal ||
-            guarded_imports.size() != body.instructions.size() ||
-            !guarded_imports[i])
+        if (guarded_module_loads.size() != body.instructions.size() ||
+            !guarded_module_loads[i])
           return fail(Error::kInstruction);
         accumulator = ValueKinds::Language();
-        statement = ExternalImport{load->slot};
+        statement = load->space == ModuleSpace::kExternal
+                        ? LinearStatement{ExternalImport{load->slot}}
+                        : LinearStatement{LocalModuleLoad{load->slot}};
         continue;
       }
       const auto global = LiftGlobalAccess(instruction);

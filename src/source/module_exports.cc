@@ -11,6 +11,7 @@
 #include <streambuf>
 
 #include "abcd/source/string_literal.h"
+#include "module_binding_name.h"
 
 namespace abcd::source {
 namespace {
@@ -140,7 +141,7 @@ std::variant<std::size_t, ModuleExportError> ModuleExports::WriteAliasesPass(
   };
   try {
     for (const auto& alias : aliases_) {
-      if (!text("export { $local"))
+      if (!text("export { ") || !text(kLocalModulePrefix))
         return output ? ModuleExportError::kOutputLimit
                       : ModuleExportError::kWrite;
       std::array<char, std::numeric_limits<std::uint16_t>::digits10 + 2>
@@ -179,7 +180,7 @@ std::variant<std::size_t, ModuleExportError> ModuleExports::WriteStore(
   if (encoded.ec != std::errc{}) return ModuleExportError::kResourceLimit;
   const std::string_view ordinal{
       digits.data(), static_cast<std::size_t>(encoded.ptr - digits.data())};
-  constexpr std::string_view kName = "$local";
+  constexpr std::string_view kName = kLocalModulePrefix;
   constexpr std::string_view kValue = " = $acc;\n";
   const bool first = !initialized_[store.slot.value];
   constexpr std::string_view kDeclaration = "let ";

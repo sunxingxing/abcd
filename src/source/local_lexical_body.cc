@@ -13,6 +13,7 @@
 #include "leaf_sources.h"
 #include "linear_instruction.h"
 #include "module_binding.h"
+#include "module_binding_name.h"
 #include "named_scope.h"
 
 namespace abcd::source {
@@ -155,6 +156,13 @@ class LexicalWriter {
           Text(kImportPrefix);
           Number(load->slot.value);
           Text(";\n");
+        } else if (const auto* load =
+                       std::get_if<analysis::LocalModuleLoad>(&statement)) {
+          Slot(analysis::Accumulator{});
+          Text(" = ");
+          Text(kLocalModulePrefix);
+          Number(load->slot.value);
+          Text(";\n");
         }
       }
       if (error_) return *error_;
@@ -248,12 +256,14 @@ LocalLexicalResult WriteLexicals(const abc::MethodBody& body, ScalarNames names,
   };
   if (names.accumulator.starts_with(kCellPrefix) ||
       names.accumulator.starts_with(kInnerPrefix) ||
-      names.accumulator.starts_with(kImportPrefix))
+      names.accumulator.starts_with(kImportPrefix) ||
+      names.accumulator.starts_with(kLocalModulePrefix))
     return BodyEmitFailure{
         BodyEmitError::kExpression, {}, {}, EmitError::kInvalidBinding};
   for (const auto name : names.registers)
     if (name.starts_with(kCellPrefix) || name.starts_with(kInnerPrefix) ||
-        name.starts_with(kImportPrefix))
+        name.starts_with(kImportPrefix) ||
+        name.starts_with(kLocalModulePrefix))
       return BodyEmitFailure{
           BodyEmitError::kExpression, {}, {}, EmitError::kInvalidBinding};
   try {
@@ -267,13 +277,13 @@ LocalLexicalResult WriteLexicals(const abc::MethodBody& body, ScalarNames names,
       return *failure;
     const auto& named_scopes = std::get<NamedScopes>(validated);
     budget.bytes -= named_scopes.AllocatedBytes();
-    const auto imports = ValidateGuardedImports(
+    const auto module_loads = ValidateGuardedModuleLoads(
         body, constants, budget.bytes,
         budget.work - named_scopes.work_units);
-    if (const auto* failure = std::get_if<BodyEmitFailure>(&imports))
+    if (const auto* failure = std::get_if<BodyEmitFailure>(&module_loads))
       return *failure;
-    const auto& guarded_imports = std::get<GuardedImports>(imports);
-    budget.bytes -= guarded_imports.AllocatedBytes();
+    const auto& guarded_loads = std::get<GuardedModuleLoads>(module_loads);
+    budget.bytes -= guarded_loads.AllocatedBytes();
     const auto built = analysis::BuildNormalFlow(body, {budget.bytes});
     if (const auto* failure = std::get_if<analysis::FlowFailure>(&built))
       return *failure;
@@ -303,13 +313,13 @@ LocalLexicalResult WriteLexicals(const abc::MethodBody& body, ScalarNames names,
       creations = functions->Facts();
     }
     analysis::IdfQuota quota{budget.work - named_scopes.work_units -
-                             guarded_imports.work_units};
+                             guarded_loads.work_units};
     const auto tail_call = analysis::MatchTailNamedInvocation(
         body, names.registers.size());
     const auto planned = analysis::LinearLexicals::Build(
         body, environments, names.registers.size(), quota, {budget.bytes},
         creations, captured_values, named_scopes.admitted,
-        guarded_imports.admitted, tail_call);
+        guarded_loads.admitted, tail_call);
     if (const auto* failure =
             std::get_if<analysis::LinearLexicalFailure>(&planned))
       return *failure;

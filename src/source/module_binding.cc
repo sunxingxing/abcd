@@ -14,19 +14,17 @@ BodyEmitFailure Fail(BodyEmitError kind, abc::CodeOffset offset = {}) {
 }
 }  // namespace
 
-std::variant<GuardedImports, BodyEmitFailure> ValidateGuardedImports(
+std::variant<GuardedModuleLoads, BodyEmitFailure> ValidateGuardedModuleLoads(
     const abc::MethodBody& body, const MethodConstants* constants,
     std::size_t bytes, std::uint64_t work_limit) {
   try {
-    bool has_external = false;
+    bool has_load = false;
     for (const auto& instruction : body.instructions) {
       const auto load = analysis::LiftModuleLoad(instruction.decoded);
-      const auto* module = std::get_if<analysis::ModuleLoad>(&load);
-      has_external |= module &&
-                      module->space == analysis::ModuleSpace::kExternal;
+      has_load |= std::holds_alternative<analysis::ModuleLoad>(load);
     }
-    GuardedImports result;
-    if (!has_external) return result;
+    GuardedModuleLoads result;
+    if (!has_load) return result;
     if (!constants || !constants->module)
       return Fail(BodyEmitError::kMissingModule);
     const auto& module = *constants->module;
@@ -43,19 +41,26 @@ std::variant<GuardedImports, BodyEmitFailure> ValidateGuardedImports(
     result.admitted.resize(body.instructions.size());
     for (std::size_t i = 0; i < body.instructions.size(); ++i) {
       const auto load = analysis::LiftModuleLoad(body.instructions[i].decoded);
-      const auto* external = std::get_if<analysis::ModuleLoad>(&load);
-      if (!external || external->space != analysis::ModuleSpace::kExternal)
-        continue;
+      const auto* loaded = std::get_if<analysis::ModuleLoad>(&load);
+      if (!loaded) continue;
       const auto offset = body.instructions[i].offset;
-      if (external->slot.value >= slots)
+      if (loaded->space == analysis::ModuleSpace::kExternal) {
+        if (loaded->slot.value >= slots)
+          return Fail(BodyEmitError::kModuleBinding, offset);
+        const auto request = loaded->slot.value < module.imports.size()
+                                 ? module.imports[loaded->slot.value].request
+                                 : module.namespace_imports[loaded->slot.value -
+                                                            module.imports.size()]
+                                       .request;
+        if (request.value >= module.requests.size())
+          return Fail(BodyEmitError::kModuleBinding, offset);
+      } else if (!constants->global_scope ||
+                 loaded->slot.value >=
+                     constants->global_scope->module_slots ||
+                 loaded->slot.value >= module.local_exports.size()) {
         return Fail(BodyEmitError::kModuleBinding, offset);
-      const auto request = external->slot.value < module.imports.size()
-                               ? module.imports[external->slot.value].request
-                               : module.namespace_imports[external->slot.value -
-                                                          module.imports.size()]
-                                     .request;
-      if (request.value >= module.requests.size() ||
-          i + 1 >= body.instructions.size())
+      }
+      if (i + 1 >= body.instructions.size())
         return Fail(BodyEmitError::kModuleBinding, offset);
       const auto checked = analysis::LiftHoleInstruction(
           body.instructions[i + 1].decoded, 0);

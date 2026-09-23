@@ -678,7 +678,8 @@ class ProgramWriter {
     LocalLexicalBudget child;
     child.bytes = budget_.bytes;
     child.output.bytes = Remaining();
-    const GlobalScope scope{{}, {}};
+    GlobalScope scope{};
+    scope.module_slots = exports_.slot_count();
     const auto result = WriteCreatedClass(
         file_, header_, index_, lookup_, entry_.offset, *classes_[id].site,
         {classes_[id].site->offset,
@@ -702,7 +703,8 @@ class ProgramWriter {
     LocalLexicalBudget child;
     child.bytes = budget_.bytes;
     child.output.bytes = Remaining();
-    const GlobalScope scope{{}, {}};
+    GlobalScope scope{};
+    scope.module_slots = exports_.slot_count();
     const auto result = WriteCreatedFunction(
         file_, header_, index_, lookup_, entry_.offset, instruction.decoded,
         output_, child, budget_.strings, &module_, &roles_, &scope);
