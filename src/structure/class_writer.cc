@@ -5,14 +5,17 @@
 #include "abcd/abc/method_target.h"
 #include "abcd/analysis/class_creation.h"
 #include "abcd/analysis/class_heritage.h"
+#include "abcd/analysis/define_instruction.h"
 #include "record_text.h"
 
 namespace abcd::structure {
 namespace {
+enum class ClassProfileError { kUnsupportedSemanticProfile };
 using SiteError =
     std::variant<analysis::CreationError, abc::MetadataError,
                  abc::MethodTargetError, abc::MethodAttributeError,
-                 abc::LiteralFailure, abc::ClassBufferError>;
+                 abc::LiteralFailure, abc::ClassBufferError,
+                 analysis::DefineError, ClassProfileError>;
 struct SiteFailure {
   SiteError error;
 };
@@ -33,6 +36,8 @@ const char* Domain(abc::MethodTargetError) { return "method_target"; }
 const char* Domain(abc::MethodAttributeError) { return "method_attribute"; }
 const char* Domain(abc::LiteralFailure) { return "literal"; }
 const char* Domain(abc::ClassBufferError) { return "class_buffer"; }
+const char* Domain(analysis::DefineError) { return "define"; }
+const char* Domain(ClassProfileError) { return "class_profile"; }
 void Error(std::ostream& out, const SiteFailure& failure) {
   std::visit(
       [&](const auto& error) {
@@ -162,6 +167,64 @@ void Class(const RecordText& text, const abc::MetadataIndex& index,
   }
   out << ']';
 }
+void IncompleteClass(const RecordText& text, const abc::MetadataIndex& index,
+                     const abc::MethodLookup& lookup,
+                     const abc::MethodInfo& caller,
+                     const abc::DecodedInstruction& instruction,
+                     std::ostream& out, const abc::FrameLayout* frame) {
+  if (text.header.profile != abc::ProfileId::kDynamic1301)
+    throw SiteFailure{ClassProfileError::kUnsupportedSemanticProfile};
+  const auto lifted = analysis::LiftDefineInstruction(
+      instruction, frame ? frame->registers : UINT64_MAX);
+  abc::PoolIndex constructor_pool;
+  abc::PoolIndex literal_pool;
+  std::uint16_t length;
+  abc::RegisterId parent;
+  if (const auto* sendable =
+          std::get_if<analysis::DefineSendableClass>(&lifted)) {
+    constructor_pool = sendable->constructor;
+    literal_pool = sendable->literal;
+    length = sendable->length;
+    parent = sendable->parent;
+  } else if (const auto* legacy =
+                 std::get_if<analysis::DefineLegacyClass>(&lifted)) {
+    constructor_pool = legacy->constructor;
+    // The pinned legacy handler reads the buffer from constructor slot + 1;
+    // encoded_literal remains evidence, not a replacement pool index.
+    constexpr std::uint32_t kLegacyLiteralSlotOffset = 1;
+    literal_pool = {constructor_pool.value + kLegacyLiteralSlotOffset};
+    length = legacy->length;
+    parent = legacy->parent;
+  } else if (const auto* error = std::get_if<analysis::DefineError>(&lifted)) {
+    throw SiteFailure{*error};
+  } else {
+    throw SiteFailure{analysis::DefineError::kUnsupportedOpcode};
+  }
+  const auto constructor = Take<abc::MethodTarget>(abc::ResolveMethodTarget(
+      text.file, text.header, index, lookup, caller.offset, constructor_pool));
+  const auto buffer = Take<abc::PoolReference>(abc::ResolvePoolReference(
+      text.file, text.header, index, caller.offset, literal_pool,
+      abc::PoolEntityKind::kLiteralArray));
+  if (const auto* sendable =
+          std::get_if<analysis::DefineSendableClass>(&lifted)) {
+    out << "\"form\":\"sendable\",\"reserved_operand\":"
+        << sendable->reserved_operand << ',';
+  } else {
+    const auto& legacy = std::get<analysis::DefineLegacyClass>(lifted);
+    out << "\"form\":\"legacy\",\"encoded_literal\":"
+        << legacy.encoded_literal << ",\"lexical_environment_register\":"
+        << legacy.lexical_environment.value << ',';
+  }
+  out << "\"constructor\":"
+      << index.methods[constructor.position.value].offset.value
+      << ",\"constructor_pool_index\":" << constructor_pool.value
+      << ",\"constructor_length\":" << length
+      << ",\"literal_pool_index\":" << literal_pool.value
+      << ",\"parent_register\":" << parent.value
+      << ",\"buffer\":" << buffer.offset.value
+      << ",\"heritage\":\"unknown\",\"properties\":null"
+      << ",\"source_admission\":false";
+}
 }  // namespace
 
 void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
@@ -210,7 +273,18 @@ void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
     comma = true;
     out << "{\"pc\":" << instruction.offset.value << ',';
     try {
-      Class(text, index, lookup, method, instruction.decoded, out, kind);
+      switch (instruction.decoded.opcode) {
+        case abc::Opcode::
+            kCALLRUNTIME_DEFINESENDABLECLASS_PREF_IMM16_ID16_ID16_IMM16_V8:
+        case abc::Opcode::
+            kDEPRECATED_DEFINECLASSWITHBUFFER_PREF_ID16_IMM16_IMM16_V8_V8:
+          IncompleteClass(text, index, lookup, method, instruction.decoded,
+                          out, frame);
+          break;
+        default:
+          Class(text, index, lookup, method, instruction.decoded, out, kind);
+          break;
+      }
     } catch (const SiteFailure& failure) {
       if (const auto* error = std::get_if<abc::MetadataError>(&failure.error))
         if (*error == abc::MetadataError::kRead ||

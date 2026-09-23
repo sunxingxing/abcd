@@ -16,14 +16,18 @@ format decoding but require a separate execution-semantics proof.
 | `CALLRUNTIME_DEFINEFIELDBYINDEX` | `DefineFieldByIndex`: unsigned 32-bit key, object register, accumulator value; calls `DefineField`, preserves accumulator | Static initializer on its own class, or a fresh unescaped record object; index rendered as a decimal computed property name |
 | `DEFINEGETTERSETTERBYVALUE` | `DefineAccessor`: object/key/getter/setter registers, accumulator enumerable flag; replaces accumulator with runtime result | Native get/set output for a fresh unescaped class/prototype, constant string key, one getter or setter method, false flag and proved v7 target/ABI/body |
 | `CALLRUNTIME_DEFINEPRIVATEPROPERTY` | `DefinePrivateProperty`: lexical level/slot, object register, accumulator value; preserves accumulator | Not yet emitted: must resolve private name and brand from lexical environment |
-| `CALLRUNTIME_DEFINESENDABLECLASS` | `DefineSendableClass`: constructor/literal/length/parent; creates a shared class | Not emitted as ordinary JS class; shared-function identity and runtime restrictions are observable |
-| `DEPRECATED_DEFINECLASSWITHBUFFER` | `DefineLegacyClass`: constructor, encoded literal, length, lexical environment and parent registers; runtime uses constructor slot + 1 as literal | Not yet emitted: explicit legacy profile and lexical-environment proof required |
+| `CALLRUNTIME_DEFINESENDABLECLASS` | `DefineSendableClass`: constructor/literal/length/parent; creates a shared class | v7 structure site retains every operand and resolved constructor/buffer references with `properties: null`, `source_admission: false`; shared-function identity and runtime restrictions prevent ordinary JS class output |
+| `DEPRECATED_DEFINECLASSWITHBUFFER` | `DefineLegacyClass`: constructor, encoded literal, length, lexical environment and parent registers; pinned v7 runtime uses constructor slot + 1 as literal | v7 structure site retains encoded literal and derived buffer reference with `properties: null`, `source_admission: false`; source needs lexical-environment proof |
 
 The six final families use `LiftDefineInstruction`. Its returned variant retains
 operands that the pinned handler does not read, for diagnostics and future
 profile comparison. The generated decoder validates wire widths; the lift
 validates operand kinds, ranges, and register bounds. Unsupported or malformed
 instructions never fall through to an assembly/fake-body emitter.
+Historical profiles still decode these encodings, but the v7-only class-site
+interpretation reports `class_profile` instead of applying unproven legacy or
+sendable execution semantics. A synthetic v7 bytecode test checks both site
+shapes and frame bounds; the inspected Immersive sample has neither form.
 
 Static initializer admission is deliberately narrow. `RecoverStaticFields`
 requires a zero-argument v7 method whose straight-line body only constructs

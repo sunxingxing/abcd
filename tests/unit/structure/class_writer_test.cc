@@ -86,7 +86,13 @@ int main() {
     code.insert(code.end() - 1, {kAssignProperty, 0, 3, 0, 0});
     code[2] = 51;
     code.insert(code.begin() + 4, {0x70, 0x61, 0});
-    code[2] = 54;
+    constexpr std::size_t kCodeHeaderBytes = 4;
+    constexpr std::uint16_t kSendableReserved = 0x1234;
+    constexpr std::uint16_t kEncodedLegacyLiteral = 0x5678;
+    code.insert(code.end() - 1,
+                {0xfb, 7, 0x34, 0x12, 0, 0, 2, 0, 0, 0, 0,
+                 0xfc, 0x12, 0, 0, 0x78, 0x56, 0, 0, 0, 0});
+    code[2] = static_cast<std::uint8_t>(code.size() - kCodeHeaderBytes);
     std::copy(code.begin(), code.end(), bytes.begin() + 200);
     char path[] = "/tmp/abcd-class-writer-XXXXXX";
     const auto fd = mkstemp(path);
@@ -104,7 +110,9 @@ int main() {
     abc::MetadataIndex index;
     abc::MethodInfo caller, ctor;
     caller.offset = {96};
-    caller.code = abc::CodeInfo{{200}, {204}, 1, 0, 54, 0};
+    caller.code = abc::CodeInfo{{200}, {204}, 1, 0,
+                              static_cast<std::uint32_t>(code.size() -
+                                                         kCodeHeaderBytes), 0};
     ctor.offset = {100};
     index.methods = {caller, ctor};
     abc::IndexRegion region;
@@ -123,11 +131,48 @@ int main() {
     out << '}';
     const auto json = nlohmann::json::parse(out.str());
     Check(json["known_module"] == true);
-    Check(json["class_sites"].size() == 2);
+    Check(json["class_sites"].size() == 4);
     Check(json["class_sites"][0].contains("error"));
     Check(!json["class_sites"][0].contains("constructor"));
     Check(json["class_sites"][1]["constructor"] == 100);
     Check(json["class_sites"][1]["heritage"] == "absent");
+    Check(json["class_sites"][2]["error"]["domain"] == "class_profile");
+    Check(json["class_sites"][3]["error"]["domain"] == "class_profile");
+    auto v7_header = header;
+    v7_header.profile = abc::ProfileId::kDynamic1301;
+    structure::RecordText v7_text(file, v7_header, {});
+    std::ostringstream v7_out;
+    v7_out << "{\"known_module\":true";
+    structure::WriteClassSites(v7_text, index, lookup, caller, v7_out,
+                               &class_frame);
+    v7_out << '}';
+    const auto v7 = nlohmann::json::parse(v7_out.str());
+    Check(v7["class_sites"][2]["form"] == "sendable");
+    Check(v7["class_sites"][2]["constructor"] == 100);
+    Check(v7["class_sites"][2]["literal_pool_index"] == 2);
+    Check(v7["class_sites"][2]["buffer"] == 160);
+    Check(v7["class_sites"][2]["reserved_operand"] ==
+          kSendableReserved);
+    Check(v7["class_sites"][2]["properties"] == nullptr);
+    Check(v7["class_sites"][2]["source_admission"] == false);
+    Check(v7["class_sites"][3]["form"] == "legacy");
+    Check(v7["class_sites"][3]["constructor"] == 100);
+    Check(v7["class_sites"][3]["encoded_literal"] ==
+          kEncodedLegacyLiteral);
+    Check(v7["class_sites"][3]["literal_pool_index"] == 1);
+    Check(v7["class_sites"][3]["buffer"] == 128);
+    Check(v7["class_sites"][3]["lexical_environment_register"] == 0);
+    Check(v7["class_sites"][3]["properties"] == nullptr);
+    Check(v7["class_sites"][3]["source_admission"] == false);
+    abc::FrameLayout empty_frame;
+    std::ostringstream invalid_out;
+    invalid_out << "{\"known_module\":true";
+    structure::WriteClassSites(v7_text, index, lookup, caller, invalid_out,
+                               &empty_frame);
+    invalid_out << '}';
+    const auto invalid = nlohmann::json::parse(invalid_out.str());
+    Check(invalid["class_sites"][2]["error"]["domain"] == "define");
+    Check(invalid["class_sites"][3]["error"]["domain"] == "define");
     structure::StructureBudget denied;
     denied.heritage_bytes = 0;
     structure::RecordText denied_text(file, header, denied);
