@@ -53,6 +53,7 @@ struct Value {
 };
 struct ClassState {
   const abc::BodyInstruction* site = nullptr;
+  std::optional<ImportedClassParent> parent;
   std::optional<StaticFields> fields;
   std::vector<ClassAccessor> accessors;
   bool emitted = false;
@@ -639,13 +640,21 @@ class ProgramWriter {
   void Class(const abc::BodyInstruction& instruction) {
     const auto lifted = analysis::LiftClassCreation(instruction.decoded);
     const auto* creation = std::get_if<analysis::ClassCreation>(&lifted);
-    if (!creation || creation->parent.value >= registers_.size() ||
-        registers_[creation->parent.value].kind != Value::Kind::kHole)
+    if (!creation || creation->parent.value >= registers_.size())
       throw Fail(Error::kValue, pc_);
-    // Keep the creation site until the fresh class's one proved initializer
-    // has run. Emitting earlier would omit its fields from the class body.
+    const auto parent = registers_[creation->parent.value];
+    std::optional<ImportedClassParent> imported;
+    if (parent.kind == Value::Kind::kImportSnapshot &&
+        parent.ordinal < import_load_count_)
+      imported = ImportedClassParent{parent.ordinal};
+    else if (parent.kind != Value::Kind::kHole)
+      throw Fail(Error::kValue, pc_);
+    // Ordinary classes may have a later proved initializer. An imported
+    // superclass is evaluated at DEFINE time, so emit that narrower class
+    // immediately; any later initializer/accessor is still refused.
     const auto id = classes_.size();
-    Append(classes_, ClassState{&instruction});
+    Append(classes_, ClassState{&instruction, imported});
+    if (imported) EmitClass(id);
     accumulator_ = {Value::Kind::kClass, id};
   }
   void EmitClass(std::size_t id) {
@@ -660,10 +669,12 @@ class ProgramWriter {
     const GlobalScope scope{{}, {}};
     const auto result = WriteCreatedClass(
         file_, header_, index_, lookup_, entry_.offset, *classes_[id].site,
-        {classes_[id].site->offset, analysis::HeritageKind::kAbsent}, output_,
+        {classes_[id].site->offset,
+         classes_[id].parent ? analysis::HeritageKind::kUnknown
+                             : analysis::HeritageKind::kAbsent}, output_,
         child, budget_.strings, &roles_, &module_, &scope,
         classes_[id].fields ? &*classes_[id].fields : nullptr,
-        classes_[id].accessors);
+        classes_[id].accessors, classes_[id].parent);
     if (const auto* size = std::get_if<std::size_t>(&result))
       Account(*size);
     else

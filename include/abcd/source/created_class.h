@@ -1,5 +1,6 @@
 #ifndef ABCD_SOURCE_CREATED_CLASS_H_
 #define ABCD_SOURCE_CREATED_CLASS_H_
+#include <optional>
 #include <span>
 
 #include "abcd/abc/class_buffer.h"
@@ -15,6 +16,9 @@ struct ClassAccessor {
   abc::ClassPlacement placement;
   abc::ClassMethodKind kind;
   std::uint16_t length = 0;
+};
+struct ImportedClassParent {
+  std::size_t snapshot = 0;
 };
 enum class CreatedClassError {
   kHeritage,
@@ -42,12 +46,15 @@ using CreatedClassResult =
 // WriteCreatedFunction. Caller supplies heritage proven from this caller body
 // and matching site; matching PC alone is not provenance authentication.
 // Resolves real constructor, buffer, name, ABI and body. Emits a fresh complete
-// class expression only for proven no-extends classes with supported bodies.
+// class expression for a proven no-extends class, or a pinned v7 imported-base
+// class whose caller owns the import snapshot and whose length-zero constructor
+// passes ProveForwardingDerivedConstructor. This API does not prove parent
+// identity on its own; the record interpreter supplies that provenance.
 // Nonempty buffers require a whole-file role index from the same immutable
 // context, ordinary methods, matching runtime names, and nonreserved unique
 // keys per placement. Unsupported members reject the entire class.
 // Parent/control flow and later field/member assignments remain caller work.
-// Outer captures and derived constructors are not supported. Internal class
+// Other derived constructors and outer captures are not supported. Internal class
 // name supplies an immutable self binding without consulting mutable exports.
 // Retained target/buffer and scratch share budget.bytes; input indexes, strings
 // and output are separately admitted. Preflight rejects semantic/budget errors
@@ -68,6 +75,7 @@ using CreatedClassResult =
     const abc::ModuleInfo* module = nullptr,
     const GlobalScope* enclosing_scope = nullptr,
     const StaticFields* static_fields = nullptr,
-    std::span<const ClassAccessor> accessors = {});
+    std::span<const ClassAccessor> accessors = {},
+    std::optional<ImportedClassParent> parent = {});
 }  // namespace abcd::source
 #endif

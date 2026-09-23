@@ -18,10 +18,17 @@ with an explicit register-state byte budget. Unit tests cover malformed wire
 forms, false proofs, resource refusal and 200/201-instruction inputs. The
 actual Immersive `EntryAbility` and `EntryBackupAbility` constructors both pass.
 
-This proof alone does not admit a derived class expression. Source integration
-still needs a parent value proven at the class-creation site (the current
-samples use a guarded import snapshot), an observable constructor length and
-parameter ABI matching the generated `super(...arguments)` form, and complete
-member-body recovery. Initial method kind does not prove base/derived heritage.
-Until these contracts are connected, record source continues to refuse those
-sites instead of emitting an incorrect `extends` or executable body.
+The source writer now admits a pinned v7 imported-base class when the record
+interpreter proves the parent register holds a guarded import snapshot, the
+observable constructor length is zero, the constructor passes this proof, and
+every class member is fully sourceable. It emits `extends $loadedN` at the
+DEFINE site, preserving parent evaluation and exception order, and uses
+`constructor() { super(...arguments); }`. Node oracles cover argument and
+`new.target` forwarding, prototype chain, length, and a later import read.
+Initial method kind alone still does not prove base/derived heritage. Other
+parent origins, constructors, static initializers/accessors after creation,
+and unsupported member bodies remain whole-record refusals.
+On the real Immersive sample, `EntryAbility` and `EntryBackupAbility` now pass
+their import-parent and constructor checks but stop at class-member source
+admission (`kClass` at entry PC 14). Complete executable records remain 4/45;
+the synthetic Node oracle is not evidence that those real methods are ready.

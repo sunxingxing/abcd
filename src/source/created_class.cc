@@ -1,6 +1,9 @@
 #include "abcd/source/created_class.h"
 
 #include <algorithm>
+#include <array>
+#include <charconv>
+#include <limits>
 #include <new>
 #include <ostream>
 #include <tuple>
@@ -9,6 +12,7 @@
 #include <vector>
 
 #include "abcd/abc/call_type.h"
+#include "abcd/analysis/derived_constructor.h"
 #include "abcd/source/base_constructor.h"
 #include "abcd/source/class_method.h"
 #include "abcd/source/string_literal.h"
@@ -112,6 +116,7 @@ class ClassWriter {
               const GlobalScope* enclosing_scope,
               const StaticFields* static_fields,
               std::span<const ClassAccessor> accessors,
+              std::optional<ImportedClassParent> parent,
               std::ostream& output,
               LocalLexicalBudget budget, abc::StringBudget strings)
       : file_(file),
@@ -124,6 +129,7 @@ class ClassWriter {
         enclosing_scope_(enclosing_scope),
         static_fields_(static_fields),
         accessors_(accessors),
+        parent_(parent),
         output_(output),
         budget_(budget),
         strings_(strings) {}
@@ -135,6 +141,10 @@ class ClassWriter {
     if (has_members) Text("(() => {\nconst ClassValue = ");
     Text("(class ");
     Text(name);
+    if (parent_) {
+      Text(" extends $loaded");
+      Number(parent_->snapshot);
+    }
     Text(" {\n");
     Constructor(creation, target, name);
     for (std::size_t i = 0; i < members.properties.size(); ++i) {
@@ -235,6 +245,14 @@ class ClassWriter {
     output_ << text;
     if (!output_) throw ClassFailure{EmitError::kWrite};
   }
+  void Number(std::size_t value) {
+    std::array<char, std::numeric_limits<std::size_t>::digits10 + 2> digits{};
+    const auto result = std::to_chars(digits.data(),
+                                      digits.data() + digits.size(), value);
+    if (result.ec != std::errc{})
+      throw ClassFailure{CreatedClassError::kResourceLimit};
+    Text({digits.data(), static_cast<std::size_t>(result.ptr - digits.data())});
+  }
   template <typename Emit>
   void Body(const abc::MethodInfo& method, LocalLexicalBudget budget,
             std::string_view class_name, Emit emit) {
@@ -298,6 +316,27 @@ class ClassWriter {
     Body(index_.methods[target.position.value], budget_, name,
          [&](const abc::FrameLayout& frame, const abc::MethodBody& body,
              LocalLexicalBudget budget, const MethodConstants& constants) {
+           if (parent_) {
+             if (creation.length != 0)
+               return FunctionEmitResult{FunctionEmitError::kLength};
+             const auto proved =
+                 analysis::ProveForwardingDerivedConstructor(
+                     body, frame, {budget.bytes});
+             if (const auto* error =
+                     std::get_if<analysis::DerivedConstructorError>(&proved))
+               return FunctionEmitResult{
+                   *error == analysis::DerivedConstructorError::kResourceLimit
+                       ? FunctionEmitError::kResourceLimit
+                       : FunctionEmitError::kKind};
+             constexpr std::string_view kBody =
+                 "constructor() { super(...arguments); }";
+             if (kBody.size() > budget.output.bytes)
+               return FunctionEmitResult{EmitError::kOutputLimit};
+             output_.write(kBody.data(),
+                           static_cast<std::streamsize>(kBody.size()));
+             if (!output_) return FunctionEmitResult{EmitError::kWrite};
+             return FunctionEmitResult{kBody.size()};
+           }
            return WriteBaseConstructor(
                {creation, target.attributes, frame, name}, body, output_,
                budget, &constants, &lookup_);
@@ -359,6 +398,7 @@ class ClassWriter {
   const GlobalScope* enclosing_scope_;
   const StaticFields* static_fields_;
   std::span<const ClassAccessor> accessors_;
+  std::optional<ImportedClassParent> parent_;
   std::ostream& output_;
   LocalLexicalBudget budget_;
   abc::StringBudget strings_;
@@ -374,10 +414,13 @@ CreatedClassResult WriteCreatedClass(
     const analysis::MethodRoleIndex* roles, const abc::ModuleInfo* module,
     const GlobalScope* enclosing_scope,
     const StaticFields* static_fields,
-    std::span<const ClassAccessor> accessors) {
+    std::span<const ClassAccessor> accessors,
+    std::optional<ImportedClassParent> parent) {
   try {
     if (heritage.pc != instruction.offset ||
-        heritage.kind != analysis::HeritageKind::kAbsent)
+        (parent ? heritage.kind != analysis::HeritageKind::kUnknown ||
+                      header.profile != abc::ProfileId::kDynamic1301
+                : heritage.kind != analysis::HeritageKind::kAbsent))
       return CreatedClassError::kHeritage;
     const auto creation = TakeClassValue<analysis::ClassCreation>(
         analysis::LiftClassCreation(instruction.decoded));
@@ -415,11 +458,11 @@ CreatedClassResult WriteCreatedClass(
     CaptureDiscard discard;
     std::ostream dry(&discard);
     ClassWriter(file, header, index, lookup, roles, module, caller_owner,
-                enclosing_scope, static_fields, accessors, dry,
+                enclosing_scope, static_fields, accessors, parent, dry,
                 budget, strings)
         .Write(creation, target, members, *name);
     return ClassWriter(file, header, index, lookup, roles, module, caller_owner,
-                       enclosing_scope, static_fields, accessors,
+                       enclosing_scope, static_fields, accessors, parent,
                        output, budget, strings)
         .Write(creation, target, members, *name);
   } catch (const ClassFailure& failure) {

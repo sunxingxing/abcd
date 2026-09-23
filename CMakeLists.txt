@@ -336,6 +336,10 @@ if(BUILD_TESTING)
   target_include_directories(created_class_test PRIVATE tests/support)
   target_link_libraries(created_class_test PRIVATE abcd_source)
   add_test(NAME created_class_test COMMAND created_class_test)
+  add_executable(derived_class_test tests/unit/source/derived_class_test.cc)
+  target_include_directories(derived_class_test PRIVATE tests/support)
+  target_link_libraries(derived_class_test PRIVATE abcd_source)
+  add_test(NAME derived_class_test COMMAND derived_class_test)
   add_executable(created_members_test tests/unit/source/created_members_test.cc)
   target_include_directories(created_members_test PRIVATE tests/support)
   target_link_libraries(created_members_test PRIVATE abcd_source)
@@ -511,6 +515,12 @@ if(BUILD_TESTING)
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/created_class.mjs
       -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
       -DABCD_OUTPUT_NAME=created-class.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
+    add_test(NAME derived_class_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:derived_class_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_class.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=derived-class.mjs
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME base_constructor_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:base_constructor_test>

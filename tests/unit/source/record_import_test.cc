@@ -22,11 +22,16 @@ int main(int argc, char** argv) {
   using namespace abcd;
   constexpr std::uint32_t kRecord = 100;
   constexpr std::uint32_t kEntry = 120;
+  constexpr std::uint32_t kConstructor = 200;
   constexpr std::uint32_t kPool = 300;
   constexpr std::uint32_t kCode = 400;
   constexpr std::uint32_t kRequest = 500;
   constexpr std::uint32_t kImported = 540;
   constexpr std::uint32_t kExported = 560;
+  constexpr std::uint32_t kBaseName = 580;
+  constexpr std::uint32_t kDerivedName = 600;
+  constexpr std::uint32_t kConstructorCode = 650;
+  constexpr std::uint32_t kClassBuffer = 700;
   constexpr std::size_t kFileBytes = 1024;
   constexpr std::size_t kCodeHeaderBytes = 4;
   constexpr std::uint8_t kEntryArguments = 3;
@@ -45,10 +50,31 @@ int main(int argc, char** argv) {
   const std::vector<std::uint8_t> instructions{
       kExternalLoad, 0, kGuardPrefix, kGuardNamed, 0, 0,
       kStoreRegister, 0, kLoadInteger, kOverwrittenAccumulator, 0, 0, 0,
-      kLoadRegister, 0, kStoreModule, 0, kReturnUndefined};
+      kLoadRegister, 0, kStoreModule, 0,
+      kExternalLoad, 1, kGuardPrefix, kGuardNamed, 1, 0,
+      kStoreRegister, 0,
+      0x35, 0, 2, 0, 3, 0, 0, 0, 0,
+      kStoreRegister, 0,
+      kExternalLoad, 0, kGuardPrefix, kGuardNamed, 0, 0,
+      kLoadRegister, 0, kStoreModule, 1, kReturnUndefined};
+  const std::vector<std::uint8_t> constructor{
+      0x44, 0x60, 0x44, 0x71, 0x44, 0x82, 0x44, 0x93,
+      0x60, 0, 0x61, 5,
+      0xfb, 0x19, 5, 0x61, 5,
+      0x60, 2, 0xfe, 7, 1,
+      0x60, 5, 0x61, 2, 0x60, 2,
+      0xfe, 7, 0, 0x64};
   std::array<std::uint8_t, kFileBytes> bytes{};
   for (std::size_t i = 0; i < sizeof(std::uint32_t); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kImported >> (8 * i));
+  const auto pool = [&](std::size_t slot, std::uint32_t entity) {
+    for (std::size_t i = 0; i < sizeof(entity); ++i)
+      bytes[kPool + slot * sizeof(entity) + i] =
+          static_cast<std::uint8_t>(entity >> (8 * i));
+  };
+  pool(1, kBaseName);
+  pool(2, kConstructor);
+  pool(3, kClassBuffer);
   const auto string = [&](std::uint32_t at, std::string_view value) {
     Check(value.size() < 64);
     bytes[at] = static_cast<std::uint8_t>(value.size() * 2 + 1);
@@ -57,12 +83,22 @@ int main(int argc, char** argv) {
   string(kRequest, "./dependency.mjs");
   string(kImported, "value");
   string(kExported, "copied");
+  string(kBaseName, "Base");
+  string(kDerivedName, "Derived");
+  pool(3, kClassBuffer);
+  bytes[kClassBuffer] = 2;
+  bytes[kClassBuffer + sizeof(std::uint32_t)] = 2;
   bytes[kCode] = kLocalSlots;
   bytes[kCode + 1] = kEntryArguments;
   Check(instructions.size() < UINT8_MAX);
   bytes[kCode + 2] = static_cast<std::uint8_t>(instructions.size());
   std::copy(instructions.begin(), instructions.end(),
             bytes.begin() + kCode + kCodeHeaderBytes);
+  bytes[kConstructorCode] = 6;
+  bytes[kConstructorCode + 1] = 4;
+  bytes[kConstructorCode + 2] = static_cast<std::uint8_t>(constructor.size());
+  std::copy(constructor.begin(), constructor.end(),
+            bytes.begin() + kConstructorCode + kCodeHeaderBytes);
   char path[] = "/tmp/abcd-record-import-XXXXXX";
   const int fd = mkstemp(path);
   Check(fd >= 0);
@@ -78,10 +114,10 @@ int main(int argc, char** argv) {
   header.file_size = bytes.size();
   header.layout = abc::DynamicLayout{};
   abc::MetadataIndex index;
-  index.regions.push_back({kRecord, kFileBytes, {}, {1, kPool}, {}, {}});
+  index.regions.push_back({kRecord, kFileBytes, {}, {4, kPool}, {}, {}});
   abc::RecordInfo record;
   record.offset = {kRecord};
-  record.method_count = 1;
+  record.method_count = 2;
   index.records.push_back(record);
   abc::MethodInfo entry;
   entry.offset = {kEntry};
@@ -93,6 +129,18 @@ int main(int argc, char** argv) {
                              static_cast<std::uint32_t>(instructions.size()),
                              0};
   index.methods.push_back(entry);
+  abc::MethodInfo derived;
+  derived.offset = {kConstructor};
+  derived.owner_offset = record.offset;
+  derived.name = "#scope#Derived^1";
+  derived.name_utf16_length = derived.name.size();
+  derived.access_flags =
+      static_cast<std::uint32_t>(abc::FunctionKind::kBaseConstructor) << 8;
+  derived.code = abc::CodeInfo{{kConstructorCode},
+                               {kConstructorCode + kCodeHeaderBytes}, 6, 4,
+                               static_cast<std::uint32_t>(constructor.size()),
+                               0};
+  index.methods.push_back(derived);
   const auto lookup = std::get<abc::MethodLookup>(
       abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<analysis::MethodRoleIndex>(
@@ -100,7 +148,9 @@ int main(int argc, char** argv) {
   abc::ModuleInfo module;
   module.requests.push_back({kRequest});
   module.imports.push_back({{kImported}, {kImported}, {0}});
+  module.imports.push_back({{kBaseName}, {kBaseName}, {0}});
   module.local_exports.push_back({{kExported}, {kExported}});
+  module.local_exports.push_back({{kDerivedName}, {kDerivedName}});
   std::ostringstream output;
   const auto result = source::WriteRecordProgram(
       file, header, index, lookup, record, module, roles, output);
@@ -112,6 +162,10 @@ int main(int argc, char** argv) {
   Check(output.str().find("const $loaded0 = $import0;") !=
         std::string::npos);
   Check(output.str().find("$acc = $loaded0;") != std::string::npos);
+  Check(output.str().find("class Derived extends $loaded1") !=
+        std::string::npos);
+  Check(output.str().find("const $class0") <
+        output.str().find("const $loaded2"));
   Check(std::get<std::size_t>(result) == output.str().size());
   auto missing_import = module;
   missing_import.imports.clear();
