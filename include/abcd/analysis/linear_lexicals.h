@@ -3,6 +3,7 @@
 
 #include "abcd/analysis/creation_binding.h"
 #include "abcd/analysis/environment_flow.h"
+#include "abcd/analysis/module_load.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/phi_placement.h"
 
@@ -42,9 +43,13 @@ struct CapturedStore {
   CapturedSlot cell;
   ScalarSlot value;
 };
+struct ExternalImport {
+  ModuleSlot slot;
+};
 using LinearStatement =
     std::variant<KeepInstruction, OmitInstruction, LocalLoad, LocalStore,
-                 LocalFunction, CapturedLoad, CapturedStore, NamedInvocation>;
+                 LocalFunction, CapturedLoad, CapturedStore, NamedInvocation,
+                 ExternalImport>;
 enum class LinearLexicalError {
   kExceptionRegions,
   kControlFlow,
@@ -85,7 +90,8 @@ class LinearLexicals {
       std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {},
       std::span<const ClosureCreation> creations = {},
       CapturedValues captured_values = CapturedValues::kReject,
-      std::span<const std::uint8_t> named_scopes = {});
+      std::span<const std::uint8_t> named_scopes = {},
+      std::span<const std::uint8_t> guarded_imports = {});
   std::span<const LinearStatement> Statements() const {
     return {statements_.get(), statements_ ? statement_count_ : 0};
   }

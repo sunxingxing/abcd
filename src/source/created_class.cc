@@ -31,13 +31,17 @@ class ClassWriter {
  public:
   ClassWriter(const corpus::AbcFile& file, const abc::Header& header,
               const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
-              const analysis::MethodRoleIndex* roles, std::ostream& output,
+              const analysis::MethodRoleIndex* roles,
+              const abc::ModuleInfo* module, abc::EntityOffset owner,
+              std::ostream& output,
               LocalLexicalBudget budget, abc::StringBudget strings)
       : file_(file),
         header_(header),
         index_(index),
         lookup_(lookup),
         roles_(roles),
+        module_(module),
+        owner_(owner),
         output_(output),
         budget_(budget),
         strings_(strings) {}
@@ -99,6 +103,8 @@ class ClassWriter {
   template <typename Emit>
   void Body(const abc::MethodInfo& method, LocalLexicalBudget budget,
             Emit emit) {
+    if (module_ && method.owner_offset != owner_)
+      throw ClassFailure{CreatedClassError::kModuleOwner};
     if (!method.code) throw ClassFailure{CreatedClassError::kMissingCode};
     const auto call = TakeClassValue<abc::CallType>(abc::ReadCallType(
         file_, header_, index_, method.annotations, {budget.bytes}));
@@ -114,7 +120,7 @@ class ClassWriter {
     AdmitClassBytes(body.handlers.capacity(), sizeof(abc::CatchHandler),
                     budget.bytes);
     const MethodConstants constants{file_, header_, index_, method.offset,
-                                    strings_};
+                                    strings_, module_};
     Account(TakeClassValue<std::size_t>(emit(frame, body, budget, constants)));
   }
   void Constructor(const analysis::ClassCreation& creation,
@@ -154,6 +160,8 @@ class ClassWriter {
   const abc::MetadataIndex& index_;
   const abc::MethodLookup& lookup_;
   const analysis::MethodRoleIndex* roles_;
+  const abc::ModuleInfo* module_;
+  abc::EntityOffset owner_;
   std::ostream& output_;
   LocalLexicalBudget budget_;
   abc::StringBudget strings_;
@@ -166,7 +174,7 @@ CreatedClassResult WriteCreatedClass(
     abc::EntityOffset caller, const abc::BodyInstruction& instruction,
     analysis::ClassHeritage heritage, std::ostream& output,
     LocalLexicalBudget budget, abc::StringBudget strings,
-    const analysis::MethodRoleIndex* roles) {
+    const analysis::MethodRoleIndex* roles, const abc::ModuleInfo* module) {
   try {
     if (heritage.pc != instruction.offset ||
         heritage.kind != analysis::HeritageKind::kAbsent)
@@ -185,12 +193,19 @@ CreatedClassResult WriteCreatedClass(
                       strings);
     const auto name = RuntimeName(index.methods[target.position.value]);
     if (!name) return CreatedClassError::kName;
+    abc::EntityOffset caller_owner{};
+    if (module) {
+      const auto caller_position = lookup.Find(caller);
+      if (!caller_position) return abc::MethodTargetError::kCallerMissing;
+      caller_owner = index.methods[caller_position->value].owner_offset;
+    }
     CaptureDiscard discard;
     std::ostream dry(&discard);
-    ClassWriter(file, header, index, lookup, roles, dry, budget, strings)
+    ClassWriter(file, header, index, lookup, roles, module, caller_owner, dry,
+                budget, strings)
         .Write(creation, target, members, *name);
-    return ClassWriter(file, header, index, lookup, roles, output, budget,
-                       strings)
+    return ClassWriter(file, header, index, lookup, roles, module, caller_owner,
+                       output, budget, strings)
         .Write(creation, target, members, *name);
   } catch (const ClassFailure& failure) {
     return failure.result;

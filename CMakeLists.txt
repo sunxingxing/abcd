@@ -80,6 +80,8 @@ target_sources(abcd_source PRIVATE src/source/linear_body.cc)
 target_sources(abcd_source PRIVATE src/source/acyclic_body.cc)
 target_sources(abcd_source PRIVATE src/source/local_lexical_body.cc)
 target_sources(abcd_source PRIVATE src/source/named_scope.cc)
+target_sources(abcd_source PRIVATE src/source/module_binding.cc)
+target_sources(abcd_source PRIVATE src/source/module_imports.cc)
 target_sources(abcd_source PRIVATE src/source/base_function.cc)
 target_sources(abcd_source PRIVATE src/source/created_function.cc)
 target_sources(abcd_source PRIVATE src/source/created_class.cc src/source/class_members.cc)
@@ -298,6 +300,11 @@ if(BUILD_TESTING)
   target_include_directories(named_scope_test PRIVATE tests/support)
   target_link_libraries(named_scope_test PRIVATE abcd_source)
   add_test(NAME named_scope_test COMMAND named_scope_test)
+  add_executable(module_import_body_test
+    tests/unit/source/module_import_body_test.cc)
+  target_include_directories(module_import_body_test PRIVATE tests/support src/source)
+  target_link_libraries(module_import_body_test PRIVATE abcd_source)
+  add_test(NAME module_import_body_test COMMAND module_import_body_test)
   add_executable(branch_condition_test tests/unit/analysis/branch_condition_test.cc)
   target_link_libraries(branch_condition_test PRIVATE abcd_analysis)
   add_test(NAME branch_condition_test COMMAND branch_condition_test)
@@ -315,6 +322,12 @@ if(BUILD_TESTING)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   find_program(ABCD_NODE_EXECUTABLE node)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME module_import_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_IMPORT_FIXTURE=$<TARGET_FILE:module_import_body_test>
+      -DABCD_IMPORT_DEPENDENCY=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module-import-dep.mjs
+      -DABCD_IMPORT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_import_oracle.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_imports.cmake)
     add_test(NAME created_members_scale_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:created_members_scale_test>
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/created_members_scale.mjs

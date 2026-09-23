@@ -21,7 +21,8 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
     std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget,
     std::span<const ClosureCreation> creations,
     CapturedValues captured_values,
-    std::span<const std::uint8_t> named_scopes) {
+    std::span<const std::uint8_t> named_scopes,
+    std::span<const std::uint8_t> guarded_imports) {
   using Error = LinearLexicalError;
   abc::CodeOffset offset{};
   const auto fail = [&](Error kind) {
@@ -206,6 +207,16 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
       if (const auto* store = std::get_if<CapturedStore>(&statement)) {
         if (!state(store->value).IsLanguage())
           return fail(Error::kInternalValue);
+        continue;
+      }
+      const auto module = LiftModuleLoad(instruction);
+      if (const auto* load = std::get_if<ModuleLoad>(&module)) {
+        if (load->space != ModuleSpace::kExternal ||
+            guarded_imports.size() != body.instructions.size() ||
+            !guarded_imports[i])
+          return fail(Error::kInstruction);
+        accumulator = ValueKinds::Language();
+        statement = ExternalImport{load->slot};
         continue;
       }
       // The v7.0 translator may spill a named callee through one register

@@ -20,6 +20,7 @@ CreatedFunctionResult WriteCreatedFunctionTemplate(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     abc::EntityOffset caller, const abc::DecodedInstruction& instruction,
-    std::ostream& output, LocalLexicalBudget budget, abc::StringBudget strings);
+    std::ostream& output, LocalLexicalBudget budget, abc::StringBudget strings,
+    const abc::ModuleInfo* module = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_FUNCTION_TEMPLATE_H_

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <sstream>
 
+#include "abcd/abc/module_info.h"
 #include "analysis/ssa_fixture.h"
 #include "source/leaf_function_checks.h"
 
@@ -39,6 +40,9 @@ int main(int argc, char** argv) {
   string(600, "callType");
   word(kPool + sizeof(kTarget), kTarget);
   word(kPool + 2 * sizeof(kTarget), 350);
+  word(kPool + 3 * sizeof(kTarget), 620);
+  string(620, "value");
+  string(640, "./module-import-dep.mjs");
   const std::uint8_t captured[]{0, 4, 3, 0, 0x3c, 0, 0x64};
   const std::uint8_t nested[]{0, 4, 6, 0, 0x33, 0, 0, 0, 1, 0x64};
   std::copy(std::begin(captured), std::end(captured), bytes.begin() + 700);
@@ -58,6 +62,7 @@ int main(int argc, char** argv) {
   fixture(490, {0x3c, 1, 0x64});                             // outer ancestor
   fixture(510, {0x70, 0x3d, 0, 0x65});  // forbidden internal store
   fixture(530, {0x3c, 0x10, 0x64});     // captured slot 1
+  fixture(760, {0x7e, 0, 0xfe, 9, 3, 0, 0x64});
   std::size_t large_start = kLargeCode;
   const auto uleb = [&](std::uint32_t value) {
     do {
@@ -93,7 +98,7 @@ int main(int argc, char** argv) {
   header.file_size = bytes.size();
   header.layout = abc::DynamicLayout{};
   abc::MetadataIndex index;
-  index.regions.push_back({kCaller, kCode, {1, 128}, {3, kPool}, {}, {}});
+  index.regions.push_back({kCaller, kCode, {1, 128}, {4, kPool}, {}, {}});
   index.methods.resize(3);
   index.methods[0].offset = {kCaller};
   auto& target = index.methods[1];
@@ -118,6 +123,27 @@ int main(int argc, char** argv) {
   test::Check(output.str().find("function Recovered($p0)") !=
               std::string::npos);
   test::Check(std::get<std::size_t>(result) == output.str().size());
+  abc::ModuleInfo module;
+  module.requests.push_back({640});
+  module.imports.push_back({{620}, {620}, {0}});
+  const auto saved_import_code = target.code;
+  target.code = abc::CodeInfo{{760}, {764}, 0, 4, 7, 0};
+  std::ostringstream imported;
+  const auto imported_result = source::WriteCreatedFunction(
+      file, header, index, lookup, {kCaller}, creation, imported, {}, {},
+      &module);
+  test::Check(std::holds_alternative<std::size_t>(imported_result));
+  test::Check(imported.str().find("$acc = $import0;") != std::string::npos);
+  target.owner_offset = {999};
+  std::ostringstream foreign;
+  const auto foreign_result = source::WriteCreatedFunction(
+      file, header, index, lookup, {kCaller}, creation, foreign, {}, {},
+      &module);
+  test::Check(std::get<source::CreatedFunctionError>(foreign_result) ==
+              source::CreatedFunctionError::kModuleOwner);
+  test::Check(foreign.str().empty());
+  target.owner_offset = {};
+  target.code = saved_import_code;
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
     std::cout << "export const recovered = " << output.str() << ";\n";
   target.annotations = {{64}, 1};
@@ -227,7 +253,7 @@ int main(int argc, char** argv) {
                   file, header, index, lookup, {kCaller + 1}, creation,
                   rejected)) == abc::MethodTargetError::kCallerMissing);
   auto invalid_creation = creation;
-  invalid_creation.operands[1].raw_bits = 3;
+  invalid_creation.operands[1].raw_bits = 4;
   test::Check(std::get<abc::MetadataError>(source::WriteCreatedFunction(
                   file, header, index, lookup, {kCaller}, invalid_creation,
                   rejected)) == abc::MetadataError::kIndexRange);

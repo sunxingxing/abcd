@@ -1,7 +1,9 @@
 #include <unistd.h>
 
+#include <algorithm>
 #include <sstream>
 
+#include "abcd/abc/module_info.h"
 #include "abcd/analysis/method_roles.h"
 #include "abcd/source/created_class.h"
 #include "analysis/ssa_fixture.h"
@@ -21,6 +23,7 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
   };
   word(kPool, kConstructor);
   word(kPool + 4, kLiteral);
+  word(kPool + 8, 620);
   word(kLiteral, 14);  // Two string/method/affiliate triples and the split.
   for (const auto at : {kLiteral + 4, kLiteral + 17}) {
     bytes[at] = static_cast<std::uint8_t>(abc::LiteralTag::kString);
@@ -42,6 +45,14 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
   std::copy(ctor.begin(), ctor.end(), bytes.begin() + kCode);
   std::copy(member.begin(), member.end(), bytes.begin() + kMemberCode);
   std::copy(caller.begin(), caller.end(), bytes.begin() + kCallerCode);
+  const std::vector<std::uint8_t> import_method{
+      0, 4, 7, 0, 0x7e, 0, 0xfe, 9, 2, 0, 0x64};
+  std::copy(import_method.begin(), import_method.end(), bytes.begin() + 500);
+  bytes[620] = 11;
+  std::copy_n("value", 5, bytes.begin() + 621);
+  constexpr std::string_view kRequest = "./module-import-dep.mjs";
+  bytes[650] = kRequest.size() * 2 + 1;
+  std::copy(kRequest.begin(), kRequest.end(), bytes.begin() + 651);
   constexpr std::uint32_t kBadCode = 700;
   const std::vector<std::uint8_t> unsupported{0, 4, 2, 0, 0x70, 0x64};
   std::copy(unsupported.begin(), unsupported.end(), bytes.begin() + kBadCode);
@@ -59,7 +70,7 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
   header.file_size = bytes.size();
   header.layout = abc::DynamicLayout{};
   abc::MetadataIndex index;
-  index.regions.push_back({kCaller, kCode, {}, {2, kPool}, {}, {}});
+  index.regions.push_back({kCaller, kCode, {}, {3, kPool}, {}, {}});
   index.methods.resize(4);
   index.methods[0].offset = {kCaller};
   index.methods[0].code =
@@ -97,6 +108,30 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
     return;
   }
   test::Check(std::get<std::size_t>(result) == output.str().size());
+  if (name == "method") {
+    abc::ModuleInfo module;
+    module.requests.push_back({650});
+    module.imports.push_back({{620}, {620}, {0}});
+    const auto saved_import_code = method.code;
+    method.code = abc::CodeInfo{{500}, {504}, 0, 4, 7, 0};
+    std::ostringstream imported;
+    const auto import_result = source::WriteCreatedClass(
+        file, header, index, lookup, {kCaller}, body.instructions[2],
+        heritage, imported, {}, {}, &roles, &module);
+    test::Check(std::holds_alternative<std::size_t>(import_result));
+    test::Check(imported.str().find("$acc = $import0;") !=
+                std::string::npos);
+    method.owner_offset = {999};
+    std::ostringstream foreign;
+    const auto foreign_result = source::WriteCreatedClass(
+        file, header, index, lookup, {kCaller}, body.instructions[2],
+        heritage, foreign, {}, {}, &roles, &module);
+    test::Check(std::get<source::CreatedClassError>(foreign_result) ==
+                source::CreatedClassError::kModuleOwner);
+    test::Check(foreign.str().empty());
+    method.owner_offset = {};
+    method.code = saved_import_code;
+  }
   if (emit) std::cout << "export const recovered = " << output.str() << ";\n";
   const auto render = [&](source::LocalLexicalBudget budget = {},
                           const analysis::MethodRoleIndex* proof = nullptr) {

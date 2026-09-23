@@ -5,7 +5,12 @@
 #include "abcd/source/base_function.h"
 
 namespace abcd::source {
-enum class CreatedFunctionError { kMissingCode, kName, kResourceLimit };
+enum class CreatedFunctionError {
+  kMissingCode,
+  kName,
+  kResourceLimit,
+  kModuleOwner
+};
 using CreatedFunctionResult =
     std::variant<std::size_t, CreatedFunctionError, FunctionEmitError,
                  EmitError, BodyEmitFailure, analysis::FlowFailure,
@@ -22,11 +27,13 @@ using CreatedFunctionResult =
 // identity. budget.bytes includes decoded target and source scratch; caller
 // admits index, lookup, file and constant-string storage. Partial-output rules
 // match WriteBaseFunction: final publication must be atomic.
+// A supplied module belongs to the caller's record; a target in another
+// record is rejected before it can read a foreign import environment.
 [[nodiscard]] CreatedFunctionResult WriteCreatedFunction(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     abc::EntityOffset caller, const abc::DecodedInstruction& instruction,
     std::ostream& output, LocalLexicalBudget budget = {},
-    abc::StringBudget strings = {});
+    abc::StringBudget strings = {}, const abc::ModuleInfo* module = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_CREATED_FUNCTION_H_

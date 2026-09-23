@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_LINEAR_BODY_H_
 
 #include "abcd/abc/method_body.h"
+#include "abcd/abc/module_info.h"
 #include "abcd/abc/string_entity.h"
 #include "abcd/source/scalar_expression.h"
 
@@ -18,7 +19,9 @@ enum class BodyEmitError {
   kIndexedName,
   kCreation,
   kResourceLimit,
-  kWorkLimit
+  kWorkLimit,
+  kMissingModule,
+  kModuleBinding
 };
 struct BodyEmitFailure {
   BodyEmitError kind;
@@ -35,6 +38,9 @@ struct MethodConstants {
   const abc::MetadataIndex& index;
   abc::EntityOffset method;
   abc::StringBudget string_budget;
+  // Caller-proven same-record module. Null keeps standalone function emission
+  // from inventing a lexical import binding.
+  const abc::ModuleInfo* module = nullptr;
 };
 
 // Emits statements inside a function, not a wrapper or record. Requires a

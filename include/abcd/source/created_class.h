@@ -11,7 +11,8 @@ enum class CreatedClassError {
   kMembers,
   kMissingCode,
   kName,
-  kResourceLimit
+  kResourceLimit,
+  kModuleOwner
 };
 using CreatedClassResult =
     std::variant<std::size_t, CreatedClassError, FunctionEmitError, EmitError,
@@ -36,12 +37,15 @@ using CreatedClassResult =
 // and output are separately admitted. Preflight rejects semantic/budget errors
 // without output. IO/file mutation/allocation failure require atomic
 // publication.
+// A supplied module belongs to the caller's record. Constructors and members
+// in other records are rejected before receiving its import environment.
 [[nodiscard]] CreatedClassResult WriteCreatedClass(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     abc::EntityOffset caller, const abc::BodyInstruction& instruction,
     analysis::ClassHeritage heritage, std::ostream& output,
     LocalLexicalBudget budget = {}, abc::StringBudget strings = {},
-    const analysis::MethodRoleIndex* roles = nullptr);
+    const analysis::MethodRoleIndex* roles = nullptr,
+    const abc::ModuleInfo* module = nullptr);
 }  // namespace abcd::source
 #endif
