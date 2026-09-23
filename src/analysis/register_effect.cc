@@ -111,7 +111,10 @@ RegisterEffect EffectOf(const FunctionCreation& value) {
     effect.reads[effect.read_count++] = Accumulator{};
   return effect;
 }
-RegisterEffect EffectOf(const ObjectCreation&) {
+RegisterEffect EffectOf(const BufferedObjectCreation&) {
+  return AccumulatorDefinition();
+}
+RegisterEffect EffectOf(const EmptyObjectCreation&) {
   return AccumulatorDefinition();
 }
 template <class Error>

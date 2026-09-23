@@ -147,7 +147,7 @@ class ObjectWriter {
 };
 }  // namespace
 
-BodyEmitResult WriteObjectBuffer(const analysis::ObjectCreation& creation,
+BodyEmitResult WriteObjectBuffer(const analysis::BufferedObjectCreation& creation,
                                  abc::CodeOffset offset,
                                  const MethodConstants& constants,
                                  std::ostream& output, EmitBudget output_budget,

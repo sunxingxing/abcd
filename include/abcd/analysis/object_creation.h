@@ -5,14 +5,17 @@
 #include "abcd/abc/instruction.h"
 
 namespace abcd::analysis {
-struct ObjectCreation {
+struct EmptyObjectCreation {};
+struct BufferedObjectCreation {
   abc::PoolIndex literal;
 };
 enum class ObjectCreationError { kUnsupportedOpcode, kMalformedInstruction };
 
-// Pinned modern CREATEOBJECTWITHBUFFER uses an IC operand followed by a
-// regional literal-array slot. Deprecated creation has a different layout.
-[[nodiscard]] std::variant<ObjectCreation, ObjectCreationError>
+// CREATEEMPTYOBJECT has no pool reference. Pinned modern buffered creation
+// uses an IC operand followed by a regional literal-array slot; deprecated
+// creation has a different layout and remains rejected here.
+[[nodiscard]] std::variant<EmptyObjectCreation, BufferedObjectCreation,
+                           ObjectCreationError>
 LiftObjectCreation(const abc::DecodedInstruction& instruction);
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_OBJECT_CREATION_H_

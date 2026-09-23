@@ -40,7 +40,9 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
   if (std::holds_alternative<OwnWrite>(
           LiftOwnWrite(instruction, frame_size)))
     return Transfer{true, AccumulatorWrite::kPreserve};
-  if (std::holds_alternative<ObjectCreation>(LiftObjectCreation(instruction)))
+  const auto object = LiftObjectCreation(instruction);
+  if (std::holds_alternative<EmptyObjectCreation>(object) ||
+      std::holds_alternative<BufferedObjectCreation>(object))
     return Transfer{false, AccumulatorWrite::kValue};
   switch (instruction.opcode) {
     case Opcode::kLDHOLE:

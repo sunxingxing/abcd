@@ -111,7 +111,10 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     return ValueRule{ValueRuleKind::kLanguageOperation, {}};
   if (instruction.opcode == abc::Opcode::kLDA_STR_ID16 ||
       instruction.opcode == abc::Opcode::kCREATEEMPTYARRAY_IMM8 ||
-      std::holds_alternative<ObjectCreation>(LiftObjectCreation(instruction)) ||
+      std::holds_alternative<EmptyObjectCreation>(
+          LiftObjectCreation(instruction)) ||
+      std::holds_alternative<BufferedObjectCreation>(
+          LiftObjectCreation(instruction)) ||
       std::holds_alternative<FunctionCreation>(
           LiftFunctionCreation(instruction)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};

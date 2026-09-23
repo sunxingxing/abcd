@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 
-const {object, proto, primitive, field, redefine, intervening, ownProto, preserved} =
+const {empty, emptyField, object, proto, primitive, field, redefine,
+       intervening, ownProto, preserved} =
     await import(pathToFileURL(process.argv[2]));
+const emptyFirst = empty();
+assert.notEqual(emptyFirst, empty());
+assert.deepEqual(Reflect.ownKeys(emptyFirst), []);
+assert.equal(Object.getPrototypeOf(emptyFirst), Object.prototype);
+assert.deepEqual(emptyField(12), {field: 12});
 const first = object();
 const second = object();
 assert.notEqual(first, second);

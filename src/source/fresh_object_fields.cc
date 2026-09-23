@@ -41,8 +41,9 @@ class FreshObjectFields {
                     : std::nullopt;
       stored_.reset();
     }
-    if (std::holds_alternative<analysis::ObjectCreation>(
-            analysis::LiftObjectCreation(instruction))) {
+    const auto object = analysis::LiftObjectCreation(instruction);
+    if (std::holds_alternative<analysis::EmptyObjectCreation>(object) ||
+        std::holds_alternative<analysis::BufferedObjectCreation>(object)) {
       active_.reset();
       created_ = true;
       return {};

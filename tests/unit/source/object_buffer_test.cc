@@ -126,6 +126,22 @@ int main(int argc, char** argv) {
   index.regions.push_back({200, 300, {}, {11, kPool}, {}, {}});
   const source::MethodConstants constants{file, header, index, {kMethod},
                                           {1024}};
+  const auto empty = test::Body({0x04, 0x64});
+  std::ostringstream empty_source;
+  test::Check(std::holds_alternative<std::size_t>(source::WriteLinearBody(
+      empty, {"acc", {}}, empty_source)));
+  test::Check(empty_source.str() == "acc = ({});\nreturn acc;\n");
+  const std::array<std::string_view, 2> empty_fields{"object", "value"};
+  const auto empty_field = test::Body({0x04, 0x61, 0, 0x60, 1,
+                                       0xdc, 0, 8, 0, 0, 0x60, 0, 0x64});
+  std::ostringstream empty_field_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(empty_field, {"acc", empty_fields},
+                                    empty_field_source, {}, &constants)));
+  test::Check(empty_field_source.str() ==
+              "acc = ({});\nobject = acc;\nacc = value;\n"
+              "object = ({...object, [\"field\"]: acc});\n"
+              "acc = object;\nreturn acc;\n");
   const auto body = test::Body({0x07, 0, 0, 0, 0x64});
   std::ostringstream output;
   const auto result = source::WriteLinearBody(body, {"acc", {}}, output, {},
@@ -323,6 +339,10 @@ int main(int argc, char** argv) {
               source::BodyEmitError::kResourceLimit);
   test::Check(exhausted.str().empty());
   if (argc == 2 && std::string_view(argv[1]) == "--emit") {
+    std::cout << "export function empty() { let acc;\n" << empty_source.str()
+              << "}\n";
+    std::cout << "export function emptyField(value) { let acc, object;\n"
+              << empty_field_source.str() << "}\n";
     std::cout << "export function object() { let acc;\n" << output.str()
               << "}\n";
     std::cout << "export function proto() { let acc;\n" << proto_source.str()

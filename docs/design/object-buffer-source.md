@@ -1,5 +1,11 @@
 # Data Object Buffer Source
 
+Pinned v7.0 `CREATEEMPTYOBJECT` constructs through the realm's intrinsic
+Object constructor and has no operands or pool reference. Native `({})`
+preserves its ordinary prototype, fresh identity and empty own-property set;
+it does not require method constants. Empty and buffered creation are separate
+typed lift results, so an absent literal is never invented.
+
 Pinned OpenHarmony v7.0 modern `CREATEOBJECTWITHBUFFER` resolves a regional
 literal-array slot, obtains an object-literal template and clones it for each
 execution. `LiteralDataExtractor::ExtractObjectDatas` pairs keys and values;
@@ -30,7 +36,7 @@ Preflight of the complete method prevents publication on semantic or configured
 budget failure. IO failure or file mutation between passes still requires
 atomic final-file publication.
 
-Tests cover typed instruction effects, primitive values, narrow and wide
+Tests cover empty objects, typed instruction effects, primitive values, narrow and wide
 operands, duplicate/method rejection, `__proto__`, fresh identity, own
 descriptors, 200/201/402 properties, and exhausted object scratch allowance.
 This is not object-method source recovery, historical
@@ -42,13 +48,13 @@ Pinned v7 `DEFINEPROPERTYBYNAME` calls `RuntimeDefineField`, which creates a
 writable, enumerable, configurable own data property and preserves the
 accumulator. Ordinary assignment would invoke an inherited setter; calling
 `Object.defineProperty` would depend on a mutable global intrinsic. The
-straight-line lexical writer therefore admits only a buffered object that is
+straight-line lexical writer therefore admits only an empty or buffered object that is
 immediately stored in one register, then has the accumulator overwritten
 without reading that object. Any receiver read, copy, write, unknown effect or
 new object candidate ends the proof. Each admitted definition except the last
 stores its already-evaluated accumulator in a private temporary. At the final
 definition, one `({...object, [key0]: value0, ...})` replaces the still
-unobserved object. The buffered object has only own data properties, so spread
+unobserved object. Both eligible objects have only own data properties, so spread
 cannot invoke a getter; computed keys preserve `__proto__` and index-key
 semantics. The caller's bindings may not collide with the generated temporary
 prefix. Unproved definitions remain explicit source failures.

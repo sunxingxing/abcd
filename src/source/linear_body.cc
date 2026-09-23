@@ -178,17 +178,20 @@ class BodyWriter {
         using abc::Opcode;
         const auto opcode = instruction.decoded.opcode;
         if (opcode == Opcode::kNOP) continue;
-        if (opcode == Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16 ||
+        if (opcode == Opcode::kCREATEEMPTYOBJECT ||
+            opcode == Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16 ||
             opcode == Opcode::kCREATEOBJECTWITHBUFFER_IMM16_ID16) {
-          if (!constants_) return Fail(BodyEmitError::kMissingConstants);
           const auto lifted = LiftObjectCreation(instruction.decoded);
           if (std::holds_alternative<ObjectCreationError>(lifted))
             return Fail(BodyEmitError::kUnsupportedInstruction);
           Expression(ScalarValue{Accumulator{}});
           Text(" = ");
-          if (!error_) {
+          if (std::holds_alternative<EmptyObjectCreation>(lifted)) {
+            Text("({})");
+          } else if (!error_) {
+            if (!constants_) return Fail(BodyEmitError::kMissingConstants);
             const auto result = WriteObjectBuffer(
-                std::get<ObjectCreation>(lifted), offset_, *constants_, output_,
+                std::get<BufferedObjectCreation>(lifted), offset_, *constants_, output_,
                 {remaining_}, object_budget_);
             if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
               return *failure;
