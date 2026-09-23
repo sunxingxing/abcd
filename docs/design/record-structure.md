@@ -46,6 +46,25 @@ and publish atomically only after all records and the input identity validate.
 - Bundle module selection requires an explicit runtime descriptor when special
   module records depend on it. Host input path is not that descriptor.
 
+## Executable Module Export Boundary
+
+Pinned v7 `STMODULEVAR` writes an accumulator value to a numeric local-export
+slot and preserves the accumulator. `LiftModuleStore` accepts narrow/wide
+encodings only; the deprecated name-based operation remains separate. The
+source slot plan follows the runtime's adjacent-equal local-name rule, checks
+duplicate exported names, and emits static ESM export aliases to private
+`$localN` bindings. At a caller-proven top-level, straight-line first store it
+emits `let $localN = $acc`; later stores remain assignments. Thus declaration
+timing is not moved ahead of the bytecode write, and aliases stay live.
+
+This is not yet a record exporter. The caller still must identify the real
+record entry, prove language-valued accumulator and source order, admit every
+side effect and function/class body, check every slot initialized, and stage
+the entire output atomically. Unproved branches, reentrant/cyclic reads,
+unsupported bodies and bundle ownership cannot be published as executable
+records. The paired Breakpoint entry demonstrates the next integration path:
+class creation, an own `prototype` read, then `STMODULEVAR 0`.
+
 ## Staged Implementation
 
 1. Tests first: safe deterministic record paths, duplicate descriptors, traversal

@@ -61,6 +61,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/property_write.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/property_receiver.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/global_access.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/module_load.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/module_store.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/ordinary_call.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/named_invocation.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/phi_placement.cc src/analysis/iterated_frontier.cc)
@@ -88,6 +89,7 @@ target_sources(abcd_source PRIVATE src/source/local_lexical_body.cc)
 target_sources(abcd_source PRIVATE src/source/named_scope.cc)
 target_sources(abcd_source PRIVATE src/source/module_binding.cc)
 target_sources(abcd_source PRIVATE src/source/module_imports.cc)
+target_sources(abcd_source PRIVATE src/source/module_exports.cc)
 target_sources(abcd_source PRIVATE src/source/record_module_context.cc)
 target_sources(abcd_source PRIVATE src/source/base_function.cc)
 target_sources(abcd_source PRIVATE src/source/branch_value_proof.cc)
@@ -185,6 +187,9 @@ if(BUILD_TESTING)
   add_test(NAME property_write_test COMMAND property_write_test)
   add_executable(global_access_test tests/unit/analysis/global_access_test.cc)
   add_executable(module_load_test tests/unit/analysis/module_load_test.cc)
+  add_executable(module_store_test tests/unit/analysis/module_store_test.cc)
+  target_link_libraries(module_store_test PRIVATE abcd_analysis)
+  add_test(NAME module_store_test COMMAND module_store_test)
   target_link_libraries(module_load_test PRIVATE abcd_analysis)
   add_test(NAME module_load_test COMMAND module_load_test)
   target_link_libraries(global_access_test PRIVATE abcd_analysis)
@@ -322,6 +327,9 @@ if(BUILD_TESTING)
   target_include_directories(module_import_body_test PRIVATE tests/support src/source)
   target_link_libraries(module_import_body_test PRIVATE abcd_source)
   add_test(NAME module_import_body_test COMMAND module_import_body_test)
+  add_executable(module_exports_test tests/unit/source/module_exports_test.cc)
+  target_link_libraries(module_exports_test PRIVATE abcd_source)
+  add_test(NAME module_exports_test COMMAND module_exports_test)
   add_executable(record_module_context_test
     tests/unit/source/record_module_context_test.cc)
   target_link_libraries(record_module_context_test PRIVATE abcd_source)
@@ -342,6 +350,13 @@ if(BUILD_TESTING)
   target_link_libraries(scalar_expression_test PRIVATE abcd_source)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   set(ABCD_PAIRED_CORPUS_ROOT "" CACHE PATH "Paired ABC sample root")
+  if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+    add_executable(module_exports_sample_test
+      tests/integration/module_exports_sample.cc)
+    target_link_libraries(module_exports_sample_test PRIVATE abcd_source)
+    add_test(NAME module_exports_sample_test COMMAND module_exports_sample_test
+      "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+  endif()
   find_program(ABCD_NODE_EXECUTABLE node)
   if(ABCD_NODE_EXECUTABLE)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")
@@ -410,6 +425,12 @@ if(BUILD_TESTING)
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/created_function.mjs
       -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
       -DABCD_OUTPUT_NAME=created-function.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
+    add_test(NAME module_exports_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:module_exports_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_exports.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=module-exports.mjs
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME base_function_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:base_function_test>
