@@ -10,12 +10,14 @@
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/indexed_read.h"
 #include "abcd/analysis/indexed_write.h"
+#include "abcd/analysis/iterator.h"
 #include "abcd/analysis/lexical.h"
 #include "abcd/analysis/module_load.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/object_creation.h"
 #include "abcd/analysis/own_write.h"
+#include "abcd/analysis/private_property.h"
 
 namespace abcd::analysis {
 namespace {
@@ -109,6 +111,11 @@ RegisterEffect AccumulatorDefinition() {
   effect.write = Accumulator{};
   return effect;
 }
+RegisterEffect AccumulatorReadWrite() {
+  auto effect = AccumulatorDefinition();
+  effect.reads[effect.read_count++] = Accumulator{};
+  return effect;
+}
 RegisterEffect EffectOf(const ModuleLoad&) {
   // A module binding may be Hole, but its normal return only replaces acc.
   // Private caller registers remain valid across the possibly throwing load.
@@ -189,6 +196,35 @@ RegisterEffect EffectOf(const ConstantObjectInstruction& value) {
   if (value.accumulator == AccumulatorEffect::kPreserve)
     return {};
   return AccumulatorDefinition();
+}
+RegisterEffect EffectOf(const PropertyIterator&) {
+  return AccumulatorReadWrite();
+}
+RegisterEffect EffectOf(const AcquireIterator&) {
+  return AccumulatorReadWrite();
+}
+RegisterEffect EffectOf(const CloseIterator& value) {
+  auto effect = AccumulatorDefinition();
+  effect.reads[effect.read_count++] = value.iterator;
+  return effect;
+}
+RegisterEffect EffectOf(const IteratorNext& value) {
+  auto effect = AccumulatorDefinition();
+  effect.reads[effect.read_count++] = value.iterator;
+  effect.reads[effect.read_count++] = value.method;
+  return effect;
+}
+RegisterEffect EffectOf(const PrivateLoad&) {
+  return AccumulatorReadWrite();
+}
+RegisterEffect EffectOf(const PrivateHas&) {
+  return AccumulatorReadWrite();
+}
+RegisterEffect EffectOf(const PrivateStore& value) {
+  RegisterEffect effect;
+  effect.reads[effect.read_count++] = value.object;
+  effect.reads[effect.read_count++] = Accumulator{};
+  return effect;
 }
 template <class Error>
 ScalarError EffectOf(Error error) {
@@ -273,6 +309,12 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftObjectCreation(instruction));
+      !Unsupported(result))
+    return result;
+  if (auto result = Adapt(LiftIteratorInstruction(instruction, frame_size));
+      !Unsupported(result))
+    return result;
+  if (auto result = Adapt(LiftPrivateProperty(instruction, frame_size));
       !Unsupported(result))
     return result;
   const auto constant = LiftConstantObjectInstruction(instruction);

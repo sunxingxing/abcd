@@ -1,0 +1,41 @@
+#ifndef ABCD_ANALYSIS_ITERATOR_H_
+#define ABCD_ANALYSIS_ITERATOR_H_
+
+#include <cstdint>
+#include <variant>
+
+#include "abcd/abc/instruction.h"
+#include "abcd/abc/register_access.h"
+
+namespace abcd::analysis {
+struct PropertyIterator {};
+enum class IteratorMode { kSync, kAsync };
+struct AcquireIterator {
+  IteratorMode mode;
+  std::uint16_t inline_cache;
+};
+struct CloseIterator {
+  std::uint16_t inline_cache;
+  abc::RegisterId iterator;
+};
+struct IteratorNext {
+  abc::RegisterId iterator;
+  abc::RegisterId method;
+};
+enum class IteratorError {
+  kUnsupportedOpcode,
+  kMalformedInstruction,
+  kRegisterRange
+};
+using IteratorInstruction = std::variant<PropertyIterator, AcquireIterator,
+                                         CloseIterator, IteratorNext,
+                                         IteratorError>;
+
+// Pinned v7 interpreter semantics: acquisition reads acc, close reads only its
+// iterator register, legacy next reads two registers; all replace acc on
+// normal completion and may throw. IC slots are not source operands. The ISA
+// group's x_none exception annotation does not override interpreter handlers.
+[[nodiscard]] IteratorInstruction LiftIteratorInstruction(
+    const abc::DecodedInstruction& instruction, std::uint64_t frame_size);
+}  // namespace abcd::analysis
+#endif  // ABCD_ANALYSIS_ITERATOR_H_
