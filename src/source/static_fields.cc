@@ -1,5 +1,6 @@
 #include "abcd/source/static_fields.h"
 
+#include <algorithm>
 #include <bit>
 #include <array>
 #include <charconv>
@@ -147,7 +148,7 @@ class FieldReader {
       throw Fail(Metadata(*error), pc_);
     const auto text = abc::ReadStringEntity(
         file_, header_, std::get<abc::PoolReference>(reference).offset,
-        strings_);
+        {std::min(strings_.bytes, bytes_ - charged_)});
     if (const auto* error = std::get_if<abc::MetadataError>(&text))
       throw Fail(Metadata(*error), pc_);
     return std::get<std::u16string>(text);
@@ -165,7 +166,8 @@ class FieldReader {
       if (!std::holds_alternative<abc::EntityOffset>(entry.value))
         throw Fail(Error::kConstant, pc_);
       const auto text = abc::ReadStringEntity(
-          file_, header_, std::get<abc::EntityOffset>(entry.value), strings_);
+          file_, header_, std::get<abc::EntityOffset>(entry.value),
+          {std::min(strings_.bytes, bytes_ - charged_)});
       if (const auto* error = std::get_if<abc::MetadataError>(&text))
         throw Fail(Metadata(*error), pc_);
       return std::get<std::u16string>(text);
@@ -229,8 +231,19 @@ class FieldReader {
     if (array.elements.capacity() > (bytes_ - charged_) /
                                         sizeof(StaticAtom))
       throw Fail(Error::kResourceLimit, pc_);
-    for (const auto& entry : entries)
+    std::size_t temporary_bytes =
+        array.elements.capacity() * sizeof(StaticAtom);
+    Charge(temporary_bytes, 1);
+    for (const auto& entry : entries) {
       array.elements.push_back(Element(entry));
+      if (const auto* text =
+              std::get_if<std::u16string>(&array.elements.back())) {
+        Charge(text->capacity(), sizeof(char16_t));
+        temporary_bytes = AddBytes(temporary_bytes, text->capacity(),
+                                   sizeof(char16_t));
+      }
+    }
+    charged_ -= temporary_bytes;
     accumulator_ = Save(std::move(array));
     charged_ -= raw_bytes;
   }

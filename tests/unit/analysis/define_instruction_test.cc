@@ -80,19 +80,71 @@ int main() {
           {kImmediate, kImmediate, kRegister}), 16));
   Check(by_index.profile_slot == 1 && by_index.index == 2 &&
         by_index.object.value == 3);
-  const std::vector<std::vector<std::uint8_t>> encodings{
-      {0xbc, 1, 2, 3, 4},
-      {0xfb, 1, 7, 1, 2},
-      {0xfb, 2, 7, 0x78, 0x56, 0x34, 0x12, 2},
-      {0xfb, 5, 7, 0x34, 0x12, 0x78, 0x56, 2},
-      {0xfb, 7, 1, 0, 2, 0, 3, 0, 4, 0, 5},
-      {0xfc, 0x12, 1, 0, 2, 0, 3, 0, 4, 5}};
-  for (const auto& bytes : encodings) {
+  enum class EncodingKind {
+    kAccessor, kFieldValue, kFieldIndex, kPrivate, kSendable, kLegacy
+  };
+  struct EncodingCase {
+    EncodingKind kind;
+    std::vector<std::uint8_t> bytes;
+  };
+  const std::vector<EncodingCase> encodings{
+      {EncodingKind::kAccessor, {0xbc, 1, 2, 3, 4}},
+      {EncodingKind::kFieldValue, {0xfb, 1, 7, 1, 2}},
+      {EncodingKind::kFieldIndex,
+       {0xfb, 2, 7, 0x78, 0x56, 0x34, 0x12, 2}},
+      {EncodingKind::kPrivate,
+       {0xfb, 5, 7, 0x34, 0x12, 0x78, 0x56, 2}},
+      {EncodingKind::kSendable, {0xfb, 7, 1, 0, 2, 0, 3, 0, 4, 0, 5}},
+      {EncodingKind::kLegacy, {0xfc, 0x12, 1, 0, 2, 0, 3, 0, 4, 5}}};
+  for (const auto& encoding : encodings) {
+    const auto& bytes = encoding.bytes;
     const auto decoded = std::get<abc::DecodedInstruction>(
         abc::DecodeInstruction(bytes, abc::ProfileId::kDynamic1301));
-    Check(!std::holds_alternative<DefineError>(
-        LiftDefineInstruction(decoded, 16)));
+    const auto definition = LiftDefineInstruction(decoded, 16);
+    Check(!std::holds_alternative<DefineError>(definition));
     Check(decoded.size == bytes.size());
+    switch (encoding.kind) {
+      case EncodingKind::kAccessor: {
+        const auto& accessor = std::get<analysis::DefineAccessor>(definition);
+        Check(accessor.object.value == 1 && accessor.key.value == 2 &&
+              accessor.getter.value == 3 && accessor.setter.value == 4);
+        break;
+      }
+      case EncodingKind::kFieldValue: {
+        const auto& field = std::get<analysis::DefineFieldByValue>(definition);
+        Check(field.profile_slot == 7 && field.key.value == 1 &&
+              field.object.value == 2);
+        break;
+      }
+      case EncodingKind::kFieldIndex: {
+        const auto& field = std::get<analysis::DefineFieldByIndex>(definition);
+        Check(field.profile_slot == 7 && field.index == 0x12345678 &&
+              field.object.value == 2);
+        break;
+      }
+      case EncodingKind::kPrivate: {
+        const auto& field =
+            std::get<analysis::DefinePrivateProperty>(definition);
+        Check(field.reserved_operand == 7 && field.lexical_level == 0x1234 &&
+              field.lexical_slot == 0x5678 && field.object.value == 2);
+        break;
+      }
+      case EncodingKind::kSendable: {
+        const auto& created =
+            std::get<analysis::DefineSendableClass>(definition);
+        Check(created.reserved_operand == 1 &&
+              created.constructor.value == 2 && created.literal.value == 3 &&
+              created.length == 4 && created.parent.value == 5);
+        break;
+      }
+      case EncodingKind::kLegacy: {
+        const auto& created = std::get<analysis::DefineLegacyClass>(definition);
+        Check(created.constructor.value == 1 && created.encoded_literal == 2 &&
+              created.length == 3 && created.lexical_environment.value == 4 &&
+              created.parent.value == 5);
+        break;
+      }
+    }
   }
   Check(std::get<DefineError>(LiftDefineInstruction({}, 16)) ==
         DefineError::kUnsupportedOpcode);
