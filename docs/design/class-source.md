@@ -160,8 +160,9 @@ names. The class is emitted only after the accessor sequence is proved.
 Accessor bodies must not observe their own function ABI slot; dead compiler
 copies are permitted through a linear register-window proof. Reusing a target
 method, duplicate accessor kind/key, unsupported body, foreign owner,
-non-NONE initial kind, sendable target, malformed key, mixed class-buffer
-members, mixed static-field definitions, or class escape rejects the complete
-record source. A synthetic ABC and Node oracle cover a getter/setter pair;
-real UI entries are still blocked by earlier unsupported global/control-flow
-operations.
+non-NONE initial kind, sendable target, malformed key, class-buffer key
+collision, mixed static-field definitions, or class escape rejects the complete
+record source. Disjoint ordinary buffer members retain their captured identity
+and can coexist with later accessors; a synthetic ABC and Node oracle cover
+that combination and a collision refusal. Real UI entries are still blocked
+by earlier unsupported global/control-flow operations.

@@ -45,13 +45,14 @@ nonconstructibility, descriptors and calls. The record writer now tracks fresh
 class/prototype identity, method creation, string keys and the false
 enumerability flag through each `DEFINEGETTERSETTERBYVALUE`. A synthetic ABC
 record validates the full bytecode-to-ESM chain and its negative kind path.
-Class-buffer members or constant static fields combined with these later
-accessors remain conservatively rejected until definition order is proved.
+Disjoint class-buffer ordinary members can coexist with these later
+accessors; same-position key collisions and constant static fields combined
+with accessors remain conservatively rejected.
 The Immersive corpus still has 3/45 executable records: the UI entries with
 accessors fail earlier at global/branch prelude instructions, so the synthetic
 oracle is not evidence of full real-app source coverage.
 
-Next source work: handle the real UI record preludes and mixed class-member
+Next source work: handle the real UI record preludes and static-field/accessor
 ordering; recover private lexical names/brands; represent sendable classes without falsely
 lowering to ordinary JS; add historical execution profiles and a record-level
 computed-key execution oracle. Corpus coverage must report these as semantic

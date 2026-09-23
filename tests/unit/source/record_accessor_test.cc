@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "abcd/analysis/method_roles.h"
+#include "abcd/source/created_class.h"
 
 namespace {
 void Check(bool condition) {
@@ -25,15 +26,20 @@ int main(int argc, char** argv) {
   constexpr std::uint32_t kConstructor = 200;
   constexpr std::uint32_t kGetter = 220;
   constexpr std::uint32_t kSetter = 240;
+  constexpr std::uint32_t kMember = 260;
+  constexpr std::uint32_t kCollision = 280;
   constexpr std::uint32_t kPool = 300;
   constexpr std::uint32_t kEntryCode = 400;
   constexpr std::uint32_t kClassLiteral = 600;
   constexpr std::uint32_t kClassName = 700;
   constexpr std::uint32_t kPrototypeName = 720;
   constexpr std::uint32_t kPropertyName = 740;
+  constexpr std::uint32_t kMemberName = 760;
   constexpr std::uint32_t kConstructorCode = 800;
   constexpr std::uint32_t kGetterCode = 850;
   constexpr std::uint32_t kSetterCode = 900;
+  constexpr std::uint32_t kMemberCode = 950;
+  constexpr std::uint32_t kCollisionCode = 1000;
   constexpr std::size_t kFileBytes = 2048;
   constexpr std::uint32_t kCodeHeaderBytes = 4;
   constexpr std::uint8_t kEntryLocals = 8;
@@ -71,9 +77,20 @@ int main(int argc, char** argv) {
   string(kClassName, "Accessor");
   string(kPrototypeName, "prototype");
   string(kPropertyName, "value");
-  word(kClassLiteral, 2);
-  bytes[kClassLiteral + sizeof(std::uint32_t)] =
+  string(kMemberName, "read");
+  word(kClassLiteral, 8);
+  bytes[kClassLiteral + 4] =
+      static_cast<std::uint8_t>(abc::LiteralTag::kString);
+  word(kClassLiteral + 5, kMemberName);
+  bytes[kClassLiteral + 9] =
+      static_cast<std::uint8_t>(abc::LiteralTag::kMethod);
+  word(kClassLiteral + 10, kMember);
+  bytes[kClassLiteral + 14] =
+      static_cast<std::uint8_t>(abc::LiteralTag::kMethodAffiliate);
+  bytes[kClassLiteral + 15] = 0;
+  bytes[kClassLiteral + 17] =
       static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
+  word(kClassLiteral + 18, 1);
   const auto code = [&](std::uint32_t at, std::uint8_t locals,
                         std::uint8_t arguments,
                         std::span<const std::uint8_t> body) {
@@ -93,6 +110,9 @@ int main(int argc, char** argv) {
   const auto getter_code = code(kGetterCode, 0, kHiddenArguments, kEmptyBody);
   const auto setter_code = code(kSetterCode, 0, kHiddenArguments + 1,
                                 kEmptyBody);
+  const auto member_code = code(kMemberCode, 0, kHiddenArguments, kEmptyBody);
+  const auto collision_code = code(kCollisionCode, 0, kHiddenArguments,
+                                   kEmptyBody);
   char path[] = "/tmp/abcd-record-accessor-XXXXXX";
   const int fd = mkstemp(path);
   Check(fd >= 0);
@@ -111,7 +131,7 @@ int main(int argc, char** argv) {
   index.regions.push_back({kRecord, kFileBytes, {}, {6, kPool}, {}, {}});
   abc::RecordInfo record;
   record.offset = {kRecord};
-  record.method_count = 4;
+  record.method_count = 6;
   index.records.push_back(record);
   const auto method = [&](std::uint32_t offset, std::string name,
                           abc::CodeInfo body) {
@@ -128,6 +148,8 @@ int main(int argc, char** argv) {
                                  constructor_code));
   index.methods.push_back(method(kGetter, "#scope#value", getter_code));
   index.methods.push_back(method(kSetter, "#scope#value^1", setter_code));
+  index.methods.push_back(method(kMember, "#scope#read", member_code));
+  index.methods.push_back(method(kCollision, "#scope#read", collision_code));
   const auto lookup = std::get<abc::MethodLookup>(
       abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<analysis::MethodRoleIndex>(
@@ -144,8 +166,30 @@ int main(int argc, char** argv) {
   }
   Check(output.str().find("get [\"value\"]()") != std::string::npos);
   Check(output.str().find("set [\"value\"]($p0)") != std::string::npos);
+  Check(output.str().find("[\"read\"]()") != std::string::npos);
   Check(output.str().find("export { $local0 as \"Accessor\" }") !=
         std::string::npos);
+  const auto entry_body = std::get<abc::MethodBody>(abc::DecodeMethodBody(
+      file, header.profile, entry_code));
+  const auto creation = std::find_if(
+      entry_body.instructions.begin(), entry_body.instructions.end(),
+      [](const abc::BodyInstruction& instruction) {
+        return instruction.decoded.opcode ==
+            abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8;
+      });
+  Check(creation != entry_body.instructions.end());
+  const std::array<source::ClassAccessor, 1> collision{{
+      {u"read", {5}, abc::ClassPlacement::kPrototype,
+       abc::ClassMethodKind::kGetter, 0}}};
+  std::ostringstream rejected_collision;
+  const auto collision_result = source::WriteCreatedClass(
+      file, header, index, lookup, {kEntry}, *creation,
+      {creation->offset, analysis::HeritageKind::kAbsent},
+      rejected_collision, {}, {}, &roles, nullptr, nullptr, nullptr,
+      collision);
+  Check(std::get<source::CreatedClassError>(collision_result) ==
+        source::CreatedClassError::kAccessorOrder);
+  Check(rejected_collision.str().empty());
   auto async_index = index;
   constexpr std::uint32_t kKindShift = 8;
   async_index.methods[2].access_flags =

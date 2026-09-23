@@ -1,10 +1,11 @@
 #include "abcd/source/created_class.h"
 
+#include <algorithm>
 #include <new>
 #include <ostream>
-#include <algorithm>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "abcd/abc/call_type.h"
@@ -32,15 +33,18 @@ abc::ClassBuffer ReadMembers(const corpus::AbcFile& file,
   return TakeClassValue<abc::ClassBuffer>(abc::DecodeClassBuffer(raw, {bytes}));
 }
 
-void CheckAccessors(const abc::Header& header,
+void CheckAccessors(const corpus::AbcFile& file,
+                    const abc::Header& header,
                     const abc::MetadataIndex& index,
                     const analysis::MethodRoleIndex* roles,
                     abc::EntityOffset owner,
+                    const abc::ClassBuffer& members,
                     std::span<const ClassAccessor> accessors,
-                    std::size_t& bytes) {
+                    std::size_t& bytes, abc::StringBudget strings) {
+  if (accessors.empty()) return;
   using Key = std::tuple<abc::ClassPlacement, std::u16string_view,
                          abc::ClassMethodKind>;
-  if (!accessors.empty() && header.profile != abc::ProfileId::kDynamic1301)
+  if (header.profile != abc::ProfileId::kDynamic1301)
     throw ClassFailure{CreatedClassError::kAccessorTarget};
   AdmitClassBytes(accessors.size(), sizeof(Key), bytes);
   AdmitClassBytes(accessors.size(), sizeof(abc::MethodPosition), bytes);
@@ -80,6 +84,23 @@ void CheckAccessors(const abc::Header& header,
   if (std::adjacent_find(keys.begin(), keys.end()) != keys.end() ||
       std::adjacent_find(methods.begin(), methods.end()) != methods.end())
     throw ClassFailure{CreatedClassError::kAccessorTarget};
+  // A later accessor must not replace a buffer method before its self-binding
+  // is captured by ClassWriter; compare positions and keys in O(M log A).
+  for (const auto& member : members.properties) {
+    const auto name = ReadClassKey(file, header, member, strings);
+    if (name.capacity() > bytes / sizeof(char16_t))
+      throw ClassFailure{CreatedClassError::kResourceLimit};
+    const auto wanted = std::pair{member.placement, std::u16string_view{name}};
+    const auto found = std::lower_bound(
+        keys.begin(), keys.end(), wanted,
+        [](const Key& candidate, const auto& value) {
+          return std::pair{std::get<0>(candidate), std::get<1>(candidate)} <
+                 value;
+        });
+    if (found != keys.end() &&
+        std::pair{std::get<0>(*found), std::get<1>(*found)} == wanted)
+      throw ClassFailure{CreatedClassError::kAccessorOrder};
+  }
 }
 
 class ClassWriter {
@@ -374,9 +395,8 @@ CreatedClassResult WriteCreatedClass(
     if (static_fields && !static_fields->fields.empty() &&
         !members.properties.empty())
       return CreatedClassError::kStaticFieldOrder;
-    if (!accessors.empty() &&
-        (!members.properties.empty() ||
-         (static_fields && !static_fields->fields.empty())))
+    if (!accessors.empty() && static_fields &&
+        !static_fields->fields.empty())
       return CreatedClassError::kAccessorOrder;
     AdmitClassBytes(members.properties.capacity(), sizeof(abc::ClassProperty),
                     budget.bytes);
@@ -390,8 +410,8 @@ CreatedClassResult WriteCreatedClass(
       if (!caller_position) return abc::MethodTargetError::kCallerMissing;
       caller_owner = index.methods[caller_position->value].owner_offset;
     }
-    CheckAccessors(header, index, roles, caller_owner, accessors,
-                   budget.bytes);
+    CheckAccessors(file, header, index, roles, caller_owner, members,
+                   accessors, budget.bytes, strings);
     CaptureDiscard discard;
     std::ostream dry(&discard);
     ClassWriter(file, header, index, lookup, roles, module, caller_owner,

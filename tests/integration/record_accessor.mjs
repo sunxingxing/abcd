@@ -10,3 +10,4 @@ assert.equal(descriptor.set.name, 'set value');
 assert.equal(descriptor.get.length, 0);
 assert.equal(descriptor.set.length, 1);
 assert.equal(new Accessor().value, undefined);
+assert.equal(new Accessor().read(), undefined);
