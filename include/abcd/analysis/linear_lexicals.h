@@ -71,8 +71,9 @@ struct LinearLexicalWork {
 // Entry registers are caller-PROVEN language values; acc starts Hole. Only
 // initialized local cells and language reads can reach emitted statements.
 // Omissions exclude GC/OOM timing/debugger observability, not language effects.
-// Named allocations, branches, handlers and possibly failing guards are
-// rejected. Capture requires an explicit Language premise; creations require
+// Named allocations require a same-body validated scope-literal certificate;
+// branches, handlers and possibly failing guards are rejected. Capture requires
+// an explicit Language premise; creations require
 // complete child binding proofs and initialized parent cells. This is
 // neither general CFG promotion nor a function service.
 class LinearLexicals {
@@ -83,7 +84,8 @@ class LinearLexicals {
       const abc::MethodBody& body, const EnvironmentFlow& environments,
       std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {},
       std::span<const ClosureCreation> creations = {},
-      CapturedValues captured_values = CapturedValues::kReject);
+      CapturedValues captured_values = CapturedValues::kReject,
+      std::span<const std::uint8_t> named_scopes = {});
   std::span<const LinearStatement> Statements() const {
     return {statements_.get(), statements_ ? statement_count_ : 0};
   }

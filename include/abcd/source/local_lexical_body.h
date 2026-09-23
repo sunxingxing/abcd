@@ -9,7 +9,7 @@ namespace abcd::source {
 struct LocalLexicalBudget {
   std::size_t bytes = 64 * 1024 * 1024;
   std::uint64_t work =
-      100000000;  // Plan quota; graph/environment passes are separate.
+      100000000;  // Named-scope preflight and plan share this quota.
   EmitBudget output;
 };
 using LocalLexicalResult =

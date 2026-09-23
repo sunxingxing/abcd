@@ -31,8 +31,12 @@ environment without reading a register. The allowed generic register effects
 and value rules remain typed and reuse the analysis implementations.
 Pop/current-environment are accepted only for a known local current environment.
 Captured pop is not certified by a static depth number. Named allocations are
-rejected because their scope literal-array lookup is actual runtime work, not a
-conditional diagnostic lookup that can be skipped on a proven successful guard.
+admitted only after their regional literal-array reference, integer header,
+string/slot pairs, slot bounds and string entities are validated from the same
+file. The pinned frontend emits `NEWLEXENVWITHNAME` only in debug builds; the
+v7.0 runtime uses the decoded names only for debugger scope lookup. Invalid
+metadata still rejects source emission. This proof excludes debugger
+introspection and GC/OOM timing, not language-visible lexical operations.
 
 Every generic instruction's reads must be language-only. Result classification
 uses existing conservative rules: calls and unsupported numeric results remain
@@ -65,10 +69,16 @@ Generic statements share the existing linear instruction renderer behind a
 private, proof-required boundary. Two-pass streaming preflight prevents partial
 semantic/budget output; IO or changing files still require atomic publication.
 
-For I instructions, L accesses, C cells, R registers and U actual register reads:
+For I instructions, L accesses, C cells, R registers, U actual register reads,
+P named pushes, E entries of distinct scope literals, N name references and B
+decoded code units of distinct names:
 plan construction is O(I+R+U+L log(2+L)), plus indexed environment binding work;
-memory O(I+R+C+L). No declared-slot expansion, per-cell CFG scan or growing source
-string buffer. Shared work quota and PMR count scratch/growth/output copies.
+named-scope preflight is O(I+P log(2+P)+P log(2+regions)+E+N log(2+N)+B).
+Memory is O(I+R+C+L+P+N+largest scope literal). Distinct literal entities are
+decoded twice per method for bounded name storage; duplicate string entities
+are decoded once. No declared-slot expansion, per-cell CFG scan or growing
+source string buffer. Named-scope and plan work share a quota; PMR counts plan
+scratch/growth/output copies.
 The source wrapper admits graph, environment flow and plan under one analysis
 allowance. Caller separately admits body, names, transient strings and output.
 

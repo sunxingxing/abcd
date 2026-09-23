@@ -10,6 +10,7 @@
 #include "function_template.h"
 #include "leaf_sources.h"
 #include "linear_instruction.h"
+#include "named_scope.h"
 
 namespace abcd::source {
 namespace {
@@ -186,6 +187,12 @@ LocalLexicalResult WriteLexicals(const abc::MethodBody& body, ScalarNames names,
     std::ostream discard(&buffer);
     std::optional<LeafSources> functions;
     std::span<const analysis::ClosureCreation> creations;
+    const auto validated = ValidateNamedScopes(
+        body, names.registers.size(), constants, budget.bytes, budget.work);
+    if (const auto* failure = std::get_if<BodyEmitFailure>(&validated))
+      return *failure;
+    const auto& named_scopes = std::get<NamedScopes>(validated);
+    budget.bytes -= named_scopes.AllocatedBytes();
     const auto built = analysis::BuildNormalFlow(body, {budget.bytes});
     if (const auto* failure = std::get_if<analysis::FlowFailure>(&built))
       return *failure;
@@ -214,10 +221,10 @@ LocalLexicalResult WriteLexicals(const abc::MethodBody& body, ScalarNames names,
       budget.bytes -= functions->AllocatedBytes();
       creations = functions->Facts();
     }
-    analysis::IdfQuota quota{budget.work};
+    analysis::IdfQuota quota{budget.work - named_scopes.work_units};
     const auto planned = analysis::LinearLexicals::Build(
         body, environments, names.registers.size(), quota, {budget.bytes},
-        creations, captured_values);
+        creations, captured_values, named_scopes.admitted);
     if (const auto* failure =
             std::get_if<analysis::LinearLexicalFailure>(&planned))
       return *failure;

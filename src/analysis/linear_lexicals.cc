@@ -20,7 +20,8 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
     const abc::MethodBody& body, const EnvironmentFlow& environments,
     std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget,
     std::span<const ClosureCreation> creations,
-    CapturedValues captured_values) {
+    CapturedValues captured_values,
+    std::span<const std::uint8_t> named_scopes) {
   using Error = LinearLexicalError;
   abc::CodeOffset offset{};
   const auto fail = [&](Error kind) {
@@ -170,7 +171,10 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
       }
       const auto lexical = LiftLexicalInstruction(instruction, frame_size);
       if (const auto* push = std::get_if<PushEnvironment>(&lexical)) {
-        if (push->scope) return fail(Error::kInstruction);
+        if (push->scope &&
+            (named_scopes.size() != body.instructions.size() ||
+             !named_scopes[i]))
+          return fail(Error::kInstruction);
         accumulator = ValueKinds::Environment();
         statement = OmitInstruction{};
         continue;
