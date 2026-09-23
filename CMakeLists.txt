@@ -92,6 +92,7 @@ target_sources(abcd_source PRIVATE src/source/module_binding.cc)
 target_sources(abcd_source PRIVATE src/source/module_imports.cc)
 target_sources(abcd_source PRIVATE src/source/module_exports.cc)
 target_sources(abcd_source PRIVATE src/source/record_program.cc)
+target_sources(abcd_source PRIVATE src/source/record_object.cc)
 target_sources(abcd_source PRIVATE src/source/static_fields.cc)
 target_sources(abcd_source PRIVATE src/source/record_module_context.cc)
 target_sources(abcd_source PRIVATE src/source/base_function.cc)
@@ -393,7 +394,17 @@ if(BUILD_TESTING)
     tests/unit/source/record_accessor_test.cc)
   target_link_libraries(record_accessor_test PRIVATE abcd_source)
   add_test(NAME record_accessor_test COMMAND record_accessor_test)
+  add_executable(record_object_test
+    tests/unit/source/record_object_test.cc)
+  target_link_libraries(record_object_test PRIVATE abcd_source)
+  add_test(NAME record_object_test COMMAND record_object_test)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME record_object_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:record_object_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_object.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=record-object.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME record_accessor_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:record_accessor_test>
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_accessor.mjs

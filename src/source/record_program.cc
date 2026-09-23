@@ -17,10 +17,12 @@
 #include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/named_read.h"
+#include "abcd/analysis/own_write.h"
 #include "abcd/analysis/scalar.h"
 #include "abcd/source/created_function.h"
 #include "abcd/source/module_imports.h"
 #include "abcd/source/static_fields.h"
+#include "record_object.h"
 
 namespace abcd::source {
 namespace {
@@ -35,6 +37,10 @@ struct Value {
     kCreatedMethod,
     kString,
     kFalse,
+    kTrue,
+    kNull,
+    kAtom,
+    kObject,
     kPrototype
   } kind;
   std::size_t ordinal = 0;
@@ -51,6 +57,10 @@ struct CreatedMethodState {
   abc::ClassPlacement home = abc::ClassPlacement::kPrototype;
   std::uint8_t length = 0;
   bool consumed = false;
+};
+struct ObjectState {
+  std::vector<RecordObjectField> fields;
+  bool emitted = false;
 };
 class DiscardBuffer : public std::streambuf {
   std::streamsize xsputn(const char*, std::streamsize count) override {
@@ -148,6 +158,12 @@ std::variant<Value, RecordProgramFailure> ScalarValue(
   if (const auto* special = std::get_if<analysis::SpecialValue>(&source);
       special && *special == analysis::SpecialValue::kFalse)
     return Value{Value::Kind::kFalse};
+  if (const auto* special = std::get_if<analysis::SpecialValue>(&source);
+      special && *special == analysis::SpecialValue::kTrue)
+    return Value{Value::Kind::kTrue};
+  if (const auto* special = std::get_if<analysis::SpecialValue>(&source);
+      special && *special == analysis::SpecialValue::kNull)
+    return Value{Value::Kind::kNull};
   return Fail(Error::kInstruction, pc);
 }
 class ProgramWriter {
@@ -210,6 +226,13 @@ class ProgramWriter {
         case Opcode::kLDA_STR_ID16:
           String(instruction.decoded);
           break;
+        case Opcode::kCREATEEMPTYOBJECT:
+          EmptyObject(instruction.decoded);
+          break;
+        case Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8:
+        case Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8:
+          DefineObjectField(instruction.decoded);
+          break;
         case Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8:
         case Opcode::kDEFINECLASSWITHBUFFER_IMM16_ID16_ID16_IMM16_V8:
           Class(instruction);
@@ -244,6 +267,8 @@ class ProgramWriter {
             if (!created.emitted) throw Fail(Error::kClass, pc_);
           for (const auto& method : created_methods_)
             if (!method.consumed) throw Fail(Error::kInitializer, pc_);
+          for (const auto& object : objects_)
+            if (!object.emitted) throw Fail(Error::kObject, pc_);
           if (!exports_.Complete()) throw Fail(Error::kExport, pc_);
           return written_;
         case Opcode::kNOP:
@@ -303,7 +328,13 @@ class ProgramWriter {
     const auto* value = std::get_if<analysis::ScalarValue>(
         &assignment->expression);
     if (!value) throw Fail(Error::kInstruction, pc_);
-    const auto resolved = ScalarValue(*value, accumulator_, registers_, pc_);
+    const auto resolved = [&]() -> std::variant<Value, RecordProgramFailure> {
+      if (const auto* integer = std::get_if<analysis::IntegerLiteral>(value))
+        return SaveAtom(integer->value);
+      if (const auto* number = std::get_if<analysis::Float64Bits>(value))
+        return SaveAtom(StaticFloat{number->value});
+      return ScalarValue(*value, accumulator_, registers_, pc_);
+    }();
     if (const auto* failure = std::get_if<RecordProgramFailure>(&resolved))
       throw *failure;
     if (std::holds_alternative<analysis::Accumulator>(
@@ -324,6 +355,96 @@ class ProgramWriter {
       throw Fail(Error::kInstruction, pc_);
     accumulator_ = {Value::Kind::kString,
                     static_cast<std::size_t>(instruction.operands[0].raw_bits)};
+  }
+  Value SaveAtom(StaticAtom atom) {
+    if (const auto* text = std::get_if<std::u16string>(&atom)) {
+      if (text->capacity() > budget_.bytes / sizeof(char16_t))
+        throw Fail(Error::kResourceLimit, pc_);
+      budget_.bytes -= text->capacity() * sizeof(char16_t);
+    }
+    const auto id = atoms_.size();
+    Append(atoms_, std::move(atom));
+    return {Value::Kind::kAtom, id};
+  }
+  std::u16string ReadPoolString(abc::PoolIndex index) {
+    const auto reference = abc::ResolvePoolReference(
+        file_, header_, index_, entry_.offset, index,
+        abc::PoolEntityKind::kString);
+    if (const auto* error = std::get_if<abc::MetadataError>(&reference))
+      throw Fail(Metadata(*error), pc_);
+    const auto decoded = abc::ReadStringEntity(
+        file_, header_, std::get<abc::PoolReference>(reference).offset,
+        {std::min(budget_.strings.bytes, budget_.bytes)});
+    if (const auto* error = std::get_if<abc::MetadataError>(&decoded))
+      throw Fail(Metadata(*error), pc_);
+    return std::get<std::u16string>(std::move(decoded));
+  }
+  void EmptyObject(const abc::DecodedInstruction& instruction) {
+    if (instruction.operand_count != 0)
+      throw Fail(Error::kObject, pc_);
+    const auto id = objects_.size();
+    Append(objects_, ObjectState{});
+    accumulator_ = {Value::Kind::kObject, id};
+  }
+  StaticAtom ObjectValue() {
+    switch (accumulator_.kind) {
+      case Value::Kind::kUndefined:
+        return StaticUndefined{};
+      case Value::Kind::kNull:
+        return StaticNull{};
+      case Value::Kind::kFalse:
+        return false;
+      case Value::Kind::kTrue:
+        return true;
+      case Value::Kind::kString:
+        return ReadPoolString({static_cast<std::uint32_t>(
+            accumulator_.ordinal)});
+      case Value::Kind::kAtom:
+        if (accumulator_.ordinal >= atoms_.size()) break;
+        return atoms_[accumulator_.ordinal];
+      default:
+        break;
+    }
+    throw Fail(Error::kObject, pc_);
+  }
+  void DefineObjectField(const abc::DecodedInstruction& instruction) {
+    const auto lifted = analysis::LiftOwnWrite(instruction, registers_.size());
+    const auto* write = std::get_if<analysis::OwnWrite>(&lifted);
+    if (!write || write->kind != analysis::OwnWriteKind::kDefineField)
+      throw Fail(Error::kObject, pc_);
+    const auto object = registers_[write->object.value];
+    if (object.kind != Value::Kind::kObject ||
+        object.ordinal >= objects_.size() || objects_[object.ordinal].emitted)
+      throw Fail(Error::kObject, pc_);
+    RecordObjectField field{ReadPoolString(write->name), ObjectValue()};
+    if (field.key.capacity() > budget_.bytes / sizeof(char16_t))
+      throw Fail(Error::kResourceLimit, pc_);
+    budget_.bytes -= field.key.capacity() * sizeof(char16_t);
+    if (const auto* text = std::get_if<std::u16string>(&field.value)) {
+      if (text->capacity() > budget_.bytes / sizeof(char16_t))
+        throw Fail(Error::kResourceLimit, pc_);
+      budget_.bytes -= text->capacity() * sizeof(char16_t);
+    }
+    Append(objects_[object.ordinal].fields, std::move(field));
+  }
+  void EmitObject(std::size_t id) {
+    if (id >= objects_.size()) throw Fail(Error::kObject, pc_);
+    auto& object = objects_[id];
+    if (object.emitted) return;
+    Text("const $object");
+    Number(id);
+    Text(" = ");
+    const auto result = WriteRecordObject(object.fields, output_,
+                                          {Remaining()});
+    if (const auto* error = std::get_if<EmitError>(&result))
+      throw Fail(*error == EmitError::kOutputLimit
+                     ? Error::kOutputLimit
+                     : *error == EmitError::kWrite ? Error::kWrite
+                                                   : Error::kObject,
+                 pc_);
+    Account(std::get<std::size_t>(result));
+    Text(";\n");
+    object.emitted = true;
   }
   void Class(const abc::BodyInstruction& instruction) {
     const auto lifted = analysis::LiftClassCreation(instruction.decoded);
@@ -538,6 +659,7 @@ class ProgramWriter {
     const auto* store = std::get_if<analysis::ModuleStore>(&lifted);
     if (!store || (accumulator_.kind != Value::Kind::kClass &&
                    accumulator_.kind != Value::Kind::kFunction &&
+                   accumulator_.kind != Value::Kind::kObject &&
                    accumulator_.kind != Value::Kind::kUndefined))
       throw Fail(Error::kValue, pc_);
     if (accumulator_.kind == Value::Kind::kClass) {
@@ -546,12 +668,17 @@ class ProgramWriter {
       if (!classes_[accumulator_.ordinal].emitted)
         EmitClass(accumulator_.ordinal);
     }
+    if (accumulator_.kind == Value::Kind::kObject)
+      EmitObject(accumulator_.ordinal);
     Text("$acc = ");
     if (accumulator_.kind == Value::Kind::kClass) {
       Text("$class");
       Number(accumulator_.ordinal);
     } else if (accumulator_.kind == Value::Kind::kFunction) {
       Text("$function");
+      Number(accumulator_.ordinal);
+    } else if (accumulator_.kind == Value::Kind::kObject) {
+      Text("$object");
       Number(accumulator_.ordinal);
     } else {
       Text("void 0");
@@ -586,6 +713,8 @@ class ProgramWriter {
   std::vector<std::uint8_t> escaped_;
   std::vector<ClassState> classes_;
   std::vector<CreatedMethodState> created_methods_;
+  std::vector<StaticAtom> atoms_;
+  std::vector<ObjectState> objects_;
   Value accumulator_{Value::Kind::kUnknown};
   abc::CodeOffset pc_{};
   std::size_t function_count_ = 0;

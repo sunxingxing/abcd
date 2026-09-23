@@ -23,7 +23,8 @@ enum class RecordProgramError : unsigned {
   kFileChanged = 13,
   kFunction = 14,
   kInitializer = 15,
-  kAccessor = 16
+  kAccessor = 16,
+  kObject = 17
 };
 struct RecordProgramFailure {
   RecordProgramError kind;
