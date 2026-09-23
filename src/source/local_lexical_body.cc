@@ -1,15 +1,14 @@
 #include "abcd/source/local_lexical_body.h"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <limits>
 #include <ostream>
 #include <streambuf>
 
-#include "abcd/analysis/object_creation.h"
-#include "abcd/analysis/own_write.h"
-#include "abcd/analysis/register_effect.h"
 #include "capture_stream.h"
+#include "fresh_object_fields.h"
 #include "function_template.h"
 #include "leaf_sources.h"
 #include "linear_instruction.h"
@@ -21,98 +20,20 @@ namespace {
 constexpr std::string_view kCellPrefix = "$lex";
 constexpr std::string_view kInnerPrefix = "$inner";
 constexpr std::string_view kImportPrefix = "$import";
-class FreshObjectFields {
- public:
-  std::optional<abc::RegisterId> Step(
-      const abc::DecodedInstruction& instruction, std::size_t frame_size) {
-    const auto lifted = analysis::LiftRegisterEffect(instruction, frame_size);
-    const auto* effect = std::get_if<analysis::RegisterEffect>(&lifted);
-    if (!effect) {
-      created_ = false;
-      stored_.reset();
-      active_.reset();
-      return {};
-    }
-    if (created_) {
-      created_ = false;
-      if (instruction.opcode == abc::Opcode::kSTA_V8 &&
-          effect->read_count == 1 &&
-          std::holds_alternative<analysis::Accumulator>(effect->reads[0]) &&
-          effect->write &&
-          std::holds_alternative<abc::RegisterId>(*effect->write))
-        stored_ = std::get<abc::RegisterId>(*effect->write);
-      return {};
-    }
-    if (stored_) {
-      const bool overwrites_acc =
-          effect->write &&
-          std::holds_alternative<analysis::Accumulator>(*effect->write);
-      active_ = overwrites_acc && !Reads(*effect, *stored_) &&
-                        !ReadsAccumulator(*effect)
-                    ? stored_
-                    : std::nullopt;
-      stored_.reset();
-    }
-    if (std::holds_alternative<analysis::ObjectCreation>(
-            analysis::LiftObjectCreation(instruction))) {
-      active_.reset();
-      created_ = true;
-      return {};
-    }
-    const auto field = analysis::LiftOwnWrite(instruction, frame_size);
-    if (instruction.opcode ==
-            abc::Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8 &&
-        active_) {
-      if (const auto* write = std::get_if<analysis::OwnWrite>(&field);
-          write && write->kind == analysis::OwnWriteKind::kDefineField &&
-          write->object == *active_)
-        return active_;
-    }
-    if (active_ &&
-        (Reads(*effect, *active_) || Writes(*effect, *active_)))
-      active_.reset();
-    return {};
-  }
-
- private:
-  static bool Reads(const analysis::RegisterEffect& effect,
-                    abc::RegisterId reg) {
-    for (std::size_t i = 0; i < effect.read_count; ++i)
-      if (const auto* read = std::get_if<abc::RegisterId>(&effect.reads[i]);
-          read && *read == reg)
-        return true;
-    return effect.range && reg.value >= effect.range->first.value &&
-           reg.value - effect.range->first.value < effect.range->count;
-  }
-  static bool ReadsAccumulator(const analysis::RegisterEffect& effect) {
-    for (std::size_t i = 0; i < effect.read_count; ++i)
-      if (std::holds_alternative<analysis::Accumulator>(effect.reads[i]))
-        return true;
-    return false;
-  }
-  static bool Writes(const analysis::RegisterEffect& effect,
-                     abc::RegisterId reg) {
-    return effect.write &&
-           std::get_if<abc::RegisterId>(&*effect.write) &&
-           *std::get_if<abc::RegisterId>(&*effect.write) == reg;
-  }
-  bool created_ = false;
-  std::optional<abc::RegisterId> stored_;
-  std::optional<abc::RegisterId> active_;
-};
 class LexicalWriter {
  public:
   LexicalWriter(ScalarNames names, std::ostream& output, EmitBudget budget,
                 const MethodConstants* constants, const LeafSources* functions,
                 analysis::CapturedValues captured_values,
-                ObjectBufferBudget object_budget)
+                ObjectBufferBudget object_budget,
+                std::span<const FreshFieldSite> fields)
       : names_(names),
         output_(output),
         remaining_(budget.bytes),
         constants_(constants),
         functions_(functions),
         captured_values_(captured_values),
-        object_budget_(object_budget) {}
+        object_budget_(object_budget), fields_(fields) {}
   BodyEmitResult Write(const abc::MethodBody& body,
                        const analysis::LinearLexicals& plan) {
     try {
@@ -123,13 +44,39 @@ class LexicalWriter {
       }
       for (std::size_t i = 0; i < plan.Statements().size() && !error_; ++i) {
         offset_ = body.instructions[i].offset;
-        const auto fresh_object = fields_.Step(body.instructions[i].decoded,
-                                               names_.registers.size());
         const auto& statement = plan.Statements()[i];
+        if (field_cursor_ < fields_.size() &&
+            fields_[field_cursor_].instruction == i) {
+          if (!std::holds_alternative<analysis::KeepInstruction>(statement))
+            return BodyEmitFailure{BodyEmitError::kUnsupportedInstruction,
+                                   offset_, {}, {}};
+          const auto last = field_cursor_ + 1 == fields_.size() ||
+                            fields_[field_cursor_ + 1].first !=
+                                fields_[field_cursor_].first;
+          if (last) {
+            const auto first = fields_[field_cursor_].first;
+            const auto result = WriteFreshFieldBatch(
+                fields_.subspan(first, field_cursor_ - first + 1), first,
+                offset_, names_, output_, {remaining_}, constants_);
+            if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
+              error_ = *failure;
+            else
+              Count(std::get<std::size_t>(result));
+          } else {
+            Text("const ");
+            Text(kFieldTempPrefix);
+            Number(static_cast<std::uint32_t>(field_cursor_));
+            Text(" = ");
+            Slot(analysis::Accumulator{});
+            Text(";\n");
+          }
+          ++field_cursor_;
+          continue;
+        }
         if (std::holds_alternative<analysis::KeepInstruction>(statement)) {
           const auto result = WriteLinearInstruction(
               body.instructions[i], names_, output_, {remaining_}, constants_,
-              object_budget_, fresh_object);
+              object_budget_);
           if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
             error_ = *failure;
           else
@@ -256,7 +203,8 @@ class LexicalWriter {
   const LeafSources* functions_;
   analysis::CapturedValues captured_values_;
   ObjectBufferBudget object_budget_;
-  FreshObjectFields fields_;
+  std::span<const FreshFieldSite> fields_;
+  std::size_t field_cursor_ = 0;
   std::size_t next_function_ = 0;
   std::size_t written_ = 0;
   abc::CodeOffset offset_{};
@@ -339,18 +287,34 @@ LocalLexicalResult WriteLexicals(const abc::MethodBody& body, ScalarNames names,
       return *failure;
     const auto& plan = std::get<analysis::LinearLexicals>(planned);
     if (plan.AllocatedBytes() > budget.bytes) return resource();
-    const ObjectBufferBudget object_budget{budget.bytes - plan.AllocatedBytes()};
+    const auto field_plan = BuildFreshFieldPlan(
+        body, names.registers.size(), budget.bytes - plan.AllocatedBytes());
+    if (const auto* failure = std::get_if<BodyEmitFailure>(&field_plan))
+      return *failure;
+    const auto& fields = std::get<FreshFieldPlan>(field_plan);
+    if (fields.sites.size() > 1) {
+      const auto collision = [](std::string_view name) {
+        return name.starts_with(kFieldTempPrefix);
+      };
+      if (collision(names.accumulator) ||
+          std::any_of(names.registers.begin(), names.registers.end(),
+                      collision))
+        return BodyEmitFailure{BodyEmitError::kExpression, {}, {},
+                               EmitError::kInvalidBinding};
+    }
+    const ObjectBufferBudget object_budget{
+        budget.bytes - plan.AllocatedBytes() - fields.AllocatedBytes()};
     const auto checked =
         LexicalWriter(names, discard, budget.output, constants,
                       functions ? &*functions : nullptr, captured_values,
-                      object_budget)
+                      object_budget, fields.sites)
             .Write(body, plan);
     if (const auto* failure = std::get_if<BodyEmitFailure>(&checked))
       return *failure;
     const auto result =
         LexicalWriter(names, output, budget.output, constants,
                       functions ? &*functions : nullptr, captured_values,
-                      object_budget)
+                      object_budget, fields.sites)
             .Write(body, plan);
     if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
       return *failure;

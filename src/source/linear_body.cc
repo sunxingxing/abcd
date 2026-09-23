@@ -12,7 +12,6 @@
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/ordinary_call.h"
-#include "abcd/analysis/own_write.h"
 #include "abcd/source/string_literal.h"
 #include "linear_instruction.h"
 #include "object_buffer.h"
@@ -47,14 +46,12 @@ class BodyWriter {
  public:
   BodyWriter(ScalarNames names, std::ostream& output, EmitBudget budget,
              const MethodConstants* constants,
-             ObjectBufferBudget object_budget,
-             std::optional<abc::RegisterId> fresh_object = {})
+             ObjectBufferBudget object_budget)
       : names_(names),
         output_(output),
         remaining_(budget.bytes),
         constants_(constants),
-        object_budget_(object_budget),
-        fresh_object_(fresh_object) {}
+        object_budget_(object_budget) {}
 
   BodyEmitResult Write(const abc::MethodBody& body) {
     if (!body.tries.empty() || !body.handlers.empty())
@@ -74,6 +71,36 @@ class BodyWriter {
     } catch (const std::ios_base::failure&) {
       return BodyEmitFailure{
           BodyEmitError::kExpression, offset_, {}, EmitError::kWrite};
+    }
+  }
+
+  BodyEmitResult FieldBatch(std::span<const FreshFieldSite> fields,
+                            std::size_t first_ordinal,
+                            abc::CodeOffset offset) {
+    offset_ = offset;
+    if (fields.empty()) return Fail(BodyEmitError::kUnsupportedInstruction);
+    try {
+      const auto object = fields.front().object;
+      Expression(ScalarValue{object});
+      Text(" = ({...");
+      Expression(ScalarValue{object});
+      for (std::size_t i = 0; i < fields.size() && !error_; ++i) {
+        if (fields[i].first != first_ordinal || fields[i].object != object)
+          return Fail(BodyEmitError::kUnsupportedInstruction);
+        Text(", [");
+        StringConstant(fields[i].name);
+        Text("]: ");
+        if (i + 1 == fields.size())
+          Expression(ScalarValue{Accumulator{}});
+        else
+          FieldTemp(first_ordinal + i);
+      }
+      Text("});\n");
+      if (error_) return *error_;
+      return written_;
+    } catch (const std::ios_base::failure&) {
+      return BodyEmitFailure{BodyEmitError::kExpression, offset_, {},
+                             EmitError::kWrite};
     }
   }
 
@@ -190,10 +217,6 @@ class BodyWriter {
           if (!accumulator_defined)
             return Fail(BodyEmitError::kAccumulatorHole);
           NamedStore(instruction.decoded);
-        } else if (opcode == Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8) {
-          if (!accumulator_defined)
-            return Fail(BodyEmitError::kAccumulatorHole);
-          DefineFreshField(instruction.decoded);
         } else if (opcode == Opcode::kCALLARG0_IMM8 ||
                    opcode == Opcode::kCALLARG1_IMM8_V8 ||
                    opcode == Opcode::kCALLARGS2_IMM8_V8_V8 ||
@@ -352,24 +375,12 @@ class BodyWriter {
     Expression(ScalarValue{Accumulator{}});
     Text(");\n");
   }
-  void DefineFreshField(const abc::DecodedInstruction& instruction) {
-    const auto lifted = LiftOwnWrite(instruction, names_.registers.size());
-    const auto* field = std::get_if<OwnWrite>(&lifted);
-    if (!field || field->kind != OwnWriteKind::kDefineField ||
-        !fresh_object_ || field->object != *fresh_object_) {
-      error_ = Fail(BodyEmitError::kUnsupportedInstruction);
-      return;
-    }
-    // Only an unaliased, getter-free object reaches this path. Replacing it
-    // before escape preserves own-data definition without mutable intrinsics.
-    Expression(ScalarValue{field->object});
-    Text(" = ({...");
-    Expression(ScalarValue{field->object});
-    Text(", [");
-    StringConstant(field->name);
-    Text("]: ");
-    Expression(ScalarValue{Accumulator{}});
-    Text("});\n");
+  void FieldTemp(std::size_t ordinal) {
+    std::array<char, std::numeric_limits<std::size_t>::digits10 + 1> digits{};
+    const auto end = std::to_chars(digits.data(), digits.data() +
+                                                    digits.size(), ordinal);
+    Text(kFieldTempPrefix);
+    Text({digits.data(), static_cast<std::size_t>(end.ptr - digits.data())});
   }
   void StringConstant(abc::PoolIndex slot,
                       StringUse use = StringUse::kLiteral) {
@@ -447,7 +458,6 @@ class BodyWriter {
   std::optional<BodyEmitFailure> error_;
   const MethodConstants* constants_;
   ObjectBufferBudget object_budget_;
-  std::optional<abc::RegisterId> fresh_object_;
 };
 }  // namespace
 
@@ -455,11 +465,17 @@ BodyEmitResult WriteLinearInstruction(const abc::BodyInstruction& instruction,
                                       ScalarNames names, std::ostream& output,
                                       EmitBudget budget,
                                       const MethodConstants* constants,
-                                      ObjectBufferBudget object_budget,
-                                      std::optional<abc::RegisterId> fresh_object) {
-  return BodyWriter(names, output, budget, constants, object_budget,
-                    fresh_object)
+                                      ObjectBufferBudget object_budget) {
+  return BodyWriter(names, output, budget, constants, object_budget)
       .Instruction(instruction);
+}
+
+BodyEmitResult WriteFreshFieldBatch(
+    std::span<const FreshFieldSite> fields, std::size_t first_ordinal,
+    abc::CodeOffset offset, ScalarNames names, std::ostream& output,
+    EmitBudget budget, const MethodConstants* constants) {
+  return BodyWriter(names, output, budget, constants, {})
+      .FieldBatch(fields, first_ordinal, offset);
 }
 
 BodyEmitResult WriteNamedInvocation(const analysis::NamedInvocation& invocation,

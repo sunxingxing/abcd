@@ -9,6 +9,7 @@
 #include "abcd/source/linear_body.h"
 #include "abcd/source/local_lexical_body.h"
 #include "analysis/ssa_fixture.h"
+#include "fresh_object_fields.h"
 
 int main(int argc, char** argv) {
   using namespace abcd;
@@ -172,13 +173,95 @@ int main(int argc, char** argv) {
   const auto redefine = test::Body({
       0x07, 0, 0, 0, 0x61, 0, 0x60, 1, 0xdc, 0, 8, 0, 0,
       0x60, 2, 0xdc, 0, 10, 0, 0, 0x60, 0, 0x64});
+  const auto field_limit = source::BuildFreshFieldPlan(
+      redefine, more_fields.size(), 2 * sizeof(source::FreshFieldSite) - 1);
+  test::Check(std::get<source::BodyEmitFailure>(field_limit).kind ==
+              source::BodyEmitError::kResourceLimit);
   std::ostringstream redefine_source;
   test::Check(std::holds_alternative<std::size_t>(
       source::WriteLocalLexicalBody(redefine, {"acc", more_fields},
                                     redefine_source, {}, &constants)));
-  test::Check(redefine_source.str().find(
-                  "object = ({...object, [\"text\"]: acc});") !=
+  test::Check(redefine_source.str().find("const $abcdField0 = acc;\n") !=
               std::string::npos);
+  test::Check(redefine_source.str().find(
+                  "object = ({...object, [\"field\"]: $abcdField0, "
+                  "[\"text\"]: acc});") != std::string::npos);
+  const auto spread = redefine_source.str().find("...object");
+  test::Check(spread != std::string::npos &&
+              redefine_source.str().find("...object", spread + 1) ==
+                  std::string::npos);
+  const std::array<std::string_view, 4> effect_fields{
+      "object", "first", "last", "effect"};
+  const auto intervening = test::Body({
+      0x07, 0, 0, 0, 0x61, 0, 0x60, 1, 0xdc, 0, 8, 0, 0,
+      0x60, 3, 0x29, 0, 0x60, 2, 0xdc, 0, 10, 0, 0, 0x60, 0, 0x64});
+  std::ostringstream intervening_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(intervening, {"acc", effect_fields},
+                                    intervening_source, {}, &constants)));
+  const auto captured = intervening_source.str().find(
+      "const $abcdField0 = acc;\n");
+  const auto called = intervening_source.str().find("acc = (0, acc)();");
+  const auto published = intervening_source.str().find(
+      "object = ({...object, [\"field\"]: $abcdField0, "
+      "[\"text\"]: acc});");
+  test::Check(captured != std::string::npos && called != std::string::npos &&
+              published != std::string::npos && captured < called &&
+              called < published);
+  const auto separate = test::Body({
+      0x07, 0, 0, 0, 0x61, 0, 0x60, 1, 0xdc, 0, 8, 0, 0,
+      0x07, 0, 0, 0, 0x61, 3, 0x60, 2, 0xdc, 0, 10, 0, 3,
+      0x60, 3, 0x64});
+  std::ostringstream separate_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(separate, {"acc", effect_fields},
+                                    separate_source, {}, &constants)));
+  test::Check(separate_source.str().find("object = ({...object") !=
+              std::string::npos);
+  test::Check(separate_source.str().find("effect = ({...effect") !=
+              std::string::npos);
+  const auto reused = test::Body({
+      0x07, 0, 0, 0, 0x61, 0, 0x60, 1, 0xdc, 0, 8, 0, 0,
+      0x07, 0, 0, 0, 0x61, 0, 0x60, 2, 0xdc, 0, 10, 0, 0,
+      0x60, 0, 0x64});
+  std::ostringstream reused_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(reused, {"acc", more_fields},
+                                    reused_source, {}, &constants)));
+  const auto first_chain = reused_source.str().find("object = ({...object");
+  test::Check(first_chain != std::string::npos &&
+              reused_source.str().find("object = ({...object", first_chain + 1) !=
+                  std::string::npos);
+  std::size_t previous_size = 0;
+  for (const std::uint32_t count : {200U, 201U, 402U}) {
+    std::vector<std::uint8_t> encoded{0x07, 0, 0, 0, 0x61, 0};
+    for (std::uint32_t i = 0; i < count; ++i)
+      encoded.insert(encoded.end(), {0x60, 1, 0xdc, 0, 8, 0, 0});
+    encoded.insert(encoded.end(), {0x60, 0, 0x64});
+    const auto many = test::Body(std::span(encoded));
+    std::ostringstream many_source;
+    test::Check(std::holds_alternative<std::size_t>(
+        source::WriteLocalLexicalBody(many, {"acc", fields}, many_source, {},
+                                      &constants)));
+    const auto text = many_source.str();
+    const auto first_spread = text.find("...object");
+    test::Check(first_spread != std::string::npos &&
+                text.find("...object", first_spread + 1) ==
+                    std::string::npos);
+    test::Check(text.find("$abcdField" + std::to_string(count - 2)) !=
+                std::string::npos);
+    if (previous_size && count == 402)
+      test::Check(text.size() < previous_size * 3);
+    previous_size = text.size();
+  }
+  const std::array<std::string_view, 3> colliding{
+      "object", "first", "$abcdField0"};
+  std::ostringstream collision;
+  test::Check(std::get<source::BodyEmitFailure>(
+                  source::WriteLocalLexicalBody(
+                      redefine, {"acc", colliding}, collision, {}, &constants))
+                  .emit_error == source::EmitError::kInvalidBinding);
+  test::Check(collision.str().empty());
   const auto own_proto = test::Body({0x07, 0, 0, 0, 0x61, 0, 0x60, 1,
                                      0xdc, 0, 9, 0, 0, 0x60, 0, 0x64});
   std::ostringstream own_proto_source;
@@ -250,6 +333,9 @@ int main(int argc, char** argv) {
               << field_source.str() << "}\n";
     std::cout << "export function redefine(first, last) { let acc, object;\n"
               << redefine_source.str() << "}\n";
+    std::cout << "export function intervening(first, last, effect) { "
+                 "let acc, object;\n"
+              << intervening_source.str() << "}\n";
     std::cout << "export function ownProto(value) { let acc, object;\n"
               << own_proto_source.str() << "}\n";
     std::cout << "export function preserved(value) { let acc, object;\n"

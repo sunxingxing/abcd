@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 
-const {object, proto, primitive, field, redefine, ownProto, preserved} =
+const {object, proto, primitive, field, redefine, intervening, ownProto, preserved} =
     await import(pathToFileURL(process.argv[2]));
 const first = object();
 const second = object();
@@ -34,6 +34,20 @@ try {
   delete Object.prototype.field;
 }
 assert.deepEqual(redefine(7, 9), {text: 9, field: 7});
+assert.deepEqual(Reflect.ownKeys(redefine(7, 9)), ['text', 'field']);
+const value = {count: 1};
+const observed = [];
+const withEffect = intervening(value, 9, () => {
+  observed.push('called');
+  value.count = 2;
+});
+assert.deepEqual(observed, ['called']);
+assert.equal(withEffect.field, value);
+assert.equal(withEffect.field.count, 2);
+assert.deepEqual(Reflect.ownKeys(withEffect), ['text', 'field']);
+const failure = new Error('effect failed');
+assert.throws(() => intervening(value, 9, () => { throw failure; }),
+              error => error === failure);
 const withProto = ownProto(17);
 assert.equal(Object.getPrototypeOf(withProto), Object.prototype);
 assert.equal(Object.getOwnPropertyDescriptor(withProto, '__proto__').value, 17);

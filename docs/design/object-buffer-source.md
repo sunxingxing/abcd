@@ -45,15 +45,20 @@ accumulator. Ordinary assignment would invoke an inherited setter; calling
 straight-line lexical writer therefore admits only a buffered object that is
 immediately stored in one register, then has the accumulator overwritten
 without reading that object. Any receiver read, copy, write, unknown effect or
-new object candidate ends the proof. For an admitted definition it replaces
-the as-yet-unobserved object with `({...object, [key]: value})`. The buffered
-object has only own data properties, so spread cannot invoke a getter; computed
-keys preserve `__proto__` and index-key semantics. Unproved definitions remain
-explicit source failures. The proof tracks constant state and costs O(I) for I
-instructions; it never compares every property pair.
+new object candidate ends the proof. Each admitted definition except the last
+stores its already-evaluated accumulator in a private temporary. At the final
+definition, one `({...object, [key0]: value0, ...})` replaces the still
+unobserved object. The buffered object has only own data properties, so spread
+cannot invoke a getter; computed keys preserve `__proto__` and index-key
+semantics. The caller's bindings may not collide with the generated temporary
+prefix. Unproved definitions remain explicit source failures.
 
-Repeated distinct definitions make the generated program copy growing objects
-repeatedly (up to quadratic runtime work). This is a known output-performance
-gap, not a claim of complete class-field or object-initializer recovery. A
-future linear-runtime emitter must defer definitions and prove all retained
-field values and object aliases before one final object construction.
+The proof scans I instructions twice, retaining O(P) field sites for P
+definitions. Source size and generated runtime object copying are
+O(I + P + initial properties), not quadratic in P. The field-site storage is
+charged to the lexical writer's scratch allowance before object-buffer reads.
+Tests cover 200/201/402 definitions, one spread per chain, separate chains,
+intervening calls and throws, field-plan budget exhaustion, name collision,
+key order, `__proto__`, accumulator preservation and alias rejection.
+This remains a guarded subset, not complete class-field or object-initializer
+recovery.
