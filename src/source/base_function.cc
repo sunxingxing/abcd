@@ -1,5 +1,6 @@
 #include "abcd/source/base_function.h"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <limits>
@@ -7,6 +8,7 @@
 #include <ostream>
 #include <streambuf>
 #include <string>
+#include <vector>
 
 #include "abcd/abc/register_access.h"
 #include "abcd/source/base_constructor.h"
@@ -270,6 +272,10 @@ class FunctionWriter {
     written_ += text.size();
   }
   void Parameter(std::uint32_t index) {
+    if (constants_ && !constants_->source_parameters.empty()) {
+      Text(constants_->source_parameters[index]);
+      return;
+    }
     Text("$p");
     std::array<char, kIndexDigits> digits{};
     const auto end =
@@ -315,6 +321,43 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
     return FunctionEmitError::kResourceLimit;
   budget.bytes -= count * kRegisterBytes;
   try {
+    std::vector<std::string_view> sorted_parameters;
+    std::optional<MethodConstants> named_constants;
+    if (constants && !constants->source_parameters.empty()) {
+      const auto parameters = constants->source_parameters;
+      if (parameters.size() != function.frame.parameters)
+        return FunctionEmitError::kName;
+      if (parameters.size() > budget.bytes / sizeof(std::string_view))
+        return FunctionEmitError::kResourceLimit;
+      budget.bytes -= parameters.size() * sizeof(std::string_view);
+      sorted_parameters.assign(parameters.begin(), parameters.end());
+      if (sorted_parameters.capacity() > parameters.size() &&
+          sorted_parameters.capacity() - parameters.size() >
+              budget.bytes / sizeof(std::string_view))
+        return FunctionEmitError::kResourceLimit;
+      budget.bytes -= (sorted_parameters.capacity() - parameters.size()) *
+                      sizeof(std::string_view);
+      for (const auto name : sorted_parameters) {
+        if (name.starts_with('$') || name == function.name ||
+            name == "ClassValue" || name.starts_with("MethodSelf"))
+          return FunctionEmitError::kName;
+        const auto valid = WriteScalarExpression(
+            analysis::ScalarValue{analysis::Accumulator{}}, {name, {}},
+            discard, {SIZE_MAX});
+        if (!std::holds_alternative<std::size_t>(valid))
+          return FunctionEmitError::kName;
+      }
+      std::sort(sorted_parameters.begin(), sorted_parameters.end());
+      if (std::adjacent_find(sorted_parameters.begin(),
+                             sorted_parameters.end()) !=
+          sorted_parameters.end())
+        return FunctionEmitError::kName;
+      if (constants->global_scope) {
+        named_constants.emplace(*constants);
+        named_constants->global_scope->parameter_bindings = sorted_parameters;
+        constants = &*named_constants;
+      }
+    }
     std::u16string arrow_name;
     if (function.syntax == CallableSyntax::kArrowExpression) {
       constexpr unsigned char kAsciiLimit = 0x80;

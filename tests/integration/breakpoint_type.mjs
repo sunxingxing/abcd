@@ -8,6 +8,8 @@ const context = vm.createContext({
   },
 });
 const source = readFileSync(process.argv[2], 'utf8');
+assert.match(source, /constructor\(sm, md, lg, xl\)/);
+assert.match(source, /\["getValue"\]\(currentWidthBreakpoint\)/);
 const recovered = new vm.SourceTextModule(source, {context});
 await recovered.link(() => { throw new Error('unexpected import'); });
 await recovered.evaluate();

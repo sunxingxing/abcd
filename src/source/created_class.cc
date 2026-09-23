@@ -2,6 +2,7 @@
 
 #include <new>
 #include <ostream>
+#include <vector>
 
 #include "abcd/abc/call_type.h"
 #include "abcd/source/base_constructor.h"
@@ -9,6 +10,7 @@
 #include "abcd/source/string_literal.h"
 #include "capture_stream.h"
 #include "class_emission.h"
+#include "parameter_names.h"
 #include "runtime_name.h"
 
 namespace abcd::source {
@@ -121,13 +123,41 @@ class ClassWriter {
                     budget.bytes);
     AdmitClassBytes(body.handlers.capacity(), sizeof(abc::CatchHandler),
                     budget.bytes);
+    std::optional<RecoveredParameters> parameter_names;
+    std::vector<std::string_view> parameter_views;
+    auto recovered = RecoverParameterNames(file_, header_, method,
+                                           frame,
+                                           body, budget.bytes, strings_,
+                                           class_name);
+    if (const auto* found = std::get_if<RecoveredParameters>(&recovered)) {
+      parameter_names.emplace(std::move(*found));
+      const auto used = parameter_names->AllocatedBytes();
+      if (used > budget.bytes)
+        throw ClassFailure{CreatedClassError::kResourceLimit};
+      budget.bytes -= used;
+      AdmitClassBytes(parameter_names->names.size(), sizeof(std::string_view),
+                      budget.bytes);
+      parameter_views.reserve(parameter_names->names.size());
+      if (parameter_views.capacity() > parameter_names->names.size())
+        AdmitClassBytes(parameter_views.capacity() - parameter_names->names.size(),
+                        sizeof(std::string_view), budget.bytes);
+      for (const auto& name : parameter_names->names)
+        parameter_views.push_back(name);
+    } else if (const auto* error =
+                   std::get_if<abc::MetadataError>(&recovered)) {
+      throw ClassFailure{*error};
+    } else if (std::get<ParameterNameError>(recovered) ==
+               ParameterNameError::kResourceLimit) {
+      throw ClassFailure{CreatedClassError::kResourceLimit};
+    }
     std::optional<GlobalScope> global_scope;
     if (enclosing_scope_) {
       global_scope = *enclosing_scope_;
       global_scope->class_binding = class_name;
     }
     const MethodConstants constants{file_, header_, index_, method.offset,
-                                    strings_, module_, roles_, global_scope};
+                                    strings_, module_, roles_, global_scope,
+                                    parameter_views};
     Account(TakeClassValue<std::size_t>(emit(frame, body, budget, constants)));
   }
   void Constructor(const analysis::ClassCreation& creation,

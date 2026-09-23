@@ -1,8 +1,13 @@
 #include "abcd/source/created_function.h"
 
+#include <optional>
+#include <utility>
+#include <vector>
+
 #include "abcd/abc/call_type.h"
 #include "abcd/analysis/method_roles.h"
 #include "function_template.h"
+#include "parameter_names.h"
 #include "runtime_name.h"
 
 namespace abcd::source {
@@ -67,8 +72,37 @@ CreatedFunctionResult WriteCreation(
       !admit(body.tries.capacity(), sizeof(abc::TryRegion)) ||
       !admit(body.handlers.capacity(), sizeof(abc::CatchHandler)))
     return CreatedFunctionError::kResourceLimit;
+  std::optional<RecoveredParameters> recovered;
+  std::vector<std::string_view> parameters;
+  auto source_names = RecoverParameterNames(
+      file, header, method, std::get<abc::FrameLayout>(frame), body,
+      budget.bytes, strings, *name);
+  if (const auto* found = std::get_if<RecoveredParameters>(&source_names)) {
+    recovered.emplace(std::move(*found));
+    if (recovered->AllocatedBytes() > budget.bytes ||
+        recovered->names.size() >
+            (budget.bytes - recovered->AllocatedBytes()) /
+                sizeof(std::string_view))
+      return CreatedFunctionError::kResourceLimit;
+    budget.bytes -= recovered->AllocatedBytes() +
+                    recovered->names.size() * sizeof(std::string_view);
+    parameters.reserve(recovered->names.size());
+    if (parameters.capacity() > recovered->names.size()) {
+      const auto extra = parameters.capacity() - recovered->names.size();
+      if (extra > budget.bytes / sizeof(std::string_view))
+        return CreatedFunctionError::kResourceLimit;
+      budget.bytes -= extra * sizeof(std::string_view);
+    }
+    for (const auto& name : recovered->names) parameters.push_back(name);
+  } else if (const auto* error =
+                 std::get_if<abc::MetadataError>(&source_names)) {
+    return *error;
+  } else if (std::get<ParameterNameError>(source_names) ==
+             ParameterNameError::kResourceLimit) {
+    return CreatedFunctionError::kResourceLimit;
+  }
   const MethodConstants constants{file, header, index, method.offset, strings,
-                                  module, roles};
+                                  module, roles, {}, parameters};
   const BaseFunction function{creation, target.attributes,
                               std::get<abc::FrameLayout>(frame), *name};
   FunctionEmitResult emitted;

@@ -59,10 +59,11 @@ struct MethodConstants {
                   abc::StringBudget strings,
                   const abc::ModuleInfo* owner_module = nullptr,
                   const analysis::MethodRoleIndex* method_roles = nullptr,
-                  std::optional<GlobalScope> scope = {})
+                  std::optional<GlobalScope> scope = {},
+                  std::span<const std::string_view> parameters = {})
       : file(input), header(profile), index(metadata), method(target),
         string_budget(strings), module(owner_module), roles(method_roles),
-        global_scope(scope) {}
+        global_scope(scope), source_parameters(parameters) {}
   const corpus::AbcFile& file;
   const abc::Header& header;
   const abc::MetadataIndex& index;
@@ -73,6 +74,9 @@ struct MethodConstants {
   const abc::ModuleInfo* module = nullptr;
   const analysis::MethodRoleIndex* roles = nullptr;
   std::optional<GlobalScope> global_scope;
+  // Caller-proven source-formal names, in ABI parameter order; empty falls
+  // back to private $pN bindings without guessing from method-table names.
+  std::span<const std::string_view> source_parameters;
 };
 
 // Emits statements inside a function, not a wrapper or record. Requires a

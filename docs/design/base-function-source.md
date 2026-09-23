@@ -24,6 +24,15 @@ parameter recovery and anonymous/arbitrary names remain separate work.
 ## Lowering
 
 Generate private `$pN` parameters, mutable `$rN` register bindings, and `$acc`.
+When an unchanged method has debug scopes, source parameter names may replace
+`$pN` only after a typed entry-MOV proof maps each ABI parameter to one unique
+local whose debug range starts at the end of that prefix. Overwritten ABI slots,
+duplicate names, branches into the prefix, invalid/strict-reserved identifiers
+and binding collisions fall back to `$pN`; no body operation is erased. The
+same proof serves created functions, constructors and ordinary class methods.
+Global name loads additionally check a sorted source-formal index, so a newly
+named parameter cannot shadow a recovered free identifier. Debug type strings
+are not trusted as source types; rest/default parameters remain unresolved.
 Locals start undefined; hidden slots copy the named expression's immutable self
 binding, native new.target and strict this; parameter slots copy parameters.
 Never alias a mutable register to the immutable function binding. Missing actual

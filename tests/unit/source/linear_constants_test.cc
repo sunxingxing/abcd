@@ -285,6 +285,47 @@ int main(int argc, char** argv) {
               self, global, self_shadowed, {}, &constants)).kind ==
           source::BodyEmitError::kGlobalReference);
     Check(self_shadowed.str().empty());
+    const auto named_frame = std::get<abc::FrameLayout>(
+        abc::BuildFrameLayout(0, 1, {false, false, false, false}));
+    const source::BaseFunction named{
+        {analysis::CreationKind::kFunction, {}, {1},
+         analysis::HomeObjectInput::kCurrentFunction},
+        {abc::FunctionKind::kBaseConstructor, false, 0, {}},
+        named_frame, "Recovered"};
+    const std::array<std::string_view, 1> shadowing_parameter{"globalValue"};
+    constants.source_parameters = shadowing_parameter;
+    std::ostringstream parameter_shadowed;
+    Check(std::get<source::BodyEmitFailure>(source::WriteBaseFunction(
+              named, global, parameter_shadowed, {}, &constants)).kind ==
+          source::BodyEmitError::kGlobalReference);
+    Check(parameter_shadowed.str().empty());
+    const std::array<std::string_view, 1> safe_parameter{"width"};
+    constants.source_parameters = safe_parameter;
+    std::ostringstream named_output;
+    Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
+        named, global, named_output, {}, &constants)));
+    Check(named_output.str().find("function Recovered(width)") !=
+          std::string::npos);
+    const auto double_frame = std::get<abc::FrameLayout>(
+        abc::BuildFrameLayout(0, 2, {false, false, false, false}));
+    auto double_named = named;
+    double_named.frame = double_frame;
+    double_named.creation.length.value = 2;
+    const std::array<std::string_view, 2> duplicated{"width", "width"};
+    const std::array<std::uint8_t, 1> empty_method{0x65};
+    constants.source_parameters = duplicated;
+    std::ostringstream invalid_parameters;
+    Check(std::get<source::FunctionEmitError>(source::WriteBaseFunction(
+              double_named, global_body(empty_method), invalid_parameters, {},
+              &constants)) == source::FunctionEmitError::kName);
+    Check(invalid_parameters.str().empty());
+    const std::array<std::string_view, 2> private_name{"$acc", "width"};
+    constants.source_parameters = private_name;
+    Check(std::get<source::FunctionEmitError>(source::WriteBaseFunction(
+              double_named, global_body(empty_method), invalid_parameters, {},
+              &constants)) == source::FunctionEmitError::kName);
+    Check(invalid_parameters.str().empty());
+    constants.source_parameters = {};
     std::ostringstream short_output;
     Check(std::get<source::BodyEmitFailure>(source::WriteLinearBody(
               global, {"$acc", {}}, short_output,

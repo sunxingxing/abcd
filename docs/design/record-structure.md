@@ -33,6 +33,9 @@ and publish atomically only after all records and the input identity validate.
 - Report callType/frame slots as ABI signature evidence. Do not infer rest,
   defaults, parameter names, TS types, return types or export-to-method mapping
   from argument count or similar names.
+- Executable source may use a debug local as a simple formal name only after
+  an entry ABI-copy and scope-start proof. This does not turn debug `any` into
+  an original TS type or establish defaults/rest syntax.
 - Retain method name/debug-info entity references in MetadataIndex. Debug name
   and scope parsing follows this increment; absence is not fabricated metadata.
 - Raw record fields are metadata, not proven source class fields. Class-buffer

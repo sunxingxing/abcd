@@ -14,6 +14,8 @@ struct GlobalScope {
   std::string_view class_binding;
   // Named function expressions bind their own name inside the body.
   std::string_view self_binding{};
+  // Source formal names, sorted by byte name for O(log P) collision checks.
+  std::span<const std::string_view> parameter_bindings{};
 };
 
 // A free identifier reaches the v7 global record/object only if the generated

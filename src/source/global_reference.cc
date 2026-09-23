@@ -15,6 +15,20 @@ bool IdentifierStart(char16_t ch) {
 bool IdentifierPart(char16_t ch) {
   return IdentifierStart(ch) || (ch >= u'0' && ch <= u'9');
 }
+bool ContainsAscii(std::span<const std::string_view> bindings,
+                   std::u16string_view name) {
+  const auto found = std::lower_bound(
+      bindings.begin(), bindings.end(), name,
+      [](std::string_view binding, std::u16string_view candidate) {
+        return std::lexicographical_compare(binding.begin(), binding.end(),
+                                            candidate.begin(), candidate.end(),
+                                            [](char left, char16_t right) {
+                                              return static_cast<unsigned char>(left) <
+                                                     right;
+                                            });
+      });
+  return found != bindings.end() && EqualsAscii(name, *found);
+}
 }  // namespace
 
 bool AllowsGlobalReference(std::u16string_view name, GlobalScope scope) {
@@ -24,17 +38,8 @@ bool AllowsGlobalReference(std::u16string_view name, GlobalScope scope) {
       EqualsAscii(name, scope.self_binding) || name == u"ClassValue" ||
       name.starts_with(u"MethodSelf"))
     return false;
-  const auto found = std::lower_bound(
-      scope.enclosing_bindings.begin(), scope.enclosing_bindings.end(), name,
-      [](std::string_view binding, std::u16string_view candidate) {
-        return std::lexicographical_compare(binding.begin(), binding.end(),
-                                            candidate.begin(), candidate.end(),
-                                            [](char left, char16_t right) {
-                                              return static_cast<unsigned char>(left) <
-                                                     right;
-                                            });
-      });
-  if (found != scope.enclosing_bindings.end() && EqualsAscii(name, *found))
+  if (ContainsAscii(scope.enclosing_bindings, name) ||
+      ContainsAscii(scope.parameter_bindings, name))
     return false;
   // Matches the strict/module reserved binding set. Generated private names
   // all start with '$', rejected by IdentifierStart above.
