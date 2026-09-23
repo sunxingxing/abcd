@@ -38,6 +38,12 @@ bindings must use the private `$` namespace when this operation occurs. These
 checks are per method, not a scan of all registers for every global access.
 All other typed global operations remain unsupported by source emission.
 
+The complete caller scope is also borrowed by a nested DEFINEFUNC source
+writer, including enclosing source-formal bindings. Its own recovered formals
+are added before body validation. A missing scope still rejects the read, and
+an enclosing or inner-formal collision still rejects it. This is a synchronous
+proof transfer, not a new cross-method global binding inference.
+
 Under those premises, the pinned v7.0 runtime's record-first lookup, own/global
 object fallback, inherited property lookup and missing-name ReferenceError
 match free-identifier evaluation. This does not infer or emit a source global

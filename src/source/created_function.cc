@@ -18,7 +18,8 @@ CreatedFunctionResult WriteCreation(
     abc::EntityOffset caller, const abc::DecodedInstruction& instruction,
     std::ostream& output, LocalLexicalBudget budget, abc::StringBudget strings,
     analysis::CapturedValues captured_values, const abc::ModuleInfo* module,
-    const analysis::MethodRoleIndex* roles) {
+    const analysis::MethodRoleIndex* roles,
+    const GlobalScope* global_scope) {
   const auto lifted = analysis::LiftFunctionCreation(instruction);
   if (const auto* error = std::get_if<analysis::CreationError>(&lifted))
     return *error;
@@ -102,7 +103,11 @@ CreatedFunctionResult WriteCreation(
     return CreatedFunctionError::kResourceLimit;
   }
   const MethodConstants constants{file, header, index, method.offset, strings,
-                                  module, roles, {}, parameters};
+                                  module, roles,
+                                  global_scope
+                                      ? std::optional<GlobalScope>(*global_scope)
+                                      : std::nullopt,
+                                  parameters};
   const BaseFunction function{creation, target.attributes,
                               std::get<abc::FrameLayout>(frame), *name};
   FunctionEmitResult emitted;
@@ -126,10 +131,11 @@ CreatedFunctionResult WriteCreatedFunction(
     abc::EntityOffset caller, const abc::DecodedInstruction& instruction,
     std::ostream& output, LocalLexicalBudget budget,
     abc::StringBudget strings, const abc::ModuleInfo* module,
-    const analysis::MethodRoleIndex* roles) {
+    const analysis::MethodRoleIndex* roles,
+    const GlobalScope* global_scope) {
   return WriteCreation(file, header, index, lookup, caller, instruction, output,
                        budget, strings, analysis::CapturedValues::kReject,
-                       module, roles);
+                       module, roles, global_scope);
 }
 CreatedFunctionResult WriteCreatedFunctionTemplate(
     const corpus::AbcFile& file, const abc::Header& header,
@@ -137,9 +143,10 @@ CreatedFunctionResult WriteCreatedFunctionTemplate(
     abc::EntityOffset caller, const abc::DecodedInstruction& instruction,
     std::ostream& output, LocalLexicalBudget budget,
     abc::StringBudget strings, const abc::ModuleInfo* module,
-    const analysis::MethodRoleIndex* roles) {
+    const analysis::MethodRoleIndex* roles,
+    const GlobalScope* global_scope) {
   return WriteCreation(file, header, index, lookup, caller, instruction, output,
                        budget, strings, analysis::CapturedValues::kLanguage,
-                       module, roles);
+                       module, roles, global_scope);
 }
 }  // namespace abcd::source

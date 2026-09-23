@@ -37,12 +37,15 @@ using CreatedFunctionResult =
 // match WriteBaseFunction: final publication must be atomic.
 // A supplied module belongs to the caller's record; a target in another
 // record is rejected before it can read a foreign import environment.
+// Optional global scope is a complete caller proof, borrowed only for this
+// synchronous emission; absent proof never licenses a free identifier.
 [[nodiscard]] CreatedFunctionResult WriteCreatedFunction(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     abc::EntityOffset caller, const abc::DecodedInstruction& instruction,
     std::ostream& output, LocalLexicalBudget budget = {},
     abc::StringBudget strings = {}, const abc::ModuleInfo* module = nullptr,
-    const analysis::MethodRoleIndex* roles = nullptr);
+    const analysis::MethodRoleIndex* roles = nullptr,
+    const GlobalScope* global_scope = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_CREATED_FUNCTION_H_

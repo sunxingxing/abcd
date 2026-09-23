@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 
-const {recovered, arrow, annotated, factory, different, preserved, reverse, captured,
+const {recovered, arrow, annotated, factory, globalFactory, different, preserved, reverse, captured,
        changed, siblings, separated, setter, shadowed, ancestor} =
     await import(pathToFileURL(process.argv[2]));
 assert.equal(recovered.name, 'Recovered');
@@ -32,6 +32,16 @@ assert.equal(first.length, 1);
 assert.equal(first(replacement), replacement);
 assert.equal(second(-0), -0);
 assert.equal((new factory())(42), 42);
+const globalChild = globalFactory();
+assert.throws(() => globalChild(), ReferenceError);
+const globalValue = Symbol('global');
+globalThis.createdGlobal = globalValue;
+try {
+  assert.equal(globalChild(), globalValue);
+  assert.equal(globalFactory()(), globalValue);
+} finally {
+  delete globalThis.createdGlobal;
+}
 assert.equal(different(), false);
 assert.equal(preserved(replacement), replacement);
 assert.equal(reverse().name, 'Other');

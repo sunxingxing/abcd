@@ -3,6 +3,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <sstream>
 
 #include "abcd/abc/module_info.h"
@@ -13,6 +14,7 @@
 int main(int argc, char** argv) {
   using namespace abcd;
   constexpr std::uint32_t kPool = 100;
+  constexpr std::uint32_t kPoolEntries = 5;
   constexpr std::uint32_t kCaller = 200;
   constexpr std::uint32_t kTarget = 300;
   constexpr std::uint32_t kCode = 400;
@@ -42,8 +44,10 @@ int main(int argc, char** argv) {
   word(kPool + sizeof(kTarget), kTarget);
   word(kPool + 2 * sizeof(kTarget), 350);
   word(kPool + 3 * sizeof(kTarget), 620);
+  word(kPool + 4 * sizeof(kTarget), 660);
   string(620, "value");
   string(640, "./module-import-dep.mjs");
+  string(660, "createdGlobal");
   const std::uint8_t captured[]{0, 4, 3, 0, 0x3c, 0, 0x64};
   const std::uint8_t nested[]{0, 4, 6, 0, 0x33, 0, 0, 0, 1, 0x64};
   std::copy(std::begin(captured), std::end(captured), bytes.begin() + 700);
@@ -64,6 +68,7 @@ int main(int argc, char** argv) {
   fixture(510, {0x70, 0x3d, 0, 0x65});  // forbidden internal store
   fixture(530, {0x3c, 0x10, 0x64});     // captured slot 1
   fixture(760, {0x7e, 0, 0xfe, 9, 3, 0, 0x64});
+  fixture(780, {0x3f, 0, 4, 0, 0x64});  // TRYLDGLOBALBYNAME
   std::size_t large_start = kLargeCode;
   const auto uleb = [&](std::uint32_t value) {
     do {
@@ -99,7 +104,8 @@ int main(int argc, char** argv) {
   header.file_size = bytes.size();
   header.layout = abc::DynamicLayout{};
   abc::MetadataIndex index;
-  index.regions.push_back({kCaller, kCode, {1, 128}, {4, kPool}, {}, {}});
+  index.regions.push_back(
+      {kCaller, kCode, {1, 128}, {kPoolEntries, kPool}, {}, {}});
   index.methods.resize(3);
   index.methods[0].offset = {kCaller};
   auto& target = index.methods[1];
@@ -195,6 +201,41 @@ int main(int argc, char** argv) {
       parent, parent_body, factory, {}, &parent_constants, &lookup)));
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
     std::cout << "export const factory = " << factory.str() << ";\n";
+  target.code = abc::CodeInfo{{780}, {784}, 0, 4, 5, 0};
+  std::ostringstream unproved_global;
+  const auto unproved_global_result = source::WriteCreatedFunction(
+      file, header, index, lookup, {kCaller}, creation, unproved_global);
+  test::Check(std::get<source::BodyEmitFailure>(unproved_global_result).kind ==
+              source::BodyEmitError::kGlobalScope);
+  test::Check(unproved_global.str().empty());
+  const source::GlobalScope complete_scope{{}, {}};
+  std::ostringstream proved_global;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteCreatedFunction(file, header, index, lookup, {kCaller},
+                                   creation, proved_global, {}, {}, nullptr,
+                                   nullptr, &complete_scope)));
+  test::Check(proved_global.str().find("$acc = createdGlobal;") !=
+              std::string::npos);
+  const std::array<std::string_view, 1> shadowing{"createdGlobal"};
+  const source::GlobalScope shadowed_scope{shadowing, {}};
+  std::ostringstream shadowed_global;
+  const auto shadowed_result = source::WriteCreatedFunction(
+      file, header, index, lookup, {kCaller}, creation, shadowed_global,
+      {}, {}, nullptr, nullptr, &shadowed_scope);
+  test::Check(std::get<source::BodyEmitFailure>(shadowed_result).kind ==
+              source::BodyEmitError::kGlobalReference);
+  test::Check(shadowed_global.str().empty());
+  const source::MethodConstants scoped_parent{
+      file, header, index, {kCaller}, {}, nullptr, nullptr, complete_scope};
+  std::ostringstream nested_global;
+  test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
+      parent, parent_body, nested_global, {}, &scoped_parent, &lookup)));
+  test::Check(nested_global.str().find("$acc = createdGlobal;") !=
+              std::string::npos);
+  if (argc == 2 && std::string_view(argv[1]) == "--emit")
+    std::cout << "export const globalFactory = " << nested_global.str()
+              << ";\n";
+  target.code = saved_import_code;
   test::CheckLeafFunctions(file, header, index, lookup,
                            {{kLargeCode},
                             {static_cast<std::uint32_t>(large_start)},
@@ -275,7 +316,7 @@ int main(int argc, char** argv) {
                   file, header, index, lookup, {kCaller + 1}, creation,
                   rejected)) == abc::MethodTargetError::kCallerMissing);
   auto invalid_creation = creation;
-  invalid_creation.operands[1].raw_bits = 4;
+  invalid_creation.operands[1].raw_bits = kPoolEntries;
   test::Check(std::get<abc::MetadataError>(source::WriteCreatedFunction(
                   file, header, index, lookup, {kCaller}, invalid_creation,
                   rejected)) == abc::MetadataError::kIndexRange);
