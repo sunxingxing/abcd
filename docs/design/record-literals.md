@@ -19,6 +19,9 @@ For function bodies, the bounded fresh-object field planner admits both
 `DEFINEPROPERTYBYNAME` and `DEFINEFIELDBYNAME` after a proved fresh object and
 stable receiver register. The pinned handlers share `DefineField`; the output
 oracle checks own descriptors and inherited-setter exclusion for both forms.
+The same planner admits `CALLRUNTIME_DEFINEFIELDBYINDEX` with its encoded
+unsigned 32-bit key; it never speculates a dynamic `ToPropertyKey` conversion.
+The Node oracle covers array-index ordering and the maximum unsigned key.
 
 The v7 `STOWNBYINDEX` runtime defines writable, enumerable, configurable own
 properties and preserves acc. Dense array syntax reproduces those properties

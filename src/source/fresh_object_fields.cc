@@ -3,6 +3,7 @@
 #include <new>
 #include <stdexcept>
 
+#include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/object_creation.h"
 #include "abcd/analysis/own_write.h"
 #include "abcd/analysis/register_effect.h"
@@ -18,9 +19,17 @@ bool NamedDefinition(abc::Opcode opcode) {
       return false;
   }
 }
+bool IndexedDefinition(abc::Opcode opcode) {
+  return opcode ==
+         abc::Opcode::kCALLRUNTIME_DEFINEFIELDBYINDEX_PREF_IMM8_IMM32_V8;
+}
+struct FreshDefinition {
+  std::variant<abc::PoolIndex, std::uint32_t> key;
+  abc::RegisterId object;
+};
 class FreshObjectFields {
  public:
-  std::optional<analysis::OwnWrite> Step(
+  std::optional<FreshDefinition> Step(
       const abc::DecodedInstruction& instruction, std::size_t frame_size) {
     const auto lifted = analysis::LiftRegisterEffect(instruction, frame_size);
     const auto* effect = std::get_if<analysis::RegisterEffect>(&lifted);
@@ -62,7 +71,15 @@ class FreshObjectFields {
       if (const auto* write = std::get_if<analysis::OwnWrite>(&field);
           write && write->kind == analysis::OwnWriteKind::kDefineField &&
           write->object == *active_)
-        return *write;
+        return FreshDefinition{write->name, write->object};
+    }
+    if (IndexedDefinition(instruction.opcode) && active_) {
+      const auto field = analysis::LiftDefineInstruction(instruction,
+                                                        frame_size);
+      if (const auto* write =
+              std::get_if<analysis::DefineFieldByIndex>(&field);
+          write && write->object == *active_)
+        return FreshDefinition{write->index, write->object};
     }
     if (active_ &&
         (Reads(*effect, *active_) || Writes(*effect, *active_)))
@@ -109,7 +126,8 @@ std::variant<FreshFieldPlan, BodyEmitFailure> BuildFreshFieldPlan(
   try {
     std::size_t count = 0;
     for (const auto& instruction : body.instructions)
-      count += NamedDefinition(instruction.decoded.opcode);
+      count += NamedDefinition(instruction.decoded.opcode) ||
+               IndexedDefinition(instruction.decoded.opcode);
     if (count > budget_bytes / sizeof(FreshFieldSite) || count > UINT32_MAX)
       return resource({});
     FreshFieldPlan plan;
@@ -123,7 +141,7 @@ std::variant<FreshFieldPlan, BodyEmitFailure> BuildFreshFieldPlan(
       const auto field = tracker.Step(instruction.decoded, frame_size);
       if (field) {
         if (!in_chain) first = plan.sites.size();
-        plan.sites.push_back({i, first, field->name, field->object});
+        plan.sites.push_back({i, first, field->key, field->object});
         in_chain = true;
       } else if (!tracker.Active()) {
         in_chain = false;

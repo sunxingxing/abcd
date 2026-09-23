@@ -15,7 +15,7 @@ inline constexpr std::string_view kFieldTempPrefix = "$abcdField";
 struct FreshFieldSite {
   std::size_t instruction;
   std::size_t first;
-  abc::PoolIndex name;
+  std::variant<abc::PoolIndex, std::uint32_t> key;
   abc::RegisterId object;
 };
 struct FreshFieldPlan {

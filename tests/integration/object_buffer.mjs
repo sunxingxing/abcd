@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 
-const {empty, emptyField, definedField, object, proto, primitive, field, redefine,
+const {empty, emptyField, definedField, indexedField, object, proto, primitive, field, redefine,
        intervening, ownProto, preserved} =
     await import(pathToFileURL(process.argv[2]));
 const emptyFirst = empty();
@@ -15,6 +15,15 @@ for (const value of [undefined, null, 12, Symbol('field'), {}]) {
   assert.deepEqual(Object.getOwnPropertyDescriptor(result, 'field'), {
     value, writable: true, enumerable: true, configurable: true,
   });
+}
+for (const value of [undefined, 0, -0, NaN, Symbol('indexed'), {}]) {
+  const result = indexedField(value);
+  assert.deepEqual(Reflect.ownKeys(result), ['201', '4294967295']);
+  for (const key of ['201', '4294967295']) {
+    assert.deepEqual(Object.getOwnPropertyDescriptor(result, key), {
+      value, writable: true, enumerable: true, configurable: true,
+    });
+  }
 }
 const first = object();
 const second = object();

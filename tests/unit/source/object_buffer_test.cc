@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <bit>
 #include <sstream>
+#include <string>
 
 #include "abcd/abc/literal_array.h"
 #include "abcd/source/acyclic_body.h"
@@ -21,6 +22,7 @@ int main(int argc, char** argv) {
   constexpr std::uint32_t kPrimitiveKeys = 900;
   constexpr std::uint32_t kPrimitiveValue = 980;
   constexpr std::uint32_t kFieldName = 1080;
+  constexpr std::uint8_t kIndexedKey = 201;
   std::vector<std::uint8_t> bytes(50000);
   const auto word = [&](std::size_t at, std::uint32_t value) {
     for (std::size_t i = 0; i < sizeof(value); ++i)
@@ -192,6 +194,21 @@ int main(int argc, char** argv) {
       source::WriteLocalLexicalBody(define_field, {"acc", fields},
                                     define_field_source, {}, &constants)));
   test::Check(define_field_source.str() == empty_field_source.str());
+  const auto indexed_field = test::Body({
+      0x04, 0x61, 0, 0x60, 1,
+      0xfb, 2, 0, kIndexedKey, 0, 0, 0, 0,
+      0x60, 1, 0xfb, 2, 0, 0xff, 0xff, 0xff, 0xff, 0,
+      0x60, 0, 0x64});
+  std::ostringstream indexed_field_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(indexed_field, {"acc", fields},
+                                    indexed_field_source, {}, &constants)));
+  test::Check(indexed_field_source.str().find(
+                  "[" + std::to_string(kIndexedKey) + "]: $abcdField0") !=
+              std::string::npos);
+  test::Check(indexed_field_source.str().find(
+                  "[" + std::to_string(UINT32_MAX) + "]: acc") !=
+              std::string::npos);
   const std::array<std::string_view, 3> more_fields{"object", "first", "last"};
   const auto redefine = test::Body({
       0x07, 0, 0, 0, 0x61, 0, 0x60, 1, 0xdc, 0, 8, 0, 0,
@@ -366,6 +383,8 @@ int main(int argc, char** argv) {
               << empty_field_source.str() << "}\n";
     std::cout << "export function definedField(value) { let acc, object;\n"
               << define_field_source.str() << "}\n";
+    std::cout << "export function indexedField(value) { let acc, object;\n"
+              << indexed_field_source.str() << "}\n";
     std::cout << "export function object() { let acc;\n" << output.str()
               << "}\n";
     std::cout << "export function proto() { let acc;\n" << proto_source.str()

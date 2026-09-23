@@ -128,7 +128,18 @@ class BodyWriter {
         if (fields[i].first != first_ordinal || fields[i].object != object)
           return Fail(BodyEmitError::kUnsupportedInstruction);
         Text(", [");
-        StringConstant(fields[i].name);
+        if (const auto* name =
+                std::get_if<abc::PoolIndex>(&fields[i].key)) {
+          StringConstant(*name);
+        } else {
+          std::array<char,
+                     std::numeric_limits<std::uint32_t>::digits10 + 1> digits{};
+          const auto index = std::get<std::uint32_t>(fields[i].key);
+          const auto end = std::to_chars(digits.data(),
+                                         digits.data() + digits.size(), index);
+          Text({digits.data(),
+                static_cast<std::size_t>(end.ptr - digits.data())});
+        }
         Text("]: ");
         if (i + 1 == fields.size())
           Expression(ScalarValue{Accumulator{}});
