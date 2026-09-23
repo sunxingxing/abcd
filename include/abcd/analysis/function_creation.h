@@ -15,6 +15,7 @@ struct FunctionCreation {
   abc::PoolIndex method;
   FunctionLength length;
   HomeObjectInput home_object;
+  std::uint16_t cache_slot = 0;
 };
 enum class CreationError { kUnsupportedOpcode, kMalformedInstruction };
 
@@ -25,6 +26,7 @@ enum class CreationError { kUnsupportedOpcode, kMalformedInstruction };
 // Method IDs are caller-regional pool slots, not entity offsets. Length is an
 // observable property, not the target frame's parameter count. Preserve each
 // dynamic creation occurrence; do not deduplicate function objects by method.
+// The cache slot is retained for format fidelity, never source semantics.
 // No allocation, target resolution or claim of final JS wrapper equivalence.
 [[nodiscard]] std::variant<FunctionCreation, CreationError>
 LiftFunctionCreation(const abc::DecodedInstruction& instruction);

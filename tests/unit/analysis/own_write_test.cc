@@ -19,6 +19,7 @@ int main() {
     const auto write =
         std::get<analysis::OwnWrite>(analysis::LiftOwnWrite(decoded, 202));
     Check(write.name.value == 65535 && write.object.value == 201);
+    Check(write.cache_slot == (wide ? UINT16_MAX : UINT8_MAX));
     Check(write.kind == (opcode == 0xdb || opcode == 0xdc
                              ? analysis::OwnWriteKind::kDefineField
                                         : analysis::OwnWriteKind::kStore));

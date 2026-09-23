@@ -8,6 +8,7 @@ struct OwnWrite {
   OwnWriteKind kind;
   abc::PoolIndex name;
   abc::RegisterId object;
+  std::uint16_t cache_slot = 0;
 };
 enum class OwnWriteError {
   kUnsupportedOpcode,

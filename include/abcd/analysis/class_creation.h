@@ -8,6 +8,7 @@ struct ClassCreation {
   abc::PoolIndex literal;
   std::uint16_t length = 0;
   abc::RegisterId parent;
+  std::uint16_t cache_slot = 0;
 };
 // Ordinary modern class site only. Parent register is not a proven extends
 // expression. Constructor/member ownership is per dynamic creation occurrence.

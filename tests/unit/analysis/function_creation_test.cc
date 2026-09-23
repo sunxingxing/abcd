@@ -37,6 +37,8 @@ int main() {
             analysis::LiftFunctionCreation(decoded));
         Check(created.kind == item.kind && created.home_object == item.home);
         Check(created.method.value == slot && created.length.value == length);
+        Check(created.cache_slot ==
+              (item.wide_cache ? UINT16_MAX : UINT8_MAX));
         for (std::size_t operand = 0; operand < decoded.operand_count;
              ++operand) {
           auto malformed = decoded;

@@ -28,7 +28,10 @@ The output writer limits nesting depth to 256 and charges all whitespace to
 the output budget. Work is O(I + B log B + F), where I is entry instructions,
 B is each buffered object's property count and F is emitted source bytes.
 Array holes, repeated child references, mutation after attachment/publication,
-computed keys, calls and control flow remain refused until alias/effect proofs
-are available. Synthetic ABC/Node tests cover descriptors, prototype handling,
-export identity, nested arrays/objects and output-limit refusal. Immersive's
-real `Constants` record now emits and passes a Node route-data oracle.
+dynamic computed keys, calls and control flow remain refused until alias/effect
+proofs are available. Proven string and nonnegative-integer computed keys from
+`CALLRUNTIME_DEFINEFIELDBYVALUE` and unsigned keys from
+`CALLRUNTIME_DEFINEFIELDBYINDEX` are admitted. Synthetic ABC/Node tests cover
+their descriptors, prototype handling, export identity, nested arrays/objects
+and output-limit refusal. Immersive's real `Constants` record now emits and
+passes a Node route-data oracle.

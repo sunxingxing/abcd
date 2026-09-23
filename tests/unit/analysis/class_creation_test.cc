@@ -18,6 +18,7 @@ int main() {
     check(created.constructor.value == 0x1234 &&
           created.literal.value == 0x5678);
     check(created.length == 0x9abc && created.parent.value == 0xfe);
+    check(created.cache_slot == (wide ? UINT16_MAX : UINT8_MAX));
     for (std::size_t i = 0; i < instruction.operand_count; ++i) {
       auto bad = instruction;
       bad.operands[i].raw_bits = UINT64_MAX;

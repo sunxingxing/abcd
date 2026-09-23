@@ -3,8 +3,8 @@
 `LiftFunctionCreation` models the four current DEFINEFUNC/DEFINEMETHOD encodings
 with 8/16-bit inline-cache operands. This is typed creation IR, not source
 closure emission. Each result records the operation kind, caller-regional
-method slot, observable function length and home-object input. Cache operands
-are range-checked but do not become language-level semantics.
+method slot, observable function length, home-object input and encoded cache
+slot. Cache operands are retained for format evidence, not language semantics.
 
 Pinned reference evidence:
 

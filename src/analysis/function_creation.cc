@@ -53,6 +53,8 @@ std::variant<FunctionCreation, CreationError> LiftFunctionCreation(
                               instruction.operands[kLengthOperand].raw_bits)},
                           kind == CreationKind::kFunction
                               ? HomeObjectInput::kCurrentFunction
-                              : HomeObjectInput::kAccumulator};
+                              : HomeObjectInput::kAccumulator,
+                          static_cast<std::uint16_t>(
+                              instruction.operands[0].raw_bits)};
 }
 }  // namespace abcd::analysis

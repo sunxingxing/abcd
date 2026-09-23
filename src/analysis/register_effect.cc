@@ -1,6 +1,8 @@
 #include "abcd/analysis/register_effect.h"
 
 #include "abcd/analysis/branch_condition.h"
+#include "abcd/analysis/class_creation.h"
+#include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
@@ -125,6 +127,50 @@ RegisterEffect EffectOf(const FunctionCreation& value) {
     effect.reads[effect.read_count++] = Accumulator{};
   return effect;
 }
+RegisterEffect EffectOf(const ClassCreation& value) {
+  auto effect = AccumulatorDefinition();
+  effect.reads[effect.read_count++] = value.parent;
+  return effect;
+}
+RegisterEffect EffectOf(const DefineFieldByValue& value) {
+  RegisterEffect effect;
+  effect.reads[effect.read_count++] = value.key;
+  effect.reads[effect.read_count++] = value.object;
+  effect.reads[effect.read_count++] = Accumulator{};
+  return effect;
+}
+RegisterEffect EffectOf(const DefineFieldByIndex& value) {
+  RegisterEffect effect;
+  effect.reads[effect.read_count++] = value.object;
+  effect.reads[effect.read_count++] = Accumulator{};
+  return effect;
+}
+RegisterEffect EffectOf(const DefineAccessor& value) {
+  auto effect = AccumulatorDefinition();
+  effect.reads[effect.read_count++] = value.object;
+  effect.reads[effect.read_count++] = value.key;
+  effect.reads[effect.read_count++] = value.getter;
+  effect.reads[effect.read_count++] = value.setter;
+  effect.reads[effect.read_count++] = Accumulator{};
+  return effect;
+}
+RegisterEffect EffectOf(const DefinePrivateProperty& value) {
+  RegisterEffect effect;
+  effect.reads[effect.read_count++] = value.object;
+  effect.reads[effect.read_count++] = Accumulator{};
+  return effect;
+}
+RegisterEffect EffectOf(const DefineSendableClass& value) {
+  auto effect = AccumulatorDefinition();
+  effect.reads[effect.read_count++] = value.parent;
+  return effect;
+}
+RegisterEffect EffectOf(const DefineLegacyClass& value) {
+  auto effect = AccumulatorDefinition();
+  effect.reads[effect.read_count++] = value.lexical_environment;
+  effect.reads[effect.read_count++] = value.parent;
+  return effect;
+}
 RegisterEffect EffectOf(const BufferedObjectCreation&) {
   return AccumulatorDefinition();
 }
@@ -196,6 +242,18 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftFunctionCreation(instruction));
+      !Unsupported(result))
+    return result;
+  const auto created_class = LiftClassCreation(instruction);
+  if (const auto* created = std::get_if<ClassCreation>(&created_class)) {
+    if (created->parent.value >= frame_size)
+      return ScalarError::kRegisterRange;
+    return EffectOf(*created);
+  }
+  if (std::get<CreationError>(created_class) !=
+      CreationError::kUnsupportedOpcode)
+    return ScalarError::kMalformedInstruction;
+  if (auto result = Adapt(LiftDefineInstruction(instruction, frame_size));
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftObjectCreation(instruction));

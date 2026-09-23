@@ -5,7 +5,10 @@
 #include "abcd/analysis/scalar.h"
 
 namespace abcd::analysis {
-inline constexpr std::size_t kFixedRegisterReads = kFixedCallArguments + 1;
+// Pinned DEFINEGETTERSETTERBYVALUE has four register operands plus acc.
+inline constexpr std::size_t kAccessorRegisterReads = 4;
+inline constexpr std::size_t kFixedRegisterReads = kAccessorRegisterReads + 1;
+static_assert(kFixedRegisterReads >= kFixedCallArguments + 1);
 struct RegisterEffect {
   std::array<ScalarSlot, kFixedRegisterReads> reads{};
   std::uint8_t read_count = 0;

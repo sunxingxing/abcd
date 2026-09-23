@@ -34,6 +34,7 @@ std::variant<ClassCreation, CreationError> LiftClassCreation(
       {static_cast<std::uint32_t>(instruction.operands[kConstructor].raw_bits)},
       {static_cast<std::uint32_t>(instruction.operands[kLiteral].raw_bits)},
       static_cast<std::uint16_t>(instruction.operands[kLength].raw_bits),
-      {static_cast<std::uint32_t>(instruction.operands[kParent].raw_bits)}};
+      {static_cast<std::uint32_t>(instruction.operands[kParent].raw_bits)},
+      static_cast<std::uint16_t>(instruction.operands[0].raw_bits)};
 }
 }  // namespace abcd::analysis

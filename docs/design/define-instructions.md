@@ -6,6 +6,17 @@ All entries below are decoded through the generated ISA table. A typed lift is
 not itself permission to emit executable source. Historical profiles retain
 format decoding but require a separate execution-semantics proof.
 
+All 14 current v7 `DEFINE*`/`CALLRUNTIME_DEFINE*` encodings have typed operand
+parsing and normal-completion register effects. Tests decode the wire forms,
+reject malformed operands and out-of-frame registers, and check effects even
+when generated ISA access flags are deliberately corrupted. Effects include
+the old accumulator as a read for field definitions and accessor flags;
+accessors and all class forms define the accumulator, whereas field definitions
+preserve it. These effects are may-reads/definite normal writes only, not
+evaluation order or proof of source equivalence. Function, modern class and
+named-field lifts retain their inline-cache slots as format evidence; cache
+slots are never printed as source expressions.
+
 | Family | Typed operands and effect | Executable-source admission |
 | --- | --- | --- |
 | `DEFINEFUNC` narrow/wide | `FunctionCreation`: pool method, observable length, current-function home; target attributes/capture checked separately | Verified created functions only |
@@ -38,8 +49,8 @@ receiver. The emitted `static [name] = value` preserves own-property descriptor
 flags. Existing class-buffer members, `prototype`, array alias reuse, unknown
 keys, side effects, exceptions, and control flow are rejected. The real
 `CommonConstants` sample has an executable-source oracle; computed field
-forms have a dedicated bytecode recovery test but need a record-level source
-oracle.
+forms also have a decoded-record output test and a Node descriptor/identity
+oracle in `record_object_test` / `record_object.mjs`.
 
 `WriteClassMethod` emits native getter/setter syntax when the caller proves
 method kind and placement and the function ABI slot is unobservable.
@@ -65,7 +76,7 @@ through decoded ABC and Node descriptors. Dynamic keys requiring `ToPropertyKey`
 effects are refused rather than converted from printed source.
 
 Next source work: handle the real UI record preludes and static-field/accessor
-ordering; recover private lexical names/brands; represent sendable classes without falsely
-lowering to ordinary JS; add historical execution profiles and a record-level
-computed-key execution oracle. Corpus coverage must report these as semantic
-refusals until those proofs and tests exist.
+ordering; recover private lexical names/brands; represent sendable classes
+without falsely lowering to ordinary JS; and add historical execution
+profiles. Corpus coverage must report these as semantic refusals until those
+proofs and tests exist.

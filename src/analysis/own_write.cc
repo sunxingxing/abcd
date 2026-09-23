@@ -38,6 +38,7 @@ std::variant<OwnWrite, OwnWriteError> LiftOwnWrite(
   return OwnWrite{
       kind,
       {static_cast<std::uint32_t>(instruction.operands[kName].raw_bits)},
-      {static_cast<std::uint32_t>(instruction.operands[kObject].raw_bits)}};
+      {static_cast<std::uint32_t>(instruction.operands[kObject].raw_bits)},
+      static_cast<std::uint16_t>(instruction.operands[kCache].raw_bits)};
 }
 }  // namespace abcd::analysis
