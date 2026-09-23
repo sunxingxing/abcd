@@ -25,7 +25,9 @@ member `initTabBarList` offset 36. That `DEFINEFUNC` resolves to method 16610
 with initial `kArrow` kind. Its entry `MOV` copies of ABI context are dead and
 now pass the two-pass proof, but this nested creation still fails at the arrow
 body's pc30 `CREATEOBJECTWITHBUFFER` (typed
-`LinearLexicalError::kInstruction`). That object-literal lowering remains
-unimplemented, so this is not a ready class site.
+`LinearLexicalError::kInstruction`). Later data-object-buffer source support
+passes that instruction, but the next rejected operation is pc38
+`DEFINEPROPERTYBYNAME` (`LinearLexicalError::kInstruction`). That operation
+remains unimplemented, so this is not a ready class site.
 No executable record exporter, instance-field lifting, or full-source
 signature recovery is claimed.

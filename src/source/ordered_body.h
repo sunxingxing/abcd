@@ -14,6 +14,7 @@ BodyEmitResult WriteOrderedBody(const abc::MethodBody& body,
                                 const analysis::AccumulatorFlow& flow,
                                 ScalarNames names, std::ostream& output,
                                 EmitBudget budget,
-                                const MethodConstants* constants);
+                                const MethodConstants* constants,
+                                ObjectBufferBudget object_budget);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_ORDERED_BODY_H_

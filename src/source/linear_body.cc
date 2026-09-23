@@ -14,6 +14,7 @@
 #include "abcd/analysis/ordinary_call.h"
 #include "abcd/source/string_literal.h"
 #include "linear_instruction.h"
+#include "object_buffer.h"
 #include "ordered_body.h"
 
 namespace abcd::source {
@@ -44,11 +45,13 @@ class DiscardBuffer : public std::streambuf {
 class BodyWriter {
  public:
   BodyWriter(ScalarNames names, std::ostream& output, EmitBudget budget,
-             const MethodConstants* constants)
+             const MethodConstants* constants,
+             ObjectBufferBudget object_budget)
       : names_(names),
         output_(output),
         remaining_(budget.bytes),
-        constants_(constants) {}
+        constants_(constants),
+        object_budget_(object_budget) {}
 
   BodyEmitResult Write(const abc::MethodBody& body) {
     if (!body.tries.empty() || !body.handlers.empty())
@@ -145,7 +148,27 @@ class BodyWriter {
         using abc::Opcode;
         const auto opcode = instruction.decoded.opcode;
         if (opcode == Opcode::kNOP) continue;
-        if (opcode == Opcode::kLDA_STR_ID16) {
+        if (opcode == Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16 ||
+            opcode == Opcode::kCREATEOBJECTWITHBUFFER_IMM16_ID16) {
+          if (!constants_) return Fail(BodyEmitError::kMissingConstants);
+          const auto lifted = LiftObjectCreation(instruction.decoded);
+          if (std::holds_alternative<ObjectCreationError>(lifted))
+            return Fail(BodyEmitError::kUnsupportedInstruction);
+          Expression(ScalarValue{Accumulator{}});
+          Text(" = ");
+          if (!error_) {
+            const auto result = WriteObjectBuffer(
+                std::get<ObjectCreation>(lifted), offset_, *constants_, output_,
+                {remaining_}, object_budget_);
+            if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
+              return *failure;
+            const auto count = std::get<std::size_t>(result);
+            remaining_ -= count;
+            written_ += count;
+          }
+          Text(";\n");
+          accumulator_defined = true;
+        } else if (opcode == Opcode::kLDA_STR_ID16) {
           StringLoad(instruction.decoded);
           accumulator_defined = true;
         } else if (opcode == Opcode::kLDOBJBYNAME_IMM8_ID16 ||
@@ -397,48 +420,54 @@ class BodyWriter {
   abc::CodeOffset offset_;
   std::optional<BodyEmitFailure> error_;
   const MethodConstants* constants_;
+  ObjectBufferBudget object_budget_;
 };
 }  // namespace
 
 BodyEmitResult WriteLinearInstruction(const abc::BodyInstruction& instruction,
                                       ScalarNames names, std::ostream& output,
                                       EmitBudget budget,
-                                      const MethodConstants* constants) {
-  return BodyWriter(names, output, budget, constants).Instruction(instruction);
+                                      const MethodConstants* constants,
+                                      ObjectBufferBudget object_budget) {
+  return BodyWriter(names, output, budget, constants, object_budget)
+      .Instruction(instruction);
 }
 
 BodyEmitResult WriteNamedInvocation(const analysis::NamedInvocation& invocation,
                                     abc::CodeOffset offset, ScalarNames names,
                                     std::ostream& output, EmitBudget budget,
                                     const MethodConstants* constants) {
-  return BodyWriter(names, output, budget, constants)
+  return BodyWriter(names, output, budget, constants, {})
       .Invocation(invocation, offset);
 }
 
 BodyEmitResult WriteLinearBody(const abc::MethodBody& body, ScalarNames names,
                                std::ostream& output, EmitBudget budget,
-                               const MethodConstants* constants) {
+                               const MethodConstants* constants,
+                               ObjectBufferBudget object_budget) {
   // Validation is streaming too: do not retain a second copy of a large body
   // or leak a syntactically valid prefix when a late opcode cannot be lifted.
   DiscardBuffer buffer;
   std::ostream discard(&buffer);
   const auto checked =
-      BodyWriter(names, discard, budget, constants).Write(body);
+      BodyWriter(names, discard, budget, constants, object_budget).Write(body);
   if (std::holds_alternative<BodyEmitFailure>(checked)) return checked;
-  return BodyWriter(names, output, budget, constants).Write(body);
+  return BodyWriter(names, output, budget, constants, object_budget).Write(body);
 }
 
 BodyEmitResult WriteOrderedBody(const abc::MethodBody& body,
                                 const NormalFlow& graph,
                                 const AccumulatorFlow& flow, ScalarNames names,
                                 std::ostream& output, EmitBudget budget,
-                                const MethodConstants* constants) {
+                                const MethodConstants* constants,
+                                ObjectBufferBudget object_budget) {
   DiscardBuffer buffer;
   std::ostream discard(&buffer);
   const auto checked =
-      BodyWriter(names, discard, budget, constants).Ordered(body, graph, flow);
+      BodyWriter(names, discard, budget, constants, object_budget)
+          .Ordered(body, graph, flow);
   if (std::holds_alternative<BodyEmitFailure>(checked)) return checked;
-  return BodyWriter(names, output, budget, constants)
+  return BodyWriter(names, output, budget, constants, object_budget)
       .Ordered(body, graph, flow);
 }
 }  // namespace abcd::source

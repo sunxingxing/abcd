@@ -7,6 +7,7 @@
 #include "abcd/analysis/lexical.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
+#include "abcd/analysis/object_creation.h"
 
 namespace abcd::analysis {
 namespace {
@@ -103,6 +104,9 @@ RegisterEffect EffectOf(const FunctionCreation& value) {
     effect.reads[effect.read_count++] = Accumulator{};
   return effect;
 }
+RegisterEffect EffectOf(const ObjectCreation&) {
+  return AccumulatorDefinition();
+}
 template <class Error>
 ScalarError EffectOf(Error error) {
   if (error == Error::kUnsupportedOpcode)
@@ -152,6 +156,9 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftFunctionCreation(instruction));
+      !Unsupported(result))
+    return result;
+  if (auto result = Adapt(LiftObjectCreation(instruction));
       !Unsupported(result))
     return result;
   using abc::Opcode;

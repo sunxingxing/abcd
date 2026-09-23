@@ -15,6 +15,7 @@ BodyEmitResult WriteNamedInvocation(const analysis::NamedInvocation& invocation,
 BodyEmitResult WriteLinearInstruction(const abc::BodyInstruction& instruction,
                                       ScalarNames names, std::ostream& output,
                                       EmitBudget budget,
-                                      const MethodConstants* constants);
+                                      const MethodConstants* constants,
+                                      ObjectBufferBudget object_budget = {});
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_LINEAR_INSTRUCTION_H_

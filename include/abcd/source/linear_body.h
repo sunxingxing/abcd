@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_LINEAR_BODY_H_
 
 #include "abcd/abc/method_body.h"
+#include "abcd/abc/literal_array.h"
 #include "abcd/abc/module_info.h"
 #include "abcd/abc/string_entity.h"
 #include "abcd/source/scalar_expression.h"
@@ -27,14 +28,26 @@ enum class BodyEmitError {
   kMissingModule,
   kModuleBinding
 };
+enum class ObjectBufferError {
+  kShape,
+  kKey,
+  kValue,
+  kDuplicateKey,
+  kResourceLimit
+};
 struct BodyEmitFailure {
   BodyEmitError kind;
   abc::CodeOffset offset;
   std::optional<analysis::ScalarError> scalar_error;
   std::optional<EmitError> emit_error;
   std::optional<abc::MetadataError> metadata_error = {};
+  std::optional<abc::LiteralFailure> literal_error = {};
+  std::optional<ObjectBufferError> object_error = {};
 };
 using BodyEmitResult = std::variant<std::size_t, BodyEmitFailure>;
+struct ObjectBufferBudget {
+  std::size_t bytes = 16 * 1024 * 1024;
+};
 
 struct MethodConstants {
   const corpus::AbcFile& file;
@@ -69,6 +82,7 @@ struct MethodConstants {
 // require atomic output.
 [[nodiscard]] BodyEmitResult WriteLinearBody(
     const abc::MethodBody& body, ScalarNames names, std::ostream& output,
-    EmitBudget budget = {}, const MethodConstants* constants = nullptr);
+    EmitBudget budget = {}, const MethodConstants* constants = nullptr,
+    ObjectBufferBudget object_budget = {});
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_LINEAR_BODY_H_

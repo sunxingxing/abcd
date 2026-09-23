@@ -69,6 +69,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/register_effect.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/register_uses.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/register_ssa.cc src/analysis/register_rename.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/register_value_flow.cc src/analysis/register_value_rule.cc src/analysis/lexical_value_index.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/object_creation.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/guarded_reads.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/environment_escape.cc src/analysis/environment_escape_aliases.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/linear_lexicals.cc)
@@ -77,6 +78,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/accumulator_flow.cc src/analys
 target_link_libraries(abcd_analysis PUBLIC abcd_abc)
 add_library(abcd_source src/source/string_literal.cc src/source/scalar_expression.cc)
 target_sources(abcd_source PRIVATE src/source/linear_body.cc)
+target_sources(abcd_source PRIVATE src/source/object_buffer.cc)
 target_sources(abcd_source PRIVATE src/source/acyclic_body.cc)
 target_sources(abcd_source PRIVATE src/source/local_lexical_body.cc)
 target_sources(abcd_source PRIVATE src/source/named_scope.cc)
@@ -255,6 +257,10 @@ if(BUILD_TESTING)
   add_executable(linear_constants_test tests/unit/source/linear_constants_test.cc)
   target_link_libraries(linear_constants_test PRIVATE abcd_source)
   add_test(NAME linear_constants_test COMMAND linear_constants_test)
+  add_executable(object_buffer_test tests/unit/source/object_buffer_test.cc)
+  target_include_directories(object_buffer_test PRIVATE tests/support)
+  target_link_libraries(object_buffer_test PRIVATE abcd_source)
+  add_test(NAME object_buffer_test COMMAND object_buffer_test)
   add_executable(named_call_test tests/unit/source/named_call_test.cc)
   target_include_directories(named_call_test PRIVATE tests/support)
   target_link_libraries(named_call_test PRIVATE abcd_source)
@@ -418,6 +424,12 @@ if(BUILD_TESTING)
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:linear_constants_test>
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.mjs
       -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
+    add_test(NAME object_buffer_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:object_buffer_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/object_buffer.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=object-buffer.mjs
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_executable(scalar_source_fixture tests/integration/scalar_source_fixture.cc)
     target_link_libraries(scalar_source_fixture PRIVATE abcd_source)

@@ -28,6 +28,9 @@ AcyclicResult WriteBody(const abc::MethodBody& body, ScalarNames names,
   if (const auto* error = std::get_if<analysis::AccumulatorFailure>(&analyzed))
     return *error;
   const auto& flow = std::get<analysis::AccumulatorFlow>(analyzed);
+  const auto analysis_budget = budget.bytes - graph_bytes;
+  if (flow.allocated_bytes > analysis_budget)
+    return AcyclicError::kResourceLimit;
   std::size_t nesting = flow.order.blocks.size() - 1;
   for (std::size_t position = 0; position < flow.order.blocks.size();
        ++position) {
@@ -39,7 +42,8 @@ AcyclicResult WriteBody(const abc::MethodBody& body, ScalarNames names,
   }
   if (nesting > budget.max_nesting) return AcyclicError::kNestingLimit;
   const auto result = WriteOrderedBody(body, graph, flow, names, output,
-                                       budget.output, constants);
+                                       budget.output, constants,
+                                       {analysis_budget - flow.allocated_bytes});
   if (const auto* error = std::get_if<BodyEmitFailure>(&result)) return *error;
   return std::get<std::size_t>(result);
 }
