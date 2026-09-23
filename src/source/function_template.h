@@ -16,11 +16,16 @@ FunctionEmitResult WriteBaseFunctionTemplate(const BaseFunction& function,
                                              std::ostream& output,
                                              LocalLexicalBudget budget,
                                              const MethodConstants* constants);
+FunctionEmitResult WriteArrowFunction(
+    const BaseFunction& function, const abc::MethodBody& body,
+    std::ostream& output, LocalLexicalBudget budget,
+    const MethodConstants* constants, analysis::CapturedValues captured_values);
 CreatedFunctionResult WriteCreatedFunctionTemplate(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     abc::EntityOffset caller, const abc::DecodedInstruction& instruction,
     std::ostream& output, LocalLexicalBudget budget, abc::StringBudget strings,
-    const abc::ModuleInfo* module = nullptr);
+    const abc::ModuleInfo* module = nullptr,
+    const analysis::MethodRoleIndex* roles = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_FUNCTION_TEMPLATE_H_

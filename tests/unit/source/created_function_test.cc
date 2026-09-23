@@ -6,6 +6,7 @@
 #include <sstream>
 
 #include "abcd/abc/module_info.h"
+#include "abcd/analysis/method_roles.h"
 #include "analysis/ssa_fixture.h"
 #include "source/leaf_function_checks.h"
 
@@ -123,6 +124,27 @@ int main(int argc, char** argv) {
   test::Check(output.str().find("function Recovered($p0)") !=
               std::string::npos);
   test::Check(std::get<std::size_t>(result) == output.str().size());
+  constexpr unsigned kFunctionKindShift = 8;
+  target.access_flags =
+      static_cast<std::uint32_t>(abc::FunctionKind::kArrow)
+      << kFunctionKindShift;
+  const auto roles = std::get<analysis::MethodRoleIndex>(
+      analysis::MethodRoleIndex::Build(file, header, index, lookup));
+  test::Check(roles.At({1}) == analysis::MethodRole::kUnseen);
+  std::ostringstream unproved_arrow;
+  const auto unproved_result = source::WriteCreatedFunction(
+      file, header, index, lookup, {kCaller}, creation, unproved_arrow);
+  test::Check(std::get<source::CreatedFunctionError>(unproved_result) ==
+              source::CreatedFunctionError::kRole);
+  test::Check(unproved_arrow.str().empty());
+  std::ostringstream arrow;
+  const auto arrow_result = source::WriteCreatedFunction(
+      file, header, index, lookup, {kCaller}, creation, arrow, {}, {}, nullptr,
+      &roles);
+  test::Check(std::holds_alternative<std::size_t>(arrow_result));
+  if (argc == 2 && std::string_view(argv[1]) == "--emit")
+    std::cout << "export const arrow = " << arrow.str() << ";\n";
+  target.access_flags = 1U << kFunctionKindShift;
   abc::ModuleInfo module;
   module.requests.push_back({640});
   module.imports.push_back({{620}, {620}, {0}});

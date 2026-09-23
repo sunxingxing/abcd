@@ -6,6 +6,10 @@
 #include "abcd/abc/string_entity.h"
 #include "abcd/source/scalar_expression.h"
 
+namespace abcd::analysis {
+class MethodRoleIndex;
+}
+
 namespace abcd::source {
 enum class BodyEmitError {
   kExceptionRegions,
@@ -41,6 +45,7 @@ struct MethodConstants {
   // Caller-proven same-record module. Null keeps standalone function emission
   // from inventing a lexical import binding.
   const abc::ModuleInfo* module = nullptr;
+  const analysis::MethodRoleIndex* roles = nullptr;
 };
 
 // Emits statements inside a function, not a wrapper or record. Requires a

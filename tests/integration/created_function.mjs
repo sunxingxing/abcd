@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 
-const {recovered, annotated, factory, different, preserved, reverse, captured,
+const {recovered, arrow, annotated, factory, different, preserved, reverse, captured,
        changed, siblings, separated, setter, shadowed, ancestor} =
     await import(pathToFileURL(process.argv[2]));
 assert.equal(recovered.name, 'Recovered');
+assert.equal(arrow.name, 'Recovered');
+assert.equal(arrow.length, 1);
+assert.equal(arrow(37), 37);
+assert.equal(Object.hasOwn(arrow, 'prototype'), false);
+assert.throws(() => new arrow(), TypeError);
 assert.equal(recovered.length, 1);
 for (const value of [undefined, null, true, 0, -0, NaN, 42n,
                      Symbol('argument'), Object.freeze({value: 1})]) {

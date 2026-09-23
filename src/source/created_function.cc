@@ -1,6 +1,7 @@
 #include "abcd/source/created_function.h"
 
 #include "abcd/abc/call_type.h"
+#include "abcd/analysis/method_roles.h"
 #include "function_template.h"
 #include "runtime_name.h"
 
@@ -11,7 +12,8 @@ CreatedFunctionResult WriteCreation(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     abc::EntityOffset caller, const abc::DecodedInstruction& instruction,
     std::ostream& output, LocalLexicalBudget budget, abc::StringBudget strings,
-    analysis::CapturedValues captured_values, const abc::ModuleInfo* module) {
+    analysis::CapturedValues captured_values, const abc::ModuleInfo* module,
+    const analysis::MethodRoleIndex* roles) {
   const auto lifted = analysis::LiftFunctionCreation(instruction);
   if (const auto* error = std::get_if<analysis::CreationError>(&lifted))
     return *error;
@@ -25,6 +27,12 @@ CreatedFunctionResult WriteCreation(
   if (const auto* error = std::get_if<abc::MethodAttributeError>(&resolved))
     return *error;
   const auto target = std::get<abc::MethodTarget>(resolved);
+  // Shared MethodLiteral kinds can change during class materialization. An
+  // arrow is source-safe only when a complete same-file role index proves no
+  // constructor or method-bearing literal can refer to this target.
+  if (target.attributes.kind == abc::FunctionKind::kArrow &&
+      (!roles || roles->At(target.position) != analysis::MethodRole::kUnseen))
+    return CreatedFunctionError::kRole;
   const auto& method = index.methods[target.position.value];
   if (module) {
     const auto caller_position = lookup.Find(caller);
@@ -60,14 +68,20 @@ CreatedFunctionResult WriteCreation(
       !admit(body.handlers.capacity(), sizeof(abc::CatchHandler)))
     return CreatedFunctionError::kResourceLimit;
   const MethodConstants constants{file, header, index, method.offset, strings,
-                                  module};
+                                  module, roles};
   const BaseFunction function{creation, target.attributes,
                               std::get<abc::FrameLayout>(frame), *name};
-  const auto emitted =
-      captured_values == analysis::CapturedValues::kLanguage
-          ? WriteBaseFunctionTemplate(function, body, output, budget,
-                                      &constants)
-          : WriteBaseFunction(function, body, output, budget, &constants);
+  FunctionEmitResult emitted;
+  if (target.attributes.kind == abc::FunctionKind::kArrow) {
+    emitted = WriteArrowFunction(function, body, output, budget, &constants,
+                                 captured_values);
+  } else {
+    emitted = captured_values == analysis::CapturedValues::kLanguage
+                  ? WriteBaseFunctionTemplate(function, body, output, budget,
+                                              &constants)
+                  : WriteBaseFunction(function, body, output, budget,
+                                      &constants);
+  }
   return std::visit([](auto value) -> CreatedFunctionResult { return value; },
                     emitted);
 }
@@ -77,19 +91,21 @@ CreatedFunctionResult WriteCreatedFunction(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     abc::EntityOffset caller, const abc::DecodedInstruction& instruction,
     std::ostream& output, LocalLexicalBudget budget,
-    abc::StringBudget strings, const abc::ModuleInfo* module) {
+    abc::StringBudget strings, const abc::ModuleInfo* module,
+    const analysis::MethodRoleIndex* roles) {
   return WriteCreation(file, header, index, lookup, caller, instruction, output,
                        budget, strings, analysis::CapturedValues::kReject,
-                       module);
+                       module, roles);
 }
 CreatedFunctionResult WriteCreatedFunctionTemplate(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     abc::EntityOffset caller, const abc::DecodedInstruction& instruction,
     std::ostream& output, LocalLexicalBudget budget,
-    abc::StringBudget strings, const abc::ModuleInfo* module) {
+    abc::StringBudget strings, const abc::ModuleInfo* module,
+    const analysis::MethodRoleIndex* roles) {
   return WriteCreation(file, header, index, lookup, caller, instruction, output,
                        budget, strings, analysis::CapturedValues::kLanguage,
-                       module);
+                       module, roles);
 }
 }  // namespace abcd::source

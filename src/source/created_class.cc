@@ -120,7 +120,7 @@ class ClassWriter {
     AdmitClassBytes(body.handlers.capacity(), sizeof(abc::CatchHandler),
                     budget.bytes);
     const MethodConstants constants{file_, header_, index_, method.offset,
-                                    strings_, module_};
+                                    strings_, module_, roles_};
     Account(TakeClassValue<std::size_t>(emit(frame, body, budget, constants)));
   }
   void Constructor(const analysis::ClassCreation& creation,

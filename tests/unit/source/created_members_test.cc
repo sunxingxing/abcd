@@ -6,6 +6,7 @@
 #include "abcd/abc/module_info.h"
 #include "abcd/analysis/method_roles.h"
 #include "abcd/source/created_class.h"
+#include "abcd/source/created_function.h"
 #include "analysis/ssa_fixture.h"
 
 namespace {
@@ -26,7 +27,9 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
   word(kPool + 4, kLiteral);
   word(kPool + 8, 620);
   constexpr std::uint32_t kInner = 370, kNestedCode = 720,
-                          kInnerCode = 740, kNestedConstructorCode = 760;
+                          kInnerCode = 740, kNestedConstructorCode = 760,
+                          kArrowThisCode = 780, kArrowSelfCode = 800,
+                          kArrowNewTargetCode = 820;
   word(kPool + 12, kInner);
   word(kLiteral, 14);  // Two string/method/affiliate triples and the split.
   for (const auto at : {kLiteral + 4, kLiteral + 17}) {
@@ -64,10 +67,20 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
   const std::vector<std::uint8_t> inner{0, 4, 3, 0, 0x60, 3, 0x64};
   const std::vector<std::uint8_t> nested_ctor_bytes{
       0, 3, 6, 0, 0x33, 0, 3, 0, 1, 0x64};
+  const std::vector<std::uint8_t> arrow_this{0, 4, 3, 0, 0x60, 2, 0x64};
+  const std::vector<std::uint8_t> arrow_self{0, 4, 3, 0, 0x60, 0, 0x64};
+  const std::vector<std::uint8_t> arrow_new_target{0, 4, 3, 0, 0x60, 1,
+                                                    0x64};
   std::copy(nested.begin(), nested.end(), bytes.begin() + kNestedCode);
   std::copy(inner.begin(), inner.end(), bytes.begin() + kInnerCode);
   std::copy(nested_ctor_bytes.begin(), nested_ctor_bytes.end(),
             bytes.begin() + kNestedConstructorCode);
+  std::copy(arrow_this.begin(), arrow_this.end(),
+            bytes.begin() + kArrowThisCode);
+  std::copy(arrow_self.begin(), arrow_self.end(),
+            bytes.begin() + kArrowSelfCode);
+  std::copy(arrow_new_target.begin(), arrow_new_target.end(),
+            bytes.begin() + kArrowNewTargetCode);
   char path[] = "/tmp/abcd-created-members-XXXXXX";
   const auto fd = mkstemp(path);
   test::Check(fd >= 0);
@@ -128,6 +141,19 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
   }
   test::Check(std::get<std::size_t>(result) == output.str().size());
   if (name == "method") {
+    test::Check(roles.At({1}) == analysis::MethodRole::kOther);
+    auto& constructor = index.methods[1];
+    constructor.access_flags =
+        static_cast<std::uint32_t>(abc::FunctionKind::kArrow) << kKindShift;
+    const auto define = test::Body({0x33, 0, 0, 0, 1, 0x64});
+    std::ostringstream conflicting_role;
+    const auto conflict_result = source::WriteCreatedFunction(
+        file, header, index, lookup, {kCaller}, define.instructions[0].decoded,
+        conflicting_role, {}, {}, nullptr, &roles);
+    test::Check(std::get<source::CreatedFunctionError>(conflict_result) ==
+                source::CreatedFunctionError::kRole);
+    test::Check(conflicting_role.str().empty());
+    constructor.access_flags = 0;
     const auto original_code = method.code;
     method.code = abc::CodeInfo{{kNestedCode}, {kNestedCode + 4}, 0, 4, 6, 0};
     std::ostringstream closure;
@@ -142,16 +168,64 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
                 << ";\n";
     inner_method.access_flags =
         static_cast<std::uint32_t>(abc::FunctionKind::kArrow) << kKindShift;
-    std::ostringstream rejected_arrow;
+    inner_method.code =
+        abc::CodeInfo{{kInnerCode}, {kInnerCode + 4}, 0, 4, 3, 0};
+    std::ostringstream arrow;
     const auto arrow_result = source::WriteCreatedClass(
         file, header, index, lookup, {kCaller}, body.instructions[2],
-        heritage, rejected_arrow, {}, {}, &roles);
-    test::Check(std::get<source::BodyEmitFailure>(arrow_result).kind ==
+        heritage, arrow, {}, {}, &roles);
+    test::Check(std::holds_alternative<std::size_t>(arrow_result));
+    if (emit)
+      std::cout << "export const recoveredArrow = " << arrow.str() << ";\n";
+    for (const auto code : {kArrowThisCode, kArrowNewTargetCode}) {
+      inner_method.code = abc::CodeInfo{{code}, {code + 4}, 0, 4, 3, 0};
+      std::ostringstream rejected_slot;
+      const auto slot_result = source::WriteCreatedClass(
+          file, header, index, lookup, {kCaller}, body.instructions[2],
+          heritage, rejected_slot, {}, {}, &roles);
+      test::Check(std::get<source::BodyEmitFailure>(slot_result).kind ==
+                  source::BodyEmitError::kCreation);
+      test::Check(rejected_slot.str().empty());
+    }
+    inner_method.code =
+        abc::CodeInfo{{kArrowSelfCode}, {kArrowSelfCode + 4}, 0, 4, 3, 0};
+    std::ostringstream self_arrow;
+    const auto self_arrow_result = source::WriteCreatedClass(
+        file, header, index, lookup, {kCaller}, body.instructions[2],
+        heritage, self_arrow, {}, {}, &roles);
+    test::Check(std::holds_alternative<std::size_t>(self_arrow_result));
+    if (emit)
+      std::cout << "export const recoveredArrowSelf = " << self_arrow.str()
+                << ";\n";
+    const auto named_arrow = inner_method.name;
+    inner_method.name = "#scope#";
+    inner_method.name_utf16_length = inner_method.name.size();
+    inner_method.code =
+        abc::CodeInfo{{kInnerCode}, {kInnerCode + 4}, 0, 4, 3, 0};
+    std::ostringstream anonymous_arrow;
+    const auto anonymous_result = source::WriteCreatedClass(
+        file, header, index, lookup, {kCaller}, body.instructions[2],
+        heritage, anonymous_arrow, {}, {}, &roles);
+    test::Check(std::holds_alternative<std::size_t>(anonymous_result));
+    if (emit)
+      std::cout << "export const recoveredAnonymousArrow = "
+                << anonymous_arrow.str() << ";\n";
+    inner_method.name = named_arrow;
+    inner_method.name_utf16_length = inner_method.name.size();
+    inner_method.access_flags =
+        static_cast<std::uint32_t>(abc::FunctionKind::kGenerator)
+        << kKindShift;
+    std::ostringstream rejected_generator;
+    const auto generator_result = source::WriteCreatedClass(
+        file, header, index, lookup, {kCaller}, body.instructions[2],
+        heritage, rejected_generator, {}, {}, &roles);
+    test::Check(std::get<source::BodyEmitFailure>(generator_result).kind ==
                 source::BodyEmitError::kCreation);
-    test::Check(rejected_arrow.str().empty());
+    test::Check(rejected_generator.str().empty());
     inner_method.access_flags = 1U << kKindShift;
+    inner_method.code =
+        abc::CodeInfo{{kInnerCode}, {kInnerCode + 4}, 0, 4, 3, 0};
     method.code = original_code;
-    auto& constructor = index.methods[1];
     const auto original_constructor_code = constructor.code;
     constructor.code =
         abc::CodeInfo{{kNestedConstructorCode},

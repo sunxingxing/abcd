@@ -6,7 +6,9 @@
 #include <memory>
 #include <ostream>
 #include <streambuf>
+#include <string>
 
+#include "abcd/abc/register_access.h"
 #include "abcd/source/base_constructor.h"
 #include "abcd/source/class_method.h"
 #include "abcd/source/string_literal.h"
@@ -17,6 +19,7 @@ namespace abcd::source {
 namespace {
 enum class CallableSyntax {
   kFunctionExpression,
+  kArrowExpression,
   kBaseConstructor,
   kClassMethod
 };
@@ -27,6 +30,7 @@ struct CallableShape {
   CallableSyntax syntax;
   std::u16string_view key{};
   abc::ClassPlacement placement = abc::ClassPlacement::kPrototype;
+  std::u16string_view arrow_name{};
 };
 constexpr std::size_t kIndexDigits =
     std::numeric_limits<std::uint32_t>::digits10 + 1;
@@ -46,6 +50,43 @@ bool CanonicalFrame(const abc::FrameLayout& frame) {
          canonical->this_value == frame.this_value &&
          canonical->first_parameter == frame.first_parameter &&
          canonical->parameters == frame.parameters;
+}
+
+bool ReadsArrowCallContext(const abc::MethodBody& body,
+                           const abc::FrameLayout& frame) {
+  const auto observes = [&](const abc::RegisterWindow& window) {
+    if (window.access == abc::OperandAccess::kWrite) return false;
+    const auto contains = [&](std::optional<abc::RegisterId> slot) {
+      return slot && slot->value >= window.first.value &&
+             slot->value - window.first.value < window.count;
+    };
+    return contains(frame.this_value) || contains(frame.new_target);
+  };
+  for (const auto& site : body.instructions) {
+    using abc::Opcode;
+    switch (site.decoded.opcode) {
+      case Opcode::kLDTHIS:
+      case Opcode::kLDNEWTARGET:
+      case Opcode::kLDTHISBYNAME_IMM8_ID16:
+      case Opcode::kLDTHISBYNAME_IMM16_ID16:
+      case Opcode::kSTTHISBYNAME_IMM8_ID16:
+      case Opcode::kSTTHISBYNAME_IMM16_ID16:
+      case Opcode::kLDTHISBYVALUE_IMM8:
+      case Opcode::kLDTHISBYVALUE_IMM16:
+      case Opcode::kSTTHISBYVALUE_IMM8_V8:
+      case Opcode::kSTTHISBYVALUE_IMM16_V8:
+        return true;
+      default:
+        break;
+    }
+    const auto accesses =
+        abc::GetRegisterAccesses(site.decoded, frame.registers);
+    const auto* known = std::get_if<abc::RegisterAccesses>(&accesses);
+    if (!known) return true;
+    for (std::size_t i = 0; i < known->count; ++i)
+      if (observes(known->windows[i])) return true;
+  }
+  return false;
 }
 
 class FunctionWriter {
@@ -77,6 +118,12 @@ class FunctionWriter {
         Text("](");
       } else if (function_.syntax == CallableSyntax::kBaseConstructor) {
         Text("constructor(");
+      } else if (function_.syntax == CallableSyntax::kArrowExpression) {
+        // A computed data-property name applies SetFunctionName without a
+        // mutable intrinsic; arrow IIFEs retain lexical this/new.target.
+        Text("(() => {\nconst $arrow = ({[");
+        ArrowName();
+        Text("]: (");
       } else {
         Text("(function ");
         Text(function_.name);
@@ -87,7 +134,9 @@ class FunctionWriter {
         if (i != 0) Text(", ");
         Parameter(i);
       }
-      Text(") {\n\"use strict\";\nlet $acc;\n");
+      Text(function_.syntax == CallableSyntax::kArrowExpression
+               ? ") => {\n\"use strict\";\nlet $acc;\n"
+               : ") {\n\"use strict\";\nlet $acc;\n");
       // Each VM register is independently writable. In particular, a function
       // slot must not alias the immutable named-expression self binding.
       for (std::uint32_t i = 0; i < frame.registers && !error_; ++i) {
@@ -96,11 +145,15 @@ class FunctionWriter {
         const abc::RegisterId slot{i};
         if (frame.function == slot) {
           Text(" = ");
-          Text(function_.name);
+          Text(function_.syntax == CallableSyntax::kArrowExpression
+                   ? "$arrow"
+                   : function_.name);
         } else if (frame.new_target == slot) {
-          Text(" = new.target");
+          if (function_.syntax != CallableSyntax::kArrowExpression)
+            Text(" = new.target");
         } else if (frame.this_value == slot) {
-          Text(" = this");
+          if (function_.syntax != CallableSyntax::kArrowExpression)
+            Text(" = this");
         } else if (i >= frame.first_parameter.value) {
           Text(" = ");
           Parameter(i - frame.first_parameter.value);
@@ -121,8 +174,14 @@ class FunctionWriter {
       else
         return std::visit(
             [](auto value) -> FunctionEmitResult { return value; }, result);
-      Text(function_.syntax == CallableSyntax::kFunctionExpression ? "})"
-                                                                   : "}");
+      if (function_.syntax == CallableSyntax::kArrowExpression) {
+        Text("}})[");
+        ArrowName();
+        Text("];\nreturn $arrow;\n})()");
+      } else {
+        Text(function_.syntax == CallableSyntax::kFunctionExpression ? "})"
+                                                                     : "}");
+      }
       if (error_) return *error_;
       return written_;
     } catch (const std::ios_base::failure&) {
@@ -131,6 +190,15 @@ class FunctionWriter {
   }
 
  private:
+  void ArrowName() {
+    if (error_) return;
+    const auto result = WriteStringLiteral(
+        function_.arrow_name, output_, {budget_.output.bytes - written_});
+    if (const auto* failure = std::get_if<EmitError>(&result))
+      error_ = *failure;
+    else
+      written_ += std::get<std::size_t>(result);
+  }
   void Text(std::string_view text) {
     if (error_) return;
     if (text.size() > budget_.output.bytes - written_) {
@@ -175,19 +243,39 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
   // private source namespace; never let a supplied function name shadow it.
   CaptureDiscard buffer;
   std::ostream discard(&buffer);
-  if (function.name.starts_with('$')) return FunctionEmitError::kName;
-  const auto name_check =
-      WriteScalarExpression(analysis::ScalarValue{analysis::Accumulator{}},
-                            {function.name, {}}, discard, budget.output);
-  if (const auto* error = std::get_if<EmitError>(&name_check)) {
-    if (*error == EmitError::kInvalidBinding) return FunctionEmitError::kName;
-    return *error;
+  if (function.syntax != CallableSyntax::kArrowExpression) {
+    if (function.name.starts_with('$')) return FunctionEmitError::kName;
+    const auto name_check =
+        WriteScalarExpression(analysis::ScalarValue{analysis::Accumulator{}},
+                              {function.name, {}}, discard, budget.output);
+    if (const auto* error = std::get_if<EmitError>(&name_check)) {
+      if (*error == EmitError::kInvalidBinding) return FunctionEmitError::kName;
+      return *error;
+    }
   }
   const auto count = function.frame.registers;
   if (count > budget.bytes / kRegisterBytes)
     return FunctionEmitError::kResourceLimit;
   budget.bytes -= count * kRegisterBytes;
   try {
+    std::u16string arrow_name;
+    if (function.syntax == CallableSyntax::kArrowExpression) {
+      constexpr unsigned char kAsciiLimit = 0x80;
+      if (function.name.size() > budget.bytes / sizeof(char16_t))
+        return FunctionEmitError::kResourceLimit;
+      arrow_name.reserve(function.name.size());
+      for (const unsigned char byte : function.name) {
+        if (byte == 0 || byte >= kAsciiLimit)
+          return FunctionEmitError::kName;
+        arrow_name.push_back(byte);
+      }
+      if (arrow_name.capacity() > budget.bytes / sizeof(char16_t))
+        return FunctionEmitError::kResourceLimit;
+      const auto retained = arrow_name.capacity() * sizeof(char16_t);
+      budget.bytes -= retained;
+    }
+    auto shape = function;
+    shape.arrow_name = arrow_name;
     auto storage = std::make_unique<RegisterName[]>(count);
     auto names = std::make_unique<std::string_view[]>(count);
     for (std::uint32_t i = 0; i < count; ++i) {
@@ -199,11 +287,11 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
       names[i] = {name.data(), static_cast<std::size_t>(end - name.data())};
     }
     const ScalarNames bindings{"$acc", {names.get(), count}};
-    const auto checked = FunctionWriter(function, bindings, discard, budget,
+    const auto checked = FunctionWriter(shape, bindings, discard, budget,
                                         constants, methods, captured_values)
                              .Write(body);
     if (!std::holds_alternative<std::size_t>(checked)) return checked;
-    return FunctionWriter(function, bindings, output, budget, constants,
+    return FunctionWriter(shape, bindings, output, budget, constants,
                           methods, captured_values)
         .Write(body);
   } catch (const std::bad_alloc&) {
@@ -278,5 +366,26 @@ FunctionEmitResult WriteBaseFunctionTemplate(const BaseFunction& function,
                                              const MethodConstants* constants) {
   return WriteFunction(function, body, output, budget, constants, nullptr,
                        analysis::CapturedValues::kLanguage);
+}
+FunctionEmitResult WriteArrowFunction(
+    const BaseFunction& function, const abc::MethodBody& body,
+    std::ostream& output, LocalLexicalBudget budget,
+    const MethodConstants* constants, analysis::CapturedValues captured_values) {
+  if (function.creation.kind != analysis::CreationKind::kFunction ||
+      function.creation.home_object !=
+          analysis::HomeObjectInput::kCurrentFunction)
+    return FunctionEmitError::kCreation;
+  if (function.attributes.sendable) return FunctionEmitError::kSendable;
+  if (function.attributes.kind != abc::FunctionKind::kArrow)
+    return FunctionEmitError::kKind;
+  // Pinned interpreter Execute copies call-info this/newTarget into ABI slots.
+  // A native arrow cannot expose those dynamic slots; lexical accesses use
+  // separate environment operations and are handled by the body writer.
+  if (ReadsArrowCallContext(body, function.frame))
+    return FunctionEmitError::kFrame;
+  return WriteCallable(
+      {function.frame, function.name, function.creation.length.value,
+       CallableSyntax::kArrowExpression},
+      body, output, budget, constants, nullptr, captured_values);
 }
 }  // namespace abcd::source

@@ -14,7 +14,7 @@ BodyEmitResult WriteLeafCreation(const abc::BodyInstruction& site,
   const auto result = WriteCreatedFunctionTemplate(
       constants.file, constants.header, constants.index, methods,
       constants.method, site.decoded, output, budget, constants.string_budget,
-      constants.module);
+      constants.module, constants.roles);
   return std::visit(
       [&](auto value) -> BodyEmitResult {
         using T = decltype(value);

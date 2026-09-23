@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 const {recovered: C, recoveredClosure: Closure,
-       recoveredStaticClosure: StaticClosure} =
+       recoveredStaticClosure: StaticClosure,
+       recoveredArrow: ArrowClass,
+       recoveredArrowSelf: ArrowSelfClass,
+       recoveredAnonymousArrow: AnonymousArrowClass} =
   await import(pathToFileURL(process.argv[2]));
 const outer = new Closure();
 const first = outer.method();
@@ -14,6 +17,17 @@ assert.equal(second(23), 23);
 const staticInner = StaticClosure.method();
 assert.equal(staticInner(31), 31);
 assert.notEqual(staticInner, StaticClosure.method());
+const arrowOwner = new ArrowClass();
+const arrow = arrowOwner.method();
+assert.equal(arrow.name, 'Inner');
+assert.equal(arrow.length, 1);
+assert.equal(Object.hasOwn(arrow, 'prototype'), false);
+assert.equal(arrow.call({notOwner: true}, 9), 9);
+assert.notEqual(arrow, arrowOwner.method());
+assert.throws(() => new arrow(), TypeError);
+const selfArrow = new ArrowSelfClass().method();
+assert.equal(selfArrow(), selfArrow);
+assert.equal(new AnonymousArrowClass().method().name, '');
 assert.equal(C.name, 'MethodSelf0');
 assert.equal(C.length, 0);
 assert.throws(() => C(), TypeError);

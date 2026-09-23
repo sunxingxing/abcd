@@ -20,7 +20,8 @@ or whole-decompiler memory bound measurement.
 
 Immersive record 16474, caller 16638, still rejects its HomeModel class at
 member `initTabBarList` offset 36. That `DEFINEFUNC` resolves to method 16610
-with initial `kArrow` kind. The ordinary-function source writer correctly
-rejects it; arrow lexical `this`, `new.target`, name, and call/construct
-semantics require a separate proved implementation. No executable record
-exporter, instance-field lifting, or full-source signature recovery is claimed.
+with initial `kArrow` kind. A later guarded arrow-source subset now handles
+simple arrow bodies, but this nested creation still fails admission; its
+remaining failure has not been classified to a deeper child cause.
+No executable record exporter, instance-field lifting, or full-source
+signature recovery is claimed.
