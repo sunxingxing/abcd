@@ -90,6 +90,7 @@ target_sources(abcd_source PRIVATE src/source/named_scope.cc)
 target_sources(abcd_source PRIVATE src/source/module_binding.cc)
 target_sources(abcd_source PRIVATE src/source/module_imports.cc)
 target_sources(abcd_source PRIVATE src/source/module_exports.cc)
+target_sources(abcd_source PRIVATE src/source/record_program.cc)
 target_sources(abcd_source PRIVATE src/source/record_module_context.cc)
 target_sources(abcd_source PRIVATE src/source/base_function.cc)
 target_sources(abcd_source PRIVATE src/source/branch_value_proof.cc)
@@ -350,14 +351,22 @@ if(BUILD_TESTING)
   target_link_libraries(scalar_expression_test PRIVATE abcd_source)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   set(ABCD_PAIRED_CORPUS_ROOT "" CACHE PATH "Paired ABC sample root")
+  find_program(ABCD_NODE_EXECUTABLE node)
   if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
     add_executable(module_exports_sample_test
       tests/integration/module_exports_sample.cc)
     target_link_libraries(module_exports_sample_test PRIVATE abcd_source)
     add_test(NAME module_exports_sample_test COMMAND module_exports_sample_test
       "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+    if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME record_program_sample_js_test COMMAND ${CMAKE_COMMAND}
+        "-DABCD_FIXTURE=$<TARGET_FILE:module_exports_sample_test>"
+        "-DABCD_PAIRED_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"
+        "-DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_program_sample.mjs"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_program_sample.cmake)
+    endif()
   endif()
-  find_program(ABCD_NODE_EXECUTABLE node)
   if(ABCD_NODE_EXECUTABLE)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")
       add_test(NAME paired_record_import_class_js_test COMMAND ${CMAKE_COMMAND}

@@ -57,13 +57,22 @@ duplicate exported names, and emits static ESM export aliases to private
 emits `let $localN = $acc`; later stores remain assignments. Thus declaration
 timing is not moved ahead of the bytecode write, and aliases stay live.
 
-This is not yet a record exporter. The caller still must identify the real
-record entry, prove language-valued accumulator and source order, admit every
-side effect and function/class body, check every slot initialized, and stage
-the entire output atomically. Unproved branches, reentrant/cyclic reads,
-unsupported bodies and bundle ownership cannot be published as executable
-records. The paired Breakpoint entry demonstrates the next integration path:
-class creation, an own `prototype` read, then `STMODULEVAR 0`.
+`WriteRecordProgram` now completes one narrow executable record shape: pinned
+v7 merged modules with a unique `func_main_0`, a straight-line entry, pure
+ABI/scalar copies, Hole/undefined, admitted ordinary class creation, a
+pre-escape own `prototype` read, and local export stores. It interprets values
+with typed states rather than printing instruction names, emits each class at
+its creation point, and rejects all unknown side effects and incomplete slots.
+Both the complete module and every created class are preflighted before any
+source byte reaches the caller. The paired Breakpoint record executes under
+Node with the recovered four instance assignments and branching method.
+
+This writer is not yet a per-record publication command or broad record
+coverage. The caller still must bind the module to the unchanged record,
+provide the whole-file role proof and atomically stage the output. Unproved
+branches, reentrant/cyclic reads, unsupported bodies, indirect/star exports,
+historical execution semantics and bundle ownership remain explicit refusal
+cases, not partial executable files.
 
 ## Staged Implementation
 

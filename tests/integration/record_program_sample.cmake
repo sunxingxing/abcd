@@ -1,0 +1,15 @@
+string(RANDOM LENGTH 12 token)
+set(root "${CMAKE_CURRENT_BINARY_DIR}/record-program-${token}")
+file(MAKE_DIRECTORY "${root}")
+set(source "${root}/Breakpoint.mjs")
+execute_process(COMMAND "${ABCD_FIXTURE}" "${ABCD_PAIRED_SAMPLE}" --emit
+  OUTPUT_FILE "${source}" RESULT_VARIABLE status)
+if(NOT status EQUAL 0)
+  message(FATAL_ERROR "record program emission failed")
+endif()
+execute_process(COMMAND "${ABCD_NODE}" --experimental-vm-modules
+  "${ABCD_ORACLE}" "${source}" RESULT_VARIABLE status)
+if(NOT status EQUAL 0)
+  message(FATAL_ERROR "record program oracle failed")
+endif()
+file(REMOVE_RECURSE "${root}")
