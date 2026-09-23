@@ -2,6 +2,7 @@
 
 #include <new>
 #include <ostream>
+#include <type_traits>
 #include <vector>
 
 #include "abcd/abc/call_type.h"
@@ -36,6 +37,7 @@ class ClassWriter {
               const analysis::MethodRoleIndex* roles,
               const abc::ModuleInfo* module, abc::EntityOffset owner,
               const GlobalScope* enclosing_scope,
+              const StaticFields* static_fields,
               std::ostream& output,
               LocalLexicalBudget budget, abc::StringBudget strings)
       : file_(file),
@@ -46,6 +48,7 @@ class ClassWriter {
         module_(module),
         owner_(owner),
         enclosing_scope_(enclosing_scope),
+        static_fields_(static_fields),
         output_(output),
         budget_(budget),
         strings_(strings) {}
@@ -63,6 +66,15 @@ class ClassWriter {
       Text("\n");
       Member(members.properties[i], SelfName(i, name), name);
     }
+    if (static_fields_)
+      for (const auto& field : static_fields_->fields) {
+        Text("\nstatic [");
+        Account(TakeClassValue<std::size_t>(WriteStringLiteral(
+            field.name, output_, budget_.output)));
+        Text("] = ");
+        StaticValueText(static_fields_->values[field.value]);
+        Text(";");
+      }
     Text("\n})");
     if (has_members) {
       Text(";\n");
@@ -88,6 +100,46 @@ class ClassWriter {
   }
 
  private:
+  void StaticAtomText(const StaticAtom& atom) {
+    std::visit(
+        [&](const auto& value) {
+          using T = std::decay_t<decltype(value)>;
+          if constexpr (std::is_same_v<T, StaticUndefined>)
+            Text("void 0");
+          else if constexpr (std::is_same_v<T, StaticNull>)
+            Text("null");
+          else if constexpr (std::is_same_v<T, bool>)
+            Text(value ? "true" : "false");
+          else if constexpr (std::is_same_v<T, std::u16string>)
+            Account(TakeClassValue<std::size_t>(WriteStringLiteral(
+                value, output_, budget_.output)));
+          else {
+            const analysis::ScalarValue scalar = [&]() -> analysis::ScalarValue {
+              if constexpr (std::is_same_v<T, std::int32_t>)
+                return analysis::IntegerLiteral{value};
+              else
+                return analysis::Float64Bits{value.bits};
+            }();
+            Account(TakeClassValue<std::size_t>(WriteScalarExpression(
+                scalar, {"", {}}, output_, budget_.output)));
+          }
+        },
+        atom);
+  }
+  void StaticValueText(const StaticValue& value) {
+    if (const auto* atom = std::get_if<StaticAtom>(&value)) {
+      StaticAtomText(*atom);
+      return;
+    }
+    Text("[");
+    bool comma = false;
+    for (const auto& element : std::get<StaticArray>(value).elements) {
+      if (comma) Text(", ");
+      comma = true;
+      StaticAtomText(element);
+    }
+    Text("]");
+  }
   static std::string SelfName(std::size_t ordinal, std::string_view name) {
     auto binding = "MethodSelf" + std::to_string(ordinal);
     if (binding == name) binding += '_';
@@ -203,6 +255,7 @@ class ClassWriter {
   const abc::ModuleInfo* module_;
   abc::EntityOffset owner_;
   const GlobalScope* enclosing_scope_;
+  const StaticFields* static_fields_;
   std::ostream& output_;
   LocalLexicalBudget budget_;
   abc::StringBudget strings_;
@@ -216,7 +269,8 @@ CreatedClassResult WriteCreatedClass(
     analysis::ClassHeritage heritage, std::ostream& output,
     LocalLexicalBudget budget, abc::StringBudget strings,
     const analysis::MethodRoleIndex* roles, const abc::ModuleInfo* module,
-    const GlobalScope* enclosing_scope) {
+    const GlobalScope* enclosing_scope,
+    const StaticFields* static_fields) {
   try {
     if (heritage.pc != instruction.offset ||
         heritage.kind != analysis::HeritageKind::kAbsent)
@@ -229,6 +283,14 @@ CreatedClassResult WriteCreatedClass(
     if (target.attributes.sendable) return FunctionEmitError::kSendable;
     const auto members = ReadMembers(file, header, index, caller,
                                      creation.literal, budget.bytes);
+    if (static_fields)
+      for (const auto& field : static_fields->fields)
+        if (field.value >= static_fields->values.size() ||
+            field.name == u"prototype")
+          return CreatedClassError::kStaticFieldValue;
+    if (static_fields && !static_fields->fields.empty() &&
+        !members.properties.empty())
+      return CreatedClassError::kStaticFieldOrder;
     AdmitClassBytes(members.properties.capacity(), sizeof(abc::ClassProperty),
                     budget.bytes);
     CheckClassMembers(file, header, index, lookup, members, roles, budget.bytes,
@@ -244,11 +306,11 @@ CreatedClassResult WriteCreatedClass(
     CaptureDiscard discard;
     std::ostream dry(&discard);
     ClassWriter(file, header, index, lookup, roles, module, caller_owner,
-                enclosing_scope, dry,
+                enclosing_scope, static_fields, dry,
                 budget, strings)
         .Write(creation, target, members, *name);
     return ClassWriter(file, header, index, lookup, roles, module, caller_owner,
-                       enclosing_scope,
+                       enclosing_scope, static_fields,
                        output, budget, strings)
         .Write(creation, target, members, *name);
   } catch (const ClassFailure& failure) {

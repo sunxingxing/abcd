@@ -14,10 +14,12 @@
 #include "abcd/abc/call_type.h"
 #include "abcd/abc/pool_reference.h"
 #include "abcd/analysis/class_creation.h"
+#include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/scalar.h"
 #include "abcd/source/created_function.h"
 #include "abcd/source/module_imports.h"
+#include "abcd/source/static_fields.h"
 
 namespace abcd::source {
 namespace {
@@ -29,9 +31,20 @@ struct Value {
     kHole,
     kClass,
     kFunction,
+    kInitializerFunction,
     kPrototype
   } kind;
   std::size_t ordinal = 0;
+};
+struct ClassState {
+  const abc::BodyInstruction* site = nullptr;
+  std::optional<StaticFields> fields;
+  bool emitted = false;
+};
+struct InitializerState {
+  std::size_t class_id = 0;
+  abc::MethodPosition method;
+  bool called = false;
 };
 class DiscardBuffer : public std::streambuf {
   std::streamsize xsputn(const char*, std::streamsize count) override {
@@ -193,6 +206,13 @@ class ProgramWriter {
         case Opcode::kDEFINEFUNC_IMM16_ID16_IMM8:
           Function(instruction);
           break;
+        case Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8:
+        case Opcode::kDEFINEMETHOD_IMM16_ID16_IMM8:
+          DefineMethod(instruction);
+          break;
+        case Opcode::kCALLTHIS0_IMM8_V8:
+          CallInitializer(instruction);
+          break;
         case Opcode::kLDOBJBYNAME_IMM8_ID16:
         case Opcode::kLDOBJBYNAME_IMM16_ID16:
           Prototype(instruction);
@@ -205,6 +225,10 @@ class ProgramWriter {
           if (i + 1 != body_.instructions.size() ||
               instruction.decoded.operand_count != 0)
             throw Fail(Error::kInstruction, pc_);
+          for (const auto& created : classes_)
+            if (!created.emitted) throw Fail(Error::kClass, pc_);
+          for (const auto& initializer : initializers_)
+            if (!initializer.called) throw Fail(Error::kInitializer, pc_);
           if (!exports_.Complete()) throw Fail(Error::kExport, pc_);
           return written_;
         case Opcode::kNOP:
@@ -218,6 +242,24 @@ class ProgramWriter {
   }
 
  private:
+  template <typename T>
+  void Append(std::vector<T>& values, T value) {
+    if (values.size() == values.capacity()) {
+      const auto cap = values.capacity();
+      constexpr std::size_t kInitialCapacity = 4;
+      const auto maximum = body_.instructions.size();
+      const auto next = cap == 0 ? std::min(kInitialCapacity, maximum)
+                                 : cap > maximum / 2 ? maximum : cap * 2;
+      if (next <= cap || (next - cap) > budget_.bytes / sizeof(T))
+        throw Fail(Error::kResourceLimit, pc_);
+      values.reserve(next);
+      const auto added = values.capacity() - cap;
+      if (added > budget_.bytes / sizeof(T))
+        throw Fail(Error::kResourceLimit, pc_);
+      budget_.bytes -= added * sizeof(T);
+    }
+    values.push_back(std::move(value));
+  }
   std::size_t Remaining() const { return budget_.output.bytes - written_; }
   void Account(std::size_t bytes) {
     if (bytes > Remaining()) throw Fail(Error::kOutputLimit, pc_);
@@ -266,7 +308,15 @@ class ProgramWriter {
     if (!creation || creation->parent.value >= registers_.size() ||
         registers_[creation->parent.value].kind != Value::Kind::kHole)
       throw Fail(Error::kValue, pc_);
-    const auto id = class_count_++;
+    // Keep the creation site until the fresh class's one proved initializer
+    // has run. Emitting earlier would omit its fields from the class body.
+    const auto id = classes_.size();
+    Append(classes_, ClassState{&instruction});
+    accumulator_ = {Value::Kind::kClass, id};
+  }
+  void EmitClass(std::size_t id) {
+    if (id >= classes_.size() || classes_[id].emitted)
+      throw Fail(Error::kValue, pc_);
     Text("const $class");
     Number(id);
     Text(" = ");
@@ -275,15 +325,16 @@ class ProgramWriter {
     child.output.bytes = Remaining();
     const GlobalScope scope{{}, {}};
     const auto result = WriteCreatedClass(
-        file_, header_, index_, lookup_, entry_.offset, instruction,
-        {instruction.offset, analysis::HeritageKind::kAbsent}, output_, child,
-        budget_.strings, &roles_, &module_, &scope);
+        file_, header_, index_, lookup_, entry_.offset, *classes_[id].site,
+        {classes_[id].site->offset, analysis::HeritageKind::kAbsent}, output_,
+        child, budget_.strings, &roles_, &module_, &scope,
+        classes_[id].fields ? &*classes_[id].fields : nullptr);
     if (const auto* size = std::get_if<std::size_t>(&result))
       Account(*size);
     else
       throw Fail(CreationError(result, Error::kClass), pc_);
     Text(";\n");
-    accumulator_ = {Value::Kind::kClass, id};
+    classes_[id].emitted = true;
   }
   void Function(const abc::BodyInstruction& instruction) {
     const auto id = function_count_++;
@@ -304,11 +355,77 @@ class ProgramWriter {
     Text(";\n");
     accumulator_ = {Value::Kind::kFunction, id};
   }
+  void DefineMethod(const abc::BodyInstruction& instruction) {
+    const auto lifted = analysis::LiftFunctionCreation(instruction.decoded);
+    const auto* creation = std::get_if<analysis::FunctionCreation>(&lifted);
+    if (!creation || creation->kind != analysis::CreationKind::kMethod ||
+        creation->home_object != analysis::HomeObjectInput::kAccumulator ||
+        creation->length.value != 0 ||
+        (accumulator_.kind != Value::Kind::kPrototype &&
+         accumulator_.kind != Value::Kind::kClass) ||
+        accumulator_.ordinal >= classes_.size() ||
+        escaped_[accumulator_.ordinal])
+      throw Fail(Error::kInitializer, pc_);
+    const auto target = abc::ResolveMethodTarget(
+        file_, header_, index_, lookup_, entry_.offset, creation->method);
+    if (const auto* error = std::get_if<abc::MetadataError>(&target))
+      throw Fail(Metadata(*error), pc_);
+    const auto* method = std::get_if<abc::MethodTarget>(&target);
+    if (!method || method->position.value >= index_.methods.size() ||
+        method->attributes.sendable ||
+        index_.methods[method->position.value].owner_offset !=
+            entry_.owner_offset)
+      throw Fail(Error::kInitializer, pc_);
+    const auto id = initializers_.size();
+    Append(initializers_, InitializerState{accumulator_.ordinal,
+                                           method->position});
+    accumulator_ = {Value::Kind::kInitializerFunction, id};
+  }
+  void CallInitializer(const abc::BodyInstruction& instruction) {
+    const auto& decoded = instruction.decoded;
+    if (decoded.operand_count != 2 ||
+        decoded.operands[0].kind != abc::OperandKind::kImmediate ||
+        decoded.operands[0].raw_bits > UINT8_MAX ||
+        decoded.operands[1].kind != abc::OperandKind::kRegister ||
+        decoded.operands[1].raw_bits > UINT8_MAX ||
+        decoded.operands[1].raw_bits >= registers_.size() ||
+        accumulator_.kind != Value::Kind::kInitializerFunction ||
+        accumulator_.ordinal >= initializers_.size())
+      throw Fail(Error::kInitializer, pc_);
+    auto& init = initializers_[accumulator_.ordinal];
+    const auto class_id = init.class_id;
+    const auto& receiver = registers_[decoded.operands[1].raw_bits];
+    if (init.called || class_id >= classes_.size() ||
+        receiver.kind != Value::Kind::kClass ||
+        receiver.ordinal != class_id || escaped_[class_id] ||
+        classes_[class_id].emitted || classes_[class_id].fields)
+      throw Fail(Error::kInitializer, pc_);
+    const auto recovered = RecoverStaticFields(
+        file_, header_, index_, index_.methods[init.method.value],
+        budget_.bytes, budget_.strings);
+    if (const auto* failure = std::get_if<StaticFieldFailure>(&recovered)) {
+      const auto mapped = failure->kind == StaticFieldError::kResourceLimit
+                              ? Error::kResourceLimit
+                          : failure->kind == StaticFieldError::kRead
+                              ? Error::kRead
+                          : failure->kind == StaticFieldError::kFileChanged
+                              ? Error::kFileChanged
+                              : Error::kInitializer;
+      throw Fail(mapped, failure->pc);
+    }
+    auto fields = std::get<StaticFields>(std::move(recovered));
+    const auto retained = fields.AllocatedBytes();
+    if (retained > budget_.bytes) throw Fail(Error::kResourceLimit, pc_);
+    budget_.bytes -= retained;
+    classes_[class_id].fields = std::move(fields);
+    init.called = true;
+    accumulator_ = {Value::Kind::kUndefined};
+  }
   void Prototype(const abc::BodyInstruction& instruction) {
     const auto read = analysis::LiftNamedRead(instruction.decoded);
     const auto* named = std::get_if<analysis::NamedRead>(&read);
     if (!named || accumulator_.kind != Value::Kind::kClass ||
-        accumulator_.ordinal >= escaped_.size() ||
+        accumulator_.ordinal >= classes_.size() ||
         escaped_[accumulator_.ordinal])
       throw Fail(Error::kValue, pc_);
     const auto reference = abc::ResolvePoolReference(
@@ -334,6 +451,12 @@ class ProgramWriter {
                    accumulator_.kind != Value::Kind::kFunction &&
                    accumulator_.kind != Value::Kind::kUndefined))
       throw Fail(Error::kValue, pc_);
+    if (accumulator_.kind == Value::Kind::kClass) {
+      if (accumulator_.ordinal >= classes_.size())
+        throw Fail(Error::kValue, pc_);
+      if (!classes_[accumulator_.ordinal].emitted)
+        EmitClass(accumulator_.ordinal);
+    }
     Text("$acc = ");
     if (accumulator_.kind == Value::Kind::kClass) {
       Text("$class");
@@ -372,9 +495,10 @@ class ProgramWriter {
   RecordProgramBudget budget_;
   std::vector<Value> registers_;
   std::vector<std::uint8_t> escaped_;
+  std::vector<ClassState> classes_;
+  std::vector<InitializerState> initializers_;
   Value accumulator_{Value::Kind::kUnknown};
   abc::CodeOffset pc_{};
-  std::size_t class_count_ = 0;
   std::size_t function_count_ = 0;
   std::size_t written_ = 0;
 };

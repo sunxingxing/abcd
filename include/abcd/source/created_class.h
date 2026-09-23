@@ -4,6 +4,7 @@
 #include "abcd/analysis/class_heritage.h"
 #include "abcd/analysis/method_roles.h"
 #include "abcd/source/created_function.h"
+#include "abcd/source/static_fields.h"
 
 namespace abcd::source {
 enum class CreatedClassError {
@@ -12,7 +13,9 @@ enum class CreatedClassError {
   kMissingCode,
   kName,
   kResourceLimit,
-  kModuleOwner
+  kModuleOwner,
+  kStaticFieldOrder,
+  kStaticFieldValue
 };
 using CreatedClassResult =
     std::variant<std::size_t, CreatedClassError, FunctionEmitError, EmitError,
@@ -52,6 +55,7 @@ using CreatedClassResult =
     LocalLexicalBudget budget = {}, abc::StringBudget strings = {},
     const analysis::MethodRoleIndex* roles = nullptr,
     const abc::ModuleInfo* module = nullptr,
-    const GlobalScope* enclosing_scope = nullptr);
+    const GlobalScope* enclosing_scope = nullptr,
+    const StaticFields* static_fields = nullptr);
 }  // namespace abcd::source
 #endif
