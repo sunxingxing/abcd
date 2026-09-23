@@ -29,7 +29,9 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
   constexpr std::uint32_t kInner = 370, kNestedCode = 720,
                           kInnerCode = 740, kNestedConstructorCode = 760,
                           kArrowThisCode = 780, kArrowSelfCode = 800,
-                          kArrowNewTargetCode = 820;
+                          kArrowNewTargetCode = 820,
+                          kArrowDeadContextCode = 840,
+                          kArrowLiveContextCode = 860;
   word(kPool + 12, kInner);
   word(kLiteral, 14);  // Two string/method/affiliate triples and the split.
   for (const auto at : {kLiteral + 4, kLiteral + 17}) {
@@ -71,6 +73,10 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
   const std::vector<std::uint8_t> arrow_self{0, 4, 3, 0, 0x60, 0, 0x64};
   const std::vector<std::uint8_t> arrow_new_target{0, 4, 3, 0, 0x60, 1,
                                                     0x64};
+  const std::vector<std::uint8_t> arrow_dead_context{
+      0, 4, 7, 0, 0x44, 0x20, 0x44, 0x10, 0x60, 3, 0x64};
+  const std::vector<std::uint8_t> arrow_live_context{
+      0, 4, 5, 0, 0x44, 0x20, 0x60, 0, 0x64};
   std::copy(nested.begin(), nested.end(), bytes.begin() + kNestedCode);
   std::copy(inner.begin(), inner.end(), bytes.begin() + kInnerCode);
   std::copy(nested_ctor_bytes.begin(), nested_ctor_bytes.end(),
@@ -81,6 +87,10 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
             bytes.begin() + kArrowSelfCode);
   std::copy(arrow_new_target.begin(), arrow_new_target.end(),
             bytes.begin() + kArrowNewTargetCode);
+  std::copy(arrow_dead_context.begin(), arrow_dead_context.end(),
+            bytes.begin() + kArrowDeadContextCode);
+  std::copy(arrow_live_context.begin(), arrow_live_context.end(),
+            bytes.begin() + kArrowLiveContextCode);
   char path[] = "/tmp/abcd-created-members-XXXXXX";
   const auto fd = mkstemp(path);
   test::Check(fd >= 0);
@@ -177,6 +187,25 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
     test::Check(std::holds_alternative<std::size_t>(arrow_result));
     if (emit)
       std::cout << "export const recoveredArrow = " << arrow.str() << ";\n";
+    inner_method.code = abc::CodeInfo{{kArrowDeadContextCode},
+                                      {kArrowDeadContextCode + 4}, 0, 4, 7, 0};
+    std::ostringstream dead_context;
+    const auto dead_result = source::WriteCreatedClass(
+        file, header, index, lookup, {kCaller}, body.instructions[2],
+        heritage, dead_context, {}, {}, &roles);
+    test::Check(std::holds_alternative<std::size_t>(dead_result));
+    if (emit)
+      std::cout << "export const recoveredDeadContextArrow = "
+                << dead_context.str() << ";\n";
+    inner_method.code = abc::CodeInfo{{kArrowLiveContextCode},
+                                      {kArrowLiveContextCode + 4}, 0, 4, 5, 0};
+    std::ostringstream live_context;
+    const auto live_result = source::WriteCreatedClass(
+        file, header, index, lookup, {kCaller}, body.instructions[2],
+        heritage, live_context, {}, {}, &roles);
+    test::Check(std::get<source::BodyEmitFailure>(live_result).kind ==
+                source::BodyEmitError::kCreation);
+    test::Check(live_context.str().empty());
     for (const auto code : {kArrowThisCode, kArrowNewTargetCode}) {
       inner_method.code = abc::CodeInfo{{code}, {code + 4}, 0, 4, 3, 0};
       std::ostringstream rejected_slot;

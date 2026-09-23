@@ -52,16 +52,16 @@ bool CanonicalFrame(const abc::FrameLayout& frame) {
          canonical->parameters == frame.parameters;
 }
 
-bool ReadsArrowCallContext(const abc::MethodBody& body,
-                           const abc::FrameLayout& frame) {
-  const auto observes = [&](const abc::RegisterWindow& window) {
-    if (window.access == abc::OperandAccess::kWrite) return false;
-    const auto contains = [&](std::optional<abc::RegisterId> slot) {
-      return slot && slot->value >= window.first.value &&
-             slot->value - window.first.value < window.count;
-    };
-    return contains(frame.this_value) || contains(frame.new_target);
+bool ObservesArrowCallContext(const abc::MethodBody& body,
+                              const abc::FrameLayout& frame) {
+  constexpr std::size_t kCallContextSlots = 2;
+  const auto contains = [](const abc::RegisterWindow& window,
+                           abc::RegisterId slot) {
+    return slot.value >= window.first.value &&
+           slot.value - window.first.value < window.count;
   };
+  std::array<abc::RegisterId, kCallContextSlots> copy_destinations{};
+  std::size_t copy_count = 0;
   for (const auto& site : body.instructions) {
     using abc::Opcode;
     switch (site.decoded.opcode) {
@@ -83,8 +83,37 @@ bool ReadsArrowCallContext(const abc::MethodBody& body,
         abc::GetRegisterAccesses(site.decoded, frame.registers);
     const auto* known = std::get_if<abc::RegisterAccesses>(&accesses);
     if (!known) return true;
-    for (std::size_t i = 0; i < known->count; ++i)
-      if (observes(known->windows[i])) return true;
+    for (std::size_t i = 0; i < known->count; ++i) {
+      const auto& window = known->windows[i];
+      if (window.access == abc::OperandAccess::kWrite) continue;
+      const bool context_read =
+          (frame.this_value && contains(window, *frame.this_value)) ||
+          (frame.new_target && contains(window, *frame.new_target));
+      if (!context_read) continue;
+      // The v7 compiler copies hidden ABI inputs into local slots at entry.
+      // A pure MOV is unobservable when its destination has no reads anywhere
+      // in the body; this conservative whole-body check also covers branches.
+      const bool move = site.decoded.opcode == Opcode::kMOV_V4_V4 ||
+                        site.decoded.opcode == Opcode::kMOV_V8_V8;
+      if (!move || known->count != 2 || i != 1 ||
+          known->windows[0].access != abc::OperandAccess::kWrite ||
+          known->windows[0].count != 1 || window.count != 1 ||
+          copy_count == copy_destinations.size())
+        return true;
+      copy_destinations[copy_count++] = known->windows[0].first;
+    }
+  }
+  for (const auto& site : body.instructions) {
+    const auto accesses =
+        abc::GetRegisterAccesses(site.decoded, frame.registers);
+    const auto* known = std::get_if<abc::RegisterAccesses>(&accesses);
+    if (!known) return true;
+    for (std::size_t i = 0; i < known->count; ++i) {
+      const auto& window = known->windows[i];
+      if (window.access == abc::OperandAccess::kWrite) continue;
+      for (std::size_t copy = 0; copy < copy_count; ++copy)
+        if (contains(window, copy_destinations[copy])) return true;
+    }
   }
   return false;
 }
@@ -381,7 +410,7 @@ FunctionEmitResult WriteArrowFunction(
   // Pinned interpreter Execute copies call-info this/newTarget into ABI slots.
   // A native arrow cannot expose those dynamic slots; lexical accesses use
   // separate environment operations and are handled by the body writer.
-  if (ReadsArrowCallContext(body, function.frame))
+  if (ObservesArrowCallContext(body, function.frame))
     return FunctionEmitError::kFrame;
   return WriteCallable(
       {function.frame, function.name, function.creation.length.value,

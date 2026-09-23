@@ -4,9 +4,13 @@ Pinned OpenHarmony v7.0 `RuntimeDefinefunc` instantiates a `Method` with its
 recorded function kind and sets the literal's length. `ObjectFactory::NewJSFunction`
 uses the no-prototype class for `ARROW_FUNCTION`. `EcmaInterpreter::Execute`
 copies call-info `this` and `newTarget` into the declared ABI slots. Native JS
-arrows instead capture these lexically. The source writer therefore rejects any
-arrow body that reads either ABI slot or an implicit this/newTarget opcode; it
-does not silently map a dynamic call input to a lexical value. Explicit writes
+arrows instead capture these lexically. The source writer therefore rejects
+observable reads of either ABI slot and implicit this/newTarget opcodes; it
+does not silently map a dynamic call input to a lexical value. It admits at
+most two pure `MOV` copies of context slots only when a whole-body scan proves
+its destination is never read. This two-pass, constant-space proof is O(body
+instructions and operand windows), including branches; it deliberately rejects
+copies with later reads even if another write might kill them. Explicit writes
 to an unread slot are allowed. Unsupported control flow, captures, instructions
 and child kinds keep their existing rejection path.
 
@@ -30,5 +34,6 @@ space. Name conversion is O(name bytes) with retained UTF-16 capacity charged
 against the method budget. Output uses existing two-pass preflight and bounded
 streaming. Unit and Node tests cover module-top-level syntax, function name,
 length, nonconstructibility, fresh creation identity, self slot, empty name,
-and rejection of both dynamic call-context slots. This does not complete arrow
-bodies with branches/object literals, async arrows, or record-level source.
+and rejection of both observable dynamic call-context slots. This does not
+complete arrow bodies with branches/object literals, async arrows, or
+record-level source.

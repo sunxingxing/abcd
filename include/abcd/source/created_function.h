@@ -26,7 +26,8 @@ using CreatedFunctionResult =
 // the target, not caller control flow or records. Direct captures/home uses are
 // refused by the body writer. BASE_CONSTRUCTOR and a guarded ARROW subset are
 // emitted with their distinct call/construct behavior; arrow bodies observing
-// dynamic ABI this/newTarget are rejected. Each expression retains fresh runtime
+// dynamic ABI this/newTarget are rejected (dead pure copies are allowed).
+// Each expression retains fresh runtime
 // identity. Arrows require a complete same-file role index proving kUnseen;
 // shared method literals used as class members/constructors can change kind.
 // budget.bytes includes decoded target and source scratch; caller

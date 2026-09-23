@@ -3,6 +3,7 @@ import {pathToFileURL} from 'node:url';
 const {recovered: C, recoveredClosure: Closure,
        recoveredStaticClosure: StaticClosure,
        recoveredArrow: ArrowClass,
+       recoveredDeadContextArrow: DeadContextArrowClass,
        recoveredArrowSelf: ArrowSelfClass,
        recoveredAnonymousArrow: AnonymousArrowClass} =
   await import(pathToFileURL(process.argv[2]));
@@ -25,6 +26,7 @@ assert.equal(Object.hasOwn(arrow, 'prototype'), false);
 assert.equal(arrow.call({notOwner: true}, 9), 9);
 assert.notEqual(arrow, arrowOwner.method());
 assert.throws(() => new arrow(), TypeError);
+assert.equal(new DeadContextArrowClass().method()(17), 17);
 const selfArrow = new ArrowSelfClass().method();
 assert.equal(selfArrow(), selfArrow);
 assert.equal(new AnonymousArrowClass().method().name, '');
