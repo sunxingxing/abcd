@@ -28,9 +28,12 @@ struct ClassMethod {
 // Placement/key descriptor and reserved-property compatibility are caller
 // obligations. Does not emit home-object operations, async/generator/accessors.
 // Simple formal count, preflight, budgets and publication match BaseFunction.
+// A supplied method lookup enables typed nested ordinary closures. Unsupported
+// child kinds reject the entire method instead of changing function semantics.
 [[nodiscard]] FunctionEmitResult WriteClassMethod(
     const ClassMethod& method, const abc::MethodBody& body,
     std::ostream& output, LocalLexicalBudget budget = {},
-    const MethodConstants* constants = nullptr);
+    const MethodConstants* constants = nullptr,
+    const abc::MethodLookup* methods = nullptr);
 }  // namespace abcd::source
 #endif

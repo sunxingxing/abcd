@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
-const {recovered: C} = await import(pathToFileURL(process.argv[2]));
+const {recovered: C, recoveredClosure: Closure,
+       recoveredStaticClosure: StaticClosure} =
+  await import(pathToFileURL(process.argv[2]));
+const outer = new Closure();
+const first = outer.method();
+const second = outer.method();
+assert.notEqual(first, second);
+assert.equal(first.name, 'Inner');
+assert.equal(first.length, 1);
+assert.equal(first(17), 17);
+assert.equal(second(23), 23);
+const staticInner = StaticClosure.method();
+assert.equal(staticInner(31), 31);
+assert.notEqual(staticInner, StaticClosure.method());
 assert.equal(C.name, 'MethodSelf0');
 assert.equal(C.length, 0);
 assert.throws(() => C(), TypeError);

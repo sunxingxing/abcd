@@ -20,9 +20,11 @@ struct BaseConstructor {
 // prototype descriptors and constructor return rules. Assignments remain body
 // statements, not fields. Same preflight, budgets and atomic-publication
 // obligations as WriteBaseFunction.
+// A supplied method lookup enables typed nested ordinary closures only.
 [[nodiscard]] FunctionEmitResult WriteBaseConstructor(
     const BaseConstructor& constructor, const abc::MethodBody& body,
     std::ostream& output, LocalLexicalBudget budget = {},
-    const MethodConstants* constants = nullptr);
+    const MethodConstants* constants = nullptr,
+    const abc::MethodLookup* methods = nullptr);
 }  // namespace abcd::source
 #endif

@@ -125,12 +125,14 @@ class ClassWriter {
   }
   void Constructor(const analysis::ClassCreation& creation,
                    const abc::MethodTarget& target, std::string_view name) {
+    // Preserve the caller's target index for nested DEFINEFUNC in class bodies;
+    // each child still passes the leaf emitter's kind/capture/owner checks.
     Body(index_.methods[target.position.value], budget_,
          [&](const abc::FrameLayout& frame, const abc::MethodBody& body,
              LocalLexicalBudget budget, const MethodConstants& constants) {
            return WriteBaseConstructor(
                {creation, target.attributes, frame, name}, body, output_,
-               budget, &constants);
+               budget, &constants, &lookup_);
          });
   }
   void Member(const abc::ClassProperty& property, std::string_view self) {
@@ -152,7 +154,7 @@ class ClassWriter {
                                     self,
                                     EffectiveMethodKind::kOrdinary};
            return WriteClassMethod(method, body, output_, remaining,
-                                   &constants);
+                                   &constants, &lookup_);
          });
   }
   const corpus::AbcFile& file_;

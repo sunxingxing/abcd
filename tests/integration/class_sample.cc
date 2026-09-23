@@ -150,6 +150,15 @@ int main(int argc, char** argv) {
                   std::get_if<source::FunctionEmitError>(&result))
             std::cerr << "  function_kind=" << static_cast<int>(*failure)
                       << '\n';
+          if (const auto* failure =
+                  std::get_if<source::BodyEmitFailure>(&result))
+            std::cerr << "  body_kind=" << static_cast<int>(failure->kind)
+                      << " body_pc=" << failure->offset.value
+                      << " emit_kind="
+                      << (failure->emit_error
+                              ? static_cast<int>(*failure->emit_error)
+                              : -1)
+                      << '\n';
         }
       }
     }

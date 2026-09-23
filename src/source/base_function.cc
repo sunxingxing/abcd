@@ -236,7 +236,8 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
                                     const abc::MethodBody& body,
                                     std::ostream& output,
                                     LocalLexicalBudget budget,
-                                    const MethodConstants* constants) {
+                                    const MethodConstants* constants,
+                                    const abc::MethodLookup* methods) {
   if (method.attributes.sendable) return FunctionEmitError::kSendable;
   if (method.attributes.kind != abc::FunctionKind::kNone ||
       method.member.kind != abc::ClassMethodKind::kOrdinary ||
@@ -245,19 +246,20 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
   return WriteCallable(
       {method.frame, method.self_binding, method.member.length,
        CallableSyntax::kClassMethod, method.key, method.placement},
-      body, output, budget, constants, nullptr,
+      body, output, budget, constants, methods,
       analysis::CapturedValues::kReject);
 }
 FunctionEmitResult WriteBaseConstructor(const BaseConstructor& constructor,
                                         const abc::MethodBody& body,
                                         std::ostream& output,
                                         LocalLexicalBudget budget,
-                                        const MethodConstants* constants) {
+                                        const MethodConstants* constants,
+                                        const abc::MethodLookup* methods) {
   if (constructor.attributes.sendable) return FunctionEmitError::kSendable;
   return WriteCallable(
       {constructor.frame, constructor.class_binding,
        constructor.creation.length, CallableSyntax::kBaseConstructor},
-      body, output, budget, constants, nullptr,
+      body, output, budget, constants, methods,
       analysis::CapturedValues::kReject);
 }
 FunctionEmitResult WriteBaseFunction(const BaseFunction& function,

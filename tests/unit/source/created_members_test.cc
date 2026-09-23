@@ -16,6 +16,7 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
                           kConstructor = 300, kMember = 350, kStatic = 360,
                           kCode = 400, kMemberCode = 430, kCallerCode = 460,
                           kName = 600;
+  constexpr unsigned kKindShift = 8;
   std::vector<std::uint8_t> bytes(1024);
   const auto word = [&](std::size_t at, std::uint32_t value) {
     for (std::size_t i = 0; i < sizeof(value); ++i)
@@ -24,6 +25,9 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
   word(kPool, kConstructor);
   word(kPool + 4, kLiteral);
   word(kPool + 8, 620);
+  constexpr std::uint32_t kInner = 370, kNestedCode = 720,
+                          kInnerCode = 740, kNestedConstructorCode = 760;
+  word(kPool + 12, kInner);
   word(kLiteral, 14);  // Two string/method/affiliate triples and the split.
   for (const auto at : {kLiteral + 4, kLiteral + 17}) {
     bytes[at] = static_cast<std::uint8_t>(abc::LiteralTag::kString);
@@ -56,6 +60,14 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
   constexpr std::uint32_t kBadCode = 700;
   const std::vector<std::uint8_t> unsupported{0, 4, 2, 0, 0x70, 0x64};
   std::copy(unsupported.begin(), unsupported.end(), bytes.begin() + kBadCode);
+  const std::vector<std::uint8_t> nested{0, 4, 6, 0, 0x33, 0, 3, 0, 1, 0x64};
+  const std::vector<std::uint8_t> inner{0, 4, 3, 0, 0x60, 3, 0x64};
+  const std::vector<std::uint8_t> nested_ctor_bytes{
+      0, 3, 6, 0, 0x33, 0, 3, 0, 1, 0x64};
+  std::copy(nested.begin(), nested.end(), bytes.begin() + kNestedCode);
+  std::copy(inner.begin(), inner.end(), bytes.begin() + kInnerCode);
+  std::copy(nested_ctor_bytes.begin(), nested_ctor_bytes.end(),
+            bytes.begin() + kNestedConstructorCode);
   char path[] = "/tmp/abcd-created-members-XXXXXX";
   const auto fd = mkstemp(path);
   test::Check(fd >= 0);
@@ -70,8 +82,8 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
   header.file_size = bytes.size();
   header.layout = abc::DynamicLayout{};
   abc::MetadataIndex index;
-  index.regions.push_back({kCaller, kCode, {}, {3, kPool}, {}, {}});
-  index.methods.resize(4);
+  index.regions.push_back({kCaller, kCode, {}, {4, kPool}, {}, {}});
+  index.methods.resize(5);
   index.methods[0].offset = {kCaller};
   index.methods[0].code =
       abc::CodeInfo{{kCallerCode}, {kCallerCode + 4}, 1, 0, 13, 0};
@@ -86,6 +98,13 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
   method.code = abc::CodeInfo{{kMemberCode}, {kMemberCode + 4}, 0, 4, 3, 0};
   index.methods[3] = method;
   index.methods[3].offset = {kStatic};
+  auto& inner_method = index.methods[4];
+  inner_method.offset = {kInner};
+  inner_method.name = "#scope#Inner^1";
+  inner_method.name_utf16_length = inner_method.name.size();
+  inner_method.access_flags = 1U << kKindShift;
+  inner_method.code =
+      abc::CodeInfo{{kInnerCode}, {kInnerCode + 4}, 0, 4, 3, 0};
   const auto lookup =
       std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<analysis::MethodRoleIndex>(
@@ -109,6 +128,57 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
   }
   test::Check(std::get<std::size_t>(result) == output.str().size());
   if (name == "method") {
+    const auto original_code = method.code;
+    method.code = abc::CodeInfo{{kNestedCode}, {kNestedCode + 4}, 0, 4, 6, 0};
+    std::ostringstream closure;
+    const auto closure_result = source::WriteCreatedClass(
+        file, header, index, lookup, {kCaller}, body.instructions[2],
+        heritage, closure, {}, {}, &roles);
+    test::Check(std::holds_alternative<std::size_t>(closure_result));
+    test::Check(closure.str().find("function Inner($p0)") !=
+                std::string::npos);
+    if (emit)
+      std::cout << "export const recoveredClosure = " << closure.str()
+                << ";\n";
+    inner_method.access_flags =
+        static_cast<std::uint32_t>(abc::FunctionKind::kArrow) << kKindShift;
+    std::ostringstream rejected_arrow;
+    const auto arrow_result = source::WriteCreatedClass(
+        file, header, index, lookup, {kCaller}, body.instructions[2],
+        heritage, rejected_arrow, {}, {}, &roles);
+    test::Check(std::get<source::BodyEmitFailure>(arrow_result).kind ==
+                source::BodyEmitError::kCreation);
+    test::Check(rejected_arrow.str().empty());
+    inner_method.access_flags = 1U << kKindShift;
+    method.code = original_code;
+    auto& constructor = index.methods[1];
+    const auto original_constructor_code = constructor.code;
+    constructor.code =
+        abc::CodeInfo{{kNestedConstructorCode},
+                      {kNestedConstructorCode + 4}, 0, 3, 6, 0};
+    std::ostringstream constructor_source;
+    const auto constructor_result = source::WriteCreatedClass(
+        file, header, index, lookup, {kCaller}, body.instructions[2],
+        heritage, constructor_source, {}, {}, &roles);
+    test::Check(std::holds_alternative<std::size_t>(constructor_result));
+    test::Check(constructor_source.str().find("function Inner($p0)") !=
+                std::string::npos);
+    constructor.code = original_constructor_code;
+    auto& static_method = index.methods[3];
+    const auto original_static_code = static_method.code;
+    static_method.code =
+        abc::CodeInfo{{kNestedCode}, {kNestedCode + 4}, 0, 4, 6, 0};
+    std::ostringstream static_source;
+    const auto static_result = source::WriteCreatedClass(
+        file, header, index, lookup, {kCaller}, body.instructions[2],
+        heritage, static_source, {}, {}, &roles);
+    test::Check(std::holds_alternative<std::size_t>(static_result));
+    test::Check(static_source.str().find("static [\"method\"]") !=
+                std::string::npos);
+    if (emit)
+      std::cout << "export const recoveredStaticClosure = "
+                << static_source.str() << ";\n";
+    static_method.code = original_static_code;
     abc::ModuleInfo module;
     module.requests.push_back({650});
     module.imports.push_back({{620}, {620}, {0}});
@@ -152,7 +222,6 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
               source::CreatedClassError::kName);
   method.name = saved_name;
   method.name_utf16_length = method.name.size();
-  constexpr unsigned kKindShift = 8;
   method.access_flags = static_cast<unsigned>(abc::FunctionKind::kAsync)
                         << kKindShift;
   test::Check(std::get<source::CreatedClassError>(render({}, &roles)) ==
