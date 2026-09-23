@@ -52,6 +52,12 @@ keys, side effects, exceptions, and control flow are rejected. The real
 forms also have a decoded-record output test and a Node descriptor/identity
 oracle in `record_object_test` / `record_object.mjs`.
 
+The same bounded constant-only initializer reader now admits dynamic 12.0.6.
+The paired pasteboard `CommonConstants` ABC test resolves its initializer
+through the actual creation pool and verifies all three field names and
+values. This does not yet admit a 12.0.6 record to executable-source export:
+entry, class and method semantics still require profile-specific review.
+
 `WriteClassMethod` emits native getter/setter syntax when the caller proves
 method kind and placement and the function ABI slot is unobservable.
 Its register-window proof permits dead copies of the function slot in linear

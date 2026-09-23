@@ -30,10 +30,14 @@ int main(int argc, char** argv) {
       abc::BuildMetadataIndex(file, header, {256 * 1024 * 1024}));
   const auto lookup = std::get<abc::MethodLookup>(
       abc::MethodLookup::Build(index.methods));
-  constexpr abc::EntityOffset kCommonConstants{7167};
+  constexpr abc::EntityOffset kV7Constants{7167};
+  constexpr abc::EntityOffset kV12Constants{4182};
+  const bool historical = header.profile == abc::ProfileId::kDynamic1206;
+  Check(historical || header.profile == abc::ProfileId::kDynamic1301);
+  const auto target = historical ? kV12Constants : kV7Constants;
   const abc::RecordInfo* record = nullptr;
   for (const auto& candidate : index.records)
-    if (candidate.offset == kCommonConstants) record = &candidate;
+    if (candidate.offset == target) record = &candidate;
   Check(record != nullptr);
   const abc::MethodInfo* entry = nullptr;
   for (std::size_t i = record->first_method;
@@ -59,16 +63,25 @@ int main(int argc, char** argv) {
   const auto* fields = std::get_if<source::StaticFields>(&result);
   Check(fields != nullptr && fields->fields.size() == 3);
   Check(fields->fields[0].name == u"FULL_PERCENT");
-  Check(fields->fields[1].name == u"FONT_WEIGHT_500");
-  Check(fields->fields[2].name == u"TEXT_OPACITY");
   Check(std::get<std::u16string>(std::get<source::StaticAtom>(
             fields->values[fields->fields[0].value])) == u"100%");
-  Check(std::get<std::int32_t>(std::get<source::StaticAtom>(
-            fields->values[fields->fields[1].value])) == 500);
-  const auto& opacity = std::get<source::StaticArray>(
-      fields->values[fields->fields[2].value]);
-  Check(opacity.elements.size() == 4);
-  Check(std::get<std::int32_t>(opacity.elements[0]) == 1);
+  if (historical) {
+    Check(fields->fields[1].name == u"TEXTAREA_HEIGHT");
+    Check(fields->fields[2].name == u"BREAK_POINT_SM");
+    Check(std::get<std::u16string>(std::get<source::StaticAtom>(
+              fields->values[fields->fields[1].value])) == u"35%");
+    Check(std::get<std::u16string>(std::get<source::StaticAtom>(
+              fields->values[fields->fields[2].value])) == u"sm");
+  } else {
+    Check(fields->fields[1].name == u"FONT_WEIGHT_500");
+    Check(fields->fields[2].name == u"TEXT_OPACITY");
+    Check(std::get<std::int32_t>(std::get<source::StaticAtom>(
+              fields->values[fields->fields[1].value])) == 500);
+    const auto& opacity = std::get<source::StaticArray>(
+        fields->values[fields->fields[2].value]);
+    Check(opacity.elements.size() == 4);
+    Check(std::get<std::int32_t>(opacity.elements[0]) == 1);
+  }
   const auto limited = source::RecoverStaticFields(
       file, header, index, *initializer, 0);
   Check(std::get<source::StaticFieldFailure>(limited).kind ==

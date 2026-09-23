@@ -46,10 +46,10 @@ struct StaticFieldFailure {
 };
 using StaticFieldResult = std::variant<StaticFields, StaticFieldFailure>;
 
-// Proves a zero-argument pinned-v7 method performs only constant DefineField
-// writes on its own `this`, then returns undefined. The caller separately
-// proves a single CALLTHIS0 on the fresh unescaped class. Array aliases used
-// by multiple fields are rejected until source identity can be preserved.
+// Proves a zero-argument v7 or dynamic-12.0.6 method performs only constant
+// DefineField writes on its own `this`, then returns undefined. The caller
+// proves a single CALLTHIS0 on a fresh unescaped class. Arrays reused by
+// multiple fields are rejected until source identity can be preserved.
 [[nodiscard]] StaticFieldResult RecoverStaticFields(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodInfo& method,

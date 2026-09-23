@@ -402,7 +402,12 @@ StaticFieldResult RecoverStaticFields(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodInfo& method,
     std::size_t bytes, abc::StringBudget strings) {
-  if (header.profile != abc::ProfileId::kDynamic1301 || !method.code)
+  // Both decoded profiles use DefineField for these admitted constant writes;
+  // keep other historical versions behind a separate semantic proof.
+  const bool proven_profile =
+      header.profile == abc::ProfileId::kDynamic1206 ||
+      header.profile == abc::ProfileId::kDynamic1301;
+  if (!proven_profile || !method.code)
     return Fail(Error::kCode);
   try {
     const auto call = abc::ReadCallType(file, header, index,

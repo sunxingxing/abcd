@@ -395,6 +395,11 @@ if(BUILD_TESTING)
     target_link_libraries(define_static_sample_test PRIVATE abcd_source)
     add_test(NAME define_static_sample_test COMMAND define_static_sample_test
       "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+      add_test(NAME historical_static_sample_test
+        COMMAND define_static_sample_test
+          "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+    endif()
     add_executable(module_exports_sample_test
       tests/integration/module_exports_sample.cc)
     target_link_libraries(module_exports_sample_test PRIVATE abcd_source)
