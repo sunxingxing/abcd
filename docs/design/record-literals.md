@@ -22,6 +22,10 @@ oracle checks own descriptors and inherited-setter exclusion for both forms.
 The same planner admits `CALLRUNTIME_DEFINEFIELDBYINDEX` with its encoded
 unsigned 32-bit key; it never speculates a dynamic `ToPropertyKey` conversion.
 The Node oracle covers array-index ordering and the maximum unsigned key.
+It also admits `CALLRUNTIME_DEFINEFIELDBYVALUE` only when the key register
+still contains a proved `LDA_STR` constant. Register writes invalidate that
+proof. Dynamic keys remain refused because deferring their `ToPropertyKey`
+conversion across another field write could reorder observable effects.
 
 The v7 `STOWNBYINDEX` runtime defines writable, enumerable, configurable own
 properties and preserves acc. Dense array syntax reproduces those properties

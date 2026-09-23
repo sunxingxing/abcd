@@ -23,6 +23,10 @@ bool IndexedDefinition(abc::Opcode opcode) {
   return opcode ==
          abc::Opcode::kCALLRUNTIME_DEFINEFIELDBYINDEX_PREF_IMM8_IMM32_V8;
 }
+bool ValueDefinition(abc::Opcode opcode) {
+  return opcode ==
+         abc::Opcode::kCALLRUNTIME_DEFINEFIELDBYVALUE_PREF_IMM8_V8_V8;
+}
 struct FreshDefinition {
   std::variant<abc::PoolIndex, std::uint32_t> key;
   abc::RegisterId object;
@@ -37,8 +41,11 @@ class FreshObjectFields {
       created_ = false;
       stored_.reset();
       active_.reset();
+      acc_string_.reset();
+      key_string_.reset();
       return {};
     }
+    TrackString(instruction, *effect);
     if (created_) {
       created_ = false;
       if (instruction.opcode == abc::Opcode::kSTA_V8 &&
@@ -81,6 +88,15 @@ class FreshObjectFields {
           write && write->object == *active_)
         return FreshDefinition{write->index, write->object};
     }
+    if (ValueDefinition(instruction.opcode) && active_ && key_string_) {
+      const auto field = analysis::LiftDefineInstruction(instruction,
+                                                        frame_size);
+      if (const auto* write =
+              std::get_if<analysis::DefineFieldByValue>(&field);
+          write && write->object == *active_ &&
+          write->key == key_string_->register_id)
+        return FreshDefinition{key_string_->pool, write->object};
+    }
     if (active_ &&
         (Reads(*effect, *active_) || Writes(*effect, *active_)))
       active_.reset();
@@ -89,6 +105,29 @@ class FreshObjectFields {
   bool Active() const { return active_.has_value(); }
 
  private:
+  struct StringBinding {
+    abc::RegisterId register_id;
+    abc::PoolIndex pool;
+  };
+  void TrackString(const abc::DecodedInstruction& instruction,
+                   const analysis::RegisterEffect& effect) {
+    const auto* register_id = effect.write
+                                  ? std::get_if<abc::RegisterId>(&*effect.write)
+                                  : nullptr;
+    if (register_id && key_string_ &&
+        *register_id == key_string_->register_id)
+      key_string_.reset();
+    if (instruction.opcode == abc::Opcode::kSTA_V8 && register_id &&
+        acc_string_)
+      key_string_ = StringBinding{*register_id, *acc_string_};
+    if (effect.write &&
+        std::holds_alternative<analysis::Accumulator>(*effect.write)) {
+      acc_string_.reset();
+      if (instruction.opcode == abc::Opcode::kLDA_STR_ID16)
+        acc_string_ = abc::PoolIndex{static_cast<std::uint32_t>(
+            instruction.operands[0].raw_bits)};
+    }
+  }
   static bool Reads(const analysis::RegisterEffect& effect,
                     abc::RegisterId reg) {
     for (std::size_t i = 0; i < effect.read_count; ++i)
@@ -114,6 +153,8 @@ class FreshObjectFields {
   bool created_ = false;
   std::optional<abc::RegisterId> stored_;
   std::optional<abc::RegisterId> active_;
+  std::optional<abc::PoolIndex> acc_string_;
+  std::optional<StringBinding> key_string_;
 };
 }  // namespace
 
@@ -127,7 +168,8 @@ std::variant<FreshFieldPlan, BodyEmitFailure> BuildFreshFieldPlan(
     std::size_t count = 0;
     for (const auto& instruction : body.instructions)
       count += NamedDefinition(instruction.decoded.opcode) ||
-               IndexedDefinition(instruction.decoded.opcode);
+               IndexedDefinition(instruction.decoded.opcode) ||
+               ValueDefinition(instruction.decoded.opcode);
     if (count > budget_bytes / sizeof(FreshFieldSite) || count > UINT32_MAX)
       return resource({});
     FreshFieldPlan plan;

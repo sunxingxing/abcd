@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 
-const {empty, emptyField, definedField, indexedField, object, proto, primitive, field, redefine,
+const {empty, emptyField, definedField, indexedField, stringKeyField, stringProtoField, object, proto, primitive, field, redefine,
        intervening, ownProto, preserved} =
     await import(pathToFileURL(process.argv[2]));
 const emptyFirst = empty();
@@ -48,8 +48,17 @@ Object.defineProperty(Object.prototype, 'field', {
 try {
   const result = field(42);
   const defined = definedField(43);
+  const keyed = stringKeyField(44);
   assert.equal(setterCalls, 0);
   assert.equal(defined.field, 43);
+  assert.equal(keyed.field, 44);
+  assert.deepEqual(Object.getOwnPropertyDescriptor(keyed, 'field'), {
+    value: 44, writable: true, enumerable: true, configurable: true,
+  });
+  const protoField = stringProtoField(45);
+  assert.equal(Object.getPrototypeOf(protoField), Object.prototype);
+  assert.equal(Object.getOwnPropertyDescriptor(protoField, '__proto__').value,
+               45);
   assert.deepEqual(Reflect.ownKeys(result), ['text', 'field']);
   assert.deepEqual(Object.getOwnPropertyDescriptor(result, 'field'), {
     value: 42, writable: true, enumerable: true, configurable: true,

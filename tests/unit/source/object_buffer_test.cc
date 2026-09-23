@@ -209,6 +209,45 @@ int main(int argc, char** argv) {
   test::Check(indexed_field_source.str().find(
                   "[" + std::to_string(UINT32_MAX) + "]: acc") !=
               std::string::npos);
+  const std::array<std::string_view, 3> keyed_fields{"object", "value", "key"};
+  const auto string_key_field = test::Body({
+      0x04, 0x61, 0, 0x3e, 8, 0, 0x61, 2, 0x60, 1,
+      0xfb, 1, 0, 2, 0, 0x60, 0, 0x64});
+  std::ostringstream string_key_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(string_key_field,
+                                    {"acc", keyed_fields}, string_key_source,
+                                    {}, &constants)));
+  test::Check(string_key_source.str().find("[\"field\"]: acc") !=
+              std::string::npos);
+  const auto string_proto_field = test::Body({
+      0x04, 0x61, 0, 0x3e, 9, 0, 0x61, 2, 0x60, 1,
+      0xfb, 1, 0, 2, 0, 0x60, 0, 0x64});
+  std::ostringstream string_proto_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(string_proto_field,
+                                    {"acc", keyed_fields}, string_proto_source,
+                                    {}, &constants)));
+  test::Check(string_proto_source.str().find("[\"__proto__\"]: acc") !=
+              std::string::npos);
+  const auto dynamic_key_field = test::Body({
+      0x04, 0x61, 0, 0x60, 2, 0x61, 2, 0x60, 1,
+      0xfb, 1, 0, 2, 0, 0x60, 0, 0x64});
+  std::ostringstream dynamic_key_source;
+  test::Check(std::holds_alternative<source::BodyEmitFailure>(
+      source::WriteLocalLexicalBody(dynamic_key_field,
+                                    {"acc", keyed_fields}, dynamic_key_source,
+                                    {}, &constants)));
+  test::Check(dynamic_key_source.str().empty());
+  const auto overwritten_key = test::Body({
+      0x04, 0x61, 0, 0x3e, 8, 0, 0x61, 2, 0x60, 1, 0x61, 2,
+      0x60, 1, 0xfb, 1, 0, 2, 0, 0x60, 0, 0x64});
+  std::ostringstream overwritten_source;
+  test::Check(std::holds_alternative<source::BodyEmitFailure>(
+      source::WriteLocalLexicalBody(overwritten_key,
+                                    {"acc", keyed_fields}, overwritten_source,
+                                    {}, &constants)));
+  test::Check(overwritten_source.str().empty());
   const std::array<std::string_view, 3> more_fields{"object", "first", "last"};
   const auto redefine = test::Body({
       0x07, 0, 0, 0, 0x61, 0, 0x60, 1, 0xdc, 0, 8, 0, 0,
@@ -280,22 +319,30 @@ int main(int argc, char** argv) {
               reused_source.str().find("object = ({...object", first_chain + 1) !=
                   std::string::npos);
   std::size_t previous_size = 0;
-  constexpr std::array kNamedDefinitions{
-      static_cast<std::uint8_t>(
-          abc::Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8),
-      static_cast<std::uint8_t>(
-          abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8)};
+  constexpr std::array kDefinitionForms{
+      abc::Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8,
+      abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8,
+      abc::Opcode::kCALLRUNTIME_DEFINEFIELDBYINDEX_PREF_IMM8_IMM32_V8,
+      abc::Opcode::kCALLRUNTIME_DEFINEFIELDBYVALUE_PREF_IMM8_V8_V8};
   for (const std::uint32_t count : {200U, 201U, 402U}) {
-    std::vector<std::uint8_t> encoded{0x07, 0, 0, 0, 0x61, 0};
-    for (std::uint32_t i = 0; i < count; ++i)
-      encoded.insert(encoded.end(),
-                     {0x60, 1, kNamedDefinitions[i % kNamedDefinitions.size()],
-                      0, 8, 0, 0});
+    std::vector<std::uint8_t> encoded{
+        0x07, 0, 0, 0, 0x61, 0, 0x3e, 8, 0, 0x61, 2};
+    for (std::uint32_t i = 0; i < count; ++i) {
+      encoded.insert(encoded.end(), {0x60, 1});
+      const auto form = kDefinitionForms[i % kDefinitionForms.size()];
+      if (form == abc::Opcode::kCALLRUNTIME_DEFINEFIELDBYINDEX_PREF_IMM8_IMM32_V8)
+        encoded.insert(encoded.end(), {0xfb, 2, 0, kIndexedKey, 0, 0, 0, 0});
+      else if (form == abc::Opcode::kCALLRUNTIME_DEFINEFIELDBYVALUE_PREF_IMM8_V8_V8)
+        encoded.insert(encoded.end(), {0xfb, 1, 0, 2, 0});
+      else
+        encoded.insert(encoded.end(),
+                       {static_cast<std::uint8_t>(form), 0, 8, 0, 0});
+    }
     encoded.insert(encoded.end(), {0x60, 0, 0x64});
     const auto many = test::Body(std::span(encoded));
     std::ostringstream many_source;
     test::Check(std::holds_alternative<std::size_t>(
-        source::WriteLocalLexicalBody(many, {"acc", fields}, many_source, {},
+        source::WriteLocalLexicalBody(many, {"acc", keyed_fields}, many_source, {},
                                       &constants)));
     const auto text = many_source.str();
     const auto first_spread = text.find("...object");
@@ -385,6 +432,12 @@ int main(int argc, char** argv) {
               << define_field_source.str() << "}\n";
     std::cout << "export function indexedField(value) { let acc, object;\n"
               << indexed_field_source.str() << "}\n";
+    std::cout << "export function stringKeyField(value) { "
+                 "let acc, object, key;\n"
+              << string_key_source.str() << "}\n";
+    std::cout << "export function stringProtoField(value) { "
+                 "let acc, object, key;\n"
+              << string_proto_source.str() << "}\n";
     std::cout << "export function object() { let acc;\n" << output.str()
               << "}\n";
     std::cout << "export function proto() { let acc;\n" << proto_source.str()
