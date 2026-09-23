@@ -105,6 +105,27 @@ int main(int argc, char** argv) {
       source::WriteLinearBody(body, {"acc", {}}, output, {}, &constants);
   Check(std::get<std::size_t>(result) == output.str().size());
   Check(output.str() == "acc = \"A\\u0000\\ud800\\\"\\\\\";\nreturn acc;\n");
+  // The historical wire form decodes, but the v7 constructor semantics are
+  // not automatically a source proof for this method's 12.0.6 profile.
+  abc::MethodBody historical_construct;
+  const std::array<std::uint8_t, 4> construct_code{0x08, 0, 1, 0};
+  historical_construct.instructions.push_back(
+      {{0},
+       std::get<abc::DecodedInstruction>(
+           abc::DecodeInstruction(construct_code, header.profile)),
+       {}});
+  historical_construct.instructions.push_back(
+      {{4},
+       std::get<abc::DecodedInstruction>(
+           abc::DecodeInstruction(ret, header.profile)),
+       {}});
+  const std::array<std::string_view, 1> constructor_name{"ctor"};
+  std::ostringstream refused_construct;
+  Check(std::get<source::BodyEmitFailure>(source::WriteLinearBody(
+            historical_construct, {"acc", constructor_name},
+            refused_construct, {}, &constants))
+            .kind == source::BodyEmitError::kUnsupportedInstruction);
+  Check(refused_construct.str().empty());
   const std::array<std::string_view, 1> registers{"object"};
   std::array<std::string, 2> named_sources;
   std::array<std::string, 2> store_sources;

@@ -98,7 +98,8 @@ struct MethodConstants {
 // process memory budget. Work is O(instructions * log(regions) + visited string
 // bytes + emitted bytes), with no body-sized output buffer. Inputs must stay
 // stable across both passes; second-pass read failures can leave a prefix and
-// require atomic output.
+// require atomic output. A null MethodConstants is a caller assertion of
+// pinned v7 execution semantics for version-sensitive instructions.
 [[nodiscard]] BodyEmitResult WriteLinearBody(
     const abc::MethodBody& body, ScalarNames names, std::ostream& output,
     EmitBudget budget = {}, const MethodConstants* constants = nullptr,

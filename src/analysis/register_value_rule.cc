@@ -1,6 +1,7 @@
 #include "register_value_rule.h"
 
 #include "abcd/analysis/constant_object.h"
+#include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
@@ -111,6 +112,9 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
       std::holds_alternative<IndexedRead>(
           LiftIndexedRead(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kLanguageOperation, {}};
+  if (std::holds_alternative<ConstructorCall>(
+          LiftConstructorCall(instruction, frame_size)))
+    return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
   const auto constant = LiftConstantObjectInstruction(instruction);
   if (const auto* value = std::get_if<ConstantObjectInstruction>(&constant)) {
     // These pinned handlers return ordinary ECMAScript objects on normal

@@ -14,7 +14,7 @@ struct CallRegisters {
 };
 struct CallRange {
   abc::RegisterId first;
-  std::uint8_t count = 0;
+  std::uint16_t count = 0;
 };
 struct OrdinaryCall {
   std::variant<CallRegisters, CallRange> arguments;

@@ -5,6 +5,7 @@
 
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/constant_object.h"
+#include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
@@ -52,6 +53,9 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
   if (std::holds_alternative<OrdinaryCall>(
           LiftOrdinaryCall(instruction, frame_size)))
     return Transfer{true, AccumulatorWrite::kValue};
+  if (std::holds_alternative<ConstructorCall>(
+          LiftConstructorCall(instruction, frame_size)))
+    return Transfer{false, AccumulatorWrite::kValue};
   const auto global_access = LiftGlobalAccess(instruction);
   if (const auto* global = std::get_if<GlobalAccess>(&global_access);
       global && global->operation == GlobalOp::kReadName)

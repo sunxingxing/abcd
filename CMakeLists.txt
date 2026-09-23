@@ -68,6 +68,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/global_access.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/module_load.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/module_store.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/ordinary_call.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/constructor_call.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/named_invocation.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/phi_placement.cc src/analysis/iterated_frontier.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/binding_liveness.cc)
@@ -272,6 +273,9 @@ if(BUILD_TESTING)
   add_executable(ordinary_call_test tests/unit/analysis/ordinary_call_test.cc)
   target_link_libraries(ordinary_call_test PRIVATE abcd_source)
   add_test(NAME ordinary_call_test COMMAND ordinary_call_test)
+  add_executable(constructor_call_test tests/unit/analysis/constructor_call_test.cc)
+  target_link_libraries(constructor_call_test PRIVATE abcd_source)
+  add_test(NAME constructor_call_test COMMAND constructor_call_test)
   add_executable(indexed_read_test tests/unit/analysis/indexed_read_test.cc)
   target_link_libraries(indexed_read_test PRIVATE abcd_analysis)
   add_test(NAME indexed_read_test COMMAND indexed_read_test)
@@ -409,6 +413,13 @@ if(BUILD_TESTING)
     add_test(NAME module_exports_sample_test COMMAND module_exports_sample_test
       "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
     if(ABCD_NODE_EXECUTABLE)
+      if(ABCD_BUILD_TOOLS)
+        add_test(NAME constructor_record_sample_test COMMAND ${CMAKE_COMMAND}
+          "-DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>"
+          "-DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+          "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/constructor_record.cmake)
+      endif()
       add_test(NAME record_program_sample_js_test COMMAND ${CMAKE_COMMAND}
         "-DABCD_FIXTURE=$<TARGET_FILE:module_exports_sample_test>"
         "-DABCD_PAIRED_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
@@ -572,6 +583,12 @@ if(BUILD_TESTING)
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ordinary_call.mjs
       -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
       -DABCD_OUTPUT_NAME=ordinary-call.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
+    add_test(NAME constructor_call_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:constructor_call_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/constructor_call.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=constructor-call.mjs
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME acyclic_body_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:acyclic_body_test>

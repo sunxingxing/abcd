@@ -102,6 +102,11 @@ int main() {
   Check(std::holds_alternative<std::size_t>(WriteLinearBody(
       Body({0x6f, 0x64}), names, this_value)));
   Check(this_value.str() == "acc = this;\nreturn acc;\n");
+  const std::array<std::string_view, 2> constructor_names{"ctor", "arg"};
+  std::ostringstream constructed;
+  Check(std::holds_alternative<std::size_t>(WriteLinearBody(
+      Body({0x08, 7, 2, 0, 0x64}), {"acc", constructor_names}, constructed)));
+  Check(constructed.str() == "acc = new (ctor)(arg);\nreturn acc;\n");
   std::ostringstream debugger_value;
   Check(std::holds_alternative<std::size_t>(WriteLinearBody(
       Body({0x02, 0xb0, 0x64}), names, debugger_value)));

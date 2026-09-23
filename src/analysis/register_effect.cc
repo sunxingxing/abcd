@@ -3,6 +3,7 @@
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/class_creation.h"
 #include "abcd/analysis/constant_object.h"
+#include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/global_access.h"
@@ -89,6 +90,12 @@ RegisterEffect EffectOf(const OrdinaryCall& value) {
     for (std::size_t i = 0; i < fixed.count; ++i)
       effect.reads[effect.read_count++] = fixed.values[i];
   }
+  return effect;
+}
+RegisterEffect EffectOf(const ConstructorCall& value) {
+  RegisterEffect effect;
+  effect.write = Accumulator{};
+  effect.range = value.inputs;
   return effect;
 }
 RegisterEffect EffectOf(const LexicalStore& value) {
@@ -229,6 +236,9 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftOrdinaryCall(instruction, frame_size));
+      !Unsupported(result))
+    return result;
+  if (auto result = Adapt(LiftConstructorCall(instruction, frame_size));
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftLexicalInstruction(instruction, frame_size));

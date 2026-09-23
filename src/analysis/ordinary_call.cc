@@ -2,7 +2,9 @@
 
 namespace abcd::analysis {
 std::uint32_t OrdinaryCall::Count() const {
-  return std::visit([](const auto& args) { return args.count; }, arguments);
+  return std::visit(
+      [](const auto& args) { return std::uint32_t{args.count}; },
+      arguments);
 }
 
 std::optional<abc::RegisterId> OrdinaryCall::At(std::uint32_t position) const {

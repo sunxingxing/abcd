@@ -9,6 +9,7 @@
 #include "abcd/abc/pool_reference.h"
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/constant_object.h"
+#include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
@@ -319,6 +320,14 @@ class BodyWriter {
           if (!accumulator_defined)
             return Fail(BodyEmitError::kAccumulatorHole);
           Call(instruction.decoded);
+        } else if (opcode == Opcode::kNEWOBJRANGE_IMM8_IMM8_V8 ||
+                   opcode == Opcode::kNEWOBJRANGE_IMM16_IMM8_V8 ||
+                   opcode == Opcode::kWIDE_NEWOBJRANGE_PREF_IMM16_V8) {
+          if (constants_ &&
+              constants_->header.profile != abc::ProfileId::kDynamic1301)
+            return Fail(BodyEmitError::kUnsupportedInstruction);
+          Construct(instruction.decoded);
+          accumulator_defined = true;
         } else if (opcode == Opcode::kRETURNUNDEFINED) {
           Text("return;\n");
           terminated = true;
@@ -474,6 +483,29 @@ class BodyWriter {
     for (std::uint32_t i = 0; i < call.Count() && !error_; ++i) {
       if (i) Text(", ");
       Expression(ScalarValue{*call.At(i)});
+    }
+    Text(");\n");
+  }
+  void Construct(const abc::DecodedInstruction& instruction) {
+    const auto lifted =
+        LiftConstructorCall(instruction, names_.registers.size());
+    if (const auto* error = std::get_if<ConstructorCallError>(&lifted)) {
+      error_ = BodyEmitFailure{
+          BodyEmitError::kUnsupportedInstruction, offset_,
+          *error == ConstructorCallError::kRegisterRange
+              ? ScalarError::kRegisterRange
+              : ScalarError::kMalformedInstruction,
+          {}};
+      return;
+    }
+    const auto& call = std::get<ConstructorCall>(lifted);
+    Expression(ScalarValue{Accumulator{}});
+    Text(" = new (");
+    Expression(ScalarValue{call.inputs.first});
+    Text(")(");
+    for (std::uint32_t i = 0; i < call.ArgumentCount() && !error_; ++i) {
+      if (i) Text(", ");
+      Expression(ScalarValue{*call.ArgumentAt(i)});
     }
     Text(");\n");
   }
