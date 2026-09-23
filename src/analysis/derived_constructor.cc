@@ -8,11 +8,16 @@
 
 namespace abcd::analysis {
 namespace {
-enum class Origin {
+enum class OriginKind {
   kUnknown,
   kCurrentConstructor,
   kUninitializedThis,
-  kSuperResult
+  kSuperResult,
+  kParameter
+};
+struct Origin {
+  OriginKind kind = OriginKind::kUnknown;
+  std::uint32_t parameter = 0;
 };
 bool CopyOpcode(abc::Opcode opcode) {
   switch (opcode) {
@@ -41,6 +46,36 @@ SuperInstruction LiftSuperInstruction(
       return SuperError::kRegisterRange;
     return SuperForward{{static_cast<std::uint32_t>(
         instruction.operands[0].raw_bits)}};
+  }
+  if (instruction.opcode == Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8 ||
+      instruction.opcode == Opcode::kWIDE_SUPERCALLTHISRANGE_PREF_IMM16_V8) {
+    const bool narrow =
+        instruction.opcode == Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8;
+    const std::size_t count_slot = narrow ? 1 : 0;
+    const std::size_t first_slot = narrow ? 2 : 1;
+    if (instruction.operand_count != (narrow ? 3 : 2) ||
+        instruction.operands[count_slot].kind !=
+            abc::OperandKind::kImmediate ||
+        instruction.operands[count_slot].raw_bits >
+            (narrow ? UINT8_MAX : UINT16_MAX) ||
+        instruction.operands[first_slot].kind !=
+            abc::OperandKind::kRegister ||
+        instruction.operands[first_slot].raw_bits > UINT8_MAX ||
+        (narrow &&
+         (instruction.operands[0].kind != abc::OperandKind::kImmediate ||
+          instruction.operands[0].raw_bits > UINT8_MAX)))
+      return SuperError::kMalformedInstruction;
+    const auto first = instruction.operands[first_slot].raw_bits;
+    const auto count = instruction.operands[count_slot].raw_bits;
+    if (first >= registers || count > registers - first)
+      return SuperError::kRegisterRange;
+    return SuperRange{
+        {static_cast<std::uint32_t>(first)},
+        static_cast<std::uint16_t>(count),
+        narrow ? std::optional<std::uint16_t>{
+                     static_cast<std::uint16_t>(
+                         instruction.operands[0].raw_bits)}
+               : std::nullopt};
   }
   std::uint64_t maximum;
   switch (instruction.opcode) {
@@ -91,10 +126,19 @@ DerivedConstructorResult ProveForwardingDerivedConstructor(
     return Error::kResourceLimit;
   try {
     std::vector<Origin> registers(frame.registers);
-    registers[frame.function->value] = Origin::kCurrentConstructor;
-    registers[frame.this_value->value] = Origin::kUninitializedThis;
-    Origin accumulator = Origin::kUnknown;
+    if (registers.capacity() > budget.bytes / sizeof(Origin))
+      return Error::kResourceLimit;
+    registers[frame.function->value].kind =
+        OriginKind::kCurrentConstructor;
+    registers[frame.this_value->value].kind =
+        OriginKind::kUninitializedThis;
+    for (std::uint32_t parameter = 0; parameter < frame.parameters;
+         ++parameter)
+      registers[frame.first_parameter.value + parameter] =
+          {OriginKind::kParameter, parameter};
+    Origin accumulator;
     bool called = false;
+    ForwardingDerivedConstructor forwarding;
     bool checked_uninitialized = false;
     bool checked_initialized = false;
     for (std::size_t i = 0; i < body.instructions.size(); ++i) {
@@ -108,31 +152,46 @@ DerivedConstructorResult ProveForwardingDerivedConstructor(
       if (decoded.opcode == abc::Opcode::kRETURN) {
         if (decoded.operand_count != 0 || i + 1 != body.instructions.size() ||
             !called || !checked_uninitialized || !checked_initialized ||
-            accumulator != Origin::kSuperResult)
+            accumulator.kind != OriginKind::kSuperResult)
           return Error::kReturn;
-        return ForwardingDerivedConstructor{};
+        return forwarding;
       }
       const auto super = LiftSuperInstruction(decoded, frame.registers);
       if (const auto* forward = std::get_if<SuperForward>(&super)) {
         if (called ||
-            registers[forward->constructor.value] !=
-                Origin::kCurrentConstructor)
+            registers[forward->constructor.value].kind !=
+                OriginKind::kCurrentConstructor)
           return Error::kValue;
         called = true;
-        accumulator = Origin::kSuperResult;
+        accumulator.kind = OriginKind::kSuperResult;
+        continue;
+      }
+      if (const auto* range = std::get_if<SuperRange>(&super)) {
+        if (called || range->count > frame.parameters)
+          return Error::kValue;
+        for (std::uint32_t argument = 0; argument < range->count;
+             ++argument) {
+          const auto origin = registers[range->first.value + argument];
+          if (origin.kind != OriginKind::kParameter ||
+              origin.parameter != argument)
+            return Error::kValue;
+        }
+        forwarding = {ForwardingKind::kParameters, range->count};
+        called = true;
+        accumulator.kind = OriginKind::kSuperResult;
         continue;
       }
       if (const auto* check = std::get_if<SuperCheck>(&super)) {
         switch (check->kind) {
           case SuperCheckKind::kRequireUninitialized:
             if (!called || checked_uninitialized || checked_initialized ||
-                accumulator != Origin::kUninitializedThis)
+                accumulator.kind != OriginKind::kUninitializedThis)
               return Error::kGuard;
             checked_uninitialized = true;
             break;
           case SuperCheckKind::kRequireInitialized:
             if (!checked_uninitialized || checked_initialized ||
-                accumulator != Origin::kSuperResult)
+                accumulator.kind != OriginKind::kSuperResult)
               return Error::kGuard;
             checked_initialized = true;
             break;
@@ -152,7 +211,7 @@ DerivedConstructorResult ProveForwardingDerivedConstructor(
                               : nullptr;
       if (!value || assignment->completion != CompletionEffect::kNormal)
         return Error::kInstruction;
-      Origin source = Origin::kUnknown;
+      Origin source;
       if (std::holds_alternative<Accumulator>(*value))
         source = accumulator;
       else if (const auto* slot = std::get_if<abc::RegisterId>(value))

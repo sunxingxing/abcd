@@ -41,6 +41,28 @@ int main() {
   const auto lifted = std::get<analysis::SuperForward>(
       analysis::LiftSuperInstruction(forward, 10));
   Check(lifted.constructor.value == 5);
+  const std::array<std::uint8_t, 4> positional_bytes{0x32, 7, 2, 3};
+  const auto positional = std::get<abc::DecodedInstruction>(
+      abc::DecodeInstruction(positional_bytes, abc::ProfileId::kDynamic1301));
+  const auto range = std::get<analysis::SuperRange>(
+      analysis::LiftSuperInstruction(positional, 11));
+  Check(range.cache_slot == 7 && range.count == 2 &&
+        range.first.value == 3);
+  Check(std::get<analysis::SuperError>(
+            analysis::LiftSuperInstruction(positional, 4)) ==
+        analysis::SuperError::kRegisterRange);
+  const std::array<std::uint8_t, 5> wide_bytes{0xfd, 6, 2, 0, 3};
+  const auto wide = std::get<abc::DecodedInstruction>(
+      abc::DecodeInstruction(wide_bytes, abc::ProfileId::kDynamic1301));
+  const auto wide_range = std::get<analysis::SuperRange>(
+      analysis::LiftSuperInstruction(wide, 11));
+  Check(!wide_range.cache_slot && wide_range.count == 2 &&
+        wide_range.first.value == 3);
+  auto malformed_range = positional;
+  malformed_range.operand_count = 2;
+  Check(std::get<analysis::SuperError>(
+            analysis::LiftSuperInstruction(malformed_range, 11)) ==
+        analysis::SuperError::kMalformedInstruction);
   Check(std::get<analysis::SuperError>(
             analysis::LiftSuperInstruction(forward, 5)) ==
         analysis::SuperError::kRegisterRange);
@@ -88,6 +110,45 @@ int main() {
   };
   Check(std::holds_alternative<analysis::ForwardingDerivedConstructor>(
       prove(instructions)));
+  const std::vector<std::uint8_t> positional_instructions{
+      kMove, 0x60, kMove, 0x71, kMove, 0x82, kMove, 0x93,
+      kMove, 0xa4, kLoad, 0, kStore, 5,
+      0x32, 7, 2, 3, kStore, 5,
+      kLoad, 2, kCheckPrefix, kSuperCheck, kRequireUninitialized,
+      kLoad, 5, kStore, 2, kLoad, 2,
+      kCheckPrefix, kSuperCheck, kRequireInitialized, kReturn};
+  auto positional_frame = frame;
+  positional_frame.parameters = 2;
+  positional_frame.registers = 11;
+  const auto positional_proof =
+      analysis::ProveForwardingDerivedConstructor(
+          Body(positional_instructions), positional_frame);
+  const auto* positional_result =
+      std::get_if<analysis::ForwardingDerivedConstructor>(&positional_proof);
+  Check(positional_result &&
+        positional_result->kind == analysis::ForwardingKind::kParameters &&
+        positional_result->argument_count == 2);
+  auto wide_positional = positional_instructions;
+  wide_positional.erase(wide_positional.begin() + 14,
+                        wide_positional.begin() + 18);
+  wide_positional.insert(wide_positional.begin() + 14,
+                         wide_bytes.begin(), wide_bytes.end());
+  Check(std::holds_alternative<analysis::ForwardingDerivedConstructor>(
+      analysis::ProveForwardingDerivedConstructor(
+          Body(wide_positional), positional_frame)));
+  auto wrong_parameter = positional_instructions;
+  wrong_parameter[9] = 0x94;
+  Check(std::get<analysis::DerivedConstructorError>(
+            analysis::ProveForwardingDerivedConstructor(
+                Body(wrong_parameter), positional_frame)) ==
+        analysis::DerivedConstructorError::kValue);
+  for (const std::size_t count : {200U, 201U, 400U, 800U}) {
+    auto longer = positional_instructions;
+    longer.insert(longer.begin() + 10, count, kNop);
+    Check(std::holds_alternative<analysis::ForwardingDerivedConstructor>(
+        analysis::ProveForwardingDerivedConstructor(
+            Body(longer), positional_frame)));
+  }
   auto bad_frame = frame;
   bad_frame.this_value.reset();
   Check(std::get<analysis::DerivedConstructorError>(

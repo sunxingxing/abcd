@@ -23,6 +23,82 @@
 
 namespace abcd::source {
 namespace {
+FunctionEmitResult WriteDerivedConstructor(
+    analysis::ForwardingDerivedConstructor forwarding,
+    std::uint16_t length, const abc::FrameLayout& frame,
+    std::span<const std::string_view> parameter_names,
+    std::ostream& output, EmitBudget budget) {
+  switch (forwarding.kind) {
+    case analysis::ForwardingKind::kAllArguments:
+      if (length != 0 || forwarding.argument_count != 0)
+        return FunctionEmitError::kLength;
+      break;
+    case analysis::ForwardingKind::kParameters:
+      if (length != frame.parameters ||
+          forwarding.argument_count > frame.parameters)
+        return FunctionEmitError::kLength;
+      break;
+  }
+  std::size_t written = 0;
+  std::optional<EmitError> error;
+  const auto append = [&](std::string_view token) {
+    if (error) return;
+    if (token.size() > budget.bytes - written) {
+      error = EmitError::kOutputLimit;
+      return;
+    }
+    output.write(token.data(), static_cast<std::streamsize>(token.size()));
+    if (!output) {
+      error = EmitError::kWrite;
+      return;
+    }
+    written += token.size();
+  };
+  const auto parameter = [&](std::uint32_t index) {
+    if (parameter_names.size() == frame.parameters) {
+      // RecoverParameterNames validated the complete ASCII binding set.
+      append(parameter_names[index]);
+      return;
+    }
+    append("$p");
+    std::array<char, std::numeric_limits<std::uint32_t>::digits10 + 1>
+        digits{};
+    const auto end = std::to_chars(digits.data(),
+                                   digits.data() + digits.size(), index);
+    if (end.ec != std::errc{}) {
+      error = EmitError::kInvalidExpression;
+      return;
+    }
+    append({digits.data(), static_cast<std::size_t>(end.ptr - digits.data())});
+  };
+  append("constructor(");
+  switch (forwarding.kind) {
+    case analysis::ForwardingKind::kAllArguments:
+      break;
+    case analysis::ForwardingKind::kParameters:
+      for (std::uint32_t index = 0; index < length && !error; ++index) {
+        if (index != 0) append(", ");
+        parameter(index);
+      }
+      break;
+  }
+  append(") { super(");
+  switch (forwarding.kind) {
+    case analysis::ForwardingKind::kAllArguments:
+      append("...arguments");
+      break;
+    case analysis::ForwardingKind::kParameters:
+      for (std::uint32_t index = 0;
+           index < forwarding.argument_count && !error; ++index) {
+        if (index != 0) append(", ");
+        parameter(index);
+      }
+      break;
+  }
+  append("); }");
+  if (error) return *error;
+  return written;
+}
 abc::ClassBuffer ReadMembers(const corpus::AbcFile& file,
                              const abc::Header& header,
                              const abc::MetadataIndex& index,
@@ -323,8 +399,6 @@ class ClassWriter {
          [&](const abc::FrameLayout& frame, const abc::MethodBody& body,
              LocalLexicalBudget budget, const MethodConstants& constants) {
            if (parent_) {
-             if (creation.length != 0)
-               return FunctionEmitResult{FunctionEmitError::kLength};
              const auto proved =
                  analysis::ProveForwardingDerivedConstructor(
                      body, frame, {budget.bytes});
@@ -334,14 +408,10 @@ class ClassWriter {
                    *error == analysis::DerivedConstructorError::kResourceLimit
                        ? FunctionEmitError::kResourceLimit
                        : FunctionEmitError::kKind};
-             constexpr std::string_view kBody =
-                 "constructor() { super(...arguments); }";
-             if (kBody.size() > budget.output.bytes)
-               return FunctionEmitResult{EmitError::kOutputLimit};
-             output_.write(kBody.data(),
-                           static_cast<std::streamsize>(kBody.size()));
-             if (!output_) return FunctionEmitResult{EmitError::kWrite};
-             return FunctionEmitResult{kBody.size()};
+             return WriteDerivedConstructor(
+                 std::get<analysis::ForwardingDerivedConstructor>(proved),
+                 creation.length, frame, constants.source_parameters,
+                 output_, budget.output);
            }
            return WriteBaseConstructor(
                {creation, target.attributes, frame, name}, body, output_,

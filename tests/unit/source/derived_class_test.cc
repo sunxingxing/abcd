@@ -24,6 +24,7 @@ int main(int argc, char** argv) {
   constexpr std::uint32_t kCaller = 200;
   constexpr std::uint32_t kConstructor = 300;
   constexpr std::uint32_t kCode = 400;
+  constexpr std::uint32_t kPositionalCode = 448;
   constexpr std::size_t kFileBytes = 512;
   constexpr std::size_t kCodeHeaderBytes = 4;
   constexpr std::uint8_t kLocalSlots = 6;
@@ -32,6 +33,13 @@ int main(int argc, char** argv) {
       0x44, 0x60, 0x44, 0x71, 0x44, 0x82, 0x44, 0x93,
       0x60, 0, 0x61, 5,
       0xfb, 0x19, 5, 0x61, 5,
+      0x60, 2, 0xfe, 7, 1,
+      0x60, 5, 0x61, 2, 0x60, 2,
+      0xfe, 7, 0, 0x64};
+  const std::vector<std::uint8_t> positional_constructor{
+      0x44, 0x60, 0x44, 0x71, 0x44, 0x82, 0x44, 0x93,
+      0x44, 0xa4, 0x60, 0, 0x61, 5,
+      0x32, 7, 2, 3, 0x61, 5,
       0x60, 2, 0xfe, 7, 1,
       0x60, 5, 0x61, 2, 0x60, 2,
       0xfe, 7, 0, 0x64};
@@ -50,6 +58,13 @@ int main(int argc, char** argv) {
   bytes[kCode + 2] = static_cast<std::uint8_t>(constructor.size());
   std::copy(constructor.begin(), constructor.end(),
             bytes.begin() + kCode + kCodeHeaderBytes);
+  bytes[kPositionalCode] = kLocalSlots;
+  bytes[kPositionalCode + 1] = kArgumentSlots + 1;
+  Check(positional_constructor.size() < UINT8_MAX);
+  bytes[kPositionalCode + 2] =
+      static_cast<std::uint8_t>(positional_constructor.size());
+  std::copy(positional_constructor.begin(), positional_constructor.end(),
+            bytes.begin() + kPositionalCode + kCodeHeaderBytes);
   char path[] = "/tmp/abcd-derived-class-XXXXXX";
   const int fd = mkstemp(path);
   Check(fd >= 0);
@@ -130,10 +145,49 @@ int main(int argc, char** argv) {
   Check(std::get<source::EmitError>(exhausted) ==
         source::EmitError::kOutputLimit);
   Check(short_output.str().empty());
+  method.code = abc::CodeInfo{{kPositionalCode},
+                              {kPositionalCode + kCodeHeaderBytes},
+                              kLocalSlots, kArgumentSlots + 1,
+                              static_cast<std::uint32_t>(
+                                  positional_constructor.size()),
+                              0};
+  auto positional_site = caller.instructions[0];
+  positional_site.decoded.operands[3].raw_bits = 2;
+  std::ostringstream positional_output;
+  const auto positional_class = source::WriteCreatedClass(
+      file, header, index, lookup, {kCaller}, positional_site,
+      heritage, positional_output, {}, {}, nullptr, nullptr, nullptr,
+      nullptr, {}, source::ImportedClassParent{0});
+  Check(std::holds_alternative<std::size_t>(positional_class));
+  Check(positional_output.str().find(
+            "constructor($p0, $p1) { super($p0, $p1); }") !=
+        std::string::npos);
+  auto wrong_length_site = positional_site;
+  wrong_length_site.decoded.operands[3].raw_bits = 1;
+  std::ostringstream wrong_length;
+  const auto mismatched = source::WriteCreatedClass(
+      file, header, index, lookup, {kCaller}, wrong_length_site,
+      heritage, wrong_length, {}, {}, nullptr, nullptr, nullptr,
+      nullptr, {}, source::ImportedClassParent{0});
+  Check(std::get<source::FunctionEmitError>(mismatched) ==
+        source::FunctionEmitError::kLength);
+  Check(wrong_length.str().empty());
+  source::LocalLexicalBudget positional_limit;
+  positional_limit.output.bytes = positional_output.str().size() - 1;
+  std::ostringstream short_positional;
+  const auto positional_exhausted = source::WriteCreatedClass(
+      file, header, index, lookup, {kCaller}, positional_site,
+      heritage, short_positional, positional_limit, {}, nullptr, nullptr,
+      nullptr, nullptr, {}, source::ImportedClassParent{0});
+  Check(std::get<source::EmitError>(positional_exhausted) ==
+        source::EmitError::kOutputLimit);
+  Check(short_positional.str().empty());
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
     std::cout << "const $loaded0 = class Base { constructor(...values) {"
                  " this.values = values; } };\nexport const Derived = "
               << output.str() << ";\n"
+              << "export const PositionalDerived = "
+              << positional_output.str() << ";\n"
               << "const $global0 = class Base { constructor(...values) {"
                  " this.values = values; } };\n"
               << "export const GlobalDerived = " << global_output.str()
