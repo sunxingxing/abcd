@@ -70,6 +70,13 @@ Top-level `DEFINEFUNC` now retains creation order and exports the admitted
 function body/signature. The ordinary and simple async-function cases execute
 under Node; `DEFINEMETHOD` home-object behavior and unhandled async-body
 opcodes remain refusal cases.
+Guarded v7 external-module loads now take a read-time snapshot into a private
+binding before any later register copy or export. Only a valid import slot with
+an immediately adjacent static-name Hole guard is admitted; the guard name is
+not eagerly read because the pinned runtime resolves it only on the exceptional
+Hole path. A Node oracle checks that later changes to the live import do not
+change the exported copy. Derived classes using that import as heritage still
+refuse executable source until constructor and `super` semantics are proved.
 
 `abc_structure INPUT.abc OUTPUT_DIR --source` now adds a `.mjs` file at the
 record path only when the whole-file role proof, record-owned module context,

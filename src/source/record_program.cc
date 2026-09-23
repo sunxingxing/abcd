@@ -16,6 +16,8 @@
 #include "abcd/analysis/class_creation.h"
 #include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/function_creation.h"
+#include "abcd/analysis/hole_guard.h"
+#include "abcd/analysis/module_load.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/object_creation.h"
 #include "abcd/analysis/own_write.h"
@@ -44,6 +46,7 @@ struct Value {
     kNull,
     kAtom,
     kLiteral,
+    kImportSnapshot,
     kPrototype
   } kind;
   std::size_t ordinal = 0;
@@ -225,6 +228,15 @@ class ProgramWriter {
         case Opcode::kLDA_STR_ID16:
           String(instruction.decoded);
           break;
+        case Opcode::kLDEXTERNALMODULEVAR_IMM8:
+        case Opcode::kWIDE_LDEXTERNALMODULEVAR_PREF_IMM16:
+          LoadExternalImport(instruction.decoded, i);
+          break;
+        case Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16:
+          if (!pending_import_guard_ || *pending_import_guard_ != i)
+            throw Fail(Error::kInstruction, pc_);
+          pending_import_guard_.reset();
+          break;
         case Opcode::kCREATEEMPTYOBJECT:
           EmptyObject(instruction.decoded);
           break;
@@ -372,6 +384,44 @@ class ProgramWriter {
       throw Fail(Error::kInstruction, pc_);
     accumulator_ = {Value::Kind::kString,
                     static_cast<std::size_t>(instruction.operands[0].raw_bits)};
+  }
+  void LoadExternalImport(const abc::DecodedInstruction& instruction,
+                          std::size_t position) {
+    const auto lifted = analysis::LiftModuleLoad(instruction);
+    const auto* load = std::get_if<analysis::ModuleLoad>(&lifted);
+    if (!load || load->space != analysis::ModuleSpace::kExternal ||
+        position + 1 >= body_.instructions.size())
+      throw Fail(Error::kInstruction, pc_);
+    const auto guard = analysis::LiftHoleInstruction(
+        body_.instructions[position + 1].decoded, registers_.size());
+    const auto* checked = std::get_if<analysis::HoleGuard>(&guard);
+    if (!checked ||
+        !std::holds_alternative<analysis::Accumulator>(checked->value) ||
+        !std::holds_alternative<analysis::HoleNameSlot>(checked->name))
+      throw Fail(Error::kInstruction, pc_);
+    const auto slot = static_cast<std::size_t>(load->slot.value);
+    abc::ModuleRequestId request;
+    if (slot < module_.imports.size()) {
+      request = module_.imports[slot].request;
+    } else if (slot - module_.imports.size() <
+               module_.namespace_imports.size()) {
+      request = module_.namespace_imports[slot - module_.imports.size()].request;
+    } else {
+      throw Fail(Error::kModule, pc_);
+    }
+    if (request.value >= module_.requests.size() ||
+        import_load_count_ >= body_.instructions.size())
+      throw Fail(Error::kModule, pc_);
+    // Pinned v7 resolves the guard's name only when the loaded value is Hole.
+    // ESM import TDZ throws at this read; retain the read-time value so later
+    // live-binding changes cannot silently alter a bytecode register copy.
+    Text("const $loaded");
+    Number(import_load_count_);
+    Text(" = $import");
+    Number(slot);
+    Text(";\n");
+    accumulator_ = {Value::Kind::kImportSnapshot, import_load_count_++};
+    pending_import_guard_ = position + 1;
   }
   Value SaveAtom(StaticAtom atom) {
     if (const auto* text = std::get_if<std::u16string>(&atom)) {
@@ -800,6 +850,7 @@ class ProgramWriter {
     if (!store || (accumulator_.kind != Value::Kind::kClass &&
                    accumulator_.kind != Value::Kind::kFunction &&
                    accumulator_.kind != Value::Kind::kLiteral &&
+                   accumulator_.kind != Value::Kind::kImportSnapshot &&
                    accumulator_.kind != Value::Kind::kUndefined))
       throw Fail(Error::kValue, pc_);
     if (accumulator_.kind == Value::Kind::kClass) {
@@ -819,6 +870,9 @@ class ProgramWriter {
       Number(accumulator_.ordinal);
     } else if (accumulator_.kind == Value::Kind::kLiteral) {
       Text("$literal");
+      Number(accumulator_.ordinal);
+    } else if (accumulator_.kind == Value::Kind::kImportSnapshot) {
+      Text("$loaded");
       Number(accumulator_.ordinal);
     } else {
       Text("void 0");
@@ -858,6 +912,8 @@ class ProgramWriter {
   Value accumulator_{Value::Kind::kUnknown};
   abc::CodeOffset pc_{};
   std::size_t function_count_ = 0;
+  std::size_t import_load_count_ = 0;
+  std::optional<std::size_t> pending_import_guard_;
   std::size_t written_ = 0;
 };
 }  // namespace

@@ -403,12 +403,22 @@ if(BUILD_TESTING)
     tests/unit/source/record_object_test.cc)
   target_link_libraries(record_object_test PRIVATE abcd_source)
   add_test(NAME record_object_test COMMAND record_object_test)
+  add_executable(record_import_test
+    tests/unit/source/record_import_test.cc)
+  target_link_libraries(record_import_test PRIVATE abcd_source)
+  add_test(NAME record_import_test COMMAND record_import_test)
   add_executable(record_literal_test
     tests/unit/source/record_literal_test.cc)
   target_include_directories(record_literal_test PRIVATE src/source)
   target_link_libraries(record_literal_test PRIVATE abcd_source)
   add_test(NAME record_literal_test COMMAND record_literal_test)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME record_import_js_test COMMAND ${CMAKE_COMMAND}
+      "-DABCD_FIXTURE=$<TARGET_FILE:record_import_test>"
+      "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"
+      "-DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_import.mjs"
+      "-DABCD_DEPENDENCY=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_import_dependency.mjs"
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_import.cmake)
     add_test(NAME record_object_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:record_object_test>
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_object.mjs
