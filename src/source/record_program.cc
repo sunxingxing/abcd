@@ -14,6 +14,7 @@
 #include "abcd/abc/call_type.h"
 #include "abcd/abc/pool_reference.h"
 #include "abcd/analysis/class_creation.h"
+#include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/hole_guard.h"
@@ -303,6 +304,17 @@ class ProgramWriter {
           return written_;
         case Opcode::kNOP:
           break;
+        case Opcode::kDEBUGGER: {
+          const auto lifted = analysis::LiftConstantObjectInstruction(
+              instruction.decoded);
+          const auto* operation =
+              std::get_if<analysis::ConstantObjectInstruction>(&lifted);
+          if (!operation ||
+              operation->kind != analysis::ConstantObjectKind::kDebugger)
+            throw Fail(Error::kInstruction, pc_);
+          Text("debugger;\n");
+          break;
+        }
         default:
           Scalar(instruction);
           break;

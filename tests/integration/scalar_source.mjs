@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 
 const generated = await import(pathToFileURL(process.argv[2]).href);
+const receiver = {value: 7};
+assert.equal(generated.currentThis.call(receiver), receiver);
+assert.equal(generated.debuggerValue(), true);
 assert.equal(generated.firstElement([42]), 42);
 assert.equal(generated.firstElement('text'), 't');
 assert.equal(generated.firstElement({}), undefined);

@@ -62,6 +62,11 @@ int main() {
         dead.entries[1] == AccumulatorState::kUnreachable);
   const std::uint8_t restore[]{0x70, 0x60, 0, 0x64};
   Check(std::holds_alternative<AccumulatorFlow>(Analyze(Body(restore))));
+  const std::uint8_t this_value[]{0x6f, 0xb0, 0x64};
+  Check(std::holds_alternative<AccumulatorFlow>(Analyze(Body(this_value))));
+  const std::uint8_t debugger_hole[]{0xb0, 0x64};
+  Check(std::get<AccumulatorFailure>(Analyze(Body(debugger_hole))).kind ==
+        AccumulatorError::kReadBeforeValue);
   const std::uint8_t loop[]{0x00, 0x4d, 0xff};
   Check(std::get<AccumulatorFailure>(Analyze(Body(loop))).order_error ==
         OrderError::kCycle);

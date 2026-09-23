@@ -31,23 +31,38 @@ void Bytecode(std::initializer_list<std::uint8_t> bytes, bool capture = false) {
         << "; return [left,right];} catch(error) {return [left,right,error];}}";
   std::cout << ",\n";
 }
-void FunctionBody(std::initializer_list<std::uint8_t> bytes) {
+abc::MethodBody DecodedBody(std::initializer_list<std::uint8_t> bytes,
+                            abc::ProfileId profile) {
   const std::vector<std::uint8_t> storage(bytes);
   abc::MethodBody body;
   for (std::size_t offset = 0; offset < storage.size();) {
     const auto decoded =
         std::get<abc::DecodedInstruction>(abc::DecodeInstruction(
-            std::span(storage).subspan(offset), abc::ProfileId::kDynamic1206));
+            std::span(storage).subspan(offset), profile));
     body.instructions.push_back(
         {{static_cast<std::uint32_t>(offset)}, decoded, {}});
     offset += decoded.size;
   }
+  return body;
+}
+void FunctionBody(std::initializer_list<std::uint8_t> bytes) {
+  const auto body = DecodedBody(bytes, abc::ProfileId::kDynamic1206);
   const std::array<std::string_view, 1> registers{"left"};
   std::cout << "(left)=>{let right;\n";
   if (!std::holds_alternative<std::size_t>(
           source::WriteLinearBody(body, {"right", registers}, std::cout)))
     std::abort();
   std::cout << "};\n";
+}
+void ContextFunction(std::string_view name,
+                     std::initializer_list<std::uint8_t> bytes) {
+  const auto body = DecodedBody(bytes, abc::ProfileId::kDynamic1301);
+  const std::array<std::string_view, 0> registers{};
+  std::cout << "export function " << name << "() { let acc;\n";
+  if (!std::holds_alternative<std::size_t>(
+          source::WriteLinearBody(body, {"acc", registers}, std::cout)))
+    std::abort();
+  std::cout << "}\n";
 }
 }  // namespace
 int main() {
@@ -56,6 +71,8 @@ int main() {
   FunctionBody({0x60, 0, 0x0a, 0, 0, 0x64});
   std::cout << "export const throwValue = ";
   FunctionBody({0x60, 0, 0xfe, 0});
+  ContextFunction("currentThis", {0x6f, 0x64});
+  ContextFunction("debuggerValue", {0x02, 0xb0, 0x64});
   std::cout << "export const increment = ";
   FunctionBody({0x60, 0, 0x21, 0, 0x64});
   std::cout << "export const decrement = ";

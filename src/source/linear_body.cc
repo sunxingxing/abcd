@@ -8,6 +8,7 @@
 
 #include "abcd/abc/pool_reference.h"
 #include "abcd/analysis/branch_condition.h"
+#include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
@@ -229,6 +230,22 @@ class BodyWriter {
         using abc::Opcode;
         const auto opcode = instruction.decoded.opcode;
         if (opcode == Opcode::kNOP) continue;
+        if (opcode == Opcode::kLDTHIS || opcode == Opcode::kDEBUGGER) {
+          const auto lifted = LiftConstantObjectInstruction(instruction.decoded);
+          const auto* operation =
+              std::get_if<ConstantObjectInstruction>(&lifted);
+          if (!operation)
+            return Fail(BodyEmitError::kUnsupportedInstruction);
+          if (operation->kind == ConstantObjectKind::kThis) {
+            Expression(ScalarValue{Accumulator{}});
+            Text(" = this;\n");
+            accumulator_defined = true;
+          } else if (operation->kind == ConstantObjectKind::kDebugger) {
+            Text("debugger;\n");
+          }
+          if (error_) return *error_;
+          continue;
+        }
         if (opcode == Opcode::kCREATEEMPTYOBJECT ||
             opcode == Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16 ||
             opcode == Opcode::kCREATEOBJECTWITHBUFFER_IMM16_ID16) {

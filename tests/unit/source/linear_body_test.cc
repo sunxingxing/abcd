@@ -98,6 +98,27 @@ int main() {
   Check(std::holds_alternative<std::size_t>(
       WriteLinearBody(Body({0x60, 0, 0xfe, 0}), names, thrown)));
   Check(thrown.str() == "acc = r0;\nthrow acc;\n");
+  std::ostringstream this_value;
+  Check(std::holds_alternative<std::size_t>(WriteLinearBody(
+      Body({0x6f, 0x64}), names, this_value)));
+  Check(this_value.str() == "acc = this;\nreturn acc;\n");
+  std::ostringstream debugger_value;
+  Check(std::holds_alternative<std::size_t>(WriteLinearBody(
+      Body({0x02, 0xb0, 0x64}), names, debugger_value)));
+  Check(debugger_value.str() ==
+        "acc = true;\ndebugger;\nreturn acc;\n");
+  for (const auto& unsupported :
+       {Body({0xad, 0x64}), Body({0x6d, 0x64}),
+        Body({0x70, 0x64}), Body({0xfc, 0, 0x64}),
+        Body({0x6e, 0x64}), Body({0x69, 0x64}),
+        Body({0xfc, 1, 0x64}), Body({0x6c, 0x64}),
+        Body({0xae, 0x64}), Body({0xaf, 0x64})}) {
+    std::ostringstream refused;
+    Check(std::get<BodyEmitFailure>(
+              WriteLinearBody(unsupported, names, refused))
+              .kind == BodyEmitError::kUnsupportedInstruction);
+    Check(refused.str().empty());
+  }
   std::ostringstream undef;
   Check(std::holds_alternative<std::size_t>(
       WriteLinearBody(Body({0xd5, 0x65}), names, undef)));

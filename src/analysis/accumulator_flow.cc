@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "abcd/analysis/branch_condition.h"
+#include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
@@ -28,6 +29,14 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
                     std::holds_alternative<Accumulator>(assignment->destination)
                         ? AccumulatorWrite::kValue
                         : AccumulatorWrite::kPreserve};
+  const auto constant = LiftConstantObjectInstruction(instruction);
+  if (const auto* operation =
+          std::get_if<ConstantObjectInstruction>(&constant)) {
+    if (operation->kind == ConstantObjectKind::kThis)
+      return Transfer{false, AccumulatorWrite::kValue};
+    if (operation->kind == ConstantObjectKind::kDebugger)
+      return Transfer{false, AccumulatorWrite::kPreserve};
+  }
   if (std::holds_alternative<UnaryExpression>(LiftBranchCondition(instruction)))
     return Transfer{true, AccumulatorWrite::kPreserve};
   if (std::holds_alternative<NamedRead>(LiftNamedRead(instruction)))

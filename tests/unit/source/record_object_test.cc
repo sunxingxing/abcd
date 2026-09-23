@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
   constexpr std::uint8_t kLocalSlots = 4;
   constexpr std::uint8_t kIntegerValue = 42;
   std::vector<std::uint8_t> instructions{
-      0x04, 0x61, 0,
+      0xb0, 0x04, 0x61, 0,
       0x62, kIntegerValue, 0, 0, 0,
       0xdc, 0, 0, 0, 0,
       0x3e, 2, 0,
@@ -141,6 +141,7 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
     std::cout << output.str() << std::flush;
   Check(output.str().find("[\"answer\"]: (42)") != std::string::npos);
+  Check(output.str().find("debugger;\n") != std::string::npos);
   Check(output.str().find("[\"__proto__\"]: \"plain\"") !=
         std::string::npos);
   Check(output.str().find("[\"plain\"]: (42)") != std::string::npos);
