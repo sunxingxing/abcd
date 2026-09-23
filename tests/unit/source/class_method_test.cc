@@ -70,6 +70,40 @@ int main(int argc, char** argv) {
   wrong = Method();
   wrong.member.kind = abc::ClassMethodKind::kGetter;
   reject(wrong, source::FunctionEmitError::kKind);
+  auto getter = Method();
+  getter.member.kind = abc::ClassMethodKind::kGetter;
+  getter.member.length = 0;
+  getter.frame = std::get<abc::FrameLayout>(
+      abc::BuildFrameLayout(0, 3, abc::DecodeCallFlags({})));
+  getter.effective_kind = source::EffectiveMethodKind::kGetter;
+  std::ostringstream getter_source;
+  const auto getter_result = source::WriteClassMethod(
+      getter, test::Body({0x00, 0x65}), getter_source);
+  test::Check(std::holds_alternative<std::size_t>(getter_result));
+  test::Check(getter_source.str().starts_with("get [\"method\"]()"));
+  std::ostringstream observed_self;
+  test::Check(std::get<source::FunctionEmitError>(source::WriteClassMethod(
+                  getter, test::Body({0x60, 0, 0x64}), observed_self)) ==
+              source::FunctionEmitError::kFrame);
+  test::Check(observed_self.str().empty());
+  getter.frame = std::get<abc::FrameLayout>(
+      abc::BuildFrameLayout(1, 3, abc::DecodeCallFlags({})));
+  std::ostringstream dead_copy;
+  test::Check(std::holds_alternative<std::size_t>(source::WriteClassMethod(
+      getter, test::Body({0x44, 0x10, 0x00, 0x65}), dead_copy)));
+  std::ostringstream live_copy;
+  test::Check(std::get<source::FunctionEmitError>(source::WriteClassMethod(
+                  getter, test::Body({0x44, 0x10, 0x60, 0, 0x64}),
+                  live_copy)) == source::FunctionEmitError::kFrame);
+  test::Check(live_copy.str().empty());
+  auto setter = Method();
+  setter.member.kind = abc::ClassMethodKind::kSetter;
+  setter.effective_kind = source::EffectiveMethodKind::kSetter;
+  std::ostringstream setter_source;
+  const auto setter_result = source::WriteClassMethod(
+      setter, test::Body({0x00, 0x65}), setter_source);
+  test::Check(std::holds_alternative<std::size_t>(setter_result));
+  test::Check(setter_source.str().starts_with("set [\"method\"]($p0)"));
   wrong = Method();
   wrong.attributes.sendable = true;
   reject(wrong, source::FunctionEmitError::kSendable);

@@ -14,7 +14,7 @@ format decoding but require a separate execution-semantics proof.
 | `DEFINEFIELDBYNAME`, `DEFINEPROPERTYBYNAME` | `OwnWrite`: string pool name, receiver register, accumulator value; both call `DefineField` | Fresh-object definitions or proved static initializer on fresh class |
 | `CALLRUNTIME_DEFINEFIELDBYVALUE` | `DefineFieldByValue`: key/object registers, accumulator value; calls `DefineField`, preserves accumulator | Static initializer only when receiver is its own class and key is a proved string or nonnegative integer constant |
 | `CALLRUNTIME_DEFINEFIELDBYINDEX` | `DefineFieldByIndex`: unsigned 32-bit key, object register, accumulator value; calls `DefineField`, preserves accumulator | Static initializer on its own class; index rendered as a decimal computed property name |
-| `DEFINEGETTERSETTERBYVALUE` | `DefineAccessor`: object/key/getter/setter registers, accumulator enumerable flag; replaces accumulator with runtime result | Not yet emitted: needs callable/accessor identity and descriptor/flag equivalence |
+| `DEFINEGETTERSETTERBYVALUE` | `DefineAccessor`: object/key/getter/setter registers, accumulator enumerable flag; replaces accumulator with runtime result | Native get/set body emitter and descriptor oracle exist; record-level creation-chain provenance and integration remain unfinished |
 | `CALLRUNTIME_DEFINEPRIVATEPROPERTY` | `DefinePrivateProperty`: lexical level/slot, object register, accumulator value; preserves accumulator | Not yet emitted: must resolve private name and brand from lexical environment |
 | `CALLRUNTIME_DEFINESENDABLECLASS` | `DefineSendableClass`: constructor/literal/length/parent; creates a shared class | Not emitted as ordinary JS class; shared-function identity and runtime restrictions are observable |
 | `DEPRECATED_DEFINECLASSWITHBUFFER` | `DefineLegacyClass`: constructor, encoded literal, length, lexical environment and parent registers; runtime uses constructor slot + 1 as literal | Not yet emitted: explicit legacy profile and lexical-environment proof required |
@@ -34,10 +34,19 @@ receiver. The emitted `static [name] = value` preserves own-property descriptor
 flags. Existing class-buffer members, `prototype`, array alias reuse, unknown
 keys, side effects, exceptions, and control flow are rejected. The real
 `CommonConstants` sample has an executable-source oracle; computed field
-forms currently have typed-lift tests but need dedicated source oracles.
+forms have a dedicated bytecode recovery test but need a record-level source
+oracle.
+
+`WriteClassMethod` can now emit native getter/setter syntax when the caller
+proves method kind and placement and the function ABI slot is unobservable.
+Its register-window proof permits dead copies of the function slot in linear
+time and memory. A Node oracle checks getter/setter names, lengths,
+nonconstructibility, descriptors and calls. This is a reusable primitive, not
+yet an admission rule for post-class `DEFINEMETHOD` and
+`DEFINEGETTERSETTERBYVALUE` sequences in a record.
 
 Next source work: prove getter/setter object and callable identity; recover
 private lexical names/brands; represent sendable classes without falsely
-lowering to ordinary JS; add historical execution profiles and dedicated
-computed-key bytecode fixtures. Corpus coverage must report these as semantic
+lowering to ordinary JS; add historical execution profiles and a record-level
+computed-key execution oracle. Corpus coverage must report these as semantic
 refusals until those proofs and tests exist.

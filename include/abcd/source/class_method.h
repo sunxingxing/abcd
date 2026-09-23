@@ -5,7 +5,7 @@
 
 namespace abcd::source {
 // FunctionTemplate/Method kind at member materialization, NOT the file flag.
-enum class EffectiveMethodKind { kUnknown, kOrdinary };
+enum class EffectiveMethodKind { kUnknown, kOrdinary, kGetter, kSetter };
 struct ClassMethod {
   abc::ClassMethod member;
   abc::MethodAttributes attributes;
@@ -15,18 +15,21 @@ struct ClassMethod {
   std::string_view self_binding;
   EffectiveMethodKind effective_kind = EffectiveMethodKind::kUnknown;
 };
-// Native ordinary method, not a constructible function expression. Caller
-// proves class-buffer membership, target/ABI, runtime name equal to key, and
-// an enclosing private immutable self_binding holding this exact method before
-// it can be invoked. Reading Class.prototype[key] at invocation is NOT valid:
-// that property is mutable. The body cannot read unresolved outer captures.
-// Only ordinary templates with initial NONE AND proven effective ordinary kind
-// are admitted. v7.0 DefineFunctionTemplate mutates shared MethodLiteral kind;
+// Native class method/accessor, not a constructible function expression.
+// Caller proves class-buffer or DEFINE-method provenance, target/ABI, runtime
+// name equal to key and descriptor placement. Ordinary methods additionally
+// need an immutable self_binding holding their exact function object: reading
+// Class.prototype[key] at invocation is NOT valid because it is mutable.
+// The body cannot read unresolved outer captures.
+// Templates need initial NONE and a proven effective method kind. Accessors
+// additionally need an unobserved function ABI slot: native get/set syntax
+// has no lexical self binding to initialize that slot.
+// v7.0 DefineFunctionTemplate mutates shared MethodLiteral kind;
 // an earlier conflicting template may change NONE before this site's creation.
-// Caller must prove runtime NORMAL_FUNCTION, including cross-role conflicts;
+// Caller must prove the effective runtime kind, including cross-role conflicts;
 // initial NONE alone is not evidence. Unknown evidence is rejected by default.
 // Placement/key descriptor and reserved-property compatibility are caller
-// obligations. Does not emit home-object operations, async/generator/accessors.
+// obligations. Does not emit home-object operations or async/generator methods.
 // Simple formal count, preflight, budgets and publication match BaseFunction.
 // A supplied method lookup enables typed nested ordinary closures. Unsupported
 // child kinds reject the entire method instead of changing function semantics.

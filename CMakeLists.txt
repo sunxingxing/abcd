@@ -267,6 +267,10 @@ if(BUILD_TESTING)
   add_executable(define_instruction_test tests/unit/analysis/define_instruction_test.cc)
   target_link_libraries(define_instruction_test PRIVATE abcd_analysis)
   add_test(NAME define_instruction_test COMMAND define_instruction_test)
+  add_executable(define_computed_fields_test
+    tests/unit/source/define_computed_fields_test.cc)
+  target_link_libraries(define_computed_fields_test PRIVATE abcd_source)
+  add_test(NAME define_computed_fields_test COMMAND define_computed_fields_test)
   add_executable(method_attributes_test tests/unit/abc/method_attributes_test.cc)
   target_link_libraries(method_attributes_test PRIVATE abcd_abc)
   add_test(NAME method_attributes_test COMMAND method_attributes_test)
@@ -298,6 +302,10 @@ if(BUILD_TESTING)
   target_include_directories(class_method_test PRIVATE tests/support)
   target_link_libraries(class_method_test PRIVATE abcd_source)
   add_test(NAME class_method_test COMMAND class_method_test)
+  add_executable(class_accessor_test tests/unit/source/class_accessor_test.cc)
+  target_include_directories(class_accessor_test PRIVATE tests/support)
+  target_link_libraries(class_accessor_test PRIVATE abcd_source)
+  add_test(NAME class_accessor_test COMMAND class_accessor_test)
   target_include_directories(base_function_test PRIVATE tests/support)
   target_link_libraries(base_function_test PRIVATE abcd_source)
   add_test(NAME base_function_test COMMAND base_function_test)
@@ -437,6 +445,12 @@ if(BUILD_TESTING)
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_method.mjs
       -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
       -DABCD_OUTPUT_NAME=class-method.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
+    add_test(NAME class_accessor_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:class_accessor_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_accessor.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=class-accessor.mjs
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME created_class_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:created_class_test>

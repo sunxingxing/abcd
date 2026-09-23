@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <ostream>
@@ -25,7 +26,9 @@ enum class CallableSyntax {
   kAsyncFunctionExpression,
   kArrowExpression,
   kBaseConstructor,
-  kClassMethod
+  kClassMethod,
+  kClassGetter,
+  kClassSetter
 };
 struct CallableShape {
   abc::FrameLayout frame;
@@ -122,6 +125,68 @@ bool ObservesArrowCallContext(const abc::MethodBody& body,
   return false;
 }
 
+std::optional<FunctionEmitError> AccessorFunctionSlot(
+    const abc::MethodBody& body, const abc::FrameLayout& frame,
+    std::size_t bytes) {
+  if (!frame.function) return {};
+  const auto count = static_cast<std::size_t>(frame.registers) + 1;
+  if (count > bytes / sizeof(std::int64_t))
+    return FunctionEmitError::kResourceLimit;
+  try {
+    // Difference counts avoid O(instructions * range width) for call operands.
+    std::vector<std::int64_t> reads(count);
+    for (const auto& site : body.instructions) {
+      const auto accesses = abc::GetRegisterAccesses(
+          site.decoded, frame.registers);
+      const auto* known = std::get_if<abc::RegisterAccesses>(&accesses);
+      if (!known) return FunctionEmitError::kFrame;
+      for (std::size_t i = 0; i < known->count; ++i) {
+        const auto& window = known->windows[i];
+        if (window.access == abc::OperandAccess::kWrite) continue;
+        ++reads[window.first.value];
+        --reads[window.first.value + window.count];
+      }
+    }
+    for (std::size_t i = 1; i < reads.size(); ++i)
+      reads[i] += reads[i - 1];
+    const auto self = frame.function->value;
+    for (const auto& site : body.instructions) {
+      const auto accesses = abc::GetRegisterAccesses(
+          site.decoded, frame.registers);
+      const auto& known = std::get<abc::RegisterAccesses>(accesses);
+      bool reads_self = false;
+      for (std::size_t i = 0; i < known.count; ++i) {
+        const auto& window = known.windows[i];
+        reads_self |= window.access != abc::OperandAccess::kWrite &&
+                      self >= window.first.value &&
+                      self - window.first.value < window.count;
+      }
+      if (!reads_self) continue;
+      const auto lifted = analysis::LiftScalarInstruction(
+          site.decoded, frame.registers);
+      const auto* copy = std::get_if<analysis::ScalarAssignment>(&lifted);
+      if (!copy || (site.decoded.opcode != abc::Opcode::kMOV_V4_V4 &&
+                    site.decoded.opcode != abc::Opcode::kMOV_V8_V8))
+        return FunctionEmitError::kFrame;
+      const auto* source = std::get_if<analysis::ScalarValue>(
+          &copy->expression);
+      const auto* origin = source
+                               ? std::get_if<abc::RegisterId>(source)
+                               : nullptr;
+      const auto* destination =
+          std::get_if<abc::RegisterId>(&copy->destination);
+      if (!origin || origin->value != self || !destination ||
+          reads[destination->value] != 0)
+        return FunctionEmitError::kFrame;
+    }
+    return {};
+  } catch (const std::bad_alloc&) {
+    return FunctionEmitError::kResourceLimit;
+  } catch (const std::length_error&) {
+    return FunctionEmitError::kResourceLimit;
+  }
+}
+
 class FunctionWriter {
  public:
   FunctionWriter(const CallableShape& function, ScalarNames names,
@@ -139,10 +204,15 @@ class FunctionWriter {
 
   FunctionEmitResult Write(const abc::MethodBody& body) {
     try {
-      if (function_.syntax == CallableSyntax::kClassMethod) {
+      if (function_.syntax == CallableSyntax::kClassMethod ||
+          function_.syntax == CallableSyntax::kClassGetter ||
+          function_.syntax == CallableSyntax::kClassSetter) {
         if (function_.placement == abc::ClassPlacement::kStatic)
           Text("static ");
-        Text("[");
+        Text(function_.syntax == CallableSyntax::kClassGetter
+                 ? "get ["
+             : function_.syntax == CallableSyntax::kClassSetter ? "set ["
+                                                                : "[");
         if (error_) return *error_;
         const auto key = WriteStringLiteral(function_.key, output_,
                                             {budget_.output.bytes - written_});
@@ -179,9 +249,12 @@ class FunctionWriter {
         const abc::RegisterId slot{i};
         if (frame.function == slot) {
           Text(" = ");
-          Text(function_.syntax == CallableSyntax::kArrowExpression
-                   ? "$arrow"
-                   : function_.name);
+          Text(function_.syntax == CallableSyntax::kClassGetter ||
+                       function_.syntax == CallableSyntax::kClassSetter
+                   ? "void 0"
+                   : function_.syntax == CallableSyntax::kArrowExpression
+                         ? "$arrow"
+                         : function_.name);
         } else if (frame.new_target == slot) {
           if (function_.syntax != CallableSyntax::kArrowExpression)
             Text(" = new.target");
@@ -437,13 +510,37 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
                                     const MethodConstants* constants,
                                     const abc::MethodLookup* methods) {
   if (method.attributes.sendable) return FunctionEmitError::kSendable;
-  if (method.attributes.kind != abc::FunctionKind::kNone ||
-      method.member.kind != abc::ClassMethodKind::kOrdinary ||
-      method.effective_kind != EffectiveMethodKind::kOrdinary)
+  if (method.attributes.kind != abc::FunctionKind::kNone)
     return FunctionEmitError::kKind;
+  CallableSyntax syntax;
+  switch (method.member.kind) {
+    case abc::ClassMethodKind::kOrdinary:
+      if (method.effective_kind != EffectiveMethodKind::kOrdinary)
+        return FunctionEmitError::kKind;
+      syntax = CallableSyntax::kClassMethod;
+      break;
+    case abc::ClassMethodKind::kGetter:
+      if (method.effective_kind != EffectiveMethodKind::kGetter)
+        return FunctionEmitError::kKind;
+      syntax = CallableSyntax::kClassGetter;
+      break;
+    case abc::ClassMethodKind::kSetter:
+      if (method.effective_kind != EffectiveMethodKind::kSetter)
+        return FunctionEmitError::kKind;
+      syntax = CallableSyntax::kClassSetter;
+      break;
+    case abc::ClassMethodKind::kGenerator:
+    case abc::ClassMethodKind::kAsyncGenerator:
+      return FunctionEmitError::kKind;
+  }
+  if (syntax == CallableSyntax::kClassGetter ||
+      syntax == CallableSyntax::kClassSetter)
+    if (const auto failure = AccessorFunctionSlot(
+            body, method.frame, budget.bytes))
+      return *failure;
   return WriteCallable(
       {method.frame, method.self_binding, method.member.length,
-       CallableSyntax::kClassMethod, method.key, method.placement},
+       syntax, method.key, method.placement},
       body, output, budget, constants, methods,
       analysis::CapturedValues::kReject);
 }
