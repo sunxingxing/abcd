@@ -42,6 +42,9 @@ int main(int argc, char** argv) {
     Emit("escaped", test::Body({0x60, 3, 0x64}),
          abc::ClassPlacement::kPrototype, u"quoted\"key");
     Emit("self", test::Body({0x60, 0, 0x64}));
+    Emit("intrinsicSelf", test::Body({0xaf, 0x64}));
+    Emit("staticIntrinsicSelf", test::Body({0xaf, 0x64}),
+         abc::ClassPlacement::kStatic);
     Emit("receiver", test::Body({0x60, 2, 0x64}));
     Emit("newTarget", test::Body({0x60, 1, 0x64}));
     Emit("thrown", test::Body({0x60, 3, 0xfe, 0}));

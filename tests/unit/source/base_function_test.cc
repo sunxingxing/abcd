@@ -1,4 +1,5 @@
 #include "abcd/source/base_function.h"
+#include "abcd/source/linear_body.h"
 
 #include <iostream>
 #include <limits>
@@ -32,6 +33,9 @@ void Emit(std::string_view name, source::BaseFunction function,
 void EmitFixtures() {
   Emit("parameter", Function(), test::Body({0x60, 3, 0x64}));
   Emit("self", Function(), test::Body({0x60, 0, 0x64}));
+  Emit("intrinsicSelf", Function(), test::Body({0xaf, 0x64}));
+  Emit("intrinsicAfterSlotWrite", Function(),
+       test::Body({0x00, 0x61, 0, 0xaf, 0x64}));
   Emit("newTarget", Function(), test::Body({0x60, 1, 0x64}));
   Emit("receiver", Function(), test::Body({0x60, 2, 0x64}));
   Emit("local", Function(1), test::Body({0x60, 0, 0x64}));
@@ -62,6 +66,33 @@ int main(int argc, char** argv) {
   test::Check(std::get<std::size_t>(result) == output.str().size());
   test::Check(output.str().find("function Recovered($p0)") !=
               std::string::npos);
+  {
+    const auto intrinsic = test::Body({0xaf, 0x64});
+    std::ostringstream missing;
+    const auto refused = source::WriteLinearBody(
+        intrinsic, {"acc", {}}, missing);
+    test::Check(std::get<source::BodyEmitFailure>(refused).kind ==
+                source::BodyEmitError::kCurrentFunctionBinding);
+    test::Check(missing.str().empty());
+    std::ostringstream bound;
+    const auto emitted = source::WriteLinearBody(
+        intrinsic, {"acc", {}, "Recovered"}, bound);
+    test::Check(std::get<std::size_t>(emitted) == bound.str().size());
+    test::Check(bound.str() == "acc = Recovered;\nreturn acc;\n");
+    std::ostringstream invalid;
+    const auto unsafe = source::WriteLinearBody(
+        intrinsic, {"acc", {}, "x);evil("}, invalid);
+    test::Check(std::get<source::BodyEmitFailure>(unsafe).emit_error ==
+                source::EmitError::kInvalidBinding);
+    test::Check(invalid.str().empty());
+    auto malformed = intrinsic;
+    malformed.instructions[0].decoded.operand_count = 1;
+    std::ostringstream rejected;
+    test::Check(std::get<source::BodyEmitFailure>(source::WriteLinearBody(
+                    malformed, {"acc", {}, "Recovered"}, rejected))
+                    .kind == source::BodyEmitError::kUnsupportedInstruction);
+    test::Check(rejected.str().empty());
+  }
   const auto reject = [&](const source::BaseFunction& function,
                           source::FunctionEmitError expected) {
     std::ostringstream rejected;

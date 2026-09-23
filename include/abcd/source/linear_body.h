@@ -30,6 +30,7 @@ enum class BodyEmitError {
   kModuleBinding,
   kGlobalScope,
   kGlobalReference,
+  kCurrentFunctionBinding,
   kInternalValue
 };
 enum class ObjectBufferError {

@@ -3,7 +3,7 @@ import {pathToFileURL} from 'node:url';
 const source = await import(pathToFileURL(process.argv[2]));
 for (const [key, C] of Object.entries(source)) {
   if (key === 'asyncMethod') continue;
-  const owner = key === 'staticSelf' ? C : C.prototype;
+  const owner = key === 'staticSelf' || key === 'staticIntrinsicSelf' ? C : C.prototype;
   const name = key === 'escaped' ? 'quoted"key' : 'method';
   const method = owner[name];
   assert.equal(method.name, name);
@@ -32,7 +32,8 @@ for (const value of [undefined, null, 42, 1n, Symbol(), {}, () => {}]) {
   assert.throws(() => source.thrown.prototype.method(value), error => Object.is(error, value));
 }
 assert.equal(source.newTarget.prototype.method(), undefined);
-for (const owner of [source.self.prototype, source.staticSelf]) {
+for (const owner of [source.self.prototype, source.staticSelf,
+                     source.intrinsicSelf.prototype, source.staticIntrinsicSelf]) {
   const original = owner.method;
   owner.method = () => 42;
   assert.equal(original(), original);

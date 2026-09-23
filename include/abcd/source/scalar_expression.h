@@ -12,6 +12,9 @@ namespace abcd::source {
 struct ScalarNames {
   std::string_view accumulator;
   std::span<const std::string_view> registers;
+  // Caller-proven immutable binding for the active function object. Empty
+  // refuses LDFUNCTION; a writable VM function-slot register is not enough.
+  std::string_view current_function{};
 };
 // Emits an expression, not a method/record. Referenced names must be declared,
 // initialized, side-effect-free local bindings supplied by the caller. Only

@@ -110,6 +110,8 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
       std::holds_alternative<IndexedRead>(
           LiftIndexedRead(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kLanguageOperation, {}};
+  if (instruction.opcode == abc::Opcode::kLDFUNCTION)
+    return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
   if (instruction.opcode == abc::Opcode::kLDA_STR_ID16 ||
       instruction.opcode == abc::Opcode::kCREATEEMPTYARRAY_IMM8 ||
       std::holds_alternative<EmptyObjectCreation>(

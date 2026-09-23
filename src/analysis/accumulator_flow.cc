@@ -32,7 +32,8 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
   const auto constant = LiftConstantObjectInstruction(instruction);
   if (const auto* operation =
           std::get_if<ConstantObjectInstruction>(&constant)) {
-    if (operation->kind == ConstantObjectKind::kThis)
+    if (operation->kind == ConstantObjectKind::kThis ||
+        operation->kind == ConstantObjectKind::kCurrentFunction)
       return Transfer{false, AccumulatorWrite::kValue};
     if (operation->kind == ConstantObjectKind::kDebugger)
       return Transfer{false, AccumulatorWrite::kPreserve};

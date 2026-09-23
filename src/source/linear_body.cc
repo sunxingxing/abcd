@@ -230,6 +230,25 @@ class BodyWriter {
         using abc::Opcode;
         const auto opcode = instruction.decoded.opcode;
         if (opcode == Opcode::kNOP) continue;
+        if (opcode == Opcode::kLDFUNCTION) {
+          const auto lifted = LiftConstantObjectInstruction(instruction.decoded);
+          const auto* operation =
+              std::get_if<ConstantObjectInstruction>(&lifted);
+          if (!operation ||
+              operation->kind != ConstantObjectKind::kCurrentFunction)
+            return Fail(BodyEmitError::kUnsupportedInstruction);
+          if (names_.current_function.empty())
+            return Fail(BodyEmitError::kCurrentFunctionBinding);
+          Expression(ScalarValue{Accumulator{}});
+          Text(" = ");
+          Account(WriteScalarExpression(
+              ScalarValue{Accumulator{}},
+              {names_.current_function, {}}, output_, {remaining_}));
+          Text(";\n");
+          accumulator_defined = true;
+          if (error_) return *error_;
+          continue;
+        }
         if (opcode == Opcode::kLDTHIS || opcode == Opcode::kDEBUGGER) {
           const auto lifted = LiftConstantObjectInstruction(instruction.decoded);
           const auto* operation =

@@ -22,6 +22,8 @@ assert.equal(source.parameter(), undefined);
 assert.equal(source.local('not a local'), undefined);
 assert.equal(source.newTarget(), undefined);
 assert.equal(source.self(), source.self);
+assert.equal(source.intrinsicSelf(), source.intrinsicSelf);
+assert.equal(source.intrinsicAfterSlotWrite(), source.intrinsicAfterSlotWrite);
 assert.equal(source.independent(), source.independent);
 assert.equal((0, source.receiver)(), undefined);
 assert.equal(source.receiver(), source);

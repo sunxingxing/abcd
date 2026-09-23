@@ -112,13 +112,18 @@ int main() {
         Body({0x70, 0x64}), Body({0xfc, 0, 0x64}),
         Body({0x6e, 0x64}), Body({0x69, 0x64}),
         Body({0xfc, 1, 0x64}), Body({0x6c, 0x64}),
-        Body({0xae, 0x64}), Body({0xaf, 0x64})}) {
+        Body({0xae, 0x64})}) {
     std::ostringstream refused;
     Check(std::get<BodyEmitFailure>(
               WriteLinearBody(unsupported, names, refused))
               .kind == BodyEmitError::kUnsupportedInstruction);
     Check(refused.str().empty());
   }
+  std::ostringstream unbound_function;
+  Check(std::get<BodyEmitFailure>(WriteLinearBody(
+            Body({0xaf, 0x64}), names, unbound_function))
+            .kind == BodyEmitError::kCurrentFunctionBinding);
+  Check(unbound_function.str().empty());
   std::ostringstream undef;
   Check(std::holds_alternative<std::size_t>(
       WriteLinearBody(Body({0xd5, 0x65}), names, undef)));

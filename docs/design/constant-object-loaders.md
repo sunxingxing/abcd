@@ -21,11 +21,14 @@ operands and compare the pinned handler effects.
 | `poplexenv`, `deprecated.poplexenv` | Pop current VM environment; preserve accumulator | Omitted only under the local lexical planner's environment proof; deprecated ISA output flag is misleading |
 | `getunmappedargs` | Allocate unmapped arguments object from actual frame arguments; may throw | Refused until argument count, mapping and identity are proven |
 | `asyncfunctionenter` | Allocate async completion promise; may throw | Removed only by `ProveAsyncCompletion` after verifying the matching resolve/reject/handler protocol |
-| `ldfunction` | Load current JSFunction identity | Refused unless callable self-binding identity is separately established |
+| `ldfunction` | Load current JSFunction identity | Emit a caller-proven immutable self binding in ordinary/async functions, arrows, constructors and ordinary class methods; getter/setter bodies remain refused without an identity binding |
 | `debugger` | Notify debugger, leave accumulator unchanged | Emit `debugger;` in admitted function and record bodies; decoded-record and Node oracles |
 
-`ldthis` and `debugger` are included in both straight-line emission and
-accumulator-flow verification for ordered bodies. The other context values
+`ldthis`, `ldfunction` and `debugger` are included in straight-line emission;
+the value loaders also participate in accumulator-flow verification for ordered
+bodies. The self binding is not the writable ABI function register. Unit and
+Node oracles verify that `ldfunction` returns the same function after the
+register slot or class property has been replaced. The other context values
 remain typed refusals in the plain linear writer; specific planners may consume
 them under their own proofs. Historical ABC uses the same format decoder, but
 source admission remains constrained by the enclosing profile and method proof.

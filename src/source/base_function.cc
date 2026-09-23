@@ -468,7 +468,24 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
           std::to_chars(name.data() + 2, name.data() + name.size(), i).ptr;
       names[i] = {name.data(), static_cast<std::size_t>(end - name.data())};
     }
-    const ScalarNames bindings{"$acc", {names.get(), count}};
+    const std::string_view current_function = [&]() -> std::string_view {
+      switch (function.syntax) {
+        case CallableSyntax::kFunctionExpression:
+        case CallableSyntax::kAsyncFunctionExpression:
+        case CallableSyntax::kBaseConstructor:
+        case CallableSyntax::kClassMethod:
+        case CallableSyntax::kAsyncClassMethod:
+          return function.name;
+        case CallableSyntax::kArrowExpression:
+          return "$arrow";
+        case CallableSyntax::kClassGetter:
+        case CallableSyntax::kClassSetter:
+          return {};
+      }
+      return {};
+    }();
+    const ScalarNames bindings{"$acc", {names.get(), count},
+                               current_function};
     const auto checked = FunctionWriter(shape, bindings, discard, budget,
                                         constants, methods, captured_values)
                              .Write(body);

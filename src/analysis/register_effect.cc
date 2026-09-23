@@ -2,6 +2,7 @@
 
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/class_creation.h"
+#include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/global_access.h"
@@ -259,6 +260,12 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   if (auto result = Adapt(LiftObjectCreation(instruction));
       !Unsupported(result))
     return result;
+  if (instruction.opcode == abc::Opcode::kLDFUNCTION) {
+    if (std::holds_alternative<ConstantObjectError>(
+            LiftConstantObjectInstruction(instruction)))
+      return ScalarError::kMalformedInstruction;
+    return AccumulatorDefinition();
+  }
   using abc::Opcode;
   switch (instruction.opcode) {
     case Opcode::kLDA_STR_ID16:
