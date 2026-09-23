@@ -5,6 +5,7 @@
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/indexed_read.h"
+#include "abcd/analysis/indexed_write.h"
 #include "abcd/analysis/lexical.h"
 #include "abcd/analysis/module_load.h"
 #include "abcd/analysis/named_read.h"
@@ -66,6 +67,12 @@ RegisterEffect EffectOf(const IndexedRead& value) {
   RegisterEffect effect;
   effect.reads[effect.read_count++] = value.receiver;
   effect.write = Accumulator{};
+  return effect;
+}
+RegisterEffect EffectOf(const IndexedWrite& value) {
+  RegisterEffect effect;
+  effect.reads[effect.read_count++] = value.object;
+  effect.reads[effect.read_count++] = Accumulator{};
   return effect;
 }
 RegisterEffect EffectOf(const OrdinaryCall& value) {
@@ -164,6 +171,9 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftIndexedRead(instruction, frame_size));
+      !Unsupported(result))
+    return result;
+  if (auto result = Adapt(LiftIndexedWrite(instruction, frame_size));
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftOrdinaryCall(instruction, frame_size));

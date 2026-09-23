@@ -11,7 +11,7 @@ format decoding but require a separate execution-semantics proof.
 | `DEFINEFUNC` narrow/wide | `FunctionCreation`: pool method, observable length, current-function home; target attributes/capture checked separately | Verified created functions only |
 | `DEFINEMETHOD` narrow/wide | `FunctionCreation`: pool method, observable length, accumulator home | Fresh-class constant static initializer or a proved native class accessor subsequently consumed by `DEFINEGETTERSETTERBYVALUE` |
 | `DEFINECLASSWITHBUFFER` narrow/wide | `ClassCreation`: constructor, literal, length, parent register | Ordinary unescaped class with proved absent heritage and supported constructor/members |
-| `DEFINEFIELDBYNAME`, `DEFINEPROPERTYBYNAME` | `OwnWrite`: string pool name, receiver register, accumulator value; both call `DefineField` | Constant primitive definitions on an unescaped record object, or proved static initializer on fresh class |
+| `DEFINEFIELDBYNAME`, `DEFINEPROPERTYBYNAME` | `OwnWrite`: string pool name, receiver register, accumulator value; both call `DefineField` | Constant or single-parent literal-node definitions on an unescaped record object, or proved static initializer on fresh class |
 | `CALLRUNTIME_DEFINEFIELDBYVALUE` | `DefineFieldByValue`: key/object registers, accumulator value; calls `DefineField`, preserves accumulator | Static initializer only when receiver is its own class and key is a proved string or nonnegative integer constant |
 | `CALLRUNTIME_DEFINEFIELDBYINDEX` | `DefineFieldByIndex`: unsigned 32-bit key, object register, accumulator value; calls `DefineField`, preserves accumulator | Static initializer on its own class; index rendered as a decimal computed property name |
 | `DEFINEGETTERSETTERBYVALUE` | `DefineAccessor`: object/key/getter/setter registers, accumulator enumerable flag; replaces accumulator with runtime result | Native get/set output for a fresh unescaped class/prototype, constant string key, one getter or setter method, false flag and proved v7 target/ABI/body |
@@ -48,9 +48,13 @@ record validates the full bytecode-to-ESM chain and its negative kind path.
 Disjoint class-buffer ordinary members can coexist with these later
 accessors; same-position key collisions and constant static fields combined
 with accessors remain conservatively rejected.
-The Immersive corpus still has 3/45 executable records: the UI entries with
+The Immersive corpus has 4/45 executable records after nested record literals
+admit `Constants`; the UI entries with
 accessors fail earlier at global/branch prelude instructions, so the synthetic
 oracle is not evidence of full real-app source coverage.
+
+Fresh object/array identity, buffered constants and dense indexed writes for
+record source are specified in [record-literals.md](record-literals.md).
 
 Next source work: handle the real UI record preludes and static-field/accessor
 ordering; recover private lexical names/brands; represent sendable classes without falsely

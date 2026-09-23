@@ -8,6 +8,7 @@
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <vector>
 
 #include "abcd/analysis/method_roles.h"
 
@@ -28,19 +29,29 @@ int main(int argc, char** argv) {
   constexpr std::uint32_t kText = 540;
   constexpr std::uint32_t kConfig = 560;
   constexpr std::uint32_t kAlias = 580;
+  constexpr std::uint32_t kBufferLiteral = 640;
+  constexpr std::uint32_t kId = 680;
+  constexpr std::uint32_t kParams = 700;
+  constexpr std::uint32_t kRoutes = 720;
   constexpr std::size_t kFileBytes = 1024;
   constexpr std::uint32_t kCodeHeaderBytes = 4;
   constexpr std::uint8_t kEntryArguments = 3;
-  constexpr std::uint8_t kLocalSlots = 1;
+  constexpr std::uint8_t kLocalSlots = 4;
   constexpr std::uint8_t kIntegerValue = 42;
-  constexpr std::array<std::uint8_t, 28> kInstructions{
+  std::vector<std::uint8_t> instructions{
       0x04, 0x61, 0,
       0x62, kIntegerValue, 0, 0, 0,
       0xdc, 0, 0, 0, 0,
       0x3e, 2, 0,
       0xdb, 0, 1, 0, 0,
       0x60, 0, 0x7c, 0,
-      0x7c, 1, 0x65};
+      0x7c, 1,
+      0x05, 0, 0x61, 1,
+      0x07, 0, 3, 0, 0x61, 2,
+      0x05, 0, 0x61, 3,
+      0x60, 3, 0xdc, 0, 4, 0, 2,
+      0x60, 2, 0x79, 0, 1, 0, 0,
+      0x60, 1, 0x7c, 2, 0x65};
   std::array<std::uint8_t, kFileBytes> bytes{};
   const auto word = [&](std::uint32_t at, std::uint32_t value) {
     for (std::size_t i = 0; i < sizeof(value); ++i)
@@ -49,6 +60,8 @@ int main(int argc, char** argv) {
   word(kPool, kAnswer);
   word(kPool + sizeof(std::uint32_t), kPrototype);
   word(kPool + 2 * sizeof(std::uint32_t), kText);
+  word(kPool + 3 * sizeof(std::uint32_t), kBufferLiteral);
+  word(kPool + 4 * sizeof(std::uint32_t), kParams);
   const auto string = [&](std::uint32_t at, std::string_view value) {
     bytes[at] = static_cast<std::uint8_t>(value.size() * 2 + 1);
     std::copy(value.begin(), value.end(), bytes.begin() + at + 1);
@@ -58,10 +71,21 @@ int main(int argc, char** argv) {
   string(kText, "plain");
   string(kConfig, "config");
   string(kAlias, "alias");
+  string(kId, "id");
+  string(kParams, "params");
+  string(kRoutes, "routes");
+  word(kBufferLiteral, 4);
+  bytes[kBufferLiteral + 4] =
+      static_cast<std::uint8_t>(abc::LiteralTag::kString);
+  word(kBufferLiteral + 5, kId);
+  bytes[kBufferLiteral + 9] =
+      static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
+  word(kBufferLiteral + 10, kIntegerValue);
   bytes[kEntryCode] = kLocalSlots;
   bytes[kEntryCode + 1] = kEntryArguments;
-  bytes[kEntryCode + 2] = kInstructions.size();
-  std::copy(kInstructions.begin(), kInstructions.end(),
+  Check(instructions.size() < UINT8_MAX);
+  bytes[kEntryCode + 2] = instructions.size();
+  std::copy(instructions.begin(), instructions.end(),
             bytes.begin() + kEntryCode + kCodeHeaderBytes);
   char path[] = "/tmp/abcd-record-object-XXXXXX";
   const int fd = mkstemp(path);
@@ -78,7 +102,7 @@ int main(int argc, char** argv) {
   header.file_size = bytes.size();
   header.layout = abc::DynamicLayout{};
   abc::MetadataIndex index;
-  index.regions.push_back({kRecord, kFileBytes, {}, {3, kPool}, {}, {}});
+  index.regions.push_back({kRecord, kFileBytes, {}, {5, kPool}, {}, {}});
   abc::RecordInfo record;
   record.offset = {kRecord};
   record.method_count = 1;
@@ -90,7 +114,8 @@ int main(int argc, char** argv) {
   entry.name_utf16_length = entry.name.size();
   entry.code = abc::CodeInfo{{kEntryCode}, {kEntryCode + kCodeHeaderBytes},
                              kLocalSlots, kEntryArguments,
-                             kInstructions.size(), 0};
+                             static_cast<std::uint32_t>(instructions.size()),
+                             0};
   index.methods.push_back(entry);
   const auto lookup = std::get<abc::MethodLookup>(
       abc::MethodLookup::Build(index.methods));
@@ -99,6 +124,7 @@ int main(int argc, char** argv) {
   abc::ModuleInfo module;
   module.local_exports.push_back({{kConfig}, {kConfig}});
   module.local_exports.push_back({{kAlias}, {kAlias}});
+  module.local_exports.push_back({{kRoutes}, {kRoutes}});
   std::ostringstream output;
   const auto result = source::WriteRecordProgram(
       file, header, index, lookup, record, module, roles, output);
@@ -112,6 +138,7 @@ int main(int argc, char** argv) {
   Check(output.str().find("[\"answer\"]: (42)") != std::string::npos);
   Check(output.str().find("[\"__proto__\"]: \"plain\"") !=
         std::string::npos);
+  Check(output.str().find("[\"params\"]: []") != std::string::npos);
   Check(std::get<std::size_t>(result) == output.str().size());
   source::RecordProgramBudget limited;
   limited.output.bytes = output.str().size() - 1;

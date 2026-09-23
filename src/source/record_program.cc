@@ -17,12 +17,15 @@
 #include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/named_read.h"
+#include "abcd/analysis/object_creation.h"
 #include "abcd/analysis/own_write.h"
+#include "abcd/analysis/indexed_write.h"
 #include "abcd/analysis/scalar.h"
 #include "abcd/source/created_function.h"
 #include "abcd/source/module_imports.h"
 #include "abcd/source/static_fields.h"
-#include "record_object.h"
+#include "record_buffer.h"
+#include "record_literal.h"
 
 namespace abcd::source {
 namespace {
@@ -40,7 +43,7 @@ struct Value {
     kTrue,
     kNull,
     kAtom,
-    kObject,
+    kLiteral,
     kPrototype
   } kind;
   std::size_t ordinal = 0;
@@ -57,10 +60,6 @@ struct CreatedMethodState {
   abc::ClassPlacement home = abc::ClassPlacement::kPrototype;
   std::uint8_t length = 0;
   bool consumed = false;
-};
-struct ObjectState {
-  std::vector<RecordObjectField> fields;
-  bool emitted = false;
 };
 class DiscardBuffer : public std::streambuf {
   std::streamsize xsputn(const char*, std::streamsize count) override {
@@ -229,9 +228,22 @@ class ProgramWriter {
         case Opcode::kCREATEEMPTYOBJECT:
           EmptyObject(instruction.decoded);
           break;
+        case Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16:
+        case Opcode::kCREATEOBJECTWITHBUFFER_IMM16_ID16:
+          BufferedObject(instruction.decoded);
+          break;
+        case Opcode::kCREATEEMPTYARRAY_IMM8:
+        case Opcode::kCREATEEMPTYARRAY_IMM16:
+          EmptyArray(instruction.decoded);
+          break;
         case Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8:
         case Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8:
           DefineObjectField(instruction.decoded);
+          break;
+        case Opcode::kSTOWNBYINDEX_IMM8_V8_IMM16:
+        case Opcode::kSTOWNBYINDEX_IMM16_V8_IMM16:
+        case Opcode::kWIDE_STOWNBYINDEX_PREF_V8_IMM32:
+          StoreArrayElement(instruction.decoded);
           break;
         case Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8:
         case Opcode::kDEFINECLASSWITHBUFFER_IMM16_ID16_ID16_IMM16_V8:
@@ -267,8 +279,9 @@ class ProgramWriter {
             if (!created.emitted) throw Fail(Error::kClass, pc_);
           for (const auto& method : created_methods_)
             if (!method.consumed) throw Fail(Error::kInitializer, pc_);
-          for (const auto& object : objects_)
-            if (!object.emitted) throw Fail(Error::kObject, pc_);
+          for (const auto& node : nodes_)
+            if (!node.attached && !node.emitted)
+              throw Fail(Error::kObject, pc_);
           if (!exports_.Complete()) throw Fail(Error::kExport, pc_);
           return written_;
         case Opcode::kNOP:
@@ -380,32 +393,94 @@ class ProgramWriter {
     return std::get<std::u16string>(std::move(decoded));
   }
   void EmptyObject(const abc::DecodedInstruction& instruction) {
-    if (instruction.operand_count != 0)
+    if (!std::holds_alternative<analysis::EmptyObjectCreation>(
+            analysis::LiftObjectCreation(instruction)))
       throw Fail(Error::kObject, pc_);
-    const auto id = objects_.size();
-    Append(objects_, ObjectState{});
-    accumulator_ = {Value::Kind::kObject, id};
+    NewLiteral(RecordLiteralKind::kObject);
   }
-  StaticAtom ObjectValue() {
+  void BufferedObject(const abc::DecodedInstruction& instruction) {
+    const auto lifted = analysis::LiftObjectCreation(instruction);
+    const auto* creation =
+        std::get_if<analysis::BufferedObjectCreation>(&lifted);
+    if (!creation) throw Fail(Error::kObject, pc_);
+    auto decoded = ReadRecordObjectBuffer(
+        file_, header_, index_, entry_.offset, creation->literal,
+        budget_.bytes, budget_.strings);
+    if (const auto* error = std::get_if<abc::MetadataError>(&decoded))
+      throw Fail(Metadata(*error), pc_);
+    if (const auto* error = std::get_if<abc::LiteralFailure>(&decoded))
+      throw Fail(error->kind == abc::LiteralError::kResourceLimit
+                     ? Error::kResourceLimit
+                     : error->kind == abc::LiteralError::kRead
+                           ? Error::kRead
+                           : error->kind == abc::LiteralError::kFileChanged
+                                 ? Error::kFileChanged
+                                 : Error::kObject,
+                 pc_);
+    if (const auto* error = std::get_if<RecordBufferError>(&decoded))
+      throw Fail(*error == RecordBufferError::kResourceLimit
+                     ? Error::kResourceLimit : Error::kObject,
+                 pc_);
+    auto buffer = std::get<BufferedRecordObject>(std::move(decoded));
+    if (buffer.retained_bytes > budget_.bytes)
+      throw Fail(Error::kResourceLimit, pc_);
+    budget_.bytes -= buffer.retained_bytes;
+    NewLiteral(RecordLiteralKind::kObject);
+    nodes_[accumulator_.ordinal].fields = std::move(buffer.fields);
+  }
+  void EmptyArray(const abc::DecodedInstruction& instruction) {
+    const auto lifted = analysis::LiftScalarInstruction(
+        instruction, registers_.size());
+    const auto* assignment = std::get_if<analysis::ScalarAssignment>(&lifted);
+    const auto* value = assignment
+                            ? std::get_if<analysis::ScalarValue>(
+                                  &assignment->expression)
+                            : nullptr;
+    if (!value || !std::holds_alternative<analysis::EmptyArray>(*value))
+      throw Fail(Error::kObject, pc_);
+    NewLiteral(RecordLiteralKind::kArray);
+  }
+  void NewLiteral(RecordLiteralKind kind) {
+    const auto id = nodes_.size();
+    Append(nodes_, RecordLiteralNode{kind});
+    accumulator_ = {Value::Kind::kLiteral, id};
+  }
+  RecordLiteralValue LiteralValue(std::size_t parent) {
     switch (accumulator_.kind) {
       case Value::Kind::kUndefined:
-        return StaticUndefined{};
+        return StaticAtom{StaticUndefined{}};
       case Value::Kind::kNull:
-        return StaticNull{};
+        return StaticAtom{StaticNull{}};
       case Value::Kind::kFalse:
-        return false;
+        return StaticAtom{false};
       case Value::Kind::kTrue:
-        return true;
+        return StaticAtom{true};
       case Value::Kind::kString:
-        return ReadPoolString({static_cast<std::uint32_t>(
-            accumulator_.ordinal)});
+        return StaticAtom{ReadPoolString({static_cast<std::uint32_t>(
+            accumulator_.ordinal)})};
       case Value::Kind::kAtom:
         if (accumulator_.ordinal >= atoms_.size()) break;
         return atoms_[accumulator_.ordinal];
+      case Value::Kind::kLiteral: {
+        const auto child = accumulator_.ordinal;
+        if (child <= parent || child >= nodes_.size() ||
+            nodes_[child].attached || nodes_[child].emitted)
+          break;
+        return RecordNodeRef{child};
+      }
       default:
         break;
     }
     throw Fail(Error::kObject, pc_);
+  }
+  void ChargeValue(const RecordLiteralValue& value) {
+    const auto* atom = std::get_if<StaticAtom>(&value);
+    if (!atom) return;
+    const auto* text = std::get_if<std::u16string>(atom);
+    if (!text) return;
+    if (text->capacity() > budget_.bytes / sizeof(char16_t))
+      throw Fail(Error::kResourceLimit, pc_);
+    budget_.bytes -= text->capacity() * sizeof(char16_t);
   }
   void DefineObjectField(const abc::DecodedInstruction& instruction) {
     const auto lifted = analysis::LiftOwnWrite(instruction, registers_.size());
@@ -413,38 +488,60 @@ class ProgramWriter {
     if (!write || write->kind != analysis::OwnWriteKind::kDefineField)
       throw Fail(Error::kObject, pc_);
     const auto object = registers_[write->object.value];
-    if (object.kind != Value::Kind::kObject ||
-        object.ordinal >= objects_.size() || objects_[object.ordinal].emitted)
+    if (object.kind != Value::Kind::kLiteral ||
+        object.ordinal >= nodes_.size() ||
+        nodes_[object.ordinal].kind != RecordLiteralKind::kObject ||
+        nodes_[object.ordinal].attached || nodes_[object.ordinal].emitted)
       throw Fail(Error::kObject, pc_);
-    RecordObjectField field{ReadPoolString(write->name), ObjectValue()};
+    RecordLiteralField field{ReadPoolString(write->name),
+                             LiteralValue(object.ordinal)};
     if (field.key.capacity() > budget_.bytes / sizeof(char16_t))
       throw Fail(Error::kResourceLimit, pc_);
     budget_.bytes -= field.key.capacity() * sizeof(char16_t);
-    if (const auto* text = std::get_if<std::u16string>(&field.value)) {
-      if (text->capacity() > budget_.bytes / sizeof(char16_t))
-        throw Fail(Error::kResourceLimit, pc_);
-      budget_.bytes -= text->capacity() * sizeof(char16_t);
-    }
-    Append(objects_[object.ordinal].fields, std::move(field));
+    ChargeValue(field.value);
+    const auto child = std::get_if<RecordNodeRef>(&field.value);
+    const auto child_id = child ? std::optional(child->id) : std::nullopt;
+    Append(nodes_[object.ordinal].fields, std::move(field));
+    if (child_id) nodes_[*child_id].attached = true;
   }
-  void EmitObject(std::size_t id) {
-    if (id >= objects_.size()) throw Fail(Error::kObject, pc_);
-    auto& object = objects_[id];
-    if (object.emitted) return;
-    Text("const $object");
+  void StoreArrayElement(const abc::DecodedInstruction& instruction) {
+    const auto lifted = analysis::LiftIndexedWrite(
+        instruction, registers_.size());
+    const auto* write = std::get_if<analysis::IndexedWrite>(&lifted);
+    if (!write) throw Fail(Error::kObject, pc_);
+    const auto array = registers_[write->object.value];
+    if (array.kind != Value::Kind::kLiteral ||
+        array.ordinal >= nodes_.size() ||
+        nodes_[array.ordinal].kind != RecordLiteralKind::kArray ||
+        nodes_[array.ordinal].attached || nodes_[array.ordinal].emitted ||
+        write->index != nodes_[array.ordinal].elements.size())
+      throw Fail(Error::kObject, pc_);
+    auto value = LiteralValue(array.ordinal);
+    ChargeValue(value);
+    const auto child = std::get_if<RecordNodeRef>(&value);
+    const auto child_id = child ? std::optional(child->id) : std::nullopt;
+    Append(nodes_[array.ordinal].elements, std::move(value));
+    if (child_id) nodes_[*child_id].attached = true;
+  }
+  void EmitLiteral(std::size_t id) {
+    if (id >= nodes_.size() || nodes_[id].attached)
+      throw Fail(Error::kObject, pc_);
+    if (nodes_[id].emitted) return;
+    Text("const $literal");
     Number(id);
     Text(" = ");
-    const auto result = WriteRecordObject(object.fields, output_,
-                                          {Remaining()});
+    const auto result = WriteRecordLiteral(nodes_, id, output_, {Remaining()});
     if (const auto* error = std::get_if<EmitError>(&result))
       throw Fail(*error == EmitError::kOutputLimit
                      ? Error::kOutputLimit
                      : *error == EmitError::kWrite ? Error::kWrite
                                                    : Error::kObject,
                  pc_);
+    if (std::holds_alternative<RecordLiteralError>(result))
+      throw Fail(Error::kObject, pc_);
     Account(std::get<std::size_t>(result));
     Text(";\n");
-    object.emitted = true;
+    nodes_[id].emitted = true;
   }
   void Class(const abc::BodyInstruction& instruction) {
     const auto lifted = analysis::LiftClassCreation(instruction.decoded);
@@ -659,7 +756,7 @@ class ProgramWriter {
     const auto* store = std::get_if<analysis::ModuleStore>(&lifted);
     if (!store || (accumulator_.kind != Value::Kind::kClass &&
                    accumulator_.kind != Value::Kind::kFunction &&
-                   accumulator_.kind != Value::Kind::kObject &&
+                   accumulator_.kind != Value::Kind::kLiteral &&
                    accumulator_.kind != Value::Kind::kUndefined))
       throw Fail(Error::kValue, pc_);
     if (accumulator_.kind == Value::Kind::kClass) {
@@ -668,8 +765,8 @@ class ProgramWriter {
       if (!classes_[accumulator_.ordinal].emitted)
         EmitClass(accumulator_.ordinal);
     }
-    if (accumulator_.kind == Value::Kind::kObject)
-      EmitObject(accumulator_.ordinal);
+    if (accumulator_.kind == Value::Kind::kLiteral)
+      EmitLiteral(accumulator_.ordinal);
     Text("$acc = ");
     if (accumulator_.kind == Value::Kind::kClass) {
       Text("$class");
@@ -677,8 +774,8 @@ class ProgramWriter {
     } else if (accumulator_.kind == Value::Kind::kFunction) {
       Text("$function");
       Number(accumulator_.ordinal);
-    } else if (accumulator_.kind == Value::Kind::kObject) {
-      Text("$object");
+    } else if (accumulator_.kind == Value::Kind::kLiteral) {
+      Text("$literal");
       Number(accumulator_.ordinal);
     } else {
       Text("void 0");
@@ -714,7 +811,7 @@ class ProgramWriter {
   std::vector<ClassState> classes_;
   std::vector<CreatedMethodState> created_methods_;
   std::vector<StaticAtom> atoms_;
-  std::vector<ObjectState> objects_;
+  std::vector<RecordLiteralNode> nodes_;
   Value accumulator_{Value::Kind::kUnknown};
   abc::CodeOffset pc_{};
   std::size_t function_count_ = 0;
