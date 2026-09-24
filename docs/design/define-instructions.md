@@ -55,11 +55,17 @@ oracle in `record_object_test` / `record_object.mjs`.
 The same bounded constant-only initializer reader now admits dynamic 12.0.6.
 The paired pasteboard `CommonConstants` ABC test resolves its initializer
 through the actual creation pool and verifies all three field names and
-values. The record interpreter now admits dynamic 12.0.6, while every entry,
-class and method still undergoes its ordinary semantic proof. The paired
-pasteboard record `CommonConstants` produces executable ESM checked by Node;
-other 12.0.6 records can and do refuse source output. Dynamic 12.0.2 remains
-unadmitted.
+values. The record interpreter now admits dynamic 12.0.6 and 12.0.2, while
+every entry, class and method still undergoes its ordinary semantic proof.
+The paired pasteboard record `CommonConstants` produces executable ESM checked
+by Node; other records can and do refuse source output. Dynamic 12.0.2
+admission uses the same typed instruction shapes and retains profile-specific
+refusals for unproven operations.
+
+The 12.0.2 constant-only initializer reader admits the paired MultiCommunity
+constant records after checking each instruction, receiver and field value.
+This admits five complete static-field records; it does not infer executable
+initializers from record metadata.
 
 `WriteClassMethod` emits native getter/setter syntax when the caller proves
 method kind and placement and the function ABI slot is unobservable.

@@ -489,8 +489,11 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
   if (rest && (function.syntax == CallableSyntax::kClassGetter ||
                function.syntax == CallableSyntax::kClassSetter))
     return FunctionEmitError::kLength;
+  // Historical 12.0.2 accepts only the fully proved rest prologue. Its
+  // neutral-default encoding is not yet admitted as source semantics.
   // A null constants pointer retains the existing pinned-v7 caller assertion.
   if (length_mismatch && constants &&
+      !(constants->header.profile == abc::ProfileId::kDynamic1202 && rest) &&
       constants->header.profile != abc::ProfileId::kDynamic1206 &&
       constants->header.profile != abc::ProfileId::kDynamic1301)
     return FunctionEmitError::kLength;

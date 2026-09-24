@@ -27,8 +27,8 @@ ABI parameter count when an exact rest prologue is absent and the body has no
 formal at the creation length. This changes native JS `.length` without
 changing the value passed to the bytecode body; the original body remains
 responsible for any real default expression, including its control flow and
-effects. Rest prologues retain their separate exact proof. The marker is
-limited to the admitted dynamic 12.0.6.0 and 13.0.1.0 profiles; getters and
+effects. Exact rest prologues also admit dynamic 12.0.2.0. The neutral-default
+marker remains limited to dynamic 12.0.6.0 and 13.0.1.0; getters and
 setters still reject length mismatches. A non-simple formal cannot contain a
 body-level strict directive, so ordinary function expressions inherit strict
 mode from an outer IIFE, arrows from their enclosing IIFE, and class members

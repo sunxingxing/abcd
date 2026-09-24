@@ -690,9 +690,10 @@ StaticFieldResult RecoverStaticFields(
     const abc::MetadataIndex& index, const abc::MethodInfo& method,
     std::size_t bytes, abc::StringBudget strings,
     const abc::ModuleInfo* module) {
-  // Both decoded profiles use DefineField for these admitted constant writes;
-  // keep other historical versions behind a separate semantic proof.
+  // These decoded profiles use DefineField for admitted constant writes;
+  // the reader still proves each instruction, receiver and field value.
   const bool proven_profile =
+      header.profile == abc::ProfileId::kDynamic1202 ||
       header.profile == abc::ProfileId::kDynamic1206 ||
       header.profile == abc::ProfileId::kDynamic1301;
   if (!proven_profile || !method.code)

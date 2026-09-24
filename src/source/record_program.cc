@@ -1084,7 +1084,8 @@ class ProgramWriter {
     }
   }
   void Construct(const abc::BodyInstruction& instruction) {
-    if (header_.profile != abc::ProfileId::kDynamic1206 &&
+    if (header_.profile != abc::ProfileId::kDynamic1202 &&
+        header_.profile != abc::ProfileId::kDynamic1206 &&
         header_.profile != abc::ProfileId::kDynamic1301)
       throw Fail(Error::kProfile, pc_);
     const auto lifted = analysis::LiftConstructorCall(
@@ -1411,12 +1412,12 @@ class ProgramWriter {
 
 bool SupportsRecordProgramProfile(abc::ProfileId profile) {
   switch (profile) {
+    case abc::ProfileId::kDynamic1202:
     case abc::ProfileId::kDynamic1206:
     case abc::ProfileId::kDynamic1301:
       return true;
     case abc::ProfileId::kDynamic9:
     case abc::ProfileId::kDynamic1102:
-    case abc::ProfileId::kDynamic1202:
     case abc::ProfileId::kDynamic2400:
     case abc::ProfileId::kStatic0107:
     case abc::ProfileId::kUnknown:

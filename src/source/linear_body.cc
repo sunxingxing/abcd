@@ -464,6 +464,7 @@ class BodyWriter {
           if (!operation || !names_.rest ||
               names_.rest->first_argument != operation->first_argument ||
               (constants_ &&
+               constants_->header.profile != abc::ProfileId::kDynamic1202 &&
                constants_->header.profile != abc::ProfileId::kDynamic1206 &&
                constants_->header.profile != abc::ProfileId::kDynamic1301))
             return Fail(BodyEmitError::kUnsupportedInstruction);

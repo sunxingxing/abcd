@@ -22,6 +22,9 @@ preflight/output, a Node Proxy construct-trap oracle (arguments, newTarget,
 throwing and nonconstructible targets), and actual Immersive record export.
 The latter now admits `HomeViewModel` and `RecommendViewModel`; it is not proof
 that all Immersive records or historical runtime profiles are sourceable.
+The dynamic 12.0.2 record writer also admits the validated decoded forms; the
+paired MultiCommunity `Logger` record uses the narrow form for its
+default-export instance.
 The post-change source-body probe over the 900-file local corpus processed
 402 dynamic files and skipped 498 classified static files with zero failures.
 It admitted 1,500,536 of 5,486,254 dynamic methods, 52 more than the preceding
