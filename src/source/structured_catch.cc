@@ -8,8 +8,10 @@
 
 #include "abcd/abc/control_transfer.h"
 #include "abcd/analysis/lexical.h"
+#include "branch_staged_calls.h"
 #include "branch_source_facts.h"
 #include "branch_value_proof.h"
+#include "catch_register_liveness.h"
 
 namespace abcd::source {
 namespace {
@@ -169,7 +171,11 @@ FunctionEmitResult WriteSegment(const abc::MethodBody& original,
                                 Segment range, ScalarNames names,
                                 std::ostream& output,
                                 LocalLexicalBudget budget,
-                                const MethodConstants* constants) {
+                                const MethodConstants* constants,
+                                const CatchRegisterLiveness& liveness) {
+  if (liveness.AllocatedBytes() > budget.bytes)
+    return FunctionEmitError::kResourceLimit;
+  budget.bytes -= liveness.AllocatedBytes();
   const auto built = BuildSegment(original, range, budget.bytes);
   if (const auto* error = std::get_if<BodyEmitFailure>(&built)) return *error;
   const auto& body = std::get<abc::MethodBody>(built);
@@ -189,11 +195,37 @@ FunctionEmitResult WriteSegment(const abc::MethodBody& original,
   if (const auto unsafe = ProveBranchValues(
           body, names.registers.size(), proof_budget, facts.value_facts))
     return Rebase(*unsafe, base);
+  {
+    const auto built_graph = analysis::BuildNormalFlow(
+        body, {proof_budget.bytes});
+    if (const auto* error = std::get_if<analysis::FlowFailure>(&built_graph)) {
+      auto failure = *error;
+      failure.offset.value += base;
+      return failure;
+    }
+    const auto& graph = std::get<analysis::NormalFlow>(built_graph);
+    const auto graph_bytes = graph.blocks.capacity() *
+                             sizeof(analysis::FlowBlock);
+    if (graph_bytes > proof_budget.bytes)
+      return FunctionEmitError::kResourceLimit;
+    const auto planned = BuildBranchStagedCalls(
+        body, graph, names.registers.size(), proof_budget.bytes - graph_bytes,
+        proof_budget.work);
+    if (const auto* error = std::get_if<BodyEmitFailure>(&planned))
+      return Rebase(*error, base);
+    for (const auto& call : std::get<BranchStagedCalls>(planned).calls) {
+      const auto original_call = range.begin + call.call;
+      if (!liveness.DeadAfter(original_call, call.callee))
+        return Fail(BodyEmitError::kUnsupportedInstruction,
+                    original.instructions[original_call].offset);
+    }
+  }
   AcyclicBudget ordered;
   ordered.bytes = budget.bytes;
   ordered.work = budget.work;
-  // Segment-local SSA cannot prove the callee dead across the catch edge.
-  ordered.allow_staged_calls = false;
+  // The same segment-local candidates were checked against exceptional
+  // liveness before enabling fusion in the ordered writer.
+  ordered.allow_staged_calls = true;
   if (ordered.max_nesting < kCatchWrapperNesting)
     return FunctionEmitError::kResourceLimit;
   ordered.max_nesting -= kCatchWrapperNesting;
@@ -224,6 +256,12 @@ FunctionEmitResult WriteStructuredCatch(
           names.registers.end())
     return BodyEmitFailure{BodyEmitError::kExpression, {}, {},
                            EmitError::kInvalidBinding};
+  const auto analyzed = CatchRegisterLiveness::Build(
+      body, shape.try_begin, shape.try_end, shape.handler_begin,
+      names.registers.size(), budget.bytes, budget.work);
+  if (const auto* error = std::get_if<BodyEmitFailure>(&analyzed))
+    return *error;
+  const auto& liveness = std::get<CatchRegisterLiveness>(analyzed);
   std::size_t written = 0;
   const auto append = [&](std::string_view text) -> std::optional<EmitError> {
     if (text.size() > budget.output.bytes - written)
@@ -237,7 +275,7 @@ FunctionEmitResult WriteStructuredCatch(
     auto remaining = budget;
     remaining.output.bytes -= written;
     const auto result = WriteSegment(body, segment, names, output, remaining,
-                                     constants);
+                                     constants, liveness);
     if (const auto* size = std::get_if<std::size_t>(&result)) written += *size;
     return result;
   };
