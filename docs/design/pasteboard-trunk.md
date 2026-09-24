@@ -1338,6 +1338,36 @@ coverage for schema compatibility, normalized error PCs, async ownership and
 resource classification is deferred. Nested child-position propagation,
 eliminated-wrapper coverage and full record completion remain open.
 
+### Preserve numeric unary facts through SSA loops (2026-09-25)
+
+Method 9193's async wrapper normalizes, but its loop-header register read at
+original PC 318 previously failed Language proof. The entry initializes the
+counter to integer zero; the backedge passes it through TONUMERIC at PC 485
+and INC at PC 491. Both operations were fixed Unknown definitions, poisoning
+the loop phi even though their input can be proven a non-NaN Number.
+
+The shared scalar value rule now preserves NonNaNNumber through NEG, INC,
+DEC, TONUMBER and TONUMERIC. This follows the pinned v7 interpreter's numeric
+fast paths: conversions preserve the number, and unary negation or addition/
+subtraction of one cannot turn a non-NaN number into NaN, including infinities
+and int32 boundary promotion. Arbitrary Language inputs still become Unknown;
+this does not authorize coercions or arbitrary arithmetic NaN payloads. Both
+sparse SSA propagation and the legacy linear lexical evaluator consume the
+same typed rule. Existing bounded monotone worklist complexity is unchanged.
+
+Both CLI targets compiled. ABC-only survey
+`build/pasteboard-semantic-numeric-unary.jsonl` reports
+`[0,0,27,1,1,8,0,12,113,54,3]`. Method 9193 now passes value proof and reaches
+the region-cycle gate. Body/template counts do not increase: general loop
+regions still need implementation. A debugger inspection separately confirmed
+that method 9165 is rejected by the single-try/single-handler ownership gate;
+its nested exception structure must not be discarded as an async wrapper.
+
+Tests and RSS remain paused. Regression coverage is still required for seeded
+loop phis, mixed unknown backedges, NaN inputs, infinities, signed zero and
+int32 overflow in both typed-IR and legacy scalar consumers. This increment
+does not claim complete async methods, records or source-style recovery.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

@@ -100,10 +100,26 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
   bool language = false;
   if (const auto* unary =
           std::get_if<UnaryExpression>(&assignment.expression)) {
-    // The pinned NEG int32 path returns int32 or a finite double for
-    // INT32_MIN. Its floating path only risks an impure tag for NaN input.
-    if (unary->op == UnaryOperator::kNegate)
-      return ValueRule{ValueRuleKind::kNonNaNNegate, {}};
+    // Pinned v7 interpreter-inl.cpp: NEG/INC/DEC keep a non-NaN Number
+    // non-NaN (including infinities and int32 overflow to double), while
+    // TONUMBER/TONUMERIC return numeric input unchanged. Preserve this fact
+    // through loop-carried SSA values; never extend it to arbitrary Language
+    // inputs, whose coercions or NaN payloads need separate proofs.
+    switch (unary->op) {
+      case UnaryOperator::kNegate:
+      case UnaryOperator::kIncrement:
+      case UnaryOperator::kDecrement:
+      case UnaryOperator::kToNumber:
+      case UnaryOperator::kToNumeric:
+        return ValueRule{ValueRuleKind::kNonNaNUnary, {}};
+      case UnaryOperator::kToBoolean:
+      case UnaryOperator::kLogicalNot:
+      case UnaryOperator::kTypeOf:
+      case UnaryOperator::kBitNot:
+      case UnaryOperator::kFalseOrZero:
+      case UnaryOperator::kTrueOrNonzeroNumber:
+        break;
+    }
     language = HasLanguageResult(unary->op);
   }
   if (const auto* binary =

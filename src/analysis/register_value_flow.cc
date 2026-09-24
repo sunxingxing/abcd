@@ -263,7 +263,7 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
         ValueKinds propagated = incoming;
         if (nodes[target].kind == Kind::kLanguageOperation ||
             nodes[target].kind == Kind::kStringAdd ||
-            nodes[target].kind == Kind::kNonNaNNegate) {
+            nodes[target].kind == Kind::kNonNaNUnary) {
           bool ready = true, language = true, string = false;
           bool non_nan_number = true;
           for (std::size_t i = 0; i < nodes[target].input_count; ++i) {
@@ -280,7 +280,7 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
           } else if (nodes[target].kind == Kind::kStringAdd) {
             propagated = string ? ValueKinds::String()
                                 : ValueKinds::Unknown();
-          } else if (nodes[target].kind == Kind::kNonNaNNegate) {
+          } else if (nodes[target].kind == Kind::kNonNaNUnary) {
             propagated = non_nan_number ? ValueKinds::NonNaNNumber()
                                         : ValueKinds::Unknown();
           } else {

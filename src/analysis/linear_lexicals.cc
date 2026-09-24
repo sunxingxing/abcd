@@ -398,7 +398,7 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
                                           : ValueKinds::Unknown();
             break;
           }
-          case detail::ValueRuleKind::kNonNaNNegate:
+          case detail::ValueRuleKind::kNonNaNUnary:
             if (access.read_count != 1) return fail(Error::kInstruction);
             state(*access.write) =
                 state(access.reads[0]).IsNonNaNNumber()

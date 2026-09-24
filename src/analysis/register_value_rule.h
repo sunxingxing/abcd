@@ -13,7 +13,7 @@ enum class ValueRuleKind {
   kJoin,
   kLanguageOperation,
   kStringAdd,
-  kNonNaNNegate
+  kNonNaNUnary
 };
 struct ValueRule {
   ValueRuleKind kind = ValueRuleKind::kFixed;
