@@ -330,9 +330,12 @@ class FunctionWriter {
       std::optional<PrintedTemplate> semantic_template;
       const bool ordinary_body =
           function_.syntax == CallableSyntax::kFunctionExpression ||
+          function_.syntax == CallableSyntax::kAsyncFunctionExpression ||
           function_.syntax == CallableSyntax::kArrowExpression ||
+          function_.syntax == CallableSyntax::kAsyncArrowExpression ||
           function_.syntax == CallableSyntax::kBaseConstructor ||
           function_.syntax == CallableSyntax::kClassMethod ||
+          function_.syntax == CallableSyntax::kAsyncClassMethod ||
           function_.syntax == CallableSyntax::kClassGetter ||
           function_.syntax == CallableSyntax::kClassSetter;
       // The wrapper already proves neutral-default .length adaptation. The
@@ -797,6 +800,21 @@ FunctionEmitResult WriteFunction(const BaseFunction& function,
   const auto syntax = function.attributes.kind == abc::FunctionKind::kAsync
                           ? CallableSyntax::kAsyncFunctionExpression
                           : CallableSyntax::kFunctionExpression;
+  if (syntax == CallableSyntax::kAsyncFunctionExpression) {
+    std::vector<abc::CodeOffset> origins;
+    const auto checked = ProveAsyncCompletion(body, function.frame, budget.bytes,
+                                              &origins);
+    if (const auto* error = std::get_if<FunctionEmitError>(&checked)) return *error;
+    const auto& normalized = std::get<abc::MethodBody>(checked);
+    budget.bytes -= normalized.instructions.capacity() * sizeof(abc::BodyInstruction) +
+                    origins.capacity() * sizeof(abc::CodeOffset);
+    auto scoped = constants ? std::optional<MethodConstants>(*constants) : std::nullopt;
+    if (scoped) scoped->source_pcs = origins;
+    return WriteCallable(
+        {function.frame, function.name, function.creation.length.value, syntax},
+        normalized, output, budget, scoped ? &*scoped : nullptr, methods,
+        captured_values);
+  }
   return WriteCallable(
       {function.frame, function.name, function.creation.length.value,
        syntax},
@@ -847,16 +865,20 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
             body, method.frame, budget.bytes))
       return *failure;
   if (syntax == CallableSyntax::kAsyncClassMethod) {
-    const auto checked = ProveAsyncCompletion(body, method.frame, budget.bytes);
+    std::vector<abc::CodeOffset> origins;
+    const auto checked = ProveAsyncCompletion(body, method.frame, budget.bytes, &origins);
     if (const auto* error = std::get_if<FunctionEmitError>(&checked))
       return *error;
     const auto& normalized = std::get<abc::MethodBody>(checked);
     budget.bytes -= normalized.instructions.capacity() *
-                    sizeof(abc::BodyInstruction);
+                    sizeof(abc::BodyInstruction) +
+                    origins.capacity() * sizeof(abc::CodeOffset);
+    auto scoped = constants ? std::optional<MethodConstants>(*constants) : std::nullopt;
+    if (scoped) scoped->source_pcs = origins;
     return WriteCallable(
         {method.frame, method.self_binding, method.member.length,
          syntax, method.key, method.placement},
-        normalized, output, budget, constants, methods,
+        normalized, output, budget, scoped ? &*scoped : nullptr, methods,
         analysis::CapturedValues::kReject);
   }
   return WriteCallable(
@@ -931,16 +953,20 @@ FunctionEmitResult WriteArrowFunction(
   if (function.attributes.kind == abc::FunctionKind::kAsyncArrow) {
     // The pinned compiler wraps no-await async arrows in a promise completion
     // region. Remove it only after proving the entire wrapper shape.
-    const auto checked = ProveAsyncCompletion(body, function.frame, budget.bytes);
+    std::vector<abc::CodeOffset> origins;
+    const auto checked = ProveAsyncCompletion(body, function.frame, budget.bytes, &origins);
     if (const auto* error = std::get_if<FunctionEmitError>(&checked))
       return *error;
     const auto& normalized = std::get<abc::MethodBody>(checked);
     budget.bytes -= normalized.instructions.capacity() *
-                    sizeof(abc::BodyInstruction);
+                    sizeof(abc::BodyInstruction) +
+                    origins.capacity() * sizeof(abc::CodeOffset);
+    auto scoped = constants ? std::optional<MethodConstants>(*constants) : std::nullopt;
+    if (scoped) scoped->source_pcs = origins;
     return WriteCallable(
         {function.frame, function.name, function.creation.length.value,
          CallableSyntax::kAsyncArrowExpression},
-        normalized, output, budget, constants, nullptr, captured_values);
+        normalized, output, budget, scoped ? &*scoped : nullptr, nullptr, captured_values);
   }
   return WriteCallable(
       {function.frame, function.name, function.creation.length.value,

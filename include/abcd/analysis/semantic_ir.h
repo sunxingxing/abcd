@@ -87,6 +87,9 @@ struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;
   SemanticEffects effects;
+  // Normalized control-flow PC stays above; generated positions use this
+  // original bytecode provenance when an owning transformation supplied it.
+  std::optional<abc::CodeOffset> origin;
 };
 struct SemanticMethod {
   std::vector<SemanticInstruction> instructions;

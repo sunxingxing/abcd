@@ -87,6 +87,9 @@ struct MethodConstants {
   // expansion context may propagate it to created-function descendants.
   const abc::MethodLookup* leaf_methods = nullptr;
   CreationExpansion* expansion = nullptr;
+  // Optional owner-verified normalized-body index -> original ABC PC mapping.
+  // Borrowed only for synchronous emission; child methods never inherit it.
+  std::span<const abc::CodeOffset> source_pcs;
 };
 
 // Emits statements inside a function, not a wrapper or record. Requires a

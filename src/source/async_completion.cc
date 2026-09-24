@@ -38,7 +38,8 @@ bool TouchesRegister(const abc::BodyInstruction& instruction,
 }  // namespace
 AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
                                      const abc::FrameLayout& frame,
-                                     std::size_t bytes) {
+                                     std::size_t bytes,
+                                     std::vector<abc::CodeOffset>* source_pcs) {
   using abc::Opcode;
   const auto& sites = body.instructions;
   if (sites.size() < 7 || body.tries.size() != 1 ||
@@ -84,7 +85,9 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       rejected != promise)
     return FunctionEmitError::kKind;
   const auto retained = handler - 3;
-  if (retained > bytes / sizeof(abc::BodyInstruction))
+  const auto site_bytes = sizeof(abc::BodyInstruction) +
+                         (source_pcs ? sizeof(abc::CodeOffset) : 0);
+  if (retained > bytes / site_bytes)
     return FunctionEmitError::kResourceLimit;
   const auto& region = body.tries[0];
   const auto& catch_handler = body.handlers[0];
@@ -117,11 +120,23 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
                                sites.begin() + enter + 2,
                                sites.begin() + handler - 2);
     source.instructions.push_back(sites[handler - 1]);
+    std::vector<abc::CodeOffset> origins;
+    if (source_pcs) {
+      const auto remaining = bytes - source.instructions.capacity() *
+                                     sizeof(abc::BodyInstruction);
+      if (retained > remaining / sizeof(abc::CodeOffset))
+        return FunctionEmitError::kResourceLimit;
+      origins.reserve(retained);
+      if (origins.capacity() > remaining / sizeof(abc::CodeOffset))
+        return FunctionEmitError::kResourceLimit;
+      for (const auto& site : source.instructions) origins.push_back(site.offset);
+    }
     std::uint32_t next_pc = 0;
     for (auto& site : source.instructions) {
       site.offset = abc::CodeOffset{next_pc};
       next_pc += site.decoded.size;
     }
+    if (source_pcs) *source_pcs = std::move(origins);
     return source;
   } catch (const std::bad_alloc&) {
     return FunctionEmitError::kResourceLimit;

@@ -10,6 +10,9 @@
 
 namespace abcd::source {
 namespace {
+abc::CodeOffset SourcePc(const analysis::SemanticInstruction& instruction) {
+  return instruction.origin.value_or(instruction.pc);
+}
 SourceFailure Fail(SourceError kind, abc::CodeOffset pc = {}) {
   return {kind, pc};
 }
@@ -349,7 +352,7 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
         if (position && module_fact &&
             proof.module_reads[module_fact - 1].proof == analysis::ModuleReadProof::kGuarded &&
             proof.module_reads[module_fact - 1].instruction.value == position - 1)
-          previous_origin = method.instructions[position - 1].pc;
+          previous_origin = SourcePc(method.instructions[position - 1]);
       } else if (const auto* read =
                      std::get_if<analysis::NamedRead>(&instruction.operation)) {
         if (!SameSlot(effect.normal_registers.write,
@@ -446,8 +449,8 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
         if (spill && reload) {
           ast.statements[*spill].operation = analysis::NoOperation{};
           ast.statements[*reload].operation = analysis::NoOperation{};
-          fused_spill = method.instructions[*spill].pc;
-          fused_reload = method.instructions[*reload].pc;
+          fused_spill = SourcePc(method.instructions[*spill]);
+          fused_reload = SourcePc(method.instructions[*reload]);
           spill_distance = i - *spill;
           reload_distance = i - *reload;
         }
@@ -464,7 +467,7 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
           spill_distance = 0;
           reload_distance = 0;
         } else {
-          fused_read = preceding.pc;
+          fused_read = SourcePc(preceding);
           read_distance = i - property;
           operation = SourceAssignment{
               analysis::ScalarSlot{analysis::Accumulator{}},
@@ -492,7 +495,7 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
       } else {
         return Fail(SourceError::kUnsupportedOperation, instruction.pc);
       }
-      ast.statements.push_back({instruction.pc, std::move(operation), fused_read,
+      ast.statements.push_back({SourcePc(instruction), std::move(operation), fused_read,
                                 fused_spill, fused_reload, read_distance,
                                 spill_distance, reload_distance, previous_origin});
       if (!IsPrivateValue(instruction.operation)) last_effect = position;

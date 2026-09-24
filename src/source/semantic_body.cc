@@ -21,8 +21,14 @@ auto BuildBody(
     return SourceFailure{SourceError::kInvalidEffect, {}};
   auto lifted = analysis::BuildSemanticMethod(
       body, constants.header.profile, frame.registers, budget);
-  const auto* method = std::get_if<analysis::SemanticMethod>(&lifted);
+  auto* method = std::get_if<analysis::SemanticMethod>(&lifted);
   if (!method) return std::get<analysis::SemanticFailure>(lifted);
+  if (!constants.source_pcs.empty()) {
+    if (constants.source_pcs.size() != method->instructions.size())
+      return SourceFailure{SourceError::kInvalidEffect, {}};
+    for (std::size_t i = 0; i < method->instructions.size(); ++i)
+      method->instructions[i].origin = constants.source_pcs[i];
+  }
   std::vector<analysis::LanguageLoadFact> initialized_modules;
   if (constants.module && constants.global_scope &&
       constants.global_scope->module_exports) {

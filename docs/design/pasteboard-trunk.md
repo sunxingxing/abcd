@@ -1004,6 +1004,38 @@ paused. Deferred regressions cover prefixed Builder exports, first-candidate
 refusal, later duplicate candidates, external entry edges and live transient
 registers.
 
+## No-Await Async Bodies and Original PCs
+
+The existing no-await completion-wrapper proof now supplies an optional typed
+normalized-instruction-to-original-PC vector. Its storage shares the method
+normalization budget. Async function, async method and async arrow owners
+retain that vector through synchronous emission and admit the normalized body
+to the generic path. Created descendants construct their own method context;
+they cannot inherit a parent's PC map.
+
+Semantic instructions retain normalized CFG positions separately from original
+PC provenance. AST statements, fused getter/spill/reload positions and fused
+guard positions take the original provenance before printing. This is not
+reconstruction from JS text. The normalized body still has dense PCs for the
+existing CFG validator. Removed promise-wrapper operations are represented by
+native async callable semantics, not separate statement spans; wrapper-level
+and descendant-internal generated mapping remains incomplete.
+
+The proof continues to require the exact single catch/reject completion tail,
+private promise register, straight-line no-await body and verified callable
+kind. Method 7421 has real await/suspend/resume instructions and is deliberately
+not admitted through this transformation. General suspension and exceptional
+regions still need their own IR/control-flow recovery.
+
+Both CLI tools compiled. ABC-only record export at
+`build/pasteboard-source-async-trunk` has unchanged complete-record statuses
+and rejection sites. This integration is not claimed as new corpus coverage
+or runtime equivalence evidence; the detached raw-method survey does not yet
+normalize async wrappers. Tests and RSS tracking remain paused. Deferred
+checks include all three callable forms, promise fulfillment/rejection,
+original-PC fusion after normalization, nested method provenance isolation,
+resource exhaustion, actual-await refusal and malformed completion tails.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial
