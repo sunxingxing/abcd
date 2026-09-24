@@ -130,6 +130,13 @@ struct SemanticBudget {
   std::uint64_t work = kDefaultSemanticWork;
 };
 using SemanticResult = std::variant<SemanticMethod, SemanticFailure>;
+using InstructionLift = std::variant<SemanticInstruction, SemanticFailure>;
+
+// Same raw-instruction lifting used by BuildSemanticMethod, without normal
+// CFG/SSA admission. Does not remove handlers or infer async ownership.
+[[nodiscard]] InstructionLift LiftSemanticInstruction(
+    const abc::BodyInstruction& site, abc::ProfileId profile,
+    std::uint64_t frame_size);
 
 // One shared admission boundary for typed lifting, normal CFG and register
 // SSA. It does not claim source equivalence, exception-flow SSA, or that a

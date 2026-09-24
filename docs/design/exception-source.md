@@ -23,6 +23,21 @@ normalizer only removes a proven single implicit catch/reject wrapper.
 
 ## Remaining Integration
 
+Instruction-level edge selection is now available through
+`LiftSemanticInstruction` and `ResolveExceptionEdge`. The former is shared by
+the normal CFG/SSA builder, not a second opcode semantics implementation. The
+latter queries the existing dispatch index and returns a typed handler target
+or propagation to the caller, the instruction's pre-write register boundary,
+and either `ThrownValue` or `PendingException`. Its lookup is O(log R), without
+allocating an edge collection. The caller still owns CFG splitting, catch-entry
+definitions and environment-state proof; this API does not supply them.
+
+`abc_semantic --instructions` now publishes these associations even when the
+whole method is not source-admitted. Unsupported lifting is an explicit error,
+not an absent exceptional effect interpreted as `kImpossible`. Dispatch-index
+failure is reported separately. Raw suspension/settlement instructions retain
+their coroutine description but are not granted recovered async semantics.
+
 1. Use the existing bounded `BuildExceptionDispatch` index, which preserves
    encoded handler priority. Do not sort overlapping try regions and thereby
    change selected handlers.
@@ -52,6 +67,16 @@ debugger. Removing both regions would suppress observable inner handling and
 is not an acceptable shortcut.
 
 ## Verification Status
+
+After edge integration, both CLI targets compiled and the ABC-only all-record
+survey `build/pasteboard-semantic-exception-edges.jsonl` retained the counts
+below. In `build/pasteboard-9165-exception-edges.jsonl`, PC 30 selects outer
+handler 1003; PC 46 selects inner handler 994; explicit throw PC 149 selects
+994 with accumulator payload; the function creation at handler PC 994 selects
+outer handler 1003 if it throws. Raw await PC 123 remains unsupported lifting,
+not falsely nonthrowing. These observations establish edge selection only,
+not exception-aware SSA or successful try/catch source recovery. Read-only
+review found no concrete defect; tests and RSS remain paused.
 
 Both CLI targets compiled after explicit-throw integration. ABC-only survey
 `build/pasteboard-semantic-throw.jsonl` retains stage counts

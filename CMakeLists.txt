@@ -44,6 +44,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/branch_condition.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_ir.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_value_rule.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_region.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/exception_edge.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_validation.cc
   src/analysis/semantic_locals.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/constant_object.cc)

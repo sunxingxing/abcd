@@ -288,6 +288,33 @@ SemanticEffects Effects(const SemanticOperation& operation,
 }
 }  // namespace
 
+InstructionLift LiftSemanticInstruction(const abc::BodyInstruction& site,
+                                        abc::ProfileId profile,
+                                        std::uint64_t frame_size) {
+  switch (profile) {
+    case abc::ProfileId::kDynamic1202:
+    case abc::ProfileId::kDynamic1206:
+    case abc::ProfileId::kDynamic1301:
+      break;
+    case abc::ProfileId::kUnknown:
+    case abc::ProfileId::kDynamic9:
+    case abc::ProfileId::kDynamic1102:
+    case abc::ProfileId::kDynamic2400:
+    case abc::ProfileId::kStatic0107:
+      return Fail(SemanticError::kUnsupportedProfile, site.offset);
+  }
+  auto operation = LiftOperation(site, frame_size);
+  if (const auto* failure = std::get_if<SemanticFailure>(&operation)) return *failure;
+  const auto registers = LiftRegisterEffect(site.decoded, frame_size);
+  if (const auto* error = std::get_if<ScalarError>(&registers))
+    return Fail(*error == ScalarError::kUnsupportedOpcode
+                    ? SemanticError::kUnsupportedInstruction
+                    : SemanticError::kMalformedInstruction, site.offset);
+  auto semantic = std::get<SemanticOperation>(std::move(operation));
+  auto effects = Effects(semantic, std::get<RegisterEffect>(registers));
+  return SemanticInstruction{site.offset, std::move(semantic), effects};
+}
+
 SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
                                    abc::ProfileId profile,
                                    std::uint64_t frame_size,
@@ -378,18 +405,10 @@ SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
       instructions.push_back({site.offset, std::move(operation), effects});
       continue;
     }
-    auto operation = LiftOperation(site, frame_size);
-    if (const auto* failure = std::get_if<SemanticFailure>(&operation))
+    auto lifted = LiftSemanticInstruction(site, profile, frame_size);
+    if (const auto* failure = std::get_if<SemanticFailure>(&lifted))
       return *failure;
-    const auto registers = LiftRegisterEffect(site.decoded, frame_size);
-    if (const auto* error = std::get_if<ScalarError>(&registers))
-      return Fail(*error == ScalarError::kUnsupportedOpcode
-                      ? SemanticError::kUnsupportedInstruction
-                      : SemanticError::kMalformedInstruction,
-                  site.offset);
-    auto semantic = std::get<SemanticOperation>(std::move(operation));
-    auto effects = Effects(semantic, std::get<RegisterEffect>(registers));
-    instructions.push_back({site.offset, std::move(semantic), effects});
+    instructions.push_back(std::get<SemanticInstruction>(std::move(lifted)));
   }
   if (next_await != awaits.size() || next_mode != awaits.size())
     return Fail(SemanticError::kMalformedInstruction);

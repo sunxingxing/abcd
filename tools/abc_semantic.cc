@@ -18,6 +18,7 @@
 #include "abcd/analysis/coroutine.h"
 #include "abcd/analysis/await_region.h"
 #include "abcd/analysis/semantic_ir.h"
+#include "abcd/analysis/exception_edge.h"
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/corpus/abc_file.h"
 #include "abcd/source/semantic_source.h"
@@ -116,6 +117,10 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     return Fail(InspectError::kBody, failure.offset.value);
   }
   if (instructions) {
+    constexpr std::size_t kDispatchBytes = 16 * 1024 * 1024;
+    const auto dispatched = analysis::BuildExceptionDispatch(
+        *body, header->profile, {kDispatchBytes});
+    const auto* dispatch = std::get_if<analysis::ExceptionDispatch>(&dispatched);
     constexpr std::size_t kAwaitRegionBytes = 1024 * 1024;
     const auto awaited = analysis::FindAwaitRegions(
         *body, header->profile, code.registers + code.arguments,
@@ -169,6 +174,49 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
           {"opcode", static_cast<unsigned>(site.decoded.opcode)},
           {"operands", std::move(operands)}};
       DescribeCoroutine(output, site.decoded, code.registers + code.arguments);
+      const auto semantic = analysis::LiftSemanticInstruction(
+          site, header->profile, code.registers + code.arguments);
+      if (const auto* lifted = std::get_if<analysis::SemanticInstruction>(&semantic)) {
+        output["exceptional_completion"] =
+            static_cast<unsigned>(lifted->effects.exceptional);
+        if (dispatch) {
+          if (const auto edge = analysis::ResolveExceptionEdge(*lifted, *dispatch)) {
+            nlohmann::json exception{{"register_state_before_pc", edge->before.value}};
+            if (edge->target) {
+              exception["try"] = edge->target->region.value;
+              exception["handler"] = edge->target->handler.value;
+              exception["handler_pc"] = edge->target->handler_pc.value;
+            } else {
+              exception["propagates_to_caller"] = true;
+            }
+            if (const auto* thrown = std::get_if<analysis::ThrownValue>(&edge->exception)) {
+              // Raw throw payloads are VM slots. Refuse unhandled payloads at
+              // this boundary instead of silently omitting their identity.
+              exception["explicit_throw"] = true;
+              if (std::holds_alternative<analysis::Accumulator>(thrown->value))
+                exception["value"] = Slot(analysis::Accumulator{});
+              else if (const auto* reg = std::get_if<abc::RegisterId>(&thrown->value))
+                exception["value"] = Slot(*reg);
+              else
+                return FailStage(InspectError::kSemantic,
+                    static_cast<unsigned>(analysis::SemanticError::kMalformedInstruction),
+                    site.offset.value);
+            } else {
+              exception["pending_exception"] = true;
+            }
+            output["exception_edge"] = std::move(exception);
+          }
+        }
+      } else {
+        output["semantic_error"] = static_cast<unsigned>(
+            std::get<analysis::SemanticFailure>(semantic).kind);
+      }
+      if (!dispatch && site.offset == body->instructions.front().offset) {
+        const auto& failure = std::get<analysis::DispatchFailure>(dispatched);
+        output["exception_dispatch_failure"] = {
+            {"kind", static_cast<unsigned>(failure.kind)},
+            {"pc", failure.offset.value}};
+      }
       if (regions && next_region < regions->size() &&
           (*regions)[next_region].await == site.offset) {
         const auto& region = (*regions)[next_region++];
