@@ -60,6 +60,11 @@ class BodyWriter {
   BodyEmitResult Instruction(const abc::BodyInstruction& instruction) {
     return Sequence(std::span(&instruction, 1), true, false);
   }
+  BodyEmitResult Segment(std::span<const abc::BodyInstruction> instructions,
+                         std::size_t first, bool initialized,
+                         bool terminal) {
+    return Sequence(instructions, initialized, terminal, first);
+  }
   BodyEmitResult Invocation(const NamedInvocation& invocation,
                             abc::CodeOffset offset) {
     offset_ = offset;
@@ -92,12 +97,31 @@ class BodyWriter {
   }
 
   BodyEmitResult StagedCallEnd(const StagedNamedInvocation& invocation,
-                             abc::CodeOffset offset) {
+                              abc::CodeOffset offset) {
     offset_ = offset;
     try {
       Text("return ");
       Expression(ScalarValue{*invocation.invoke.At(0)});
       Text(";\n})()");
+      for (std::uint32_t i = 1;
+           i < invocation.invoke.Count() && !error_; ++i) {
+        Text(", ");
+        Expression(ScalarValue{*invocation.invoke.At(i)});
+      }
+      Text(");\n");
+      if (error_) return *error_;
+      return written_;
+    } catch (const std::ios_base::failure&) {
+      return BodyEmitFailure{BodyEmitError::kExpression, offset_, {},
+                             EmitError::kWrite};
+    }
+  }
+
+  BodyEmitResult StagedCallClose(const StagedNamedInvocation& invocation,
+                                abc::CodeOffset offset) {
+    offset_ = offset;
+    try {
+      Text("})()");
       for (std::uint32_t i = 1;
            i < invocation.invoke.Count() && !error_; ++i) {
         Text(", ");
@@ -790,6 +814,13 @@ BodyEmitResult WriteStagedCallEnd(
       .StagedCallEnd(invocation, offset);
 }
 
+BodyEmitResult WriteStagedCallClose(
+    const StagedNamedInvocation& invocation, abc::CodeOffset offset,
+    ScalarNames names, std::ostream& output, EmitBudget budget) {
+  return BodyWriter(names, output, budget, nullptr, {})
+      .StagedCallClose(invocation, offset);
+}
+
 BodyEmitResult WriteNamedInvocation(const analysis::NamedInvocation& invocation,
                                     abc::CodeOffset offset, ScalarNames names,
                                     std::ostream& output, EmitBudget budget,
@@ -853,5 +884,14 @@ BodyEmitResult WriteOrderedBody(const abc::MethodBody& body,
   if (std::holds_alternative<BodyEmitFailure>(checked)) return checked;
   return BodyWriter(names, output, budget, constants, object_budget, facts)
       .Ordered(body, graph, flow);
+}
+
+BodyEmitResult WriteBranchSegment(
+    std::span<const abc::BodyInstruction> instructions, std::size_t first,
+    bool initialized, bool terminal, ScalarNames names,
+    std::ostream& output, EmitBudget budget,
+    const MethodConstants* constants, const BranchSourceFacts& facts) {
+  return BodyWriter(names, output, budget, constants, {}, &facts)
+      .Segment(instructions, first, initialized, terminal);
 }
 }  // namespace abcd::source

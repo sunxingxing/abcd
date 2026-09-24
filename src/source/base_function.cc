@@ -24,6 +24,7 @@
 #include "branch_source_facts.h"
 #include "constructor_fields.h"
 #include "function_template.h"
+#include "staged_branch_call.h"
 
 namespace abcd::source {
 namespace {
@@ -31,6 +32,7 @@ enum class CallableSyntax {
   kFunctionExpression,
   kAsyncFunctionExpression,
   kArrowExpression,
+  kAsyncArrowExpression,
   kBaseConstructor,
   kClassMethod,
   kAsyncClassMethod,
@@ -48,6 +50,10 @@ struct CallableShape {
   std::u16string_view arrow_name{};
   ParameterForm parameters = ParameterForm::kFixed;
 };
+bool IsArrowSyntax(CallableSyntax syntax) {
+  return syntax == CallableSyntax::kArrowExpression ||
+         syntax == CallableSyntax::kAsyncArrowExpression;
+}
 constexpr std::size_t kIndexDigits =
     std::numeric_limits<std::uint32_t>::digits10 + 1;
 using RegisterName = std::array<char, kIndexDigits + 2>;
@@ -239,14 +245,15 @@ class FunctionWriter {
         Text("](");
       } else if (function_.syntax == CallableSyntax::kBaseConstructor) {
         Text("constructor(");
-      } else if (function_.syntax == CallableSyntax::kArrowExpression) {
+      } else if (IsArrowSyntax(function_.syntax)) {
         // A computed data-property name applies SetFunctionName without a
         // mutable intrinsic; arrow IIFEs retain lexical this/new.target.
         Text(non_simple_parameters
                  ? "(() => {\n\"use strict\";\nconst $arrow = ({["
                  : "(() => {\nconst $arrow = ({[");
         ArrowName();
-        Text("]: (");
+        Text(function_.syntax == CallableSyntax::kAsyncArrowExpression
+                 ? "]: async (" : "]: (");
       } else {
         Text(function_.syntax == CallableSyntax::kAsyncFunctionExpression
                  ? "(async function " : "(function ");
@@ -264,7 +271,7 @@ class FunctionWriter {
             i == function_.length)
           Text(" = void 0");
       }
-      Text(function_.syntax == CallableSyntax::kArrowExpression
+      Text(IsArrowSyntax(function_.syntax)
                ? non_simple_parameters ? ") => {\nlet $acc;\n"
                                 : ") => {\n\"use strict\";\nlet $acc;\n"
                : non_simple_parameters ? ") {\nlet $acc;\n"
@@ -280,14 +287,14 @@ class FunctionWriter {
           Text(function_.syntax == CallableSyntax::kClassGetter ||
                        function_.syntax == CallableSyntax::kClassSetter
                    ? "void 0"
-                   : function_.syntax == CallableSyntax::kArrowExpression
+                   : IsArrowSyntax(function_.syntax)
                          ? "$arrow"
                          : function_.name);
         } else if (frame.new_target == slot) {
-          if (function_.syntax != CallableSyntax::kArrowExpression)
+          if (!IsArrowSyntax(function_.syntax))
             Text(" = new.target");
         } else if (frame.this_value == slot) {
-          if (function_.syntax != CallableSyntax::kArrowExpression)
+          if (!IsArrowSyntax(function_.syntax))
             Text(" = this");
         } else if (i >= frame.first_parameter.value) {
           Text(" = ");
@@ -358,10 +365,16 @@ class FunctionWriter {
                     body, names_.registers.size(), proof_budget,
                     facts.value_facts))
               return *unsafe;
+            const auto staged = analysis::MatchTailNamedInvocation(
+                body, names_.registers.size());
             result = std::visit(
                 [](auto value) -> FunctionEmitResult { return value; },
-                WriteCapturedBranchBody(body, names_, output_, ordered_budget,
-                                        body_constants, facts));
+                staged ? WriteStagedBranchCall(
+                             body, *staged, names_, output_, body_budget,
+                             body_constants, facts)
+                       : WriteCapturedBranchBody(
+                             body, names_, output_, ordered_budget,
+                             body_constants, facts));
           }
         }
       }
@@ -369,7 +382,7 @@ class FunctionWriter {
         written_ += *bytes;
       else
         return result;
-      if (function_.syntax == CallableSyntax::kArrowExpression) {
+      if (IsArrowSyntax(function_.syntax)) {
         Text("}})[");
         ArrowName();
         Text("];\nreturn $arrow;\n})()");
@@ -493,7 +506,7 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
   // private source namespace; never let a supplied function name shadow it.
   CaptureDiscard buffer;
   std::ostream discard(&buffer);
-  if (function.syntax != CallableSyntax::kArrowExpression) {
+  if (!IsArrowSyntax(function.syntax)) {
     if (function.name.starts_with('$')) return FunctionEmitError::kName;
     const auto name_check =
         WriteScalarExpression(analysis::ScalarValue{analysis::Accumulator{}},
@@ -546,7 +559,7 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
       }
     }
     std::u16string arrow_name;
-    if (function.syntax == CallableSyntax::kArrowExpression) {
+    if (IsArrowSyntax(function.syntax)) {
       constexpr unsigned char kAsciiLimit = 0x80;
       if (function.name.size() > budget.bytes / sizeof(char16_t))
         return FunctionEmitError::kResourceLimit;
@@ -585,6 +598,7 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
         case CallableSyntax::kAsyncClassMethod:
           return function.name;
         case CallableSyntax::kArrowExpression:
+        case CallableSyntax::kAsyncArrowExpression:
           return "$arrow";
         case CallableSyntax::kClassGetter:
         case CallableSyntax::kClassSetter:
@@ -770,13 +784,28 @@ FunctionEmitResult WriteArrowFunction(
           analysis::HomeObjectInput::kCurrentFunction)
     return FunctionEmitError::kCreation;
   if (function.attributes.sendable) return FunctionEmitError::kSendable;
-  if (function.attributes.kind != abc::FunctionKind::kArrow)
+  if (function.attributes.kind != abc::FunctionKind::kArrow &&
+      function.attributes.kind != abc::FunctionKind::kAsyncArrow)
     return FunctionEmitError::kKind;
   // Pinned interpreter Execute copies call-info this/newTarget into ABI slots.
   // A native arrow cannot expose those dynamic slots; lexical accesses use
   // separate environment operations and are handled by the body writer.
   if (ObservesArrowCallContext(body, function.frame))
     return FunctionEmitError::kFrame;
+  if (function.attributes.kind == abc::FunctionKind::kAsyncArrow) {
+    // The pinned compiler wraps no-await async arrows in a promise completion
+    // region. Remove it only after proving the entire wrapper shape.
+    const auto checked = ProveAsyncCompletion(body, function.frame, budget.bytes);
+    if (const auto* error = std::get_if<FunctionEmitError>(&checked))
+      return *error;
+    const auto& normalized = std::get<abc::MethodBody>(checked);
+    budget.bytes -= normalized.instructions.capacity() *
+                    sizeof(abc::BodyInstruction);
+    return WriteCallable(
+        {function.frame, function.name, function.creation.length.value,
+         CallableSyntax::kAsyncArrowExpression},
+        normalized, output, budget, constants, nullptr, captured_values);
+  }
   return WriteCallable(
       {function.frame, function.name, function.creation.length.value,
        CallableSyntax::kArrowExpression},

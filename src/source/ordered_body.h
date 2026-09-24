@@ -18,5 +18,12 @@ BodyEmitResult WriteOrderedBody(const abc::MethodBody& body,
                                 const MethodConstants* constants,
                                 ObjectBufferBudget object_budget,
                                 const BranchSourceFacts* facts = nullptr);
+// A proof-owned straight-line prefix/suffix; the caller preflights the full
+// staged expression before publication. first indexes unchanged body facts.
+BodyEmitResult WriteBranchSegment(
+    std::span<const abc::BodyInstruction> instructions, std::size_t first,
+    bool initialized, bool terminal, ScalarNames names,
+    std::ostream& output, EmitBudget budget,
+    const MethodConstants* constants, const BranchSourceFacts& facts);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_ORDERED_BODY_H_

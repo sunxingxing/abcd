@@ -36,7 +36,8 @@ CreatedFunctionResult WriteCreation(
   // Shared MethodLiteral kinds can change during class materialization. An
   // arrow is source-safe only when a complete same-file role index proves no
   // constructor or method-bearing literal can refer to this target.
-  if (target.attributes.kind == abc::FunctionKind::kArrow &&
+  if ((target.attributes.kind == abc::FunctionKind::kArrow ||
+       target.attributes.kind == abc::FunctionKind::kAsyncArrow) &&
       (!roles || roles->At(target.position) != analysis::MethodRole::kUnseen))
     return CreatedFunctionError::kRole;
   const auto& method = index.methods[target.position.value];
@@ -111,7 +112,8 @@ CreatedFunctionResult WriteCreation(
   const BaseFunction function{creation, target.attributes,
                               std::get<abc::FrameLayout>(frame), *name};
   FunctionEmitResult emitted;
-  if (target.attributes.kind == abc::FunctionKind::kArrow) {
+  if (target.attributes.kind == abc::FunctionKind::kArrow ||
+      target.attributes.kind == abc::FunctionKind::kAsyncArrow) {
     emitted = WriteArrowFunction(function, body, output, budget, &constants,
                                  captured_values);
   } else {

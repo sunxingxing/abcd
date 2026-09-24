@@ -22,6 +22,9 @@ BodyEmitResult WriteStagedCallHead(
 BodyEmitResult WriteStagedCallEnd(
     const analysis::StagedNamedInvocation& invocation, abc::CodeOffset offset,
     ScalarNames names, std::ostream& output, EmitBudget budget);
+BodyEmitResult WriteStagedCallClose(
+    const analysis::StagedNamedInvocation& invocation, abc::CodeOffset offset,
+    ScalarNames names, std::ostream& output, EmitBudget budget);
 BodyEmitResult WriteFreshFieldBatch(
     std::span<const FreshFieldSite> fields, std::size_t first_ordinal,
     abc::CodeOffset offset, ScalarNames names, std::ostream& output,
