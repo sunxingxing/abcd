@@ -11,6 +11,7 @@
 #include "abcd/abc/string_entity.h"
 #include "abcd/source/string_literal.h"
 #include "element_name.h"
+#include "object_buffer.h"
 
 namespace abcd::source {
 namespace {
@@ -139,21 +140,26 @@ class SourcePrinter {
     std::visit([&](const auto& value) { Value(ScalarValue{value}); }, slot);
   }
   enum class StringUse { kValue, kPropertyName };
-  void PoolString(abc::PoolIndex slot, StringUse use) {
+  std::u16string PoolText(abc::PoolIndex slot) {
     const auto reference = abc::ResolvePoolReference(
         constants_.file, constants_.header, constants_.index,
         constants_.method, slot, abc::PoolEntityKind::kString);
     const auto* pool = std::get_if<abc::PoolReference>(&reference);
     if (!pool) throw SourceFailure{SourceError::kConstant, current_pc_};
-    const auto string = abc::ReadStringEntity(
+    auto string = abc::ReadStringEntity(
         constants_.file, constants_.header, pool->offset,
         constants_.string_budget);
-    const auto* name = std::get_if<std::u16string>(&string);
-    if (!name || (use == StringUse::kPropertyName && IsElementName(*name)))
+    auto* name = std::get_if<std::u16string>(&string);
+    if (!name) throw SourceFailure{SourceError::kConstant, current_pc_};
+    return std::move(*name);
+  }
+  void PoolString(abc::PoolIndex slot, StringUse use) {
+    const auto name = PoolText(slot);
+    if (use == StringUse::kPropertyName && IsElementName(name))
       throw SourceFailure{SourceError::kConstant, current_pc_};
     std::ostringstream stream;
     const auto written = WriteStringLiteral(
-        *name, stream, {limit_ - result_.text.size()});
+        name, stream, {limit_ - result_.text.size()});
     if (!std::holds_alternative<std::size_t>(written))
       throw SourceFailure{SourceError::kOutput, current_pc_};
     Text(stream.str());
@@ -189,6 +195,54 @@ class SourcePrinter {
       PoolName(call->name);
       Text("]");
       Arguments(call->call);
+    } else if (const auto* call = std::get_if<analysis::ConstructorCall>(&expression)) {
+      Text("new (");
+      Value(ScalarValue{call->inputs.first});
+      Text(")(");
+      for (std::uint32_t i = 0; i < call->ArgumentCount(); ++i) {
+        if (i) Text(", ");
+        const auto argument = call->ArgumentAt(i);
+        if (!argument) throw SourceFailure{SourceError::kOutput, current_pc_};
+        Value(ScalarValue{*argument});
+      }
+      Text(")");
+    } else if (const auto* global = std::get_if<GlobalExpression>(&expression)) {
+      const auto name = PoolText(global->name);
+      if (!constants_.global_scope ||
+          !AllowsGlobalReference(name, *constants_.global_scope))
+        throw SourceFailure{SourceError::kConstant, current_pc_};
+      for (const auto ch : name) {
+        const char ascii = static_cast<char>(ch);
+        Text({&ascii, 1});
+      }
+    } else if (std::holds_alternative<analysis::EmptyObjectCreation>(expression)) {
+      Text("({})");
+    } else if (const auto* buffered =
+                   std::get_if<analysis::BufferedObjectCreation>(&expression)) {
+      std::ostringstream stream;
+      const auto emitted = WriteObjectBuffer(
+          *buffered, current_pc_, constants_, stream,
+          {limit_ - result_.text.size()}, {});
+      if (!std::holds_alternative<std::size_t>(emitted))
+        throw SourceFailure{SourceError::kConstant, current_pc_};
+      Text(stream.str());
+    } else if (const auto* module = std::get_if<ModuleExpression>(&expression)) {
+      if (!constants_.module)
+        throw SourceFailure{SourceError::kConstant, current_pc_};
+      const auto slot = module->binding.slot.value;
+      if (module->binding.space == analysis::ModuleSpace::kExternal) {
+        const auto& owner = *constants_.module;
+        if (slot >= owner.imports.size() + owner.namespace_imports.size())
+          throw SourceFailure{SourceError::kConstant, current_pc_};
+        Text("$import");
+      } else {
+        if (!constants_.global_scope ||
+            slot >= constants_.global_scope->module_slots ||
+            slot >= constants_.module->local_exports.size())
+          throw SourceFailure{SourceError::kConstant, current_pc_};
+        Text("$local");
+      }
+      Number(slot);
     } else {
       const auto& member = std::get<MemberExpression>(expression);
       Text("(");
@@ -242,7 +296,7 @@ class SourcePrinter {
         statement.operation);
     if (statement.fused_read) {
       const auto relocate = [&](abc::CodeOffset pc, std::size_t distance) {
-        if (result_.spans.size() < distance ||
+        if (!distance || result_.spans.size() < distance ||
             result_.spans[result_.spans.size() - distance].pc != pc)
           throw SourceFailure{SourceError::kOutput, current_pc_};
         auto& span = result_.spans[result_.spans.size() - distance];
@@ -250,15 +304,23 @@ class SourcePrinter {
         span.end = position_;
       };
       if (statement.fused_spill && statement.fused_reload) {
-        constexpr std::size_t kSpilledPrefix = 3;
-        relocate(*statement.fused_read, kSpilledPrefix);
-        relocate(*statement.fused_spill, kSpilledPrefix - 1);
-        relocate(*statement.fused_reload, 1);
+        relocate(*statement.fused_read, statement.read_distance);
+        relocate(*statement.fused_spill, statement.spill_distance);
+        relocate(*statement.fused_reload, statement.reload_distance);
       } else {
-        relocate(*statement.fused_read, 1);
+        relocate(*statement.fused_read, statement.read_distance);
       }
     }
-    result_.spans.push_back({statement.pc, begin, position_});
+    if (statement.previous_origin) {
+      if (result_.spans.empty() ||
+          result_.spans.back().pc != *statement.previous_origin ||
+          begin.byte != position_.byte)
+        throw SourceFailure{SourceError::kOutput, current_pc_};
+      const auto previous = result_.spans.back();
+      result_.spans.push_back({statement.pc, previous.begin, previous.end});
+    } else {
+      result_.spans.push_back({statement.pc, begin, position_});
+    }
   }
   void Region(const analysis::RegionNode& node) {
     std::visit(

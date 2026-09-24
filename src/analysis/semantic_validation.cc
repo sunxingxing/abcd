@@ -16,6 +16,7 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
                                          std::uint64_t frame_size,
                                          std::uint32_t first_abi_register,
                                          SemanticBudget budget) {
+  try {
   if (first_abi_register > frame_size ||
       method.instructions.size() != body.instructions.size() ||
       method.allocated_bytes > budget.bytes)
@@ -29,8 +30,36 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
                   body.instructions[i].offset);
   }
   auto remaining = budget.bytes - method.allocated_bytes;
+  constexpr auto kLoadProofBytes = sizeof(std::uint8_t) + sizeof(LanguageLoadFact);
+  if (method.instructions.size() > remaining / kLoadProofBytes)
+    return Fail(SemanticProofError::kResourceLimit);
+  std::vector<std::uint8_t> language_loads(method.instructions.size());
+  std::vector<LanguageLoadFact> modules;
+  modules.reserve(method.instructions.size());
+  const auto proof_bytes = language_loads.capacity() +
+                           modules.capacity() * sizeof(LanguageLoadFact);
+  if (proof_bytes > remaining) return Fail(SemanticProofError::kResourceLimit);
+  remaining -= proof_bytes;
+  std::size_t block = 0;
+  for (std::size_t i = 0; i + 1 < method.instructions.size(); ++i) {
+    while (block + 1 < method.flow.blocks.size() &&
+           method.flow.blocks[block + 1].first_instruction <= i)
+      ++block;
+    if (!std::holds_alternative<ModuleLoad>(method.instructions[i].operation))
+      continue;
+    const auto& region = method.flow.blocks[block];
+    if (i + 1 >= std::size_t(region.first_instruction) + region.instruction_count)
+      continue;
+    const auto* guard = std::get_if<HoleGuard>(&method.instructions[i + 1].operation);
+    if (!guard || !std::holds_alternative<Accumulator>(guard->value) ||
+        !std::holds_alternative<HoleNameSlot>(guard->name)) continue;
+    // The whole pair lowers to one live binding read that throws on TDZ.
+    // No exception handlers are admitted, so no intermediate VM state escapes.
+    language_loads[i] = 1;
+    modules.push_back({InstructionId{static_cast<std::uint32_t>(i)}});
+  }
   auto accumulator = AnalyzeAcyclicAccumulator(
-      body, method.flow, frame_size, {remaining});
+      body, method.flow, frame_size, {remaining}, language_loads);
   auto* accumulated = std::get_if<AccumulatorFlow>(&accumulator);
   if (!accumulated) {
     const auto& failure = std::get<AccumulatorFailure>(accumulator);
@@ -57,7 +86,6 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
   remaining -= bound->allocated_bytes;
   if (method.ssa.Values().size() > remaining / sizeof(EntryValueFact))
     return Fail(SemanticProofError::kResourceLimit);
-  try {
     std::vector<EntryValueFact> entries;
     entries.reserve(method.ssa.Values().size());
     if (entries.capacity() > remaining / sizeof(EntryValueFact))
@@ -72,8 +100,8 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     }
     remaining -= entries.capacity() * sizeof(EntryValueFact);
     IdfQuota quota{budget.work};
-    auto values = RegisterValueFlow::Build(
-        body, method.ssa, frame_size, entries, quota, {remaining});
+    auto values = RegisterValueFlow::BuildWithLanguageLoads(
+        body, method.ssa, frame_size, entries, modules, quota, {remaining});
     auto* analyzed = std::get_if<RegisterValueFlow>(&values);
     if (!analyzed) {
       const auto& failure = std::get<ValueFlowFailure>(values);
@@ -97,10 +125,11 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     }
     const auto bytes = method.allocated_bytes +
                        accumulated->allocated_bytes + bound->allocated_bytes +
-                       analyzed->AllocatedBytes();
+                       analyzed->AllocatedBytes() +
+                       modules.capacity() * sizeof(LanguageLoadFact);
     return SemanticProof{std::move(*accumulated), std::move(*bound),
                          std::move(*analyzed),
-                         bytes};
+                         bytes, std::move(modules)};
   } catch (const std::bad_alloc&) {
     return Fail(SemanticProofError::kResourceLimit);
   } catch (const std::length_error&) {

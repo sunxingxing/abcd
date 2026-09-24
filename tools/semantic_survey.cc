@@ -13,6 +13,7 @@
 #include <variant>
 
 #include "abcd/source/semantic_source.h"
+#include "abcd/abc/record_attributes.h"
 
 namespace {
 using namespace abcd;
@@ -69,7 +70,8 @@ MethodProgress Failure(Stage stage, unsigned error, abc::CodeOffset pc,
 MethodProgress InspectMethod(const corpus::AbcFile& file,
                              const abc::Header& header,
                              const abc::MetadataIndex& index,
-                             const abc::MethodInfo& method) {
+                             const abc::MethodInfo& method,
+                             const abc::ModuleInfo* module) {
   if (!method.code) return {Stage::kNoCode, {}, {}, {}};
   const auto& code = *method.code;
   if (code.registers >
@@ -126,7 +128,8 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
     bindings.push_back("$r" + std::to_string(i));
   for (const auto& name : bindings) names.push_back(name);
   source::MethodConstants constants{file, header, index, method.offset,
-                                    {kMethodBytes}};
+                                    {kMethodBytes}, module, nullptr,
+                                    source::GlobalScope{}};
   auto printed = source::PrintSourceBody(
       ast, *ir, {"$acc", names}, constants, kMethodBytes);
   if (auto* source = std::get_if<source::PrintedSource>(&printed))
@@ -150,13 +153,29 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
       {"records", index.records.size()}, {"methods", index.methods.size()},
       {"source_complete", false}} << '\n';
   std::array<std::size_t, kStageCount> counts{};
+  const auto packaging = abc::DetectFilePackaging(file, header, index);
+  const auto* layout = std::get_if<abc::FilePackaging>(&packaging);
+  if (!layout) return EXIT_FAILURE;
   for (const auto& record : index.records) {
     output << nlohmann::json{{"record", record.offset.value},
                             {"descriptor", record.descriptor},
                             {"methods", record.method_count}} << '\n';
+    std::optional<abc::ModuleInfo> module;
+    if (*layout == abc::FilePackaging::kMerged) {
+      const auto parsed = abc::ReadMergedRecordAttributes(file, header, index, record);
+      const auto* attributes = std::get_if<abc::RecordAttributes>(&parsed);
+      if (!attributes) return EXIT_FAILURE;
+      if (attributes->module) {
+        auto loaded = abc::ReadModuleInfo(file, header, *attributes->module);
+        auto* owner = std::get_if<abc::ModuleInfo>(&loaded);
+        if (!owner) return EXIT_FAILURE;
+        module = std::move(*owner);
+      }
+    }
     for (std::size_t i = 0; i < record.method_count; ++i) {
       const auto& method = index.methods.at(record.first_method + i);
-      const auto progress = InspectMethod(file, header, index, method);
+      const auto progress = InspectMethod(file, header, index, method,
+                                          module ? &*module : nullptr);
       ++counts.at(static_cast<std::size_t>(progress.stage));
       nlohmann::json row{{"record", record.offset.value},
                          {"method", method.offset.value},
@@ -170,6 +189,9 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
       if (progress.opcode)
         row["opcode_at_pc"] = static_cast<unsigned>(*progress.opcode);
       if (progress.source) {
+        // Detached bodies have only generated '$' private bindings. Embedding
+        // must repeat global collision checks against the actual callable scope.
+        row["requires_unshadowed_globals"] = true;
         row["body"] = progress.source->text;
         row["positions"] = nlohmann::json::array();
         for (const auto& span : progress.source->spans)

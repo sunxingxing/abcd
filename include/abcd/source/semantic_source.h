@@ -29,9 +29,18 @@ struct MemberCallExpression {
   abc::PoolIndex name;
   analysis::ReceiverCall call;
 };
+struct ModuleExpression {
+  analysis::ModuleLoad binding;
+};
+struct GlobalExpression {
+  abc::PoolIndex name;
+};
 using SourceExpression =
     std::variant<analysis::ScalarExpression, MemberExpression,
-                 StringExpression, CallExpression, MemberCallExpression>;
+                 StringExpression, CallExpression, MemberCallExpression,
+                 ModuleExpression, analysis::EmptyObjectCreation,
+                 analysis::BufferedObjectCreation, GlobalExpression,
+                 analysis::ConstructorCall>;
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;
@@ -62,6 +71,10 @@ struct SourceStatement {
   std::optional<abc::CodeOffset> fused_read;
   std::optional<abc::CodeOffset> fused_spill;
   std::optional<abc::CodeOffset> fused_reload;
+  std::size_t read_distance = 0;
+  std::size_t spill_distance = 0;
+  std::size_t reload_distance = 0;
+  std::optional<abc::CodeOffset> previous_origin;
 };
 struct SourceAst {
   analysis::SemanticRegionTree regions;

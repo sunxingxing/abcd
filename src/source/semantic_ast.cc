@@ -58,6 +58,33 @@ std::optional<analysis::SsaValueId> CopyInput(
                      analysis::ScalarSlot{analysis::Accumulator{}});
   return value;
 }
+bool IsSlotCopy(const analysis::SemanticOperation& operation) {
+  const auto* assignment = std::get_if<analysis::ScalarAssignment>(&operation);
+  if (!assignment || assignment->completion != analysis::CompletionEffect::kNormal)
+    return false;
+  const auto* value = std::get_if<analysis::ScalarValue>(&assignment->expression);
+  return value && (std::holds_alternative<analysis::Accumulator>(*value) ||
+                   std::holds_alternative<abc::RegisterId>(*value));
+}
+bool IsPrivateValue(const analysis::SemanticOperation& operation) {
+  if (std::holds_alternative<analysis::StringLoad>(operation)) return true;
+  const auto* assignment = std::get_if<analysis::ScalarAssignment>(&operation);
+  if (!assignment || assignment->completion != analysis::CompletionEffect::kNormal)
+    return false;
+  const auto* value = std::get_if<analysis::ScalarValue>(&assignment->expression);
+  // Constants/private slots have no observable evaluation. Do not widen this
+  // to allocation, coercion, property reads or arbitrary scalar expressions.
+  return value && !std::holds_alternative<analysis::EmptyArray>(*value);
+}
+std::optional<std::size_t> Definition(
+    const analysis::SemanticMethod& method,
+    std::optional<analysis::SsaValueId> value) {
+  if (!value) return {};
+  const auto* origin = std::get_if<analysis::InstructionValue>(
+      &method.ssa.Values()[value->value].origin);
+  if (!origin) return {};
+  return origin->instruction.value;
+}
 }  // namespace
 
 SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
@@ -111,12 +138,23 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
             analysis::FlowEdgeKind::kFallthrough)
           ast.fallthrough[i] = block.successors[edge].target;
     }
+    std::optional<std::size_t> last_effect;
+    std::size_t block_id = 0;
+    std::size_t module_fact = 0;
     for (const auto& instruction : method.instructions) {
+      const auto position = ast.statements.size();
+      while (block_id + 1 < method.flow.blocks.size() &&
+             method.flow.blocks[block_id + 1].first_instruction <= position)
+        ++block_id;
       const auto& effect = instruction.effects;
       SourceOperation operation;
       std::optional<abc::CodeOffset> fused_read;
       std::optional<abc::CodeOffset> fused_spill;
       std::optional<abc::CodeOffset> fused_reload;
+      std::size_t read_distance = 0;
+      std::size_t spill_distance = 0;
+      std::size_t reload_distance = 0;
+      std::optional<abc::CodeOffset> previous_origin;
       if (const auto* assignment =
               std::get_if<analysis::ScalarAssignment>(&instruction.operation)) {
         if (!SameSlot(effect.normal_registers.write,
@@ -133,6 +171,38 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
         operation = SourceAssignment{
             analysis::ScalarSlot{analysis::Accumulator{}},
             StringExpression{string->value}};
+      } else if (const auto* call =
+                     std::get_if<analysis::ConstructorCall>(&instruction.operation)) {
+        operation = SourceAssignment{
+            analysis::ScalarSlot{analysis::Accumulator{}}, *call};
+      } else if (const auto* global =
+                     std::get_if<analysis::GlobalAccess>(&instruction.operation)) {
+        if (global->operation != analysis::GlobalOp::kReadName)
+          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        operation = SourceAssignment{
+            analysis::ScalarSlot{analysis::Accumulator{}}, GlobalExpression{global->name}};
+      } else if (const auto* empty =
+                     std::get_if<analysis::EmptyObjectCreation>(&instruction.operation)) {
+        operation = SourceAssignment{
+            analysis::ScalarSlot{analysis::Accumulator{}}, *empty};
+      } else if (const auto* buffered =
+                     std::get_if<analysis::BufferedObjectCreation>(&instruction.operation)) {
+        operation = SourceAssignment{
+            analysis::ScalarSlot{analysis::Accumulator{}}, *buffered};
+      } else if (const auto* module =
+                     std::get_if<analysis::ModuleLoad>(&instruction.operation)) {
+        if (module_fact >= proof.guarded_modules.size() ||
+            proof.guarded_modules[module_fact].instruction.value != position)
+          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        ++module_fact;
+        operation = SourceAssignment{
+            analysis::ScalarSlot{analysis::Accumulator{}}, ModuleExpression{*module}};
+      } else if (std::holds_alternative<analysis::HoleGuard>(instruction.operation)) {
+        if (!position || !module_fact ||
+            proof.guarded_modules[module_fact - 1].instruction.value != position - 1)
+          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        operation = analysis::NoOperation{};
+        previous_origin = method.instructions[position - 1].pc;
       } else if (const auto* read =
                      std::get_if<analysis::NamedRead>(&instruction.operation)) {
         if (!SameSlot(effect.normal_registers.write,
@@ -166,49 +236,55 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
         const auto i = ast.statements.size();
         if (!i || Target(method.flow, instruction.pc))
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-        std::size_t property = i - 1;
-        constexpr std::size_t kSpilledPrefix = 3;
-        if (!std::holds_alternative<analysis::NamedRead>(
-                method.instructions[property].operation) && i >= kSpilledPrefix) {
-          const auto saved = method.ssa.Write(analysis::InstructionId{
-              static_cast<std::uint32_t>(i - 2)});
-          const auto loaded = method.ssa.Write(analysis::InstructionId{
-              static_cast<std::uint32_t>(i - 1)});
-          const auto fetched = method.ssa.Write(analysis::InstructionId{
-              static_cast<std::uint32_t>(i - kSpilledPrefix)});
-          if (saved && loaded && fetched && uses[saved->value] == 1 &&
-              uses[fetched->value] == 1 &&
-              CopyInput(method, loaded) == saved &&
-              CopyInput(method, saved) == fetched &&
-              !Target(method.flow, method.instructions[i - 1].pc) &&
-              !Target(method.flow, method.instructions[i - 2].pc)) {
-            property = i - kSpilledPrefix;
-            fused_spill = method.instructions[i - 2].pc;
-            fused_reload = method.instructions[i - 1].pc;
-          }
+        const auto callee = ReadValue(
+            method, i, analysis::ScalarSlot{analysis::Accumulator{}});
+        auto property_id = Definition(method, callee);
+        std::optional<std::size_t> spill;
+        std::optional<std::size_t> reload;
+        if (!callee || uses[callee->value] != 1)
+          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        if (property_id && IsSlotCopy(method.instructions[*property_id].operation)) {
+          const auto saved = CopyInput(method, callee);
+          const auto fetched = CopyInput(method, saved);
+          spill = Definition(method, saved);
+          reload = property_id;
+          property_id = Definition(method, fetched);
+          if (!saved || !fetched || !callee || !spill || !property_id ||
+              uses[saved->value] != 1 || uses[fetched->value] != 1 ||
+              uses[callee->value] != 1 || *property_id >= *spill ||
+              *spill >= *reload || *reload >= i)
+            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         }
+        if (!property_id || !last_effect || *last_effect != *property_id ||
+            *property_id < method.flow.blocks[block_id].first_instruction)
+          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        const auto property = *property_id;
         const auto& preceding = method.instructions[property];
         const auto* read = std::get_if<analysis::NamedRead>(&preceding.operation);
         const auto receiver = ReadValue(method, i, analysis::ScalarSlot{call->receiver});
         const auto object = ReadValue(
             method, property, analysis::ScalarSlot{analysis::Accumulator{}});
-        const auto callee = ReadValue(
-            method, i, analysis::ScalarSlot{analysis::Accumulator{}});
         if (!read || !object || !receiver ||
             (object != receiver && CopyInput(method, object) != receiver &&
-             object != CopyInput(method, receiver)) || !callee ||
-            callee != method.ssa.Write(analysis::InstructionId{
-                          static_cast<std::uint32_t>(i - 1)}))
+             object != CopyInput(method, receiver)) || !callee)
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         if (!SameSlot(effect.normal_registers.write,
                       analysis::ScalarSlot{analysis::Accumulator{}}) ||
             effect.exceptional != analysis::ExceptionalCompletion::kMayThrow)
           return Fail(SourceError::kInvalidEffect, instruction.pc);
-        // Same block and receiver identity; only dead callee copies may
-        // intervene. Retain the getter once, before arguments. Never emit .call.
-        for (std::size_t elided = property; elided < i; ++elided)
-          ast.statements[elided].operation = analysis::NoOperation{};
+        // Private slot copies cannot observe or change getter effects. The
+        // last-effect index proves no effect is crossed in O(1) per call.
+        ast.statements[property].operation = analysis::NoOperation{};
+        if (spill && reload) {
+          ast.statements[*spill].operation = analysis::NoOperation{};
+          ast.statements[*reload].operation = analysis::NoOperation{};
+          fused_spill = method.instructions[*spill].pc;
+          fused_reload = method.instructions[*reload].pc;
+          spill_distance = i - *spill;
+          reload_distance = i - *reload;
+        }
         fused_read = preceding.pc;
+        read_distance = i - property;
         operation = SourceAssignment{
             analysis::ScalarSlot{analysis::Accumulator{}},
             MemberCallExpression{read->name, *call}};
@@ -235,7 +311,9 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
         return Fail(SourceError::kUnsupportedOperation, instruction.pc);
       }
       ast.statements.push_back({instruction.pc, std::move(operation), fused_read,
-                                fused_spill, fused_reload});
+                                fused_spill, fused_reload, read_distance,
+                                spill_distance, reload_distance, previous_origin});
+      if (!IsPrivateValue(instruction.operation)) last_effect = position;
     }
     ast.allocated_bytes = ast.regions.allocated_bytes +
                           ast.statements.capacity() * sizeof(SourceStatement) +

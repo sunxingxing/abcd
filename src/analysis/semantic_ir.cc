@@ -48,6 +48,15 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
       break;
   }
   if (decoded.opcode == Opcode::kNOP) return NoOperation{};
+  const auto constructor = LiftConstructorCall(decoded, frame_size);
+  if (const auto* call = std::get_if<ConstructorCall>(&constructor)) return *call;
+  if (std::get<ConstructorCallError>(constructor) != ConstructorCallError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
+  const auto object = LiftObjectCreation(decoded);
+  if (const auto* empty = std::get_if<EmptyObjectCreation>(&object)) return *empty;
+  if (const auto* buffered = std::get_if<BufferedObjectCreation>(&object)) return *buffered;
+  if (std::get<ObjectCreationError>(object) != ObjectCreationError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto call = LiftOrdinaryCall(decoded, frame_size);
   if (const auto* value = std::get_if<OrdinaryCall>(&call)) return *value;
   if (std::get<CallError>(call) != CallError::kUnsupportedOpcode)
@@ -125,8 +134,14 @@ SemanticEffects Effects(const SemanticOperation& operation,
             effects.before_throw = effects.normal;
             effects.exceptional = ExceptionalCompletion::kMayThrow;
           }
+        } else if constexpr (std::is_same_v<T, EmptyObjectCreation> ||
+                             std::is_same_v<T, BufferedObjectCreation>) {
+          effects.normal = LanguageEffect::kAllocation;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, OrdinaryCall> ||
-                             std::is_same_v<T, ReceiverCall>) {
+                             std::is_same_v<T, ReceiverCall> ||
+                             std::is_same_v<T, ConstructorCall>) {
           effects.normal = LanguageEffect::kHeapRead |
                            LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
           effects.before_throw = effects.normal;

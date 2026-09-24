@@ -94,6 +94,45 @@ Follow-up functional regressions must cover getter count/order, receiver
 identity, indirect eval, saved-callee reuse/phi escape, thrown calls, and fused
 PC spans before claiming behavioral verification of the new call path.
 
+## Module and Value Expansion
+
+The next increment produces 79 of 219 method bodies and maps (previously 46).
+117 methods fail semantic construction and 23 fail AST lowering. No methods
+in this run fail the intervening proof or printer stages; that is not evidence
+that exception/capture semantics are complete.
+
+- Named calls may now cross private slot copies and primitive/string constant
+  assignments. A last-effect index and SSA definition links avoid per-call
+  interval scans. The saved callee and fetched value must have exactly one use,
+  including phi inputs. Receiver identity and basic-block boundaries remain
+  mandatory. Fused PC origins retain their actual statement distances.
+- Adjacent module loads and static-name Hole guards lower together to a live
+  binding read with TDZ throwing behavior. The load is not asserted to be
+  Hole-free in the original VM. A guard at another block entry, unguarded load,
+  or handler region does not receive this proof. Both PCs map to the emitted
+  read. The printer separately validates the owner's module slot; detached
+  local-module reads still require declaration evidence.
+- Empty objects, supported data-only literal buffers and constructor calls
+  have typed IR/AST operations. Buffered objects reuse the existing checked
+  literal parser/printer; unsupported literal tags are still rejected, not
+  flattened or copied from sidecar source.
+- Global name reads require the existing unshadowed-scope proof. Var accesses
+  and global initialization are not treated as interchangeable operations.
+  Survey fragments use only private `$` bindings and explicitly require
+  unshadowed globals; actual record embedding repeats checks in its real scope.
+
+The survey loads module metadata once per merged record from the ABC itself.
+No sourceMap or adjacent source file participates. Remaining IR blockers
+include 55 first failures at lexical loads, 16 at named environment creation,
+12 SSA failures, 13 methods with exception regions, seven DEFINEFUNC sites,
+five global-object loads, five super calls and four rest-argument operations.
+These are first-failure categories, not counts of all missing instructions.
+
+Compilation and targeted generation were performed; behavioral tests remain
+paused. Before behavioral certification, add module TDZ/alternate-entry cases,
+callee reuse across phi, getter effects around moved copies/constants, global
+shadowing, object descriptors/prototypes and constructor new.target cases.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

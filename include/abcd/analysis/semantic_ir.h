@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "abcd/analysis/branch_condition.h"
+#include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/module_load.h"
@@ -15,6 +16,7 @@
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/normal_flow.h"
 #include "abcd/analysis/own_write.h"
+#include "abcd/analysis/object_creation.h"
 #include "abcd/analysis/register_effect.h"
 #include "abcd/analysis/register_ssa.h"
 #include "abcd/analysis/scalar.h"
@@ -29,6 +31,7 @@ enum class LanguageEffect : std::uint8_t {
   kModuleRead = 1 << 3,
   kGlobalAccess = 1 << 4,
   kGuard = 1 << 5,
+  kAllocation = 1 << 6,
 };
 constexpr LanguageEffect operator|(LanguageEffect left, LanguageEffect right) {
   return static_cast<LanguageEffect>(static_cast<std::uint8_t>(left) |
@@ -60,7 +63,9 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        ValueWrite, ModuleLoad, HoleGuard,
                                        GlobalAccess, BranchOperation,
                                        JumpOperation, ReturnOperation,
-                                       StringLoad, OrdinaryCall, ReceiverCall>;
+                                       StringLoad, OrdinaryCall, ReceiverCall,
+                                       EmptyObjectCreation, BufferedObjectCreation,
+                                       ConstructorCall>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;
