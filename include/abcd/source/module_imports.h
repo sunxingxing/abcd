@@ -29,7 +29,9 @@ using ModuleImportResult = std::variant<std::size_t, ModuleImportFailure>;
 // Caller supplies module and header from the same unchanged ABC file. Emit
 // this prelude in the record module before bodies that use $import<slot>.
 // v7.0 module-environment slots are regular imports, then namespace imports;
-// request-only declarations retain evaluation order. Semantic failures leave
+// request-only declarations retain evaluation order. Indirect and star
+// exports use native ESM reexports to preserve live-binding resolution.
+// Semantic failures leave
 // output untouched; IO failure can leave a partial write.
 [[nodiscard]] ModuleImportResult WriteModuleImports(
     const corpus::AbcFile& file, const abc::Header& header,

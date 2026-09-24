@@ -198,8 +198,6 @@ class ProgramWriter {
   std::size_t Write() {
     if (!body_.tries.empty() || !body_.handlers.empty())
       throw Fail(Error::kInstruction);
-    if (!module_.indirect_exports.empty() || !module_.star_exports.empty())
-      throw Fail(Error::kModule);
     const auto imports = WriteModuleImports(file_, header_, module_, output_,
                                             {Remaining()}, budget_.strings);
     if (const auto* failure = std::get_if<ModuleImportFailure>(&imports)) {

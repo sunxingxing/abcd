@@ -57,6 +57,18 @@ class ImportWriter {
       From(entry.request);
       ++slot;
     }
+    for (const auto& entry : module_.indirect_exports) {
+      Text("export { ");
+      Literal(entry.imported);
+      Text(" as ");
+      Literal(entry.exported);
+      Text(" }");
+      From(entry.request);
+    }
+    for (const auto request : module_.star_exports) {
+      Text("export *");
+      From(request);
+    }
   }
 
   std::string Take() { return std::move(stream_).str(); }
