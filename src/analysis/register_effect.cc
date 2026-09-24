@@ -1,10 +1,13 @@
 #include "abcd/analysis/register_effect.h"
 
+#include <algorithm>
+
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/class_creation.h"
 #include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/define_instruction.h"
+#include "abcd/analysis/derived_constructor.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
@@ -123,6 +126,17 @@ RegisterEffect EffectOf(const ConstructorCall& value) {
   RegisterEffect effect;
   effect.write = Accumulator{};
   effect.range = value.inputs;
+  return effect;
+}
+RegisterEffect EffectOf(const SuperRange& value) {
+  RegisterEffect effect;
+  effect.write = Accumulator{};
+  effect.range = CallRange{value.first, value.count};
+  return effect;
+}
+RegisterEffect EffectOf(const SuperCheck&) {
+  RegisterEffect effect;
+  effect.reads[effect.read_count++] = Accumulator{};
   return effect;
 }
 RegisterEffect EffectOf(const LexicalStore& value) {
@@ -319,6 +333,16 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   if (auto result = Adapt(LiftConstructorCall(instruction, frame_size));
       !Unsupported(result))
     return result;
+  const auto super = LiftSuperInstruction(
+      instruction, static_cast<std::uint32_t>(
+                       std::min<std::uint64_t>(frame_size, UINT32_MAX)));
+  if (const auto* range = std::get_if<SuperRange>(&super))
+    return EffectOf(*range);
+  if (const auto* check = std::get_if<SuperCheck>(&super))
+    return EffectOf(*check);
+  if (const auto* error = std::get_if<SuperError>(&super);
+      error && *error != SuperError::kUnsupportedOpcode)
+    return EffectOf(*error);
   if (auto result = Adapt(LiftLexicalInstruction(instruction, frame_size));
       !Unsupported(result))
     return result;

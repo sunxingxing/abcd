@@ -1,7 +1,10 @@
 #include "register_value_rule.h"
 
+#include <algorithm>
+
 #include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/constructor_call.h"
+#include "abcd/analysis/derived_constructor.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
@@ -132,6 +135,10 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     return ValueRule{ValueRuleKind::kLanguageOperation, {}};
   if (std::holds_alternative<ConstructorCall>(
           LiftConstructorCall(instruction, frame_size)))
+    return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
+  if (std::holds_alternative<SuperRange>(LiftSuperInstruction(
+          instruction, static_cast<std::uint32_t>(
+                           std::min<std::uint64_t>(frame_size, UINT32_MAX)))))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
   if (std::holds_alternative<ReceiverCall>(
           LiftReceiverCall(instruction, frame_size)))
