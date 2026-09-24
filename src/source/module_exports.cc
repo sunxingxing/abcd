@@ -120,6 +120,10 @@ bool ModuleExports::Complete() const {
                      [](std::uint8_t state) { return state != 0; });
 }
 
+bool ModuleExports::IsInitialized(analysis::ModuleSlot slot) const {
+  return slot.value < slot_count_ && initialized_[slot.value] != 0;
+}
+
 std::variant<std::size_t, ModuleExportError> ModuleExports::WriteAliases(
     std::ostream& output, EmitBudget budget) const {
   DiscardBuffer null;

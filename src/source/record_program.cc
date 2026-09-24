@@ -55,6 +55,7 @@ struct Value {
     kAtom,
     kLiteral,
     kImportSnapshot,
+    kLocalSnapshot,
     kGlobalSnapshot,
     kPrototype,
     kInstance
@@ -283,10 +284,14 @@ class ProgramWriter {
         case Opcode::kWIDE_LDEXTERNALMODULEVAR_PREF_IMM16:
           LoadExternalImport(instruction.decoded, i);
           break;
+        case Opcode::kLDLOCALMODULEVAR_IMM8:
+        case Opcode::kWIDE_LDLOCALMODULEVAR_PREF_IMM16:
+          LoadLocalModule(instruction.decoded, i);
+          break;
         case Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16:
-          if (!pending_import_guard_ || *pending_import_guard_ != i)
+          if (!pending_hole_guard_ || *pending_hole_guard_ != i)
             throw Fail(Error::kInstruction, pc_);
-          pending_import_guard_.reset();
+          pending_hole_guard_.reset();
           break;
         case Opcode::kCREATEEMPTYOBJECT:
           EmptyObject(instruction.decoded);
@@ -528,7 +533,33 @@ class ProgramWriter {
     Number(slot);
     Text(";\n");
     accumulator_ = {Value::Kind::kImportSnapshot, import_load_count_++};
-    pending_import_guard_ = position + 1;
+    pending_hole_guard_ = position + 1;
+  }
+  void LoadLocalModule(const abc::DecodedInstruction& instruction,
+                       std::size_t position) {
+    const auto lifted = analysis::LiftModuleLoad(instruction);
+    const auto* load = std::get_if<analysis::ModuleLoad>(&lifted);
+    if (!load || load->space != analysis::ModuleSpace::kLocal ||
+        !exports_.IsInitialized(load->slot) ||
+        local_load_count_ >= body_.instructions.size())
+      throw Fail(Error::kModule, pc_);
+    // This straight-line store dominates the read. Capture the current value
+    // because a later STMODULEVAR may update the live ESM binding.
+    Text("const $localRead");
+    Number(local_load_count_);
+    Text(" = $local");
+    Number(load->slot.value);
+    Text(";\n");
+    accumulator_ = {Value::Kind::kLocalSnapshot, local_load_count_++};
+    if (position + 1 < body_.instructions.size()) {
+      const auto guard = analysis::LiftHoleInstruction(
+          body_.instructions[position + 1].decoded, registers_.size());
+      if (const auto* checked = std::get_if<analysis::HoleGuard>(&guard);
+          checked &&
+          std::holds_alternative<analysis::Accumulator>(checked->value) &&
+          std::holds_alternative<analysis::HoleNameSlot>(checked->name))
+        pending_hole_guard_ = position + 1;
+    }
   }
   Value SaveAtom(StaticAtom atom) {
     if (const auto* text = std::get_if<std::u16string>(&atom)) {
@@ -936,6 +967,12 @@ class ProgramWriter {
         Text("$loaded");
         Number(value.ordinal);
         return;
+      case Value::Kind::kLocalSnapshot:
+        if (value.ordinal >= local_load_count_)
+          throw Fail(Error::kValue, pc_);
+        Text("$localRead");
+        Number(value.ordinal);
+        return;
       case Value::Kind::kGlobalSnapshot:
         if (value.ordinal >= global_count_) throw Fail(Error::kValue, pc_);
         Text("$global");
@@ -975,6 +1012,7 @@ class ProgramWriter {
       }
     } else if (ctor.kind != Value::Kind::kFunction &&
                ctor.kind != Value::Kind::kImportSnapshot &&
+               ctor.kind != Value::Kind::kLocalSnapshot &&
                ctor.kind != Value::Kind::kGlobalSnapshot &&
                ctor.kind != Value::Kind::kInstance) {
       throw Fail(Error::kValue, pc_);
@@ -1156,6 +1194,7 @@ class ProgramWriter {
                    accumulator_.kind != Value::Kind::kInstance &&
                    accumulator_.kind != Value::Kind::kLiteral &&
                    accumulator_.kind != Value::Kind::kImportSnapshot &&
+                   accumulator_.kind != Value::Kind::kLocalSnapshot &&
                    accumulator_.kind != Value::Kind::kUndefined))
       throw Fail(Error::kValue, pc_);
     if (accumulator_.kind == Value::Kind::kClass) {
@@ -1181,6 +1220,9 @@ class ProgramWriter {
       Number(accumulator_.ordinal);
     } else if (accumulator_.kind == Value::Kind::kImportSnapshot) {
       Text("$loaded");
+      Number(accumulator_.ordinal);
+    } else if (accumulator_.kind == Value::Kind::kLocalSnapshot) {
+      Text("$localRead");
       Number(accumulator_.ordinal);
     } else {
       Text("void 0");
@@ -1222,9 +1264,10 @@ class ProgramWriter {
   std::size_t function_count_ = 0;
   std::size_t instance_count_ = 0;
   std::size_t import_load_count_ = 0;
+  std::size_t local_load_count_ = 0;
   std::size_t global_count_ = 0;
   abc::CodeOffset last_effect_pc_{};
-  std::optional<std::size_t> pending_import_guard_;
+  std::optional<std::size_t> pending_hole_guard_;
   std::size_t written_ = 0;
 };
 }  // namespace

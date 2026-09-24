@@ -27,6 +27,7 @@ struct ModuleExportBudget {
 class ModuleExports {
  public:
   [[nodiscard]] std::size_t slot_count() const { return slot_count_; }
+  [[nodiscard]] bool IsInitialized(analysis::ModuleSlot slot) const;
   [[nodiscard]] bool Complete() const;
   [[nodiscard]] std::variant<std::size_t, ModuleExportError> WriteAliases(
       std::ostream& output, EmitBudget budget = {}) const;
