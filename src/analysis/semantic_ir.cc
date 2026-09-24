@@ -298,45 +298,45 @@ SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
   const auto graph_bytes = flow.blocks.capacity() * sizeof(FlowBlock);
   if (graph_bytes > budget.bytes)
     return Fail(SemanticError::kResourceLimit);
-  IdfQuota quota{budget.work};
+  if (body.instructions.size() > budget.work)
+    return SemanticFailure{SemanticError::kSsa, {}, SsaError::kWorkLimit};
+  IdfQuota quota{budget.work - body.instructions.size()};
+  try {
+  const auto available = budget.bytes - graph_bytes;
+  if (body.instructions.size() > available / sizeof(SemanticInstruction))
+    return Fail(SemanticError::kResourceLimit);
+  std::vector<SemanticInstruction> instructions;
+  instructions.reserve(body.instructions.size());
+  if (instructions.capacity() > available / sizeof(SemanticInstruction))
+    return Fail(SemanticError::kResourceLimit);
+  // Lift once before SSA. The exact same typed normal effects drive def/use,
+  // renaming and subsequent source validation; future recovered operations
+  // must not silently revert to the original VM operand effects in SSA.
+  for (const auto& site : body.instructions) {
+    auto operation = LiftOperation(site, frame_size);
+    if (const auto* failure = std::get_if<SemanticFailure>(&operation))
+      return *failure;
+    const auto registers = LiftRegisterEffect(site.decoded, frame_size);
+    if (const auto* error = std::get_if<ScalarError>(&registers))
+      return Fail(*error == ScalarError::kUnsupportedOpcode
+                      ? SemanticError::kUnsupportedInstruction
+                      : SemanticError::kMalformedInstruction,
+                  site.offset);
+    auto semantic = std::get<SemanticOperation>(std::move(operation));
+    auto effects = Effects(semantic, std::get<RegisterEffect>(registers));
+    instructions.push_back({site.offset, std::move(semantic), effects});
+  }
+  const auto instruction_bytes =
+      instructions.capacity() * sizeof(SemanticInstruction);
   auto renamed = RegisterSsa::Build(
-      body, flow, frame_size, quota, {budget.bytes - graph_bytes});
+      body, flow, frame_size, quota, {available - instruction_bytes}, instructions);
   if (auto* ssa = std::get_if<RegisterSsa>(&renamed)) {
     const auto ssa_bytes = ssa->AllocatedBytes();
-    if (ssa_bytes > budget.bytes - graph_bytes)
+    if (ssa_bytes > available - instruction_bytes)
       return Fail(SemanticError::kResourceLimit);
-    auto remaining = budget.bytes - graph_bytes - ssa_bytes;
-    if (body.instructions.size() > remaining / sizeof(SemanticInstruction))
-      return Fail(SemanticError::kResourceLimit);
-    try {
-      std::vector<SemanticInstruction> instructions;
-      instructions.reserve(body.instructions.size());
-      if (instructions.capacity() > remaining / sizeof(SemanticInstruction))
-        return Fail(SemanticError::kResourceLimit);
-      for (const auto& site : body.instructions) {
-        auto operation = LiftOperation(site, frame_size);
-        if (const auto* failure = std::get_if<SemanticFailure>(&operation))
-          return *failure;
-        const auto registers = LiftRegisterEffect(site.decoded, frame_size);
-        if (const auto* error = std::get_if<ScalarError>(&registers))
-          return Fail(*error == ScalarError::kUnsupportedOpcode
-                          ? SemanticError::kUnsupportedInstruction
-                          : SemanticError::kMalformedInstruction,
-                      site.offset);
-        auto semantic = std::get<SemanticOperation>(std::move(operation));
-        auto effects = Effects(semantic, std::get<RegisterEffect>(registers));
-        instructions.push_back({site.offset, std::move(semantic),
-                                effects});
-      }
-      return SemanticMethod{std::move(instructions), std::move(flow),
-                            std::move(*ssa), graph_bytes + ssa_bytes +
-                                body.instructions.size() *
-                                    sizeof(SemanticInstruction)};
-    } catch (const std::bad_alloc&) {
-      return Fail(SemanticError::kResourceLimit);
-    } catch (const std::length_error&) {
-      return Fail(SemanticError::kResourceLimit);
-    }
+    return SemanticMethod{std::move(instructions), std::move(flow),
+                          std::move(*ssa), graph_bytes + ssa_bytes +
+                              instruction_bytes};
   }
   return std::visit([](const auto& failure) -> SemanticFailure {
     using T = std::decay_t<decltype(failure)>;
@@ -352,5 +352,10 @@ SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
               {}, failure};
     }
   }, renamed);
+  } catch (const std::bad_alloc&) {
+    return Fail(SemanticError::kResourceLimit);
+  } catch (const std::length_error&) {
+    return Fail(SemanticError::kResourceLimit);
+  }
 }
 }  // namespace abcd::analysis

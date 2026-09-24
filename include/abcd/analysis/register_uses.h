@@ -5,6 +5,7 @@
 #include "abcd/analysis/register_effect.h"
 
 namespace abcd::analysis {
+struct SemanticInstruction;
 struct RegisterBindingId {
   std::size_t value = 0;
 };
@@ -21,7 +22,8 @@ enum class RegisterUseError {
   kResumeEdge,
   kInstruction,
   kWorkLimit,
-  kResourceLimit
+  kResourceLimit,
+  kInvalidEffects
 };
 struct RegisterUseFailure {
   RegisterUseError kind;
@@ -40,13 +42,17 @@ struct RegisterUseWork {
 // checks do not establish body/graph identity. Reject handlers/resumes and any
 // reachable instruction lacking proven register effects. No lexical-cell
 // promotion, value proof, SSA renaming or function task service is implied.
+// Optional semantic instructions replace bytecode re-lifting, not CFG checks.
+// The caller owns their semantic validity and immutable lifetime during Build;
+// this boundary checks full PC alignment and frame/range bounds in O(I).
 class RegisterUses {
  public:
   RegisterUses(RegisterUses&&) noexcept = default;
   RegisterUses& operator=(RegisterUses&&) noexcept = default;
   [[nodiscard]] static std::variant<RegisterUses, RegisterUseFailure> Build(
       const abc::MethodBody& body, const NormalFlow& graph,
-      std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {});
+      std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {},
+      std::span<const SemanticInstruction> semantics = {});
   [[nodiscard]] std::span<const RegisterBinding> Bindings() const {
     return {bindings_.get(), bindings_ ? count_ : 0};
   }

@@ -57,6 +57,10 @@ struct SsaWork {
 // Requires validated body and unchanged normal CFG; rejects handlers/resumes.
 // Owned immutable arrays, no borrowed body/graph/index or PMR pointers. Build
 // is a bounded synchronous primitive, not the lazy function-task service.
+// A nonempty semantic span supplies the owner-proven effects for every body
+// instruction, including unreachable ones. PCs and register bounds are checked;
+// semantic equivalence is the owner's obligation. The span is borrowed only
+// during Build and must remain immutable, as must body and graph.
 class RegisterSsa {
  public:
   RegisterSsa(RegisterSsa&&) noexcept = default;
@@ -64,7 +68,8 @@ class RegisterSsa {
   [[nodiscard]] static std::variant<RegisterSsa, RegisterUseFailure, IdfError,
                                     DominatorError, SsaError>
   Build(const abc::MethodBody& body, const NormalFlow& graph,
-        std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {});
+        std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {},
+        std::span<const SemanticInstruction> semantics = {});
   [[nodiscard]] std::span<const RegisterValue> Values() const {
     return {values_.get(), values_ ? value_count_ : 0};
   }

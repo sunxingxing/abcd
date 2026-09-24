@@ -1156,6 +1156,40 @@ Private async-state ownership, completion-wrapper equivalence, temporary
 liveness and native await IR/AST/printer integration remain necessary. Existing
 source paths still refuse real suspension; complete-record coverage is unchanged.
 
+### Semantic effects drive register SSA (2026-09-25)
+
+The shared semantic method path now lifts instructions before SSA and lends
+that immutable instruction span to both register-use indexing and renaming.
+Both stages consume `effects.normal_registers`, rather than independently
+re-lifting the original bytecode. Existing register-analysis callers retain
+their decoded-instruction path. This removes the SSA integration obstacle for
+future recovered await operations, whose source effects must differ from the
+original private VM-state operands.
+
+The new input boundary checks full instruction-count/PC alignment, fixed-read
+capacity, register/frame bounds, range expansion overflow and SSA read-ordinal
+capacity. It does not claim instruction semantic equivalence on behalf of the
+owner. Handler/resume-edge rejection and unchanged-CFG requirements remain.
+The span is borrowed only during construction and is not retained by SSA.
+
+No duplicate effect table is allocated. Retained IR capacity is deducted before
+SSA scratch admission and charged by capacity rather than size. Lifting and
+effect validation consume linear work; existing sparse dominance/phi/renaming
+algorithms are unchanged. Unsupported semantic instructions now fail at lifting
+before SSA, so diagnostic precedence can change without granting new support.
+
+Both CLI targets compiled. ABC-only source generation under
+`build/pasteboard-source-ir-ssa` still publishes CommonConstants and Logger;
+their generated files match the prior package-path output. Eight application
+records remain unsupported and nine records remain metadata-only. Tests and
+RSS collection remain paused. Span mismatch, invalid slots/ranges, low work
+budgets and legacy/semantic SSA parity need focused regression tests later.
+
+Register value classification still re-lifts original instructions and must
+also consume semantic operations before native await lowering can be enabled.
+Private state/completion proofs and await AST/printer integration remain open;
+this change does not claim additional complete records or await source output.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

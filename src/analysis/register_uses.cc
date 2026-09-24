@@ -4,6 +4,7 @@
 #include <memory_resource>
 #include <stdexcept>
 
+#include "abcd/analysis/semantic_ir.h"
 #include "idf_scratch.h"
 
 namespace abcd::analysis {
@@ -57,17 +58,46 @@ std::size_t RegisterUses::AllocatedBytes() const {
 
 std::variant<RegisterUses, RegisterUseFailure> RegisterUses::Build(
     const abc::MethodBody& body, const NormalFlow& graph,
-    std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget) {
+    std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget,
+    std::span<const SemanticInstruction> semantics) {
   using Error = RegisterUseError;
   if (!body.tries.empty() || !body.handlers.empty())
     return RegisterUseFailure{Error::kExceptionRegions, {}, {}};
   if (body.instructions.size() > UINT32_MAX)
     return RegisterUseFailure{Error::kResourceLimit, {}, {}};
+  if (!semantics.empty() && semantics.size() != body.instructions.size())
+    return RegisterUseFailure{Error::kInvalidEffects, {}, {}};
   try {
     const auto consumed = quota.Consumed();
     const auto charge = [&](std::uint64_t units = 1) {
       if (!quota.Take(units)) throw detail::IdfWorkLimit{};
     };
+    for (std::size_t i = 0; i < semantics.size(); ++i) {
+      charge();
+      const auto& site = semantics[i];
+      const auto& effect = site.effects.normal_registers;
+      const auto valid_slot = [&](ScalarSlot slot) {
+        const auto* reg = std::get_if<abc::RegisterId>(&slot);
+        return !reg || reg->value < frame_size;
+      };
+      if (site.pc != body.instructions[i].offset ||
+          effect.read_count > effect.reads.size() ||
+          (effect.write && !valid_slot(*effect.write)))
+        return RegisterUseFailure{Error::kInvalidEffects, site.pc, {}};
+      for (std::size_t read = 0; read < effect.read_count; ++read) {
+        charge();
+        if (!valid_slot(effect.reads[read]))
+          return RegisterUseFailure{Error::kInvalidEffects, site.pc, {}};
+      }
+      if (effect.range &&
+          (effect.range->first.value > frame_size ||
+           effect.range->count > frame_size - effect.range->first.value ||
+           (effect.range->count != 0 &&
+            std::uint64_t(effect.range->first.value) + effect.range->count - 1 >
+                UINT32_MAX) ||
+           effect.range->count > UINT16_MAX - effect.read_count))
+        return RegisterUseFailure{Error::kInvalidEffects, site.pc, {}};
+    }
     std::size_t covered = 0;
     for (const auto& block : graph.blocks) {
       charge();
@@ -112,7 +142,10 @@ std::variant<RegisterUses, RegisterUseFailure> RegisterUses::Build(
         charge();
         ++result.work.instructions;
         const auto& instruction = body.instructions[pc];
-        const auto lifted = LiftRegisterEffect(instruction.decoded, frame_size);
+        const auto lifted = semantics.empty()
+            ? LiftRegisterEffect(instruction.decoded, frame_size)
+            : std::variant<RegisterEffect, ScalarError>{
+                  semantics[pc].effects.normal_registers};
         if (const auto* error = std::get_if<ScalarError>(&lifted))
           return RegisterUseFailure{Error::kInstruction, instruction.offset,
                                     *error};

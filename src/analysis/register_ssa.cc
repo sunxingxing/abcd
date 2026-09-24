@@ -112,11 +112,12 @@ std::variant<RegisterSsa, RegisterUseFailure, IdfError, DominatorError,
              SsaError>
 RegisterSsa::Build(const abc::MethodBody& body, const NormalFlow& graph,
                    std::uint64_t frame_size, IdfQuota& quota,
-                   IdfBudget budget) {
+                   IdfBudget budget,
+                   std::span<const SemanticInstruction> semantics) {
   try {
-    Builder builder{body, graph, frame_size, quota, budget};
+    Builder builder{body, graph, frame_size, quota, budget, semantics};
     auto used = RegisterUses::Build(body, graph, frame_size, quota,
-                                    {builder.memory.Available()});
+                                    {builder.memory.Available()}, semantics);
     if (const auto* error = std::get_if<RegisterUseFailure>(&used))
       return *error;
     const auto& uses = std::get<RegisterUses>(used);

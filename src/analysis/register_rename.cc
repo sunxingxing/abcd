@@ -1,5 +1,6 @@
 #include <algorithm>
 
+#include "abcd/analysis/semantic_ir.h"
 #include "register_ssa_builder.h"
 
 namespace abcd::analysis {
@@ -75,10 +76,12 @@ void RegisterSsa::Builder::Rename(const RegisterUses& uses,
       Charge();
       ++instructions;
       const InstructionId instruction{static_cast<std::uint32_t>(i)};
-      // Uses was built from the same immutable body with the same lift/frame.
-      // Failure here would violate that input-lifetime/identity precondition.
-      const auto effect = std::get<RegisterEffect>(
-          LiftRegisterEffect(body.instructions[i].decoded, frame_size));
+      // Def/use indexing and renaming consume the identical immutable effects.
+      // Never re-lift bytecode when the owning semantic path supplied its IR.
+      const auto effect = semantics.empty()
+          ? std::get<RegisterEffect>(
+                LiftRegisterEffect(body.instructions[i].decoded, frame_size))
+          : semantics[i].effects.normal_registers;
       std::uint16_t ordinal = 0;
       const auto read = [&](ScalarSlot slot) {
         Charge();
