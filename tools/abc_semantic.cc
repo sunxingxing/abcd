@@ -6,13 +6,19 @@
 #include <limits>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <span>
 #include <string_view>
 
 #include "abcd/abc/metadata_index.h"
+#include "abcd/abc/call_type.h"
+#include "abcd/abc/frame_layout.h"
 #include "abcd/abc/method_body.h"
+#include "abcd/analysis/semantic_region.h"
 #include "abcd/analysis/semantic_ir.h"
+#include "abcd/analysis/semantic_validation.h"
 #include "abcd/corpus/abc_file.h"
+#include "abcd/source/semantic_source.h"
 
 namespace {
 using namespace abcd;
@@ -25,6 +31,11 @@ enum class InspectError : std::uint8_t {
   kMethod,
   kBody,
   kSemantic,
+  kProof,
+  kRegion,
+  kAst,
+  kFrame,
+  kPrint,
 };
 int Fail(InspectError kind, std::uint32_t pc = 0) {
   std::cerr << nlohmann::json{{"error", static_cast<unsigned>(kind)},
@@ -32,7 +43,16 @@ int Fail(InspectError kind, std::uint32_t pc = 0) {
             << '\n';
   return EXIT_FAILURE;
 }
-int Inspect(const std::filesystem::path& path, std::uint32_t entity) {
+int FailStage(InspectError kind, unsigned stage_error,
+              std::uint32_t pc) {
+  std::cerr << nlohmann::json{{"error", static_cast<unsigned>(kind)},
+                              {"stage_error", stage_error},
+                              {"pc", pc}}
+            << '\n';
+  return EXIT_FAILURE;
+}
+int Inspect(const std::filesystem::path& path, std::uint32_t entity,
+            std::optional<source::SourceForm> form) {
   auto opened = corpus::AbcFile::Open(path);
   const auto* owned = std::get_if<std::unique_ptr<corpus::AbcFile>>(&opened);
   if (!owned) return Fail(InspectError::kOpen);
@@ -78,6 +98,72 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity) {
               << '\n';
     return EXIT_FAILURE;
   }
+  if (form) {
+    constexpr std::size_t kMethodBytes = 64 * 1024 * 1024;
+    const auto proof = analysis::VerifySemanticSource(
+        *body, *method_ir, code.registers + code.arguments,
+        code.registers,
+        {kMethodBytes});
+    if (const auto* failure =
+            std::get_if<analysis::SemanticProofFailure>(&proof))
+      return FailStage(InspectError::kProof,
+                       static_cast<unsigned>(failure->kind),
+                       failure->pc.value);
+    auto recovered = analysis::BuildSemanticRegions(*method_ir,
+                                                     kMethodBytes);
+    auto* regions =
+        std::get_if<analysis::SemanticRegionTree>(&recovered);
+    if (!regions) {
+      const auto& failure = std::get<analysis::RegionFailure>(recovered);
+      return FailStage(InspectError::kRegion,
+                       static_cast<unsigned>(failure.kind),
+                       failure.pc.value);
+    }
+    const auto lowered = source::BuildSourceAst(
+        *method_ir, std::get<analysis::SemanticProof>(proof),
+        std::move(*regions),
+        kMethodBytes);
+    const auto* ast = std::get_if<source::SourceAst>(&lowered);
+    if (!ast) {
+      const auto& failure = std::get<source::SourceFailure>(lowered);
+      return FailStage(InspectError::kAst,
+                       static_cast<unsigned>(failure.kind),
+                       failure.pc.value);
+    }
+    const auto call = abc::ReadCallType(file, *header, *index,
+                                        method->annotations);
+    const auto* call_type = std::get_if<abc::CallType>(&call);
+    if (!call_type) return Fail(InspectError::kFrame);
+    const auto built_frame = abc::BuildFrameLayout(
+        code.registers, code.arguments,
+        abc::DecodeCallFlags(call_type->value));
+    const auto* frame = std::get_if<abc::FrameLayout>(&built_frame);
+    if (!frame) return Fail(InspectError::kFrame);
+    source::MethodConstants constants{file, *header, *index, method->offset,
+                                      {kMethodBytes}};
+    const auto rendered = source::PrintSourceAst(
+        *ast, *method_ir, *frame, *form, method->name, constants,
+        kMethodBytes);
+    const auto* printed = std::get_if<source::PrintedSource>(&rendered);
+    if (!printed) {
+      const auto& failure = std::get<source::SourceFailure>(rendered);
+      return FailStage(InspectError::kPrint,
+                       static_cast<unsigned>(failure.kind),
+                       failure.pc.value);
+    }
+    nlohmann::json map = nlohmann::json::array();
+    for (const auto& span : printed->spans)
+      map.push_back({{"pc", span.pc.value},
+                     {"begin", {span.begin.byte, span.begin.line,
+                                 span.begin.column}},
+                     {"end", {span.end.byte, span.end.line,
+                               span.end.column}}});
+    std::cout << nlohmann::json{{"entity", entity},
+                                {"source", printed->text},
+                                {"positions", std::move(map)}}
+              << '\n';
+    return std::cout ? EXIT_SUCCESS : EXIT_FAILURE;
+  }
   std::cout << nlohmann::json{
                    {"entity", entity},
                    {"instructions", method_ir->instructions.size()},
@@ -89,8 +175,8 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 3) {
-    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY\n";
+  if (argc != 3 && argc != 4) {
+    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source]\n";
     return Fail(InspectError::kArguments);
   }
   std::uint32_t entity = 0;
@@ -100,5 +186,15 @@ int main(int argc, char** argv) {
   if (number.ec != std::errc{} ||
       number.ptr != token.data() + token.size())
     return Fail(InspectError::kArguments);
-  return Inspect(argv[1], entity);
+  std::optional<source::SourceForm> form;
+  if (argc == 4) {
+    const std::string_view option{argv[3]};
+    if (option == "--class-source")
+      form = source::SourceForm::kClassConstructor;
+    else if (option == "--function-source")
+      form = source::SourceForm::kFunction;
+    else
+      return Fail(InspectError::kArguments);
+  }
+  return Inspect(argv[1], entity, form);
 }

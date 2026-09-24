@@ -11,6 +11,7 @@
 #include "abcd/source/emission.h"
 
 namespace abcd::source {
+[[nodiscard]] bool IsSourceIdentifier(std::string_view name);
 struct ScalarNames {
   struct RestBinding {
     std::uint16_t first_argument;

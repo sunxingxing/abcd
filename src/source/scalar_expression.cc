@@ -296,6 +296,7 @@ class ExpressionWriter {
   std::optional<EmitError> error_;
 };
 }  // namespace
+bool IsSourceIdentifier(std::string_view name) { return Identifier(name); }
 
 std::variant<std::size_t, EmitError> WriteScalarExpression(
     const ScalarExpression& expression, ScalarNames names, std::ostream& output,
