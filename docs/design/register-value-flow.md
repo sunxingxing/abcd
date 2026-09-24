@@ -29,8 +29,12 @@ bits at or above the pinned impure-NaN threshold remain top, not language values
 `MOD2` is a narrow exception: the pinned v7 fast and slow paths canonicalize
 NaN before constructing a tagged result, finite `fmod` stays finite, and the
 BigInt path returns a language value. Only with language-only operands does
-its normal result receive a language fact. Other numeric operators remain
-conservative.
+its normal result receive a language fact. The pinned `RuntimeNot`,
+`RuntimeShl2`, `RuntimeShr2`, `RuntimeAshr2`, `RuntimeAnd2`, `RuntimeOr2`,
+and `RuntimeXor2` paths also return int32, finite uint32, or BigInt on normal
+completion; mixed BigInt/Number inputs throw. Their results are language
+values only when operand facts are language-only. Other numeric operators
+remain conservative.
 This admits the paired 12.0.2 `CardItem` constructor's remainder-based array
 index without broadening unrelated arithmetic results.
 

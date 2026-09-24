@@ -20,11 +20,11 @@ bool HasLanguageResult(UnaryOperator op) {
     case UnaryOperator::kToBoolean:
     case UnaryOperator::kLogicalNot:
     case UnaryOperator::kTypeOf:
+    case UnaryOperator::kBitNot:
     case UnaryOperator::kFalseOrZero:
     case UnaryOperator::kTrueOrNonzeroNumber:
       return true;
     case UnaryOperator::kNegate:
-    case UnaryOperator::kBitNot:
     case UnaryOperator::kToNumber:
     case UnaryOperator::kToNumeric:
     case UnaryOperator::kIncrement:
@@ -47,18 +47,20 @@ bool HasLanguageResult(BinaryOperator op) {
     // Pinned v7 FastMod/RuntimeMod2 canonicalize NaN before construction;
     // finite fmod and BigInt remainder also return language values.
     case BinaryOperator::kRemainder:
-      return true;
-    case BinaryOperator::kAdd:
-    case BinaryOperator::kSubtract:
-    case BinaryOperator::kMultiply:
-    case BinaryOperator::kDivide:
-    case BinaryOperator::kExponent:
+    // Pinned v7 bitwise/shift stubs return tagged int32/uint32 or BigInt on
+    // normal completion. Numeric conversion failures take the abrupt path.
     case BinaryOperator::kShiftLeft:
     case BinaryOperator::kShiftRightUnsigned:
     case BinaryOperator::kShiftRightSigned:
     case BinaryOperator::kBitAnd:
     case BinaryOperator::kBitOr:
     case BinaryOperator::kBitXor:
+      return true;
+    case BinaryOperator::kAdd:
+    case BinaryOperator::kSubtract:
+    case BinaryOperator::kMultiply:
+    case BinaryOperator::kDivide:
+    case BinaryOperator::kExponent:
       return false;
   }
   return false;
