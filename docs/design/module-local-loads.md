@@ -16,5 +16,7 @@ their separate request-index validation. `ValidateGuardedModuleLoads` uses two
 linear passes, one byte per instruction for admission and bounded work/memory
 budgets. Mixed external/local sequences are tested at 200, 201, 400 and 800
 loads. A Node oracle checks local live-binding updates and external import
-updates. This does not admit module loads in general CFG bodies or imply that
-every record using one can now be emitted.
+updates. For branch bodies, the same guarded-load proof now supplies language
+value facts and ordered source emission, but only when no captured cell is
+present. The paired 12.0.2 `BreakpointType.getValue` record is admitted;
+unguarded or nonadjacent loads and other unsupported CFG shapes remain refused.

@@ -14,6 +14,7 @@
 
 #include "abcd/abc/register_access.h"
 #include "abcd/analysis/first_for_in.h"
+#include "abcd/analysis/module_load.h"
 #include "abcd/analysis/rest_arguments.h"
 #include "abcd/source/base_constructor.h"
 #include "abcd/source/class_method.h"
@@ -349,13 +350,45 @@ class FunctionWriter {
           ordered_budget.work = body_budget.work;
           ordered_budget.output = body_budget.output;
           if (captured_values_ == analysis::CapturedValues::kReject) {
-            if (const auto unsafe = ProveBranchValues(
-                    body, names_.registers.size(), body_budget))
-              return *unsafe;
-            result = std::visit(
-                [](auto value) -> FunctionEmitResult { return value; },
-                WriteBlockLoopBody(body, names_, output_, ordered_budget,
-                                   body_constants));
+            // Module reads in branch bodies need the same guarded-load facts
+            // as captured bodies, but must not admit any captured cell here.
+            const bool has_module_load = std::any_of(
+                body.instructions.begin(), body.instructions.end(),
+                [](const abc::BodyInstruction& site) {
+                  return std::holds_alternative<analysis::ModuleLoad>(
+                      analysis::LiftModuleLoad(site.decoded));
+                });
+            if (has_module_load) {
+              const auto prepared = BuildCapturedBranchFacts(
+                  body, names_.registers.size(), body_constants, body_budget);
+              if (const auto* error = std::get_if<BodyEmitFailure>(&prepared))
+                return *error;
+              const auto& facts = std::get<BranchSourceFacts>(prepared);
+              if (!facts.captures.empty())
+                return BodyEmitFailure{
+                    BodyEmitError::kUnsupportedInstruction, {}, {}, {}};
+              if (facts.AllocatedBytes() > body_budget.bytes)
+                return FunctionEmitError::kResourceLimit;
+              auto proof_budget = body_budget;
+              proof_budget.bytes -= facts.AllocatedBytes();
+              if (const auto unsafe = ProveBranchValues(
+                      body, names_.registers.size(), proof_budget,
+                      facts.value_facts))
+                return *unsafe;
+              result = std::visit(
+                  [](auto value) -> FunctionEmitResult { return value; },
+                  WriteCapturedBranchBody(body, names_, output_,
+                                          ordered_budget, body_constants,
+                                          facts));
+            } else {
+              if (const auto unsafe = ProveBranchValues(
+                      body, names_.registers.size(), body_budget))
+                return *unsafe;
+              result = std::visit(
+                  [](auto value) -> FunctionEmitResult { return value; },
+                  WriteBlockLoopBody(body, names_, output_, ordered_budget,
+                                     body_constants));
+            }
           } else {
             const auto prepared = BuildCapturedBranchFacts(
                 body, names_.registers.size(), body_constants, body_budget);
