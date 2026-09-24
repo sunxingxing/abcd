@@ -6,6 +6,7 @@
 #include "abcd/analysis/exception_flow.h"
 #include "abcd/analysis/exception_ssa.h"
 #include "abcd/analysis/exception_value_flow.h"
+#include "abcd/analysis/exception_environment.h"
 
 int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     abcd::abc::ProfileId profile, std::uint64_t frame_size,
@@ -65,9 +66,24 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     output << nlohmann::json{{"value_flow_error", static_cast<unsigned>(failure.kind)}} << '\n';
     return EXIT_FAILURE;
   }
-  output << nlohmann::json{{"schema", 3}, {"instructions", flow->instructions.size()},
+  remaining -= values->AllocatedBytes();
+  const auto bound = analysis::AnalyzeExceptionEnvironments(*flow, {remaining});
+  const auto* environments = std::get_if<analysis::EnvironmentFlow>(&bound);
+  if (!environments) {
+    const auto& failure = std::get<analysis::EnvironmentFlowFailure>(bound);
+    output << nlohmann::json{{"environment_error", static_cast<unsigned>(failure.kind)},
+                             {"pc", failure.offset.value}} << '\n';
+    return EXIT_FAILURE;
+  }
+  const auto environment_ref = [](analysis::EnvironmentRef ref) {
+    if (const auto* local = std::get_if<analysis::EnvironmentId>(&ref))
+      return nlohmann::json{{"environment", local->value}};
+    return nlohmann::json{{"captured_depth", std::get<analysis::CapturedDepth>(ref).value}};
+  };
+  output << nlohmann::json{{"schema", 4}, {"instructions", flow->instructions.size()},
       {"nodes", flow->nodes.size()}, {"source_complete", false}, {"ssa_complete", false},
       {"register_ssa_complete", true}, {"value_flow_complete", true},
+      {"environment_topology_complete", true}, {"lexical_values_proven", false},
       {"requires_language_abi", true}, {"pending_exception_values_proven", false},
       {"ssa_values", ssa->Values().size()}}
       << '\n';
@@ -78,6 +94,8 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
         {"pc", instruction.pc.value}, {"phase", static_cast<unsigned>(node.phase)},
         {"successors", nlohmann::json::array()}};
     const analysis::ExceptionNodeId id{static_cast<std::uint32_t>(i)};
+    if (environments->before[i])
+      row["environment_before"] = environment_ref(*environments->before[i]);
     row["reads"] = nlohmann::json::array();
     for (const auto& read : ssa->Reads(id))
       row["reads"].push_back({{"ordinal", read.ordinal}, {"value", read.value.value}});
@@ -100,6 +118,17 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
       row["propagates_to_caller"] = true;
     output << row << '\n';
   }
+  for (const auto& allocation : environments->allocations) {
+    const auto* definition = environments->environments.Find(allocation.environment);
+    output << nlohmann::json{{"allocation_node", allocation.instruction},
+        {"environment", allocation.environment.value},
+        {"parent", environment_ref(definition->parent)},
+        {"slots", definition->allocation.slots}} << '\n';
+  }
+  for (const auto& access : environments->bindings)
+    output << nlohmann::json{{"binding_node", access.instruction},
+        {"owner", environment_ref(access.binding.environment)},
+        {"slot", access.binding.slot.value}} << '\n';
   for (std::size_t i = 0; i < ssa->Values().size(); ++i) {
     const auto& value = ssa->Values()[i];
     nlohmann::json row{{"ssa_value", i}};

@@ -68,6 +68,48 @@ is not an acceptable shortcut.
 
 ## Verification Status
 
+### Exception Environment Topology
+
+`AnalyzeEnvironmentSites` now shares the existing flat agreement lattice and
+`EnvironmentIndex` between normal and exceptional paths. The normal body API
+still rejects exception tables and resumes; it decodes lexical operations once
+into typed sites. `AnalyzeExceptionEnvironments` adapts the phased graph:
+lexical accesses bind at Before, push/pop occur at Commit, and Catch preserves
+the incoming environment. All result indices in this adapter denote phase
+nodes, not original instruction positions. This does not infer lexical cell
+initialization, closure writes or source-level scope lifetimes.
+
+The pinned `interpreter-inl.cpp` EXCEPTION handler (around line 3999) selects
+the frame/PC and updates accumulator without replacing that frame's environment.
+NEWLEXENV and named/wide variants (around line 4583) install the new environment
+only after abrupt-completion checks. POPLEXENV explicitly selects the parent.
+The adapter rejects before-throw environment writes, unknown normal environment
+writes and suspension effects instead of silently treating them as identity.
+Unequal environment identities at a join remain an explicit failure; no
+arbitrary path selection or implicit catch-entry pop is allowed.
+
+The O(N+E) adapter is byte-admitted while the shared analyzer runs, including
+its site array and graph. Shared analysis retains O(N+E+(P+L)log D) time and
+bounded ancestry storage. Accounting includes adapter storage and its pass;
+the normal wrapper now has at most four instruction visits, including decoding.
+The existing scaling assertion was updated to this bound but not executed.
+
+ABC-only inspections of pasteboard methods 4945, 5165, 6350 and 6733 succeed
+with schema 4 (`build/pasteboard-<method>-exception-environments.jsonl`). In
+4945, catch node 406 retains captured depth zero and the lexical access at node
+270 binds captured slot 1. In 6733, Commit node 1 allocates environment 0;
+catch nodes 402 (PC 96) and 403 (PC 275) both retain that environment, and
+access nodes 8 and 384 bind its slot 0. Reports distinguish
+`environment_topology_complete: true` from `lexical_values_proven: false`;
+`source_complete` and `ssa_complete` remain false. Both CLI targets compiled;
+read-only review found no concrete defect. Tests and RSS remain paused.
+Deferred regression cases include failed environment allocation, explicit pops
+in handlers, branch-local environments, ambiguous catch joins, loop freshness,
+malformed graphs and resource exhaustion. No additional source record is
+claimed from topology evidence alone. The all-record production survey
+`build/pasteboard-semantic-exception-environments.jsonl` retains stage counts
+`[0,0,27,1,0,8,0,11,113,56,3]` after the shared-core refactor.
+
 ### Exception Value Flow
 
 `ExceptionValueFlow` now uses the same typed register-value rules and sparse
@@ -119,7 +161,8 @@ Register SSA result instruction/phi indices refer to phase nodes, not original
 ABC instructions; callers use the flow's node-to-instruction/PC mapping. This
 does not itself prove exception value categories or environment restoration.
 The value-flow layer above now connects normal result rules to Before reads;
-environment validation remains necessary before try/catch source admission.
+environment topology is now analyzed above, while lexical cell/value validation
+remains necessary before try/catch source admission.
 
 Adapter storage is O(N+E) for phase nodes/arcs; it deducts its live arrays from
 the SSA byte budget and charges its work to the shared method quota. The SSA
@@ -153,8 +196,8 @@ propagation remains an explicit exception exit rather than a normal successor.
 Unused Commit nodes can be unreachable; consumers must compute reachability.
 
 The graph itself does not grant source admission. Register SSA and value flow
-are described above; environment restoration and region integration remain
-open. Raw unsupported coroutine operations still reject graph building;
+are described above; lexical values and region integration remain open.
+Raw unsupported coroutine operations still reject graph building;
 owner-proven async normalization has not been routed through this API yet.
 
 Storage reserves two nodes per instruction plus at most min(I,H) catch nodes.

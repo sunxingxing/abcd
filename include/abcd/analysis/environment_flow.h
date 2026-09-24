@@ -5,6 +5,12 @@
 #include "abcd/analysis/normal_flow.h"
 
 namespace abcd::analysis {
+using EnvironmentOperation = std::variant<std::monostate, PushEnvironment,
+                                          PopEnvironment, LexicalLoad, LexicalStore>;
+struct EnvironmentSite {
+  abc::CodeOffset pc;
+  EnvironmentOperation operation;
+};
 struct BoundLexicalSite {
   std::uint32_t instruction = 0;
   LexicalBinding binding;
@@ -16,7 +22,7 @@ struct EnvironmentAllocation {
 struct EnvironmentFlow {
   EnvironmentIndex environments;
   // Indexed by decoded instruction position, not byte offset. Absence means
-  // normal-unreachable under the exception-free, non-suspending contract.
+  // unreachable. Site-based callers use their site index, not ABC positions.
   std::vector<std::optional<EnvironmentRef>> before;
   std::vector<BoundLexicalSite> bindings;
   // Discovery order: parents precede children, not necessarily bytecode order.
@@ -31,7 +37,8 @@ enum class EnvironmentFlowError {
   kMalformedLexical,
   kAmbiguousJoin,
   kBinding,
-  kResourceLimit
+  kResourceLimit,
+  kUnsupportedEffect
 };
 struct EnvironmentFlowFailure {
   EnvironmentFlowError kind;
@@ -49,11 +56,19 @@ struct EnvironmentFlowFailure {
 // loops are supported; each allocation site still denotes fresh dynamic
 // instances. Resumes/handlers and unequal incoming environment sites require
 // later analyses and are explicit errors. O(I+B+E+(P+L)log D) time, bounded
-// result plus scratch; graph/body are caller storage. At most three instruction
+// result plus scratch; graph/body are caller storage. At most four instruction
 // visits per input instruction. IDs and capture depths are relative to this
 // result's context; no cross-method mixing.
 [[nodiscard]] std::variant<EnvironmentFlow, EnvironmentFlowFailure>
 AnalyzeEnvironments(const abc::MethodBody& body, const NormalFlow& graph,
                     std::uint64_t frame_size, EnvironmentBudget budget = {});
+
+// Same agreement lattice and ancestry index, over owner-proven effect sites.
+// Graph instruction ranges index sites; edges describe topology only. The
+// owner must preserve exceptional effect timing and reject unsupported frame
+// changes. No synthetic bytecode is required. Results are indexed by sites.
+[[nodiscard]] std::variant<EnvironmentFlow, EnvironmentFlowFailure>
+AnalyzeEnvironmentSites(std::span<const EnvironmentSite> sites,
+                        const NormalFlow& graph, EnvironmentBudget budget = {});
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_ENVIRONMENT_FLOW_H_

@@ -1,20 +1,20 @@
 #include "abcd/analysis/environment_flow.h"
 
 #include <new>
+#include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace abcd::analysis {
-std::variant<EnvironmentFlow, EnvironmentFlowFailure> AnalyzeEnvironments(
-    const abc::MethodBody& body, const NormalFlow& graph,
-    std::uint64_t frame_size, EnvironmentBudget budget) {
-  if (!body.tries.empty() || !body.handlers.empty())
-    return EnvironmentFlowFailure{EnvironmentFlowError::kExceptionRegions, {}};
-  if (body.instructions.size() > UINT32_MAX)
+std::variant<EnvironmentFlow, EnvironmentFlowFailure> AnalyzeEnvironmentSites(
+    std::span<const EnvironmentSite> sites, const NormalFlow& graph,
+    EnvironmentBudget budget) {
+  if (sites.size() > UINT32_MAX)
     return EnvironmentFlowFailure{EnvironmentFlowError::kResourceLimit, {}};
   std::size_t covered = 0;
   for (const auto& block : graph.blocks) {
     if (block.first_instruction != covered || block.instruction_count == 0 ||
-        block.instruction_count > body.instructions.size() - covered)
+        block.instruction_count > sites.size() - covered)
       return EnvironmentFlowFailure{EnvironmentFlowError::kInvalidGraph,
                                     block.begin};
     covered += block.instruction_count;
@@ -39,21 +39,16 @@ std::variant<EnvironmentFlow, EnvironmentFlowFailure> AnalyzeEnvironments(
       }
     }
   }
-  if (graph.blocks.empty() || covered != body.instructions.size())
+  if (graph.blocks.empty() || covered != sites.size())
     return EnvironmentFlowFailure{EnvironmentFlowError::kInvalidGraph, {}};
   try {
     std::size_t spent = 0;
     std::size_t pushes = 0, accesses = 0;
     std::uint64_t visits = 0;
-    for (const auto& instruction : body.instructions) {
+    for (const auto& instruction : sites) {
       ++visits;
-      const auto operation =
-          LiftLexicalInstruction(instruction.decoded, frame_size);
-      if (const auto* error = std::get_if<LexicalError>(&operation)) {
-        if (*error != LexicalError::kUnsupportedOpcode)
-          return EnvironmentFlowFailure{EnvironmentFlowError::kMalformedLexical,
-                                        instruction.offset, *error};
-      } else if (std::holds_alternative<PushEnvironment>(operation)) {
+      const auto& operation = instruction.operation;
+      if (std::holds_alternative<PushEnvironment>(operation)) {
         ++pushes;
       } else if (std::holds_alternative<LexicalLoad>(operation) ||
                  std::holds_alternative<LexicalStore>(operation)) {
@@ -77,12 +72,12 @@ std::variant<EnvironmentFlow, EnvironmentFlowFailure> AnalyzeEnvironments(
     };
     if (!reserve(entries, graph.blocks.size()) ||
         !reserve(pending, graph.blocks.size()) ||
-        !reserve(before, body.instructions.size()) ||
+        !reserve(before, sites.size()) ||
         !reserve(definitions, pushes) || !reserve(bindings, accesses) ||
         !reserve(allocations, pushes))
       return EnvironmentFlowFailure{EnvironmentFlowError::kResourceLimit, {}};
     entries.resize(graph.blocks.size());
-    before.resize(body.instructions.size());
+    before.resize(sites.size());
     entries[0] = CapturedDepth{0};
     pending.push_back({0});
     // Flat agreement lattice: unseen -> one environment site -> conflict.
@@ -97,10 +92,9 @@ std::variant<EnvironmentFlow, EnvironmentFlowFailure> AnalyzeEnvironments(
            i < std::size_t(block.first_instruction) + block.instruction_count;
            ++i) {
         ++visits;
-        const auto& instruction = body.instructions[i];
+        const auto& instruction = sites[i];
         before[i] = current;
-        const auto operation =
-            LiftLexicalInstruction(instruction.decoded, frame_size);
+        const auto& operation = instruction.operation;
         if (const auto* push = std::get_if<PushEnvironment>(&operation)) {
           const EnvironmentId allocated{
               static_cast<std::uint32_t>(definitions.size())};
@@ -114,7 +108,7 @@ std::variant<EnvironmentFlow, EnvironmentFlowFailure> AnalyzeEnvironments(
             const auto capture = std::get<CapturedDepth>(current);
             if (capture.value == UINT32_MAX)
               return EnvironmentFlowFailure{EnvironmentFlowError::kBinding,
-                                            instruction.offset,
+                                            instruction.pc,
                                             {},
                                             EnvironmentError::kDepthRange};
             current = CapturedDepth{capture.value + 1};
@@ -142,12 +136,11 @@ std::variant<EnvironmentFlow, EnvironmentFlowFailure> AnalyzeEnvironments(
           EnvironmentFlowError::kBinding, {}, {}, *error};
     auto& environments = std::get<EnvironmentIndex>(indexed);
     spent += environments.AllocatedBytes();
-    for (std::size_t i = 0; i < body.instructions.size(); ++i) {
+    for (std::size_t i = 0; i < sites.size(); ++i) {
       ++visits;
       if (!before[i]) continue;
-      const auto& instruction = body.instructions[i];
-      const auto operation =
-          LiftLexicalInstruction(instruction.decoded, frame_size);
+      const auto& instruction = sites[i];
+      const auto& operation = instruction.operation;
       const LexicalAddress* address = nullptr;
       if (const auto* load = std::get_if<LexicalLoad>(&operation))
         address = &load->address;
@@ -157,7 +150,7 @@ std::variant<EnvironmentFlow, EnvironmentFlowFailure> AnalyzeEnvironments(
       const auto bound = environments.Resolve(*before[i], *address);
       if (const auto* error = std::get_if<EnvironmentError>(&bound))
         return EnvironmentFlowFailure{
-            EnvironmentFlowError::kBinding, instruction.offset, {}, *error};
+            EnvironmentFlowError::kBinding, instruction.pc, {}, *error};
       bindings.push_back(
           {static_cast<std::uint32_t>(i), std::get<LexicalBinding>(bound)});
     }
@@ -167,6 +160,56 @@ std::variant<EnvironmentFlow, EnvironmentFlowFailure> AnalyzeEnvironments(
                            std::move(allocations),
                            spent,
                            visits};
+  } catch (const std::length_error&) {
+    return EnvironmentFlowFailure{EnvironmentFlowError::kResourceLimit, {}};
+  } catch (const std::bad_alloc&) {
+    return EnvironmentFlowFailure{EnvironmentFlowError::kResourceLimit, {}};
+  }
+}
+
+std::variant<EnvironmentFlow, EnvironmentFlowFailure> AnalyzeEnvironments(
+    const abc::MethodBody& body, const NormalFlow& graph,
+    std::uint64_t frame_size, EnvironmentBudget budget) {
+  if (!body.tries.empty() || !body.handlers.empty())
+    return EnvironmentFlowFailure{EnvironmentFlowError::kExceptionRegions, {}};
+  if (body.instructions.size() > UINT32_MAX ||
+      body.instructions.size() > budget.bytes / sizeof(EnvironmentSite))
+    return EnvironmentFlowFailure{EnvironmentFlowError::kResourceLimit, {}};
+  try {
+    std::vector<EnvironmentSite> sites;
+    sites.reserve(body.instructions.size());
+    if (sites.capacity() > budget.bytes / sizeof(EnvironmentSite))
+      return EnvironmentFlowFailure{EnvironmentFlowError::kResourceLimit, {}};
+    for (const auto& instruction : body.instructions) {
+      const auto lifted = LiftLexicalInstruction(instruction.decoded, frame_size);
+      if (const auto* error = std::get_if<LexicalError>(&lifted);
+          error && *error != LexicalError::kUnsupportedOpcode)
+        return EnvironmentFlowFailure{EnvironmentFlowError::kMalformedLexical,
+                                      instruction.offset, *error};
+      EnvironmentOperation operation;
+      std::visit([&](const auto& value) {
+        using T = std::decay_t<decltype(value)>;
+        if constexpr (std::is_same_v<T, PushEnvironment> ||
+                      std::is_same_v<T, PopEnvironment> ||
+                      std::is_same_v<T, LexicalLoad> ||
+                      std::is_same_v<T, LexicalStore>) {
+          operation = value;
+        } else {
+          static_assert(std::is_same_v<T, CurrentEnvironment> ||
+                        std::is_same_v<T, LexicalError>);
+        }
+      }, lifted);
+      sites.push_back({instruction.offset, operation});
+    }
+    const auto retained = sites.capacity() * sizeof(EnvironmentSite);
+    auto result = AnalyzeEnvironmentSites(sites, graph, {budget.bytes - retained});
+    if (auto* flow = std::get_if<EnvironmentFlow>(&result)) {
+      flow->allocated_bytes += retained;
+      flow->instruction_visits += sites.size();
+    }
+    return result;
+  } catch (const std::length_error&) {
+    return EnvironmentFlowFailure{EnvironmentFlowError::kResourceLimit, {}};
   } catch (const std::bad_alloc&) {
     return EnvironmentFlowFailure{EnvironmentFlowError::kResourceLimit, {}};
   }

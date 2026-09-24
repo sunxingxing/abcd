@@ -122,7 +122,9 @@ int main() {
     const auto large_body = Body(bytes);
     const auto large = std::get<EnvironmentFlow>(Analyze(large_body));
     Check(large.environments.Size() == count && large.bindings.size() == count);
-    Check(large.instruction_visits <= 3 * large_body.instructions.size());
+    // One decode pass plus count, propagation and binding site passes.
+    constexpr std::uint64_t kMaxInstructionPasses = 4;
+    Check(large.instruction_visits <= kMaxInstructionPasses * large_body.instructions.size());
     for (const auto& use : large.bindings)
       Check(use.binding.environment == local);
   }
