@@ -98,6 +98,17 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
         const auto& operand = site.decoded.operands[i];
         nlohmann::json value{{"kind", static_cast<unsigned>(operand.kind)},
                              {"bits", operand.raw_bits}};
+        if (operand.kind == abc::OperandKind::kMethod) {
+          const auto reference = abc::ResolvePoolReference(
+              file, *header, *index, method->offset,
+              {static_cast<std::uint32_t>(operand.raw_bits)},
+              abc::PoolEntityKind::kMethod);
+          if (const auto* pool = std::get_if<abc::PoolReference>(&reference))
+            value["method_entity"] = pool->offset.value;
+          else
+            value["reference_error"] =
+                static_cast<unsigned>(std::get<abc::MetadataError>(reference));
+        }
         if (operand.kind == abc::OperandKind::kLiteralArray) {
           const auto reference = abc::ResolvePoolReference(
               file, *header, *index, method->offset,

@@ -563,6 +563,42 @@ entry-depth rebasing, pushed/popped local scopes, local/template name shadowing,
 ordinary-source rejection of an unresolved capture, adjacent zero-width
 insertions, capture quota exhaustion, and failure after partial child output.
 
+## Super Initialization Guards in the Shared IR
+
+Instruction inspection now resolves method operands in the caller's pool
+region and reports `method_entity` (or a typed `reference_error`). This connects
+Home's paramsLambda (6678) at PC 107 to child 6650 without guessing from method
+names or reading paired source. The child blocker is opcode 2046,
+THROW_IFSUPERNOTCORRECTCALL, not an async operation.
+
+The shared IR now consumes the existing typed `LiftSuperInstruction` result
+for both immediate widths. It retains initialized/uninitialized/no-op guard
+modes, register reads, original PC, and normal/exceptional guard effects. Super
+calls themselves are not admitted by this increment. Importantly, pinned
+`RuntimeThrowIfSuperNotCorrectCall` in runtime_stubs-inl.h rejects BOTH Hole
+and undefined in initialized mode, and accepts either in uninitialized mode.
+The interpreter delegates to that runtime implementation. A Language-only SSA
+fact or captured-load premise therefore cannot justify removing this guard.
+
+AST lowering erases an initialized check only under the existing must-string
+or must-non-NaN-number SSA refinements, both of which exclude undefined/Hole.
+It retains a zero-width PC anchor. Explicit no-op modes are also admitted;
+other checks return the new typed `SourceError::kSuperInitialization`. There
+is no replacement with an ordinary property access (which would change a
+ReferenceError into a TypeError), and no mutable global ReferenceError helper
+is introduced. Full captured-this initialization or faithful explicit guard
+emission remains necessary for the three affected real methods.
+
+The ABC-only survey `build/pasteboard-semantic-super-checks.jsonl` moves 6322,
+6486 and 6650 from IR rejection to that AST diagnostic at PCs 17, 8 and 8.
+Totals are 41 IR, six proof, 24 AST and 26 printer rejections, with unchanged
+101 body fragments and 21 templates. This is semantic-model progress, not
+additional source coverage or completion of paramsLambda. Both CLI targets
+compiled. Tests and RSS tracking remain paused; deferred regressions include
+undefined versus Hole, conditional captured facts, nonzero no-op flags, both
+operand widths, malformed operands, phi joins dropping refinements, and PC
+anchors for proven-inert checks.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

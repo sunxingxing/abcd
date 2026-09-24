@@ -129,6 +129,11 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   if (const auto* load = std::get_if<LoadHole>(&hole)) return *load;
   if (std::get<HoleError>(hole) != HoleError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
+  const auto super = LiftSuperInstruction(decoded, frame_size);
+  if (const auto* check = std::get_if<SuperCheck>(&super)) return *check;
+  if (const auto* error = std::get_if<SuperError>(&super);
+      error && *error != SuperError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto global = LiftGlobalAccess(decoded);
   if (const auto* access = std::get_if<GlobalAccess>(&global)) return *access;
   if (std::get<GlobalAccessError>(global) !=
@@ -217,6 +222,17 @@ SemanticEffects Effects(const SemanticOperation& operation,
           effects.normal = LanguageEffect::kModuleWrite;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, SuperCheck>) {
+          switch (value.kind) {
+            case SuperCheckKind::kRequireInitialized:
+            case SuperCheckKind::kRequireUninitialized:
+              effects.normal = LanguageEffect::kGuard;
+              effects.before_throw = effects.normal;
+              effects.exceptional = ExceptionalCompletion::kMayThrow;
+              break;
+            case SuperCheckKind::kNoop:
+              break;
+          }
         } else if constexpr (std::is_same_v<T, HoleGuard>) {
           effects.normal = LanguageEffect::kGuard;
           effects.before_throw = effects.normal;

@@ -297,6 +297,28 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
         ++module_fact;
         operation = SourceAssignment{
             analysis::ScalarSlot{analysis::Accumulator{}}, ModuleExpression{*module}};
+      } else if (const auto* check =
+                     std::get_if<analysis::SuperCheck>(&instruction.operation)) {
+        switch (check->kind) {
+          case analysis::SuperCheckKind::kRequireInitialized: {
+            const auto value = ReadValue(method, position,
+                analysis::ScalarSlot{analysis::Accumulator{}});
+            const auto kinds = value ? proof.values.At(*value) : std::nullopt;
+            // v7 RuntimeThrowIfSuperNotCorrectCall flag 0 rejects BOTH Hole
+            // and undefined. A Language-only capture premise is insufficient.
+            // Only these existing SSA refinements exclude both values; broader
+            // this/closure initialization needs its own proof or explicit throw.
+            if (!kinds || (!kinds->IsString() && !kinds->IsNonNaNNumber()))
+              return Fail(SourceError::kSuperInitialization, instruction.pc);
+            operation = analysis::NoOperation{};
+            break;
+          }
+          case analysis::SuperCheckKind::kNoop:
+            operation = analysis::NoOperation{};
+            break;
+          case analysis::SuperCheckKind::kRequireUninitialized:
+            return Fail(SourceError::kSuperInitialization, instruction.pc);
+        }
       } else if (std::holds_alternative<analysis::HoleGuard>(instruction.operation)) {
         if (!position || !module_fact ||
             proof.guarded_modules[module_fact - 1].instruction.value != position - 1)

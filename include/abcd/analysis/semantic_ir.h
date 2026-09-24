@@ -8,6 +8,7 @@
 
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/constructor_call.h"
+#include "abcd/analysis/derived_constructor.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
@@ -77,7 +78,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        LexicalLoad, LexicalStore,
                                        PushEnvironment, PopEnvironment,
                                        CurrentEnvironment, FunctionCreation,
-                                       LoadHole>;
+                                       LoadHole, SuperCheck>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

@@ -118,6 +118,7 @@ enum class SourceError : std::uint8_t {
   kConstant,
   kOutput,
   kCreation,
+  kSuperInitialization,
 };
 struct SourceFailure {
   SourceError kind;
