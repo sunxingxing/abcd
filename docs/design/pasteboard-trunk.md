@@ -444,6 +444,53 @@ stores of Hole, creation before initialization, multiple creation sites,
 parent/template name collisions, branch phi values, unreachable paths and
 failure after partially emitting a child into the unpublished parent buffer.
 
+## Private Object Identities Across Unrelated Effects
+
+The own-field AST gate now tracks same-block buffered allocation identities
+through SSA slot copies instead of rejecting every intervening user effect.
+A getter on an unrelated receiver, an unrelated lexical read, or function
+creation cannot expose an object held only in private VM registers. Field
+updates on that object therefore remain admissible, subject to the unchanged
+printer proof of an existing writable/enumerable/configurable own data key.
+The pinned DEFINEPROPERTYBYNAME handler calls DefineField; RuntimeDefineField
+uses CreateDataPropertyOrThrow, not inherited-setter assignment semantics.
+Missing keys and arbitrary receivers are still rejected.
+
+`PrivateObjects` retains one optional allocation instruction per SSA value.
+Copies propagate identities in instruction order; phi and cross-block values
+are deliberately not promoted. Any non-copy use of a tracked reference
+conservatively invalidates all earlier identities, except an admitted own
+store into another private object. Invalidating the entire epoch also covers
+transitive containment without building a heap graph. A lexical/module store,
+call argument, return, or property read of the private object therefore cannot
+silently preserve freshness. Validation of all own-store shapes precedes
+publication of printer output. Closure creation reads the environment, not
+arbitrary VM registers; storing an object into that environment already
+invalidates its identity.
+
+For I instructions, R SSA reads and V SSA values, the new pass uses O(V)
+budgeted scratch and O(I log(I + R + 1) + R) work with the existing indexed
+SSA read/write API. There are no per-object suffix or alias-chain scans.
+This is a conservative local escape proof, not general heap alias analysis.
+
+ABC-only inspection in `build/pasteboard-semantic-private-objects.jsonl`
+advances ProgressBar methods 10166 and 10583 from AST rejection to capture
+templates. In 10166, PC 40 and PC 57 now emit the existing `value` and `type`
+field updates after the original property reads, with distinct generated
+spans. Method 6678 passes its field AST gate but remains rejected at child
+creation PC 107. Totals are 44 IR, six proof, 21 AST and 27 printer failures,
+101 bodies and 20 incomplete templates. No complete record was added;
+CommonConstants and Logger remain the only record source outputs.
+
+Both CLI targets compiled and targeted ABC-only generation completed. Tests
+and RSS tracking remain paused. Deferred negative regressions include alias
+publication through lexical/module/property stores, getter access to the
+tracked object, nested-container publication, copy chains, slot overwrites,
+phi/cross-block aliases, unknown/missing keys, `__proto__`, and resource
+exhaustion. Positive cases must retain unrelated getter/closure effects and
+the original field PCs without moving evaluation or invoking mutable global
+Object/Reflect helpers.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial
