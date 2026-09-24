@@ -26,6 +26,13 @@ all operand categories are language-only; otherwise top, or bottom until each
 dependency has evidence. Numeric results need stronger numeric facts: accepted
 noncanonical NaNs can become impure tagged encodings under negation. FLDAI raw
 bits at or above the pinned impure-NaN threshold remain top, not language values.
+`MOD2` is a narrow exception: the pinned v7 fast and slow paths canonicalize
+NaN before constructing a tagged result, finite `fmod` stays finite, and the
+BigInt path returns a language value. Only with language-only operands does
+its normal result receive a language fact. Other numeric operators remain
+conservative.
+This admits the paired 12.0.2 `CardItem` constructor's remainder-based array
+index without broadening unrelated arithmetic results.
 Unknown inputs never become language values merely because an ISA writes acc.
 
 NaN evidence is pinned with the repository reference lock: `interpreter-inl.cpp`
