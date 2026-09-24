@@ -2,6 +2,40 @@
 
 ## Current Boundary
 
+### Conditional Local Initialization
+
+`ProveExceptionLocals` now builds a canonical `LocalAccessPlan` in original
+instruction coordinates and load premises in phase-Commit coordinates. The
+complete exceptional topology feeds the existing dominator implementation:
+an allocation must dominate a completed store, and a store must dominate each
+load's Before node. Failed stores never initialize a cell. Sorted per-cell
+dominator intervals permit binary-search coverage queries rather than a CFG
+walk per variable. Initialization on separate branches without a dominating
+store remains conservatively unsupported.
+
+The result is conditional: after applying its load premises, every reachable
+store must pass `VerifyExceptionInputs`. This is not a default-undefined rule
+or a normal-CFG capture-initialization certificate. Function creation and
+buffered-object creation conservatively mark their current environment and
+ancestors as potentially captured; loads from them require a future
+closure-write proof. The object case follows pinned
+`RuntimeCreateObjectHavingMethod` and `ObjectFactory::CloneObjectLiteral`,
+which installs the lexical environment in cloned methods. Capture propagation
+uses one reverse parent-before-child environment pass.
+
+Both CLI targets compiled. ABC-only inspection schema 9 reports
+`local_initialization_planned` separately from final input and source proof.
+Pasteboard method 6733 rejects a captured local read at PC 504
+(`build/pasteboard-6733-exception-locals.jsonl`). Methods 4945, 5165 and 6350
+have zero local load premises and retain their existing input-proof failures;
+they are not positive evidence for initialized local loads. The ordinary
+all-record artifact `build/pasteboard-semantic-exception-locals.jsonl` is
+byte-identical to the preceding instruction-SSA survey. No new complete
+method or record is claimed. Tests and RSS remain paused. Deferred regression
+coverage includes successful local-load premises, exceptional failed stores,
+repeated allocations, nested environment capture, object-literal methods,
+branch joins, malformed ownership and resource limits.
+
 The common semantic path supports explicit `THROW_PREF_NONE` as
 `ThrowOperation`, with `ExceptionalCompletion::kAlwaysThrow`. The pinned
 OpenHarmony-v7.0-Release interpreter handler in `interpreter-inl.cpp` passes

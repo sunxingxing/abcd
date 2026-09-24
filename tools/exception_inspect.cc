@@ -11,6 +11,7 @@
 #include "abcd/analysis/exception_regions.h"
 #include "abcd/analysis/semantic_region.h"
 #include "abcd/analysis/instruction_ssa.h"
+#include "abcd/analysis/exception_locals.h"
 
 int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     abcd::abc::ProfileId profile, std::uint64_t frame_size,
@@ -63,14 +64,6 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
       entries.push_back({analysis::SsaValueId{static_cast<std::uint32_t>(i)},
                          analysis::ValueKinds::Language()});
   }
-  const auto analyzed = analysis::ExceptionValueFlow::Build(*flow, *ssa, entries, quota, {remaining});
-  const auto* values = std::get_if<analysis::ExceptionValueFlow>(&analyzed);
-  if (!values) {
-    const auto& failure = std::get<analysis::ValueFlowFailure>(analyzed);
-    output << nlohmann::json{{"value_flow_error", static_cast<unsigned>(failure.kind)}} << '\n';
-    return EXIT_FAILURE;
-  }
-  remaining -= values->AllocatedBytes();
   const auto bound = analysis::AnalyzeExceptionEnvironments(*flow, {remaining});
   const auto* environments = std::get_if<analysis::EnvironmentFlow>(&bound);
   if (!environments) {
@@ -79,16 +72,38 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
                              {"pc", failure.offset.value}} << '\n';
     return EXIT_FAILURE;
   }
+  if (environments->allocated_bytes > remaining) return EXIT_FAILURE;
+  remaining -= environments->allocated_bytes;
+  const auto planned = analysis::ProveExceptionLocals(*flow, *environments,
+      {remaining, analysis::kDefaultSemanticWork - quota.Consumed()});
+  const auto* locals = std::get_if<analysis::ExceptionLocals>(&planned);
+  if (!locals) {
+    const auto& failure = std::get<analysis::ExceptionLocalFailure>(planned);
+    output << nlohmann::json{{"local_error", static_cast<unsigned>(failure.kind)},
+                             {"pc", failure.pc.value}} << '\n';
+    return EXIT_FAILURE;
+  }
+  if (locals->AllocatedBytes() > remaining) return EXIT_FAILURE;
+  remaining -= locals->AllocatedBytes();
+  const auto value_work = analysis::kDefaultSemanticWork - quota.Consumed() - locals->plan.work_units;
+  analysis::IdfQuota value_quota{value_work};
+  const auto analyzed = analysis::ExceptionValueFlow::Build(*flow, *ssa, entries,
+      value_quota, {remaining}, analysis::PendingExceptionValues::kUnknown, locals->loads);
+  const auto* values = std::get_if<analysis::ExceptionValueFlow>(&analyzed);
+  if (!values) {
+    const auto& failure = std::get<analysis::ValueFlowFailure>(analyzed);
+    output << nlohmann::json{{"value_flow_error", static_cast<unsigned>(failure.kind)}} << '\n';
+    return EXIT_FAILURE;
+  }
+  remaining -= values->AllocatedBytes();
   const auto environment_ref = [](analysis::EnvironmentRef ref) {
     if (const auto* local = std::get_if<analysis::EnvironmentId>(&ref))
       return nlohmann::json{{"environment", local->value}};
     return nlohmann::json{{"captured_depth", std::get<analysis::CapturedDepth>(ref).value}};
   };
   const auto checked = analysis::VerifyExceptionInputs(*flow, *ssa, *environments, *values,
-      analysis::kDefaultSemanticWork - quota.Consumed());
+      value_work - value_quota.Consumed());
   const auto* inputs = std::get_if<analysis::ExceptionInputProof>(&checked);
-  if (environments->allocated_bytes > remaining) return EXIT_FAILURE;
-  remaining -= environments->allocated_bytes;
   const auto indexed = analysis::InstructionSsa::Build(*flow, *ssa, remaining);
   const auto* instruction_ssa = std::get_if<analysis::InstructionSsa>(&indexed);
   if (!instruction_ssa) {
@@ -121,7 +136,7 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
   };
   const auto tree_result = build_tree();
   const auto* tree = std::get_if<analysis::SemanticRegionTree>(&tree_result);
-  output << nlohmann::json{{"schema", 8}, {"instructions", flow->instructions.size()},
+  output << nlohmann::json{{"schema", 9}, {"instructions", flow->instructions.size()},
       {"nodes", flow->nodes.size()}, {"source_complete", false}, {"ssa_complete", false},
       {"register_ssa_complete", true}, {"value_flow_complete", true},
       {"environment_topology_complete", true}, {"lexical_values_proven", false},
@@ -129,6 +144,7 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
       {"exception_regions_proven", regions != nullptr},
       {"exception_tree_proven", tree != nullptr},
       {"instruction_ssa_indexed", true},
+      {"local_initialization_planned", true}, {"local_load_premises", locals->loads.size()},
       {"requires_language_abi", true}, {"pending_exception_values_proven", false},
       {"ssa_values", ssa->Values().size()}}
       << '\n';
