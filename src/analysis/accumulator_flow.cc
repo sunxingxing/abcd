@@ -7,7 +7,10 @@
 #include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/global_access.h"
+#include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/iter_result.h"
+#include "abcd/analysis/lexical.h"
+#include "abcd/analysis/module_load.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
@@ -55,6 +58,9 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
   if (std::holds_alternative<OrdinaryCall>(
           LiftOrdinaryCall(instruction, frame_size)))
     return Transfer{true, AccumulatorWrite::kValue};
+  if (std::holds_alternative<ReceiverCall>(
+          LiftReceiverCall(instruction, frame_size)))
+    return Transfer{true, AccumulatorWrite::kValue};
   if (std::holds_alternative<ConstructorCall>(
           LiftConstructorCall(instruction, frame_size)))
     return Transfer{false, AccumulatorWrite::kValue};
@@ -99,9 +105,13 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
 }
 std::variant<AccumulatorFlow, AccumulatorFailure> AnalyzeAccumulator(
     const abc::MethodBody& body, const NormalFlow& graph,
-    std::uint64_t frame_size, AccumulatorBudget budget, bool self_loops) {
+    std::uint64_t frame_size, AccumulatorBudget budget, bool self_loops,
+    std::span<const std::uint8_t> language_loads) {
   if (!body.tries.empty() || !body.handlers.empty())
     return AccumulatorFailure{AccumulatorError::kExceptionRegions, {}};
+  if (!language_loads.empty() &&
+      language_loads.size() != body.instructions.size())
+    return AccumulatorFailure{AccumulatorError::kInvalidGraph, {}};
   std::size_t covered = 0;
   for (const auto& block : graph.blocks) {
     if (block.first_instruction != covered || block.instruction_count == 0 ||
@@ -143,7 +153,30 @@ std::variant<AccumulatorFlow, AccumulatorFailure> AnalyzeAccumulator(
              ++i) {
           ++result.instruction_visits;
           const auto& instruction = body.instructions[i];
-          auto transfer = Access(instruction.decoded, frame_size);
+          std::optional<Transfer> transfer;
+          if (!language_loads.empty() && language_loads[i]) {
+            const auto lexical = LiftLexicalInstruction(instruction.decoded,
+                                                        frame_size);
+            const auto module = LiftModuleLoad(instruction.decoded);
+            if (!std::holds_alternative<LexicalLoad>(lexical) &&
+                !std::holds_alternative<ModuleLoad>(module))
+              return AccumulatorFailure{
+                  AccumulatorError::kUnsupportedInstruction,
+                  instruction.offset};
+            transfer = Transfer{false, AccumulatorWrite::kValue};
+          } else if (i != 0 && !language_loads.empty() &&
+                     language_loads[i - 1] &&
+                     std::holds_alternative<ModuleLoad>(LiftModuleLoad(
+                         body.instructions[i - 1].decoded))) {
+            const auto guard = LiftHoleInstruction(instruction.decoded,
+                                                   frame_size);
+            if (const auto* checked = std::get_if<HoleGuard>(&guard);
+                checked &&
+                std::holds_alternative<Accumulator>(checked->value) &&
+                std::holds_alternative<HoleNameSlot>(checked->name))
+              transfer = Transfer{true, AccumulatorWrite::kPreserve};
+          }
+          if (!transfer) transfer = Access(instruction.decoded, frame_size);
           if (!transfer && i >= std::size_t(block.first_instruction) + 2) {
             const auto local = i - block.first_instruction;
             const auto span =
@@ -207,12 +240,16 @@ std::variant<AccumulatorFlow, AccumulatorFailure> AnalyzeAccumulator(
 }  // namespace
 std::variant<AccumulatorFlow, AccumulatorFailure> AnalyzeAcyclicAccumulator(
     const abc::MethodBody& body, const NormalFlow& graph,
-    std::uint64_t frame_size, AccumulatorBudget budget) {
-  return AnalyzeAccumulator(body, graph, frame_size, budget, false);
+    std::uint64_t frame_size, AccumulatorBudget budget,
+    std::span<const std::uint8_t> language_loads) {
+  return AnalyzeAccumulator(body, graph, frame_size, budget, false,
+                            language_loads);
 }
 std::variant<AccumulatorFlow, AccumulatorFailure> AnalyzeBlockLoopAccumulator(
     const abc::MethodBody& body, const NormalFlow& graph,
-    std::uint64_t frame_size, AccumulatorBudget budget) {
-  return AnalyzeAccumulator(body, graph, frame_size, budget, true);
+    std::uint64_t frame_size, AccumulatorBudget budget,
+    std::span<const std::uint8_t> language_loads) {
+  return AnalyzeAccumulator(body, graph, frame_size, budget, true,
+                            language_loads);
 }
 }  // namespace abcd::analysis

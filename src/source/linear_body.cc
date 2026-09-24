@@ -12,7 +12,10 @@
 #include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/global_access.h"
+#include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/iter_result.h"
+#include "abcd/analysis/lexical.h"
+#include "abcd/analysis/module_load.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
@@ -20,6 +23,8 @@
 #include "abcd/analysis/rest_arguments.h"
 #include "abcd/analysis/value_write.h"
 #include "abcd/source/string_literal.h"
+#include "branch_source_facts.h"
+#include "capture_stream.h"
 #include "element_name.h"
 #include "linear_instruction.h"
 #include "object_buffer.h"
@@ -39,12 +44,13 @@ class BodyWriter {
  public:
   BodyWriter(ScalarNames names, std::ostream& output, EmitBudget budget,
              const MethodConstants* constants,
-             ObjectBufferBudget object_budget)
+             ObjectBufferBudget object_budget,
+             const BranchSourceFacts* facts = nullptr)
       : names_(names),
         output_(output),
         remaining_(budget.bytes),
         constants_(constants),
-        object_budget_(object_budget) {}
+        object_budget_(object_budget), facts_(facts) {}
 
   BodyEmitResult Write(const abc::MethodBody& body) {
     if (!body.tries.empty() || !body.handlers.empty())
@@ -180,7 +186,8 @@ class BodyWriter {
                 .subspan(block.first_instruction, block.instruction_count);
         const auto sequence =
             Sequence(instructions.first(instructions.size() - (branch || jump)),
-                     flow.entries[id.value] == AccumulatorState::kValue, false);
+                     flow.entries[id.value] == AccumulatorState::kValue, false,
+                     block.first_instruction);
         if (std::holds_alternative<BodyEmitFailure>(sequence)) return sequence;
         offset_ = instructions.back().offset;
         if (branch) {
@@ -211,13 +218,60 @@ class BodyWriter {
 
  private:
   BodyEmitResult Sequence(std::span<const abc::BodyInstruction> instructions,
-                          bool accumulator_defined, bool require_terminator) {
+                          bool accumulator_defined, bool require_terminator,
+                          std::size_t first_instruction = 0) {
     bool terminated = false;
     try {
       for (std::size_t i = 0; i < instructions.size(); ++i) {
         const auto& instruction = instructions[i];
         offset_ = instruction.offset;
         if (terminated) return Fail(BodyEmitError::kTrailingInstructions);
+        const auto position = first_instruction + i;
+        if (facts_ && position < facts_->language_loads.size() &&
+            facts_->language_loads[position]) {
+          const auto lexical = LiftLexicalInstruction(
+              instruction.decoded, names_.registers.size());
+          Expression(ScalarValue{Accumulator{}});
+          Text(" = ");
+          if (std::holds_alternative<LexicalLoad>(lexical)) {
+            const auto found = std::lower_bound(
+                facts_->captures.begin(), facts_->captures.end(), position,
+                [](const CapturedLoadSite& site, std::size_t index) {
+                  return site.instruction < index;
+                });
+            if (found == facts_->captures.end() ||
+                found->instruction != position)
+              return Fail(BodyEmitError::kUnsupportedInstruction);
+            auto* buffer = dynamic_cast<CaptureBuffer*>(output_.rdbuf());
+            if (!buffer || !buffer->Capture(found->cell))
+              return Fail(BodyEmitError::kExpression);
+          } else {
+            const auto loaded = LiftModuleLoad(instruction.decoded);
+            const auto* module = std::get_if<ModuleLoad>(&loaded);
+            if (!module)
+              return Fail(BodyEmitError::kUnsupportedInstruction);
+            Text(module->space == ModuleSpace::kExternal ? "$import"
+                                                           : "$local");
+            Number(module->slot.value);
+          }
+          Text(";\n");
+          accumulator_defined = true;
+          if (error_) return *error_;
+          continue;
+        }
+        if (facts_ && i != 0 && position != 0 &&
+            position - 1 < facts_->language_loads.size() &&
+            facts_->language_loads[position - 1] &&
+            std::holds_alternative<ModuleLoad>(LiftModuleLoad(
+                instructions[i - 1].decoded))) {
+          const auto guard = LiftHoleInstruction(instruction.decoded,
+                                                 names_.registers.size());
+          if (const auto* checked = std::get_if<HoleGuard>(&guard);
+              checked &&
+              std::holds_alternative<Accumulator>(checked->value) &&
+              std::holds_alternative<HoleNameSlot>(checked->name))
+            continue;
+        }
         using abc::Opcode;
         const auto opcode = instruction.decoded.opcode;
         if (opcode == Opcode::kNOP) continue;
@@ -670,6 +724,12 @@ class BodyWriter {
     remaining_ -= text.size();
     written_ += text.size();
   }
+  void Number(std::uint32_t value) {
+    std::array<char, std::numeric_limits<std::uint32_t>::digits10 + 1> digits{};
+    const auto end = std::to_chars(digits.data(), digits.data() +
+                                  digits.size(), value);
+    Text({digits.data(), static_cast<std::size_t>(end.ptr - digits.data())});
+  }
   void Expression(const ScalarExpression& expression) {
     if (error_) return;
     const auto result =
@@ -694,6 +754,7 @@ class BodyWriter {
   std::optional<BodyEmitFailure> error_;
   const MethodConstants* constants_;
   ObjectBufferBudget object_budget_;
+  const BranchSourceFacts* facts_;
 };
 }  // namespace
 
@@ -780,16 +841,17 @@ BodyEmitResult WriteOrderedBody(const abc::MethodBody& body,
                                 const AccumulatorFlow& flow, ScalarNames names,
                                 std::ostream& output, EmitBudget budget,
                                 const MethodConstants* constants,
-                                ObjectBufferBudget object_budget) {
+                                ObjectBufferBudget object_budget,
+                                const BranchSourceFacts* facts) {
   if (const auto failure = ValidateGlobalScalarNames(body, names, constants))
     return *failure;
-  DiscardBuffer buffer;
+  CaptureDiscard buffer;
   std::ostream discard(&buffer);
   const auto checked =
-      BodyWriter(names, discard, budget, constants, object_budget)
+      BodyWriter(names, discard, budget, constants, object_budget, facts)
           .Ordered(body, graph, flow);
   if (std::holds_alternative<BodyEmitFailure>(checked)) return checked;
-  return BodyWriter(names, output, budget, constants, object_budget)
+  return BodyWriter(names, output, budget, constants, object_budget, facts)
       .Ordered(body, graph, flow);
 }
 }  // namespace abcd::source

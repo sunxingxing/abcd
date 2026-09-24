@@ -5,6 +5,7 @@
 #include "abcd/source/linear_body.h"
 
 namespace abcd::source {
+struct BranchSourceFacts;
 // Private rendering boundary. Graph/state/order must be validated together by
 // WriteAcyclicBody/WriteBlockLoopBody. Only self edges may repeat blocks;
 // accumulator entries include the backedge fixed point. Shares instruction
@@ -15,6 +16,7 @@ BodyEmitResult WriteOrderedBody(const abc::MethodBody& body,
                                 ScalarNames names, std::ostream& output,
                                 EmitBudget budget,
                                 const MethodConstants* constants,
-                                ObjectBufferBudget object_budget);
+                                ObjectBufferBudget object_budget,
+                                const BranchSourceFacts* facts = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_ORDERED_BODY_H_

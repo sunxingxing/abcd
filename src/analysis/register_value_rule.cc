@@ -8,6 +8,7 @@
 #include "abcd/analysis/indexed_read.h"
 #include "abcd/analysis/iter_result.h"
 #include "abcd/analysis/lexical.h"
+#include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/object_creation.h"
 #include "abcd/analysis/rest_arguments.h"
@@ -116,6 +117,9 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     return ValueRule{ValueRuleKind::kLanguageOperation, {}};
   if (std::holds_alternative<ConstructorCall>(
           LiftConstructorCall(instruction, frame_size)))
+    return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
+  if (std::holds_alternative<ReceiverCall>(
+          LiftReceiverCall(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
   const auto constant = LiftConstantObjectInstruction(instruction);
   if (const auto* value = std::get_if<ConstantObjectInstruction>(&constant)) {

@@ -4,6 +4,8 @@
 #include <memory_resource>
 #include <stdexcept>
 
+#include "abcd/analysis/lexical.h"
+#include "abcd/analysis/module_load.h"
 #include "idf_scratch.h"
 #include "lexical_value_index.h"
 #include "register_value_rule.h"
@@ -37,20 +39,34 @@ RegisterValueFlow::BuildWithLexicals(const abc::MethodBody& body,
                                      std::span<const EntryValueFact> entries,
                                      const LexicalValueContext& lexicals,
                                      IdfQuota& quota, IdfBudget budget) {
-  return Analyze(body, ssa, frame_size, entries, &lexicals, quota, budget);
+  return Analyze(body, ssa, frame_size, entries, &lexicals, {}, quota,
+                 budget);
 }
 
 std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Build(
     const abc::MethodBody& body, const RegisterSsa& ssa,
     std::uint64_t frame_size, std::span<const EntryValueFact> entries,
     IdfQuota& quota, IdfBudget budget) {
-  return Analyze(body, ssa, frame_size, entries, nullptr, quota, budget);
+  return Analyze(body, ssa, frame_size, entries, nullptr, {}, quota,
+                 budget);
+}
+
+std::variant<RegisterValueFlow, ValueFlowFailure>
+RegisterValueFlow::BuildWithLanguageLoads(
+    const abc::MethodBody& body, const RegisterSsa& ssa,
+    std::uint64_t frame_size, std::span<const EntryValueFact> entries,
+    std::span<const LanguageLoadFact> loads, IdfQuota& quota,
+    IdfBudget budget) {
+  return Analyze(body, ssa, frame_size, entries, nullptr, loads, quota,
+                 budget);
 }
 
 std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
     const abc::MethodBody& body, const RegisterSsa& ssa,
     std::uint64_t frame_size, std::span<const EntryValueFact> entries,
-    const LexicalValueContext* lexicals, IdfQuota& quota, IdfBudget budget) {
+    const LexicalValueContext* lexicals,
+    std::span<const LanguageLoadFact> loads, IdfQuota& quota,
+    IdfBudget budget) {
   using Kind = detail::ValueRuleKind;
   using Error = ValueFlowError;
   try {
@@ -72,6 +88,29 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
     std::pmr::vector<ValueNode> nodes(count, {}, &memory);
     std::pmr::vector<ValueKinds> facts(count, {}, &memory);
     std::pmr::vector<std::uint8_t> marked(count, 0, &memory);
+    std::pmr::vector<std::uint8_t> trusted{&memory};
+    if (!loads.empty()) trusted.resize(body.instructions.size());
+    for (const auto load : loads) {
+      charge();
+      const auto id = load.instruction;
+      if (id.value >= body.instructions.size())
+        return ValueFlowFailure{Error::kInvalidLoadFact, id, {}};
+      if (trusted[id.value])
+        return ValueFlowFailure{Error::kDuplicateLoadFact, id, {}};
+      const auto& decoded = body.instructions[id.value].decoded;
+      const auto lexical = LiftLexicalInstruction(decoded, frame_size);
+      const bool supported = std::holds_alternative<LexicalLoad>(lexical) ||
+                             std::holds_alternative<ModuleLoad>(
+                                 LiftModuleLoad(decoded));
+      const auto value = ssa.Write(id);
+      if (!supported || !value || value->value >= value_count ||
+          !std::holds_alternative<InstructionValue>(
+              ssa.Values()[value->value].origin) ||
+          std::get<InstructionValue>(ssa.Values()[value->value].origin)
+                  .instruction != id)
+        return ValueFlowFailure{Error::kInvalidLoadFact, id, {}};
+      trusted[id.value] = 1;
+    }
     std::pmr::vector<ValueDependency> edges{&memory};
     for (std::size_t i = 0; i < value_count; ++i) {
       charge();
@@ -94,6 +133,10 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
         if (instruction.value >= body.instructions.size() ||
             ssa.Write(instruction) != target)
           return ValueFlowFailure{Error::kInvalidSsa, instruction, {}};
+        if (!trusted.empty() && trusted[instruction.value]) {
+          facts[i] = ValueKinds::Language();
+          continue;
+        }
         const auto lifted = detail::DescribeRegisterValue(
             body.instructions[instruction.value].decoded, frame_size);
         if (const auto* error = std::get_if<ScalarError>(&lifted))

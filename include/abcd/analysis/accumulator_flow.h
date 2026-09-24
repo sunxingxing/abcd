@@ -1,6 +1,8 @@
 #ifndef ABCD_ANALYSIS_ACCUMULATOR_FLOW_H_
 #define ABCD_ANALYSIS_ACCUMULATOR_FLOW_H_
 
+#include <span>
+
 #include "abcd/analysis/block_order.h"
 
 namespace abcd::analysis {
@@ -35,11 +37,15 @@ struct AccumulatorBudget {
 // Hole writes kill initialization; all incoming reachable paths must supply a
 // value before a read. No branch constant-folding or permission to emit Hole.
 // Success proves only this property, NOT full instruction/source equivalence.
+// Optional language_loads is an unchanged per-instruction caller proof for
+// lexical/module loads. A module Hole guard may be omitted only immediately
+// after its proven load in the same ordered source block.
 // O(I+B+E), bounded vector capacities including simultaneous order scratch.
 [[nodiscard]] std::variant<AccumulatorFlow, AccumulatorFailure>
 AnalyzeAcyclicAccumulator(const abc::MethodBody& body, const NormalFlow& graph,
                           std::uint64_t frame_size,
-                          AccumulatorBudget budget = {});
+                          AccumulatorBudget budget = {},
+                          std::span<const std::uint8_t> language_loads = {});
 // Same value/register contracts, allowing only single-block loops. Joining
 // first entry with the backedge needs at most two block scans; a
 // first-iteration value must not mask a later Hole read. O(I+B+E), same memory
@@ -47,6 +53,7 @@ AnalyzeAcyclicAccumulator(const abc::MethodBody& body, const NormalFlow& graph,
 [[nodiscard]] std::variant<AccumulatorFlow, AccumulatorFailure>
 AnalyzeBlockLoopAccumulator(const abc::MethodBody& body,
                             const NormalFlow& graph, std::uint64_t frame_size,
-                            AccumulatorBudget budget = {});
+                            AccumulatorBudget budget = {},
+                            std::span<const std::uint8_t> language_loads = {});
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_ACCUMULATOR_FLOW_H_

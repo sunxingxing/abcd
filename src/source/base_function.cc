@@ -21,6 +21,7 @@
 #include "async_completion.h"
 #include "capture_stream.h"
 #include "branch_value_proof.h"
+#include "branch_source_facts.h"
 #include "constructor_fields.h"
 #include "function_template.h"
 
@@ -331,21 +332,37 @@ class FunctionWriter {
             [](auto value) -> FunctionEmitResult { return value; }, lexical);
         if (const auto* failure =
                 std::get_if<analysis::LinearLexicalFailure>(&lexical);
-            failure && failure->kind == analysis::LinearLexicalError::kControlFlow &&
-            captured_values_ == analysis::CapturedValues::kReject) {
-          // The ordered path has no lexical-environment synthesis. It is only a
-          // fallback after the straight-line planner rejects control flow; its
-          // own opcode proof must accept every live instruction before emission.
+            failure && failure->kind == analysis::LinearLexicalError::kControlFlow) {
           AcyclicBudget ordered_budget;
           ordered_budget.bytes = body_budget.bytes;
           ordered_budget.output = body_budget.output;
-          if (const auto unsafe = ProveBranchValues(
-                  body, names_.registers.size(), body_budget))
-            return *unsafe;
-          result = std::visit(
-              [](auto value) -> FunctionEmitResult { return value; },
-              WriteBlockLoopBody(body, names_, output_, ordered_budget,
-                                 body_constants));
+          if (captured_values_ == analysis::CapturedValues::kReject) {
+            if (const auto unsafe = ProveBranchValues(
+                    body, names_.registers.size(), body_budget))
+              return *unsafe;
+            result = std::visit(
+                [](auto value) -> FunctionEmitResult { return value; },
+                WriteBlockLoopBody(body, names_, output_, ordered_budget,
+                                   body_constants));
+          } else {
+            const auto prepared = BuildCapturedBranchFacts(
+                body, names_.registers.size(), body_constants, body_budget);
+            if (const auto* error = std::get_if<BodyEmitFailure>(&prepared))
+              return *error;
+            const auto& facts = std::get<BranchSourceFacts>(prepared);
+            if (facts.AllocatedBytes() > body_budget.bytes)
+              return FunctionEmitError::kResourceLimit;
+            auto proof_budget = body_budget;
+            proof_budget.bytes -= facts.AllocatedBytes();
+            if (const auto unsafe = ProveBranchValues(
+                    body, names_.registers.size(), proof_budget,
+                    facts.value_facts))
+              return *unsafe;
+            result = std::visit(
+                [](auto value) -> FunctionEmitResult { return value; },
+                WriteCapturedBranchBody(body, names_, output_, ordered_budget,
+                                        body_constants, facts));
+          }
         }
       }
       if (const auto* bytes = std::get_if<std::size_t>(&result))

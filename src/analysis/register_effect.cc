@@ -14,6 +14,7 @@
 #include "abcd/analysis/iterator.h"
 #include "abcd/analysis/lexical.h"
 #include "abcd/analysis/module_load.h"
+#include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/object_creation.h"
@@ -94,6 +95,20 @@ RegisterEffect EffectOf(const IndexedWrite& value) {
 RegisterEffect EffectOf(const OrdinaryCall& value) {
   RegisterEffect effect;
   effect.reads[effect.read_count++] = Accumulator{};
+  effect.write = Accumulator{};
+  if (const auto* range = std::get_if<CallRange>(&value.arguments)) {
+    effect.range = *range;
+  } else {
+    const auto& fixed = std::get<CallRegisters>(value.arguments);
+    for (std::size_t i = 0; i < fixed.count; ++i)
+      effect.reads[effect.read_count++] = fixed.values[i];
+  }
+  return effect;
+}
+RegisterEffect EffectOf(const ReceiverCall& value) {
+  RegisterEffect effect;
+  effect.reads[effect.read_count++] = Accumulator{};
+  effect.reads[effect.read_count++] = value.receiver;
   effect.write = Accumulator{};
   if (const auto* range = std::get_if<CallRange>(&value.arguments)) {
     effect.range = *range;
@@ -296,6 +311,9 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftOrdinaryCall(instruction, frame_size));
+      !Unsupported(result))
+    return result;
+  if (auto result = Adapt(LiftReceiverCall(instruction, frame_size));
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftConstructorCall(instruction, frame_size));

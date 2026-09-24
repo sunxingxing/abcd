@@ -8,7 +8,8 @@
 namespace abcd::source {
 std::optional<BodyEmitFailure> ProveBranchValues(
     const abc::MethodBody& body, std::uint64_t frame_size,
-    LocalLexicalBudget budget) {
+    LocalLexicalBudget budget,
+    std::span<const analysis::LanguageLoadFact> loads) {
   using namespace analysis;
   const auto fail = [](BodyEmitError kind, abc::CodeOffset offset = {}) {
     return BodyEmitFailure{kind, offset};
@@ -66,8 +67,13 @@ std::optional<BodyEmitFailure> ProveBranchValues(
                            ValueKinds::Language()});
     }
     budget.bytes -= entries.capacity() * sizeof(EntryValueFact);
-    const auto analyzed = RegisterValueFlow::Build(
-        body, ssa, frame_size, entries, quota, {budget.bytes});
+    const auto analyzed = loads.empty()
+                              ? RegisterValueFlow::Build(
+                                    body, ssa, frame_size, entries, quota,
+                                    {budget.bytes})
+                              : RegisterValueFlow::BuildWithLanguageLoads(
+                                    body, ssa, frame_size, entries, loads,
+                                    quota, {budget.bytes});
     if (const auto* error = std::get_if<ValueFlowFailure>(&analyzed))
       return fail(error->kind == ValueFlowError::kWorkLimit
                       ? BodyEmitError::kWorkLimit

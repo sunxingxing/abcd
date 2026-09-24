@@ -15,11 +15,16 @@ struct EntryValueFact {
   SsaValueId value;
   ValueKinds kinds;
 };
+struct LanguageLoadFact {
+  InstructionId instruction;
+};
 enum class ValueFlowError {
   kInvalidSsa,
   kInstruction,
   kInvalidEntryFact,
   kDuplicateEntryFact,
+  kInvalidLoadFact,
+  kDuplicateLoadFact,
   kInvalidLexicals,
   kWorkLimit,
   kResourceLimit
@@ -53,6 +58,15 @@ class RegisterValueFlow {
       const abc::MethodBody& body, const RegisterSsa& ssa,
       std::uint64_t frame_size, std::span<const EntryValueFact> entries,
       IdfQuota& quota, IdfBudget budget = {});
+  // The caller proves that these lexical/module loads return language values
+  // on the normal path. The solver validates site kind and SSA ownership;
+  // it never infers TDZ or captured-cell initialization from an opcode alone.
+  [[nodiscard]] static std::variant<RegisterValueFlow, ValueFlowFailure>
+  BuildWithLanguageLoads(const abc::MethodBody& body, const RegisterSsa& ssa,
+                         std::uint64_t frame_size,
+                         std::span<const EntryValueFact> entries,
+                         std::span<const LanguageLoadFact> loads,
+                         IdfQuota& quota, IdfBudget budget = {});
   // Same unchanged inputs as the escape proof. Nonescaping local cells join
   // Hole and ALL stores, not reaching stores. Captured/escaped cells stay top.
   [[nodiscard]] static std::variant<RegisterValueFlow, ValueFlowFailure>
@@ -78,7 +92,9 @@ class RegisterValueFlow {
   static std::variant<RegisterValueFlow, ValueFlowFailure> Analyze(
       const abc::MethodBody& body, const RegisterSsa& ssa,
       std::uint64_t frame_size, std::span<const EntryValueFact> entries,
-      const LexicalValueContext* lexicals, IdfQuota& quota, IdfBudget budget);
+      const LexicalValueContext* lexicals,
+      std::span<const LanguageLoadFact> loads, IdfQuota& quota,
+      IdfBudget budget);
   RegisterValueFlow() = default;
   std::unique_ptr<ValueKinds[]> facts_;
   std::size_t count_ = 0;

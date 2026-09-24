@@ -2,13 +2,16 @@
 
 #include <algorithm>
 
+#include "branch_source_facts.h"
+#include "module_binding_name.h"
 #include "ordered_body.h"
 
 namespace abcd::source {
 namespace {
 AcyclicResult WriteBody(const abc::MethodBody& body, ScalarNames names,
                         std::ostream& output, AcyclicBudget budget,
-                        const MethodConstants* constants, bool self_loops) {
+                        const MethodConstants* constants, bool self_loops,
+                        const BranchSourceFacts* facts = nullptr) {
   if (!body.tries.empty() || !body.handlers.empty())
     return BodyEmitFailure{BodyEmitError::kExceptionRegions, {}, {}, {}};
   const auto built = analysis::BuildNormalFlow(body, {budget.bytes});
@@ -21,10 +24,16 @@ AcyclicResult WriteBody(const abc::MethodBody& body, ScalarNames names,
       graph.blocks.capacity() * sizeof(analysis::FlowBlock);
   const auto analyzed = self_loops ? analysis::AnalyzeBlockLoopAccumulator(
                                          body, graph, names.registers.size(),
-                                         {budget.bytes - graph_bytes})
+                                         {budget.bytes - graph_bytes},
+                                         facts ? std::span<const std::uint8_t>(
+                                                     facts->language_loads)
+                                               : std::span<const std::uint8_t>{})
                                    : analysis::AnalyzeAcyclicAccumulator(
                                          body, graph, names.registers.size(),
-                                         {budget.bytes - graph_bytes});
+                                         {budget.bytes - graph_bytes},
+                                         facts ? std::span<const std::uint8_t>(
+                                                     facts->language_loads)
+                                               : std::span<const std::uint8_t>{});
   if (const auto* error = std::get_if<analysis::AccumulatorFailure>(&analyzed))
     return *error;
   const auto& flow = std::get<analysis::AccumulatorFlow>(analyzed);
@@ -43,7 +52,8 @@ AcyclicResult WriteBody(const abc::MethodBody& body, ScalarNames names,
   if (nesting > budget.max_nesting) return AcyclicError::kNestingLimit;
   const auto result = WriteOrderedBody(body, graph, flow, names, output,
                                        budget.output, constants,
-                                       {analysis_budget - flow.allocated_bytes});
+                                       {analysis_budget - flow.allocated_bytes},
+                                       facts);
   if (const auto* error = std::get_if<BodyEmitFailure>(&result)) return *error;
   return std::get<std::size_t>(result);
 }
@@ -57,5 +67,26 @@ AcyclicResult WriteBlockLoopBody(const abc::MethodBody& body, ScalarNames names,
                                  std::ostream& output, AcyclicBudget budget,
                                  const MethodConstants* constants) {
   return WriteBody(body, names, output, budget, constants, true);
+}
+AcyclicResult WriteCapturedBranchBody(
+    const abc::MethodBody& body, ScalarNames names, std::ostream& output,
+    AcyclicBudget budget, const MethodConstants* constants,
+    const BranchSourceFacts& facts) {
+  constexpr std::string_view kImportPrefix = "$import";
+  const auto collision = [](std::string_view name) {
+    return name.starts_with(kImportPrefix) ||
+           name.starts_with(kLocalModulePrefix);
+  };
+  if (collision(names.accumulator))
+    return BodyEmitFailure{BodyEmitError::kExpression, {}, {},
+                           EmitError::kInvalidBinding};
+  for (const auto name : names.registers)
+    if (collision(name))
+      return BodyEmitFailure{BodyEmitError::kExpression, {}, {},
+                             EmitError::kInvalidBinding};
+  if (facts.AllocatedBytes() > budget.bytes)
+    return AcyclicError::kResourceLimit;
+  budget.bytes -= facts.AllocatedBytes();
+  return WriteBody(body, names, output, budget, constants, true, &facts);
 }
 }  // namespace abcd::source
