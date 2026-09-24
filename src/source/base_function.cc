@@ -410,14 +410,21 @@ class FunctionWriter {
               return *unsafe;
             const auto staged = analysis::MatchTailNamedInvocation(
                 body, names_.registers.size());
+            auto ordinary = WriteCapturedBranchBody(
+                body, names_, output_, ordered_budget, body_constants, facts);
+            if (staged) {
+              const auto* unsupported =
+                  std::get_if<BodyEmitFailure>(&ordinary);
+              if (unsupported &&
+                  unsupported->kind ==
+                      BodyEmitError::kUnsupportedInstruction)
+                ordinary = WriteStagedBranchCall(
+                    body, *staged, names_, output_, body_budget,
+                    body_constants, facts);
+            }
             result = std::visit(
                 [](auto value) -> FunctionEmitResult { return value; },
-                staged ? WriteStagedBranchCall(
-                             body, *staged, names_, output_, body_budget,
-                             body_constants, facts)
-                       : WriteCapturedBranchBody(
-                             body, names_, output_, ordered_budget,
-                             body_constants, facts));
+                ordinary);
           }
         }
       }

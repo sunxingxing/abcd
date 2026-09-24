@@ -1,9 +1,12 @@
 #include "staged_branch_call.h"
 
 #include <algorithm>
+#include <ios>
 #include <limits>
 #include <new>
+#include <optional>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 #include "abcd/abc/control_transfer.h"
@@ -31,6 +34,7 @@ std::optional<BodyEmitFailure> ValidateRegion(
       call.reload + 1 != call.call || call.call + 1 >= instructions.size())
     return Fail(BodyEmitError::kUnsupportedInstruction);
   const auto begin = call.spill + 1;
+  const auto prefix_end = instructions[call.property].offset.value;
   const auto first_pc = instructions[begin].offset.value;
   const auto end_pc = instructions[call.reload].offset.value;
   for (std::size_t i = 0; i < instructions.size(); ++i) {
@@ -38,6 +42,17 @@ std::optional<BodyEmitFailure> ValidateRegion(
     const auto transfer = abc::GetControlTransfer(site.decoded.opcode);
     if (!transfer) return Fail(BodyEmitError::kUnsupportedInstruction,
                                site.offset);
+    if (i < call.property) {
+      if (*transfer != abc::ControlTransfer::kFallthrough &&
+          *transfer != abc::ControlTransfer::kJump &&
+          *transfer != abc::ControlTransfer::kBranch)
+        return Fail(BodyEmitError::kUnsupportedInstruction, site.offset);
+      if (site.branch_target &&
+          (site.branch_target->value < instructions.front().offset.value ||
+           site.branch_target->value > prefix_end))
+        return Fail(BodyEmitError::kUnsupportedInstruction, site.offset);
+      continue;
+    }
     if (i < begin || i >= call.reload) {
       if (i + 1 == instructions.size()) {
         if (*transfer != abc::ControlTransfer::kReturn &&
@@ -66,6 +81,36 @@ std::optional<BodyEmitFailure> ValidateRegion(
     return Fail(BodyEmitError::kUnsupportedInstruction,
                 instructions[call.reload].offset);
   return {};
+}
+
+std::variant<abc::MethodBody, BodyEmitFailure> PrefixBody(
+    const abc::MethodBody& body,
+    const analysis::StagedNamedInvocation& call, std::size_t bytes) {
+  constexpr std::size_t kSyntheticInstructions = 1;
+  if (call.property > UINT32_MAX - kSyntheticInstructions ||
+      call.property + kSyntheticInstructions >
+          bytes / sizeof(abc::BodyInstruction))
+    return Fail(BodyEmitError::kResourceLimit);
+  try {
+    abc::MethodBody result;
+    result.instructions.reserve(call.property + kSyntheticInstructions);
+    if (result.instructions.capacity() >
+        bytes / sizeof(abc::BodyInstruction))
+      return Fail(BodyEmitError::kResourceLimit);
+    result.instructions.insert(result.instructions.end(),
+                               body.instructions.begin(),
+                               body.instructions.begin() + call.property);
+    abc::DecodedInstruction returned;
+    returned.opcode = abc::Opcode::kRETURNUNDEFINED;
+    returned.size = kReturnWidth;
+    result.instructions.push_back({body.instructions[call.property].offset,
+                                   returned, {}});
+    return result;
+  } catch (const std::bad_alloc&) {
+    return Fail(BodyEmitError::kResourceLimit);
+  } catch (const std::length_error&) {
+    return Fail(BodyEmitError::kResourceLimit);
+  }
 }
 
 std::variant<abc::MethodBody, BodyEmitFailure> ArgumentBody(
@@ -122,6 +167,8 @@ AcyclicResult WritePass(const abc::MethodBody& body,
                         const MethodConstants* constants,
                         const BranchSourceFacts& outer,
                         const BranchSourceFacts& inner,
+                        const abc::MethodBody* branch_prefix,
+                        const BranchSourceFacts* prefix_facts,
                         std::span<const analysis::StagedNamedInvocation>
                             prefix_calls,
                         std::span<const FreshFieldSite> prefix_fields,
@@ -134,11 +181,39 @@ AcyclicResult WritePass(const abc::MethodBody& body,
     return {};
   };
   const auto& sites = body.instructions;
-  if (const auto error = add(WriteBranchSegment(
-          std::span(sites).first(call.property), 0, false, false, names,
-          output, {budget.output.bytes - written}, constants, outer,
-          prefix_calls, prefix_fields)))
+  if (branch_prefix) {
+    if (!prefix_facts) return Fail(BodyEmitError::kUnsupportedInstruction);
+    const auto write = [&](std::string_view text)
+        -> std::optional<BodyEmitFailure> {
+      if (text.size() > budget.output.bytes - written)
+        return BodyEmitFailure{BodyEmitError::kExpression, {}, {},
+                               EmitError::kOutputLimit};
+      try {
+        output.write(text.data(), static_cast<std::streamsize>(text.size()));
+      } catch (const std::ios_base::failure&) {
+        return BodyEmitFailure{BodyEmitError::kExpression, {}, {},
+                               EmitError::kWrite};
+      }
+      if (!output)
+        return BodyEmitFailure{BodyEmitError::kExpression, {}, {},
+                               EmitError::kWrite};
+      written += text.size();
+      return {};
+    };
+    if (const auto error = write("$prefix_exit: {\n")) return *error;
+    inner_budget.output.bytes = budget.output.bytes - written;
+    const auto emitted = WriteCapturedBranchBody(
+        *branch_prefix, names, output, inner_budget, constants,
+        *prefix_facts, StructuredExit::kPrefixBreak);
+    if (!std::holds_alternative<std::size_t>(emitted)) return emitted;
+    written += std::get<std::size_t>(emitted);
+    if (const auto error = write("}\n")) return *error;
+  } else if (const auto error = add(WriteBranchSegment(
+                 std::span(sites).first(call.property), 0, false, false,
+                 names, output, {budget.output.bytes - written}, constants,
+                 outer, prefix_calls, prefix_fields))) {
     return *error;
+  }
   if (const auto error = add(WriteStagedCallHead(
           call, sites[call.property].offset, names, output,
           {budget.output.bytes - written}, constants)))
@@ -167,6 +242,12 @@ AcyclicResult WriteStagedBranchCall(
     ScalarNames names, std::ostream& output, LocalLexicalBudget budget,
     const MethodConstants* constants, const BranchSourceFacts& outer) {
   if (const auto failure = ValidateRegion(body, call)) return *failure;
+  const bool branch_prefix = std::any_of(
+      body.instructions.begin(), body.instructions.begin() + call.property,
+      [](const abc::BodyInstruction& site) {
+        return abc::GetControlTransfer(site.decoded.opcode) !=
+               abc::ControlTransfer::kFallthrough;
+      });
   BranchStagedCalls prefix;
   {
     const auto built = analysis::BuildNormalFlow(body, {budget.bytes});
@@ -187,6 +268,8 @@ AcyclicResult WriteStagedBranchCall(
   }
   std::size_t retained = 0;
   for (const auto& nested : prefix.calls) {
+    if (nested.property == call.property && nested.call == call.call)
+      continue;
     if (nested.call < call.property || nested.property > call.call) {
       prefix.calls[retained++] = nested;
     } else if (nested.property <= call.property ||
@@ -202,9 +285,13 @@ AcyclicResult WriteStagedBranchCall(
   budget.bytes -= prefix.calls.capacity() *
                   sizeof(analysis::StagedNamedInvocation);
   budget.work -= budget.work / 2;
-  auto planned_fields = BuildFreshFieldPlan(
-      std::span(body.instructions).first(call.property),
-      names.registers.size(), budget.bytes);
+  auto planned_fields = branch_prefix
+                            ? std::variant<FreshFieldPlan, BodyEmitFailure>{
+                                  FreshFieldPlan{}}
+                            : BuildFreshFieldPlan(
+                                  std::span(body.instructions).first(
+                                      call.property),
+                                  names.registers.size(), budget.bytes);
   if (const auto* error = std::get_if<BodyEmitFailure>(&planned_fields))
     return *error;
   const auto& fields = std::get<FreshFieldPlan>(planned_fields);
@@ -224,6 +311,31 @@ AcyclicResult WriteStagedBranchCall(
   if (outer.AllocatedBytes() > budget.bytes)
     return Fail(BodyEmitError::kResourceLimit);
   budget.bytes -= outer.AllocatedBytes();
+  std::optional<abc::MethodBody> prefix_body;
+  std::optional<BranchSourceFacts> prefix_facts;
+  if (branch_prefix) {
+    auto copied = PrefixBody(body, call, budget.bytes);
+    if (const auto* error = std::get_if<BodyEmitFailure>(&copied))
+      return *error;
+    prefix_body.emplace(std::get<abc::MethodBody>(std::move(copied)));
+    const auto prefix_bytes = prefix_body->instructions.capacity() *
+                              sizeof(abc::BodyInstruction);
+    if (prefix_bytes > budget.bytes)
+      return Fail(BodyEmitError::kResourceLimit);
+    budget.bytes -= prefix_bytes;
+    auto prepared = BuildCapturedBranchFacts(
+        *prefix_body, names.registers.size(), constants, budget);
+    if (const auto* error = std::get_if<BodyEmitFailure>(&prepared))
+      return *error;
+    prefix_facts.emplace(std::get<BranchSourceFacts>(std::move(prepared)));
+    if (prefix_facts->AllocatedBytes() > budget.bytes)
+      return Fail(BodyEmitError::kResourceLimit);
+    budget.bytes -= prefix_facts->AllocatedBytes();
+    if (const auto failure = ProveBranchValues(
+            *prefix_body, names.registers.size(), budget,
+            prefix_facts->value_facts))
+      return *failure;
+  }
   auto built = ArgumentBody(body, call, budget.bytes);
   if (const auto* error = std::get_if<BodyEmitFailure>(&built)) return *error;
   const auto& argument = std::get<abc::MethodBody>(built);
@@ -251,10 +363,15 @@ AcyclicResult WriteStagedBranchCall(
   std::ostream discard(&buffer);
   const auto checked = WritePass(body, argument, call, names, discard,
                                  budget, constants, outer, inner,
+                                 prefix_body ? &*prefix_body : nullptr,
+                                 prefix_facts ? &*prefix_facts : nullptr,
                                  prefix.calls, fields.sites,
                                  inner_budget);
   if (!std::holds_alternative<std::size_t>(checked)) return checked;
   return WritePass(body, argument, call, names, output, budget, constants,
-                   outer, inner, prefix.calls, fields.sites, inner_budget);
+                   outer, inner,
+                   prefix_body ? &*prefix_body : nullptr,
+                   prefix_facts ? &*prefix_facts : nullptr,
+                   prefix.calls, fields.sites, inner_budget);
 }
 }  // namespace abcd::source
