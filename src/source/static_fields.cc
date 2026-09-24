@@ -1,7 +1,6 @@
 #include "abcd/source/static_fields.h"
 
 #include <algorithm>
-#include <bit>
 #include <array>
 #include <charconv>
 #include <limits>
@@ -22,6 +21,7 @@
 #include "abcd/analysis/module_load.h"
 #include "abcd/analysis/object_creation.h"
 #include "abcd/analysis/scalar.h"
+#include "record_array.h"
 #include "record_buffer.h"
 
 namespace abcd::source {
@@ -101,6 +101,9 @@ class FieldReader {
         case Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16:
         case Opcode::kCREATEOBJECTWITHBUFFER_IMM16_ID16:
           BufferedObject(site.decoded);
+          break;
+        case Opcode::kCREATEEMPTYOBJECT:
+          EmptyObject(site.decoded);
           break;
         case Opcode::kLDEXTERNALMODULEVAR_IMM8:
         case Opcode::kWIDE_LDEXTERNALMODULEVAR_PREF_IMM16:
@@ -199,91 +202,22 @@ class FieldReader {
     accumulator_ = Save(StaticAtom{ReadName({static_cast<std::uint32_t>(
         instruction.operands[0].raw_bits)})});
   }
-  StaticAtom Element(const abc::LiteralEntry& entry) {
-    if (entry.tag == abc::LiteralTag::kString) {
-      if (!std::holds_alternative<abc::EntityOffset>(entry.value))
-        throw Fail(Error::kConstant, pc_);
-      const auto text = abc::ReadStringEntity(
-          file_, header_, std::get<abc::EntityOffset>(entry.value),
-          {std::min(strings_.bytes, bytes_ - charged_)});
-      if (const auto* error = std::get_if<abc::MetadataError>(&text))
-        throw Fail(Metadata(*error), pc_);
-      return std::get<std::u16string>(text);
-    }
-    const auto* bits = std::get_if<abc::LiteralBits>(&entry.value);
-    if (!bits) throw Fail(Error::kConstant, pc_);
-    switch (entry.tag) {
-      case abc::LiteralTag::kNull:
-        return StaticNull{};
-      case abc::LiteralTag::kBoolean:
-        if (bits->value > 1) throw Fail(Error::kConstant, pc_);
-        return bits->value == 1;
-      case abc::LiteralTag::kInteger:
-        if (bits->value > UINT32_MAX) throw Fail(Error::kConstant, pc_);
-        return std::bit_cast<std::int32_t>(
-            static_cast<std::uint32_t>(bits->value));
-      case abc::LiteralTag::kFloat: {
-        if (bits->value > UINT32_MAX) throw Fail(Error::kConstant, pc_);
-        const auto value = std::bit_cast<float>(
-            static_cast<std::uint32_t>(bits->value));
-        return StaticFloat{std::bit_cast<std::uint64_t>(
-            static_cast<double>(value))};
-      }
-      case abc::LiteralTag::kDouble:
-        return StaticFloat{bits->value};
-      default:
-        throw Fail(Error::kConstant, pc_);
-    }
-  }
   void Array(const abc::DecodedInstruction& instruction) {
-    const auto cache_max = instruction.opcode ==
-                                   abc::Opcode::kCREATEARRAYWITHBUFFER_IMM8_ID16
-                               ? UINT8_MAX : UINT16_MAX;
-    if (instruction.operand_count != 2 ||
-        instruction.operands[0].kind != abc::OperandKind::kImmediate ||
-        instruction.operands[0].raw_bits > cache_max ||
-        instruction.operands[1].kind != abc::OperandKind::kLiteralArray ||
-        instruction.operands[1].raw_bits > UINT16_MAX)
-      throw Fail(Error::kInstruction, pc_);
-    const auto reference = abc::ResolvePoolReference(
-        file_, header_, index_, method_.offset,
-        {static_cast<std::uint32_t>(instruction.operands[1].raw_bits)},
-        abc::PoolEntityKind::kLiteralArray);
-    if (const auto* error = std::get_if<abc::MetadataError>(&reference))
+    auto decoded = ReadBufferedArray(
+        file_, header_, index_, method_.offset, instruction,
+        bytes_ - charged_, strings_);
+    if (const auto* error = std::get_if<abc::MetadataError>(&decoded))
       throw Fail(Metadata(*error), pc_);
-    const auto decoded = abc::ReadLiteralArray(
-        file_, header_, std::get<abc::PoolReference>(reference).offset,
-        {bytes_ - charged_});
     if (const auto* error = std::get_if<abc::LiteralFailure>(&decoded))
       throw Fail(Literal(error->kind), pc_);
-    const auto& entries = std::get<abc::LiteralArray>(decoded).entries;
-    if (entries.capacity() > (bytes_ - charged_) /
-                                 sizeof(abc::LiteralEntry))
-      throw Fail(Error::kResourceLimit, pc_);
-    const auto raw_bytes = entries.capacity() * sizeof(abc::LiteralEntry);
-    Charge(raw_bytes, 1);
-    if (entries.size() > (bytes_ - charged_) / sizeof(StaticAtom))
-      throw Fail(Error::kResourceLimit, pc_);
-    StaticArray array;
-    array.elements.reserve(entries.size());
-    if (array.elements.capacity() > (bytes_ - charged_) /
-                                        sizeof(StaticAtom))
-      throw Fail(Error::kResourceLimit, pc_);
-    std::size_t temporary_bytes =
-        array.elements.capacity() * sizeof(StaticAtom);
-    Charge(temporary_bytes, 1);
-    for (const auto& entry : entries) {
-      array.elements.push_back(Element(entry));
-      if (const auto* text =
-              std::get_if<std::u16string>(&array.elements.back())) {
-        Charge(text->capacity(), sizeof(char16_t));
-        temporary_bytes = AddBytes(temporary_bytes, text->capacity(),
-                                   sizeof(char16_t));
-      }
-    }
-    charged_ -= temporary_bytes;
-    accumulator_ = Save(std::move(array));
-    charged_ -= raw_bytes;
+    if (const auto* error = std::get_if<BufferedArrayError>(&decoded))
+      throw Fail(*error == BufferedArrayError::kResourceLimit
+                     ? Error::kResourceLimit
+                     : *error == BufferedArrayError::kInstruction
+                           ? Error::kInstruction : Error::kConstant,
+                 pc_);
+    accumulator_ = Save(StaticArray{
+        std::move(std::get<BufferedArray>(decoded).elements)});
   }
   void EmptyArray(const abc::DecodedInstruction& instruction) {
     const auto lifted = analysis::LiftScalarInstruction(
@@ -306,6 +240,12 @@ class FieldReader {
     fields_.nodes.push_back(RecordLiteralNode{kind});
     Charge(fields_.nodes.capacity() - capacity, sizeof(RecordLiteralNode));
     accumulator_ = Save(RecordNodeRef{id});
+  }
+  void EmptyObject(const abc::DecodedInstruction& instruction) {
+    if (!std::holds_alternative<analysis::EmptyObjectCreation>(
+            analysis::LiftObjectCreation(instruction)))
+      throw Fail(Error::kInstruction, pc_);
+    NewNode(RecordLiteralKind::kObject);
   }
   void BufferedObject(const abc::DecodedInstruction& instruction) {
     const auto lifted = analysis::LiftObjectCreation(instruction);

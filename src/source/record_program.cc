@@ -32,6 +32,7 @@
 #include "abcd/source/module_imports.h"
 #include "abcd/source/static_fields.h"
 #include "abcd/source/string_literal.h"
+#include "record_array.h"
 #include "record_buffer.h"
 #include "record_literal.h"
 #include "record_prelude.h"
@@ -299,6 +300,10 @@ class ProgramWriter {
         case Opcode::kCREATEEMPTYARRAY_IMM8:
         case Opcode::kCREATEEMPTYARRAY_IMM16:
           EmptyArray(instruction.decoded);
+          break;
+        case Opcode::kCREATEARRAYWITHBUFFER_IMM8_ID16:
+        case Opcode::kCREATEARRAYWITHBUFFER_IMM16_ID16:
+          BufferedArrayLiteral(instruction.decoded);
           break;
         case Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8:
         case Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8:
@@ -627,6 +632,49 @@ class ProgramWriter {
     if (!value || !std::holds_alternative<analysis::EmptyArray>(*value))
       throw Fail(Error::kObject, pc_);
     NewLiteral(RecordLiteralKind::kArray);
+  }
+  void BufferedArrayLiteral(const abc::DecodedInstruction& instruction) {
+    // Primitive buffers are pure; keep the fresh array in the same
+    // single-parent graph used for later indexed writes and exports.
+    auto decoded = ReadBufferedArray(file_, header_, index_, entry_.offset,
+                                     instruction, budget_.bytes,
+                                     budget_.strings);
+    if (const auto* error = std::get_if<abc::MetadataError>(&decoded))
+      throw Fail(Metadata(*error), pc_);
+    if (const auto* error = std::get_if<abc::LiteralFailure>(&decoded))
+      throw Fail(error->kind == abc::LiteralError::kResourceLimit
+                     ? Error::kResourceLimit
+                     : error->kind == abc::LiteralError::kRead
+                           ? Error::kRead
+                           : error->kind == abc::LiteralError::kFileChanged
+                                 ? Error::kFileChanged : Error::kObject,
+                 pc_);
+    if (const auto* error = std::get_if<BufferedArrayError>(&decoded))
+      throw Fail(*error == BufferedArrayError::kResourceLimit
+                     ? Error::kResourceLimit
+                     : *error == BufferedArrayError::kInstruction
+                           ? Error::kInstruction : Error::kObject,
+                 pc_);
+    auto array = std::get<BufferedArray>(std::move(decoded));
+    if (array.retained_bytes > budget_.bytes)
+      throw Fail(Error::kResourceLimit, pc_);
+    budget_.bytes -= array.retained_bytes;
+    NewLiteral(RecordLiteralKind::kArray);
+    auto& elements = nodes_[accumulator_.ordinal].elements;
+    if (array.elements.size() >
+        budget_.bytes / sizeof(RecordLiteralValue))
+      throw Fail(Error::kResourceLimit, pc_);
+    elements.reserve(array.elements.size());
+    if (elements.capacity() >
+        budget_.bytes / sizeof(RecordLiteralValue))
+      throw Fail(Error::kResourceLimit, pc_);
+    budget_.bytes -= elements.capacity() * sizeof(RecordLiteralValue);
+    for (auto& atom : array.elements)
+      elements.push_back(std::move(atom));
+    // Element strings moved into the graph; release only the old vector slab.
+    const auto released = array.elements.capacity() * sizeof(StaticAtom);
+    std::vector<StaticAtom>().swap(array.elements);
+    budget_.bytes += released;
   }
   void NewLiteral(RecordLiteralKind kind) {
     const auto id = nodes_.size();
