@@ -5,8 +5,9 @@
 
 namespace abcd::analysis {
 // Conditional initialization proof: all stores must subsequently pass the
-// register SSA Language check. Allocation/store share one block; a forward
-// CFG may additionally use dominance to cover subsequent reads and captures.
+// register SSA Language check. A forward CFG requires allocation dominance
+// of the initializing store, then store dominance of later reads/captures.
+// Cyclic graphs retain the stricter same-block allocation/store/read proof.
 // Function creation since allocation blocks reads unless the owner promises
 // Language-only transitive closure stores. Initialization remains mandatory;
 // this premise says nothing about value identity. No phi-cell promotion.

@@ -66,3 +66,22 @@ Native source validation now reaches its independent local-environment gate
 at PC130 (`SemanticProofError::kInternalValue`); it does not emit a class AST
 or complete record. Both CLI targets built and read-only review found no
 specific issue; no tests or RSS tracking were run.
+
+### Initialization across the prelude join
+
+The local initialization proof now accepts forward CFGs where environment
+allocation dominates the first initializing store in a different block.
+The store must still dominate every admitted subsequent read/capture, and
+every store must pass Language-value verification. Cycles and closure-write
+conditions are unchanged. Allocation-block lookup uses a quota-charged binary
+search: O(S log B) additional work for S candidate stores and B blocks, with
+no additional allocated storage or per-cell graph walk.
+
+In entry 9915, debugger inspection at PC130 now reports `initialized=true`,
+store instruction 47 (PC128), and dominance interval [4,10). The independent
+unknown-closure-write check still rejects at PC130: creation instruction 32
+has no capture-preservation premise at this standalone verifier entry. This
+is an initialization-proof improvement, not a newly emitted method. Connect
+actual child capture summaries next; do not substitute a blanket Language
+assumption. CLI builds and read-only review completed; diamond/cycle/budget
+regressions remain deferred while tests are paused.

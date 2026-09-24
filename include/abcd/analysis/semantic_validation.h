@@ -68,8 +68,8 @@ struct LocalAccessPlan {
   std::vector<LocalAccessFact> accesses;
   std::vector<LocalStoreSite> stores;
   std::vector<std::optional<InstructionId>> allocations;
-  // Forward-only CFG certificate: allocation and initial store share a block;
-  // its dominator subtree covers these block-entry numbers. Later stores must
+  // Forward-only CFG certificate: allocation dominates the initial store;
+  // the store's dominator subtree covers these block-entry numbers. Later stores must
   // independently pass Language verification. No closure mutation is inferred.
   std::vector<std::optional<LocalInitialization>> initializations;
   std::vector<std::uint32_t> block_entries;

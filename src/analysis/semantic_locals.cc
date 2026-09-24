@@ -122,9 +122,26 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
         plan.stores.push_back({{id}, instruction});
         const auto allocated = allocations[owner->value];
         if (dominance && !plan.initializations[id] && allocated &&
-            allocated->value >= first && allocated->value < i) {
+            allocated->value < i) {
+          // In a forward CFG, the same environment allocation may precede a
+          // branch and initialize only after its join. Require dominance of
+          // the store, not textual co-location. Store dominance is retained
+          // below for each later read; loops still use the strict local path.
+          const auto after_allocation = std::upper_bound(
+              method.flow.blocks.begin(), method.flow.blocks.end(),
+              allocated->value, [&](auto instruction, const FlowBlock& region) {
+                charge();
+                return instruction < region.first_instruction;
+              });
+          if (after_allocation == method.flow.blocks.begin())
+            return SemanticProofFailure{SemanticProofError::kEnvironment,
+                                         method.instructions[i].pc};
+          const auto allocation_block = static_cast<std::uint32_t>(
+              after_allocation - method.flow.blocks.begin() - 1);
           const auto& scope = dominance->nodes[block];
-          if (scope.begin)
+          if (scope.begin && dominance->Dominates(
+                  BlockId{allocation_block},
+                  BlockId{static_cast<std::uint32_t>(block)}))
             plan.initializations[id] = LocalInitialization{
                 instruction, scope.begin, scope.end};
         }
