@@ -24,6 +24,8 @@ int main(int argc, char** argv) {
   constexpr std::uint32_t kPool = 300;
   constexpr std::uint32_t kEntryCode = 350;
   constexpr std::uint32_t kTargetCode = 400;
+  constexpr std::uint32_t kConstructCode = 600;
+  constexpr std::uint32_t kUnknownArgumentCode = 700;
   constexpr std::uint32_t kName = 500;
   constexpr std::size_t kFixtureBytes = 1024;
   constexpr std::size_t kCodeHeaderBytes = 4;
@@ -31,6 +33,7 @@ int main(int argc, char** argv) {
   constexpr std::uint8_t kTargetArguments = 4;
   constexpr std::uint8_t kEntryInstructionBytes = 8;
   constexpr std::uint8_t kTargetInstructionBytes = 3;
+  constexpr std::uint8_t kConstructInstructionBytes = 14;
   constexpr std::uint8_t kFunctionLength = 1;
   constexpr std::uint8_t kEmpty = 0;
   // Pinned v7 ISA bytes; the generated decoder independently verifies them.
@@ -51,10 +54,22 @@ int main(int argc, char** argv) {
   constexpr std::array<std::uint8_t, 7> kTargetBody{
       kEmpty, kTargetArguments, kTargetInstructionBytes, kEmpty,
       kLoadRegister, kEntryArguments, kReturn};
+  constexpr std::array<std::uint8_t, 18> kConstructBody{
+      1, kEntryArguments, kConstructInstructionBytes, kEmpty,
+      kDefineFunc, kEmpty, kEmpty, kEmpty, kFunctionLength,
+      0x61, 0, 0x08, 0, 1, 0, kStoreModule, kEmpty,
+      kReturnUndefined};
   std::copy(kEntryBody.begin(), kEntryBody.end(),
             bytes.begin() + kEntryCode);
   std::copy(kTargetBody.begin(), kTargetBody.end(),
             bytes.begin() + kTargetCode);
+  std::copy(kConstructBody.begin(), kConstructBody.end(),
+            bytes.begin() + kConstructCode);
+  auto unknown_argument = kConstructBody;
+  unknown_argument[0] = 2;
+  unknown_argument[13] = 2;
+  std::copy(unknown_argument.begin(), unknown_argument.end(),
+            bytes.begin() + kUnknownArgumentCode);
   constexpr std::string_view kNameText = "identity";
   bytes[kName] = (kNameText.size() << kStringLengthShift) | kAsciiFlag;
   std::copy(kNameText.begin(), kNameText.end(), bytes.begin() + kName + 1);
@@ -139,9 +154,62 @@ int main(int argc, char** argv) {
   Check(std::holds_alternative<std::size_t>(async_result));
   Check(async_text.str().find("async function identity($p0)") !=
         std::string::npos);
+  auto constructed_index = index;
+  constructed_index.methods[0].code = abc::CodeInfo{
+      {kConstructCode}, {kConstructCode + kCodeHeaderBytes}, 1,
+      kEntryArguments, kConstructInstructionBytes, 0};
+  const auto constructed_lookup = std::get<abc::MethodLookup>(
+      abc::MethodLookup::Build(constructed_index.methods));
+  const auto constructed_roles = std::get<analysis::MethodRoleIndex>(
+      analysis::MethodRoleIndex::Build(file, header, constructed_index,
+                                       constructed_lookup));
+  std::ostringstream constructed_text;
+  const auto constructed_result = source::WriteRecordProgram(
+      file, header, constructed_index, constructed_lookup, record, module,
+      constructed_roles, constructed_text);
+  Check(std::holds_alternative<std::size_t>(constructed_result));
+  Check(constructed_text.str().find("new ($function0)()") !=
+        std::string::npos);
+  Check(constructed_text.str().find("$acc = $instance0;") !=
+        std::string::npos);
+  auto historical_header = header;
+  historical_header.profile = abc::ProfileId::kDynamic1206;
+  const auto historical_roles = std::get<analysis::MethodRoleIndex>(
+      analysis::MethodRoleIndex::Build(file, historical_header,
+                                       constructed_index, constructed_lookup));
+  std::ostringstream historical_text;
+  Check(std::holds_alternative<std::size_t>(source::WriteRecordProgram(
+      file, historical_header, constructed_index, constructed_lookup,
+      record, module, historical_roles, historical_text)));
+  Check(historical_text.str().find("new ($function0)()") !=
+        std::string::npos);
+  const auto reject_construct = [&](std::uint32_t offset,
+                                    source::RecordProgramError expected) {
+    auto invalid_index = constructed_index;
+    invalid_index.methods[0].code->offset = {offset};
+    invalid_index.methods[0].code->instruction_offset = {
+        offset + static_cast<std::uint32_t>(kCodeHeaderBytes)};
+    invalid_index.methods[0].code->registers =
+        offset == kUnknownArgumentCode ? 2 : 1;
+    const auto invalid_lookup = std::get<abc::MethodLookup>(
+        abc::MethodLookup::Build(invalid_index.methods));
+    const auto invalid_roles = std::get<analysis::MethodRoleIndex>(
+        analysis::MethodRoleIndex::Build(file, header, invalid_index,
+                                         invalid_lookup));
+    std::ostringstream rejected;
+    const auto result = source::WriteRecordProgram(
+        file, header, invalid_index, invalid_lookup, record, module,
+        invalid_roles, rejected);
+    Check(std::get<source::RecordProgramFailure>(result).kind == expected);
+    Check(rejected.str().empty());
+  };
+  reject_construct(kUnknownArgumentCode,
+                   source::RecordProgramError::kValue);
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
     std::cout << source_text.str();
   if (argc == 2 && std::string_view(argv[1]) == "--emit-async")
     std::cout << async_text.str();
+  if (argc == 2 && std::string_view(argv[1]) == "--emit-constructed")
+    std::cout << constructed_text.str();
   Check(unlink(path) == 0);
 }

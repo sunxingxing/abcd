@@ -15,6 +15,7 @@
 #include "abcd/abc/pool_reference.h"
 #include "abcd/analysis/class_creation.h"
 #include "abcd/analysis/constant_object.h"
+#include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/guarded_global_call.h"
@@ -30,6 +31,7 @@
 #include "abcd/source/global_reference.h"
 #include "abcd/source/module_imports.h"
 #include "abcd/source/static_fields.h"
+#include "abcd/source/string_literal.h"
 #include "record_buffer.h"
 #include "record_literal.h"
 #include "record_prelude.h"
@@ -53,7 +55,8 @@ struct Value {
     kLiteral,
     kImportSnapshot,
     kGlobalSnapshot,
-    kPrototype
+    kPrototype,
+    kInstance
   } kind;
   std::size_t ordinal = 0;
 };
@@ -233,6 +236,7 @@ class ProgramWriter {
         const auto guard = analysis::MatchGuardedGlobalCall(
             body_, i, registers_.size());
         if (guard) {
+          last_effect_pc_ = pc_;
           GuardedCall(*guard);
           i = guard->after - 1;
           accumulator_ = {Value::Kind::kUnknown};
@@ -241,6 +245,25 @@ class ProgramWriter {
       }
       if (instruction.branch_target) throw Fail(Error::kInstruction, pc_);
       using abc::Opcode;
+      // A class with an absent parent may be rendered later only across these
+      // proven-pure entry operations. A later constructor observes class
+      // creation before any other effect, matching the bytecode order.
+      switch (instruction.decoded.opcode) {
+        case Opcode::kMOV_V4_V4:
+        case Opcode::kLDA_V8:
+        case Opcode::kSTA_V8:
+        case Opcode::kLDA_STR_ID16:
+        case Opcode::kLDOBJBYNAME_IMM8_ID16:
+        case Opcode::kLDOBJBYNAME_IMM16_ID16:
+        case Opcode::kNOP:
+        case Opcode::kNEWOBJRANGE_IMM8_IMM8_V8:
+        case Opcode::kNEWOBJRANGE_IMM16_IMM8_V8:
+        case Opcode::kWIDE_NEWOBJRANGE_PREF_IMM16_V8:
+          break;
+        default:
+          last_effect_pc_ = pc_;
+          break;
+      }
       switch (instruction.decoded.opcode) {
         case Opcode::kLDHOLE:
           if (instruction.decoded.operand_count != 0)
@@ -294,6 +317,12 @@ class ProgramWriter {
         case Opcode::kDEFINEFUNC_IMM8_ID16_IMM8:
         case Opcode::kDEFINEFUNC_IMM16_ID16_IMM8:
           Function(instruction);
+          break;
+        case Opcode::kNEWOBJRANGE_IMM8_IMM8_V8:
+        case Opcode::kNEWOBJRANGE_IMM16_IMM8_V8:
+        case Opcode::kWIDE_NEWOBJRANGE_PREF_IMM16_V8:
+          Construct(instruction);
+          last_effect_pc_ = pc_;
           break;
         case Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8:
         case Opcode::kDEFINEMETHOD_IMM16_ID16_IMM8:
@@ -807,6 +836,115 @@ class ProgramWriter {
     Text(";\n");
     accumulator_ = {Value::Kind::kFunction, id};
   }
+  void SourceString(std::u16string_view value) {
+    const auto written = WriteStringLiteral(value, output_, {Remaining()});
+    if (const auto* error = std::get_if<EmitError>(&written))
+      throw Fail(*error == EmitError::kOutputLimit
+                     ? Error::kOutputLimit
+                     : *error == EmitError::kWrite ? Error::kWrite
+                                                   : Error::kValue,
+                 pc_);
+    Account(std::get<std::size_t>(written));
+  }
+  void ConstructValue(Value value) {
+    switch (value.kind) {
+      case Value::Kind::kUndefined:
+        Text("void 0");
+        return;
+      case Value::Kind::kNull:
+        Text("null");
+        return;
+      case Value::Kind::kFalse:
+        Text("false");
+        return;
+      case Value::Kind::kTrue:
+        Text("true");
+        return;
+      case Value::Kind::kString: {
+        const auto name = ReadPoolString(
+            {static_cast<std::uint32_t>(value.ordinal)});
+        if (name.capacity() > budget_.bytes / sizeof(char16_t))
+          throw Fail(Error::kResourceLimit, pc_);
+        budget_.bytes -= name.capacity() * sizeof(char16_t);
+        SourceString(name);
+        return;
+      }
+      case Value::Kind::kClass:
+        if (value.ordinal >= classes_.size() ||
+            !classes_[value.ordinal].emitted)
+          throw Fail(Error::kValue, pc_);
+        Text("$class");
+        Number(value.ordinal);
+        return;
+      case Value::Kind::kFunction:
+        if (value.ordinal >= function_count_) throw Fail(Error::kValue, pc_);
+        Text("$function");
+        Number(value.ordinal);
+        return;
+      case Value::Kind::kImportSnapshot:
+        if (value.ordinal >= import_load_count_)
+          throw Fail(Error::kValue, pc_);
+        Text("$loaded");
+        Number(value.ordinal);
+        return;
+      case Value::Kind::kGlobalSnapshot:
+        if (value.ordinal >= global_count_) throw Fail(Error::kValue, pc_);
+        Text("$global");
+        Number(value.ordinal);
+        return;
+      case Value::Kind::kInstance:
+        if (value.ordinal >= instance_count_) throw Fail(Error::kValue, pc_);
+        Text("$instance");
+        Number(value.ordinal);
+        return;
+      case Value::Kind::kUnknown:
+      case Value::Kind::kHole:
+      case Value::Kind::kCreatedMethod:
+      case Value::Kind::kAtom:
+      case Value::Kind::kLiteral:
+      case Value::Kind::kPrototype:
+        throw Fail(Error::kValue, pc_);
+    }
+  }
+  void Construct(const abc::BodyInstruction& instruction) {
+    if (header_.profile != abc::ProfileId::kDynamic1206 &&
+        header_.profile != abc::ProfileId::kDynamic1301)
+      throw Fail(Error::kProfile, pc_);
+    const auto lifted = analysis::LiftConstructorCall(
+        instruction.decoded, registers_.size());
+    const auto* call = std::get_if<analysis::ConstructorCall>(&lifted);
+    if (!call) throw Fail(Error::kInstruction, pc_);
+    const auto ctor = registers_[call->inputs.first.value];
+    if (ctor.kind == Value::Kind::kClass) {
+      if (ctor.ordinal >= classes_.size()) throw Fail(Error::kValue, pc_);
+      const auto& created = classes_[ctor.ordinal];
+      if (!created.emitted) {
+        if (!created.site || created.site->offset != last_effect_pc_ ||
+            created.fields || !created.accessors.empty())
+          throw Fail(Error::kClass, pc_);
+        EmitClass(ctor.ordinal);
+      }
+    } else if (ctor.kind != Value::Kind::kFunction &&
+               ctor.kind != Value::Kind::kImportSnapshot &&
+               ctor.kind != Value::Kind::kGlobalSnapshot &&
+               ctor.kind != Value::Kind::kInstance) {
+      throw Fail(Error::kValue, pc_);
+    }
+    const auto id = instance_count_++;
+    Text("const $instance");
+    Number(id);
+    Text(" = new (");
+    ConstructValue(ctor);
+    Text(")(");
+    for (std::uint32_t i = 0; i < call->ArgumentCount(); ++i) {
+      if (i != 0) Text(", ");
+      const auto argument = call->ArgumentAt(i);
+      if (!argument) throw Fail(Error::kInstruction, pc_);
+      ConstructValue(registers_[argument->value]);
+    }
+    Text(");\n");
+    accumulator_ = {Value::Kind::kInstance, id};
+  }
   void DefineMethod(const abc::BodyInstruction& instruction) {
     const auto lifted = analysis::LiftFunctionCreation(instruction.decoded);
     const auto* creation = std::get_if<analysis::FunctionCreation>(&lifted);
@@ -966,6 +1104,7 @@ class ProgramWriter {
     const auto* store = std::get_if<analysis::ModuleStore>(&lifted);
     if (!store || (accumulator_.kind != Value::Kind::kClass &&
                    accumulator_.kind != Value::Kind::kFunction &&
+                   accumulator_.kind != Value::Kind::kInstance &&
                    accumulator_.kind != Value::Kind::kLiteral &&
                    accumulator_.kind != Value::Kind::kImportSnapshot &&
                    accumulator_.kind != Value::Kind::kUndefined))
@@ -984,6 +1123,9 @@ class ProgramWriter {
       Number(accumulator_.ordinal);
     } else if (accumulator_.kind == Value::Kind::kFunction) {
       Text("$function");
+      Number(accumulator_.ordinal);
+    } else if (accumulator_.kind == Value::Kind::kInstance) {
+      Text("$instance");
       Number(accumulator_.ordinal);
     } else if (accumulator_.kind == Value::Kind::kLiteral) {
       Text("$literal");
@@ -1029,8 +1171,10 @@ class ProgramWriter {
   Value accumulator_{Value::Kind::kUnknown};
   abc::CodeOffset pc_{};
   std::size_t function_count_ = 0;
+  std::size_t instance_count_ = 0;
   std::size_t import_load_count_ = 0;
   std::size_t global_count_ = 0;
+  abc::CodeOffset last_effect_pc_{};
   std::optional<std::size_t> pending_import_guard_;
   std::size_t written_ = 0;
 };

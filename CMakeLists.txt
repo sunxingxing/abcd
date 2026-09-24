@@ -481,6 +481,11 @@ if(BUILD_TESTING)
       "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"
       "-DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_function.mjs"
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_function.cmake)
+    add_test(NAME record_function_construct_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_FIXTURE=$<TARGET_FILE:record_function_test>
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_function_construct.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_function_construct.cmake)
   endif()
   if(ABCD_NODE_EXECUTABLE)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")
@@ -814,6 +819,10 @@ if(BUILD_TESTING)
     if(ABCD_NODE_EXECUTABLE AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")
+      add_test(NAME record_constructor_blocker_test COMMAND ${CMAKE_COMMAND}
+        -DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>
+        -DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_constructor.cmake)
       add_test(NAME historical_record_source_test COMMAND ${CMAKE_COMMAND}
         -DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>
         -DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc
