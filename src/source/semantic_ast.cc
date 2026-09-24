@@ -358,7 +358,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
         // Captured facts remain conditional obligations of the whole template.
         operation = analysis::NoOperation{};
         if (position && module_fact &&
-            proof.module_reads[module_fact - 1].proof == analysis::ModuleReadProof::kGuarded &&
+            analysis::IsGuardedModuleRead(proof.module_reads[module_fact - 1].proof) &&
             proof.module_reads[module_fact - 1].instruction.value == position - 1)
           previous_origin = SourcePc(method.instructions[position - 1]);
       } else if (const auto* read =

@@ -13,6 +13,7 @@
 #include "abcd/analysis/semantic_region.h"
 #include "abcd/analysis/instruction_ssa.h"
 #include "abcd/analysis/exception_locals.h"
+#include "abcd/analysis/exception_modules.h"
 
 int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     abcd::abc::ProfileId profile, std::uint64_t frame_size,
@@ -87,10 +88,29 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
   }
   if (locals->AllocatedBytes() > remaining) return EXIT_FAILURE;
   remaining -= locals->AllocatedBytes();
-  const auto value_work = analysis::kDefaultSemanticWork - quota.Consumed() - locals->plan.work_units;
+  const auto module_plan = analysis::ProveExceptionModules(*flow, *ssa,
+      {remaining, analysis::kDefaultSemanticWork - quota.Consumed() - locals->plan.work_units});
+  const auto* modules = std::get_if<analysis::ExceptionModules>(&module_plan);
+  if (!modules) {
+    output << nlohmann::json{{"module_plan_error", static_cast<unsigned>(
+        std::get<analysis::ExceptionModuleError>(module_plan))}} << '\n';
+    return EXIT_FAILURE;
+  }
+  if (modules->AllocatedBytes() > remaining) return EXIT_FAILURE;
+  remaining -= modules->AllocatedBytes();
+  std::vector<analysis::ExceptionLoadFact> loads;
+  const auto count = locals->loads.size() + modules->loads.size();
+  if (count > remaining / sizeof(analysis::ExceptionLoadFact)) return EXIT_FAILURE;
+  loads.reserve(count);
+  if (loads.capacity() > remaining / sizeof(analysis::ExceptionLoadFact)) return EXIT_FAILURE;
+  remaining -= loads.capacity() * sizeof(analysis::ExceptionLoadFact);
+  loads.insert(loads.end(), locals->loads.begin(), locals->loads.end());
+  loads.insert(loads.end(), modules->loads.begin(), modules->loads.end());
+  const auto value_work = analysis::kDefaultSemanticWork - quota.Consumed() -
+      locals->plan.work_units - modules->work_units;
   analysis::IdfQuota value_quota{value_work};
   const auto analyzed = analysis::ExceptionValueFlow::Build(*flow, *ssa, entries,
-      value_quota, {remaining}, analysis::PendingExceptionValues::kUnknown, locals->loads);
+      value_quota, {remaining}, analysis::PendingExceptionValues::kUnknown, loads);
   const auto* values = std::get_if<analysis::ExceptionValueFlow>(&analyzed);
   if (!values) {
     const auto& failure = std::get<analysis::ValueFlowFailure>(analyzed);
@@ -141,7 +161,7 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
   };
   auto tree_result = build_tree();
   auto* tree = std::get_if<analysis::SemanticRegionTree>(&tree_result);
-  output << nlohmann::json{{"schema", 10}, {"instructions", flow->instructions.size()},
+  output << nlohmann::json{{"schema", 11}, {"instructions", flow->instructions.size()},
       {"nodes", flow->nodes.size()}, {"source_complete", false}, {"ssa_complete", false},
       {"register_ssa_complete", true}, {"value_flow_complete", true},
       {"environment_topology_complete", true}, {"lexical_values_proven", false},
@@ -150,14 +170,21 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
       {"exception_tree_proven", tree != nullptr},
       {"instruction_ssa_indexed", true},
       {"local_initialization_planned", true}, {"local_load_premises", locals->loads.size()},
+      {"caller_guarded_modules", modules->reads.size()},
+      {"value_flow_models_lowered_pairs", !modules->reads.empty()},
       {"requires_language_abi", true}, {"pending_exception_values_proven", false},
       {"ssa_values", ssa->Values().size()}}
       << '\n';
+  for (const auto& read : modules->reads)
+    output << nlohmann::json{{"module_read", read.instruction.value},
+        {"pc", flow->instructions[read.instruction.value].pc.value},
+        {"guard_pc", flow->instructions[read.instruction.value + 1].pc.value},
+        {"module_read_proof", static_cast<unsigned>(read.proof)}} << '\n';
   if (tree) {
     output << nlohmann::json{{"tree_catches", tree->catches},
                              {"tree_blocks", tree->order_positions.size()}} << '\n';
     const source::ExceptionAstInput input{*flow, *ssa, *environments,
-                                         *values, *locals, *blocks};
+                                         *values, *locals, *blocks, modules->reads};
     InspectExceptionSource(input, std::move(*tree), constants, frame_size,
         remaining - regions->allocated_bytes, output);
   } else {

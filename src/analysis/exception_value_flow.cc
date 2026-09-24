@@ -43,6 +43,13 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
           node.instruction.value >= flow.instructions.size())
         return ValueFlowFailure{Error::kInvalidLoadFact, site, {}};
       const auto& operation = flow.instructions[node.instruction.value].operation;
+      switch (load.proof) {
+        case ExceptionLoadProof::kLanguage: break;
+        case ExceptionLoadProof::kCallerGuardedModule:
+          if (!std::holds_alternative<ModuleLoad>(operation))
+            return ValueFlowFailure{Error::kInvalidLoadFact, site, {}};
+          break;
+      }
       const auto value = ssa.Write(load.commit);
       if ((!std::holds_alternative<LexicalLoad>(operation) &&
            !std::holds_alternative<ModuleLoad>(operation)) ||
@@ -117,6 +124,8 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
         if (!destination || !same_slot(value.slot, *destination)) return invalid();
         // Owner premises affect only normal Commit values. They never move a
         // load's exception edge or upgrade the handler's pending exception.
+        // Caller-guarded facts are conditional lowered-pair values: their
+        // original Hole state cannot be observed by a local handler.
         if (!trusted.empty() && trusted[i]) {
           facts[i] = ValueKinds::Language();
           continue;

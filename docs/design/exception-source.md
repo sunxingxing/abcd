@@ -2,6 +2,37 @@
 
 ## Current Boundary
 
+### Caller-Only Module Guards
+
+`ProveExceptionModules` certifies adjacent module-load/static-name Hole-guard
+pairs whose Before exception exits both propagate to the caller. The load's
+Commit must fall through only to the guard; the guard must have exactly one
+incoming phase edge, and the load must have a reachable SSA definition.
+Current-function catch targets and bypass entries prevent certification.
+One pass over SSA values indexes reachable writes; the algorithm is
+O(I+N+E+V) work and bounded O(I+N) storage, without per-load graph walks or
+write-table binary searches.
+
+`ExceptionLoadProof::kCallerGuardedModule` explicitly denotes the value of the
+lowered pair, not a claim that the raw ABC load cannot return Hole. Its matching
+`ModuleReadProof::kCallerGuarded` authorizes the common AST's fused binding
+read; both original PCs share the generated span. Original exception edges
+and pending-value categories remain unchanged. Ordinary `kGuarded` facts still
+do not authorize phased lowering. Module binding identity must additionally
+be resolved by the owning record/printer before publication.
+
+ABC-only schema-11 inspection certifies pasteboard 4945 pairs 34/36 and
+441/443 (`build/pasteboard-4945-exception-modules.jsonl`). Its input blocker
+moves from PC 36 to PC 121, whose load at 119 and guard both target local
+catch 439 and remain unproven. Method 5165 certifies only 170/172 and still
+refuses its protected input at PC 14. Inspection explicitly labels value flow
+that uses lowered-pair facts. This does not add a complete method or record.
+Both CLI targets compiled. Read-only review found no concrete semantic defect;
+its complexity concern was addressed by the sequential SSA definition index.
+Tests and RSS remain paused. Deferred coverage includes module TDZ behavior,
+guard bypass entries, local catches, unreachable loads, exact fused spans and
+byte/work admission boundaries.
+
 ### Shared AST and Printing Entry
 
 `BuildExceptionSourceAst` rechecks exceptional input values and adapts the
@@ -10,9 +41,9 @@ pass. It consumes the same-body exception region tree and canonical local
 access plan. Original block layout supplies only instruction boundaries:
 no normal-only SSA or fabricated handler-free bytecode is constructed.
 The public borrowed-input contract requires all analysis owners to match and
-local-load premises to have seeded the provided value solution. Captured and
-module-read source facts remain absent at this boundary, so those operations
-reject until their owner proofs are integrated. Phased receiver-call and
+local-load premises to have seeded the provided value solution. Captured-read
+facts remain absent at this boundary; module-read facts now accept the
+caller-only certificates above. Phased receiver-call fusion and unproven
 guarded-module fusion remain disabled.
 
 The common printer now reads block layout independently of normal-method

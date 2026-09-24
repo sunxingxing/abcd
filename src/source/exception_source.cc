@@ -27,7 +27,7 @@ SourceAstResult BuildExceptionSourceAst(
             ? SourceError::kResourceLimit : SourceError::kInvalidEffect, {}};
   const AstMethod method{input.flow.instructions, input.blocks, *ssa};
   const AstProof proof{input.flow.instructions.size(), input.values.Facts(),
-                       input.locals.plan, {}, {}};
+                       input.locals.plan, input.module_reads, {}};
   return BuildSourceAst(method, proof, std::move(regions),
       budget.bytes - ssa->AllocatedBytes(), named_scopes, rest);
 }

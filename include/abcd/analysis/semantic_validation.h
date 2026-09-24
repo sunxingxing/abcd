@@ -11,7 +11,17 @@ struct CapturedReadFact {
   InstructionId instruction;
   CapturedSlot cell;
 };
-enum class ModuleReadProof : std::uint8_t { kGuarded, kInitialized };
+enum class ModuleReadProof : std::uint8_t {
+  kGuarded, kInitialized, kCallerGuarded
+};
+constexpr bool IsGuardedModuleRead(ModuleReadProof proof) {
+  switch (proof) {
+    case ModuleReadProof::kGuarded:
+    case ModuleReadProof::kCallerGuarded: return true;
+    case ModuleReadProof::kInitialized: return false;
+  }
+  return false;
+}
 struct ModuleReadFact {
   InstructionId instruction;
   ModuleReadProof proof;
