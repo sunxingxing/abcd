@@ -147,12 +147,11 @@ class ObjectWriter {
 };
 }  // namespace
 
-BodyEmitResult WriteObjectBuffer(const analysis::BufferedObjectCreation& creation,
+ObjectBufferResult ReadObjectBuffer(const analysis::BufferedObjectCreation& creation,
                                  abc::CodeOffset offset,
                                  const MethodConstants& constants,
-                                 std::ostream& output, EmitBudget output_budget,
                                  ObjectBufferBudget scratch_budget) {
-  const auto fail = [&](ObjectBufferError error) -> BodyEmitResult {
+  const auto fail = [&](ObjectBufferError error) -> ObjectBufferResult {
     BodyEmitFailure failure{
         error == ObjectBufferError::kResourceLimit
             ? BodyEmitError::kResourceLimit
@@ -173,7 +172,7 @@ BodyEmitResult WriteObjectBuffer(const analysis::BufferedObjectCreation& creatio
     failure.metadata_error = *error;
     return failure;
   }
-  const auto read = abc::ReadLiteralArray(
+  auto read = abc::ReadLiteralArray(
       constants.file, constants.header,
       std::get<abc::PoolReference>(reference).offset,
       {scratch_budget.bytes});
@@ -244,12 +243,25 @@ BodyEmitResult WriteObjectBuffer(const analysis::BufferedObjectCreation& creatio
     for (std::size_t i = 1; i < count; ++i)
       if (keys[order[i - 1]] == keys[order[i]])
         return fail(ObjectBufferError::kDuplicateKey);
-    return ObjectWriter(output, output_budget, offset)
-        .Write(literal, keys, constants, remaining);
+    return ObjectBuffer{std::move(std::get<abc::LiteralArray>(read)),
+                        std::move(keys), std::move(order),
+                        scratch_budget.bytes - remaining};
   } catch (const std::bad_alloc&) {
     return fail(ObjectBufferError::kResourceLimit);
   } catch (const std::length_error&) {
     return fail(ObjectBufferError::kResourceLimit);
   }
+}
+BodyEmitResult WriteObjectBuffer(const analysis::BufferedObjectCreation& creation,
+                                 abc::CodeOffset offset,
+                                 const MethodConstants& constants,
+                                 std::ostream& output, EmitBudget output_budget,
+                                 ObjectBufferBudget scratch_budget) {
+  const auto parsed = ReadObjectBuffer(creation, offset, constants, scratch_budget);
+  if (const auto* failure = std::get_if<BodyEmitFailure>(&parsed)) return *failure;
+  const auto& buffer = std::get<ObjectBuffer>(parsed);
+  return ObjectWriter(output, output_budget, offset).Write(
+      buffer.literal, buffer.keys, constants,
+      scratch_budget.bytes - buffer.allocated_bytes);
 }
 }  // namespace abcd::source

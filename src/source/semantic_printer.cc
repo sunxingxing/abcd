@@ -12,6 +12,7 @@
 #include "abcd/source/string_literal.h"
 #include "element_name.h"
 #include "object_buffer.h"
+#include "semantic_fields.h"
 
 namespace abcd::source {
 namespace {
@@ -30,6 +31,7 @@ class SourcePrinter {
 
   std::variant<PrintedSource, SourceFailure> PrintBody(ScalarNames names) {
     try {
+      if (const auto failure = VerifyOwnFields(ast_, constants_)) return *failure;
       names_ = names;
       if (ast_.statements.size() > limit_ / sizeof(GeneratedSpan))
         return SourceFailure{SourceError::kResourceLimit, {}};
@@ -47,6 +49,7 @@ class SourcePrinter {
 
   std::variant<PrintedSource, SourceFailure> Print() {
     try {
+      if (const auto failure = VerifyOwnFields(ast_, constants_)) return *failure;
       if (!IsSourceIdentifier(name_))
         return SourceFailure{SourceError::kOutput, {}};
       if (frame_.registers > limit_ / sizeof(std::string))
@@ -274,6 +277,17 @@ class SourcePrinter {
             PoolName(operation.name);
             Text("] = ");
             Value(operation.value);
+            Text(";\n");
+          } else if constexpr (std::is_same_v<T, SourceOwnStore>) {
+            // Pinned RuntimeDefineField sets all data attributes true. On a
+            // private ordinary object with this existing data key, strict Set
+            // has the same effect and cannot consult an inherited setter.
+            Text("(");
+            Value(ScalarValue{operation.write.object});
+            Text(")[");
+            PoolName(operation.write.name);
+            Text("] = ");
+            Value(ScalarValue{Accumulator{}});
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceConditionalBreak>) {
             Text("if (");

@@ -76,6 +76,16 @@ bool IsPrivateValue(const analysis::SemanticOperation& operation) {
   // to allocation, coercion, property reads or arbitrary scalar expressions.
   return value && !std::holds_alternative<analysis::EmptyArray>(*value);
 }
+bool KeepsObjectsPrivate(const analysis::SemanticOperation& operation) {
+  if (IsPrivateValue(operation) ||
+      std::holds_alternative<analysis::BufferedObjectCreation>(operation) ||
+      std::holds_alternative<analysis::EmptyObjectCreation>(operation) ||
+      std::holds_alternative<analysis::NoOperation>(operation)) return true;
+  const auto* assignment = std::get_if<analysis::ScalarAssignment>(&operation);
+  if (!assignment) return false;
+  const auto* value = std::get_if<analysis::ScalarValue>(&assignment->expression);
+  return value && std::holds_alternative<analysis::EmptyArray>(*value);
+}
 std::optional<std::size_t> Definition(
     const analysis::SemanticMethod& method,
     std::optional<analysis::SsaValueId> value) {
@@ -153,6 +163,7 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
           ast.fallthrough[i] = block.successors[edge].target;
     }
     std::optional<std::size_t> last_effect;
+    std::optional<std::size_t> last_object_effect;
     std::size_t block_id = 0;
     std::size_t module_fact = 0;
     for (const auto& instruction : method.instructions) {
@@ -185,6 +196,23 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
         operation = SourceAssignment{
             analysis::ScalarSlot{analysis::Accumulator{}},
             StringExpression{string->value}};
+      } else if (const auto* write =
+                     std::get_if<analysis::OwnWrite>(&instruction.operation)) {
+        const auto object = ReadValue(method, position,
+                                       analysis::ScalarSlot{write->object});
+        const auto origin = Definition(method, CopyInput(method, object));
+        if (write->kind != analysis::OwnWriteKind::kDefineField || !origin ||
+            *origin < method.flow.blocks[block_id].first_instruction ||
+            (last_object_effect && *last_object_effect > *origin))
+          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        const auto* buffered = std::get_if<analysis::BufferedObjectCreation>(
+            &method.instructions[*origin].operation);
+        if (!buffered)
+          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        // Same-block private allocation, with only private value work and
+        // already proven fresh-object writes since creation. The printer must
+        // additionally prove this exact key is an existing writable data field.
+        operation = SourceOwnStore{*write, *buffered};
       } else if (const auto* call =
                      std::get_if<analysis::ConstructorCall>(&instruction.operation)) {
         operation = SourceAssignment{
@@ -355,6 +383,9 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
                                 fused_spill, fused_reload, read_distance,
                                 spill_distance, reload_distance, previous_origin});
       if (!IsPrivateValue(instruction.operation)) last_effect = position;
+      if (!KeepsObjectsPrivate(instruction.operation) &&
+          !std::holds_alternative<SourceOwnStore>(ast.statements.back().operation))
+        last_object_effect = position;
     }
     ast.allocated_bytes = ast.regions.allocated_bytes +
                           ast.statements.capacity() * sizeof(SourceStatement) +

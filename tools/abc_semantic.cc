@@ -19,6 +19,7 @@
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/corpus/abc_file.h"
 #include "abcd/source/semantic_source.h"
+#include "abcd/abc/pool_reference.h"
 #include "semantic_survey.h"
 
 namespace {
@@ -53,7 +54,8 @@ int FailStage(InspectError kind, unsigned stage_error,
   return EXIT_FAILURE;
 }
 int Inspect(const std::filesystem::path& path, std::uint32_t entity,
-            std::optional<source::SourceForm> form, bool all_records = false) {
+            std::optional<source::SourceForm> form, bool all_records = false,
+            bool instructions = false) {
   auto opened = corpus::AbcFile::Open(path);
   const auto* owned = std::get_if<std::unique_ptr<corpus::AbcFile>>(&opened);
   if (!owned) return Fail(InspectError::kOpen);
@@ -87,6 +89,45 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
   if (!body) {
     const auto& failure = std::get<abc::BodyFailure>(decoded);
     return Fail(InspectError::kBody, failure.offset.value);
+  }
+  if (instructions) {
+    for (const auto& site : body->instructions) {
+      nlohmann::json operands = nlohmann::json::array();
+      for (std::size_t i = 0; i < site.decoded.operand_count; ++i) {
+        const auto& operand = site.decoded.operands[i];
+        nlohmann::json value{{"kind", static_cast<unsigned>(operand.kind)},
+                             {"bits", operand.raw_bits}};
+        if (operand.kind == abc::OperandKind::kLiteralArray) {
+          const auto reference = abc::ResolvePoolReference(
+              file, *header, *index, method->offset,
+              {static_cast<std::uint32_t>(operand.raw_bits)},
+              abc::PoolEntityKind::kLiteralArray);
+          if (const auto* pool = std::get_if<abc::PoolReference>(&reference)) {
+            const auto literal = abc::ReadLiteralArray(file, *header, pool->offset);
+            if (const auto* buffer = std::get_if<abc::LiteralArray>(&literal)) {
+              value["literal"] = nlohmann::json::array();
+              for (const auto& entry : buffer->entries) {
+                nlohmann::json item{{"tag", static_cast<unsigned>(entry.tag)}};
+                if (const auto* bits = std::get_if<abc::LiteralBits>(&entry.value))
+                  item["bits"] = bits->value;
+                else if (entry.tag == abc::LiteralTag::kString) {
+                  const auto text = abc::ReadStringEntity(
+                      file, *header, std::get<abc::EntityOffset>(entry.value));
+                  if (const auto* units = std::get_if<std::u16string>(&text))
+                    item["utf16"] = std::vector<std::uint16_t>(units->begin(), units->end());
+                }
+                value["literal"].push_back(std::move(item));
+              }
+            }
+          }
+        }
+        operands.push_back(std::move(value));
+      }
+      std::cout << nlohmann::json{{"pc", site.offset.value},
+          {"opcode", static_cast<unsigned>(site.decoded.opcode)},
+          {"operands", std::move(operands)}} << '\n';
+    }
+    return std::cout ? EXIT_SUCCESS : EXIT_FAILURE;
   }
   const auto built = analysis::BuildSemanticMethod(
       *body, header->profile, code.registers + code.arguments);
@@ -178,7 +219,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
 
 int main(int argc, char** argv) {
   if (argc != 3 && argc != 4) {
-    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source]\n"
+    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source|--instructions]\n"
                  "       abc_semantic INPUT.abc --all-records\n";
     return Fail(InspectError::kArguments);
   }
@@ -198,6 +239,8 @@ int main(int argc, char** argv) {
       form = source::SourceForm::kClassConstructor;
     else if (option == "--function-source")
       form = source::SourceForm::kFunction;
+    else if (option == "--instructions")
+      return Inspect(argv[1], entity, std::nullopt, false, true);
     else
       return Fail(InspectError::kArguments);
   }

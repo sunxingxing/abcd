@@ -118,7 +118,7 @@ target_sources(abcd_source PRIVATE src/source/static_fields.cc)
 target_sources(abcd_source PRIVATE src/source/record_module_context.cc)
 target_sources(abcd_source PRIVATE src/source/base_function.cc)
 target_sources(abcd_source PRIVATE src/source/semantic_ast.cc src/source/semantic_printer.cc
-  src/source/semantic_body.cc)
+  src/source/semantic_body.cc src/source/semantic_fields.cc)
 target_sources(abcd_source PRIVATE src/source/async_completion.cc)
 target_sources(abcd_source PRIVATE src/source/branch_value_proof.cc)
 target_sources(abcd_source PRIVATE src/source/branch_source_facts.cc)

@@ -50,6 +50,10 @@ struct SourceMemberStore {
   abc::PoolIndex name;
   analysis::ScalarValue value;
 };
+struct SourceOwnStore {
+  analysis::OwnWrite write;
+  analysis::BufferedObjectCreation origin;
+};
 struct SourceConditionalBreak {
   analysis::UnaryExpression condition;
   analysis::BlockId target;
@@ -67,7 +71,7 @@ struct SourceStagedCall {
   analysis::InstructionId call_statement;
 };
 using SourceOperation =
-    std::variant<analysis::NoOperation, SourceAssignment, SourceMemberStore,
+    std::variant<analysis::NoOperation, SourceAssignment, SourceMemberStore, SourceOwnStore,
                  SourceConditionalBreak, SourceBreak, SourceReturn,
                  SourceStagedCall>;
 struct SourceStatement {

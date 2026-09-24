@@ -170,6 +170,46 @@ Runtime tests remain paused. Deferred regression coverage must include nested
 getter/argument effects, non-callable getters, argument throws, receiver
 mutation, callee phi escape, crossing regions, and one-origin-per-PC maps.
 
+## Existing Data Fields
+
+The current inventory produces 101 method bodies with PC spans: 117 remain
+blocked in IR and one in AST. The one AST failure is CommonConstants'
+`static_initializer` (4439), whose class ownership cannot be replaced with a
+fresh-object assumption. Eight former DEFINEPROPERTYBYNAME failures now emit
+through `SourceOwnStore`, including nested resource objects in UI callbacks.
+
+Admission has two independent parts:
+
+1. SSA identifies a same-block buffered-object allocation through the receiver
+   copy. Since allocation, only private value preparation, fresh allocations
+   and similarly proven field writes may occur. Any other operation invalidates
+   this conservative freshness proof; arguments, proxies, escaped objects,
+   arbitrary `this` and inherited class state are not admitted.
+2. Before emitting text, the printer resolves the exact key in that buffer's
+   checked data-only shape. The property must already exist with the ordinary
+   object literal's writable/enumerable/configurable data attributes. Missing
+   keys and unsupported literal forms fail, rather than consulting an inherited
+   setter or synthesizing a mutable Object.defineProperty call.
+
+The pinned `RuntimeStubs::RuntimeDefineField` uses CreateDataPropertyOrThrow
+with all three attributes true (`ets_runtime/ecmascript/stubs/runtime_stubs-inl.h`).
+Strict assignment to this proven existing own data property therefore preserves
+the value update and attributes, even when Object.prototype has a setter with
+that name. This reasoning does not apply to STOWNBYNAME or static initializers.
+
+`ReadObjectBuffer` now returns the checked literal, keys and sorted key index;
+the old buffer writer consumes the same result. Field checks group requests by
+literal pool slot, decode each requested shape once, then binary-search keys.
+No per-field full-buffer scans or semantic dispatch on generated strings are
+used. Scratch and retained key storage share the field-proof budget.
+
+Both tools compile and the full Pasteboard method inventory was regenerated.
+Behavioral tests remain paused. Deferred cases include inherited setters,
+`__proto__` data keys, missing keys, duplicate literal keys, allocation aliases,
+call/heap-write escape, nested objects and static-field rejection.
+`abc_semantic INPUT.abc METHOD_ENTITY --instructions` provides numeric decoded
+operands and available literal-buffer data for inspection, not source output.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial
