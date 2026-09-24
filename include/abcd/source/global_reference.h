@@ -6,6 +6,7 @@
 #include <string_view>
 
 namespace abcd::source {
+class ModuleExports;
 struct GlobalScope {
   // Caller-proven complete ASCII outer source bindings, sorted by byte name;
   // non-ASCII names cannot collide with admitted ASCII global references.
@@ -20,6 +21,9 @@ struct GlobalScope {
   // Caller-proven same-record $local slots that will be declared by
   // STMODULEVAR. Zero forbids local module reads in detached method source.
   std::size_t module_slots = 0;
+  // Record emission is synchronous. This points to the store state at the
+  // creation site; no later STMODULEVAR is processed until nested source ends.
+  const ModuleExports* module_exports = nullptr;
 };
 
 // A free identifier reaches the v7 global record/object only if the generated

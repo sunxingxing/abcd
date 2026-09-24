@@ -425,6 +425,7 @@ class ProgramWriter {
     child.output.bytes = Remaining();
     GlobalScope scope{};
     scope.module_slots = exports_.slot_count();
+    scope.module_exports = &exports_;
     const auto result = WriteGuardedGlobalCall(
         file_, header_, index_, lookup_, entry_, body_, guard, module_,
         roles_, scope, output_, child, budget_.strings);
@@ -649,6 +650,7 @@ class ProgramWriter {
     const auto name = ReadPoolString(access->name);
     GlobalScope scope{};
     scope.module_slots = exports_.slot_count();
+    scope.module_exports = &exports_;
     if (!AllowsGlobalReference(name, scope))
       throw Fail(Error::kValue, pc_);
     if (name.capacity() > budget_.bytes / sizeof(char16_t))
@@ -938,6 +940,7 @@ class ProgramWriter {
     child.output.bytes = Remaining();
     GlobalScope scope{};
     scope.module_slots = exports_.slot_count();
+    scope.module_exports = &exports_;
     const auto result = WriteCreatedClass(
         file_, header_, index_, lookup_, entry_.offset, *classes_[id].site,
         {classes_[id].site->offset,
@@ -963,6 +966,7 @@ class ProgramWriter {
     child.output.bytes = Remaining();
     GlobalScope scope{};
     scope.module_slots = exports_.slot_count();
+    scope.module_exports = &exports_;
     const auto result = WriteCreatedFunction(
         file_, header_, index_, lookup_, entry_.offset, instruction.decoded,
         output_, child, budget_.strings, &module_, &roles_, &scope);

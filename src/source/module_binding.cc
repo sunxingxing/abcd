@@ -5,6 +5,7 @@
 
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/module_load.h"
+#include "abcd/source/module_exports.h"
 
 namespace abcd::source {
 namespace {
@@ -59,6 +60,15 @@ std::variant<GuardedModuleLoads, BodyEmitFailure> ValidateGuardedModuleLoads(
                      constants->global_scope->module_slots ||
                  loaded->slot.value >= module.local_exports.size()) {
         return Fail(BodyEmitError::kModuleBinding, offset);
+      }
+      // An already initialized local export cannot return Hole in this or a
+      // later invocation of the created function. Keep the adjacent guard
+      // requirement for every other load, including external imports.
+      if (loaded->space == analysis::ModuleSpace::kLocal &&
+          constants->global_scope->module_exports &&
+          constants->global_scope->module_exports->IsInitialized(loaded->slot)) {
+        result.admitted[i] = 1;
+        continue;
       }
       if (i + 1 >= body.instructions.size())
         return Fail(BodyEmitError::kModuleBinding, offset);
