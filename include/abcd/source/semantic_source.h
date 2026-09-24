@@ -38,6 +38,7 @@ struct GlobalExpression {
 };
 struct CapturedExpression {
   analysis::CapturedSlot cell;
+  analysis::CaptureDomain requirement = analysis::CaptureDomain::kLanguage;
 };
 struct LocalExpression { analysis::LocalCellId cell; };
 struct FunctionExpression {
@@ -184,6 +185,7 @@ struct PrintedSource {
 struct SourceCapture {
   GeneratedPosition position;
   analysis::CapturedSlot cell;
+  analysis::CaptureDomain requirement = analysis::CaptureDomain::kLanguage;
 };
 // Not executable source. Positions are template coordinates, prior to capture
 // insertion; never expose them as final generated-file positions.
@@ -196,6 +198,7 @@ struct PrintedTemplate {
 // parent-PROVEN initialized local cell per capture occurrence,
 // in emission order, rebased at this exact creation site. The owning scope
 // declares the private $lex<environment>_<slot> bindings without collisions.
+// This Language-only binding API rejects stronger capture requirements.
 // This substitutes bindings, not initialization/capture proof. No source text
 // is parsed to recover positions. O(text + C + S log C), bounded scratch.
 [[nodiscard]] std::variant<PrintedSource, SourceFailure> BindSourceTemplate(
@@ -234,6 +237,7 @@ enum class SourceForm : std::uint8_t { kFunction, kClassConstructor };
     std::size_t output_bytes);
 // Captured expressions become typed insertions, not invented identifiers.
 // Only a parent capture-binding path may consume this incomplete artifact.
+// Every occurrence's required domain must be discharged without weakening it.
 [[nodiscard]] std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
     const SourceAst& ast, const analysis::SemanticMethod& method,
     ScalarNames names, const MethodConstants& constants,

@@ -414,7 +414,8 @@ class FunctionWriter {
             return EmitError::kWrite;
           Text(std::string_view(semantic_template->text).substr(begin, end - begin));
           if (error_) return *error_;
-          if (!captures->Capture(capture.cell)) return EmitError::kWrite;
+          if (!captures->Capture(capture.cell, capture.requirement))
+            return EmitError::kWrite;
           begin = end;
         }
         Text(std::string_view(semantic_template->text).substr(begin));

@@ -23,7 +23,7 @@ auto Key(const Candidate& candidate) {
 }
 class MeasureBuffer : public CaptureBuffer {
  public:
-  bool Capture(analysis::CapturedSlot) override {
+  bool Capture(analysis::CapturedSlot, analysis::CaptureDomain) override {
     if (holes == SIZE_MAX) return false;
     ++holes;
     return true;
@@ -39,9 +39,10 @@ class FragmentBuffer : public CaptureBuffer {
  public:
   FragmentBuffer(std::span<char> bytes, std::span<CaptureHole> holes)
       : remaining_(bytes), holes_(holes) {}
-  bool Capture(analysis::CapturedSlot cell) override {
+  bool Capture(analysis::CapturedSlot cell,
+               analysis::CaptureDomain requirement) override {
     if (holes_.empty()) return false;
-    holes_.front() = {written_, cell};
+    holes_.front() = {written_, cell, requirement};
     holes_ = holes_.subspan(1);
     return true;
   }
@@ -179,6 +180,11 @@ std::variant<LeafSources, BodyEmitFailure> LeafSources::Build(
         auto row = std::span(fragment.bindings.get(), binding_count)
                        .subspan((i - begin) * holes, holes);
         for (std::size_t h = 0; h < holes; ++h) {
+          // Legacy local-cell admission proves Language only. Never publish
+          // a stronger child obligation using that weaker certificate.
+          if (fragment.holes[h].requirement !=
+              analysis::CaptureDomain::kLanguage)
+            return failure(BodyEmitError::kCreation);
           const auto cell = fragment.holes[h].cell;
           const auto resolved = environments.environments.ResolveCapture(
               *environments.before[candidate.instruction], cell.depth,

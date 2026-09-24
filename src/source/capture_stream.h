@@ -9,16 +9,21 @@ namespace abcd::source {
 struct CaptureHole {
   std::size_t offset;
   analysis::CapturedSlot cell;
+  analysis::CaptureDomain requirement = analysis::CaptureDomain::kLanguage;
 };
 // Private templates carry typed tokens, not textual placeholders. Every
 // captured load/store must emit one token, even if its value is unused.
 class CaptureBuffer : public std::streambuf {
  public:
-  virtual bool Capture(analysis::CapturedSlot cell) = 0;
+  virtual bool Capture(analysis::CapturedSlot cell,
+      analysis::CaptureDomain requirement =
+          analysis::CaptureDomain::kLanguage) = 0;
 };
 class CaptureDiscard : public CaptureBuffer {
  public:
-  bool Capture(analysis::CapturedSlot) override { return true; }
+  bool Capture(analysis::CapturedSlot, analysis::CaptureDomain) override {
+    return true;
+  }
 
  private:
   std::streamsize xsputn(const char*, std::streamsize count) override {

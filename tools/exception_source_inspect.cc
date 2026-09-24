@@ -111,6 +111,7 @@ void InspectExceptionSource(const abcd::source::ExceptionAstInput& input,
           {"end", {span.end.byte, span.end.line, span.end.column, span.end.captures}}} << '\n';
     for (const auto& capture : source->captures)
       output << nlohmann::json{{"capture_depth", capture.cell.depth.value},
+          {"required_domain", static_cast<unsigned>(capture.requirement)},
           {"capture_slot", capture.cell.slot.value},
           {"position", {capture.position.byte, capture.position.line,
                         capture.position.column, capture.position.captures}}} << '\n';

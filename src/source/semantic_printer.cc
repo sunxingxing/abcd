@@ -152,7 +152,8 @@ class SourcePrinter {
    public:
     LeafBuffer(SourcePrinter& printer, const FunctionExpression& function)
         : printer_(printer), function_(function) {}
-    bool Capture(analysis::CapturedSlot capture) override {
+    bool Capture(analysis::CapturedSlot capture,
+                 analysis::CaptureDomain requirement) override {
       if ((!printer_.proof_ || !printer_.capture_method_) && !printer_.capture_environments_)
         throw SourceFailure{SourceError::kCreation, printer_.current_pc_};
       const auto resolved = printer_.capture_environments_
@@ -161,9 +162,13 @@ class SourcePrinter {
           : ResolveCreationCapture(*printer_.capture_method_, *printer_.proof_, function_, capture);
       if (const auto* failure = std::get_if<SourceFailure>(&resolved)) throw *failure;
       if (const auto* outer = std::get_if<analysis::CapturedSlot>(&resolved)) {
-        printer_.Capture(*outer);
+        printer_.Capture(*outer, requirement);
         return true;
       }
+      // Local initialization and Language-only writes do not exclude undefined.
+      // A stronger obligation must survive to an owner with a matching proof.
+      if (requirement != analysis::CaptureDomain::kLanguage)
+        throw SourceFailure{SourceError::kCreation, printer_.current_pc_};
       printer_.LocalName(std::get<analysis::LocalCell>(resolved));
       return true;
     }
@@ -182,14 +187,16 @@ class SourcePrinter {
     SourcePrinter& printer_;
     const FunctionExpression& function_;
   };
-  void Capture(analysis::CapturedSlot cell) {
+  void Capture(analysis::CapturedSlot cell,
+      analysis::CaptureDomain requirement =
+          analysis::CaptureDomain::kLanguage) {
     if (capture_mode_ != CaptureMode::kTemplate)
       throw SourceFailure{SourceError::kUnsupportedOperation, current_pc_};
     // The insertion remains unresolved through every wrapper. Its cursor is
     // part of the parent creation span, even if no surrounding byte is emitted.
     if (captures_.size() >= captures_.capacity())
       throw SourceFailure{SourceError::kResourceLimit, current_pc_};
-    captures_.push_back({position_, cell});
+    captures_.push_back({position_, cell, requirement});
     ++position_.captures;
   }
   void LocalName(analysis::LocalCell cell) {
@@ -353,7 +360,7 @@ class SourcePrinter {
     } else if (const auto* captured = std::get_if<CapturedExpression>(&expression)) {
       // A zero-width typed insertion, never a string placeholder. Parent
       // binding is mandatory even when this load's register result is unused.
-      Capture(captured->cell);
+      Capture(captured->cell, captured->requirement);
     } else if (const auto* string = std::get_if<StringExpression>(&expression)) {
       PoolString(string->value, StringUse::kValue);
     } else if (const auto* call = std::get_if<CallExpression>(&expression)) {

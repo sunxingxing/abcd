@@ -350,8 +350,24 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
               // v7 flag 0 rejects BOTH Hole and undefined. Language-only
               // captures do not prove this check redundant. Defined facts
               // exclude both sentinels, including mixed string/number phis.
-              if (!kinds || !kinds->IsDefined())
-                return Fail(SourceError::kSuperInitialization, instruction.pc);
+              if (!kinds || !kinds->IsDefined()) {
+                // A direct captured load may carry the stronger premise to
+                // its owner. Do not infer it for all SSA uses or phi inputs:
+                // require the unchanged adjacent load in this normal block.
+                const auto origin = value ? method.ssa.Definition(*value)
+                                          : std::nullopt;
+                if (method.ssa.IsPhased() || !origin || position == 0 ||
+                    position <= method.flow.blocks[block_id].first_instruction ||
+                    origin->value != position - 1)
+                  return Fail(SourceError::kSuperInitialization, instruction.pc);
+                auto* assignment = std::get_if<SourceAssignment>(
+                    &ast.statements.back().operation);
+                auto* captured = assignment
+                    ? std::get_if<CapturedExpression>(&assignment->value) : nullptr;
+                if (!captured || !kinds || !kinds->IsLanguage())
+                  return Fail(SourceError::kSuperInitialization, instruction.pc);
+                captured->requirement = analysis::CaptureDomain::kDefined;
+              }
               operation = analysis::NoOperation{};
               break;
             }

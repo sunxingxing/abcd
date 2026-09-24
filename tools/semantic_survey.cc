@@ -323,6 +323,7 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
               {"at", {capture.position.byte, capture.position.line,
                        capture.position.column}},
               {"capture_cursor", capture.position.captures},
+              {"required_domain", static_cast<unsigned>(capture.requirement)},
               {"depth", capture.cell.depth.value},
               {"slot", capture.cell.slot.value}});
         row["template_positions"] = nlohmann::json::array();

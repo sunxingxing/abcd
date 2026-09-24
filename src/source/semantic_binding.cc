@@ -70,6 +70,9 @@ std::variant<PrintedSource, SourceFailure> BindSourceTemplate(
     const PrintedTemplate& source,
     std::span<const analysis::LocalCell> bindings, std::size_t budget_bytes) {
   if (bindings.size() != source.captures.size()) return Invalid();
+  for (const auto& capture : source.captures)
+    if (capture.requirement != analysis::CaptureDomain::kLanguage)
+      return Invalid();
   try {
     if (bindings.size() >= budget_bytes / sizeof(std::size_t)) return Resource();
     std::vector<std::size_t> prefix(bindings.size() + 1);

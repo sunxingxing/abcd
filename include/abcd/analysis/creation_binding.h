@@ -17,6 +17,9 @@ struct CapturedSlot {
   CapturedDepth depth;
   LexicalSlot slot;
 };
+// A use obligation, not part of cell identity. Rebase the cell without
+// weakening this requirement; initialization alone proves only Language.
+enum class CaptureDomain : std::uint8_t { kLanguage, kDefined };
 enum class CaptureRebaseError { kSendableEnvironment };
 
 // One ordinary creation edge: input is a target-method captured binding;
