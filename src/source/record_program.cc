@@ -37,6 +37,7 @@
 #include "record_array.h"
 #include "record_buffer.h"
 #include "record_literal.h"
+#include "record_module_choice.h"
 #include "record_prelude.h"
 
 namespace abcd::source {
@@ -60,6 +61,7 @@ struct Value {
     kLocalSnapshot,
     kGlobalSnapshot,
     kCallResult,
+    kChoice,
     kPrototype,
     kInstance
   } kind;
@@ -202,6 +204,12 @@ class ProgramWriter {
   std::size_t Write() {
     if (!body_.tries.empty() || !body_.handlers.empty())
       throw Fail(Error::kInstruction);
+    // Every admitted forward branch is consumed as one complete region.
+    // A later backedge could otherwise re-enter code already emitted once.
+    for (const auto& site : body_.instructions)
+      if (site.branch_target &&
+          site.branch_target->value <= site.offset.value)
+        throw Fail(Error::kInstruction, site.offset);
     const auto imports = WriteModuleImports(file_, header_, module_, output_,
                                             {Remaining()}, budget_.strings);
     if (const auto* failure = std::get_if<ModuleImportFailure>(&imports)) {
@@ -230,6 +238,20 @@ class ProgramWriter {
     for (std::size_t i = 0; i < body_.instructions.size(); ++i) {
       const auto& instruction = body_.instructions[i];
       pc_ = instruction.offset;
+      if (const auto choice = MatchRecordModuleChoice(
+              body_, i, registers_.size());
+          choice && accumulator_.kind == Value::Kind::kLocalSnapshot &&
+          accumulator_.ordinal < local_slots_.size() &&
+          local_slots_[accumulator_.ordinal] == choice->slot &&
+          choice->prior.value < registers_.size() &&
+          registers_[choice->prior.value].kind == accumulator_.kind &&
+          registers_[choice->prior.value].ordinal == accumulator_.ordinal &&
+          exports_.IsInitialized(choice->slot)) {
+        ModuleChoice(*choice);
+        last_effect_pc_ = choice->store_pc;
+        i = choice->after - 1;
+        continue;
+      }
       // The pinned v7 entry ABI starts with three register moves. This
       // compiler prelude is admitted once; its matcher checks all CFG edges
       // and that transient registers are dead before the next instruction.
@@ -550,16 +572,18 @@ class ProgramWriter {
     const auto* load = std::get_if<analysis::ModuleLoad>(&lifted);
     if (!load || load->space != analysis::ModuleSpace::kLocal ||
         !exports_.IsInitialized(load->slot) ||
-        local_load_count_ >= body_.instructions.size())
+        local_slots_.size() >= body_.instructions.size())
       throw Fail(Error::kModule, pc_);
+    const auto id = local_slots_.size();
+    Append(local_slots_, load->slot);
     // This straight-line store dominates the read. Capture the current value
     // because a later STMODULEVAR may update the live ESM binding.
     Text("const $localRead");
-    Number(local_load_count_);
+    Number(id);
     Text(" = $local");
     Number(load->slot.value);
     Text(";\n");
-    accumulator_ = {Value::Kind::kLocalSnapshot, local_load_count_++};
+    accumulator_ = {Value::Kind::kLocalSnapshot, id};
     if (position + 1 < body_.instructions.size()) {
       const auto guard = analysis::LiftHoleInstruction(
           body_.instructions[position + 1].decoded, registers_.size());
@@ -569,6 +593,30 @@ class ProgramWriter {
           std::holds_alternative<analysis::HoleNameSlot>(checked->name))
         pending_hole_guard_ = position + 1;
     }
+  }
+  void ModuleChoice(const RecordModuleChoice& choice) {
+    if (choice_count_ >= body_.instructions.size() ||
+        choice.destination.value >= registers_.size())
+      throw Fail(Error::kResourceLimit, pc_);
+    const auto prior = accumulator_;
+    const auto id = choice_count_++;
+    Text("let $choice");
+    Number(id);
+    Text(";\nif (");
+    WriteValue(prior);
+    Text(") {\n$choice");
+    Number(id);
+    Text(" = ");
+    WriteValue(prior);
+    Text(";\n} else {\n$choice");
+    Number(id);
+    Text(" = {};\n$local");
+    Number(choice.slot.value);
+    Text(" = $choice");
+    Number(id);
+    Text(";\n}\n");
+    accumulator_ = {Value::Kind::kChoice, id};
+    registers_[choice.destination.value] = accumulator_;
   }
   Value SaveAtom(StaticAtom atom) {
     if (const auto* text = std::get_if<std::u16string>(&atom)) {
@@ -998,7 +1046,7 @@ class ProgramWriter {
         Number(value.ordinal);
         return;
       case Value::Kind::kLocalSnapshot:
-        if (value.ordinal >= local_load_count_)
+        if (value.ordinal >= local_slots_.size())
           throw Fail(Error::kValue, pc_);
         Text("$localRead");
         Number(value.ordinal);
@@ -1011,6 +1059,11 @@ class ProgramWriter {
       case Value::Kind::kCallResult:
         if (value.ordinal >= call_count_) throw Fail(Error::kValue, pc_);
         Text("$call");
+        Number(value.ordinal);
+        return;
+      case Value::Kind::kChoice:
+        if (value.ordinal >= choice_count_) throw Fail(Error::kValue, pc_);
+        Text("$choice");
         Number(value.ordinal);
         return;
       case Value::Kind::kInstance:
@@ -1049,6 +1102,7 @@ class ProgramWriter {
                ctor.kind != Value::Kind::kLocalSnapshot &&
                ctor.kind != Value::Kind::kGlobalSnapshot &&
                ctor.kind != Value::Kind::kCallResult &&
+               ctor.kind != Value::Kind::kChoice &&
                ctor.kind != Value::Kind::kInstance) {
       throw Fail(Error::kValue, pc_);
     }
@@ -1079,7 +1133,8 @@ class ProgramWriter {
         callee.kind != Value::Kind::kImportSnapshot &&
         callee.kind != Value::Kind::kLocalSnapshot &&
         callee.kind != Value::Kind::kGlobalSnapshot &&
-        callee.kind != Value::Kind::kCallResult)
+        callee.kind != Value::Kind::kCallResult &&
+        callee.kind != Value::Kind::kChoice)
       throw Fail(Error::kValue, pc_);
     if (call_count_ >= body_.instructions.size())
       throw Fail(Error::kResourceLimit, pc_);
@@ -1264,6 +1319,7 @@ class ProgramWriter {
                    accumulator_.kind != Value::Kind::kImportSnapshot &&
                    accumulator_.kind != Value::Kind::kLocalSnapshot &&
                    accumulator_.kind != Value::Kind::kCallResult &&
+                   accumulator_.kind != Value::Kind::kChoice &&
                    accumulator_.kind != Value::Kind::kUndefined))
       throw Fail(Error::kValue, pc_);
     if (accumulator_.kind == Value::Kind::kClass) {
@@ -1295,6 +1351,9 @@ class ProgramWriter {
       Number(accumulator_.ordinal);
     } else if (accumulator_.kind == Value::Kind::kCallResult) {
       Text("$call");
+      Number(accumulator_.ordinal);
+    } else if (accumulator_.kind == Value::Kind::kChoice) {
+      Text("$choice");
       Number(accumulator_.ordinal);
     } else {
       Text("void 0");
@@ -1330,15 +1389,16 @@ class ProgramWriter {
   std::vector<ClassState> classes_;
   std::vector<CreatedMethodState> created_methods_;
   std::vector<StaticAtom> atoms_;
+  std::vector<analysis::ModuleSlot> local_slots_;
   std::vector<RecordLiteralNode> nodes_;
   Value accumulator_{Value::Kind::kUnknown};
   abc::CodeOffset pc_{};
   std::size_t function_count_ = 0;
   std::size_t instance_count_ = 0;
   std::size_t import_load_count_ = 0;
-  std::size_t local_load_count_ = 0;
   std::size_t global_count_ = 0;
   std::size_t call_count_ = 0;
+  std::size_t choice_count_ = 0;
   abc::CodeOffset last_effect_pc_{};
   std::optional<std::size_t> pending_hole_guard_;
   std::size_t written_ = 0;
