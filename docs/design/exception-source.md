@@ -68,6 +68,44 @@ is not an acceptable shortcut.
 
 ## Verification Status
 
+### Phased Exception Graph
+
+`BuildExceptionFlow` now consumes the shared raw lifting and dispatch index to
+produce a typed instruction-level graph. Each instruction has Before and
+Commit nodes; only Commit defines its normal register destination. Selected
+exceptional paths go directly from Before to a shared Catch gateway, which
+defines accumulator from the incoming exception before entering handler code.
+Ordinary jumps to that code target Before directly, preserving their existing
+accumulator. Always-throw instructions have no Before-to-Commit edge. Caller
+propagation remains an explicit exception exit rather than a normal successor.
+Unused Commit nodes can be unreachable; consumers must compute reachability.
+
+This is graph infrastructure, not exception-aware SSA or source admission.
+Environment restoration, catch-entry phi definitions and region integration
+remain open. Raw unsupported coroutine operations still reject graph building;
+owner-proven async normalization has not been routed through this API yet.
+
+Storage reserves two nodes per instruction plus at most min(I,H) catch nodes.
+Sparse catch gateways are indexed by target instruction; no per-register state
+copies or I-by-H handler scans are introduced. The public byte budget admits
+simultaneous normal CFG, dispatch, typed instructions, nodes and gateway index.
+`graph_work` counts lifting/connection passes and lookup comparisons only;
+normal-flow/dispatch preprocessing is byte-bounded but not covered by that work
+counter. The header includes its R/H-dependent complexity, rather than claiming
+the instruction-only graph cost is the whole pipeline cost.
+
+The `--exception-flow` inspection mode reports phases, arcs, normal register
+writes and catch accumulator definitions, with `ssa_complete: false` and
+`source_complete: false`. ABC-only inspection of pasteboard method 4945
+(`build/pasteboard-4945-exception-flow.jsonl`) produces 407 nodes for 203
+instructions. Its instruction at PC 113 has normal successor Commit node 89
+and exceptional successor Catch node 406. That gateway defines accumulator
+and enters PC 439 at Before node 336, without visiting Commit node 89.
+Both CLI targets compiled; tests and RSS remain paused. Deferred graph cases
+include handler-sharing, normal entries into handler code, thrown-value
+identity, conditional edges with equal targets, always-throw exits, unreachable
+commits, multiple handlers, malformed input and byte/work limits.
+
 After edge integration, both CLI targets compiled and the ABC-only all-record
 survey `build/pasteboard-semantic-exception-edges.jsonl` retained the counts
 below. In `build/pasteboard-9165-exception-edges.jsonl`, PC 30 selects outer

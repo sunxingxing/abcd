@@ -25,6 +25,7 @@
 #include "abcd/source/named_scope.h"
 #include "abcd/abc/pool_reference.h"
 #include "semantic_survey.h"
+#include "exception_inspect.h"
 
 namespace {
 using namespace abcd;
@@ -65,6 +66,7 @@ enum class InspectError : std::uint8_t {
   kFrame,
   kPrint,
 };
+enum class InspectDetail : std::uint8_t { kSummary, kInstructions, kExceptionFlow };
 int Fail(InspectError kind, std::uint32_t pc = 0) {
   std::cerr << nlohmann::json{{"error", static_cast<unsigned>(kind)},
                               {"pc", pc}}
@@ -81,7 +83,7 @@ int FailStage(InspectError kind, unsigned stage_error,
 }
 int Inspect(const std::filesystem::path& path, std::uint32_t entity,
             std::optional<source::SourceForm> form, bool all_records = false,
-            bool instructions = false) {
+            InspectDetail detail = InspectDetail::kSummary) {
   auto opened = corpus::AbcFile::Open(path);
   const auto* owned = std::get_if<std::unique_ptr<corpus::AbcFile>>(&opened);
   if (!owned) return Fail(InspectError::kOpen);
@@ -116,7 +118,10 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     const auto& failure = std::get<abc::BodyFailure>(decoded);
     return Fail(InspectError::kBody, failure.offset.value);
   }
-  if (instructions) {
+  if (detail == InspectDetail::kExceptionFlow)
+    return InspectExceptionFlow(*body, header->profile,
+                                 code.registers + code.arguments, std::cout);
+  if (detail == InspectDetail::kInstructions) {
     constexpr std::size_t kDispatchBytes = 16 * 1024 * 1024;
     const auto dispatched = analysis::BuildExceptionDispatch(
         *body, header->profile, {kDispatchBytes});
@@ -340,7 +345,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
 
 int main(int argc, char** argv) {
   if (argc != 3 && argc != 4) {
-    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source|--instructions]\n"
+    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source|--instructions|--exception-flow]\n"
                  "       abc_semantic INPUT.abc --all-records\n";
     return Fail(InspectError::kArguments);
   }
@@ -361,7 +366,9 @@ int main(int argc, char** argv) {
     else if (option == "--function-source")
       form = source::SourceForm::kFunction;
     else if (option == "--instructions")
-      return Inspect(argv[1], entity, std::nullopt, false, true);
+      return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kInstructions);
+    else if (option == "--exception-flow")
+      return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kExceptionFlow);
     else
       return Fail(InspectError::kArguments);
   }
