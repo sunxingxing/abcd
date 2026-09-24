@@ -4,6 +4,7 @@
 #include "abcd/analysis/semantic_ir.h"
 
 namespace abcd::source {
+struct AstMethod;
 // Same-block allocation identities, not heap-shape or arbitrary alias facts.
 // Publication invalidates the connected component, including containers.
 class PrivateObjects {
@@ -25,7 +26,7 @@ class PrivateObjects {
   }
   Origin Find(std::optional<analysis::SsaValueId> value,
               std::size_t block_begin) const;
-  void Observe(const analysis::SemanticMethod& method,
+  void Observe(const AstMethod& method,
                analysis::InstructionId instruction, std::size_t block_begin,
                bool verified_own_store);
 

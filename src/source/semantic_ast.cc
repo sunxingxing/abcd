@@ -7,6 +7,7 @@
 
 #include "semantic_objects.h"
 #include "argument_region.h"
+#include "semantic_ast_input.h"
 
 namespace abcd::source {
 namespace {
@@ -36,31 +37,30 @@ std::optional<analysis::BlockId> Target(const analysis::NormalFlow& flow,
       static_cast<std::uint32_t>(block - flow.blocks.begin())};
 }
 std::optional<analysis::SsaValueId> ReadValue(
-    const analysis::SemanticMethod& method, std::size_t instruction,
+    const AstMethod& method, std::size_t instruction,
     const analysis::ScalarSlot& slot) {
   for (const auto& read : method.ssa.Reads(
            analysis::InstructionId{static_cast<std::uint32_t>(instruction)})) {
-    if (SameSlot(method.ssa.Values()[read.value.value].slot, slot))
+    if (SameSlot(method.ssa.Slot(read.value), slot))
       return read.value;
   }
   return std::nullopt;
 }
 std::optional<analysis::SsaValueId> CopyInput(
-    const analysis::SemanticMethod& method,
+    const AstMethod& method,
     std::optional<analysis::SsaValueId> value) {
   if (!value) return {};
-  const auto* origin = std::get_if<analysis::InstructionValue>(
-      &method.ssa.Values()[value->value].origin);
+  const auto origin = method.ssa.Definition(*value);
   if (!origin) return value;
   const auto* assignment = std::get_if<analysis::ScalarAssignment>(
-      &method.instructions[origin->instruction.value].operation);
+      &method.instructions[origin->value].operation);
   if (!assignment) return value;
   const auto* input = std::get_if<analysis::ScalarValue>(&assignment->expression);
   if (!input) return value;
   if (const auto* reg = std::get_if<abc::RegisterId>(input))
-    return ReadValue(method, origin->instruction.value, analysis::ScalarSlot{*reg});
+    return ReadValue(method, origin->value, analysis::ScalarSlot{*reg});
   if (std::holds_alternative<analysis::Accumulator>(*input))
-    return ReadValue(method, origin->instruction.value,
+    return ReadValue(method, origin->value,
                      analysis::ScalarSlot{analysis::Accumulator{}});
   return value;
 }
@@ -83,24 +83,23 @@ bool IsPrivateValue(const analysis::SemanticOperation& operation) {
   return value && !std::holds_alternative<analysis::EmptyArray>(*value);
 }
 std::optional<std::size_t> Definition(
-    const analysis::SemanticMethod& method,
+    const AstMethod& method,
     std::optional<analysis::SsaValueId> value) {
   if (!value) return {};
-  const auto* origin = std::get_if<analysis::InstructionValue>(
-      &method.ssa.Values()[value->value].origin);
+  const auto origin = method.ssa.Definition(*value);
   if (!origin) return {};
-  return origin->instruction.value;
+  return origin->value;
 }
 }  // namespace
 
-SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
-                               const analysis::SemanticProof& proof,
+SourceAstResult BuildSourceAst(const AstMethod& method,
+                               const AstProof& proof,
                                analysis::SemanticRegionTree regions,
                                std::size_t budget_bytes,
                                std::span<const std::uint8_t> named_scopes,
                                std::optional<analysis::RestPrologue> rest) {
-  if (proof.environments.before.size() != method.instructions.size() ||
-      proof.values.Facts().size() != method.ssa.Values().size() ||
+  if (proof.instructions != method.instructions.size() ||
+      proof.values.size() != method.ssa.ValueCount() ||
       regions.order_positions.size() != method.flow.blocks.size())
     return Fail(SourceError::kInvalidEffect);
   if (!named_scopes.empty() && named_scopes.size() != method.instructions.size())
@@ -113,10 +112,10 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
     return Fail(SourceError::kResourceLimit);
   constexpr auto kProofValueBytes =
       sizeof(std::uint8_t) + sizeof(PrivateObjects::Origin);
-  if (method.ssa.Values().size() >
+  if (method.ssa.ValueCount() >
       (budget_bytes - regions.allocated_bytes) / kProofValueBytes)
     return Fail(SourceError::kResourceLimit);
-  const auto proof_bytes = method.ssa.Values().size() * kProofValueBytes;
+  const auto proof_bytes = method.ssa.ValueCount() * kProofValueBytes;
   if (proof_bytes > budget_bytes - regions.allocated_bytes)
     return Fail(SourceError::kResourceLimit);
   struct CallInterval { std::size_t first; std::size_t last; };
@@ -136,9 +135,9 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
               sizeof(std::optional<analysis::BlockId>))
     return Fail(SourceError::kResourceLimit);
   try {
-    PrivateObjects objects(method.ssa.Values().size(), method.instructions.size());
+    PrivateObjects objects(method.ssa.ValueCount(), method.instructions.size());
     if (objects.AllocatedBytes() >
-        method.ssa.Values().size() * sizeof(PrivateObjects::Origin) + allocation_bytes)
+        method.ssa.ValueCount() * sizeof(PrivateObjects::Origin) + allocation_bytes)
       return Fail(SourceError::kResourceLimit);
     std::vector<CallInterval> call_roots;
     call_roots.reserve(method.instructions.size());
@@ -152,14 +151,14 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
       return Fail(SourceError::kResourceLimit);
     // Saturating use counts prove a saved callee is unobservable outside its
     // reload. Build once, not a suffix scan for every call.
-    std::vector<std::uint8_t> uses(method.ssa.Values().size());
+    std::vector<std::uint8_t> uses(method.ssa.ValueCount());
     constexpr std::uint8_t kMultipleUses = 2;
     for (std::size_t i = 0; i < method.instructions.size(); ++i)
       for (const auto& read : method.ssa.Reads(analysis::InstructionId{
                static_cast<std::uint32_t>(i)}))
         if (uses[read.value.value] < kMultipleUses) ++uses[read.value.value];
-    for (std::size_t i = 0; i < method.ssa.Values().size(); ++i)
-      if (std::holds_alternative<analysis::PhiValue>(method.ssa.Values()[i].origin))
+    for (std::size_t i = 0; i < method.ssa.ValueCount(); ++i)
+      if (method.ssa.IsPhi(analysis::SsaValueId{static_cast<std::uint32_t>(i)}))
         for (const auto& input : method.ssa.Inputs(
                  analysis::SsaValueId{static_cast<std::uint32_t>(i)}))
           if (uses[input.value.value] < kMultipleUses) ++uses[input.value.value];
@@ -319,7 +318,9 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
       } else if (const auto* module =
                      std::get_if<analysis::ModuleLoad>(&instruction.operation)) {
         if (module_fact >= proof.module_reads.size() ||
-            proof.module_reads[module_fact].instruction.value != position)
+            proof.module_reads[module_fact].instruction.value != position ||
+            (method.ssa.IsPhased() &&
+             proof.module_reads[module_fact].proof == analysis::ModuleReadProof::kGuarded))
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         ++module_fact;
         operation = SourceAssignment{
@@ -330,7 +331,7 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
           case analysis::SuperCheckKind::kRequireInitialized: {
             const auto value = ReadValue(method, position,
                 analysis::ScalarSlot{analysis::Accumulator{}});
-            const auto kinds = value ? proof.values.At(*value) : std::nullopt;
+            const auto kinds = value ? proof.At(*value) : std::nullopt;
             // v7 RuntimeThrowIfSuperNotCorrectCall flag 0 rejects BOTH Hole
             // and undefined. A Language-only capture premise is insufficient.
             // Only these existing SSA refinements exclude both values; broader
@@ -349,7 +350,7 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
       } else if (const auto* guard =
                      std::get_if<analysis::HoleGuard>(&instruction.operation)) {
         const auto value = ReadValue(method, position, guard->value);
-        const auto kinds = value ? proof.values.At(*value) : std::nullopt;
+        const auto kinds = value ? proof.At(*value) : std::nullopt;
         if (!kinds || !kinds->IsLanguage())
           return Fail(SourceError::kInvalidEffect, instruction.pc);
         // Pinned UNDEFINEDIFHOLE handlers do not even read the error name on
@@ -391,7 +392,8 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
       } else if (const auto* call =
                      std::get_if<analysis::ReceiverCall>(&instruction.operation)) {
         const auto i = ast.statements.size();
-        if (!i || Target(method.flow, instruction.pc))
+        // Normal-only reference fusion has no exceptional-state certificate.
+        if (method.ssa.IsPhased() || !i || Target(method.flow, instruction.pc))
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         const auto callee = ReadValue(
             method, i, analysis::ScalarSlot{analysis::Accumulator{}});
@@ -537,5 +539,16 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
   } catch (const std::length_error&) {
     return Fail(SourceError::kResourceLimit);
   }
+}
+
+SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
+    const analysis::SemanticProof& proof, analysis::SemanticRegionTree regions,
+    std::size_t budget_bytes, std::span<const std::uint8_t> named_scopes,
+    std::optional<analysis::RestPrologue> rest) {
+  const analysis::InstructionSsa ssa{method.ssa};
+  const AstMethod input{method.instructions, method.flow, ssa};
+  const AstProof facts{proof.environments.before.size(), proof.values.Facts(),
+                       proof.locals, proof.module_reads, proof.captured_reads};
+  return BuildSourceAst(input, facts, std::move(regions), budget_bytes, named_scopes, rest);
 }
 }  // namespace abcd::source

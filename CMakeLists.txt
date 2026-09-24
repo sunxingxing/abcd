@@ -52,6 +52,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/exception_environment.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_inputs.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_regions.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_region_tree.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/instruction_ssa.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_validation.cc
   src/analysis/semantic_locals.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/constant_object.cc)

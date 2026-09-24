@@ -1,10 +1,11 @@
 #include "argument_region.h"
+#include "semantic_ast_input.h"
 
 #include <algorithm>
 
 namespace abcd::source {
 std::optional<SourceArgumentRegion> ProveArgumentRegion(
-    const analysis::SemanticMethod& method, std::size_t property,
+    const AstMethod& method, std::size_t property,
     std::size_t call) {
   if (property >= call || call >= method.instructions.size()) return {};
   const auto& blocks = method.flow.blocks;

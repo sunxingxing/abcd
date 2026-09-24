@@ -10,6 +10,7 @@
 #include "abcd/analysis/exception_inputs.h"
 #include "abcd/analysis/exception_regions.h"
 #include "abcd/analysis/semantic_region.h"
+#include "abcd/analysis/instruction_ssa.h"
 
 int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     abcd::abc::ProfileId profile, std::uint64_t frame_size,
@@ -88,6 +89,14 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
   const auto* inputs = std::get_if<analysis::ExceptionInputProof>(&checked);
   if (environments->allocated_bytes > remaining) return EXIT_FAILURE;
   remaining -= environments->allocated_bytes;
+  const auto indexed = analysis::InstructionSsa::Build(*flow, *ssa, remaining);
+  const auto* instruction_ssa = std::get_if<analysis::InstructionSsa>(&indexed);
+  if (!instruction_ssa) {
+    output << nlohmann::json{{"instruction_ssa_error", static_cast<unsigned>(
+        std::get<analysis::InstructionSsaError>(indexed))}} << '\n';
+    return EXIT_FAILURE;
+  }
+  remaining -= instruction_ssa->AllocatedBytes();
   const auto recovered = analysis::BuildExceptionRegions(body, *flow,
       {remaining, analysis::kDefaultSemanticWork - quota.Consumed()});
   const auto* regions = std::get_if<analysis::ExceptionRegions>(&recovered);
@@ -112,13 +121,14 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
   };
   const auto tree_result = build_tree();
   const auto* tree = std::get_if<analysis::SemanticRegionTree>(&tree_result);
-  output << nlohmann::json{{"schema", 7}, {"instructions", flow->instructions.size()},
+  output << nlohmann::json{{"schema", 8}, {"instructions", flow->instructions.size()},
       {"nodes", flow->nodes.size()}, {"source_complete", false}, {"ssa_complete", false},
       {"register_ssa_complete", true}, {"value_flow_complete", true},
       {"environment_topology_complete", true}, {"lexical_values_proven", false},
       {"source_inputs_proven", inputs != nullptr},
       {"exception_regions_proven", regions != nullptr},
       {"exception_tree_proven", tree != nullptr},
+      {"instruction_ssa_indexed", true},
       {"requires_language_abi", true}, {"pending_exception_values_proven", false},
       {"ssa_values", ssa->Values().size()}}
       << '\n';
@@ -203,6 +213,9 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
   for (std::size_t i = 0; i < ssa->Values().size(); ++i) {
     const auto& value = ssa->Values()[i];
     nlohmann::json row{{"ssa_value", i}};
+    if (const auto definition = instruction_ssa->Definition(
+            analysis::SsaValueId{static_cast<std::uint32_t>(i)}))
+      row["definition_instruction"] = definition->value;
     const auto kinds = values->Facts()[i];
     row["value_kinds"] = nlohmann::json::array();
     for (const auto kind : {analysis::VmValueKind::kLanguage, analysis::VmValueKind::kHole,

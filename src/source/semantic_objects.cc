@@ -1,4 +1,5 @@
 #include "semantic_objects.h"
+#include "semantic_ast_input.h"
 
 #include <utility>
 
@@ -30,7 +31,7 @@ PrivateObjects::Origin PrivateObjects::Find(
   return origin;
 }
 
-void PrivateObjects::Observe(const analysis::SemanticMethod& method,
+void PrivateObjects::Observe(const AstMethod& method,
                              analysis::InstructionId instruction,
                              std::size_t block_begin,
                              bool verified_own_store) {

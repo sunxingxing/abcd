@@ -68,6 +68,42 @@ is not an acceptable shortcut.
 
 ## Verification Status
 
+### Instruction SSA View
+
+The common statement AST now queries `InstructionSsa` through borrowed
+`AstMethod`/`AstProof` inputs instead of directly interpreting normal SSA
+origins. The existing public normal-method entry point constructs these views
+without allocating or changing its proof premises. Private object tracking and
+argument-region analysis consume the same method view.
+
+For phased SSA, an O(I+N), byte-admitted index maps original instructions to
+Before/Commit nodes. Reads come from Before; normal writes come from Commit.
+`Definition` maps only Commit values back to original instruction IDs. Catch,
+phi and method-entry values are not ordinary instruction definitions. Value
+IDs, phi dependencies and slot identities remain those of the original SSA;
+no normal-only reconstruction or cloned bytecode is involved. Borrowed read
+and phi-input records retain native site/edge coordinates, which AST consumers
+must not reinterpret as original instruction positions. All referenced owners
+must remain alive and unchanged while these views are used.
+
+The phased AST mode refuses normal-only receiver/property fusion and guarded
+module-load fusion until their exceptional-state proofs exist. Normal mode
+retains its previous behavior. Exception binding/local-initialization facts
+still need owner-verified projection into instruction coordinates before the
+new internal AST entry can be used for published catch-containing source.
+
+Both CLI targets compiled. Production inspection schema 8 adds explicit
+instruction-definition provenance: in method 4945, normal value 39 at Commit
+node 89 maps to instruction 44, while Catch value 161 at node 406 has no
+ordinary definition. Artifacts are
+`build/pasteboard-4945-instruction-ssa.jsonl` and
+`build/pasteboard-5165-instruction-ssa.jsonl`. The all-record report
+`build/pasteboard-semantic-instruction-ssa.jsonl` is byte-identical to the
+previous production report after routing the normal AST through this view.
+Read-only review found no concrete defect. Tests and RSS remain paused; view
+lifetime/move cases, malformed indexes, unreachable writes and budget limits
+still require regression coverage. No additional complete record is claimed.
+
 ### Common Try/Catch Tree
 
 `RegionTry` is now an alternative in the same `RegionNode` used by ordinary
