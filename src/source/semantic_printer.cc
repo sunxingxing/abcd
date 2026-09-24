@@ -443,6 +443,10 @@ class SourcePrinter {
     Text("next_");
     Number(id.value);
   }
+  void LoopLabel(analysis::BlockId id) {
+    Text("loop_");
+    Number(id.value);
+  }
   void Statement(const SourceStatement& statement) {
     current_pc_ = statement.pc;
     const auto begin = position_;
@@ -487,6 +491,16 @@ class SourcePrinter {
           } else if constexpr (std::is_same_v<T, SourceBreak>) {
             Text("break ");
             Label(operation.target);
+            Text(";\n");
+          } else if constexpr (std::is_same_v<T, SourceConditionalContinue>) {
+            Text("if (");
+            Scalar(ScalarExpression{operation.condition});
+            Text(") continue ");
+            LoopLabel(operation.target);
+            Text(";\n");
+          } else if constexpr (std::is_same_v<T, SourceContinue>) {
+            Text("continue ");
+            LoopLabel(operation.target);
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceReturn>) {
             Text("return ");
@@ -647,6 +661,11 @@ class SourcePrinter {
             Text("}\n");
           } else if constexpr (std::is_same_v<T, analysis::RegionSequence>) {
             for (const auto& child : region.children) Region(child);
+          } else if constexpr (std::is_same_v<T, analysis::RegionLoop>) {
+            LoopLabel(region.header);
+            Text(": while (true) {\n");
+            Region(*region.body);
+            Text("}\n");
           }
         },
         node.value);

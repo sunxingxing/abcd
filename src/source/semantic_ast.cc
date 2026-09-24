@@ -100,7 +100,8 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
                                std::span<const std::uint8_t> named_scopes,
                                std::optional<analysis::RestPrologue> rest) {
   if (proof.environments.before.size() != method.instructions.size() ||
-      proof.values.Facts().size() != method.ssa.Values().size())
+      proof.values.Facts().size() != method.ssa.Values().size() ||
+      regions.order_positions.size() != method.flow.blocks.size())
     return Fail(SourceError::kInvalidEffect);
   if (!named_scopes.empty() && named_scopes.size() != method.instructions.size())
     return Fail(SourceError::kInvalidEffect);
@@ -484,13 +485,21 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
                          &instruction.operation)) {
         const auto target = Target(method.flow, branch->target);
         if (!target) return Fail(SourceError::kMissingTarget, instruction.pc);
-        operation = SourceConditionalBreak{branch->predicate, *target};
+        if (ast.regions.order_positions[target->value] <=
+            ast.regions.order_positions[block_id])
+          operation = SourceConditionalContinue{branch->predicate, *target};
+        else
+          operation = SourceConditionalBreak{branch->predicate, *target};
       } else if (const auto* jump =
                      std::get_if<analysis::JumpOperation>(
                          &instruction.operation)) {
         const auto target = Target(method.flow, jump->target);
         if (!target) return Fail(SourceError::kMissingTarget, instruction.pc);
-        operation = SourceBreak{*target};
+        if (ast.regions.order_positions[target->value] <=
+            ast.regions.order_positions[block_id])
+          operation = SourceContinue{*target};
+        else
+          operation = SourceBreak{*target};
       } else if (const auto* returned =
                      std::get_if<analysis::ReturnOperation>(
                          &instruction.operation)) {

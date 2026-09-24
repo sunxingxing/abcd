@@ -19,8 +19,12 @@ struct RegionLabel {
 struct RegionSequence {
   std::vector<RegionNode> children;
 };
+struct RegionLoop {
+  BlockId header;
+  std::unique_ptr<RegionNode> body;
+};
 struct RegionNode {
-  std::variant<RegionBlock, RegionLabel, RegionSequence> value;
+  std::variant<RegionBlock, RegionLabel, RegionSequence, RegionLoop> value;
 };
 struct SemanticRegionTree {
   RegionNode root;
@@ -37,7 +41,8 @@ using RegionResult = std::variant<SemanticRegionTree, RegionFailure>;
 
 // Acyclic forward edges become breaks out of labels surrounding preceding
 // blocks. Shared blocks appear once, and effectful instructions are never
-// duplicated. Exceptional edges and loops require separate region forms.
+// duplicated. Cycles with laminar, single-entry block-order intervals become
+// explicit loops. Cross-entry/overlapping loops and exceptional edges refuse.
 [[nodiscard]] RegionResult BuildSemanticRegions(
     const SemanticMethod& method, std::size_t budget_bytes);
 }  // namespace abcd::analysis

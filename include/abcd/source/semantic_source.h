@@ -77,6 +77,13 @@ struct SourceConditionalBreak {
 struct SourceBreak {
   analysis::BlockId target;
 };
+struct SourceConditionalContinue {
+  analysis::UnaryExpression condition;
+  analysis::BlockId target;
+};
+struct SourceContinue {
+  analysis::BlockId target;
+};
 struct SourceReturn {
   analysis::ScalarValue value;
 };
@@ -89,7 +96,8 @@ struct SourceStagedCall {
 using SourceOperation =
     std::variant<analysis::NoOperation, SourceAssignment, SourceMemberStore, SourceOwnStore,
                  SourceLocalStore,
-                 SourceConditionalBreak, SourceBreak, SourceReturn,
+                 SourceConditionalBreak, SourceBreak, SourceConditionalContinue,
+                 SourceContinue, SourceReturn,
                  SourceStagedCall>;
 struct SourceStatement {
   abc::CodeOffset pc;

@@ -1368,6 +1368,44 @@ loop phis, mixed unknown backedges, NaN inputs, infinities, signed zero and
 int32 overflow in both typed-IR and legacy scalar consumers. This increment
 does not claim complete async methods, records or source-style recovery.
 
+### Loop regions reach async source templates (2026-09-25)
+
+The region layer now represents admitted loops explicitly with `RegionLoop`.
+The existing acyclic ordering remains unchanged. On cycles, a bounded
+block-order interval proof collects each backward target's furthest latch,
+checks nested/disjoint intervals with a stack, and rejects any edge entering a
+strict loop interior from outside. Reachability and normal-edge validation are
+retained. Every block is emitted once, without condition or effect duplication.
+Nested loops and multiple exits have distinct break/continue label scopes.
+This is an ordered single-entry fast path, not general Havlak loop recovery:
+crossing intervals, noncontiguous reducible loops and irreducible entries stay
+unsupported. No dispatcher state or discarded exceptional edges are introduced.
+
+Source AST has typed unconditional/conditional continue operations. The printer
+emits labeled `while (true)` regions; existing conditional exits and explicit
+fallthrough breaks retain the bytecode control decisions. These are faithful
+low-level source regions, not yet idiomatic reconstructed `for` loops. The
+existing 128-block region limit bounds nesting; scratch and retained nodes
+have checked admission. Interval construction, reachability, entry checks and
+tree construction are O(B+E) time and O(B) additional storage, with no per-loop
+copy of its member blocks. The general loop-analysis plan remains open.
+
+Both CLI targets compiled. ABC-only survey
+`build/pasteboard-semantic-loops.jsonl` reports
+`[0,0,27,1,0,8,0,11,113,56,3]`. Async method 9193 now emits a capture template,
+and its owner 9110 also advances from print refusal to a capture template.
+Inspection shows the original loop guard PC 335 leaving through `next_27`,
+INC at PC 491 preceding the backedge, and PC 497 mapping to
+`continue loop_7`. The source still includes the later native await and its
+original-PC provenance. Record generation still emits only CommonConstants
+and Logger as complete source; neither template counts as a complete record.
+
+Tests and RSS remain paused. Required deferred cases include conditional
+latches, self-loops, nested/sibling loops, multiple exits, shared latches,
+cross-entry and crossing intervals, resource/depth refusal, parameter-region
+boundaries and nested original-PC mapping. Read-only review found no concrete
+defect; inspection is not a substitute for that regression coverage.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial
