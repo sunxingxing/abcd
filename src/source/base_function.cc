@@ -342,6 +342,7 @@ class FunctionWriter {
             failure && failure->kind == analysis::LinearLexicalError::kControlFlow) {
           AcyclicBudget ordered_budget;
           ordered_budget.bytes = body_budget.bytes;
+          ordered_budget.work = body_budget.work;
           ordered_budget.output = body_budget.output;
           if (captured_values_ == analysis::CapturedValues::kReject) {
             if (const auto unsafe = ProveBranchValues(

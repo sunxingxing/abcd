@@ -45,12 +45,14 @@ class BodyWriter {
   BodyWriter(ScalarNames names, std::ostream& output, EmitBudget budget,
              const MethodConstants* constants,
              ObjectBufferBudget object_budget,
-             const BranchSourceFacts* facts = nullptr)
+             const BranchSourceFacts* facts = nullptr,
+             std::span<const StagedNamedInvocation> staged_calls = {})
       : names_(names),
         output_(output),
         remaining_(budget.bytes),
         constants_(constants),
-        object_budget_(object_budget), facts_(facts) {}
+        object_budget_(object_budget), facts_(facts),
+        staged_calls_(staged_calls) {}
 
   BodyEmitResult Write(const abc::MethodBody& body) {
     if (!body.tries.empty() || !body.handlers.empty())
@@ -245,12 +247,38 @@ class BodyWriter {
                           bool accumulator_defined, bool require_terminator,
                           std::size_t first_instruction = 0) {
     bool terminated = false;
+    auto staged = std::lower_bound(
+        staged_calls_.begin(), staged_calls_.end(), first_instruction,
+        [](const StagedNamedInvocation& call, std::size_t position) {
+          return call.property < position;
+        });
     try {
       for (std::size_t i = 0; i < instructions.size(); ++i) {
         const auto& instruction = instructions[i];
         offset_ = instruction.offset;
         if (terminated) return Fail(BodyEmitError::kTrailingInstructions);
         const auto position = first_instruction + i;
+        if (staged != staged_calls_.end()) {
+          if (position == staged->property) {
+            if (!accumulator_defined)
+              return Fail(BodyEmitError::kAccumulatorHole);
+            const auto result = StagedCallHead(*staged, offset_);
+            if (const auto* error = std::get_if<BodyEmitFailure>(&result))
+              return *error;
+            accumulator_defined = true;
+            continue;
+          }
+          if (position == staged->spill || position == staged->reload)
+            continue;
+          if (position == staged->call) {
+            const auto result = StagedCallEnd(*staged, offset_);
+            if (const auto* error = std::get_if<BodyEmitFailure>(&result))
+              return *error;
+            accumulator_defined = true;
+            ++staged;
+            continue;
+          }
+        }
         if (facts_ && position < facts_->language_loads.size() &&
             facts_->language_loads[position]) {
           const auto lexical = LiftLexicalInstruction(
@@ -779,6 +807,7 @@ class BodyWriter {
   const MethodConstants* constants_;
   ObjectBufferBudget object_budget_;
   const BranchSourceFacts* facts_;
+  std::span<const StagedNamedInvocation> staged_calls_;
 };
 }  // namespace
 
@@ -873,16 +902,20 @@ BodyEmitResult WriteOrderedBody(const abc::MethodBody& body,
                                 std::ostream& output, EmitBudget budget,
                                 const MethodConstants* constants,
                                 ObjectBufferBudget object_budget,
-                                const BranchSourceFacts* facts) {
+                                const BranchSourceFacts* facts,
+                                std::span<const StagedNamedInvocation>
+                                    staged_calls) {
   if (const auto failure = ValidateGlobalScalarNames(body, names, constants))
     return *failure;
   CaptureDiscard buffer;
   std::ostream discard(&buffer);
   const auto checked =
-      BodyWriter(names, discard, budget, constants, object_budget, facts)
+      BodyWriter(names, discard, budget, constants, object_budget, facts,
+                 staged_calls)
           .Ordered(body, graph, flow);
   if (std::holds_alternative<BodyEmitFailure>(checked)) return checked;
-  return BodyWriter(names, output, budget, constants, object_budget, facts)
+  return BodyWriter(names, output, budget, constants, object_budget, facts,
+                    staged_calls)
       .Ordered(body, graph, flow);
 }
 

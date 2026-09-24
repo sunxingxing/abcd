@@ -8,6 +8,7 @@ namespace abcd::source {
 enum class AcyclicError { kResourceLimit, kNestingLimit };
 struct AcyclicBudget {
   std::size_t bytes = 64 * 1024 * 1024;
+  std::uint64_t work = 100000000;
   std::size_t max_nesting = 128;
   EmitBudget output;
 };

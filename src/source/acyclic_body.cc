@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "branch_staged_calls.h"
 #include "branch_source_facts.h"
 #include "module_binding_name.h"
 #include "ordered_body.h"
@@ -50,10 +51,18 @@ AcyclicResult WriteBody(const abc::MethodBody& body, ScalarNames names,
         nesting = std::max(nesting, flow.order.blocks.size() - position);
   }
   if (nesting > budget.max_nesting) return AcyclicError::kNestingLimit;
+  const auto staged = BuildBranchStagedCalls(
+      body, graph, names.registers.size(),
+      analysis_budget - flow.allocated_bytes, budget.work);
+  if (const auto* error = std::get_if<BodyEmitFailure>(&staged)) return *error;
+  const auto& calls = std::get<BranchStagedCalls>(staged);
+  if (calls.AllocatedBytes() > analysis_budget - flow.allocated_bytes)
+    return AcyclicError::kResourceLimit;
   const auto result = WriteOrderedBody(body, graph, flow, names, output,
                                        budget.output, constants,
-                                       {analysis_budget - flow.allocated_bytes},
-                                       facts);
+                                       {analysis_budget - flow.allocated_bytes -
+                                        calls.AllocatedBytes()},
+                                       facts, calls.calls);
   if (const auto* error = std::get_if<BodyEmitFailure>(&result)) return *error;
   return std::get<std::size_t>(result);
 }
