@@ -494,8 +494,12 @@ class SourcePrinter {
             Text(")[");
             PoolName(operation.name);
             Text("]((() => {\n");
-            Statements(operation.first_argument_statement.value,
-                       operation.call_statement.value);
+            if (ast_.argument_region &&
+                ast_.argument_region->call == operation.call_statement)
+              ArgumentRegion(*ast_.argument_region);
+            else
+              Statements(operation.first_argument_statement.value,
+                         operation.call_statement.value, true);
             current_pc_ = ast_.statements[operation.call_statement.value].pc;
             Text("return ");
             const auto first = operation.call.At(0);
@@ -546,15 +550,49 @@ class SourcePrinter {
       result_.spans.push_back({ast_.statements[staged->call_statement.value].pc,
                                begin, position_});
   }
-  void Statements(std::size_t first, std::size_t end) {
+  void ArgumentRegion(const SourceArgumentRegion& region) {
+    for (auto b = region.last_block.value; b > region.first_block.value; --b) {
+      Label(analysis::BlockId{b});
+      Text(": {\n");
+    }
+    for (auto b = region.first_block.value; b <= region.last_block.value; ++b) {
+      const auto& block = method_.flow.blocks[b];
+      const auto first = b == region.first_block.value
+                             ? region.property.value + 1 : block.first_instruction;
+      const auto end = b == region.last_block.value
+                           ? region.call.value
+                           : block.first_instruction + block.instruction_count;
+      const auto prior_spans = result_.spans.size();
+      Statements(first, end, true);
+      if (b < region.last_block.value) {
+        if (ast_.fallthrough[b]) {
+          Text("break ");
+          Label(*ast_.fallthrough[b]);
+          Text(";\n");
+          if (result_.spans.size() > prior_spans)
+            result_.spans.back().end = position_;
+        }
+        Text("}\n");
+      }
+    }
+  }
+  void Statements(std::size_t first, std::size_t end, bool argument = false) {
     if (first > end || end > ast_.statements.size())
       throw SourceFailure{SourceError::kOutput, current_pc_};
     for (std::size_t i = first; i < end;) {
+      if (!argument && ast_.argument_region &&
+          i > ast_.argument_region->property.value &&
+          i <= ast_.argument_region->call.value) {
+        i = std::size_t(ast_.argument_region->call.value) + 1;
+        continue;
+      }
       const auto& statement = ast_.statements[i];
       if (const auto* staged = std::get_if<SourceStagedCall>(&statement.operation)) {
         if (staged->first_argument_statement.value != i + 1 ||
             staged->call_statement.value < i + 1 ||
-            staged->call_statement.value >= end)
+            (staged->call_statement.value >= end &&
+             (argument || !ast_.argument_region ||
+              ast_.argument_region->call != staged->call_statement)))
           throw SourceFailure{SourceError::kOutput, statement.pc};
         Statement(statement);
         i = std::size_t(staged->call_statement.value) + 1;
@@ -579,7 +617,10 @@ class SourcePrinter {
             Statements(block.first_instruction, end);
             if (region.id.value >= ast_.fallthrough.size())
               throw SourceFailure{SourceError::kOutput, current_pc_};
-            if (ast_.fallthrough[region.id.value]) {
+            const bool consumed_terminator = ast_.argument_region &&
+                end > ast_.argument_region->property.value &&
+                end <= ast_.argument_region->call.value;
+            if (ast_.fallthrough[region.id.value] && !consumed_terminator) {
               Text("break ");
               Label(*ast_.fallthrough[region.id.value]);
               Text(";\n");

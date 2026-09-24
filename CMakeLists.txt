@@ -119,7 +119,7 @@ target_sources(abcd_source PRIVATE src/source/record_buffer.cc)
 target_sources(abcd_source PRIVATE src/source/static_fields.cc)
 target_sources(abcd_source PRIVATE src/source/record_module_context.cc)
 target_sources(abcd_source PRIVATE src/source/base_function.cc)
-target_sources(abcd_source PRIVATE src/source/semantic_ast.cc src/source/semantic_printer.cc
+target_sources(abcd_source PRIVATE src/source/argument_region.cc src/source/semantic_ast.cc src/source/semantic_printer.cc
   src/source/semantic_body.cc src/source/semantic_fields.cc
   src/source/semantic_objects.cc)
 target_sources(abcd_source PRIVATE src/source/async_completion.cc)

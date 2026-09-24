@@ -104,11 +104,18 @@ struct SourceStatement {
   std::size_t reload_distance = 0;
   std::optional<abc::CodeOffset> previous_origin;
 };
+struct SourceArgumentRegion {
+  analysis::InstructionId property;
+  analysis::InstructionId call;
+  analysis::BlockId first_block;
+  analysis::BlockId last_block;
+};
 struct SourceAst {
   analysis::SemanticRegionTree regions;
   std::vector<SourceStatement> statements;
   std::vector<std::optional<analysis::BlockId>> fallthrough;
   std::vector<analysis::LocalCell> local_cells;
+  std::optional<SourceArgumentRegion> argument_region;
   std::size_t allocated_bytes = 0;
 };
 enum class SourceError : std::uint8_t {

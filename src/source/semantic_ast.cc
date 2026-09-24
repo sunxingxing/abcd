@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "semantic_objects.h"
+#include "argument_region.h"
 
 namespace abcd::source {
 namespace {
@@ -401,9 +402,17 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
               *spill >= *reload || *reload >= i)
             return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         }
-        if (!property_id || !last_effect ||
-            *property_id < method.flow.blocks[block_id].first_instruction)
+        if (!property_id || !last_effect)
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        const bool across_blocks =
+            *property_id < method.flow.blocks[block_id].first_instruction;
+        if (across_blocks) {
+          if (ast.argument_region)
+            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+          ast.argument_region = ProveArgumentRegion(method, *property_id, i);
+          if (!ast.argument_region)
+            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        }
         const auto property = *property_id;
         const auto& preceding = method.instructions[property];
         const auto* read = std::get_if<analysis::NamedRead>(&preceding.operation);
@@ -418,7 +427,7 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
                       analysis::ScalarSlot{analysis::Accumulator{}}) ||
             effect.exceptional != analysis::ExceptionalCompletion::kMayThrow)
           return Fail(SourceError::kInvalidEffect, instruction.pc);
-        const bool staged = *last_effect != property;
+        const bool staged = across_blocks || *last_effect != property;
         if (staged && (!spill || !reload || !call->Count()))
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         if (staged) {

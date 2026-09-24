@@ -904,6 +904,41 @@ regressions include unrelated publication, shared descendants, reverse
 containment, alias use after escape, repeated stores/overwrites, block/phi
 boundaries, resource exhaustion and large connected components.
 
+## Cross-Block Argument Regions
+
+Receiver calls can now own one cross-block argument region per method. The
+existing SSA checks still prove the saved callee's exclusive use and matching
+receiver identity. A new typed interval certificate additionally checks the
+entire normal CFG once: no external edge may enter the interval after its
+first block, every internal edge must advance within the interval, and no
+internal block can terminate without reaching the call block. Returns, loops,
+escaping branches and a second cross-block call region remain rejected.
+This is O(B+E) per admitted method, not a whole-graph scan per call.
+
+The unified printer emits the getter before a native receiver call, retains
+its Reference across an argument IIFE, and prints the original argument
+statements under forward branch labels. The outer region traversal skips
+those consumed statements and their terminators. No synthetic bytecode,
+reanalysis through a specialized body writer or JS-text parsing is involved.
+Same-block nested calls remain supported. Original instruction PCs retain
+their spans inside the argument IIFE; getter/call PCs cover the complete call.
+Full child-internal PC propagation across callable wrappers remains separate.
+
+ABC-only inspection in `build/pasteboard-semantic-argument-regions.jsonl`
+moves 12 methods past AST rejection. Method 7366 passes its conditional width
+argument at PC 135 and next fails on child creation at PC 219. ShareDitect
+`initialRender` 11499 now emits a body fragment with nested UI callbacks;
+11111 and 11139 emit capture templates. Totals are 36 IR, six proof, eight
+AST and 21 printer rejections, 104 body fragments and 44 templates. Complete
+record export remains CommonConstants and Logger only. Neither source-style
+recovery nor whole-record semantic equivalence is claimed by these counts.
+
+Both CLI targets compiled; only ABC output and original-PC spans were
+inspected. Tests and RSS tracking remain paused. Deferred cases include
+getter/call side effects, both branch outcomes, external middle entry,
+early return, unsupported backedges, join-block tails, nested same-block
+calls, empty block slices, quota failures and multiple cross-block regions.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial
