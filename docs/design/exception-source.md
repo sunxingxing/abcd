@@ -2,6 +2,33 @@
 
 ## Current Boundary
 
+### Module Initialization Ownership
+
+Ordinary and exceptional body owners now share `SnapshotModuleReads` instead
+of implementing different interpretations of record state. The snapshot
+accepts only local module reads with in-range slots already marked initialized
+by the same-record callable-creation context. It never grants initialization
+to an external import or from an export name alone. Both scans are charged
+against work admission, and the retained facts are admitted beside the live
+method analysis. The context must stay immutable during the snapshot.
+
+`ProveExceptionModules` accepts these sorted unique original-coordinate
+premises. It checks bounds, local-module operation kind and ordering, then
+publishes `kInitialized` plus a Language normal-Commit premise only for a
+reachable definition. Such reads do not need an adjacent guard or guard
+fusion, and keep their original exception edge. Pending payload and captured
+cell facts remain separate obligations. Uninitialized sites retain the
+existing caller/shared-Catch guard proof; external initialization premises
+are rejected with a typed error.
+
+Both CLI targets compiled. The ABC-only ordinary survey
+`build/pasteboard-semantic-module-snapshot.jsonl` and record manifest
+`build/pasteboard-source-module-snapshot/manifest.json` match their preceding
+artifacts byte-for-byte. No new complete record is claimed. Read-only review
+found no concrete defect. Tests and RSS remain paused; positive initialized
+exception-path loads, late writes, invalid/duplicate/import premises,
+unreachable sites and work/byte limits remain unverified by dedicated cases.
+
 ### Production Body Owner
 
 `BuildSemanticBody` and `BuildSemanticTemplate` now route raw bodies with

@@ -5,7 +5,7 @@
 #include <type_traits>
 
 #include "abcd/source/named_scope.h"
-#include "abcd/source/module_exports.h"
+#include "module_read_snapshot.h"
 #include "exception_body.h"
 
 namespace abcd::source {
@@ -30,42 +30,17 @@ auto BuildBody(
     for (std::size_t i = 0; i < method->instructions.size(); ++i)
       method->instructions[i].origin = constants.source_pcs[i];
   }
-  std::vector<analysis::LanguageLoadFact> initialized_modules;
-  if (constants.module && constants.global_scope &&
-      constants.global_scope->module_exports) {
-    const auto& scope = *constants.global_scope;
-    if (scope.module_slots != scope.module_exports->slot_count())
-      return SourceFailure{SourceError::kInvalidEffect, {}};
-    const auto initialized = [&](const analysis::SemanticInstruction& instruction) {
-      const auto* load = std::get_if<analysis::ModuleLoad>(&instruction.operation);
-      return load && load->space == analysis::ModuleSpace::kLocal &&
-             load->slot.value < scope.module_slots &&
-             load->slot.value < constants.module->local_exports.size() &&
-             scope.module_exports->IsInitialized(load->slot);
-    };
-    std::size_t count = 0;
-    for (const auto& instruction : method->instructions)
-      count += initialized(instruction);
-    if (method->allocated_bytes > budget.bytes ||
-        count > (budget.bytes - method->allocated_bytes) /
-                    sizeof(analysis::LanguageLoadFact))
-      return SourceFailure{SourceError::kResourceLimit, {}};
-    initialized_modules.reserve(count);
-    if (initialized_modules.capacity() >
-        (budget.bytes - method->allocated_bytes) /
-            sizeof(analysis::LanguageLoadFact))
-      return SourceFailure{SourceError::kResourceLimit, {}};
-    budget.bytes -= initialized_modules.capacity() * sizeof(analysis::LanguageLoadFact);
-    // Snapshot only owner-proven stores preceding this callable's creation.
-    // Never promote an external import or an uninitialized local export.
-    for (std::size_t i = 0; i < method->instructions.size(); ++i)
-      if (initialized(method->instructions[i]))
-        initialized_modules.push_back({analysis::InstructionId{
-            static_cast<std::uint32_t>(i)}});
-  }
+  if (method->allocated_bytes > budget.bytes)
+    return SourceFailure{SourceError::kResourceLimit, {}};
+  const auto snapshot = SnapshotModuleReads(method->instructions, constants,
+      {budget.bytes - method->allocated_bytes, budget.work});
+  const auto* initialized = std::get_if<ModuleReadSnapshot>(&snapshot);
+  if (!initialized) return std::get<SourceFailure>(snapshot);
+  budget.bytes -= initialized->AllocatedBytes();
+  budget.work -= initialized->work_units;
   auto verified = analysis::VerifySemanticSource(
       body, *method, frame.registers, frame.locals, budget, Captures,
-      initialized_modules);
+      initialized->loads);
   const auto* proof = std::get_if<analysis::SemanticProof>(&verified);
   if (!proof) return std::get<analysis::SemanticProofFailure>(verified);
   if (proof->allocated_bytes > budget.bytes)

@@ -5,7 +5,8 @@
 
 namespace abcd::analysis {
 std::variant<ExceptionModules, ExceptionModuleError> ProveExceptionModules(
-    const ExceptionFlow& flow, const ExceptionSsa& ssa, SemanticBudget budget) {
+    const ExceptionFlow& flow, const ExceptionSsa& ssa, SemanticBudget budget,
+    std::span<const LanguageLoadFact> initialized_modules) {
   using Error = ExceptionModuleError;
   struct Sites {
     std::optional<ExceptionNodeId> before, commit;
@@ -20,6 +21,16 @@ std::variant<ExceptionModules, ExceptionModuleError> ProveExceptionModules(
     };
     if (flow.nodes.empty() || flow.nodes.size() > UINT32_MAX ||
         flow.instructions.size() > UINT32_MAX) return Error::kInvalidFlow;
+    std::optional<InstructionId> previous;
+    for (const auto& premise : initialized_modules) {
+      charge();
+      const auto id = premise.instruction;
+      if (id.value >= flow.instructions.size() || (previous && id <= *previous))
+        return Error::kInvalidPremise;
+      const auto* load = std::get_if<ModuleLoad>(&flow.instructions[id.value].operation);
+      if (!load || load->space != ModuleSpace::kLocal) return Error::kInvalidPremise;
+      previous = id;
+    }
     detail::IdfScratch memory{budget.bytes};
     std::pmr::vector<Sites> sites(flow.instructions.size(), {}, &memory);
     std::pmr::vector<Entries> incoming(flow.nodes.size(), Entries::kNone, &memory);
@@ -95,9 +106,19 @@ std::variant<ExceptionModules, ExceptionModuleError> ProveExceptionModules(
       if (!normal || exit.handler.has_value() != node.exception->target.has_value()) return {};
       return exit;
     };
-    for (std::size_t i = 0; i + 1 < sites.size(); ++i) {
+    std::size_t initialized = 0;
+    for (std::size_t i = 0; i < sites.size(); ++i) {
       charge();
       if (!std::holds_alternative<ModuleLoad>(flow.instructions[i].operation)) continue;
+      if (initialized < initialized_modules.size() && initialized_modules[initialized].instruction.value == i) {
+        ++initialized;
+        if (!sites[i].before || !sites[i].commit) return Error::kInvalidFlow;
+        if (!sites[i].written) continue;
+        result.reads.push_back({InstructionId{static_cast<std::uint32_t>(i)}, ModuleReadProof::kInitialized});
+        result.loads.push_back({*sites[i].commit, ExceptionLoadProof::kLanguage});
+        continue;
+      }
+      if (i + 1 == sites.size()) continue;
       const auto* guard = std::get_if<HoleGuard>(&flow.instructions[i + 1].operation);
       if (!guard || !std::holds_alternative<Accumulator>(guard->value) ||
           !std::holds_alternative<HoleNameSlot>(guard->name)) continue;

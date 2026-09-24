@@ -8,6 +8,7 @@
 #include "abcd/analysis/exception_regions.h"
 #include "abcd/source/exception_source.h"
 #include "abcd/source/named_scope.h"
+#include "module_read_snapshot.h"
 
 namespace abcd::source {
 SemanticBodyResult BuildExceptionBody(
@@ -81,7 +82,12 @@ SemanticBodyResult BuildExceptionBody(
     }
     retain(locals->AllocatedBytes());
     charge(locals->plan.work_units);
-    const auto module_plan = ProveExceptionModules(*flow, *ssa, stage_budget());
+    const auto snapshot = SnapshotModuleReads(flow->instructions, constants, stage_budget());
+    const auto* initialized = std::get_if<ModuleReadSnapshot>(&snapshot);
+    if (!initialized) return std::get<SourceFailure>(snapshot);
+    retain(initialized->AllocatedBytes());
+    charge(initialized->work_units);
+    const auto module_plan = ProveExceptionModules(*flow, *ssa, stage_budget(), initialized->loads);
     const auto* modules = std::get_if<ExceptionModules>(&module_plan);
     if (!modules) return fail(std::get<ExceptionModuleError>(module_plan) == ExceptionModuleError::kResourceLimit);
     retain(modules->AllocatedBytes());
