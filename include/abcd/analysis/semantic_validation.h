@@ -11,6 +11,11 @@ struct CapturedReadFact {
   InstructionId instruction;
   CapturedSlot cell;
 };
+enum class ModuleReadProof : std::uint8_t { kGuarded, kInitialized };
+struct ModuleReadFact {
+  InstructionId instruction;
+  ModuleReadProof proof;
+};
 enum class LocalAccessKind : std::uint8_t { kLoad, kStore };
 struct LocalAccessFact {
   InstructionId instruction;
@@ -40,7 +45,8 @@ struct SemanticProof {
   std::size_t allocated_bytes = 0;
   // Load + adjacent static-name guard may become a throwing source binding
   // read. This is a lowering proof, not a claim that raw loads cannot be Hole.
-  std::vector<LanguageLoadFact> guarded_modules;
+  // Initialized facts instead depend on an explicit callable-owner premise.
+  std::vector<ModuleReadFact> module_reads;
   // Parametric premises, not resolved source bindings. The owner must rebase
   // every emitted capture and discharge its Language premise before publication.
   std::vector<CapturedReadFact> captured_reads;
@@ -53,6 +59,7 @@ enum class SemanticProofError : std::uint8_t {
   kInternalValue,
   kSsaMismatch,
   kResourceLimit,
+  kModulePremise,
 };
 struct SemanticProofFailure {
   SemanticProofError kind;
@@ -67,8 +74,10 @@ using SemanticProofResult = std::variant<SemanticProof,
 // allocation and a preceding store, before any capture creation. Every store
 // must pass the same SSA Language check; no cell defaults to JS undefined.
 // An adjacent module load/static-name guard in one block may
-// lower to a throwing live-binding read; guarded_modules records that proof.
-// Unpaired module loads and lexical Hole refinement remain unsupported.
+// lower to a throwing live-binding read; module_reads records that proof.
+// initialized_modules are sorted, unique same-body LOCAL load sites whose
+// owner proves initialization before invocation, with Language-only later
+// writes. They are not inferred from an export name or an adjacent guard.
 // kLanguage enables parametric captured reads only; every resulting capture
 // must be bound and its premise discharged by the parent before publication.
 // Local cells use the separate initialization proof, not this option. The printer must separately
@@ -77,6 +86,7 @@ using SemanticProofResult = std::variant<SemanticProof,
     const abc::MethodBody& body, const SemanticMethod& method,
     std::uint64_t frame_size, std::uint32_t first_abi_register,
     SemanticBudget budget = {},
-    CapturedValues captures = CapturedValues::kReject);
+    CapturedValues captures = CapturedValues::kReject,
+    std::span<const LanguageLoadFact> initialized_modules = {});
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_SEMANTIC_VALIDATION_H_

@@ -659,6 +659,44 @@ parent-template local capture, ordinary `$lex` ABI compatibility, same-method
 nesting rejection, private-name collisions, maximum-width IDs, and declaration
 versus insertion consistency. Tests and RSS tracking remain paused.
 
+## Module Binding Context Through the Generic Path
+
+The generic proof now distinguishes guarded module reads from owner-proven
+initialized local reads in typed `ModuleReadFact` records. Its optional
+initialization premises are sorted unique instruction IDs; validation rejects
+out-of-range, duplicate, unsorted or non-local-load sites. `BuildSemanticBody`
+and `BuildSemanticTemplate` obtain these premises only from the existing
+record-owned `ModuleExports` state, after checking the slot-count contract.
+The retained premise vector is charged alongside the live semantic method.
+It is not synthesized from local export names, import metadata or a later
+record store. This connects the legacy owner's initialization contract to
+generic SSA and AST lowering without introducing a second module namespace.
+The initialized versus guarded distinction also keeps guard PC fusion honest.
+
+The per-method survey previously gave every callable an empty module slot
+scope, incorrectly rejecting valid guarded local loads at the printer. It now
+builds `ModuleExports` once per record to recover VM slot identity, including
+adjacent equal-name export aliases. It never calls WriteStore, so every slot
+remains uninitialized in this detached survey and no initialization premise
+is claimed. Source fragments/templates explicitly report
+`requires_module_bindings`; actual record publication remains separately
+gated by complete initialization and callable ownership.
+
+`build/pasteboard-semantic-module-context.jsonl` advances five methods (7089,
+7832, 8580, 9748 and 11055) from printer failure at PC 22 to capture templates.
+For PageA 7089, the local binding read retains its PC span and the combined
+parent/child output carries six unresolved capture events. Totals are 41 IR,
+six proof, 21 AST and 21 printer rejections, 101 body fragments and 29 templates.
+The coverage gain is from supplying valid module binding identity to the
+survey, not from pretending those exports are already initialized.
+
+Both CLI targets compiled and ABC-only survey/record generation completed;
+CommonConstants and Logger remain the only complete record source outputs.
+Tests and RSS tracking remain paused. The new initialized-premise API still
+needs focused regressions for a valid unguarded local load, uninitialized and
+external loads, stale/wrong-method premises, duplicate IDs, alias slot counts,
+budget exhaustion, and initialized-load-plus-guard PC mapping.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

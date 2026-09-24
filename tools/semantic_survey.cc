@@ -14,6 +14,7 @@
 
 #include "abcd/source/semantic_source.h"
 #include "abcd/source/named_scope.h"
+#include "abcd/source/module_exports.h"
 #include "abcd/abc/record_attributes.h"
 #include "abcd/abc/method_lookup.h"
 #include "abcd/analysis/method_roles.h"
@@ -78,6 +79,7 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
                              const abc::MetadataIndex& index,
                              const abc::MethodInfo& method,
                              const abc::ModuleInfo* module,
+                             const source::ModuleExports* exports,
                              const abc::MethodLookup& methods,
                              const analysis::MethodRoleIndex* roles) {
   if (!method.code) return {Stage::kNoCode, {}, {}, {}};
@@ -121,6 +123,12 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
                                     {kMethodBytes}, module, roles,
                                     source::GlobalScope{}};
   constants.leaf_methods = &methods;
+  if (exports) {
+    constants.global_scope->module_slots = exports->slot_count();
+    // This survey never calls WriteStore: slot identity is known, but no
+    // initialization premise may be invented from declaration metadata.
+    constants.global_scope->module_exports = exports;
+  }
   const auto checked = source::ValidateNamedScopes(
       *body, code.registers + code.arguments, &constants, kMethodBytes,
       analysis::kDefaultSemanticWork);
@@ -200,6 +208,7 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
                             {"descriptor", record.descriptor},
                             {"methods", record.method_count}} << '\n';
     std::optional<abc::ModuleInfo> module;
+    std::optional<source::ModuleExports> exports;
     if (*layout == abc::FilePackaging::kMerged) {
       const auto parsed = abc::ReadMergedRecordAttributes(file, header, index, record);
       const auto* attributes = std::get_if<abc::RecordAttributes>(&parsed);
@@ -209,12 +218,17 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
         auto* owner = std::get_if<abc::ModuleInfo>(&loaded);
         if (!owner) return EXIT_FAILURE;
         module = std::move(*owner);
+        auto planned = source::BuildModuleExports(file, header, *module);
+        auto* bindings = std::get_if<source::ModuleExports>(&planned);
+        if (!bindings) return EXIT_FAILURE;
+        exports.emplace(std::move(*bindings));
       }
     }
     for (std::size_t i = 0; i < record.method_count; ++i) {
       const auto& method = index.methods.at(record.first_method + i);
       const auto progress = InspectMethod(file, header, index, method,
                                           module ? &*module : nullptr,
+                                          exports ? &*exports : nullptr,
                                           *methods, roles);
       ++counts.at(static_cast<std::size_t>(progress.stage));
       nlohmann::json row{{"record", record.offset.value},
@@ -232,6 +246,7 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
         // Detached bodies have only generated '$' private bindings. Embedding
         // must repeat global collision checks against the actual callable scope.
         row["requires_unshadowed_globals"] = true;
+        row["requires_module_bindings"] = module.has_value();
         row["body"] = progress.source->text;
         row["positions"] = nlohmann::json::array();
         for (const auto& span : progress.source->spans)
@@ -247,6 +262,7 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
         row["requires_capture_binding"] = true;
         row["requires_language_captures"] = true;
         row["requires_unshadowed_globals"] = true;
+        row["requires_module_bindings"] = module.has_value();
         row["captures"] = nlohmann::json::array();
         for (const auto& capture : source.captures)
           row["captures"].push_back({

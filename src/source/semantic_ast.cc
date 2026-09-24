@@ -291,8 +291,8 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
             analysis::ScalarSlot{analysis::Accumulator{}}, *buffered};
       } else if (const auto* module =
                      std::get_if<analysis::ModuleLoad>(&instruction.operation)) {
-        if (module_fact >= proof.guarded_modules.size() ||
-            proof.guarded_modules[module_fact].instruction.value != position)
+        if (module_fact >= proof.module_reads.size() ||
+            proof.module_reads[module_fact].instruction.value != position)
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         ++module_fact;
         operation = SourceAssignment{
@@ -330,7 +330,8 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
         // Captured facts remain conditional obligations of the whole template.
         operation = analysis::NoOperation{};
         if (position && module_fact &&
-            proof.guarded_modules[module_fact - 1].instruction.value == position - 1)
+            proof.module_reads[module_fact - 1].proof == analysis::ModuleReadProof::kGuarded &&
+            proof.module_reads[module_fact - 1].instruction.value == position - 1)
           previous_origin = method.instructions[position - 1].pc;
       } else if (const auto* read =
                      std::get_if<analysis::NamedRead>(&instruction.operation)) {

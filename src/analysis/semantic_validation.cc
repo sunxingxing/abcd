@@ -18,7 +18,8 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
                                          std::uint64_t frame_size,
                                          std::uint32_t first_abi_register,
                                          SemanticBudget budget,
-                                         CapturedValues captures) {
+                                         CapturedValues captures,
+                                         std::span<const LanguageLoadFact> initialized_modules) {
   try {
   if (first_abi_register > frame_size ||
       method.instructions.size() != body.instructions.size() ||
@@ -53,18 +54,19 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     return Fail(SemanticProofError::kResourceLimit);
   remaining -= locals->AllocatedBytes();
   constexpr auto kLoadProofBytes = sizeof(std::uint8_t) +
-      2 * sizeof(LanguageLoadFact) + sizeof(CapturedReadFact);
+      sizeof(LanguageLoadFact) + sizeof(ModuleReadFact) + sizeof(CapturedReadFact);
   if (method.instructions.size() > remaining / kLoadProofBytes)
     return Fail(SemanticProofError::kResourceLimit);
   std::vector<std::uint8_t> language_loads(method.instructions.size());
-  std::vector<LanguageLoadFact> modules;
+  std::vector<ModuleReadFact> modules;
   std::vector<LanguageLoadFact> loads;
   std::vector<CapturedReadFact> captured_reads;
   modules.reserve(method.instructions.size());
   loads.reserve(method.instructions.size());
   captured_reads.reserve(method.instructions.size());
   const auto proof_bytes = language_loads.capacity() +
-      (modules.capacity() + loads.capacity()) * sizeof(LanguageLoadFact) +
+      modules.capacity() * sizeof(ModuleReadFact) +
+      loads.capacity() * sizeof(LanguageLoadFact) +
       captured_reads.capacity() * sizeof(CapturedReadFact);
   if (proof_bytes > remaining) return Fail(SemanticProofError::kResourceLimit);
   remaining -= proof_bytes;
@@ -82,13 +84,30 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
                                 {*depth, site.binding.slot}});
     }
   }
+  std::optional<InstructionId> previous_module;
+  for (const auto& premise : initialized_modules) {
+    const auto i = premise.instruction.value;
+    if (i >= method.instructions.size() ||
+        (previous_module && *previous_module >= premise.instruction))
+      return Fail(SemanticProofError::kModulePremise);
+    const auto* load = std::get_if<ModuleLoad>(&method.instructions[i].operation);
+    if (!load || load->space != ModuleSpace::kLocal)
+      return Fail(SemanticProofError::kModulePremise, method.instructions[i].pc);
+    previous_module = premise.instruction;
+    language_loads[i] = 1;
+  }
   std::size_t block = 0;
-  for (std::size_t i = 0; i + 1 < method.instructions.size(); ++i) {
+  for (std::size_t i = 0; i < method.instructions.size(); ++i) {
     while (block + 1 < method.flow.blocks.size() &&
            method.flow.blocks[block + 1].first_instruction <= i)
       ++block;
     if (!std::holds_alternative<ModuleLoad>(method.instructions[i].operation))
       continue;
+    if (language_loads[i]) {
+      modules.push_back({InstructionId{static_cast<std::uint32_t>(i)},
+                          ModuleReadProof::kInitialized});
+      continue;
+    }
     const auto& region = method.flow.blocks[block];
     if (i + 1 >= std::size_t(region.first_instruction) + region.instruction_count)
       continue;
@@ -98,7 +117,8 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     // The whole pair lowers to one live binding read that throws on TDZ.
     // No exception handlers are admitted, so no intermediate VM state escapes.
     language_loads[i] = 1;
-    modules.push_back({InstructionId{static_cast<std::uint32_t>(i)}});
+    modules.push_back({InstructionId{static_cast<std::uint32_t>(i)},
+                        ModuleReadProof::kGuarded});
   }
   for (std::size_t i = 0; i < language_loads.size(); ++i)
     if (language_loads[i])
@@ -145,7 +165,7 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     const auto bytes = method.allocated_bytes +
                        bound->allocated_bytes + locals->AllocatedBytes() +
                        analyzed->AllocatedBytes() +
-                       modules.capacity() * sizeof(LanguageLoadFact) +
+                       modules.capacity() * sizeof(ModuleReadFact) +
                        captured_reads.capacity() * sizeof(CapturedReadFact);
     return SemanticProof{std::move(*bound),
                          std::move(*analyzed),
