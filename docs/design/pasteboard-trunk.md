@@ -977,6 +977,33 @@ branches, non-dominating stores, repeated environment allocation/backedges,
 internal-value stores, closure-before-load refusal, first-capture binding,
 neutral-default callable length and budget exhaustion.
 
+## Framework Prelude After Builder Export
+
+Record emission now attempts the existing guarded-global-call proof at the
+first string-key candidate, once per record, instead of hard-coding the index
+immediately after three entry ABI moves. A Builder definition/export may
+precede the framework prelude. Its exact instruction/operand matching, edge
+checks and transient register liveness requirements are unchanged. The
+whole-method proof is never retried at every string, so this does not add
+quadratic matching. Multiple guarded preludes remain unsupported.
+
+ABC-only record generation in `build/pasteboard-source-shifted-prelude`
+advances PageA and PageB from PC 26 value refusal to PC 194 class refusal;
+PasteBoard reaches its PC 182 initializer refusal. ShareDitect passes its
+class emission and reaches PC 196 function creation. That target, 11027,
+contains `LDGLOBAL` at PC 6 before probing a route-registration property.
+The immutable realm-object load cannot simply become a mutable `globalThis`
+lookup or a free identifier: global lexical bindings/property access can
+differ. This remains an explicit semantic gap, not a reason to drop optional
+framework registration. A verified realm-object source binding contract is
+needed before this record can be published.
+
+Both tools compiled. No new complete record is claimed; method survey counts
+are unchanged by this record-only integration. Tests and RSS tracking remain
+paused. Deferred regressions cover prefixed Builder exports, first-candidate
+refusal, later duplicate candidates, external entry edges and live transient
+registers.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

@@ -236,6 +236,7 @@ class ProgramWriter {
                            : Error::kExport);
     Account(std::get<std::size_t>(aliases));
     Text("let $acc;\n");
+    bool guarded_call_checked = false;
     for (std::size_t i = 0; i < body_.instructions.size(); ++i) {
       const auto& instruction = body_.instructions[i];
       pc_ = instruction.offset;
@@ -253,16 +254,18 @@ class ProgramWriter {
         i = choice->after - 1;
         continue;
       }
-      // The pinned v7 entry ABI starts with three register moves. This
-      // compiler prelude is admitted once; its matcher checks all CFG edges
-      // and that transient registers are dead before the next instruction.
-      constexpr std::size_t kEntryMoveCount = 3;
+      // A Builder definition/export may precede this region. Admit the first
+      // string-key candidate once, not a fixed ABI instruction index. The
+      // matcher checks all CFG edges and transient liveness; retrying its
+      // whole-method scan at every string would make record processing O(I^2).
       // The guarded-call proof matches 12.0.2.0 and 12.0.6.0; pinned v7
       // instructions have the same receiver/property/call order.
       if ((header_.profile == abc::ProfileId::kDynamic1202 ||
            header_.profile == abc::ProfileId::kDynamic1206 ||
            header_.profile == abc::ProfileId::kDynamic1301) &&
-          i == kEntryMoveCount) {
+          !guarded_call_checked &&
+          instruction.decoded.opcode == abc::Opcode::kLDA_STR_ID16) {
+        guarded_call_checked = true;
         const auto guard = analysis::MatchGuardedGlobalCall(
             body_, i, registers_.size());
         if (guard) {
