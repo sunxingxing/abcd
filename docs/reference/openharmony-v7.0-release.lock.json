@@ -11,6 +11,14 @@
   "backup_root": "/home/rabbit/arkruntime-backup-before-v7.0-20260922",
   "repositories": [
     {
+      "name": "developtools_ace_ets2bundle",
+      "path": "developtools/ace_ets2bundle",
+      "remote": "https://gitcode.com/openharmony/developtools_ace_ets2bundle.git",
+      "tag": "OpenHarmony-v7.0-Release",
+      "tag_object": "2ba1d93878b91dd84981b9021186fbc650dcc9f4",
+      "commit": "bfbbe397cd50e552ceadcbed3ef2a26a216afad8"
+    },
+    {
       "name": "arkcompiler_runtime_core",
       "path": "arkcompiler/runtime_core",
       "remote": "https://gitcode.com/openharmony/arkcompiler_runtime_core.git",

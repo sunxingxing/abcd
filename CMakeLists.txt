@@ -139,7 +139,8 @@ target_link_libraries(abcd_source PUBLIC abcd_analysis)
 target_compile_features(abcd_source PUBLIC cxx_std_20)
 target_include_directories(abcd_source PUBLIC include)
 add_library(abcd_structure src/structure/record_path.cc src/structure/record_writer.cc
-  src/structure/module_writer.cc src/structure/source_identity.cc)
+  src/structure/module_writer.cc src/structure/source_identity.cc
+  src/structure/package_source.cc)
 target_sources(abcd_structure PRIVATE src/structure/debug_writer.cc)
 target_sources(abcd_structure PRIVATE src/structure/scope_writer.cc)
 target_sources(abcd_structure PRIVATE src/structure/class_writer.cc)

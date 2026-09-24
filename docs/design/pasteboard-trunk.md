@@ -1060,6 +1060,40 @@ incomplete optional debug metadata and quota exhaustion. Path-format profile
 verification and feeding accepted paths into collision-safe planning remain
 unfinished, not replaced by this metadata API.
 
+## Package-Relative Source Paths
+
+The official release-manifest repository `developtools_ace_ets2bundle` is now
+checked out at `OpenHarmony-v7.0-Release` and pinned in the reference lock:
+commit `bfbbe397cd50e552ceadcbed3ef2a26a216afad8`. Its
+`compiler/src/fast_build/ark_compiler/generate_sourcemap.ts::genKey` constructs
+`entryPackage|owningPackage|packageVersion|modulePath`;
+`module/module_mode.ts::addModuleInfoItem` passes that key as `sourceFile` to
+the compiler. `getIntermediateModuleId` explicitly changes `.ets` to `.ts`
+or `.js`. This resolves the previously unverified format without reading any
+application source map or sidecar source.
+
+A typed four-field parser feeds unique filename evidence to source planning.
+Same-entry-package paths are admitted with a package directory, relative
+ASCII components and a recognized intermediate filename suffix. Absolute,
+empty, traversal, control-character, backslash and drive-style paths are not
+admitted. Unsupported/dependency/ambiguous evidence uses the descriptor
+fallback. Existing percent escaping, path limits and case-folded collision
+rejection apply to both origins before any file publication. The manifest
+records the typed origin as a numeric boundary label. Historical filename
+formats remain available through the descriptor fallback.
+
+ABC-only export in `build/pasteboard-source-package-paths` plans all ten
+application records under `sources/entry/src/main/ets/`. CommonConstants and
+Logger are actually emitted there; the eight incomplete records only receive
+planned paths. Nine metadata records retain descriptor paths. Generated JS
+continues to use `.mjs`; the intermediate `.ts` suffix does not prove whether
+the original file was TypeScript or ArkTS, nor undo filename obfuscation.
+
+The structure CLI compiled and the reference checkout is clean at its pinned
+tag/commit. Tests and RSS tracking remain paused. Deferred regressions cover
+field-count errors, dependency identities, relative path safety, basename and
+case collisions, Unicode fallback, malformed filename metadata and quotas.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

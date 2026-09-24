@@ -135,7 +135,7 @@ int Export(const std::filesystem::path& input,
   }
   std::vector<structure::RecordPath> source_paths;
   if (emit_source) {
-    auto planned = structure::PlanRecordSourcePaths(index->records);
+    auto planned = structure::PlanRecordSourcePaths(file, *header, *index);
     if (const auto* error = std::get_if<structure::PathError>(&planned)) {
       std::cerr << nlohmann::json{{"path_error", static_cast<unsigned>(*error)}}
                 << '\n';
@@ -197,6 +197,8 @@ int Export(const std::filesystem::path& input,
                                source_paths[record_index].stem;
       const auto source_path = source_stem.string() + ".mjs";
       record_manifest["planned_source"] = source_path;
+      record_manifest["source_path_origin"] =
+          static_cast<unsigned>(source_paths[record_index].origin);
       if (!roles) {
         record_manifest["source_status"] =
             static_cast<unsigned>(SourceStatus::kProgram);
