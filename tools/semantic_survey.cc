@@ -159,21 +159,17 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
   for (std::uint32_t i = 0; i < register_count; ++i)
     bindings.push_back("$r" + std::to_string(i));
   for (const auto& name : bindings) names.push_back(name);
-  if (!proof->captured_reads.empty()) {
-    // Diagnostic parametric output only; no parent environment is assumed.
-    // Do not merge this stage into body_ready or publish template bytes as JS.
-    auto printed = source::PrintSourceTemplate(
-        ast, *ir, {"$acc", names}, constants, kMethodBytes, proof);
-    if (auto* source = std::get_if<source::PrintedTemplate>(&printed))
-      return {Stage::kTemplateReady, {}, {}, {}, {}, std::move(*source)};
-    const auto& failure = std::get<source::SourceFailure>(printed);
-    return Failure(Stage::kPrint, static_cast<unsigned>(failure.kind),
-                   failure.pc, *body);
-  }
-  auto printed = source::PrintSourceBody(
+  // A parent with no lexical loads can still inherit capture obligations from
+  // a child creation. Classify the complete printer artifact, not just the
+  // parent's direct read facts; no parent environment is assumed here.
+  auto printed = source::PrintSourceTemplate(
       ast, *ir, {"$acc", names}, constants, kMethodBytes, proof);
-  if (auto* source = std::get_if<source::PrintedSource>(&printed))
-    return {Stage::kBodyReady, {}, {}, {}, std::move(*source)};
+  if (auto* source = std::get_if<source::PrintedTemplate>(&printed)) {
+    if (!source->captures.empty())
+      return {Stage::kTemplateReady, {}, {}, {}, {}, std::move(*source)};
+    return {Stage::kBodyReady, {}, {}, {}, source::PrintedSource{
+        std::move(source->text), std::move(source->spans)}};
+  }
   const auto& failure = std::get<source::SourceFailure>(printed);
   return Failure(Stage::kPrint, static_cast<unsigned>(failure.kind),
                  failure.pc, *body);

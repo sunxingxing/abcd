@@ -780,6 +780,32 @@ class tags, duplicate tags, invalid string references, matching and conflicting
 method filenames, empty names, malformed debug tables, surrogate text,
 resource exhaustion and hostile path components.
 
+## Transitive Capture Classification in the Survey
+
+The detached method survey now prints a parametric artifact first and
+classifies its actual capture list. Previously it selected template mode only
+when the parent's own SSA proof contained captured reads. That missed parents
+whose nested callable alone uses the enclosing environment: ordinary printing
+then refused a valid forwarded child capture at its creation PC.
+
+An empty final capture list can become a body fragment; any capture event
+keeps the result an explicitly non-executable template. This uses typed
+printer artifacts, never a scan for missing expressions in JS text. Local
+initialization, method-scoped local naming, child-role validation and the
+one-level expansion capability are unchanged. Production callable ownership
+is not inferred from the survey classification.
+
+`build/pasteboard-semantic-transitive-captures.jsonl` now includes parent
+templates for Home 5767 (four child-origin capture insertions at the callback
+created at PC 126) and PasteBoard 8636 (one at PC 123). The whole creation spans
+retain the capture cursors and both reports remain `executable:false`.
+Totals are 37 IR, six proof, 25 AST and 19 printer rejections, 101 detached
+body fragments and 31 templates. No complete record is added by this survey
+fix. Both tools compiled; only ABC-only generation/inspection was performed.
+Tests and RSS tracking remain paused. Deferred cases include parent-only,
+child-only and mixed captures, children with no captures, quota exhaustion,
+and rejection after partially emitted nested callable text.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial
