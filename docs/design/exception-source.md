@@ -171,6 +171,41 @@ unreachable creation sites, repeated closure instances and resource limits
 remain deferred execution cases. This is not a new complete record or an
 execution-equivalence claim.
 
+### Record Module Context
+
+The detached phased inspector now locates the selected method's owning record
+by its validated metadata-vector interval. For merged files it reads that
+record's actual module attributes/table and plans export slot identities.
+`tools/record_module` shares the ordinary survey's read-only loading sequence;
+module and export owners remain alive throughout synchronous nested printing.
+Bundle packaging does not use merged-record attribute conventions. Failure
+does not fall back to a guessed module, and no `WriteStore` is called: slot
+existence is not an initialization premise.
+
+The module context is passed through `MethodConstants` to the existing common
+printer and child callable owner. Output reports `requires_module_bindings`
+alongside the existing capture/global requirements. This closes an inspection
+context gap, not a new record-publishing shortcut; actual record emission and
+its initialization state remain unchanged. Method-owner lookup is one O(R)
+record scan for a selected method, not a per-instruction or per-child scan.
+Module parsing and export planning retain their existing bounded budgets.
+
+Both CLI targets compiled after fixing one stale survey variable reference
+introduced during extraction. ABC-only inspection of pasteboard 6044 now
+prints its full phased template
+(`build/pasteboard-6044-exception-record-module.jsonl`): 103 parent PC spans,
+two outer capture insertions, forward conditional argument evaluation and a
+nested click callback. PCs 84/135 share bytes [538,920); module load/guard
+PCs 110/112 share [771,788). Capture cursors remain in every span, including
+the insertion at byte 607 inside that forward region. Method 5767 also prints
+its 64-span template with four child-propagated captures. These artifacts are
+explicitly non-executable until the real parent/module scope discharges their
+binding obligations; child-internal PC spans are not claimed as parent spans.
+The ordinary all-record survey remains byte-identical to the preceding child
+capture snapshot. Read-only review found no concrete defect. Tests and RSS
+remain paused; ownership-boundary, malformed-module, uninitialized-slot and
+resource-limit execution cases remain deferred.
+
 ### Module Initialization Ownership
 
 Ordinary and exceptional body owners now share `SnapshotModuleReads` instead

@@ -28,6 +28,7 @@
 #include "abcd/abc/pool_reference.h"
 #include "semantic_survey.h"
 #include "exception_inspect.h"
+#include "record_module.h"
 
 namespace {
 using namespace abcd;
@@ -132,6 +133,29 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
                                             method->offset, abc::StringBudget{}};
     constants.leaf_methods = methods;
     constants.roles = roles;
+    const auto packaging = abc::DetectFilePackaging(file, *header, *index);
+    const auto* layout = std::get_if<abc::FilePackaging>(&packaging);
+    if (!layout) return Fail(InspectError::kIndex);
+    std::optional<RecordModule> bindings;
+    if (*layout == abc::FilePackaging::kMerged) {
+      const auto position = static_cast<std::size_t>(method - index->methods.begin());
+      const auto record = std::find_if(index->records.begin(), index->records.end(),
+          [&](const auto& owner) {
+            return position >= owner.first_method &&
+                   position - owner.first_method < owner.method_count;
+          });
+      if (record == index->records.end()) return Fail(InspectError::kIndex);
+      auto loaded = ReadRecordModule(file, *header, *index, *record);
+      auto* module = std::get_if<std::optional<RecordModule>>(&loaded);
+      if (!module) return Fail(InspectError::kIndex);
+      bindings = std::move(*module);
+      if (bindings) {
+        constants.module = &bindings->module;
+        constants.global_scope.emplace();
+        constants.global_scope->module_slots = bindings->exports.slot_count();
+        constants.global_scope->module_exports = &bindings->exports;
+      }
+    }
     return InspectExceptionFlow(*body, header->profile,
                                  code.registers + code.arguments, code.registers,
                                  constants, std::cout, detail == InspectDetail::kExceptionTemplate

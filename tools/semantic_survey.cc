@@ -1,4 +1,5 @@
 #include "semantic_survey.h"
+#include "record_module.h"
 
 #include <algorithm>
 #include <array>
@@ -268,28 +269,18 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
     output << nlohmann::json{{"record", record.offset.value},
                             {"descriptor", record.descriptor},
                             {"methods", record.method_count}} << '\n';
-    std::optional<abc::ModuleInfo> module;
-    std::optional<source::ModuleExports> exports;
+    std::optional<RecordModule> bindings;
     if (*layout == abc::FilePackaging::kMerged) {
-      const auto parsed = abc::ReadMergedRecordAttributes(file, header, index, record);
-      const auto* attributes = std::get_if<abc::RecordAttributes>(&parsed);
-      if (!attributes) return EXIT_FAILURE;
-      if (attributes->module) {
-        auto loaded = abc::ReadModuleInfo(file, header, *attributes->module);
-        auto* owner = std::get_if<abc::ModuleInfo>(&loaded);
-        if (!owner) return EXIT_FAILURE;
-        module = std::move(*owner);
-        auto planned = source::BuildModuleExports(file, header, *module);
-        auto* bindings = std::get_if<source::ModuleExports>(&planned);
-        if (!bindings) return EXIT_FAILURE;
-        exports.emplace(std::move(*bindings));
-      }
+      auto loaded = ReadRecordModule(file, header, index, record);
+      auto* module = std::get_if<std::optional<RecordModule>>(&loaded);
+      if (!module) return EXIT_FAILURE;
+      bindings = std::move(*module);
     }
     for (std::size_t i = 0; i < record.method_count; ++i) {
       const auto& method = index.methods.at(record.first_method + i);
       const auto progress = InspectMethod(file, header, index, method,
-                                          module ? &*module : nullptr,
-                                          exports ? &*exports : nullptr,
+                                          bindings ? &bindings->module : nullptr,
+                                          bindings ? &bindings->exports : nullptr,
                                           *methods, roles);
       ++counts.at(static_cast<std::size_t>(progress.stage));
       nlohmann::json row{{"record", record.offset.value},
@@ -309,7 +300,7 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
         // Detached bodies have only generated '$' private bindings. Embedding
         // must repeat global collision checks against the actual callable scope.
         row["requires_unshadowed_globals"] = true;
-        row["requires_module_bindings"] = module.has_value();
+        row["requires_module_bindings"] = bindings.has_value();
         row["body"] = progress.source->text;
         row["positions"] = nlohmann::json::array();
         for (const auto& span : progress.source->spans)
@@ -325,7 +316,7 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
         row["requires_capture_binding"] = true;
         row["requires_language_captures"] = true;
         row["requires_unshadowed_globals"] = true;
-        row["requires_module_bindings"] = module.has_value();
+        row["requires_module_bindings"] = bindings.has_value();
         row["captures"] = nlohmann::json::array();
         for (const auto& capture : source.captures)
           row["captures"].push_back({

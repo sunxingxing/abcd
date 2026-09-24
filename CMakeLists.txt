@@ -179,7 +179,7 @@ target_link_libraries(abcd_corpus PUBLIC abcd_abc
 option(ABCD_BUILD_TOOLS "Build standalone ABC command-line tools" ON)
 if(ABCD_BUILD_TOOLS)
   add_executable(abc_semantic tools/abc_semantic.cc tools/semantic_survey.cc
-    tools/exception_inspect.cc tools/exception_source_inspect.cc)
+    tools/exception_inspect.cc tools/exception_source_inspect.cc tools/record_module.cc)
   target_link_libraries(abc_semantic PRIVATE abcd_source abcd_json)
   add_executable(abc_structure tools/abc_structure.cc)
   target_link_libraries(abc_structure PRIVATE abcd_structure abcd_corpus abcd_json)
