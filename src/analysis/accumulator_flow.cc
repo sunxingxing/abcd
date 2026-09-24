@@ -7,6 +7,7 @@
 #include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/global_access.h"
+#include "abcd/analysis/iter_result.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
@@ -66,6 +67,9 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
   const auto object = LiftObjectCreation(instruction);
   if (std::holds_alternative<EmptyObjectCreation>(object) ||
       std::holds_alternative<BufferedObjectCreation>(object))
+    return Transfer{false, AccumulatorWrite::kValue};
+  if (std::holds_alternative<IterResult>(
+          LiftIterResult(instruction, frame_size)))
     return Transfer{false, AccumulatorWrite::kValue};
   switch (instruction.opcode) {
     case Opcode::kLDHOLE:

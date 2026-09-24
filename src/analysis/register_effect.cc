@@ -10,6 +10,7 @@
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/indexed_read.h"
 #include "abcd/analysis/indexed_write.h"
+#include "abcd/analysis/iter_result.h"
 #include "abcd/analysis/iterator.h"
 #include "abcd/analysis/lexical.h"
 #include "abcd/analysis/module_load.h"
@@ -192,6 +193,12 @@ RegisterEffect EffectOf(const BufferedObjectCreation&) {
 RegisterEffect EffectOf(const EmptyObjectCreation&) {
   return AccumulatorDefinition();
 }
+RegisterEffect EffectOf(const IterResult& value) {
+  auto effect = AccumulatorDefinition();
+  effect.reads[effect.read_count++] = value.value;
+  effect.reads[effect.read_count++] = value.done;
+  return effect;
+}
 RegisterEffect EffectOf(const ConstantObjectInstruction& value) {
   if (value.accumulator == AccumulatorEffect::kPreserve)
     return {};
@@ -316,6 +323,14 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   if (auto result = Adapt(LiftObjectCreation(instruction));
       !Unsupported(result))
     return result;
+  const auto iter_result = LiftIterResult(instruction, frame_size);
+  if (const auto* created = std::get_if<IterResult>(&iter_result))
+    return EffectOf(*created);
+  if (const auto* error = std::get_if<IterResultError>(&iter_result);
+      error && *error != IterResultError::kUnsupportedOpcode)
+    return *error == IterResultError::kRegisterRange
+               ? ScalarError::kRegisterRange
+               : ScalarError::kMalformedInstruction;
   if (auto result = Adapt(LiftIteratorInstruction(instruction, frame_size));
       !Unsupported(result))
     return result;

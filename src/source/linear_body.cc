@@ -11,6 +11,7 @@
 #include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/global_access.h"
+#include "abcd/analysis/iter_result.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
@@ -266,7 +267,23 @@ class BodyWriter {
           if (error_) return *error_;
           continue;
         }
-        if (opcode == Opcode::kCREATEEMPTYOBJECT ||
+        if (opcode == Opcode::kCREATEITERRESULTOBJ_V8_V8) {
+          if (constants_ &&
+              constants_->header.profile != abc::ProfileId::kDynamic1301)
+            return Fail(BodyEmitError::kUnsupportedInstruction);
+          const auto created = LiftIterResult(instruction.decoded,
+                                              names_.registers.size());
+          const auto* result = std::get_if<IterResult>(&created);
+          if (!result)
+            return Fail(BodyEmitError::kUnsupportedInstruction);
+          Expression(ScalarValue{Accumulator{}});
+          Text(" = {value: ");
+          Expression(ScalarValue{result->value});
+          Text(", done: ");
+          Expression(ScalarValue{result->done});
+          Text(" === true};\n");
+          accumulator_defined = true;
+        } else if (opcode == Opcode::kCREATEEMPTYOBJECT ||
             opcode == Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16 ||
             opcode == Opcode::kCREATEOBJECTWITHBUFFER_IMM16_ID16) {
           const auto lifted = LiftObjectCreation(instruction.decoded);

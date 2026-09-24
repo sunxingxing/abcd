@@ -43,6 +43,7 @@ add_library(abcd_analysis src/analysis/normal_flow.cc src/analysis/exception_dis
 target_sources(abcd_analysis PRIVATE src/analysis/branch_condition.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/constant_object.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/iterator.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/iter_result.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/first_for_in.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/private_property.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/guarded_global_call.cc)
@@ -698,6 +699,18 @@ if(BUILD_TESTING)
   target_include_directories(first_for_in_test PRIVATE tests/support)
   target_link_libraries(first_for_in_test PRIVATE abcd_analysis)
   add_test(NAME first_for_in_test COMMAND first_for_in_test)
+  add_executable(iter_result_test tests/unit/analysis/iter_result_test.cc)
+  target_include_directories(iter_result_test PRIVATE tests/support)
+  target_link_libraries(iter_result_test PRIVATE abcd_source)
+  add_test(NAME iter_result_test COMMAND iter_result_test)
+  if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME iter_result_js_test COMMAND ${CMAKE_COMMAND}
+      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:iter_result_test>
+      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/iter_result.mjs
+      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+      -DABCD_OUTPUT_NAME=iter-result.mjs
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
+  endif()
   add_executable(private_property_test tests/unit/analysis/private_property_test.cc)
   target_link_libraries(private_property_test PRIVATE abcd_analysis)
   add_test(NAME private_property_test COMMAND private_property_test)
