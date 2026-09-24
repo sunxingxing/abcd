@@ -13,12 +13,14 @@ struct ExceptionCalls {
   }
 };
 enum class ExceptionCallError : std::uint8_t { kInvalidFlow, kResourceLimit };
-// Same immutable BuildExceptionFlow result. Only direct read/call and exact
+// Same immutable BuildExceptionFlow result. Accepts direct read/call and exact
 // read/spill/reload/call intervals, with single-entry interiors and equal
-// dispatch/Catch gateways. This is NOT full call fusion permission: AST must
+// dispatch/Catch gateways; longer private scalar/string argument intervals
+// require both exceptions to propagate to the caller. This is NOT full call
+// fusion permission: AST must
 // prove receiver identity and single uses of all removed SSA definitions,
 // including phi inputs, so no handler observes an eliminated register write.
-// O(I+N+E) work and bounded O(I+N) storage; each candidate is fixed-size.
+// O(I+N+E) work and bounded O(I+N) storage; prefix queries bound long intervals.
 [[nodiscard]] std::variant<ExceptionCalls, ExceptionCallError>
 ProveExceptionCalls(const ExceptionFlow& flow, SemanticBudget budget = {});
 }  // namespace abcd::analysis

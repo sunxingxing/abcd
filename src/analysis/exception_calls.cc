@@ -5,6 +5,15 @@
 
 namespace abcd::analysis {
 namespace {
+bool PrivateArgument(const SemanticOperation& operation) {
+  if (std::holds_alternative<StringLoad>(operation)) return true;
+  const auto* assignment = std::get_if<ScalarAssignment>(&operation);
+  if (!assignment || assignment->completion != CompletionEffect::kNormal) return false;
+  const auto* value = std::get_if<ScalarValue>(&assignment->expression);
+  // Match the shared AST's private-value boundary. Allocation and coercion
+  // cannot move across the delayed property read, even without a local catch.
+  return value && !std::holds_alternative<EmptyArray>(*value);
+}
 bool SpillReload(const SemanticInstruction& spill, const SemanticInstruction& reload) {
   const auto* save = std::get_if<ScalarAssignment>(&spill.operation);
   const auto* fetch = std::get_if<ScalarAssignment>(&reload.operation);
@@ -92,9 +101,41 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
       if (!normal || exit.handler.has_value() != node.exception->target.has_value()) return {};
       return exit;
     };
-    for (std::size_t call = kDirectDistance; call < sites.size(); ++call) {
+    struct Barriers { std::size_t edge = 0, argument = 0; };
+    std::pmr::vector<Barriers> barriers(sites.size() + 1, {}, &memory);
+    // Prefix counts make arbitrarily long, overlapping candidate intervals
+    // constant-time queries. All storage shares the stage's admission budget.
+    for (std::size_t i = 0; i < sites.size(); ++i) {
       charge();
+      bool linear = false;
+      if (i + 1 < sites.size() && sites[i].commit && sites[i + 1].before) {
+        const auto& commit = flow.nodes[sites[i].commit->value];
+        linear = commit.successor_count == 1 &&
+            commit.successors.front().kind == ExceptionArcKind::kFallthrough &&
+            commit.successors.front().target == *sites[i + 1].before &&
+            entries[sites[i + 1].before->value] == Entries::kSingle;
+      }
+      bool pure = false;
+      if (sites[i].before && sites[i].commit) {
+        const auto& before = flow.nodes[sites[i].before->value];
+        const auto& effects = flow.instructions[i].effects;
+        pure = !before.exception && before.successor_count == 1 &&
+            before.successors.front().kind == ExceptionArcKind::kNormal &&
+            before.successors.front().target == *sites[i].commit &&
+            effects.normal == LanguageEffect::kNone &&
+            effects.before_throw == LanguageEffect::kNone &&
+            effects.exceptional == ExceptionalCompletion::kImpossible &&
+            PrivateArgument(flow.instructions[i].operation);
+      }
+      barriers[i + 1] = {barriers[i].edge + !linear, barriers[i].argument + !pure};
+    }
+    std::optional<std::size_t> latest_read;
+    for (std::size_t call = 0; call < sites.size(); ++call) {
+      charge();
+      if (std::holds_alternative<NamedRead>(flow.instructions[call].operation))
+        latest_read = call;
       if (!std::holds_alternative<ReceiverCall>(flow.instructions[call].operation)) continue;
+      if (!latest_read) continue;
       std::optional<std::size_t> property;
       if (std::holds_alternative<NamedRead>(flow.instructions[call - kDirectDistance].operation))
         property = call - kDirectDistance;
@@ -103,12 +144,22 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
           SpillReload(flow.instructions[call - kSpillDistance + kDirectDistance],
                       flow.instructions[call - kDirectDistance]))
         property = call - kSpillDistance;
-      if (!property) continue;
+      const bool short_interval = property.has_value();
+      if (!property) property = latest_read;
       const auto read_exit = route(sites[*property]);
       const auto call_exit = route(sites[call]);
       if (!read_exit || !call_exit || read_exit->handler != call_exit->handler ||
           flow.nodes[sites[*property].before->value].exception->target !=
               flow.nodes[sites[call].before->value].exception->target) continue;
+      if (!short_interval) {
+        // Longer intervals are caller-only: a local handler could observe
+        // argument-register writes moved before a throwing property read.
+        if (!read_exit->handler && !call_exit->handler &&
+            barriers[call].edge == barriers[*property].edge &&
+            barriers[call].argument == barriers[*property + 1].argument)
+          result.properties[call] = InstructionId{static_cast<std::uint32_t>(*property)};
+        continue;
+      }
       bool linear = true;
       for (auto i = *property; i < call; ++i) {
         charge();
