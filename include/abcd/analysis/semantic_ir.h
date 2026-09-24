@@ -23,6 +23,7 @@
 #include "abcd/analysis/object_creation.h"
 #include "abcd/analysis/register_effect.h"
 #include "abcd/analysis/register_ssa.h"
+#include "abcd/analysis/rest_arguments.h"
 #include "abcd/analysis/scalar.h"
 #include "abcd/analysis/value_write.h"
 
@@ -41,6 +42,7 @@ enum class LanguageEffect : std::uint16_t {
   kLexicalWrite = 1 << 9,
   kEnvironmentRead = 1 << 10,
   kEnvironmentWrite = 1 << 11,
+  kArgumentsRead = 1 << 12,
 };
 constexpr LanguageEffect operator|(LanguageEffect left, LanguageEffect right) {
   return static_cast<LanguageEffect>(static_cast<std::uint16_t>(left) |
@@ -78,7 +80,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        LexicalLoad, LexicalStore,
                                        PushEnvironment, PopEnvironment,
                                        CurrentEnvironment, FunctionCreation,
-                                       LoadHole, SuperCheck>;
+                                       LoadHole, SuperCheck, RestCopy>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

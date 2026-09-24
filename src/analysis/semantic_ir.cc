@@ -134,6 +134,10 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   if (const auto* error = std::get_if<SuperError>(&super);
       error && *error != SuperError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
+  const auto rest = LiftRestArguments(decoded);
+  if (const auto* copy = std::get_if<RestCopy>(&rest)) return *copy;
+  if (std::get<RestError>(rest) != RestError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto global = LiftGlobalAccess(decoded);
   if (const auto* access = std::get_if<GlobalAccess>(&global)) return *access;
   if (std::get<GlobalAccessError>(global) !=
@@ -220,6 +224,11 @@ SemanticEffects Effects(const SemanticOperation& operation,
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, ModuleStore>) {
           effects.normal = LanguageEffect::kModuleWrite;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, RestCopy>) {
+          effects.normal = LanguageEffect::kArgumentsRead |
+                           LanguageEffect::kAllocation;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, SuperCheck>) {

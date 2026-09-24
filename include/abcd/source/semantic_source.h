@@ -51,7 +51,7 @@ using SourceExpression =
                  ModuleExpression, analysis::EmptyObjectCreation,
                  analysis::BufferedObjectCreation, GlobalExpression,
                  analysis::ConstructorCall, CapturedExpression,
-                 FunctionExpression, LocalExpression>;
+                 FunctionExpression, LocalExpression, analysis::RestCopy>;
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;
@@ -130,11 +130,14 @@ using SourceAstResult = std::variant<SourceAst, SourceFailure>;
 // control structure without copying effectful instructions. Unsupported
 // effects fail before any text is published.
 // named_scopes is the unchanged same-body ValidateNamedScopes certificate.
+// rest is the unchanged same-body/frame ProveRestPrologue certificate; the
+// callable owner must emit its matching native rest formal before this body.
 [[nodiscard]] SourceAstResult BuildSourceAst(
     const analysis::SemanticMethod& method,
     const analysis::SemanticProof& proof,
     analysis::SemanticRegionTree regions, std::size_t budget_bytes,
-    std::span<const std::uint8_t> named_scopes = {});
+    std::span<const std::uint8_t> named_scopes = {},
+    std::optional<analysis::RestPrologue> rest = {});
 
 struct GeneratedPosition {
   std::size_t byte = 0;

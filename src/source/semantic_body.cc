@@ -80,8 +80,13 @@ auto BuildBody(
   auto recovered = analysis::BuildSemanticRegions(*method, remaining);
   auto* regions = std::get_if<analysis::SemanticRegionTree>(&recovered);
   if (!regions) return std::get<analysis::RegionFailure>(recovered);
+  const auto rest = names.rest
+      ? analysis::ProveRestPrologue(body, frame, names.rest->first_argument)
+      : std::nullopt;
+  if (names.rest && !rest)
+    return SourceFailure{SourceError::kInvalidEffect, {}};
   auto lowered = BuildSourceAst(*method, *proof, std::move(*regions), remaining,
-                                scopes->admitted);
+                                scopes->admitted, rest);
   const auto* ast = std::get_if<SourceAst>(&lowered);
   if (!ast) return std::get<SourceFailure>(lowered);
   if constexpr (Captures == analysis::CapturedValues::kReject) {

@@ -288,6 +288,18 @@ class SourcePrinter {
   void Expression(const SourceExpression& expression) {
     if (const auto* scalar = std::get_if<ScalarExpression>(&expression)) {
       Scalar(*scalar);
+    } else if (const auto* rest = std::get_if<analysis::RestCopy>(&expression)) {
+      if (!names_.rest || names_.rest->first_argument != rest->first_argument)
+        throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+      // The owner proves a single prologue copy and emits the matching native
+      // rest formal. Do not slice arguments or reuse it for a second allocation.
+      std::ostringstream stream;
+      const auto emitted = WriteScalarExpression(
+          ScalarValue{Accumulator{}}, {names_.rest->name, {}}, stream,
+          {limit_ - result_.text.size()});
+      if (!std::holds_alternative<std::size_t>(emitted))
+        throw SourceFailure{SourceError::kOutput, current_pc_};
+      Text(stream.str());
     } else if (const auto* local = std::get_if<LocalExpression>(&expression)) {
       Local(local->cell);
     } else if (const auto* created =

@@ -697,6 +697,48 @@ needs focused regressions for a valid unguarded local load, uninitialized and
 external loads, stale/wrong-method premises, duplicate IDs, alias slot counts,
 budget exhaustion, and initialized-load-plus-guard PC mapping.
 
+## Rest Parameters Through the Generic Function Body
+
+COPYRESTARGS and its wide form now lift through the existing validated
+`RestCopy` parser into semantic IR. Effects explicitly include argument-frame
+read and allocation, with exceptional allocation completion; copying rest
+arguments is not an iterator call or a heap getter. SSA already describes its
+normal result as a language value. AST lowering requires the existing
+same-body/frame `ProveRestPrologue` certificate, rather than trusting the
+opcode or an arbitrary printed parameter name.
+
+The production callable writer now attempts the generic path for both fixed
+and proved rest signatures. `BuildSemanticBody`/`BuildSemanticTemplate`
+recheck the supplied rest binding against the complete prologue proof. That
+proof requires the ABI-copy prefix, one rest copy at the matching argument
+index, the expected store, no later reads of the replaced original ABI slot,
+no repeated copy, and no branch reentry into the prefix. The printer emits a
+read of the owner's validated native rest formal. The pure copy prefix makes
+native parameter-entry allocation valid under the existing OOM/debugger
+observability contract; no arguments.slice/global helper or second array
+allocation is introduced. The rest opcode keeps its source assignment PC.
+
+Targeted export to `build/pasteboard-rest-source` now sends Logger's four rest
+methods (4604, 4631, 4658, 4685) through generic body emission, keeping their
+`...args` signatures. Compared with the preceding record output, their member
+calls and returns now have the generic printer's form. This migrates actual
+record bodies away from the legacy writer; it does not add another complete
+record. CommonConstants and Logger remain the only record outputs.
+
+The detached all-method survey deliberately has no rest-formal owner
+certificate yet. It now lifts those four methods through IR/SSA and stops at
+AST admission, rather than claiming a wrapper it has not proved. Thus
+`build/pasteboard-semantic-rest.jsonl` reports 37 IR, six proof, 25 AST and 21
+printer rejections, 101 detached body fragments and 29 capture templates.
+The survey denominator is unchanged; its owner-context gap should not be
+confused with the production record path's capability.
+
+Both tools compiled and ABC-only exports were inspected. Runtime tests and
+RSS tracking remain paused. Deferred regressions cover repeated copies,
+wrong rest index/frame, malformed narrow/wide operands, branch reentry,
+original ABI slot reuse, parameter-name collisions, arrays' fresh identity,
+and PC mapping through the native rest wrapper.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

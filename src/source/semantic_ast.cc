@@ -93,7 +93,8 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
                                const analysis::SemanticProof& proof,
                                analysis::SemanticRegionTree regions,
                                std::size_t budget_bytes,
-                               std::span<const std::uint8_t> named_scopes) {
+                               std::span<const std::uint8_t> named_scopes,
+                               std::optional<analysis::RestPrologue> rest) {
   if (proof.environments.before.size() != method.instructions.size() ||
       proof.values.Facts().size() != method.ssa.Values().size())
     return Fail(SourceError::kInvalidEffect);
@@ -247,6 +248,12 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
         operation = SourceAssignment{
             analysis::ScalarSlot{analysis::Accumulator{}},
             CapturedExpression{proof.captured_reads[capture_fact++].cell}};
+      } else if (const auto* copy =
+                     std::get_if<analysis::RestCopy>(&instruction.operation)) {
+        if (!rest || rest->first_argument != copy->first_argument)
+          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        operation = SourceAssignment{
+            analysis::ScalarSlot{analysis::Accumulator{}}, *copy};
       } else if (const auto* string =
                      std::get_if<analysis::StringLoad>(&instruction.operation)) {
         if (!SameSlot(effect.normal_registers.write,

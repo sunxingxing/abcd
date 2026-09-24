@@ -334,7 +334,8 @@ class FunctionWriter {
           function_.syntax == CallableSyntax::kClassMethod ||
           function_.syntax == CallableSyntax::kClassGetter ||
           function_.syntax == CallableSyntax::kClassSetter;
-      if (ordinary_body && function_.parameters == ParameterForm::kFixed &&
+      if (ordinary_body && (function_.parameters == ParameterForm::kFixed ||
+                            function_.parameters == ParameterForm::kRest) &&
           body_constants) {
         if (captured_values_ == analysis::CapturedValues::kLanguage) {
           auto prepared = BuildSemanticTemplate(
