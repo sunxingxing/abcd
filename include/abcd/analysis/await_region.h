@@ -13,6 +13,7 @@ struct AwaitRegion {
   abc::CodeOffset await;
   abc::CodeOffset suspend;
   abc::CodeOffset resume;
+  abc::CodeOffset result_store;
   abc::CodeOffset mode;
   abc::CodeOffset branch;
   abc::CodeOffset reject;
@@ -20,6 +21,12 @@ struct AwaitRegion {
   abc::RegisterId state;
   abc::RegisterId result;
   abc::RegisterId resume_mode;
+};
+// A callable owner supplies this only after proving its async completion
+// wrapper and private state, then maps pc to the normalized method body.
+struct AwaitSite {
+  abc::CodeOffset pc;
+  AwaitRegion origin;
 };
 enum class AwaitRegionError {
   kUnsupportedProfile,

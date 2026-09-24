@@ -328,6 +328,30 @@ class FunctionWriter {
       FunctionEmitResult result{std::size_t{0}};
       std::optional<PrintedSource> semantic_body;
       std::optional<PrintedTemplate> semantic_template;
+      bool semantic_resource_limit = false;
+      const auto resource_failure = [](const auto& prepared) {
+        return std::visit([](const auto& value) {
+          using T = std::decay_t<decltype(value)>;
+          if constexpr (std::is_same_v<T, PrintedSource> ||
+                        std::is_same_v<T, PrintedTemplate>) {
+            return false;
+          } else {
+            if (value.kind == decltype(value.kind)::kResourceLimit) return true;
+            if constexpr (std::is_same_v<T, analysis::SemanticFailure>) {
+              return std::visit([](const auto& cause) {
+                using Cause = std::decay_t<decltype(cause)>;
+                if constexpr (std::is_same_v<Cause, analysis::RegisterUseFailure>)
+                  return cause.kind == analysis::RegisterUseError::kWorkLimit;
+                else if constexpr (requires { Cause::kWorkLimit; })
+                  return cause == Cause::kWorkLimit;
+                else
+                  return false;
+              }, value.ssa_cause);
+            }
+            return false;
+          }
+        }, prepared);
+      };
       const bool ordinary_body =
           function_.syntax == CallableSyntax::kFunctionExpression ||
           function_.syntax == CallableSyntax::kAsyncFunctionExpression ||
@@ -346,16 +370,24 @@ class FunctionWriter {
           auto prepared = BuildSemanticTemplate(
               body, frame, names_, *body_constants,
               {body_budget.bytes, body_budget.work}, body_budget.output.bytes);
+          semantic_resource_limit = resource_failure(prepared);
           if (auto* source = std::get_if<PrintedTemplate>(&prepared))
             semantic_template = std::move(*source);
         } else {
           auto prepared = BuildSemanticBody(
               body, frame, names_, *body_constants,
               {body_budget.bytes, body_budget.work}, body_budget.output.bytes);
+          semantic_resource_limit = resource_failure(prepared);
           if (auto* source = std::get_if<PrintedSource>(&prepared))
             semantic_body = std::move(*source);
         }
       }
+      // A recovered await's source semantics exist only in the generic IR.
+      // Legacy writers must never reinterpret the retained VM await opcode.
+      if (body_constants && !body_constants->awaits.empty() &&
+          !semantic_body && !semantic_template)
+        return semantic_resource_limit ? FunctionEmitError::kResourceLimit
+                                       : FunctionEmitError::kKind;
       const auto first_for_in =
           body_constants &&
                   body_constants->header.profile == abc::ProfileId::kDynamic1301 &&
@@ -802,14 +834,20 @@ FunctionEmitResult WriteFunction(const BaseFunction& function,
                           : CallableSyntax::kFunctionExpression;
   if (syntax == CallableSyntax::kAsyncFunctionExpression) {
     std::vector<abc::CodeOffset> origins;
+    std::vector<analysis::AwaitSite> awaits;
     const auto checked = ProveAsyncCompletion(body, function.frame, budget.bytes,
-                                              &origins);
+        &origins, constants ? &awaits : nullptr,
+        constants ? constants->header.profile : abc::ProfileId::kUnknown);
     if (const auto* error = std::get_if<FunctionEmitError>(&checked)) return *error;
     const auto& normalized = std::get<abc::MethodBody>(checked);
     budget.bytes -= normalized.instructions.capacity() * sizeof(abc::BodyInstruction) +
-                    origins.capacity() * sizeof(abc::CodeOffset);
+                    origins.capacity() * sizeof(abc::CodeOffset) +
+                    awaits.capacity() * sizeof(analysis::AwaitSite);
     auto scoped = constants ? std::optional<MethodConstants>(*constants) : std::nullopt;
-    if (scoped) scoped->source_pcs = origins;
+    if (scoped) {
+      scoped->source_pcs = origins;
+      scoped->awaits = awaits;
+    }
     return WriteCallable(
         {function.frame, function.name, function.creation.length.value, syntax},
         normalized, output, budget, scoped ? &*scoped : nullptr, methods,
@@ -866,15 +904,22 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
       return *failure;
   if (syntax == CallableSyntax::kAsyncClassMethod) {
     std::vector<abc::CodeOffset> origins;
-    const auto checked = ProveAsyncCompletion(body, method.frame, budget.bytes, &origins);
+    std::vector<analysis::AwaitSite> awaits;
+    const auto checked = ProveAsyncCompletion(body, method.frame, budget.bytes,
+        &origins, constants ? &awaits : nullptr,
+        constants ? constants->header.profile : abc::ProfileId::kUnknown);
     if (const auto* error = std::get_if<FunctionEmitError>(&checked))
       return *error;
     const auto& normalized = std::get<abc::MethodBody>(checked);
     budget.bytes -= normalized.instructions.capacity() *
                     sizeof(abc::BodyInstruction) +
-                    origins.capacity() * sizeof(abc::CodeOffset);
+                    origins.capacity() * sizeof(abc::CodeOffset) +
+                    awaits.capacity() * sizeof(analysis::AwaitSite);
     auto scoped = constants ? std::optional<MethodConstants>(*constants) : std::nullopt;
-    if (scoped) scoped->source_pcs = origins;
+    if (scoped) {
+      scoped->source_pcs = origins;
+      scoped->awaits = awaits;
+    }
     return WriteCallable(
         {method.frame, method.self_binding, method.member.length,
          syntax, method.key, method.placement},
@@ -951,18 +996,25 @@ FunctionEmitResult WriteArrowFunction(
   if (ObservesArrowCallContext(body, function.frame))
     return FunctionEmitError::kFrame;
   if (function.attributes.kind == abc::FunctionKind::kAsyncArrow) {
-    // The pinned compiler wraps no-await async arrows in a promise completion
-    // region. Remove it only after proving the entire wrapper shape.
+    // Recover the private completion wrapper and any supported await regions
+    // before the generic IR receives source-level suspension semantics.
     std::vector<abc::CodeOffset> origins;
-    const auto checked = ProveAsyncCompletion(body, function.frame, budget.bytes, &origins);
+    std::vector<analysis::AwaitSite> awaits;
+    const auto checked = ProveAsyncCompletion(body, function.frame, budget.bytes,
+        &origins, constants ? &awaits : nullptr,
+        constants ? constants->header.profile : abc::ProfileId::kUnknown);
     if (const auto* error = std::get_if<FunctionEmitError>(&checked))
       return *error;
     const auto& normalized = std::get<abc::MethodBody>(checked);
     budget.bytes -= normalized.instructions.capacity() *
                     sizeof(abc::BodyInstruction) +
-                    origins.capacity() * sizeof(abc::CodeOffset);
+                    origins.capacity() * sizeof(abc::CodeOffset) +
+                    awaits.capacity() * sizeof(analysis::AwaitSite);
     auto scoped = constants ? std::optional<MethodConstants>(*constants) : std::nullopt;
-    if (scoped) scoped->source_pcs = origins;
+    if (scoped) {
+      scoped->source_pcs = origins;
+      scoped->awaits = awaits;
+    }
     return WriteCallable(
         {function.frame, function.name, function.creation.length.value,
          CallableSyntax::kAsyncArrowExpression},

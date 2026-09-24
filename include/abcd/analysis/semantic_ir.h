@@ -8,6 +8,7 @@
 
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/array_creation.h"
+#include "abcd/analysis/await_region.h"
 #include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/derived_constructor.h"
 #include "abcd/analysis/function_creation.h"
@@ -44,6 +45,7 @@ enum class LanguageEffect : std::uint16_t {
   kEnvironmentRead = 1 << 10,
   kEnvironmentWrite = 1 << 11,
   kArgumentsRead = 1 << 12,
+  kSuspension = 1 << 13,
 };
 constexpr LanguageEffect operator|(LanguageEffect left, LanguageEffect right) {
   return static_cast<LanguageEffect>(static_cast<std::uint16_t>(left) |
@@ -70,6 +72,10 @@ struct NoOperation {};
 struct StringLoad {
   abc::PoolIndex value;
 };
+struct AwaitValue {
+  ScalarValue input;
+  AwaitRegion origin;
+};
 using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        NamedRead, NamedWrite, OwnWrite,
                                        ValueWrite, ModuleLoad, HoleGuard,
@@ -82,7 +88,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        PushEnvironment, PopEnvironment,
                                        CurrentEnvironment, FunctionCreation,
                                        LoadHole, SuperCheck, RestCopy,
-                                       BufferedArrayCreation>;
+                                       BufferedArrayCreation, AwaitValue>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;
@@ -123,8 +129,12 @@ using SemanticResult = std::variant<SemanticMethod, SemanticFailure>;
 // SSA. It does not claim source equivalence, exception-flow SSA, or that a
 // register entry value is JS undefined. Unsupported instructions are fatal to
 // this path and may be handled by a separately verified legacy writer.
+// AwaitSite entries are sorted, owner-proven async normalization certificates,
+// not permissions inferred from raw await opcodes. They change only the source
+// operation and its normal register effects, preserving original region PCs.
 [[nodiscard]] SemanticResult BuildSemanticMethod(
     const abc::MethodBody& body, abc::ProfileId profile,
-    std::uint64_t frame_size, SemanticBudget budget = {});
+    std::uint64_t frame_size, SemanticBudget budget = {},
+    std::span<const AwaitSite> awaits = {});
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_SEMANTIC_IR_H_

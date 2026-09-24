@@ -1223,6 +1223,54 @@ Native await is not enabled yet: region proofs, private async-state ownership,
 completion-wrapper recovery and AST/printer support must be connected before
 admitting suspension. The full pasteboard semantic/style objective remains open.
 
+### Native await through IR, SSA, AST and printer (2026-09-25)
+
+The existing private async-completion proof now accepts the verified modern
+await regions inside its single catch/reject wrapper. All state-register uses
+outside those regions remain forbidden. The normalizer retains each original
+await opcode and resume-result store, removes the proven VM suspension/mode/
+rethrow sequence, and supplies typed `AwaitSite` certificates at normalized PCs.
+It does not invent substitute opcodes. A bounded frame-indexed set rejects any
+retained read of a removed mode-register definition before overwrite; no
+per-await forward scan is used. No-await historical behavior is unchanged;
+actual await recovery requires the region analyzer's supported profile.
+
+The owning native async function/method/arrow passes those certificates only
+to the generic path. `AwaitValue` enters the common semantic IR with explicit
+suspension, user-code, heap and throwing effects. Its SSA input/output is the
+accumulator, not the discarded VM state. Value flow requires a Language input
+and produces Language on successful resumption. The source AST carries the
+typed node, and the unified printer emits native `await (value)`. There is no
+legacy writer fallback after this transformation. Await inside a synchronous
+argument-staging IIFE is refused; making that IIFE async would change jobs and
+return values. The standalone non-async wrapper printer also refuses await.
+Read-only review identified loss of resource failures at the mandatory generic
+boundary; the owner now preserves typed allocation/work exhaustion rather than
+reporting unsupported kind, including value-flow work-quota exhaustion.
+
+Retained instructions keep their original-PC map, including await and result
+store. The await IR additionally retains its suspension/resumption/rejection
+region PCs. Removed wrapper/control PCs do not yet have individual generated
+spans, and child-internal spans still do not survive the outer callable text
+wrapper. Thus full record-level PC mapping is not claimed by this increment.
+
+Both CLI targets compiled. ABC-only survey
+`build/pasteboard-semantic-native-await-final.jsonl` reports
+`[0,0,36,1,0,8,0,13,111,50]`, versus the prior 109 bodies/44 templates.
+Methods 7505 and 8248 now produce body fragments; 7145, 7173, 7366, 7888, 7916
+and 8109 produce capture templates. Their nested async callbacks 7421/8164
+contain native await after the original `setData` call. Raw standalone survey
+of those two callbacks still rejects the original exception wrapper; owner
+normalization, not raw opcode admission, enables their generated child bodies.
+Full record generation remains two complete records, eight unsupported app
+records and nine metadata records. This is not complete pasteboard recovery.
+
+Tests and RSS collection remain paused. Negative state escape/alias cases,
+live mode temporaries, multiple awaits, rejection ordering, original-PC mapping,
+staged-await refusal and resource exhaustion require regression validation when
+testing resumes. Source-style recovery, other async/handler shapes and class
+construction blockers remain open.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

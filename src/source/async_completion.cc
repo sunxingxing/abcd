@@ -1,8 +1,11 @@
 #include "async_completion.h"
 
+#include <algorithm>
 #include <limits>
 
 #include "abcd/abc/register_access.h"
+#include "abcd/analysis/coroutine.h"
+#include "abcd/analysis/register_effect.h"
 
 namespace abcd::source {
 namespace {
@@ -39,7 +42,9 @@ bool TouchesRegister(const abc::BodyInstruction& instruction,
 AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
                                      const abc::FrameLayout& frame,
                                      std::size_t bytes,
-                                     std::vector<abc::CodeOffset>* source_pcs) {
+                                     std::vector<abc::CodeOffset>* source_pcs,
+                                     std::vector<analysis::AwaitSite>* awaits,
+                                     abc::ProfileId profile) {
   using abc::Opcode;
   const auto& sites = body.instructions;
   if (sites.size() < 7 || body.tries.size() != 1 ||
@@ -84,7 +89,7 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       !IsReturn(sites[handler - 1]) || resolved != promise ||
       rejected != promise)
     return FunctionEmitError::kKind;
-  const auto retained = handler - 3;
+  auto retained = handler - 3;
   const auto site_bytes = sizeof(abc::BodyInstruction) +
                          (source_pcs ? sizeof(abc::CodeOffset) : 0);
   if (retained > bytes / site_bytes)
@@ -101,14 +106,82 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       std::uint64_t(catch_handler.offset.value) + catch_handler.length !=
       code_end || code_end > std::numeric_limits<std::uint32_t>::max())
     return FunctionEmitError::kKind;
+  try {
+  std::vector<analysis::AwaitRegion> regions;
+  const bool has_await = awaits && std::any_of(sites.begin(), sites.end(),
+      [&](const auto& site) {
+        const auto lifted = analysis::LiftCoroutineInstruction(
+            site.decoded, frame.registers);
+        const auto* transfer = std::get_if<analysis::CoroutineTransfer>(&lifted);
+        return transfer && transfer->kind == analysis::CoroutineTransferKind::kAwait;
+      });
+  if (has_await) {
+    auto found = analysis::FindAwaitRegions(body, profile, frame.registers, bytes);
+    if (const auto* failure = std::get_if<analysis::AwaitRegionFailure>(&found))
+      return failure->kind == analysis::AwaitRegionError::kResourceLimit
+          ? FunctionEmitError::kResourceLimit : FunctionEmitError::kKind;
+    regions = std::get<std::vector<analysis::AwaitRegion>>(std::move(found));
+  }
+  const auto region_bytes = regions.capacity() * sizeof(analysis::AwaitRegion);
+  if (region_bytes > bytes) return FunctionEmitError::kResourceLimit;
+  bytes -= region_bytes;
+  // Removed resume-mode definitions must be dead before any retained read.
+  // One frame-indexed set checks all sites in O(frame + I + expanded reads),
+  // never a forward method scan for every temporary or await.
+  std::vector<std::uint8_t> removed_modes;
+  if (!regions.empty()) {
+    if (frame.registers > bytes) return FunctionEmitError::kResourceLimit;
+    removed_modes.resize(frame.registers);
+    if (removed_modes.capacity() > bytes) return FunctionEmitError::kResourceLimit;
+    bytes -= removed_modes.capacity();
+  }
+  std::size_t next_region = 0;
   for (std::size_t i = enter + 2; i < handler - 2; ++i) {
     const auto& site = sites[i];
+    if (next_region < regions.size() && site.offset == regions[next_region].await) {
+      const auto& region = regions[next_region++];
+      if (region.state != promise || region.continuation >= sites[handler - 2].offset)
+        return FunctionEmitError::kKind;
+      removed_modes[region.result.value] = 0;
+      removed_modes[region.resume_mode.value] = 1;
+      while (i + 1 < handler - 2 && sites[i + 1].offset < region.continuation) {
+        ++i;
+        if (sites[i].offset != region.result_store) --retained;
+      }
+      continue;
+    }
     if (site.branch_target || site.decoded.jump || site.decoded.conditional ||
         IsReturn(site) ||
         TouchesRegister(site, promise, frame.registers))
       return FunctionEmitError::kKind;
+    if (!removed_modes.empty()) {
+      const auto lifted = analysis::LiftRegisterEffect(site.decoded, frame.registers);
+      const auto* effect = std::get_if<analysis::RegisterEffect>(&lifted);
+      if (!effect) return FunctionEmitError::kKind;
+      const auto reads_removed = [&](analysis::ScalarSlot slot) {
+        const auto* reg = std::get_if<abc::RegisterId>(&slot);
+        return reg && removed_modes[reg->value];
+      };
+      for (std::size_t read = 0; read < effect->read_count; ++read)
+        if (reads_removed(effect->reads[read])) return FunctionEmitError::kKind;
+      if (effect->range)
+        for (std::uint32_t read = 0; read < effect->range->count; ++read)
+          if (removed_modes[effect->range->first.value + read])
+            return FunctionEmitError::kKind;
+      if (effect->write)
+        if (const auto* reg = std::get_if<abc::RegisterId>(&*effect->write))
+          removed_modes[reg->value] = 0;
+    }
   }
-  try {
+    if (next_region != regions.size()) return FunctionEmitError::kKind;
+    if (regions.size() > bytes / sizeof(analysis::AwaitSite))
+      return FunctionEmitError::kResourceLimit;
+    std::vector<analysis::AwaitSite> await_sites;
+    await_sites.reserve(regions.size());
+    if (await_sites.capacity() > bytes / sizeof(analysis::AwaitSite))
+      return FunctionEmitError::kResourceLimit;
+    bytes -= await_sites.capacity() * sizeof(analysis::AwaitSite);
+    if (retained > bytes / site_bytes) return FunctionEmitError::kResourceLimit;
     abc::MethodBody source;
     source.instructions.reserve(retained);
     if (source.instructions.capacity() >
@@ -116,9 +189,19 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       return FunctionEmitError::kResourceLimit;
     source.instructions.insert(source.instructions.end(), sites.begin(),
                                sites.begin() + enter);
-    source.instructions.insert(source.instructions.end(),
-                               sites.begin() + enter + 2,
-                               sites.begin() + handler - 2);
+    next_region = 0;
+    for (std::size_t i = enter + 2; i < handler - 2; ++i) {
+      source.instructions.push_back(sites[i]);
+      if (next_region < regions.size() && sites[i].offset == regions[next_region].await) {
+        const auto& region = regions[next_region++];
+        await_sites.push_back({sites[i].offset, region});
+        while (i + 1 < handler - 2 && sites[i + 1].offset < region.continuation) {
+          ++i;
+          if (sites[i].offset == region.result_store)
+            source.instructions.push_back(sites[i]);
+        }
+      }
+    }
     source.instructions.push_back(sites[handler - 1]);
     std::vector<abc::CodeOffset> origins;
     if (source_pcs) {
@@ -132,11 +215,16 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       for (const auto& site : source.instructions) origins.push_back(site.offset);
     }
     std::uint32_t next_pc = 0;
+    next_region = 0;
     for (auto& site : source.instructions) {
+      if (next_region < await_sites.size() &&
+          site.offset == await_sites[next_region].origin.await)
+        await_sites[next_region++].pc = abc::CodeOffset{next_pc};
       site.offset = abc::CodeOffset{next_pc};
       next_pc += site.decoded.size;
     }
     if (source_pcs) *source_pcs = std::move(origins);
+    if (awaits) *awaits = std::move(await_sites);
     return source;
   } catch (const std::bad_alloc&) {
     return FunctionEmitError::kResourceLimit;

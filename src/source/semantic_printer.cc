@@ -79,6 +79,10 @@ class SourcePrinter {
 
   std::variant<PrintedSource, SourceFailure> Print() {
     try {
+      // This standalone wrapper API has no async form. Only an owning async
+      // callable may consume a recovered await via PrintBody/PrintTemplate.
+      if (!constants_.awaits.empty())
+        return SourceFailure{SourceError::kUnsupportedOperation, {}};
       if (const auto failure = VerifyOwnFields(ast_, constants_)) return *failure;
       if (!IsSourceIdentifier(name_))
         return SourceFailure{SourceError::kOutput, {}};
@@ -292,6 +296,14 @@ class SourcePrinter {
   void Expression(const SourceExpression& expression) {
     if (const auto* scalar = std::get_if<ScalarExpression>(&expression)) {
       Scalar(*scalar);
+    } else if (const auto* awaited = std::get_if<analysis::AwaitValue>(&expression)) {
+      // Argument staging uses a synchronous IIFE. Adding async there changes
+      // promise/job ordering, so refuse rather than print an invalid await.
+      if (call_depth_ || constants_.awaits.empty())
+        throw SourceFailure{SourceError::kUnsupportedOperation, current_pc_};
+      Text("await (");
+      Value(awaited->input);
+      Text(")");
     } else if (const auto* rest = std::get_if<analysis::RestCopy>(&expression)) {
       if (!names_.rest || names_.rest->first_argument != rest->first_argument)
         throw SourceFailure{SourceError::kInvalidEffect, current_pc_};

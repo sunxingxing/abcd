@@ -149,7 +149,8 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
                               failure.instruction->value < body.instructions.size()
                           ? body.instructions[failure.instruction->value].offset
                           : abc::CodeOffset{};
-      return Fail(failure.kind == ValueFlowError::kResourceLimit
+      return Fail(failure.kind == ValueFlowError::kResourceLimit ||
+                          failure.kind == ValueFlowError::kWorkLimit
                       ? SemanticProofError::kResourceLimit
                       : SemanticProofError::kRegisterValue,
                   pc);

@@ -52,7 +52,7 @@ using SourceExpression =
                  analysis::BufferedObjectCreation, GlobalExpression,
                  analysis::ConstructorCall, CapturedExpression,
                  FunctionExpression, LocalExpression, analysis::RestCopy,
-                 analysis::BufferedArrayCreation>;
+                 analysis::BufferedArrayCreation, analysis::AwaitValue>;
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;
@@ -200,6 +200,8 @@ enum class SourceForm : std::uint8_t { kFunction, kClassConstructor };
 // Optional proof belongs to this unchanged method/AST and remains live during
 // printing. It enables binding child captures to proven initialized locals;
 // absence never authorizes guessed captures. Child-internal spans are separate.
+// Nonempty constants.awaits requires an owning native async callable; this
+// body-only API does not emit or prove the surrounding callable syntax.
 [[nodiscard]] std::variant<PrintedSource, SourceFailure> PrintSourceBody(
     const SourceAst& ast, const analysis::SemanticMethod& method,
     ScalarNames names, const MethodConstants& constants,

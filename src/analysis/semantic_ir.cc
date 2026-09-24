@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "abcd/abc/control_transfer.h"
+#include "abcd/analysis/coroutine.h"
 
 namespace abcd::analysis {
 namespace {
@@ -212,6 +213,12 @@ SemanticEffects Effects(const SemanticOperation& operation,
                            LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, AwaitValue>) {
+          effects.normal = LanguageEffect::kSuspension |
+                           LanguageEffect::kUserCode |
+                           LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, NamedRead>) {
           effects.normal = LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
           effects.before_throw = effects.normal;
@@ -273,7 +280,8 @@ SemanticEffects Effects(const SemanticOperation& operation,
 SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
                                    abc::ProfileId profile,
                                    std::uint64_t frame_size,
-                                   SemanticBudget budget) {
+                                   SemanticBudget budget,
+                                   std::span<const AwaitSite> awaits) {
   switch (profile) {
     case abc::ProfileId::kDynamic1202:
     case abc::ProfileId::kDynamic1206:
@@ -312,7 +320,30 @@ SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
   // Lift once before SSA. The exact same typed normal effects drive def/use,
   // renaming and subsequent source validation; future recovered operations
   // must not silently revert to the original VM operand effects in SSA.
+  std::size_t next_await = 0;
   for (const auto& site : body.instructions) {
+    if (next_await < awaits.size() && awaits[next_await].pc < site.offset)
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    if (next_await < awaits.size() && awaits[next_await].pc == site.offset) {
+      const auto& awaited = awaits[next_await++];
+      const auto lifted = LiftCoroutineInstruction(site.decoded, frame_size);
+      const auto* transfer = std::get_if<CoroutineTransfer>(&lifted);
+      const auto* state = transfer
+          ? std::get_if<abc::RegisterId>(&transfer->state) : nullptr;
+      if (!transfer || transfer->kind != CoroutineTransferKind::kAwait ||
+          !state || *state != awaited.origin.state ||
+          !std::holds_alternative<Accumulator>(transfer->value))
+        return Fail(SemanticError::kMalformedInstruction, site.offset);
+      // Ownership and region equivalence belong to the async normalizer.
+      // Native await reads the source value, never the discarded VM state.
+      SemanticOperation operation = AwaitValue{Accumulator{}, awaited.origin};
+      RegisterEffect registers;
+      registers.reads[registers.read_count++] = Accumulator{};
+      registers.write = Accumulator{};
+      const auto effects = Effects(operation, registers);
+      instructions.push_back({site.offset, std::move(operation), effects});
+      continue;
+    }
     auto operation = LiftOperation(site, frame_size);
     if (const auto* failure = std::get_if<SemanticFailure>(&operation))
       return *failure;
@@ -326,6 +357,8 @@ SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
     auto effects = Effects(semantic, std::get<RegisterEffect>(registers));
     instructions.push_back({site.offset, std::move(semantic), effects});
   }
+  if (next_await != awaits.size())
+    return Fail(SemanticError::kMalformedInstruction);
   const auto instruction_bytes =
       instructions.capacity() * sizeof(SemanticInstruction);
   auto renamed = RegisterSsa::Build(

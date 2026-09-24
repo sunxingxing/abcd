@@ -94,7 +94,8 @@ std::optional<AwaitRegion> Match(std::span<const abc::BodyInstruction> sites,
       sites[kThrow].decoded.operand_count != 0)
     return std::nullopt;
   return AwaitRegion{sites[kAwait].offset, sites[kSuspend].offset,
-                     sites[kResume].offset, sites[kReadMode].offset,
+                     sites[kResume].offset, sites[kSaveResult].offset,
+                     sites[kReadMode].offset,
                      sites[kBranch].offset, sites[kThrow].offset,
                      sites[kContinue].offset, *state, *result, *mode};
 }

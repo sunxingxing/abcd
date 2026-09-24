@@ -234,6 +234,12 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
           return Fail(SourceError::kInvalidEffect, instruction.pc);
         operation = SourceAssignment{assignment->destination,
                                      assignment->expression};
+      } else if (const auto* awaited =
+                     std::get_if<analysis::AwaitValue>(&instruction.operation)) {
+        if (!SameSlot(effect.normal_registers.write,
+                      analysis::ScalarSlot{analysis::Accumulator{}}))
+          return Fail(SourceError::kInvalidEffect, instruction.pc);
+        operation = SourceAssignment{analysis::Accumulator{}, *awaited};
       } else if (const auto* created =
                      std::get_if<analysis::FunctionCreation>(&instruction.operation)) {
         if (created->kind != analysis::CreationKind::kFunction ||

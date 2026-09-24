@@ -13,6 +13,7 @@ class MethodLookup;
 }
 namespace abcd::analysis {
 class MethodRoleIndex;
+struct AwaitSite;
 }
 
 namespace abcd::source {
@@ -90,6 +91,9 @@ struct MethodConstants {
   // Optional owner-verified normalized-body index -> original ABC PC mapping.
   // Borrowed only for synchronous emission; child methods never inherit it.
   std::span<const abc::CodeOffset> source_pcs;
+  // Native async owner only: normalized await sites with original region
+  // evidence. Borrowed alongside source_pcs, never inherited by child methods.
+  std::span<const analysis::AwaitSite> awaits;
 };
 
 // Emits statements inside a function, not a wrapper or record. Requires a

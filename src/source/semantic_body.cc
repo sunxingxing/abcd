@@ -20,7 +20,7 @@ auto BuildBody(
   if (names.registers.size() != frame.registers)
     return SourceFailure{SourceError::kInvalidEffect, {}};
   auto lifted = analysis::BuildSemanticMethod(
-      body, constants.header.profile, frame.registers, budget);
+      body, constants.header.profile, frame.registers, budget, constants.awaits);
   auto* method = std::get_if<analysis::SemanticMethod>(&lifted);
   if (!method) return std::get<analysis::SemanticFailure>(lifted);
   if (!constants.source_pcs.empty()) {
