@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_EXCEPTION_LOCALS_H_
 
 #include "abcd/analysis/exception_environment.h"
+#include "abcd/analysis/capture_effect.h"
 #include "abcd/analysis/exception_value_flow.h"
 #include "abcd/analysis/semantic_validation.h"
 
@@ -25,13 +26,16 @@ struct ExceptionLocalFailure {
 // loads to value propagation, EVERY store must pass VerifyExceptionInputs.
 // Allocation dominates a completed store, whose subtree covers each load.
 // Capture-capable creation marks its current local environment and ancestors
-// escaped; their loads require a future closure-write proof, not this premise.
+// escaped unless an explicit closure-write proof supplies an exemption.
+// Sorted same-body capture-preservation certificates exempt only their exact
+// creation PCs. They do not prove initialization or change exceptional edges.
 // No normal-only dominance, default undefined, or branch-union initialization.
 // Returned plan has no normal-CFG capture-initialization certificate.
 // O((N+E)log N + L log L + I + A) time; bounded O(N+E+I+A+L) space,
 // for phase nodes/edges, lexical accesses, instructions and environments.
 [[nodiscard]] std::variant<ExceptionLocals, ExceptionLocalFailure>
 ProveExceptionLocals(const ExceptionFlow& flow, const EnvironmentFlow& environments,
-                     SemanticBudget budget = {});
+                     SemanticBudget budget = {},
+                     std::span<const CapturePreservation> preserved = {});
 }  // namespace abcd::analysis
 #endif

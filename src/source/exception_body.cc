@@ -10,6 +10,7 @@
 #include "abcd/source/exception_source.h"
 #include "abcd/source/named_scope.h"
 #include "module_read_snapshot.h"
+#include "capture_preservation.h"
 
 namespace abcd::source {
 namespace {
@@ -79,7 +80,17 @@ auto BuildException(
       return fail(error.kind == EnvironmentFlowError::kResourceLimit, error.offset);
     }
     retain(environments->allocated_bytes);
-    const auto planned = ProveExceptionLocals(*flow, *environments, stage_budget());
+    const auto planned = [&]()
+        -> std::variant<ExceptionLocals, ExceptionLocalFailure> {
+      const auto preserved = ProveCapturePreservation(
+          body, constants, constants.leaf_methods, stage_budget());
+      const auto* sites = std::get_if<CapturePreservations>(&preserved);
+      if (!sites) throw std::get<SourceFailure>(preserved);
+      charge(sites->work_units);
+      if (sites->AllocatedBytes() > remaining) throw fail(true);
+      return ProveExceptionLocals(*flow, *environments,
+          {remaining - sites->AllocatedBytes(), work_left}, sites->sites);
+    }();
     const auto* locals = std::get_if<ExceptionLocals>(&planned);
     if (!locals) {
       const auto& error = std::get<ExceptionLocalFailure>(planned);

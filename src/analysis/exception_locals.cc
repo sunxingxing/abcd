@@ -13,9 +13,15 @@ struct StoreScope {
   std::uint32_t begin;
   std::uint32_t end;
 };
+bool Captures(const SemanticOperation& operation) {
+  return std::holds_alternative<FunctionCreation>(operation) ||
+         std::holds_alternative<BufferedObjectCreation>(operation) ||
+         std::holds_alternative<BufferedArrayCreation>(operation);
+}
 }
 std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
-    const ExceptionFlow& flow, const EnvironmentFlow& environments, SemanticBudget budget) {
+    const ExceptionFlow& flow, const EnvironmentFlow& environments, SemanticBudget budget,
+    std::span<const CapturePreservation> preserved) {
   using Error = ExceptionLocalError;
   const auto fail = [](Error kind, abc::CodeOffset pc = {}) { return ExceptionLocalFailure{kind, pc}; };
   if (flow.nodes.empty() || flow.nodes.size() > UINT32_MAX ||
@@ -34,6 +40,29 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
       if (storage.capacity() > (budget.bytes - spent) / sizeof(T)) throw fail(Error::kResourceLimit);
       spent += storage.capacity() * sizeof(T);
     };
+    // Validate complete same-flow PC coverage before accepting any exemption.
+    // The byte flags avoid repeated searches at Before/Commit/Catch nodes.
+    std::vector<std::uint8_t> read_only;
+    if (!preserved.empty()) {
+      reserve(read_only, flow.instructions.size());
+      read_only.resize(flow.instructions.size());
+      for (std::size_t p = 1; p < preserved.size(); ++p) {
+        charge();
+        if (preserved[p - 1].pc >= preserved[p].pc)
+          return fail(Error::kInvalidEnvironment, preserved[p].pc);
+      }
+      std::size_t p = 0;
+      for (std::size_t i = 0; i < flow.instructions.size(); ++i) {
+        charge();
+        const auto& instruction = flow.instructions[i];
+        if (p == preserved.size() || preserved[p].pc > instruction.pc) continue;
+        if (preserved[p].pc != instruction.pc || !Captures(instruction.operation))
+          return fail(Error::kInvalidEnvironment, preserved[p].pc);
+        read_only[i] = 1;
+        ++p;
+      }
+      if (p != preserved.size()) return fail(Error::kInvalidEnvironment, preserved[p].pc);
+    }
     reserve(plan.cells, environments.bindings.size());
     for (const auto& binding : environments.bindings) {
       charge();
@@ -84,9 +113,9 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
       }
       // v7 RuntimeCreateObjectHavingMethod clones literal methods with the
       // current environment. Without a pure-data literal proof, treat the
-      // whole buffered-object operation as capture-capable too.
-      const bool captures = std::holds_alternative<FunctionCreation>(instruction.operation) ||
-          std::holds_alternative<BufferedObjectCreation>(instruction.operation);
+      // buffered-object/array operations as capture-capable too.
+      const bool captures = Captures(instruction.operation) &&
+          (read_only.empty() || !read_only[node.instruction.value]);
       if (node.phase == ExceptionPhase::kBefore && environments.before[i] && captures) {
         if (const auto* local = std::get_if<EnvironmentId>(&*environments.before[i])) {
           if (local->value >= captured.size()) return fail(Error::kInvalidEnvironment, instruction.pc);
