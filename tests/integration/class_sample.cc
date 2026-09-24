@@ -175,6 +175,10 @@ int main(int argc, char** argv) {
                     << " pc=" << site.pc.value << " variant=" << result.index()
                     << '\n';
           if (const auto* failure =
+                  std::get_if<source::CreatedClassError>(&result))
+            std::cerr << "  class_kind=" << static_cast<int>(*failure)
+                      << '\n';
+          if (const auto* failure =
                   std::get_if<analysis::LinearLexicalFailure>(&result))
             std::cerr << "  lexical_kind=" << static_cast<int>(failure->kind)
                       << " body_pc=" << failure->offset.value << '\n';

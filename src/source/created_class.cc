@@ -493,9 +493,14 @@ CreatedClassResult WriteCreatedClass(
     std::span<const ClassAccessor> accessors,
     std::optional<ClassParent> parent) {
   try {
+    // Both admitted dynamic profiles use the pinned v7 class interpreter's
+    // CreateClassWithBuffer/RuntimeSetClassInheritanceRelationship path.
+    const bool derived_profile =
+        header.profile == abc::ProfileId::kDynamic1206 ||
+        header.profile == abc::ProfileId::kDynamic1301;
     if (heritage.pc != instruction.offset ||
-        (parent ? heritage.kind != analysis::HeritageKind::kUnknown ||
-                      header.profile != abc::ProfileId::kDynamic1301
+        (parent ? (heritage.kind != analysis::HeritageKind::kUnknown ||
+                   !derived_profile)
                 : heritage.kind != analysis::HeritageKind::kAbsent))
       return CreatedClassError::kHeritage;
     const auto creation = TakeClassValue<analysis::ClassCreation>(

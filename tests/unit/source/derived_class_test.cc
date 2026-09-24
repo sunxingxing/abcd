@@ -119,22 +119,29 @@ int main(int argc, char** argv) {
         std::string::npos);
   auto historical = header;
   historical.profile = abc::ProfileId::kDynamic1206;
-  std::ostringstream wrong_profile;
-  const auto rejected = source::WriteCreatedClass(
+  std::ostringstream historical_output;
+  const auto historical_result = source::WriteCreatedClass(
       file, historical, index, lookup, {kCaller}, caller.instructions[0],
-      heritage, wrong_profile, {}, {}, nullptr, nullptr, nullptr, nullptr,
+      heritage, historical_output, {}, {}, nullptr, nullptr, nullptr, nullptr,
       {}, source::ImportedClassParent{0});
-  Check(std::get<source::CreatedClassError>(rejected) ==
-        source::CreatedClassError::kHeritage);
-  Check(wrong_profile.str().empty());
-  std::ostringstream wrong_global_profile;
-  const auto rejected_global = source::WriteCreatedClass(
+  Check(std::holds_alternative<std::size_t>(historical_result));
+  Check(historical_output.str().find("class Derived extends $loaded0") !=
+        std::string::npos);
+  std::ostringstream historical_global;
+  const auto historical_global_result = source::WriteCreatedClass(
       file, historical, index, lookup, {kCaller}, caller.instructions[0],
-      heritage, wrong_global_profile, {}, {}, nullptr, nullptr, nullptr,
+      heritage, historical_global, {}, {}, nullptr, nullptr, nullptr,
       nullptr, {}, source::GlobalClassParent{0});
-  Check(std::get<source::CreatedClassError>(rejected_global) ==
+  Check(std::holds_alternative<std::size_t>(historical_global_result));
+  auto unknown_profile = historical;
+  unknown_profile.profile = abc::ProfileId::kUnknown;
+  std::ostringstream unsupported;
+  Check(std::get<source::CreatedClassError>(source::WriteCreatedClass(
+            file, unknown_profile, index, lookup, {kCaller},
+            caller.instructions[0], heritage, unsupported, {}, {}, nullptr,
+            nullptr, nullptr, nullptr, {}, source::ImportedClassParent{0})) ==
         source::CreatedClassError::kHeritage);
-  Check(wrong_global_profile.str().empty());
+  Check(unsupported.str().empty());
   source::LocalLexicalBudget limited;
   limited.output.bytes = output.str().size() - 1;
   std::ostringstream short_output;
@@ -186,11 +193,15 @@ int main(int argc, char** argv) {
     std::cout << "const $loaded0 = class Base { constructor(...values) {"
                  " this.values = values; } };\nexport const Derived = "
               << output.str() << ";\n"
+              << "export const HistoricalDerived = "
+              << historical_output.str() << ";\n"
               << "export const PositionalDerived = "
               << positional_output.str() << ";\n"
               << "const $global0 = class Base { constructor(...values) {"
                  " this.values = values; } };\n"
               << "export const GlobalDerived = " << global_output.str()
+              << ";\nexport const HistoricalGlobalDerived = "
+              << historical_global.str()
               << ";\n";
   Check(unlink(path) == 0);
 }

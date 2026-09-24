@@ -86,8 +86,8 @@ int main() {
             analysis::LiftSuperInstruction(malformed, 10)) ==
         analysis::SuperError::kMalformedInstruction);
 
-  // The v7 EntryAbility constructor copies ABI slots, forwards every actual
-  // argument, binds the returned object as this, then returns that object.
+  // This pure forwarding template excludes the real EntryAbility constructor,
+  // which also uses COPYRESTARGS/SUPERCALLSPREAD and initializes a field.
   const std::vector<std::uint8_t> instructions{
       kMove, 0x60, kMove, 0x71, kMove, 0x82, kMove, 0x93,
       kLoad, 0, kStore, 5,
