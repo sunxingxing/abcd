@@ -630,6 +630,35 @@ register versus accumulator guard values, undefined acceptance, actual Hole
 rejection, unknown/phi facts, conditional error-name reads, capture binding
 failure, and independent versus fused guard PC spans.
 
+## Method-Scoped Template Locals
+
+Template local names now include the owning ABC method entity, environment
+identity and slot (`$inner<method>_<environment>_<slot>`). Ordinary parent-cell
+names retain the existing `$lex<environment>_<slot>` ABI used by legacy capture
+emission and `BindSourceTemplate`. Both are formatted into a fixed-size buffer
+derived from the typed ID widths, without name parsing or semantic string tags.
+
+The generic child capture sink can consequently bind a proven parent local
+inside a parent template, using exactly the same formatter as that parent's
+local declarations, reads and stores. Previously it rejected this case to
+avoid shadowing a child's identically named `$inner` slot. The unchanged
+first-creation, same-block store/initialization proof still applies. Method
+IDs are sufficient only under the current same-file, one-level child expansion
+capability: recursive/repeated-method nesting cannot successfully expand.
+Any future recursive expansion must introduce an emission-scope identity or
+prove that no ancestor binding can collide. Do not merely remove that bound.
+
+Both CLI targets compiled. The ABC-only survey at
+`build/pasteboard-semantic-scoped-locals.jsonl` remains 101 bodies and 24
+templates; no rejection PC changed and none of the currently successful
+templates declares local cells. Thus this change removes a known composition
+restriction but has no demonstrated additional Pasteboard source coverage.
+It must not be reported as an end-to-end capture-binding verification.
+Deferred regressions include equal environment/slot IDs in distinct methods,
+parent-template local capture, ordinary `$lex` ABI compatibility, same-method
+nesting rejection, private-name collisions, maximum-width IDs, and declaration
+versus insertion consistency. Tests and RSS tracking remain paused.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

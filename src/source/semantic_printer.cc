@@ -150,12 +150,7 @@ class SourcePrinter {
         printer_.Capture(*outer);
         return true;
       }
-      // Template locals use $inner names, also used by child locals. Until
-      // scope-unique local naming exists, never bind a child to those names.
-      if (printer_.capture_mode_ != CaptureMode::kReject)
-        throw SourceFailure{SourceError::kCreation, printer_.current_pc_};
-      const LexicalName name{std::get<analysis::LocalCell>(resolved)};
-      printer_.Text(name.Text());
+      printer_.LocalName(std::get<analysis::LocalCell>(resolved));
       return true;
     }
    private:
@@ -183,13 +178,16 @@ class SourcePrinter {
     captures_.push_back({position_, cell});
     ++position_.captures;
   }
+  void LocalName(analysis::LocalCell cell) {
+    const auto name = capture_mode_ == CaptureMode::kTemplate
+                          ? LexicalName{cell, constants_.method}
+                          : LexicalName{cell};
+    Text(name.Text());
+  }
   void Local(analysis::LocalCellId id) {
     if (id.value >= ast_.local_cells.size())
       throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
-    const LexicalName name{ast_.local_cells[id.value],
-        capture_mode_ == CaptureMode::kTemplate ? LexicalNamespace::kTemplate
-                                               : LexicalNamespace::kParent};
-    Text(name.Text());
+    LocalName(ast_.local_cells[id.value]);
   }
   void DeclareLocals() {
     if (ast_.local_cells.empty()) return;
