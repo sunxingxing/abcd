@@ -1,19 +1,24 @@
 #include "record_text.h"
 
+#include <new>
+#include <stdexcept>
+
 #include "abcd/abc/debug_scopes.h"
+#include "abcd/structure/source_identity.h"
 
 namespace abcd::structure {
 namespace {
-enum class FileEvidence { kMissing, kUnique, kConflicting, kIncomplete };
+using FileEvidence = SourceIdentityState;
 bool Fatal(abc::MetadataError error) {
   return error == abc::MetadataError::kRead ||
          error == abc::MetadataError::kFileChanged ||
          error == abc::MetadataError::kResourceLimit;
 }
-}  // namespace
-
-void WriteSourceIdentity(const RecordText& text, const abc::MetadataIndex& index,
-                         const abc::RecordInfo& record, std::ostream& out) {
+SourceIdentity Gather(const RecordText& text, const abc::MetadataIndex& index,
+                      const abc::RecordInfo& record) {
+  if (record.first_method > index.methods.size() ||
+      record.method_count > index.methods.size() - record.first_method)
+    throw StructureFailure{record.offset, StructureFault::kMemberRange};
   FileEvidence state = FileEvidence::kMissing;
   std::u16string name;
   std::optional<abc::EntityOffset> previous;
@@ -33,6 +38,8 @@ void WriteSourceIdentity(const RecordText& text, const abc::MetadataIndex& index
     observe(record.source_file);
     for (std::size_t i = 0; i < record.method_count; ++i) {
       const auto& method = index.methods[record.first_method + i];
+      if (method.owner_offset != record.offset)
+        throw StructureFailure{method.offset, StructureFault::kOwner};
       if (!method.debug_info || !method.code) continue;
       const auto decoded = abc::ReadDebugInfo(
           text.file, text.header, *method.debug_info, {text.budget.debug_bytes});
@@ -59,10 +66,34 @@ void WriteSourceIdentity(const RecordText& text, const abc::MetadataIndex& index
     if (!error || Fatal(*error)) throw;
     state = FileEvidence::kIncomplete;
   }
-  out << ",\"source_file_evidence\":{\"state\":" << static_cast<unsigned>(state)
+  return {state, state == FileEvidence::kUnique ? std::move(name) : std::u16string{}};
+}
+}  // namespace
+
+SourceIdentityResult ReadSourceIdentity(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::RecordInfo& record,
+    StructureBudget budget) {
+  try {
+    return Gather(RecordText(file, header, budget), index, record);
+  } catch (const StructureFailure& failure) {
+    return failure;
+  } catch (const std::bad_alloc&) {
+    return StructureFailure{record.offset, StructureFault::kResourceLimit};
+  } catch (const std::length_error&) {
+    return StructureFailure{record.offset, StructureFault::kResourceLimit};
+  }
+}
+
+void WriteSourceIdentity(const RecordText& text, const abc::MetadataIndex& index,
+                         const abc::RecordInfo& record, std::ostream& out) {
+  const auto result = ReadSourceIdentity(text.file, text.header, index, record, text.budget);
+  if (const auto* failure = std::get_if<StructureFailure>(&result)) throw *failure;
+  const auto& identity = std::get<SourceIdentity>(result);
+  out << ",\"source_file_evidence\":{\"state\":" << static_cast<unsigned>(identity.state)
       << ",\"file\":";
-  if (state == FileEvidence::kUnique)
-    text.String(out, name);
+  if (identity.state == FileEvidence::kUnique)
+    text.String(out, identity.file);
   else
     out << "null";
   out << '}';

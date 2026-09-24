@@ -1036,6 +1036,30 @@ checks include all three callable forms, promise fulfillment/rejection,
 original-PC fusion after normalization, nested method provenance isolation,
 resource exhaustion, actual-await refusal and malformed completion tails.
 
+## Typed Filename Evidence Boundary
+
+Filename consensus is now available through `ReadSourceIdentity`, returning a
+typed missing/unique/conflicting/incomplete result or a structured failure.
+The metadata writer consumes that API rather than owning its semantics.
+Record method ranges and owner identity are checked before reading debug
+payloads. Allocation failures remain typed. A future path planner can consume
+the same evidence directly without reparsing JSON or scanning generated text.
+
+ABC-only export at `build/pasteboard-source-identity-api` preserves all 19
+previous consensus results: ten unique application filenames and nine missing
+metadata filenames. Descriptor-based output paths intentionally remain
+unchanged. The locally available es2panda code accepts `sourceFile` as compiler
+input, while the release manifest points to the absent
+`developtools_ace_ets2bundle` repository for the upstream build tool. The
+four-part pipe-delimited identity's generating contract has not been verified;
+no `.ts` to `.ets` conversion or prefix interpretation is justified yet.
+
+The structure CLI compiled. No tests or RSS tracking were run. Deferred cases
+include malformed member ranges, owner mismatches, conflicting names,
+incomplete optional debug metadata and quota exhaustion. Path-format profile
+verification and feeding accepted paths into collision-safe planning remain
+unfinished, not replaced by this metadata API.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial
