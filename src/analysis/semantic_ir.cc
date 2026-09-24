@@ -321,7 +321,30 @@ SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
   // renaming and subsequent source validation; future recovered operations
   // must not silently revert to the original VM operand effects in SSA.
   std::size_t next_await = 0;
+  std::size_t next_mode = 0;
   for (const auto& site : body.instructions) {
+    if (next_mode < awaits.size() && awaits[next_mode].mode_pc < site.offset)
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    if (next_mode < awaits.size() && awaits[next_mode].mode_pc == site.offset) {
+      if (next_mode >= next_await)
+        return Fail(SemanticError::kMalformedInstruction, site.offset);
+      ++next_mode;
+      const auto lifted = LiftCoroutineInstruction(site.decoded, frame_size);
+      const auto* read = std::get_if<CoroutineRead>(&lifted);
+      if (!read || read->kind != CoroutineReadKind::kResumeMode ||
+          !std::holds_alternative<Accumulator>(read->state))
+        return Fail(SemanticError::kMalformedInstruction, site.offset);
+      // The private async state can only resume NEXT or THROW. Native await
+      // already takes the throwing path; normal continuation has exact NEXT.
+      SemanticOperation operation = ScalarAssignment{
+          Accumulator{}, ScalarValue{IntegerLiteral{
+              static_cast<std::int32_t>(CoroutineResumeMode::kNext)}}};
+      RegisterEffect registers;
+      registers.write = Accumulator{};
+      const auto effects = Effects(operation, registers);
+      instructions.push_back({site.offset, std::move(operation), effects});
+      continue;
+    }
     if (next_await < awaits.size() && awaits[next_await].pc < site.offset)
       return Fail(SemanticError::kMalformedInstruction, site.offset);
     if (next_await < awaits.size() && awaits[next_await].pc == site.offset) {
@@ -357,7 +380,7 @@ SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
     auto effects = Effects(semantic, std::get<RegisterEffect>(registers));
     instructions.push_back({site.offset, std::move(semantic), effects});
   }
-  if (next_await != awaits.size())
+  if (next_await != awaits.size() || next_mode != awaits.size())
     return Fail(SemanticError::kMalformedInstruction);
   const auto instruction_bytes =
       instructions.capacity() * sizeof(SemanticInstruction);

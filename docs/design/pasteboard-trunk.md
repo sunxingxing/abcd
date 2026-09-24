@@ -1271,6 +1271,43 @@ staged-await refusal and resource exhaustion require regression validation when
 testing resumes. Source-style recovery, other async/handler shapes and class
 construction blockers remain open.
 
+### Async branches and settlement exits (2026-09-25)
+
+The private async normalizer now retains resume-mode reads and stores instead
+of dropping their definitions and requiring straight-line temporary liveness.
+Each owner-proven mode site becomes a typed scalar definition of the pinned
+`CoroutineResumeMode::kNext` on successful native-await continuation. Rejection
+leaves through native await before that definition. The private state cannot
+be externally resumed, and the pinned await callbacks use only NEXT/THROW.
+This keeps exact register values available on later branches without inventing
+undefined values or a per-register graph walk. Mode PCs retain provenance.
+
+Ordinary branches are confined to the protected source body. Every retained
+early return must have an immediately preceding settlement of the same private
+async state. Verified resolve operations are removed; retained returns consume
+their original source value. A branch to a removed resolve is redirected to its
+adjacent retained return, while a direct branch to the original return is
+refused because it bypasses settlement. Other deleted PCs are not rounded to a
+nearby instruction. Original-PC indexing rebases targets, signed deltas and
+encoded immediate bits together, with width/range checks before CFG admission.
+
+The origin index is now needed internally even when the caller does not request
+provenance; it shares the normalization byte budget. Branch rebasing costs
+O(B log I) with O(I) retained origin storage, rather than scanning all sites per
+branch. Existing bounded await-region analysis remains, and the dense removed-
+mode scratch array is gone. No new special-case method-name dispatch is used.
+
+Both CLI targets compiled. ABC-only output
+`build/pasteboard-semantic-async-branches-final.jsonl` reports
+`[0,0,36,1,0,8,0,12,111,51]`. Method 10250 advances from print failure to a
+capture template containing its async child 10361, including native await and
+conditional control flow. Method 9165 supplies a further multi-await/early-exit
+case but is not claimed as fully emitted; later generic gates still apply.
+Tests and RSS collection remain paused. Branch-to-settlement versus branch-to-
+return, signed displacement limits, loops, multiple waits, live mode uses and
+rejection ordering need regression coverage when testing resumes. Full record
+completion, idiomatic source recovery and complete nested PC spans remain open.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

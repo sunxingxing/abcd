@@ -1,11 +1,12 @@
 #include "async_completion.h"
 
 #include <algorithm>
+#include <climits>
 #include <limits>
 
+#include "abcd/abc/control_transfer.h"
 #include "abcd/abc/register_access.h"
 #include "abcd/analysis/coroutine.h"
-#include "abcd/analysis/register_effect.h"
 
 namespace abcd::source {
 namespace {
@@ -37,6 +38,48 @@ bool TouchesRegister(const abc::BodyInstruction& instruction,
       return true;
   }
   return false;
+}
+bool RebaseBranches(const abc::MethodBody& original,
+                    std::span<const abc::CodeOffset> origins,
+                    abc::MethodBody& source) {
+  for (auto& site : source.instructions) {
+    if (!site.branch_target) continue;
+    const auto target = *site.branch_target;
+    const auto retained = std::lower_bound(origins.begin(), origins.end(), target);
+    if (retained == origins.end()) return false;
+    const auto target_index = static_cast<std::size_t>(retained - origins.begin());
+    // A direct jump to RETURN would bypass the original promise settlement.
+    // Only a jump to the removed RESOLVE may be redirected to that return.
+    if (*retained == target && IsReturn(source.instructions[target_index]))
+      return false;
+    if (*retained != target) {
+      const auto old = std::lower_bound(
+          original.instructions.begin(), original.instructions.end(), target,
+          [](const auto& instruction, auto pc) { return instruction.offset < pc; });
+      // Only a proven settlement immediately followed by its retained return
+      // can be a removed branch target. Never round into a deleted VM region.
+      if (old == original.instructions.end() || old->offset != target ||
+          old->decoded.opcode != abc::Opcode::kASYNCFUNCTIONRESOLVE_V8 ||
+          std::uint64_t(target.value) + old->decoded.size != retained->value ||
+          !IsReturn(source.instructions[target_index]))
+        return false;
+    }
+    const auto destination = source.instructions[target_index].offset;
+    const auto delta = std::int64_t(destination.value) - site.offset.value;
+    if (site.decoded.operand_count != 1) return false;
+    auto& operand = site.decoded.operands[0];
+    const auto width = operand.width_bits;
+    if (operand.kind != abc::OperandKind::kImmediate || !width ||
+        width > sizeof(std::int32_t) * CHAR_BIT)
+      return false;
+    const auto magnitude = std::int64_t{1} << (width - 1);
+    if (delta < -magnitude || delta >= magnitude) return false;
+    operand.raw_bits = static_cast<std::uint64_t>(delta) &
+                       ((std::uint64_t{1} << width) - 1);
+    site.decoded.branch_delta = delta;
+    site.branch_target = destination;
+  }
+  return true;
 }
 }  // namespace
 AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
@@ -90,8 +133,7 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       rejected != promise)
     return FunctionEmitError::kKind;
   auto retained = handler - 3;
-  const auto site_bytes = sizeof(abc::BodyInstruction) +
-                         (source_pcs ? sizeof(abc::CodeOffset) : 0);
+  const auto site_bytes = sizeof(abc::BodyInstruction) + sizeof(abc::CodeOffset);
   if (retained > bytes / site_bytes)
     return FunctionEmitError::kResourceLimit;
   const auto& region = body.tries[0];
@@ -125,16 +167,6 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
   const auto region_bytes = regions.capacity() * sizeof(analysis::AwaitRegion);
   if (region_bytes > bytes) return FunctionEmitError::kResourceLimit;
   bytes -= region_bytes;
-  // Removed resume-mode definitions must be dead before any retained read.
-  // One frame-indexed set checks all sites in O(frame + I + expanded reads),
-  // never a forward method scan for every temporary or await.
-  std::vector<std::uint8_t> removed_modes;
-  if (!regions.empty()) {
-    if (frame.registers > bytes) return FunctionEmitError::kResourceLimit;
-    removed_modes.resize(frame.registers);
-    if (removed_modes.capacity() > bytes) return FunctionEmitError::kResourceLimit;
-    bytes -= removed_modes.capacity();
-  }
   std::size_t next_region = 0;
   for (std::size_t i = enter + 2; i < handler - 2; ++i) {
     const auto& site = sites[i];
@@ -142,36 +174,36 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       const auto& region = regions[next_region++];
       if (region.state != promise || region.continuation >= sites[handler - 2].offset)
         return FunctionEmitError::kKind;
-      removed_modes[region.result.value] = 0;
-      removed_modes[region.resume_mode.value] = 1;
       while (i + 1 < handler - 2 && sites[i + 1].offset < region.continuation) {
         ++i;
-        if (sites[i].offset != region.result_store) --retained;
+        if (sites[i].offset != region.result_store &&
+            sites[i].offset != region.mode && sites[i].offset != region.mode_store)
+          --retained;
       }
       continue;
     }
-    if (site.branch_target || site.decoded.jump || site.decoded.conditional ||
-        IsReturn(site) ||
-        TouchesRegister(site, promise, frame.registers))
-      return FunctionEmitError::kKind;
-    if (!removed_modes.empty()) {
-      const auto lifted = analysis::LiftRegisterEffect(site.decoded, frame.registers);
-      const auto* effect = std::get_if<analysis::RegisterEffect>(&lifted);
-      if (!effect) return FunctionEmitError::kKind;
-      const auto reads_removed = [&](analysis::ScalarSlot slot) {
-        const auto* reg = std::get_if<abc::RegisterId>(&slot);
-        return reg && removed_modes[reg->value];
-      };
-      for (std::size_t read = 0; read < effect->read_count; ++read)
-        if (reads_removed(effect->reads[read])) return FunctionEmitError::kKind;
-      if (effect->range)
-        for (std::uint32_t read = 0; read < effect->range->count; ++read)
-          if (removed_modes[effect->range->first.value + read])
-            return FunctionEmitError::kKind;
-      if (effect->write)
-        if (const auto* reg = std::get_if<abc::RegisterId>(&*effect->write))
-          removed_modes[reg->value] = 0;
+    abc::RegisterId settled;
+    if (IsRegister(site, Opcode::kASYNCFUNCTIONRESOLVE_V8, &settled)) {
+      if (settled != promise || i + 1 >= handler - 2 || !IsReturn(sites[i + 1]))
+        return FunctionEmitError::kKind;
+      --retained;
+      continue;
     }
+    const auto control = abc::GetControlTransfer(site.decoded.opcode);
+    if (!control || *control == abc::ControlTransfer::kSuspend)
+      return FunctionEmitError::kKind;
+    if (*control == abc::ControlTransfer::kReturn) {
+      if (!IsReturn(site) || i == enter + 2 ||
+          !IsRegister(sites[i - 1], Opcode::kASYNCFUNCTIONRESOLVE_V8, &settled) ||
+          settled != promise)
+        return FunctionEmitError::kKind;
+    }
+    if (site.branch_target &&
+        (*site.branch_target < sites[enter + 2].offset ||
+         *site.branch_target > sites[handler - 1].offset))
+      return FunctionEmitError::kKind;
+    if (TouchesRegister(site, promise, frame.registers))
+      return FunctionEmitError::kKind;
   }
     if (next_region != regions.size()) return FunctionEmitError::kKind;
     if (regions.size() > bytes / sizeof(analysis::AwaitSite))
@@ -191,20 +223,22 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
                                sites.begin() + enter);
     next_region = 0;
     for (std::size_t i = enter + 2; i < handler - 2; ++i) {
+      if (sites[i].decoded.opcode == Opcode::kASYNCFUNCTIONRESOLVE_V8) continue;
       source.instructions.push_back(sites[i]);
       if (next_region < regions.size() && sites[i].offset == regions[next_region].await) {
         const auto& region = regions[next_region++];
-        await_sites.push_back({sites[i].offset, region});
+        await_sites.push_back({sites[i].offset, region, region.mode});
         while (i + 1 < handler - 2 && sites[i + 1].offset < region.continuation) {
           ++i;
-          if (sites[i].offset == region.result_store)
+          if (sites[i].offset == region.result_store ||
+              sites[i].offset == region.mode || sites[i].offset == region.mode_store)
             source.instructions.push_back(sites[i]);
         }
       }
     }
     source.instructions.push_back(sites[handler - 1]);
     std::vector<abc::CodeOffset> origins;
-    if (source_pcs) {
+    {
       const auto remaining = bytes - source.instructions.capacity() *
                                      sizeof(abc::BodyInstruction);
       if (retained > remaining / sizeof(abc::CodeOffset))
@@ -216,13 +250,18 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
     }
     std::uint32_t next_pc = 0;
     next_region = 0;
+    std::size_t next_mode = 0;
     for (auto& site : source.instructions) {
+      if (next_mode < await_sites.size() &&
+          site.offset == await_sites[next_mode].origin.mode)
+        await_sites[next_mode++].mode_pc = abc::CodeOffset{next_pc};
       if (next_region < await_sites.size() &&
           site.offset == await_sites[next_region].origin.await)
         await_sites[next_region++].pc = abc::CodeOffset{next_pc};
       site.offset = abc::CodeOffset{next_pc};
       next_pc += site.decoded.size;
     }
+    if (!RebaseBranches(body, origins, source)) return FunctionEmitError::kKind;
     if (source_pcs) *source_pcs = std::move(origins);
     if (awaits) *awaits = std::move(await_sites);
     return source;

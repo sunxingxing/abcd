@@ -8,6 +8,10 @@
 #include "abcd/analysis/scalar.h"
 
 namespace abcd::analysis {
+// Pinned js_generator_object.h GeneratorResumeMode ABI.
+enum class CoroutineResumeMode : std::int32_t {
+  kReturn = 0, kThrow = 1, kNext = 2, kUndefined = 3
+};
 enum class CoroutineTransferKind { kAwait, kSuspend, kResolve, kReject };
 struct CoroutineTransfer {
   CoroutineTransferKind kind;

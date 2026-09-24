@@ -13,7 +13,8 @@ namespace abcd::analysis {
 namespace {
 // Pinned js_generator_object.h GeneratorResumeMode::THROW. Never infer this
 // value from application literals; it is an explicit runtime ABI constant.
-constexpr std::int32_t kThrowResumeMode = 1;
+constexpr auto kThrowResumeMode =
+    static_cast<std::int32_t>(CoroutineResumeMode::kThrow);
 enum AwaitStep : std::size_t {
   kAwait, kSuspend, kLoadState, kResume, kSaveResult, kReloadState,
   kReadMode, kSaveMode, kThrowMode, kCompareMode, kBranch,
@@ -95,7 +96,7 @@ std::optional<AwaitRegion> Match(std::span<const abc::BodyInstruction> sites,
     return std::nullopt;
   return AwaitRegion{sites[kAwait].offset, sites[kSuspend].offset,
                      sites[kResume].offset, sites[kSaveResult].offset,
-                     sites[kReadMode].offset,
+                     sites[kReadMode].offset, sites[kSaveMode].offset,
                      sites[kBranch].offset, sites[kThrow].offset,
                      sites[kContinue].offset, *state, *result, *mode};
 }

@@ -15,6 +15,7 @@ struct AwaitRegion {
   abc::CodeOffset resume;
   abc::CodeOffset result_store;
   abc::CodeOffset mode;
+  abc::CodeOffset mode_store;
   abc::CodeOffset branch;
   abc::CodeOffset reject;
   abc::CodeOffset continuation;
@@ -23,10 +24,13 @@ struct AwaitRegion {
   abc::RegisterId resume_mode;
 };
 // A callable owner supplies this only after proving its async completion
-// wrapper and private state, then maps pc to the normalized method body.
+// wrapper and private state, then maps await and mode PCs to the normalized
+// body. Normal native-await continuation has exact NEXT mode; rejection exits
+// before that mode definition. Neither site consumes the private VM state.
 struct AwaitSite {
   abc::CodeOffset pc;
   AwaitRegion origin;
+  abc::CodeOffset mode_pc;
 };
 enum class AwaitRegionError {
   kUnsupportedProfile,

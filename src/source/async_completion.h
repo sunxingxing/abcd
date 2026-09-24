@@ -10,11 +10,12 @@ namespace abcd::source {
 // The v7 compiler's completion template can be represented by a
 // native async method: its catch/reject tail is exactly the async call's
 // implicit rejection path. With awaits supplied, verified modern resume
-// regions are collapsed while retaining await and result-store instructions;
+// regions are collapsed while retaining await, result and mode definitions;
 // only the generic IR may interpret these using the returned AwaitSite facts.
 // Other suspension and handler shapes are refused. Requires decoded input.
-// Optional provenance maps each retained normalized instruction to its ABC PC;
-// the caller owns it and its capacity shares the normalization byte budget.
+// The origin index rebases branches, including targets at removed settlement
+// operations. Optional provenance publishes it to the caller. All retained
+// arrays and temporary indexing share the normalization byte budget.
 using AsyncCompletion = std::variant<abc::MethodBody, FunctionEmitError>;
 [[nodiscard]] AsyncCompletion ProveAsyncCompletion(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
