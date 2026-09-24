@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_SCALAR_EXPRESSION_H_
 
 #include <iosfwd>
+#include <optional>
 #include <span>
 #include <string_view>
 
@@ -10,11 +11,16 @@
 
 namespace abcd::source {
 struct ScalarNames {
+  struct RestBinding {
+    std::uint16_t first_argument;
+    std::string_view name;
+  };
   std::string_view accumulator;
   std::span<const std::string_view> registers;
   // Caller-proven immutable binding for the active function object. Empty
   // refuses LDFUNCTION; a writable VM function-slot register is not enough.
   std::string_view current_function{};
+  std::optional<RestBinding> rest{};
 };
 // Emits an expression, not a method/record. Referenced names must be declared,
 // initialized, side-effect-free local bindings supplied by the caller. Only

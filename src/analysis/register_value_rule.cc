@@ -10,6 +10,7 @@
 #include "abcd/analysis/lexical.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/object_creation.h"
+#include "abcd/analysis/rest_arguments.h"
 
 namespace abcd::analysis::detail {
 namespace {
@@ -139,6 +140,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
           LiftObjectCreation(instruction)) ||
       std::holds_alternative<IterResult>(
           LiftIterResult(instruction, frame_size)) ||
+      std::holds_alternative<RestCopy>(LiftRestArguments(instruction)) ||
       std::holds_alternative<FunctionCreation>(
           LiftFunctionCreation(instruction)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};

@@ -14,6 +14,7 @@
 #include "abcd/analysis/object_creation.h"
 #include "abcd/analysis/own_write.h"
 #include "abcd/analysis/ordinary_call.h"
+#include "abcd/analysis/rest_arguments.h"
 
 namespace abcd::analysis {
 namespace {
@@ -70,6 +71,8 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
     return Transfer{false, AccumulatorWrite::kValue};
   if (std::holds_alternative<IterResult>(
           LiftIterResult(instruction, frame_size)))
+    return Transfer{false, AccumulatorWrite::kValue};
+  if (std::holds_alternative<RestCopy>(LiftRestArguments(instruction)))
     return Transfer{false, AccumulatorWrite::kValue};
   switch (instruction.opcode) {
     case Opcode::kLDHOLE:

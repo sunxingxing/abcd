@@ -76,6 +76,12 @@ for (const fn of [source.parameter, source.self, first, second]) {
 assert.equal(source.empty.length, 0);
 assert.equal(source.length255.length, 255);
 assert.equal(source.empty(), undefined);
+assert.deepEqual(source.rest(), []);
+assert.deepEqual(source.rest(1, 'two', null), [1, 'two', null]);
+assert.notEqual(source.rest(1), source.rest(1));
+assert.equal(source.rest.length, 0);
+assert.deepEqual(source.leadingRest(7, 8, 9), [8, 9]);
+assert.equal(source.leadingRest.length, 1);
 assert.equal(source.firstForIn({alpha: 1, beta: 2}), 'alpha');
 assert.equal(source.firstForIn(Object.create({inherited: true})), 'inherited');
 assert.equal(source.firstForIn(Object.create(null)), undefined);

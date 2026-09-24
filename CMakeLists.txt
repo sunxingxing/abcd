@@ -44,6 +44,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/branch_condition.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/constant_object.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/iterator.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/iter_result.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/rest_arguments.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/first_for_in.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/private_property.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/guarded_global_call.cc)
@@ -193,6 +194,10 @@ if(BUILD_TESTING)
   add_executable(class_creation_test tests/unit/analysis/class_creation_test.cc)
   target_link_libraries(class_creation_test PRIVATE abcd_analysis)
   add_test(NAME class_creation_test COMMAND class_creation_test)
+  add_executable(rest_arguments_test tests/unit/analysis/rest_arguments_test.cc)
+  target_include_directories(rest_arguments_test PRIVATE tests/support)
+  target_link_libraries(rest_arguments_test PRIVATE abcd_analysis)
+  add_test(NAME rest_arguments_test COMMAND rest_arguments_test)
   add_executable(class_heritage_test tests/unit/analysis/class_heritage_test.cc)
   target_include_directories(class_heritage_test PRIVATE tests/support)
   target_link_libraries(class_heritage_test PRIVATE abcd_analysis)
@@ -819,9 +824,11 @@ if(BUILD_TESTING)
     if(ABCD_NODE_EXECUTABLE AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")
-      add_test(NAME record_constructor_blocker_test COMMAND ${CMAKE_COMMAND}
+      add_test(NAME record_constructor_source_test COMMAND ${CMAKE_COMMAND}
         -DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>
         -DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc
+        -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+        -DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_constructor.mjs
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_constructor.cmake)
       add_test(NAME historical_record_source_test COMMAND ${CMAKE_COMMAND}
         -DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>

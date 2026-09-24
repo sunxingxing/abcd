@@ -13,6 +13,7 @@
 
 #include "abcd/abc/register_access.h"
 #include "abcd/analysis/first_for_in.h"
+#include "abcd/analysis/rest_arguments.h"
 #include "abcd/source/base_constructor.h"
 #include "abcd/source/class_method.h"
 #include "abcd/source/string_literal.h"
@@ -41,6 +42,7 @@ struct CallableShape {
   std::u16string_view key{};
   abc::ClassPlacement placement = abc::ClassPlacement::kPrototype;
   std::u16string_view arrow_name{};
+  bool rest = false;
 };
 constexpr std::size_t kIndexDigits =
     std::numeric_limits<std::uint32_t>::digits10 + 1;
@@ -207,6 +209,10 @@ class FunctionWriter {
 
   FunctionEmitResult Write(const abc::MethodBody& body) {
     try {
+      const bool strict_wrapper = function_.rest &&
+          (function_.syntax == CallableSyntax::kFunctionExpression ||
+           function_.syntax == CallableSyntax::kAsyncFunctionExpression);
+      if (strict_wrapper) Text("(() => {\"use strict\"; return ");
       if (function_.syntax == CallableSyntax::kClassMethod ||
           function_.syntax == CallableSyntax::kAsyncClassMethod ||
           function_.syntax == CallableSyntax::kClassGetter ||
@@ -230,7 +236,9 @@ class FunctionWriter {
       } else if (function_.syntax == CallableSyntax::kArrowExpression) {
         // A computed data-property name applies SetFunctionName without a
         // mutable intrinsic; arrow IIFEs retain lexical this/new.target.
-        Text("(() => {\nconst $arrow = ({[");
+        Text(function_.rest
+                 ? "(() => {\n\"use strict\";\nconst $arrow = ({["
+                 : "(() => {\nconst $arrow = ({[");
         ArrowName();
         Text("]: (");
       } else {
@@ -242,11 +250,14 @@ class FunctionWriter {
       const auto& frame = function_.frame;
       for (std::uint32_t i = 0; i < frame.parameters && !error_; ++i) {
         if (i != 0) Text(", ");
+        if (function_.rest && i + 1 == frame.parameters) Text("...");
         Parameter(i);
       }
       Text(function_.syntax == CallableSyntax::kArrowExpression
-               ? ") => {\n\"use strict\";\nlet $acc;\n"
-               : ") {\n\"use strict\";\nlet $acc;\n");
+               ? function_.rest ? ") => {\nlet $acc;\n"
+                                : ") => {\n\"use strict\";\nlet $acc;\n"
+               : function_.rest ? ") {\nlet $acc;\n"
+                                : ") {\n\"use strict\";\nlet $acc;\n");
       // Each VM register is independently writable. In particular, a function
       // slot must not alias the immutable named-expression self binding.
       for (std::uint32_t i = 0; i < frame.registers && !error_; ++i) {
@@ -340,6 +351,7 @@ class FunctionWriter {
                      function_.syntax == CallableSyntax::kAsyncFunctionExpression
                  ? "})" : "}");
       }
+      if (strict_wrapper) Text(";})()");
       if (error_) return *error_;
       return written_;
     } catch (const std::ios_base::failure&) {
@@ -399,8 +411,19 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
                                  const abc::MethodLookup* methods,
                                  analysis::CapturedValues captured_values) {
   if (!CanonicalFrame(function.frame)) return FunctionEmitError::kFrame;
-  if (function.length != function.frame.parameters)
+  const bool rest = function.length != function.frame.parameters;
+  if (rest && (function.syntax == CallableSyntax::kClassGetter ||
+               function.syntax == CallableSyntax::kClassSetter))
     return FunctionEmitError::kLength;
+  // A null constants pointer retains the existing pinned-v7 caller assertion.
+  if (rest && constants &&
+      constants->header.profile != abc::ProfileId::kDynamic1206 &&
+      constants->header.profile != abc::ProfileId::kDynamic1301)
+    return FunctionEmitError::kLength;
+  const auto rest_prologue = rest ? analysis::ProveRestPrologue(
+                                        body, function.frame, function.length)
+                                  : std::nullopt;
+  if (rest && !rest_prologue) return FunctionEmitError::kLength;
   // Reuse the expression emitter's strict-safe binding validation. '$' is our
   // private source namespace; never let a supplied function name shadow it.
   CaptureDiscard buffer;
@@ -475,6 +498,7 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
     }
     auto shape = function;
     shape.arrow_name = arrow_name;
+    shape.rest = rest;
     auto storage = std::make_unique<RegisterName[]>(count);
     auto names = std::make_unique<std::string_view[]>(count);
     for (std::uint32_t i = 0; i < count; ++i) {
@@ -501,8 +525,27 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
       }
       return {};
     }();
-    const ScalarNames bindings{"$acc", {names.get(), count},
-                               current_function};
+    RegisterName rest_storage{};
+    std::string_view rest_name;
+    if (rest) {
+      if (constants && !constants->source_parameters.empty()) {
+        rest_name = constants->source_parameters.back();
+      } else {
+        rest_storage[0] = '$';
+        rest_storage[1] = 'p';
+        const auto end = std::to_chars(
+            rest_storage.data() + 2,
+            rest_storage.data() + rest_storage.size(),
+            function.frame.parameters - 1).ptr;
+        rest_name = {rest_storage.data(),
+                     static_cast<std::size_t>(end - rest_storage.data())};
+      }
+    }
+    const ScalarNames bindings{
+        "$acc", {names.get(), count}, current_function,
+        rest ? std::optional<ScalarNames::RestBinding>{
+                   ScalarNames::RestBinding{function.length, rest_name}}
+             : std::nullopt};
     const auto checked = FunctionWriter(shape, bindings, discard, budget,
                                         constants, methods, captured_values)
                              .Write(body);
@@ -576,6 +619,8 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
       break;
     case abc::ClassMethodKind::kGenerator:
     case abc::ClassMethodKind::kAsyncGenerator:
+      return FunctionEmitError::kKind;
+    default:
       return FunctionEmitError::kKind;
   }
   if (syntax == CallableSyntax::kClassGetter ||

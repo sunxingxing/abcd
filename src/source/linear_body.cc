@@ -16,6 +16,7 @@
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/ordinary_call.h"
+#include "abcd/analysis/rest_arguments.h"
 #include "abcd/source/string_literal.h"
 #include "linear_instruction.h"
 #include "object_buffer.h"
@@ -344,6 +345,25 @@ class BodyWriter {
               constants_->header.profile != abc::ProfileId::kDynamic1301)
             return Fail(BodyEmitError::kUnsupportedInstruction);
           Construct(instruction.decoded);
+          accumulator_defined = true;
+        } else if (opcode == Opcode::kCOPYRESTARGS_IMM8 ||
+                   opcode == Opcode::kWIDE_COPYRESTARGS_PREF_IMM16) {
+          const auto rest = LiftRestArguments(instruction.decoded);
+          const auto* operation = std::get_if<RestCopy>(&rest);
+          if (!operation || !names_.rest ||
+              names_.rest->first_argument != operation->first_argument ||
+              (constants_ &&
+               constants_->header.profile != abc::ProfileId::kDynamic1206 &&
+               constants_->header.profile != abc::ProfileId::kDynamic1301))
+            return Fail(BodyEmitError::kUnsupportedInstruction);
+          Expression(ScalarValue{Accumulator{}});
+          Text(" = ");
+          if (error_) return *error_;
+          // Identifier validation stays with the scalar expression writer.
+          const ScalarNames rest_names{names_.rest->name, {}};
+          Account(WriteScalarExpression(ScalarValue{Accumulator{}},
+                                        rest_names, output_, {remaining_}));
+          Text(";\n");
           accumulator_defined = true;
         } else if (opcode == Opcode::kRETURNUNDEFINED) {
           Text("return;\n");

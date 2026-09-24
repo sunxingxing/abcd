@@ -19,6 +19,7 @@
 #include "abcd/analysis/object_creation.h"
 #include "abcd/analysis/own_write.h"
 #include "abcd/analysis/private_property.h"
+#include "abcd/analysis/rest_arguments.h"
 
 namespace abcd::analysis {
 namespace {
@@ -323,6 +324,11 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   if (auto result = Adapt(LiftObjectCreation(instruction));
       !Unsupported(result))
     return result;
+  const auto rest = LiftRestArguments(instruction);
+  if (std::holds_alternative<RestCopy>(rest))
+    return AccumulatorDefinition();
+  if (std::get<RestError>(rest) == RestError::kMalformedInstruction)
+    return ScalarError::kMalformedInstruction;
   const auto iter_result = LiftIterResult(instruction, frame_size);
   if (const auto* created = std::get_if<IterResult>(&iter_result))
     return EffectOf(*created);

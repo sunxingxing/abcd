@@ -20,16 +20,18 @@ numeric atoms as constructor arguments remain unimplemented.
 A file-backed record fixture exports a constructed function instance. C++
 checks the emitted constructor call and refusal for an uninitialized argument;
 Node executes the emitted ESM and checks its exported instance. The same
-fixture passes under 12.0.6 and 13.0.1.0 profiles. Full CTest passed 158/158.
+fixture passes under 12.0.6 and 13.0.1.0 profiles. The subsequent rest
+integration passed 159/159 CTests.
 
-The real 12.0.6 pasteboard `Logger` record (entity 4466) moves from unknown
-entry instruction at pc 43 to a class-method refusal at that constructor.
-Its `debug(...args)` member has source length zero, one ABI user-argument
-slot and `COPYRESTARGS 0`; the current signature checker correctly refuses
-to collapse these into an ordinary one-parameter method. A paired-corpus
-test keeps the record unpublished at this exact boundary. `CALLTHIS3`
-receiver recovery is another outstanding layer. This record is not counted
-as decompiled.
+The real 12.0.6 pasteboard `Logger` record (entity 4466) now emits source.
+Its `debug/info/warn/error(...args)` members have source length zero, one ABI
+user-argument slot and `COPYRESTARGS 0`. The rest-prologue proof recovers
+their signatures, and the existing tail named-invocation path preserves the
+early property read, receiver, and argument evaluation order across
+intervening instructions. `record_constructor_source_test` runs the emitted
+record with a hilog test module and checks the exported instance, fields,
+method lengths, receiver identity, and all four call argument lists. This is
+evidence for this record, not complete coverage of every CALLTHIS form.
 
 The preceding full method-body probe processed 900 paths, 402 dynamic and
 498 cached static, with zero file failures and 176,762,880-byte peak RSS.

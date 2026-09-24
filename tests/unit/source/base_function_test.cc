@@ -22,6 +22,15 @@ source::BaseFunction Function(std::uint32_t locals = 0,
               locals, parameters + 3, {true, true, true, true})),
           "Recovered"};
 }
+abc::MethodBody RestBody() {
+  return test::Body({0x44, 0x40, 0x44, 0x51, 0x44, 0x62,
+                     0x44, 0x73, 0xcf, 0, 0x61, 3, 0x60, 3, 0x64});
+}
+abc::MethodBody LeadingRestBody() {
+  return test::Body({0x44, 0x50, 0x44, 0x61, 0x44, 0x72,
+                     0x44, 0x83, 0x44, 0x94, 0xcf, 1,
+                     0x61, 4, 0x60, 4, 0x64});
+}
 class FailingBuffer : public std::streambuf {
   std::streamsize xsputn(const char*, std::streamsize) override { return 0; }
 };
@@ -59,6 +68,12 @@ void EmitFixtures() {
        test::Body({0x09, 1, 0x60, 3, 0x3d, 0, 0x3c, 0, 0x64}));
   Emit("empty", Function(0, 0), test::Body({0x65}));
   Emit("length255", Function(0, 255), test::Body({0x65}));
+  auto rest = Function(4);
+  rest.creation.length.value = 0;
+  Emit("rest", rest, RestBody());
+  auto leading_rest = Function(5, 2);
+  leading_rest.creation.length.value = 1;
+  Emit("leadingRest", leading_rest, LeadingRestBody());
   std::cout << "export function fresh() { return ";
   test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
       Function(), test::Body({0x60, 0, 0x64}), std::cout)));
@@ -94,6 +109,46 @@ int main(int argc, char** argv) {
   test::Check(std::get<std::size_t>(result) == output.str().size());
   test::Check(output.str().find("function Recovered($p0)") !=
               std::string::npos);
+  auto rest = Function(4);
+  rest.creation.length.value = 0;
+  std::ostringstream rest_output;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteBaseFunction(rest, RestBody(), rest_output)));
+  test::Check(rest_output.str().find("function Recovered(...$p0)") !=
+              std::string::npos);
+  source::LocalLexicalBudget rest_budget;
+  rest_budget.output.bytes = rest_output.str().size() - 1;
+  std::ostringstream rest_limited;
+  test::Check(std::get<source::EmitError>(source::WriteBaseFunction(
+                  rest, RestBody(), rest_limited, rest_budget)) ==
+              source::EmitError::kOutputLimit);
+  test::Check(rest_limited.str().empty());
+  auto leading_rest = Function(5, 2);
+  leading_rest.creation.length.value = 1;
+  std::ostringstream leading_rest_output;
+  test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
+      leading_rest, LeadingRestBody(), leading_rest_output)));
+  test::Check(leading_rest_output.str().find(
+                  "function Recovered($p0, ...$p1)") != std::string::npos);
+  auto bad_rest = RestBody();
+  bad_rest.instructions[4].decoded.operands[0].raw_bits = 1;
+  std::ostringstream rest_rejected;
+  test::Check(std::get<source::FunctionEmitError>(source::WriteBaseFunction(
+                  rest, bad_rest, rest_rejected)) ==
+              source::FunctionEmitError::kLength);
+  test::Check(rest_rejected.str().empty());
+  bad_rest = RestBody();
+  bad_rest.instructions[6].decoded.operands[0].raw_bits = 7;
+  test::Check(std::get<source::FunctionEmitError>(source::WriteBaseFunction(
+                  rest, bad_rest, rest_rejected)) ==
+              source::FunctionEmitError::kLength);
+  test::Check(rest_rejected.str().empty());
+  auto no_extra = rest;
+  no_extra.frame.extra_arguments = false;
+  test::Check(std::get<source::FunctionEmitError>(source::WriteBaseFunction(
+                  no_extra, RestBody(), rest_rejected)) ==
+              source::FunctionEmitError::kLength);
+  test::Check(rest_rejected.str().empty());
   {
     char path[] = "/tmp/abcd-first-for-in-XXXXXX";
     const auto fd = mkstemp(path);

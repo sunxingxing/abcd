@@ -1,6 +1,8 @@
 #include "abcd/source/class_method.h"
 
+#include <limits>
 #include <sstream>
+#include <type_traits>
 
 #include "abcd/source/string_literal.h"
 #include "analysis/ssa_fixture.h"
@@ -83,6 +85,13 @@ int main(int argc, char** argv) {
   wrong = Method();
   wrong.attributes.kind = abc::FunctionKind::kAsync;
   reject(wrong, source::FunctionEmitError::kKind);
+  wrong = Method();
+  using MethodKindValue = std::underlying_type_t<abc::ClassMethodKind>;
+  wrong.member.kind = static_cast<abc::ClassMethodKind>(
+      std::numeric_limits<MethodKindValue>::max());
+  reject(wrong, source::FunctionEmitError::kKind);
+  wrong = Method();
+  wrong.attributes.kind = abc::FunctionKind::kAsync;
   auto async = wrong;
   async.frame = std::get<abc::FrameLayout>(
       abc::BuildFrameLayout(2, 4, abc::DecodeCallFlags({})));
@@ -178,6 +187,26 @@ int main(int argc, char** argv) {
                   getter, test::Body({0x44, 0x10, 0x60, 0, 0x64}),
                   live_copy)) == source::FunctionEmitError::kFrame);
   test::Check(live_copy.str().empty());
+  const auto rest_body = test::Body({0x44, 0x40, 0x44, 0x51,
+                                     0x44, 0x62, 0x44, 0x73,
+                                     0xcf, 0, 0x61, 3, 0x60, 3, 0x64});
+  for (const auto kind : {abc::ClassMethodKind::kGetter,
+                          abc::ClassMethodKind::kSetter}) {
+    auto rest_accessor = Method();
+    rest_accessor.member.kind = kind;
+    rest_accessor.member.length = 0;
+    rest_accessor.effective_kind =
+        kind == abc::ClassMethodKind::kGetter
+            ? source::EffectiveMethodKind::kGetter
+            : source::EffectiveMethodKind::kSetter;
+    rest_accessor.frame = std::get<abc::FrameLayout>(
+        abc::BuildFrameLayout(4, 4, abc::DecodeCallFlags({})));
+    std::ostringstream rejected;
+    test::Check(std::get<source::FunctionEmitError>(source::WriteClassMethod(
+                    rest_accessor, rest_body, rejected)) ==
+                source::FunctionEmitError::kLength);
+    test::Check(rejected.str().empty());
+  }
   auto setter = Method();
   setter.member.kind = abc::ClassMethodKind::kSetter;
   setter.effective_kind = source::EffectiveMethodKind::kSetter;
