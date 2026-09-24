@@ -25,6 +25,9 @@ that all Immersive records or historical runtime profiles are sourceable.
 The dynamic 12.0.2 record writer also admits the validated decoded forms; the
 paired MultiCommunity `Logger` record uses the narrow form for its
 default-export instance.
+Dynamic 12.0.2 and 12.0.6 function bodies also use the same validated
+`NEWOBJRANGE` lowering. The paired MultiCommunity `CardArray` record now
+emits its captured arrow and nested `new CardItem(item, index)` call.
 The post-change source-body probe over the 900-file local corpus processed
 402 dynamic files and skipped 498 classified static files with zero failures.
 It admitted 1,500,536 of 5,486,254 dynamic methods, 52 more than the preceding

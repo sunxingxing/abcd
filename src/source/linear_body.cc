@@ -453,6 +453,8 @@ class BodyWriter {
                    opcode == Opcode::kNEWOBJRANGE_IMM16_IMM8_V8 ||
                    opcode == Opcode::kWIDE_NEWOBJRANGE_PREF_IMM16_V8) {
           if (constants_ &&
+              constants_->header.profile != abc::ProfileId::kDynamic1202 &&
+              constants_->header.profile != abc::ProfileId::kDynamic1206 &&
               constants_->header.profile != abc::ProfileId::kDynamic1301)
             return Fail(BodyEmitError::kUnsupportedInstruction);
           Construct(instruction.decoded);
