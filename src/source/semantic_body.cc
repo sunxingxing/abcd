@@ -6,6 +6,7 @@
 
 #include "abcd/source/named_scope.h"
 #include "abcd/source/module_exports.h"
+#include "exception_body.h"
 
 namespace abcd::source {
 namespace {
@@ -115,6 +116,8 @@ SemanticBodyResult BuildSemanticBody(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
     analysis::SemanticBudget budget, std::size_t output_bytes) {
+  if (!body.tries.empty())
+    return BuildExceptionBody(body, frame, names, constants, budget, output_bytes);
   return BuildBody<analysis::CapturedValues::kReject>(
       body, frame, names, constants, budget, output_bytes);
 }
@@ -122,6 +125,15 @@ SemanticTemplateResult BuildSemanticTemplate(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
     analysis::SemanticBudget budget, std::size_t output_bytes) {
+  if (!body.tries.empty()) {
+    auto built = BuildExceptionBody(body, frame, names, constants, budget, output_bytes);
+    return std::visit([](auto& result) -> SemanticTemplateResult {
+      using T = std::decay_t<decltype(result)>;
+      if constexpr (std::is_same_v<T, PrintedSource>)
+        return PrintedTemplate{std::move(result.text), std::move(result.spans), {}};
+      else return result;
+    }, built);
+  }
   return BuildBody<analysis::CapturedValues::kLanguage>(
       body, frame, names, constants, budget, output_bytes);
 }

@@ -139,6 +139,7 @@ target_sources(abcd_source PRIVATE src/source/argument_region.cc src/source/sema
   src/source/semantic_objects.cc)
 target_sources(abcd_source PRIVATE src/source/async_completion.cc)
 target_sources(abcd_source PRIVATE src/source/exception_source.cc)
+target_sources(abcd_source PRIVATE src/source/exception_body.cc)
 target_sources(abcd_source PRIVATE src/source/branch_value_proof.cc)
 target_sources(abcd_source PRIVATE src/source/branch_source_facts.cc)
 target_sources(abcd_source PRIVATE src/source/staged_branch_call.cc)

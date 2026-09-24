@@ -2,6 +2,39 @@
 
 ## Current Boundary
 
+### Production Body Owner
+
+`BuildSemanticBody` and `BuildSemanticTemplate` now route raw bodies with
+exception tables into `BuildExceptionBody`. This production composition owns
+the phased flow, SSA, environment/local/module plans, value and input proof,
+exception regions, original layout, named-scope validation, common AST and
+printer until emission finishes. Stage storage is deducted while its owner
+remains live. SSA/value solver quotas and reported local/module/region/scope
+work consume a shared remaining allowance; graph/environment preprocessing
+retain their existing separately bounded contracts. Output and transient
+string budgets are conservatively limited within remaining admission.
+
+The owner grants only the same Language ABI-entry premise as the ordinary
+body path. It does not grant pending-exception or captured-value premises,
+infer initialized external modules, or attach original exception tables to
+normalized async/source-PC-rebased code. An exception template is produced
+only from a fully admitted body with no capture insertions, not fabricated
+capture bindings. Ordinary handler-free paths and fallback selection remain
+unchanged. Function signatures and record/module binding still belong to the
+existing callable and record owners.
+
+Both CLI targets compiled. ABC-only record production in
+`build/pasteboard-source-exception-owner/manifest.json` remains identical to
+the earlier loops manifest: CommonConstants and Logger are the only complete
+records. Existing class/initializer blockers remain. This does not prove
+successful exception-body publication. The standalone `abc_semantic
+--function-source` inspection mode still uses its ordinary-only semantic
+builder, separately from the record callable's `BuildSemanticBody` entry;
+method 6350 therefore retains that mode's exception-table rejection at PC 0.
+Read-only review found no concrete defect. Tests and RSS remain paused;
+positive production try/catch output, owner budgets, exception-template
+captures and normalized async integration remain unverified or unsupported.
+
 ### Receiver Calls on Exception Paths
 
 `ProveExceptionCalls` supplies original-coordinate property/call route
