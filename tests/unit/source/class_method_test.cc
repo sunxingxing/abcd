@@ -41,6 +41,14 @@ int main(int argc, char** argv) {
   using namespace abcd;
   if (argc == 2 && std::string_view(argv[1]) == "--emit") {
     Emit("parameter", test::Body({0x60, 3, 0x64}));
+    auto marked = Method();
+    marked.member.length = 0;
+    std::cout << "export const lengthMarker = (() => { const C = class {\n";
+    test::Check(std::holds_alternative<std::size_t>(
+        source::WriteClassMethod(marked, test::Body({0x60, 3, 0x64}),
+                                 std::cout)));
+    std::cout << "\n}; const MethodSelf = C.prototype.method;"
+                 " return C; })();\n";
     Emit("escaped", test::Body({0x60, 3, 0x64}),
          abc::ClassPlacement::kPrototype, u"quoted\"key");
     Emit("self", test::Body({0x60, 0, 0x64}));
@@ -223,6 +231,12 @@ int main(int argc, char** argv) {
   reject(wrong, source::FunctionEmitError::kName);
   wrong = Method();
   wrong.member.length = 0;
+  std::ostringstream marked;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteClassMethod(wrong, body, marked)));
+  test::Check(marked.str().starts_with(
+      "[\"method\"]($p0 = void 0)"));
+  wrong.member.length = 2;
   reject(wrong, source::FunctionEmitError::kLength);
   wrong = Method();
   wrong.frame.this_value = abc::RegisterId{0};

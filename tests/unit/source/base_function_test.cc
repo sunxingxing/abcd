@@ -1,5 +1,6 @@
 #include "abcd/source/base_function.h"
 #include "abcd/source/linear_body.h"
+#include "function_template.h"
 
 #include <unistd.h>
 
@@ -31,6 +32,12 @@ abc::MethodBody LeadingRestBody() {
                      0x44, 0x83, 0x44, 0x94, 0xcf, 1,
                      0x61, 4, 0x60, 4, 0x64});
 }
+abc::MethodBody DefaultNullBody() {
+  // v7: compare the ABI parameter with undefined, branch past null storage
+  // when unequal, then return the unchanged or defaulted parameter.
+  return test::Body({0x60, 3, 0x00, 0x28, 0, 3, 0x4f, 5,
+                     0x01, 0x61, 3, 0x60, 3, 0x64});
+}
 class FailingBuffer : public std::streambuf {
   std::streamsize xsputn(const char*, std::streamsize) override { return 0; }
 };
@@ -53,6 +60,24 @@ void Emit(std::string_view name, source::BaseFunction function,
 }
 void EmitFixtures() {
   Emit("parameter", Function(), test::Body({0x60, 3, 0x64}));
+  auto length_marker = Function();
+  length_marker.creation.length.value = 0;
+  Emit("lengthMarker", length_marker, test::Body({0x60, 3, 0x64}));
+  Emit("defaultNull", length_marker, DefaultNullBody());
+  auto second_marker = Function(0, 2);
+  second_marker.creation.length.value = 1;
+  Emit("secondMarker", second_marker, test::Body({0x60, 4, 0x64}));
+  auto async_marker = length_marker;
+  async_marker.attributes.kind = abc::FunctionKind::kAsync;
+  Emit("asyncMarker", async_marker, test::Body({0x60, 3, 0x64}));
+  auto arrow_marker = length_marker;
+  arrow_marker.attributes.kind = abc::FunctionKind::kArrow;
+  std::cout << "export const arrowMarker = ";
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteArrowFunction(arrow_marker, test::Body({0x60, 3, 0x64}),
+                                 std::cout, {}, nullptr,
+                                 analysis::CapturedValues::kReject)));
+  std::cout << ";\n";
   Emit("self", Function(), test::Body({0x60, 0, 0x64}));
   Emit("intrinsicSelf", Function(), test::Body({0xaf, 0x64}));
   Emit("intrinsicAfterSlotWrite", Function(),
@@ -108,6 +133,23 @@ int main(int argc, char** argv) {
   test::Check(std::holds_alternative<std::size_t>(result));
   test::Check(std::get<std::size_t>(result) == output.str().size());
   test::Check(output.str().find("function Recovered($p0)") !=
+              std::string::npos);
+  auto length_marker = Function();
+  length_marker.creation.length.value = 0;
+  std::ostringstream marker_output;
+  test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
+      length_marker, body, marker_output)));
+  test::Check(marker_output.str().find(
+                  "function Recovered($p0 = void 0)") != std::string::npos);
+  test::Check(marker_output.str().starts_with(
+      "(() => {\"use strict\"; return "));
+  auto second_marker = Function(0, 2);
+  second_marker.creation.length.value = 1;
+  std::ostringstream second_output;
+  test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
+      second_marker, test::Body({0x60, 4, 0x64}), second_output)));
+  test::Check(second_output.str().find(
+                  "function Recovered($p0, $p1 = void 0)") !=
               std::string::npos);
   auto rest = Function(4);
   rest.creation.length.value = 0;
@@ -184,6 +226,19 @@ int main(int argc, char** argv) {
         Function(2), first_key, historical, {}, &constants);
     test::Check(!std::holds_alternative<std::size_t>(refused));
     test::Check(historical.str().empty());
+    auto marked = Function();
+    marked.creation.length.value = 0;
+    std::ostringstream admitted_marker;
+    test::Check(std::holds_alternative<std::size_t>(
+        source::WriteBaseFunction(marked, body, admitted_marker,
+                                  {}, &constants)));
+    header.profile = abc::ProfileId::kDynamic1102;
+    std::ostringstream old_marker;
+    test::Check(std::get<source::FunctionEmitError>(
+                    source::WriteBaseFunction(marked, body, old_marker,
+                                              {}, &constants)) ==
+                source::FunctionEmitError::kLength);
+    test::Check(old_marker.str().empty());
   }
   {
     const auto intrinsic = test::Body({0xaf, 0x64});
@@ -249,7 +304,7 @@ int main(int argc, char** argv) {
     reject(invalid, source::FunctionEmitError::kName);
   }
   invalid = Function();
-  invalid.creation.length.value = 0;
+  invalid.creation.length.value = 2;
   reject(invalid, source::FunctionEmitError::kLength);
   for (const auto field : {0, 1, 2, 3, 4, 5, 6}) {
     invalid = Function();

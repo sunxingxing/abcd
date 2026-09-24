@@ -34,6 +34,7 @@ enum class CallableSyntax {
   kClassGetter,
   kClassSetter
 };
+enum class ParameterForm { kFixed, kRest, kNeutralDefault };
 struct CallableShape {
   abc::FrameLayout frame;
   std::string_view name;
@@ -42,7 +43,7 @@ struct CallableShape {
   std::u16string_view key{};
   abc::ClassPlacement placement = abc::ClassPlacement::kPrototype;
   std::u16string_view arrow_name{};
-  bool rest = false;
+  ParameterForm parameters = ParameterForm::kFixed;
 };
 constexpr std::size_t kIndexDigits =
     std::numeric_limits<std::uint32_t>::digits10 + 1;
@@ -209,7 +210,9 @@ class FunctionWriter {
 
   FunctionEmitResult Write(const abc::MethodBody& body) {
     try {
-      const bool strict_wrapper = function_.rest &&
+      const bool non_simple_parameters =
+          function_.parameters != ParameterForm::kFixed;
+      const bool strict_wrapper = non_simple_parameters &&
           (function_.syntax == CallableSyntax::kFunctionExpression ||
            function_.syntax == CallableSyntax::kAsyncFunctionExpression);
       if (strict_wrapper) Text("(() => {\"use strict\"; return ");
@@ -236,7 +239,7 @@ class FunctionWriter {
       } else if (function_.syntax == CallableSyntax::kArrowExpression) {
         // A computed data-property name applies SetFunctionName without a
         // mutable intrinsic; arrow IIFEs retain lexical this/new.target.
-        Text(function_.rest
+        Text(non_simple_parameters
                  ? "(() => {\n\"use strict\";\nconst $arrow = ({["
                  : "(() => {\nconst $arrow = ({[");
         ArrowName();
@@ -250,13 +253,18 @@ class FunctionWriter {
       const auto& frame = function_.frame;
       for (std::uint32_t i = 0; i < frame.parameters && !error_; ++i) {
         if (i != 0) Text(", ");
-        if (function_.rest && i + 1 == frame.parameters) Text("...");
+        if (function_.parameters == ParameterForm::kRest &&
+            i + 1 == frame.parameters)
+          Text("...");
         Parameter(i);
+        if (function_.parameters == ParameterForm::kNeutralDefault &&
+            i == function_.length)
+          Text(" = void 0");
       }
       Text(function_.syntax == CallableSyntax::kArrowExpression
-               ? function_.rest ? ") => {\nlet $acc;\n"
+               ? non_simple_parameters ? ") => {\nlet $acc;\n"
                                 : ") => {\n\"use strict\";\nlet $acc;\n"
-               : function_.rest ? ") {\nlet $acc;\n"
+               : non_simple_parameters ? ") {\nlet $acc;\n"
                                 : ") {\n\"use strict\";\nlet $acc;\n");
       // Each VM register is independently writable. In particular, a function
       // slot must not alias the immutable named-expression self binding.
@@ -411,19 +419,36 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
                                  const abc::MethodLookup* methods,
                                  analysis::CapturedValues captured_values) {
   if (!CanonicalFrame(function.frame)) return FunctionEmitError::kFrame;
-  const bool rest = function.length != function.frame.parameters;
+  const bool length_mismatch = function.length != function.frame.parameters;
+  if (function.length > function.frame.parameters)
+    return FunctionEmitError::kLength;
+  const auto rest_prologue =
+      length_mismatch ? analysis::ProveRestPrologue(
+                            body, function.frame, function.length)
+                      : std::nullopt;
+  const bool rest = rest_prologue.has_value();
+  const bool neutral_default = length_mismatch && !rest;
   if (rest && (function.syntax == CallableSyntax::kClassGetter ||
                function.syntax == CallableSyntax::kClassSetter))
     return FunctionEmitError::kLength;
   // A null constants pointer retains the existing pinned-v7 caller assertion.
-  if (rest && constants &&
+  if (length_mismatch && constants &&
       constants->header.profile != abc::ProfileId::kDynamic1206 &&
       constants->header.profile != abc::ProfileId::kDynamic1301)
     return FunctionEmitError::kLength;
-  const auto rest_prologue = rest ? analysis::ProveRestPrologue(
-                                        body, function.frame, function.length)
-                                  : std::nullopt;
-  if (rest && !rest_prologue) return FunctionEmitError::kLength;
+  // A neutral default formal changes only JS .length; the original bytecode
+  // body still performs every actual default assignment. Reject ambiguous
+  // rest instructions rather than hiding a malformed rest prologue.
+  if (neutral_default) {
+    if (function.syntax == CallableSyntax::kClassGetter ||
+        function.syntax == CallableSyntax::kClassSetter)
+      return FunctionEmitError::kLength;
+    for (const auto& site : body.instructions)
+      if (site.decoded.opcode == abc::Opcode::kCOPYRESTARGS_IMM8 ||
+          site.decoded.opcode ==
+              abc::Opcode::kWIDE_COPYRESTARGS_PREF_IMM16)
+        return FunctionEmitError::kLength;
+  }
   // Reuse the expression emitter's strict-safe binding validation. '$' is our
   // private source namespace; never let a supplied function name shadow it.
   CaptureDiscard buffer;
@@ -498,7 +523,9 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
     }
     auto shape = function;
     shape.arrow_name = arrow_name;
-    shape.rest = rest;
+    shape.parameters = rest ? ParameterForm::kRest
+                            : neutral_default ? ParameterForm::kNeutralDefault
+                                              : ParameterForm::kFixed;
     auto storage = std::make_unique<RegisterName[]>(count);
     auto names = std::make_unique<std::string_view[]>(count);
     for (std::uint32_t i = 0; i < count; ++i) {

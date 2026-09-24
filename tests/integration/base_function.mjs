@@ -19,6 +19,24 @@ for (const value of values) {
   }
 }
 assert.equal(source.parameter(), undefined);
+assert.equal(source.lengthMarker.length, 0);
+for (const value of values) {
+  assert.ok(Object.is(source.lengthMarker(value), value));
+}
+assert.equal(source.lengthMarker(), undefined);
+assert.equal(source.defaultNull.length, 0);
+assert.equal(source.defaultNull(), null);
+assert.equal(source.defaultNull(undefined), null);
+assert.equal(source.defaultNull(42), 42);
+assert.equal(source.secondMarker.length, 1);
+assert.equal(source.secondMarker(1), undefined);
+assert.equal(source.secondMarker(1, 42), 42);
+assert.equal(source.asyncMarker.length, 0);
+assert.equal(await source.asyncMarker(42), 42);
+assert.equal(await source.asyncMarker(), undefined);
+assert.equal(source.arrowMarker.length, 0);
+assert.equal(source.arrowMarker(42), 42);
+assert.throws(() => new source.arrowMarker(), TypeError);
 assert.equal(source.local('not a local'), undefined);
 assert.equal(source.newTarget(), undefined);
 assert.equal(source.self(), source.self);

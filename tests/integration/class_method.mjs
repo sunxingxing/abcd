@@ -7,7 +7,7 @@ for (const [key, C] of Object.entries(source)) {
   const name = key === 'escaped' ? 'quoted"key' : 'method';
   const method = owner[name];
   assert.equal(method.name, name);
-  assert.equal(method.length, 1);
+  assert.equal(method.length, key === 'lengthMarker' ? 0 : 1);
   assert.equal(Object.hasOwn(method, 'prototype'), false);
   assert.throws(() => Reflect.construct(method, []), TypeError);
   assert.deepEqual(Object.getOwnPropertyDescriptor(owner, name), {
@@ -27,6 +27,7 @@ await assert.rejects(asyncMethod(Promise.reject(failure)),
                      error => error === failure);
 for (const value of [undefined, null, 42, 1n, Symbol(), {}, () => {}]) {
   assert.equal(source.parameter.prototype.method(value), value);
+  assert.equal(source.lengthMarker.prototype.method(value), value);
   assert.equal(source.escaped.prototype['quoted"key'](value), value);
   assert.equal(Reflect.apply(source.receiver.prototype.method, value, []), value);
   assert.throws(() => source.thrown.prototype.method(value), error => Object.is(error, value));

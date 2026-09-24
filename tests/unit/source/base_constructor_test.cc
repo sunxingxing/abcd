@@ -16,10 +16,13 @@ source::BaseConstructor Constructor() {
               abc::BuildFrameLayout(0, 4, {true, true, true, true})),
           "Recovered"};
 }
-void Emit(std::string_view name, const abc::MethodBody& body) {
+void Emit(std::string_view name, const abc::MethodBody& body,
+          std::uint16_t length = 1) {
+  auto constructor = Constructor();
+  constructor.creation.length = length;
   std::cout << "export const " << name << " = class Recovered {\n";
   test::Check(std::holds_alternative<std::size_t>(
-      source::WriteBaseConstructor(Constructor(), body, std::cout)));
+      source::WriteBaseConstructor(constructor, body, std::cout)));
   std::cout << "\n};\n";
 }
 void EmitAssignments() {
@@ -58,6 +61,7 @@ int main(int argc, char** argv) {
   using namespace abcd;
   if (argc == 2 && std::string_view(argv[1]) == "--emit") {
     Emit("parameter", test::Body({0x60, 3, 0x64}));
+    Emit("lengthMarker", test::Body({0x60, 3, 0x64}), 0);
     Emit("self", test::Body({0x60, 0, 0x64}));
     Emit("intrinsicSelf", test::Body({0xaf, 0x64}));
     Emit("newTarget", test::Body({0x60, 1, 0x64}));
@@ -73,6 +77,11 @@ int main(int argc, char** argv) {
   test::Check(out.str().starts_with("constructor($p0) {"));
   auto wrong = Constructor();
   wrong.creation.length = 0;
+  std::ostringstream marked;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteBaseConstructor(wrong, body, marked)));
+  test::Check(marked.str().starts_with("constructor($p0 = void 0)"));
+  wrong.creation.length = 2;
   std::ostringstream rejected;
   test::Check(std::get<source::FunctionEmitError>(
                   source::WriteBaseConstructor(wrong, body, rejected)) ==

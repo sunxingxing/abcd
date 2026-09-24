@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 const source=await import(pathToFileURL(process.argv[2]));
 for(const C of Object.values(source)) {
-  assert.equal(C.length,1);
+  assert.equal(C.length,C===source.lengthMarker ? 0 : 1);
   assert.equal(C.name,'Recovered');
   assert.throws(()=>C(),TypeError);
   assert.equal(Object.getOwnPropertyDescriptor(C,'prototype').writable,false);
 }
 for(const value of [undefined,null,0,42,'text',true,Symbol('value'),1n,{},()=>{}]) {
+  const marked=new source.lengthMarker(value);
+  if(value!==null && (typeof value==='object' || typeof value==='function')) assert.equal(marked,value);
+  else assert.equal(Object.getPrototypeOf(marked),source.lengthMarker.prototype);
   const instance=new source.parameter(value);
   if(value!==null && (typeof value==='object' || typeof value==='function')) assert.equal(instance,value);
   else assert.equal(Object.getPrototypeOf(instance),source.parameter.prototype);
