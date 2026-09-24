@@ -251,6 +251,11 @@ class CaptureProof {
     for (const auto& site : method->instructions) {
       Charge();
       if (std::holds_alternative<analysis::CurrentEnvironment>(site.operation)) return false;
+      // Class constructors and literal methods capture this environment too.
+      // Until their full dependency set is resolved, never certify the parent
+      // as read-only merely because class creation now lifts into semantic IR.
+      if (std::holds_alternative<analysis::ClassCreation>(site.operation))
+        return false;
       if (const auto* child = std::get_if<analysis::FunctionCreation>(&site.operation)) {
         const auto resolved = Target(info.offset, *child);
         if (!resolved) return false;

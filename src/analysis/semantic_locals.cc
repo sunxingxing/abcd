@@ -102,7 +102,8 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
              method.flow.blocks[block + 1].first_instruction <= i) ++block;
       const auto first = method.flow.blocks[block].first_instruction;
       const auto& operation = method.instructions[i].operation;
-      if (std::holds_alternative<FunctionCreation>(operation))
+      if (std::holds_alternative<FunctionCreation>(operation) ||
+          std::holds_alternative<ClassCreation>(operation))
         creation = InstructionId{static_cast<std::uint32_t>(i)};
       if (binding >= environments.bindings.size() ||
           environments.bindings[binding].instruction != i) continue;

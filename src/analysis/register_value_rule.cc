@@ -5,6 +5,8 @@
 #include "abcd/analysis/array_creation.h"
 #include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/constructor_call.h"
+#include "abcd/analysis/class_creation.h"
+#include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/derived_constructor.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/global_access.h"
@@ -188,7 +190,10 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
           LiftIterResult(instruction, frame_size)) ||
       std::holds_alternative<RestCopy>(LiftRestArguments(instruction)) ||
       std::holds_alternative<FunctionCreation>(
-          LiftFunctionCreation(instruction)))
+          LiftFunctionCreation(instruction)) ||
+      std::holds_alternative<ClassCreation>(LiftClassCreation(instruction)) ||
+      std::holds_alternative<DefineAccessor>(
+          LiftDefineInstruction(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
   const auto global = LiftGlobalAccess(instruction);
   if (const auto* access = std::get_if<GlobalAccess>(&global);

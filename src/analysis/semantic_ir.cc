@@ -73,6 +73,21 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
     return *function;
   if (std::get<CreationError>(creation) != CreationError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
+  const auto class_creation = LiftClassCreation(decoded);
+  if (const auto* created = std::get_if<ClassCreation>(&class_creation)) {
+    if (created->parent.value >= frame_size)
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    return *created;
+  }
+  if (std::get<CreationError>(class_creation) !=
+      CreationError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
+  const auto defined = LiftDefineInstruction(decoded, frame_size);
+  if (const auto* accessor = std::get_if<DefineAccessor>(&defined))
+    return *accessor;
+  if (const auto* error = std::get_if<DefineError>(&defined);
+      error && *error != DefineError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto module_store = LiftModuleStore(decoded);
   if (const auto* store = std::get_if<ModuleStore>(&module_store)) return *store;
   if (std::get<ModuleStoreError>(module_store) != ModuleStoreError::kUnsupportedOpcode)
@@ -197,6 +212,19 @@ SemanticEffects Effects(const SemanticOperation& operation,
                            LanguageEffect::kEnvironmentWrite;
         } else if constexpr (std::is_same_v<T, CurrentEnvironment>) {
           effects.normal = LanguageEffect::kEnvironmentRead;
+        } else if constexpr (std::is_same_v<T, ClassCreation>) {
+          // Pinned RuntimeCreateClassWithBuffer and
+          // RuntimeSetClassInheritanceRelationship capture env/module and
+          // may invoke a parent.prototype getter. Only normal completion
+          // commits acc; no fresh-class or pure-allocation shortcut here.
+          effects.normal = LanguageEffect::kEnvironmentRead |
+                           LanguageEffect::kModuleRead |
+                           LanguageEffect::kHeapRead |
+                           LanguageEffect::kHeapWrite |
+                           LanguageEffect::kUserCode |
+                           LanguageEffect::kAllocation;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, FunctionCreation>) {
           // Conservative effects until target attributes are resolved.
           // Ordinary and sendable creation differ in capture; this does not
@@ -243,6 +271,15 @@ SemanticEffects Effects(const SemanticOperation& operation,
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, NamedRead>) {
           effects.normal = LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, DefineAccessor>) {
+          // ToPropertyKey may execute user code. Naming accessors and defining
+          // the descriptor can mutate heap state before an abrupt completion.
+          effects.normal = LanguageEffect::kHeapRead |
+                           LanguageEffect::kHeapWrite |
+                           LanguageEffect::kUserCode |
+                           LanguageEffect::kAllocation;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, NamedWrite> ||

@@ -102,6 +102,7 @@ std::variant<LocalSsa, LocalSsaError> BuildLocalSsa(
       // environment too. Without decoded literal evidence, both object and
       // array buffers are barriers, even when this particular buffer is plain.
       const bool capture = std::holds_alternative<FunctionCreation>(operation) ||
+                           std::holds_alternative<ClassCreation>(operation) ||
                            std::holds_alternative<BufferedObjectCreation>(operation) ||
                            std::holds_alternative<BufferedArrayCreation>(operation);
       bool read_only = false;

@@ -33,7 +33,9 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
                          std::is_same_v<T, BufferedObjectCreation> ||
                          std::is_same_v<T, BufferedArrayCreation> ||
                          std::is_same_v<T, RestCopy> ||
-                         std::is_same_v<T, FunctionCreation>) {
+                         std::is_same_v<T, FunctionCreation> ||
+                         std::is_same_v<T, ClassCreation> ||
+                         std::is_same_v<T, DefineAccessor>) {
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
     } else if constexpr (std::is_same_v<T, GlobalAccess>) {
       switch (operation.operation) {

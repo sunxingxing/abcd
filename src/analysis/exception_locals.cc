@@ -10,6 +10,7 @@ namespace {
 auto Key(LocalCell cell) { return std::tuple(cell.environment.value, cell.slot.value); }
 bool Captures(const SemanticOperation& operation) {
   return std::holds_alternative<FunctionCreation>(operation) ||
+         std::holds_alternative<ClassCreation>(operation) ||
          std::holds_alternative<BufferedObjectCreation>(operation) ||
          std::holds_alternative<BufferedArrayCreation>(operation);
 }

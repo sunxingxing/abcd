@@ -23,7 +23,8 @@ struct DefineAccessor {
   abc::RegisterId key;
   abc::RegisterId getter;
   abc::RegisterId setter;
-  // The enumerable flag is the accumulator; the result replaces it.
+  // Accumulator ToBoolean controls accessor function-name assignment, not
+  // enumerability (which depends on class ownership). Result replaces acc.
 };
 struct DefinePrivateProperty {
   std::uint8_t reserved_operand = 0;

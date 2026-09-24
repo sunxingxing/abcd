@@ -224,6 +224,24 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
       if (const auto* lifted = std::get_if<analysis::SemanticInstruction>(&semantic)) {
         output["exceptional_completion"] =
             static_cast<unsigned>(lifted->effects.exceptional);
+        if (const auto* created =
+                std::get_if<analysis::ClassCreation>(&lifted->operation)) {
+          output["class_creation"] = {
+              {"constructor_pool", created->constructor.value},
+              {"literal_pool", created->literal.value},
+              {"length", created->length},
+              {"parent_register", created->parent.value},
+              {"cache_slot", created->cache_slot}};
+        }
+        if (const auto* accessor =
+                std::get_if<analysis::DefineAccessor>(&lifted->operation)) {
+          output["accessor_definition"] = {
+              {"object_register", accessor->object.value},
+              {"key_register", accessor->key.value},
+              {"getter_register", accessor->getter.value},
+              {"setter_register", accessor->setter.value},
+              {"name_flag", Slot(analysis::Accumulator{})}};
+        }
         if (dispatch) {
           if (const auto edge = analysis::ResolveExceptionEdge(*lifted, *dispatch)) {
             nlohmann::json exception{{"register_state_before_pc", edge->before.value}};

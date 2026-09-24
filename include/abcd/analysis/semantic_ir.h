@@ -10,6 +10,8 @@
 #include "abcd/analysis/array_creation.h"
 #include "abcd/analysis/await_region.h"
 #include "abcd/analysis/constructor_call.h"
+#include "abcd/analysis/class_creation.h"
+#include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/derived_constructor.h"
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/global_access.h"
@@ -94,7 +96,8 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        CurrentEnvironment, FunctionCreation,
                                        LoadHole, SuperCheck, RestCopy,
                                        BufferedArrayCreation, AwaitValue,
-                                       ThrowOperation, SuperRange>;
+                                       ThrowOperation, SuperRange, ClassCreation,
+                                       DefineAccessor>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;
