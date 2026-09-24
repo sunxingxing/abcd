@@ -1121,6 +1121,41 @@ or claim executable await output. Next, prove state identity, resume-mode
 rejection branches and handler ownership before constructing an await region
 with original-PC provenance.
 
+### Await/resume region proof (2026-09-25)
+
+`analysis/await_region` matches the modern wait/suspend/resume/mode/rethrow
+sequence using typed coroutine, scalar and branch lifts. It requires identical
+state registers, distinct state/result/mode registers, comparison against the
+pinned runtime THROW mode, and the exact false-edge continuation after rethrow.
+It preserves original await, suspend, resume, mode, branch, throw and continuation
+PCs and all three register identities. A method-wide indexed check refuses
+branches into region interiors and try/handler boundaries splitting a region.
+No register definitions are deleted or language-value facts invented.
+
+Runtime provenance additionally includes `js_generator_object.h`'s
+`GeneratorResumeMode` and `js_async_function.cpp`'s fulfilled/rejected resumption
+handlers. Region admission is limited to the existing dynamic 1202/1206/1301
+semantic profiles; deprecated instruction parsing alone does not establish a
+historical await-region equivalence.
+
+For I instructions, B branch targets, T try regions, H handlers and A awaits,
+the planner costs O(I + (B + T + H) log(A + 1)) time and O(A) storage, with
+explicit capacity admission. It does not perform one method scan per await.
+The instruction inspector attaches the typed region facts to the original
+await instruction; its region allocation has a separate 1 MiB cap.
+
+Both CLI targets compiled. ABC-only inspection of pasteboard methods 7421 and
+8164 found the same region: await 100, suspend 102, resume 106, mode 111,
+branch 122, rethrow 126, continuation 128; state/result/mode registers 5/7/6.
+No tests or RSS tracking were run. Negative shapes, aliasing, interior edges,
+exception splits, profile rejection and allocation limits still need regression
+tests when testing resumes.
+
+This is a local control/operand proof, not a complete lowering certificate.
+Private async-state ownership, completion-wrapper equivalence, temporary
+liveness and native await IR/AST/printer integration remain necessary. Existing
+source paths still refuse real suspension; complete-record coverage is unchanged.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

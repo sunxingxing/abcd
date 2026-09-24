@@ -16,6 +16,7 @@
 #include "abcd/abc/method_body.h"
 #include "abcd/analysis/semantic_region.h"
 #include "abcd/analysis/coroutine.h"
+#include "abcd/analysis/await_region.h"
 #include "abcd/analysis/semantic_ir.h"
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/corpus/abc_file.h"
@@ -115,6 +116,12 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     return Fail(InspectError::kBody, failure.offset.value);
   }
   if (instructions) {
+    constexpr std::size_t kAwaitRegionBytes = 1024 * 1024;
+    const auto awaited = analysis::FindAwaitRegions(
+        *body, header->profile, code.registers + code.arguments,
+        kAwaitRegionBytes);
+    const auto* regions = std::get_if<std::vector<analysis::AwaitRegion>>(&awaited);
+    std::size_t next_region = 0;
     for (const auto& site : body->instructions) {
       nlohmann::json operands = nlohmann::json::array();
       for (std::size_t i = 0; i < site.decoded.operand_count; ++i) {
@@ -162,6 +169,23 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
           {"opcode", static_cast<unsigned>(site.decoded.opcode)},
           {"operands", std::move(operands)}};
       DescribeCoroutine(output, site.decoded, code.registers + code.arguments);
+      if (regions && next_region < regions->size() &&
+          (*regions)[next_region].await == site.offset) {
+        const auto& region = (*regions)[next_region++];
+        output["await_region"] = {
+            {"suspend_pc", region.suspend.value},
+            {"resume_pc", region.resume.value}, {"mode_pc", region.mode.value},
+            {"branch_pc", region.branch.value}, {"reject_pc", region.reject.value},
+            {"continuation_pc", region.continuation.value},
+            {"state_register", region.state.value},
+            {"result_register", region.result.value},
+            {"mode_register", region.resume_mode.value}};
+      } else if (!regions && site.offset == body->instructions.front().offset) {
+        const auto& failure = std::get<analysis::AwaitRegionFailure>(awaited);
+        output["await_region_failure"] = {
+            {"kind", static_cast<unsigned>(failure.kind)},
+            {"pc", failure.pc.value}};
+      }
       std::cout << output << '\n';
     }
     return std::cout ? EXIT_SUCCESS : EXIT_FAILURE;

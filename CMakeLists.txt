@@ -48,6 +48,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/semantic_validation.cc
 target_sources(abcd_analysis PRIVATE src/analysis/constant_object.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/iterator.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/coroutine.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/await_region.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/iter_result.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/rest_arguments.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/first_for_in.cc)
