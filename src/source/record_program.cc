@@ -24,12 +24,14 @@
 #include "abcd/analysis/module_load.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/object_creation.h"
+#include "abcd/analysis/ordinary_call.h"
 #include "abcd/analysis/own_write.h"
 #include "abcd/analysis/indexed_write.h"
 #include "abcd/analysis/scalar.h"
 #include "abcd/source/created_function.h"
 #include "abcd/source/global_reference.h"
 #include "abcd/source/module_imports.h"
+#include "abcd/source/scalar_expression.h"
 #include "abcd/source/static_fields.h"
 #include "abcd/source/string_literal.h"
 #include "record_array.h"
@@ -57,6 +59,7 @@ struct Value {
     kImportSnapshot,
     kLocalSnapshot,
     kGlobalSnapshot,
+    kCallResult,
     kPrototype,
     kInstance
   } kind;
@@ -334,6 +337,12 @@ class ProgramWriter {
         case Opcode::kWIDE_NEWOBJRANGE_PREF_IMM16_V8:
           Construct(instruction);
           last_effect_pc_ = pc_;
+          break;
+        case Opcode::kCALLARG0_IMM8:
+        case Opcode::kCALLARG1_IMM8_V8:
+        case Opcode::kCALLARGS2_IMM8_V8_V8:
+        case Opcode::kCALLARGS3_IMM8_V8_V8_V8:
+          Call(instruction);
           break;
         case Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8:
         case Opcode::kDEFINEMETHOD_IMM16_ID16_IMM8:
@@ -926,7 +935,7 @@ class ProgramWriter {
                  pc_);
     Account(std::get<std::size_t>(written));
   }
-  void ConstructValue(Value value) {
+  void WriteValue(Value value) {
     switch (value.kind) {
       case Value::Kind::kUndefined:
         Text("void 0");
@@ -947,6 +956,27 @@ class ProgramWriter {
           throw Fail(Error::kResourceLimit, pc_);
         budget_.bytes -= name.capacity() * sizeof(char16_t);
         SourceString(name);
+        return;
+      }
+      case Value::Kind::kAtom: {
+        if (value.ordinal >= atoms_.size()) throw Fail(Error::kValue, pc_);
+        const auto& atom = atoms_[value.ordinal];
+        const auto scalar = [&]() -> analysis::ScalarValue {
+          if (const auto* integer = std::get_if<std::int32_t>(&atom))
+            return analysis::IntegerLiteral{*integer};
+          if (const auto* number = std::get_if<StaticFloat>(&atom))
+            return analysis::Float64Bits{number->bits};
+          throw Fail(Error::kValue, pc_);
+        }();
+        const auto result = WriteScalarExpression(
+            scalar, {"", {}}, output_, {Remaining()});
+        if (const auto* error = std::get_if<EmitError>(&result))
+          throw Fail(*error == EmitError::kOutputLimit
+                         ? Error::kOutputLimit
+                     : *error == EmitError::kWrite ? Error::kWrite
+                                                   : Error::kValue,
+                     pc_);
+        Account(std::get<std::size_t>(result));
         return;
       }
       case Value::Kind::kClass:
@@ -978,6 +1008,11 @@ class ProgramWriter {
         Text("$global");
         Number(value.ordinal);
         return;
+      case Value::Kind::kCallResult:
+        if (value.ordinal >= call_count_) throw Fail(Error::kValue, pc_);
+        Text("$call");
+        Number(value.ordinal);
+        return;
       case Value::Kind::kInstance:
         if (value.ordinal >= instance_count_) throw Fail(Error::kValue, pc_);
         Text("$instance");
@@ -986,7 +1021,6 @@ class ProgramWriter {
       case Value::Kind::kUnknown:
       case Value::Kind::kHole:
       case Value::Kind::kCreatedMethod:
-      case Value::Kind::kAtom:
       case Value::Kind::kLiteral:
       case Value::Kind::kPrototype:
         throw Fail(Error::kValue, pc_);
@@ -1014,6 +1048,7 @@ class ProgramWriter {
                ctor.kind != Value::Kind::kImportSnapshot &&
                ctor.kind != Value::Kind::kLocalSnapshot &&
                ctor.kind != Value::Kind::kGlobalSnapshot &&
+               ctor.kind != Value::Kind::kCallResult &&
                ctor.kind != Value::Kind::kInstance) {
       throw Fail(Error::kValue, pc_);
     }
@@ -1021,16 +1056,49 @@ class ProgramWriter {
     Text("const $instance");
     Number(id);
     Text(" = new (");
-    ConstructValue(ctor);
+    WriteValue(ctor);
     Text(")(");
     for (std::uint32_t i = 0; i < call->ArgumentCount(); ++i) {
       if (i != 0) Text(", ");
       const auto argument = call->ArgumentAt(i);
       if (!argument) throw Fail(Error::kInstruction, pc_);
-      ConstructValue(registers_[argument->value]);
+      WriteValue(registers_[argument->value]);
     }
     Text(");\n");
     accumulator_ = {Value::Kind::kInstance, id};
+  }
+  void Call(const abc::BodyInstruction& instruction) {
+    const auto lifted = analysis::LiftOrdinaryCall(
+        instruction.decoded, registers_.size());
+    const auto* call = std::get_if<analysis::OrdinaryCall>(&lifted);
+    if (!call || !std::holds_alternative<analysis::CallRegisters>(
+                     call->arguments))
+      throw Fail(Error::kInstruction, pc_);
+    const auto callee = accumulator_;
+    if (callee.kind != Value::Kind::kFunction &&
+        callee.kind != Value::Kind::kImportSnapshot &&
+        callee.kind != Value::Kind::kLocalSnapshot &&
+        callee.kind != Value::Kind::kGlobalSnapshot &&
+        callee.kind != Value::Kind::kCallResult)
+      throw Fail(Error::kValue, pc_);
+    if (call_count_ >= body_.instructions.size())
+      throw Fail(Error::kResourceLimit, pc_);
+    // Pinned v7 CALLARG uses undefined receiver. The comma expression forces
+    // a value call even if a generated binding is ever named eval.
+    const auto id = call_count_++;
+    Text("const $call");
+    Number(id);
+    Text(" = (0, ");
+    WriteValue(callee);
+    Text(")(");
+    for (std::uint32_t index = 0; index < call->Count(); ++index) {
+      if (index != 0) Text(", ");
+      const auto argument = call->At(index);
+      if (!argument) throw Fail(Error::kInstruction, pc_);
+      WriteValue(registers_[argument->value]);
+    }
+    Text(");\n");
+    accumulator_ = {Value::Kind::kCallResult, id};
   }
   void DefineMethod(const abc::BodyInstruction& instruction) {
     const auto lifted = analysis::LiftFunctionCreation(instruction.decoded);
@@ -1195,6 +1263,7 @@ class ProgramWriter {
                    accumulator_.kind != Value::Kind::kLiteral &&
                    accumulator_.kind != Value::Kind::kImportSnapshot &&
                    accumulator_.kind != Value::Kind::kLocalSnapshot &&
+                   accumulator_.kind != Value::Kind::kCallResult &&
                    accumulator_.kind != Value::Kind::kUndefined))
       throw Fail(Error::kValue, pc_);
     if (accumulator_.kind == Value::Kind::kClass) {
@@ -1223,6 +1292,9 @@ class ProgramWriter {
       Number(accumulator_.ordinal);
     } else if (accumulator_.kind == Value::Kind::kLocalSnapshot) {
       Text("$localRead");
+      Number(accumulator_.ordinal);
+    } else if (accumulator_.kind == Value::Kind::kCallResult) {
+      Text("$call");
       Number(accumulator_.ordinal);
     } else {
       Text("void 0");
@@ -1266,6 +1338,7 @@ class ProgramWriter {
   std::size_t import_load_count_ = 0;
   std::size_t local_load_count_ = 0;
   std::size_t global_count_ = 0;
+  std::size_t call_count_ = 0;
   abc::CodeOffset last_effect_pc_{};
   std::optional<std::size_t> pending_hole_guard_;
   std::size_t written_ = 0;
