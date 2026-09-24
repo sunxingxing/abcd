@@ -32,6 +32,11 @@ struct Ref {
       Kind::kUnknown;
   std::size_t value = 0;
 };
+struct ImportedConstructorRead {
+  analysis::ModuleSlot slot;
+  std::size_t effect_epoch = 0;
+  bool consumed = false;
+};
 StaticFieldFailure Fail(Error kind, abc::CodeOffset pc = {}) {
   return {kind, pc};
 }
@@ -134,8 +139,13 @@ class FieldReader {
           break;
         case Opcode::kRETURNUNDEFINED:
           if (i + 1 != body_.instructions.size() ||
-              site.decoded.operand_count != 0)
+              site.decoded.operand_count != 0 || pending_construct_)
             throw Fail(Error::kInstruction, pc_);
+          for (const auto& read : import_reads_)
+            if (!read.consumed) throw Fail(Error::kValue, pc_);
+          for (const auto& node : fields_.nodes)
+            if (!node.attached && !node.emitted)
+              throw Fail(Error::kValue, pc_);
           return std::move(fields_);
         case Opcode::kNOP:
           break;
@@ -273,7 +283,7 @@ class FieldReader {
                   std::size_t position) {
     const auto lifted = analysis::LiftModuleLoad(instruction);
     const auto* load = std::get_if<analysis::ModuleLoad>(&lifted);
-    if (!module_ || !load ||
+    if (pending_construct_ || !module_ || !load ||
         load->space != analysis::ModuleSpace::kExternal ||
         position + 1 >= body_.instructions.size())
       throw Fail(Error::kInstruction, pc_);
@@ -294,7 +304,14 @@ class FieldReader {
                                    slot - module_->imports.size()].request;
     if (request.value >= module_->requests.size())
       throw Fail(Error::kValue, pc_);
-    accumulator_ = {Ref::Kind::kImport, slot};
+    if (import_reads_.size() >= body_.instructions.size())
+      throw Fail(Error::kResourceLimit, pc_);
+    const auto id = import_reads_.size();
+    const auto capacity = import_reads_.capacity();
+    import_reads_.push_back({load->slot, effect_epoch_});
+    Charge(import_reads_.capacity() - capacity,
+           sizeof(ImportedConstructorRead));
+    accumulator_ = {Ref::Kind::kImport, id};
     pending_import_guard_ = position + 1;
   }
   void Construct(const abc::DecodedInstruction& instruction) {
@@ -303,14 +320,16 @@ class FieldReader {
     const auto* call = std::get_if<analysis::ConstructorCall>(&lifted);
     if (!call) throw Fail(Error::kInstruction, pc_);
     const auto constructor = registers_[call->inputs.first.value];
-    if (constructor.kind != Ref::Kind::kImport ||
-        constructor.value > UINT16_MAX)
+    if (pending_construct_ || constructor.kind != Ref::Kind::kImport ||
+        constructor.value >= import_reads_.size() ||
+        import_reads_[constructor.value].consumed ||
+        import_reads_[constructor.value].effect_epoch != effect_epoch_)
       throw Fail(Error::kValue, pc_);
     NewNode(RecordLiteralKind::kImportedConstruct);
     const auto root = std::get<RecordNodeRef>(
         fields_.values[accumulator_.value]).id;
-    fields_.nodes[root].imported_slot = {
-        static_cast<std::uint16_t>(constructor.value)};
+    fields_.nodes[root].imported_slot = import_reads_[constructor.value].slot;
+    fields_.nodes[root].contains_construct = true;
     for (std::uint32_t i = 0; i < call->ArgumentCount(); ++i) {
       const auto argument = call->ArgumentAt(i);
       if (!argument) throw Fail(Error::kInstruction, pc_);
@@ -327,9 +346,15 @@ class FieldReader {
       Charge(node.elements.capacity() - old_capacity,
              sizeof(RecordLiteralValue));
       if (const auto* child =
-              std::get_if<RecordNodeRef>(&node.elements.back()))
+              std::get_if<RecordNodeRef>(&node.elements.back())) {
+        node.contains_construct |=
+            fields_.nodes[child->id].contains_construct;
         fields_.nodes[child->id].attached = true;
+      }
     }
+    import_reads_[constructor.value].consumed = true;
+    pending_construct_ = root;
+    ++effect_epoch_;
   }
   RecordLiteralValue NodeValue(std::size_t parent,
                                bool earlier_child = false) {
@@ -391,8 +416,11 @@ class FieldReader {
     Charge(node.fields.capacity() - old_capacity,
            sizeof(RecordLiteralField));
     if (const auto* child =
-            std::get_if<RecordNodeRef>(&node.fields.back().value))
+            std::get_if<RecordNodeRef>(&node.fields.back().value)) {
+      node.contains_construct |=
+          fields_.nodes[child->id].contains_construct;
       fields_.nodes[child->id].attached = true;
+    }
   }
   void StoreArrayElement(const abc::DecodedInstruction& instruction) {
     const auto lifted = analysis::LiftIndexedWrite(
@@ -421,8 +449,11 @@ class FieldReader {
       Charge(node.elements.capacity() - old_capacity,
              sizeof(RecordLiteralValue));
       if (const auto* child =
-              std::get_if<RecordNodeRef>(&node.elements.back()))
+              std::get_if<RecordNodeRef>(&node.elements.back())) {
+        node.contains_construct |=
+            fields_.nodes[child->id].contains_construct;
         fields_.nodes[child->id].attached = true;
+      }
       return;
     }
     if (!std::holds_alternative<StaticArray>(fields_.values[target.value]) ||
@@ -518,12 +549,17 @@ class FieldReader {
                  fields_.nodes[node->id].attached ||
                  fields_.nodes[node->id].emitted))
       throw Fail(Error::kValue, pc_);
+    if (pending_construct_ &&
+        (!node || !fields_.nodes[node->id].contains_construct))
+      throw Fail(Error::kValue, pc_);
     Charge(name.capacity(), sizeof(char16_t));
     const auto old_capacity = fields_.fields.capacity();
     fields_.fields.push_back({std::move(name), accumulator_.value});
     Charge(fields_.fields.capacity() - old_capacity, sizeof(StaticField));
     if (array) array_refs_[accumulator_.value] = kArraySeen;
     if (node) fields_.nodes[node->id].emitted = true;
+    pending_construct_.reset();
+    ++effect_epoch_;
   }
   void Scalar(const abc::DecodedInstruction& instruction) {
     const auto lifted = analysis::LiftScalarInstruction(
@@ -586,10 +622,13 @@ class FieldReader {
   Ref accumulator_;
   StaticFields fields_;
   std::vector<std::uint8_t> array_refs_;
+  std::vector<ImportedConstructorRead> import_reads_;
   std::optional<std::size_t> pending_import_guard_;
+  std::optional<std::size_t> pending_construct_;
   static constexpr std::uint8_t kArrayUnseen = 0;
   static constexpr std::uint8_t kArraySeen = 1;
   std::size_t charged_ = 0;
+  std::size_t effect_epoch_ = 0;
   abc::CodeOffset pc_{};
 };
 }  // namespace

@@ -42,13 +42,13 @@ struct StaticFieldFailure {
 };
 using StaticFieldResult = std::variant<StaticFields, StaticFieldFailure>;
 
-// Proves a zero-argument v7 or dynamic-12.0.6 method performs only constant
-// DefineField writes on its own `this`, then returns undefined. The caller
-// proves a single CALLTHIS0 on a fresh unescaped class. Indexed writes must
-// append before publication; reused or subsequently mutated arrays are
-// rejected because source array literal syntax would lose their identity.
-// Module-backed constructors are admitted only with guarded import reads and
-// fresh literal arguments; the caller must supply the owning record module.
+// Proves a zero-argument v7 or dynamic-12.0.6 initializer builds fresh
+// literals, performs guarded imported constructions and defines fields on its
+// own `this`, then returns undefined. The caller proves a single CALLTHIS0 on
+// a fresh unescaped class. Arrays cannot be reused or mutated after
+// publication. Each imported constructor read is consumed once; its result
+// must reach a field before the next observable effect. The caller supplies
+// the owning record module.
 [[nodiscard]] StaticFieldResult RecoverStaticFields(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodInfo& method,

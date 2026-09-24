@@ -31,6 +31,7 @@ struct RecordLiteralNode {
   std::vector<RecordLiteralValue> elements;
   bool attached = false;
   bool emitted = false;
+  bool contains_construct = false;
   analysis::ModuleSlot imported_slot{};
 };
 }  // namespace abcd::source
