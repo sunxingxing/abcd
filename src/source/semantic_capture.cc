@@ -26,7 +26,7 @@ std::variant<analysis::LocalCell, analysis::CapturedSlot, SourceFailure>
 ResolveCreationCapture(
     const analysis::SemanticMethod& method,
     const analysis::SemanticProof& proof, const FunctionExpression& function,
-    analysis::CapturedSlot capture) {
+    analysis::CapturedSlot capture, analysis::CaptureDomain requirement) {
   const auto instruction = function.instruction.value;
   const auto fail = [&] {
     return SourceFailure{SourceError::kCreation,
@@ -82,6 +82,25 @@ ResolveCreationCapture(
       (proof.closure_writes == analysis::ClosureWrites::kUnknown &&
        function.previous_creation &&
        function.previous_creation->value >= allocation->value)) return fail();
+  switch (requirement) {
+    case analysis::CaptureDomain::kLanguage: break;
+    case analysis::CaptureDomain::kDefined: {
+      const auto& defined = proof.defined_captures;
+      if (block_id >= defined.block_entries.size()) return fail();
+      const auto entry = defined.block_entries[block_id];
+      auto found_guard = std::upper_bound(defined.guards.begin(), defined.guards.end(),
+          std::tuple(id, entry), [](auto key, const auto& guard) {
+            return key < std::tuple(guard.cell.value, guard.begin);
+          });
+      if (found_guard == defined.guards.begin()) return fail();
+      const auto& guard = *--found_guard;
+      if (guard.cell.value != id) return fail();
+      if (guard.instruction.value >= instruction || entry < guard.begin ||
+          entry >= guard.end) return fail();
+      break;
+    }
+    default: return fail();
+  }
   return cell;
 }
 }  // namespace abcd::source

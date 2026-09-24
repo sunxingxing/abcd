@@ -18,8 +18,9 @@ VM atom. String and non-NaN-number imply Defined; their mixed phi join retains
 Defined while dropping either narrower refinement. Joining unrestricted
 Language drops Defined. Joining bottom preserves the other operand.
 
-The shared AST can eliminate RequireInitialized only for Defined inputs or the
-existing whole-constructor certificate. This adds no implicit premise to
+The shared AST can eliminate RequireInitialized for Defined inputs, explicit
+Defined capture obligations or the existing whole-constructor certificate.
+This adds no implicit premise to
 captured reads. Ordinary captures remain Language and builder PC17 still
 requires additional evidence. The sparse solver remains finite-height: a
 scalar refinement weakens at most twice. Storage per fact is unchanged and
@@ -39,8 +40,9 @@ expectations alone are not sufficient bytecode evidence.
 `CaptureDomain` is a typed use requirement separate from `CapturedSlot`
 identity. `CapturedExpression`, `SourceCapture`, private stream tokens and
 function wrappers preserve it. Rebinding to an outer capture preserves the
-requirement; binding to a local cell currently rejects Defined because the
-existing local certificate proves only Language. The legacy leaf binder and
+requirement; binding to a local cell rejects Defined unless the additional
+normal-flow Defined owner proof below succeeds. Ordinary local initialization
+proves only Language. The legacy leaf binder and
 public `BindSourceTemplate` likewise reject stronger requirements. Measuring or
 discarding a template is not publication and does not discharge a requirement.
 
@@ -57,9 +59,38 @@ the existing normal adapter. Tokens grow by a typed field; their existing
 `sizeof`-based admission charges the added storage. Inspection JSON exports
 `required_domain` using enum values 0 (Language) and 1 (Defined).
 
-## Next Integration
+## Parent Proof
 
-The next proof must derive Defined on the normal continuation of the actual
+`ProveDefinedCaptures` now supplies that additional certificate. It admits only
+unchanged forward-only bodies, with every creation covered by transitive
+capture-preservation evidence. `BuildLocalSsa` independently checks the absence
+of raw environment escape and unsupported storage behavior. Any uncertified
+creation prevents this stronger proof for the body.
+
+The pass indexes each cell's last direct store in the entire body. Only exact
+SSA-connected adjacent local-load/RequireInitialized pairs after that store
+qualify. It records their normal dominator subtrees. A guard cannot retroactively
+define an earlier value; normal completion and a strictly later creation are
+required. The absence of later stores, re-entry and closure writes preserves the
+value over the child's lifetime, including delayed invocation.
+
+Intervals are sorted by cell, dominator preorder and guard instruction. Because
+dominator subtrees nest or are disjoint, a linear pass removes nested intervals;
+equal intervals keep the earliest guard in that block. Creation queries use a
+binary search and still check the guard precedes creation. This retains evidence
+after optional branches without scanning every guard for every capture.
+Original Language initialization/rebasing checks remain mandatory.
+
+For A accesses and G guards, the added index costs O(A + G log G + B) work and
+O(A + B) retained/scratch storage plus the existing bounded dominance, local SSA
+and transitive preservation passes. Each capture query adds O(log(G + 1)).
+Method analysis remains per invocation; no cross-call cache is claimed. All
+simultaneously live proof arrays and intermediate analyses use remaining byte
+budgets; resource exhaustion stays explicit. There is no new dependency.
+
+## Remaining Work
+
+The proof derives Defined on the normal continuation of the actual
 RequireInitialized guard, not retroactively on all uses of its SSA input.
 It must preserve the exceptional input state, establish dominance over the
 creation, resolve the same cell, and use transitive no-write evidence for all
@@ -72,7 +103,8 @@ must not erase that requirement. Detached templates and unresolved parents
 remain conditional or rejected. No copied source, source-map inference or
 runtime ReferenceError construction is a substitute for this proof.
 
-The parent-side stronger certificate is not yet implemented. This also
+Support remains conservative for backedges, exception graphs, later writes,
+copy/phi guard inputs and method-bearing buffers. This also
 does not expand the existing range-super owner's premises: native-super versus
 raw-VM exceptional timing still needs its own audit for malformed or unknown
 parent constructors. No full Home completion or equivalence is claimed.
@@ -84,6 +116,19 @@ additional conditional templates: methods 6322, 6486, 6650 and 6678. Template
 count is 60; body fragments remain 113. The builder 6322 carries six Defined
 capture tokens, including descendants' rebased requirements. The complete
 record manifest remains unchanged; these are not four executable methods.
+
+After the parent proof, the actual record-output invocation returns a
+`PrintedSource` for Home constructor 5851, including nested builder emission
+and 178 parent-PC span entries. Evidence is in
+`build/pasteboard-defined-intervals-debug.txt`. The earlier one-guard-per-cell
+attempt selected the optional branch's PC119 guard; interval indexing retains
+the dominating post-merge evidence instead. The complete record manifest in
+`build/pasteboard-source-defined-intervals/manifest.json` is still unchanged.
+The next class failure is attached method 6733, `checkPermissionGrant`, with
+`BodyEmitError::kExceptionRegions`; see
+`build/pasteboard-next-method-debug.txt`. Constructor-body success is not
+complete Home publication or executable-equivalence evidence.
+
 Tests and RSS tracking are paused. Deferred regressions cover lattice laws,
 mixed phi joins, Language/undefined weakening, internal-value joins, before-guard
 uses, exceptional paths, writes after creation and transitive rebasing.

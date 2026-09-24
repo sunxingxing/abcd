@@ -8,6 +8,7 @@
 #include "module_read_snapshot.h"
 #include "exception_body.h"
 #include "capture_preservation.h"
+#include "defined_captures.h"
 
 namespace abcd::source {
 namespace {
@@ -62,11 +63,21 @@ auto BuildBody(
   auto verified = analysis::VerifySemanticSource(
       body, *method, frame.registers, frame.locals, budget, Captures,
       initialized->loads, analysis::ClosureWrites::kLanguage);
-  const auto* proof = std::get_if<analysis::SemanticProof>(&verified);
+  auto* proof = std::get_if<analysis::SemanticProof>(&verified);
   if (!proof) return std::get<analysis::SemanticProofFailure>(verified);
   if (proof->allocated_bytes > budget.bytes)
     return SourceFailure{SourceError::kResourceLimit, {}};
   auto remaining = budget.bytes - proof->allocated_bytes;
+  auto captures = ProveDefinedCaptures(body, *method, *proof, frame.registers,
+      constants, {remaining, budget.work});
+  auto* defined = std::get_if<analysis::DefinedCaptures>(&captures);
+  if (!defined) return std::get<SourceFailure>(captures);
+  if (defined->AllocatedBytes() > remaining || defined->work_units > budget.work)
+    return SourceFailure{SourceError::kResourceLimit, {}};
+  remaining -= defined->AllocatedBytes();
+  budget.work -= defined->work_units;
+  proof->allocated_bytes += defined->AllocatedBytes();
+  proof->defined_captures = std::move(*defined);
   const auto checked = ValidateNamedScopes(
       body, frame.registers, &constants, remaining, budget.work);
   const auto* scopes = std::get_if<NamedScopes>(&checked);

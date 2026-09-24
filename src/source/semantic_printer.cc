@@ -159,15 +159,16 @@ class SourcePrinter {
       const auto resolved = printer_.capture_environments_
           ? ResolveCreationCapture(*printer_.capture_environments_, function_, capture,
                                    printer_.current_pc_)
-          : ResolveCreationCapture(*printer_.capture_method_, *printer_.proof_, function_, capture);
+          : ResolveCreationCapture(*printer_.capture_method_, *printer_.proof_,
+                                   function_, capture, requirement);
       if (const auto* failure = std::get_if<SourceFailure>(&resolved)) throw *failure;
       if (const auto* outer = std::get_if<analysis::CapturedSlot>(&resolved)) {
         printer_.Capture(*outer, requirement);
         return true;
       }
-      // Local initialization and Language-only writes do not exclude undefined.
-      // A stronger obligation must survive to an owner with a matching proof.
-      if (requirement != analysis::CaptureDomain::kLanguage)
+      // Phased topology alone cannot discharge a stronger local obligation.
+      if (printer_.capture_environments_ &&
+          requirement != analysis::CaptureDomain::kLanguage)
         throw SourceFailure{SourceError::kCreation, printer_.current_pc_};
       printer_.LocalName(std::get<analysis::LocalCell>(resolved));
       return true;

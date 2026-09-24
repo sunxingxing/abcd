@@ -46,6 +46,23 @@ struct LocalInitialization {
   std::uint32_t begin;
   std::uint32_t end;
 };
+struct CaptureGuard {
+  LocalCellId cell;
+  InstructionId instruction;
+  std::uint32_t begin;
+  std::uint32_t end;
+};
+struct DefinedCaptures {
+  // Disjoint dominator intervals, sorted by (cell, begin), and block entries.
+  // Valid only with no later direct stores or transitive closure writes.
+  std::vector<CaptureGuard> guards;
+  std::vector<std::uint32_t> block_entries;
+  std::uint64_t work_units = 0;
+  std::size_t AllocatedBytes() const {
+    return guards.capacity() * sizeof(CaptureGuard) +
+           block_entries.capacity() * sizeof(std::uint32_t);
+  }
+};
 struct LocalAccessPlan {
   std::vector<LocalCell> cells;
   std::vector<LocalAccessFact> accesses;
@@ -79,6 +96,7 @@ struct SemanticProof {
   std::vector<CapturedReadFact> captured_reads;
   LocalAccessPlan locals;
   ClosureWrites closure_writes = ClosureWrites::kUnknown;
+  DefinedCaptures defined_captures;
 };
 enum class SemanticProofError : std::uint8_t {
   kAccumulator,  // Retained serialized value; generic proof now uses SSA.
