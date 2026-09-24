@@ -19,6 +19,7 @@
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/corpus/abc_file.h"
 #include "abcd/source/semantic_source.h"
+#include "semantic_survey.h"
 
 namespace {
 using namespace abcd;
@@ -52,7 +53,7 @@ int FailStage(InspectError kind, unsigned stage_error,
   return EXIT_FAILURE;
 }
 int Inspect(const std::filesystem::path& path, std::uint32_t entity,
-            std::optional<source::SourceForm> form) {
+            std::optional<source::SourceForm> form, bool all_records = false) {
   auto opened = corpus::AbcFile::Open(path);
   const auto* owned = std::get_if<std::unique_ptr<corpus::AbcFile>>(&opened);
   if (!owned) return Fail(InspectError::kOpen);
@@ -69,6 +70,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
   const auto indexed = abc::BuildMetadataIndex(file, *header, {kIndexBytes});
   const auto* index = std::get_if<abc::MetadataIndex>(&indexed);
   if (!index) return Fail(InspectError::kIndex);
+  if (all_records) return SurveyRecords(file, *header, *index, *hash, std::cout);
   const auto method = std::find_if(
       index->methods.begin(), index->methods.end(),
       [entity](const abc::MethodInfo& item) {
@@ -176,11 +178,14 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
 
 int main(int argc, char** argv) {
   if (argc != 3 && argc != 4) {
-    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source]\n";
+    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source]\n"
+                 "       abc_semantic INPUT.abc --all-records\n";
     return Fail(InspectError::kArguments);
   }
   std::uint32_t entity = 0;
   const std::string_view token{argv[2]};
+  if (token == "--all-records" && argc == 3)
+    return Inspect(argv[1], 0, std::nullopt, true);
   const auto number = std::from_chars(
       token.data(), token.data() + token.size(), entity);
   if (number.ec != std::errc{} ||

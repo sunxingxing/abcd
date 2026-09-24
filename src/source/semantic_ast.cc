@@ -76,6 +76,15 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
           return Fail(SourceError::kInvalidEffect, instruction.pc);
         operation = SourceAssignment{assignment->destination,
                                      assignment->expression};
+      } else if (const auto* string =
+                     std::get_if<analysis::StringLoad>(&instruction.operation)) {
+        if (!SameSlot(effect.normal_registers.write,
+                      analysis::ScalarSlot{analysis::Accumulator{}}) ||
+            effect.exceptional != analysis::ExceptionalCompletion::kImpossible)
+          return Fail(SourceError::kInvalidEffect, instruction.pc);
+        operation = SourceAssignment{
+            analysis::ScalarSlot{analysis::Accumulator{}},
+            StringExpression{string->value}};
       } else if (const auto* read =
                      std::get_if<analysis::NamedRead>(&instruction.operation)) {
         if (!SameSlot(effect.normal_registers.write,

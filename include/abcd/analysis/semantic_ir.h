@@ -51,11 +51,15 @@ struct ReturnOperation {
   ScalarValue value;
 };
 struct NoOperation {};
+struct StringLoad {
+  abc::PoolIndex value;
+};
 using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        NamedRead, NamedWrite, OwnWrite,
                                        ValueWrite, ModuleLoad, HoleGuard,
                                        GlobalAccess, BranchOperation,
-                                       JumpOperation, ReturnOperation>;
+                                       JumpOperation, ReturnOperation,
+                                       StringLoad>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

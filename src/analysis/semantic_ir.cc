@@ -48,6 +48,15 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
       break;
   }
   if (decoded.opcode == Opcode::kNOP) return NoOperation{};
+  if (decoded.opcode == Opcode::kLDA_STR_ID16) {
+    if (!std::holds_alternative<RegisterEffect>(
+            LiftRegisterEffect(decoded, frame_size)))
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    // Retain the method-relative pool reference; resolve UTF-16 only at the
+    // output boundary. Never use a property-name filter for string values.
+    return StringLoad{abc::PoolIndex{
+        static_cast<std::uint16_t>(decoded.operands.front().raw_bits)}};
+  }
   const auto scalar = LiftScalarInstruction(decoded, frame_size);
   if (const auto* assignment = std::get_if<ScalarAssignment>(&scalar))
     return *assignment;
@@ -134,6 +143,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else {
           static_assert(std::is_same_v<T, NoOperation> ||
+                        std::is_same_v<T, StringLoad> ||
                         std::is_same_v<T, BranchOperation> ||
                         std::is_same_v<T, JumpOperation> ||
                         std::is_same_v<T, ReturnOperation>);

@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "sha256": "854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e",
+  "inputs": [
+    "/home/rabbit/sample/abc_with_code/pasteboard/modules.abc",
+    "/home/rabbit/sample/abc/pasteboard.abc"
+  ],
+  "expected_records": 19,
+  "expected_methods": 219,
+  "records": [
+    {"entity": 4092, "methods": 0},
+    {"entity": 4144, "methods": 0},
+    {"entity": 4182, "methods": 5},
+    {"entity": 4466, "methods": 6},
+    {"entity": 4767, "methods": 12},
+    {"entity": 5246, "methods": 4},
+    {"entity": 5521, "methods": 45},
+    {"entity": 6897, "methods": 22},
+    {"entity": 7640, "methods": 22},
+    {"entity": 8383, "methods": 37},
+    {"entity": 9550, "methods": 42},
+    {"entity": 10857, "methods": 24},
+    {"entity": 11662, "methods": 0},
+    {"entity": 11697, "methods": 0},
+    {"entity": 11735, "methods": 0},
+    {"entity": 11774, "methods": 0},
+    {"entity": 11811, "methods": 0},
+    {"entity": 11851, "methods": 0},
+    {"entity": 11892, "methods": 0}
+  ]
+}

@@ -19,8 +19,12 @@ struct MemberExpression {
   analysis::ScalarValue object;
   abc::PoolIndex name;
 };
+struct StringExpression {
+  abc::PoolIndex value;
+};
 using SourceExpression =
-    std::variant<analysis::ScalarExpression, MemberExpression>;
+    std::variant<analysis::ScalarExpression, MemberExpression,
+                 StringExpression>;
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;

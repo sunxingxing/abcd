@@ -1,5 +1,8 @@
 # Semantic Source Trunk
 
+The ongoing experimental corpus is now [all Pasteboard records](pasteboard-trunk.md).
+The earlier CommentItem slice below remains a baseline, not the corpus boundary.
+
 The first end-to-end target is the real `CommentItem` constructor (entity
 20651, Dynamic1202, in MultiCommunityApplication). It has branches and named
 property reads/writes that can invoke getters, setters or proxies. The

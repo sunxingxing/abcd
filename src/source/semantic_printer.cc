@@ -121,7 +121,8 @@ class SourcePrinter {
   void Slot(const analysis::ScalarSlot& slot) {
     std::visit([&](const auto& value) { Value(ScalarValue{value}); }, slot);
   }
-  void PoolName(abc::PoolIndex slot) {
+  enum class StringUse { kValue, kPropertyName };
+  void PoolString(abc::PoolIndex slot, StringUse use) {
     const auto reference = abc::ResolvePoolReference(
         constants_.file, constants_.header, constants_.index,
         constants_.method, slot, abc::PoolEntityKind::kString);
@@ -131,7 +132,7 @@ class SourcePrinter {
         constants_.file, constants_.header, pool->offset,
         constants_.string_budget);
     const auto* name = std::get_if<std::u16string>(&string);
-    if (!name || IsElementName(*name))
+    if (!name || (use == StringUse::kPropertyName && IsElementName(*name)))
       throw SourceFailure{SourceError::kConstant, current_pc_};
     std::ostringstream stream;
     const auto written = WriteStringLiteral(
@@ -140,9 +141,14 @@ class SourcePrinter {
       throw SourceFailure{SourceError::kOutput, current_pc_};
     Text(stream.str());
   }
+  void PoolName(abc::PoolIndex slot) {
+    PoolString(slot, StringUse::kPropertyName);
+  }
   void Expression(const SourceExpression& expression) {
     if (const auto* scalar = std::get_if<ScalarExpression>(&expression)) {
       Scalar(*scalar);
+    } else if (const auto* string = std::get_if<StringExpression>(&expression)) {
+      PoolString(string->value, StringUse::kValue);
     } else {
       const auto& member = std::get<MemberExpression>(expression);
       Text("(");
