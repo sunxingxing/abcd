@@ -6,6 +6,7 @@
 
 #include "abcd/abc/method_body.h"
 #include "abcd/abc/pool_reference.h"
+#include "abcd/analysis/normal_flow.h"
 
 namespace abcd::analysis {
 struct GuardedGlobalCall {
@@ -26,9 +27,13 @@ struct GuardedGlobalCall {
 // Requires exact decoded operands, branch edges, dead transient registers and
 // a join instruction that overwrites (without reading) the merged accumulator.
 // This is evidence for later source admission, not permission to omit effects.
-// O(method instructions) time, O(1) auxiliary memory.
-[[nodiscard]] std::optional<GuardedGlobalCall> MatchGuardedGlobalCall(
+// Forward normal CFG only; loops and resume edges remain unsupported.
+// O(I log I) time (CFG target lookup), O(I) budgeted auxiliary memory.
+// monostate means no proof; allocation/CFG failures are not a non-match.
+using GuardedCallResult =
+    std::variant<std::monostate, GuardedGlobalCall, FlowFailure>;
+[[nodiscard]] GuardedCallResult MatchGuardedGlobalCall(
     const abc::MethodBody& body, std::size_t first,
-    std::uint64_t frame_size);
+    std::uint64_t frame_size, FlowBudget budget = {});
 }  // namespace abcd::analysis
 #endif

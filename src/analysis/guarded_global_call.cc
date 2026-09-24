@@ -1,6 +1,8 @@
 #include "abcd/analysis/guarded_global_call.h"
 
 #include <array>
+#include <bitset>
+#include <new>
 
 #include "abcd/abc/register_access.h"
 #include "abcd/analysis/function_creation.h"
@@ -10,6 +12,9 @@
 
 namespace abcd::analysis {
 namespace {
+// One tracked register per store in the guarded-call Step sequence; aliases
+// intentionally retain separate bits and are killed by the same write.
+constexpr std::size_t kTransientCount = 8;
 enum class Step : std::size_t {
   kKey,
   kStoreKey,
@@ -139,45 +144,75 @@ bool Call(const abc::BodyInstruction& site,
       return false;
   return true;
 }
-bool TransientsDead(const abc::MethodBody& body, std::size_t after,
-                    std::uint64_t frame_size,
-                    std::array<abc::RegisterId, 8> registers) {
-  std::array<bool, 8> live{};
-  live.fill(true);
-  for (std::size_t i = after; i < body.instructions.size(); ++i) {
-    const auto& instruction = body.instructions[i].decoded;
-    if (instruction.jump || instruction.conditional) return false;
-    const auto accessed = abc::GetRegisterAccesses(instruction, frame_size);
-    const auto* windows = std::get_if<abc::RegisterAccesses>(&accessed);
-    if (!windows) return false;
-    for (std::size_t j = 0; j < registers.size(); ++j) {
-      if (!live[j]) continue;
-      for (std::size_t w = 0; w < windows->count; ++w) {
-        const auto& window = windows->windows[w];
-        if (registers[j].value < window.first.value ||
-            registers[j].value - window.first.value >= window.count)
-          continue;
-        if (window.access != abc::OperandAccess::kWrite) return false;
+std::variant<bool, FlowFailure> TransientsDead(
+    const abc::MethodBody& body, std::size_t after,
+    std::uint64_t frame_size,
+    std::array<abc::RegisterId, kTransientCount> registers,
+    FlowBudget budget) {
+  auto result = BuildNormalFlow(body, budget);
+  if (const auto* failure = std::get_if<FlowFailure>(&result))
+    return *failure;
+  const auto& blocks = std::get<NormalFlow>(result).blocks;
+  using Live = std::bitset<std::tuple_size_v<decltype(registers)>>;
+  const auto graph_bytes = blocks.capacity() * sizeof(FlowBlock);
+  if (blocks.size() > (budget.bytes - graph_bytes) / sizeof(Live))
+    return FlowFailure{FlowError::kResourceLimit, {}};
+  std::vector<Live> incoming(blocks.size());
+  if (incoming.capacity() > (budget.bytes - graph_bytes) / sizeof(Live))
+    return FlowFailure{FlowError::kResourceLimit, {}};
+  bool seeded = false;
+  // May-read-before-write: union at joins, kill only on the current path.
+  // Reject backedges/resumption rather than applying a forward proof to loops.
+  for (std::size_t b = 0; b < blocks.size(); ++b) {
+    const auto& block = blocks[b];
+    for (std::size_t e = 0; e < block.successor_count; ++e)
+      if (block.successors[e].target.value <= b ||
+          block.successors[e].kind == FlowEdgeKind::kResume)
+        return false;
+    auto live = incoming[b];
+    if (block.first_instruction == after) {
+      live.set();
+      seeded = true;
+    }
+    if (live.none()) continue;
+    const auto end = static_cast<std::size_t>(block.first_instruction) +
+                     block.instruction_count;
+    for (std::size_t i = block.first_instruction; i < end; ++i) {
+      const auto& instruction = body.instructions[i].decoded;
+      const auto accessed = abc::GetRegisterAccesses(instruction, frame_size);
+      const auto* windows = std::get_if<abc::RegisterAccesses>(&accessed);
+      if (!windows) return false;
+      for (std::size_t j = 0; j < registers.size(); ++j) {
+        if (!live[j]) continue;
+        for (std::size_t w = 0; w < windows->count; ++w) {
+          const auto& window = windows->windows[w];
+          if (registers[j].value < window.first.value ||
+              registers[j].value - window.first.value >= window.count)
+            continue;
+          if (window.access != abc::OperandAccess::kWrite) return false;
+        }
+      }
+      for (std::size_t j = 0; j < registers.size(); ++j) {
+        if (!live[j]) continue;
+        for (std::size_t w = 0; w < windows->count; ++w) {
+          const auto& window = windows->windows[w];
+          if (window.access == abc::OperandAccess::kWrite &&
+              registers[j].value >= window.first.value &&
+              registers[j].value - window.first.value < window.count)
+            live.reset(j);
+        }
       }
     }
-    for (std::size_t j = 0; j < registers.size(); ++j) {
-      if (!live[j]) continue;
-      for (std::size_t w = 0; w < windows->count; ++w) {
-        const auto& window = windows->windows[w];
-        if (window.access == abc::OperandAccess::kWrite &&
-            registers[j].value >= window.first.value &&
-            registers[j].value - window.first.value < window.count)
-          live[j] = false;
-      }
-    }
+    for (std::size_t e = 0; e < block.successor_count; ++e)
+      incoming[block.successors[e].target.value] |= live;
   }
-  return true;
+  return seeded;
 }
 }  // namespace
 
-std::optional<GuardedGlobalCall> MatchGuardedGlobalCall(
+GuardedCallResult MatchGuardedGlobalCall(
     const abc::MethodBody& body, std::size_t first,
-    std::uint64_t frame_size) {
+    std::uint64_t frame_size, FlowBudget budget) {
   using abc::Opcode;
   if (!body.tries.empty() || !body.handlers.empty() ||
       first > body.instructions.size() ||
@@ -271,11 +306,18 @@ std::optional<GuardedGlobalCall> MatchGuardedGlobalCall(
         *site.branch_target <= after_pc)
       return {};
   }
-  if (!TransientsDead(body, first + Offset(Step::kAfter), frame_size,
-                      {*key_reg, *receiver_reg, *call_reg, *method_reg,
-                       *argument_global_reg, *object_reg, *argument_key_reg,
-                       *function_reg}))
-    return {};
+  try {
+    const auto dead = TransientsDead(
+        body, first + Offset(Step::kAfter), frame_size,
+        {*key_reg, *receiver_reg, *call_reg, *method_reg,
+         *argument_global_reg, *object_reg, *argument_key_reg, *function_reg},
+        budget);
+    if (const auto* failure = std::get_if<FlowFailure>(&dead))
+      return *failure;
+    if (!std::get<bool>(dead)) return {};
+  } catch (const std::bad_alloc&) {
+    return FlowFailure{FlowError::kResourceLimit, after_pc};
+  }
   return GuardedGlobalCall{
       first, first + Offset(Step::kAfter),
       first + Offset(Step::kFunction), *key, *receiver_global,

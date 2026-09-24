@@ -55,8 +55,10 @@ int main(int argc, char** argv) {
   Check(entry.code.has_value());
   const auto body = std::get<abc::MethodBody>(
       abc::DecodeMethodBody(file, header.profile, *entry.code));
-  const auto guard = analysis::MatchGuardedGlobalCall(
+  const auto matched_guard = analysis::MatchGuardedGlobalCall(
       body, kGuardStart, entry.code->registers);
+  const auto* guard =
+      std::get_if<analysis::GuardedGlobalCall>(&matched_guard);
   Check(guard && guard->first == kGuardStart && guard->after == kGuardEnd);
   const auto context = std::get<source::RecordModuleContext>(
       source::ReadRecordModuleContext(

@@ -245,9 +245,15 @@ class ProgramWriter {
           !guarded_call_checked &&
           instruction.decoded.opcode == abc::Opcode::kLDA_STR_ID16) {
         guarded_call_checked = true;
-        const auto guard = analysis::MatchGuardedGlobalCall(
-            body_, i, registers_.size());
-        if (guard) {
+        const auto matched = analysis::MatchGuardedGlobalCall(
+            body_, i, registers_.size(), {budget_.bytes});
+        if (const auto* failure =
+                std::get_if<analysis::FlowFailure>(&matched))
+          throw Fail(failure->kind == analysis::FlowError::kResourceLimit
+                         ? Error::kResourceLimit : Error::kInstruction,
+                     failure->offset);
+        if (const auto* guard =
+                std::get_if<analysis::GuardedGlobalCall>(&matched)) {
           last_effect_pc_ = pc_;
           GuardedCall(*guard);
           i = guard->after - 1;

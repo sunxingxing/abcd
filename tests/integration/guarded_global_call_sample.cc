@@ -56,8 +56,10 @@ int main(int argc, char** argv) {
     const auto body = std::get<abc::MethodBody>(
         abc::DecodeMethodBody(file, header.profile, *entry.code));
     if (body.instructions.size() <= 3) continue;
-    const auto found = analysis::MatchGuardedGlobalCall(
+    const auto matched_guard = analysis::MatchGuardedGlobalCall(
         body, 3, entry.code->registers);
+    const auto* found =
+        std::get_if<analysis::GuardedGlobalCall>(&matched_guard);
     if (!found) continue;
     ++matched;
     if (record.offset != kShoppingRecord) continue;
@@ -94,20 +96,23 @@ int main(int argc, char** argv) {
           body.instructions[found->after + 2].offset);
     auto malformed = body;
     malformed.instructions[11].branch_target = {};
-    Check(!analysis::MatchGuardedGlobalCall(
-        malformed, 3, entry.code->registers));
+    Check(!std::holds_alternative<analysis::GuardedGlobalCall>(
+        analysis::MatchGuardedGlobalCall(
+            malformed, 3, entry.code->registers)));
     malformed = body;
     malformed.instructions[27].decoded.operands[0].raw_bits = 0;
-    Check(!analysis::MatchGuardedGlobalCall(
-        malformed, 3, entry.code->registers));
+    Check(!std::holds_alternative<analysis::GuardedGlobalCall>(
+        analysis::MatchGuardedGlobalCall(
+            malformed, 3, entry.code->registers)));
     malformed = body;
     malformed.instructions[34].decoded.opcode = abc::Opcode::kLDA_V8;
     malformed.instructions[34].decoded.operand_count = 1;
     malformed.instructions[34].decoded.operands[0].kind =
         abc::OperandKind::kRegister;
     malformed.instructions[34].decoded.operands[0].raw_bits = 5;
-    Check(!analysis::MatchGuardedGlobalCall(
-        malformed, 3, entry.code->registers));
+    Check(!std::holds_alternative<analysis::GuardedGlobalCall>(
+        analysis::MatchGuardedGlobalCall(
+            malformed, 3, entry.code->registers)));
     const auto nop = std::get<abc::DecodedInstruction>(
         abc::DecodeInstruction(std::array<std::uint8_t, 1>{0xd5},
                                header.profile));
@@ -121,8 +126,9 @@ int main(int argc, char** argv) {
       auto terminal = final;
       terminal.offset.value += static_cast<std::uint32_t>(count);
       extended.instructions.push_back(terminal);
-      Check(analysis::MatchGuardedGlobalCall(
-          extended, 3, entry.code->registers).has_value());
+      Check(std::holds_alternative<analysis::GuardedGlobalCall>(
+          analysis::MatchGuardedGlobalCall(
+              extended, 3, entry.code->registers)));
     }
   }
   Check(matched == kExpectedGuardedRecords);
