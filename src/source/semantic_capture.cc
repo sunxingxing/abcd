@@ -4,7 +4,8 @@
 #include <tuple>
 
 namespace abcd::source {
-std::variant<analysis::LocalCell, SourceFailure> ResolveLocalCapture(
+std::variant<analysis::LocalCell, analysis::CapturedSlot, SourceFailure>
+ResolveCreationCapture(
     const analysis::SemanticMethod& method,
     const analysis::SemanticProof& proof, const FunctionExpression& function,
     analysis::CapturedSlot capture) {
@@ -21,6 +22,8 @@ std::variant<analysis::LocalCell, SourceFailure> ResolveLocalCapture(
       *proof.environments.before[instruction], capture.depth, capture.slot);
   const auto* binding = std::get_if<analysis::LexicalBinding>(&resolved);
   if (!binding) return fail();
+  if (const auto* depth = std::get_if<analysis::CapturedDepth>(&binding->environment))
+    return analysis::CapturedSlot{*depth, binding->slot};
   const auto* environment = std::get_if<analysis::EnvironmentId>(&binding->environment);
   if (!environment || environment->value >= proof.locals.allocations.size()) return fail();
   const analysis::LocalCell cell{*environment, binding->slot};

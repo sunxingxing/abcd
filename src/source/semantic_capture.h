@@ -4,9 +4,11 @@
 #include "abcd/source/semantic_source.h"
 
 namespace abcd::source {
-// First capture since same-block allocation, after a Language store. The
-// child template separately proves its captured stores remain Language.
-std::variant<analysis::LocalCell, SourceFailure> ResolveLocalCapture(
+// Rebase at the actual creation environment. Local cells require first capture
+// after a same-block Language store; external cells remain typed obligations.
+// The child template separately proves its captured stores remain Language.
+std::variant<analysis::LocalCell, analysis::CapturedSlot, SourceFailure>
+ResolveCreationCapture(
     const analysis::SemanticMethod& method,
     const analysis::SemanticProof& proof, const FunctionExpression& function,
     analysis::CapturedSlot capture);

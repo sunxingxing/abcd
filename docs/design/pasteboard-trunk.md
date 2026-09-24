@@ -526,6 +526,43 @@ different entity IDs, case-folded collisions, traversal/escaping and exhausted
 budget; these tests remain unexecuted under the user's testing pause. RSS
 tracking remains paused as well.
 
+## Forwarding Child Captures Through Parent Templates
+
+`ResolveCreationCapture` now returns either a proven parent local cell or a
+typed entry-chain capture obligation. It resolves the child's normalized
+capture through the environment at the actual DEFINEFUNC instruction; it does
+not copy the child depth unchanged or infer names from emitted text. A parent
+template forwards an entry-chain obligation as a zero-width `SourceCapture`
+at the current generated position, including the insertion cursor. Ordinary
+source still rejects an unresolved external capture.
+
+This closes the case where a child and its parent both reference a grandparent
+cell. Binding a template's own local cell remains refused: both parent and
+child templates currently name locals with the `$inner` namespace, so naive
+substitution could shadow the intended binding. Ordinary parents retain the
+existing same-block first-creation initialization gate for their `$lex` cells.
+No recursion-depth capability, initialization condition, capture-store value
+proof, or source-position provenance contract was relaxed. Forwarded events
+share the preallocated parent capture quota and fail with a typed resource
+error if it is exhausted; child-internal PC spans remain outstanding work.
+
+In `build/pasteboard-semantic-capture-forwarding.jsonl`, ProgressBar's
+ProgressListener (10802) advances from printer rejection to a parent template
+containing its setTimeout callback. Both its direct capture and the child's
+forwarded capture resolve to entry depth 1, slot 0. The parent PC 111 creation
+span advances its capture cursor from one to two while enclosing the child
+text. Totals are 44 IR, six proof, 21 AST and 26 printer rejections, 101 body
+fragments and 21 incomplete templates. The callback body is the newly admitted
+10583 field-initialization case, so this composes the preceding object-identity
+increment into an actual parent function rather than an isolated leaf output.
+
+Both CLI targets compiled; ABC-only survey and record generation completed.
+CommonConstants and Logger remain the only complete record outputs. Runtime
+tests and RSS tracking remain paused. Deferred regressions must cover nonzero
+entry-depth rebasing, pushed/popped local scopes, local/template name shadowing,
+ordinary-source rejection of an unresolved capture, adjacent zero-width
+insertions, capture quota exhaustion, and failure after partial child output.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial
