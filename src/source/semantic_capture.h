@@ -13,11 +13,12 @@ ResolveCreationCapture(
     const analysis::SemanticProof& proof, const FunctionExpression& function,
     analysis::CapturedSlot capture,
     analysis::CaptureDomain requirement = analysis::CaptureDomain::kLanguage);
-// Phased topology only: rebases through the exact creation Before environment.
-// Outer bindings remain parent obligations; topology cannot initialize locals.
+// Rebase through the exact creation Before environment. Outer bindings remain
+// obligations; locals require the optional full-phase store/lifetime proof.
+// The owner must validate all parent inputs before consuming that proof.
 std::variant<analysis::LocalCell, analysis::CapturedSlot, SourceFailure>
 ResolveCreationCapture(const analysis::EnvironmentFlow& environments,
     const FunctionExpression& function, analysis::CapturedSlot capture,
-    abc::CodeOffset pc);
+    abc::CodeOffset pc, const analysis::ExceptionLocals* locals = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_SEMANTIC_CAPTURE_H_

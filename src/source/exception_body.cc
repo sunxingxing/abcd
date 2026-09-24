@@ -195,12 +195,13 @@ auto BuildException(
     auto bounded_constants = constants;
     bounded_constants.string_budget.bytes = std::min(constants.string_budget.bytes, print_bytes);
     if constexpr (Captures == CapturedValues::kReject) {
-      auto printed = PrintSourceBody(*ast, *blocks, names, bounded_constants, print_bytes);
+      auto printed = PrintSourceBody(*ast, *blocks, names, bounded_constants, print_bytes,
+                                    environments, locals);
       if (auto* source = std::get_if<PrintedSource>(&printed)) return std::move(*source);
       return std::get<SourceFailure>(printed);
     } else {
       auto printed = PrintSourceTemplate(*ast, *blocks, names, bounded_constants, print_bytes,
-                                         environments);
+                                         environments, locals);
       if (auto* source = std::get_if<PrintedTemplate>(&printed)) return std::move(*source);
       return std::get<SourceFailure>(printed);
     }

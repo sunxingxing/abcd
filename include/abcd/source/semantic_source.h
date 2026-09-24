@@ -15,6 +15,7 @@
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/source/linear_body.h"
 
+namespace abcd::analysis { struct ExceptionLocals; }
 namespace abcd::source {
 struct MemberExpression {
   analysis::ScalarValue object;
@@ -231,10 +232,14 @@ enum class SourceForm : std::uint8_t { kFunction, kClassConstructor };
 // Common layout-only printer for a same-body, already verified AST, including
 // BuildExceptionSourceAst results. It cannot bind child captures using a
 // normal-CFG proof. All binding/async/position contracts above still apply.
+// Optional phased environments/locals must match the verified AST and outlive
+// printing; only their complete-graph capture certificate permits local binds.
 [[nodiscard]] std::variant<PrintedSource, SourceFailure> PrintSourceBody(
     const SourceAst& ast, const analysis::NormalFlow& blocks,
     ScalarNames names, const MethodConstants& constants,
-    std::size_t output_bytes);
+    std::size_t output_bytes,
+    const analysis::EnvironmentFlow* environments = nullptr,
+    const analysis::ExceptionLocals* locals = nullptr);
 // Captured expressions become typed insertions, not invented identifiers.
 // Only a parent capture-binding path may consume this incomplete artifact.
 // Every occurrence's required domain must be discharged without weakening it.
@@ -246,11 +251,12 @@ enum class SourceForm : std::uint8_t { kFunction, kClassConstructor };
 // Layout-only counterpart for a verified phased AST. Optional environments
 // must be the unchanged phased owner used to build this AST and outlive print.
 // Child captures can be rebased to outer-cell insertions; locally allocated
-// cells still require an initialization proof and are refused here.
+// cells require the optional complete-phase initialization certificate.
 [[nodiscard]] std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
     const SourceAst& ast, const analysis::NormalFlow& blocks,
     ScalarNames names, const MethodConstants& constants,
     std::size_t output_bytes,
-    const analysis::EnvironmentFlow* environments = nullptr);
+    const analysis::EnvironmentFlow* environments = nullptr,
+    const analysis::ExceptionLocals* locals = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_SEMANTIC_SOURCE_H_

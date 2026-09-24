@@ -54,3 +54,41 @@ This is a proof-stage advance, not completion of the method or Home record.
 Tests, executable equivalence and RSS tracking remain paused. Deferred cases
 include creation throws before Commit, mixed certified/unknown siblings,
 ancestor captures, buffered methods, stale/duplicate PCs and budget exhaustion.
+
+## Escaping Local Bindings
+
+`ExceptionLocals` now retains a separate full-phase capture certificate:
+completed-store dominance intervals sorted by cell and phase-entry preorder
+numbers. It never reuses the normal CFG's initialization intervals. The existing
+store union is moved into the result, filtering cells whose environments remain
+possibly written by closures. All parent stores must still pass the Language
+input verifier before any owner may consume this conditional certificate.
+
+The certificate is absent if any edge can re-enter an earlier instruction,
+including exception edges and same-instruction re-entry. Before-to-Commit and
+Catch-to-Before progression at the same instruction are allowed; backedges are
+not. This avoids treating repeated environment allocations as one escaping
+source cell. Forward closure creation also requires the original allocation to
+dominate a completed initializing store.
+
+The phased printer receives the same owner's environment topology and local
+certificate. A child capture is resolved at its actual creation Before node,
+then looked up in the initialized cell's phase interval. An outer capture stays
+a typed parent obligation. Defined requirements still reject: this certificate
+only proves initialized Language storage, not non-undefinedness. Neither the
+topology-only overload nor the public Language-only template binder gains an
+implicit stronger premise.
+
+Storage adds O(N) phase entries and retains the existing bounded store-interval
+buffer without copying. Dominator storage remains charged while entries are
+allocated. Binding costs O(log L + log S) for L local cells and S merged store
+intervals; there is no per-capture traversal of the phase graph.
+
+In the actual 6733 owner, the sole retained cell interval is [10, 405).
+Creation Before nodes for PC425 and PC448 have preorder entries 237 and 253,
+respectively, both inside that initialized interval. Evidence is in
+`build/pasteboard-phased-captures-debug.txt`. The record manifest remains
+unchanged because PC96's pending-exception domain still fails earlier source
+input verification. The host-boundary question remains unresolved and strict
+Unknown defaults are unchanged. Both CLI targets build; no tests or RSS work
+was resumed.

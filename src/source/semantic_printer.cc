@@ -37,11 +37,12 @@ class SourcePrinter {
                 std::size_t bytes, CaptureMode captures = CaptureMode::kReject,
                 const analysis::SemanticProof* proof = nullptr,
                 const analysis::SemanticMethod* capture_method = nullptr,
-                const analysis::EnvironmentFlow* capture_environments = nullptr)
+                const analysis::EnvironmentFlow* capture_environments = nullptr,
+                const analysis::ExceptionLocals* capture_locals = nullptr)
       : ast_(ast), blocks_(blocks), capture_method_(capture_method), frame_(frame), form_(form), name_(name),
         constants_(constants), limit_(bytes), capture_mode_(captures), proof_(proof),
         expansion_(constants.method, bytes, kDefaultMethodWork),
-        capture_environments_(capture_environments) {}
+        capture_environments_(capture_environments), capture_locals_(capture_locals) {}
 
   std::variant<PrintedTemplate, SourceFailure> PrintTemplate(ScalarNames names) {
     auto printed = PrintBody(names);
@@ -158,7 +159,7 @@ class SourcePrinter {
         throw SourceFailure{SourceError::kCreation, printer_.current_pc_};
       const auto resolved = printer_.capture_environments_
           ? ResolveCreationCapture(*printer_.capture_environments_, function_, capture,
-                                   printer_.current_pc_)
+                                   printer_.current_pc_, printer_.capture_locals_)
           : ResolveCreationCapture(*printer_.capture_method_, *printer_.proof_,
                                    function_, capture, requirement);
       if (const auto* failure = std::get_if<SourceFailure>(&resolved)) throw *failure;
@@ -753,6 +754,7 @@ class SourcePrinter {
   const analysis::SemanticProof* proof_;
   CreationExpansion expansion_;
   const analysis::EnvironmentFlow* capture_environments_;
+  const analysis::ExceptionLocals* capture_locals_;
 };
 }  // namespace
 
@@ -776,10 +778,12 @@ std::variant<PrintedSource, SourceFailure> PrintSourceBody(
 std::variant<PrintedSource, SourceFailure> PrintSourceBody(
     const SourceAst& ast, const analysis::NormalFlow& blocks,
     ScalarNames names, const MethodConstants& constants,
-    std::size_t output_bytes) {
+    std::size_t output_bytes, const analysis::EnvironmentFlow* environments,
+    const analysis::ExceptionLocals* locals) {
   const abc::FrameLayout unused_frame{};
   return SourcePrinter(ast, blocks, unused_frame, SourceForm::kFunction,
-                       {}, constants, output_bytes).PrintBody(names);
+                       {}, constants, output_bytes, SourcePrinter::CaptureMode::kReject,
+                       nullptr, nullptr, environments, locals).PrintBody(names);
 }
 std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
     const SourceAst& ast, const analysis::SemanticMethod& method,
@@ -793,11 +797,11 @@ std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
 std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
     const SourceAst& ast, const analysis::NormalFlow& blocks,
     ScalarNames names, const MethodConstants& constants, std::size_t output_bytes,
-    const analysis::EnvironmentFlow* environments) {
+    const analysis::EnvironmentFlow* environments, const analysis::ExceptionLocals* locals) {
   const abc::FrameLayout unused_frame{};
   return SourcePrinter(ast, blocks, unused_frame, SourceForm::kFunction,
                        {}, constants, output_bytes,
                        SourcePrinter::CaptureMode::kTemplate, nullptr, nullptr,
-                       environments).PrintTemplate(names);
+                       environments, locals).PrintTemplate(names);
 }
 }  // namespace abcd::source

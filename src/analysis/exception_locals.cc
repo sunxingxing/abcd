@@ -8,11 +8,6 @@
 namespace abcd::analysis {
 namespace {
 auto Key(LocalCell cell) { return std::tuple(cell.environment.value, cell.slot.value); }
-struct StoreScope {
-  LocalCellId cell;
-  std::uint32_t begin;
-  std::uint32_t end;
-};
 bool Captures(const SemanticOperation& operation) {
   return std::holds_alternative<FunctionCreation>(operation) ||
          std::holds_alternative<BufferedObjectCreation>(operation) ||
@@ -76,7 +71,7 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
     const auto allocation_count = environments.environments.Size();
     std::vector<std::optional<ExceptionNodeId>> allocations, commits;
     std::vector<std::uint8_t> captured;
-    std::vector<StoreScope> stores;
+    std::vector<ExceptionCaptureScope> stores;
     NormalFlow graph;
     reserve(allocations, allocation_count);
     reserve(commits, flow.instructions.size());
@@ -101,6 +96,7 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
       allocations[allocation.environment.value] = ExceptionNodeId{allocation.instruction};
       plan.allocations[allocation.environment.value] = node.instruction;
     }
+    bool forward = true;
     for (std::size_t i = 0; i < flow.nodes.size(); ++i) {
       charge();
       const auto& node = flow.nodes[i];
@@ -132,6 +128,12 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
         charge();
         const auto target = node.successors[e].target;
         if (target.value >= flow.nodes.size()) return fail(Error::kInvalidEnvironment, instruction.pc);
+        const auto next = flow.nodes[target.value].instruction;
+        if (next < node.instruction ||
+            (next == node.instruction &&
+             (node.phase == ExceptionPhase::kCommit ||
+              node.successors[e].kind == ExceptionArcKind::kException)))
+          forward = false;
         block.successors[e] = {BlockId{target.value}, FlowEdgeKind::kTaken};
       }
       graph.blocks.push_back(block);
@@ -219,6 +221,26 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
       charge();
       return std::tie(a.cell.value, a.instruction.value) < std::tie(b.cell.value, b.instruction.value);
     });
+    if (forward) {
+      // The tree is still live: include its result in admission for the
+      // retained phase-entry index. Move scopes rather than copy their buffer.
+      if (dominance->work.allocated_bytes > budget.bytes - spent)
+        return fail(Error::kResourceLimit);
+      spent += dominance->work.allocated_bytes;
+      reserve(result.capture_entries, flow.nodes.size());
+      for (const auto& node : dominance->nodes) {
+        charge();
+        result.capture_entries.push_back(node.begin);
+      }
+      std::size_t scopes = 0;
+      for (const auto scope : stores) {
+        charge();
+        if (!captured[plan.cells[scope.cell.value].environment.value])
+          stores[scopes++] = scope;
+      }
+      stores.resize(scopes);
+      result.capture_scopes = std::move(stores);
+    }
     return result;
   } catch (const ExceptionLocalFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return fail(Error::kResourceLimit);
