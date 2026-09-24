@@ -13,7 +13,8 @@ auto Key(LocalCell cell) {
 }  // namespace
 std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
     const SemanticMethod& method, const EnvironmentFlow& environments,
-    SemanticBudget budget, ClosureWrites closure_writes) {
+    SemanticBudget budget, ClosureWrites closure_writes,
+    std::span<const CapturePreservation> preserved) {
   const auto resource = [] {
     return SemanticProofFailure{SemanticProofError::kResourceLimit, {}};
   };
@@ -23,6 +24,12 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
       if (!remaining_work) throw resource();
       --remaining_work;
     };
+    for (std::size_t i = 1; i < preserved.size(); ++i) {
+      charge();
+      if (preserved[i - 1].pc >= preserved[i].pc)
+        return SemanticProofFailure{SemanticProofError::kEnvironment,
+                                     preserved[i].pc};
+    }
     LocalAccessPlan plan;
     const auto count = environments.bindings.size();
     constexpr auto kCellBytes = sizeof(LocalCell) + sizeof(LocalAccessFact) +
@@ -96,14 +103,28 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
     std::size_t block = 0;
     std::size_t binding = 0;
     std::optional<InstructionId> creation;
+    std::size_t preservation = 0;
     for (std::size_t i = 0; i < method.instructions.size(); ++i) {
       charge();
       while (block + 1 < method.flow.blocks.size() &&
              method.flow.blocks[block + 1].first_instruction <= i) ++block;
       const auto first = method.flow.blocks[block].first_instruction;
       const auto& operation = method.instructions[i].operation;
-      if (std::holds_alternative<FunctionCreation>(operation) ||
-          std::holds_alternative<ClassCreation>(operation))
+      const bool captures = std::holds_alternative<FunctionCreation>(operation) ||
+                            std::holds_alternative<ClassCreation>(operation) ||
+                            std::holds_alternative<BufferedObjectCreation>(operation) ||
+                            std::holds_alternative<BufferedArrayCreation>(operation);
+      bool read_only = false;
+      if (preservation < preserved.size() &&
+          preserved[preservation].pc <= method.instructions[i].pc) {
+        charge();
+        if (!captures || preserved[preservation].pc != method.instructions[i].pc)
+          return SemanticProofFailure{SemanticProofError::kEnvironment,
+                                       preserved[preservation].pc};
+        read_only = true;
+        ++preservation;
+      }
+      if (captures && !read_only)
         creation = InstructionId{static_cast<std::uint32_t>(i)};
       if (binding >= environments.bindings.size() ||
           environments.bindings[binding].instruction != i) continue;
@@ -167,6 +188,9 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
                                      method.instructions[i].pc};
       }
     }
+    if (preservation != preserved.size())
+      return SemanticProofFailure{SemanticProofError::kEnvironment,
+                                   preserved[preservation].pc};
     std::sort(plan.stores.begin(), plan.stores.end(), [&](auto a, auto b) {
       charge();
       return std::tie(a.cell.value, a.instruction.value) <

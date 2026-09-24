@@ -7,7 +7,7 @@
 
 #include "abcd/analysis/dominators.h"
 #include "abcd/analysis/local_ssa.h"
-#include "capture_preservation.h"
+#include "abcd/source/capture_preservation.h"
 
 namespace abcd::source {
 namespace {

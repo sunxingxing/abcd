@@ -85,3 +85,28 @@ is an initialization-proof improvement, not a newly emitted method. Connect
 actual child capture summaries next; do not substitute a blanket Language
 assumption. CLI builds and read-only review completed; diamond/cycle/budget
 regressions remain deferred while tests are paused.
+
+### Creation-site preservation in normal verification
+
+`VerifySemanticSource` now accepts optional sorted `CapturePreservation`
+certificates from the unchanged file/profile/body. The local proof merges
+these PCs with instruction order, validates that each names a capture-capable
+operation, and removes only the matching barrier. Duplicate, unsorted,
+non-creation and unconsumed sites refuse admission. Literal object/array
+creation is also a barrier because its buffer may install captured methods.
+Neither initialization nor store-domain checks are weakened. The merge adds
+O(I + C) quota-charged work and no new storage.
+
+The existing capture-summary API is now a public source-layer header, shared
+by production owners and the single-method source CLI. The CLI builds actual
+child summaries, charges their live storage/work alongside IR and lookup,
+and retains `ClosureWrites::kUnknown`; no blanket premise is introduced.
+It also accounts for retained proof, region and named-scope allocations when
+admitting subsequent stages.
+
+ABC-only ProgressBar inspection with `--function-source` now passes PC130
+and stops at PC200 (`kInternalValue`), the saved result of multiplication at
+PC197. This is the next register-value-flow obligation, not a class-source
+success. CLI compilation and read-only review completed; tests/RSS remain
+paused. Certificate rejection, mixed proven/unproven creators, buffer
+barriers and low-budget cases still require regressions when testing resumes.

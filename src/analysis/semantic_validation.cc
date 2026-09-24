@@ -20,7 +20,8 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
                                          SemanticBudget budget,
                                          CapturedValues captures,
                                          std::span<const LanguageLoadFact> initialized_modules,
-                                         ClosureWrites closure_writes) {
+                                         ClosureWrites closure_writes,
+                                         std::span<const CapturePreservation> preserved) {
   try {
   if (first_abi_register > frame_size ||
       method.instructions.size() != body.instructions.size() ||
@@ -49,7 +50,7 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     return Fail(SemanticProofError::kResourceLimit);
   remaining -= bound->allocated_bytes;
   auto local_result = ProveLocalAccesses(method, *bound, {remaining, budget.work},
-                                        closure_writes);
+                                        closure_writes, preserved);
   auto* locals = std::get_if<LocalAccessPlan>(&local_result);
   if (!locals) return std::get<SemanticProofFailure>(local_result);
   if (locals->AllocatedBytes() > remaining)

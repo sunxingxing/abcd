@@ -24,6 +24,7 @@
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/corpus/abc_file.h"
 #include "abcd/source/semantic_source.h"
+#include "abcd/source/capture_preservation.h"
 #include "abcd/source/named_scope.h"
 #include "abcd/abc/pool_reference.h"
 #include "semantic_survey.h"
@@ -315,17 +316,48 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
   }
   if (form) {
     constexpr std::size_t kMethodBytes = 64 * 1024 * 1024;
+    source::MethodConstants constants{file, *header, *index, method->offset,
+                                      {kMethodBytes}};
+    if (method_ir->allocated_bytes > kMethodBytes)
+      return Fail(InspectError::kIndex);
+    const auto lookup = abc::MethodLookup::Build(
+        index->methods, {kMethodBytes - method_ir->allocated_bytes});
+    const auto* methods = std::get_if<abc::MethodLookup>(&lookup);
+    if (!methods) return Fail(InspectError::kIndex);
+    constants.leaf_methods = methods;
+    const auto available = kMethodBytes - methods->AllocatedBytes();
+    const auto preserved = source::ProveCapturePreservation(
+        *body, constants, methods,
+        {available - method_ir->allocated_bytes});
+    const auto* sites = std::get_if<source::CapturePreservations>(&preserved);
+    if (!sites) {
+      const auto& failure = std::get<source::SourceFailure>(preserved);
+      return FailStage(InspectError::kProof,
+          static_cast<unsigned>(failure.kind), failure.pc.value);
+    }
+    if (sites->AllocatedBytes() > available - method_ir->allocated_bytes ||
+        sites->work_units > analysis::kDefaultSemanticWork)
+      return FailStage(InspectError::kProof,
+          static_cast<unsigned>(analysis::SemanticProofError::kResourceLimit), 0);
+    const auto proof_bytes = available - sites->AllocatedBytes();
     const auto proof = analysis::VerifySemanticSource(
         *body, *method_ir, code.registers + code.arguments,
         code.registers,
-        {kMethodBytes});
+        {proof_bytes,
+         analysis::kDefaultSemanticWork - sites->work_units},
+        analysis::CapturedValues::kReject, {},
+        analysis::ClosureWrites::kUnknown, sites->sites);
     if (const auto* failure =
             std::get_if<analysis::SemanticProofFailure>(&proof))
       return FailStage(InspectError::kProof,
                        static_cast<unsigned>(failure->kind),
                        failure->pc.value);
-    auto recovered = analysis::BuildSemanticRegions(*method_ir,
-                                                     kMethodBytes);
+    const auto& verified = std::get<analysis::SemanticProof>(proof);
+    if (verified.allocated_bytes > proof_bytes)
+      return FailStage(InspectError::kProof,
+          static_cast<unsigned>(analysis::SemanticProofError::kResourceLimit), 0);
+    const auto remaining = proof_bytes - verified.allocated_bytes;
+    auto recovered = analysis::BuildSemanticRegions(*method_ir, remaining);
     auto* regions =
         std::get_if<analysis::SemanticRegionTree>(&recovered);
     if (!regions) {
@@ -334,10 +366,12 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
                        static_cast<unsigned>(failure.kind),
                        failure.pc.value);
     }
-    source::MethodConstants constants{file, *header, *index, method->offset,
-                                      {kMethodBytes}};
+    if (regions->allocated_bytes > remaining)
+      return FailStage(InspectError::kRegion,
+          static_cast<unsigned>(analysis::RegionError::kResourceLimit), 0);
     const auto checked = source::ValidateNamedScopes(
-        *body, code.registers + code.arguments, &constants, kMethodBytes,
+        *body, code.registers + code.arguments, &constants,
+        remaining - regions->allocated_bytes,
         analysis::kDefaultSemanticWork);
     const auto* scopes = std::get_if<source::NamedScopes>(&checked);
     if (!scopes) {
@@ -348,10 +382,13 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
                                     ? source::SourceError::kResourceLimit
                                     : source::SourceError::kConstant), failure.offset.value);
     }
+    if (scopes->AllocatedBytes() > remaining - regions->allocated_bytes)
+      return FailStage(InspectError::kAst,
+          static_cast<unsigned>(source::SourceError::kResourceLimit), 0);
     const auto lowered = source::BuildSourceAst(
         *method_ir, std::get<analysis::SemanticProof>(proof),
         std::move(*regions),
-        kMethodBytes, scopes->admitted);
+        remaining - scopes->AllocatedBytes(), scopes->admitted);
     const auto* ast = std::get_if<source::SourceAst>(&lowered);
     if (!ast) {
       const auto& failure = std::get<source::SourceFailure>(lowered);

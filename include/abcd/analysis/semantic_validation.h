@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_SEMANTIC_VALIDATION_H_
 
 #include "abcd/analysis/environment_flow.h"
+#include "abcd/analysis/capture_effect.h"
 #include "abcd/analysis/linear_lexicals.h"
 #include "abcd/analysis/register_value_flow.h"
 #include "abcd/analysis/semantic_ir.h"
@@ -133,12 +134,16 @@ using SemanticProofResult = std::variant<SemanticProof,
 // must pass complete child-template emission with Language-only captured
 // stores, including descendants, before the parent is publishable. This admits
 // local reads after creation; it does not prove any captured value unchanged.
+// preserved contains sorted, unique same-body creation PCs certified not to
+// write incoming lexical cells. It removes only those capture barriers, never
+// initialization or store-domain checks. The owning file/profile is unchanged.
 [[nodiscard]] SemanticProofResult VerifySemanticSource(
     const abc::MethodBody& body, const SemanticMethod& method,
     std::uint64_t frame_size, std::uint32_t first_abi_register,
     SemanticBudget budget = {},
     CapturedValues captures = CapturedValues::kReject,
     std::span<const LanguageLoadFact> initialized_modules = {},
-    ClosureWrites closure_writes = ClosureWrites::kUnknown);
+    ClosureWrites closure_writes = ClosureWrites::kUnknown,
+    std::span<const CapturePreservation> preserved = {});
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_SEMANTIC_VALIDATION_H_

@@ -13,6 +13,7 @@ namespace abcd::analysis {
 // this premise says nothing about value identity. No phi-cell promotion.
 std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
     const SemanticMethod& method, const EnvironmentFlow& environments,
-    SemanticBudget budget, ClosureWrites closure_writes);
+    SemanticBudget budget, ClosureWrites closure_writes,
+    std::span<const CapturePreservation> preserved);
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_SEMANTIC_LOCALS_H_

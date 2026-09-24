@@ -7,7 +7,7 @@
 #include "abcd/source/named_scope.h"
 #include "module_read_snapshot.h"
 #include "exception_body.h"
-#include "capture_preservation.h"
+#include "abcd/source/capture_preservation.h"
 #include "defined_captures.h"
 
 namespace abcd::source {
