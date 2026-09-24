@@ -136,6 +136,7 @@ target_sources(abcd_source PRIVATE src/source/argument_region.cc src/source/sema
   src/source/semantic_body.cc src/source/semantic_fields.cc
   src/source/semantic_objects.cc)
 target_sources(abcd_source PRIVATE src/source/async_completion.cc)
+target_sources(abcd_source PRIVATE src/source/exception_source.cc)
 target_sources(abcd_source PRIVATE src/source/branch_value_proof.cc)
 target_sources(abcd_source PRIVATE src/source/branch_source_facts.cc)
 target_sources(abcd_source PRIVATE src/source/staged_branch_call.cc)
@@ -173,7 +174,7 @@ target_link_libraries(abcd_corpus PUBLIC abcd_abc
 option(ABCD_BUILD_TOOLS "Build standalone ABC command-line tools" ON)
 if(ABCD_BUILD_TOOLS)
   add_executable(abc_semantic tools/abc_semantic.cc tools/semantic_survey.cc
-    tools/exception_inspect.cc)
+    tools/exception_inspect.cc tools/exception_source_inspect.cc)
   target_link_libraries(abc_semantic PRIVATE abcd_source abcd_json)
   add_executable(abc_structure tools/abc_structure.cc)
   target_link_libraries(abc_structure PRIVATE abcd_structure abcd_corpus abcd_json)

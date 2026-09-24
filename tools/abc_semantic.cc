@@ -118,9 +118,13 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     const auto& failure = std::get<abc::BodyFailure>(decoded);
     return Fail(InspectError::kBody, failure.offset.value);
   }
-  if (detail == InspectDetail::kExceptionFlow)
+  if (detail == InspectDetail::kExceptionFlow) {
+    const source::MethodConstants constants{file, *header, *index,
+                                            method->offset, abc::StringBudget{}};
     return InspectExceptionFlow(*body, header->profile,
-                                 code.registers + code.arguments, code.registers, std::cout);
+                                 code.registers + code.arguments, code.registers,
+                                 constants, std::cout);
+  }
   if (detail == InspectDetail::kInstructions) {
     constexpr std::size_t kDispatchBytes = 16 * 1024 * 1024;
     const auto dispatched = analysis::BuildExceptionDispatch(

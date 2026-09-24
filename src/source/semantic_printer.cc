@@ -31,12 +31,13 @@ using analysis::ScalarValue;
 class SourcePrinter {
  public:
   enum class CaptureMode { kReject, kTemplate };
-  SourcePrinter(const SourceAst& ast, const analysis::SemanticMethod& method,
+  SourcePrinter(const SourceAst& ast, const analysis::NormalFlow& blocks,
                 const abc::FrameLayout& frame, SourceForm form,
                 std::string_view name, const MethodConstants& constants,
                 std::size_t bytes, CaptureMode captures = CaptureMode::kReject,
-                const analysis::SemanticProof* proof = nullptr)
-      : ast_(ast), method_(method), frame_(frame), form_(form), name_(name),
+                const analysis::SemanticProof* proof = nullptr,
+                const analysis::SemanticMethod* capture_method = nullptr)
+      : ast_(ast), blocks_(blocks), capture_method_(capture_method), frame_(frame), form_(form), name_(name),
         constants_(constants), limit_(bytes), capture_mode_(captures), proof_(proof),
         expansion_(constants.method, bytes, kDefaultMethodWork) {}
 
@@ -150,10 +151,10 @@ class SourcePrinter {
     LeafBuffer(SourcePrinter& printer, const FunctionExpression& function)
         : printer_(printer), function_(function) {}
     bool Capture(analysis::CapturedSlot capture) override {
-      if (!printer_.proof_)
+      if (!printer_.proof_ || !printer_.capture_method_)
         throw SourceFailure{SourceError::kCreation, printer_.current_pc_};
       const auto resolved = ResolveCreationCapture(
-          printer_.method_, *printer_.proof_, function_, capture);
+          *printer_.capture_method_, *printer_.proof_, function_, capture);
       if (const auto* failure = std::get_if<SourceFailure>(&resolved)) throw *failure;
       if (const auto* outer = std::get_if<analysis::CapturedSlot>(&resolved)) {
         printer_.Capture(*outer);
@@ -595,7 +596,7 @@ class SourcePrinter {
       Text(": {\n");
     }
     for (auto b = region.first_block.value; b <= region.last_block.value; ++b) {
-      const auto& block = method_.flow.blocks[b];
+      const auto& block = blocks_.blocks[b];
       const auto first = b == region.first_block.value
                              ? region.property.value + 1 : block.first_instruction;
       const auto end = b == region.last_block.value
@@ -646,9 +647,9 @@ class SourcePrinter {
         [&](const auto& region) {
           using T = std::decay_t<decltype(region)>;
           if constexpr (std::is_same_v<T, analysis::RegionBlock>) {
-            if (region.id.value >= method_.flow.blocks.size())
+            if (region.id.value >= blocks_.blocks.size())
               throw SourceFailure{SourceError::kOutput, current_pc_};
-            const auto& block = method_.flow.blocks[region.id.value];
+            const auto& block = blocks_.blocks[region.id.value];
             const auto end = std::uint64_t(block.first_instruction) +
                              block.instruction_count;
             if (end > ast_.statements.size())
@@ -710,7 +711,8 @@ class SourcePrinter {
   }
 
   const SourceAst& ast_;
-  const analysis::SemanticMethod& method_;
+  const analysis::NormalFlow& blocks_;
+  const analysis::SemanticMethod* capture_method_;
   const abc::FrameLayout& frame_;
   SourceForm form_;
   std::string_view name_;
@@ -735,25 +737,33 @@ std::variant<PrintedSource, SourceFailure> PrintSourceAst(
     const abc::FrameLayout& frame, SourceForm form, std::string_view name,
     const MethodConstants& constants, std::size_t output_bytes,
     const analysis::SemanticProof* proof) {
-  return SourcePrinter(ast, method, frame, form, name, constants,
-                       output_bytes, SourcePrinter::CaptureMode::kReject, proof).Print();
+  return SourcePrinter(ast, method.flow, frame, form, name, constants,
+                       output_bytes, SourcePrinter::CaptureMode::kReject, proof, &method).Print();
 }
 std::variant<PrintedSource, SourceFailure> PrintSourceBody(
     const SourceAst& ast, const analysis::SemanticMethod& method,
     ScalarNames names, const MethodConstants& constants,
     std::size_t output_bytes, const analysis::SemanticProof* proof) {
   const abc::FrameLayout unused_frame{};
-  return SourcePrinter(ast, method, unused_frame, SourceForm::kFunction,
+  return SourcePrinter(ast, method.flow, unused_frame, SourceForm::kFunction,
                        {}, constants, output_bytes,
-                       SourcePrinter::CaptureMode::kReject, proof).PrintBody(names);
+                       SourcePrinter::CaptureMode::kReject, proof, &method).PrintBody(names);
+}
+std::variant<PrintedSource, SourceFailure> PrintSourceBody(
+    const SourceAst& ast, const analysis::NormalFlow& blocks,
+    ScalarNames names, const MethodConstants& constants,
+    std::size_t output_bytes) {
+  const abc::FrameLayout unused_frame{};
+  return SourcePrinter(ast, blocks, unused_frame, SourceForm::kFunction,
+                       {}, constants, output_bytes).PrintBody(names);
 }
 std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
     const SourceAst& ast, const analysis::SemanticMethod& method,
     ScalarNames names, const MethodConstants& constants,
     std::size_t output_bytes, const analysis::SemanticProof* proof) {
   const abc::FrameLayout unused_frame{};
-  return SourcePrinter(ast, method, unused_frame, SourceForm::kFunction,
+  return SourcePrinter(ast, method.flow, unused_frame, SourceForm::kFunction,
                        {}, constants, output_bytes,
-                       SourcePrinter::CaptureMode::kTemplate, proof).PrintTemplate(names);
+                       SourcePrinter::CaptureMode::kTemplate, proof, &method).PrintTemplate(names);
 }
 }  // namespace abcd::source

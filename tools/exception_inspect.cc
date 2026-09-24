@@ -1,4 +1,5 @@
 #include "exception_inspect.h"
+#include "exception_source_inspect.h"
 
 #include <cstdlib>
 #include <type_traits>
@@ -15,7 +16,8 @@
 
 int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     abcd::abc::ProfileId profile, std::uint64_t frame_size,
-    std::uint32_t first_abi_register, std::ostream& output) {
+    std::uint32_t first_abi_register,
+    const abcd::source::MethodConstants& constants, std::ostream& output) {
   using namespace abcd;
   const analysis::ExceptionFlowBudget budget;
   const auto built = analysis::BuildExceptionFlow(body, profile, frame_size, budget);
@@ -115,12 +117,13 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
   const auto recovered = analysis::BuildExceptionRegions(body, *flow,
       {remaining, analysis::kDefaultSemanticWork - quota.Consumed()});
   const auto* regions = std::get_if<analysis::ExceptionRegions>(&recovered);
+  std::optional<analysis::NormalFlow> blocks;
   const auto build_tree = [&]() -> analysis::RegionResult {
     if (!regions) return analysis::RegionFailure{analysis::RegionError::kExceptionShape, {}};
     if (regions->allocated_bytes > remaining)
       return analysis::RegionFailure{analysis::RegionError::kResourceLimit, {}};
     const auto available = remaining - regions->allocated_bytes;
-    const auto built_normal = analysis::BuildNormalFlow(body, {available});
+    auto built_normal = analysis::BuildNormalFlow(body, {available});
     const auto* normal = std::get_if<analysis::NormalFlow>(&built_normal);
     if (!normal) {
       const auto& failure = std::get<analysis::FlowFailure>(built_normal);
@@ -132,11 +135,13 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     const auto normal_bytes = normal->blocks.capacity() * sizeof(analysis::FlowBlock);
     if (normal_bytes > available)
       return analysis::RegionFailure{analysis::RegionError::kResourceLimit, {}};
-    return analysis::BuildExceptionRegionTree(*flow, *regions, *normal, available - normal_bytes);
+    blocks.emplace(std::move(std::get<analysis::NormalFlow>(built_normal)));
+    remaining -= normal_bytes;
+    return analysis::BuildExceptionRegionTree(*flow, *regions, *blocks, available - normal_bytes);
   };
-  const auto tree_result = build_tree();
-  const auto* tree = std::get_if<analysis::SemanticRegionTree>(&tree_result);
-  output << nlohmann::json{{"schema", 9}, {"instructions", flow->instructions.size()},
+  auto tree_result = build_tree();
+  auto* tree = std::get_if<analysis::SemanticRegionTree>(&tree_result);
+  output << nlohmann::json{{"schema", 10}, {"instructions", flow->instructions.size()},
       {"nodes", flow->nodes.size()}, {"source_complete", false}, {"ssa_complete", false},
       {"register_ssa_complete", true}, {"value_flow_complete", true},
       {"environment_topology_complete", true}, {"lexical_values_proven", false},
@@ -151,6 +156,10 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
   if (tree) {
     output << nlohmann::json{{"tree_catches", tree->catches},
                              {"tree_blocks", tree->order_positions.size()}} << '\n';
+    const source::ExceptionAstInput input{*flow, *ssa, *environments,
+                                         *values, *locals, *blocks};
+    InspectExceptionSource(input, std::move(*tree), constants, frame_size,
+        remaining - regions->allocated_bytes, output);
   } else {
     const auto& failure = std::get<analysis::RegionFailure>(tree_result);
     output << nlohmann::json{{"region_tree_error", static_cast<unsigned>(failure.kind)},

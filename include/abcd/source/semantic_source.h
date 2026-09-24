@@ -218,6 +218,14 @@ enum class SourceForm : std::uint8_t { kFunction, kClassConstructor };
     ScalarNames names, const MethodConstants& constants,
     std::size_t output_bytes,
     const analysis::SemanticProof* proof = nullptr);
+
+// Common layout-only printer for a same-body, already verified AST, including
+// BuildExceptionSourceAst results. It cannot bind child captures using a
+// normal-CFG proof. All binding/async/position contracts above still apply.
+[[nodiscard]] std::variant<PrintedSource, SourceFailure> PrintSourceBody(
+    const SourceAst& ast, const analysis::NormalFlow& blocks,
+    ScalarNames names, const MethodConstants& constants,
+    std::size_t output_bytes);
 // Captured expressions become typed insertions, not invented identifiers.
 // Only a parent capture-binding path may consume this incomplete artifact.
 [[nodiscard]] std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(

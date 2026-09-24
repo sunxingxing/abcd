@@ -2,6 +2,38 @@
 
 ## Current Boundary
 
+### Shared AST and Printing Entry
+
+`BuildExceptionSourceAst` rechecks exceptional input values and adapts the
+original phase SSA through `InstructionSsa` into the common `BuildSourceAst`
+pass. It consumes the same-body exception region tree and canonical local
+access plan. Original block layout supplies only instruction boundaries:
+no normal-only SSA or fabricated handler-free bytecode is constructed.
+The public borrowed-input contract requires all analysis owners to match and
+local-load premises to have seeded the provided value solution. Captured and
+module-read source facts remain absent at this boundary, so those operations
+reject until their owner proofs are integrated. Phased receiver-call and
+guarded-module fusion remain disabled.
+
+The common printer now reads block layout independently of normal-method
+capture proofs. Its layout-only `PrintSourceBody` overload cannot authorize
+child capture binding; existing normal entry points still pass both their
+method and proof. RegionTry printing and generated PC spans use the same
+printer, not a dedicated exception-body writer.
+
+ABC-only schema-10 inspection of pasteboard GetValue (4357) traverses phased
+SSA, value/input proof, the common AST and printer, producing 36 original-PC
+spans (`build/pasteboard-4357-exception-source.jsonl`). This method has no
+encoded catch, so it does not establish successful try/catch source recovery.
+Method 4945 retains a one-catch region tree but the new AST boundary refuses
+its unproven input at PC 36 (`build/pasteboard-4945-exception-source.jsonl`).
+Printed bodies are explicitly non-executable fragments without a callable
+owner, not completed records. Both CLI targets compiled; the ordinary
+all-record survey `build/pasteboard-semantic-exception-source.jsonl` matches
+the preceding survey byte-for-byte. Read-only review found no concrete defect.
+Tests and RSS remain paused; runtime equivalence, catch-bearing end-to-end
+source, malformed ownership and budget-boundary coverage remain unverified.
+
 ### Conditional Local Initialization
 
 `ProveExceptionLocals` now builds a canonical `LocalAccessPlan` in original
