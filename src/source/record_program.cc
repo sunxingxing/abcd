@@ -231,7 +231,10 @@ class ProgramWriter {
       // compiler prelude is admitted once; its matcher checks all CFG edges
       // and that transient registers are dead before the next instruction.
       constexpr std::size_t kEntryMoveCount = 3;
-      if (header_.profile == abc::ProfileId::kDynamic1301 &&
+      // The exact guarded-call proof also matches dynamic 12.0.6.0; the
+      // pinned v7 instructions have the same receiver/property/call order.
+      if ((header_.profile == abc::ProfileId::kDynamic1206 ||
+           header_.profile == abc::ProfileId::kDynamic1301) &&
           i == kEntryMoveCount) {
         const auto guard = analysis::MatchGuardedGlobalCall(
             body_, i, registers_.size());

@@ -777,6 +777,24 @@ if(BUILD_TESTING)
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_global_call.cmake)
     endif()
   endif()
+  if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/widgets.abc")
+    add_executable(historical_guarded_global_sample_test
+      tests/integration/historical_guarded_global_sample.cc)
+    target_include_directories(historical_guarded_global_sample_test PRIVATE src/source)
+    target_link_libraries(historical_guarded_global_sample_test PRIVATE abcd_source)
+    add_test(NAME historical_guarded_global_sample_test
+      COMMAND historical_guarded_global_sample_test
+      ${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/widgets.abc)
+    if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME historical_guarded_global_js_test COMMAND ${CMAKE_COMMAND}
+        -DABCD_FIXTURE=$<TARGET_FILE:historical_guarded_global_sample_test>
+        -DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/widgets.abc
+        -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+        -DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_global_call.mjs
+        -DABCD_OUTPUT_NAME=historical-guarded-global-call.mjs
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_global_call.cmake)
+    endif()
+  endif()
 
   add_executable(exception_dispatch_test tests/unit/analysis/exception_dispatch_test.cc)
   target_link_libraries(exception_dispatch_test PRIVATE abcd_analysis)

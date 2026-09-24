@@ -1,4 +1,7 @@
-set(output "${CMAKE_CURRENT_BINARY_DIR}/guarded-global-call.mjs")
+if(NOT DEFINED ABCD_OUTPUT_NAME)
+  set(ABCD_OUTPUT_NAME guarded-global-call.mjs)
+endif()
+set(output "${CMAKE_CURRENT_BINARY_DIR}/${ABCD_OUTPUT_NAME}")
 execute_process(COMMAND "${ABCD_FIXTURE}" "${ABCD_SAMPLE}" --emit
   OUTPUT_FILE "${output}" RESULT_VARIABLE emitted ERROR_VARIABLE error)
 if(NOT emitted EQUAL 0)
