@@ -8,13 +8,16 @@ namespace abcd::analysis {
 enum class VmValueKind { kLanguage, kHole, kEnvironment, kOtherInternal };
 inline constexpr std::size_t kValueKindCount = 4;
 
-// Closed powerset of VM categories with disjoint must-be-string and
-// must-be-non-NaN-number refinements. Mixed joins drop either refinement.
+// Closed powerset of VM categories. String and non-NaN-number refine Defined
+// (a Language value other than undefined); their mixed join retains Defined.
 // Empty is analysis bottom, never JS undefined or a language-value proof.
 class ValueKinds {
  public:
   constexpr ValueKinds() = default;
   static constexpr ValueKinds Language() { return ValueKinds{kLanguage}; }
+  static constexpr ValueKinds Defined() {
+    return ValueKinds{kLanguage, Refinement::kDefined};
+  }
   static constexpr ValueKinds String() {
     return ValueKinds{kLanguage, Refinement::kString};
   }
@@ -32,12 +35,25 @@ class ValueKinds {
   [[nodiscard]] constexpr ValueKinds Join(ValueKinds other) const {
     if (IsEmpty()) return other;
     if (other.IsEmpty()) return *this;
-    return ValueKinds{static_cast<std::uint8_t>(bits_ | other.bits_),
-                      refinement_ == other.refinement_ ? refinement_
-                                                       : Refinement::kNone};
+    const auto refinement = refinement_ == other.refinement_ ? refinement_
+        : IsDefined() && other.IsDefined() ? Refinement::kDefined
+                                          : Refinement::kNone;
+    return ValueKinds{static_cast<std::uint8_t>(bits_ | other.bits_), refinement};
   }
   [[nodiscard]] constexpr bool IsEmpty() const { return bits_ == 0; }
   [[nodiscard]] constexpr bool IsLanguage() const { return bits_ == kLanguage; }
+  // An initialized super guard excludes undefined as well as Hole. This is
+  // not an object-identity proof, and Language-only captures cannot provide it.
+  [[nodiscard]] constexpr bool IsDefined() const {
+    if (!IsLanguage()) return false;
+    switch (refinement_) {
+      case Refinement::kNone: return false;
+      case Refinement::kDefined:
+      case Refinement::kString:
+      case Refinement::kNonNaNNumber: return true;
+    }
+    return false;
+  }
   [[nodiscard]] constexpr bool IsString() const {
     return IsLanguage() && refinement_ == Refinement::kString;
   }
@@ -60,7 +76,9 @@ class ValueKinds {
   constexpr bool operator==(const ValueKinds&) const = default;
 
  private:
-  enum class Refinement : std::uint8_t { kNone, kString, kNonNaNNumber };
+  enum class Refinement : std::uint8_t {
+    kNone, kString, kNonNaNNumber, kDefined
+  };
   static constexpr std::uint8_t kLanguage = 1 << 0;
   static constexpr std::uint8_t kHole = 1 << 1;
   static constexpr std::uint8_t kEnvironment = 1 << 2;

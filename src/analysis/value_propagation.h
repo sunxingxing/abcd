@@ -58,7 +58,8 @@ void PropagateValues(std::span<const ValueNode> nodes,
   }
   // Incremental join propagation is essential: rescanning all inputs of a
   // high-fan-in Phi after each changed source would be quadratic. A fact
-  // gains four VM atoms and can lose a scalar refinement once;
+  // gains four VM atoms and can weaken its scalar refinement twice
+  // (String/NonNaNNumber -> Defined -> unrestricted Language);
   // operation nodes have at most two fixed inputs.
   for (std::size_t head = 0; head < pending.size(); ++head) {
     charge();

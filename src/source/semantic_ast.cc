@@ -348,9 +348,9 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
                   analysis::ScalarSlot{analysis::Accumulator{}});
               const auto kinds = value ? proof.At(*value) : std::nullopt;
               // v7 flag 0 rejects BOTH Hole and undefined. Language-only
-              // captures do not prove this check redundant; only the existing
-              // string/number refinements exclude both sentinels here.
-              if (!kinds || (!kinds->IsString() && !kinds->IsNonNaNNumber()))
+              // captures do not prove this check redundant. Defined facts
+              // exclude both sentinels, including mixed string/number phis.
+              if (!kinds || !kinds->IsDefined())
                 return Fail(SourceError::kSuperInitialization, instruction.pc);
               operation = analysis::NoOperation{};
               break;
