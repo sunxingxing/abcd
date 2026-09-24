@@ -39,13 +39,19 @@ struct GlobalExpression {
 struct CapturedExpression {
   analysis::CapturedSlot cell;
 };
+struct LocalExpression { analysis::LocalCellId cell; };
+struct FunctionExpression {
+  analysis::FunctionCreation creation;
+  analysis::InstructionId instruction;
+  std::optional<analysis::InstructionId> previous_creation;
+};
 using SourceExpression =
     std::variant<analysis::ScalarExpression, MemberExpression,
                  StringExpression, CallExpression, MemberCallExpression,
                  ModuleExpression, analysis::EmptyObjectCreation,
                  analysis::BufferedObjectCreation, GlobalExpression,
                  analysis::ConstructorCall, CapturedExpression,
-                 analysis::FunctionCreation>;
+                 FunctionExpression, LocalExpression>;
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;
@@ -54,6 +60,10 @@ struct SourceMemberStore {
   analysis::ScalarValue object;
   abc::PoolIndex name;
   analysis::ScalarValue value;
+};
+struct SourceLocalStore {
+  analysis::LocalCellId cell;
+  analysis::ScalarSlot value;
 };
 struct SourceOwnStore {
   analysis::OwnWrite write;
@@ -77,6 +87,7 @@ struct SourceStagedCall {
 };
 using SourceOperation =
     std::variant<analysis::NoOperation, SourceAssignment, SourceMemberStore, SourceOwnStore,
+                 SourceLocalStore,
                  SourceConditionalBreak, SourceBreak, SourceReturn,
                  SourceStagedCall>;
 struct SourceStatement {
@@ -96,6 +107,7 @@ struct SourceAst {
   analysis::SemanticRegionTree regions;
   std::vector<SourceStatement> statements;
   std::vector<std::optional<analysis::BlockId>> fallthrough;
+  std::vector<analysis::LocalCell> local_cells;
   std::size_t allocated_bytes = 0;
 };
 enum class SourceError : std::uint8_t {
@@ -116,10 +128,12 @@ using SourceAstResult = std::variant<SourceAst, SourceFailure>;
 // Source nodes retain exactly one PC from semantic IR; region nodes encode
 // control structure without copying effectful instructions. Unsupported
 // effects fail before any text is published.
+// named_scopes is the unchanged same-body ValidateNamedScopes certificate.
 [[nodiscard]] SourceAstResult BuildSourceAst(
     const analysis::SemanticMethod& method,
     const analysis::SemanticProof& proof,
-    analysis::SemanticRegionTree regions, std::size_t budget_bytes);
+    analysis::SemanticRegionTree regions, std::size_t budget_bytes,
+    std::span<const std::uint8_t> named_scopes = {});
 
 struct GeneratedPosition {
   std::size_t byte = 0;
@@ -166,19 +180,25 @@ enum class SourceForm : std::uint8_t { kFunction, kClassConstructor };
 [[nodiscard]] std::variant<PrintedSource, SourceFailure> PrintSourceAst(
     const SourceAst& ast, const analysis::SemanticMethod& method,
     const abc::FrameLayout& frame, SourceForm form, std::string_view name,
-    const MethodConstants& constants, std::size_t output_bytes);
+    const MethodConstants& constants, std::size_t output_bytes,
+    const analysis::SemanticProof* proof = nullptr);
 
 // Caller supplies distinct private register bindings in an already validated
 // strict callable. This emits only its body; spans are relative to that body.
+// Optional proof belongs to this unchanged method/AST and remains live during
+// printing. It enables binding child captures to proven initialized locals;
+// absence never authorizes guessed captures. Child-internal spans are separate.
 [[nodiscard]] std::variant<PrintedSource, SourceFailure> PrintSourceBody(
     const SourceAst& ast, const analysis::SemanticMethod& method,
     ScalarNames names, const MethodConstants& constants,
-    std::size_t output_bytes);
+    std::size_t output_bytes,
+    const analysis::SemanticProof* proof = nullptr);
 // Captured expressions become typed insertions, not invented identifiers.
 // Only a parent capture-binding path may consume this incomplete artifact.
 [[nodiscard]] std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
     const SourceAst& ast, const analysis::SemanticMethod& method,
     ScalarNames names, const MethodConstants& constants,
-    std::size_t output_bytes);
+    std::size_t output_bytes,
+    const analysis::SemanticProof* proof = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_SEMANTIC_SOURCE_H_

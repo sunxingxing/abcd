@@ -12,6 +12,9 @@
 #include "abcd/source/string_literal.h"
 #include "element_name.h"
 #include "leaf_creation.h"
+#include "lexical_name.h"
+#include "capture_stream.h"
+#include "semantic_capture.h"
 #include "object_buffer.h"
 #include "semantic_fields.h"
 
@@ -27,9 +30,10 @@ class SourcePrinter {
   SourcePrinter(const SourceAst& ast, const analysis::SemanticMethod& method,
                 const abc::FrameLayout& frame, SourceForm form,
                 std::string_view name, const MethodConstants& constants,
-                std::size_t bytes, CaptureMode captures = CaptureMode::kReject)
+                std::size_t bytes, CaptureMode captures = CaptureMode::kReject,
+                const analysis::SemanticProof* proof = nullptr)
       : ast_(ast), method_(method), frame_(frame), form_(form), name_(name),
-        constants_(constants), limit_(bytes), capture_mode_(captures) {}
+        constants_(constants), limit_(bytes), capture_mode_(captures), proof_(proof) {}
 
   std::variant<PrintedTemplate, SourceFailure> PrintTemplate(ScalarNames names) {
     auto printed = PrintBody(names);
@@ -43,6 +47,7 @@ class SourcePrinter {
     try {
       if (const auto failure = VerifyOwnFields(ast_, constants_)) return *failure;
       names_ = names;
+      DeclareLocals();
       if (ast_.statements.size() > limit_ / sizeof(GeneratedSpan))
         return SourceFailure{SourceError::kResourceLimit, {}};
       result_.spans.reserve(ast_.statements.size());
@@ -117,6 +122,7 @@ class SourcePrinter {
         }
         Text(";\n");
       }
+      DeclareLocals();
       Region(ast_.regions.root);
       Text(form_ == SourceForm::kClassConstructor ? "}\n}\n" : "}\n");
       return std::move(result_);
@@ -130,6 +136,67 @@ class SourcePrinter {
   }
 
  private:
+  class LeafBuffer : public CaptureBuffer {
+   public:
+    LeafBuffer(SourcePrinter& printer, const FunctionExpression& function)
+        : printer_(printer), function_(function) {}
+    bool Capture(analysis::CapturedSlot capture) override {
+      if (!printer_.proof_ || printer_.capture_mode_ != CaptureMode::kReject)
+        throw SourceFailure{SourceError::kCreation, printer_.current_pc_};
+      const auto resolved = ResolveLocalCapture(
+          printer_.method_, *printer_.proof_, function_, capture);
+      if (const auto* failure = std::get_if<SourceFailure>(&resolved)) throw *failure;
+      const LexicalName name{std::get<analysis::LocalCell>(resolved)};
+      printer_.Text(name.Text());
+      return true;
+    }
+   private:
+    std::streamsize xsputn(const char* text, std::streamsize count) override {
+      if (count < 0) return 0;
+      printer_.Text({text, static_cast<std::size_t>(count)});
+      return count;
+    }
+    int_type overflow(int_type ch) override {
+      if (traits_type::eq_int_type(ch, traits_type::eof())) return traits_type::not_eof(ch);
+      const char value = traits_type::to_char_type(ch);
+      printer_.Text({&value, 1});
+      return ch;
+    }
+    SourcePrinter& printer_;
+    const FunctionExpression& function_;
+  };
+  void Local(analysis::LocalCellId id) {
+    if (id.value >= ast_.local_cells.size())
+      throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+    const LexicalName name{ast_.local_cells[id.value],
+        capture_mode_ == CaptureMode::kTemplate ? LexicalNamespace::kTemplate
+                                               : LexicalNamespace::kParent};
+    Text(name.Text());
+  }
+  void DeclareLocals() {
+    if (ast_.local_cells.empty()) return;
+    const auto reserved = [](std::string_view name) {
+      return name.starts_with("$lex") || name.starts_with("$inner");
+    };
+    if (reserved(names_.accumulator) || reserved(names_.current_function) ||
+        reserved(name_)) throw SourceFailure{SourceError::kOutput, {}};
+    for (const auto name : names_.registers)
+      if (reserved(name)) throw SourceFailure{SourceError::kOutput, {}};
+    for (const auto name : constants_.source_parameters)
+      if (reserved(name)) throw SourceFailure{SourceError::kOutput, {}};
+    if (constants_.global_scope &&
+        (reserved(constants_.global_scope->self_binding) ||
+         reserved(constants_.global_scope->class_binding)))
+      throw SourceFailure{SourceError::kOutput, {}};
+    if (constants_.global_scope)
+      for (const auto name : constants_.global_scope->parameter_bindings)
+        if (reserved(name)) throw SourceFailure{SourceError::kOutput, {}};
+    for (std::size_t i = 0; i < ast_.local_cells.size(); ++i) {
+      Text("let ");
+      Local(analysis::LocalCellId{static_cast<std::uint32_t>(i)});
+      Text(";\n");
+    }
+  }
   void Text(std::string_view value) {
     if (value.size() > limit_ - result_.text.size())
       throw SourceFailure{SourceError::kOutput, current_pc_};
@@ -205,13 +272,18 @@ class SourcePrinter {
   void Expression(const SourceExpression& expression) {
     if (const auto* scalar = std::get_if<ScalarExpression>(&expression)) {
       Scalar(*scalar);
+    } else if (const auto* local = std::get_if<LocalExpression>(&expression)) {
+      Local(local->cell);
     } else if (const auto* created =
-                   std::get_if<analysis::FunctionCreation>(&expression)) {
-      std::ostringstream stream;
+                   std::get_if<FunctionExpression>(&expression)) {
+      LeafBuffer buffer(*this, *created);
+      std::ostream stream(&buffer);
+      stream.exceptions(std::ios::badbit | std::ios::failbit);
       const auto remaining = limit_ - result_.text.size();
       const auto emitted = WriteLeafFunction(
-          *created, current_pc_, constants_, stream,
-          {remaining, analysis::kDefaultSemanticWork, {remaining}});
+          created->creation, current_pc_, constants_, stream,
+          {remaining, analysis::kDefaultSemanticWork, {remaining}},
+          analysis::CapturedValues::kLanguage);
       if (const auto* failure = std::get_if<BodyEmitFailure>(&emitted)) {
         const bool resource = failure->kind == BodyEmitError::kResourceLimit ||
                               failure->kind == BodyEmitError::kWorkLimit ||
@@ -219,7 +291,6 @@ class SourcePrinter {
         throw SourceFailure{resource ? SourceError::kResourceLimit
                                      : SourceError::kCreation, current_pc_};
       }
-      Text(stream.str());
     } else if (const auto* captured = std::get_if<CapturedExpression>(&expression)) {
       if (capture_mode_ != CaptureMode::kTemplate)
         throw SourceFailure{SourceError::kUnsupportedOperation, current_pc_};
@@ -314,6 +385,11 @@ class SourcePrinter {
             Slot(operation.target);
             Text(" = ");
             Expression(operation.value);
+            Text(";\n");
+          } else if constexpr (std::is_same_v<T, SourceLocalStore>) {
+            Local(operation.cell);
+            Text(" = ");
+            Slot(operation.value);
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceMemberStore>) {
             Text("(");
@@ -483,31 +559,34 @@ class SourcePrinter {
   std::size_t call_depth_ = 0;
   CaptureMode capture_mode_;
   std::vector<SourceCapture> captures_;
+  const analysis::SemanticProof* proof_;
 };
 }  // namespace
 
 std::variant<PrintedSource, SourceFailure> PrintSourceAst(
     const SourceAst& ast, const analysis::SemanticMethod& method,
     const abc::FrameLayout& frame, SourceForm form, std::string_view name,
-    const MethodConstants& constants, std::size_t output_bytes) {
+    const MethodConstants& constants, std::size_t output_bytes,
+    const analysis::SemanticProof* proof) {
   return SourcePrinter(ast, method, frame, form, name, constants,
-                       output_bytes).Print();
+                       output_bytes, SourcePrinter::CaptureMode::kReject, proof).Print();
 }
 std::variant<PrintedSource, SourceFailure> PrintSourceBody(
     const SourceAst& ast, const analysis::SemanticMethod& method,
     ScalarNames names, const MethodConstants& constants,
-    std::size_t output_bytes) {
+    std::size_t output_bytes, const analysis::SemanticProof* proof) {
   const abc::FrameLayout unused_frame{};
   return SourcePrinter(ast, method, unused_frame, SourceForm::kFunction,
-                       {}, constants, output_bytes).PrintBody(names);
+                       {}, constants, output_bytes,
+                       SourcePrinter::CaptureMode::kReject, proof).PrintBody(names);
 }
 std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
     const SourceAst& ast, const analysis::SemanticMethod& method,
     ScalarNames names, const MethodConstants& constants,
-    std::size_t output_bytes) {
+    std::size_t output_bytes, const analysis::SemanticProof* proof) {
   const abc::FrameLayout unused_frame{};
   return SourcePrinter(ast, method, unused_frame, SourceForm::kFunction,
                        {}, constants, output_bytes,
-                       SourcePrinter::CaptureMode::kTemplate).PrintTemplate(names);
+                       SourcePrinter::CaptureMode::kTemplate, proof).PrintTemplate(names);
 }
 }  // namespace abcd::source

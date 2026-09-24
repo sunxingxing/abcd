@@ -19,6 +19,7 @@
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/corpus/abc_file.h"
 #include "abcd/source/semantic_source.h"
+#include "abcd/source/named_scope.h"
 #include "abcd/abc/pool_reference.h"
 #include "semantic_survey.h"
 
@@ -162,10 +163,24 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
                        static_cast<unsigned>(failure.kind),
                        failure.pc.value);
     }
+    source::MethodConstants constants{file, *header, *index, method->offset,
+                                      {kMethodBytes}};
+    const auto checked = source::ValidateNamedScopes(
+        *body, code.registers + code.arguments, &constants, kMethodBytes,
+        analysis::kDefaultSemanticWork);
+    const auto* scopes = std::get_if<source::NamedScopes>(&checked);
+    if (!scopes) {
+      const auto& failure = std::get<source::BodyEmitFailure>(checked);
+      return FailStage(InspectError::kAst,
+          static_cast<unsigned>(failure.kind == source::BodyEmitError::kResourceLimit ||
+                                        failure.kind == source::BodyEmitError::kWorkLimit
+                                    ? source::SourceError::kResourceLimit
+                                    : source::SourceError::kConstant), failure.offset.value);
+    }
     const auto lowered = source::BuildSourceAst(
         *method_ir, std::get<analysis::SemanticProof>(proof),
         std::move(*regions),
-        kMethodBytes);
+        kMethodBytes, scopes->admitted);
     const auto* ast = std::get_if<source::SourceAst>(&lowered);
     if (!ast) {
       const auto& failure = std::get<source::SourceFailure>(lowered);
@@ -182,11 +197,9 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
         abc::DecodeCallFlags(call_type->value));
     const auto* frame = std::get_if<abc::FrameLayout>(&built_frame);
     if (!frame) return Fail(InspectError::kFrame);
-    source::MethodConstants constants{file, *header, *index, method->offset,
-                                      {kMethodBytes}};
     const auto rendered = source::PrintSourceAst(
         *ast, *method_ir, *frame, *form, method->name, constants,
-        kMethodBytes);
+        kMethodBytes, &std::get<analysis::SemanticProof>(proof));
     const auto* printed = std::get_if<source::PrintedSource>(&rendered);
     if (!printed) {
       const auto& failure = std::get<source::SourceFailure>(rendered);

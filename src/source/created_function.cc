@@ -161,8 +161,19 @@ CreatedFunctionResult WriteCreatedFunctionTemplate(
   const auto lifted = analysis::LiftFunctionCreation(instruction);
   if (const auto* error = std::get_if<analysis::CreationError>(&lifted))
     return *error;
-  return WriteCreation(file, header, index, lookup, caller,
+  return WriteCreatedFunctionTemplate(file, header, index, lookup, caller,
                        std::get<analysis::FunctionCreation>(lifted), output,
+                       budget, strings, module, roles, global_scope);
+}
+CreatedFunctionResult WriteCreatedFunctionTemplate(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    abc::EntityOffset caller, const analysis::FunctionCreation& creation,
+    std::ostream& output, LocalLexicalBudget budget,
+    abc::StringBudget strings, const abc::ModuleInfo* module,
+    const analysis::MethodRoleIndex* roles,
+    const GlobalScope* global_scope) {
+  return WriteCreation(file, header, index, lookup, caller, creation, output,
                        budget, strings, analysis::CapturedValues::kLanguage,
                        module, roles, global_scope);
 }

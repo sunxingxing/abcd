@@ -13,6 +13,7 @@
 #include <variant>
 
 #include "abcd/source/semantic_source.h"
+#include "abcd/source/named_scope.h"
 #include "abcd/abc/record_attributes.h"
 #include "abcd/abc/method_lookup.h"
 #include "abcd/analysis/method_roles.h"
@@ -116,8 +117,24 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
     return Failure(Stage::kRegion, static_cast<unsigned>(failure.kind),
                    failure.pc, *body);
   }
+  source::MethodConstants constants{file, header, index, method.offset,
+                                    {kMethodBytes}, module, roles,
+                                    source::GlobalScope{}};
+  constants.leaf_methods = &methods;
+  const auto checked = source::ValidateNamedScopes(
+      *body, code.registers + code.arguments, &constants, kMethodBytes,
+      analysis::kDefaultSemanticWork);
+  const auto* scopes = std::get_if<source::NamedScopes>(&checked);
+  if (!scopes) {
+    const auto& failure = std::get<source::BodyEmitFailure>(checked);
+    return Failure(Stage::kAst, static_cast<unsigned>(
+        failure.kind == source::BodyEmitError::kResourceLimit ||
+                failure.kind == source::BodyEmitError::kWorkLimit
+            ? source::SourceError::kResourceLimit : source::SourceError::kConstant),
+        failure.offset, *body);
+  }
   const auto lowered = source::BuildSourceAst(
-      *ir, *proof, std::move(*regions), kMethodBytes);
+      *ir, *proof, std::move(*regions), kMethodBytes, scopes->admitted);
   if (const auto* failure = std::get_if<source::SourceFailure>(&lowered))
     return Failure(Stage::kAst, static_cast<unsigned>(failure->kind),
                    failure->pc, *body);
@@ -134,15 +151,11 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
   for (std::uint32_t i = 0; i < register_count; ++i)
     bindings.push_back("$r" + std::to_string(i));
   for (const auto& name : bindings) names.push_back(name);
-  source::MethodConstants constants{file, header, index, method.offset,
-                                    {kMethodBytes}, module, roles,
-                                    source::GlobalScope{}};
-  constants.leaf_methods = &methods;
   if (!proof->captured_reads.empty()) {
     // Diagnostic parametric output only; no parent environment is assumed.
     // Do not merge this stage into body_ready or publish template bytes as JS.
     auto printed = source::PrintSourceTemplate(
-        ast, *ir, {"$acc", names}, constants, kMethodBytes);
+        ast, *ir, {"$acc", names}, constants, kMethodBytes, proof);
     if (auto* source = std::get_if<source::PrintedTemplate>(&printed))
       return {Stage::kTemplateReady, {}, {}, {}, {}, std::move(*source)};
     const auto& failure = std::get<source::SourceFailure>(printed);
@@ -150,7 +163,7 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
                    failure.pc, *body);
   }
   auto printed = source::PrintSourceBody(
-      ast, *ir, {"$acc", names}, constants, kMethodBytes);
+      ast, *ir, {"$acc", names}, constants, kMethodBytes, proof);
   if (auto* source = std::get_if<source::PrintedSource>(&printed))
     return {Stage::kBodyReady, {}, {}, {}, std::move(*source)};
   const auto& failure = std::get<source::SourceFailure>(printed);

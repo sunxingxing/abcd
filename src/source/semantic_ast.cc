@@ -100,11 +100,17 @@ std::optional<std::size_t> Definition(
 SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
                                const analysis::SemanticProof& proof,
                                analysis::SemanticRegionTree regions,
-                               std::size_t budget_bytes) {
-  if (proof.accumulator.entries.size() != method.flow.blocks.size() ||
-      proof.environments.before.size() != method.instructions.size() ||
+                               std::size_t budget_bytes,
+                               std::span<const std::uint8_t> named_scopes) {
+  if (proof.environments.before.size() != method.instructions.size() ||
       proof.values.Facts().size() != method.ssa.Values().size())
     return Fail(SourceError::kInvalidEffect);
+  if (!named_scopes.empty() && named_scopes.size() != method.instructions.size())
+    return Fail(SourceError::kInvalidEffect);
+  if (proof.locals.cells.size() > budget_bytes / sizeof(analysis::LocalCell))
+    return Fail(SourceError::kResourceLimit);
+  const auto local_bytes = proof.locals.cells.size() * sizeof(analysis::LocalCell);
+  budget_bytes -= local_bytes;
   if (regions.allocated_bytes > budget_bytes)
     return Fail(SourceError::kResourceLimit);
   const auto proof_bytes = method.ssa.Values().size() * sizeof(std::uint8_t);
@@ -146,6 +152,9 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
                  analysis::SsaValueId{static_cast<std::uint32_t>(i)}))
           if (uses[input.value.value] < kMultipleUses) ++uses[input.value.value];
     SourceAst ast{std::move(regions)};
+    ast.local_cells = proof.locals.cells;
+    if (ast.local_cells.capacity() > proof.locals.cells.size())
+      return Fail(SourceError::kResourceLimit);
     ast.statements.reserve(method.instructions.size());
     ast.fallthrough.resize(method.flow.blocks.size());
     if (ast.statements.capacity() > remaining / sizeof(SourceStatement) ||
@@ -167,6 +176,8 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
     std::size_t block_id = 0;
     std::size_t module_fact = 0;
     std::size_t capture_fact = 0;
+    std::size_t local_fact = 0;
+    std::optional<analysis::InstructionId> previous_creation;
     for (const auto& instruction : method.instructions) {
       const auto position = ast.statements.size();
       while (block_id + 1 < method.flow.blocks.size() &&
@@ -181,7 +192,32 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
       std::size_t spill_distance = 0;
       std::size_t reload_distance = 0;
       std::optional<abc::CodeOffset> previous_origin;
-      if (const auto* assignment =
+      if (local_fact < proof.locals.accesses.size() &&
+          proof.locals.accesses[local_fact].instruction.value == position) {
+        const auto& access = proof.locals.accesses[local_fact++];
+        if (access.cell.value >= ast.local_cells.size())
+          return Fail(SourceError::kInvalidEffect, instruction.pc);
+        if (access.kind == analysis::LocalAccessKind::kLoad) {
+          if (!std::holds_alternative<analysis::LexicalLoad>(instruction.operation))
+            return Fail(SourceError::kInvalidEffect, instruction.pc);
+          operation = SourceAssignment{analysis::ScalarSlot{analysis::Accumulator{}},
+                                       LocalExpression{access.cell}};
+        } else {
+          const auto* store = std::get_if<analysis::LexicalStore>(&instruction.operation);
+          if (!store) return Fail(SourceError::kInvalidEffect, instruction.pc);
+          operation = SourceLocalStore{access.cell, store->value};
+        }
+      } else if (const auto* environment =
+                     std::get_if<analysis::PushEnvironment>(&instruction.operation)) {
+        if (environment->scope && (named_scopes.empty() || !named_scopes[position]))
+          return Fail(SourceError::kConstant, instruction.pc);
+        // SSA rejects every use of the internal env result; topology is
+        // separately checked. Omission follows the existing no-debugger/OOM
+        // observability contract, never a Hole -> undefined substitution.
+        operation = analysis::NoOperation{};
+      } else if (std::holds_alternative<analysis::PopEnvironment>(instruction.operation)) {
+        operation = analysis::NoOperation{};
+      } else if (const auto* assignment =
               std::get_if<analysis::ScalarAssignment>(&instruction.operation)) {
         if (!SameSlot(effect.normal_registers.write,
                       assignment->destination))
@@ -198,7 +234,11 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
         // Target syntax/ABI and absence of external captures are verified by
         // the callable owner before this expression is published.
         operation = SourceAssignment{
-            analysis::ScalarSlot{analysis::Accumulator{}}, *created};
+            analysis::ScalarSlot{analysis::Accumulator{}},
+            FunctionExpression{*created,
+                analysis::InstructionId{static_cast<std::uint32_t>(position)},
+                previous_creation}};
+        previous_creation = analysis::InstructionId{static_cast<std::uint32_t>(position)};
       } else if (std::holds_alternative<analysis::LexicalLoad>(
                      instruction.operation)) {
         if (capture_fact >= proof.captured_reads.size() ||
@@ -407,7 +447,7 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
           !std::holds_alternative<SourceOwnStore>(ast.statements.back().operation))
         last_object_effect = position;
     }
-    ast.allocated_bytes = ast.regions.allocated_bytes +
+    ast.allocated_bytes = ast.regions.allocated_bytes + local_bytes +
                           ast.statements.capacity() * sizeof(SourceStatement) +
                           ast.fallthrough.capacity() *
                               sizeof(std::optional<analysis::BlockId>);

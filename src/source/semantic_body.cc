@@ -2,6 +2,8 @@
 
 #include <type_traits>
 
+#include "abcd/source/named_scope.h"
+
 namespace abcd::source {
 namespace {
 template <analysis::CapturedValues Captures>
@@ -23,19 +25,33 @@ auto BuildBody(
   if (!proof) return std::get<analysis::SemanticProofFailure>(verified);
   if (proof->allocated_bytes > budget.bytes)
     return SourceFailure{SourceError::kResourceLimit, {}};
-  const auto remaining = budget.bytes - proof->allocated_bytes;
+  auto remaining = budget.bytes - proof->allocated_bytes;
+  const auto checked = ValidateNamedScopes(
+      body, frame.registers, &constants, remaining, budget.work);
+  const auto* scopes = std::get_if<NamedScopes>(&checked);
+  if (!scopes) {
+    const auto& failure = std::get<BodyEmitFailure>(checked);
+    return SourceFailure{failure.kind == BodyEmitError::kResourceLimit ||
+                                 failure.kind == BodyEmitError::kWorkLimit
+                             ? SourceError::kResourceLimit : SourceError::kConstant,
+                         failure.offset};
+  }
+  if (scopes->AllocatedBytes() > remaining)
+    return SourceFailure{SourceError::kResourceLimit, {}};
+  remaining -= scopes->AllocatedBytes();
   auto recovered = analysis::BuildSemanticRegions(*method, remaining);
   auto* regions = std::get_if<analysis::SemanticRegionTree>(&recovered);
   if (!regions) return std::get<analysis::RegionFailure>(recovered);
-  auto lowered = BuildSourceAst(*method, *proof, std::move(*regions), remaining);
+  auto lowered = BuildSourceAst(*method, *proof, std::move(*regions), remaining,
+                                scopes->admitted);
   const auto* ast = std::get_if<SourceAst>(&lowered);
   if (!ast) return std::get<SourceFailure>(lowered);
   if constexpr (Captures == analysis::CapturedValues::kReject) {
-    auto printed = PrintSourceBody(*ast, *method, names, constants, output_bytes);
+    auto printed = PrintSourceBody(*ast, *method, names, constants, output_bytes, proof);
     if (auto* source = std::get_if<PrintedSource>(&printed)) return std::move(*source);
     return std::get<SourceFailure>(printed);
   } else {
-    auto printed = PrintSourceTemplate(*ast, *method, names, constants, output_bytes);
+    auto printed = PrintSourceTemplate(*ast, *method, names, constants, output_bytes, proof);
     if (auto* source = std::get_if<PrintedTemplate>(&printed)) return std::move(*source);
     return std::get<SourceFailure>(printed);
   }

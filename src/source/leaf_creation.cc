@@ -80,9 +80,16 @@ BodyEmitResult WriteLeafFunction(const analysis::FunctionCreation& creation,
                                  abc::CodeOffset pc,
                                  const MethodConstants& constants,
                                  std::ostream& output,
-                                 LocalLexicalBudget budget) {
+                                 LocalLexicalBudget budget,
+                                 analysis::CapturedValues captures) {
   if (!constants.leaf_methods)
     return BodyEmitFailure{BodyEmitError::kCreation, pc, {}, {}};
+  if (captures == analysis::CapturedValues::kLanguage)
+    return CreationResult(WriteCreatedFunctionTemplate(
+        constants.file, constants.header, constants.index, *constants.leaf_methods,
+        constants.method, creation, output, budget, constants.string_budget,
+        constants.module, constants.roles,
+        constants.global_scope ? &*constants.global_scope : nullptr), pc);
   return CreationResult(WriteCreatedFunction(
       constants.file, constants.header, constants.index, *constants.leaf_methods,
       constants.method, creation, output, budget, constants.string_budget,

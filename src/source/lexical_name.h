@@ -9,13 +9,16 @@
 #include "abcd/analysis/linear_lexicals.h"
 
 namespace abcd::source {
+enum class LexicalNamespace { kParent, kTemplate };
 // Same private parent-cell ABI for legacy closure emission and generic
 // template binding. This name does not establish source-variable identity.
 class LexicalName {
  public:
-  explicit LexicalName(analysis::LocalCell cell) {
+  explicit LexicalName(analysis::LocalCell cell,
+                       LexicalNamespace space = LexicalNamespace::kParent) {
     auto* next = bytes_.data();
-    for (const char ch : kPrefix) *next++ = ch;
+    const auto prefix = space == LexicalNamespace::kParent ? kPrefix : kInnerPrefix;
+    for (const char ch : prefix) *next++ = ch;
     next = std::to_chars(next, bytes_.data() + bytes_.size(),
                          cell.environment.value).ptr;
     *next++ = '_';
@@ -27,11 +30,12 @@ class LexicalName {
 
  private:
   static constexpr std::string_view kPrefix = "$lex";
+  static constexpr std::string_view kInnerPrefix = "$inner";
   static constexpr auto kEnvironmentDigits =
       std::numeric_limits<decltype(analysis::EnvironmentId{}.value)>::digits10 + 1;
   static constexpr auto kSlotDigits =
       std::numeric_limits<decltype(analysis::LexicalSlot{}.value)>::digits10 + 1;
-  std::array<char, kPrefix.size() + kEnvironmentDigits + 1 + kSlotDigits> bytes_{};
+  std::array<char, kInnerPrefix.size() + kEnvironmentDigits + 1 + kSlotDigits> bytes_{};
   std::size_t size_ = 0;
 };
 }  // namespace abcd::source

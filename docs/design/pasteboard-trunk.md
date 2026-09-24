@@ -387,6 +387,63 @@ and mutually recursive creation refusal, child capture refusal, arrow role
 conflicts, module-owner mismatch, length/formal mismatches, child failures
 before publication and getter-before-function-argument ordering.
 
+## Local Initialization and Parent Captures
+
+The generic source proof now uses register SSA value categories directly for
+every operand read; it no longer requires the legacy accumulator scanner to
+admit each instruction first. Unknown entry registers/accumulator, Hole and
+internal environment values still cannot be read by emitted operations. The
+old scanner remains available to legacy writers. A NEWLEXENV result may be
+omitted only when no read exposes it, not by reclassifying it as a JS value.
+
+`ProveLocalAccesses` indexes cells by environment/slot and records typed loads,
+stores and allocation sites. A local read requires allocation and a preceding
+store in its own basic block, with no function creation since allocation.
+All stores then undergo the shared SSA Language check, including stores whose
+cells are not subsequently read by the parent. This conditional proof cannot
+bootstrap a read-before-initialization cycle. Cross-block initialization,
+cell phis and post-capture loads remain conservative rejections. Sorting and
+indexed lookups cost O(I + L log L), not a graph walk per cell; retained and
+temporary vectors are budgeted, and local proof work reduces the value-solver
+quota.
+
+The AST contains typed local reads/stores and a cell declaration list. Source
+uses `$lex` cells for ordinary parents and `$inner` cells for templates to
+avoid shadowing later-inserted parent captures. Conflicting private names,
+formals and self/class names are rejected. Declarations may be hoisted only
+because no admitted read can observe their initial undefined value. Named
+environment literals still pass the shared scope metadata validator before
+omission; its header is now public so CLI and production paths use the same
+certificate. Environment operations retain zero-width PC anchors under the
+existing no-debugger/GC-OOM-observability contract.
+
+The function printer can now consume the same-method proof while emitting a
+child template. Each capture is rebased at the actual creation site and must
+resolve to a parent local allocated and assigned earlier in that same block.
+This first slice admits only the first capture creation since allocation;
+later creations and captured parents remain blocked. The child independently
+proves Language reads/stores. Bound names stream through the parent printer,
+so the parent creation span includes their actual bytes and line positions.
+There is no guessed capture name, temporary executable placeholder or search
+through generated text. One-level child expansion remains unchanged, and
+child-internal PC maps are still not propagated through callable wrappers.
+
+In `build/pasteboard-semantic-parent-captures.jsonl`, the 219 methods now have
+44 IR, six proof, 24 AST and 26 printer rejections, plus the unchanged 101
+bodies and 18 templates. Eleven methods passed their previous proof-stage
+blocker. EntryAbility `onWindowStageCreate` (5192), for example, passes local
+environment initialization and reaches its child creation at PC 77; the child
+still fails source admission. Thus this increment does not add a complete
+method or record. CommonConstants and Logger remain the only record source
+outputs in the targeted run.
+
+Both tools compile; only ABC-only targeted generation was performed. Tests
+and RSS tracking remain paused. Deferred regressions must cover uninitialized
+and cross-block cells, internal env aliases, named-scope corruption, captured
+stores of Hole, creation before initialization, multiple creation sites,
+parent/template name collisions, branch phi values, unreachable paths and
+failure after partially emitting a child into the unpublished parent buffer.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

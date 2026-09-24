@@ -28,5 +28,13 @@ CreatedFunctionResult WriteCreatedFunctionTemplate(
     const abc::ModuleInfo* module = nullptr,
     const analysis::MethodRoleIndex* roles = nullptr,
     const GlobalScope* global_scope = nullptr);
+CreatedFunctionResult WriteCreatedFunctionTemplate(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    abc::EntityOffset caller, const analysis::FunctionCreation& creation,
+    std::ostream& output, LocalLexicalBudget budget, abc::StringBudget strings,
+    const abc::ModuleInfo* module = nullptr,
+    const analysis::MethodRoleIndex* roles = nullptr,
+    const GlobalScope* global_scope = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_FUNCTION_TEMPLATE_H_

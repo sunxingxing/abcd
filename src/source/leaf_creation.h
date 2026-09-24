@@ -12,12 +12,14 @@ BodyEmitResult WriteLeafCreation(const abc::BodyInstruction& site,
                                  const abc::MethodLookup& methods,
                                  std::ostream& output,
                                  LocalLexicalBudget budget);
-// Typed AST bridge. Unlike the parametric form above, all external captures
-// are rejected; child contexts have no leaf expansion capability.
+// Typed AST bridge. Default rejects captures; kLanguage requires a capture
+// sink whose owner proves each binding. Children have no expansion capability.
 BodyEmitResult WriteLeafFunction(const analysis::FunctionCreation& creation,
                                  abc::CodeOffset pc,
                                  const MethodConstants& constants,
                                  std::ostream& output,
-                                 LocalLexicalBudget budget);
+                                 LocalLexicalBudget budget,
+                                 analysis::CapturedValues captures =
+                                     analysis::CapturedValues::kReject);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_LEAF_CREATION_H_

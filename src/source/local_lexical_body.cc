@@ -14,7 +14,7 @@
 #include "linear_instruction.h"
 #include "module_binding.h"
 #include "module_binding_name.h"
-#include "named_scope.h"
+#include "abcd/source/named_scope.h"
 
 namespace abcd::source {
 namespace {

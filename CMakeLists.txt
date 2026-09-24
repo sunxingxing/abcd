@@ -43,7 +43,8 @@ add_library(abcd_analysis src/analysis/normal_flow.cc src/analysis/exception_dis
 target_sources(abcd_analysis PRIVATE src/analysis/branch_condition.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_ir.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_region.cc)
-target_sources(abcd_analysis PRIVATE src/analysis/semantic_validation.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/semantic_validation.cc
+  src/analysis/semantic_locals.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/constant_object.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/iterator.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/iter_result.cc)
@@ -131,7 +132,7 @@ target_sources(abcd_source PRIVATE src/source/created_class.cc src/source/class_
 target_sources(abcd_source PRIVATE src/source/spread_field_constructor.cc)
 target_sources(abcd_source PRIVATE src/source/leaf_creation.cc)
 target_sources(abcd_source PRIVATE src/source/leaf_sources.cc
-  src/source/semantic_binding.cc)
+  src/source/semantic_binding.cc src/source/semantic_capture.cc)
 target_link_libraries(abcd_source PUBLIC abcd_analysis)
 target_compile_features(abcd_source PUBLIC cxx_std_20)
 target_include_directories(abcd_source PUBLIC include)

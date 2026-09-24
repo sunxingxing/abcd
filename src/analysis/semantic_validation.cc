@@ -3,6 +3,8 @@
 #include <new>
 #include <stdexcept>
 
+#include "semantic_locals.h"
+
 namespace abcd::analysis {
 namespace {
 SemanticProofFailure Fail(SemanticProofError kind,
@@ -44,6 +46,12 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
   if (bound->allocated_bytes > remaining)
     return Fail(SemanticProofError::kResourceLimit);
   remaining -= bound->allocated_bytes;
+  auto local_result = ProveLocalAccesses(method, *bound, {remaining, budget.work});
+  auto* locals = std::get_if<LocalAccessPlan>(&local_result);
+  if (!locals) return std::get<SemanticProofFailure>(local_result);
+  if (locals->AllocatedBytes() > remaining)
+    return Fail(SemanticProofError::kResourceLimit);
+  remaining -= locals->AllocatedBytes();
   constexpr auto kLoadProofBytes = sizeof(std::uint8_t) +
       2 * sizeof(LanguageLoadFact) + sizeof(CapturedReadFact);
   if (method.instructions.size() > remaining / kLoadProofBytes)
@@ -60,6 +68,9 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
       captured_reads.capacity() * sizeof(CapturedReadFact);
   if (proof_bytes > remaining) return Fail(SemanticProofError::kResourceLimit);
   remaining -= proof_bytes;
+  for (const auto& access : locals->accesses)
+    if (access.kind == LocalAccessKind::kLoad)
+      language_loads[access.instruction.value] = 1;
   if (captures == CapturedValues::kLanguage) {
     for (const auto& site : bound->bindings) {
       const auto* depth = std::get_if<CapturedDepth>(&site.binding.environment);
@@ -92,19 +103,6 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
   for (std::size_t i = 0; i < language_loads.size(); ++i)
     if (language_loads[i])
       loads.push_back({InstructionId{static_cast<std::uint32_t>(i)}});
-  auto accumulator = AnalyzeAcyclicAccumulator(
-      body, method.flow, frame_size, {remaining}, language_loads);
-  auto* accumulated = std::get_if<AccumulatorFlow>(&accumulator);
-  if (!accumulated) {
-    const auto& failure = std::get<AccumulatorFailure>(accumulator);
-    return Fail(failure.kind == AccumulatorError::kResourceLimit
-                    ? SemanticProofError::kResourceLimit
-                    : SemanticProofError::kAccumulator,
-                failure.offset);
-  }
-  if (accumulated->allocated_bytes > remaining)
-    return Fail(SemanticProofError::kResourceLimit);
-  remaining -= accumulated->allocated_bytes;
   if (method.ssa.Values().size() > remaining / sizeof(EntryValueFact))
     return Fail(SemanticProofError::kResourceLimit);
     std::vector<EntryValueFact> entries;
@@ -120,7 +118,7 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
                            ValueKinds::Language()});
     }
     remaining -= entries.capacity() * sizeof(EntryValueFact);
-    IdfQuota quota{budget.work};
+    IdfQuota quota{budget.work - locals->work_units};
     auto values = RegisterValueFlow::BuildWithLanguageLoads(
         body, method.ssa, frame_size, entries, loads, quota, {remaining});
     auto* analyzed = std::get_if<RegisterValueFlow>(&values);
@@ -145,13 +143,14 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
       }
     }
     const auto bytes = method.allocated_bytes +
-                       accumulated->allocated_bytes + bound->allocated_bytes +
+                       bound->allocated_bytes + locals->AllocatedBytes() +
                        analyzed->AllocatedBytes() +
                        modules.capacity() * sizeof(LanguageLoadFact) +
                        captured_reads.capacity() * sizeof(CapturedReadFact);
-    return SemanticProof{std::move(*accumulated), std::move(*bound),
+    return SemanticProof{std::move(*bound),
                          std::move(*analyzed),
-                         bytes, std::move(modules), std::move(captured_reads)};
+                         bytes, std::move(modules), std::move(captured_reads),
+                         std::move(*locals)};
   } catch (const std::bad_alloc&) {
     return Fail(SemanticProofError::kResourceLimit);
   } catch (const std::length_error&) {
