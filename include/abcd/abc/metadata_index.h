@@ -39,6 +39,8 @@ struct RecordInfo {
   std::uint32_t method_count = 0;
   std::size_t first_method = 0;
   std::size_t first_field = 0;
+  // Lazy class SOURCE_FILE string, not host path authority or source text.
+  std::optional<EntityOffset> source_file;
 };
 
 struct FieldTypeIndex {

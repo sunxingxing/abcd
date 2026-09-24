@@ -739,6 +739,47 @@ wrong rest index/frame, malformed narrow/wide operands, branch reentry,
 original ABI slot reuse, parameter-name collisions, arrays' fresh identity,
 and PC mapping through the native rest wrapper.
 
+## Embedded Source-File Evidence
+
+Metadata indexing now retains the optional class SOURCE_FILE entity lazily
+instead of validating and discarding it. The fixed-size optional offset is
+covered by the index's RecordInfo admission accounting. Structural JSON emits
+its decoded filename as `source_file`, or null when absent. This is a textual
+metadata reference, never permission to read that host file.
+
+The record structure writer additionally aggregates class and method debug
+filename evidence into `source_file_evidence`: state 0 is missing, 1 is one
+observed name, 2 is conflicting names, and 3 is incomplete decoding. Only
+state 1 publishes the shared filename. Missing debug tables do not invent
+names; malformed optional debug evidence cannot be treated as an empty valid
+table. File-change/read failures remain fatal. Embedded source-code references
+are not dereferenced. The collector retains one filename and one method's
+bounded debug payload at a time, skips repeated consecutive entity references,
+and compares textual data directly without a quadratic unique-name search.
+Existing detailed per-method evidence remains available for conflicts.
+
+The targeted export `build/pasteboard-source-consensus` confirms all 19
+Pasteboard records lack class SOURCE_FILE tags. Their method tables provide
+one consistent debug filename for each of the ten application records; the
+other nine records have no filename evidence. PageA's encoded name is
+`entry|entry|1.0.0|src/main/ets/pages/PageA.ts`, and the other application records
+have corresponding names under common, pages, entryability and
+entrybackupability. This recovers actual ABC-contained directory/name evidence,
+not a guessed `src/main` layout or copied evaluation source.
+
+The encoded `.ts` name may describe a compiler intermediate and does not prove
+the original `.ets` extension. The pipe-delimited prefix has not yet been
+promoted into a verified path-format profile. Therefore generated `.mjs` paths
+remain descriptor-derived; no silent extension replacement or host-path
+interpretation is performed. Filename evidence integration into the path
+planner and original-language reconstruction remain unfinished.
+
+Both tools compiled and targeted structure/source generation completed. No
+runtime tests or RSS tracking were run. Deferred regressions cover optional
+class tags, duplicate tags, invalid string references, matching and conflicting
+method filenames, empty names, malformed debug tables, surrogate text,
+resource exhaustion and hostile path components.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

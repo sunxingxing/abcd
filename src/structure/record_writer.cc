@@ -173,6 +173,12 @@ std::variant<RecordCounts, StructureFailure> WriteRecordStructure(
     out << "{\"schema\":1,\"view\":\"structure_only\",\"entity\":"
         << record.offset.value << ",\"descriptor\":";
     text.String(out, record.offset);
+    out << ",\"source_file\":";
+    if (record.source_file)
+      text.String(out, *record.source_file);
+    else
+      out << "null";
+    WriteSourceIdentity(text, index, record, out);
     declaration << "// ABC structural declaration view. No function bodies "
                    "recovered.\n// record ";
     text.String(declaration, record.offset);

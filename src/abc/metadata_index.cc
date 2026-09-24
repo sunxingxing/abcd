@@ -175,8 +175,9 @@ std::variant<std::uint32_t, MetadataError> Resolve(
   return std::get<std::uint32_t>(offset);
 }
 
-std::optional<MetadataError> SkipClassTags(MetadataCursor* cursor,
-                                           const Header& header) {
+std::optional<MetadataError> ReadClassTags(MetadataCursor* cursor,
+                                           const Header& header,
+                                           RecordInfo& record) {
   bool seen_interfaces = false;
   bool seen_language = false;
   bool seen_source_file = false;
@@ -223,6 +224,8 @@ std::optional<MetadataError> SkipClassTags(MetadataCursor* cursor,
           return std::get<MetadataError>(ref);
         if (!ValidEntity(header, std::get<std::uint32_t>(ref)))
           return MetadataError::kReference;
+        if (static_cast<ClassTag>(tag) == ClassTag::kSourceFile)
+          record.source_file = EntityOffset{std::get<std::uint32_t>(ref)};
         break;
       }
       default:
@@ -495,7 +498,7 @@ MetadataResult BuildMetadataIndex(const corpus::AbcFile& file,
         !Take(cursor.Uleb(), &record.method_count, &error))
       return error;
     if (super && !ValidEntity(header, super)) return MetadataError::kReference;
-    if (const auto failure = SkipClassTags(&cursor, header)) return *failure;
+    if (const auto failure = ReadClassTags(&cursor, header, record)) return *failure;
     const auto remaining = header.file_size - cursor.Position();
     if (record.field_count > remaining / kLocalFieldHeaderBytes ||
         record.method_count > remaining / kLocalMethodHeaderBytes)

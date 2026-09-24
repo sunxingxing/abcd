@@ -23,6 +23,8 @@ void WriteModuleStructure(const RecordText& text, const abc::ModuleInfo& module,
                           std::ostream& metadata, std::ostream& declarations);
 void WriteDebugStructure(const RecordText& text, const abc::MethodInfo& method,
                          std::ostream& metadata);
+void WriteSourceIdentity(const RecordText& text, const abc::MetadataIndex& index,
+                         const abc::RecordInfo& record, std::ostream& metadata);
 void WriteScopeStructure(const RecordText& text, const abc::MethodInfo& method,
                          const abc::DebugInfo& debug, std::ostream& metadata);
 void WriteClassSites(const RecordText& text, const abc::MetadataIndex& index,
