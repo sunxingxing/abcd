@@ -28,6 +28,15 @@ IteratorInstruction LiftIteratorInstruction(
       if (instruction.operand_count != 0)
         return IteratorError::kMalformedInstruction;
       return PropertyIterator{};
+    case Opcode::kGETNEXTPROPNAME_V8: {
+      if (instruction.operand_count != 1 ||
+          !Register(instruction, kIterator))
+        return IteratorError::kMalformedInstruction;
+      const auto reg = instruction.operands[kIterator].raw_bits;
+      if (reg >= frame_size) return IteratorError::kRegisterRange;
+      return NextPropertyName{
+          abc::RegisterId{static_cast<std::uint32_t>(reg)}};
+    }
     case Opcode::kGETITERATOR_IMM8:
     case Opcode::kGETITERATOR_IMM16:
     case Opcode::kGETASYNCITERATOR_IMM8: {

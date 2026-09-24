@@ -76,3 +76,10 @@ for (const fn of [source.parameter, source.self, first, second]) {
 assert.equal(source.empty.length, 0);
 assert.equal(source.length255.length, 255);
 assert.equal(source.empty(), undefined);
+assert.equal(source.firstForIn({alpha: 1, beta: 2}), 'alpha');
+assert.equal(source.firstForIn(Object.create({inherited: true})), 'inherited');
+assert.equal(source.firstForIn(Object.create(null)), undefined);
+const enumerationError = Object.freeze({enumerationError: true});
+assert.throws(() => source.firstForIn(new Proxy({}, {
+  ownKeys() { throw enumerationError; }
+})), error => error === enumerationError);

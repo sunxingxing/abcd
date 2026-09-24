@@ -69,6 +69,15 @@ int main() {
   Check(advance.iterator.value == 0 && advance.method.value == 1);
   Check(std::get<IteratorError>(LiftIteratorInstruction(next, 1)) ==
         IteratorError::kRegisterRange);
+  const auto property_name = Decode(std::array<std::uint8_t, 2>{0x36, 0x01});
+  Check(std::get<NextPropertyName>(LiftIteratorInstruction(property_name, 2))
+            .iterator.value == 1);
+  Check(std::get<IteratorError>(LiftIteratorInstruction(property_name, 1)) ==
+        IteratorError::kRegisterRange);
+  auto malformed_name = property_name;
+  malformed_name.operands[0].kind = abc::OperandKind::kImmediate;
+  Check(std::get<IteratorError>(LiftIteratorInstruction(malformed_name, 2)) ==
+        IteratorError::kMalformedInstruction);
   auto malformed = next;
   malformed.operand_count = 1;
   Check(std::get<IteratorError>(LiftIteratorInstruction(malformed, 2)) ==

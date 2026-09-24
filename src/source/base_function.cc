@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "abcd/abc/register_access.h"
+#include "abcd/analysis/first_for_in.h"
 #include "abcd/source/base_constructor.h"
 #include "abcd/source/class_method.h"
 #include "abcd/source/string_literal.h"
@@ -284,31 +285,47 @@ class FunctionWriter {
           scoped_constants->global_scope->self_binding = function_.name;
         body_constants = &*scoped_constants;
       }
-      const auto lexical =
-          captured_values_ == analysis::CapturedValues::kLanguage
-              ? WriteLocalLexicalTemplate(body, names_, output_, body_budget,
-                                          body_constants)
-              : WriteLocalLexicalBody(body, names_, output_, body_budget,
-                                      body_constants, methods_);
-      FunctionEmitResult result = std::visit(
-          [](auto value) -> FunctionEmitResult { return value; }, lexical);
-      if (const auto* failure =
-              std::get_if<analysis::LinearLexicalFailure>(&lexical);
-          failure && failure->kind == analysis::LinearLexicalError::kControlFlow &&
-          captured_values_ == analysis::CapturedValues::kReject) {
-        // The ordered path has no lexical-environment synthesis. It is only a
-        // fallback after the straight-line planner rejects control flow; its
-        // own opcode proof must accept every live instruction before emission.
-        AcyclicBudget ordered_budget;
-        ordered_budget.bytes = body_budget.bytes;
-        ordered_budget.output = body_budget.output;
-        if (const auto unsafe = ProveBranchValues(
-                body, names_.registers.size(), body_budget))
-          return *unsafe;
+      FunctionEmitResult result{std::size_t{0}};
+      const auto first_for_in =
+          body_constants &&
+                  body_constants->header.profile == abc::ProfileId::kDynamic1301 &&
+                  captured_values_ == analysis::CapturedValues::kReject
+              ? analysis::MatchFirstForIn(body, function_.frame)
+              : std::nullopt;
+      if (first_for_in) {
+        // The v7 frontend's acquisition catch only rethrows; the complete
+        // body proof permits native for-in without exposing VM iterator state.
+        Text("for (const $forInKey in ");
+        Text(names_.registers[first_for_in->source.value]);
+        Text(") {\nreturn $forInKey;\n}\nreturn;\n");
+        if (error_) return *error_;
+      } else {
+        const auto lexical =
+            captured_values_ == analysis::CapturedValues::kLanguage
+                ? WriteLocalLexicalTemplate(body, names_, output_, body_budget,
+                                            body_constants)
+                : WriteLocalLexicalBody(body, names_, output_, body_budget,
+                                        body_constants, methods_);
         result = std::visit(
-            [](auto value) -> FunctionEmitResult { return value; },
-            WriteBlockLoopBody(body, names_, output_, ordered_budget,
-                               body_constants));
+            [](auto value) -> FunctionEmitResult { return value; }, lexical);
+        if (const auto* failure =
+                std::get_if<analysis::LinearLexicalFailure>(&lexical);
+            failure && failure->kind == analysis::LinearLexicalError::kControlFlow &&
+            captured_values_ == analysis::CapturedValues::kReject) {
+          // The ordered path has no lexical-environment synthesis. It is only a
+          // fallback after the straight-line planner rejects control flow; its
+          // own opcode proof must accept every live instruction before emission.
+          AcyclicBudget ordered_budget;
+          ordered_budget.bytes = body_budget.bytes;
+          ordered_budget.output = body_budget.output;
+          if (const auto unsafe = ProveBranchValues(
+                  body, names_.registers.size(), body_budget))
+            return *unsafe;
+          result = std::visit(
+              [](auto value) -> FunctionEmitResult { return value; },
+              WriteBlockLoopBody(body, names_, output_, ordered_budget,
+                                 body_constants));
+        }
       }
       if (const auto* bytes = std::get_if<std::size_t>(&result))
         written_ += *bytes;

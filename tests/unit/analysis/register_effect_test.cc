@@ -79,6 +79,7 @@ int main() {
                      {{0x6f}, {}, acc},
                      {{0xb0}, {}, {}},
                      {{0x66}, {acc}, acc},
+                     {{0x36, 2}, {reg}, acc},
                      {{0x67, 0}, {acc}, acc},
                      {{0xab, 0, 0}, {acc}, acc},
                      {{0xd7, 0}, {acc}, acc},

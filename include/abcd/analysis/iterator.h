@@ -9,6 +9,9 @@
 
 namespace abcd::analysis {
 struct PropertyIterator {};
+struct NextPropertyName {
+  abc::RegisterId iterator;
+};
 enum class IteratorMode { kSync, kAsync };
 struct AcquireIterator {
   IteratorMode mode;
@@ -27,12 +30,13 @@ enum class IteratorError {
   kMalformedInstruction,
   kRegisterRange
 };
-using IteratorInstruction = std::variant<PropertyIterator, AcquireIterator,
-                                         CloseIterator, IteratorNext,
-                                         IteratorError>;
+using IteratorInstruction = std::variant<PropertyIterator, NextPropertyName,
+                                         AcquireIterator, CloseIterator,
+                                         IteratorNext, IteratorError>;
 
-// Pinned v7 interpreter semantics: acquisition reads acc, close reads only its
-// iterator register, legacy next reads two registers; all replace acc on
+// Pinned v7 interpreter semantics: acquisition reads acc, property-name next
+// reads its iterator register, close reads only its iterator register, and
+// legacy next reads two registers; all replace acc on
 // normal completion and may throw. IC slots are not source operands. The ISA
 // group's x_none exception annotation does not override interpreter handlers.
 [[nodiscard]] IteratorInstruction LiftIteratorInstruction(

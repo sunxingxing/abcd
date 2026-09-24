@@ -1,6 +1,8 @@
 #include "abcd/source/base_function.h"
 #include "abcd/source/linear_body.h"
 
+#include <unistd.h>
+
 #include <iostream>
 #include <limits>
 #include <sstream>
@@ -23,6 +25,16 @@ source::BaseFunction Function(std::uint32_t locals = 0,
 class FailingBuffer : public std::streambuf {
   std::streamsize xsputn(const char*, std::streamsize) override { return 0; }
 };
+abc::MethodBody FirstKeyBody() {
+  auto body = test::Body({
+      0xd5, 0x60, 0x05, 0x66, 0x61, 0x01, 0x4d, 0x08,
+      0x61, 0x00, 0x60, 0x00, 0xfe, 0x00, 0x36, 0x01,
+      0x61, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x51, 0x05,
+      0x60, 0x00, 0x64, 0x65});
+  body.tries.push_back({{1}, 5, 0, 1});
+  body.handlers.push_back({{}, {8}, 0});
+  return body;
+}
 void Emit(std::string_view name, source::BaseFunction function,
           const abc::MethodBody& body) {
   std::cout << "export const " << name << " = ";
@@ -51,6 +63,22 @@ void EmitFixtures() {
   test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
       Function(), test::Body({0x60, 0, 0x64}), std::cout)));
   std::cout << "; }\n";
+  char path[] = "/tmp/abcd-first-for-in-XXXXXX";
+  const auto fd = mkstemp(path);
+  test::Check(fd >= 0);
+  test::Check(close(fd) == 0);
+  const auto opened = corpus::AbcFile::Open(path);
+  test::Check(unlink(path) == 0);
+  const auto& file = *std::get<std::unique_ptr<corpus::AbcFile>>(opened);
+  abc::Header header;
+  header.kind = abc::AbcKind::kDynamic;
+  header.profile = abc::ProfileId::kDynamic1301;
+  abc::MetadataIndex index;
+  const source::MethodConstants constants{file, header, index, {0}, {}};
+  std::cout << "export const firstForIn = ";
+  test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
+      Function(2), FirstKeyBody(), std::cout, {}, &constants)));
+  std::cout << ";\n";
 }
 }  // namespace
 int main(int argc, char** argv) {
@@ -66,6 +94,42 @@ int main(int argc, char** argv) {
   test::Check(std::get<std::size_t>(result) == output.str().size());
   test::Check(output.str().find("function Recovered($p0)") !=
               std::string::npos);
+  {
+    char path[] = "/tmp/abcd-first-for-in-XXXXXX";
+    const auto fd = mkstemp(path);
+    test::Check(fd >= 0);
+    test::Check(close(fd) == 0);
+    const auto opened = corpus::AbcFile::Open(path);
+    test::Check(unlink(path) == 0);
+    const auto& file = *std::get<std::unique_ptr<corpus::AbcFile>>(opened);
+    abc::Header header;
+    header.kind = abc::AbcKind::kDynamic;
+    header.profile = abc::ProfileId::kDynamic1301;
+    abc::MetadataIndex index;
+    const auto first_key = FirstKeyBody();
+    const source::MethodConstants constants{file, header, index, {0}, {}};
+    std::ostringstream recovered;
+    const auto emitted = source::WriteBaseFunction(
+        Function(2), first_key, recovered, {}, &constants);
+    test::Check(std::holds_alternative<std::size_t>(emitted));
+    test::Check(recovered.str().find(
+                    "for (const $forInKey in $r5) {\n"
+                    "return $forInKey;\n}\nreturn;\n") !=
+                std::string::npos);
+    source::LocalLexicalBudget limited_budget;
+    limited_budget.output.bytes = recovered.str().size() - 1;
+    std::ostringstream limited;
+    test::Check(std::get<source::EmitError>(source::WriteBaseFunction(
+                    Function(2), first_key, limited, limited_budget,
+                    &constants)) == source::EmitError::kOutputLimit);
+    test::Check(limited.str().empty());
+    header.profile = abc::ProfileId::kDynamic1206;
+    std::ostringstream historical;
+    const auto refused = source::WriteBaseFunction(
+        Function(2), first_key, historical, {}, &constants);
+    test::Check(!std::holds_alternative<std::size_t>(refused));
+    test::Check(historical.str().empty());
+  }
   {
     const auto intrinsic = test::Body({0xaf, 0x64});
     std::ostringstream missing;

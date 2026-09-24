@@ -200,6 +200,11 @@ RegisterEffect EffectOf(const ConstantObjectInstruction& value) {
 RegisterEffect EffectOf(const PropertyIterator&) {
   return AccumulatorReadWrite();
 }
+RegisterEffect EffectOf(const NextPropertyName& value) {
+  auto effect = AccumulatorDefinition();
+  effect.reads[effect.read_count++] = value.iterator;
+  return effect;
+}
 RegisterEffect EffectOf(const AcquireIterator&) {
   return AccumulatorReadWrite();
 }
