@@ -317,7 +317,8 @@ class FunctionWriter {
       const MethodConstants* body_constants = constants_;
       if (constants_) {
         scoped_constants.emplace(*constants_);
-        scoped_constants->leaf_methods = methods_;
+        if (methods_ || !scoped_constants->expansion)
+          scoped_constants->leaf_methods = methods_;
         if (scoped_constants->global_scope &&
             (function_.syntax == CallableSyntax::kFunctionExpression ||
              function_.syntax == CallableSyntax::kAsyncFunctionExpression))

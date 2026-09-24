@@ -19,6 +19,7 @@
 #include "record_array.h"
 #include "record_literal.h"
 #include "semantic_fields.h"
+#include "creation_expansion.h"
 
 namespace abcd::source {
 namespace {
@@ -35,7 +36,8 @@ class SourcePrinter {
                 std::size_t bytes, CaptureMode captures = CaptureMode::kReject,
                 const analysis::SemanticProof* proof = nullptr)
       : ast_(ast), method_(method), frame_(frame), form_(form), name_(name),
-        constants_(constants), limit_(bytes), capture_mode_(captures), proof_(proof) {}
+        constants_(constants), limit_(bytes), capture_mode_(captures), proof_(proof),
+        expansion_(constants.method, bytes, kDefaultMethodWork) {}
 
   std::variant<PrintedTemplate, SourceFailure> PrintTemplate(ScalarNames names) {
     auto printed = PrintBody(names);
@@ -313,7 +315,8 @@ class SourcePrinter {
       const auto emitted = WriteLeafFunction(
           created->creation, current_pc_, constants_, stream,
           {remaining, analysis::kDefaultSemanticWork, {remaining}},
-          analysis::CapturedValues::kLanguage);
+          analysis::CapturedValues::kLanguage,
+          constants_.expansion ? constants_.expansion : &expansion_);
       if (const auto* failure = std::get_if<BodyEmitFailure>(&emitted)) {
         const bool resource = failure->kind == BodyEmitError::kResourceLimit ||
                               failure->kind == BodyEmitError::kWorkLimit ||
@@ -613,6 +616,7 @@ class SourcePrinter {
   CaptureMode capture_mode_;
   std::vector<SourceCapture> captures_;
   const analysis::SemanticProof* proof_;
+  CreationExpansion expansion_;
 };
 }  // namespace
 

@@ -4,8 +4,8 @@
 #include "abcd/source/created_function.h"
 
 namespace abcd::source {
-// Private, leaf-only parametric templates. Output requires CaptureBuffer;
-// literal bytes alone are NOT executable source. No nested method lookup.
+// Private parametric templates. Output requires CaptureBuffer; literal bytes
+// alone are NOT executable source. Nested lookup needs bounded expansion.
 LocalLexicalResult WriteLocalLexicalTemplate(const abc::MethodBody& body,
                                              ScalarNames names,
                                              std::ostream& output,
@@ -35,6 +35,7 @@ CreatedFunctionResult WriteCreatedFunctionTemplate(
     std::ostream& output, LocalLexicalBudget budget, abc::StringBudget strings,
     const abc::ModuleInfo* module = nullptr,
     const analysis::MethodRoleIndex* roles = nullptr,
-    const GlobalScope* global_scope = nullptr);
+    const GlobalScope* global_scope = nullptr,
+    CreationExpansion* expansion = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_FUNCTION_TEMPLATE_H_

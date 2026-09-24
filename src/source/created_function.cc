@@ -9,6 +9,7 @@
 #include "function_template.h"
 #include "parameter_names.h"
 #include "runtime_name.h"
+#include "creation_expansion.h"
 
 namespace abcd::source {
 namespace {
@@ -19,7 +20,7 @@ CreatedFunctionResult WriteCreation(
     std::ostream& output, LocalLexicalBudget budget, abc::StringBudget strings,
     analysis::CapturedValues captured_values, const abc::ModuleInfo* module,
     const analysis::MethodRoleIndex* roles,
-    const GlobalScope* global_scope) {
+    const GlobalScope* global_scope, CreationExpansion* expansion = nullptr) {
   const auto resolved = abc::ResolveMethodTarget(file, header, index, lookup,
                                                  caller, creation.method);
   if (const auto* error = std::get_if<abc::MethodTargetError>(&resolved))
@@ -29,6 +30,15 @@ CreatedFunctionResult WriteCreation(
   if (const auto* error = std::get_if<abc::MethodAttributeError>(&resolved))
     return *error;
   const auto target = std::get<abc::MethodTarget>(resolved);
+  std::optional<ExpansionFrame> admission;
+  if (expansion) {
+    admission.emplace(*expansion, index.methods[target.position.value].offset,
+                      budget);
+    if (const auto error = admission->error())
+      return *error == ExpansionError::kCycle
+                 ? CreatedFunctionError::kCreationCycle
+                 : CreatedFunctionError::kResourceLimit;
+  }
   // Shared MethodLiteral kinds can change during class materialization. An
   // arrow is source-safe only when a complete same-file role index proves no
   // constructor or method-bearing literal can refer to this target.
@@ -99,12 +109,16 @@ CreatedFunctionResult WriteCreation(
              ParameterNameError::kResourceLimit) {
     return CreatedFunctionError::kResourceLimit;
   }
-  const MethodConstants constants{file, header, index, method.offset, strings,
+  MethodConstants constants{file, header, index, method.offset, strings,
                                   module, roles,
                                   global_scope
                                       ? std::optional<GlobalScope>(*global_scope)
                                       : std::nullopt,
                                   parameters};
+  if (expansion) {
+    constants.leaf_methods = &lookup;
+    constants.expansion = expansion;
+  }
   const BaseFunction function{creation, target.attributes,
                               std::get<abc::FrameLayout>(frame), *name};
   FunctionEmitResult emitted;
@@ -172,9 +186,9 @@ CreatedFunctionResult WriteCreatedFunctionTemplate(
     std::ostream& output, LocalLexicalBudget budget,
     abc::StringBudget strings, const abc::ModuleInfo* module,
     const analysis::MethodRoleIndex* roles,
-    const GlobalScope* global_scope) {
+    const GlobalScope* global_scope, CreationExpansion* expansion) {
   return WriteCreation(file, header, index, lookup, caller, creation, output,
                        budget, strings, analysis::CapturedValues::kLanguage,
-                       module, roles, global_scope);
+                       module, roles, global_scope, expansion);
 }
 }  // namespace abcd::source

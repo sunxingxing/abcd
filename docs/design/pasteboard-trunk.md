@@ -829,6 +829,50 @@ remain paused; deferred regressions include both operand widths, malformed
 operands, regional resolution, unsupported payloads, numeric/string edge
 cases, fresh identity, PC spans and resource exhaustion.
 
+## Bounded Nested Callable Expansion
+
+The generic printer can now propagate method lookup to grandchildren under a
+single synchronous `CreationExpansion`. Legacy decoded-template entry points
+remain leaf-only. The context owns a fixed 32-entry active method path and
+rejects repeated ancestors before decoding them. This keeps method-qualified
+lexical cell names unambiguous in nested scopes; sibling emissions remain
+separate function scopes. Supporting recursive creation graphs still requires
+a different representation and is not silently approximated.
+
+Each child receives at most half the currently available scratch allowance;
+its grant remains charged until its body, proofs and wrapper storage die.
+Work grants draw from a shared non-refundable quota, including rejected or
+fallback attempts. Output is capped by both the child grant and parent stream.
+RAII restores ancestry and scratch grants on every exit. These are conservative
+admission policies, not bytecode limits. Ancestor checks cost O(32) per emitted
+creation, not a corpus-sized pairwise scan. This does not establish the full
+process memory ceiling: the existing root/stream capacity accounting and
+paused whole-process RSS verification remain separate obligations.
+
+The base-function wrapper preserves nested lookup only with this context.
+Existing typed capture events resolve one environment edge at each parent;
+local initialization, first-creation restrictions and Language-store proofs
+are unchanged. No captures are bound by rewriting printed names. Parent
+creation PC spans include descendant text, but descendant-internal PC maps
+still do not survive callable wrappers.
+
+ABC-only output in `build/pasteboard-semantic-nested-expansion.jsonl` advances
+Home `requestPermissionsFn` 6760 and PasteBoard `aboutToAppear` 9332 to body
+fragments. The former now includes its permission array and two callback
+levels; the latter keeps outer `this` separate from the middle callback's
+local styled-string cell. ProgressBar callback 10110 becomes a non-executable
+template with four capture insertions. Method 9832 advances from creation PC
+197 to PC 401 rejection. Totals: 36 IR, six proof, 25 AST and 17 printer
+rejections, 103 body fragments and 32 templates. Fragments still require the
+owning ABI/module/global scope; this is not whole-record completion or proof
+that every nested callable used only the generic writer.
+
+Both CLI targets compiled and source export still produces only CommonConstants
+and Logger as complete records. No tests or RSS tracking were run. Deferred
+regressions cover multi-level forwarding, ancestor/middle cell separation,
+repeated sibling targets, direct/mutual creation cycles, exception unwinding,
+depth/scratch/work exhaustion and failure after partial child emission.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

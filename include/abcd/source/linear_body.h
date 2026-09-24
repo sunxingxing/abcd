@@ -16,6 +16,7 @@ class MethodRoleIndex;
 }
 
 namespace abcd::source {
+class CreationExpansion;
 inline constexpr std::uint64_t kDefaultMethodWork = 100000000;
 enum class BodyEmitError {
   kExceptionRegions,
@@ -82,9 +83,10 @@ struct MethodConstants {
   // Caller-proven source-formal names, in ABI parameter order; empty falls
   // back to private $pN bindings without guessing from method-table names.
   std::span<const std::string_view> source_parameters;
-  // Explicit one-level expansion capability. Created-function contexts never
-  // inherit it, so generic printing cannot recursively expand nested targets.
+  // Lookup capability alone allows one level. Only a synchronous, bounded
+  // expansion context may propagate it to created-function descendants.
   const abc::MethodLookup* leaf_methods = nullptr;
+  CreationExpansion* expansion = nullptr;
 };
 
 // Emits statements inside a function, not a wrapper or record. Requires a

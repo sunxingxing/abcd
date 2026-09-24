@@ -10,7 +10,8 @@ enum class CreatedFunctionError {
   kName,
   kResourceLimit,
   kModuleOwner,
-  kRole
+  kRole,
+  kCreationCycle
 };
 using CreatedFunctionResult =
     std::variant<std::size_t, CreatedFunctionError, FunctionEmitError,
