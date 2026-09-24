@@ -418,8 +418,8 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
         // Route proof is only half the argument. The preceding SSA use counts
         // include handler phis, preventing removal of observable spill values.
         if (method.ssa.IsPhased() &&
-            (i >= proof.call_properties.size() || !proof.call_properties[i] ||
-             proof.call_properties[i]->value != *property_id))
+            (i >= proof.call_routes.size() || !proof.call_routes[i] ||
+             proof.call_routes[i]->property.value != *property_id))
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         const bool across_blocks =
             *property_id < method.flow.blocks[block_id].first_instruction;
@@ -445,8 +445,21 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
             effect.exceptional != analysis::ExceptionalCompletion::kMayThrow)
           return Fail(SourceError::kInvalidEffect, instruction.pc);
         const bool staged = across_blocks || *last_effect != property;
-        if (method.ssa.IsPhased() && staged)
-          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        if (method.ssa.IsPhased()) {
+          // Effectful argument preparation stays inside the existing staged
+          // Reference call. No normal-only argument-region proof may stand in
+          // for exception region ownership, and no ordered route grants fusion.
+          if (across_blocks)
+            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+          switch (proof.call_routes[i]->evaluation) {
+            case analysis::ReceiverEvaluation::kFuse:
+              if (staged) return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+              break;
+            case analysis::ReceiverEvaluation::kPreserveOrder:
+              if (!staged) return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+              break;
+          }
+        }
         if (staged && (!spill || !reload || !call->Count()))
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         if (staged) {

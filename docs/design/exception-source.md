@@ -61,6 +61,39 @@ Tests and RSS remain paused; deferred cases include long local-catch
 rejection, observable argument effects, multiple-entry intervals, clobbered
 receivers/callees, 200/201 scaling and quota exhaustion.
 
+### Ordered Argument Effects
+
+Call routes now carry a typed `ReceiverEvaluation`: `kFuse` permits only the
+previously proven private argument relocation, while `kPreserveOrder` requires
+the shared `SourceStagedCall` representation. The latter retains the property
+Reference while evaluating argument statements through the existing arrow
+expression, before invoking the saved method. It does not emit a new dedicated
+exception printer or re-read the property after argument effects.
+
+The ordered certificate requires unique normal fallthrough through the whole
+interval and no local exceptional exit at any interior site. A second prefix
+barrier count checks that condition in O(1) per candidate, retaining the
+O(I+N+E) work and O(I+N) admitted storage bound. Shared AST validation still
+requires exact callee copy-chain single uses, receiver identity, at least one
+argument, and noncrossing staged intervals. Phased cross-block calls and local
+catches remain refused; candidate discovery currently uses the nearest named
+read, so a later argument property read can conservatively prevent admission.
+
+Both CLI targets compiled. ABC-only inspection of pasteboard 10583 now emits
+the shared phased template for `showToast`, including object creation and own
+field writes inside ordered argument evaluation
+(`build/pasteboard-10583-exception-staged.jsonl`). All 44 original PCs have
+spans: property PC 42 and call PC 111 share bytes [184,708), while removed
+spill/reload PCs retain zero-width anchors inside that interval. One outer
+capture still requires parent binding; this is not an executable publication
+or a runtime-equivalence claim. Method 6044 advances from AST failure PC 45
+to PC 135, whose argument computation crosses a branch. Method 6184 retains
+its 21-span private-argument template. The ordinary all-record survey remains
+byte-identical to the preceding argument snapshot, as does the record output
+manifest. Read-only review found no concrete defect. Tests and RSS remain
+paused; deferred cases include throwing argument effects, overwritten callee
+properties, nested calls, handler-boundary rejection and staged PC spans.
+
 ### Module Initialization Ownership
 
 Ordinary and exceptional body owners now share `SnapshotModuleReads` instead

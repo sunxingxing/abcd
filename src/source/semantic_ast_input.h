@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_SEMANTIC_AST_INPUT_H_
 
 #include "abcd/analysis/instruction_ssa.h"
+#include "abcd/analysis/exception_calls.h"
 #include "abcd/source/semantic_source.h"
 
 namespace abcd::source {
@@ -18,7 +19,7 @@ struct AstProof {
   const analysis::LocalAccessPlan& locals;
   std::span<const analysis::ModuleReadFact> module_reads;
   std::span<const analysis::CapturedReadFact> captured_reads;
-  std::span<const std::optional<analysis::InstructionId>> call_properties = {};
+  std::span<const std::optional<analysis::ExceptionCallRoute>> call_routes = {};
   std::optional<analysis::ValueKinds> At(analysis::SsaValueId id) const {
     if (id.value >= values.size()) return {};
     return values[id.value];

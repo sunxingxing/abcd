@@ -24,11 +24,13 @@ void InspectExceptionSource(const abcd::source::ExceptionAstInput& input,
     const auto routed = analysis::ProveExceptionCalls(input.flow,
         {bytes - regions.allocated_bytes, analysis::kDefaultSemanticWork});
     if (const auto* calls = std::get_if<analysis::ExceptionCalls>(&routed)) {
-      for (std::size_t i = 0; i < calls->properties.size(); ++i)
-        if (calls->properties[i])
+      for (std::size_t i = 0; i < calls->routes.size(); ++i)
+        if (calls->routes[i])
           output << nlohmann::json{{"receiver_route_call", i},
               {"pc", input.flow.instructions[i].pc.value},
-              {"property_pc", input.flow.instructions[calls->properties[i]->value].pc.value}} << '\n';
+              {"property_pc", input.flow.instructions[calls->routes[i]->property.value].pc.value},
+              {"preserves_argument_order", calls->routes[i]->evaluation ==
+                  analysis::ReceiverEvaluation::kPreserveOrder}} << '\n';
     } else {
       output << nlohmann::json{{"receiver_route_error", static_cast<unsigned>(
           std::get<analysis::ExceptionCallError>(routed))}} << '\n';

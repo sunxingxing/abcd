@@ -71,8 +71,8 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
         entries[target] = entries[target] == Entries::kNone ? Entries::kSingle : Entries::kMultiple;
       }
     }
-    if (sites.size() > memory.Available() / sizeof(std::optional<InstructionId>)) return Error::kResourceLimit;
-    result.properties.resize(sites.size());
+    if (sites.size() > memory.Available() / sizeof(std::optional<ExceptionCallRoute>)) return Error::kResourceLimit;
+    result.routes.resize(sites.size());
     memory.Retain(result.AllocatedBytes());
     struct Exit { std::optional<ExceptionNodeId> handler; };
     const auto route = [&](const Sites& site) -> std::optional<Exit> {
@@ -101,7 +101,7 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
       if (!normal || exit.handler.has_value() != node.exception->target.has_value()) return {};
       return exit;
     };
-    struct Barriers { std::size_t edge = 0, argument = 0; };
+    struct Barriers { std::size_t edge = 0, argument = 0, ordered = 0; };
     std::pmr::vector<Barriers> barriers(sites.size() + 1, {}, &memory);
     // Prefix counts make arbitrarily long, overlapping candidate intervals
     // constant-time queries. All storage shares the stage's admission budget.
@@ -116,18 +116,24 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
             entries[sites[i + 1].before->value] == Entries::kSingle;
       }
       bool pure = false;
+      bool ordered = false;
       if (sites[i].before && sites[i].commit) {
         const auto& before = flow.nodes[sites[i].before->value];
         const auto& effects = flow.instructions[i].effects;
-        pure = !before.exception && before.successor_count == 1 &&
+        const bool normal = !before.exception && before.successor_count == 1 &&
             before.successors.front().kind == ExceptionArcKind::kNormal &&
             before.successors.front().target == *sites[i].commit &&
+            effects.exceptional == ExceptionalCompletion::kImpossible;
+        const auto exit = before.exception ? route(sites[i]) : std::nullopt;
+        ordered = normal || (exit && !exit->handler);
+        pure = normal &&
             effects.normal == LanguageEffect::kNone &&
             effects.before_throw == LanguageEffect::kNone &&
-            effects.exceptional == ExceptionalCompletion::kImpossible &&
             PrivateArgument(flow.instructions[i].operation);
       }
-      barriers[i + 1] = {barriers[i].edge + !linear, barriers[i].argument + !pure};
+      barriers[i + 1] = {barriers[i].edge + !linear,
+                         barriers[i].argument + !pure,
+                         barriers[i].ordered + !ordered};
     }
     std::optional<std::size_t> latest_read;
     for (std::size_t call = 0; call < sites.size(); ++call) {
@@ -152,12 +158,18 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
           flow.nodes[sites[*property].before->value].exception->target !=
               flow.nodes[sites[call].before->value].exception->target) continue;
       if (!short_interval) {
-        // Longer intervals are caller-only: a local handler could observe
-        // argument-register writes moved before a throwing property read.
+        // Longer intervals are caller-only. Fusion moves private writes;
+        // ordered emission instead encloses arguments in an arrow. Neither
+        // route proves ownership or observable register state for a local catch.
         if (!read_exit->handler && !call_exit->handler &&
             barriers[call].edge == barriers[*property].edge &&
-            barriers[call].argument == barriers[*property + 1].argument)
-          result.properties[call] = InstructionId{static_cast<std::uint32_t>(*property)};
+            barriers[call].ordered == barriers[*property + 1].ordered) {
+          const auto evaluation =
+              barriers[call].argument == barriers[*property + 1].argument
+                  ? ReceiverEvaluation::kFuse : ReceiverEvaluation::kPreserveOrder;
+          result.routes[call] = ExceptionCallRoute{
+              InstructionId{static_cast<std::uint32_t>(*property)}, evaluation};
+        }
         continue;
       }
       bool linear = true;
@@ -178,7 +190,8 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
             effects.normal != LanguageEffect::kNone || effects.before_throw != LanguageEffect::kNone ||
             effects.exceptional != ExceptionalCompletion::kImpossible) { linear = false; break; }
       }
-      if (linear) result.properties[call] = InstructionId{static_cast<std::uint32_t>(*property)};
+      if (linear) result.routes[call] = ExceptionCallRoute{
+          InstructionId{static_cast<std::uint32_t>(*property)}, ReceiverEvaluation::kFuse};
     }
     return result;
   } catch (Error error) { return error;
