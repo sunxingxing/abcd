@@ -18,6 +18,7 @@
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/ordinary_call.h"
 #include "abcd/analysis/rest_arguments.h"
+#include "abcd/analysis/value_write.h"
 #include "abcd/source/string_literal.h"
 #include "element_name.h"
 #include "linear_instruction.h"
@@ -317,6 +318,11 @@ class BodyWriter {
           if (!accumulator_defined)
             return Fail(BodyEmitError::kAccumulatorHole);
           NamedStore(instruction.decoded);
+        } else if (opcode == Opcode::kSTOBJBYVALUE_IMM8_V8_V8 ||
+                   opcode == Opcode::kSTOBJBYVALUE_IMM16_V8_V8) {
+          if (!accumulator_defined)
+            return Fail(BodyEmitError::kAccumulatorHole);
+          ValueStore(instruction.decoded);
         } else if (opcode == Opcode::kCALLARG0_IMM8 ||
                    opcode == Opcode::kCALLARG1_IMM8_V8 ||
                    opcode == Opcode::kCALLARGS2_IMM8_V8_V8 ||
@@ -578,6 +584,29 @@ class BodyWriter {
     StringConstant(store.name, StringUse::kPropertyName);
     Text("] = $value; })(");
     Expression(ScalarValue{store.object});
+    Text(", ");
+    Expression(ScalarValue{Accumulator{}});
+    Text(");\n");
+  }
+  void ValueStore(const abc::DecodedInstruction& instruction) {
+    const auto lifted = LiftValueWrite(instruction, names_.registers.size());
+    if (const auto* error = std::get_if<ValueWriteError>(&lifted)) {
+      error_ = BodyEmitFailure{
+          BodyEmitError::kUnsupportedInstruction, offset_,
+          *error == ValueWriteError::kRegisterRange
+              ? ScalarError::kRegisterRange
+              : ScalarError::kMalformedInstruction,
+          {}};
+      return;
+    }
+    const auto& write = std::get<ValueWrite>(lifted);
+    // Strict [[Set]] matches the pinned runtime, including inherited setters
+    // and a throwing failure. The instruction does not replace acc.
+    Text("(($object, $key, $value) => { \"use strict\"; ");
+    Text("$object[$key] = $value; })(");
+    Expression(ScalarValue{write.object});
+    Text(", ");
+    Expression(ScalarValue{write.key});
     Text(", ");
     Expression(ScalarValue{Accumulator{}});
     Text(");\n");

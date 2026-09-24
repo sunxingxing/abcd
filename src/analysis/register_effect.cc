@@ -20,6 +20,7 @@
 #include "abcd/analysis/own_write.h"
 #include "abcd/analysis/private_property.h"
 #include "abcd/analysis/rest_arguments.h"
+#include "abcd/analysis/value_write.h"
 
 namespace abcd::analysis {
 namespace {
@@ -68,6 +69,13 @@ RegisterEffect EffectOf(const NamedWrite& value) {
 RegisterEffect EffectOf(const OwnWrite& value) {
   RegisterEffect effect;
   effect.reads[effect.read_count++] = value.object;
+  effect.reads[effect.read_count++] = Accumulator{};
+  return effect;
+}
+RegisterEffect EffectOf(const ValueWrite& value) {
+  RegisterEffect effect;
+  effect.reads[effect.read_count++] = value.object;
+  effect.reads[effect.read_count++] = value.key;
   effect.reads[effect.read_count++] = Accumulator{};
   return effect;
 }
@@ -276,6 +284,9 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftOwnWrite(instruction, frame_size));
+      !Unsupported(result))
+    return result;
+  if (auto result = Adapt(LiftValueWrite(instruction, frame_size));
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftIndexedRead(instruction, frame_size));
