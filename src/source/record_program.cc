@@ -31,42 +31,21 @@
 #include "abcd/source/created_function.h"
 #include "abcd/source/global_reference.h"
 #include "abcd/source/module_imports.h"
+#include "abcd/source/named_scope.h"
 #include "abcd/source/scalar_expression.h"
 #include "abcd/source/static_fields.h"
 #include "abcd/source/string_literal.h"
 #include "record_array.h"
 #include "record_buffer.h"
 #include "record_literal.h"
+#include "record_lexical.h"
 #include "record_module_choice.h"
 #include "record_prelude.h"
 
 namespace abcd::source {
 namespace {
 using Error = RecordProgramError;
-struct Value {
-  enum class Kind {
-    kUnknown,
-    kUndefined,
-    kHole,
-    kClass,
-    kFunction,
-    kCreatedMethod,
-    kString,
-    kFalse,
-    kTrue,
-    kNull,
-    kAtom,
-    kLiteral,
-    kImportSnapshot,
-    kLocalSnapshot,
-    kGlobalSnapshot,
-    kCallResult,
-    kChoice,
-    kPrototype,
-    kInstance
-  } kind;
-  std::size_t ordinal = 0;
-};
+using Value = RecordValue;
 struct ClassState {
   const abc::BodyInstruction* site = nullptr;
   std::optional<ClassParent> parent;
@@ -321,6 +300,9 @@ class ProgramWriter {
           last_effect_pc_ = pc_;
           break;
       }
+      if (lexicals_.Apply(instruction, registers_.size(), accumulator_,
+                          budget_.bytes))
+        continue;
       switch (instruction.decoded.opcode) {
         case Opcode::kLDHOLE:
           if (instruction.decoded.operand_count != 0)
@@ -1117,6 +1099,7 @@ class ProgramWriter {
         Number(value.ordinal);
         return;
       case Value::Kind::kUnknown:
+      case Value::Kind::kEnvironment:
       case Value::Kind::kHole:
       case Value::Kind::kCreatedMethod:
       case Value::Kind::kLiteral:
@@ -1475,6 +1458,7 @@ class ProgramWriter {
   std::ostream& output_;
   RecordProgramBudget budget_;
   std::vector<Value> registers_;
+  RecordLexicals lexicals_;
   std::vector<std::uint8_t> escaped_;
   std::vector<ClassState> classes_;
   std::size_t pending_derived_cursor_ = 0;
@@ -1568,6 +1552,21 @@ RecordProgramResult WriteRecordProgram(
         !admit(layout->registers, sizeof(Value)) ||
         !admit(body->instructions.size(), sizeof(std::uint8_t)))
       return Fail(Error::kResourceLimit);
+    {
+      const MethodConstants constants{file, header, index, entry->offset,
+                                      budget.strings};
+      const auto scopes = ValidateNamedScopes(
+          *body, layout->registers, &constants, budget.bytes,
+          kDefaultMethodWork);
+      if (const auto* failure = std::get_if<BodyEmitFailure>(&scopes)) {
+        if (failure->metadata_error)
+          return Fail(Metadata(*failure->metadata_error), failure->offset);
+        return Fail(failure->kind == BodyEmitError::kResourceLimit ||
+                            failure->kind == BodyEmitError::kWorkLimit
+                        ? Error::kResourceLimit : Error::kInstruction,
+                    failure->offset);
+      }
+    }
     const auto build_exports = [&]() {
       return BuildModuleExports(
           file, header, module,
