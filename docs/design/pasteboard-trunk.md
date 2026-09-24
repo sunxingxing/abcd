@@ -599,6 +599,37 @@ undefined versus Hole, conditional captured facts, nonzero no-op flags, both
 operand widths, malformed operands, phi joins dropping refinements, and PC
 anchors for proven-inert checks.
 
+## SSA-Proven Lexical Hole Guards
+
+The generic AST now handles HoleGuard using its typed value slot and the
+same-method SSA value fact, rather than requiring every guard to follow a
+module load. An exact Language fact excludes Hole; it does not exclude
+undefined, which correctly passes both pinned UNDEFINEDIFHOLE handlers.
+Those handlers read the error-name register or string pool only on the Hole
+path, so a proven inert guard must not introduce name evaluation. The AST
+retains a no-op statement with its original PC. Adjacent module guards keep
+their existing fused module-load mapping; other guards have independent
+zero-width anchors. Unknown/internal values remain rejected by verification.
+
+Captured-load facts are still premises, not unconditional initialization
+proofs. Removing a guard in a template does not discharge its capture event
+or let the template become executable. Binding must still pass the parent's
+environment and initialization checks. SuperCheck remains separate because
+its initialized mode also rejects undefined.
+
+`build/pasteboard-semantic-lexical-guards.jsonl` adds templates for 5684 (Home
+construction callback), 8692 (PasteBoard styled-string callback), and 10417
+(ProgressBar unlink callback). Their former blocking PCs 8, 65 and 67 remain
+zero-width spans after the first capture insertion. All three artifacts are
+explicitly non-executable. Totals are 41 IR, six proof, 21 AST and 26 printer
+rejections, 101 body fragments and 24 capture templates. Both tools compile,
+and targeted record export still emits only CommonConstants and Logger.
+
+No runtime tests or RSS measurements were run. Deferred regressions cover
+register versus accumulator guard values, undefined acceptance, actual Hole
+rejection, unknown/phi facts, conditional error-name reads, capture binding
+failure, and independent versus fused guard PC spans.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

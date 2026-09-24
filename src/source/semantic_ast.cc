@@ -319,12 +319,19 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
           case analysis::SuperCheckKind::kRequireUninitialized:
             return Fail(SourceError::kSuperInitialization, instruction.pc);
         }
-      } else if (std::holds_alternative<analysis::HoleGuard>(instruction.operation)) {
-        if (!position || !module_fact ||
-            proof.guarded_modules[module_fact - 1].instruction.value != position - 1)
-          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+      } else if (const auto* guard =
+                     std::get_if<analysis::HoleGuard>(&instruction.operation)) {
+        const auto value = ReadValue(method, position, guard->value);
+        const auto kinds = value ? proof.values.At(*value) : std::nullopt;
+        if (!kinds || !kinds->IsLanguage())
+          return Fail(SourceError::kInvalidEffect, instruction.pc);
+        // Pinned UNDEFINEDIFHOLE handlers do not even read the error name on
+        // the non-Hole path. Unlike SuperCheck, undefined passes this guard.
+        // Captured facts remain conditional obligations of the whole template.
         operation = analysis::NoOperation{};
-        previous_origin = method.instructions[position - 1].pc;
+        if (position && module_fact &&
+            proof.guarded_modules[module_fact - 1].instruction.value == position - 1)
+          previous_origin = method.instructions[position - 1].pc;
       } else if (const auto* read =
                      std::get_if<analysis::NamedRead>(&instruction.operation)) {
         if (!SameSlot(effect.normal_registers.write,
