@@ -68,6 +68,48 @@ is not an acceptable shortcut.
 
 ## Verification Status
 
+### Common Try/Catch Tree
+
+`RegionTry` is now an alternative in the same `RegionNode` used by ordinary
+source AST/printer paths. `BuildExceptionRegionTree` consumes the unchanged
+control-region certificate and normal block topology. It emits existing block,
+label and sequence nodes around try/catch nodes, not separately rebased method
+segments. Every block is retained once except a proven compiler skip jump.
+The current tree builder admits forward normal edges only; exception-loop
+composition remains unsupported rather than bypassing loop proofs.
+
+Protected/handler boundaries must align with real blocks. A gap is elided only
+when it contains exactly one effect-free jump to the handler's end. A label
+inside the protected body preserves normal exits to that gap, and no external
+edge may target it. Other normal exits use enclosing common labels. A retained
+skip instruction ID supplies its original source PC for a zero-width anchor.
+Tree and scratch bounds cover all nodes, block-boundary maps and catch ranges;
+construction is O(I+B+R+E), with bounded region nesting and no copied bytecode.
+
+The common printer emits try/catch syntax, copies the caught value into the
+existing accumulator binding and preserves the original handler statements.
+It does not shadow accumulator with the catch parameter. `$caught` is reserved
+against private registers, formals, current-function/class bindings and sorted
+outer bindings; the outer check uses binary search, not a per-method full scan.
+Catch installation extends the first handler instruction's generated span;
+the skipped jump uses the existing zero-width statement-span mechanism. These
+printer changes are compiled but are not yet an end-to-end source proof for
+the exception samples.
+
+Production inspection schema 7 builds this common tree for methods 4945, 5165,
+6350 and 6733: respectively 6/11/6/11 blocks and 1/1/1/2 catch nodes. Artifacts
+are `build/pasteboard-<method>-exception-tree.jsonl`. The original input-value
+refusals remain in place. Exception SSA/proof still needs to be connected to
+the common statement AST builder before these trees can publish source;
+constructing a normal-only SSA over stripped handlers is not acceptable.
+Read-only review prompted fixes for outer-binding lookup complexity and
+resource-error classification. Tests and RSS remain paused, so executable
+catch behavior, collision refusal and generated spans still await regression
+verification. No additional complete source record is claimed.
+Both CLI targets compiled after the review fixes. The all-record inspection
+`build/pasteboard-semantic-exception-tree.jsonl` retains stage counts
+`[0,0,27,1,0,8,0,11,113,56,3]`.
+
 ### Exception Control Regions
 
 `BuildExceptionRegions` now proves a contiguous try/catch layout from decoded

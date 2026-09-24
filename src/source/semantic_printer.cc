@@ -1,5 +1,6 @@
 #include "abcd/source/semantic_source.h"
 
+#include <algorithm>
 #include <charconv>
 #include <limits>
 #include <new>
@@ -198,12 +199,15 @@ class SourcePrinter {
     LocalName(ast_.local_cells[id.value]);
   }
   void DeclareLocals() {
-    if (ast_.local_cells.empty()) return;
-    const auto reserved = [](std::string_view name) {
-      return name.starts_with("$lex") || name.starts_with("$inner");
+    if (ast_.local_cells.empty() && !ast_.regions.catches) return;
+    const auto reserved = [&](std::string_view name) {
+      return name.starts_with("$lex") || name.starts_with("$inner") ||
+             (ast_.regions.catches && name == "$caught");
     };
     if (reserved(names_.accumulator) || reserved(names_.current_function) ||
         reserved(name_)) throw SourceFailure{SourceError::kOutput, {}};
+    if (names_.rest && reserved(names_.rest->name))
+      throw SourceFailure{SourceError::kOutput, {}};
     for (const auto name : names_.registers)
       if (reserved(name)) throw SourceFailure{SourceError::kOutput, {}};
     for (const auto name : constants_.source_parameters)
@@ -215,6 +219,11 @@ class SourcePrinter {
     if (constants_.global_scope)
       for (const auto name : constants_.global_scope->parameter_bindings)
         if (reserved(name)) throw SourceFailure{SourceError::kOutput, {}};
+    if (ast_.regions.catches && constants_.global_scope) {
+      const auto bindings = constants_.global_scope->enclosing_bindings;
+      if (std::binary_search(bindings.begin(), bindings.end(), std::string_view{"$caught"}))
+        throw SourceFailure{SourceError::kOutput, {}};
+    }
     for (std::size_t i = 0; i < ast_.local_cells.size(); ++i) {
       Text("let ");
       Local(analysis::LocalCellId{static_cast<std::uint32_t>(i)});
@@ -670,6 +679,31 @@ class SourcePrinter {
             Text(": while (true) {\n");
             Region(*region.body);
             Text("}\n");
+          } else if constexpr (std::is_same_v<T, analysis::RegionTry>) {
+            if (!ast_.regions.catches || !region.body || !region.handler)
+              throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+            Text("try {\n");
+            Region(*region.body);
+            if (region.skip) {
+              if (region.skip->value >= ast_.statements.size())
+                throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+              Statement(SourceStatement{ast_.statements[region.skip->value].pc,
+                                         analysis::NoOperation{}});
+            }
+            Text("} catch ($caught) {\n");
+            const auto caught_begin = position_;
+            Slot(analysis::ScalarSlot{Accumulator{}});
+            Text(" = $caught;\n");
+            const auto first_span = result_.spans.size();
+            Region(*region.handler);
+            if (first_span == result_.spans.size())
+              throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+            // Catch entry is a VM phase, not an extra bytecode instruction.
+            // Include installation in the first handler instruction's span.
+            result_.spans[first_span].begin = caught_begin;
+            Text("}\n");
+          } else {
+            static_assert(std::is_same_v<T, analysis::RegionTry>);
           }
         },
         node.value);

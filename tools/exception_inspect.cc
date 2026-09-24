@@ -9,6 +9,7 @@
 #include "abcd/analysis/exception_environment.h"
 #include "abcd/analysis/exception_inputs.h"
 #include "abcd/analysis/exception_regions.h"
+#include "abcd/analysis/semantic_region.h"
 
 int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     abcd::abc::ProfileId profile, std::uint64_t frame_size,
@@ -90,15 +91,45 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
   const auto recovered = analysis::BuildExceptionRegions(body, *flow,
       {remaining, analysis::kDefaultSemanticWork - quota.Consumed()});
   const auto* regions = std::get_if<analysis::ExceptionRegions>(&recovered);
-  output << nlohmann::json{{"schema", 6}, {"instructions", flow->instructions.size()},
+  const auto build_tree = [&]() -> analysis::RegionResult {
+    if (!regions) return analysis::RegionFailure{analysis::RegionError::kExceptionShape, {}};
+    if (regions->allocated_bytes > remaining)
+      return analysis::RegionFailure{analysis::RegionError::kResourceLimit, {}};
+    const auto available = remaining - regions->allocated_bytes;
+    const auto built_normal = analysis::BuildNormalFlow(body, {available});
+    const auto* normal = std::get_if<analysis::NormalFlow>(&built_normal);
+    if (!normal) {
+      const auto& failure = std::get<analysis::FlowFailure>(built_normal);
+      return analysis::RegionFailure{
+          failure.kind == analysis::FlowError::kResourceLimit
+              ? analysis::RegionError::kResourceLimit : analysis::RegionError::kExceptionShape,
+          failure.offset};
+    }
+    const auto normal_bytes = normal->blocks.capacity() * sizeof(analysis::FlowBlock);
+    if (normal_bytes > available)
+      return analysis::RegionFailure{analysis::RegionError::kResourceLimit, {}};
+    return analysis::BuildExceptionRegionTree(*flow, *regions, *normal, available - normal_bytes);
+  };
+  const auto tree_result = build_tree();
+  const auto* tree = std::get_if<analysis::SemanticRegionTree>(&tree_result);
+  output << nlohmann::json{{"schema", 7}, {"instructions", flow->instructions.size()},
       {"nodes", flow->nodes.size()}, {"source_complete", false}, {"ssa_complete", false},
       {"register_ssa_complete", true}, {"value_flow_complete", true},
       {"environment_topology_complete", true}, {"lexical_values_proven", false},
       {"source_inputs_proven", inputs != nullptr},
       {"exception_regions_proven", regions != nullptr},
+      {"exception_tree_proven", tree != nullptr},
       {"requires_language_abi", true}, {"pending_exception_values_proven", false},
       {"ssa_values", ssa->Values().size()}}
       << '\n';
+  if (tree) {
+    output << nlohmann::json{{"tree_catches", tree->catches},
+                             {"tree_blocks", tree->order_positions.size()}} << '\n';
+  } else {
+    const auto& failure = std::get<analysis::RegionFailure>(tree_result);
+    output << nlohmann::json{{"region_tree_error", static_cast<unsigned>(failure.kind)},
+                             {"pc", failure.pc.value}} << '\n';
+  }
   if (!regions) {
     const auto& failure = std::get<analysis::CatchRegionFailure>(recovered);
     output << nlohmann::json{{"catch_region_error", static_cast<unsigned>(failure.kind)},

@@ -10,7 +10,6 @@
 
 namespace abcd::analysis {
 namespace {
-constexpr std::size_t kMaxRegionDepth = 128;
 constexpr std::size_t kNodesPerBlock = 4;
 RegionFailure Fail(RegionError kind, abc::CodeOffset pc = {}) {
   return {kind, pc};
@@ -21,7 +20,7 @@ RegionResult BuildLoopRegions(const SemanticMethod& method,
   const auto& blocks = method.flow.blocks;
   const auto count = blocks.size();
   // The printer's region nesting remains bounded independently of graph size.
-  if (count > kMaxRegionDepth) return Fail(RegionError::kDepth);
+  if (count > kMaxSemanticRegionDepth) return Fail(RegionError::kDepth);
   constexpr auto kLoopNodesPerBlock = kNodesPerBlock + 2;
   constexpr auto kBlockBytes = kLoopNodesPerBlock * sizeof(RegionNode) +
       3 * sizeof(std::uint32_t) + sizeof(std::uint8_t) +
@@ -148,7 +147,7 @@ RegionResult BuildSemanticRegions(const SemanticMethod& method,
   if (order.unreachable != 0 ||
       order.blocks.size() != method.flow.blocks.size())
     return Fail(RegionError::kUnreachable);
-  if (order.blocks.size() > kMaxRegionDepth)
+  if (order.blocks.size() > kMaxSemanticRegionDepth)
     return Fail(RegionError::kDepth);
   if (method.flow.blocks.size() >
       budget_bytes / (sizeof(std::uint32_t) +
