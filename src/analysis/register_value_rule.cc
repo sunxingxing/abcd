@@ -70,6 +70,51 @@ bool HasLanguageResult(BinaryOperator op) {
   return false;
 }
 }  // namespace
+ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
+  if (const auto* value = std::get_if<ScalarValue>(&assignment.expression)) {
+    if (std::holds_alternative<Accumulator>(*value) ||
+        std::holds_alternative<abc::RegisterId>(*value))
+      return ValueRule{ValueRuleKind::kJoin, {}};
+    if (const auto* number = std::get_if<Float64Bits>(value)) {
+      // Pinned JSTaggedValue::IsImpureNaN compares raw bits with TAG_INT -
+      // DOUBLE_ENCODE_OFFSET. Release construction only adds that offset;
+      // raw FLDAI payloads can therefore encode Hole/other internal values.
+      constexpr std::uint64_t kImpureNaNBitsMin =
+          UINT64_C(0xfffe000000000000);
+      if (number->value >= kImpureNaNBitsMin)
+        return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
+    }
+    if (std::holds_alternative<IntegerLiteral>(*value))
+      return ValueRule{ValueRuleKind::kFixed, ValueKinds::NonNaNNumber()};
+    return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
+  }
+  // Successful ECMAScript property reads expose language values. The pinned
+  // v7.0 JSObject::GetProperty returns undefined for a missing data property;
+  // Hole/environment sentinels are not observable through this API. Receiver
+  // and key reads remain checked by RegisterEffect, and abrupt getters still
+  // preserve the normal/throwing control semantics of the instruction.
+  if (std::holds_alternative<PropertyRead>(assignment.expression))
+    return ValueRule{ValueRuleKind::kLanguageOperation, {}};
+  // Language includes accepted noncanonical NaNs. NEG can flip such a NaN
+  // into an impure encoding; numeric results need stronger numeric facts.
+  bool language = false;
+  if (const auto* unary =
+          std::get_if<UnaryExpression>(&assignment.expression)) {
+    // The pinned NEG int32 path returns int32 or a finite double for
+    // INT32_MIN. Its floating path only risks an impure tag for NaN input.
+    if (unary->op == UnaryOperator::kNegate)
+      return ValueRule{ValueRuleKind::kNonNaNNegate, {}};
+    language = HasLanguageResult(unary->op);
+  }
+  if (const auto* binary =
+          std::get_if<BinaryExpression>(&assignment.expression)) {
+    if (binary->op == BinaryOperator::kAdd)
+      return ValueRule{ValueRuleKind::kStringAdd, {}};
+    language = HasLanguageResult(binary->op);
+  }
+  return language ? ValueRule{ValueRuleKind::kLanguageOperation, {}}
+                  : ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
+}
 std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
   const auto effect = LiftRegisterEffect(instruction, frame_size);
@@ -77,53 +122,8 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
   if (!std::get<RegisterEffect>(effect).write)
     return ScalarError::kMalformedInstruction;
   const auto scalar = LiftScalarInstruction(instruction, frame_size);
-  if (const auto* assignment = std::get_if<ScalarAssignment>(&scalar)) {
-    if (const auto* value = std::get_if<ScalarValue>(&assignment->expression)) {
-      if (std::holds_alternative<Accumulator>(*value) ||
-          std::holds_alternative<abc::RegisterId>(*value))
-        return ValueRule{ValueRuleKind::kJoin, {}};
-      if (const auto* number = std::get_if<Float64Bits>(value)) {
-        // Pinned JSTaggedValue::IsImpureNaN compares raw bits with TAG_INT -
-        // DOUBLE_ENCODE_OFFSET. Release construction only adds that offset;
-        // raw FLDAI payloads can therefore encode Hole/other internal values.
-        constexpr std::uint64_t kImpureNaNBitsMin =
-            UINT64_C(0xfffe000000000000);
-        if (number->value >= kImpureNaNBitsMin)
-          return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
-      }
-      if (std::holds_alternative<IntegerLiteral>(*value))
-        return ValueRule{ValueRuleKind::kFixed,
-                         ValueKinds::NonNaNNumber()};
-      return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
-    }
-    // Successful ECMAScript property reads expose language values. The pinned
-    // v7.0 JSObject::GetProperty returns undefined for a missing data property;
-    // Hole/environment sentinels are not observable through this API. Receiver
-    // and key reads remain checked by RegisterEffect, and abrupt getters still
-    // preserve the normal/throwing control semantics of the instruction.
-    if (std::holds_alternative<PropertyRead>(assignment->expression)) {
-      return ValueRule{ValueRuleKind::kLanguageOperation, {}};
-    }
-    // Language includes accepted noncanonical NaNs. NEG can flip such a NaN
-    // into an impure encoding; numeric results need stronger numeric facts.
-    bool language = false;
-    if (const auto* unary =
-            std::get_if<UnaryExpression>(&assignment->expression)) {
-      // The pinned NEG int32 path returns int32 or a finite double for
-      // INT32_MIN. Its floating path only risks an impure tag for NaN input.
-      if (unary->op == UnaryOperator::kNegate)
-        return ValueRule{ValueRuleKind::kNonNaNNegate, {}};
-      language = HasLanguageResult(unary->op);
-    }
-    if (const auto* binary =
-            std::get_if<BinaryExpression>(&assignment->expression))
-      if (binary->op == BinaryOperator::kAdd)
-        return ValueRule{ValueRuleKind::kStringAdd, {}};
-      else
-        language = HasLanguageResult(binary->op);
-    return language ? ValueRule{ValueRuleKind::kLanguageOperation, {}}
-                    : ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
-  }
+  if (const auto* assignment = std::get_if<ScalarAssignment>(&scalar))
+    return DescribeScalarValue(*assignment);
   if (std::holds_alternative<LoadHole>(
           LiftHoleInstruction(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Hole()};

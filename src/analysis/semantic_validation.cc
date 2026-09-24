@@ -140,7 +140,8 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     remaining -= entries.capacity() * sizeof(EntryValueFact);
     IdfQuota quota{budget.work - locals->work_units};
     auto values = RegisterValueFlow::BuildWithLanguageLoads(
-        body, method.ssa, frame_size, entries, loads, quota, {remaining});
+        body, method.ssa, frame_size, entries, loads, quota, {remaining},
+        method.instructions);
     auto* analyzed = std::get_if<RegisterValueFlow>(&values);
     if (!analyzed) {
       const auto& failure = std::get<ValueFlowFailure>(values);

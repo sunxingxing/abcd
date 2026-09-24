@@ -42,6 +42,7 @@ target_link_libraries(abcd_abc PUBLIC abcd_file)
 add_library(abcd_analysis src/analysis/normal_flow.cc src/analysis/exception_dispatch.cc src/analysis/dominators.cc src/analysis/scalar.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/branch_condition.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_ir.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/semantic_value_rule.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_region.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_validation.cc
   src/analysis/semantic_locals.cc)

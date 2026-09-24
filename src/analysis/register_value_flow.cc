@@ -6,6 +6,7 @@
 
 #include "abcd/analysis/lexical.h"
 #include "abcd/analysis/module_load.h"
+#include "abcd/analysis/semantic_ir.h"
 #include "idf_scratch.h"
 #include "lexical_value_index.h"
 #include "register_value_rule.h"
@@ -56,9 +57,9 @@ RegisterValueFlow::BuildWithLanguageLoads(
     const abc::MethodBody& body, const RegisterSsa& ssa,
     std::uint64_t frame_size, std::span<const EntryValueFact> entries,
     std::span<const LanguageLoadFact> loads, IdfQuota& quota,
-    IdfBudget budget) {
+    IdfBudget budget, std::span<const SemanticInstruction> semantics) {
   return Analyze(body, ssa, frame_size, entries, nullptr, loads, quota,
-                 budget);
+                 budget, semantics);
 }
 
 std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
@@ -66,7 +67,7 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
     std::uint64_t frame_size, std::span<const EntryValueFact> entries,
     const LexicalValueContext* lexicals,
     std::span<const LanguageLoadFact> loads, IdfQuota& quota,
-    IdfBudget budget) {
+    IdfBudget budget, std::span<const SemanticInstruction> semantics) {
   using Kind = detail::ValueRuleKind;
   using Error = ValueFlowError;
   try {
@@ -74,6 +75,21 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
     const auto charge = [&](std::uint64_t units = 1) {
       if (!quota.Take(units)) throw detail::IdfWorkLimit{};
     };
+    if (!semantics.empty() && semantics.size() != body.instructions.size())
+      return ValueFlowFailure{Error::kInvalidSemantics, {}, {}};
+    for (std::size_t i = 0; i < semantics.size(); ++i) {
+      charge();
+      if (i > UINT32_MAX || semantics[i].pc != body.instructions[i].offset)
+        return ValueFlowFailure{Error::kInvalidSemantics, {}, {}};
+      const InstructionId id{static_cast<std::uint32_t>(i)};
+      const auto write = ssa.Write(id);
+      const auto& slot = semantics[i].effects.normal_registers.write;
+      // Unreachable sites have no renamed value. For every published value,
+      // the typed rule must describe precisely the slot defined by this SSA.
+      if (write && (!slot || write->value >= ssa.Values().size() ||
+                    !SameSlot(*slot, ssa.Values()[write->value].slot)))
+        return ValueFlowFailure{Error::kInvalidSemantics, id, {}};
+    }
     detail::IdfScratch memory{budget.bytes};
     LexicalIndex cells{body, ssa, frame_size, quota, &memory};
     if (lexicals) cells.Collect(*lexicals);
@@ -97,11 +113,17 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
         return ValueFlowFailure{Error::kInvalidLoadFact, id, {}};
       if (trusted[id.value])
         return ValueFlowFailure{Error::kDuplicateLoadFact, id, {}};
-      const auto& decoded = body.instructions[id.value].decoded;
-      const auto lexical = LiftLexicalInstruction(decoded, frame_size);
-      const bool supported = std::holds_alternative<LexicalLoad>(lexical) ||
-                             std::holds_alternative<ModuleLoad>(
-                                 LiftModuleLoad(decoded));
+      bool supported;
+      if (semantics.empty()) {
+        const auto& decoded = body.instructions[id.value].decoded;
+        supported = std::holds_alternative<LexicalLoad>(
+                        LiftLexicalInstruction(decoded, frame_size)) ||
+                    std::holds_alternative<ModuleLoad>(LiftModuleLoad(decoded));
+      } else {
+        const auto& operation = semantics[id.value].operation;
+        supported = std::holds_alternative<LexicalLoad>(operation) ||
+                    std::holds_alternative<ModuleLoad>(operation);
+      }
       const auto value = ssa.Write(id);
       if (!supported || !value || value->value >= value_count ||
           !std::holds_alternative<InstructionValue>(
@@ -137,8 +159,10 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
           facts[i] = ValueKinds::Language();
           continue;
         }
-        const auto lifted = detail::DescribeRegisterValue(
-            body.instructions[instruction.value].decoded, frame_size);
+        const auto lifted = semantics.empty()
+            ? detail::DescribeRegisterValue(
+                  body.instructions[instruction.value].decoded, frame_size)
+            : detail::DescribeRegisterValue(semantics[instruction.value]);
         if (const auto* error = std::get_if<ScalarError>(&lifted))
           return ValueFlowFailure{Error::kInstruction, instruction, *error};
         const auto rule = std::get<detail::ValueRule>(lifted);

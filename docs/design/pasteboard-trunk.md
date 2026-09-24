@@ -1190,6 +1190,39 @@ also consume semantic operations before native await lowering can be enabled.
 Private state/completion proofs and await AST/printer integration remain open;
 this change does not claim additional complete records or await source output.
 
+### Semantic operations drive value flow (2026-09-25)
+
+The generic source verifier now passes its immutable semantic instructions to
+register value flow, matching the preceding SSA integration. Value rules and
+lexical/module load-premise admission consume typed operations directly instead
+of re-lifting their original ABC opcodes. The standalone bytecode analysis API
+remains available to existing callers.
+
+An exhaustive typed visitor covers every current semantic operation. New IR
+alternatives require an explicit value rule at compile time. Scalar rules are
+shared with the bytecode path, retaining impure-NaN rejection, string-add and
+non-NaN-negation facts; unknown ordinary-call results, unproven lexical/module
+loads and current-environment values remain conservative. This migration does
+not optimistically promote unknown results to Language.
+
+The input boundary checks instruction-count/PC alignment and consistency of
+published SSA destination slots. The caller remains responsible for supplying
+the same immutable semantic input that produced SSA. No copied rule table or
+second solver is introduced. The additional alignment pass performs O(I log W)
+work using existing binary-indexed SSA write lookups (I instructions, W writes),
+and consumes the work quota; sparse value propagation is unchanged.
+
+Both CLI targets compiled. ABC-only pasteboard generation under
+`build/pasteboard-source-ir-values` matches the prior two complete record files.
+The method survey remains `[0,0,36,1,0,8,0,21,109,44]`: 109 body fragments and
+44 capture templates, not 153 complete executable methods. Tests and RSS
+collection remain paused. Semantic/bytecode rule parity, malformed span/slot
+inputs, low budgets and NaN/copy/phi propagation still need regression tests.
+
+Native await is not enabled yet: region proofs, private async-state ownership,
+completion-wrapper recovery and AST/printer support must be connected before
+admitting suspension. The full pasteboard semantic/style objective remains open.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

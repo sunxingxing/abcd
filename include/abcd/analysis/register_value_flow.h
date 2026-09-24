@@ -27,7 +27,8 @@ enum class ValueFlowError {
   kDuplicateLoadFact,
   kInvalidLexicals,
   kWorkLimit,
-  kResourceLimit
+  kResourceLimit,
+  kInvalidSemantics
 };
 struct ValueFlowFailure {
   ValueFlowError kind;
@@ -61,12 +62,16 @@ class RegisterValueFlow {
   // The caller proves that these lexical/module loads return language values
   // on the normal path. The solver validates site kind and SSA ownership;
   // it never infers TDZ or captured-cell initialization from an opcode alone.
+  // With semantic instructions, both load-premise validation and value rules
+  // consume that unchanged IR, which must also have supplied the SSA effects.
+  // The span is borrowed during this call only; no duplicate rule table is kept.
   [[nodiscard]] static std::variant<RegisterValueFlow, ValueFlowFailure>
   BuildWithLanguageLoads(const abc::MethodBody& body, const RegisterSsa& ssa,
                          std::uint64_t frame_size,
                          std::span<const EntryValueFact> entries,
                          std::span<const LanguageLoadFact> loads,
-                         IdfQuota& quota, IdfBudget budget = {});
+                         IdfQuota& quota, IdfBudget budget = {},
+                         std::span<const SemanticInstruction> semantics = {});
   // Same unchanged inputs as the escape proof. Nonescaping local cells join
   // Hole and ALL stores, not reaching stores. Captured/escaped cells stay top.
   [[nodiscard]] static std::variant<RegisterValueFlow, ValueFlowFailure>
@@ -94,7 +99,7 @@ class RegisterValueFlow {
       std::uint64_t frame_size, std::span<const EntryValueFact> entries,
       const LexicalValueContext* lexicals,
       std::span<const LanguageLoadFact> loads, IdfQuota& quota,
-      IdfBudget budget);
+      IdfBudget budget, std::span<const SemanticInstruction> semantics = {});
   RegisterValueFlow() = default;
   std::unique_ptr<ValueKinds[]> facts_;
   std::size_t count_ = 0;

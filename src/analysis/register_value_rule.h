@@ -4,6 +4,9 @@
 #include "abcd/analysis/register_effect.h"
 #include "abcd/analysis/value_kinds.h"
 
+namespace abcd::analysis {
+struct SemanticInstruction;
+}
 namespace abcd::analysis::detail {
 enum class ValueRuleKind {
   kFixed,
@@ -22,5 +25,8 @@ struct ValueRule {
 // types.
 std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size);
+ValueRule DescribeScalarValue(const ScalarAssignment& assignment);
+std::variant<ValueRule, ScalarError> DescribeRegisterValue(
+    const SemanticInstruction& instruction);
 }  // namespace abcd::analysis::detail
 #endif  // ABCD_ANALYSIS_REGISTER_VALUE_RULE_H_
