@@ -19,7 +19,8 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
                                          std::uint32_t first_abi_register,
                                          SemanticBudget budget,
                                          CapturedValues captures,
-                                         std::span<const LanguageLoadFact> initialized_modules) {
+                                         std::span<const LanguageLoadFact> initialized_modules,
+                                         ClosureWrites closure_writes) {
   try {
   if (first_abi_register > frame_size ||
       method.instructions.size() != body.instructions.size() ||
@@ -47,7 +48,8 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
   if (bound->allocated_bytes > remaining)
     return Fail(SemanticProofError::kResourceLimit);
   remaining -= bound->allocated_bytes;
-  auto local_result = ProveLocalAccesses(method, *bound, {remaining, budget.work});
+  auto local_result = ProveLocalAccesses(method, *bound, {remaining, budget.work},
+                                        closure_writes);
   auto* locals = std::get_if<LocalAccessPlan>(&local_result);
   if (!locals) return std::get<SemanticProofFailure>(local_result);
   if (locals->AllocatedBytes() > remaining)
@@ -172,7 +174,7 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     return SemanticProof{std::move(*bound),
                          std::move(*analyzed),
                          bytes, std::move(modules), std::move(captured_reads),
-                         std::move(*locals)};
+                         std::move(*locals), closure_writes};
   } catch (const std::bad_alloc&) {
     return Fail(SemanticProofError::kResourceLimit);
   } catch (const std::length_error&) {

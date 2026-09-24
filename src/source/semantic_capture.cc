@@ -79,7 +79,8 @@ ResolveCreationCapture(
                   scope.begin <= entry && entry < scope.end;
   }
   if (!allocation || !initialized ||
-      (function.previous_creation &&
+      (proof.closure_writes == analysis::ClosureWrites::kUnknown &&
+       function.previous_creation &&
        function.previous_creation->value >= allocation->value)) return fail();
   return cell;
 }

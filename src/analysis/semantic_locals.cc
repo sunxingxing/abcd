@@ -13,7 +13,7 @@ auto Key(LocalCell cell) {
 }  // namespace
 std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
     const SemanticMethod& method, const EnvironmentFlow& environments,
-    SemanticBudget budget) {
+    SemanticBudget budget, ClosureWrites closure_writes) {
   const auto resource = [] {
     return SemanticProofFailure{SemanticProofError::kResourceLimit, {}};
   };
@@ -139,7 +139,8 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
                         scope.begin <= entry && entry < scope.end;
         }
         if (!allocated || allocated->value >= i || !initialized ||
-            (creation && creation->value >= allocated->value))
+            (closure_writes == ClosureWrites::kUnknown && creation &&
+             creation->value >= allocated->value))
           return SemanticProofFailure{SemanticProofError::kInternalValue,
                                        method.instructions[i].pc};
         plan.accesses.push_back({instruction, {id}, LocalAccessKind::kLoad});

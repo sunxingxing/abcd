@@ -11,6 +11,10 @@ struct CapturedReadFact {
   InstructionId instruction;
   CapturedSlot cell;
 };
+// Conditional on complete child-template validation and capture rebasing.
+// kLanguage preserves the value domain, NOT identity, non-undefinedness or
+// immutability. Every transitive child write must discharge this premise.
+enum class ClosureWrites : std::uint8_t { kUnknown, kLanguage };
 enum class ModuleReadProof : std::uint8_t {
   kGuarded, kInitialized, kCallerGuarded, kCatchGuarded
 };
@@ -74,6 +78,7 @@ struct SemanticProof {
   // every emitted capture and discharge its Language premise before publication.
   std::vector<CapturedReadFact> captured_reads;
   LocalAccessPlan locals;
+  ClosureWrites closure_writes = ClosureWrites::kUnknown;
 };
 enum class SemanticProofError : std::uint8_t {
   kAccumulator,  // Retained serialized value; generic proof now uses SSA.
@@ -93,9 +98,10 @@ using SemanticProofResult = std::variant<SemanticProof,
 
 // Source admission for the unchanged decoded body/semantic method pair.
 // Only ABI register entries are Language; SSA checks every actual read, with
-// unknown local-register/accumulator entries. Local loads require same-block
-// allocation and a preceding store, before any capture creation. Every store
-// must pass the same SSA Language check; no cell defaults to JS undefined.
+// unknown local-register/accumulator entries. Local loads require the local
+// initialization certificate; by default capture creation blocks later loads.
+// Every store must pass the same SSA Language check; no cell defaults to JS
+// undefined.
 // An adjacent module load/static-name guard in one block may
 // lower to a throwing live-binding read; module_reads records that proof.
 // initialized_modules are sorted, unique same-body LOCAL load sites whose
@@ -105,11 +111,16 @@ using SemanticProofResult = std::variant<SemanticProof,
 // must be bound and its premise discharged by the parent before publication.
 // Local cells use the separate initialization proof, not this option. The printer must separately
 // prove same-record module binding identity and slot validity.
+// closure_writes=kLanguage is a separate owner premise: every created callable
+// must pass complete child-template emission with Language-only captured
+// stores, including descendants, before the parent is publishable. This admits
+// local reads after creation; it does not prove any captured value unchanged.
 [[nodiscard]] SemanticProofResult VerifySemanticSource(
     const abc::MethodBody& body, const SemanticMethod& method,
     std::uint64_t frame_size, std::uint32_t first_abi_register,
     SemanticBudget budget = {},
     CapturedValues captures = CapturedValues::kReject,
-    std::span<const LanguageLoadFact> initialized_modules = {});
+    std::span<const LanguageLoadFact> initialized_modules = {},
+    ClosureWrites closure_writes = ClosureWrites::kUnknown);
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_SEMANTIC_VALIDATION_H_

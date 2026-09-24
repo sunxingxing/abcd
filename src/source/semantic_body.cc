@@ -52,7 +52,7 @@ auto BuildBody(
   budget.work -= initialized->work_units;
   auto verified = analysis::VerifySemanticSource(
       body, *method, frame.registers, frame.locals, budget, Captures,
-      initialized->loads);
+      initialized->loads, analysis::ClosureWrites::kLanguage);
   const auto* proof = std::get_if<analysis::SemanticProof>(&verified);
   if (!proof) return std::get<analysis::SemanticProofFailure>(verified);
   if (proof->allocated_bytes > budget.bytes)
@@ -83,6 +83,11 @@ auto BuildBody(
                                 scopes->admitted, rest, derived);
   const auto* ast = std::get_if<SourceAst>(&lowered);
   if (!ast) return std::get<SourceFailure>(lowered);
+  // This owner discharges ClosureWrites::kLanguage only by completing the
+  // printer: every creation is retained, all children validate their stores,
+  // and typed capture rebasing proves initialization at each creation. A
+  // child failure discards the entire artifact. Do not publish the AST alone
+  // as an unconditional proof, or infer immutable/non-undefined captures.
   if constexpr (Captures == analysis::CapturedValues::kReject) {
     auto printed = PrintSourceBody(*ast, *method, names, constants, output_bytes, proof);
     if (auto* source = std::get_if<PrintedSource>(&printed)) return std::move(*source);
