@@ -253,10 +253,11 @@ std::optional<GuardedGlobalCall> MatchGuardedGlobalCall(
   const auto created = LiftFunctionCreation(
       At(body, first, Step::kFunction).decoded);
   const auto* function = std::get_if<FunctionCreation>(&created);
+  const auto& join = At(body, first, Step::kAfter).decoded;
   if (!function || function->kind != CreationKind::kFunction ||
       function->home_object != HomeObjectInput::kCurrentFunction ||
       !Global(At(body, first, Step::kArgumentGlobal)) ||
-      !Global(At(body, first, Step::kAfter)))
+      !join.accumulator_write || join.accumulator_read)
     return {};
   const auto start_pc = At(body, first, Step::kKey).offset;
   const auto after_pc = At(body, first, Step::kAfter).offset;

@@ -23,7 +23,8 @@ struct GuardedGlobalCall {
 // names. The condition is !(key in receiver_global[receiver_property]); the
 // taken body calls call_global[call_property] with receiver call_global and
 // (receiver_global[receiver_property], key, fresh DEFINEFUNC) arguments.
-// Requires exact decoded operands, branch edges and dead transient registers.
+// Requires exact decoded operands, branch edges, dead transient registers and
+// a join instruction that overwrites (without reading) the merged accumulator.
 // This is evidence for later source admission, not permission to omit effects.
 // O(method instructions) time, O(1) auxiliary memory.
 [[nodiscard]] std::optional<GuardedGlobalCall> MatchGuardedGlobalCall(
