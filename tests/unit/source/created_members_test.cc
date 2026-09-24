@@ -327,8 +327,10 @@ void Run(std::string_view name, std::uint32_t split, abcd::abc::LiteralTag tag,
   method.name_utf16_length = method.name.size();
   method.access_flags = static_cast<unsigned>(abc::FunctionKind::kAsync)
                         << kKindShift;
-  test::Check(std::get<source::CreatedClassError>(render({}, &roles)) ==
-              source::CreatedClassError::kMembers);
+  // A 12.0.6.0 async flag reaches method admission, but this ordinary body
+  // lacks the exact async completion template and remains a whole-class error.
+  test::Check(std::get<source::FunctionEmitError>(render({}, &roles)) ==
+              source::FunctionEmitError::kKind);
   method.access_flags = 0;
   const auto saved_code = method.code;
   method.code.reset();

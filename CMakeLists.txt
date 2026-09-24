@@ -252,6 +252,15 @@ if(BUILD_TESTING)
     add_test(NAME spread_field_constructor_sample_test
       COMMAND spread_field_constructor_sample_test
         "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+    add_executable(historical_async_member_sample_test
+      tests/integration/historical_async_member_sample.cc)
+    target_include_directories(historical_async_member_sample_test
+      PRIVATE src/source)
+    target_link_libraries(historical_async_member_sample_test
+      PRIVATE abcd_source)
+    add_test(NAME historical_async_member_sample_test
+      COMMAND historical_async_member_sample_test
+        "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
   endif()
   add_executable(capture_summary_test tests/unit/analysis/capture_summary_test.cc)
   target_link_libraries(capture_summary_test PRIVATE abcd_analysis)
@@ -579,6 +588,14 @@ if(BUILD_TESTING)
       -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
       -DABCD_OUTPUT_NAME=derived-class.mjs
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
+    if(TARGET historical_async_member_sample_test)
+      add_test(NAME historical_async_member_js_test COMMAND ${CMAKE_COMMAND}
+        -DABCD_ASYNC_FIXTURE=$<TARGET_FILE:historical_async_member_sample_test>
+        -DABCD_ASYNC_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc
+        -DABCD_ASYNC_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/historical_async_member.mjs
+        -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/historical_async_member.cmake)
+    endif()
     add_test(NAME base_constructor_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:base_constructor_test>
       -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/base_constructor.mjs

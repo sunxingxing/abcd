@@ -70,6 +70,16 @@ complete-record count is 5/45. A VM module oracle links synthetic platform
 imports and executes both async methods, including getter order, receivers,
 argument lists, constructor forwarding and rejection identity.
 
+The same pinned v7 async enter/resolve/reject handlers also execute admitted
+dynamic 12.0.6.0 bytecode. Historical async ordinary class members are no
+longer refused solely by container profile: each method must still pass the
+exact `ProveAsyncCompletion` no-await/catch-all proof and normal source-body
+checks. The real pasteboard `EntryBackupAbility` members 5437 and 5465 pass
+and produce executable async methods under their own module table. Older
+dynamic 11.0.2.0 remains refused. This does not publish the pasteboard record:
+its constructor uses `SUPERCALLSPREAD`, whose JSFunction-brand runtime
+contract is not established by an import snapshot.
+
 The historical pasteboard `EntryAbility` constructor (entity 5083, dynamic
 12.0.6.0) is a different template: the exact ABI-copy/rest prologue, one
 `SUPERCALLSPREAD` through the current constructor, an uninitialized-this
