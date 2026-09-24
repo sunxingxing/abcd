@@ -8,6 +8,7 @@
 #include "semantic_objects.h"
 #include "argument_region.h"
 #include "semantic_ast_input.h"
+#include "dead_copies.h"
 
 namespace abcd::source {
 namespace {
@@ -111,7 +112,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
   if (regions.allocated_bytes > budget_bytes)
     return Fail(SourceError::kResourceLimit);
   constexpr auto kProofValueBytes =
-      sizeof(std::uint8_t) + sizeof(PrivateObjects::Origin);
+      sizeof(std::size_t) + sizeof(PrivateObjects::Origin);
   if (method.ssa.ValueCount() >
       (budget_bytes - regions.allocated_bytes) / kProofValueBytes)
     return Fail(SourceError::kResourceLimit);
@@ -149,19 +150,18 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
             (remaining - method.instructions.size() * sizeof(SourceStatement)) /
                 sizeof(std::optional<analysis::BlockId>))
       return Fail(SourceError::kResourceLimit);
-    // Saturating use counts prove a saved callee is unobservable outside its
-    // reload. Build once, not a suffix scan for every call.
-    std::vector<std::uint8_t> uses(method.ssa.ValueCount());
-    constexpr std::uint8_t kMultipleUses = 2;
+    // Exact counts also support sparse dead-copy removal after call fusion.
+    // Build once, including exceptional phi uses, never scan suffixes per call.
+    std::vector<std::size_t> uses(method.ssa.ValueCount());
     for (std::size_t i = 0; i < method.instructions.size(); ++i)
       for (const auto& read : method.ssa.Reads(analysis::InstructionId{
                static_cast<std::uint32_t>(i)}))
-        if (uses[read.value.value] < kMultipleUses) ++uses[read.value.value];
+        ++uses[read.value.value];
     for (std::size_t i = 0; i < method.ssa.ValueCount(); ++i)
       if (method.ssa.IsPhi(analysis::SsaValueId{static_cast<std::uint32_t>(i)}))
         for (const auto& input : method.ssa.Inputs(
                  analysis::SsaValueId{static_cast<std::uint32_t>(i)}))
-          if (uses[input.value.value] < kMultipleUses) ++uses[input.value.value];
+          ++uses[input.value.value];
     SourceAst ast{std::move(regions)};
     ast.local_cells = proof.locals.cells;
     if (ast.local_cells.capacity() > proof.locals.cells.size())
@@ -564,6 +564,9 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
                           ast.statements.capacity() * sizeof(SourceStatement) +
                           ast.fallthrough.capacity() *
                               sizeof(std::optional<analysis::BlockId>);
+    const auto copy_bytes = remaining - ast.statements.capacity() * sizeof(SourceStatement) -
+        ast.fallthrough.capacity() * sizeof(std::optional<analysis::BlockId>);
+    if (const auto failure = ElideDeadCopies(method, ast, uses, copy_bytes)) return *failure;
     return ast;
   } catch (const std::bad_alloc&) {
     return Fail(SourceError::kResourceLimit);
