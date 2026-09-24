@@ -395,8 +395,32 @@ class FieldReader {
                                bool earlier_child = false) {
     if (accumulator_.kind != Ref::Kind::kValue)
       throw Fail(Error::kValue, pc_);
-    const auto& value = fields_.values[accumulator_.value];
+    auto& value = fields_.values[accumulator_.value];
     if (const auto* atom = std::get_if<StaticAtom>(&value)) return *atom;
+    if (auto* array = std::get_if<StaticArray>(&value)) {
+      // Transfer an unpublished buffer array into the single-parent graph.
+      // Replacing its value slot makes every later alias observe attachment.
+      if (array_refs_[accumulator_.value] != kArrayUnseen ||
+          fields_.nodes.size() >= body_.instructions.size())
+        throw Fail(Error::kValue, pc_);
+      RecordLiteralNode promoted{RecordLiteralKind::kArray};
+      if (array->elements.size() >
+          (bytes_ - charged_) / sizeof(RecordLiteralValue))
+        throw Fail(Error::kResourceLimit, pc_);
+      promoted.elements.reserve(array->elements.size());
+      Charge(promoted.elements.capacity(), sizeof(RecordLiteralValue));
+      for (auto& element : array->elements)
+        promoted.elements.push_back(std::move(element));
+      const auto released = array->elements.capacity() * sizeof(StaticAtom);
+      const auto id = fields_.nodes.size();
+      const auto capacity = fields_.nodes.capacity();
+      fields_.nodes.push_back(std::move(promoted));
+      Charge(fields_.nodes.capacity() - capacity,
+             sizeof(RecordLiteralNode));
+      value = RecordNodeRef{id};
+      charged_ -= released;
+      return RecordNodeRef{id};
+    }
     const auto* child = std::get_if<RecordNodeRef>(&value);
     if (!child || child->id == parent ||
         (!earlier_child && child->id < parent) ||
@@ -413,10 +437,11 @@ class FieldReader {
         &fields_.values[target.value]);
     if (!ref || ref->id >= fields_.nodes.size())
       throw Fail(Error::kValue, pc_);
-    auto& node = fields_.nodes[ref->id];
-    if (node.kind != RecordLiteralKind::kObject || node.attached ||
-        node.emitted) throw Fail(Error::kValue, pc_);
+    if (fields_.nodes[ref->id].kind != RecordLiteralKind::kObject ||
+        fields_.nodes[ref->id].attached || fields_.nodes[ref->id].emitted)
+      throw Fail(Error::kValue, pc_);
     auto value = NodeValue(ref->id);
+    auto& node = fields_.nodes[ref->id];
     Charge(name.capacity(), sizeof(char16_t));
     if (const auto* atom = std::get_if<StaticAtom>(&value))
       if (const auto* text = std::get_if<std::u16string>(atom))
@@ -441,11 +466,13 @@ class FieldReader {
             &fields_.values[target.value])) {
       if (ref->id >= fields_.nodes.size())
         throw Fail(Error::kValue, pc_);
-      auto& node = fields_.nodes[ref->id];
-      if (node.kind != RecordLiteralKind::kArray || node.attached ||
-          node.emitted || write->index != node.elements.size())
+      if (fields_.nodes[ref->id].kind != RecordLiteralKind::kArray ||
+          fields_.nodes[ref->id].attached ||
+          fields_.nodes[ref->id].emitted ||
+          write->index != fields_.nodes[ref->id].elements.size())
         throw Fail(Error::kValue, pc_);
       auto value = NodeValue(ref->id);
+      auto& node = fields_.nodes[ref->id];
       const auto old_capacity = node.elements.capacity();
       if (const auto* atom = std::get_if<StaticAtom>(&value))
         if (const auto* text = std::get_if<std::u16string>(atom))
