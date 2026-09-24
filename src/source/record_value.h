@@ -21,6 +21,7 @@ struct RecordValue {
     kImportSnapshot,
     kLocalSnapshot,
     kGlobalSnapshot,
+    kPropertySnapshot,
     kCallResult,
     kChoice,
     kPrototype,

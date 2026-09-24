@@ -399,7 +399,7 @@ class ProgramWriter {
           break;
         case Opcode::kLDOBJBYNAME_IMM8_ID16:
         case Opcode::kLDOBJBYNAME_IMM16_ID16:
-          Prototype(instruction);
+          ReadProperty(instruction);
           break;
         case Opcode::kSTMODULEVAR_IMM8:
         case Opcode::kWIDE_STMODULEVAR_PREF_IMM16:
@@ -1089,6 +1089,11 @@ class ProgramWriter {
         Text("$global");
         Number(value.ordinal);
         return;
+      case Value::Kind::kPropertySnapshot:
+        if (value.ordinal >= property_count_) throw Fail(Error::kValue, pc_);
+        Text("$property");
+        Number(value.ordinal);
+        return;
       case Value::Kind::kCallResult:
         if (value.ordinal >= call_count_) throw Fail(Error::kValue, pc_);
         Text("$call");
@@ -1136,6 +1141,7 @@ class ProgramWriter {
                ctor.kind != Value::Kind::kImportSnapshot &&
                ctor.kind != Value::Kind::kLocalSnapshot &&
                ctor.kind != Value::Kind::kGlobalSnapshot &&
+               ctor.kind != Value::Kind::kPropertySnapshot &&
                ctor.kind != Value::Kind::kCallResult &&
                ctor.kind != Value::Kind::kChoice &&
                ctor.kind != Value::Kind::kInstance) {
@@ -1168,6 +1174,7 @@ class ProgramWriter {
         callee.kind != Value::Kind::kImportSnapshot &&
         callee.kind != Value::Kind::kLocalSnapshot &&
         callee.kind != Value::Kind::kGlobalSnapshot &&
+        callee.kind != Value::Kind::kPropertySnapshot &&
         callee.kind != Value::Kind::kCallResult &&
         callee.kind != Value::Kind::kChoice)
       throw Fail(Error::kValue, pc_);
@@ -1365,11 +1372,33 @@ class ProgramWriter {
                                method.length});
     method.consumed = true;
   }
-  void Prototype(const abc::BodyInstruction& instruction) {
+  void ReadProperty(const abc::BodyInstruction& instruction) {
     const auto read = analysis::LiftNamedRead(instruction.decoded);
     const auto* named = std::get_if<analysis::NamedRead>(&read);
-    if (!named || accumulator_.kind != Value::Kind::kClass ||
-        accumulator_.ordinal >= classes_.size() ||
+    if (!named) throw Fail(Error::kInstruction, pc_);
+    if (accumulator_.kind != Value::Kind::kClass) {
+      // Ordinary getters are effectful. Do not move them across deferred class
+      // construction or confuse their returned snapshot with a call reference.
+      // Class assembly continues through the separately proved prototype path.
+      if (!classes_.empty()) throw Fail(Error::kClass, pc_);
+      const auto name = ReadPoolString(named->name);
+      if (name.capacity() > budget_.bytes / sizeof(char16_t))
+        throw Fail(Error::kResourceLimit, pc_);
+      const auto name_bytes = name.capacity() * sizeof(char16_t);
+      budget_.bytes -= name_bytes;
+      Text("const $property");
+      Number(property_count_);
+      Text(" = (");
+      WriteValue(accumulator_);
+      Text(")[");
+      SourceString(name);
+      Text("];\n");
+      budget_.bytes += name_bytes;
+      accumulator_ = {Value::Kind::kPropertySnapshot, property_count_++};
+      last_effect_pc_ = pc_;
+      return;
+    }
+    if (accumulator_.ordinal >= classes_.size() ||
         escaped_[accumulator_.ordinal])
       throw Fail(Error::kValue, pc_);
     const auto reference = abc::ResolvePoolReference(
@@ -1398,6 +1427,7 @@ class ProgramWriter {
                    accumulator_.kind != Value::Kind::kImportSnapshot &&
                    accumulator_.kind != Value::Kind::kLocalSnapshot &&
                    accumulator_.kind != Value::Kind::kCallResult &&
+                   accumulator_.kind != Value::Kind::kPropertySnapshot &&
                    accumulator_.kind != Value::Kind::kChoice &&
                    accumulator_.kind != Value::Kind::kUndefined))
       throw Fail(Error::kValue, pc_);
@@ -1431,6 +1461,8 @@ class ProgramWriter {
     } else if (accumulator_.kind == Value::Kind::kCallResult) {
       Text("$call");
       Number(accumulator_.ordinal);
+    } else if (accumulator_.kind == Value::Kind::kPropertySnapshot) {
+      WriteValue(accumulator_);
     } else if (accumulator_.kind == Value::Kind::kChoice) {
       Text("$choice");
       Number(accumulator_.ordinal);
@@ -1478,6 +1510,7 @@ class ProgramWriter {
   std::size_t instance_count_ = 0;
   std::size_t import_load_count_ = 0;
   std::size_t global_count_ = 0;
+  std::size_t property_count_ = 0;
   std::size_t call_count_ = 0;
   std::size_t choice_count_ = 0;
   abc::CodeOffset last_effect_pc_{};
