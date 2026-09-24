@@ -2,8 +2,10 @@
 
 #include <unistd.h>
 
+#include <array>
 #include <iostream>
 #include <sstream>
+#include <vector>
 
 #include "analysis/ssa_fixture.h"
 
@@ -50,10 +52,65 @@ void EmitAssignments() {
   const source::MethodConstants constants{file, header, index, {210}, {}};
   const auto body =
       test::Body({0x60, 3, 0x43, 0, 0, 0, 2, 0x00, 0x43, 0, 0, 0, 2, 0x65});
-  std::cout << "export const assigned = class Recovered {\n";
+  std::ostringstream text;
   test::Check(std::holds_alternative<std::size_t>(source::WriteBaseConstructor(
-      Constructor(), body, std::cout, {}, &constants)));
-  std::cout << "\n};\n";
+      Constructor(), body, text, {}, &constants)));
+  test::Check(text.str().find("this[\"x\"] = $acc;") != std::string::npos);
+  std::cout << "export const assigned = class Recovered {\n"
+            << text.str() << "\n};\n";
+  const auto emits_with = [&](std::size_t bytes,
+                              std::ostringstream& output) {
+    source::LocalLexicalBudget budget;
+    budget.bytes = bytes;
+    return std::holds_alternative<std::size_t>(source::WriteBaseConstructor(
+        Constructor(), body, output, budget, &constants));
+  };
+  std::size_t low = 0;
+  std::size_t high = source::LocalLexicalBudget{}.bytes;
+  while (high - low > 1) {
+    const auto middle = low + (high - low) / 2;
+    std::ostringstream candidate;
+    if (emits_with(middle, candidate))
+      high = middle;
+    else
+      low = middle;
+  }
+  std::ostringstream tight;
+  test::Check(emits_with(high, tight));
+  test::Check(tight.str().find("$object[\"x\"]") != std::string::npos);
+  std::ostringstream below;
+  test::Check(!emits_with(low, below) && below.str().empty());
+  const auto overwritten = test::Body(
+      {0x44, 0x32, 0x60, 3, 0x43, 0, 0, 0, 2, 0x65});
+  std::ostringstream indirect;
+  test::Check(std::holds_alternative<std::size_t>(source::WriteBaseConstructor(
+      Constructor(), overwritten, indirect, {}, &constants)));
+  test::Check(indirect.str().find("this[\"x\"]") == std::string::npos);
+  test::Check(indirect.str().find("$object[\"x\"]") != std::string::npos);
+  constexpr std::array<std::size_t, 3> kStoreCounts{200, 201, 402};
+  std::array<std::size_t, kStoreCounts.size()> output_sizes{};
+  for (std::size_t run = 0; run < kStoreCounts.size(); ++run) {
+    std::vector<std::uint8_t> code{0x60, 2};
+    for (std::size_t i = 0; i < kStoreCounts[run]; ++i)
+      code.insert(code.end(), {0x43, 0, 0, 0, 2});
+    code.push_back(0x65);
+    std::ostringstream repeated;
+    test::Check(std::holds_alternative<std::size_t>(
+        source::WriteBaseConstructor(Constructor(), test::Body(code),
+                                     repeated, {}, &constants)));
+    const auto emitted = repeated.str();
+    output_sizes[run] = emitted.size();
+    constexpr std::string_view kDirectStore = "this[\"x\"] = $acc;";
+    std::size_t found = 0;
+    for (std::size_t at = emitted.find(kDirectStore);
+         at != std::string::npos;
+         at = emitted.find(kDirectStore, at + kDirectStore.size()))
+      ++found;
+    test::Check(found == kStoreCounts[run]);
+  }
+  test::Check(output_sizes[2] - output_sizes[0] ==
+              (kStoreCounts[2] - kStoreCounts[0]) *
+                  (output_sizes[1] - output_sizes[0]));
   unlink(path);
 }
 }  // namespace

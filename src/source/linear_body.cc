@@ -1,5 +1,6 @@
 #include "abcd/source/linear_body.h"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <limits>
@@ -561,6 +562,15 @@ class BodyWriter {
       return;
     }
     const auto store = std::get<NamedWrite>(lifted);
+    if (std::binary_search(names_.constructor_this_writes.begin(),
+                           names_.constructor_this_writes.end(), offset_)) {
+      Text("this[");
+      StringConstant(store.name, StringUse::kPropertyName);
+      Text("] = ");
+      Expression(ScalarValue{Accumulator{}});
+      Text(";\n");
+      return;
+    }
     // RuntimeStObjByName requires throwing [[Set]] even in a sloppy caller.
     // Private parameters are fresh bindings; arguments are evaluated outside
     // their scope. Do not assign the setter/Proxy result back into acc.

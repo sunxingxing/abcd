@@ -92,6 +92,7 @@ target_link_libraries(abcd_analysis PUBLIC abcd_abc)
 add_library(abcd_source src/source/string_literal.cc src/source/scalar_expression.cc)
 target_sources(abcd_source PRIVATE src/source/global_reference.cc)
 target_sources(abcd_source PRIVATE src/source/parameter_names.cc)
+target_sources(abcd_source PRIVATE src/source/constructor_fields.cc)
 target_sources(abcd_source PRIVATE src/source/parameter_bindings.cc)
 target_sources(abcd_source PRIVATE src/source/linear_body.cc)
 target_sources(abcd_source PRIVATE src/source/fresh_object_fields.cc)
@@ -531,6 +532,12 @@ if(BUILD_TESTING)
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/paired_record_import_class.cmake)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+      add_test(NAME paired_home_model_record_source_test COMMAND ${CMAKE_COMMAND}
+        "-DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>"
+        "-DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"
+        "-DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_home_model.mjs"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_home_model.cmake)
       add_test(NAME paired_home_model_js_test COMMAND ${CMAKE_COMMAND}
         "-DABCD_CLASS_FIXTURE=$<TARGET_FILE:class_sample_fixture>"
         "-DABCD_PAIRED_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"

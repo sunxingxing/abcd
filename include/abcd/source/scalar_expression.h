@@ -6,6 +6,7 @@
 #include <span>
 #include <string_view>
 
+#include "abcd/abc/method_body.h"
 #include "abcd/analysis/scalar.h"
 #include "abcd/source/emission.h"
 
@@ -21,6 +22,7 @@ struct ScalarNames {
   // refuses LDFUNCTION; a writable VM function-slot register is not enough.
   std::string_view current_function{};
   std::optional<RestBinding> rest{};
+  std::span<const abc::CodeOffset> constructor_this_writes{};
 };
 // Emits an expression, not a method/record. Referenced names must be declared,
 // initialized, side-effect-free local bindings supplied by the caller. Only

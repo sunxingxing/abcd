@@ -9,6 +9,7 @@
 #include <ostream>
 #include <streambuf>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "abcd/abc/register_access.h"
@@ -20,6 +21,7 @@
 #include "async_completion.h"
 #include "capture_stream.h"
 #include "branch_value_proof.h"
+#include "constructor_fields.h"
 #include "function_template.h"
 
 namespace abcd::source {
@@ -411,6 +413,27 @@ class FunctionWriter {
   std::size_t written_ = 0;
   std::optional<EmitError> error_;
 };
+bool IsResourceFailure(const FunctionEmitResult& result) {
+  return std::visit([](const auto& value) {
+    using T = std::decay_t<decltype(value)>;
+    if constexpr (std::is_same_v<T, FunctionEmitError>)
+      return value == FunctionEmitError::kResourceLimit;
+    else if constexpr (std::is_same_v<T, BodyEmitFailure>)
+      return value.kind == BodyEmitError::kResourceLimit;
+    else if constexpr (std::is_same_v<T, analysis::FlowFailure>)
+      return value.kind == analysis::FlowError::kResourceLimit;
+    else if constexpr (std::is_same_v<T, analysis::EnvironmentFlowFailure>)
+      return value.kind == analysis::EnvironmentFlowError::kResourceLimit;
+    else if constexpr (std::is_same_v<T, analysis::LinearLexicalFailure>)
+      return value.kind == analysis::LinearLexicalError::kResourceLimit;
+    else if constexpr (std::is_same_v<T, analysis::AccumulatorFailure>)
+      return value.kind == analysis::AccumulatorError::kResourceLimit;
+    else if constexpr (std::is_same_v<T, AcyclicError>)
+      return value == AcyclicError::kResourceLimit;
+    else
+      return false;
+  }, result);
+}
 FunctionEmitResult WriteCallable(const CallableShape& function,
                                  const abc::MethodBody& body,
                                  std::ostream& output,
@@ -568,14 +591,31 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
                      static_cast<std::size_t>(end - rest_storage.data())};
       }
     }
-    const ScalarNames bindings{
+    auto direct_writes =
+        function.syntax == CallableSyntax::kBaseConstructor
+            ? ProveConstructorThisWrites(body, function.frame, budget.bytes)
+            : ConstructorThisWrites{};
+    if (direct_writes.AllocatedBytes() > budget.bytes)
+      return FunctionEmitError::kResourceLimit;
+    const auto ordinary_budget = budget;
+    budget.bytes -= direct_writes.AllocatedBytes();
+    ScalarNames bindings{
         "$acc", {names.get(), count}, current_function,
         rest ? std::optional<ScalarNames::RestBinding>{
                    ScalarNames::RestBinding{function.length, rest_name}}
-             : std::nullopt};
-    const auto checked = FunctionWriter(shape, bindings, discard, budget,
-                                        constants, methods, captured_values)
-                             .Write(body);
+             : std::nullopt,
+        direct_writes.sites};
+    auto checked = FunctionWriter(shape, bindings, discard, budget,
+                                  constants, methods, captured_values)
+                       .Write(body);
+    if (!direct_writes.sites.empty() && IsResourceFailure(checked)) {
+      bindings.constructor_this_writes = {};
+      std::vector<abc::CodeOffset>().swap(direct_writes.sites);
+      budget = ordinary_budget;
+      checked = FunctionWriter(shape, bindings, discard, budget, constants,
+                               methods, captured_values)
+                    .Write(body);
+    }
     if (!std::holds_alternative<std::size_t>(checked)) return checked;
     return FunctionWriter(shape, bindings, output, budget, constants,
                           methods, captured_values)
