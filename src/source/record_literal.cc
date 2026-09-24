@@ -41,6 +41,23 @@ class LiteralWriter {
     }
   }
 
+  std::variant<std::size_t, EmitError> WriteArray(
+      std::span<const StaticAtom> elements) {
+    try {
+      Text("[");
+      for (std::size_t i = 0; i < elements.size(); ++i) {
+        if (i) Text(", ");
+        Atom(elements[i]);
+      }
+      Text("]");
+      return written_;
+    } catch (EmitError error) {
+      return error;
+    } catch (const std::ios_base::failure&) {
+      return EmitError::kWrite;
+    }
+  }
+
  private:
   void Text(std::string_view value) {
     if (value.size() > remaining_) throw EmitError::kOutputLimit;
@@ -172,5 +189,9 @@ RecordLiteralResult WriteRecordLiteral(
     std::span<const RecordLiteralNode> nodes, std::size_t root,
     std::ostream& output, EmitBudget budget) {
   return LiteralWriter(nodes, output, budget).Write(root);
+}
+std::variant<std::size_t, EmitError> WriteDenseArray(
+    std::span<const StaticAtom> elements, std::ostream& output, EmitBudget budget) {
+  return LiteralWriter({}, output, budget).WriteArray(elements);
 }
 }  // namespace abcd::source

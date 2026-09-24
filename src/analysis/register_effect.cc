@@ -1,4 +1,5 @@
 #include "abcd/analysis/register_effect.h"
+#include "abcd/analysis/array_creation.h"
 
 #include <algorithm>
 
@@ -234,6 +235,9 @@ RegisterEffect EffectOf(const DefineLegacyClass& value) {
 RegisterEffect EffectOf(const BufferedObjectCreation&) {
   return AccumulatorDefinition();
 }
+RegisterEffect EffectOf(const BufferedArrayCreation&) {
+  return AccumulatorDefinition();
+}
 RegisterEffect EffectOf(const EmptyObjectCreation&) {
   return AccumulatorDefinition();
 }
@@ -380,6 +384,9 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
       CreationError::kUnsupportedOpcode)
     return ScalarError::kMalformedInstruction;
   if (auto result = Adapt(LiftDefineInstruction(instruction, frame_size));
+      !Unsupported(result))
+    return result;
+  if (auto result = Adapt(LiftArrayCreation(instruction));
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftObjectCreation(instruction));

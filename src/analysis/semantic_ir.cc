@@ -79,6 +79,10 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   if (const auto* buffered = std::get_if<BufferedObjectCreation>(&object)) return *buffered;
   if (std::get<ObjectCreationError>(object) != ObjectCreationError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
+  const auto array = LiftArrayCreation(decoded);
+  if (const auto* buffered = std::get_if<BufferedArrayCreation>(&array)) return *buffered;
+  if (std::get<ArrayCreationError>(array) != ArrayCreationError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto call = LiftOrdinaryCall(decoded, frame_size);
   if (const auto* value = std::get_if<OrdinaryCall>(&call)) return *value;
   if (std::get<CallError>(call) != CallError::kUnsupportedOpcode)
@@ -196,6 +200,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, EmptyObjectCreation> ||
+                             std::is_same_v<T, BufferedArrayCreation> ||
                              std::is_same_v<T, BufferedObjectCreation>) {
           effects.normal = LanguageEffect::kAllocation;
           effects.before_throw = effects.normal;

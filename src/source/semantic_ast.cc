@@ -296,6 +296,10 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
                      std::get_if<analysis::BufferedObjectCreation>(&instruction.operation)) {
         operation = SourceAssignment{
             analysis::ScalarSlot{analysis::Accumulator{}}, *buffered};
+      } else if (const auto* array =
+                     std::get_if<analysis::BufferedArrayCreation>(&instruction.operation)) {
+        operation = SourceAssignment{
+            analysis::ScalarSlot{analysis::Accumulator{}}, *array};
       } else if (const auto* module =
                      std::get_if<analysis::ModuleLoad>(&instruction.operation)) {
         if (module_fact >= proof.module_reads.size() ||

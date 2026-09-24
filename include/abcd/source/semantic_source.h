@@ -51,7 +51,8 @@ using SourceExpression =
                  ModuleExpression, analysis::EmptyObjectCreation,
                  analysis::BufferedObjectCreation, GlobalExpression,
                  analysis::ConstructorCall, CapturedExpression,
-                 FunctionExpression, LocalExpression, analysis::RestCopy>;
+                 FunctionExpression, LocalExpression, analysis::RestCopy,
+                 analysis::BufferedArrayCreation>;
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;

@@ -806,6 +806,29 @@ Tests and RSS tracking remain paused. Deferred cases include parent-only,
 child-only and mixed captures, children with no captures, quota exhaustion,
 and rejection after partially emitted nested callable text.
 
+## Buffered Arrays Through the Trunk
+
+Modern `CREATEARRAYWITHBUFFER` narrow/wide forms now share a typed decoder
+retaining the literal pool slot and cache slot. Register effects, value-kind
+analysis, semantic IR allocation effects and AST assignments consume this
+model. The source printer reuses the record reader and scalar literal writer
+to emit a fresh dense array at the original instruction, preserving its PC
+span. It does not hoist a shared mutable array. Primitive payloads retain
+numeric bits and UTF-16 text; unsupported holes and method-bearing payloads
+are rejected rather than rewritten. The deprecated global-index form remains
+outside this modern regional-pool decoder.
+
+Both CLI targets compiled. ABC-only inspection recorded in
+`build/pasteboard-semantic-buffered-arrays.jsonl` shows method 6760 advancing
+from SSA/IR rejection at array creation PC 85 to printer rejection at nested
+function creation PC 110. This demonstrates that the array printer was
+reached, not that the whole method was emitted. Counts are now 36 IR, six
+proof, 25 AST and 20 printer rejections, 101 body fragments and 31 templates.
+No complete function or record is newly claimed. Tests and RSS tracking
+remain paused; deferred regressions include both operand widths, malformed
+operands, regional resolution, unsupported payloads, numeric/string edge
+cases, fresh identity, PC spans and resource exhaustion.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

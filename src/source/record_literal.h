@@ -15,6 +15,9 @@ enum class RecordLiteralError { kInvalidGraph, kDepthLimit };
 using RecordLiteralResult =
     std::variant<std::size_t, EmitError, RecordLiteralError>;
 
+[[nodiscard]] std::variant<std::size_t, EmitError> WriteDenseArray(
+    std::span<const StaticAtom> elements, std::ostream& output, EmitBudget budget);
+
 // Caller proves a fresh, unescaped, single-parent tree. Computed object keys
 // reproduce DefineField including an own "__proto__" property; dense array
 // elements reproduce STOWNBYINDEX. Depth is bounded independently of bytes.

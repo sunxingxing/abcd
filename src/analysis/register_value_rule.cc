@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "abcd/analysis/array_creation.h"
 #include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/derived_constructor.h"
@@ -161,6 +162,8 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
   if (instruction.opcode == abc::Opcode::kLDA_STR_ID16)
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::String()};
   if (instruction.opcode == abc::Opcode::kCREATEEMPTYARRAY_IMM8 ||
+      std::holds_alternative<BufferedArrayCreation>(
+          LiftArrayCreation(instruction)) ||
       std::holds_alternative<EmptyObjectCreation>(
           LiftObjectCreation(instruction)) ||
       std::holds_alternative<BufferedObjectCreation>(

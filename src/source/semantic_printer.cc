@@ -16,6 +16,8 @@
 #include "capture_stream.h"
 #include "semantic_capture.h"
 #include "object_buffer.h"
+#include "record_array.h"
+#include "record_literal.h"
 #include "semantic_fields.h"
 
 namespace abcd::source {
@@ -367,6 +369,34 @@ class SourcePrinter {
           {limit_ - result_.text.size()}, {});
       if (!std::holds_alternative<std::size_t>(emitted))
         throw SourceFailure{SourceError::kConstant, current_pc_};
+      Text(stream.str());
+    } else if (const auto* array =
+                   std::get_if<analysis::BufferedArrayCreation>(&expression)) {
+      const auto remaining = limit_ - result_.text.size();
+      const auto decoded = ReadBufferedArray(
+          constants_.file, constants_.header, constants_.index,
+          constants_.method, *array, remaining, constants_.string_budget);
+      const auto* buffer = std::get_if<BufferedArray>(&decoded);
+      if (!buffer) {
+        const auto* error = std::get_if<BufferedArrayError>(&decoded);
+        const auto* metadata = std::get_if<abc::MetadataError>(&decoded);
+        const auto* literal = std::get_if<abc::LiteralFailure>(&decoded);
+        const bool resource =
+            (error && *error == BufferedArrayError::kResourceLimit) ||
+            (metadata && *metadata == abc::MetadataError::kResourceLimit) ||
+            (literal && literal->kind == abc::LiteralError::kResourceLimit);
+        throw SourceFailure{resource ? SourceError::kResourceLimit
+                                     : SourceError::kConstant, current_pc_};
+      }
+      // Each execution allocates a fresh array. Never hoist the buffer into a
+      // shared object or turn unsupported holes into explicit undefined values.
+      std::ostringstream stream;
+      const auto emitted = WriteDenseArray(
+          buffer->elements, stream, {remaining - buffer->retained_bytes});
+      if (const auto* error = std::get_if<EmitError>(&emitted))
+        throw SourceFailure{*error == EmitError::kOutputLimit
+                                ? SourceError::kResourceLimit : SourceError::kOutput,
+                            current_pc_};
       Text(stream.str());
     } else if (const auto* module = std::get_if<ModuleExpression>(&expression)) {
       if (!constants_.module)

@@ -8,6 +8,7 @@
 #include "abcd/abc/pool_reference.h"
 #include "abcd/abc/string_entity.h"
 #include "abcd/source/literal_graph.h"
+#include "abcd/analysis/array_creation.h"
 
 namespace abcd::source {
 struct BufferedArray {
@@ -21,6 +22,11 @@ using BufferedArrayResult =
 
 // Reads only primitive dense buffers. The caller owns the returned storage;
 // decoding scratch and retained elements share one byte budget.
+[[nodiscard]] BufferedArrayResult ReadBufferedArray(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, abc::EntityOffset method,
+    const analysis::BufferedArrayCreation& creation, std::size_t bytes,
+    abc::StringBudget strings);
 [[nodiscard]] BufferedArrayResult ReadBufferedArray(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, abc::EntityOffset method,

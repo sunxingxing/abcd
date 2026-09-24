@@ -16,27 +16,10 @@ class ArrayReader {
       : file_(file), header_(header), index_(index), method_(method),
         bytes_(bytes), strings_(strings) {}
 
-  BufferedArrayResult Read(const abc::DecodedInstruction& instruction) {
-    std::uint64_t cache_max;
-    switch (instruction.opcode) {
-      case abc::Opcode::kCREATEARRAYWITHBUFFER_IMM8_ID16:
-        cache_max = UINT8_MAX;
-        break;
-      case abc::Opcode::kCREATEARRAYWITHBUFFER_IMM16_ID16:
-        cache_max = UINT16_MAX;
-        break;
-      default:
-        return BufferedArrayError::kInstruction;
-    }
-    if (instruction.operand_count != 2 ||
-        instruction.operands[0].kind != abc::OperandKind::kImmediate ||
-        instruction.operands[0].raw_bits > cache_max ||
-        instruction.operands[1].kind != abc::OperandKind::kLiteralArray ||
-        instruction.operands[1].raw_bits > UINT16_MAX)
-      return BufferedArrayError::kInstruction;
+  BufferedArrayResult Read(const analysis::BufferedArrayCreation& creation) {
     const auto reference = abc::ResolvePoolReference(
         file_, header_, index_, method_,
-        {static_cast<std::uint32_t>(instruction.operands[1].raw_bits)},
+        creation.literal,
         abc::PoolEntityKind::kLiteralArray);
     if (const auto* error = std::get_if<abc::MetadataError>(&reference))
       return *error;
@@ -128,15 +111,25 @@ class ArrayReader {
 BufferedArrayResult ReadBufferedArray(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, abc::EntityOffset method,
-    const abc::DecodedInstruction& instruction, std::size_t bytes,
+    const analysis::BufferedArrayCreation& creation, std::size_t bytes,
     abc::StringBudget strings) {
   try {
     return ArrayReader(file, header, index, method, bytes, strings)
-        .Read(instruction);
+        .Read(creation);
   } catch (const std::bad_alloc&) {
     return BufferedArrayError::kResourceLimit;
   } catch (const std::length_error&) {
     return BufferedArrayError::kResourceLimit;
   }
+}
+BufferedArrayResult ReadBufferedArray(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, abc::EntityOffset method,
+    const abc::DecodedInstruction& instruction, std::size_t bytes,
+    abc::StringBudget strings) {
+  const auto lifted = analysis::LiftArrayCreation(instruction);
+  const auto* creation = std::get_if<analysis::BufferedArrayCreation>(&lifted);
+  if (!creation) return BufferedArrayError::kInstruction;
+  return ReadBufferedArray(file, header, index, method, *creation, bytes, strings);
 }
 }  // namespace abcd::source
