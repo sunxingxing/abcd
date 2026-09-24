@@ -21,6 +21,7 @@ namespace {
 constexpr std::string_view kCellPrefix = "$lex";
 constexpr std::string_view kInnerPrefix = "$inner";
 constexpr std::string_view kImportPrefix = "$import";
+constexpr std::uint8_t kImmediateSpilledInstructionCount = 4;
 class LexicalWriter {
  public:
   LexicalWriter(ScalarNames names, std::ostream& output, EmitBudget budget,
@@ -52,8 +53,17 @@ class LexicalWriter {
                                       ? &staged_calls_[staged_cursor_]
                                       : nullptr;
         if (staged_call && i == staged_call->property) {
-          const auto result = WriteStagedCallHead(*staged_call, offset_, names_,
-                                                output_, {remaining_}, constants_);
+          const auto result = staged_call->timing ==
+                                      analysis::SpilledCallTiming::kImmediate
+                                  ? WriteNamedInvocation(
+                                        {staged_call->read, staged_call->invoke,
+                                         kImmediateSpilledInstructionCount},
+                                        offset_, names_, output_, {remaining_},
+                                        constants_)
+                                  : WriteStagedCallHead(*staged_call, offset_,
+                                                        names_, output_,
+                                                        {remaining_},
+                                                        constants_);
           if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
             error_ = *failure;
           else
@@ -64,12 +74,15 @@ class LexicalWriter {
             (i == staged_call->spill || i == staged_call->reload))
           continue;
         if (staged_call && i == staged_call->call) {
-          const auto result = WriteStagedCallEnd(*staged_call, offset_, names_,
-                                               output_, {remaining_});
-          if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
-            error_ = *failure;
-          else
-            Count(std::get<std::size_t>(result));
+          if (staged_call->timing !=
+              analysis::SpilledCallTiming::kImmediate) {
+            const auto result = WriteStagedCallEnd(
+                *staged_call, offset_, names_, output_, {remaining_});
+            if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
+              error_ = *failure;
+            else
+              Count(std::get<std::size_t>(result));
+          }
           ++staged_cursor_;
           continue;
         }

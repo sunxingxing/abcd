@@ -59,6 +59,15 @@ storage; production's bounded timelines are described below.
 
 ## Staged Nonterminal Calls
 
+The function-wide matcher also admits a zero-argument, nonterminal
+`CALLTHIS0` when named read, callee spill, callee reload and call are
+consecutive. It emits `receiver[name]()` at the named read, before the private
+spill/reload, with the call result left in the accumulator. The two private
+copies have no language-visible effects. The same register timelines prove
+the receiver unchanged and the eliminated callee register dead after the
+call. A live callee, receiver/callee alias, branch or exception region still
+rejects the method. This form uses no arrow IIFE.
+
 The same getter-before-argument source form also admits multiple nonterminal
 receiver calls in one complete straight-line, handler-free method, provided
 their property-to-call intervals do not overlap. Each call still requires the
@@ -70,8 +79,10 @@ exit; a read/write is a read and is rejected. The original result remains in
 the accumulator for subsequent statements. An overlapping candidate rejects
 the whole batch; branch and exception-containing methods remain refusals.
 
-The timelines cover only the 256 low v8-addressable registers and charge each
-expanded access against the method work budget. Candidate and liveness storage
+Immediate zero-argument and deferred argument-building calls may coexist in
+one disjoint sequence. The timelines cover only the 256 low v8-addressable
+registers and charge each expanded access against the method work budget.
+Candidate and liveness storage
 share the method byte budget. The matcher is O(I + A), where I is instructions
 and A is expanded low-register accesses, independent of the number of calls.
 The lexical planner validates the ordered matches before output publication.

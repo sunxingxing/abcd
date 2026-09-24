@@ -187,6 +187,34 @@ assert.deepEqual(source.twoCalls(twoReceiver, 29, () => {
 }), {second: {first: 29}});
 assert.deepEqual(twoEvents,
                  ['get', 'argument', 'call', 'get', 'argument', 'call']);
+const zeroEvents = [];
+const zeroResult = Object.freeze({value: 37});
+const zeroReceiver = {
+  get method() {
+    zeroEvents.push('get');
+    const invoke = function() {
+      zeroEvents.push('call');
+      assert.equal(this, zeroReceiver);
+      return zeroResult;
+    };
+    Object.defineProperty(invoke, 'call', {
+      get() { throw new Error('call lookup'); },
+    });
+    Object.defineProperty(invoke, 'apply', {
+      get() { throw new Error('apply lookup'); },
+    });
+    return invoke;
+  },
+};
+assert.equal(source.zeroNonterminal(zeroReceiver), zeroResult);
+assert.deepEqual(zeroEvents, ['get', 'call']);
+const zeroFailure = Object.freeze({});
+assert.throws(() => source.zeroNonterminal({
+  get method() { throw zeroFailure; },
+}), error => error === zeroFailure);
+assert.throws(() => source.zeroNonterminal({
+  method() { throw zeroFailure; },
+}), error => error === zeroFailure);
 const deferredFailure = new Error('argument failed');
 let reached = false;
 assert.throws(() => source.deferred({

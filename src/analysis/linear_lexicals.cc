@@ -254,11 +254,19 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
         for (std::uint32_t argument = 0;
              argument < staged_call.invoke.Count(); ++argument)
           arguments_ready &= state(*staged_call.invoke.At(argument)).IsLanguage();
+        const bool immediate =
+            staged_call.timing == SpilledCallTiming::kImmediate;
         if ((staged_cursor != 0 &&
              staged_calls[staged_cursor - 1].call >= staged_call.property) ||
             staged_call.property >= staged_call.spill ||
             staged_call.spill >= staged_call.reload ||
             staged_call.reload + 1 != i ||
+            (immediate
+                 ? staged_call.invoke.Count() != 0 ||
+                       staged_call.property + 1 != staged_call.spill ||
+                       staged_call.spill + 1 != staged_call.reload
+                 : staged_call.invoke.Count() == 0 ||
+                       staged_call.spill + 2 >= staged_call.reload) ||
             !std::holds_alternative<KeepInstruction>(
                 statements[staged_call.property]) ||
             !std::holds_alternative<KeepInstruction>(

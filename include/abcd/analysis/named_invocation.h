@@ -28,6 +28,7 @@ struct NamedInvocation {
   // Direct read/call is two; compiler spill/reload form is four.
   std::uint8_t instruction_count = 2;
 };
+enum class SpilledCallTiming { kImmediate, kDeferredArgument };
 struct StagedNamedInvocation {
   std::size_t property;
   std::size_t spill;
@@ -36,6 +37,7 @@ struct StagedNamedInvocation {
   NamedRead read;
   ReceiverCall invoke;
   abc::RegisterId callee;
+  SpilledCallTiming timing = SpilledCallTiming::kDeferredArgument;
 };
 struct CopiedArgumentInvocation {
   std::size_t property;
@@ -76,7 +78,8 @@ struct StagedMatches {
   std::uint64_t work_units = 0;
 };
 using StagedMatchResult = std::variant<StagedMatches, StagedMatchError>;
-// Function-wide, disjoint staged calls. Typed register timelines avoid a
+// Function-wide, disjoint spilled calls. Zero-argument calls may be immediate;
+// argument-building calls use the deferred source form. Timelines avoid a
 // suffix/prefix walk per call; work is linear in instructions and expanded
 // accesses to the 256 low v8-addressable registers. Scratch and retained
 // matches share the caller's byte budget; work_units charge its method budget.

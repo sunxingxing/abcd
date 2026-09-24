@@ -274,8 +274,7 @@ std::optional<StagedNamedInvocation> MatchStagedShape(
     const ReceiverCall& invoke) {
   const auto& instructions = body.instructions;
   using abc::Opcode;
-  if (call_index < 5 || call_index >= instructions.size() ||
-      invoke.Count() == 0 || spill < 2)
+  if (call_index < 4 || call_index >= instructions.size() || spill < 2)
     return {};
   const auto reload = call_index - 1;
   const auto loaded =
@@ -291,7 +290,8 @@ std::optional<StagedNamedInvocation> MatchStagedShape(
     return {};
   for (std::uint32_t i = 0; i < invoke.Count(); ++i)
     if (callee == *invoke.At(i)) return {};
-  if (spill + 2 >= reload) return {};
+  if (invoke.Count() == 0 ? spill + 1 != reload : spill + 2 >= reload)
+    return {};
   const auto stored =
       LiftScalarInstruction(instructions[spill].decoded, frame_size);
   const auto* store = std::get_if<ScalarAssignment>(&stored);
@@ -317,18 +317,23 @@ std::optional<StagedNamedInvocation> MatchStagedShape(
   if (!copy || !receiver || *receiver != invoke.receiver ||
       !std::holds_alternative<Accumulator>(copy->destination))
     return {};
-  const auto overwrite = LiftRegisterEffect(
-      instructions[spill + 1].decoded, frame_size);
-  const auto* effect = std::get_if<RegisterEffect>(&overwrite);
-  if (!effect || !effect->write ||
-      !std::holds_alternative<Accumulator>(*effect->write))
-    return {};
-  for (std::size_t read_index = 0; read_index < effect->read_count;
-       ++read_index)
-    if (std::holds_alternative<Accumulator>(effect->reads[read_index]))
+  if (invoke.Count() != 0) {
+    const auto overwrite = LiftRegisterEffect(
+        instructions[spill + 1].decoded, frame_size);
+    const auto* effect = std::get_if<RegisterEffect>(&overwrite);
+    if (!effect || !effect->write ||
+        !std::holds_alternative<Accumulator>(*effect->write))
       return {};
+    for (std::size_t read_index = 0; read_index < effect->read_count;
+         ++read_index)
+      if (std::holds_alternative<Accumulator>(effect->reads[read_index]))
+        return {};
+  }
   return StagedNamedInvocation{property, spill, reload, call_index, *read,
-                               invoke, callee};
+                               invoke, callee,
+                               invoke.Count() == 0
+                                   ? SpilledCallTiming::kImmediate
+                                   : SpilledCallTiming::kDeferredArgument};
 }
 
 std::optional<StagedNamedInvocation> MatchStagedAt(

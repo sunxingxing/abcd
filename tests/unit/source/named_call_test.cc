@@ -132,6 +132,62 @@ int main(int argc, char** argv) {
   test::Check(std::holds_alternative<analysis::StagedMatches>(two_matches));
   test::Check(std::get<analysis::StagedMatches>(two_matches).calls.size() == 2);
   test::Check(std::get<analysis::StagedMatches>(two_matches).work_units > 0);
+  const auto zero_nonterminal = test::Body({
+      0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 1,
+      0x2d, 0, 0, 0x61, 2, 0x60, 2, 0x64});
+  const auto zero_match = analysis::MatchStagedNamedInvocations(
+      zero_nonterminal, registers.size(), 1024 * 1024, 1000000);
+  test::Check(std::holds_alternative<analysis::StagedMatches>(zero_match));
+  const auto& zero_calls = std::get<analysis::StagedMatches>(zero_match).calls;
+  test::Check(zero_calls.size() == 1);
+  test::Check(zero_calls[0].timing ==
+              analysis::SpilledCallTiming::kImmediate);
+  auto live_zero_callee = zero_nonterminal;
+  live_zero_callee.instructions[6].decoded =
+      test::Body({0x60, 1}).instructions[0].decoded;
+  const auto live_match = analysis::MatchStagedNamedInvocations(
+      live_zero_callee, registers.size(), 1024 * 1024, 1000000);
+  test::Check(std::holds_alternative<analysis::StagedMatches>(live_match));
+  test::Check(std::get<analysis::StagedMatches>(live_match).calls.empty());
+  auto aliased_receiver = zero_nonterminal;
+  aliased_receiver.instructions[4].decoded =
+      test::Body({0x2d, 0, 1}).instructions[0].decoded;
+  const auto aliased_match = analysis::MatchStagedNamedInvocations(
+      aliased_receiver, registers.size(), 1024 * 1024, 1000000);
+  test::Check(std::holds_alternative<analysis::StagedMatches>(aliased_match));
+  test::Check(std::get<analysis::StagedMatches>(aliased_match).calls.empty());
+  std::ostringstream zero_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(zero_nonterminal, {"acc", registers},
+                                    zero_source, {}, &constants)));
+  test::Check(zero_source.str().find(
+      "acc = (object)[\"method\"]();\n") != std::string::npos);
+  test::Check(zero_source.str().ends_with(
+      "b = acc;\nacc = b;\nreturn acc;\n"));
+  if (argc == 2 && std::string_view(argv[1]) == "--emit")
+    std::cout << "export function zeroNonterminal(object){let acc,a,b,c;\n"
+              << zero_source.str() << "}\n";
+  constexpr std::array<std::uint8_t, 15> kZeroCall = {
+      0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 1,
+      0x2d, 0, 0, 0x61, 2};
+  constexpr std::uint64_t kScalingSlack = 3;
+  std::uint64_t previous_work = 0;
+  for (const std::size_t count : {200U, 201U, 402U}) {
+    std::vector<std::uint8_t> code;
+    code.reserve(count * kZeroCall.size() + 3);
+    for (std::size_t i = 0; i < count; ++i)
+      code.insert(code.end(), kZeroCall.begin(), kZeroCall.end());
+    code.insert(code.end(), {0x60, 2, 0x64});
+    const auto many = test::Body(code);
+    const auto result = analysis::MatchStagedNamedInvocations(
+        many, registers.size(), 1024 * 1024, 10000000);
+    test::Check(std::holds_alternative<analysis::StagedMatches>(result));
+    const auto& admitted = std::get<analysis::StagedMatches>(result);
+    test::Check(admitted.calls.size() == count);
+    if (count == 402)
+      test::Check(admitted.work_units <= previous_work * kScalingSlack);
+    previous_work = admitted.work_units;
+  }
   const auto exhausted = analysis::MatchStagedNamedInvocations(
       two_staged_calls, registers.size(), 1024 * 1024, 0);
   test::Check(std::holds_alternative<analysis::StagedMatchError>(exhausted));
