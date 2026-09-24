@@ -21,6 +21,9 @@ and creation length zero. It now passes signature lowering, but the real
 method still fails body emission at PC 75 with
 `BodyEmitError::kUnsupportedInstruction`. Its record entity 6897 remains
 unpublished at entry PC 6, `RecordProgramError::kFunction`. A single-file
-`abc_structure --source` run exited 0 with reported peak RSS 466,903,040
-bytes, below the 1,000,000,000-byte process bound. The larger peak reflects
-newly attempted body analysis; this run does not certify the full corpus.
+`/usr/bin/time` measured 10,752 KiB (11,010,048 bytes) peak RSS for a fresh
+`abc_structure --source` pasteboard process, below the 1,000,000,000-byte
+bound. Direct shell-exec invocations can inherit a much larger `ru_maxrss`
+high-water mark from the launcher; the earlier reported 466,903,040 bytes
+was not a clean-process measurement. This paired-file run does not certify
+the full corpus.
