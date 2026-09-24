@@ -23,7 +23,7 @@ auto BuildBody(
   std::optional<analysis::RangeDerivedConstructor> derived;
   if (names.range_derived_constructor) {
     const auto checked = analysis::ProveRangeDerivedConstructor(
-        body, frame, {budget.bytes, budget.work});
+        body, frame, {budget.bytes, budget.work}, constants.header.profile);
     if (const auto* failure =
             std::get_if<analysis::DerivedConstructorError>(&checked))
       return SourceFailure{

@@ -614,7 +614,8 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
   if (!CanonicalFrame(function.frame)) return FunctionEmitError::kFrame;
   if (function.syntax == CallableSyntax::kRangeDerivedConstructor) {
     const auto proof = analysis::ProveRangeDerivedConstructor(
-        body, function.frame, {budget.bytes, budget.work});
+        body, function.frame, {budget.bytes, budget.work},
+        constants ? constants->header.profile : abc::ProfileId::kDynamic1301);
     if (const auto* error =
             std::get_if<analysis::DerivedConstructorError>(&proof))
       return *error == analysis::DerivedConstructorError::kResourceLimit

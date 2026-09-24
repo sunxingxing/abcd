@@ -6,6 +6,8 @@
 
 #include "abcd/analysis/dominators.h"
 #include "abcd/analysis/normal_flow.h"
+#include "abcd/analysis/local_ssa.h"
+#include "abcd/analysis/lexical.h"
 #include "abcd/analysis/register_ssa.h"
 #include "abcd/analysis/scalar.h"
 
@@ -20,9 +22,12 @@ enum class Origin : std::uint8_t {
 struct Node {
   Origin origin = Origin::kBottom;
 };
+struct OriginId {
+  std::uint32_t value;
+};
 struct Edge {
-  SsaValueId source;
-  SsaValueId target;
+  OriginId source;
+  OriginId target;
 };
 Origin Join(Origin left, Origin right) {
   if (left == Origin::kBottom) return right;
@@ -54,7 +59,7 @@ bool DominatesInstruction(const DominatorTree& tree,
 
 RangeDerivedConstructorResult ProveRangeDerivedConstructor(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
-    DerivedConstructorBudget budget) {
+    DerivedConstructorBudget budget, abc::ProfileId profile) {
   using Error = DerivedConstructorError;
   if (!frame.function || !frame.new_target || !frame.this_value ||
       frame.registers < frame.locals ||
@@ -66,8 +71,11 @@ RangeDerivedConstructorResult ProveRangeDerivedConstructor(
     return Error::kControlFlow;
   std::optional<std::size_t> super_index;
   std::size_t guard_count = 0;
+  bool lexical_loads = false;
   for (std::size_t i = 0; i < body.instructions.size(); ++i) {
     const auto& site = body.instructions[i];
+    lexical_loads |= std::holds_alternative<LexicalLoad>(
+        LiftLexicalInstruction(site.decoded, frame.registers));
     if (site.branch_target &&
         site.branch_target->value <= site.offset.value)
       return Error::kControlFlow;
@@ -151,7 +159,31 @@ RangeDerivedConstructorResult ProveRangeDerivedConstructor(
       return Error::kResourceLimit;
     budget.bytes -= ssa.AllocatedBytes();
     budget.work -= quota.Consumed();
-    const auto count = ssa.Values().size();
+    std::optional<LocalSsa> locals;
+    if (lexical_loads) {
+      auto built_locals = BuildLocalSsa(body, graph, ssa, frame.registers, profile,
+                                       {budget.bytes}, budget.work);
+      if (auto* local = std::get_if<LocalSsa>(&built_locals)) {
+        if (local->values.AllocatedBytes() > budget.bytes ||
+            local->work_units > budget.work)
+          return Error::kResourceLimit;
+        budget.bytes -= local->values.AllocatedBytes();
+        budget.work -= local->work_units;
+        locals.emplace(std::move(*local));
+      } else if (std::get<LocalSsaError>(built_locals) == LocalSsaError::kResourceLimit) {
+        return Error::kResourceLimit;
+      }
+      // Unsupported cell effects retain the original register-only proof;
+      // they never manufacture an origin for a lexical load.
+    }
+    const auto register_count = ssa.Values().size();
+    const auto local_count = locals ? locals->values.Values().size() : 0;
+    if (register_count > UINT32_MAX || local_count > UINT32_MAX - register_count)
+      return Error::kResourceLimit;
+    const auto count = register_count + local_count;
+    const auto local_id = [&](SsaValueId value) {
+      return OriginId{static_cast<std::uint32_t>(register_count + value.value)};
+    };
     if (count > budget.bytes / (sizeof(Node) + sizeof(std::size_t)))
       return Error::kResourceLimit;
     std::vector<Node> nodes(count);
@@ -163,12 +195,19 @@ RangeDerivedConstructorResult ProveRangeDerivedConstructor(
       return Error::kResourceLimit;
     budget.bytes -= begin.capacity() * sizeof(std::size_t);
     std::size_t edge_limit = count;
-    for (std::size_t i = 0; i < count; ++i)
+    for (std::size_t i = 0; i < register_count; ++i)
       if (std::holds_alternative<PhiValue>(ssa.Values()[i].origin)) {
         const auto inputs = ssa.Inputs(
             SsaValueId{static_cast<std::uint32_t>(i)});
         if (inputs.size() > SIZE_MAX - edge_limit)
           return Error::kResourceLimit;
+        edge_limit += inputs.size();
+      }
+    for (std::size_t i = 0; i < local_count; ++i)
+      if (std::holds_alternative<PhiValue>(locals->values.Values()[i].origin)) {
+        const auto inputs = locals->values.Inputs(
+            SsaValueId{static_cast<std::uint32_t>(i)});
+        if (inputs.size() > SIZE_MAX - edge_limit) return Error::kResourceLimit;
         edge_limit += inputs.size();
       }
     if (edge_limit > budget.bytes / sizeof(Edge))
@@ -178,7 +217,7 @@ RangeDerivedConstructorResult ProveRangeDerivedConstructor(
     if (edges.capacity() > budget.bytes / sizeof(Edge))
       return Error::kResourceLimit;
     budget.bytes -= edges.capacity() * sizeof(Edge);
-    for (std::size_t i = 0; i < count; ++i) {
+    for (std::size_t i = 0; i < register_count; ++i) {
       const auto& value = ssa.Values()[i];
       auto& node = nodes[i];
       if (std::holds_alternative<MethodEntry>(value.origin)) {
@@ -190,8 +229,8 @@ RangeDerivedConstructorResult ProveRangeDerivedConstructor(
       if (std::holds_alternative<PhiValue>(value.origin)) {
         const auto inputs = ssa.Inputs(SsaValueId{static_cast<std::uint32_t>(i)});
         for (const auto& input : inputs)
-          edges.push_back({input.value,
-                           SsaValueId{static_cast<std::uint32_t>(i)}});
+          edges.push_back({OriginId{input.value.value},
+                           OriginId{static_cast<std::uint32_t>(i)}});
         continue;
       }
       const auto instruction =
@@ -205,10 +244,36 @@ RangeDerivedConstructorResult ProveRangeDerivedConstructor(
         const auto reads = ssa.Reads(instruction);
         if (reads.size() != 1)
           return Error::kInstruction;
-        edges.push_back({reads.front().value,
-                         SsaValueId{static_cast<std::uint32_t>(i)}});
+        edges.push_back({OriginId{reads.front().value.value},
+                         OriginId{static_cast<std::uint32_t>(i)}});
+      } else if (locals &&
+                 (!locals->first_capture || instruction < *locals->first_capture) &&
+                 std::holds_alternative<LexicalLoad>(LiftLexicalInstruction(
+                     body.instructions[instruction.value].decoded, frame.registers))) {
+        const auto reads = locals->values.Reads(instruction);
+        if (reads.size() == 1)
+          edges.push_back({local_id(reads.front().value),
+                           OriginId{static_cast<std::uint32_t>(i)}});
+        else
+          node.origin = Origin::kOther;
       } else {
         node.origin = Origin::kOther;
+      }
+    }
+    for (std::size_t i = 0; i < local_count; ++i) {
+      const auto& value = locals->values.Values()[i];
+      const auto target = local_id(SsaValueId{static_cast<std::uint32_t>(i)});
+      if (std::holds_alternative<MethodEntry>(value.origin)) {
+        nodes[target.value].origin = Origin::kOther;
+      } else if (std::holds_alternative<PhiValue>(value.origin)) {
+        for (const auto& input : locals->values.Inputs(
+                 SsaValueId{static_cast<std::uint32_t>(i)}))
+          edges.push_back({local_id(input.value), target});
+      } else {
+        const auto site = std::get<InstructionValue>(value.origin).instruction;
+        const auto reads = ssa.Reads(site);
+        if (reads.size() != 1) return Error::kInstruction;
+        edges.push_back({OriginId{reads.front().value.value}, target});
       }
     }
     for (const auto edge : edges) {
@@ -218,31 +283,31 @@ RangeDerivedConstructorResult ProveRangeDerivedConstructor(
     }
     for (std::size_t i = 1; i < begin.size(); ++i)
       begin[i] += begin[i - 1];
-    if (edges.size() > budget.bytes / sizeof(SsaValueId))
+    if (edges.size() > budget.bytes / sizeof(OriginId))
       return Error::kResourceLimit;
-    std::vector<SsaValueId> targets(edges.size());
-    if (targets.capacity() > budget.bytes / sizeof(SsaValueId))
+    std::vector<OriginId> targets(edges.size());
+    if (targets.capacity() > budget.bytes / sizeof(OriginId))
       return Error::kResourceLimit;
-    budget.bytes -= targets.capacity() * sizeof(SsaValueId);
+    budget.bytes -= targets.capacity() * sizeof(OriginId);
     constexpr std::size_t kMaxQueuesPerNode = 2;
     if (count > budget.bytes /
                     (sizeof(std::size_t) +
-                     kMaxQueuesPerNode * sizeof(SsaValueId)))
+                     kMaxQueuesPerNode * sizeof(OriginId)))
       return Error::kResourceLimit;
     std::vector<std::size_t> cursor(begin.begin(), begin.end() - 1);
-    std::vector<SsaValueId> pending;
+    std::vector<OriginId> pending;
     pending.reserve(count * kMaxQueuesPerNode);
     if (cursor.capacity() > budget.bytes / sizeof(std::size_t))
       return Error::kResourceLimit;
     budget.bytes -= cursor.capacity() * sizeof(std::size_t);
-    if (pending.capacity() > budget.bytes / sizeof(SsaValueId))
+    if (pending.capacity() > budget.bytes / sizeof(OriginId))
       return Error::kResourceLimit;
-    budget.bytes -= pending.capacity() * sizeof(SsaValueId);
+    budget.bytes -= pending.capacity() * sizeof(OriginId);
     for (const auto edge : edges)
       targets[cursor[edge.source.value]++] = edge.target;
     for (std::size_t i = 0; i < count; ++i)
       if (nodes[i].origin != Origin::kBottom)
-        pending.push_back(SsaValueId{static_cast<std::uint32_t>(i)});
+        pending.push_back(OriginId{static_cast<std::uint32_t>(i)});
     std::uint64_t visits = 0;
     for (std::size_t head = 0; head < pending.size(); ++head) {
       const auto source = pending[head];

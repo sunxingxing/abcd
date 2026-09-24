@@ -57,7 +57,8 @@ The complete record manifest is unchanged from the record-lexical checkpoint.
 Home still refuses at entry PC381 when flushing the class: its constructor
 stores this in a lexical cell, which the existing register-only super-origin
 proof does not handle. It also creates a capturing child before later reads.
-The next proof must model reaching lexical stores and possible closure writes;
+The follow-up in [local-ssa.md](local-ssa.md) models reaching lexical stores
+before capture barriers. The remaining proof must account for closure writes;
 neither lexical initialization alone nor a generic Language fact proves that
 those values are the constructed this object.
 
