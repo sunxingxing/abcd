@@ -22,8 +22,9 @@ using ParameterNameResult =
     std::variant<RecoveredParameters, ParameterNameError, abc::MetadataError>;
 
 // Maps debug locals to formals only when an entry MOV prefix copies every ABI
-// parameter into a unique local and every matching debug range starts exactly
-// after that prefix. Debug text is never an engine input or a type proof.
+// parameter into a unique local. The pinned captured-this lexical prologue may
+// precede those copies; all matching debug ranges must start after the copies.
+// Debug text is never an engine input or a type proof.
 [[nodiscard]] ParameterOffsetResult MapParameterDebugNames(
     const abc::FrameLayout& frame, const abc::MethodBody& body,
     const abc::DebugScopes& scopes, std::size_t bytes);

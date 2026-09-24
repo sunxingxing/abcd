@@ -5,6 +5,7 @@
 #include <optional>
 #include <stdexcept>
 
+#include "abcd/analysis/lexical.h"
 #include "abcd/analysis/scalar.h"
 
 namespace abcd::source {
@@ -14,6 +15,78 @@ struct PrefixMove {
   std::uint32_t source;
   std::size_t ordinal;
 };
+
+std::optional<PrefixMove> ReadMove(const abc::MethodBody& body,
+                                   const abc::FrameLayout& frame,
+                                   std::size_t index) {
+  const auto lifted = analysis::LiftScalarInstruction(
+      body.instructions[index].decoded, frame.registers);
+  const auto* assignment = std::get_if<analysis::ScalarAssignment>(&lifted);
+  if (!assignment) return std::nullopt;
+  const auto* destination =
+      std::get_if<abc::RegisterId>(&assignment->destination);
+  const auto* expression =
+      std::get_if<analysis::ScalarValue>(&assignment->expression);
+  const auto* source = expression
+                           ? std::get_if<abc::RegisterId>(expression)
+                           : nullptr;
+  if (!destination || !source) return std::nullopt;
+  return PrefixMove{destination->value, source->value, index};
+}
+
+std::optional<std::size_t> CapturedThisPrefix(
+    const abc::FrameLayout& frame, const abc::MethodBody& body) {
+  // The pinned frontend's captured-this prologue precedes formal copies.
+  // Only this exact typed sequence may extend the debug-name proof window.
+  constexpr std::size_t kEnvironmentPush = 0;
+  constexpr std::size_t kFunctionCopy = 1;
+  constexpr std::size_t kNewTargetCopy = 2;
+  constexpr std::size_t kLoadThis = 3;
+  constexpr std::size_t kStoreThis = 4;
+  constexpr std::size_t kFirstParameterCopy = 5;
+  constexpr std::uint16_t kCurrentEnvironment = 0;
+  constexpr std::uint16_t kCapturedThisSlot = 0;
+  if (body.instructions.size() <= kFirstParameterCopy || !frame.function ||
+      !frame.new_target || !frame.this_value)
+    return std::nullopt;
+  const auto pushed = analysis::LiftLexicalInstruction(
+      body.instructions[kEnvironmentPush].decoded, frame.registers);
+  const auto* environment = std::get_if<analysis::PushEnvironment>(&pushed);
+  if (!environment || environment->slots <= kCapturedThisSlot)
+    return std::nullopt;
+  const auto function = ReadMove(body, frame, kFunctionCopy);
+  const auto new_target = ReadMove(body, frame, kNewTargetCopy);
+  if (!function || !new_target || function->source != frame.function->value ||
+      new_target->source != frame.new_target->value ||
+      function->destination >= frame.locals ||
+      new_target->destination >= frame.locals ||
+      function->destination == new_target->destination)
+    return std::nullopt;
+  const auto loaded = analysis::LiftScalarInstruction(
+      body.instructions[kLoadThis].decoded, frame.registers);
+  const auto* assignment = std::get_if<analysis::ScalarAssignment>(&loaded);
+  const auto* destination = assignment
+                                ? std::get_if<analysis::Accumulator>(
+                                      &assignment->destination)
+                                : nullptr;
+  const auto* expression = assignment
+                               ? std::get_if<analysis::ScalarValue>(
+                                     &assignment->expression)
+                               : nullptr;
+  const auto* source = expression
+                           ? std::get_if<abc::RegisterId>(expression)
+                           : nullptr;
+  if (!destination || !source || source->value != frame.this_value->value)
+    return std::nullopt;
+  const auto stored = analysis::LiftLexicalInstruction(
+      body.instructions[kStoreThis].decoded, frame.registers);
+  const auto* capture = std::get_if<analysis::LexicalStore>(&stored);
+  if (!capture || capture->address.depth.value != kCurrentEnvironment ||
+      capture->address.slot.value != kCapturedThisSlot ||
+      !std::holds_alternative<analysis::Accumulator>(capture->value))
+    return std::nullopt;
+  return kFirstParameterCopy;
+}
 }  // namespace
 ParameterOffsetResult MapParameterDebugNames(
     const abc::FrameLayout& frame, const abc::MethodBody& body,
@@ -22,17 +95,20 @@ ParameterOffsetResult MapParameterDebugNames(
   try {
     if (body.instructions.empty() || frame.parameters == 0)
       return Error::kUnproven;
+    const std::size_t first_move =
+        CapturedThisPrefix(frame, body).value_or(0);
     std::size_t prefix_count = 0;
     using abc::Opcode;
-    for (const auto& instruction : body.instructions) {
+    for (std::size_t i = first_move; i < body.instructions.size(); ++i) {
+      const auto& instruction = body.instructions[i];
       if (instruction.decoded.opcode != Opcode::kMOV_V4_V4 &&
           instruction.decoded.opcode != Opcode::kMOV_V8_V8)
         break;
       ++prefix_count;
     }
-    if (prefix_count == 0 || prefix_count == body.instructions.size())
+    if (prefix_count == 0 || first_move + prefix_count == body.instructions.size())
       return Error::kUnproven;
-    const auto start = body.instructions[prefix_count].offset.value;
+    const auto start = body.instructions[first_move + prefix_count].offset.value;
     for (const auto& instruction : body.instructions)
       if (instruction.branch_target &&
           instruction.branch_target->value < start)
@@ -47,25 +123,15 @@ ParameterOffsetResult MapParameterDebugNames(
       return Error::kResourceLimit;
     bytes -= (moves.capacity() - prefix_count) * sizeof(PrefixMove);
     for (std::size_t i = 0; i < prefix_count; ++i) {
-      const auto lifted = analysis::LiftScalarInstruction(
-          body.instructions[i].decoded, frame.registers);
-      const auto* assignment = std::get_if<analysis::ScalarAssignment>(&lifted);
-      if (!assignment) return Error::kUnproven;
-      const auto* destination =
-          std::get_if<abc::RegisterId>(&assignment->destination);
-      const auto* expression =
-          std::get_if<analysis::ScalarValue>(&assignment->expression);
-      const auto* source = expression
-                               ? std::get_if<abc::RegisterId>(expression)
-                               : nullptr;
-      if (!destination || !source) return Error::kUnproven;
+      const auto move = ReadMove(body, frame, first_move + i);
+      if (!move) return Error::kUnproven;
       // A copied formal is no longer the entry value if its ABI slot itself
       // was overwritten earlier in the prologue.
-      if (destination->value >= frame.first_parameter.value &&
-          destination->value - frame.first_parameter.value <
+      if (move->destination >= frame.first_parameter.value &&
+          move->destination - frame.first_parameter.value <
               frame.parameters)
         return Error::kUnproven;
-      moves.push_back({destination->value, source->value, i});
+      moves.push_back(*move);
     }
     std::sort(moves.begin(), moves.end(), [](const auto& a, const auto& b) {
       return a.destination != b.destination
