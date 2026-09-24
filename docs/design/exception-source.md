@@ -68,6 +68,45 @@ is not an acceptable shortcut.
 
 ## Verification Status
 
+### Exception Register SSA
+
+`RegisterUses::BuildSites` and `RegisterSsa::BuildSites` now accept a typed
+register-effect program without a fabricated ABC body. They share validation,
+pruned IDF placement and dominator renaming with the existing body API. That
+body API still rejects encoded handlers and validates supplied semantic PCs;
+its source admission has not been relaxed. Site APIs validate graph coverage,
+slot/range bounds and topology before renaming, with the owner responsible for
+semantic equivalence of the supplied effects and edges.
+
+`ExceptionSsa` adapts each phase node to one effect site: Before reads inputs,
+Commit defines only the normal destination, and Catch defines accumulator.
+The adapter preserves successor identity and retains the typed exception graph
+as provenance, rather than treating exceptional edges as normal completion.
+Register SSA result instruction/phi indices refer to phase nodes, not original
+ABC instructions; callers use the flow's node-to-instruction/PC mapping. This
+does not yet prove exception value categories, environment restoration or
+the relationship between a normal result's value rule and its Before reads.
+Those are necessary before try/catch source admission.
+
+Adapter storage is O(N+E) for phase nodes/arcs; it deducts its live arrays from
+the SSA byte budget and charges its work to the shared method quota. The SSA
+core retains its existing sparse IDF/dominator algorithms and budgeted
+cross-binding work, not a new claim of globally linear SSA construction.
+
+Both CLI targets compiled. ABC-only inspection of method 4945 produces 220
+SSA values across its 407 phase nodes: handler PC 439 reads value 161, defined
+by Catch node 406; the protected operation's normal Commit node 89 defines a
+different value 39. Method 5165 produces 106 SSA values across 199 nodes and
+a register-5 phi at node 78 with three distinct incoming edges. Artifacts are
+`build/pasteboard-4945-exception-ssa.jsonl` and
+`build/pasteboard-5165-exception-ssa.jsonl`. Inspection schema 2 reports
+`register_ssa_complete: true` separately from `ssa_complete: false` and
+`source_complete: false`. The all-record production survey retains
+`[0,0,27,1,0,8,0,11,113,56,3]`; no additional complete record is claimed.
+Tests and RSS remain paused. Deferred cases include failed destination writes,
+handler/normal entry joins, catch register phis, unreachable commits, loops,
+range effects, malformed site graphs and quota exhaustion.
+
 ### Phased Exception Graph
 
 `BuildExceptionFlow` now consumes the shared raw lifting and dispatch index to

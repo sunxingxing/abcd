@@ -22,12 +22,14 @@ struct RegisterSsa::Builder {
     Retained(const Retained&) = delete;
     Retained& operator=(const Retained&) = delete;
   };
-  Builder(const abc::MethodBody& input, const NormalFlow& flow,
+  Builder(const abc::MethodBody* input, const NormalFlow& flow,
           std::uint64_t frame, IdfQuota& work, IdfBudget budget,
-          std::span<const SemanticInstruction> lifted)
+          std::span<const SemanticInstruction> lifted,
+          std::span<const RegisterSite> effects)
       : body(input),
         graph(flow),
         semantics(lifted),
+        sites(effects),
         frame_size(frame),
         quota(work),
         initial_units(work.Consumed()),
@@ -48,9 +50,10 @@ struct RegisterSsa::Builder {
     return id;
   }
   RegisterSsa Publish();
-  const abc::MethodBody& body;
+  const abc::MethodBody* body;
   const NormalFlow& graph;
   std::span<const SemanticInstruction> semantics;
+  std::span<const RegisterSite> sites;
   std::uint64_t frame_size;
   IdfQuota& quota;
   std::uint64_t initial_units;

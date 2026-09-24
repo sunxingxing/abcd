@@ -78,9 +78,9 @@ void RegisterSsa::Builder::Rename(const RegisterUses& uses,
       const InstructionId instruction{static_cast<std::uint32_t>(i)};
       // Def/use indexing and renaming consume the identical immutable effects.
       // Never re-lift bytecode when the owning semantic path supplied its IR.
-      const auto effect = semantics.empty()
+      const auto effect = !body ? sites[i].effect : semantics.empty()
           ? std::get<RegisterEffect>(
-                LiftRegisterEffect(body.instructions[i].decoded, frame_size))
+                LiftRegisterEffect(body->instructions[i].decoded, frame_size))
           : semantics[i].effects.normal_registers;
       std::uint16_t ordinal = 0;
       const auto read = [&](ScalarSlot slot) {

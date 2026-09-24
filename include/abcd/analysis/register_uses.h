@@ -6,6 +6,10 @@
 
 namespace abcd::analysis {
 struct SemanticInstruction;
+struct RegisterSite {
+  abc::CodeOffset pc;
+  RegisterEffect effect;
+};
 struct RegisterBindingId {
   std::size_t value = 0;
 };
@@ -42,6 +46,8 @@ struct RegisterUseWork {
 // checks do not establish body/graph identity. Reject handlers/resumes and any
 // reachable instruction lacking proven register effects. No lexical-cell
 // promotion, value proof, SSA renaming or function task service is implied.
+// BuildSites has no encoded exception table: its owner supplies the complete
+// topology and correctly separated effects rather than omitting exceptions.
 // Optional semantic instructions replace bytecode re-lifting, not CFG checks.
 // The caller owns their semantic validity and immutable lifetime during Build;
 // this boundary checks full PC alignment and frame/range bounds in O(I).
@@ -53,6 +59,11 @@ class RegisterUses {
       const abc::MethodBody& body, const NormalFlow& graph,
       std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {},
       std::span<const SemanticInstruction> semantics = {});
+  // Graph block instruction ranges index sites, not necessarily ABC instructions.
+  // The owner certifies edge/effect semantics; the same bounds checks apply.
+  [[nodiscard]] static std::variant<RegisterUses, RegisterUseFailure> BuildSites(
+      std::span<const RegisterSite> sites, const NormalFlow& graph,
+      std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {});
   [[nodiscard]] std::span<const RegisterBinding> Bindings() const {
     return {bindings_.get(), bindings_ ? count_ : 0};
   }
@@ -65,6 +76,11 @@ class RegisterUses {
   RegisterUseWork work;
 
  private:
+  static std::variant<RegisterUses, RegisterUseFailure> BuildImpl(
+      const abc::MethodBody* body, const NormalFlow& graph,
+      std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget,
+      std::span<const SemanticInstruction> semantics,
+      std::span<const RegisterSite> sites);
   RegisterUses() = default;
   std::unique_ptr<RegisterBinding[]> bindings_;
   std::unique_ptr<BlockId[]> definitions_;

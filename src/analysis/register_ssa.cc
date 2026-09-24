@@ -114,10 +114,25 @@ RegisterSsa::Build(const abc::MethodBody& body, const NormalFlow& graph,
                    std::uint64_t frame_size, IdfQuota& quota,
                    IdfBudget budget,
                    std::span<const SemanticInstruction> semantics) {
+  return BuildImpl(&body, graph, frame_size, quota, budget, semantics, {});
+}
+std::variant<RegisterSsa, RegisterUseFailure, IdfError, DominatorError, SsaError>
+RegisterSsa::BuildSites(std::span<const RegisterSite> sites, const NormalFlow& graph,
+                       std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget) {
+  return BuildImpl(nullptr, graph, frame_size, quota, budget, {}, sites);
+}
+std::variant<RegisterSsa, RegisterUseFailure, IdfError, DominatorError, SsaError>
+RegisterSsa::BuildImpl(const abc::MethodBody* body, const NormalFlow& graph,
+    std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget,
+    std::span<const SemanticInstruction> semantics,
+    std::span<const RegisterSite> sites) {
   try {
-    Builder builder{body, graph, frame_size, quota, budget, semantics};
-    auto used = RegisterUses::Build(body, graph, frame_size, quota,
-                                    {builder.memory.Available()}, semantics);
+    Builder builder{body, graph, frame_size, quota, budget, semantics, sites};
+    auto used = body
+        ? RegisterUses::Build(*body, graph, frame_size, quota,
+                             {builder.memory.Available()}, semantics)
+        : RegisterUses::BuildSites(sites, graph, frame_size, quota,
+                                  {builder.memory.Available()});
     if (const auto* error = std::get_if<RegisterUseFailure>(&used))
       return *error;
     const auto& uses = std::get<RegisterUses>(used);

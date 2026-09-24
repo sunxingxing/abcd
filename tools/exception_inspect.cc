@@ -1,13 +1,16 @@
 #include "exception_inspect.h"
 
 #include <cstdlib>
+#include <type_traits>
 #include <nlohmann/json.hpp>
 #include "abcd/analysis/exception_flow.h"
+#include "abcd/analysis/exception_ssa.h"
 
 int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     abcd::abc::ProfileId profile, std::uint64_t frame_size, std::ostream& output) {
   using namespace abcd;
-  const auto built = analysis::BuildExceptionFlow(body, profile, frame_size);
+  const analysis::ExceptionFlowBudget budget;
+  const auto built = analysis::BuildExceptionFlow(body, profile, frame_size, budget);
   const auto* flow = std::get_if<analysis::ExceptionFlow>(&built);
   if (!flow) {
     if (const auto* failure = std::get_if<analysis::SemanticFailure>(&built))
@@ -23,8 +26,25 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     }
     return EXIT_FAILURE;
   }
-  output << nlohmann::json{{"schema", 1}, {"instructions", flow->instructions.size()},
-      {"nodes", flow->nodes.size()}, {"source_complete", false}, {"ssa_complete", false}}
+  analysis::IdfQuota quota{analysis::kDefaultSemanticWork};
+  const auto renamed = analysis::ExceptionSsa::Build(*flow, frame_size, quota,
+      {budget.bytes - flow->allocated_bytes});
+  const auto* ssa = std::get_if<analysis::ExceptionSsa>(&renamed);
+  if (!ssa) {
+    std::visit([&](const auto& error) {
+      using T = std::decay_t<decltype(error)>;
+      if constexpr (std::is_same_v<T, analysis::RegisterUseFailure>)
+        output << nlohmann::json{{"register_use_error", static_cast<unsigned>(error.kind)},
+                                 {"pc", error.offset.value}} << '\n';
+      else if constexpr (!std::is_same_v<T, analysis::ExceptionSsa>)
+        output << nlohmann::json{{"ssa_error_domain", renamed.index()},
+                                 {"ssa_error", static_cast<unsigned>(error)}} << '\n';
+    }, renamed);
+    return EXIT_FAILURE;
+  }
+  output << nlohmann::json{{"schema", 2}, {"instructions", flow->instructions.size()},
+      {"nodes", flow->nodes.size()}, {"source_complete", false}, {"ssa_complete", false},
+      {"register_ssa_complete", true}, {"ssa_values", ssa->Values().size()}}
       << '\n';
   for (std::size_t i = 0; i < flow->nodes.size(); ++i) {
     const auto& node = flow->nodes[i];
@@ -32,6 +52,11 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     nlohmann::json row{{"node", i}, {"instruction", node.instruction.value},
         {"pc", instruction.pc.value}, {"phase", static_cast<unsigned>(node.phase)},
         {"successors", nlohmann::json::array()}};
+    const analysis::ExceptionNodeId id{static_cast<std::uint32_t>(i)};
+    row["reads"] = nlohmann::json::array();
+    for (const auto& read : ssa->Reads(id))
+      row["reads"].push_back({{"ordinal", read.ordinal}, {"value", read.value.value}});
+    if (const auto write = ssa->Write(id)) row["write_value"] = write->value;
     for (std::size_t e = 0; e < node.successor_count; ++e)
       row["successors"].push_back({{"target", node.successors[e].target.value},
           {"kind", static_cast<unsigned>(node.successors[e].kind)}});
@@ -48,6 +73,27 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
       row["exceptional_completion"] = static_cast<unsigned>(node.exception->completion);
     if (node.exception && !node.exception->target)
       row["propagates_to_caller"] = true;
+    output << row << '\n';
+  }
+  for (std::size_t i = 0; i < ssa->Values().size(); ++i) {
+    const auto& value = ssa->Values()[i];
+    nlohmann::json row{{"ssa_value", i}};
+    if (const auto* reg = std::get_if<abc::RegisterId>(&value.slot)) row["register"] = reg->value;
+    else row["accumulator"] = true;
+    if (const auto* site = std::get_if<analysis::InstructionValue>(&value.origin))
+      row["site_node"] = site->instruction.value;
+    else if (const auto* phi = std::get_if<analysis::PhiValue>(&value.origin)) {
+      row["phi_node"] = phi->block.value;
+      row["inputs"] = nlohmann::json::array();
+      for (const auto& input : ssa->Inputs({static_cast<std::uint32_t>(i)})) {
+        nlohmann::json item{{"value", input.value.value}};
+        if (const auto* edge = std::get_if<analysis::SsaEdge>(&input.edge)) {
+          item["source_node"] = edge->source.value;
+          item["successor"] = edge->successor;
+        } else item["entry"] = true;
+        row["inputs"].push_back(std::move(item));
+      }
+    } else row["entry"] = true;
     output << row << '\n';
   }
   return output ? EXIT_SUCCESS : EXIT_FAILURE;

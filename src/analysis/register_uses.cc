@@ -60,34 +60,48 @@ std::variant<RegisterUses, RegisterUseFailure> RegisterUses::Build(
     const abc::MethodBody& body, const NormalFlow& graph,
     std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget,
     std::span<const SemanticInstruction> semantics) {
+  return BuildImpl(&body, graph, frame_size, quota, budget, semantics, {});
+}
+std::variant<RegisterUses, RegisterUseFailure> RegisterUses::BuildSites(
+    std::span<const RegisterSite> sites, const NormalFlow& graph,
+    std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget) {
+  return BuildImpl(nullptr, graph, frame_size, quota, budget, {}, sites);
+}
+std::variant<RegisterUses, RegisterUseFailure> RegisterUses::BuildImpl(
+    const abc::MethodBody* body, const NormalFlow& graph,
+    std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget,
+    std::span<const SemanticInstruction> semantics,
+    std::span<const RegisterSite> sites) {
   using Error = RegisterUseError;
-  if (!body.tries.empty() || !body.handlers.empty())
+  if (body && (!body->tries.empty() || !body->handlers.empty()))
     return RegisterUseFailure{Error::kExceptionRegions, {}, {}};
-  if (body.instructions.size() > UINT32_MAX)
+  const auto count = body ? body->instructions.size() : sites.size();
+  if (count > UINT32_MAX)
     return RegisterUseFailure{Error::kResourceLimit, {}, {}};
-  if (!semantics.empty() && semantics.size() != body.instructions.size())
+  if (!semantics.empty() && semantics.size() != count)
     return RegisterUseFailure{Error::kInvalidEffects, {}, {}};
   try {
     const auto consumed = quota.Consumed();
     const auto charge = [&](std::uint64_t units = 1) {
       if (!quota.Take(units)) throw detail::IdfWorkLimit{};
     };
-    for (std::size_t i = 0; i < semantics.size(); ++i) {
+    const auto supplied = body ? semantics.size() : sites.size();
+    for (std::size_t i = 0; i < supplied; ++i) {
       charge();
-      const auto& site = semantics[i];
-      const auto& effect = site.effects.normal_registers;
+      const auto pc = body ? semantics[i].pc : sites[i].pc;
+      const auto& effect = body ? semantics[i].effects.normal_registers : sites[i].effect;
       const auto valid_slot = [&](ScalarSlot slot) {
         const auto* reg = std::get_if<abc::RegisterId>(&slot);
         return !reg || reg->value < frame_size;
       };
-      if (site.pc != body.instructions[i].offset ||
+      if ((body && pc != body->instructions[i].offset) ||
           effect.read_count > effect.reads.size() ||
           (effect.write && !valid_slot(*effect.write)))
-        return RegisterUseFailure{Error::kInvalidEffects, site.pc, {}};
+        return RegisterUseFailure{Error::kInvalidEffects, pc, {}};
       for (std::size_t read = 0; read < effect.read_count; ++read) {
         charge();
         if (!valid_slot(effect.reads[read]))
-          return RegisterUseFailure{Error::kInvalidEffects, site.pc, {}};
+          return RegisterUseFailure{Error::kInvalidEffects, pc, {}};
       }
       if (effect.range &&
           (effect.range->first.value > frame_size ||
@@ -96,13 +110,13 @@ std::variant<RegisterUses, RegisterUseFailure> RegisterUses::Build(
             std::uint64_t(effect.range->first.value) + effect.range->count - 1 >
                 UINT32_MAX) ||
            effect.range->count > UINT16_MAX - effect.read_count))
-        return RegisterUseFailure{Error::kInvalidEffects, site.pc, {}};
+        return RegisterUseFailure{Error::kInvalidEffects, pc, {}};
     }
     std::size_t covered = 0;
     for (const auto& block : graph.blocks) {
       charge();
       if (block.first_instruction != covered || block.instruction_count == 0 ||
-          block.instruction_count > body.instructions.size() - covered ||
+          block.instruction_count > count - covered ||
           block.successor_count > block.successors.size())
         return RegisterUseFailure{Error::kInvalidGraph, block.begin, {}};
       covered += block.instruction_count;
@@ -122,7 +136,7 @@ std::variant<RegisterUses, RegisterUseFailure> RegisterUses::Build(
         }
       }
     }
-    if (graph.blocks.empty() || covered != body.instructions.size())
+    if (graph.blocks.empty() || covered != count)
       return RegisterUseFailure{Error::kInvalidGraph, {}, {}};
     detail::IdfScratch memory{budget.bytes};
     charge(graph.blocks.size());
@@ -141,13 +155,15 @@ std::variant<RegisterUses, RegisterUseFailure> RegisterUses::Build(
            ++pc) {
         charge();
         ++result.work.instructions;
-        const auto& instruction = body.instructions[pc];
-        const auto lifted = semantics.empty()
-            ? LiftRegisterEffect(instruction.decoded, frame_size)
+        const auto offset = body ? body->instructions[pc].offset : sites[pc].pc;
+        const auto lifted = !body
+            ? std::variant<RegisterEffect, ScalarError>{sites[pc].effect}
+            : semantics.empty()
+            ? LiftRegisterEffect(body->instructions[pc].decoded, frame_size)
             : std::variant<RegisterEffect, ScalarError>{
                   semantics[pc].effects.normal_registers};
         if (const auto* error = std::get_if<ScalarError>(&lifted))
-          return RegisterUseFailure{Error::kInstruction, instruction.offset,
+          return RegisterUseFailure{Error::kInstruction, offset,
                                     *error};
         const auto& effect = std::get<RegisterEffect>(lifted);
         const auto append = [&](ScalarSlot slot, AccessKind kind) {

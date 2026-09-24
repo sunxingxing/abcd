@@ -54,7 +54,9 @@ struct SsaWork {
 
 // Register SSA only: entry values are UNKNOWN VM values, not JS undefined or
 // proof of language-value/sentinel type. Instructions retain all their effects.
-// Requires validated body and unchanged normal CFG; rejects handlers/resumes.
+// Body API requires validated body and unchanged normal CFG; rejects handlers/
+// resumes. BuildSites instead accepts an owner-certified effect program and
+// complete graph, including an explicitly staged exceptional topology.
 // Owned immutable arrays, no borrowed body/graph/index or PMR pointers. Build
 // is a bounded synchronous primitive, not the lazy function-task service.
 // A nonempty semantic span supplies the owner-proven effects for every body
@@ -70,6 +72,13 @@ class RegisterSsa {
   Build(const abc::MethodBody& body, const NormalFlow& graph,
         std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {},
         std::span<const SemanticInstruction> semantics = {});
+  // SSA IDs index this supplied effect program. In particular InstructionValue
+  // is a site index, not an original ABC instruction index; owners retain the
+  // provenance mapping. No fabricated opcode/body or exception bypass is used.
+  [[nodiscard]] static std::variant<RegisterSsa, RegisterUseFailure, IdfError,
+                                    DominatorError, SsaError>
+  BuildSites(std::span<const RegisterSite> sites, const NormalFlow& graph,
+             std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {});
   [[nodiscard]] std::span<const RegisterValue> Values() const {
     return {values_.get(), values_ ? value_count_ : 0};
   }
@@ -81,6 +90,12 @@ class RegisterSsa {
   SsaWork work;
 
  private:
+  static std::variant<RegisterSsa, RegisterUseFailure, IdfError,
+                      DominatorError, SsaError>
+  BuildImpl(const abc::MethodBody* body, const NormalFlow& graph,
+            std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget,
+            std::span<const SemanticInstruction> semantics,
+            std::span<const RegisterSite> sites);
   struct Builder;
   RegisterSsa() = default;
   std::unique_ptr<RegisterValue[]> values_;
