@@ -28,7 +28,7 @@ class LexicalWriter {
                 analysis::CapturedValues captured_values,
                 ObjectBufferBudget object_budget,
                 std::span<const FreshFieldSite> fields,
-                std::optional<analysis::StagedNamedInvocation> staged_call)
+                std::span<const analysis::StagedNamedInvocation> staged_calls)
       : names_(names),
         output_(output),
         remaining_(budget.bytes),
@@ -36,7 +36,7 @@ class LexicalWriter {
         functions_(functions),
         captured_values_(captured_values),
         object_budget_(object_budget), fields_(fields),
-        staged_call_(staged_call) {}
+        staged_calls_(staged_calls) {}
   BodyEmitResult Write(const abc::MethodBody& body,
                        const analysis::LinearLexicals& plan) {
     try {
@@ -48,8 +48,11 @@ class LexicalWriter {
       for (std::size_t i = 0; i < plan.Statements().size() && !error_; ++i) {
         offset_ = body.instructions[i].offset;
         const auto& statement = plan.Statements()[i];
-        if (staged_call_ && i == staged_call_->property) {
-          const auto result = WriteStagedCallHead(*staged_call_, offset_, names_,
+        const auto* staged_call = staged_cursor_ < staged_calls_.size()
+                                      ? &staged_calls_[staged_cursor_]
+                                      : nullptr;
+        if (staged_call && i == staged_call->property) {
+          const auto result = WriteStagedCallHead(*staged_call, offset_, names_,
                                                 output_, {remaining_}, constants_);
           if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
             error_ = *failure;
@@ -57,16 +60,17 @@ class LexicalWriter {
             Count(std::get<std::size_t>(result));
           continue;
         }
-        if (staged_call_ &&
-            (i == staged_call_->spill || i == staged_call_->reload))
+        if (staged_call &&
+            (i == staged_call->spill || i == staged_call->reload))
           continue;
-        if (staged_call_ && i == staged_call_->call) {
-          const auto result = WriteStagedCallEnd(*staged_call_, offset_, names_,
+        if (staged_call && i == staged_call->call) {
+          const auto result = WriteStagedCallEnd(*staged_call, offset_, names_,
                                                output_, {remaining_});
           if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
             error_ = *failure;
           else
             Count(std::get<std::size_t>(result));
+          ++staged_cursor_;
           continue;
         }
         if (field_cursor_ < fields_.size() &&
@@ -235,7 +239,8 @@ class LexicalWriter {
   analysis::CapturedValues captured_values_;
   ObjectBufferBudget object_budget_;
   std::span<const FreshFieldSite> fields_;
-  std::optional<analysis::StagedNamedInvocation> staged_call_;
+  std::span<const analysis::StagedNamedInvocation> staged_calls_;
+  std::size_t staged_cursor_ = 0;
   std::size_t field_cursor_ = 0;
   std::size_t next_function_ = 0;
   std::size_t written_ = 0;
@@ -312,17 +317,28 @@ LocalLexicalResult WriteLexicals(const abc::MethodBody& body, ScalarNames names,
       budget.bytes -= functions->AllocatedBytes();
       creations = functions->Facts();
     }
-    analysis::IdfQuota quota{budget.work - named_scopes.work_units -
-                             guarded_loads.work_units};
-    auto staged_call = analysis::MatchTailNamedInvocation(
-        body, names.registers.size());
-    if (!staged_call)
-      staged_call = analysis::MatchStagedNamedInvocation(
-          body, names.registers.size());
+    const auto remaining_work = budget.work - named_scopes.work_units -
+                                guarded_loads.work_units;
+    auto matched = analysis::MatchStagedNamedInvocations(
+        body, names.registers.size(), budget.bytes, remaining_work);
+    if (const auto* error = std::get_if<analysis::StagedMatchError>(&matched))
+      return analysis::LinearLexicalFailure{
+          *error == analysis::StagedMatchError::kWorkLimit
+              ? analysis::LinearLexicalError::kWorkLimit
+              : analysis::LinearLexicalError::kResourceLimit,
+          {}};
+    const auto& staged = std::get<analysis::StagedMatches>(matched);
+    analysis::IdfQuota quota{remaining_work - staged.work_units};
+    const auto& staged_calls = staged.calls;
+    if (staged_calls.capacity() > budget.bytes /
+                                      sizeof(analysis::StagedNamedInvocation))
+      return resource();
+    budget.bytes -= staged_calls.capacity() *
+                    sizeof(analysis::StagedNamedInvocation);
     const auto planned = analysis::LinearLexicals::Build(
         body, environments, names.registers.size(), quota, {budget.bytes},
         creations, captured_values, named_scopes.admitted,
-        guarded_loads.admitted, staged_call);
+        guarded_loads.admitted, staged_calls);
     if (const auto* failure =
             std::get_if<analysis::LinearLexicalFailure>(&planned))
       return *failure;
@@ -348,14 +364,14 @@ LocalLexicalResult WriteLexicals(const abc::MethodBody& body, ScalarNames names,
     const auto checked =
         LexicalWriter(names, discard, budget.output, constants,
                       functions ? &*functions : nullptr, captured_values,
-                      object_budget, fields.sites, staged_call)
+                      object_budget, fields.sites, staged_calls)
             .Write(body, plan);
     if (const auto* failure = std::get_if<BodyEmitFailure>(&checked))
       return *failure;
     const auto result =
         LexicalWriter(names, output, budget.output, constants,
                       functions ? &*functions : nullptr, captured_values,
-                      object_budget, fields.sites, staged_call)
+                      object_budget, fields.sites, staged_calls)
             .Write(body, plan);
     if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
       return *failure;

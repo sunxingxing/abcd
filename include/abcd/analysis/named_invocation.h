@@ -1,6 +1,8 @@
 #ifndef ABCD_ANALYSIS_NAMED_INVOCATION_H_
 #define ABCD_ANALYSIS_NAMED_INVOCATION_H_
 
+#include <vector>
+
 #include "abcd/abc/method_body.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/ordinary_call.h"
@@ -64,10 +66,23 @@ MatchCopiedArgumentInvocation(
 // O(instructions), constant extra storage; no mutable call intrinsic.
 [[nodiscard]] std::optional<StagedNamedInvocation> MatchTailNamedInvocation(
     const abc::MethodBody& body, std::uint64_t frame_size);
-// Non-tail form currently admits exactly one receiver call in a complete
-// straight-line body. This bounds proof work to O(instructions)
-// and leaves multi-call bodies for a shared liveness index.
+// Compatibility probe for one receiver call in a complete straight-line body.
+// Production uses the function-wide matcher below.
 [[nodiscard]] std::optional<StagedNamedInvocation> MatchStagedNamedInvocation(
     const abc::MethodBody& body, std::uint64_t frame_size);
+enum class StagedMatchError { kWorkLimit, kResourceLimit };
+struct StagedMatches {
+  std::vector<StagedNamedInvocation> calls;
+  std::uint64_t work_units = 0;
+};
+using StagedMatchResult = std::variant<StagedMatches, StagedMatchError>;
+// Function-wide, disjoint staged calls. Typed register timelines avoid a
+// suffix/prefix walk per call; work is linear in instructions and expanded
+// accesses to the 256 low v8-addressable registers. Scratch and retained
+// matches share the caller's byte budget; work_units charge its method budget.
+// Empty matches mean no complete proof.
+[[nodiscard]] StagedMatchResult MatchStagedNamedInvocations(
+    const abc::MethodBody& body, std::uint64_t frame_size,
+    std::size_t bytes, std::uint64_t work_limit);
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_NAMED_INVOCATION_H_

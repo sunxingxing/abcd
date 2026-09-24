@@ -163,6 +163,30 @@ const stagedResult = source.staged(stagedReceiver, 29, () => {
 });
 assert.deepEqual(stagedResult, {value: 29});
 assert.deepEqual(stagedEvents, ['get', 'argument', 'call']);
+const twoEvents = [];
+let calls = 0;
+const twoReceiver = {
+  get method() {
+    twoEvents.push('get');
+    const callable = function(value) {
+      twoEvents.push('call');
+      assert.equal(this, twoReceiver);
+      return ++calls === 1 ? {first: value} : {second: value};
+    };
+    Object.defineProperty(callable, 'call', {
+      get() { throw new Error('call lookup'); },
+    });
+    Object.defineProperty(callable, 'apply', {
+      get() { throw new Error('apply lookup'); },
+    });
+    return callable;
+  },
+};
+assert.deepEqual(source.twoCalls(twoReceiver, 29, () => {
+  twoEvents.push('argument');
+}), {second: {first: 29}});
+assert.deepEqual(twoEvents,
+                 ['get', 'argument', 'call', 'get', 'argument', 'call']);
 const deferredFailure = new Error('argument failed');
 let reached = false;
 assert.throws(() => source.deferred({

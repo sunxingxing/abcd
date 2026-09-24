@@ -538,6 +538,12 @@ if(BUILD_TESTING)
         "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"
         "-DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_home_model.mjs"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_home_model.cmake)
+      add_test(NAME paired_model_record_source_test COMMAND ${CMAKE_COMMAND}
+        "-DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>"
+        "-DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"
+        "-DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_model_calls.mjs"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_model_calls.cmake)
       add_test(NAME paired_home_model_js_test COMMAND ${CMAKE_COMMAND}
         "-DABCD_CLASS_FIXTURE=$<TARGET_FILE:class_sample_fixture>"
         "-DABCD_PAIRED_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"

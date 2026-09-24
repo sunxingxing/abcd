@@ -37,9 +37,10 @@ Wide and deprecated range layouts remain separate.
 The lexical-body path additionally admits a handler-free, terminal
 `CALLTHIS1..3` or narrow `CALLTHISRANGE`
 whose callee came from a named read, was spilled to a private register, and is
-reloaded immediately before the call. A backward register-access scan proves
-the spill has no intervening readers or writers; a forward scan proves the
-receiver register is not written. The first instruction after the spill must
+reloaded immediately before the call. The compatibility tail probe uses a
+backward register-access scan for the spill and a forward receiver scan;
+production uses the function-wide timelines described below. The first
+instruction after the spill must
 overwrite the accumulator without reading it. Only operandless `NOP` and
 `LDUNDEFINED` may occur between the call and terminal return/throw. Other
 shapes stay unsupported.
@@ -52,22 +53,28 @@ original receiver,
 and avoids mutable `.call`, `.apply`, and `Reflect.apply` dependencies. The
 extra arrow frame/closure is an implementation limitation for stack-sensitive
 code and allocation failure timing; the matcher does not claim general
-effect-aware scheduling. The proof and emission are O(I + source bytes) with
-constant matcher storage. `LinearLexicals` validates the planned call before
-output publication.
+effect-aware scheduling. The compatibility tail proof uses constant matcher
+storage; production's bounded timelines are described below.
+`LinearLexicals` validates the planned call before output publication.
 
 ## Staged Nonterminal Calls
 
-The same getter-before-argument source form also admits one nonterminal
-receiver call in a complete straight-line, handler-free method. The matcher
-requires exactly one receiver call, the same typed named-read/spill/reload
-sequence, and an accumulator-clobbering first argument operation. Register
-access windows prove the receiver unchanged before the call and the eliminated
-callee slot unread until it is overwritten or the method ends. A read/write
-of that slot is a read and is rejected. The original result remains in the
-accumulator for subsequent statements. The single-call restriction avoids
-repeated per-call suffix scans; the current proof is O(I) with constant
-scratch storage. Multi-call and branch-containing methods remain refusals.
+The same getter-before-argument source form also admits multiple nonterminal
+receiver calls in one complete straight-line, handler-free method, provided
+their property-to-call intervals do not overlap. Each call still requires the
+typed named-read/spill/reload sequence and an accumulator-clobbering first
+argument operation. Forward register-access timelines prove the receiver
+unchanged and the callee slot unread before reload. Reverse timelines prove
+the eliminated callee slot unread after the call until overwrite or method
+exit; a read/write is a read and is rejected. The original result remains in
+the accumulator for subsequent statements. An overlapping candidate rejects
+the whole batch; branch and exception-containing methods remain refusals.
+
+The timelines cover only the 256 low v8-addressable registers and charge each
+expanded access against the method work budget. Candidate and liveness storage
+share the method byte budget. The matcher is O(I + A), where I is instructions
+and A is expanded low-register accesses, independent of the number of calls.
+The lexical planner validates the ordered matches before output publication.
 
 The arrow IIFE preserves ordinary getter, argument and receiver behavior,
 but introduces a JS frame and closure. Stack-observing code and allocation
@@ -116,7 +123,7 @@ separate synthetic C++ and Node tests, including post-call callee liveness.
 6. Run Debug and sanitizer tests, independent review and full corpus under
    1 GB; compare per-file coverage and commit measured results.
 
-Recognition is O(1) per instruction, O(I) over the method and allocation-free.
-Emission is O(source bytes), with existing graph/source budgets. It adds native
-method-call recovery, not general bound-call synthesis, lexical value proof,
-record publication or the asynchronous function service.
+Direct adjacent-call recognition is O(1) per instruction and allocation-free.
+The staged-call matcher uses the bounded timelines above. Emission is
+O(source bytes), with graph/source budgets. These proofs add native method-call
+recovery, not general bound-call synthesis or the asynchronous function service.

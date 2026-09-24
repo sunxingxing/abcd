@@ -18,6 +18,7 @@
 #include "abcd/corpus/detect.h"
 #include "abcd/source/created_class.h"
 #include "abcd/source/module_imports.h"
+#include "abcd/source/module_exports.h"
 #include "abcd/source/record_module_context.h"
 #include "analysis/ssa_fixture.h"
 
@@ -154,10 +155,15 @@ int main(int argc, char** argv) {
         std::ostringstream source;
         const auto factory_name = "site_" + std::to_string(method.offset.value) +
                                   "_" + std::to_string(site.pc.value);
-        const source::GlobalScope enclosing_scope{enclosing_bindings, {}};
         const auto module = context
                                 ? context->ForOwner(file, method.owner_offset)
                                 : std::shared_ptr<const abc::ModuleInfo>{};
+        source::GlobalScope enclosing_scope{};
+        enclosing_scope.enclosing_bindings = enclosing_bindings;
+        if (module)
+          enclosing_scope.module_slots =
+              std::get<source::ModuleExports>(
+                  source::BuildModuleExports(file, header, *module)).slot_count();
         const auto result = source::WriteCreatedClass(
             file, header, index, lookup, method.offset, body.instructions[at],
             site, source, budget, {},

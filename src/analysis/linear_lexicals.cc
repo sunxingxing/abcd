@@ -24,7 +24,7 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
     CapturedValues captured_values,
     std::span<const std::uint8_t> named_scopes,
     std::span<const std::uint8_t> guarded_module_loads,
-    std::optional<StagedNamedInvocation> staged_call) {
+    std::span<const StagedNamedInvocation> staged_calls) {
   using Error = LinearLexicalError;
   abc::CodeOffset offset{};
   const auto fail = [&](Error kind) {
@@ -141,6 +141,7 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
       return accumulator;
     };
     std::size_t creation_cursor = 0;
+    std::size_t staged_cursor = 0;
     for (std::size_t i = 0; i < body.instructions.size(); ++i) {
       charge();
       offset = body.instructions[i].offset;
@@ -246,26 +247,31 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
         statement = copied->invoke;
         continue;
       }
-      if (staged_call && i == staged_call->call) {
+      if (staged_cursor < staged_calls.size() &&
+          i == staged_calls[staged_cursor].call) {
+        const auto& staged_call = staged_calls[staged_cursor];
         bool arguments_ready = true;
         for (std::uint32_t argument = 0;
-             argument < staged_call->invoke.Count(); ++argument)
-          arguments_ready &= state(*staged_call->invoke.At(argument)).IsLanguage();
-        if (staged_call->property >= staged_call->spill ||
-            staged_call->spill >= staged_call->reload ||
-            staged_call->reload + 1 != i ||
+             argument < staged_call.invoke.Count(); ++argument)
+          arguments_ready &= state(*staged_call.invoke.At(argument)).IsLanguage();
+        if ((staged_cursor != 0 &&
+             staged_calls[staged_cursor - 1].call >= staged_call.property) ||
+            staged_call.property >= staged_call.spill ||
+            staged_call.spill >= staged_call.reload ||
+            staged_call.reload + 1 != i ||
             !std::holds_alternative<KeepInstruction>(
-                statements[staged_call->property]) ||
+                statements[staged_call.property]) ||
             !std::holds_alternative<KeepInstruction>(
-                statements[staged_call->spill]) ||
+                statements[staged_call.spill]) ||
             !std::holds_alternative<KeepInstruction>(
-                statements[staged_call->reload]) ||
-            !state(staged_call->invoke.receiver).IsLanguage() ||
+                statements[staged_call.reload]) ||
+            !state(staged_call.invoke.receiver).IsLanguage() ||
             !arguments_ready ||
-            !state(staged_call->callee).IsLanguage())
+            !state(staged_call.callee).IsLanguage())
           return fail(Error::kInstruction);
         accumulator = ValueKinds::Language();
         statement = OmitInstruction{};
+        ++staged_cursor;
         continue;
       }
       // The v7.0 translator may spill a named callee through one register
@@ -365,7 +371,9 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
                 : rule.seed;
       }
     }
-    if (creation_cursor != creations.size()) return fail(Error::kInstruction);
+    if (creation_cursor != creations.size() ||
+        staged_cursor != staged_calls.size())
+      return fail(Error::kInstruction);
     LinearLexicals result;
     const auto copy = [&]<class T>(const std::pmr::vector<T>& from,
                                    std::unique_ptr<T[]>& to) {

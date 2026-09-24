@@ -1,5 +1,9 @@
 #include "abcd/analysis/named_invocation.h"
 
+#include <algorithm>
+#include <array>
+#include <new>
+
 #include "abcd/abc/control_transfer.h"
 #include "abcd/abc/register_access.h"
 #include "abcd/analysis/register_effect.h"
@@ -264,11 +268,73 @@ std::optional<CopiedArgumentInvocation> MatchCopiedArgumentInvocation(
 }
 
 namespace {
+std::optional<StagedNamedInvocation> MatchStagedShape(
+    const abc::MethodBody& body, std::uint64_t frame_size,
+    std::size_t call_index, std::size_t spill, abc::RegisterId callee,
+    const ReceiverCall& invoke) {
+  const auto& instructions = body.instructions;
+  using abc::Opcode;
+  if (call_index < 5 || call_index >= instructions.size() ||
+      invoke.Count() == 0 || spill < 2)
+    return {};
+  const auto reload = call_index - 1;
+  const auto loaded =
+      LiftScalarInstruction(instructions[reload].decoded, frame_size);
+  const auto* load = std::get_if<ScalarAssignment>(&loaded);
+  const auto* load_value =
+      load ? std::get_if<ScalarValue>(&load->expression) : nullptr;
+  const auto* loaded_callee =
+      load_value ? std::get_if<abc::RegisterId>(load_value) : nullptr;
+  if (!load || !loaded_callee || *loaded_callee != callee ||
+      !std::holds_alternative<Accumulator>(load->destination) ||
+      callee == invoke.receiver)
+    return {};
+  for (std::uint32_t i = 0; i < invoke.Count(); ++i)
+    if (callee == *invoke.At(i)) return {};
+  if (spill + 2 >= reload) return {};
+  const auto stored =
+      LiftScalarInstruction(instructions[spill].decoded, frame_size);
+  const auto* store = std::get_if<ScalarAssignment>(&stored);
+  const auto* store_value =
+      store ? std::get_if<ScalarValue>(&store->expression) : nullptr;
+  const auto* destination =
+      store ? std::get_if<abc::RegisterId>(&store->destination) : nullptr;
+  if (!store || !store_value || !destination || *destination != callee ||
+      !std::holds_alternative<Accumulator>(*store_value) ||
+      instructions[spill].decoded.opcode != Opcode::kSTA_V8)
+    return {};
+  const auto property = spill - 1;
+  const auto named = LiftNamedRead(instructions[property].decoded);
+  const auto* read = std::get_if<NamedRead>(&named);
+  if (!read) return {};
+  const auto copied =
+      LiftScalarInstruction(instructions[property - 1].decoded, frame_size);
+  const auto* copy = std::get_if<ScalarAssignment>(&copied);
+  const auto* copy_value =
+      copy ? std::get_if<ScalarValue>(&copy->expression) : nullptr;
+  const auto* receiver =
+      copy_value ? std::get_if<abc::RegisterId>(copy_value) : nullptr;
+  if (!copy || !receiver || *receiver != invoke.receiver ||
+      !std::holds_alternative<Accumulator>(copy->destination))
+    return {};
+  const auto overwrite = LiftRegisterEffect(
+      instructions[spill + 1].decoded, frame_size);
+  const auto* effect = std::get_if<RegisterEffect>(&overwrite);
+  if (!effect || !effect->write ||
+      !std::holds_alternative<Accumulator>(*effect->write))
+    return {};
+  for (std::size_t read_index = 0; read_index < effect->read_count;
+       ++read_index)
+    if (std::holds_alternative<Accumulator>(effect->reads[read_index]))
+      return {};
+  return StagedNamedInvocation{property, spill, reload, call_index, *read,
+                               invoke, callee};
+}
+
 std::optional<StagedNamedInvocation> MatchStagedAt(
     const abc::MethodBody& body, std::uint64_t frame_size,
     std::size_t call_index) {
   const auto& instructions = body.instructions;
-  using abc::Opcode;
   if (call_index < 5 || call_index >= instructions.size()) return {};
   const auto lifted =
       LiftReceiverCall(instructions[call_index].decoded, frame_size);
@@ -286,8 +352,6 @@ std::optional<StagedNamedInvocation> MatchStagedAt(
       !std::holds_alternative<Accumulator>(load->destination) ||
       *callee == invoke->receiver)
     return {};
-  for (std::uint32_t i = 0; i < invoke->Count(); ++i)
-    if (*callee == *invoke->At(i)) return {};
   std::optional<std::size_t> spill;
   for (std::size_t i = reload; i-- > 0;) {
     const auto accesses =
@@ -300,7 +364,7 @@ std::optional<StagedNamedInvocation> MatchStagedAt(
       if (callee->value < access.first.value ||
           callee->value - access.first.value >= access.count)
         continue;
-      if (access.access == abc::OperandAccess::kRead)
+      if (access.access != abc::OperandAccess::kWrite)
         return {};
       writes = true;
     }
@@ -309,42 +373,10 @@ std::optional<StagedNamedInvocation> MatchStagedAt(
       break;
     }
   }
-  if (!spill || *spill < 2 || *spill + 2 >= reload) return {};
-  const auto stored =
-      LiftScalarInstruction(instructions[*spill].decoded, frame_size);
-  const auto* store = std::get_if<ScalarAssignment>(&stored);
-  const auto* store_value =
-      store ? std::get_if<ScalarValue>(&store->expression) : nullptr;
-  const auto* destination =
-      store ? std::get_if<abc::RegisterId>(&store->destination) : nullptr;
-  if (!store || !store_value || !destination || *destination != *callee ||
-      !std::holds_alternative<Accumulator>(*store_value) ||
-      instructions[*spill].decoded.opcode != Opcode::kSTA_V8)
-    return {};
-  const auto property = *spill - 1;
-  const auto named = LiftNamedRead(instructions[property].decoded);
-  const auto* read = std::get_if<NamedRead>(&named);
-  if (!read) return {};
-  const auto copied =
-      LiftScalarInstruction(instructions[property - 1].decoded, frame_size);
-  const auto* copy = std::get_if<ScalarAssignment>(&copied);
-  const auto* copy_value =
-      copy ? std::get_if<ScalarValue>(&copy->expression) : nullptr;
-  const auto* receiver =
-      copy_value ? std::get_if<abc::RegisterId>(copy_value) : nullptr;
-  if (!copy || !receiver || *receiver != invoke->receiver ||
-      !std::holds_alternative<Accumulator>(copy->destination))
-    return {};
-  const auto overwrite = LiftRegisterEffect(
-      instructions[*spill + 1].decoded, frame_size);
-  const auto* effect = std::get_if<RegisterEffect>(&overwrite);
-  if (!effect || !effect->write ||
-      !std::holds_alternative<Accumulator>(*effect->write))
-    return {};
-  for (std::size_t read_index = 0; read_index < effect->read_count;
-       ++read_index)
-    if (std::holds_alternative<Accumulator>(effect->reads[read_index]))
-      return {};
+  if (!spill) return {};
+  auto matched = MatchStagedShape(body, frame_size, call_index, *spill,
+                                  *callee, *invoke);
+  if (!matched) return {};
   for (std::size_t i = *spill + 1; i < call_index; ++i) {
     const auto accesses =
         abc::GetRegisterAccesses(instructions[i].decoded, frame_size);
@@ -372,12 +404,9 @@ std::optional<StagedNamedInvocation> MatchStagedAt(
       if (access.access != abc::OperandAccess::kWrite) return {};
       killed = true;
     }
-    if (killed)
-      return StagedNamedInvocation{property, *spill, reload, call_index,
-                                   *read, *invoke, *callee};
+    if (killed) return matched;
   }
-  return StagedNamedInvocation{property, *spill, reload, call_index, *read,
-                               *invoke, *callee};
+  return matched;
 }
 }  // namespace
 
@@ -428,5 +457,160 @@ std::optional<StagedNamedInvocation> MatchStagedNamedInvocation(
   if (call && MatchCopiedArgumentInvocation(instructions, *call, frame_size))
     return {};
   return call ? MatchStagedAt(body, frame_size, *call) : std::nullopt;
+}
+
+StagedMatchResult MatchStagedNamedInvocations(
+    const abc::MethodBody& body, std::uint64_t frame_size,
+    std::size_t bytes, std::uint64_t work_limit) {
+  using abc::OperandAccess;
+  using abc::RegisterAccesses;
+  constexpr std::size_t kTrackedRegisters = UINT8_MAX + std::size_t{1};
+  constexpr std::size_t kCandidateBytes =
+      sizeof(StagedNamedInvocation) + sizeof(std::uint8_t);
+  enum class ReadsSinceWrite : std::uint8_t { kNone, kOne, kMany };
+  StagedMatches result;
+  auto& matches = result.calls;
+  std::uint64_t work = 0;
+  const auto charge = [&](std::uint64_t units = 1) {
+    if (units > work_limit - work) return false;
+    work += units;
+    return true;
+  };
+  const auto done = [&]() -> StagedMatchResult {
+    result.work_units = work;
+    return std::move(result);
+  };
+  const auto& instructions = body.instructions;
+  if (!body.tries.empty() || !body.handlers.empty() || instructions.empty())
+    return done();
+  std::size_t receiver_calls = 0;
+  for (std::size_t i = 0; i < instructions.size(); ++i) {
+    if (!charge()) return StagedMatchError::kWorkLimit;
+    const auto transfer =
+        abc::GetControlTransfer(instructions[i].decoded.opcode);
+    if (!transfer || instructions[i].branch_target ||
+        (i + 1 == instructions.size()
+             ? *transfer != abc::ControlTransfer::kReturn &&
+                   *transfer != abc::ControlTransfer::kThrow
+             : *transfer != abc::ControlTransfer::kFallthrough))
+      return done();
+    receiver_calls += std::holds_alternative<ReceiverCall>(
+        LiftReceiverCall(instructions[i].decoded, frame_size));
+  }
+  if (receiver_calls == 0) return done();
+  if (receiver_calls > bytes / kCandidateBytes)
+    return StagedMatchError::kResourceLimit;
+  try {
+    matches.reserve(receiver_calls);
+    std::array<std::optional<std::size_t>, kTrackedRegisters> last_write{};
+    std::array<ReadsSinceWrite, kTrackedRegisters> reads{};
+    const auto visit = [&](const RegisterAccesses& accesses,
+                           const auto& action) {
+      for (std::size_t window = 0; window < accesses.count; ++window) {
+        if (!charge()) return false;
+        const auto& access = accesses.windows[window];
+        if (access.first.value >= kTrackedRegisters) continue;
+        const auto end = std::min<std::uint64_t>(
+            static_cast<std::uint64_t>(access.first.value) + access.count,
+            kTrackedRegisters);
+        for (std::uint32_t reg = access.first.value; reg < end; ++reg) {
+          if (!charge()) return false;
+          action(reg, access.access);
+        }
+      }
+      return true;
+    };
+    for (std::size_t i = 0; i < instructions.size(); ++i) {
+      if (!charge()) return StagedMatchError::kWorkLimit;
+      const auto called = LiftReceiverCall(instructions[i].decoded, frame_size);
+      const auto* invoke = std::get_if<ReceiverCall>(&called);
+      if (invoke && i > 0) {
+        if (!charge(1 + invoke->Count()))
+          return StagedMatchError::kWorkLimit;
+        const auto loaded =
+            LiftScalarInstruction(instructions[i - 1].decoded, frame_size);
+        const auto* load = std::get_if<ScalarAssignment>(&loaded);
+        const auto* value =
+            load ? std::get_if<ScalarValue>(&load->expression) : nullptr;
+        const auto* callee =
+            value ? std::get_if<abc::RegisterId>(value) : nullptr;
+        if (load && callee && callee->value < kTrackedRegisters &&
+            invoke->receiver.value < kTrackedRegisters &&
+            std::holds_alternative<Accumulator>(load->destination) &&
+            last_write[callee->value] &&
+            reads[callee->value] == ReadsSinceWrite::kOne &&
+            (!last_write[invoke->receiver.value] ||
+             *last_write[invoke->receiver.value] <=
+                 *last_write[callee->value]) &&
+            !MatchCopiedArgumentInvocation(instructions, i, frame_size)) {
+          auto shape = MatchStagedShape(
+              body, frame_size, i, *last_write[callee->value], *callee,
+              *invoke);
+          if (shape) {
+            if (!matches.empty() && shape->property <= matches.back().call) {
+              matches.clear();
+              return done();
+            }
+            matches.push_back(*shape);
+          }
+        }
+      }
+      const auto accesses =
+          abc::GetRegisterAccesses(instructions[i].decoded, frame_size);
+      const auto* known = std::get_if<RegisterAccesses>(&accesses);
+      if (!known) {
+        matches.clear();
+        return done();
+      }
+      if (!visit(*known, [&](std::uint32_t reg, OperandAccess access) {
+        if (access != OperandAccess::kWrite)
+          reads[reg] = reads[reg] == ReadsSinceWrite::kNone
+                           ? ReadsSinceWrite::kOne
+                           : ReadsSinceWrite::kMany;
+        if (access != OperandAccess::kRead) {
+          last_write[reg] = i;
+          reads[reg] = access == OperandAccess::kReadWrite
+                           ? ReadsSinceWrite::kMany
+                           : ReadsSinceWrite::kNone;
+        }
+      })) return StagedMatchError::kWorkLimit;
+    }
+    if (matches.empty()) return done();
+    std::vector<std::uint8_t> live(matches.size(), 1);
+    std::array<std::optional<std::size_t>, kTrackedRegisters> next_read{};
+    std::array<std::optional<std::size_t>, kTrackedRegisters> next_write{};
+    std::size_t candidate = matches.size();
+    for (std::size_t i = instructions.size(); i-- > 0;) {
+      if (!charge()) return StagedMatchError::kWorkLimit;
+      if (candidate != 0 && matches[candidate - 1].call == i) {
+        const auto reg = matches[candidate - 1].callee.value;
+        if (next_read[reg] &&
+            (!next_write[reg] || *next_read[reg] <= *next_write[reg]))
+          live[candidate - 1] = 0;
+        --candidate;
+      }
+      const auto accesses =
+          abc::GetRegisterAccesses(instructions[i].decoded, frame_size);
+      const auto* known = std::get_if<RegisterAccesses>(&accesses);
+      if (!known) {
+        matches.clear();
+        return done();
+      }
+      if (!visit(*known, [&](std::uint32_t reg, OperandAccess access) {
+        if (access != OperandAccess::kWrite) next_read[reg] = i;
+        if (access != OperandAccess::kRead) next_write[reg] = i;
+      })) return StagedMatchError::kWorkLimit;
+    }
+    if (!charge(matches.size())) return StagedMatchError::kWorkLimit;
+    std::size_t retained = 0;
+    for (std::size_t i = 0; i < matches.size(); ++i)
+      if (live[i]) matches[retained++] = matches[i];
+    matches.resize(retained);
+    return done();
+  } catch (const std::bad_alloc&) {
+    return StagedMatchError::kResourceLimit;
+  } catch (const std::length_error&) {
+    return StagedMatchError::kResourceLimit;
+  }
 }
 }  // namespace abcd::analysis
