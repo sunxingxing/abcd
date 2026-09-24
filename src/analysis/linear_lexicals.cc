@@ -373,9 +373,16 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
         if (std::holds_alternative<ScalarError>(described))
           return fail(Error::kInstruction);
         const auto rule = std::get<detail::ValueRule>(described);
+        bool string_add = false;
+        if (rule.kind == detail::ValueRuleKind::kStringAdd)
+          for (std::size_t read = 0; read < access.read_count; ++read)
+            string_add |= state(access.reads[read]).IsString();
         state(*access.write) =
             rule.kind == detail::ValueRuleKind::kLanguageOperation
                 ? ValueKinds::Language()
+                : rule.kind == detail::ValueRuleKind::kStringAdd
+                    ? (string_add ? ValueKinds::String()
+                                  : ValueKinds::Unknown())
                 : rule.seed;
       }
     }

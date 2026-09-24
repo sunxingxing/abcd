@@ -222,8 +222,9 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
       }
     }
     // Incremental join propagation is essential: rescanning all inputs of a
-    // high-fan-in Phi after each changed source would be quadratic. Each source
-    // grows at most four times; operation nodes have <=2 fixed inputs.
+    // high-fan-in Phi after each changed source would be quadratic. A fact
+    // gains four VM atoms and can lose its string-only refinement once;
+    // operation nodes have at most two fixed inputs.
     for (std::size_t head = 0; head < pending.size(); ++head) {
       charge();
       ++result.work.queue_visits;
@@ -236,16 +237,25 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
         ++result.work.edge_visits;
         const auto target = targets[edge].value;
         ValueKinds propagated = incoming;
-        if (nodes[target].kind == Kind::kLanguageOperation) {
-          bool ready = true, language = true;
+        if (nodes[target].kind == Kind::kLanguageOperation ||
+            nodes[target].kind == Kind::kStringAdd) {
+          bool ready = true, language = true, string = false;
           for (std::size_t i = 0; i < nodes[target].input_count; ++i) {
             const auto input = facts[nodes[target].inputs[i].value];
             ready &= !input.IsEmpty();
             language &= input.IsLanguage();
+            string |= input.IsString();
           }
-          propagated = !ready     ? ValueKinds{}
-                       : language ? ValueKinds::Language()
-                                  : ValueKinds::Unknown();
+          if (!ready) {
+            propagated = {};
+          } else if (!language) {
+            propagated = ValueKinds::Unknown();
+          } else if (nodes[target].kind == Kind::kStringAdd) {
+            propagated = string ? ValueKinds::String()
+                                : ValueKinds::Unknown();
+          } else {
+            propagated = ValueKinds::Language();
+          }
         }
         const auto joined = facts[target].Join(propagated);
         if (joined == facts[target]) continue;

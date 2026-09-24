@@ -33,6 +33,15 @@ its normal result receive a language fact. Other numeric operators remain
 conservative.
 This admits the paired 12.0.2 `CardItem` constructor's remainder-based array
 index without broadening unrelated arithmetic results.
+
+String literals carry an additional must-be-string refinement within the
+language atom. Copies and Phi joins retain it only when all incoming values
+are strings. `ADD2` returns a string fact only when both inputs are proven
+language values and at least one is definitely a string; the pinned v7 slow
+path then performs string concatenation after ToPrimitive. Numeric or unknown
+additions remain top. This does not admit the Immersive `WindowUtil` property
+addition: both operands are unconstrained property reads in ABC, regardless
+of the paired TS type annotations.
 Unknown inputs never become language values merely because an ISA writes acc.
 
 NaN evidence is pinned with the repository reference lock: `interpreter-inl.cpp`
@@ -68,7 +77,8 @@ each outgoing edge is visited at most four times. No recursive traversal.
 Let V be SSA values, D actual dependencies, F supplied facts, I method size.
 Rule extraction uses existing indexed SSA read/write/Phi queries and reviewed
 typed lifts: O((V+D) log(2+I+V+D)+F). CSR construction and solving are O(V+D+F),
-with a fixed four-atom height; output storage O(V), scratch O(V+D). The shared
+with a fixed four-atom height plus one string-refinement loss; output storage
+O(V), scratch O(V+D). The shared
 method quota charges extraction, adjacency construction, propagation and copy.
 PMR admits vector growth overlap and final owned output while scratch is live.
 The caller separately admits retained input body/SSA bytes and other tasks.

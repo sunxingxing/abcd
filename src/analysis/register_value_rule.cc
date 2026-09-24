@@ -103,7 +103,10 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
       language = HasLanguageResult(unary->op);
     if (const auto* binary =
             std::get_if<BinaryExpression>(&assignment->expression))
-      language = HasLanguageResult(binary->op);
+      if (binary->op == BinaryOperator::kAdd)
+        return ValueRule{ValueRuleKind::kStringAdd, {}};
+      else
+        language = HasLanguageResult(binary->op);
     return language ? ValueRule{ValueRuleKind::kLanguageOperation, {}}
                     : ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
   }
@@ -138,8 +141,9 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
         break;
     }
   }
-  if (instruction.opcode == abc::Opcode::kLDA_STR_ID16 ||
-      instruction.opcode == abc::Opcode::kCREATEEMPTYARRAY_IMM8 ||
+  if (instruction.opcode == abc::Opcode::kLDA_STR_ID16)
+    return ValueRule{ValueRuleKind::kFixed, ValueKinds::String()};
+  if (instruction.opcode == abc::Opcode::kCREATEEMPTYARRAY_IMM8 ||
       std::holds_alternative<EmptyObjectCreation>(
           LiftObjectCreation(instruction)) ||
       std::holds_alternative<BufferedObjectCreation>(
