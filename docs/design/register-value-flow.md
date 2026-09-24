@@ -46,6 +46,10 @@ path then performs string concatenation after ToPrimitive. Numeric or unknown
 additions remain top. This does not admit the Immersive `WindowUtil` property
 addition: both operands are unconstrained property reads in ABC, regardless
 of the paired TS type annotations.
+Integer literals also carry a must-be-non-NaN-number refinement. Copies and
+Phi joins retain it only when every incoming value has it. The pinned `NEG`
+int32 path produces an int32 or finite double (including `-INT32_MIN`), so
+`NEG` preserves this refinement; unconstrained floating NaNs remain top.
 Unknown inputs never become language values merely because an ISA writes acc.
 
 NaN evidence is pinned with the repository reference lock: `interpreter-inl.cpp`

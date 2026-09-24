@@ -223,7 +223,7 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
     }
     // Incremental join propagation is essential: rescanning all inputs of a
     // high-fan-in Phi after each changed source would be quadratic. A fact
-    // gains four VM atoms and can lose its string-only refinement once;
+    // gains four VM atoms and can lose a scalar refinement once;
     // operation nodes have at most two fixed inputs.
     for (std::size_t head = 0; head < pending.size(); ++head) {
       charge();
@@ -238,13 +238,16 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
         const auto target = targets[edge].value;
         ValueKinds propagated = incoming;
         if (nodes[target].kind == Kind::kLanguageOperation ||
-            nodes[target].kind == Kind::kStringAdd) {
+            nodes[target].kind == Kind::kStringAdd ||
+            nodes[target].kind == Kind::kNonNaNNegate) {
           bool ready = true, language = true, string = false;
+          bool non_nan_number = true;
           for (std::size_t i = 0; i < nodes[target].input_count; ++i) {
             const auto input = facts[nodes[target].inputs[i].value];
             ready &= !input.IsEmpty();
             language &= input.IsLanguage();
             string |= input.IsString();
+            non_nan_number &= input.IsNonNaNNumber();
           }
           if (!ready) {
             propagated = {};
@@ -253,6 +256,9 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
           } else if (nodes[target].kind == Kind::kStringAdd) {
             propagated = string ? ValueKinds::String()
                                 : ValueKinds::Unknown();
+          } else if (nodes[target].kind == Kind::kNonNaNNegate) {
+            propagated = non_nan_number ? ValueKinds::NonNaNNumber()
+                                        : ValueKinds::Unknown();
           } else {
             propagated = ValueKinds::Language();
           }

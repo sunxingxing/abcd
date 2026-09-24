@@ -87,6 +87,9 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
         if (number->value >= kImpureNaNBitsMin)
           return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
       }
+      if (std::holds_alternative<IntegerLiteral>(*value))
+        return ValueRule{ValueRuleKind::kFixed,
+                         ValueKinds::NonNaNNumber()};
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
     }
     // Successful ECMAScript property reads expose language values. The pinned
@@ -101,8 +104,13 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     // into an impure encoding; numeric results need stronger numeric facts.
     bool language = false;
     if (const auto* unary =
-            std::get_if<UnaryExpression>(&assignment->expression))
+            std::get_if<UnaryExpression>(&assignment->expression)) {
+      // The pinned NEG int32 path returns int32 or a finite double for
+      // INT32_MIN. Its floating path only risks an impure tag for NaN input.
+      if (unary->op == UnaryOperator::kNegate)
+        return ValueRule{ValueRuleKind::kNonNaNNegate, {}};
       language = HasLanguageResult(unary->op);
+    }
     if (const auto* binary =
             std::get_if<BinaryExpression>(&assignment->expression))
       if (binary->op == BinaryOperator::kAdd)

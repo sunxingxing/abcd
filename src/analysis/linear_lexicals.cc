@@ -373,17 +373,32 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
         if (std::holds_alternative<ScalarError>(described))
           return fail(Error::kInstruction);
         const auto rule = std::get<detail::ValueRule>(described);
-        bool string_add = false;
-        if (rule.kind == detail::ValueRuleKind::kStringAdd)
-          for (std::size_t read = 0; read < access.read_count; ++read)
-            string_add |= state(access.reads[read]).IsString();
-        state(*access.write) =
-            rule.kind == detail::ValueRuleKind::kLanguageOperation
-                ? ValueKinds::Language()
-                : rule.kind == detail::ValueRuleKind::kStringAdd
-                    ? (string_add ? ValueKinds::String()
-                                  : ValueKinds::Unknown())
-                : rule.seed;
+        switch (rule.kind) {
+          case detail::ValueRuleKind::kFixed:
+            state(*access.write) = rule.seed;
+            break;
+          case detail::ValueRuleKind::kJoin:
+            // Register/accumulator copies were handled before this path.
+            return fail(Error::kInstruction);
+          case detail::ValueRuleKind::kLanguageOperation:
+            state(*access.write) = ValueKinds::Language();
+            break;
+          case detail::ValueRuleKind::kStringAdd: {
+            bool string = false;
+            for (std::size_t read = 0; read < access.read_count; ++read)
+              string |= state(access.reads[read]).IsString();
+            state(*access.write) = string ? ValueKinds::String()
+                                          : ValueKinds::Unknown();
+            break;
+          }
+          case detail::ValueRuleKind::kNonNaNNegate:
+            if (access.read_count != 1) return fail(Error::kInstruction);
+            state(*access.write) =
+                state(access.reads[0]).IsNonNaNNumber()
+                    ? ValueKinds::NonNaNNumber()
+                    : ValueKinds::Unknown();
+            break;
+        }
       }
     }
     if (creation_cursor != creations.size() ||

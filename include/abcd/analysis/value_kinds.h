@@ -8,14 +8,19 @@ namespace abcd::analysis {
 enum class VmValueKind { kLanguage, kHole, kEnvironment, kOtherInternal };
 inline constexpr std::size_t kValueKindCount = 4;
 
-// Closed powerset of VM categories with a must-be-string refinement.
-// Joining a string with any other nonempty fact drops that refinement.
+// Closed powerset of VM categories with disjoint must-be-string and
+// must-be-non-NaN-number refinements. Mixed joins drop either refinement.
 // Empty is analysis bottom, never JS undefined or a language-value proof.
 class ValueKinds {
  public:
   constexpr ValueKinds() = default;
   static constexpr ValueKinds Language() { return ValueKinds{kLanguage}; }
-  static constexpr ValueKinds String() { return ValueKinds{kLanguage, true}; }
+  static constexpr ValueKinds String() {
+    return ValueKinds{kLanguage, Refinement::kString};
+  }
+  static constexpr ValueKinds NonNaNNumber() {
+    return ValueKinds{kLanguage, Refinement::kNonNaNNumber};
+  }
   static constexpr ValueKinds Hole() { return ValueKinds{kHole}; }
   static constexpr ValueKinds Environment() { return ValueKinds{kEnvironment}; }
   static constexpr ValueKinds OtherInternal() {
@@ -28,12 +33,16 @@ class ValueKinds {
     if (IsEmpty()) return other;
     if (other.IsEmpty()) return *this;
     return ValueKinds{static_cast<std::uint8_t>(bits_ | other.bits_),
-                      string_only_ && other.string_only_};
+                      refinement_ == other.refinement_ ? refinement_
+                                                       : Refinement::kNone};
   }
   [[nodiscard]] constexpr bool IsEmpty() const { return bits_ == 0; }
   [[nodiscard]] constexpr bool IsLanguage() const { return bits_ == kLanguage; }
   [[nodiscard]] constexpr bool IsString() const {
-    return IsLanguage() && string_only_;
+    return IsLanguage() && refinement_ == Refinement::kString;
+  }
+  [[nodiscard]] constexpr bool IsNonNaNNumber() const {
+    return IsLanguage() && refinement_ == Refinement::kNonNaNNumber;
   }
   [[nodiscard]] constexpr bool Contains(VmValueKind kind) const {
     switch (kind) {
@@ -51,14 +60,16 @@ class ValueKinds {
   constexpr bool operator==(const ValueKinds&) const = default;
 
  private:
+  enum class Refinement : std::uint8_t { kNone, kString, kNonNaNNumber };
   static constexpr std::uint8_t kLanguage = 1 << 0;
   static constexpr std::uint8_t kHole = 1 << 1;
   static constexpr std::uint8_t kEnvironment = 1 << 2;
   static constexpr std::uint8_t kOtherInternal = 1 << 3;
-  explicit constexpr ValueKinds(std::uint8_t bits, bool string_only = false)
-      : bits_(bits), string_only_(string_only) {}
+  explicit constexpr ValueKinds(
+      std::uint8_t bits, Refinement refinement = Refinement::kNone)
+      : bits_(bits), refinement_(refinement) {}
   std::uint8_t bits_ = 0;
-  bool string_only_ = false;
+  Refinement refinement_ = Refinement::kNone;
 };
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_VALUE_KINDS_H_

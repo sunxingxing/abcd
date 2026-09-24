@@ -5,7 +5,13 @@
 #include "abcd/analysis/value_kinds.h"
 
 namespace abcd::analysis::detail {
-enum class ValueRuleKind { kFixed, kJoin, kLanguageOperation, kStringAdd };
+enum class ValueRuleKind {
+  kFixed,
+  kJoin,
+  kLanguageOperation,
+  kStringAdd,
+  kNonNaNNegate
+};
 struct ValueRule {
   ValueRuleKind kind = ValueRuleKind::kFixed;
   ValueKinds seed;
