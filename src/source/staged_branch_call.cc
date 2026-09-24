@@ -1,13 +1,16 @@
 #include "staged_branch_call.h"
 
+#include <algorithm>
 #include <limits>
 #include <new>
 #include <stdexcept>
 #include <utility>
 
 #include "abcd/abc/control_transfer.h"
+#include "branch_staged_calls.h"
 #include "branch_value_proof.h"
 #include "capture_stream.h"
+#include "fresh_object_fields.h"
 #include "linear_instruction.h"
 #include "ordered_body.h"
 
@@ -119,6 +122,9 @@ AcyclicResult WritePass(const abc::MethodBody& body,
                         const MethodConstants* constants,
                         const BranchSourceFacts& outer,
                         const BranchSourceFacts& inner,
+                        std::span<const analysis::StagedNamedInvocation>
+                            prefix_calls,
+                        std::span<const FreshFieldSite> prefix_fields,
                         AcyclicBudget inner_budget) {
   std::size_t written = 0;
   const auto add = [&](BodyEmitResult result) -> std::optional<BodyEmitFailure> {
@@ -130,7 +136,8 @@ AcyclicResult WritePass(const abc::MethodBody& body,
   const auto& sites = body.instructions;
   if (const auto error = add(WriteBranchSegment(
           std::span(sites).first(call.property), 0, false, false, names,
-          output, {budget.output.bytes - written}, constants, outer)))
+          output, {budget.output.bytes - written}, constants, outer,
+          prefix_calls, prefix_fields)))
     return *error;
   if (const auto error = add(WriteStagedCallHead(
           call, sites[call.property].offset, names, output,
@@ -148,7 +155,8 @@ AcyclicResult WritePass(const abc::MethodBody& body,
   if (const auto error = add(WriteBranchSegment(
           std::span(sites).subspan(call.call + 1), call.call + 1,
           true, true, names, output,
-          {budget.output.bytes - written}, constants, outer)))
+          {budget.output.bytes - written}, constants, outer,
+          prefix_calls)))
     return *error;
   return written;
 }
@@ -159,6 +167,60 @@ AcyclicResult WriteStagedBranchCall(
     ScalarNames names, std::ostream& output, LocalLexicalBudget budget,
     const MethodConstants* constants, const BranchSourceFacts& outer) {
   if (const auto failure = ValidateRegion(body, call)) return *failure;
+  BranchStagedCalls prefix;
+  {
+    const auto built = analysis::BuildNormalFlow(body, {budget.bytes});
+    if (const auto* error = std::get_if<analysis::FlowFailure>(&built))
+      return Fail(error->kind == analysis::FlowError::kResourceLimit
+                      ? BodyEmitError::kResourceLimit
+                      : BodyEmitError::kUnsupportedInstruction);
+    const auto& graph = std::get<analysis::NormalFlow>(built);
+    const auto graph_bytes =
+        graph.blocks.capacity() * sizeof(analysis::FlowBlock);
+    if (graph_bytes > budget.bytes) return Fail(BodyEmitError::kResourceLimit);
+    auto matched = BuildBranchStagedCalls(
+        body, graph, names.registers.size(), budget.bytes - graph_bytes,
+        budget.work / 2);
+    if (const auto* error = std::get_if<BodyEmitFailure>(&matched))
+      return *error;
+    prefix = std::get<BranchStagedCalls>(std::move(matched));
+  }
+  std::size_t retained = 0;
+  for (const auto& nested : prefix.calls) {
+    if (nested.call < call.property || nested.property > call.call) {
+      prefix.calls[retained++] = nested;
+    } else if (nested.property <= call.property ||
+               nested.call >= call.call) {
+      return Fail(BodyEmitError::kUnsupportedInstruction,
+                  body.instructions[nested.property].offset);
+    }
+  }
+  prefix.calls.resize(retained);
+  if (prefix.calls.capacity() >
+      budget.bytes / sizeof(analysis::StagedNamedInvocation))
+    return Fail(BodyEmitError::kResourceLimit);
+  budget.bytes -= prefix.calls.capacity() *
+                  sizeof(analysis::StagedNamedInvocation);
+  budget.work -= budget.work / 2;
+  auto planned_fields = BuildFreshFieldPlan(
+      std::span(body.instructions).first(call.property),
+      names.registers.size(), budget.bytes);
+  if (const auto* error = std::get_if<BodyEmitFailure>(&planned_fields))
+    return *error;
+  const auto& fields = std::get<FreshFieldPlan>(planned_fields);
+  if (fields.AllocatedBytes() > budget.bytes)
+    return Fail(BodyEmitError::kResourceLimit);
+  budget.bytes -= fields.AllocatedBytes();
+  if (fields.sites.size() > 1) {
+    const auto collision = [](std::string_view name) {
+      return name.starts_with(kFieldTempPrefix);
+    };
+    if (collision(names.accumulator) ||
+        std::any_of(names.registers.begin(), names.registers.end(),
+                    collision))
+      return BodyEmitFailure{BodyEmitError::kExpression, {}, {},
+                             EmitError::kInvalidBinding};
+  }
   if (outer.AllocatedBytes() > budget.bytes)
     return Fail(BodyEmitError::kResourceLimit);
   budget.bytes -= outer.AllocatedBytes();
@@ -189,9 +251,10 @@ AcyclicResult WriteStagedBranchCall(
   std::ostream discard(&buffer);
   const auto checked = WritePass(body, argument, call, names, discard,
                                  budget, constants, outer, inner,
+                                 prefix.calls, fields.sites,
                                  inner_budget);
   if (!std::holds_alternative<std::size_t>(checked)) return checked;
   return WritePass(body, argument, call, names, output, budget, constants,
-                   outer, inner, inner_budget);
+                   outer, inner, prefix.calls, fields.sites, inner_budget);
 }
 }  // namespace abcd::source

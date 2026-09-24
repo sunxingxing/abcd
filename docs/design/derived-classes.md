@@ -9,11 +9,12 @@ needs a separate profile proof.
 
 Dynamic 12.0.2.0 now enters class-heritage admission when the record
 interpreter has captured an import or global parent snapshot at the DEFINE
-site. The paired MultiCommunity `ViewPU` pages pass this profile gate, then
-refuse the constructor proof: their constructors contain default-argument
-branches, a range super call, and subsequent lifecycle effects. The current
-pure forwarding and exact spread-field templates cannot represent that body;
-no page source is published on this basis.
+site. The paired MultiCommunity `ViewPU` pages pass this profile gate. Their
+constructors contain default-argument branches, a range super call, and
+subsequent lifecycle effects: the original pure forwarding and exact
+spread-field templates could not represent them. A later single-range-super
+SSA proof admits that constructor shape, but unsupported members still prevent
+whole-record source publication.
 
 `ProveForwardingDerivedConstructor` accepts two straight-line templates: private
 copies of ABI inputs, one super-forward-all or positional `SUPERCALLTHISRANGE`

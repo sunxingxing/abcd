@@ -198,6 +198,7 @@ class ClassWriter {
               const GlobalScope* enclosing_scope,
               const StaticFields* static_fields,
               std::span<const ClassAccessor> accessors,
+              std::span<const ClassAttachedMethod> attached_methods,
               std::optional<ClassParent> parent,
               std::ostream& output,
               LocalLexicalBudget budget, abc::StringBudget strings)
@@ -211,6 +212,7 @@ class ClassWriter {
         enclosing_scope_(enclosing_scope),
         static_fields_(static_fields),
         accessors_(accessors),
+        attached_methods_(attached_methods),
         parent_(parent),
         output_(output),
         budget_(budget),
@@ -219,7 +221,8 @@ class ClassWriter {
   std::size_t Write(const analysis::ClassCreation& creation,
                     const abc::MethodTarget& target,
                     const abc::ClassBuffer& members, std::string_view name) {
-    const bool has_members = !members.properties.empty();
+    const bool has_members = !members.properties.empty() ||
+                             !attached_methods_.empty();
     if (has_members) Text("(() => {\nconst ClassValue = ");
     Text("(class ");
     Text(name);
@@ -242,6 +245,11 @@ class ClassWriter {
     for (const auto& accessor : accessors_) {
       Text("\n");
       Accessor(accessor, name);
+    }
+    for (std::size_t i = 0; i < attached_methods_.size(); ++i) {
+      Text("\n");
+      Attached(attached_methods_[i],
+               SelfName(members.properties.size() + i, name), name);
     }
     if (static_fields_)
       for (const auto& field : static_fields_->fields) {
@@ -269,6 +277,18 @@ class ClassWriter {
         const auto key = ReadClassKey(file_, header_, property, strings_);
         Account(TakeClassValue<std::size_t>(
             WriteStringLiteral(key, output_, budget_.output)));
+        Text("];\n");
+      }
+      for (std::size_t i = 0; i < attached_methods_.size(); ++i) {
+        const auto& method = attached_methods_[i];
+        Text("const ");
+        Text(SelfName(members.properties.size() + i, name));
+        Text(" = ClassValue");
+        if (method.placement == abc::ClassPlacement::kPrototype)
+          Text(".prototype");
+        Text("[");
+        Account(TakeClassValue<std::size_t>(WriteStringLiteral(
+            method.key, output_, budget_.output)));
         Text("];\n");
       }
       Text("return ClassValue;\n})()");
@@ -507,6 +527,26 @@ class ClassWriter {
                                    &constants, &lookup_);
          });
   }
+  void Attached(const ClassAttachedMethod& attached, std::string_view self,
+                std::string_view class_name) {
+    const auto& target = index_.methods[attached.method.value];
+    const auto attributes = TakeClassValue<abc::MethodAttributes>(
+        abc::DecodeMethodAttributes(target.access_flags, header_.profile));
+    auto budget = budget_;
+    AdmitClassBytes(attached.key.capacity(), sizeof(char16_t), budget.bytes);
+    Body(target, budget, class_name,
+         [&](const abc::FrameLayout& frame, const abc::MethodBody& body,
+             LocalLexicalBudget remaining, const MethodConstants& constants) {
+           const ClassMethod method{{target.offset,
+                                     abc::ClassMethodKind::kOrdinary,
+                                     attached.length},
+                                    attributes, frame, attached.placement,
+                                    attached.key, self,
+                                    EffectiveMethodKind::kOrdinary};
+           return WriteClassMethod(method, body, output_, remaining,
+                                   &constants, &lookup_);
+         });
+  }
   const corpus::AbcFile& file_;
   const abc::Header& header_;
   const abc::MetadataIndex& index_;
@@ -517,6 +557,7 @@ class ClassWriter {
   const GlobalScope* enclosing_scope_;
   const StaticFields* static_fields_;
   std::span<const ClassAccessor> accessors_;
+  std::span<const ClassAttachedMethod> attached_methods_;
   std::optional<ClassParent> parent_;
   std::ostream& output_;
   LocalLexicalBudget budget_;
@@ -534,7 +575,8 @@ CreatedClassResult WriteCreatedClass(
     const GlobalScope* enclosing_scope,
     const StaticFields* static_fields,
     std::span<const ClassAccessor> accessors,
-    std::optional<ClassParent> parent) {
+    std::optional<ClassParent> parent,
+    std::span<const ClassAttachedMethod> attached_methods) {
   try {
     // Admitted dynamic profiles use the pinned v7 class interpreter's
     // CreateClassWithBuffer/RuntimeSetClassInheritanceRelationship path.
@@ -561,7 +603,7 @@ CreatedClassResult WriteCreatedClass(
             field.name == u"prototype")
           return CreatedClassError::kStaticFieldValue;
     if (static_fields && !static_fields->fields.empty() &&
-        !members.properties.empty())
+        (!members.properties.empty() || !attached_methods.empty()))
       return CreatedClassError::kStaticFieldOrder;
     if (!accessors.empty() && static_fields &&
         !static_fields->fields.empty())
@@ -573,21 +615,25 @@ CreatedClassResult WriteCreatedClass(
     const auto name = RuntimeName(index.methods[target.position.value]);
     if (!name) return CreatedClassError::kName;
     abc::EntityOffset caller_owner{};
-    if (module || !accessors.empty()) {
+    if (module || !accessors.empty() || !attached_methods.empty()) {
       const auto caller_position = lookup.Find(caller);
       if (!caller_position) return abc::MethodTargetError::kCallerMissing;
       caller_owner = index.methods[caller_position->value].owner_offset;
     }
     CheckAccessors(file, header, index, roles, caller_owner, members,
                    accessors, budget.bytes, strings);
+    CheckAttachedMethods(header, index, lookup, members, accessors,
+                         attached_methods, roles, caller_owner, budget.bytes);
     CaptureDiscard discard;
     std::ostream dry(&discard);
     ClassWriter(file, header, index, lookup, roles, module, caller_owner,
-                enclosing_scope, static_fields, accessors, parent, dry,
+                enclosing_scope, static_fields, accessors, attached_methods,
+                parent, dry,
                 budget, strings)
         .Write(creation, target, members, *name);
     return ClassWriter(file, header, index, lookup, roles, module, caller_owner,
-                       enclosing_scope, static_fields, accessors, parent,
+                       enclosing_scope, static_fields, accessors,
+                       attached_methods, parent,
                        output, budget, strings)
         .Write(creation, target, members, *name);
   } catch (const ClassFailure& failure) {

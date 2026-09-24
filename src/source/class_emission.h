@@ -47,5 +47,13 @@ void CheckClassMembers(const corpus::AbcFile& file, const abc::Header& header,
                        const abc::ClassBuffer& members,
                        const analysis::MethodRoleIndex* roles,
                        std::size_t bytes, abc::StringBudget strings);
+void CheckAttachedMethods(const abc::Header& header,
+                          const abc::MetadataIndex& index,
+                          const abc::MethodLookup& lookup,
+                          const abc::ClassBuffer& members,
+                          std::span<const ClassAccessor> accessors,
+                          std::span<const ClassAttachedMethod> attached,
+                          const analysis::MethodRoleIndex* roles,
+                          abc::EntityOffset owner, std::size_t& bytes);
 }  // namespace abcd::source
 #endif

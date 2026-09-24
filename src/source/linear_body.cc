@@ -49,13 +49,14 @@ class BodyWriter {
              ObjectBufferBudget object_budget,
              const BranchSourceFacts* facts = nullptr,
              std::span<const StagedNamedInvocation> staged_calls = {},
-             StructuredExit exit = StructuredExit::kReturn)
+             StructuredExit exit = StructuredExit::kReturn,
+             std::span<const FreshFieldSite> fields = {})
       : names_(names),
         output_(output),
         remaining_(budget.bytes),
         constants_(constants),
         object_budget_(object_budget), facts_(facts),
-        staged_calls_(staged_calls), exit_(exit) {}
+        staged_calls_(staged_calls), exit_(exit), fields_(fields) {}
 
   BodyEmitResult Write(const abc::MethodBody& body) {
     if (!body.tries.empty() || !body.handlers.empty())
@@ -266,6 +267,11 @@ class BodyWriter {
         });
     auto deferred_head = staged;
     const StagedNamedInvocation* open_deferred = nullptr;
+    auto field = std::lower_bound(
+        fields_.begin(), fields_.end(), first_instruction,
+        [](const FreshFieldSite& site, std::size_t position) {
+          return site.instruction < position;
+        });
     try {
       for (std::size_t i = 0; i < instructions.size(); ++i) {
         const auto& instruction = instructions[i];
@@ -309,6 +315,28 @@ class BodyWriter {
           if (!immediate) open_deferred = nullptr;
           accumulator_defined = true;
           ++staged;
+          continue;
+        }
+        if (field != fields_.end() && position == field->instruction) {
+          if (!accumulator_defined)
+            return Fail(BodyEmitError::kAccumulatorHole);
+          const auto next = field + 1;
+          if (next == fields_.end() || next->first != field->first) {
+            const auto result = FieldBatch(
+                fields_.subspan(field->first,
+                                field - fields_.begin() - field->first + 1),
+                field->first, offset_);
+            if (const auto* error = std::get_if<BodyEmitFailure>(&result))
+              return *error;
+          } else {
+            Text("const ");
+            FieldTemp(static_cast<std::size_t>(field - fields_.begin()));
+            Text(" = ");
+            Expression(ScalarValue{Accumulator{}});
+            Text(";\n");
+            if (error_) return *error_;
+          }
+          ++field;
           continue;
         }
         if (facts_ && position < facts_->language_loads.size() &&
@@ -889,6 +917,7 @@ class BodyWriter {
   const BranchSourceFacts* facts_;
   std::span<const StagedNamedInvocation> staged_calls_;
   StructuredExit exit_;
+  std::span<const FreshFieldSite> fields_;
   std::optional<std::size_t> synthetic_terminal_;
 };
 }  // namespace
@@ -987,18 +1016,19 @@ BodyEmitResult WriteOrderedBody(const abc::MethodBody& body,
                                 const BranchSourceFacts* facts,
                                 std::span<const StagedNamedInvocation>
                                     staged_calls,
-                                StructuredExit exit) {
+                                StructuredExit exit,
+                                std::span<const FreshFieldSite> fields) {
   if (const auto failure = ValidateGlobalScalarNames(body, names, constants))
     return *failure;
   CaptureDiscard buffer;
   std::ostream discard(&buffer);
   const auto checked =
       BodyWriter(names, discard, budget, constants, object_budget, facts,
-                 staged_calls, exit)
+                 staged_calls, exit, fields)
           .Ordered(body, graph, flow);
   if (std::holds_alternative<BodyEmitFailure>(checked)) return checked;
   return BodyWriter(names, output, budget, constants, object_budget, facts,
-                    staged_calls, exit)
+                    staged_calls, exit, fields)
       .Ordered(body, graph, flow);
 }
 
@@ -1006,8 +1036,11 @@ BodyEmitResult WriteBranchSegment(
     std::span<const abc::BodyInstruction> instructions, std::size_t first,
     bool initialized, bool terminal, ScalarNames names,
     std::ostream& output, EmitBudget budget,
-    const MethodConstants* constants, const BranchSourceFacts& facts) {
-  return BodyWriter(names, output, budget, constants, {}, &facts)
+    const MethodConstants* constants, const BranchSourceFacts& facts,
+    std::span<const StagedNamedInvocation> staged_calls,
+    std::span<const FreshFieldSite> fields) {
+  return BodyWriter(names, output, budget, constants, {}, &facts,
+                    staged_calls, StructuredExit::kReturn, fields)
       .Segment(instructions, first, initialized, terminal);
 }
 }  // namespace abcd::source

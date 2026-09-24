@@ -64,6 +64,13 @@ bool IsElement(std::string_view name) {
   }
   return value <= kMaxIndex;
 }
+bool SafeMethodKey(std::string_view name, abc::ClassPlacement placement) {
+  return !IsElement(name) &&
+         (placement == abc::ClassPlacement::kPrototype
+              ? name != "constructor"
+              : name != "name" && name != "length" &&
+                    name != "prototype");
+}
 }  // namespace
 void CheckClassMembers(const corpus::AbcFile& file, const abc::Header& header,
                        const abc::MetadataIndex& index,
@@ -85,11 +92,7 @@ void CheckClassMembers(const corpus::AbcFile& file, const abc::Header& header,
       throw ClassFailure{CreatedClassError::kName};
     // v7.0 has distinct reserved-property/element layout paths. Until their
     // descriptor semantics are proven, do not treat them as ordinary methods.
-    if (IsElement(target.name) ||
-        (property.placement == abc::ClassPlacement::kPrototype
-             ? target.name == "constructor"
-             : target.name == "name" || target.name == "length" ||
-                   target.name == "prototype"))
+    if (!SafeMethodKey(target.name, property.placement))
       throw ClassFailure{CreatedClassError::kMembers};
     keys[i] = {property.placement, target.name};
   }
@@ -98,5 +101,71 @@ void CheckClassMembers(const corpus::AbcFile& file, const abc::Header& header,
   std::sort(keys.begin(), keys.end());
   if (std::adjacent_find(keys.begin(), keys.end()) != keys.end())
     throw ClassFailure{CreatedClassError::kMembers};
+}
+void CheckAttachedMethods(const abc::Header& header,
+                          const abc::MetadataIndex& index,
+                          const abc::MethodLookup& lookup,
+                          const abc::ClassBuffer& members,
+                          std::span<const ClassAccessor> accessors,
+                          std::span<const ClassAttachedMethod> attached,
+                          const analysis::MethodRoleIndex* roles,
+                          abc::EntityOffset owner, std::size_t& bytes) {
+  if (attached.empty()) return;
+  struct Key {
+    abc::ClassPlacement placement;
+    std::string_view name;
+    bool attached;
+  };
+  if (members.properties.size() > SIZE_MAX - accessors.size() ||
+      members.properties.size() + accessors.size() >
+          SIZE_MAX - attached.size())
+    throw ClassFailure{CreatedClassError::kResourceLimit};
+  const auto count = members.properties.size() + accessors.size() +
+                     attached.size();
+  AdmitClassBytes(count, sizeof(Key), bytes);
+  std::vector<Key> keys;
+  keys.reserve(count);
+  AdmitClassBytes(keys.capacity() - count, sizeof(Key), bytes);
+  for (const auto& property : members.properties) {
+    const auto target = ResolveClassMember(
+        header, index, lookup, property, roles);
+    keys.push_back({property.placement, target.name, false});
+  }
+  for (const auto& accessor : accessors) {
+    const auto name = RuntimeName(index.methods[accessor.method.value]);
+    if (!name) throw ClassFailure{CreatedClassError::kAccessorTarget};
+    keys.push_back({accessor.placement, *name, false});
+  }
+  for (const auto& method : attached) {
+    if (!roles || method.method.value >= index.methods.size() ||
+        roles->At(method.method) != analysis::MethodRole::kUnseen)
+      throw ClassFailure{CreatedClassError::kMembers};
+    const auto& target = index.methods[method.method.value];
+    if (target.owner_offset != owner || !target.code)
+      throw ClassFailure{CreatedClassError::kMembers};
+    const auto attributes = TakeClassValue<abc::MethodAttributes>(
+        abc::DecodeMethodAttributes(target.access_flags, header.profile));
+    if (attributes.sendable ||
+        (attributes.kind != abc::FunctionKind::kNone &&
+         attributes.kind != abc::FunctionKind::kAsync) ||
+        (attributes.kind == abc::FunctionKind::kAsync &&
+         header.profile == abc::ProfileId::kDynamic1202))
+      throw ClassFailure{CreatedClassError::kMembers};
+    const auto name = RuntimeName(target);
+    if (!name || !SafeMethodKey(*name, method.placement) ||
+        method.key.size() != name->size() ||
+        !std::equal(method.key.begin(), method.key.end(), name->begin()))
+      throw ClassFailure{CreatedClassError::kName};
+    keys.push_back({method.placement, *name, true});
+  }
+  std::sort(keys.begin(), keys.end(), [](const Key& left, const Key& right) {
+    return std::pair{left.placement, left.name} <
+           std::pair{right.placement, right.name};
+  });
+  for (std::size_t i = 1; i < keys.size(); ++i)
+    if (keys[i].placement == keys[i - 1].placement &&
+        keys[i].name == keys[i - 1].name &&
+        (keys[i].attached || keys[i - 1].attached))
+      throw ClassFailure{CreatedClassError::kMembers};
 }
 }  // namespace abcd::source

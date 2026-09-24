@@ -164,5 +164,28 @@ non-NONE initial kind, sendable target, malformed key, class-buffer key
 collision, mixed static-field definitions, or class escape rejects the complete
 record source. Disjoint ordinary buffer members retain their captured identity
 and can coexist with later accessors; a synthetic ABC and Node oracle cover
-that combination and a collision refusal. Real UI entries are still blocked
-by earlier unsupported global/control-flow operations.
+that combination and a collision refusal. That stage did not yet publish
+the real UI entries.
+
+## Attached Methods And Nested Fields
+
+The pinned v7 `RuntimeStOwnByName` defines a non-enumerable, writable,
+configurable own data property on a class constructor or class prototype.
+The record writer now folds only an unescaped, same-home-object
+`DEFINEMETHOD` followed by `STOWNBYNAME` into a native class method. It checks
+the indexed owner, unseen method role, name/key equality, placement and
+reserved keys, and rejects collisions with buffer methods or accessors. A
+private post-class binding captures each attached method's identity. Derived
+class emission may be delayed only across typed pure class-assembly opcodes;
+other operations force emission before they execute. This keeps later
+accessors and attached methods in source order without moving observable
+effects past class construction.
+
+Fresh object field recovery tracks multiple private receivers by register.
+An accumulator alias must be overwritten before a receiver is eligible, and
+any register observation, overwrite or unknown effect revokes freshness.
+Branch bodies reset this proof at basic-block boundaries, so fields in
+different arms are not coalesced. Ordered body emission uses the same proven
+field batches as straight-line lexical bodies. The retained register table is
+allocated once per method; per-block resets are constant time. Unsupported
+closures still reject the whole record rather than publishing partial source.

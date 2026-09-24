@@ -2,11 +2,13 @@
 #define ABCD_SOURCE_FRESH_OBJECT_FIELDS_H_
 
 #include <cstddef>
+#include <span>
 #include <string_view>
 #include <variant>
 #include <vector>
 
 #include "abcd/abc/pool_reference.h"
+#include "abcd/analysis/normal_flow.h"
 #include "abcd/source/linear_body.h"
 
 namespace abcd::source {
@@ -25,12 +27,20 @@ struct FreshFieldPlan {
   }
 };
 
-// Straight-line only. A buffered object must be stored immediately into one
-// register and acc overwritten before any observation. Every later receiver
-// read/write ends the chain. Source emission validates the buffer is data-only.
-// O(I) time and O(P) space for I instructions and P property definitions.
+// A fresh object must be stored immediately and acc overwritten before use.
+// Multiple private receivers may remain live; reads, overwrites and unknown
+// effects revoke freshness. Source emission validates data-only buffers.
+// O(I + expanded register reads) time, O(R + P) scratch for R registers and
+// P property definitions. The branch form resets facts at every basic block.
 [[nodiscard]] std::variant<FreshFieldPlan, BodyEmitFailure>
 BuildFreshFieldPlan(const abc::MethodBody& body, std::size_t frame_size,
                     std::size_t budget_bytes);
+[[nodiscard]] std::variant<FreshFieldPlan, BodyEmitFailure>
+BuildFreshFieldPlan(std::span<const abc::BodyInstruction> instructions,
+                    std::size_t frame_size, std::size_t budget_bytes);
+[[nodiscard]] std::variant<FreshFieldPlan, BodyEmitFailure>
+BuildBranchFreshFieldPlan(const abc::MethodBody& body,
+                          const analysis::NormalFlow& graph,
+                          std::size_t frame_size, std::size_t budget_bytes);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_FRESH_OBJECT_FIELDS_H_

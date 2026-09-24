@@ -4,6 +4,7 @@
 
 #include "branch_staged_calls.h"
 #include "branch_source_facts.h"
+#include "fresh_object_fields.h"
 #include "module_binding_name.h"
 #include "ordered_body.h"
 
@@ -63,11 +64,29 @@ AcyclicResult WriteBody(const abc::MethodBody& body, ScalarNames names,
   const auto& calls = std::get<BranchStagedCalls>(staged);
   if (calls.AllocatedBytes() > analysis_budget - flow.allocated_bytes)
     return AcyclicError::kResourceLimit;
+  const auto field_budget = analysis_budget - flow.allocated_bytes -
+                            calls.AllocatedBytes();
+  const auto planned_fields = BuildBranchFreshFieldPlan(
+      body, graph, names.registers.size(), field_budget);
+  if (const auto* error = std::get_if<BodyEmitFailure>(&planned_fields))
+    return *error;
+  const auto& fields = std::get<FreshFieldPlan>(planned_fields);
+  if (fields.AllocatedBytes() > field_budget)
+    return AcyclicError::kResourceLimit;
+  if (fields.sites.size() > 1) {
+    const auto collision = [](std::string_view name) {
+      return name.starts_with(kFieldTempPrefix);
+    };
+    if (collision(names.accumulator) ||
+        std::any_of(names.registers.begin(), names.registers.end(),
+                    collision))
+      return BodyEmitFailure{BodyEmitError::kExpression, {}, {},
+                             EmitError::kInvalidBinding};
+  }
   const auto result = WriteOrderedBody(body, graph, flow, names, output,
                                        budget.output, constants,
-                                       {analysis_budget - flow.allocated_bytes -
-                                        calls.AllocatedBytes()},
-                                       facts, calls.calls, exit);
+                                       {field_budget - fields.AllocatedBytes()},
+                                       facts, calls.calls, exit, fields.sites);
   if (const auto* error = std::get_if<BodyEmitFailure>(&result)) return *error;
   return std::get<std::size_t>(result);
 }

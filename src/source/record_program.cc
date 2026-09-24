@@ -72,6 +72,7 @@ struct ClassState {
   std::optional<ClassParent> parent;
   std::optional<StaticFields> fields;
   std::vector<ClassAccessor> accessors;
+  std::vector<ClassAttachedMethod> attached_methods;
   bool emitted = false;
 };
 struct CreatedMethodState {
@@ -290,6 +291,8 @@ class ProgramWriter {
         case Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8:
         case Opcode::kDEFINEMETHOD_IMM16_ID16_IMM8:
         case Opcode::kDEFINEGETTERSETTERBYVALUE_V8_V8_V8_V8:
+        case Opcode::kSTOWNBYNAME_IMM8_ID16_V8:
+        case Opcode::kSTOWNBYNAME_IMM16_ID16_V8:
         case Opcode::kNOP:
           break;
         default:
@@ -398,6 +401,10 @@ class ProgramWriter {
           break;
         case Opcode::kDEFINEGETTERSETTERBYVALUE_V8_V8_V8_V8:
           DefineAccessor(instruction);
+          break;
+        case Opcode::kSTOWNBYNAME_IMM8_ID16_V8:
+        case Opcode::kSTOWNBYNAME_IMM16_ID16_V8:
+          AttachMethod(instruction);
           break;
         case Opcode::kLDOBJBYNAME_IMM8_ID16:
         case Opcode::kLDOBJBYNAME_IMM16_ID16:
@@ -978,7 +985,8 @@ class ProgramWriter {
                              : analysis::HeritageKind::kAbsent}, output_,
         child, budget_.strings, &roles_, &module_, &scope,
         classes_[id].fields ? &*classes_[id].fields : nullptr,
-        classes_[id].accessors, classes_[id].parent);
+        classes_[id].accessors, classes_[id].parent,
+        classes_[id].attached_methods);
     if (const auto* size = std::get_if<std::size_t>(&result))
       Account(*size);
     else
@@ -1283,7 +1291,8 @@ class ProgramWriter {
         (!has_getter && !has_setter) ||
         object.ordinal >= classes_.size() ||
         escaped_[object.ordinal] || classes_[object.ordinal].emitted ||
-        classes_[object.ordinal].fields)
+        classes_[object.ordinal].fields ||
+        !classes_[object.ordinal].attached_methods.empty())
       throw Fail(Error::kAccessor, pc_);
     const auto method_id = has_getter ? getter.ordinal : setter.ordinal;
     if (method_id >= created_methods_.size())
@@ -1320,6 +1329,49 @@ class ProgramWriter {
                           method.length});
     method.consumed = true;
     accumulator_ = object;
+  }
+  void AttachMethod(const abc::BodyInstruction& instruction) {
+    // Pinned RuntimeStOwnByName defines non-enumerable own data properties on
+    // class constructors/prototypes, matching an ordinary class method.
+    // Only the unescaped DEFINE-method/home-object chain may be folded.
+    const auto lifted = analysis::LiftOwnWrite(
+        instruction.decoded, registers_.size());
+    const auto* write = std::get_if<analysis::OwnWrite>(&lifted);
+    if (!write || write->kind != analysis::OwnWriteKind::kStore ||
+        accumulator_.kind != Value::Kind::kCreatedMethod ||
+        accumulator_.ordinal >= created_methods_.size())
+      throw Fail(Error::kClass, pc_);
+    const auto object = registers_[write->object.value];
+    auto& method = created_methods_[accumulator_.ordinal];
+    const auto placement = object.kind == Value::Kind::kClass
+                               ? abc::ClassPlacement::kStatic
+                               : abc::ClassPlacement::kPrototype;
+    if ((object.kind != Value::Kind::kClass &&
+         object.kind != Value::Kind::kPrototype) ||
+        object.ordinal >= classes_.size() || method.consumed ||
+        method.class_id != object.ordinal || method.home != placement ||
+        escaped_[object.ordinal] || classes_[object.ordinal].emitted ||
+        classes_[object.ordinal].fields ||
+        roles_.At(method.method) != analysis::MethodRole::kUnseen)
+      throw Fail(Error::kClass, pc_);
+    const auto reference = abc::ResolvePoolReference(
+        file_, header_, index_, entry_.offset, write->name,
+        abc::PoolEntityKind::kString);
+    if (const auto* error = std::get_if<abc::MetadataError>(&reference))
+      throw Fail(Metadata(*error), pc_);
+    auto decoded = abc::ReadStringEntity(
+        file_, header_, std::get<abc::PoolReference>(reference).offset,
+        budget_.strings);
+    if (const auto* error = std::get_if<abc::MetadataError>(&decoded))
+      throw Fail(Metadata(*error), pc_);
+    auto name = std::get<std::u16string>(std::move(decoded));
+    if (name.capacity() > budget_.bytes / sizeof(char16_t))
+      throw Fail(Error::kResourceLimit, pc_);
+    budget_.bytes -= name.capacity() * sizeof(char16_t);
+    Append(classes_[object.ordinal].attached_methods,
+           ClassAttachedMethod{std::move(name), method.method, placement,
+                               method.length});
+    method.consumed = true;
   }
   void Prototype(const abc::BodyInstruction& instruction) {
     const auto read = analysis::LiftNamedRead(instruction.decoded);

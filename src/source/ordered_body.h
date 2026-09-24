@@ -5,6 +5,7 @@
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/source/acyclic_body.h"
 #include "abcd/source/linear_body.h"
+#include "fresh_object_fields.h"
 
 namespace abcd::source {
 struct BranchSourceFacts;
@@ -22,13 +23,16 @@ BodyEmitResult WriteOrderedBody(const abc::MethodBody& body,
                                 const BranchSourceFacts* facts = nullptr,
                                 std::span<const analysis::StagedNamedInvocation>
                                     staged_calls = {},
-                                StructuredExit exit = StructuredExit::kReturn);
+                                StructuredExit exit = StructuredExit::kReturn,
+                                std::span<const FreshFieldSite> fields = {});
 // A proof-owned straight-line prefix/suffix; the caller preflights the full
 // staged expression before publication. first indexes unchanged body facts.
 BodyEmitResult WriteBranchSegment(
     std::span<const abc::BodyInstruction> instructions, std::size_t first,
     bool initialized, bool terminal, ScalarNames names,
     std::ostream& output, EmitBudget budget,
-    const MethodConstants* constants, const BranchSourceFacts& facts);
+    const MethodConstants* constants, const BranchSourceFacts& facts,
+    std::span<const analysis::StagedNamedInvocation> staged_calls = {},
+    std::span<const FreshFieldSite> fields = {});
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_ORDERED_BODY_H_

@@ -18,6 +18,12 @@ struct ClassAccessor {
   abc::ClassMethodKind kind;
   std::uint16_t length = 0;
 };
+struct ClassAttachedMethod {
+  std::u16string key;
+  abc::MethodPosition method;
+  abc::ClassPlacement placement;
+  std::uint16_t length = 0;
+};
 // RuntimeSuperCallSpread re-reads Derived.[[Prototype]] on every invocation.
 // Creation-time brand is insufficient: callers must certify this invariant
 // for the entire lifetime of the emitted class, including external mutation.
@@ -70,7 +76,8 @@ using CreatedClassResult =
 // Nonempty buffers require a whole-file role index from the same immutable
 // context, ordinary methods, matching runtime names, and nonreserved unique
 // keys per placement. Unsupported members reject the entire class.
-// Parent/control flow and later field/member assignments remain caller work.
+// Parent/control flow and later field/member assignments remain caller work;
+// attached methods require caller proof of the exact DEFINE/own-write chain.
 // Other derived constructors and outer captures are not supported. Internal class
 // name supplies an immutable self binding without consulting mutable exports.
 // Retained target/buffer and scratch share budget.bytes; input indexes, strings
@@ -93,6 +100,7 @@ using CreatedClassResult =
     const GlobalScope* enclosing_scope = nullptr,
     const StaticFields* static_fields = nullptr,
     std::span<const ClassAccessor> accessors = {},
-    std::optional<ClassParent> parent = {});
+    std::optional<ClassParent> parent = {},
+    std::span<const ClassAttachedMethod> attached_methods = {});
 }  // namespace abcd::source
 #endif
