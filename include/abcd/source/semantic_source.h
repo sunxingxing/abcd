@@ -70,6 +70,10 @@ struct SourceLocalStore {
   analysis::LocalCellId cell;
   analysis::ScalarSlot value;
 };
+struct SourceModuleStore {
+  analysis::ModuleSlot slot;
+  analysis::ScalarSlot value;
+};
 struct SourceOwnStore {
   analysis::OwnWrite write;
   analysis::BufferedObjectCreation origin;
@@ -102,7 +106,7 @@ struct SourceStagedCall {
 };
 using SourceOperation =
     std::variant<analysis::NoOperation, SourceAssignment, SourceMemberStore, SourceOwnStore,
-                 SourceLocalStore,
+                 SourceLocalStore, SourceModuleStore,
                  SourceConditionalBreak, SourceBreak, SourceConditionalContinue,
                  SourceContinue, SourceReturn, SourceThrow,
                  SourceStagedCall>;

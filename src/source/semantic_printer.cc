@@ -11,6 +11,7 @@
 #include "abcd/abc/pool_reference.h"
 #include "abcd/abc/string_entity.h"
 #include "abcd/source/string_literal.h"
+#include "abcd/source/module_exports.h"
 #include "element_name.h"
 #include "leaf_creation.h"
 #include "lexical_name.h"
@@ -494,6 +495,21 @@ class SourcePrinter {
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceLocalStore>) {
             Local(operation.cell);
+            Text(" = ");
+            Slot(operation.value);
+            Text(";\n");
+          } else if constexpr (std::is_same_v<T, SourceModuleStore>) {
+            // A callable can update an owner-proven initialized live binding.
+            // Never turn an uninitialized VM slot into a hoisted JS let here:
+            // first initialization needs a top-level declaration-site proof.
+            const auto& scope = constants_.global_scope;
+            if (!constants_.module || !scope || !scope->module_exports ||
+                operation.slot.value >= scope->module_slots ||
+                operation.slot.value >= constants_.module->local_exports.size() ||
+                !scope->module_exports->IsInitialized(operation.slot))
+              throw SourceFailure{SourceError::kConstant, current_pc_};
+            Text("$local");
+            Number(operation.slot.value);
             Text(" = ");
             Slot(operation.value);
             Text(";\n");

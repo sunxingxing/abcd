@@ -319,6 +319,12 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
                      std::get_if<analysis::BufferedArrayCreation>(&instruction.operation)) {
         operation = SourceAssignment{
             analysis::ScalarSlot{analysis::Accumulator{}}, *array};
+      } else if (const auto* store =
+                     std::get_if<analysis::ModuleStore>(&instruction.operation)) {
+        // Input verification proves the stored accumulator is Language. Slot
+        // ownership and initialization belong to the enclosing record, and
+        // must still be checked by the printer before publishing source.
+        operation = SourceModuleStore{store->slot, analysis::Accumulator{}};
       } else if (const auto* module =
                      std::get_if<analysis::ModuleLoad>(&instruction.operation)) {
         if (module_fact >= proof.module_reads.size() ||
