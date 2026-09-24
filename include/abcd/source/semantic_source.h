@@ -35,12 +35,15 @@ struct ModuleExpression {
 struct GlobalExpression {
   abc::PoolIndex name;
 };
+struct CapturedExpression {
+  analysis::CapturedSlot cell;
+};
 using SourceExpression =
     std::variant<analysis::ScalarExpression, MemberExpression,
                  StringExpression, CallExpression, MemberCallExpression,
                  ModuleExpression, analysis::EmptyObjectCreation,
                  analysis::BufferedObjectCreation, GlobalExpression,
-                 analysis::ConstructorCall>;
+                 analysis::ConstructorCall, CapturedExpression>;
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;
@@ -129,6 +132,17 @@ struct PrintedSource {
   std::string text;
   std::vector<GeneratedSpan> spans;
 };
+struct SourceCapture {
+  GeneratedPosition position;
+  analysis::CapturedSlot cell;
+};
+// Not executable source. Positions are template coordinates, prior to capture
+// insertion; never expose them as final generated-file positions.
+struct PrintedTemplate {
+  std::string text;
+  std::vector<GeneratedSpan> spans;
+  std::vector<SourceCapture> captures;
+};
 enum class SourceForm : std::uint8_t { kFunction, kClassConstructor };
 
 // The printer records each span as it emits its AST node, including zero-width
@@ -141,6 +155,12 @@ enum class SourceForm : std::uint8_t { kFunction, kClassConstructor };
 // Caller supplies distinct private register bindings in an already validated
 // strict callable. This emits only its body; spans are relative to that body.
 [[nodiscard]] std::variant<PrintedSource, SourceFailure> PrintSourceBody(
+    const SourceAst& ast, const analysis::SemanticMethod& method,
+    ScalarNames names, const MethodConstants& constants,
+    std::size_t output_bytes);
+// Captured expressions become typed insertions, not invented identifiers.
+// Only a parent capture-binding path may consume this incomplete artifact.
+[[nodiscard]] std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
     const SourceAst& ast, const analysis::SemanticMethod& method,
     ScalarNames names, const MethodConstants& constants,
     std::size_t output_bytes);

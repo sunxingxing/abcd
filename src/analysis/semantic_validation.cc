@@ -15,7 +15,8 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
                                          const SemanticMethod& method,
                                          std::uint64_t frame_size,
                                          std::uint32_t first_abi_register,
-                                         SemanticBudget budget) {
+                                         SemanticBudget budget,
+                                         CapturedValues captures) {
   try {
   if (first_abi_register > frame_size ||
       method.instructions.size() != body.instructions.size() ||
@@ -30,16 +31,46 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
                   body.instructions[i].offset);
   }
   auto remaining = budget.bytes - method.allocated_bytes;
-  constexpr auto kLoadProofBytes = sizeof(std::uint8_t) + sizeof(LanguageLoadFact);
+  auto environments = AnalyzeEnvironments(
+      body, method.flow, frame_size, {remaining});
+  auto* bound = std::get_if<EnvironmentFlow>(&environments);
+  if (!bound) {
+    const auto& failure = std::get<EnvironmentFlowFailure>(environments);
+    return Fail(failure.kind == EnvironmentFlowError::kResourceLimit
+                    ? SemanticProofError::kResourceLimit
+                    : SemanticProofError::kEnvironment,
+                failure.offset);
+  }
+  if (bound->allocated_bytes > remaining)
+    return Fail(SemanticProofError::kResourceLimit);
+  remaining -= bound->allocated_bytes;
+  constexpr auto kLoadProofBytes = sizeof(std::uint8_t) +
+      2 * sizeof(LanguageLoadFact) + sizeof(CapturedReadFact);
   if (method.instructions.size() > remaining / kLoadProofBytes)
     return Fail(SemanticProofError::kResourceLimit);
   std::vector<std::uint8_t> language_loads(method.instructions.size());
   std::vector<LanguageLoadFact> modules;
+  std::vector<LanguageLoadFact> loads;
+  std::vector<CapturedReadFact> captured_reads;
   modules.reserve(method.instructions.size());
+  loads.reserve(method.instructions.size());
+  captured_reads.reserve(method.instructions.size());
   const auto proof_bytes = language_loads.capacity() +
-                           modules.capacity() * sizeof(LanguageLoadFact);
+      (modules.capacity() + loads.capacity()) * sizeof(LanguageLoadFact) +
+      captured_reads.capacity() * sizeof(CapturedReadFact);
   if (proof_bytes > remaining) return Fail(SemanticProofError::kResourceLimit);
   remaining -= proof_bytes;
+  if (captures == CapturedValues::kLanguage) {
+    for (const auto& site : bound->bindings) {
+      const auto* depth = std::get_if<CapturedDepth>(&site.binding.environment);
+      if (!depth || !std::holds_alternative<LexicalLoad>(
+                        method.instructions[site.instruction].operation))
+        continue;
+      language_loads[site.instruction] = 1;
+      captured_reads.push_back({InstructionId{site.instruction},
+                                {*depth, site.binding.slot}});
+    }
+  }
   std::size_t block = 0;
   for (std::size_t i = 0; i + 1 < method.instructions.size(); ++i) {
     while (block + 1 < method.flow.blocks.size() &&
@@ -58,6 +89,9 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     language_loads[i] = 1;
     modules.push_back({InstructionId{static_cast<std::uint32_t>(i)}});
   }
+  for (std::size_t i = 0; i < language_loads.size(); ++i)
+    if (language_loads[i])
+      loads.push_back({InstructionId{static_cast<std::uint32_t>(i)}});
   auto accumulator = AnalyzeAcyclicAccumulator(
       body, method.flow, frame_size, {remaining}, language_loads);
   auto* accumulated = std::get_if<AccumulatorFlow>(&accumulator);
@@ -71,19 +105,6 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
   if (accumulated->allocated_bytes > remaining)
     return Fail(SemanticProofError::kResourceLimit);
   remaining -= accumulated->allocated_bytes;
-  auto environments = AnalyzeEnvironments(
-      body, method.flow, frame_size, {remaining});
-  auto* bound = std::get_if<EnvironmentFlow>(&environments);
-  if (!bound) {
-    const auto& failure = std::get<EnvironmentFlowFailure>(environments);
-    return Fail(failure.kind == EnvironmentFlowError::kResourceLimit
-                    ? SemanticProofError::kResourceLimit
-                    : SemanticProofError::kEnvironment,
-                failure.offset);
-  }
-  if (bound->allocated_bytes > remaining)
-    return Fail(SemanticProofError::kResourceLimit);
-  remaining -= bound->allocated_bytes;
   if (method.ssa.Values().size() > remaining / sizeof(EntryValueFact))
     return Fail(SemanticProofError::kResourceLimit);
     std::vector<EntryValueFact> entries;
@@ -101,7 +122,7 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     remaining -= entries.capacity() * sizeof(EntryValueFact);
     IdfQuota quota{budget.work};
     auto values = RegisterValueFlow::BuildWithLanguageLoads(
-        body, method.ssa, frame_size, entries, modules, quota, {remaining});
+        body, method.ssa, frame_size, entries, loads, quota, {remaining});
     auto* analyzed = std::get_if<RegisterValueFlow>(&values);
     if (!analyzed) {
       const auto& failure = std::get<ValueFlowFailure>(values);
@@ -126,10 +147,11 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     const auto bytes = method.allocated_bytes +
                        accumulated->allocated_bytes + bound->allocated_bytes +
                        analyzed->AllocatedBytes() +
-                       modules.capacity() * sizeof(LanguageLoadFact);
+                       modules.capacity() * sizeof(LanguageLoadFact) +
+                       captured_reads.capacity() * sizeof(CapturedReadFact);
     return SemanticProof{std::move(*accumulated), std::move(*bound),
                          std::move(*analyzed),
-                         bytes, std::move(modules)};
+                         bytes, std::move(modules), std::move(captured_reads)};
   } catch (const std::bad_alloc&) {
     return Fail(SemanticProofError::kResourceLimit);
   } catch (const std::length_error&) {

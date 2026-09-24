@@ -253,6 +253,53 @@ deprecated store sources, Hole versus undefined, allocation failure before
 environment installation, shadowed/deep captures, environment joins, function
 length versus parameter count, and ordinary versus sendable creation.
 
+## Captured-Read Templates
+
+The generic path now supports parametric captured reads through environment
+binding, SSA language-value premises, region recovery, source AST and printer.
+The 219-method report has 101 body outputs, 17 capture templates, 44 IR
+rejections, 49 proof rejections and eight AST rejections. The 17 templates are
+NOT added to the body count or reported as complete methods/records.
+
+`VerifySemanticSource` defaults to rejecting unproven captures. Its explicit
+`CapturedValues::kLanguage` mode uses the existing child-template contract:
+environment analysis first resolves each read to a captured depth/slot, then
+records that read's conditional Language premise for the SSA solver. Local
+cells, stores, environment allocations and unresolved function creations do
+not acquire this premise. Every captured read survives as a typed AST node,
+including reads whose results are subsequently unused.
+
+`PrintedTemplate` is distinct from `PrintedSource`. Its text contains zero-width
+typed capture insertions rather than guessed binding names or string tokens.
+Ordinary source printers reject these nodes. Template spans and insertion
+coordinates are measured during emission and are explicitly template-relative;
+they cannot be published as final source positions after substitution.
+
+The callable owner now invokes the generic template path for supported ordinary
+functions/methods and already validated ordinary arrows. It replays every
+capture into the existing `CaptureBuffer` protocol. The parent `LeafSources`
+path still rebases each occurrence at its actual creation site and verifies
+initialized captured cells before source publication. Templates are reusable
+syntax, not evidence that separate creations share bindings or function objects.
+Async, nested creation, local-cell promotion and captured stores are not widened.
+
+The survey schema is now 2, with a separate `template_ready` stage. These rows
+carry `template_text`, `captures`, `template_positions`, `executable: false`
+and explicit capture-binding/Language/global-scope requirements. For example,
+EntryAbility callback 4973 retains a capture before its staged
+`updateBreakpoint` call. Home callback 5739 retains four occurrences of the
+same captured cell across branches, property writes and a dialog call. Neither
+fragment is a standalone callable, and neither uses sidecar source/sourceMap.
+
+Both CLI targets compile. ABC-only targeted generation produced
+`build/pasteboard-semantic-captures.jsonl`; record generation still emits only
+CommonConstants and Logger as source. The other application records remain
+incomplete. Runtime tests and RSS tracking remain paused. Deferred checks must
+cover ordinary-printer rejection, missing/failed capture sinks, per-creation
+rebasing, uninitialized parent cells, unused/repeated captures, nested staged
+call capture order, branch joins, arrow ABI restrictions and final span
+relocation after insertion.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

@@ -7,10 +7,19 @@ namespace abcd::source {
 using SemanticBodyResult = std::variant<
     PrintedSource, analysis::SemanticFailure, analysis::SemanticProofFailure,
     analysis::RegionFailure, SourceFailure>;
+using SemanticTemplateResult = std::variant<
+    PrintedTemplate, analysis::SemanticFailure, analysis::SemanticProofFailure,
+    analysis::RegionFailure, SourceFailure>;
 
 // The callable owner proves its ABI and private bindings before entry. All
 // stages operate on this exact body; no text is published before admission.
 [[nodiscard]] SemanticBodyResult BuildSemanticBody(
+    const abc::MethodBody& body, const abc::FrameLayout& frame,
+    ScalarNames names, const MethodConstants& constants,
+    analysis::SemanticBudget budget, std::size_t output_bytes);
+// Parametric child only. The caller must replay every typed capture into the
+// parent binding proof; text alone is not a publishable function body.
+[[nodiscard]] SemanticTemplateResult BuildSemanticTemplate(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
     analysis::SemanticBudget budget, std::size_t output_bytes);

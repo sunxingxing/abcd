@@ -1,10 +1,16 @@
 #include "abcd/source/semantic_body.h"
 
+#include <type_traits>
+
 namespace abcd::source {
-SemanticBodyResult BuildSemanticBody(
+namespace {
+template <analysis::CapturedValues Captures>
+auto BuildBody(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
-    analysis::SemanticBudget budget, std::size_t output_bytes) {
+    analysis::SemanticBudget budget, std::size_t output_bytes)
+    -> std::conditional_t<Captures == analysis::CapturedValues::kReject,
+                           SemanticBodyResult, SemanticTemplateResult> {
   if (names.registers.size() != frame.registers)
     return SourceFailure{SourceError::kInvalidEffect, {}};
   auto lifted = analysis::BuildSemanticMethod(
@@ -12,7 +18,7 @@ SemanticBodyResult BuildSemanticBody(
   const auto* method = std::get_if<analysis::SemanticMethod>(&lifted);
   if (!method) return std::get<analysis::SemanticFailure>(lifted);
   auto verified = analysis::VerifySemanticSource(
-      body, *method, frame.registers, frame.locals, budget);
+      body, *method, frame.registers, frame.locals, budget, Captures);
   const auto* proof = std::get_if<analysis::SemanticProof>(&verified);
   if (!proof) return std::get<analysis::SemanticProofFailure>(verified);
   if (proof->allocated_bytes > budget.bytes)
@@ -24,8 +30,29 @@ SemanticBodyResult BuildSemanticBody(
   auto lowered = BuildSourceAst(*method, *proof, std::move(*regions), remaining);
   const auto* ast = std::get_if<SourceAst>(&lowered);
   if (!ast) return std::get<SourceFailure>(lowered);
-  auto printed = PrintSourceBody(*ast, *method, names, constants, output_bytes);
-  if (auto* source = std::get_if<PrintedSource>(&printed)) return std::move(*source);
-  return std::get<SourceFailure>(printed);
+  if constexpr (Captures == analysis::CapturedValues::kReject) {
+    auto printed = PrintSourceBody(*ast, *method, names, constants, output_bytes);
+    if (auto* source = std::get_if<PrintedSource>(&printed)) return std::move(*source);
+    return std::get<SourceFailure>(printed);
+  } else {
+    auto printed = PrintSourceTemplate(*ast, *method, names, constants, output_bytes);
+    if (auto* source = std::get_if<PrintedTemplate>(&printed)) return std::move(*source);
+    return std::get<SourceFailure>(printed);
+  }
+}
+}  // namespace
+SemanticBodyResult BuildSemanticBody(
+    const abc::MethodBody& body, const abc::FrameLayout& frame,
+    ScalarNames names, const MethodConstants& constants,
+    analysis::SemanticBudget budget, std::size_t output_bytes) {
+  return BuildBody<analysis::CapturedValues::kReject>(
+      body, frame, names, constants, budget, output_bytes);
+}
+SemanticTemplateResult BuildSemanticTemplate(
+    const abc::MethodBody& body, const abc::FrameLayout& frame,
+    ScalarNames names, const MethodConstants& constants,
+    analysis::SemanticBudget budget, std::size_t output_bytes) {
+  return BuildBody<analysis::CapturedValues::kLanguage>(
+      body, frame, names, constants, budget, output_bytes);
 }
 }  // namespace abcd::source

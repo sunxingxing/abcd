@@ -166,6 +166,7 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
     std::optional<std::size_t> last_object_effect;
     std::size_t block_id = 0;
     std::size_t module_fact = 0;
+    std::size_t capture_fact = 0;
     for (const auto& instruction : method.instructions) {
       const auto position = ast.statements.size();
       while (block_id + 1 < method.flow.blocks.size() &&
@@ -187,6 +188,14 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
           return Fail(SourceError::kInvalidEffect, instruction.pc);
         operation = SourceAssignment{assignment->destination,
                                      assignment->expression};
+      } else if (std::holds_alternative<analysis::LexicalLoad>(
+                     instruction.operation)) {
+        if (capture_fact >= proof.captured_reads.size() ||
+            proof.captured_reads[capture_fact].instruction.value != position)
+          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        operation = SourceAssignment{
+            analysis::ScalarSlot{analysis::Accumulator{}},
+            CapturedExpression{proof.captured_reads[capture_fact++].cell}};
       } else if (const auto* string =
                      std::get_if<analysis::StringLoad>(&instruction.operation)) {
         if (!SameSlot(effect.normal_registers.write,

@@ -27,6 +27,7 @@ enum class Stage : std::uint8_t {
   kAstReady,
   kPrint,
   kBodyReady,
+  kTemplateReady,
   kCount,
 };
 struct MethodProgress {
@@ -35,6 +36,7 @@ struct MethodProgress {
   std::optional<abc::CodeOffset> pc;
   std::optional<abc::Opcode> opcode;
   std::optional<source::PrintedSource> source;
+  std::optional<source::PrintedTemplate> source_template;
 };
 constexpr std::size_t kStageCount = static_cast<std::size_t>(Stage::kCount);
 constexpr std::size_t kMethodBytes = 64 * 1024 * 1024;
@@ -49,6 +51,7 @@ constexpr std::string_view StageLabel(Stage stage) {
     case Stage::kAstReady: return "ast_ready";
     case Stage::kPrint: return "print";
     case Stage::kBodyReady: return "body_ready";
+    case Stage::kTemplateReady: return "template_ready";
     case Stage::kCount: break;
   }
   std::terminate();
@@ -95,7 +98,7 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
   }
   const auto verified = analysis::VerifySemanticSource(
       *body, *ir, code.registers + code.arguments, code.registers,
-      {kMethodBytes});
+      {kMethodBytes}, analysis::CapturedValues::kLanguage);
   const auto* proof = std::get_if<analysis::SemanticProof>(&verified);
   if (!proof) {
     const auto& failure = std::get<analysis::SemanticProofFailure>(verified);
@@ -130,6 +133,17 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
   source::MethodConstants constants{file, header, index, method.offset,
                                     {kMethodBytes}, module, nullptr,
                                     source::GlobalScope{}};
+  if (!proof->captured_reads.empty()) {
+    // Diagnostic parametric output only; no parent environment is assumed.
+    // Do not merge this stage into body_ready or publish template bytes as JS.
+    auto printed = source::PrintSourceTemplate(
+        ast, *ir, {"$acc", names}, constants, kMethodBytes);
+    if (auto* source = std::get_if<source::PrintedTemplate>(&printed))
+      return {Stage::kTemplateReady, {}, {}, {}, {}, std::move(*source)};
+    const auto& failure = std::get<source::SourceFailure>(printed);
+    return Failure(Stage::kPrint, static_cast<unsigned>(failure.kind),
+                   failure.pc, *body);
+  }
   auto printed = source::PrintSourceBody(
       ast, *ir, {"$acc", names}, constants, kMethodBytes);
   if (auto* source = std::get_if<source::PrintedSource>(&printed))
@@ -148,7 +162,7 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
   // Keep the complete record denominator, including annotation records and
   // methods without code. Stream results; release all IR between methods.
   output << nlohmann::json{
-      {"schema", 1}, {"sha256_bytes", fingerprint.sha256.bytes},
+      {"schema", 2}, {"sha256_bytes", fingerprint.sha256.bytes},
       {"profile", static_cast<unsigned>(header.profile)},
       {"records", index.records.size()}, {"methods", index.methods.size()},
       {"source_complete", false}} << '\n';
@@ -196,6 +210,27 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
         row["positions"] = nlohmann::json::array();
         for (const auto& span : progress.source->spans)
           row["positions"].push_back({
+              {"pc", span.pc.value},
+              {"begin", {span.begin.byte, span.begin.line, span.begin.column}},
+              {"end", {span.end.byte, span.end.line, span.end.column}}});
+      }
+      if (progress.source_template) {
+        const auto& source = *progress.source_template;
+        row["template_text"] = source.text;
+        row["executable"] = false;
+        row["requires_capture_binding"] = true;
+        row["requires_language_captures"] = true;
+        row["requires_unshadowed_globals"] = true;
+        row["captures"] = nlohmann::json::array();
+        for (const auto& capture : source.captures)
+          row["captures"].push_back({
+              {"at", {capture.position.byte, capture.position.line,
+                       capture.position.column}},
+              {"depth", capture.cell.depth.value},
+              {"slot", capture.cell.slot.value}});
+        row["template_positions"] = nlohmann::json::array();
+        for (const auto& span : source.spans)
+          row["template_positions"].push_back({
               {"pc", span.pc.value},
               {"begin", {span.begin.byte, span.begin.line, span.begin.column}},
               {"end", {span.end.byte, span.end.line, span.end.column}}});

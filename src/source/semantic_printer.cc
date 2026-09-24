@@ -22,12 +22,21 @@ using analysis::ScalarValue;
 
 class SourcePrinter {
  public:
+  enum class CaptureMode { kReject, kTemplate };
   SourcePrinter(const SourceAst& ast, const analysis::SemanticMethod& method,
                 const abc::FrameLayout& frame, SourceForm form,
                 std::string_view name, const MethodConstants& constants,
-                std::size_t bytes)
+                std::size_t bytes, CaptureMode captures = CaptureMode::kReject)
       : ast_(ast), method_(method), frame_(frame), form_(form), name_(name),
-        constants_(constants), limit_(bytes) {}
+        constants_(constants), limit_(bytes), capture_mode_(captures) {}
+
+  std::variant<PrintedTemplate, SourceFailure> PrintTemplate(ScalarNames names) {
+    auto printed = PrintBody(names);
+    if (const auto* failure = std::get_if<SourceFailure>(&printed)) return *failure;
+    auto& source = std::get<PrintedSource>(printed);
+    return PrintedTemplate{std::move(source.text), std::move(source.spans),
+                            std::move(captures_)};
+  }
 
   std::variant<PrintedSource, SourceFailure> PrintBody(ScalarNames names) {
     try {
@@ -36,6 +45,17 @@ class SourcePrinter {
       if (ast_.statements.size() > limit_ / sizeof(GeneratedSpan))
         return SourceFailure{SourceError::kResourceLimit, {}};
       result_.spans.reserve(ast_.statements.size());
+      if (capture_mode_ == CaptureMode::kTemplate) {
+        const auto span_bytes = result_.spans.capacity() * sizeof(GeneratedSpan);
+        if (span_bytes > limit_ ||
+            ast_.statements.size() >
+                (limit_ - span_bytes) / sizeof(SourceCapture))
+          return SourceFailure{SourceError::kResourceLimit, {}};
+        captures_.reserve(ast_.statements.size());
+        if (captures_.capacity() >
+            (limit_ - span_bytes) / sizeof(SourceCapture))
+          return SourceFailure{SourceError::kResourceLimit, {}};
+      }
       Region(ast_.regions.root);
       return std::move(result_);
     } catch (const SourceFailure& failure) {
@@ -184,6 +204,14 @@ class SourcePrinter {
   void Expression(const SourceExpression& expression) {
     if (const auto* scalar = std::get_if<ScalarExpression>(&expression)) {
       Scalar(*scalar);
+    } else if (const auto* captured = std::get_if<CapturedExpression>(&expression)) {
+      if (capture_mode_ != CaptureMode::kTemplate)
+        throw SourceFailure{SourceError::kUnsupportedOperation, current_pc_};
+      // A zero-width typed insertion, never a string placeholder. Parent
+      // binding is mandatory even when this load's register result is unused.
+      if (captures_.size() >= captures_.capacity())
+        throw SourceFailure{SourceError::kResourceLimit, current_pc_};
+      captures_.push_back({position_, captured->cell});
     } else if (const auto* string = std::get_if<StringExpression>(&expression)) {
       PoolString(string->value, StringUse::kValue);
     } else if (const auto* call = std::get_if<CallExpression>(&expression)) {
@@ -436,6 +464,8 @@ class SourcePrinter {
   GeneratedPosition position_;
   abc::CodeOffset current_pc_{};
   std::size_t call_depth_ = 0;
+  CaptureMode capture_mode_;
+  std::vector<SourceCapture> captures_;
 };
 }  // namespace
 
@@ -453,5 +483,14 @@ std::variant<PrintedSource, SourceFailure> PrintSourceBody(
   const abc::FrameLayout unused_frame{};
   return SourcePrinter(ast, method, unused_frame, SourceForm::kFunction,
                        {}, constants, output_bytes).PrintBody(names);
+}
+std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
+    const SourceAst& ast, const analysis::SemanticMethod& method,
+    ScalarNames names, const MethodConstants& constants,
+    std::size_t output_bytes) {
+  const abc::FrameLayout unused_frame{};
+  return SourcePrinter(ast, method, unused_frame, SourceForm::kFunction,
+                       {}, constants, output_bytes,
+                       SourcePrinter::CaptureMode::kTemplate).PrintTemplate(names);
 }
 }  // namespace abcd::source

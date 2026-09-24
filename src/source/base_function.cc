@@ -324,19 +324,29 @@ class FunctionWriter {
       }
       FunctionEmitResult result{std::size_t{0}};
       std::optional<PrintedSource> semantic_body;
+      std::optional<PrintedTemplate> semantic_template;
       const bool ordinary_body =
           function_.syntax == CallableSyntax::kFunctionExpression ||
+          function_.syntax == CallableSyntax::kArrowExpression ||
           function_.syntax == CallableSyntax::kBaseConstructor ||
           function_.syntax == CallableSyntax::kClassMethod ||
           function_.syntax == CallableSyntax::kClassGetter ||
           function_.syntax == CallableSyntax::kClassSetter;
       if (ordinary_body && function_.parameters == ParameterForm::kFixed &&
           body_constants) {
-        auto prepared = BuildSemanticBody(
-            body, frame, names_, *body_constants,
-            {body_budget.bytes, body_budget.work}, body_budget.output.bytes);
-        if (auto* source = std::get_if<PrintedSource>(&prepared))
-          semantic_body = std::move(*source);
+        if (captured_values_ == analysis::CapturedValues::kLanguage) {
+          auto prepared = BuildSemanticTemplate(
+              body, frame, names_, *body_constants,
+              {body_budget.bytes, body_budget.work}, body_budget.output.bytes);
+          if (auto* source = std::get_if<PrintedTemplate>(&prepared))
+            semantic_template = std::move(*source);
+        } else {
+          auto prepared = BuildSemanticBody(
+              body, frame, names_, *body_constants,
+              {body_budget.bytes, body_budget.work}, body_budget.output.bytes);
+          if (auto* source = std::get_if<PrintedSource>(&prepared))
+            semantic_body = std::move(*source);
+        }
       }
       const auto first_for_in =
           body_constants &&
@@ -349,6 +359,23 @@ class FunctionWriter {
         // path emits no wrapper and cannot change a method into a function.
         // Its PC spans remain body-relative; record-wide relocation is separate.
         Text(semantic_body->text);
+        if (error_) return *error_;
+      } else if (semantic_template) {
+        // Preserve every capture token for the existing parent rebase/value
+        // proof. Template bytes and coordinates are not standalone source.
+        auto* captures = dynamic_cast<CaptureBuffer*>(output_.rdbuf());
+        if (!captures) return EmitError::kWrite;
+        std::size_t begin = 0;
+        for (const auto& capture : semantic_template->captures) {
+          const auto end = capture.position.byte;
+          if (end < begin || end > semantic_template->text.size())
+            return EmitError::kWrite;
+          Text(std::string_view(semantic_template->text).substr(begin, end - begin));
+          if (error_) return *error_;
+          if (!captures->Capture(capture.cell)) return EmitError::kWrite;
+          begin = end;
+        }
+        Text(std::string_view(semantic_template->text).substr(begin));
         if (error_) return *error_;
       } else if (first_for_in) {
         // The v7 frontend's acquisition catch only rethrows; the complete
