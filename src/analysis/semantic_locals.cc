@@ -61,6 +61,38 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
       if (allocation.environment.value >= allocations.size()) return resource();
       allocations[allocation.environment.value] = InstructionId{allocation.instruction};
     }
+    remaining -= allocations.capacity() * sizeof(std::optional<InstructionId>);
+    bool forward = true;
+    for (std::size_t i = 0; i < method.flow.blocks.size(); ++i)
+      for (std::size_t edge = 0; edge < method.flow.blocks[i].successor_count; ++edge) {
+        charge();
+        if (method.flow.blocks[i].successors[edge].target.value <= i) forward = false;
+      }
+    std::optional<DominatorTree> dominance;
+    if (forward && !plan.cells.empty()) {
+      if (plan.cells.size() > remaining / sizeof(std::optional<LocalInitialization>))
+        return resource();
+      plan.initializations.resize(plan.cells.size());
+      const auto init_bytes = plan.initializations.capacity() *
+                              sizeof(std::optional<LocalInitialization>);
+      if (init_bytes > remaining) return resource();
+      remaining -= init_bytes;
+      if (method.flow.blocks.size() > remaining / sizeof(std::uint32_t)) return resource();
+      plan.block_entries.resize(method.flow.blocks.size());
+      const auto entry_bytes = plan.block_entries.capacity() * sizeof(std::uint32_t);
+      if (entry_bytes > remaining) return resource();
+      remaining -= entry_bytes;
+      auto built = BuildNormalDominators(method.flow, {}, {remaining});
+      auto* tree = std::get_if<DominatorTree>(&built);
+      if (!tree) return resource();
+      if (tree->work.edge_visits > remaining_work) return resource();
+      remaining_work -= tree->work.edge_visits;
+      if (tree->work.eval_steps > remaining_work) return resource();
+      remaining_work -= tree->work.eval_steps;
+      dominance.emplace(std::move(*tree));
+      for (std::size_t i = 0; i < plan.block_entries.size(); ++i)
+        plan.block_entries[i] = dominance->nodes[i].begin;
+    }
     std::size_t block = 0;
     std::size_t binding = 0;
     std::optional<InstructionId> creation;
@@ -87,10 +119,26 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
         stores[id] = instruction;
         plan.accesses.push_back({instruction, {id}, LocalAccessKind::kStore});
         plan.stores.push_back({{id}, instruction});
+        const auto allocated = allocations[owner->value];
+        if (dominance && !plan.initializations[id] && allocated &&
+            allocated->value >= first && allocated->value < i) {
+          const auto& scope = dominance->nodes[block];
+          if (scope.begin)
+            plan.initializations[id] = LocalInitialization{
+                instruction, scope.begin, scope.end};
+        }
       } else if (std::holds_alternative<LexicalLoad>(operation)) {
         const auto allocated = allocations[owner->value];
-        if (!allocated || allocated->value < first || allocated->value >= i ||
-            !stores[id] || stores[id]->value < first ||
+        const bool same_block = allocated && allocated->value >= first &&
+                                stores[id] && stores[id]->value >= first;
+        bool initialized = same_block;
+        if (!initialized && dominance && plan.initializations[id]) {
+          const auto& scope = *plan.initializations[id];
+          const auto entry = plan.block_entries[block];
+          initialized = scope.store.value < i &&
+                        scope.begin <= entry && entry < scope.end;
+        }
+        if (!allocated || allocated->value >= i || !initialized ||
             (creation && creation->value >= allocated->value))
           return SemanticProofFailure{SemanticProofError::kInternalValue,
                                        method.instructions[i].pc};

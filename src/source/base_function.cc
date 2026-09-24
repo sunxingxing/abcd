@@ -335,9 +335,10 @@ class FunctionWriter {
           function_.syntax == CallableSyntax::kClassMethod ||
           function_.syntax == CallableSyntax::kClassGetter ||
           function_.syntax == CallableSyntax::kClassSetter;
-      if (ordinary_body && (function_.parameters == ParameterForm::kFixed ||
-                            function_.parameters == ParameterForm::kRest) &&
-          body_constants) {
+      // The wrapper already proves neutral-default .length adaptation. The
+      // original default-assignment bytecode stays in the generic body; do not
+      // route non-simple formals back to a dedicated body writer.
+      if (ordinary_body && body_constants) {
         if (captured_values_ == analysis::CapturedValues::kLanguage) {
           auto prepared = BuildSemanticTemplate(
               body, frame, names_, *body_constants,

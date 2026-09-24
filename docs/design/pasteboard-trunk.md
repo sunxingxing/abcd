@@ -939,6 +939,44 @@ getter/call side effects, both branch outcomes, external middle entry,
 early return, unsupported backedges, join-block tails, nested same-block
 calls, empty block slices, quota failures and multiple cross-block regions.
 
+## Builder Initialization and Record Integration
+
+Local-cell initialization now uses the existing normal Lengauer-Tarjan
+dominator implementation for forward-only CFGs. An allocation and initial
+store must still share a block; its dominator subtree can certify subsequent
+loads or first-created child captures in later blocks. Every lexical store
+must independently pass SSA Language verification. The old same-block rule
+remains for other graphs; backedges do not acquire a new initialization
+premise. Any preceding function creation since allocation still blocks this
+proof, so unknown closure mutations are not silently assumed safe.
+
+Certificates retain per-cell initial-store/subtree bounds and block entry
+numbers, not strings or copied source. Dominance is built once within the
+remaining scratch budget, its work is charged, and capture queries reuse the
+certificate. No per-cell CFG walk is introduced. The temporary dominator tree
+dies before publishing the local plan.
+
+The ordinary created-function entry now supplies shared bounded expansion to
+its generic body. The callable wrapper also admits its already-validated
+neutral-default signature form to that body. Neutral formals preserve the
+ABC function length; the original IR still performs the actual default-value
+assignment and branching. Rest certification and profile checks are unchanged.
+
+`build/pasteboard-semantic-builder-integration.jsonl` admits five Builders
+(7449, 8192, 9386, 10693, 11526) as body fragments. Totals are 36 IR, one proof,
+eight AST and 21 printer rejections, 109 fragments and 44 templates. In actual
+record generation, PageA, PageB, PasteBoard and ShareDitect advance from entry
+PC 6 function rejection to PC 26 value rejection in their framework setup.
+CommonConstants and Logger remain the only complete source records. Thus the
+Builder integration is exercised, but the framework prelude and class gates
+are not complete.
+
+Both tools compiled and ABC-only method/record output was inspected. Tests and
+RSS tracking remain paused. Deferred regressions include default-parameter
+branches, non-dominating stores, repeated environment allocation/backedges,
+internal-value stores, closure-before-load refusal, first-capture binding,
+neutral-default callable length and budget exhaustion.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

@@ -160,9 +160,10 @@ CreatedFunctionResult WriteCreatedFunction(
     abc::StringBudget strings, const abc::ModuleInfo* module,
     const analysis::MethodRoleIndex* roles,
     const GlobalScope* global_scope) {
+  CreationExpansion expansion(caller, budget.bytes, budget.work);
   return WriteCreation(file, header, index, lookup, caller, creation, output,
                        budget, strings, analysis::CapturedValues::kReject,
-                       module, roles, global_scope);
+                       module, roles, global_scope, &expansion);
 }
 CreatedFunctionResult WriteCreatedFunctionTemplate(
     const corpus::AbcFile& file, const abc::Header& header,

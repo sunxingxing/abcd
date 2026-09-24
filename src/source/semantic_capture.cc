@@ -47,9 +47,20 @@ ResolveCreationCapture(
   if (block == blocks.begin()) return fail();
   --block;
   const auto allocation = proof.locals.allocations[environment->value];
-  if (!allocation || allocation->value < block->first_instruction ||
-      allocation->value >= store->instruction.value ||
-      store->instruction.value < block->first_instruction ||
+  bool initialized = allocation &&
+      allocation->value >= block->first_instruction &&
+      allocation->value < store->instruction.value &&
+      store->instruction.value >= block->first_instruction;
+  const auto block_id = static_cast<std::size_t>(block - blocks.begin());
+  if (!initialized && id < proof.locals.initializations.size() &&
+      proof.locals.initializations[id] &&
+      block_id < proof.locals.block_entries.size()) {
+    const auto& scope = *proof.locals.initializations[id];
+    const auto entry = proof.locals.block_entries[block_id];
+    initialized = scope.store.value < instruction &&
+                  scope.begin <= entry && entry < scope.end;
+  }
+  if (!allocation || !initialized ||
       (function.previous_creation &&
        function.previous_creation->value >= allocation->value)) return fail();
   return cell;

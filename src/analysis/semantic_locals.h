@@ -5,7 +5,8 @@
 
 namespace abcd::analysis {
 // Conditional initialization proof: all stores must subsequently pass the
-// register SSA Language check. Allocation/store/read must share one block;
+// register SSA Language check. Allocation/store share one block; a forward
+// CFG may additionally use dominance to cover subsequent reads and captures.
 // any function creation since allocation blocks reads until capture effects
 // are proven. No phi-cell promotion or unknown-call mutation assumption.
 std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(

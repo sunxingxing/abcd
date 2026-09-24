@@ -26,17 +26,29 @@ struct LocalStoreSite {
   LocalCellId cell;
   InstructionId instruction;
 };
+struct LocalInitialization {
+  InstructionId store;
+  std::uint32_t begin;
+  std::uint32_t end;
+};
 struct LocalAccessPlan {
   std::vector<LocalCell> cells;
   std::vector<LocalAccessFact> accesses;
   std::vector<LocalStoreSite> stores;
   std::vector<std::optional<InstructionId>> allocations;
+  // Forward-only CFG certificate: allocation and initial store share a block;
+  // its dominator subtree covers these block-entry numbers. Later stores must
+  // independently pass Language verification. No closure mutation is inferred.
+  std::vector<std::optional<LocalInitialization>> initializations;
+  std::vector<std::uint32_t> block_entries;
   std::uint64_t work_units = 0;
   std::size_t AllocatedBytes() const {
     return cells.capacity() * sizeof(LocalCell) +
            accesses.capacity() * sizeof(LocalAccessFact) +
            stores.capacity() * sizeof(LocalStoreSite) +
-           allocations.capacity() * sizeof(std::optional<InstructionId>);
+           allocations.capacity() * sizeof(std::optional<InstructionId>) +
+           initializations.capacity() * sizeof(std::optional<LocalInitialization>) +
+           block_entries.capacity() * sizeof(std::uint32_t);
   }
 };
 struct SemanticProof {
