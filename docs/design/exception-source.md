@@ -68,6 +68,45 @@ is not an acceptable shortcut.
 
 ## Verification Status
 
+### Exception Control Regions
+
+`BuildExceptionRegions` now proves a contiguous try/catch layout from decoded
+tables and the unchanged phased flow. Regions retain encoded TryId identity;
+a separate source order arranges outer regions before nested children without
+changing dispatch priority. Each candidate has protected/handler instruction
+ranges, parent scope and inherited outer dispatch. A child must fit entirely
+within its parent's protected body or handler. Crossing scopes, typed/shared
+handler shapes and non-boundary extents refuse rather than inventing nesting.
+The gap between protected end and handler entry belongs to the outer scope.
+
+The builder checks each actual exceptional target against this lexical nesting,
+including throws from handlers and propagation to the caller. Normal Commit
+edges may exit regions or enter a protected range at its start, but cannot
+enter a handler from outside or a protected range in the middle. Both explicit
+branches and fallthrough edges are checked. Handler length is a candidate
+boundary, not sufficient evidence by itself. No instructions are duplicated,
+rebased or replaced with synthetic returns. Ordinary branch/loop lowering,
+catch accumulator installation, AST integration and source input proof remain
+required; this certificate does not infer finally or permit source publication.
+
+Construction uses O(R log R + R log I + I + N + E) time and O(I+R) storage,
+including sorted region IDs, nesting stack and instruction scope index. Sorting,
+boundary lookup, nesting and graph scans consume the explicit work budget; all
+live vectors are byte-admitted. Region arrays and source order are retained for
+the future common AST consumer.
+
+Production ABC-only inspection schema 6 reports `exception_regions_proven`
+independently of `source_inputs_proven` and `source_complete`. Pasteboard methods
+4945, 5165 and 6350 each yield one region. Method 6733 yields two consecutive
+regions: protected instruction ranges `[9,37)` and `[73,106)`, with handlers
+`[38,73)` and `[107,142)`. Artifacts are
+`build/pasteboard-<method>-exception-regions.jsonl`. All four methods still
+fail the existing value-input check. Both CLI targets compiled; read-only
+review found no concrete defect. Tests and RSS remain paused. Deferred cases
+include nested catches, throws from handlers, shared/crossing scopes, normal
+entries into handlers, try-interior entries, loops, equal starts, and budget
+exhaustion. These observations do not add a complete source record.
+
 ### Exception Input Admission
 
 `VerifyExceptionInputs` checks all reachable Before reads against converged

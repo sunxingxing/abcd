@@ -8,6 +8,7 @@
 #include "abcd/analysis/exception_value_flow.h"
 #include "abcd/analysis/exception_environment.h"
 #include "abcd/analysis/exception_inputs.h"
+#include "abcd/analysis/exception_regions.h"
 
 int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     abcd::abc::ProfileId profile, std::uint64_t frame_size,
@@ -84,14 +85,38 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
   const auto checked = analysis::VerifyExceptionInputs(*flow, *ssa, *environments, *values,
       analysis::kDefaultSemanticWork - quota.Consumed());
   const auto* inputs = std::get_if<analysis::ExceptionInputProof>(&checked);
-  output << nlohmann::json{{"schema", 5}, {"instructions", flow->instructions.size()},
+  if (environments->allocated_bytes > remaining) return EXIT_FAILURE;
+  remaining -= environments->allocated_bytes;
+  const auto recovered = analysis::BuildExceptionRegions(body, *flow,
+      {remaining, analysis::kDefaultSemanticWork - quota.Consumed()});
+  const auto* regions = std::get_if<analysis::ExceptionRegions>(&recovered);
+  output << nlohmann::json{{"schema", 6}, {"instructions", flow->instructions.size()},
       {"nodes", flow->nodes.size()}, {"source_complete", false}, {"ssa_complete", false},
       {"register_ssa_complete", true}, {"value_flow_complete", true},
       {"environment_topology_complete", true}, {"lexical_values_proven", false},
       {"source_inputs_proven", inputs != nullptr},
+      {"exception_regions_proven", regions != nullptr},
       {"requires_language_abi", true}, {"pending_exception_values_proven", false},
       {"ssa_values", ssa->Values().size()}}
       << '\n';
+  if (!regions) {
+    const auto& failure = std::get<analysis::CatchRegionFailure>(recovered);
+    output << nlohmann::json{{"catch_region_error", static_cast<unsigned>(failure.kind)},
+                             {"pc", failure.pc.value}} << '\n';
+  } else {
+    for (std::size_t i = 0; i < regions->regions.size(); ++i) {
+      const auto& region = regions->regions[i];
+      nlohmann::json row{{"try_region", i}, {"handler", region.handler_id.value},
+          {"protected_instructions", {region.body.begin.value, region.body.end.value}},
+          {"handler_instructions", {region.handler.begin.value, region.handler.end.value}}};
+      if (region.parent) {
+        row["parent_region"] = region.parent->region.value;
+        row["parent_part"] = static_cast<unsigned>(region.parent->part);
+      }
+      if (region.outer_dispatch) row["outer_dispatch"] = region.outer_dispatch->value;
+      output << row << '\n';
+    }
+  }
   if (inputs) {
     output << nlohmann::json{{"verified_reads", inputs->reads}} << '\n';
   } else {
