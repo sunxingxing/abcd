@@ -10,6 +10,7 @@
 #include "abcd/abc/frame_layout.h"
 #include "abcd/abc/method_body.h"
 #include "abcd/abc/pool_reference.h"
+#include "abcd/analysis/phi_placement.h"
 
 namespace abcd::analysis {
 struct SuperForward {
@@ -59,7 +60,9 @@ enum class DerivedConstructorError {
 };
 struct DerivedConstructorBudget {
   static constexpr std::size_t kDefaultBytes = 16 * 1024 * 1024;
+  static constexpr std::uint64_t kDefaultWork = 100000000;
   std::size_t bytes = kDefaultBytes;
+  std::uint64_t work = kDefaultWork;
 };
 using DerivedConstructorResult = std::variant<ForwardingDerivedConstructor,
                                               DerivedConstructorError>;
@@ -86,6 +89,20 @@ using SpreadFieldConstructorResult =
 // ordered strict setter effects; it never reclassifies them as field defines.
 // O(instructions + registers), bounded by the caller's byte admission.
 [[nodiscard]] SpreadFieldConstructorResult ProveSpreadFieldDerivedConstructor(
+    const abc::MethodBody& body, const abc::FrameLayout& frame,
+    DerivedConstructorBudget budget = {});
+
+struct RangeDerivedConstructor {
+  abc::CodeOffset super_pc;
+};
+using RangeDerivedConstructorResult =
+    std::variant<RangeDerivedConstructor, DerivedConstructorError>;
+// A single range super call must dominate every normal return. Sparse SSA
+// origin propagation proves each VM super check is a no-op on its actual
+// input; arbitrary constructors and inferred source types are not admitted.
+// Backedges and exception regions are refused until their state transitions
+// can be represented without reordering effects.
+[[nodiscard]] RangeDerivedConstructorResult ProveRangeDerivedConstructor(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     DerivedConstructorBudget budget = {});
 }  // namespace abcd::analysis

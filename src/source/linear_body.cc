@@ -11,6 +11,7 @@
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/constructor_call.h"
+#include "abcd/analysis/derived_constructor.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/iter_result.h"
@@ -103,6 +104,8 @@ class BodyWriter {
   BodyEmitResult StagedCallEnd(const StagedNamedInvocation& invocation,
                               abc::CodeOffset offset) {
     offset_ = offset;
+    if (invocation.invoke.Count() == 0)
+      return Fail(BodyEmitError::kUnsupportedInstruction);
     try {
       Text("return ");
       Expression(ScalarValue{*invocation.invoke.At(0)});
@@ -259,34 +262,54 @@ class BodyWriter {
     auto staged = std::lower_bound(
         staged_calls_.begin(), staged_calls_.end(), first_instruction,
         [](const StagedNamedInvocation& call, std::size_t position) {
-          return call.property < position;
+          return call.call < position;
         });
+    auto deferred_head = staged;
+    const StagedNamedInvocation* open_deferred = nullptr;
     try {
       for (std::size_t i = 0; i < instructions.size(); ++i) {
         const auto& instruction = instructions[i];
         offset_ = instruction.offset;
         if (terminated) return Fail(BodyEmitError::kTrailingInstructions);
         const auto position = first_instruction + i;
-        if (staged != staged_calls_.end()) {
-          if (position == staged->property) {
-            if (!accumulator_defined)
-              return Fail(BodyEmitError::kAccumulatorHole);
-            const auto result = StagedCallHead(*staged, offset_);
-            if (const auto* error = std::get_if<BodyEmitFailure>(&result))
-              return *error;
-            accumulator_defined = true;
-            continue;
-          }
-          if (position == staged->spill || position == staged->reload)
-            continue;
-          if (position == staged->call) {
-            const auto result = StagedCallEnd(*staged, offset_);
-            if (const auto* error = std::get_if<BodyEmitFailure>(&result))
-              return *error;
-            accumulator_defined = true;
-            ++staged;
-            continue;
-          }
+        while (deferred_head != staged_calls_.end() &&
+               deferred_head->timing == SpilledCallTiming::kImmediate)
+          ++deferred_head;
+        if (deferred_head != staged_calls_.end() &&
+            position == deferred_head->property) {
+          if (!accumulator_defined)
+            return Fail(BodyEmitError::kAccumulatorHole);
+          const auto result = StagedCallHead(*deferred_head, offset_);
+          if (const auto* error = std::get_if<BodyEmitFailure>(&result))
+            return *error;
+          open_deferred = &*deferred_head++;
+          accumulator_defined = true;
+          continue;
+        }
+        if (staged != staged_calls_.end() &&
+            staged->timing == SpilledCallTiming::kImmediate &&
+            position == staged->property)
+          continue;
+        if (staged != staged_calls_.end() &&
+            (position == staged->spill || position == staged->reload))
+          continue;
+        if (open_deferred &&
+            (position == open_deferred->spill ||
+             position == open_deferred->reload))
+          continue;
+        if (staged != staged_calls_.end() && position == staged->call) {
+          const bool immediate =
+              staged->timing == SpilledCallTiming::kImmediate;
+          const auto result = immediate
+                                  ? Invocation({staged->read, staged->invoke},
+                                               offset_)
+                                  : StagedCallEnd(*staged, offset_);
+          if (const auto* error = std::get_if<BodyEmitFailure>(&result))
+            return *error;
+          if (!immediate) open_deferred = nullptr;
+          accumulator_defined = true;
+          ++staged;
+          continue;
         }
         if (facts_ && position < facts_->language_loads.size() &&
             facts_->language_loads[position]) {
@@ -335,6 +358,32 @@ class BodyWriter {
         }
         using abc::Opcode;
         const auto opcode = instruction.decoded.opcode;
+        const auto super = LiftSuperInstruction(
+            instruction.decoded,
+            static_cast<std::uint32_t>(names_.registers.size()));
+        if (const auto* range = std::get_if<SuperRange>(&super)) {
+          if (!names_.range_derived_constructor)
+            return Fail(BodyEmitError::kUnsupportedInstruction);
+          Expression(ScalarValue{Accumulator{}});
+          Text(" = super(");
+          for (std::uint32_t arg = 0; arg < range->count && !error_; ++arg) {
+            if (arg != 0) Text(", ");
+            Expression(ScalarValue{abc::RegisterId{
+                range->first.value + arg}});
+          }
+          Text(");\n");
+          accumulator_defined = true;
+          if (error_) return *error_;
+          continue;
+        }
+        if (std::holds_alternative<SuperCheck>(super)) {
+          if (!names_.range_derived_constructor || !accumulator_defined)
+            return Fail(BodyEmitError::kUnsupportedInstruction);
+          continue;
+        }
+        if (const auto* error = std::get_if<SuperError>(&super);
+            error && *error != SuperError::kUnsupportedOpcode)
+          return Fail(BodyEmitError::kUnsupportedInstruction);
         if (opcode == Opcode::kNOP) continue;
         if (opcode == Opcode::kLDFUNCTION) {
           const auto lifted = LiftConstantObjectInstruction(instruction.decoded);

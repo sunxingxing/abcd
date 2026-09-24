@@ -552,9 +552,19 @@ StagedMatchResult MatchStagedNamedInvocations(
               body, frame_size, i, *last_write[callee->value], *callee,
               *invoke);
           if (shape) {
-            if (!matches.empty() && shape->property <= matches.back().call) {
-              matches.clear();
-              return done();
+            // A deferred argument may contain immediate zero-argument calls.
+            // Its named getter still precedes them; only disjoint or this
+            // exact nesting is admitted by the source writer.
+            for (std::size_t prior = matches.size(); prior != 0;) {
+              const auto& inside = matches[--prior];
+              if (inside.call < shape->property) break;
+              if (shape->timing != SpilledCallTiming::kDeferredArgument ||
+                  inside.timing != SpilledCallTiming::kImmediate ||
+                  inside.property <= shape->spill ||
+                  inside.call >= shape->reload) {
+                matches.clear();
+                return done();
+              }
             }
             matches.push_back(*shape);
           }

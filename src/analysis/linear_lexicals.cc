@@ -256,9 +256,16 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
           arguments_ready &= state(*staged_call.invoke.At(argument)).IsLanguage();
         const bool immediate =
             staged_call.timing == SpilledCallTiming::kImmediate;
-        if ((staged_cursor != 0 &&
-             staged_calls[staged_cursor - 1].call >= staged_call.property) ||
-            staged_call.property >= staged_call.spill ||
+        bool nested = true;
+        for (std::size_t prior = staged_cursor; prior != 0;) {
+          const auto& inside = staged_calls[--prior];
+          if (inside.call < staged_call.property) break;
+          nested &= !immediate &&
+                    inside.timing == SpilledCallTiming::kImmediate &&
+                    inside.property > staged_call.spill &&
+                    inside.call < staged_call.reload;
+        }
+        if (!nested || staged_call.property >= staged_call.spill ||
             staged_call.spill >= staged_call.reload ||
             staged_call.reload + 1 != i ||
             (immediate

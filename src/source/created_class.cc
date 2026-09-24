@@ -126,7 +126,11 @@ void CheckAccessors(const corpus::AbcFile& file,
   if (accessors.empty()) return;
   using Key = std::tuple<abc::ClassPlacement, std::u16string_view,
                          abc::ClassMethodKind>;
-  if (header.profile != abc::ProfileId::kDynamic1301)
+  // The pinned v7 RuntimeDefineGetterSetterByValue defines the same
+  // non-enumerable class accessor descriptor for these dynamic profiles.
+  if (header.profile != abc::ProfileId::kDynamic1202 &&
+      header.profile != abc::ProfileId::kDynamic1206 &&
+      header.profile != abc::ProfileId::kDynamic1301)
     throw ClassFailure{CreatedClassError::kAccessorTarget};
   AdmitClassBytes(accessors.size(), sizeof(Key), bytes);
   AdmitClassBytes(accessors.size(), sizeof(abc::MethodPosition), bytes);
@@ -439,6 +443,13 @@ class ClassWriter {
                    *spread, creation.length, constants, output_,
                    budget.output);
              }
+             const auto range = WriteRangeDerivedConstructor(
+                 {creation, target.attributes, frame, name}, body, output_,
+                 budget, &constants, &lookup_);
+             if (std::holds_alternative<std::size_t>(range) ||
+                 !std::holds_alternative<FunctionEmitError>(range) ||
+                 std::get<FunctionEmitError>(range) != FunctionEmitError::kKind)
+               return range;
              return FunctionEmitResult{
                  std::get<analysis::DerivedConstructorError>(fields) ==
                          analysis::DerivedConstructorError::kResourceLimit

@@ -274,6 +274,28 @@ class ProgramWriter {
       }
       if (instruction.branch_target) throw Fail(Error::kInstruction, pc_);
       using abc::Opcode;
+      // A pending derived class keeps its evaluated parent snapshot, while
+      // pure class-assembly opcodes may still attach accessors. Flush before
+      // any other operation so class construction stays in bytecode order.
+      switch (instruction.decoded.opcode) {
+        case Opcode::kMOV_V4_V4:
+        case Opcode::kLDA_V8:
+        case Opcode::kSTA_V8:
+        case Opcode::kLDA_STR_ID16:
+        case Opcode::kLDUNDEFINED:
+        case Opcode::kLDFALSE:
+        case Opcode::kLDHOLE:
+        case Opcode::kLDOBJBYNAME_IMM8_ID16:
+        case Opcode::kLDOBJBYNAME_IMM16_ID16:
+        case Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8:
+        case Opcode::kDEFINEMETHOD_IMM16_ID16_IMM8:
+        case Opcode::kDEFINEGETTERSETTERBYVALUE_V8_V8_V8_V8:
+        case Opcode::kNOP:
+          break;
+        default:
+          FlushDerivedClasses();
+          break;
+      }
       // A class with an absent parent may be rendered later only across these
       // proven-pure entry operations. A later constructor observes class
       // creation before any other effect, matching the bytecode order.
@@ -922,13 +944,20 @@ class ProgramWriter {
       parent_origin = GlobalClassParent{parent.ordinal};
     else if (parent.kind != Value::Kind::kHole)
       throw Fail(Error::kValue, pc_);
-    // Ordinary classes may have a later proved initializer. A snapshot base
-    // is already evaluated at DEFINE time, so emit that narrower class now;
-    // any later initializer/accessor is still refused.
+    // The evaluated parent is retained in its snapshot binding. Delay source
+    // class emission across only proven-pure assembly steps, so subsequent
+    // accessor definitions can remain part of the same class literal.
     const auto id = classes_.size();
     Append(classes_, ClassState{&instruction, parent_origin});
-    if (parent_origin) EmitClass(id);
     accumulator_ = {Value::Kind::kClass, id};
+  }
+  void FlushDerivedClasses() {
+    for (; pending_derived_cursor_ < classes_.size();
+         ++pending_derived_cursor_) {
+      const auto id = pending_derived_cursor_;
+      if (classes_[id].parent && !classes_[id].emitted)
+        EmitClass(id);
+    }
   }
   void EmitClass(std::size_t id) {
     if (id >= classes_.size() || classes_[id].emitted)
@@ -1393,6 +1422,7 @@ class ProgramWriter {
   std::vector<Value> registers_;
   std::vector<std::uint8_t> escaped_;
   std::vector<ClassState> classes_;
+  std::size_t pending_derived_cursor_ = 0;
   std::vector<CreatedMethodState> created_methods_;
   std::vector<StaticAtom> atoms_;
   std::vector<analysis::ModuleSlot> local_slots_;

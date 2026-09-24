@@ -1,11 +1,13 @@
 #include "abcd/analysis/accumulator_flow.h"
 
+#include <algorithm>
 #include <new>
 #include <utility>
 
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/constructor_call.h"
+#include "abcd/analysis/derived_constructor.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/iter_result.h"
@@ -64,6 +66,13 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
   if (std::holds_alternative<ConstructorCall>(
           LiftConstructorCall(instruction, frame_size)))
     return Transfer{false, AccumulatorWrite::kValue};
+  const auto super = LiftSuperInstruction(
+      instruction, static_cast<std::uint32_t>(
+                       std::min<std::uint64_t>(frame_size, UINT32_MAX)));
+  if (std::holds_alternative<SuperRange>(super))
+    return Transfer{false, AccumulatorWrite::kValue};
+  if (std::holds_alternative<SuperCheck>(super))
+    return Transfer{true, AccumulatorWrite::kPreserve};
   const auto global_access = LiftGlobalAccess(instruction);
   if (const auto* global = std::get_if<GlobalAccess>(&global_access);
       global && global->operation == GlobalOp::kReadName)

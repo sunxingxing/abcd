@@ -78,8 +78,8 @@ struct StagedMatches {
   std::uint64_t work_units = 0;
 };
 using StagedMatchResult = std::variant<StagedMatches, StagedMatchError>;
-// Function-wide, disjoint spilled calls. Zero-argument calls may be immediate;
-// argument-building calls use the deferred source form. Timelines avoid a
+// Function-wide spilled calls. Zero-argument immediate calls may occur inside
+// a deferred call's argument evaluation; other overlaps are rejected. Timelines avoid a
 // suffix/prefix walk per call; work is linear in instructions and expanded
 // accesses to the 256 low v8-addressable registers. Scratch and retained
 // matches share the caller's byte budget; work_units charge its method budget.

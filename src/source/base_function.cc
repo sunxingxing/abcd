@@ -14,6 +14,7 @@
 
 #include "abcd/abc/register_access.h"
 #include "abcd/analysis/first_for_in.h"
+#include "abcd/analysis/derived_constructor.h"
 #include "abcd/analysis/module_load.h"
 #include "abcd/analysis/rest_arguments.h"
 #include "abcd/source/base_constructor.h"
@@ -36,6 +37,7 @@ enum class CallableSyntax {
   kArrowExpression,
   kAsyncArrowExpression,
   kBaseConstructor,
+  kRangeDerivedConstructor,
   kClassMethod,
   kAsyncClassMethod,
   kClassGetter,
@@ -245,7 +247,8 @@ class FunctionWriter {
         if (const auto* error = std::get_if<EmitError>(&key)) return *error;
         written_ += std::get<std::size_t>(key);
         Text("](");
-      } else if (function_.syntax == CallableSyntax::kBaseConstructor) {
+      } else if (function_.syntax == CallableSyntax::kBaseConstructor ||
+                 function_.syntax == CallableSyntax::kRangeDerivedConstructor) {
         Text("constructor(");
       } else if (IsArrowSyntax(function_.syntax)) {
         // A computed data-property name applies SetFunctionName without a
@@ -296,7 +299,9 @@ class FunctionWriter {
           if (!IsArrowSyntax(function_.syntax))
             Text(" = new.target");
         } else if (frame.this_value == slot) {
-          if (!IsArrowSyntax(function_.syntax))
+          if (function_.syntax == CallableSyntax::kRangeDerivedConstructor)
+            Text(" = void 0");
+          else if (!IsArrowSyntax(function_.syntax))
             Text(" = this");
         } else if (i >= frame.first_parameter.value) {
           Text(" = ");
@@ -510,6 +515,15 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
                                  const abc::MethodLookup* methods,
                                  analysis::CapturedValues captured_values) {
   if (!CanonicalFrame(function.frame)) return FunctionEmitError::kFrame;
+  if (function.syntax == CallableSyntax::kRangeDerivedConstructor) {
+    const auto proof = analysis::ProveRangeDerivedConstructor(
+        body, function.frame, {budget.bytes, budget.work});
+    if (const auto* error =
+            std::get_if<analysis::DerivedConstructorError>(&proof))
+      return *error == analysis::DerivedConstructorError::kResourceLimit
+                 ? FunctionEmitError::kResourceLimit
+                 : FunctionEmitError::kKind;
+  }
   const bool length_mismatch = function.length != function.frame.parameters;
   if (function.length > function.frame.parameters)
     return FunctionEmitError::kLength;
@@ -526,7 +540,9 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
   // neutral-default encoding is not yet admitted as source semantics.
   // A null constants pointer retains the existing pinned-v7 caller assertion.
   if (length_mismatch && constants &&
-      !(constants->header.profile == abc::ProfileId::kDynamic1202 && rest) &&
+      !(constants->header.profile == abc::ProfileId::kDynamic1202 &&
+        (rest || function.syntax ==
+                     CallableSyntax::kRangeDerivedConstructor)) &&
       constants->header.profile != abc::ProfileId::kDynamic1206 &&
       constants->header.profile != abc::ProfileId::kDynamic1301)
     return FunctionEmitError::kLength;
@@ -635,6 +651,7 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
         case CallableSyntax::kFunctionExpression:
         case CallableSyntax::kAsyncFunctionExpression:
         case CallableSyntax::kBaseConstructor:
+        case CallableSyntax::kRangeDerivedConstructor:
         case CallableSyntax::kClassMethod:
         case CallableSyntax::kAsyncClassMethod:
           return function.name;
@@ -676,7 +693,8 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
         rest ? std::optional<ScalarNames::RestBinding>{
                    ScalarNames::RestBinding{function.length, rest_name}}
              : std::nullopt,
-        direct_writes.sites};
+        direct_writes.sites,
+        function.syntax == CallableSyntax::kRangeDerivedConstructor};
     auto checked = FunctionWriter(shape, bindings, discard, budget,
                                   constants, methods, captured_values)
                        .Write(body);
@@ -796,6 +814,22 @@ FunctionEmitResult WriteBaseConstructor(const BaseConstructor& constructor,
   return WriteCallable(
       {constructor.frame, constructor.class_binding,
        constructor.creation.length, CallableSyntax::kBaseConstructor},
+      body, output, budget, constants, methods,
+      analysis::CapturedValues::kReject);
+}
+FunctionEmitResult WriteRangeDerivedConstructor(
+    const RangeDerivedConstructor& constructor, const abc::MethodBody& body,
+    std::ostream& output, LocalLexicalBudget budget,
+    const MethodConstants* constants, const abc::MethodLookup* methods) {
+  if (constructor.attributes.sendable) return FunctionEmitError::kSendable;
+  if (constants && constants->header.profile != abc::ProfileId::kDynamic1202 &&
+      constants->header.profile != abc::ProfileId::kDynamic1206 &&
+      constants->header.profile != abc::ProfileId::kDynamic1301)
+    return FunctionEmitError::kKind;
+  return WriteCallable(
+      {constructor.frame, constructor.class_binding,
+       constructor.creation.length,
+       CallableSyntax::kRangeDerivedConstructor},
       body, output, budget, constants, methods,
       analysis::CapturedValues::kReject);
 }

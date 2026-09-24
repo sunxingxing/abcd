@@ -59,9 +59,10 @@ using CreatedClassResult =
 // Resolves real constructor, buffer, name, ABI and body. Emits a fresh complete
 // class expression for a proven no-extends class, or a pinned v7 derived class
 // whose caller owns an import/global snapshot and whose constructor passes
-// either the pure forwarding proof or the exact rest-spread/string-field
-// proof. The latter additionally requires a trusted lifetime invariant that
-// the current parent remains JSFunction-branded at every construction:
+// the pure forwarding proof, the exact rest-spread/string-field proof, or a
+// single range-super/guard SSA proof. The spread form additionally requires
+// a trusted lifetime invariant that the current parent remains
+// JSFunction-branded at every construction:
 // import/global provenance and creation-time brand are both insufficient.
 // v7 SuperCallSpread rejects constructible Proxy parents while native
 // `super(...rest)` accepts them. This API does not prove parent

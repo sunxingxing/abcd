@@ -23,6 +23,8 @@ struct ScalarNames {
   std::string_view current_function{};
   std::optional<RestBinding> rest{};
   std::span<const abc::CodeOffset> constructor_this_writes{};
+  // Set only after the complete derived-constructor super/guard proof.
+  bool range_derived_constructor = false;
 };
 // Emits an expression, not a method/record. Referenced names must be declared,
 // initialized, side-effect-free local bindings supplied by the caller. Only

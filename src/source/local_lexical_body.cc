@@ -52,37 +52,52 @@ class LexicalWriter {
         const auto* staged_call = staged_cursor_ < staged_calls_.size()
                                       ? &staged_calls_[staged_cursor_]
                                       : nullptr;
-        if (staged_call && i == staged_call->property) {
-          const auto result = staged_call->timing ==
-                                      analysis::SpilledCallTiming::kImmediate
+        while (deferred_head_ < staged_calls_.size() &&
+               staged_calls_[deferred_head_].timing ==
+                   analysis::SpilledCallTiming::kImmediate)
+          ++deferred_head_;
+        const auto* next_deferred = deferred_head_ < staged_calls_.size()
+                                        ? &staged_calls_[deferred_head_]
+                                        : nullptr;
+        if (next_deferred && i == next_deferred->property) {
+          const auto result = WriteStagedCallHead(
+              *next_deferred, offset_, names_, output_, {remaining_},
+              constants_);
+          if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
+            error_ = *failure;
+          else
+            Count(std::get<std::size_t>(result));
+          open_deferred_ = next_deferred;
+          ++deferred_head_;
+          continue;
+        }
+        if (staged_call &&
+            staged_call->timing == analysis::SpilledCallTiming::kImmediate &&
+            i == staged_call->property)
+          continue;
+        if (staged_call &&
+            (i == staged_call->spill || i == staged_call->reload))
+          continue;
+        if (open_deferred_ &&
+            (i == open_deferred_->spill || i == open_deferred_->reload))
+          continue;
+        if (staged_call && i == staged_call->call) {
+          const bool immediate = staged_call->timing ==
+                                 analysis::SpilledCallTiming::kImmediate;
+          const auto result = immediate
                                   ? WriteNamedInvocation(
                                         {staged_call->read, staged_call->invoke,
                                          kImmediateSpilledInstructionCount},
                                         offset_, names_, output_, {remaining_},
                                         constants_)
-                                  : WriteStagedCallHead(*staged_call, offset_,
-                                                        names_, output_,
-                                                        {remaining_},
-                                                        constants_);
+                                  : WriteStagedCallEnd(*staged_call, offset_,
+                                                       names_, output_,
+                                                       {remaining_});
           if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
             error_ = *failure;
           else
             Count(std::get<std::size_t>(result));
-          continue;
-        }
-        if (staged_call &&
-            (i == staged_call->spill || i == staged_call->reload))
-          continue;
-        if (staged_call && i == staged_call->call) {
-          if (staged_call->timing !=
-              analysis::SpilledCallTiming::kImmediate) {
-            const auto result = WriteStagedCallEnd(
-                *staged_call, offset_, names_, output_, {remaining_});
-            if (const auto* failure = std::get_if<BodyEmitFailure>(&result))
-              error_ = *failure;
-            else
-              Count(std::get<std::size_t>(result));
-          }
+          if (!immediate) open_deferred_ = nullptr;
           ++staged_cursor_;
           continue;
         }
@@ -254,6 +269,8 @@ class LexicalWriter {
   std::span<const FreshFieldSite> fields_;
   std::span<const analysis::StagedNamedInvocation> staged_calls_;
   std::size_t staged_cursor_ = 0;
+  std::size_t deferred_head_ = 0;
+  const analysis::StagedNamedInvocation* open_deferred_ = nullptr;
   std::size_t field_cursor_ = 0;
   std::size_t next_function_ = 0;
   std::size_t written_ = 0;
