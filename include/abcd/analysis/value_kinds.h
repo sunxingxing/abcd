@@ -10,6 +10,8 @@ inline constexpr std::size_t kValueKindCount = 4;
 
 // Closed powerset of VM categories. String and non-NaN-number refine Defined
 // (a Language value other than undefined); their mixed join retains Defined.
+// FiniteNonzeroNumber is a strict numeric subset; joins with other non-NaN
+// numbers retain the numeric fact but lose finite/nonzero guarantees.
 // Empty is analysis bottom, never JS undefined or a language-value proof.
 class ValueKinds {
  public:
@@ -24,6 +26,9 @@ class ValueKinds {
   static constexpr ValueKinds NonNaNNumber() {
     return ValueKinds{kLanguage, Refinement::kNonNaNNumber};
   }
+  static constexpr ValueKinds FiniteNonzeroNumber() {
+    return ValueKinds{kLanguage, Refinement::kFiniteNonzeroNumber};
+  }
   static constexpr ValueKinds Hole() { return ValueKinds{kHole}; }
   static constexpr ValueKinds Environment() { return ValueKinds{kEnvironment}; }
   static constexpr ValueKinds OtherInternal() {
@@ -36,6 +41,8 @@ class ValueKinds {
     if (IsEmpty()) return other;
     if (other.IsEmpty()) return *this;
     const auto refinement = refinement_ == other.refinement_ ? refinement_
+        : IsNonNaNNumber() && other.IsNonNaNNumber()
+            ? Refinement::kNonNaNNumber
         : IsDefined() && other.IsDefined() ? Refinement::kDefined
                                           : Refinement::kNone;
     return ValueKinds{static_cast<std::uint8_t>(bits_ | other.bits_), refinement};
@@ -50,6 +57,7 @@ class ValueKinds {
       case Refinement::kNone: return false;
       case Refinement::kDefined:
       case Refinement::kString:
+      case Refinement::kFiniteNonzeroNumber:
       case Refinement::kNonNaNNumber: return true;
     }
     return false;
@@ -58,7 +66,11 @@ class ValueKinds {
     return IsLanguage() && refinement_ == Refinement::kString;
   }
   [[nodiscard]] constexpr bool IsNonNaNNumber() const {
-    return IsLanguage() && refinement_ == Refinement::kNonNaNNumber;
+    return IsLanguage() && (refinement_ == Refinement::kNonNaNNumber ||
+                           refinement_ == Refinement::kFiniteNonzeroNumber);
+  }
+  [[nodiscard]] constexpr bool IsFiniteNonzeroNumber() const {
+    return IsLanguage() && refinement_ == Refinement::kFiniteNonzeroNumber;
   }
   [[nodiscard]] constexpr bool Contains(VmValueKind kind) const {
     switch (kind) {
@@ -77,7 +89,7 @@ class ValueKinds {
 
  private:
   enum class Refinement : std::uint8_t {
-    kNone, kString, kNonNaNNumber, kDefined
+    kNone, kString, kNonNaNNumber, kDefined, kFiniteNonzeroNumber
   };
   static constexpr std::uint8_t kLanguage = 1 << 0;
   static constexpr std::uint8_t kHole = 1 << 1;

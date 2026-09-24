@@ -7,7 +7,6 @@
 #include "register_value_rule.h"
 
 namespace abcd::analysis::detail {
-inline constexpr std::size_t kScalarInputs = 2;
 struct ValueNodeId {
   std::uint32_t value = 0;
 };
@@ -58,8 +57,8 @@ void PropagateValues(std::span<const ValueNode> nodes,
   }
   // Incremental join propagation is essential: rescanning all inputs of a
   // high-fan-in Phi after each changed source would be quadratic. A fact
-  // gains four VM atoms and can weaken its scalar refinement twice
-  // (String/NonNaNNumber -> Defined -> unrestricted Language);
+  // gains four VM atoms and can weaken its scalar refinement three times
+  // (FiniteNonzeroNumber -> NonNaNNumber -> Defined -> Language);
   // operation nodes have at most two fixed inputs.
   for (std::size_t head = 0; head < pending.size(); ++head) {
     charge();
@@ -75,7 +74,8 @@ void PropagateValues(std::span<const ValueNode> nodes,
       ValueKinds propagated = incoming;
       if (nodes[target].kind == Kind::kLanguageOperation ||
           nodes[target].kind == Kind::kStringAdd ||
-          nodes[target].kind == Kind::kNonNaNUnary) {
+          nodes[target].kind == Kind::kNonNaNUnary ||
+          nodes[target].kind == Kind::kNonNaNMultiply) {
         bool ready = true, language = true, string = false;
         bool non_nan_number = true;
         for (std::size_t i = 0; i < nodes[target].input_count; ++i) {
@@ -95,6 +95,11 @@ void PropagateValues(std::span<const ValueNode> nodes,
         } else if (nodes[target].kind == Kind::kNonNaNUnary) {
           propagated = non_nan_number ? ValueKinds::NonNaNNumber()
                                       : ValueKinds::Unknown();
+        } else if (nodes[target].kind == Kind::kNonNaNMultiply) {
+          propagated = nodes[target].input_count == kScalarInputs
+              ? MultiplyNumbers(facts[nodes[target].inputs[0].value],
+                                facts[nodes[target].inputs[1].value])
+              : ValueKinds::Unknown();
         } else {
           propagated = ValueKinds::Language();
         }

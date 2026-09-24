@@ -405,6 +405,12 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
                     ? ValueKinds::NonNaNNumber()
                     : ValueKinds::Unknown();
             break;
+          case detail::ValueRuleKind::kNonNaNMultiply:
+            if (access.read_count != detail::kScalarInputs)
+              return fail(Error::kInstruction);
+            state(*access.write) = detail::MultiplyNumbers(
+                state(access.reads[0]), state(access.reads[1]));
+            break;
         }
       }
     }

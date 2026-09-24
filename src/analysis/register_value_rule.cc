@@ -86,8 +86,10 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
       if (number->value >= kImpureNaNBitsMin)
         return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
     }
-    if (std::holds_alternative<IntegerLiteral>(*value))
-      return ValueRule{ValueRuleKind::kFixed, ValueKinds::NonNaNNumber()};
+    if (const auto* integer = std::get_if<IntegerLiteral>(value))
+      return ValueRule{ValueRuleKind::kFixed,
+                      integer->value != 0 ? ValueKinds::FiniteNonzeroNumber()
+                                          : ValueKinds::NonNaNNumber()};
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
   }
   // Successful ECMAScript property reads expose language values. The pinned
@@ -128,6 +130,8 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
           std::get_if<BinaryExpression>(&assignment.expression)) {
     if (binary->op == BinaryOperator::kAdd)
       return ValueRule{ValueRuleKind::kStringAdd, {}};
+    if (binary->op == BinaryOperator::kMultiply)
+      return ValueRule{ValueRuleKind::kNonNaNMultiply, {}};
     language = HasLanguageResult(binary->op);
   }
   return language ? ValueRule{ValueRuleKind::kLanguageOperation, {}}
