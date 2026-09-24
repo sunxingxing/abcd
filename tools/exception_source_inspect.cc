@@ -21,8 +21,14 @@ void InspectExceptionSource(const abcd::source::ExceptionAstInput& input,
   // Expose route candidates independently of input-value admission; they are
   // not AST/source success. Release this inspection plan before AST building.
   if (regions.allocated_bytes <= bytes) {
-    const auto routed = analysis::ProveExceptionCalls(input.flow,
-        {bytes - regions.allocated_bytes, analysis::kDefaultSemanticWork});
+    const auto indexed = analysis::InstructionSsa::Build(input.flow, input.ssa,
+        bytes - regions.allocated_bytes);
+    const auto* ssa = std::get_if<analysis::InstructionSsa>(&indexed);
+    const auto routed = ssa ? analysis::ProveExceptionCalls(input.flow, *ssa,
+        {bytes - regions.allocated_bytes - ssa->AllocatedBytes(), analysis::kDefaultSemanticWork})
+        : std::variant<analysis::ExceptionCalls, analysis::ExceptionCallError>{
+            std::get<analysis::InstructionSsaError>(indexed) == analysis::InstructionSsaError::kResourceLimit
+                ? analysis::ExceptionCallError::kResourceLimit : analysis::ExceptionCallError::kInvalidFlow};
     if (const auto* calls = std::get_if<analysis::ExceptionCalls>(&routed)) {
       for (std::size_t i = 0; i < calls->routes.size(); ++i)
         if (calls->routes[i])
@@ -30,7 +36,9 @@ void InspectExceptionSource(const abcd::source::ExceptionAstInput& input,
               {"pc", input.flow.instructions[i].pc.value},
               {"property_pc", input.flow.instructions[calls->routes[i]->property.value].pc.value},
               {"preserves_argument_order", calls->routes[i]->evaluation ==
-                  analysis::ReceiverEvaluation::kPreserveOrder}} << '\n';
+                  analysis::ReceiverEvaluation::kPreserveOrder},
+              {"requires_forward_region", calls->routes[i]->region ==
+                  analysis::ReceiverRegion::kForward}} << '\n';
     } else {
       output << nlohmann::json{{"receiver_route_error", static_cast<unsigned>(
           std::get<analysis::ExceptionCallError>(routed))}} << '\n';

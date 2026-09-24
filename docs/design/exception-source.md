@@ -94,6 +94,45 @@ manifest. Read-only review found no concrete defect. Tests and RSS remain
 paused; deferred cases include throwing argument effects, overwritten callee
 properties, nested calls, handler-boundary rejection and staged PC spans.
 
+### Forward Argument Regions
+
+Route candidate discovery now uses the matching phased `InstructionSsa`:
+follow the call accumulator through at most two private slot copies to its
+actual NamedRead definition. A property read in the argument computation no
+longer replaces that candidate. The shared AST still checks all removed SSA
+uses and receiver identity; candidate discovery alone grants no emission.
+
+`ReceiverRegion::kForward` separates a caller-exit premise from the existing
+linear interval certificate. It requires a graph with no Catch nodes and
+normal completion plus caller-only exceptions at every interior Before site.
+The AST additionally requires a cross-block interval, no catch regions, and
+`ProveArgumentRegion`: a single-entry, forward-only normal region whose paths
+converge at the call. Only one such region is admitted per function, avoiding
+per-call CFG scans. Its emission reuses the common argument-region printer;
+local handlers, loops, middle entries and bypass exits remain unsupported.
+
+The phased SSA facade now indexes borrowed read spans in one site-sorted pass.
+Construction costs O(I+N+U), where U is all SSA reads, with admitted O(I)
+storage; phased read queries are O(1). This closes the review finding that
+callee discovery otherwise hid repeated binary searches. Route construction
+costs O(I+N+E+R), where R is reads at calls; the one normal region validation
+adds O(B+E). No per-call unbounded copy/phi traversal was introduced. Facade
+preprocessing remains byte-bounded separately from route work accounting.
+
+Both CLI targets compiled. ABC-only inspection of pasteboard 6044 now passes
+the full AST stage (103 instructions, four blocks), including the PC 84-to-135
+forward argument region
+(`build/pasteboard-6044-exception-region-call.jsonl`). Printing then refuses
+the global reference at PC 10 because this standalone inspection lacks its
+scope owner. No scope or global-object replacement was guessed, and no
+printed template or position-map completion is claimed for this method.
+Method 10583 retains its 44-span template; 6350 still rejects the unknown
+pending catch input at PC 91. The ordinary all-record survey remains identical
+to the preceding staged snapshot. Read-only review found no remaining concrete
+issue after the read-index correction. Tests and RSS remain paused. Deferred
+cases include cross-block generated spans, nested argument branches, outside
+entries, early exits, local-catch rejection and byte/work limits.
+
 ### Module Initialization Ownership
 
 Ordinary and exceptional body owners now share `SnapshotModuleReads` instead

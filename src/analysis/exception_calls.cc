@@ -28,7 +28,7 @@ bool SpillReload(const SemanticInstruction& spill, const SemanticInstruction& re
 }
 }
 std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
-    const ExceptionFlow& flow, SemanticBudget budget) {
+    const ExceptionFlow& flow, const InstructionSsa& ssa, SemanticBudget budget) {
   using Error = ExceptionCallError;
   struct Sites { std::optional<ExceptionNodeId> before, commit; };
   enum class Entries : std::uint8_t { kNone, kSingle, kMultiple };
@@ -41,11 +41,12 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
       if (result.work_units == budget.work) throw Error::kResourceLimit;
       ++result.work_units;
     };
-    if (flow.nodes.empty() || flow.nodes.size() > UINT32_MAX ||
+    if (!ssa.IsPhased() || flow.nodes.empty() || flow.nodes.size() > UINT32_MAX ||
         flow.instructions.size() > UINT32_MAX) return Error::kInvalidFlow;
     detail::IdfScratch memory{budget.bytes};
     std::pmr::vector<Sites> sites(flow.instructions.size(), {}, &memory);
     std::pmr::vector<Entries> entries(flow.nodes.size(), Entries::kNone, &memory);
+    bool has_catch = false;
     for (std::size_t i = 0; i < flow.nodes.size(); ++i) {
       charge();
       const auto& node = flow.nodes[i];
@@ -62,7 +63,7 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
           if (site.commit) return Error::kInvalidFlow;
           site.commit = id;
           break;
-        case ExceptionPhase::kCatch: break;
+        case ExceptionPhase::kCatch: has_catch = true; break;
       }
       for (std::size_t e = 0; e < node.successor_count; ++e) {
         charge();
@@ -135,23 +136,43 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
                          barriers[i].argument + !pure,
                          barriers[i].ordered + !ordered};
     }
-    std::optional<std::size_t> latest_read;
+    const auto callee_property = [&](std::size_t call) -> std::optional<std::size_t> {
+      std::optional<SsaValueId> callee;
+      for (const auto& read : ssa.Reads(InstructionId{static_cast<std::uint32_t>(call)})) {
+        charge();
+        const auto slot = ssa.Slot(read.value);
+        if (slot && std::holds_alternative<Accumulator>(*slot)) callee = read.value;
+      }
+      // Match the shared AST's bounded saved-callee shape; do not walk an
+      // arbitrary copy/phi graph per call or mistake a later argument getter
+      // for the callee's original property read.
+      constexpr std::size_t kCalleeCopies = 2;
+      for (std::size_t copies = 0; callee && copies <= kCalleeCopies; ++copies) {
+        charge();
+        const auto origin = ssa.Definition(*callee);
+        if (!origin || origin->value >= call) return {};
+        const auto& operation = flow.instructions[origin->value].operation;
+        if (std::holds_alternative<NamedRead>(operation)) return origin->value;
+        const auto* assignment = std::get_if<ScalarAssignment>(&operation);
+        if (!assignment || assignment->completion != CompletionEffect::kNormal) return {};
+        const auto* value = std::get_if<ScalarValue>(&assignment->expression);
+        if (!value || (!std::holds_alternative<Accumulator>(*value) &&
+                       !std::holds_alternative<abc::RegisterId>(*value))) return {};
+        const auto reads = ssa.Reads(*origin);
+        if (reads.size() != 1) return {};
+        callee = reads.front().value;
+      }
+      return {};
+    };
     for (std::size_t call = 0; call < sites.size(); ++call) {
       charge();
-      if (std::holds_alternative<NamedRead>(flow.instructions[call].operation))
-        latest_read = call;
       if (!std::holds_alternative<ReceiverCall>(flow.instructions[call].operation)) continue;
-      if (!latest_read) continue;
-      std::optional<std::size_t> property;
-      if (std::holds_alternative<NamedRead>(flow.instructions[call - kDirectDistance].operation))
-        property = call - kDirectDistance;
-      else if (call >= kSpillDistance &&
-          std::holds_alternative<NamedRead>(flow.instructions[call - kSpillDistance].operation) &&
+      const auto property = callee_property(call);
+      if (!property) continue;
+      const bool short_interval = call - *property == kDirectDistance ||
+          (call - *property == kSpillDistance &&
           SpillReload(flow.instructions[call - kSpillDistance + kDirectDistance],
-                      flow.instructions[call - kDirectDistance]))
-        property = call - kSpillDistance;
-      const bool short_interval = property.has_value();
-      if (!property) property = latest_read;
+                      flow.instructions[call - kDirectDistance]));
       const auto read_exit = route(sites[*property]);
       const auto call_exit = route(sites[call]);
       if (!read_exit || !call_exit || read_exit->handler != call_exit->handler ||
@@ -161,14 +182,15 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
         // Longer intervals are caller-only. Fusion moves private writes;
         // ordered emission instead encloses arguments in an arrow. Neither
         // route proves ownership or observable register state for a local catch.
-        if (!read_exit->handler && !call_exit->handler &&
-            barriers[call].edge == barriers[*property].edge &&
+        const bool linear = barriers[call].edge == barriers[*property].edge;
+        if (!read_exit->handler && !call_exit->handler && (linear || !has_catch) &&
             barriers[call].ordered == barriers[*property + 1].ordered) {
           const auto evaluation =
-              barriers[call].argument == barriers[*property + 1].argument
+              linear && barriers[call].argument == barriers[*property + 1].argument
                   ? ReceiverEvaluation::kFuse : ReceiverEvaluation::kPreserveOrder;
           result.routes[call] = ExceptionCallRoute{
-              InstructionId{static_cast<std::uint32_t>(*property)}, evaluation};
+              InstructionId{static_cast<std::uint32_t>(*property)}, evaluation,
+              linear ? ReceiverRegion::kLinear : ReceiverRegion::kForward};
         }
         continue;
       }
@@ -191,7 +213,8 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
             effects.exceptional != ExceptionalCompletion::kImpossible) { linear = false; break; }
       }
       if (linear) result.routes[call] = ExceptionCallRoute{
-          InstructionId{static_cast<std::uint32_t>(*property)}, ReceiverEvaluation::kFuse};
+          InstructionId{static_cast<std::uint32_t>(*property)},
+          ReceiverEvaluation::kFuse, ReceiverRegion::kLinear};
     }
     return result;
   } catch (Error error) { return error;

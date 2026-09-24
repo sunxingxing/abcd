@@ -1,13 +1,15 @@
 #ifndef ABCD_ANALYSIS_EXCEPTION_CALLS_H_
 #define ABCD_ANALYSIS_EXCEPTION_CALLS_H_
 
-#include "abcd/analysis/exception_flow.h"
+#include "abcd/analysis/instruction_ssa.h"
 
 namespace abcd::analysis {
 enum class ReceiverEvaluation : std::uint8_t { kFuse, kPreserveOrder };
+enum class ReceiverRegion : std::uint8_t { kLinear, kForward };
 struct ExceptionCallRoute {
   InstructionId property;
   ReceiverEvaluation evaluation;
+  ReceiverRegion region;
 };
 struct ExceptionCalls {
   // Indexed by original call instruction; absent means no route certificate.
@@ -18,7 +20,7 @@ struct ExceptionCalls {
   }
 };
 enum class ExceptionCallError : std::uint8_t { kInvalidFlow, kResourceLimit };
-// Same immutable BuildExceptionFlow result. Accepts direct read/call and exact
+// Same immutable BuildExceptionFlow result and matching phased SSA. Accepts direct read/call and exact
 // read/spill/reload/call intervals, with single-entry interiors and equal
 // dispatch/Catch gateways; longer private scalar/string argument intervals
 // require both exceptions to propagate to the caller. Effectful interiors
@@ -27,8 +29,12 @@ enum class ExceptionCallError : std::uint8_t { kInvalidFlow, kResourceLimit };
 // emission permission: AST must
 // prove receiver identity and single uses of all removed SSA definitions,
 // including phi inputs, so no handler observes an eliminated register write.
-// O(I+N+E) work and bounded O(I+N) storage; prefix queries bound long intervals.
+// kForward additionally requires the AST's forward argument-region proof and
+// is only issued for graphs without Catch nodes. It is not a control-flow
+// certificate by itself. Candidates follow at most two SSA slot copies.
+// O(I+N+E+R) work (R: call reads), bounded O(I+N) storage; prefix interval queries.
 [[nodiscard]] std::variant<ExceptionCalls, ExceptionCallError>
-ProveExceptionCalls(const ExceptionFlow& flow, SemanticBudget budget = {});
+ProveExceptionCalls(const ExceptionFlow& flow, const InstructionSsa& ssa,
+                    SemanticBudget budget = {});
 }  // namespace abcd::analysis
 #endif

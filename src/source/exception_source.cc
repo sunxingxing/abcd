@@ -26,7 +26,7 @@ SourceAstResult BuildExceptionSourceAst(
         std::get<analysis::InstructionSsaError>(indexed) ==
                 analysis::InstructionSsaError::kResourceLimit
             ? SourceError::kResourceLimit : SourceError::kInvalidEffect, {}};
-  const auto routed = analysis::ProveExceptionCalls(input.flow,
+  const auto routed = analysis::ProveExceptionCalls(input.flow, *ssa,
       {budget.bytes - regions.allocated_bytes - ssa->AllocatedBytes(),
        budget.work - std::get<analysis::ExceptionInputProof>(checked).work_units});
   const auto* calls = std::get_if<analysis::ExceptionCalls>(&routed);

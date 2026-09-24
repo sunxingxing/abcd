@@ -423,6 +423,17 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         const bool across_blocks =
             *property_id < method.flow.blocks[block_id].first_instruction;
+        if (method.ssa.IsPhased()) {
+          switch (proof.call_routes[i]->region) {
+            case analysis::ReceiverRegion::kLinear:
+              if (across_blocks) return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+              break;
+            case analysis::ReceiverRegion::kForward:
+              if (!across_blocks || ast.regions.catches)
+                return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+              break;
+          }
+        }
         if (across_blocks) {
           if (ast.argument_region)
             return Fail(SourceError::kUnsupportedOperation, instruction.pc);
@@ -447,10 +458,9 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
         const bool staged = across_blocks || *last_effect != property;
         if (method.ssa.IsPhased()) {
           // Effectful argument preparation stays inside the existing staged
-          // Reference call. No normal-only argument-region proof may stand in
-          // for exception region ownership, and no ordered route grants fusion.
-          if (across_blocks)
-            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+          // Reference call. Forward-region admission above requires both the
+          // phased caller-exit certificate and the normal single-entry proof;
+          // neither permits local catches or delayed property evaluation.
           switch (proof.call_routes[i]->evaluation) {
             case analysis::ReceiverEvaluation::kFuse:
               if (staged) return Fail(SourceError::kUnsupportedOperation, instruction.pc);

@@ -34,6 +34,21 @@ std::variant<InstructionSsa, InstructionSsaError> InstructionSsa::Build(
     }
     for (const auto& site : result.sites_)
       if (!site.before || !site.commit) return Error::kInvalidFlow;
+    // Native reads are site-sorted. Index each group once instead of making
+    // every AST/callee query binary-search the full method's read array.
+    const auto reads = ssa.AllReads();
+    for (std::size_t first = 0; first < reads.size();) {
+      const auto node_id = reads[first].instruction.value;
+      if (node_id >= flow.nodes.size()) return Error::kInvalidFlow;
+      const auto& node = flow.nodes[node_id];
+      if (node.phase != ExceptionPhase::kBefore) return Error::kInvalidFlow;
+      auto end = first + 1;
+      while (end < reads.size() && reads[end].instruction.value == node_id) ++end;
+      if (end < reads.size() && reads[end].instruction.value < node_id)
+        return Error::kInvalidFlow;
+      result.sites_[node.instruction.value].reads = reads.subspan(first, end - first);
+      first = end;
+    }
     return result;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
@@ -47,7 +62,7 @@ std::span<const SsaRead> InstructionSsa::Reads(InstructionId instruction) const 
   if (const auto* normal = std::get_if<const RegisterSsa*>(&ssa_))
     return (*normal)->Reads(instruction);
   if (instruction.value >= sites_.size() || !sites_[instruction.value].before) return {};
-  return std::get<const ExceptionSsa*>(ssa_)->Reads(*sites_[instruction.value].before);
+  return sites_[instruction.value].reads;
 }
 std::optional<SsaValueId> InstructionSsa::Write(InstructionId instruction) const {
   if (const auto* normal = std::get_if<const RegisterSsa*>(&ssa_))

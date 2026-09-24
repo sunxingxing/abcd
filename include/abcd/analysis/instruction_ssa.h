@@ -15,8 +15,9 @@ class InstructionSsa {
   explicit InstructionSsa(const RegisterSsa& normal) : ssa_(&normal) {}
   InstructionSsa(InstructionSsa&&) noexcept = default;
   InstructionSsa& operator=(InstructionSsa&&) noexcept = default;
-  // Matching unchanged flow/SSA. O(I+N) construction and O(I) owned index;
-  // queries borrow the original arrays. No opcode interpretation or SSA pass.
+  // Matching unchanged flow/SSA. O(I+N+R) construction (R: all reads) and O(I)
+  // owned index; phased Reads is O(1) and borrows the original arrays. No
+  // opcode interpretation or SSA pass. Other lookups retain native costs.
   [[nodiscard]] static std::variant<InstructionSsa, InstructionSsaError> Build(
       const ExceptionFlow& flow, const ExceptionSsa& ssa,
       std::size_t bytes = IdfBudget{}.bytes);
@@ -36,6 +37,7 @@ class InstructionSsa {
   struct Sites {
     std::optional<ExceptionNodeId> before;
     std::optional<ExceptionNodeId> commit;
+    std::span<const SsaRead> reads;
   };
   InstructionSsa(const ExceptionFlow& flow, const ExceptionSsa& ssa)
       : ssa_(&ssa), flow_(&flow) {}
