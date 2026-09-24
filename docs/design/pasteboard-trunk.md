@@ -491,6 +491,41 @@ exhaustion. Positive cases must retain unrelated getter/closure effects and
 the original field PCs without moving evaluation or invoking mutable global
 Object/Reflect helpers.
 
+## Descriptor-Derived Source Paths
+
+Source paths are now separate from entity-qualified diagnostic archive paths.
+`PlanRecordSourcePaths` retains record ordering and descriptor directory/file
+components, permits interior dots, and omits the unconditional entity suffix.
+For example, Logger source is published at
+`sources/com.example.pasteboard/entry/ets/common/Logger.mjs`; the old escaped
+`records/.../Logger~r00001172.record.json` and declaration archive remain stable.
+Percent escapes protect empty/traversal components, separators and unsupported
+bytes. This is descriptor evidence, not proof of the original project root or
+file extension: no `src/main` directory or `.ets` suffix is invented. Unicode
+names still use byte escaping. Debug source-file provenance and original
+project-layout reconstruction remain follow-up work.
+
+The exporter plans all source stems before creating its staging tree and
+rejects duplicate or ASCII-case-folded duplicate paths instead of overwriting
+or guessing names. Sorting a bounded pointer index takes O(N log N * L) worst
+case for N records and maximum path length L; strings and both vectors share
+an explicit 16 MiB retained-planning budget. Per-path temporary construction
+is additionally bounded by the existing component/path limits. Filesystem
+file/directory conflicts fail the staged export; nothing is published in that
+case. The `.mjs` extension continues to denote the actual emitted JS format.
+
+Manifest `planned_source` records the intended destination even for rejected
+methods/records; only a successfully emitted record gets `source`. The targeted
+Pasteboard export still publishes CommonConstants and Logger only. Method
+coverage and source-style fidelity have not changed in this path increment.
+The engine consumed only modules.abc, not source files or source maps.
+
+Both CLI targets compiled and the sample export was inspected. Added path
+regression cases cover ordinary bundle dots, distinct names, duplicates with
+different entity IDs, case-folded collisions, traversal/escaping and exhausted
+budget; these tests remain unexecuted under the user's testing pause. RSS
+tracking remains paused as well.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

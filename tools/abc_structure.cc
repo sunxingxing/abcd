@@ -133,6 +133,16 @@ int Export(const std::filesystem::path& input,
     else
       return Fail(ExportError::kRoles);
   }
+  std::vector<structure::RecordPath> source_paths;
+  if (emit_source) {
+    auto planned = structure::PlanRecordSourcePaths(index->records);
+    if (const auto* error = std::get_if<structure::PathError>(&planned)) {
+      std::cerr << nlohmann::json{{"path_error", static_cast<unsigned>(*error)}}
+                << '\n';
+      return Fail(ExportError::kPath);
+    }
+    source_paths = std::get<std::vector<structure::RecordPath>>(std::move(planned));
+  }
   const auto parent = output.parent_path();
   if (!parent.empty()) std::filesystem::create_directories(parent);
   StagedTree tree(output);
@@ -146,6 +156,7 @@ int Export(const std::filesystem::path& input,
            << ",\"records\":[";
   structure::RecordCounts totals;
   bool comma = false;
+  std::size_t record_index = 0;
   for (const auto& record : index->records) {
     const auto planned = structure::PlanRecordPath(record);
     const auto* path = std::get_if<structure::RecordPath>(&planned);
@@ -182,6 +193,10 @@ int Export(const std::filesystem::path& input,
                                    {"metadata", metadata_path},
                                    {"declarations", declaration_path}};
     if (emit_source) {
+      const auto source_stem = std::filesystem::path("sources") /
+                               source_paths[record_index].stem;
+      const auto source_path = source_stem.string() + ".mjs";
+      record_manifest["planned_source"] = source_path;
       if (!roles) {
         record_manifest["source_status"] =
             static_cast<unsigned>(SourceStatus::kProgram);
@@ -197,7 +212,8 @@ int Export(const std::filesystem::path& input,
             record_manifest["source_status"] =
                 static_cast<unsigned>(SourceStatus::kNoModule);
           } else {
-            const auto source_path = stem.string() + ".mjs";
+            std::filesystem::create_directories(
+                (tree.path / source_stem).parent_path());
             std::ofstream program(tree.path / source_path, std::ios::binary);
             if (!program) return Fail(ExportError::kOutput, record.offset.value);
             const auto written = source::WriteRecordProgram(
@@ -240,6 +256,7 @@ int Export(const std::filesystem::path& input,
     comma = true;
     manifest << record_manifest;
     if (!manifest) return Fail(ExportError::kOutput);
+    ++record_index;
   }
   const nlohmann::json counts{
       {"records", index->records.size()}, {"methods", totals.methods},

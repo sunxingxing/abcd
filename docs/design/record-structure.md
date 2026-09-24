@@ -13,7 +13,7 @@ plus a manifest mapping original descriptor/entity to paths. The `.d.ts` files
 are explicitly structural declarations, not recovered executable implementations.
 Do not invent function bodies or top-level bindings for every method table entry.
 
-Use descriptor path segments with deterministic escaping and a record entity-ID
+For diagnostic artifacts, use descriptor path segments with deterministic escaping and a record entity-ID
 suffix, preserving the original descriptor in metadata. Reject overlong paths
 explicitly; never interpret `..`, absolute prefixes or separators as host path
 authority. An existing destination is never overwritten. Stage output privately
