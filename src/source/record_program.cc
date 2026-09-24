@@ -1002,7 +1002,7 @@ class ProgramWriter {
       throw Fail(Error::kInitializer, pc_);
     const auto recovered = RecoverStaticFields(
         file_, header_, index_, index_.methods[init.method.value],
-        budget_.bytes, budget_.strings);
+        budget_.bytes, budget_.strings, &module_);
     if (const auto* failure = std::get_if<StaticFieldFailure>(&recovered)) {
       const auto mapped = failure->kind == StaticFieldError::kResourceLimit
                               ? Error::kResourceLimit

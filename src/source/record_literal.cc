@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
+#include <limits>
 #include <ostream>
 #include <type_traits>
 
@@ -55,6 +57,15 @@ class LiteralWriter {
       bytes -= chunk;
     }
   }
+  void Number(std::uint16_t value) {
+    std::array<char, std::numeric_limits<std::uint16_t>::digits10 + 2> digits{};
+    const auto result = std::to_chars(
+        digits.data(), digits.data() + digits.size(), value);
+    if (result.ec != std::errc{})
+      throw RecordLiteralError::kInvalidGraph;
+    Text({digits.data(),
+          static_cast<std::size_t>(result.ptr - digits.data())});
+  }
   void Account(const std::variant<std::size_t, EmitError>& result) {
     if (const auto* error = std::get_if<EmitError>(&result)) throw *error;
     const auto bytes = std::get<std::size_t>(result);
@@ -93,7 +104,10 @@ class LiteralWriter {
       return;
     }
     const auto child = std::get<RecordNodeRef>(value).id;
-    if (child <= parent) throw RecordLiteralError::kInvalidGraph;
+    if (child == parent ||
+        (child < parent &&
+         nodes_[parent].kind != RecordLiteralKind::kImportedConstruct))
+      throw RecordLiteralError::kInvalidGraph;
     Node(child, depth + 1);
   }
   void Node(std::size_t id, std::size_t depth) {
@@ -134,6 +148,17 @@ class LiteralWriter {
           Indent(depth);
         }
         Text("]");
+        break;
+      case RecordLiteralKind::kImportedConstruct:
+        if (!node.fields.empty()) throw RecordLiteralError::kInvalidGraph;
+        Text("new $import");
+        Number(node.imported_slot.value);
+        Text("(");
+        for (std::size_t i = 0; i < node.elements.size(); ++i) {
+          if (i) Text(", ");
+          Value(node.elements[i], id, depth);
+        }
+        Text(")");
         break;
     }
   }

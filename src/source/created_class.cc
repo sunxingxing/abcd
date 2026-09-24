@@ -19,6 +19,7 @@
 #include "capture_stream.h"
 #include "class_emission.h"
 #include "parameter_names.h"
+#include "record_literal.h"
 #include "runtime_name.h"
 #include "spread_field_constructor.h"
 
@@ -301,6 +302,16 @@ class ClassWriter {
   void StaticValueText(const StaticValue& value) {
     if (const auto* atom = std::get_if<StaticAtom>(&value)) {
       StaticAtomText(*atom);
+      return;
+    }
+    if (const auto* node = std::get_if<RecordNodeRef>(&value)) {
+      const auto written = WriteRecordLiteral(
+          static_fields_->nodes, node->id, output_, budget_.output);
+      if (const auto* error = std::get_if<EmitError>(&written))
+        throw ClassFailure{*error};
+      if (std::holds_alternative<RecordLiteralError>(written))
+        throw ClassFailure{CreatedClassError::kStaticFieldValue};
+      Account(std::get<std::size_t>(written));
       return;
     }
     Text("[");

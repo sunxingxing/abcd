@@ -8,25 +8,9 @@
 #include <vector>
 
 #include "abcd/source/emission.h"
-#include "abcd/source/static_fields.h"
+#include "abcd/source/literal_graph.h"
 
 namespace abcd::source {
-struct RecordNodeRef {
-  std::size_t id = 0;
-};
-using RecordLiteralValue = std::variant<StaticAtom, RecordNodeRef>;
-struct RecordLiteralField {
-  std::u16string key;
-  RecordLiteralValue value;
-};
-enum class RecordLiteralKind { kObject, kArray };
-struct RecordLiteralNode {
-  RecordLiteralKind kind;
-  std::vector<RecordLiteralField> fields;
-  std::vector<RecordLiteralValue> elements;
-  bool attached = false;
-  bool emitted = false;
-};
 enum class RecordLiteralError { kInvalidGraph, kDepthLimit };
 using RecordLiteralResult =
     std::variant<std::size_t, EmitError, RecordLiteralError>;
