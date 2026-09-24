@@ -6,6 +6,7 @@
 
 #include "abcd/abc/class_buffer.h"
 #include "abcd/analysis/class_heritage.h"
+#include "abcd/analysis/class_creation.h"
 #include "abcd/analysis/method_roles.h"
 #include "abcd/source/created_function.h"
 #include "abcd/source/static_fields.h"
@@ -36,7 +37,15 @@ struct GlobalClassParent {
   std::size_t snapshot = 0;
   ParentRuntimeInvariant runtime = ParentRuntimeInvariant::kUnproven;
 };
-using ClassParent = std::variant<ImportedClassParent, GlobalClassParent>;
+// Owner-proven initialized local snapshot at this exact creation site, not a
+// source expression. The binding must outlive synchronous class emission.
+// Inner class/IIFE binding collisions are rejected by the emitter.
+struct BoundClassParent {
+  std::string_view binding;
+  ParentRuntimeInvariant runtime = ParentRuntimeInvariant::kUnproven;
+};
+using ClassParent =
+    std::variant<ImportedClassParent, GlobalClassParent, BoundClassParent>;
 enum class CreatedClassError {
   kHeritage,
   kMembers,
@@ -95,6 +104,22 @@ using CreatedClassResult =
     abc::EntityOffset caller, const abc::BodyInstruction& instruction,
     analysis::ClassHeritage heritage, std::ostream& output,
     LocalLexicalBudget budget = {}, abc::StringBudget strings = {},
+    const analysis::MethodRoleIndex* roles = nullptr,
+    const abc::ModuleInfo* module = nullptr,
+    const GlobalScope* enclosing_scope = nullptr,
+    const StaticFields* static_fields = nullptr,
+    std::span<const ClassAccessor> accessors = {},
+    std::optional<ClassParent> parent = {},
+    std::span<const ClassAttachedMethod> attached_methods = {});
+// Typed counterpart for unchanged semantic IR. Decoding/frame validation has
+// already happened; origin and heritage belong to this exact creation site.
+[[nodiscard]] CreatedClassResult WriteCreatedClass(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    abc::EntityOffset caller, const analysis::ClassCreation& creation,
+    abc::CodeOffset origin, analysis::ClassHeritage heritage,
+    std::ostream& output, LocalLexicalBudget budget = {},
+    abc::StringBudget strings = {},
     const analysis::MethodRoleIndex* roles = nullptr,
     const abc::ModuleInfo* module = nullptr,
     const GlobalScope* enclosing_scope = nullptr,

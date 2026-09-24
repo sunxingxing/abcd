@@ -110,3 +110,25 @@ PC197. This is the next register-value-flow obligation, not a class-source
 success. CLI compilation and read-only review completed; tests/RSS remain
 paused. Certificate rejection, mixed proven/unproven creators, buffer
 barriers and low-budget cases still require regressions when testing resumes.
+
+### Typed class emission boundary
+
+`WriteCreatedClass` now has an overload accepting the already validated
+`ClassCreation` and its original PC directly. The decoded-instruction entry
+delegates to it, preserving the existing constructor/member, owner, static
+field, heritage and atomic-publication checks. A future AST consumer does not
+need to manufacture bytecode to reuse this emitter.
+
+`BoundClassParent` admits an owner-proven initialized local snapshot binding,
+not arbitrary source text or an import/global-only ordinal. Its default
+parent runtime invariant remains unproven. Invalid identifiers and collisions
+with the inner class name, ClassValue or reserved MethodSelf namespace refuse
+emission, avoiding heritage evaluation in an unintended TDZ.
+
+This adapter is not yet class AST support. Before enabling nested class
+emission, thread the existing bounded `CreationExpansion` context through
+class constructors and members, including recursive dependencies. The current
+class body owner otherwise creates a new child context, which would not bound
+newly admitted class recursion. Accessor/attached-method assembly proofs and
+outer capture binding also remain required. CLI compilation succeeds; tests
+and RSS checks are still paused. No additional record completion is claimed.

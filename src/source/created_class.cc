@@ -231,9 +231,14 @@ class ClassWriter {
         using Origin = std::decay_t<decltype(origin)>;
         if constexpr (std::is_same_v<Origin, ImportedClassParent>)
           Text(" extends $loaded");
-        else
+        else if constexpr (std::is_same_v<Origin, GlobalClassParent>)
           Text(" extends $global");
-        Number(origin.snapshot);
+        else {
+          Text(" extends ");
+          Text(origin.binding);
+        }
+        if constexpr (!std::is_same_v<Origin, BoundClassParent>)
+          Number(origin.snapshot);
       }, *parent_);
     }
     Text(" {\n");
@@ -577,6 +582,25 @@ CreatedClassResult WriteCreatedClass(
     std::span<const ClassAccessor> accessors,
     std::optional<ClassParent> parent,
     std::span<const ClassAttachedMethod> attached_methods) {
+  const auto lifted = analysis::LiftClassCreation(instruction.decoded);
+  if (const auto* error = std::get_if<analysis::CreationError>(&lifted))
+    return *error;
+  return WriteCreatedClass(file, header, index, lookup, caller,
+      std::get<analysis::ClassCreation>(lifted), instruction.offset, heritage,
+      output, budget, strings, roles, module, enclosing_scope, static_fields,
+      accessors, parent, attached_methods);
+}
+
+CreatedClassResult WriteCreatedClass(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    abc::EntityOffset caller, const analysis::ClassCreation& creation,
+    abc::CodeOffset origin, analysis::ClassHeritage heritage,
+    std::ostream& output, LocalLexicalBudget budget, abc::StringBudget strings,
+    const analysis::MethodRoleIndex* roles, const abc::ModuleInfo* module,
+    const GlobalScope* enclosing_scope, const StaticFields* static_fields,
+    std::span<const ClassAccessor> accessors, std::optional<ClassParent> parent,
+    std::span<const ClassAttachedMethod> attached_methods) {
   try {
     // Admitted dynamic profiles use the pinned v7 class interpreter's
     // CreateClassWithBuffer/RuntimeSetClassInheritanceRelationship path.
@@ -584,13 +608,11 @@ CreatedClassResult WriteCreatedClass(
         header.profile == abc::ProfileId::kDynamic1202 ||
         header.profile == abc::ProfileId::kDynamic1206 ||
         header.profile == abc::ProfileId::kDynamic1301;
-    if (heritage.pc != instruction.offset ||
+    if (heritage.pc != origin ||
         (parent ? (heritage.kind != analysis::HeritageKind::kUnknown ||
                    !derived_profile)
                 : heritage.kind != analysis::HeritageKind::kAbsent))
       return CreatedClassError::kHeritage;
-    const auto creation = TakeClassValue<analysis::ClassCreation>(
-        analysis::LiftClassCreation(instruction.decoded));
     const auto target =
         TakeClassValue<abc::MethodTarget>(abc::ResolveMethodTarget(
             file, header, index, lookup, caller, creation.constructor));
@@ -614,6 +636,13 @@ CreatedClassResult WriteCreatedClass(
                       strings);
     const auto name = RuntimeName(index.methods[target.position.value]);
     if (!name) return CreatedClassError::kName;
+    if (parent) {
+      if (const auto* bound = std::get_if<BoundClassParent>(&*parent);
+          bound && (!IsSourceIdentifier(bound->binding) ||
+                    bound->binding == *name || bound->binding == "ClassValue" ||
+                    bound->binding.starts_with("MethodSelf")))
+        return CreatedClassError::kHeritage;
+    }
     abc::EntityOffset caller_owner{};
     if (module || !accessors.empty() || !attached_methods.empty()) {
       const auto caller_position = lookup.Find(caller);
