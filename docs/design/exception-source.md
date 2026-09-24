@@ -2,6 +2,36 @@
 
 ## Current Boundary
 
+### Captured-Cell Templates
+
+`PlanExceptionCaptures` projects reachable outer `CapturedDepth` lexical
+reads from phase Before bindings into original-coordinate `CapturedReadFact`
+and normal Commit load premises. It does not initialize a cell or grant any
+fact to locally allocated environments. The parent must discharge every
+emitted cell's Language and initialization premise before publication, exactly
+as for ordinary capture templates. Construction is O(I+N+L) work with bounded
+O(I+L) storage; the flow and environment owners must be unchanged and matching.
+
+The production `BuildExceptionTemplate` path now seeds these parametric
+loads and uses the common AST/layout-only template printer. It preserves typed
+capture insertions and their positions; it does not use a normal-CFG proof to
+bind child closures. `BuildExceptionBody` still rejects unbound outer captures,
+and both paths keep pending exceptions Unknown. Local captured-environment
+loads still need separate closure-write proof.
+
+`abc_semantic --exception-template` explicitly enables this conditional
+inspection mode. Schema 14 marks `requires_parent_capture_proof`, reports
+capture counts/insertions, and retains capture cursor coordinates in generated
+spans. It never reports an unbound template as executable body text. ABC-only
+inspection of pasteboard 4945 supplies one outer-cell premise and moves the
+input failure from PC 355 to catch PC 439
+(`build/pasteboard-4945-exception-captures.jsonl`). Method 6184's captured input
+proof passes, but its call at PC 39 remains unsupported by the restricted
+phased AST (`build/pasteboard-6184-exception-captures.jsonl`). No complete
+method or record is claimed. Tests and RSS remain paused; successful nonempty
+capture-template emission/binding, nested scopes and resource-boundary cases
+remain unverified by dedicated execution.
+
 ### Module Initialization Ownership
 
 Ordinary and exceptional body owners now share `SnapshotModuleReads` instead
@@ -41,14 +71,15 @@ work consume a shared remaining allowance; graph/environment preprocessing
 retain their existing separately bounded contracts. Output and transient
 string budgets are conservatively limited within remaining admission.
 
-The owner grants only the same Language ABI-entry premise as the ordinary
+The body owner grants only the same Language ABI-entry premise as the ordinary
 body path. It does not grant pending-exception or captured-value premises,
 infer initialized external modules, or attach original exception tables to
 normalized async/source-PC-rebased code. An exception template is produced
-only from a fully admitted body with no capture insertions, not fabricated
-capture bindings. Ordinary handler-free paths and fallback selection remain
+initially only from an admitted body with no capture insertions; the conditional
+capture-template extension is described above. Ordinary handler-free paths and fallback selection remain
 unchanged. Function signatures and record/module binding still belong to the
-existing callable and record owners.
+existing callable and record owners. The conditional exception-template path
+has since gained the explicit outer-cell premises described above.
 
 Both CLI targets compiled. ABC-only record production in
 `build/pasteboard-source-exception-owner/manifest.json` remains identical to
@@ -191,7 +222,7 @@ access plan. Original block layout supplies only instruction boundaries:
 no normal-only SSA or fabricated handler-free bytecode is constructed.
 The public borrowed-input contract requires all analysis owners to match and
 local-load premises to have seeded the provided value solution. Captured-read
-facts remain absent at this boundary; module-read facts now accept the
+facts now follow the explicit conditional-template contract; module-read facts accept the
 caller-only and shared-catch certificates above. Phased receiver calls now
 require the restricted route/SSA certificates above; staged calls and
 unproven guarded-module fusion remain disabled.

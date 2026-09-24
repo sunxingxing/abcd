@@ -766,4 +766,12 @@ std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
                        {}, constants, output_bytes,
                        SourcePrinter::CaptureMode::kTemplate, proof, &method).PrintTemplate(names);
 }
+std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
+    const SourceAst& ast, const analysis::NormalFlow& blocks,
+    ScalarNames names, const MethodConstants& constants, std::size_t output_bytes) {
+  const abc::FrameLayout unused_frame{};
+  return SourcePrinter(ast, blocks, unused_frame, SourceForm::kFunction,
+                       {}, constants, output_bytes,
+                       SourcePrinter::CaptureMode::kTemplate).PrintTemplate(names);
+}
 }  // namespace abcd::source

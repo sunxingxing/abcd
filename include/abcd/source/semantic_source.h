@@ -233,5 +233,11 @@ enum class SourceForm : std::uint8_t { kFunction, kClassConstructor };
     ScalarNames names, const MethodConstants& constants,
     std::size_t output_bytes,
     const analysis::SemanticProof* proof = nullptr);
+// Layout-only counterpart for a verified phased AST. Emits typed outer-cell
+// insertions but cannot bind child closures using normal-CFG local proofs.
+[[nodiscard]] std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
+    const SourceAst& ast, const analysis::NormalFlow& blocks,
+    ScalarNames names, const MethodConstants& constants,
+    std::size_t output_bytes);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_SEMANTIC_SOURCE_H_

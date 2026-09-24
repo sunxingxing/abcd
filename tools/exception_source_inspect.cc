@@ -74,20 +74,27 @@ void InspectExceptionSource(const abcd::source::ExceptionAstInput& input,
     auto bounded_constants = constants;
     bounded_constants.string_budget.bytes = std::min(
         constants.string_budget.bytes, bytes / kSerializationFactor);
-    const auto printed = source::PrintSourceBody(*ast, input.blocks,
+    const auto printed = source::PrintSourceTemplate(*ast, input.blocks,
         {"$acc", names}, bounded_constants, bytes / kSerializationFactor);
-    const auto* source = std::get_if<source::PrintedSource>(&printed);
+    const auto* source = std::get_if<source::PrintedTemplate>(&printed);
     if (!source) {
       emit_failure(std::get<source::SourceFailure>(printed));
       return;
     }
-    output << nlohmann::json{{"exception_body_printed", true},
+    output << nlohmann::json{{"exception_body_printed", source->captures.empty()},
+                             {"exception_template_printed", true},
                              {"executable", false}, {"body", source->text},
+                             {"capture_count", source->captures.size()},
                              {"position_count", source->spans.size()}} << '\n';
     for (const auto& span : source->spans)
       output << nlohmann::json{{"pc", span.pc.value},
-          {"begin", {span.begin.byte, span.begin.line, span.begin.column}},
-          {"end", {span.end.byte, span.end.line, span.end.column}}} << '\n';
+          {"begin", {span.begin.byte, span.begin.line, span.begin.column, span.begin.captures}},
+          {"end", {span.end.byte, span.end.line, span.end.column, span.end.captures}}} << '\n';
+    for (const auto& capture : source->captures)
+      output << nlohmann::json{{"capture_depth", capture.cell.depth.value},
+          {"capture_slot", capture.cell.slot.value},
+          {"position", {capture.position.byte, capture.position.line,
+                        capture.position.column, capture.position.captures}}} << '\n';
   } catch (const source::SourceFailure& failure) { emit_failure(failure);
   } catch (const std::bad_alloc&) { emit_failure({source::SourceError::kResourceLimit, {}});
   } catch (const std::length_error&) { emit_failure({source::SourceError::kResourceLimit, {}}); }

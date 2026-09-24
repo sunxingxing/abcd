@@ -19,11 +19,13 @@ struct ExceptionAstInput {
   // Original-coordinate ProveExceptionModules certificates whose load facts
   // seeded values. Not normal-CFG kGuarded certificates.
   std::span<const analysis::ModuleReadFact> module_reads = {};
+  // Parametric template facts only; the publishing parent must discharge them.
+  std::span<const analysis::CapturedReadFact> captured_reads = {};
 };
 
 // regions is the same-body BuildExceptionRegionTree result. Rechecks all
-// reachable inputs before invoking the common AST pass. No captured read
-// premises or normal-only call fusion are inferred at this boundary.
+// reachable inputs before invoking the common AST pass. No capture
+// initialization or normal-only call fusion is inferred at this boundary.
 // Named-scope/rest certificates obey BuildSourceAst's ownership contract.
 // Byte admission includes the instruction-coordinate index and AST scratch.
 // budget.work bounds input verification and call-route analysis; AST retains its existing

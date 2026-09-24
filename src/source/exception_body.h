@@ -9,5 +9,10 @@ SemanticBodyResult BuildExceptionBody(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
     analysis::SemanticBudget budget, std::size_t output_bytes);
+// Parent-owned conditional capture template, never directly publishable text.
+SemanticTemplateResult BuildExceptionTemplate(
+    const abc::MethodBody& body, const abc::FrameLayout& frame,
+    ScalarNames names, const MethodConstants& constants,
+    analysis::SemanticBudget budget, std::size_t output_bytes);
 }  // namespace abcd::source
 #endif

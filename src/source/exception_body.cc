@@ -6,15 +6,20 @@
 #include <type_traits>
 #include "abcd/analysis/exception_modules.h"
 #include "abcd/analysis/exception_regions.h"
+#include "abcd/analysis/exception_captures.h"
 #include "abcd/source/exception_source.h"
 #include "abcd/source/named_scope.h"
 #include "module_read_snapshot.h"
 
 namespace abcd::source {
-SemanticBodyResult BuildExceptionBody(
+namespace {
+template <analysis::CapturedValues Captures>
+auto BuildException(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
-    analysis::SemanticBudget budget, std::size_t output_bytes) {
+    analysis::SemanticBudget budget, std::size_t output_bytes)
+    -> std::conditional_t<Captures == analysis::CapturedValues::kReject,
+                          SemanticBodyResult, SemanticTemplateResult> {
   using namespace analysis;
   const auto fail = [](bool resource, abc::CodeOffset pc = {}) {
     return SourceFailure{resource ? SourceError::kResourceLimit : SourceError::kInvalidEffect, pc};
@@ -92,13 +97,23 @@ SemanticBodyResult BuildExceptionBody(
     if (!modules) return fail(std::get<ExceptionModuleError>(module_plan) == ExceptionModuleError::kResourceLimit);
     retain(modules->AllocatedBytes());
     charge(modules->work_units);
+    ExceptionCaptures captures;
+    if constexpr (Captures == CapturedValues::kLanguage) {
+      auto captured = PlanExceptionCaptures(*flow, *environments, stage_budget());
+      auto* plan = std::get_if<ExceptionCaptures>(&captured);
+      if (!plan) return fail(std::get<ExceptionCaptureError>(captured) == ExceptionCaptureError::kResourceLimit);
+      captures = std::move(*plan);
+      retain(captures.AllocatedBytes());
+      charge(captures.work_units);
+    }
     std::vector<ExceptionLoadFact> loads;
-    const auto load_count = locals->loads.size() + modules->loads.size();
+    const auto load_count = locals->loads.size() + modules->loads.size() + captures.loads.size();
     if (load_count > remaining / sizeof(ExceptionLoadFact)) return fail(true);
     loads.reserve(load_count);
     retain(loads.capacity() * sizeof(ExceptionLoadFact));
     loads.insert(loads.end(), locals->loads.begin(), locals->loads.end());
     loads.insert(loads.end(), modules->loads.begin(), modules->loads.end());
+    loads.insert(loads.end(), captures.loads.begin(), captures.loads.end());
     std::vector<EntryValueFact> entries;
     if (ssa->Values().size() > remaining / sizeof(EntryValueFact)) return fail(true);
     entries.reserve(ssa->Values().size());
@@ -157,7 +172,8 @@ SemanticBodyResult BuildExceptionBody(
     if (!tree) return std::get<RegionFailure>(structured);
     const auto rest = names.rest ? ProveRestPrologue(body, frame, names.rest->first_argument) : std::nullopt;
     if (names.rest && !rest) return fail(false);
-    const ExceptionAstInput input{*flow, *ssa, *environments, *values, *locals, *blocks, modules->reads};
+    const ExceptionAstInput input{*flow, *ssa, *environments, *values, *locals, *blocks,
+                                  modules->reads, captures.reads};
     const auto lowered = BuildExceptionSourceAst(input, std::move(*tree), stage_budget(), scopes->admitted, rest);
     const auto* ast = std::get_if<SourceAst>(&lowered);
     if (!ast) return std::get<SourceFailure>(lowered);
@@ -167,11 +183,30 @@ SemanticBodyResult BuildExceptionBody(
     const auto print_bytes = std::min(output_bytes, remaining / kEmissionReserveParts);
     auto bounded_constants = constants;
     bounded_constants.string_budget.bytes = std::min(constants.string_budget.bytes, print_bytes);
-    auto printed = PrintSourceBody(*ast, *blocks, names, bounded_constants, print_bytes);
-    if (auto* source = std::get_if<PrintedSource>(&printed)) return std::move(*source);
-    return std::get<SourceFailure>(printed);
+    if constexpr (Captures == CapturedValues::kReject) {
+      auto printed = PrintSourceBody(*ast, *blocks, names, bounded_constants, print_bytes);
+      if (auto* source = std::get_if<PrintedSource>(&printed)) return std::move(*source);
+      return std::get<SourceFailure>(printed);
+    } else {
+      auto printed = PrintSourceTemplate(*ast, *blocks, names, bounded_constants, print_bytes);
+      if (auto* source = std::get_if<PrintedTemplate>(&printed)) return std::move(*source);
+      return std::get<SourceFailure>(printed);
+    }
   } catch (const SourceFailure& error) { return error;
   } catch (const std::bad_alloc&) { return fail(true);
   } catch (const std::length_error&) { return fail(true); }
+}
+}  // namespace
+SemanticBodyResult BuildExceptionBody(
+    const abc::MethodBody& body, const abc::FrameLayout& frame,
+    ScalarNames names, const MethodConstants& constants,
+    analysis::SemanticBudget budget, std::size_t output_bytes) {
+  return BuildException<analysis::CapturedValues::kReject>(body, frame, names, constants, budget, output_bytes);
+}
+SemanticTemplateResult BuildExceptionTemplate(
+    const abc::MethodBody& body, const abc::FrameLayout& frame,
+    ScalarNames names, const MethodConstants& constants,
+    analysis::SemanticBudget budget, std::size_t output_bytes) {
+  return BuildException<analysis::CapturedValues::kLanguage>(body, frame, names, constants, budget, output_bytes);
 }
 }  // namespace abcd::source

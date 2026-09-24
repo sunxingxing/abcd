@@ -66,7 +66,7 @@ enum class InspectError : std::uint8_t {
   kFrame,
   kPrint,
 };
-enum class InspectDetail : std::uint8_t { kSummary, kInstructions, kExceptionFlow };
+enum class InspectDetail : std::uint8_t { kSummary, kInstructions, kExceptionFlow, kExceptionTemplate };
 int Fail(InspectError kind, std::uint32_t pc = 0) {
   std::cerr << nlohmann::json{{"error", static_cast<unsigned>(kind)},
                               {"pc", pc}}
@@ -118,12 +118,13 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     const auto& failure = std::get<abc::BodyFailure>(decoded);
     return Fail(InspectError::kBody, failure.offset.value);
   }
-  if (detail == InspectDetail::kExceptionFlow) {
+  if (detail == InspectDetail::kExceptionFlow || detail == InspectDetail::kExceptionTemplate) {
     const source::MethodConstants constants{file, *header, *index,
                                             method->offset, abc::StringBudget{}};
     return InspectExceptionFlow(*body, header->profile,
                                  code.registers + code.arguments, code.registers,
-                                 constants, std::cout);
+                                 constants, std::cout, detail == InspectDetail::kExceptionTemplate
+                                     ? analysis::CapturedValues::kLanguage : analysis::CapturedValues::kReject);
   }
   if (detail == InspectDetail::kInstructions) {
     constexpr std::size_t kDispatchBytes = 16 * 1024 * 1024;
@@ -349,7 +350,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
 
 int main(int argc, char** argv) {
   if (argc != 3 && argc != 4) {
-    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source|--instructions|--exception-flow]\n"
+    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source|--instructions|--exception-flow|--exception-template]\n"
                  "       abc_semantic INPUT.abc --all-records\n";
     return Fail(InspectError::kArguments);
   }
@@ -373,6 +374,8 @@ int main(int argc, char** argv) {
       return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kInstructions);
     else if (option == "--exception-flow")
       return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kExceptionFlow);
+    else if (option == "--exception-template")
+      return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kExceptionTemplate);
     else
       return Fail(InspectError::kArguments);
   }
