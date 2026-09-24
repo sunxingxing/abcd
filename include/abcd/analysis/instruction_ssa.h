@@ -32,6 +32,12 @@ class InstructionSsa {
   [[nodiscard]] std::size_t ValueCount() const;
   [[nodiscard]] std::size_t AllocatedBytes() const;
   [[nodiscard]] bool IsPhased() const { return flow_ != nullptr; }
+  // Native Before coordinate for consumers of the same phased environment
+  // owner. Normal SSA has no exception-site coordinate.
+  [[nodiscard]] std::optional<ExceptionNodeId> Before(InstructionId instruction) const {
+    if (!flow_ || instruction.value >= sites_.size()) return {};
+    return sites_[instruction.value].before;
+  }
 
  private:
   struct Sites {

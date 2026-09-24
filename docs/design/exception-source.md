@@ -15,7 +15,8 @@ O(I+L) storage; the flow and environment owners must be unchanged and matching.
 The production `BuildExceptionTemplate` path now seeds these parametric
 loads and uses the common AST/layout-only template printer. It preserves typed
 capture insertions and their positions; it does not use a normal-CFG proof to
-bind child closures. `BuildExceptionBody` still rejects unbound outer captures,
+bind child closures. The child-rebasing extension below uses phased topology.
+`BuildExceptionBody` still rejects unbound outer captures,
 and both paths keep pending exceptions Unknown. Local captured-environment
 loads still need separate closure-write proof.
 
@@ -132,6 +133,43 @@ to the preceding staged snapshot. Read-only review found no remaining concrete
 issue after the read-index correction. Tests and RSS remain paused. Deferred
 cases include cross-block generated spans, nested argument branches, outside
 entries, early exits, local-catch rejection and byte/work limits.
+
+### Child Capture Rebasing
+
+`FunctionExpression` now retains its original phased Before `capture_site`,
+obtained from the same `InstructionSsa` owner. The layout template printer can
+borrow the unchanged `EnvironmentFlow` used for AST admission. Child template
+captures resolve through that creation environment's existing ancestry index;
+outer `CapturedDepth` results become typed parent insertions. This works across
+nested child expansion without inventing identifiers or rebuilding normal SSA.
+Locally allocated cells remain rejected: topology and exception-local load
+proofs are not initialization/escape certificates for a child closure. The
+normal printer retains its existing local initialization proof path.
+
+The production exception-template owner passes its live environment result to
+the shared printer. The inspection entry now supplies same-file method lookup
+and role indexes, both kept alive through child expansion. Failed role evidence
+does not authorize arrows. As in the ordinary survey, the detached inspector
+owns only generated `$` bindings and emits a conditional unshadowed-global
+premise; it does not claim to reconstruct a record's scope or initialize module
+slots. Record publication still performs its actual scope checks. Child capture
+rebasing is opt-in through `--exception-template`, not `--exception-flow`.
+
+Both CLI targets compiled. ABC-only inspection of pasteboard 10110 emits a
+phased template with nested arrow functions, 45 parent PC spans and four typed
+capture insertions (`build/pasteboard-10110-exception-child-captures.jsonl`).
+There are three direct lexical-read premises; the additional insertion at
+byte 661 comes from a created child, rebased to outer depth 0, slot 0. All
+four insertions still require parent proof and binding. Child-internal PC
+maps are not included in the 45 parent spans. Method 6044 now passes the
+detached global-name boundary and stops at the unresolved module reference
+at PC 110, rather than being published with guessed module state. The ordinary
+survey remains byte-identical to the preceding region-call snapshot.
+Read-only review found no concrete defect. Tests and RSS remain paused;
+local child initialization, ancestor rebasing through allocated environments,
+unreachable creation sites, repeated closure instances and resource limits
+remain deferred execution cases. This is not a new complete record or an
+execution-equivalence claim.
 
 ### Module Initialization Ownership
 

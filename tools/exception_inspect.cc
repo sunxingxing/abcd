@@ -210,7 +210,7 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     const source::ExceptionAstInput input{*flow, *ssa, *environments,
                                          *values, *locals, *blocks, modules->reads, captures.reads};
     InspectExceptionSource(input, std::move(*tree), constants, frame_size,
-        remaining - regions->allocated_bytes, output);
+        remaining - regions->allocated_bytes, output, captured_values);
   } else {
     const auto& failure = std::get<analysis::RegionFailure>(tree_result);
     output << nlohmann::json{{"region_tree_error", static_cast<unsigned>(failure.kind)},

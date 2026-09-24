@@ -44,6 +44,7 @@ struct FunctionExpression {
   analysis::FunctionCreation creation;
   analysis::InstructionId instruction;
   std::optional<analysis::InstructionId> previous_creation;
+  std::optional<analysis::ExceptionNodeId> capture_site = {};
 };
 using SourceExpression =
     std::variant<analysis::ScalarExpression, MemberExpression,
@@ -233,11 +234,14 @@ enum class SourceForm : std::uint8_t { kFunction, kClassConstructor };
     ScalarNames names, const MethodConstants& constants,
     std::size_t output_bytes,
     const analysis::SemanticProof* proof = nullptr);
-// Layout-only counterpart for a verified phased AST. Emits typed outer-cell
-// insertions but cannot bind child closures using normal-CFG local proofs.
+// Layout-only counterpart for a verified phased AST. Optional environments
+// must be the unchanged phased owner used to build this AST and outlive print.
+// Child captures can be rebased to outer-cell insertions; locally allocated
+// cells still require an initialization proof and are refused here.
 [[nodiscard]] std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
     const SourceAst& ast, const analysis::NormalFlow& blocks,
     ScalarNames names, const MethodConstants& constants,
-    std::size_t output_bytes);
+    std::size_t output_bytes,
+    const analysis::EnvironmentFlow* environments = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_SEMANTIC_SOURCE_H_

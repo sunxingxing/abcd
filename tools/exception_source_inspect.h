@@ -7,5 +7,6 @@
 void InspectExceptionSource(const abcd::source::ExceptionAstInput& input,
     abcd::analysis::SemanticRegionTree regions,
     const abcd::source::MethodConstants& constants, std::uint64_t frame_size,
-    std::size_t bytes, std::ostream& output);
+    std::size_t bytes, std::ostream& output,
+    abcd::analysis::CapturedValues captured_values);
 #endif

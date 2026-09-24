@@ -14,6 +14,8 @@
 #include "abcd/abc/call_type.h"
 #include "abcd/abc/frame_layout.h"
 #include "abcd/abc/method_body.h"
+#include "abcd/abc/method_lookup.h"
+#include "abcd/analysis/method_roles.h"
 #include "abcd/analysis/semantic_region.h"
 #include "abcd/analysis/coroutine.h"
 #include "abcd/analysis/await_region.h"
@@ -119,8 +121,17 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     return Fail(InspectError::kBody, failure.offset.value);
   }
   if (detail == InspectDetail::kExceptionFlow || detail == InspectDetail::kExceptionTemplate) {
-    const source::MethodConstants constants{file, *header, *index,
+    // Child templates need the same-file membership and role owners used by
+    // record emission. These do not grant module/global/capture premises.
+    const auto lookup = abc::MethodLookup::Build(index->methods);
+    const auto* methods = std::get_if<abc::MethodLookup>(&lookup);
+    if (!methods) return Fail(InspectError::kIndex);
+    const auto role_index = analysis::MethodRoleIndex::Build(file, *header, *index, *methods);
+    const auto* roles = std::get_if<analysis::MethodRoleIndex>(&role_index);
+    source::MethodConstants constants{file, *header, *index,
                                             method->offset, abc::StringBudget{}};
+    constants.leaf_methods = methods;
+    constants.roles = roles;
     return InspectExceptionFlow(*body, header->profile,
                                  code.registers + code.arguments, code.registers,
                                  constants, std::cout, detail == InspectDetail::kExceptionTemplate

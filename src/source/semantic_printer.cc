@@ -36,10 +36,12 @@ class SourcePrinter {
                 std::string_view name, const MethodConstants& constants,
                 std::size_t bytes, CaptureMode captures = CaptureMode::kReject,
                 const analysis::SemanticProof* proof = nullptr,
-                const analysis::SemanticMethod* capture_method = nullptr)
+                const analysis::SemanticMethod* capture_method = nullptr,
+                const analysis::EnvironmentFlow* capture_environments = nullptr)
       : ast_(ast), blocks_(blocks), capture_method_(capture_method), frame_(frame), form_(form), name_(name),
         constants_(constants), limit_(bytes), capture_mode_(captures), proof_(proof),
-        expansion_(constants.method, bytes, kDefaultMethodWork) {}
+        expansion_(constants.method, bytes, kDefaultMethodWork),
+        capture_environments_(capture_environments) {}
 
   std::variant<PrintedTemplate, SourceFailure> PrintTemplate(ScalarNames names) {
     auto printed = PrintBody(names);
@@ -151,10 +153,12 @@ class SourcePrinter {
     LeafBuffer(SourcePrinter& printer, const FunctionExpression& function)
         : printer_(printer), function_(function) {}
     bool Capture(analysis::CapturedSlot capture) override {
-      if (!printer_.proof_ || !printer_.capture_method_)
+      if ((!printer_.proof_ || !printer_.capture_method_) && !printer_.capture_environments_)
         throw SourceFailure{SourceError::kCreation, printer_.current_pc_};
-      const auto resolved = ResolveCreationCapture(
-          *printer_.capture_method_, *printer_.proof_, function_, capture);
+      const auto resolved = printer_.capture_environments_
+          ? ResolveCreationCapture(*printer_.capture_environments_, function_, capture,
+                                   printer_.current_pc_)
+          : ResolveCreationCapture(*printer_.capture_method_, *printer_.proof_, function_, capture);
       if (const auto* failure = std::get_if<SourceFailure>(&resolved)) throw *failure;
       if (const auto* outer = std::get_if<analysis::CapturedSlot>(&resolved)) {
         printer_.Capture(*outer);
@@ -729,6 +733,7 @@ class SourcePrinter {
   std::vector<SourceCapture> captures_;
   const analysis::SemanticProof* proof_;
   CreationExpansion expansion_;
+  const analysis::EnvironmentFlow* capture_environments_;
 };
 }  // namespace
 
@@ -768,10 +773,12 @@ std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
 }
 std::variant<PrintedTemplate, SourceFailure> PrintSourceTemplate(
     const SourceAst& ast, const analysis::NormalFlow& blocks,
-    ScalarNames names, const MethodConstants& constants, std::size_t output_bytes) {
+    ScalarNames names, const MethodConstants& constants, std::size_t output_bytes,
+    const analysis::EnvironmentFlow* environments) {
   const abc::FrameLayout unused_frame{};
   return SourcePrinter(ast, blocks, unused_frame, SourceForm::kFunction,
                        {}, constants, output_bytes,
-                       SourcePrinter::CaptureMode::kTemplate).PrintTemplate(names);
+                       SourcePrinter::CaptureMode::kTemplate, nullptr, nullptr,
+                       environments).PrintTemplate(names);
 }
 }  // namespace abcd::source

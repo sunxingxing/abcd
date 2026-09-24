@@ -5,6 +5,24 @@
 
 namespace abcd::source {
 std::variant<analysis::LocalCell, analysis::CapturedSlot, SourceFailure>
+ResolveCreationCapture(const analysis::EnvironmentFlow& environments,
+    const FunctionExpression& function, analysis::CapturedSlot capture,
+    abc::CodeOffset pc) {
+  const auto site = function.capture_site;
+  const SourceFailure failure{SourceError::kCreation, pc};
+  if (!site || site->value >= environments.before.size() ||
+      !environments.before[site->value]) return failure;
+  const auto resolved = environments.environments.ResolveCapture(
+      *environments.before[site->value], capture.depth, capture.slot);
+  const auto* binding = std::get_if<analysis::LexicalBinding>(&resolved);
+  if (!binding) return failure;
+  if (const auto* depth = std::get_if<analysis::CapturedDepth>(&binding->environment))
+    return analysis::CapturedSlot{*depth, binding->slot};
+  // Exception-local load admission is not a certificate for escaping child
+  // captures. Do not substitute a normal-CFG store or creation-order proof.
+  return failure;
+}
+std::variant<analysis::LocalCell, analysis::CapturedSlot, SourceFailure>
 ResolveCreationCapture(
     const analysis::SemanticMethod& method,
     const analysis::SemanticProof& proof, const FunctionExpression& function,

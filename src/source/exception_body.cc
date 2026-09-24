@@ -188,7 +188,8 @@ auto BuildException(
       if (auto* source = std::get_if<PrintedSource>(&printed)) return std::move(*source);
       return std::get<SourceFailure>(printed);
     } else {
-      auto printed = PrintSourceTemplate(*ast, *blocks, names, bounded_constants, print_bytes);
+      auto printed = PrintSourceTemplate(*ast, *blocks, names, bounded_constants, print_bytes,
+                                         environments);
       if (auto* source = std::get_if<PrintedTemplate>(&printed)) return std::move(*source);
       return std::get<SourceFailure>(printed);
     }

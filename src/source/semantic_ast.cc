@@ -253,7 +253,8 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
             analysis::ScalarSlot{analysis::Accumulator{}},
             FunctionExpression{*created,
                 analysis::InstructionId{static_cast<std::uint32_t>(position)},
-                previous_creation}};
+                previous_creation, method.ssa.Before(
+                    analysis::InstructionId{static_cast<std::uint32_t>(position)})}};
         previous_creation = analysis::InstructionId{static_cast<std::uint32_t>(position)};
       } else if (std::holds_alternative<analysis::LexicalLoad>(
                      instruction.operation)) {

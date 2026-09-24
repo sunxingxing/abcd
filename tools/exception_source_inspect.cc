@@ -12,7 +12,8 @@
 void InspectExceptionSource(const abcd::source::ExceptionAstInput& input,
     abcd::analysis::SemanticRegionTree regions,
     const abcd::source::MethodConstants& constants, std::uint64_t frame_size,
-    std::size_t bytes, std::ostream& output) {
+    std::size_t bytes, std::ostream& output,
+    abcd::analysis::CapturedValues captured_values) {
   using namespace abcd;
   const auto emit_failure = [&](const source::SourceFailure& failure) {
     output << nlohmann::json{{"exception_source_error", static_cast<unsigned>(failure.kind)},
@@ -82,10 +83,15 @@ void InspectExceptionSource(const abcd::source::ExceptionAstInput& input,
     // than allowing a successful body to exhaust inspection's byte allowance.
     constexpr std::size_t kSerializationFactor = 16;
     auto bounded_constants = constants;
+    // This detached inspector owns only the '$' private names above. Match
+    // the ordinary survey's conditional global scope, never a record scope:
+    // embedding must repeat collision checks against its actual bindings.
+    if (!bounded_constants.global_scope) bounded_constants.global_scope = source::GlobalScope{};
     bounded_constants.string_budget.bytes = std::min(
         constants.string_budget.bytes, bytes / kSerializationFactor);
     const auto printed = source::PrintSourceTemplate(*ast, input.blocks,
-        {"$acc", names}, bounded_constants, bytes / kSerializationFactor);
+        {"$acc", names}, bounded_constants, bytes / kSerializationFactor,
+        captured_values == analysis::CapturedValues::kLanguage ? &input.environments : nullptr);
     const auto* source = std::get_if<source::PrintedTemplate>(&printed);
     if (!source) {
       emit_failure(std::get<source::SourceFailure>(printed));
@@ -93,6 +99,8 @@ void InspectExceptionSource(const abcd::source::ExceptionAstInput& input,
     }
     output << nlohmann::json{{"exception_body_printed", source->captures.empty()},
                              {"exception_template_printed", true},
+                             {"requires_unshadowed_globals", true},
+                             {"requires_parent_capture_proof", !source->captures.empty()},
                              {"executable", false}, {"body", source->text},
                              {"capture_count", source->captures.size()},
                              {"position_count", source->spans.size()}} << '\n';
