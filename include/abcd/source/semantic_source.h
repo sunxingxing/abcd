@@ -87,6 +87,9 @@ struct SourceContinue {
 struct SourceReturn {
   analysis::ScalarValue value;
 };
+struct SourceThrow {
+  analysis::ScalarValue value;
+};
 struct SourceStagedCall {
   abc::PoolIndex name;
   analysis::ReceiverCall call;
@@ -97,7 +100,7 @@ using SourceOperation =
     std::variant<analysis::NoOperation, SourceAssignment, SourceMemberStore, SourceOwnStore,
                  SourceLocalStore,
                  SourceConditionalBreak, SourceBreak, SourceConditionalContinue,
-                 SourceContinue, SourceReturn,
+                 SourceContinue, SourceReturn, SourceThrow,
                  SourceStagedCall>;
 struct SourceStatement {
   abc::CodeOffset pc;

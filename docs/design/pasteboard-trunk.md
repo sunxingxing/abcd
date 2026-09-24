@@ -1408,6 +1408,10 @@ defect; inspection is not a substitute for that regression coverage.
 
 ## Work Order
 
+Exception integration is tracked in [exception-source.md](exception-source.md).
+Explicit throw now has a typed always-throw effect and source statement;
+exception-table admission and catch-entry SSA remain unfinished.
+
 1. Use the full inventory to identify shared typed semantic gaps. The initial
    survey admitted 27 methods to AST and rejected 192 during semantic build.
    String loads were the first unsupported instruction in 26 methods. Add

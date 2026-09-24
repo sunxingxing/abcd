@@ -43,6 +43,12 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
         return ReturnOperation{ScalarValue{SpecialValue::kUndefined}};
       return Fail(SemanticError::kUnsupportedInstruction, site.offset);
     case ControlTransfer::kThrow:
+      if (decoded.opcode == Opcode::kTHROW_PREF_NONE) {
+        if (decoded.operand_count != 0)
+          return Fail(SemanticError::kMalformedInstruction, site.offset);
+        return ThrowOperation{ScalarValue{Accumulator{}}};
+      }
+      return Fail(SemanticError::kUnsupportedInstruction, site.offset);
     case ControlTransfer::kSuspend:
       return Fail(SemanticError::kUnsupportedInstruction, site.offset);
     case ControlTransfer::kFallthrough:
@@ -213,6 +219,11 @@ SemanticEffects Effects(const SemanticOperation& operation,
                            LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, ThrowOperation>) {
+          // Pinned interpreter THROW_PREF_NONE passes acc to Throw and jumps
+          // directly to exception dispatch. No coercion, normal destination,
+          // or fallthrough may be invented; SSA still checks the value read.
+          effects.exceptional = ExceptionalCompletion::kAlwaysThrow;
         } else if constexpr (std::is_same_v<T, AwaitValue>) {
           effects.normal = LanguageEffect::kSuspension |
                            LanguageEffect::kUserCode |

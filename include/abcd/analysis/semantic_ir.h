@@ -51,7 +51,9 @@ constexpr LanguageEffect operator|(LanguageEffect left, LanguageEffect right) {
   return static_cast<LanguageEffect>(static_cast<std::uint16_t>(left) |
                                      static_cast<std::uint16_t>(right));
 }
-enum class ExceptionalCompletion : std::uint8_t { kImpossible, kMayThrow };
+enum class ExceptionalCompletion : std::uint8_t {
+  kImpossible, kMayThrow, kAlwaysThrow
+};
 struct SemanticEffects {
   RegisterEffect normal_registers;
   LanguageEffect normal = LanguageEffect::kNone;
@@ -66,6 +68,9 @@ struct JumpOperation {
   abc::CodeOffset target;
 };
 struct ReturnOperation {
+  ScalarValue value;
+};
+struct ThrowOperation {
   ScalarValue value;
 };
 struct NoOperation {};
@@ -88,7 +93,8 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        PushEnvironment, PopEnvironment,
                                        CurrentEnvironment, FunctionCreation,
                                        LoadHole, SuperCheck, RestCopy,
-                                       BufferedArrayCreation, AwaitValue>;
+                                       BufferedArrayCreation, AwaitValue,
+                                       ThrowOperation>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

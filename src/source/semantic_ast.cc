@@ -504,6 +504,14 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
                      std::get_if<analysis::ReturnOperation>(
                          &instruction.operation)) {
         operation = SourceReturn{returned->value};
+      } else if (const auto* thrown =
+                     std::get_if<analysis::ThrowOperation>(&instruction.operation)) {
+        if (effect.exceptional != analysis::ExceptionalCompletion::kAlwaysThrow ||
+            effect.normal != analysis::LanguageEffect::kNone ||
+            effect.before_throw != analysis::LanguageEffect::kNone ||
+            effect.normal_registers.write)
+          return Fail(SourceError::kInvalidEffect, instruction.pc);
+        operation = SourceThrow{thrown->value};
       } else if (std::holds_alternative<analysis::NoOperation>(
                      instruction.operation)) {
         operation = analysis::NoOperation{};

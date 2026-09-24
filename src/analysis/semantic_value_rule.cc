@@ -61,6 +61,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
                     std::is_same_v<T, BranchOperation> ||
                     std::is_same_v<T, JumpOperation> ||
                     std::is_same_v<T, ReturnOperation> ||
+                    std::is_same_v<T, ThrowOperation> ||
                     std::is_same_v<T, ModuleStore> ||
                     std::is_same_v<T, LexicalStore> ||
                     std::is_same_v<T, PopEnvironment> ||
