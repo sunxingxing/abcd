@@ -289,6 +289,36 @@ class SourcePrinter {
             Text("return ");
             Value(operation.value);
             Text(";\n");
+          } else if constexpr (std::is_same_v<T, SourceStagedCall>) {
+            constexpr std::size_t kMaxCallDepth = 128;
+            if (call_depth_ >= kMaxCallDepth || !operation.call.Count() ||
+                operation.call_statement.value >= ast_.statements.size())
+              throw SourceFailure{SourceError::kResourceLimit, current_pc_};
+            ++call_depth_;
+            // Keep the property Reference alive across argument evaluation;
+            // registers are private, and the saved callee has no escaping use.
+            Slot(analysis::ScalarSlot{Accumulator{}});
+            Text(" = (");
+            Value(ScalarValue{Accumulator{}});
+            Text(")[");
+            PoolName(operation.name);
+            Text("]((() => {\n");
+            Statements(operation.first_argument_statement.value,
+                       operation.call_statement.value);
+            current_pc_ = ast_.statements[operation.call_statement.value].pc;
+            Text("return ");
+            const auto first = operation.call.At(0);
+            if (!first) throw SourceFailure{SourceError::kOutput, current_pc_};
+            Value(ScalarValue{*first});
+            Text(";\n})()");
+            for (std::uint32_t i = 1; i < operation.call.Count(); ++i) {
+              Text(", ");
+              const auto argument = operation.call.At(i);
+              if (!argument) throw SourceFailure{SourceError::kOutput, current_pc_};
+              Value(ScalarValue{*argument});
+            }
+            Text(");\n");
+            --call_depth_;
           } else {
             static_assert(std::is_same_v<T, analysis::NoOperation>);
           }
@@ -321,6 +351,27 @@ class SourcePrinter {
     } else {
       result_.spans.push_back({statement.pc, begin, position_});
     }
+    if (const auto* staged = std::get_if<SourceStagedCall>(&statement.operation))
+      result_.spans.push_back({ast_.statements[staged->call_statement.value].pc,
+                               begin, position_});
+  }
+  void Statements(std::size_t first, std::size_t end) {
+    if (first > end || end > ast_.statements.size())
+      throw SourceFailure{SourceError::kOutput, current_pc_};
+    for (std::size_t i = first; i < end;) {
+      const auto& statement = ast_.statements[i];
+      if (const auto* staged = std::get_if<SourceStagedCall>(&statement.operation)) {
+        if (staged->first_argument_statement.value != i + 1 ||
+            staged->call_statement.value < i + 1 ||
+            staged->call_statement.value >= end)
+          throw SourceFailure{SourceError::kOutput, statement.pc};
+        Statement(statement);
+        i = std::size_t(staged->call_statement.value) + 1;
+      } else {
+        Statement(statement);
+        ++i;
+      }
+    }
   }
   void Region(const analysis::RegionNode& node) {
     std::visit(
@@ -334,8 +385,7 @@ class SourcePrinter {
                              block.instruction_count;
             if (end > ast_.statements.size())
               throw SourceFailure{SourceError::kOutput, current_pc_};
-            for (std::size_t i = block.first_instruction; i < end; ++i)
-              Statement(ast_.statements[i]);
+            Statements(block.first_instruction, end);
             if (region.id.value >= ast_.fallthrough.size())
               throw SourceFailure{SourceError::kOutput, current_pc_};
             if (ast_.fallthrough[region.id.value]) {
@@ -371,6 +421,7 @@ class SourcePrinter {
   PrintedSource result_;
   GeneratedPosition position_;
   abc::CodeOffset current_pc_{};
+  std::size_t call_depth_ = 0;
 };
 }  // namespace
 

@@ -100,7 +100,11 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
   const auto proof_bytes = method.ssa.Values().size() * sizeof(std::uint8_t);
   if (proof_bytes > budget_bytes - regions.allocated_bytes)
     return Fail(SourceError::kResourceLimit);
-  const auto remaining = budget_bytes - regions.allocated_bytes - proof_bytes;
+  struct CallInterval { std::size_t first; std::size_t last; };
+  const auto available = budget_bytes - regions.allocated_bytes - proof_bytes;
+  if (method.instructions.size() > available / sizeof(CallInterval))
+    return Fail(SourceError::kResourceLimit);
+  auto remaining = available - method.instructions.size() * sizeof(CallInterval);
   if (method.instructions.size() > remaining / sizeof(SourceStatement) ||
       method.flow.blocks.size() >
           (remaining - method.instructions.size() *
@@ -108,6 +112,16 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
               sizeof(std::optional<analysis::BlockId>))
     return Fail(SourceError::kResourceLimit);
   try {
+    std::vector<CallInterval> call_roots;
+    call_roots.reserve(method.instructions.size());
+    if (call_roots.capacity() > available / sizeof(CallInterval))
+      return Fail(SourceError::kResourceLimit);
+    remaining = available - call_roots.capacity() * sizeof(CallInterval);
+    if (method.instructions.size() > remaining / sizeof(SourceStatement) ||
+        method.flow.blocks.size() >
+            (remaining - method.instructions.size() * sizeof(SourceStatement)) /
+                sizeof(std::optional<analysis::BlockId>))
+      return Fail(SourceError::kResourceLimit);
     // Saturating use counts prove a saved callee is unobservable outside its
     // reload. Build once, not a suffix scan for every call.
     std::vector<std::uint8_t> uses(method.ssa.Values().size());
@@ -255,7 +269,7 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
               *spill >= *reload || *reload >= i)
             return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         }
-        if (!property_id || !last_effect || *last_effect != *property_id ||
+        if (!property_id || !last_effect ||
             *property_id < method.flow.blocks[block_id].first_instruction)
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         const auto property = *property_id;
@@ -272,6 +286,19 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
                       analysis::ScalarSlot{analysis::Accumulator{}}) ||
             effect.exceptional != analysis::ExceptionalCompletion::kMayThrow)
           return Fail(SourceError::kInvalidEffect, instruction.pc);
+        const bool staged = *last_effect != property;
+        if (staged && (!spill || !reload || !call->Count()))
+          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        if (staged) {
+          // End-ordered interval stack: accept nesting, reject crossing. Each
+          // completed interval is pushed/popped once, with no suffix scans.
+          while (!call_roots.empty() && call_roots.back().last > property) {
+            if (call_roots.back().first < property)
+              return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+            call_roots.pop_back();
+          }
+          call_roots.push_back({property, i});
+        }
         // Private slot copies cannot observe or change getter effects. The
         // last-effect index proves no effect is crossed in O(1) per call.
         ast.statements[property].operation = analysis::NoOperation{};
@@ -283,11 +310,25 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
           spill_distance = i - *spill;
           reload_distance = i - *reload;
         }
-        fused_read = preceding.pc;
-        read_distance = i - property;
-        operation = SourceAssignment{
-            analysis::ScalarSlot{analysis::Accumulator{}},
-            MemberCallExpression{read->name, *call}};
+        if (staged) {
+          ast.statements[property].operation = SourceStagedCall{
+              read->name, *call,
+              analysis::InstructionId{static_cast<std::uint32_t>(property + 1)},
+              analysis::InstructionId{static_cast<std::uint32_t>(i)}};
+          // Emission visits the interval through its owner, not twice through
+          // the enclosing block. The original call PC receives its own span.
+          operation = analysis::NoOperation{};
+          fused_spill.reset();
+          fused_reload.reset();
+          spill_distance = 0;
+          reload_distance = 0;
+        } else {
+          fused_read = preceding.pc;
+          read_distance = i - property;
+          operation = SourceAssignment{
+              analysis::ScalarSlot{analysis::Accumulator{}},
+              MemberCallExpression{read->name, *call}};
+        }
       } else if (const auto* branch =
                      std::get_if<analysis::BranchOperation>(
                          &instruction.operation)) {

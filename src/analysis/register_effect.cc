@@ -17,6 +17,7 @@
 #include "abcd/analysis/iterator.h"
 #include "abcd/analysis/lexical.h"
 #include "abcd/analysis/module_load.h"
+#include "abcd/analysis/module_store.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_write.h"
@@ -159,6 +160,11 @@ RegisterEffect EffectOf(const ModuleLoad&) {
   // A module binding may be Hole, but its normal return only replaces acc.
   // Private caller registers remain valid across the possibly throwing load.
   return AccumulatorDefinition();
+}
+RegisterEffect EffectOf(const ModuleStore&) {
+  RegisterEffect effect;
+  effect.reads[effect.read_count++] = Accumulator{};
+  return effect;
 }
 RegisterEffect EffectOf(const LexicalLoad&) { return AccumulatorDefinition(); }
 RegisterEffect EffectOf(const PushEnvironment&) {
@@ -347,6 +353,8 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftModuleLoad(instruction)); !Unsupported(result))
+    return result;
+  if (auto result = Adapt(LiftModuleStore(instruction)); !Unsupported(result))
     return result;
   const auto global = LiftGlobalAccess(instruction);
   if (const auto* access = std::get_if<GlobalAccess>(&global)) {

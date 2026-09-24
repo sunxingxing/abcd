@@ -133,6 +133,43 @@ paused. Before behavioral certification, add module TDZ/alternate-entry cases,
 callee reuse across phi, getter effects around moved copies/constants, global
 shadowing, object descriptors/prototypes and constructor new.target cases.
 
+## Staged Call Regions
+
+The current complete-inventory run produces 93 method bodies with PC spans;
+117 methods still fail IR construction and nine fail AST lowering. All nine
+AST failures are now DEFINEPROPERTYBYNAME operations, not receiver calls.
+This remains method-body coverage, not complete-record or behavioral coverage.
+
+`SourceStagedCall` owns a same-basic-block argument region. The printer emits
+the named property reference first and evaluates the region inside the first
+argument's arrow expression. This retains getter-before-argument effects and
+the original receiver without consulting `.call`, `.apply` or Reflect. For
+example, Home's `aboutToBeDeleted` (6596) now preserves the outer `delete`
+lookup before evaluating the nested `id__` call; callback 5932 preserves the
+logging getter before the error-message property read and string coercion.
+
+The proof still requires single-use callee spill/reload and SSA receiver
+identity. A stack of end-ordered intervals rejects crossing call regions;
+properly nested intervals are admitted. Every interval is pushed/popped once.
+Emission visits owned statements once, caps call nesting, and charges interval
+storage to the AST budget. Getter and call PCs share the complete call range;
+argument operations retain their own emitted ranges. Mapping rows are not
+guaranteed to be PC-sorted, and no PC is reconstructed by searching source text.
+
+SSA failures now preserve their typed underlying cause and the actual failing
+instruction PC when available. This exposed nine initialization methods whose
+first missing register effect was STMODULEVAR. Its validated operand and
+accumulator-preserving store effect now enter SSA and semantic IR, but this is
+not permission to hoist or invent a local export declaration. The remaining
+three SSA failures identify two SUPERCALLSPREAD sites and one buffered-array
+creation site. The other initialization methods advance to later semantic
+failures rather than being counted as recovered source.
+
+Both CLI targets compile and the same Pasteboard inventory was regenerated.
+Runtime tests remain paused. Deferred regression coverage must include nested
+getter/argument effects, non-callable getters, argument throws, receiver
+mutation, callee phi escape, crossing regions, and one-origin-per-PC maps.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

@@ -60,9 +60,16 @@ struct SourceBreak {
 struct SourceReturn {
   analysis::ScalarValue value;
 };
+struct SourceStagedCall {
+  abc::PoolIndex name;
+  analysis::ReceiverCall call;
+  analysis::InstructionId first_argument_statement;
+  analysis::InstructionId call_statement;
+};
 using SourceOperation =
     std::variant<analysis::NoOperation, SourceAssignment, SourceMemberStore,
-                 SourceConditionalBreak, SourceBreak, SourceReturn>;
+                 SourceConditionalBreak, SourceBreak, SourceReturn,
+                 SourceStagedCall>;
 struct SourceStatement {
   abc::CodeOffset pc;
   SourceOperation operation;

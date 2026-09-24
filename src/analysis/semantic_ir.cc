@@ -48,6 +48,10 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
       break;
   }
   if (decoded.opcode == Opcode::kNOP) return NoOperation{};
+  const auto module_store = LiftModuleStore(decoded);
+  if (const auto* store = std::get_if<ModuleStore>(&module_store)) return *store;
+  if (std::get<ModuleStoreError>(module_store) != ModuleStoreError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto constructor = LiftConstructorCall(decoded, frame_size);
   if (const auto* call = std::get_if<ConstructorCall>(&constructor)) return *call;
   if (std::get<ConstructorCallError>(constructor) != ConstructorCallError::kUnsupportedOpcode)
@@ -161,6 +165,10 @@ SemanticEffects Effects(const SemanticOperation& operation,
           effects.normal = LanguageEffect::kModuleRead;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, ModuleStore>) {
+          effects.normal = LanguageEffect::kModuleWrite;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, HoleGuard>) {
           effects.normal = LanguageEffect::kGuard;
           effects.before_throw = effects.normal;
@@ -251,8 +259,19 @@ SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
       return Fail(SemanticError::kResourceLimit);
     }
   }
-  const bool resource = std::holds_alternative<SsaError>(renamed) &&
-                        std::get<SsaError>(renamed) == SsaError::kResourceLimit;
-  return Fail(resource ? SemanticError::kResourceLimit : SemanticError::kSsa);
+  return std::visit([](const auto& failure) -> SemanticFailure {
+    using T = std::decay_t<decltype(failure)>;
+    if constexpr (std::is_same_v<T, RegisterSsa>) {
+      std::terminate();
+    } else if constexpr (std::is_same_v<T, RegisterUseFailure>) {
+      return {failure.kind == RegisterUseError::kResourceLimit
+                  ? SemanticError::kResourceLimit : SemanticError::kSsa,
+              failure.offset, failure};
+    } else {
+      return {failure == T::kResourceLimit ? SemanticError::kResourceLimit
+                                           : SemanticError::kSsa,
+              {}, failure};
+    }
+  }, renamed);
 }
 }  // namespace abcd::analysis

@@ -11,6 +11,7 @@
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/module_load.h"
+#include "abcd/analysis/module_store.h"
 #include "abcd/analysis/named_read.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_write.h"
@@ -32,6 +33,7 @@ enum class LanguageEffect : std::uint8_t {
   kGlobalAccess = 1 << 4,
   kGuard = 1 << 5,
   kAllocation = 1 << 6,
+  kModuleWrite = 1 << 7,
 };
 constexpr LanguageEffect operator|(LanguageEffect left, LanguageEffect right) {
   return static_cast<LanguageEffect>(static_cast<std::uint8_t>(left) |
@@ -65,7 +67,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        JumpOperation, ReturnOperation,
                                        StringLoad, OrdinaryCall, ReceiverCall,
                                        EmptyObjectCreation, BufferedObjectCreation,
-                                       ConstructorCall>;
+                                       ConstructorCall, ModuleStore>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;
@@ -89,6 +91,8 @@ enum class SemanticError : std::uint8_t {
 struct SemanticFailure {
   SemanticError kind;
   abc::CodeOffset pc;
+  std::variant<std::monostate, RegisterUseFailure, IdfError,
+               DominatorError, SsaError> ssa_cause;
 };
 inline constexpr std::uint64_t kDefaultSemanticWork = 1'000'000;
 struct SemanticBudget {
