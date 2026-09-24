@@ -12,6 +12,7 @@
 #include "abcd/abc/string_entity.h"
 #include "abcd/source/string_literal.h"
 #include "abcd/source/module_exports.h"
+#include "abcd/source/created_class.h"
 #include "element_name.h"
 #include "leaf_creation.h"
 #include "lexical_name.h"
@@ -150,6 +151,24 @@ class SourcePrinter {
   }
 
  private:
+  class ClassBuffer : public std::streambuf {
+   public:
+    explicit ClassBuffer(SourcePrinter& printer) : printer_(printer) {}
+   private:
+    std::streamsize xsputn(const char* text, std::streamsize count) override {
+      if (count < 0) return 0;
+      printer_.Text({text, static_cast<std::size_t>(count)});
+      return count;
+    }
+    int_type overflow(int_type ch) override {
+      if (traits_type::eq_int_type(ch, traits_type::eof()))
+        return traits_type::not_eof(ch);
+      const char value = traits_type::to_char_type(ch);
+      printer_.Text({&value, 1});
+      return ch;
+    }
+    SourcePrinter& printer_;
+  };
   class LeafBuffer : public CaptureBuffer {
    public:
     LeafBuffer(SourcePrinter& printer, const FunctionExpression& function)
@@ -357,6 +376,57 @@ class SourcePrinter {
         const bool resource = failure->kind == BodyEmitError::kResourceLimit ||
                               failure->kind == BodyEmitError::kWorkLimit ||
                               failure->emit_error == EmitError::kOutputLimit;
+        throw SourceFailure{resource ? SourceError::kResourceLimit
+                                     : SourceError::kCreation, current_pc_};
+      }
+    } else if (const auto* created = std::get_if<ClassExpression>(&expression)) {
+      if (!constants_.leaf_methods ||
+          created->creation.parent.value >= names_.registers.size())
+        throw SourceFailure{SourceError::kCreation, current_pc_};
+      // Shared input verification admits only Language heritage here. Absent
+      // (Hole) heritage and later accessor assembly require separate proofs.
+      // The class owner rejects unresolved outer captures, so this stream
+      // deliberately cannot carry template capture tokens.
+      ClassBuffer buffer(*this);
+      std::ostream stream(&buffer);
+      stream.exceptions(std::ios::badbit | std::ios::failbit);
+      const auto remaining = limit_ - result_.text.size();
+      const auto emitted = WriteCreatedClass(
+          constants_.file, constants_.header, constants_.index,
+          *constants_.leaf_methods, constants_.method, created->creation,
+          created->origin, {created->origin, analysis::HeritageKind::kUnknown},
+          stream, {remaining, analysis::kDefaultSemanticWork, {remaining}},
+          constants_.string_budget, constants_.roles, constants_.module,
+          constants_.global_scope ? &*constants_.global_scope : nullptr,
+          nullptr, {}, BoundClassParent{
+              names_.registers[created->creation.parent.value]}, {},
+          constants_.expansion ? constants_.expansion : &expansion_);
+      if (!std::holds_alternative<std::size_t>(emitted)) {
+        const bool resource = std::visit([](const auto& failure) {
+          using T = std::decay_t<decltype(failure)>;
+          if constexpr (requires { T::kResourceLimit; }) {
+            if (failure == T::kResourceLimit) return true;
+          }
+          if constexpr (requires { T::kWorkLimit; }) {
+            if (failure == T::kWorkLimit) return true;
+          }
+          if constexpr (requires { T::kOutputLimit; }) {
+            if (failure == T::kOutputLimit) return true;
+          }
+          if constexpr (std::is_same_v<T, BodyEmitFailure>) {
+            if (failure.emit_error == EmitError::kOutputLimit) return true;
+          }
+          if constexpr (requires { failure.kind; }) {
+            using Kind = decltype(failure.kind);
+            if constexpr (requires { Kind::kResourceLimit; }) {
+              if (failure.kind == Kind::kResourceLimit) return true;
+            }
+            if constexpr (requires { Kind::kWorkLimit; }) {
+              if (failure.kind == Kind::kWorkLimit) return true;
+            }
+          }
+          return false;
+        }, emitted);
         throw SourceFailure{resource ? SourceError::kResourceLimit
                                      : SourceError::kCreation, current_pc_};
       }

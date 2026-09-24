@@ -319,6 +319,11 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
                      std::get_if<analysis::BufferedArrayCreation>(&instruction.operation)) {
         operation = SourceAssignment{
             analysis::ScalarSlot{analysis::Accumulator{}}, *array};
+      } else if (const auto* created =
+                     std::get_if<analysis::ClassCreation>(&instruction.operation)) {
+        operation = SourceAssignment{
+            analysis::ScalarSlot{analysis::Accumulator{}},
+            ClassExpression{*created, SourcePc(instruction)}};
       } else if (const auto* store =
                      std::get_if<analysis::ModuleStore>(&instruction.operation)) {
         // Input verification proves the stored accumulator is Language. Slot

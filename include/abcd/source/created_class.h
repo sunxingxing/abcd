@@ -56,7 +56,8 @@ enum class CreatedClassError {
   kStaticFieldOrder,
   kStaticFieldValue,
   kAccessorOrder,
-  kAccessorTarget
+  kAccessorTarget,
+  kRecursiveExpansion
 };
 using CreatedClassResult =
     std::variant<std::size_t, CreatedClassError, FunctionEmitError, EmitError,
@@ -113,6 +114,8 @@ using CreatedClassResult =
     std::span<const ClassAttachedMethod> attached_methods = {});
 // Typed counterpart for unchanged semantic IR. Decoding/frame validation has
 // already happened; origin and heritage belong to this exact creation site.
+// Pass the owning synchronous expansion context for nested class emission.
+// A null context starts a bounded root; no asynchronous method tasks are used.
 [[nodiscard]] CreatedClassResult WriteCreatedClass(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
@@ -126,6 +129,7 @@ using CreatedClassResult =
     const StaticFields* static_fields = nullptr,
     std::span<const ClassAccessor> accessors = {},
     std::optional<ClassParent> parent = {},
-    std::span<const ClassAttachedMethod> attached_methods = {});
+    std::span<const ClassAttachedMethod> attached_methods = {},
+    CreationExpansion* expansion = nullptr);
 }  // namespace abcd::source
 #endif

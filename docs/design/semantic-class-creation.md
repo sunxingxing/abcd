@@ -132,3 +132,39 @@ class body owner otherwise creates a new child context, which would not bound
 newly admitted class recursion. Accessor/attached-method assembly proofs and
 outer capture binding also remain required. CLI compilation succeeds; tests
 and RSS checks are still paused. No additional record completion is claimed.
+
+### Shared AST and bounded class expansion
+
+`ClassExpression` now retains the typed creation and original PC in the shared
+source AST. The printer passes the verified parent register snapshot to the
+typed class emitter, streams output through its position cursor, and preserves
+the existing constructor/member/heritage checks. The creation span is mapped;
+nested method PC maps are not yet merged. This is an adapter to the retained
+class emitter, not proof that every class body uses the common AST.
+
+Class constructors, methods and accessors share the caller's synchronous
+`CreationExpansion`. Each method enters before decoding and keeps its scratch
+grant live through proof and printing. Ancestor cycles are rejected; depth,
+scratch and work admission remain bounded. Dry and real emission use the same
+context, and failed/preflight work is not refunded. Resource errors, including
+nested body output exhaustion, retain resource classification in the common
+printer. This does not implement the deferred asynchronous scheduler or prove
+the process-wide memory cap.
+
+The stream deliberately does not accept capture tokens: unresolved outer
+captures still reject emission. Hole heritage and subsequent accessor/method
+assembly remain unsupported here. No empty substitute class is emitted.
+
+ABC-only inspection of entry 9915 now passes class AST construction at PC264
+and rejects `DEFINEMETHOD` at PC295. Because AST construction fails before
+printing, this inspection does not demonstrate successful class emission.
+The record inspection at `build/pasteboard-source-class-expansion/manifest.json`
+still has two complete application records. PageA, PageB and ShareDitect now
+reject at the earlier class boundary PC194, rather than the later function
+boundary PC196; no coverage improvement is claimed. The unchanged legacy
+ProgressBar record path still rejects at PC120.
+
+Both production CLI targets compile and the change received read-only review.
+Tests and RSS tracking remain paused. Deferred regressions additionally include
+nested class cycles, sibling/preflight work exhaustion, nested output-limit
+classification, unresolved captures, and creation versus child position maps.

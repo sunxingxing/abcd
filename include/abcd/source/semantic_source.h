@@ -48,6 +48,10 @@ struct FunctionExpression {
   std::optional<analysis::InstructionId> previous_creation;
   std::optional<analysis::ExceptionNodeId> capture_site = {};
 };
+struct ClassExpression {
+  analysis::ClassCreation creation;
+  abc::CodeOffset origin;
+};
 using SourceExpression =
     std::variant<analysis::ScalarExpression, MemberExpression,
                  StringExpression, CallExpression, MemberCallExpression,
@@ -56,7 +60,7 @@ using SourceExpression =
                  analysis::ConstructorCall, CapturedExpression,
                  FunctionExpression, LocalExpression, analysis::RestCopy,
                  analysis::BufferedArrayCreation, analysis::AwaitValue,
-                 analysis::SuperRange>;
+                 analysis::SuperRange, ClassExpression>;
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;

@@ -17,6 +17,7 @@
 #include "abcd/source/class_method.h"
 #include "abcd/source/string_literal.h"
 #include "capture_stream.h"
+#include "creation_expansion.h"
 #include "class_emission.h"
 #include "parameter_names.h"
 #include "record_literal.h"
@@ -200,6 +201,7 @@ class ClassWriter {
               std::span<const ClassAccessor> accessors,
               std::span<const ClassAttachedMethod> attached_methods,
               std::optional<ClassParent> parent,
+              CreationExpansion& expansion,
               std::ostream& output,
               LocalLexicalBudget budget, abc::StringBudget strings)
       : file_(file),
@@ -214,6 +216,7 @@ class ClassWriter {
         accessors_(accessors),
         attached_methods_(attached_methods),
         parent_(parent),
+        expansion_(expansion),
         output_(output),
         budget_(budget),
         strings_(strings) {}
@@ -382,6 +385,13 @@ class ClassWriter {
     if (module_ && method.owner_offset != owner_)
       throw ClassFailure{CreatedClassError::kModuleOwner};
     if (!method.code) throw ClassFailure{CreatedClassError::kMissingCode};
+    // The grant remains live across decoding, body proof and nested printing.
+    // All descendants receive this context; never reset ancestry per member.
+    ExpansionFrame admission(expansion_, method.offset, budget);
+    if (const auto error = admission.error())
+      throw ClassFailure{*error == ExpansionError::kResourceLimit
+                             ? CreatedClassError::kResourceLimit
+                             : CreatedClassError::kRecursiveExpansion};
     const auto call = TakeClassValue<abc::CallType>(abc::ReadCallType(
         file_, header_, index_, method.annotations, {budget.bytes}));
     const auto frame = TakeClassValue<abc::FrameLayout>(
@@ -427,9 +437,11 @@ class ClassWriter {
       global_scope = *enclosing_scope_;
       global_scope->class_binding = class_name;
     }
-    const MethodConstants constants{file_, header_, index_, method.offset,
+    MethodConstants constants{file_, header_, index_, method.offset,
                                     strings_, module_, roles_, global_scope,
                                     parameter_views};
+    constants.leaf_methods = &lookup_;
+    constants.expansion = &expansion_;
     Account(TakeClassValue<std::size_t>(emit(frame, body, budget, constants)));
   }
   void Constructor(const analysis::ClassCreation& creation,
@@ -564,6 +576,7 @@ class ClassWriter {
   std::span<const ClassAccessor> accessors_;
   std::span<const ClassAttachedMethod> attached_methods_;
   std::optional<ClassParent> parent_;
+  CreationExpansion& expansion_;
   std::ostream& output_;
   LocalLexicalBudget budget_;
   abc::StringBudget strings_;
@@ -600,7 +613,8 @@ CreatedClassResult WriteCreatedClass(
     const analysis::MethodRoleIndex* roles, const abc::ModuleInfo* module,
     const GlobalScope* enclosing_scope, const StaticFields* static_fields,
     std::span<const ClassAccessor> accessors, std::optional<ClassParent> parent,
-    std::span<const ClassAttachedMethod> attached_methods) {
+    std::span<const ClassAttachedMethod> attached_methods,
+    CreationExpansion* expansion) {
   try {
     // Admitted dynamic profiles use the pinned v7 class interpreter's
     // CreateClassWithBuffer/RuntimeSetClassInheritanceRelationship path.
@@ -653,16 +667,18 @@ CreatedClassResult WriteCreatedClass(
                    accessors, budget.bytes, strings);
     CheckAttachedMethods(header, index, lookup, members, accessors,
                          attached_methods, roles, caller_owner, budget.bytes);
+    CreationExpansion root(caller, budget.bytes, budget.work);
+    auto& context = expansion ? *expansion : root;
     CaptureDiscard discard;
     std::ostream dry(&discard);
     ClassWriter(file, header, index, lookup, roles, module, caller_owner,
                 enclosing_scope, static_fields, accessors, attached_methods,
-                parent, dry,
+                parent, context, dry,
                 budget, strings)
         .Write(creation, target, members, *name);
     return ClassWriter(file, header, index, lookup, roles, module, caller_owner,
                        enclosing_scope, static_fields, accessors,
-                       attached_methods, parent,
+                       attached_methods, parent, context,
                        output, budget, strings)
         .Write(creation, target, members, *name);
   } catch (const ClassFailure& failure) {
