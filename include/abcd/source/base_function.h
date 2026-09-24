@@ -15,7 +15,8 @@ enum class FunctionEmitError {
   kFrame,
   kLength,
   kName,
-  kResourceLimit
+  kResourceLimit,
+  kSuperclass
 };
 struct BaseFunction {
   analysis::FunctionCreation creation;

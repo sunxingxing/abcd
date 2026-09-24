@@ -77,6 +77,19 @@ SuperInstruction LiftSuperInstruction(
                          instruction.operands[0].raw_bits)}
                : std::nullopt};
   }
+  if (instruction.opcode == Opcode::kSUPERCALLSPREAD_IMM8_V8) {
+    if (instruction.operand_count != 2 ||
+        instruction.operands[0].kind != abc::OperandKind::kImmediate ||
+        instruction.operands[0].raw_bits > UINT8_MAX ||
+        instruction.operands[1].kind != abc::OperandKind::kRegister ||
+        instruction.operands[1].raw_bits > UINT8_MAX)
+      return SuperError::kMalformedInstruction;
+    if (instruction.operands[1].raw_bits >= registers)
+      return SuperError::kRegisterRange;
+    return SuperSpread{
+        {static_cast<std::uint32_t>(instruction.operands[1].raw_bits)},
+        static_cast<std::uint8_t>(instruction.operands[0].raw_bits)};
+  }
   std::uint64_t maximum;
   switch (instruction.opcode) {
     case Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8:
@@ -200,6 +213,8 @@ DerivedConstructorResult ProveForwardingDerivedConstructor(
         }
         continue;
       }
+      if (std::holds_alternative<SuperSpread>(super))
+        return Error::kInstruction;
       if (std::get<SuperError>(super) != SuperError::kUnsupportedOpcode)
         return Error::kInstruction;
       if (!CopyOpcode(decoded.opcode)) return Error::kInstruction;

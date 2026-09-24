@@ -18,6 +18,7 @@
 #include "abcd/analysis/ordinary_call.h"
 #include "abcd/analysis/rest_arguments.h"
 #include "abcd/source/string_literal.h"
+#include "element_name.h"
 #include "linear_instruction.h"
 #include "object_buffer.h"
 #include "ordered_body.h"
@@ -26,21 +27,6 @@ namespace abcd::source {
 namespace {
 using namespace analysis;
 enum class StringUse { kLiteral, kPropertyName };
-bool IsElementName(std::u16string_view name) {
-  constexpr auto kIndexDigits =
-      std::numeric_limits<std::uint32_t>::digits10 + 1;
-  constexpr std::uint64_t kMaxElementIndex = UINT32_MAX - 1;
-  constexpr std::uint64_t kDecimalRadix = 10;
-  if (name.empty() || name.size() > kIndexDigits ||
-      (name.size() > 1 && name.front() == u'0'))
-    return false;
-  std::uint64_t value = 0;
-  for (const auto digit : name) {
-    if (digit < u'0' || digit > u'9') return false;
-    value = value * kDecimalRadix + (digit - u'0');
-  }
-  return value <= kMaxElementIndex;
-}
 class DiscardBuffer : public std::streambuf {
   std::streamsize xsputn(const char*, std::streamsize count) override {
     return count;

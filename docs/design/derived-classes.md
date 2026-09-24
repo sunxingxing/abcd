@@ -69,3 +69,30 @@ call are now proven. `EntryBackupAbility` publishes one `.mjs` file, and the
 complete-record count is 5/45. A VM module oracle links synthetic platform
 imports and executes both async methods, including getter order, receivers,
 argument lists, constructor forwarding and rejection identity.
+
+The historical pasteboard `EntryAbility` constructor (entity 5083, dynamic
+12.0.6.0) is a different template: the exact ABI-copy/rest prologue, one
+`SUPERCALLSPREAD` through the current constructor, an uninitialized-this
+check, a bind of the super result, initialized-this checks, ordered
+`STOBJBYNAME` writes of string constants, and return of the super result.
+`ProveSpreadFieldDerivedConstructor` tracks typed register/accumulator origins
+and field pool indices in O(instructions + registers + writes) time and
+bounded storage. It rejects control flow, exception regions, extra effects,
+wrong receiver/value provenance and modified rest arguments. The class writer
+emits an observable-length-zero `constructor(...$rest)` with native
+`super(...$rest)` and strict `this["name"] = "value"` writes, **not** class
+field declarations. Constant names and values are read from the same ABC
+regional pool; indexed fast-path names remain refused. Both dynamic 12.0.6.0
+and 13.0.1.0 are covered by a synthetic class/Node oracle, and the real
+pasteboard constructor is checked without sidecar source as an engine input.
+The class writer requires a separate trusted
+`ParentRuntimeInvariant::kAlwaysJsFunction` witness for this spread template.
+A bare import/global snapshot or one-time brand observation is insufficient:
+the superclass is re-read when each constructor call executes and may have
+been replaced via `Object.setPrototypeOf`. Pinned `RuntimeSuperCallSpread`
+rejects a constructible Proxy superclass while native `super(...rest)` invokes
+it. No corpus caller currently supplies the lifetime witness, so the real
+record remains
+unpublished. With a trusted witness, its next class-member obstacle is an
+exception-region environment-flow proof. This proof does not claim all
+derived constructors.

@@ -20,6 +20,7 @@
 #include "class_emission.h"
 #include "parameter_names.h"
 #include "runtime_name.h"
+#include "spread_field_constructor.h"
 
 namespace abcd::source {
 namespace {
@@ -402,16 +403,36 @@ class ClassWriter {
              const auto proved =
                  analysis::ProveForwardingDerivedConstructor(
                      body, frame, {budget.bytes});
-             if (const auto* error =
-                     std::get_if<analysis::DerivedConstructorError>(&proved))
-               return FunctionEmitResult{
-                   *error == analysis::DerivedConstructorError::kResourceLimit
-                       ? FunctionEmitError::kResourceLimit
-                       : FunctionEmitError::kKind};
-             return WriteDerivedConstructor(
-                 std::get<analysis::ForwardingDerivedConstructor>(proved),
-                 creation.length, frame, constants.source_parameters,
-                 output_, budget.output);
+             if (const auto* forwarding =
+                     std::get_if<analysis::ForwardingDerivedConstructor>(
+                         &proved))
+               return WriteDerivedConstructor(
+                   *forwarding, creation.length, frame,
+                   constants.source_parameters, output_, budget.output);
+             if (std::get<analysis::DerivedConstructorError>(proved) ==
+                 analysis::DerivedConstructorError::kResourceLimit)
+               return FunctionEmitResult{FunctionEmitError::kResourceLimit};
+             const auto fields =
+                 analysis::ProveSpreadFieldDerivedConstructor(
+                     body, frame, {budget.bytes});
+             if (const auto* spread =
+                     std::get_if<analysis::SpreadFieldDerivedConstructor>(
+                         &fields)) {
+               const auto runtime = std::visit(
+                   [](const auto& origin) { return origin.runtime; },
+                   *parent_);
+               if (runtime != ParentRuntimeInvariant::kAlwaysJsFunction)
+                 return FunctionEmitResult{
+                     FunctionEmitError::kSuperclass};
+               return WriteSpreadFieldConstructor(
+                   *spread, creation.length, constants, output_,
+                   budget.output);
+             }
+             return FunctionEmitResult{
+                 std::get<analysis::DerivedConstructorError>(fields) ==
+                         analysis::DerivedConstructorError::kResourceLimit
+                     ? FunctionEmitError::kResourceLimit
+                     : FunctionEmitError::kKind};
            }
            return WriteBaseConstructor(
                {creation, target.attributes, frame, name}, body, output_,

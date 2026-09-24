@@ -18,11 +18,17 @@ struct ClassAccessor {
   abc::ClassMethodKind kind;
   std::uint16_t length = 0;
 };
+// RuntimeSuperCallSpread re-reads Derived.[[Prototype]] on every invocation.
+// Creation-time brand is insufficient: callers must certify this invariant
+// for the entire lifetime of the emitted class, including external mutation.
+enum class ParentRuntimeInvariant { kUnproven, kAlwaysJsFunction };
 struct ImportedClassParent {
   std::size_t snapshot = 0;
+  ParentRuntimeInvariant runtime = ParentRuntimeInvariant::kUnproven;
 };
 struct GlobalClassParent {
   std::size_t snapshot = 0;
+  ParentRuntimeInvariant runtime = ParentRuntimeInvariant::kUnproven;
 };
 using ClassParent = std::variant<ImportedClassParent, GlobalClassParent>;
 enum class CreatedClassError {
@@ -52,8 +58,13 @@ using CreatedClassResult =
 // and matching site; matching PC alone is not provenance authentication.
 // Resolves real constructor, buffer, name, ABI and body. Emits a fresh complete
 // class expression for a proven no-extends class, or a pinned v7 derived class
-// whose caller owns an import/global snapshot and whose length-zero constructor
-// passes ProveForwardingDerivedConstructor. This API does not prove parent
+// whose caller owns an import/global snapshot and whose constructor passes
+// either the pure forwarding proof or the exact rest-spread/string-field
+// proof. The latter additionally requires a trusted lifetime invariant that
+// the current parent remains JSFunction-branded at every construction:
+// import/global provenance and creation-time brand are both insufficient.
+// v7 SuperCallSpread rejects constructible Proxy parents while native
+// `super(...rest)` accepts them. This API does not prove parent
 // identity on its own; the record interpreter supplies that provenance.
 // Nonempty buffers require a whole-file role index from the same immutable
 // context, ordinary methods, matching runtime names, and nonreserved unique

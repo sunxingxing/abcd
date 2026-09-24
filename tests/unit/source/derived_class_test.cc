@@ -20,12 +20,15 @@ void Check(bool condition) {
 int main(int argc, char** argv) {
   using namespace abcd;
   constexpr std::uint32_t kPool = 64;
-  constexpr std::uint32_t kBuffer = 128;
-  constexpr std::uint32_t kCaller = 200;
-  constexpr std::uint32_t kConstructor = 300;
-  constexpr std::uint32_t kCode = 400;
-  constexpr std::uint32_t kPositionalCode = 448;
-  constexpr std::size_t kFileBytes = 512;
+  constexpr std::uint32_t kBuffer = 320;
+  constexpr std::uint32_t kCaller = 400;
+  constexpr std::uint32_t kConstructor = 500;
+  constexpr std::uint32_t kCode = 600;
+  constexpr std::uint32_t kPositionalCode = 680;
+  constexpr std::uint32_t kStringValue = 800;
+  constexpr std::uint32_t kStringName = 820;
+  constexpr std::uint32_t kSpreadCode = 850;
+  constexpr std::size_t kFileBytes = 1024;
   constexpr std::size_t kCodeHeaderBytes = 4;
   constexpr std::uint8_t kLocalSlots = 6;
   constexpr std::uint8_t kArgumentSlots = 4;
@@ -43,6 +46,15 @@ int main(int argc, char** argv) {
       0x60, 2, 0xfe, 7, 1,
       0x60, 5, 0x61, 2, 0x60, 2,
       0xfe, 7, 0, 0x64};
+  const std::vector<std::uint8_t> spread_constructor{
+      0x44, 0x60, 0x44, 0x71, 0x44, 0x82, 0x44, 0x93,
+      0xcf, 0, 0x61, 3, 0x60, 3, 0x61, 5,
+      0x60, 0, 0xb9, 0, 5, 0x61, 5,
+      0x60, 2, 0xfe, 7, 1,
+      0x60, 5, 0x61, 2, 0x60, 2,
+      0xfe, 7, 0, 0x61, 5,
+      0x3e, 31, 0, 0x43, 2, 56, 0, 5,
+      0x60, 2, 0xfe, 7, 0, 0x64};
   std::vector<std::uint8_t> bytes(kFileBytes);
   const auto word = [&](std::uint32_t offset, std::uint32_t value) {
     for (std::size_t i = 0; i < sizeof(value); ++i)
@@ -50,8 +62,15 @@ int main(int argc, char** argv) {
   };
   word(kPool, kConstructor);
   word(kPool + sizeof(std::uint32_t), kBuffer);
+  word(kPool + 31 * sizeof(std::uint32_t), kStringValue);
+  word(kPool + 56 * sizeof(std::uint32_t), kStringName);
   word(kBuffer, 2);
   bytes[kBuffer + sizeof(std::uint32_t)] = 2;
+  bytes[kStringValue] = 1;
+  bytes[kStringName] = 11;
+  constexpr char kField[] = "curBp";
+  std::copy(std::begin(kField), std::end(kField),
+            bytes.begin() + kStringName + 1);
   bytes[kCode] = kLocalSlots;
   bytes[kCode + 1] = kArgumentSlots;
   Check(constructor.size() < UINT8_MAX);
@@ -65,6 +84,12 @@ int main(int argc, char** argv) {
       static_cast<std::uint8_t>(positional_constructor.size());
   std::copy(positional_constructor.begin(), positional_constructor.end(),
             bytes.begin() + kPositionalCode + kCodeHeaderBytes);
+  bytes[kSpreadCode] = kLocalSlots;
+  bytes[kSpreadCode + 1] = kArgumentSlots;
+  bytes[kSpreadCode + 2] =
+      static_cast<std::uint8_t>(spread_constructor.size());
+  std::copy(spread_constructor.begin(), spread_constructor.end(),
+            bytes.begin() + kSpreadCode + kCodeHeaderBytes);
   char path[] = "/tmp/abcd-derived-class-XXXXXX";
   const int fd = mkstemp(path);
   Check(fd >= 0);
@@ -80,7 +105,7 @@ int main(int argc, char** argv) {
   header.file_size = bytes.size();
   header.layout = abc::DynamicLayout{};
   abc::MetadataIndex index;
-  index.regions.push_back({kCaller, kFileBytes, {}, {2, kPool}, {}, {}});
+  index.regions.push_back({kCaller, kFileBytes, {}, {57, kPool}, {}, {}});
   index.methods.resize(2);
   index.methods[0].offset = {kCaller};
   auto& method = index.methods[1];
@@ -189,6 +214,41 @@ int main(int argc, char** argv) {
   Check(std::get<source::EmitError>(positional_exhausted) ==
         source::EmitError::kOutputLimit);
   Check(short_positional.str().empty());
+  method.code = abc::CodeInfo{{kSpreadCode},
+                              {kSpreadCode + kCodeHeaderBytes},
+                              kLocalSlots, kArgumentSlots,
+                              static_cast<std::uint32_t>(
+                                  spread_constructor.size()),
+                              0};
+  auto spread_site = caller.instructions[0];
+  spread_site.decoded.operands[3].raw_bits = 0;
+  // Import provenance does not rule out Proxy parents or later mutation.
+  std::ostringstream unverified_spread;
+  const auto unverified_result = source::WriteCreatedClass(
+      file, header, index, lookup, {kCaller}, spread_site, heritage,
+      unverified_spread, {}, {}, nullptr, nullptr, nullptr, nullptr, {},
+      source::ImportedClassParent{0});
+  Check(std::get<source::FunctionEmitError>(unverified_result) ==
+        source::FunctionEmitError::kSuperclass);
+  Check(unverified_spread.str().empty());
+  std::ostringstream spread_output;
+  const auto spread_class = source::WriteCreatedClass(
+      file, header, index, lookup, {kCaller}, spread_site, heritage,
+      spread_output, {}, {}, nullptr, nullptr, nullptr, nullptr, {},
+      source::ImportedClassParent{
+          0, source::ParentRuntimeInvariant::kAlwaysJsFunction});
+  Check(std::holds_alternative<std::size_t>(spread_class));
+  Check(spread_output.str().find(
+            "constructor(...$rest) { super(...$rest); "
+            "this[\"curBp\"] = \"\"; }") != std::string::npos);
+  std::ostringstream historical_spread;
+  const auto historical_spread_result = source::WriteCreatedClass(
+      file, historical, index, lookup, {kCaller}, spread_site, heritage,
+      historical_spread, {}, {}, nullptr, nullptr, nullptr, nullptr, {},
+      source::ImportedClassParent{
+          0, source::ParentRuntimeInvariant::kAlwaysJsFunction});
+  Check(std::holds_alternative<std::size_t>(historical_spread_result));
+  Check(historical_spread.str() == spread_output.str());
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
     std::cout << "const $loaded0 = class Base { constructor(...values) {"
                  " this.values = values; } };\nexport const Derived = "
@@ -197,6 +257,8 @@ int main(int argc, char** argv) {
               << historical_output.str() << ";\n"
               << "export const PositionalDerived = "
               << positional_output.str() << ";\n"
+              << "export const SpreadFieldDerived = "
+              << spread_output.str() << ";\n"
               << "const $global0 = class Base { constructor(...values) {"
                  " this.values = values; } };\n"
               << "export const GlobalDerived = " << global_output.str()
