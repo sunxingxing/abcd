@@ -53,7 +53,8 @@ using SourceExpression =
                  analysis::BufferedObjectCreation, GlobalExpression,
                  analysis::ConstructorCall, CapturedExpression,
                  FunctionExpression, LocalExpression, analysis::RestCopy,
-                 analysis::BufferedArrayCreation, analysis::AwaitValue>;
+                 analysis::BufferedArrayCreation, analysis::AwaitValue,
+                 analysis::SuperRange>;
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;
@@ -152,12 +153,16 @@ using SourceAstResult = std::variant<SourceAst, SourceFailure>;
 // named_scopes is the unchanged same-body ValidateNamedScopes certificate.
 // rest is the unchanged same-body/frame ProveRestPrologue certificate; the
 // callable owner must emit its matching native rest formal before this body.
+// derived is the unchanged same-body/frame ProveRangeDerivedConstructor
+// certificate. It licenses native super and omission of proved VM checks only
+// inside the caller's actual derived constructor, never an ordinary function.
 [[nodiscard]] SourceAstResult BuildSourceAst(
     const analysis::SemanticMethod& method,
     const analysis::SemanticProof& proof,
     analysis::SemanticRegionTree regions, std::size_t budget_bytes,
     std::span<const std::uint8_t> named_scopes = {},
-    std::optional<analysis::RestPrologue> rest = {});
+    std::optional<analysis::RestPrologue> rest = {},
+    std::optional<analysis::RangeDerivedConstructor> derived = {});
 
 struct GeneratedPosition {
   std::size_t byte = 0;

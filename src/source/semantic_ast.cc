@@ -98,10 +98,13 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
                                analysis::SemanticRegionTree regions,
                                std::size_t budget_bytes,
                                std::span<const std::uint8_t> named_scopes,
-                               std::optional<analysis::RestPrologue> rest) {
+                               std::optional<analysis::RestPrologue> rest,
+                               std::optional<analysis::RangeDerivedConstructor> derived) {
   if (proof.instructions != method.instructions.size() ||
       proof.values.size() != method.ssa.ValueCount() ||
       regions.order_positions.size() != method.flow.blocks.size())
+    return Fail(SourceError::kInvalidEffect);
+  if (derived && method.ssa.IsPhased())
     return Fail(SourceError::kInvalidEffect);
   if (!named_scopes.empty() && named_scopes.size() != method.instructions.size())
     return Fail(SourceError::kInvalidEffect);
@@ -326,27 +329,38 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
         ++module_fact;
         operation = SourceAssignment{
             analysis::ScalarSlot{analysis::Accumulator{}}, ModuleExpression{*module}};
+      } else if (const auto* range =
+                     std::get_if<analysis::SuperRange>(&instruction.operation)) {
+        if (!derived || derived->super_pc != instruction.pc)
+          return Fail(SourceError::kSuperInitialization, instruction.pc);
+        operation = SourceAssignment{
+            analysis::ScalarSlot{analysis::Accumulator{}}, *range};
       } else if (const auto* check =
                      std::get_if<analysis::SuperCheck>(&instruction.operation)) {
-        switch (check->kind) {
-          case analysis::SuperCheckKind::kRequireInitialized: {
-            const auto value = ReadValue(method, position,
-                analysis::ScalarSlot{analysis::Accumulator{}});
-            const auto kinds = value ? proof.At(*value) : std::nullopt;
-            // v7 RuntimeThrowIfSuperNotCorrectCall flag 0 rejects BOTH Hole
-            // and undefined. A Language-only capture premise is insufficient.
-            // Only these existing SSA refinements exclude both values; broader
-            // this/closure initialization needs its own proof or explicit throw.
-            if (!kinds || (!kinds->IsString() && !kinds->IsNonNaNNumber()))
+        if (derived) {
+          // The whole-constructor proof checks the actual SSA input of every
+          // guard. A Language-only local/capture fact cannot replace it.
+          operation = analysis::NoOperation{};
+        } else {
+          switch (check->kind) {
+            case analysis::SuperCheckKind::kRequireInitialized: {
+              const auto value = ReadValue(method, position,
+                  analysis::ScalarSlot{analysis::Accumulator{}});
+              const auto kinds = value ? proof.At(*value) : std::nullopt;
+              // v7 flag 0 rejects BOTH Hole and undefined. Language-only
+              // captures do not prove this check redundant; only the existing
+              // string/number refinements exclude both sentinels here.
+              if (!kinds || (!kinds->IsString() && !kinds->IsNonNaNNumber()))
+                return Fail(SourceError::kSuperInitialization, instruction.pc);
+              operation = analysis::NoOperation{};
+              break;
+            }
+            case analysis::SuperCheckKind::kNoop:
+              operation = analysis::NoOperation{};
+              break;
+            case analysis::SuperCheckKind::kRequireUninitialized:
               return Fail(SourceError::kSuperInitialization, instruction.pc);
-            operation = analysis::NoOperation{};
-            break;
           }
-          case analysis::SuperCheckKind::kNoop:
-            operation = analysis::NoOperation{};
-            break;
-          case analysis::SuperCheckKind::kRequireUninitialized:
-            return Fail(SourceError::kSuperInitialization, instruction.pc);
         }
       } else if (const auto* guard =
                      std::get_if<analysis::HoleGuard>(&instruction.operation)) {
@@ -578,11 +592,13 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
 SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
     const analysis::SemanticProof& proof, analysis::SemanticRegionTree regions,
     std::size_t budget_bytes, std::span<const std::uint8_t> named_scopes,
-    std::optional<analysis::RestPrologue> rest) {
+    std::optional<analysis::RestPrologue> rest,
+    std::optional<analysis::RangeDerivedConstructor> derived) {
   const analysis::InstructionSsa ssa{method.ssa};
   const AstMethod input{method.instructions, method.flow, ssa};
   const AstProof facts{proof.environments.before.size(), proof.values.Facts(),
                        proof.locals, proof.module_reads, proof.captured_reads};
-  return BuildSourceAst(input, facts, std::move(regions), budget_bytes, named_scopes, rest);
+  return BuildSourceAst(input, facts, std::move(regions), budget_bytes,
+                        named_scopes, rest, derived);
 }
 }  // namespace abcd::source

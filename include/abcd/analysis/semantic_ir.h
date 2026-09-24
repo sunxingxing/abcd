@@ -94,7 +94,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        CurrentEnvironment, FunctionCreation,
                                        LoadHole, SuperCheck, RestCopy,
                                        BufferedArrayCreation, AwaitValue,
-                                       ThrowOperation>;
+                                       ThrowOperation, SuperRange>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

@@ -28,6 +28,7 @@ struct AstProof {
 SourceAstResult BuildSourceAst(const AstMethod& method, const AstProof& proof,
     analysis::SemanticRegionTree regions, std::size_t budget_bytes,
     std::span<const std::uint8_t> named_scopes,
-    std::optional<analysis::RestPrologue> rest);
+    std::optional<analysis::RestPrologue> rest,
+    std::optional<analysis::RangeDerivedConstructor> derived = {});
 }  // namespace abcd::source
 #endif

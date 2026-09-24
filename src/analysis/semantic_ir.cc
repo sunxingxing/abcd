@@ -141,6 +141,7 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   if (std::get<HoleError>(hole) != HoleError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto super = LiftSuperInstruction(decoded, frame_size);
+  if (const auto* range = std::get_if<SuperRange>(&super)) return *range;
   if (const auto* check = std::get_if<SuperCheck>(&super)) return *check;
   if (const auto* error = std::get_if<SuperError>(&super);
       error && *error != SuperError::kUnsupportedOpcode)
@@ -217,6 +218,16 @@ SemanticEffects Effects(const SemanticOperation& operation,
                              std::is_same_v<T, ConstructorCall>) {
           effects.normal = LanguageEffect::kHeapRead |
                            LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, SuperRange>) {
+          // The pinned range handler obtains the current constructor's parent
+          // and newTarget from call context. User construction may throw after
+          // side effects; only normal completion commits the accumulator.
+          effects.normal = LanguageEffect::kHeapRead |
+                           LanguageEffect::kHeapWrite |
+                           LanguageEffect::kUserCode |
+                           LanguageEffect::kAllocation;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, ThrowOperation>) {

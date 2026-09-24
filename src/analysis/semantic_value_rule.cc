@@ -27,6 +27,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     } else if constexpr (std::is_same_v<T, StringLoad>) {
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::String()};
     } else if constexpr (std::is_same_v<T, ConstructorCall> ||
+                         std::is_same_v<T, SuperRange> ||
                          std::is_same_v<T, ReceiverCall> ||
                          std::is_same_v<T, EmptyObjectCreation> ||
                          std::is_same_v<T, BufferedObjectCreation> ||

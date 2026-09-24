@@ -358,6 +358,7 @@ class FunctionWriter {
           function_.syntax == CallableSyntax::kArrowExpression ||
           function_.syntax == CallableSyntax::kAsyncArrowExpression ||
           function_.syntax == CallableSyntax::kBaseConstructor ||
+          function_.syntax == CallableSyntax::kRangeDerivedConstructor ||
           function_.syntax == CallableSyntax::kClassMethod ||
           function_.syntax == CallableSyntax::kAsyncClassMethod ||
           function_.syntax == CallableSyntax::kClassGetter ||

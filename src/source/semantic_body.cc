@@ -20,6 +20,18 @@ auto BuildBody(
   try {
   if (names.registers.size() != frame.registers)
     return SourceFailure{SourceError::kInvalidEffect, {}};
+  std::optional<analysis::RangeDerivedConstructor> derived;
+  if (names.range_derived_constructor) {
+    const auto checked = analysis::ProveRangeDerivedConstructor(
+        body, frame, {budget.bytes, budget.work});
+    if (const auto* failure =
+            std::get_if<analysis::DerivedConstructorError>(&checked))
+      return SourceFailure{
+          *failure == analysis::DerivedConstructorError::kResourceLimit
+              ? SourceError::kResourceLimit : SourceError::kSuperInitialization,
+          {}};
+    derived = std::get<analysis::RangeDerivedConstructor>(checked);
+  }
   auto lifted = analysis::BuildSemanticMethod(
       body, constants.header.profile, frame.registers, budget, constants.awaits);
   auto* method = std::get_if<analysis::SemanticMethod>(&lifted);
@@ -68,7 +80,7 @@ auto BuildBody(
   if (names.rest && !rest)
     return SourceFailure{SourceError::kInvalidEffect, {}};
   auto lowered = BuildSourceAst(*method, *proof, std::move(*regions), remaining,
-                                scopes->admitted, rest);
+                                scopes->admitted, rest, derived);
   const auto* ast = std::get_if<SourceAst>(&lowered);
   if (!ast) return std::get<SourceFailure>(lowered);
   if constexpr (Captures == analysis::CapturedValues::kReject) {

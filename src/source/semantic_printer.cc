@@ -368,6 +368,17 @@ class SourcePrinter {
       PoolName(call->name);
       Text("]");
       Arguments(call->call);
+    } else if (const auto* range = std::get_if<analysis::SuperRange>(&expression)) {
+      if (!names_.range_derived_constructor ||
+          range->first.value > names_.registers.size() ||
+          range->count > names_.registers.size() - range->first.value)
+        throw SourceFailure{SourceError::kSuperInitialization, current_pc_};
+      Text("super(");
+      for (std::uint32_t i = 0; i < range->count; ++i) {
+        if (i) Text(", ");
+        Value(ScalarValue{abc::RegisterId{range->first.value + i}});
+      }
+      Text(")");
     } else if (const auto* call = std::get_if<analysis::ConstructorCall>(&expression)) {
       Text("new (");
       Value(ScalarValue{call->inputs.first});
