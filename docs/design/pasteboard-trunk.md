@@ -300,6 +300,45 @@ rebasing, uninitialized parent cells, unused/repeated captures, nested staged
 call capture order, branch joins, arrow ABI restrictions and final span
 relocation after insertion.
 
+## Bound Template Coordinates
+
+`BindSourceTemplate` now accepts one parent-proven `LocalCell` per emitted
+capture and returns bound body text with relocated PC spans. It does not
+perform capture rebasing or establish cell initialization: its caller must
+discharge those obligations for this exact creation site and declare the
+private parent-cell names without collisions. `LexicalName` centralizes that
+name format with the existing production `LeafSources` emitter.
+
+Template positions now include an emitted capture cursor. This distinguishes
+the two sides of a zero-width insertion even when byte/line/column are equal.
+The printer carries this cursor through ordinary spans, fused reads and nested
+staged calls. The binder uses prefix sums of inserted identifier lengths for
+byte shifts and a binary search for same-line column shifts. Each final
+position clears its template cursor. It never searches generated JS for a
+variable or reconstructs instruction origins from source text.
+
+Binding preserves repeated captures, overlapping fused spans, zero-width
+anchors and non-PC-sorted span order. Inputs, binding cardinality, insertion
+ordering/coordinates and output budgets are checked before a result is
+published; missing bindings do not produce placeholder code. Work is
+O(text bytes + captures + spans log captures), with bounded text/map/prefix
+storage. Scope/cell semantic validity remains a parent-proof precondition,
+not something established by formatting a `$lex` identifier.
+
+The inventory schema is now 3: capture insertions and template span endpoints
+include their capture cursors. This increment does not add completed methods
+or records. In particular, the record writer still does not retain nested
+method span events through its entire output assembly; the new binder is the
+explicit finalization interface, not a claim that record-wide maps are done.
+Parent environment initialization and generic function-creation AST integration
+remain the next functional gates.
+
+Compilation and targeted Pasteboard generation remain the available checks;
+behavioral tests and RSS tracking stay paused. Deferred binding regressions
+include both sides of coincident insertion endpoints, multiple captures on a
+line, newlines between captures, empty/repeated bindings, nested call ranges,
+coordinate overflow, resource exhaustion and per-creation cell mismatches.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

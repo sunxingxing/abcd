@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -122,6 +123,9 @@ struct GeneratedPosition {
   std::size_t byte = 0;
   std::uint32_t line = 1;
   std::uint32_t column = 0;
+  // Template emission cursor: distinguishes before/after a zero-width
+  // capture at this byte. Always zero in fully bound source coordinates.
+  std::size_t captures = 0;
 };
 struct GeneratedSpan {
   abc::CodeOffset pc;
@@ -143,6 +147,16 @@ struct PrintedTemplate {
   std::vector<GeneratedSpan> spans;
   std::vector<SourceCapture> captures;
 };
+// source is the unchanged PrintSourceTemplate result. bindings is one
+// parent-PROVEN initialized local cell per capture occurrence,
+// in emission order, rebased at this exact creation site. The owning scope
+// declares the private $lex<environment>_<slot> bindings without collisions.
+// This substitutes bindings, not initialization/capture proof. No source text
+// is parsed to recover positions. O(text + C + S log C), bounded scratch.
+[[nodiscard]] std::variant<PrintedSource, SourceFailure> BindSourceTemplate(
+    const PrintedTemplate& source,
+    std::span<const analysis::LocalCell> bindings,
+    std::size_t budget_bytes);
 enum class SourceForm : std::uint8_t { kFunction, kClassConstructor };
 
 // The printer records each span as it emits its AST node, including zero-width

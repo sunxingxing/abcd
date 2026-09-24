@@ -1,16 +1,14 @@
 #include "leaf_sources.h"
 
 #include <algorithm>
-#include <array>
-#include <charconv>
 #include <cstring>
-#include <limits>
 #include <ostream>
 #include <streambuf>
 #include <tuple>
 
 #include "abcd/abc/method_target.h"
 #include "abcd/analysis/function_creation.h"
+#include "lexical_name.h"
 
 namespace abcd::source {
 namespace {
@@ -226,22 +224,13 @@ BodyEmitResult LeafSources::Write(std::size_t site, std::ostream& output,
     }
     written += value.size();
   };
-  const auto number = [&](std::uint32_t value) {
-    std::array<char, std::numeric_limits<std::uint32_t>::digits10 + 1> digits{};
-    const auto end =
-        std::to_chars(digits.data(), digits.data() + digits.size(), value).ptr;
-    text({digits.data(), static_cast<std::size_t>(end - digits.data())});
-  };
   try {
     std::size_t begin = 0;
     for (std::size_t h = 0; h < fragment.hole_count && !error; ++h) {
       const auto end = fragment.holes[h].offset;
       text({fragment.text.get() + begin, end - begin});
-      const auto cell = fact.captures[h];
-      text("$lex");
-      number(cell.environment.value);
-      text("_");
-      number(cell.slot.value);
+      const LexicalName name{fact.captures[h]};
+      text(name.Text());
       begin = end;
     }
     text({fragment.text.get() + begin, fragment.size - begin});

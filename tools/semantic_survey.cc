@@ -162,7 +162,7 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
   // Keep the complete record denominator, including annotation records and
   // methods without code. Stream results; release all IR between methods.
   output << nlohmann::json{
-      {"schema", 2}, {"sha256_bytes", fingerprint.sha256.bytes},
+      {"schema", 3}, {"sha256_bytes", fingerprint.sha256.bytes},
       {"profile", static_cast<unsigned>(header.profile)},
       {"records", index.records.size()}, {"methods", index.methods.size()},
       {"source_complete", false}} << '\n';
@@ -226,6 +226,7 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
           row["captures"].push_back({
               {"at", {capture.position.byte, capture.position.line,
                        capture.position.column}},
+              {"capture_cursor", capture.position.captures},
               {"depth", capture.cell.depth.value},
               {"slot", capture.cell.slot.value}});
         row["template_positions"] = nlohmann::json::array();
@@ -233,7 +234,9 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
           row["template_positions"].push_back({
               {"pc", span.pc.value},
               {"begin", {span.begin.byte, span.begin.line, span.begin.column}},
-              {"end", {span.end.byte, span.end.line, span.end.column}}});
+              {"end", {span.end.byte, span.end.line, span.end.column}},
+              {"begin_capture_cursor", span.begin.captures},
+              {"end_capture_cursor", span.end.captures}});
       }
       output << row << '\n';
       if (!output) return EXIT_FAILURE;

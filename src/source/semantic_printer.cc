@@ -212,6 +212,7 @@ class SourcePrinter {
       if (captures_.size() >= captures_.capacity())
         throw SourceFailure{SourceError::kResourceLimit, current_pc_};
       captures_.push_back({position_, captured->cell});
+      ++position_.captures;
     } else if (const auto* string = std::get_if<StringExpression>(&expression)) {
       PoolString(string->value, StringUse::kValue);
     } else if (const auto* call = std::get_if<CallExpression>(&expression)) {
