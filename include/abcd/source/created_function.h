@@ -47,5 +47,15 @@ using CreatedFunctionResult =
     abc::StringBudget strings = {}, const abc::ModuleInfo* module = nullptr,
     const analysis::MethodRoleIndex* roles = nullptr,
     const GlobalScope* global_scope = nullptr);
+// Same contract, with an unchanged successful LiftFunctionCreation result.
+// The semantic AST must not reconstruct a decoded opcode to call this layer.
+[[nodiscard]] CreatedFunctionResult WriteCreatedFunction(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    abc::EntityOffset caller, const analysis::FunctionCreation& creation,
+    std::ostream& output, LocalLexicalBudget budget = {},
+    abc::StringBudget strings = {}, const abc::ModuleInfo* module = nullptr,
+    const analysis::MethodRoleIndex* roles = nullptr,
+    const GlobalScope* global_scope = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_CREATED_FUNCTION_H_

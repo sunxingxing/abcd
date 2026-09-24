@@ -315,10 +315,12 @@ class FunctionWriter {
       body_budget.output.bytes -= written_;
       std::optional<MethodConstants> scoped_constants;
       const MethodConstants* body_constants = constants_;
-      if (constants_ && constants_->global_scope) {
+      if (constants_) {
         scoped_constants.emplace(*constants_);
-        if (function_.syntax == CallableSyntax::kFunctionExpression ||
-            function_.syntax == CallableSyntax::kAsyncFunctionExpression)
+        scoped_constants->leaf_methods = methods_;
+        if (scoped_constants->global_scope &&
+            (function_.syntax == CallableSyntax::kFunctionExpression ||
+             function_.syntax == CallableSyntax::kAsyncFunctionExpression))
           scoped_constants->global_scope->self_binding = function_.name;
         body_constants = &*scoped_constants;
       }

@@ -6,16 +6,9 @@
 #include "function_template.h"
 
 namespace abcd::source {
-BodyEmitResult WriteLeafCreation(const abc::BodyInstruction& site,
-                                 const MethodConstants& constants,
-                                 const abc::MethodLookup& methods,
-                                 std::ostream& output,
-                                 LocalLexicalBudget budget) {
-  const auto result = WriteCreatedFunctionTemplate(
-      constants.file, constants.header, constants.index, methods,
-      constants.method, site.decoded, output, budget, constants.string_budget,
-      constants.module, constants.roles,
-      constants.global_scope ? &*constants.global_scope : nullptr);
+namespace {
+BodyEmitResult CreationResult(const CreatedFunctionResult& result,
+                              abc::CodeOffset pc) {
   return std::visit(
       [&](auto value) -> BodyEmitResult {
         using T = decltype(value);
@@ -23,7 +16,7 @@ BodyEmitResult WriteLeafCreation(const abc::BodyInstruction& site,
           return value;
         } else {
           BodyEmitFailure failure{
-              BodyEmitError::kCreation, site.offset, {}, {}};
+              BodyEmitError::kCreation, pc, {}, {}};
           bool resource = false;
           if constexpr (std::is_same_v<T, EmitError>) {
             failure.emit_error = value;
@@ -70,5 +63,30 @@ BodyEmitResult WriteLeafCreation(const abc::BodyInstruction& site,
         }
       },
       result);
+}
+}  // namespace
+BodyEmitResult WriteLeafCreation(const abc::BodyInstruction& site,
+                                 const MethodConstants& constants,
+                                 const abc::MethodLookup& methods,
+                                 std::ostream& output,
+                                 LocalLexicalBudget budget) {
+  return CreationResult(WriteCreatedFunctionTemplate(
+      constants.file, constants.header, constants.index, methods,
+      constants.method, site.decoded, output, budget, constants.string_budget,
+      constants.module, constants.roles,
+      constants.global_scope ? &*constants.global_scope : nullptr), site.offset);
+}
+BodyEmitResult WriteLeafFunction(const analysis::FunctionCreation& creation,
+                                 abc::CodeOffset pc,
+                                 const MethodConstants& constants,
+                                 std::ostream& output,
+                                 LocalLexicalBudget budget) {
+  if (!constants.leaf_methods)
+    return BodyEmitFailure{BodyEmitError::kCreation, pc, {}, {}};
+  return CreationResult(WriteCreatedFunction(
+      constants.file, constants.header, constants.index, *constants.leaf_methods,
+      constants.method, creation, output, budget, constants.string_budget,
+      constants.module, constants.roles,
+      constants.global_scope ? &*constants.global_scope : nullptr), pc);
 }
 }  // namespace abcd::source

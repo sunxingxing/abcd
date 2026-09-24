@@ -188,6 +188,17 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
           return Fail(SourceError::kInvalidEffect, instruction.pc);
         operation = SourceAssignment{assignment->destination,
                                      assignment->expression};
+      } else if (const auto* created =
+                     std::get_if<analysis::FunctionCreation>(&instruction.operation)) {
+        if (created->kind != analysis::CreationKind::kFunction ||
+            created->home_object != analysis::HomeObjectInput::kCurrentFunction ||
+            !SameSlot(effect.normal_registers.write,
+                      analysis::ScalarSlot{analysis::Accumulator{}}))
+          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        // Target syntax/ABI and absence of external captures are verified by
+        // the callable owner before this expression is published.
+        operation = SourceAssignment{
+            analysis::ScalarSlot{analysis::Accumulator{}}, *created};
       } else if (std::holds_alternative<analysis::LexicalLoad>(
                      instruction.operation)) {
         if (capture_fact >= proof.captured_reads.size() ||

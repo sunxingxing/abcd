@@ -8,6 +8,9 @@
 #include "abcd/source/global_reference.h"
 #include "abcd/source/scalar_expression.h"
 
+namespace abcd::abc {
+class MethodLookup;
+}
 namespace abcd::analysis {
 class MethodRoleIndex;
 }
@@ -79,6 +82,9 @@ struct MethodConstants {
   // Caller-proven source-formal names, in ABI parameter order; empty falls
   // back to private $pN bindings without guessing from method-table names.
   std::span<const std::string_view> source_parameters;
+  // Explicit one-level expansion capability. Created-function contexts never
+  // inherit it, so generic printing cannot recursively expand nested targets.
+  const abc::MethodLookup* leaf_methods = nullptr;
 };
 
 // Emits statements inside a function, not a wrapper or record. Requires a

@@ -339,6 +339,54 @@ include both sides of coincident insertion endpoints, multiple captures on a
 line, newlines between captures, empty/repeated bindings, nested call ranges,
 coordinate overflow, resource exhaustion and per-creation cell mismatches.
 
+## Leaf Function Expressions
+
+Function creation now passes the accumulator proof with its actual input:
+DEFINEFUNC does not read the accumulator, whereas DEFINEMETHOD consumes its
+home object. The generic source AST admits the ordinary DEFINEFUNC shape as
+a typed expression; method/home-object placement remains unsupported by this
+new source rule. No decoded opcode is reconstructed from semantic operands.
+
+The callable owner has a typed `FunctionCreation` entry point alongside the
+existing decoded-instruction API. Regional target resolution, runtime name,
+observable length, formal parameters, ABI, function kind, module ownership,
+sendable rejection and arrow role validation still belong to that owner.
+The printer's leaf bridge rejects external captures and buffers a complete
+verified child expression before adding it at the original creation PC.
+Child source can use the generic body path or an existing verified fallback;
+successful parent emission is not proof that every descendant used generic IR.
+
+One-level expansion is an explicit borrowed `leaf_methods` capability in the
+source context. Owners enable it only with their existing method lookup;
+created-child contexts do not inherit it. This bounds expansion without an
+implicit recursive traversal, recursion-depth magic number or thread-local
+state. Each emitted expression still creates a fresh runtime function object.
+The survey builds the method lookup and complete arrow role index once per
+file; failed role evidence never authorizes arrow emission.
+
+The current 219-method report contains 101 body outputs and 18 templates,
+with 44 IR, 17 proof, 21 AST and 18 printer rejections. Previously there were
+17 templates and 49 proof rejections. ProgressBar method 10305 now prints its
+`observeComponentCreation2` callback as a real arrow expression containing
+SymbolGlyph creation, resource-object field initialization and `fontSize`.
+The parent still requires one captured cell and remains a template. This
+does not invent a body for unsupported child functions or count stage progress
+as complete-record recovery.
+
+The parent DEFINEFUNC PC spans the emitted child expression, including its
+newlines. Child-internal method/PC spans are not yet propagated through the
+legacy callable wrapper, so record-wide nested provenance remains incomplete.
+General capturing children, local environment initialization, nested creation
+graphs, class methods and sendable environments remain separate gates.
+
+Both tools compile and targeted ABC-only generation produced
+`build/pasteboard-semantic-functions.jsonl`. Record output still contains only
+CommonConstants and Logger source files. Runtime tests and RSS tracking remain
+paused. Deferred regressions include same-target fresh identities, recursive
+and mutually recursive creation refusal, child capture refusal, arrow role
+conflicts, module-owner mismatch, length/formal mismatches, child failures
+before publication and getter-before-function-argument ordering.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

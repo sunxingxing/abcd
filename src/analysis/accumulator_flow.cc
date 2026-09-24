@@ -9,6 +9,7 @@
 #include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/derived_constructor.h"
 #include "abcd/analysis/global_access.h"
+#include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/iter_result.h"
 #include "abcd/analysis/lexical.h"
@@ -32,6 +33,10 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
                                std::uint64_t frame_size) {
   using abc::Opcode;
   const auto scalar = LiftScalarInstruction(instruction, frame_size);
+  const auto created = LiftFunctionCreation(instruction);
+  if (const auto* function = std::get_if<FunctionCreation>(&created))
+    return Transfer{function->home_object == HomeObjectInput::kAccumulator,
+                    AccumulatorWrite::kValue};
   if (const auto* assignment = std::get_if<ScalarAssignment>(&scalar))
     return Transfer{ReadsAccumulator(assignment->expression),
                     std::holds_alternative<Accumulator>(assignment->destination)

@@ -14,6 +14,8 @@
 
 #include "abcd/source/semantic_source.h"
 #include "abcd/abc/record_attributes.h"
+#include "abcd/abc/method_lookup.h"
+#include "abcd/analysis/method_roles.h"
 
 namespace {
 using namespace abcd;
@@ -74,7 +76,9 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
                              const abc::Header& header,
                              const abc::MetadataIndex& index,
                              const abc::MethodInfo& method,
-                             const abc::ModuleInfo* module) {
+                             const abc::ModuleInfo* module,
+                             const abc::MethodLookup& methods,
+                             const analysis::MethodRoleIndex* roles) {
   if (!method.code) return {Stage::kNoCode, {}, {}, {}};
   const auto& code = *method.code;
   if (code.registers >
@@ -131,8 +135,9 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
     bindings.push_back("$r" + std::to_string(i));
   for (const auto& name : bindings) names.push_back(name);
   source::MethodConstants constants{file, header, index, method.offset,
-                                    {kMethodBytes}, module, nullptr,
+                                    {kMethodBytes}, module, roles,
                                     source::GlobalScope{}};
+  constants.leaf_methods = &methods;
   if (!proof->captured_reads.empty()) {
     // Diagnostic parametric output only; no parent environment is assumed.
     // Do not merge this stage into body_ready or publish template bytes as JS.
@@ -170,6 +175,13 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
   const auto packaging = abc::DetectFilePackaging(file, header, index);
   const auto* layout = std::get_if<abc::FilePackaging>(&packaging);
   if (!layout) return EXIT_FAILURE;
+  const auto indexed = abc::MethodLookup::Build(index.methods);
+  const auto* methods = std::get_if<abc::MethodLookup>(&indexed);
+  if (!methods) return EXIT_FAILURE;
+  const auto role_index = analysis::MethodRoleIndex::Build(file, header, index, *methods);
+  // A failed role proof never licenses arrows; other callable kinds can still
+  // be inspected. Each immutable index is built once, not once per creation.
+  const auto* roles = std::get_if<analysis::MethodRoleIndex>(&role_index);
   for (const auto& record : index.records) {
     output << nlohmann::json{{"record", record.offset.value},
                             {"descriptor", record.descriptor},
@@ -189,7 +201,8 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
     for (std::size_t i = 0; i < record.method_count; ++i) {
       const auto& method = index.methods.at(record.first_method + i);
       const auto progress = InspectMethod(file, header, index, method,
-                                          module ? &*module : nullptr);
+                                          module ? &*module : nullptr,
+                                          *methods, roles);
       ++counts.at(static_cast<std::size_t>(progress.stage));
       nlohmann::json row{{"record", record.offset.value},
                          {"method", method.offset.value},

@@ -11,6 +11,7 @@
 #include "abcd/abc/string_entity.h"
 #include "abcd/source/string_literal.h"
 #include "element_name.h"
+#include "leaf_creation.h"
 #include "object_buffer.h"
 #include "semantic_fields.h"
 
@@ -204,6 +205,21 @@ class SourcePrinter {
   void Expression(const SourceExpression& expression) {
     if (const auto* scalar = std::get_if<ScalarExpression>(&expression)) {
       Scalar(*scalar);
+    } else if (const auto* created =
+                   std::get_if<analysis::FunctionCreation>(&expression)) {
+      std::ostringstream stream;
+      const auto remaining = limit_ - result_.text.size();
+      const auto emitted = WriteLeafFunction(
+          *created, current_pc_, constants_, stream,
+          {remaining, analysis::kDefaultSemanticWork, {remaining}});
+      if (const auto* failure = std::get_if<BodyEmitFailure>(&emitted)) {
+        const bool resource = failure->kind == BodyEmitError::kResourceLimit ||
+                              failure->kind == BodyEmitError::kWorkLimit ||
+                              failure->emit_error == EmitError::kOutputLimit;
+        throw SourceFailure{resource ? SourceError::kResourceLimit
+                                     : SourceError::kCreation, current_pc_};
+      }
+      Text(stream.str());
     } else if (const auto* captured = std::get_if<CapturedExpression>(&expression)) {
       if (capture_mode_ != CaptureMode::kTemplate)
         throw SourceFailure{SourceError::kUnsupportedOperation, current_pc_};

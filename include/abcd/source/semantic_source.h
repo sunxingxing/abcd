@@ -44,7 +44,8 @@ using SourceExpression =
                  StringExpression, CallExpression, MemberCallExpression,
                  ModuleExpression, analysis::EmptyObjectCreation,
                  analysis::BufferedObjectCreation, GlobalExpression,
-                 analysis::ConstructorCall, CapturedExpression>;
+                 analysis::ConstructorCall, CapturedExpression,
+                 analysis::FunctionCreation>;
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;
@@ -104,6 +105,7 @@ enum class SourceError : std::uint8_t {
   kResourceLimit,
   kConstant,
   kOutput,
+  kCreation,
 };
 struct SourceFailure {
   SourceError kind;
