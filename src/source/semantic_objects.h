@@ -5,13 +5,23 @@
 
 namespace abcd::source {
 // Same-block allocation identities, not heap-shape or arbitrary alias facts.
-// A possible publication invalidates all older objects, including containers.
+// Publication invalidates the connected component, including containers.
 class PrivateObjects {
+  struct Allocation {
+    std::size_t parent = 0;
+    std::uint8_t rank = 0;
+    bool escaped = false;
+  };
  public:
   using Origin = std::optional<analysis::InstructionId>;
-  explicit PrivateObjects(std::size_t values) : origins_(values) {}
+  static constexpr std::size_t kAllocationBytes = sizeof(Allocation);
+  PrivateObjects(std::size_t values, std::size_t instructions)
+      : origins_(values), allocations_(instructions) {
+    for (std::size_t i = 0; i < instructions; ++i) allocations_[i].parent = i;
+  }
   std::size_t AllocatedBytes() const {
-    return origins_.capacity() * sizeof(Origin);
+    return origins_.capacity() * sizeof(Origin) +
+           allocations_.capacity() * sizeof(Allocation);
   }
   Origin Find(std::optional<analysis::SsaValueId> value,
               std::size_t block_begin) const;
@@ -20,8 +30,11 @@ class PrivateObjects {
                bool verified_own_store);
 
  private:
+  Origin Identity(analysis::SsaValueId value, std::size_t block_begin) const;
+  std::size_t Root(std::size_t id) const;
+  void Connect(analysis::InstructionId left, analysis::InstructionId right);
   std::vector<Origin> origins_;
-  Origin publication_;
+  std::vector<Allocation> allocations_;
 };
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_SEMANTIC_OBJECTS_H_

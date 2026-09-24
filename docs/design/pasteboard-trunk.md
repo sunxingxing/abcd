@@ -873,6 +873,37 @@ regressions cover multi-level forwarding, ancestor/middle cell separation,
 repeated sibling targets, direct/mutual creation cycles, exception unwinding,
 depth/scratch/work exhaustion and failure after partial child emission.
 
+## Connected Private Object Components
+
+Private-object evidence no longer expires every older allocation when any
+tracked object escapes. Each same-block buffered allocation belongs to a
+union-by-rank component. Verified own-field stores connect tracked container
+and value identities; any other non-copy use conservatively publishes every
+object in that component. Components are never split after overwrites.
+Aliases retain identity even after publication, so storing an escaped value
+cannot accidentally regain private status. Unknown uses, getters and calls
+remain conservative; unrelated private register values remain private.
+
+This admits resource construction while a separate options object remains
+unpublished. It does not relax the printer's existing-key/writable-data-field
+proof, nor promote arbitrary assignment to DefineField. Component roots cost
+O(log I) per reference with union by rank, and preparation/storage are O(I+V)
+for instruction and SSA value counts. Instruction-indexed component storage
+is charged alongside the existing AST scratch before allocation; no per-object
+whole-method scans or graph traversal are introduced.
+
+ABC-only inspection in `build/pasteboard-semantic-object-components.jsonl`
+advances methods 5795, 5988, 7255, 7998 and 11194 from own-field AST rejection
+to capture templates. Methods 7173, 7916 and 11139 move from child creation PC
+18 to PC 50, whose descendants need cross-block argument regions. Totals are
+36 IR, six proof, 20 AST and 17 printer rejections, 103 body fragments and
+37 non-executable templates. No newly complete record is claimed.
+
+Both CLI targets compiled. Tests and RSS tracking remain paused. Deferred
+regressions include unrelated publication, shared descendants, reverse
+containment, alias use after escape, repeated stores/overwrites, block/phi
+boundaries, resource exhaustion and large connected components.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

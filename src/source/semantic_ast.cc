@@ -115,7 +115,12 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
   if (proof_bytes > budget_bytes - regions.allocated_bytes)
     return Fail(SourceError::kResourceLimit);
   struct CallInterval { std::size_t first; std::size_t last; };
-  const auto available = budget_bytes - regions.allocated_bytes - proof_bytes;
+  auto available = budget_bytes - regions.allocated_bytes - proof_bytes;
+  if (method.instructions.size() > available / PrivateObjects::kAllocationBytes)
+    return Fail(SourceError::kResourceLimit);
+  const auto allocation_bytes =
+      method.instructions.size() * PrivateObjects::kAllocationBytes;
+  available -= allocation_bytes;
   if (method.instructions.size() > available / sizeof(CallInterval))
     return Fail(SourceError::kResourceLimit);
   auto remaining = available - method.instructions.size() * sizeof(CallInterval);
@@ -126,9 +131,9 @@ SourceAstResult BuildSourceAst(const analysis::SemanticMethod& method,
               sizeof(std::optional<analysis::BlockId>))
     return Fail(SourceError::kResourceLimit);
   try {
-    PrivateObjects objects(method.ssa.Values().size());
+    PrivateObjects objects(method.ssa.Values().size(), method.instructions.size());
     if (objects.AllocatedBytes() >
-        method.ssa.Values().size() * sizeof(PrivateObjects::Origin))
+        method.ssa.Values().size() * sizeof(PrivateObjects::Origin) + allocation_bytes)
       return Fail(SourceError::kResourceLimit);
     std::vector<CallInterval> call_roots;
     call_roots.reserve(method.instructions.size());

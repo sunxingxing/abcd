@@ -1,12 +1,32 @@
 #include "semantic_objects.h"
 
+#include <utility>
+
 namespace abcd::source {
+std::size_t PrivateObjects::Root(std::size_t id) const {
+  while (allocations_[id].parent != id) id = allocations_[id].parent;
+  return id;
+}
+void PrivateObjects::Connect(analysis::InstructionId left,
+                             analysis::InstructionId right) {
+  auto a = Root(left.value);
+  auto b = Root(right.value);
+  if (a == b) return;
+  if (allocations_[a].rank < allocations_[b].rank) std::swap(a, b);
+  allocations_[b].parent = a;
+  allocations_[a].escaped |= allocations_[b].escaped;
+  if (allocations_[a].rank == allocations_[b].rank) ++allocations_[a].rank;
+}
+PrivateObjects::Origin PrivateObjects::Identity(
+    analysis::SsaValueId value, std::size_t block_begin) const {
+  const auto origin = origins_[value.value];
+  return origin && origin->value >= block_begin ? origin : Origin{};
+}
 PrivateObjects::Origin PrivateObjects::Find(
     std::optional<analysis::SsaValueId> value, std::size_t block_begin) const {
   if (!value) return {};
-  const auto origin = origins_[value->value];
-  if (!origin || origin->value < block_begin ||
-      (publication_ && origin->value <= publication_->value)) return {};
+  const auto origin = Identity(*value, block_begin);
+  if (!origin || allocations_[Root(origin->value)].escaped) return {};
   return origin;
 }
 
@@ -29,18 +49,27 @@ void PrivateObjects::Observe(const analysis::SemanticMethod& method,
     }
   }
   if (copy && reads.size() == 1) {
-    origin = Find(reads.front().value, block_begin);
-  } else if (!verified_own_store) {
+    // Keep aliases even after publication so later containment cannot make an
+    // escaped component appear private again.
+    origin = Identity(reads.front().value, block_begin);
+  } else if (verified_own_store) {
+    Origin first;
+    for (const auto& read : reads) {
+      if (const auto item = Identity(read.value, block_begin)) {
+        if (first) Connect(*first, *item);
+        else first = item;
+      }
+    }
+  } else {
     // Getters/calls may execute user code but cannot access private VM slots.
     // Any non-copy use of a tracked reference may expose its entire connected
-    // object graph. Invalidate the epoch, not just the directly read receiver.
+    // object graph. Union-by-rank tracks conservative bidirectional containment
+    // in O(log I) per reference without rescanning every older allocation.
     // Lexical/module/property stores are covered by their SSA value reads;
     // subsequent closure creation cannot recover an unpublished register.
     for (const auto& read : reads) {
-      if (Find(read.value, block_begin)) {
-        publication_ = instruction;
-        break;
-      }
+      if (const auto item = Identity(read.value, block_begin))
+        allocations_[Root(item->value)].escaped = true;
     }
   }
   if (std::holds_alternative<analysis::BufferedObjectCreation>(operation))
