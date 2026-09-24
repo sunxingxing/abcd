@@ -7,6 +7,14 @@ rejects an unbound `this`; other encoded modes are runtime no-ops. Both checks
 preserve the accumulator. Historical formats may decode, but source equivalence
 needs a separate profile proof.
 
+Dynamic 12.0.2.0 now enters class-heritage admission when the record
+interpreter has captured an import or global parent snapshot at the DEFINE
+site. The paired MultiCommunity `ViewPU` pages pass this profile gate, then
+refuse the constructor proof: their constructors contain default-argument
+branches, a range super call, and subsequent lifecycle effects. The current
+pure forwarding and exact spread-field templates cannot represent that body;
+no page source is published on this basis.
+
 `ProveForwardingDerivedConstructor` accepts two straight-line templates: private
 copies of ABI inputs, one super-forward-all or positional `SUPERCALLTHISRANGE`
 call through the current constructor,

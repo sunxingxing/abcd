@@ -24,6 +24,11 @@ proof. Dynamic 12.0.6.0 uses the same exact matcher and pinned v7
 receiver/property/call order; dynamic 11.0.2.0 remains outside record source
 admission.
 
+Dynamic 12.0.2.0 also enters this exact matcher. In the paired
+MultiCommunity ABC, 13 ArkUI page records progress past the guard to derived
+class admission; their complex constructors still refuse whole-record source
+publication. This is evidence of prelude recovery, not page decompilation.
+
 The paired Immersive test checks all 16 matches, the Shopping operand slots,
 branch/key corruption, a live-register counterexample, and 200/201/400/800
 NOP suffixes. A Node oracle verifies the absent/present-key branch behavior

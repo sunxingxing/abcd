@@ -525,9 +525,10 @@ CreatedClassResult WriteCreatedClass(
     std::span<const ClassAccessor> accessors,
     std::optional<ClassParent> parent) {
   try {
-    // Both admitted dynamic profiles use the pinned v7 class interpreter's
+    // Admitted dynamic profiles use the pinned v7 class interpreter's
     // CreateClassWithBuffer/RuntimeSetClassInheritanceRelationship path.
     const bool derived_profile =
+        header.profile == abc::ProfileId::kDynamic1202 ||
         header.profile == abc::ProfileId::kDynamic1206 ||
         header.profile == abc::ProfileId::kDynamic1301;
     if (heritage.pc != instruction.offset ||

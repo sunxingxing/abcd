@@ -43,7 +43,8 @@ class PreludeWriter {
         strings_(strings) {}
 
   std::size_t Write() {
-    if ((header_.profile != abc::ProfileId::kDynamic1206 &&
+    if ((header_.profile != abc::ProfileId::kDynamic1202 &&
+         header_.profile != abc::ProfileId::kDynamic1206 &&
          header_.profile != abc::ProfileId::kDynamic1301) ||
         guard_.after >= body_.instructions.size() ||
         guard_.function >= guard_.after)
