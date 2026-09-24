@@ -11,6 +11,7 @@
 #include "abcd/abc/method_body.h"
 #include "abcd/abc/pool_reference.h"
 #include "abcd/analysis/phi_placement.h"
+#include "abcd/analysis/capture_effect.h"
 
 namespace abcd::analysis {
 struct SuperForward {
@@ -101,14 +102,16 @@ using RangeDerivedConstructorResult =
 // origin propagation proves each VM super check is a no-op on its actual
 // input; arbitrary constructors and inferred source types are not admitted.
 // Local stores/loads participate through sparse cell SSA before the first
-// capture-capable creation. Later cell loads remain unknown. The default
+// capture-capable creation not covered by a same-body preservation certificate.
+// Later cell loads remain unknown. The default
 // profile is the pinned v7 dynamic 13.0.1 contract; file owners pass theirs.
 // Backedges and exception regions are refused until their state transitions
 // can be represented without reordering effects.
 [[nodiscard]] RangeDerivedConstructorResult ProveRangeDerivedConstructor(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     DerivedConstructorBudget budget = {},
-    abc::ProfileId profile = abc::ProfileId::kDynamic1301);
+    abc::ProfileId profile = abc::ProfileId::kDynamic1301,
+    std::span<const CapturePreservation> preserved = {});
 }  // namespace abcd::analysis
 
 #endif  // ABCD_ANALYSIS_DERIVED_CONSTRUCTOR_H_

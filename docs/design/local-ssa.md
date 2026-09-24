@@ -27,7 +27,10 @@ refuses even harmless environment copies until a separate escape proof exists.
 The first function creation or object/array literal-buffer creation is retained
 as a capture barrier. Buffers may contain method templates; absent decoded
 literal evidence, they cannot be assumed noncapturing. Consumers must not infer
-local identities for loads at or after that barrier. Local SSA itself records
+local identities for loads at or after that barrier unless the same-body
+capture-preservation analysis supplies a certificate for that creation PC.
+Certificates must be strictly ordered, match creation sites and be completely
+consumed. See [capture preservation](capture-preservation.md). Local SSA records
 explicit stores only, not unknown closure mutations.
 
 ## Constructor integration
@@ -61,10 +64,13 @@ measurement remain deferred, not claimed from these complexity bounds.
 ## Current evidence
 
 Both CLI targets build. Debugging the actual pasteboard record-output run shows
-Home constructor's first failing super guard at PC414, with origin `Other`.
+Before capture-preservation integration, Home constructor's first failing super
+guard was at PC414, with origin `Other`.
 The earlier checks, including PC92, now trace through the lexical this cell.
 The first capture barrier is instruction 146, the object-buffer site at PC392.
-PC412 reloads the cell after that barrier, so PC414 intentionally still fails.
+PC412 reloads the cell after that barrier, so PC414 intentionally failed without
+additional evidence. The subsequent preservation analysis certifies PC392 and
+PC398, and the whole constructor origin proof now succeeds with super PC84.
 Evidence is in `build/pasteboard-local-ssa-final-debug.txt` and
 `build/pasteboard-source-local-ssa/manifest.json`.
 

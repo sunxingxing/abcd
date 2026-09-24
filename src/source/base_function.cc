@@ -1,4 +1,5 @@
 #include "abcd/source/base_function.h"
+#include "capture_preservation.h"
 
 #include <algorithm>
 #include <array>
@@ -613,9 +614,22 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
                                  analysis::CapturedValues captured_values) {
   if (!CanonicalFrame(function.frame)) return FunctionEmitError::kFrame;
   if (function.syntax == CallableSyntax::kRangeDerivedConstructor) {
+    CapturePreservations preserved;
+    if (constants) {
+      auto checked = ProveCapturePreservation(body, *constants, methods,
+                                             {budget.bytes, budget.work});
+      if (std::holds_alternative<SourceFailure>(checked))
+        return FunctionEmitError::kResourceLimit;
+      preserved = std::get<CapturePreservations>(std::move(checked));
+    }
+    if (preserved.AllocatedBytes() > budget.bytes || preserved.work_units > budget.work)
+      return FunctionEmitError::kResourceLimit;
+    budget.work -= preserved.work_units;
     const auto proof = analysis::ProveRangeDerivedConstructor(
-        body, function.frame, {budget.bytes, budget.work},
-        constants ? constants->header.profile : abc::ProfileId::kDynamic1301);
+        body, function.frame,
+        {budget.bytes - preserved.AllocatedBytes(), budget.work},
+        constants ? constants->header.profile : abc::ProfileId::kDynamic1301,
+        preserved.sites);
     if (const auto* error =
             std::get_if<analysis::DerivedConstructorError>(&proof))
       return *error == analysis::DerivedConstructorError::kResourceLimit

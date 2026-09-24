@@ -7,6 +7,7 @@
 #include "abcd/source/named_scope.h"
 #include "module_read_snapshot.h"
 #include "exception_body.h"
+#include "capture_preservation.h"
 
 namespace abcd::source {
 namespace {
@@ -22,8 +23,16 @@ auto BuildBody(
     return SourceFailure{SourceError::kInvalidEffect, {}};
   std::optional<analysis::RangeDerivedConstructor> derived;
   if (names.range_derived_constructor) {
+    const auto preserved = ProveCapturePreservation(
+        body, constants, constants.leaf_methods, budget);
+    const auto* sites = std::get_if<CapturePreservations>(&preserved);
+    if (!sites) return std::get<SourceFailure>(preserved);
+    if (sites->AllocatedBytes() > budget.bytes || sites->work_units > budget.work)
+      return SourceFailure{SourceError::kResourceLimit, {}};
+    budget.work -= sites->work_units;
     const auto checked = analysis::ProveRangeDerivedConstructor(
-        body, frame, {budget.bytes, budget.work}, constants.header.profile);
+        body, frame, {budget.bytes - sites->AllocatedBytes(), budget.work},
+        constants.header.profile, sites->sites);
     if (const auto* failure =
             std::get_if<analysis::DerivedConstructorError>(&checked))
       return SourceFailure{

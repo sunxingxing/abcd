@@ -59,7 +59,8 @@ bool DominatesInstruction(const DominatorTree& tree,
 
 RangeDerivedConstructorResult ProveRangeDerivedConstructor(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
-    DerivedConstructorBudget budget, abc::ProfileId profile) {
+    DerivedConstructorBudget budget, abc::ProfileId profile,
+    std::span<const CapturePreservation> preserved) {
   using Error = DerivedConstructorError;
   if (!frame.function || !frame.new_target || !frame.this_value ||
       frame.registers < frame.locals ||
@@ -162,7 +163,7 @@ RangeDerivedConstructorResult ProveRangeDerivedConstructor(
     std::optional<LocalSsa> locals;
     if (lexical_loads) {
       auto built_locals = BuildLocalSsa(body, graph, ssa, frame.registers, profile,
-                                       {budget.bytes}, budget.work);
+                                       {budget.bytes}, budget.work, preserved);
       if (auto* local = std::get_if<LocalSsa>(&built_locals)) {
         if (local->values.AllocatedBytes() > budget.bytes ||
             local->work_units > budget.work)

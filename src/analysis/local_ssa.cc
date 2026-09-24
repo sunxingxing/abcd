@@ -19,7 +19,7 @@ std::variant<LocalSsa, LocalSsaError> BuildLocalSsa(
     const abc::MethodBody& body, const NormalFlow& graph,
     const RegisterSsa& registers, std::uint64_t frame_size,
     abc::ProfileId profile, IdfBudget budget,
-    std::uint64_t work) {
+    std::uint64_t work, std::span<const CapturePreservation> preserved) {
   using Error = LocalSsaError;
   if (!body.tries.empty() || !body.handlers.empty()) return Error::kControlFlow;
   for (const auto& site : body.instructions)
@@ -73,6 +73,9 @@ std::variant<LocalSsa, LocalSsaError> BuildLocalSsa(
     if (environment_values.capacity() > budget.bytes) return Error::kResourceLimit;
     budget.bytes -= environment_values.capacity();
     std::optional<InstructionId> first_capture;
+    std::size_t preservation = 0;
+    for (std::size_t i = 1; i < preserved.size(); ++i)
+      if (preserved[i - 1].pc >= preserved[i].pc) return Error::kInstruction;
     std::size_t binding = 0;
     for (std::size_t i = 0; i < sites.size(); ++i) {
       charge();
@@ -98,10 +101,17 @@ std::variant<LocalSsa, LocalSsaError> BuildLocalSsa(
       // Literal buffers can install method templates capturing the current
       // environment too. Without decoded literal evidence, both object and
       // array buffers are barriers, even when this particular buffer is plain.
-      if (!first_capture &&
-          (std::holds_alternative<FunctionCreation>(operation) ||
-           std::holds_alternative<BufferedObjectCreation>(operation) ||
-           std::holds_alternative<BufferedArrayCreation>(operation)))
+      const bool capture = std::holds_alternative<FunctionCreation>(operation) ||
+                           std::holds_alternative<BufferedObjectCreation>(operation) ||
+                           std::holds_alternative<BufferedArrayCreation>(operation);
+      bool read_only = false;
+      if (preservation < preserved.size() && preserved[preservation].pc <= instruction.offset) {
+        if (!capture || preserved[preservation].pc != instruction.offset)
+          return Error::kInstruction;
+        ++preservation;
+        read_only = true;
+      }
+      if (!first_capture && capture && !read_only)
         first_capture = InstructionId{static_cast<std::uint32_t>(i)};
       if (binding >= bound->bindings.size() || bound->bindings[binding].instruction != i)
         continue;
@@ -122,6 +132,7 @@ std::variant<LocalSsa, LocalSsaError> BuildLocalSsa(
         return Error::kInstruction;
       }
     }
+    if (preservation != preserved.size()) return Error::kInstruction;
     // Reject even a private copy of a raw environment identity; admitting
     // copy chains would require a separate escape proof. Phi inputs count as
     // uses even when the phi result is otherwise dead.
