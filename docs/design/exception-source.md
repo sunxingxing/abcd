@@ -2,6 +2,37 @@
 
 ## Current Boundary
 
+### Edge-Specific Pending Values
+
+`ExceptionValueFlow::Build` accepts `ExceptionPendingFact` premises keyed by
+original Before phase node. A fact must name a reachable PendingException
+site, have nonempty `ValueKinds`, and be unique. It overrides the global
+pending policy only at that site's actual exception edges. Explicit throws
+still propagate their SSA operands; normal Commit values are unaffected.
+Unspecified edges remain Unknown under the default policy. The optional
+index is allocated only for nonempty premises through the stage's bounded
+scratch resource, with O(N+F) additional initialization/validation work and
+O(N) space for phase nodes and supplied facts. Input/owner contracts still
+must prove every possible payload source at each certified site.
+
+This interface deliberately does not infer Language from `SetException` or
+an error-constructor name. Pinned `js_thread.cpp:335` stores arbitrary tagged
+values without a category check; `js_thread.h:426` clears the exception slot
+to Hole; `interpreter-inl.cpp:4024` copies the stored exception to accumulator
+before clearing it. `ObjectFactory::NewJSError` at `object_factory.cpp:1095`
+can return an already-pending exception instead of creating an Error object.
+Consequently, even a runtime guard needs its full incoming/runtime contract,
+not merely the fact that one code path invokes NewJSError.
+
+Pasteboard 6350's catch merges pending edges at PCs 35, 41, 43, 51, 59, 78
+and 86 (Before nodes 30, 34, 36, 42, 48, 64 and 70). These owner obligations
+remain outstanding; no automatic facts are supplied by inspection. The next
+integration must connect callee/host and runtime provenance to these facts,
+not set a blanket Language policy to increase apparent coverage. Read-only
+review found no concrete defect. Tests and RSS remain paused. Nonempty
+premise propagation, duplicate/unreachable/wrong-phase refusal, mixed pending
+sources and resource boundaries are not runtime-verified in this change.
+
 ### Shared-Catch Module Guards
 
 The module-pair proof now also admits identical local exception dispatch:

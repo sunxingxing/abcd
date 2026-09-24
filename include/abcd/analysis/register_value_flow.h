@@ -28,7 +28,9 @@ enum class ValueFlowError {
   kInvalidLexicals,
   kWorkLimit,
   kResourceLimit,
-  kInvalidSemantics
+  kInvalidSemantics,
+  kInvalidPendingFact,
+  kDuplicatePendingFact
 };
 struct ValueFlowFailure {
   ValueFlowError kind;

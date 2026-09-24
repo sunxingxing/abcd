@@ -16,6 +16,12 @@ struct ExceptionLoadFact {
   // (which may return Hole). The owner must emit its certified fused read.
   ExceptionLoadProof proof = ExceptionLoadProof::kLanguage;
 };
+struct ExceptionPendingFact {
+  // Owner-proven pending payload on this reachable Before site's exception
+  // edge, not its normal result. Explicit THROW uses its SSA operand instead.
+  ExceptionNodeId before;
+  ValueKinds kinds;
+};
 class ExceptionValueFlow {
  public:
   ExceptionValueFlow(ExceptionValueFlow&&) noexcept = default;
@@ -30,7 +36,12 @@ class ExceptionValueFlow {
       std::span<const EntryValueFact> entries, IdfQuota& quota,
       IdfBudget budget = {},
       PendingExceptionValues pending = PendingExceptionValues::kUnknown,
-      std::span<const ExceptionLoadFact> loads = {});
+      std::span<const ExceptionLoadFact> loads = {},
+      // Per-edge facts override the global pending premise at their sites.
+      // Unknown remains the default elsewhere. Owners must cover all possible
+      // runtime and user-code sources on each certified edge; opcode names or
+      // a NewJSError call alone do not establish that contract.
+      std::span<const ExceptionPendingFact> pending_facts = {});
   [[nodiscard]] std::span<const ValueKinds> Facts() const {
     return {facts_.get(), facts_ ? count_ : 0};
   }

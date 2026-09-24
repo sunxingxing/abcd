@@ -9,7 +9,8 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
     const ExceptionFlow& flow, const ExceptionSsa& ssa,
     std::span<const EntryValueFact> entries, IdfQuota& quota, IdfBudget budget,
     PendingExceptionValues pending_values,
-    std::span<const ExceptionLoadFact> loads) {
+    std::span<const ExceptionLoadFact> loads,
+    std::span<const ExceptionPendingFact> pending_facts) {
   using Error = ValueFlowError;
   using Kind = detail::ValueRuleKind;
   const auto invalid = [] { return ValueFlowFailure{Error::kInvalidSsa, {}, {}}; };
@@ -92,6 +93,21 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
         }
       }
     }
+    std::pmr::vector<std::optional<ValueKinds>> pending_kinds{&memory};
+    if (!pending_facts.empty()) pending_kinds.resize(flow.nodes.size());
+    for (const auto& fact : pending_facts) {
+      charge();
+      const InstructionId site{fact.before.value};
+      if (fact.before.value >= flow.nodes.size() || fact.kinds.IsEmpty())
+        return ValueFlowFailure{Error::kInvalidPendingFact, site, {}};
+      const auto& node = flow.nodes[fact.before.value];
+      if (!reached[fact.before.value] || node.phase != ExceptionPhase::kBefore ||
+          !node.exception || !std::holds_alternative<PendingException>(node.exception->exception))
+        return ValueFlowFailure{Error::kInvalidPendingFact, site, {}};
+      if (pending_kinds[fact.before.value])
+        return ValueFlowFailure{Error::kDuplicatePendingFact, site, {}};
+      pending_kinds[fact.before.value] = fact.kinds;
+    }
     const auto connect = [&](SsaValueId from, SsaValueId to) {
       charge();
       if (from.value >= count || to.value >= count) throw invalid();
@@ -168,9 +184,10 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
         } else {
           // User callbacks can supply the pending value. Without an owner
           // premise, do not infer Language merely because the VM threw it.
-          facts[target->value] = facts[target->value].Join(
-              pending_values == PendingExceptionValues::kLanguage
-                  ? ValueKinds::Language() : ValueKinds::Unknown());
+          const auto owner = pending_kinds.empty() ? std::optional<ValueKinds>{} : pending_kinds[i];
+          const auto kinds = owner.value_or(pending_values == PendingExceptionValues::kLanguage
+              ? ValueKinds::Language() : ValueKinds::Unknown());
+          facts[target->value] = facts[target->value].Join(kinds);
         }
       }
     }
