@@ -105,8 +105,7 @@ class LiteralWriter {
     }
     const auto child = std::get<RecordNodeRef>(value).id;
     if (child == parent ||
-        (child < parent &&
-         nodes_[parent].kind != RecordLiteralKind::kImportedConstruct))
+        (child < parent && !nodes_[parent].allows_earlier_children))
       throw RecordLiteralError::kInvalidGraph;
     Node(child, depth + 1);
   }

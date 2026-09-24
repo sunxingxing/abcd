@@ -32,6 +32,7 @@ struct RecordLiteralNode {
   bool attached = false;
   bool emitted = false;
   bool contains_construct = false;
+  bool allows_earlier_children = false;
   analysis::ModuleSlot imported_slot{};
 };
 }  // namespace abcd::source
