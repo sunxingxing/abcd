@@ -58,11 +58,17 @@ class ImportWriter {
       ++slot;
     }
     for (const auto& entry : module_.indirect_exports) {
-      Text("export { ");
-      Literal(entry.imported);
-      Text(" as ");
-      Literal(entry.exported);
-      Text(" }");
+      const auto imported = Read(entry.imported);
+      if (ClassifyImport(imported) == ImportForm::kNamespace) {
+        Text("export * as ");
+        Literal(entry.exported);
+      } else {
+        Text("export { ");
+        Literal(imported, entry.imported);
+        Text(" as ");
+        Literal(entry.exported);
+        Text(" }");
+      }
       From(entry.request);
     }
     for (const auto request : module_.star_exports) {
