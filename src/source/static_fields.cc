@@ -15,6 +15,7 @@
 #include "abcd/abc/pool_reference.h"
 #include "abcd/analysis/own_write.h"
 #include "abcd/analysis/define_instruction.h"
+#include "abcd/analysis/indexed_write.h"
 #include "abcd/analysis/scalar.h"
 
 namespace abcd::source {
@@ -84,6 +85,15 @@ class FieldReader {
         case Opcode::kCREATEARRAYWITHBUFFER_IMM8_ID16:
         case Opcode::kCREATEARRAYWITHBUFFER_IMM16_ID16:
           Array(site.decoded);
+          break;
+        case Opcode::kCREATEEMPTYARRAY_IMM8:
+        case Opcode::kCREATEEMPTYARRAY_IMM16:
+          EmptyArray(site.decoded);
+          break;
+        case Opcode::kSTOWNBYINDEX_IMM8_V8_IMM16:
+        case Opcode::kSTOWNBYINDEX_IMM16_V8_IMM16:
+        case Opcode::kWIDE_STOWNBYINDEX_PREF_V8_IMM32:
+          StoreArrayElement(site.decoded);
           break;
         case Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8:
         case Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8:
@@ -246,6 +256,48 @@ class FieldReader {
     charged_ -= temporary_bytes;
     accumulator_ = Save(std::move(array));
     charged_ -= raw_bytes;
+  }
+  void EmptyArray(const abc::DecodedInstruction& instruction) {
+    const auto lifted = analysis::LiftScalarInstruction(
+        instruction, registers_.size());
+    const auto* assignment = std::get_if<analysis::ScalarAssignment>(&lifted);
+    const auto* value = assignment
+                            ? std::get_if<analysis::ScalarValue>(
+                                  &assignment->expression)
+                            : nullptr;
+    if (!value || !std::holds_alternative<analysis::EmptyArray>(*value) ||
+        !std::holds_alternative<analysis::Accumulator>(assignment->destination))
+      throw Fail(Error::kInstruction, pc_);
+    accumulator_ = Save(StaticArray{});
+  }
+  void StoreArrayElement(const abc::DecodedInstruction& instruction) {
+    const auto lifted = analysis::LiftIndexedWrite(
+        instruction, registers_.size());
+    const auto* write = std::get_if<analysis::IndexedWrite>(&lifted);
+    if (!write) throw Fail(Error::kInstruction, pc_);
+    const auto target = registers_[write->object.value];
+    if (target.kind != Ref::Kind::kValue ||
+        !std::holds_alternative<StaticArray>(fields_.values[target.value]) ||
+        array_refs_[target.value] != kArrayUnseen ||
+        accumulator_.kind != Ref::Kind::kValue ||
+        !std::holds_alternative<StaticAtom>(
+            fields_.values[accumulator_.value]))
+      throw Fail(Error::kValue, pc_);
+    auto& array = std::get<StaticArray>(fields_.values[target.value]);
+    if (write->index != array.elements.size() ||
+        array.elements.size() >= body_.instructions.size())
+      throw Fail(Error::kValue, pc_);
+    const auto& atom = std::get<StaticAtom>(
+        fields_.values[accumulator_.value]);
+    const auto copied_text = std::get_if<std::u16string>(&atom);
+    if (copied_text) Charge(copied_text->size(), sizeof(char16_t));
+    const auto old_capacity = array.elements.capacity();
+    array.elements.push_back(atom);
+    Charge(array.elements.capacity() - old_capacity, sizeof(StaticAtom));
+    if (copied_text) {
+      const auto& stored = std::get<std::u16string>(array.elements.back());
+      Charge(stored.capacity() - copied_text->size(), sizeof(char16_t));
+    }
   }
   void Define(const abc::DecodedInstruction& instruction) {
     const auto lifted = analysis::LiftOwnWrite(instruction, registers_.size());

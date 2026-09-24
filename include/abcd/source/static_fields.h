@@ -48,8 +48,9 @@ using StaticFieldResult = std::variant<StaticFields, StaticFieldFailure>;
 
 // Proves a zero-argument v7 or dynamic-12.0.6 method performs only constant
 // DefineField writes on its own `this`, then returns undefined. The caller
-// proves a single CALLTHIS0 on a fresh unescaped class. Arrays reused by
-// multiple fields are rejected until source identity can be preserved.
+// proves a single CALLTHIS0 on a fresh unescaped class. Indexed writes must
+// append before publication; reused or subsequently mutated arrays are
+// rejected because source array literal syntax would lose their identity.
 [[nodiscard]] StaticFieldResult RecoverStaticFields(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodInfo& method,
