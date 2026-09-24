@@ -23,6 +23,7 @@ std::variant<ExceptionModules, ExceptionModuleError> ProveExceptionModules(
     detail::IdfScratch memory{budget.bytes};
     std::pmr::vector<Sites> sites(flow.instructions.size(), {}, &memory);
     std::pmr::vector<Entries> incoming(flow.nodes.size(), Entries::kNone, &memory);
+    std::pmr::vector<std::uint8_t> catch_acc(flow.nodes.size(), 0, &memory);
     for (std::size_t i = 0; i < flow.nodes.size(); ++i) {
       charge();
       const auto& node = flow.nodes[i];
@@ -57,6 +58,8 @@ std::variant<ExceptionModules, ExceptionModuleError> ProveExceptionModules(
       if (origin->instruction.value >= flow.nodes.size()) return Error::kInvalidFlow;
       const auto& node = flow.nodes[origin->instruction.value];
       if (node.phase == ExceptionPhase::kCommit) sites[node.instruction.value].written = true;
+      if (node.phase == ExceptionPhase::kCatch && std::holds_alternative<Accumulator>(value.slot))
+        catch_acc[origin->instruction.value] = 1;
     }
     const auto reserve = [&]<class T>(std::vector<T>& items) {
       if (sites.size() > memory.Available() / sizeof(T)) throw Error::kResourceLimit;
@@ -65,10 +68,32 @@ std::variant<ExceptionModules, ExceptionModuleError> ProveExceptionModules(
     };
     reserve(result.reads);
     reserve(result.loads);
-    const auto caller_only = [&](ExceptionNodeId id) {
+    struct Exit { std::optional<ExceptionNodeId> handler; };
+    const auto route = [&](ExceptionNodeId id, ExceptionNodeId commit) -> std::optional<Exit> {
       const auto& node = flow.nodes[id.value];
-      return node.exception && !node.exception->target && node.successor_count == 1 &&
-             node.successors.front().kind == ExceptionArcKind::kNormal;
+      if (!node.exception || !std::holds_alternative<PendingException>(node.exception->exception)) return {};
+      bool normal = false;
+      Exit exit;
+      for (std::size_t e = 0; e < node.successor_count; ++e) {
+        charge();
+        const auto& arc = node.successors[e];
+        switch (arc.kind) {
+          case ExceptionArcKind::kNormal:
+            if (normal || arc.target != commit) return {};
+            normal = true;
+            break;
+          case ExceptionArcKind::kException:
+            if (exit.handler || !node.exception->target ||
+                flow.nodes[arc.target.value].phase != ExceptionPhase::kCatch ||
+                !catch_acc[arc.target.value]) return {};
+            exit.handler = arc.target;
+            break;
+          case ExceptionArcKind::kTaken:
+          case ExceptionArcKind::kFallthrough: return {};
+        }
+      }
+      if (!normal || exit.handler.has_value() != node.exception->target.has_value()) return {};
+      return exit;
     };
     for (std::size_t i = 0; i + 1 < sites.size(); ++i) {
       charge();
@@ -76,21 +101,35 @@ std::variant<ExceptionModules, ExceptionModuleError> ProveExceptionModules(
       const auto* guard = std::get_if<HoleGuard>(&flow.instructions[i + 1].operation);
       if (!guard || !std::holds_alternative<Accumulator>(guard->value) ||
           !std::holds_alternative<HoleNameSlot>(guard->name)) continue;
+      const auto& load_effect = flow.instructions[i].effects;
+      const auto& guard_effect = flow.instructions[i + 1].effects;
+      if (!load_effect.normal_registers.write ||
+          !std::holds_alternative<Accumulator>(*load_effect.normal_registers.write) ||
+          guard_effect.normal_registers.write ||
+          load_effect.normal != LanguageEffect::kModuleRead ||
+          load_effect.before_throw != LanguageEffect::kModuleRead ||
+          guard_effect.normal != LanguageEffect::kGuard ||
+          guard_effect.before_throw != LanguageEffect::kGuard) continue;
       if (!sites[i].before || !sites[i].commit || !sites[i + 1].before || !sites[i + 1].commit)
         return Error::kInvalidFlow;
       const auto before = *sites[i].before;
       const auto commit = *sites[i].commit;
       const auto next = *sites[i + 1].before;
       const auto& completed = flow.nodes[commit.value];
-      if (!caller_only(before) || !caller_only(next) ||
-          flow.nodes[before.value].successors.front().target != commit ||
-          flow.nodes[next.value].successors.front().target != *sites[i + 1].commit ||
+      const auto load_exit = route(before, commit);
+      const auto guard_exit = route(next, *sites[i + 1].commit);
+      if (!load_exit || !guard_exit || load_exit->handler != guard_exit->handler ||
+          flow.nodes[before.value].exception->target != flow.nodes[next.value].exception->target ||
           completed.successor_count != 1 ||
           completed.successors.front().kind != ExceptionArcKind::kFallthrough ||
           completed.successors.front().target != next ||
           incoming[next.value] != Entries::kSingle || !sites[i].written) continue;
-      result.reads.push_back({InstructionId{static_cast<std::uint32_t>(i)}, ModuleReadProof::kCallerGuarded});
-      result.loads.push_back({commit, ExceptionLoadProof::kCallerGuardedModule});
+      // The only intervening write is load's accumulator. A shared Catch
+      // overwrites it before handler code; no general register is relocated.
+      result.reads.push_back({InstructionId{static_cast<std::uint32_t>(i)},
+          load_exit->handler ? ModuleReadProof::kCatchGuarded : ModuleReadProof::kCallerGuarded});
+      result.loads.push_back({commit, load_exit->handler
+          ? ExceptionLoadProof::kCatchGuardedModule : ExceptionLoadProof::kCallerGuardedModule});
     }
     return result;
   } catch (Error error) { return error;

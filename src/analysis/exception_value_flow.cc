@@ -46,6 +46,7 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
       switch (load.proof) {
         case ExceptionLoadProof::kLanguage: break;
         case ExceptionLoadProof::kCallerGuardedModule:
+        case ExceptionLoadProof::kCatchGuardedModule:
           if (!std::holds_alternative<ModuleLoad>(operation))
             return ValueFlowFailure{Error::kInvalidLoadFact, site, {}};
           break;
@@ -124,8 +125,8 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
         if (!destination || !same_slot(value.slot, *destination)) return invalid();
         // Owner premises affect only normal Commit values. They never move a
         // load's exception edge or upgrade the handler's pending exception.
-        // Caller-guarded facts are conditional lowered-pair values: their
-        // original Hole state cannot be observed by a local handler.
+        // Guarded facts are conditional lowered-pair values: their original
+        // Hole state is discarded on caller exit or overwritten at Catch.
         if (!trusted.empty() && trusted[i]) {
           facts[i] = ValueKinds::Language();
           continue;

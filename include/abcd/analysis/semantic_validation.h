@@ -12,12 +12,13 @@ struct CapturedReadFact {
   CapturedSlot cell;
 };
 enum class ModuleReadProof : std::uint8_t {
-  kGuarded, kInitialized, kCallerGuarded
+  kGuarded, kInitialized, kCallerGuarded, kCatchGuarded
 };
 constexpr bool IsGuardedModuleRead(ModuleReadProof proof) {
   switch (proof) {
     case ModuleReadProof::kGuarded:
-    case ModuleReadProof::kCallerGuarded: return true;
+    case ModuleReadProof::kCallerGuarded:
+    case ModuleReadProof::kCatchGuarded: return true;
     case ModuleReadProof::kInitialized: return false;
   }
   return false;

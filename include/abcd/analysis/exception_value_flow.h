@@ -5,12 +5,14 @@
 
 namespace abcd::analysis {
 enum class PendingExceptionValues : std::uint8_t { kUnknown, kLanguage };
-enum class ExceptionLoadProof : std::uint8_t { kLanguage, kCallerGuardedModule };
+enum class ExceptionLoadProof : std::uint8_t {
+  kLanguage, kCallerGuardedModule, kCatchGuardedModule
+};
 struct ExceptionLoadFact {
   // Must name a reachable lexical/module load's Commit node. kLanguage is an
   // owner-proven normal result, not permission for guard fusion.
   ExceptionNodeId commit;
-  // Caller-guarded module facts describe the LOWERED pair, not the raw load
+  // Guarded module facts describe the LOWERED pair, not the raw load
   // (which may return Hole). The owner must emit its certified fused read.
   ExceptionLoadProof proof = ExceptionLoadProof::kLanguage;
 };

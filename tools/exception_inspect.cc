@@ -2,6 +2,7 @@
 #include "exception_source_inspect.h"
 
 #include <cstdlib>
+#include <algorithm>
 #include <type_traits>
 #include <nlohmann/json.hpp>
 #include "abcd/analysis/exception_flow.h"
@@ -161,7 +162,9 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
   };
   auto tree_result = build_tree();
   auto* tree = std::get_if<analysis::SemanticRegionTree>(&tree_result);
-  output << nlohmann::json{{"schema", 11}, {"instructions", flow->instructions.size()},
+  const auto caller_modules = std::count_if(modules->reads.begin(), modules->reads.end(),
+      [](const auto& read) { return read.proof == analysis::ModuleReadProof::kCallerGuarded; });
+  output << nlohmann::json{{"schema", 12}, {"instructions", flow->instructions.size()},
       {"nodes", flow->nodes.size()}, {"source_complete", false}, {"ssa_complete", false},
       {"register_ssa_complete", true}, {"value_flow_complete", true},
       {"environment_topology_complete", true}, {"lexical_values_proven", false},
@@ -170,7 +173,8 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
       {"exception_tree_proven", tree != nullptr},
       {"instruction_ssa_indexed", true},
       {"local_initialization_planned", true}, {"local_load_premises", locals->loads.size()},
-      {"caller_guarded_modules", modules->reads.size()},
+      {"caller_guarded_modules", caller_modules},
+      {"catch_guarded_modules", modules->reads.size() - caller_modules},
       {"value_flow_models_lowered_pairs", !modules->reads.empty()},
       {"requires_language_abi", true}, {"pending_exception_values_proven", false},
       {"ssa_values", ssa->Values().size()}}

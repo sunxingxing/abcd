@@ -2,6 +2,34 @@
 
 ## Current Boundary
 
+### Shared-Catch Module Guards
+
+The module-pair proof now also admits identical local exception dispatch:
+load and guard must have equal complete `DispatchTarget` identities and
+exception arcs to the same Catch gateway. A sequential SSA index verifies
+that gateway's accumulator definition. The only intervening register write
+must be load's accumulator; the typed effects must remain module-read and
+guard only. Catch overwrites accumulator before handler instructions, so the
+removed intermediate Hole cannot become a handler input. Distinct handlers,
+different dispatch priorities and bypass entries still refuse certification.
+
+Separate `kCatchGuarded` / `kCatchGuardedModule` certificates record this case.
+They describe lowered-pair values, not raw-load Language guarantees. Pending
+exceptions remain Unknown, and no additional register/environment writes or
+call motion are admitted. Source binding identity and whole-method input proof
+remain required. The shared AST/printer retain both PCs in the fused span.
+
+ABC-only schema-12 artifacts `build/pasteboard-4945-catch-modules.jsonl`,
+`build/pasteboard-5165-catch-modules.jsonl` and
+`build/pasteboard-6350-catch-modules.jsonl` report respectively two, one and one
+shared-catch pairs. Their next input failures are PC 355, 44 and 91; the latter
+is a catch-entry read of the still-unproven pending exception. No complete
+method or record is added. Both CLI targets compiled; ordinary all-record
+output remains byte-identical in `build/pasteboard-semantic-catch-modules.jsonl`.
+Read-only review found no concrete defect. Tests and RSS remain paused;
+runtime TDZ equivalence, bypass/mismatched handler refusals and exception-state
+position mapping are not claimed verified by these production inspections.
+
 ### Caller-Only Module Guards
 
 `ProveExceptionModules` certifies adjacent module-load/static-name Hole-guard
@@ -43,7 +71,7 @@ no normal-only SSA or fabricated handler-free bytecode is constructed.
 The public borrowed-input contract requires all analysis owners to match and
 local-load premises to have seeded the provided value solution. Captured-read
 facts remain absent at this boundary; module-read facts now accept the
-caller-only certificates above. Phased receiver-call fusion and unproven
+caller-only and shared-catch certificates above. Phased receiver-call fusion and unproven
 guarded-module fusion remain disabled.
 
 The common printer now reads block layout independently of normal-method
