@@ -15,6 +15,7 @@
 #include "abcd/abc/frame_layout.h"
 #include "abcd/abc/method_body.h"
 #include "abcd/analysis/semantic_region.h"
+#include "abcd/analysis/coroutine.h"
 #include "abcd/analysis/semantic_ir.h"
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/corpus/abc_file.h"
@@ -25,6 +26,28 @@
 
 namespace {
 using namespace abcd;
+nlohmann::json Slot(const analysis::ScalarSlot& slot) {
+  if (const auto* reg = std::get_if<abc::RegisterId>(&slot))
+    return nlohmann::json{{"register", reg->value}};
+  return nlohmann::json{{"accumulator", true}};
+}
+void DescribeCoroutine(nlohmann::json& output,
+                       const abc::DecodedInstruction& instruction,
+                       std::uint64_t frame_size) {
+  const auto lifted = analysis::LiftCoroutineInstruction(instruction, frame_size);
+  if (const auto* transfer =
+          std::get_if<analysis::CoroutineTransfer>(&lifted)) {
+    output["coroutine_transfer"] = {
+        {"kind", static_cast<unsigned>(transfer->kind)},
+        {"state", Slot(transfer->state)}, {"value", Slot(transfer->value)}};
+  } else if (const auto* read = std::get_if<analysis::CoroutineRead>(&lifted)) {
+    output["coroutine_read"] = {{"kind", static_cast<unsigned>(read->kind)},
+                                {"state", Slot(read->state)}};
+  } else if (const auto error = std::get<analysis::CoroutineError>(lifted);
+             error != analysis::CoroutineError::kUnsupportedOpcode) {
+    output["coroutine_error"] = static_cast<unsigned>(error);
+  }
+}
 enum class InspectError : std::uint8_t {
   kArguments,
   kOpen,
@@ -135,9 +158,11 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
         }
         operands.push_back(std::move(value));
       }
-      std::cout << nlohmann::json{{"pc", site.offset.value},
+      nlohmann::json output{{"pc", site.offset.value},
           {"opcode", static_cast<unsigned>(site.decoded.opcode)},
-          {"operands", std::move(operands)}} << '\n';
+          {"operands", std::move(operands)}};
+      DescribeCoroutine(output, site.decoded, code.registers + code.arguments);
+      std::cout << output << '\n';
     }
     return std::cout ? EXIT_SUCCESS : EXIT_FAILURE;
   }

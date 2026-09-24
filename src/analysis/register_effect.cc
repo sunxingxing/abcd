@@ -7,6 +7,7 @@
 #include "abcd/analysis/class_creation.h"
 #include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/constructor_call.h"
+#include "abcd/analysis/coroutine.h"
 #include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/derived_constructor.h"
 #include "abcd/analysis/function_creation.h"
@@ -286,6 +287,19 @@ RegisterEffect EffectOf(const PrivateStore& value) {
   effect.reads[effect.read_count++] = Accumulator{};
   return effect;
 }
+RegisterEffect EffectOf(const CoroutineTransfer& value) {
+  // Register effects do not grant a fallthrough edge or classify the result
+  // as Language. In particular, suspend's result is not its resumed value.
+  auto effect = AccumulatorDefinition();
+  effect.reads[effect.read_count++] = value.state;
+  effect.reads[effect.read_count++] = value.value;
+  return effect;
+}
+RegisterEffect EffectOf(const CoroutineRead& value) {
+  auto effect = AccumulatorDefinition();
+  effect.reads[effect.read_count++] = value.state;
+  return effect;
+}
 template <class Error>
 ScalarError EffectOf(Error error) {
   if (error == Error::kUnsupportedOpcode)
@@ -406,6 +420,9 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
                ? ScalarError::kRegisterRange
                : ScalarError::kMalformedInstruction;
   if (auto result = Adapt(LiftIteratorInstruction(instruction, frame_size));
+      !Unsupported(result))
+    return result;
+  if (auto result = Adapt(LiftCoroutineInstruction(instruction, frame_size));
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftPrivateProperty(instruction, frame_size));

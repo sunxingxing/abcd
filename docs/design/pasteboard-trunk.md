@@ -1094,6 +1094,33 @@ tag/commit. Tests and RSS tracking remain paused. Deferred regressions cover
 field-count errors, dependency identities, relative path safety, basename and
 case collisions, Unicode fallback, malformed filename metadata and quotas.
 
+### Coroutine operand semantics (2026-09-25)
+
+`analysis/coroutine` now preserves VM state/value operands in typed transfer
+and read operations. Transfers distinguish await, suspend, resolve and reject;
+reads distinguish resume value from resume mode. Modern forms and deprecated
+await/suspend/resume/mode forms validate operand counts, v8 encoding and frame
+membership. Deprecated three-register settlement remains unsupported pending
+historical profile treatment; the v7 interpreter ignores its middle register,
+which must not be generalized to all historical runtimes.
+
+Provenance: pinned runtime_core `isa/isa.yaml` and ets_runtime
+`ecmascript/interpreter/interpreter-inl.cpp` handlers for these operations.
+The parser uses constant space/time. Register effects consume the typed slots;
+they do not grant CFG fallthrough, prove Language values, or erase suspension.
+The generic semantic method still rejects suspension and exception bodies.
+
+`abc_semantic --instructions` exposes these facts at their original PCs. An
+ABC-only inspection of pasteboard method 7421 produced await at 100, suspend
+at 102, resume value at 106, resume mode at 111, resolve at 240 and reject at
+245, with state register 5 for the transfer operations. Both CLI targets were
+compiled. No tests or RSS tracking were run, per the current user instruction;
+malformed operand, historical layout and register-boundary regression tests
+remain deferred. This increment does not increase complete record coverage
+or claim executable await output. Next, prove state identity, resume-mode
+rejection branches and handler ownership before constructing an await region
+with original-PC provenance.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial
