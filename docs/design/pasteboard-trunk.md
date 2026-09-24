@@ -210,6 +210,49 @@ call/heap-write escape, nested objects and static-field rejection.
 `abc_semantic INPUT.abc METHOD_ENTITY --instructions` provides numeric decoded
 operands and available literal-buffer data for inspection, not source output.
 
+## Lexical and Function-Creation IR
+
+The next inventory run retains 101 body outputs and one AST rejection, but
+reduces IR rejections from 117 to 44. The other 73 methods now reach source
+proof and are rejected there. This is IR coverage only: no new method or
+record is counted as recovered source in this increment.
+
+The shared IR now includes lexical loads/stores, named and unnamed environment
+allocation, current/parent environment operations, DEFINEFUNC/DEFINEMETHOD and
+the internal Hole load. It reuses the checked typed lifters for narrow, wide
+and supported deprecated formats. Lexical addresses retain depth and slot;
+deprecated stores retain their explicit source register. Environment allocation
+retains slot count and optional scope-pool reference. Function creation retains
+the regional method-pool reference, observable length, home-object input and
+cache operand. None of these operands is converted into a guessed source name.
+
+Separate lexical-cell and current-environment effect bits prevent a cell store
+from being confused with either an ordinary property setter or an environment
+switch. The pinned interpreter's LDLEXVAR reads the raw cell without a getter or
+TDZ check. NEWLEXENV installs the environment and accumulator only on successful
+allocation; its before-throw effects exclude that installation. Function
+creation has conservative allocation/context-read effects until target
+attributes resolve ordinary versus sendable capture. Each occurrence remains
+in the IR at its original PC; creation is not deduplicated by method ID.
+
+Source proof has deliberately not been relaxed. Its current accumulator pass
+does not yet admit lexical/context operations or function creation: 52 first
+proof failures are lexical loads, 14 are environment creation, and seven are
+function creation. The next integration must connect environment topology,
+creation-site capture rebasing and cell initialization to SSA value proofs,
+then pass typed bindings to the AST/printer. Neither a successful lexical load
+decode nor an environment topology result establishes a language-valued cell.
+Hole/internal environment values must not leak into generated JS; sendable
+targets must not be assigned ordinary captures. Class creation and exception
+regions remain explicit separate blockers.
+
+Both CLI targets compile and the complete Pasteboard inventory was regenerated
+from ABC alone in `build/pasteboard-semantic-lexical.jsonl`. Runtime tests and
+RSS tracking remain paused. Deferred regressions cover lexical format widths,
+deprecated store sources, Hole versus undefined, allocation failure before
+environment installation, shadowed/deep captures, environment joins, function
+length versus parameter count, and ordinary versus sendable creation.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

@@ -48,6 +48,24 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
       break;
   }
   if (decoded.opcode == Opcode::kNOP) return NoOperation{};
+  const auto lexical = LiftLexicalInstruction(decoded, frame_size);
+  if (!std::holds_alternative<LexicalError>(lexical)) {
+    return std::visit([&](const auto& value)
+        -> std::variant<SemanticOperation, SemanticFailure> {
+      using T = std::decay_t<decltype(value)>;
+      if constexpr (std::is_same_v<T, LexicalError>)
+        return Fail(SemanticError::kMalformedInstruction, site.offset);
+      else
+        return SemanticOperation{value};
+    }, lexical);
+  }
+  if (std::get<LexicalError>(lexical) != LexicalError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
+  const auto creation = LiftFunctionCreation(decoded);
+  if (const auto* function = std::get_if<FunctionCreation>(&creation))
+    return *function;
+  if (std::get<CreationError>(creation) != CreationError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto module_store = LiftModuleStore(decoded);
   if (const auto* store = std::get_if<ModuleStore>(&module_store)) return *store;
   if (std::get<ModuleStoreError>(module_store) != ModuleStoreError::kUnsupportedOpcode)
@@ -108,8 +126,7 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
     return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto hole = LiftHoleInstruction(decoded, frame_size);
   if (const auto* guard = std::get_if<HoleGuard>(&hole)) return *guard;
-  if (std::holds_alternative<LoadHole>(hole))
-    return Fail(SemanticError::kUnsupportedInstruction, site.offset);
+  if (const auto* load = std::get_if<LoadHole>(&hole)) return *load;
   if (std::get<HoleError>(hole) != HoleError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto global = LiftGlobalAccess(decoded);
@@ -138,6 +155,37 @@ SemanticEffects Effects(const SemanticOperation& operation,
             effects.before_throw = effects.normal;
             effects.exceptional = ExceptionalCompletion::kMayThrow;
           }
+        } else if constexpr (std::is_same_v<T, LexicalLoad>) {
+          // Pinned interpreter-inl.cpp LDLEXVAR: raw cell read, no user
+          // getter and no TDZ check. Bounds and Hole proof are separate.
+          effects.normal = LanguageEffect::kEnvironmentRead |
+                           LanguageEffect::kLexicalRead;
+        } else if constexpr (std::is_same_v<T, LexicalStore>) {
+          effects.normal = LanguageEffect::kEnvironmentRead |
+                           LanguageEffect::kLexicalWrite;
+        } else if constexpr (std::is_same_v<T, PushEnvironment>) {
+          // NEWLEXENV installs env/acc only after successful allocation.
+          // Its new cells contain Hole; env identity is not a JS value.
+          effects.before_throw = LanguageEffect::kEnvironmentRead |
+                                 LanguageEffect::kAllocation;
+          effects.normal = effects.before_throw |
+                           LanguageEffect::kEnvironmentWrite;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, PopEnvironment>) {
+          effects.normal = LanguageEffect::kEnvironmentRead |
+                           LanguageEffect::kEnvironmentWrite;
+        } else if constexpr (std::is_same_v<T, CurrentEnvironment>) {
+          effects.normal = LanguageEffect::kEnvironmentRead;
+        } else if constexpr (std::is_same_v<T, FunctionCreation>) {
+          // Conservative effects until target attributes are resolved.
+          // Ordinary and sendable creation differ in capture; this does not
+          // authorize either wrapper or deduplication of dynamic allocations.
+          effects.normal = LanguageEffect::kEnvironmentRead |
+                           LanguageEffect::kModuleRead |
+                           LanguageEffect::kHeapRead |
+                           LanguageEffect::kAllocation;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, EmptyObjectCreation> ||
                              std::is_same_v<T, BufferedObjectCreation>) {
           effects.normal = LanguageEffect::kAllocation;
@@ -180,6 +228,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else {
           static_assert(std::is_same_v<T, NoOperation> ||
+                        std::is_same_v<T, LoadHole> ||
                         std::is_same_v<T, StringLoad> ||
                         std::is_same_v<T, BranchOperation> ||
                         std::is_same_v<T, JumpOperation> ||

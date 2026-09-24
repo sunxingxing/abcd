@@ -8,8 +8,10 @@
 
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/constructor_call.h"
+#include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
+#include "abcd/analysis/lexical.h"
 #include "abcd/analysis/module_load.h"
 #include "abcd/analysis/module_store.h"
 #include "abcd/analysis/named_read.h"
@@ -24,7 +26,7 @@
 #include "abcd/analysis/value_write.h"
 
 namespace abcd::analysis {
-enum class LanguageEffect : std::uint8_t {
+enum class LanguageEffect : std::uint16_t {
   kNone = 0,
   kHeapRead = 1 << 0,
   kHeapWrite = 1 << 1,
@@ -34,10 +36,14 @@ enum class LanguageEffect : std::uint8_t {
   kGuard = 1 << 5,
   kAllocation = 1 << 6,
   kModuleWrite = 1 << 7,
+  kLexicalRead = 1 << 8,
+  kLexicalWrite = 1 << 9,
+  kEnvironmentRead = 1 << 10,
+  kEnvironmentWrite = 1 << 11,
 };
 constexpr LanguageEffect operator|(LanguageEffect left, LanguageEffect right) {
-  return static_cast<LanguageEffect>(static_cast<std::uint8_t>(left) |
-                                     static_cast<std::uint8_t>(right));
+  return static_cast<LanguageEffect>(static_cast<std::uint16_t>(left) |
+                                     static_cast<std::uint16_t>(right));
 }
 enum class ExceptionalCompletion : std::uint8_t { kImpossible, kMayThrow };
 struct SemanticEffects {
@@ -67,7 +73,11 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        JumpOperation, ReturnOperation,
                                        StringLoad, OrdinaryCall, ReceiverCall,
                                        EmptyObjectCreation, BufferedObjectCreation,
-                                       ConstructorCall, ModuleStore>;
+                                       ConstructorCall, ModuleStore,
+                                       LexicalLoad, LexicalStore,
+                                       PushEnvironment, PopEnvironment,
+                                       CurrentEnvironment, FunctionCreation,
+                                       LoadHole>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;
