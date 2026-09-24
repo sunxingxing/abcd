@@ -168,3 +168,35 @@ Both production CLI targets compile and the change received read-only review.
 Tests and RSS tracking remain paused. Deferred regressions additionally include
 nested class cycles, sibling/preflight work exhaustion, nested output-limit
 classification, unresolved captures, and creation versus child position maps.
+
+### Method and accessor AST operands
+
+The shared AST now retains `MethodExpression` separately from ordinary
+`FunctionExpression`. It carries the complete creation operands, instruction
+coordinate and accumulator home-object input. Function/method input forms are
+checked against their typed creation kind, and both advance the capture barrier
+used by subsequent ordinary closures. `AccessorExpression` retains the four
+register operands and accumulator naming flag; its normal result overwrites
+the accumulator. The enclosing statement retains the original PC.
+
+These are unresolved class-assembly nodes, not licenses to emit ordinary
+functions or calls through `Object.defineProperty`. The printer explicitly
+returns `SourceError::kClassAssembly` for either node until an owner proves
+their assembly. Pinned `ObjectFactory::NewJSFunctionForDefineMethod` selects
+the no-prototype/async/generator function class and sets home object;
+`RuntimeDefineGetterSetterByValue` additionally converts the key, changes
+accessor kinds/names and installs class-dependent descriptors. None of those
+effects may be discarded by introducing source syntax.
+
+ABC-only entry 9915 inspection now passes methods/accessors at PCs295-379
+and stops at the own-property method installation at PC384. It still produces
+no function source. Both production CLIs build and read-only review found no
+specific issue; no tests, JS execution or RSS measurements were run.
+
+Next, assembly must resolve SSA identities from class creation through
+prototype reads and method home objects to installation. Folding into native
+class syntax requires unescaped identities and an effect-order proof, including
+throwing key/descriptor operations and closure environment changes. Retain all
+participating PCs; do not merely delete the intervening instructions, identify
+members by source strings, or infer class ownership from an arbitrary property
+named `prototype`. Constructor/member role and capture checks remain mandatory.

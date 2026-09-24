@@ -245,20 +245,31 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
         operation = SourceAssignment{analysis::Accumulator{}, *awaited};
       } else if (const auto* created =
                      std::get_if<analysis::FunctionCreation>(&instruction.operation)) {
-        if (created->kind != analysis::CreationKind::kFunction ||
-            created->home_object != analysis::HomeObjectInput::kCurrentFunction ||
-            !SameSlot(effect.normal_registers.write,
+        if (!SameSlot(effect.normal_registers.write,
                       analysis::ScalarSlot{analysis::Accumulator{}}))
-          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-        // Target syntax/ABI and absence of external captures are verified by
-        // the callable owner before this expression is published.
-        operation = SourceAssignment{
-            analysis::ScalarSlot{analysis::Accumulator{}},
-            FunctionExpression{*created,
-                analysis::InstructionId{static_cast<std::uint32_t>(position)},
-                previous_creation, method.ssa.Before(
-                    analysis::InstructionId{static_cast<std::uint32_t>(position)})}};
-        previous_creation = analysis::InstructionId{static_cast<std::uint32_t>(position)};
+          return Fail(SourceError::kInvalidEffect, instruction.pc);
+        const auto id = analysis::InstructionId{
+            static_cast<std::uint32_t>(position)};
+        switch (created->kind) {
+          case analysis::CreationKind::kMethod:
+            if (created->home_object != analysis::HomeObjectInput::kAccumulator)
+              return Fail(SourceError::kInvalidEffect, instruction.pc);
+            operation = SourceAssignment{
+                analysis::ScalarSlot{analysis::Accumulator{}},
+                MethodExpression{*created, id, {}}};
+            break;
+          case analysis::CreationKind::kFunction:
+            if (created->home_object != analysis::HomeObjectInput::kCurrentFunction)
+              return Fail(SourceError::kInvalidEffect, instruction.pc);
+            // The callable owner verifies target syntax/ABI and discharges
+            // every capture requirement before publishing this expression.
+            operation = SourceAssignment{
+                analysis::ScalarSlot{analysis::Accumulator{}},
+                FunctionExpression{*created, id, previous_creation,
+                                   method.ssa.Before(id)}};
+            break;
+        }
+        previous_creation = id;
       } else if (std::holds_alternative<analysis::LexicalLoad>(
                      instruction.operation)) {
         if (capture_fact >= proof.captured_reads.size() ||
@@ -324,6 +335,16 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
         operation = SourceAssignment{
             analysis::ScalarSlot{analysis::Accumulator{}},
             ClassExpression{*created, SourcePc(instruction)}};
+      } else if (const auto* accessor =
+                     std::get_if<analysis::DefineAccessor>(&instruction.operation)) {
+        if (!SameSlot(effect.normal_registers.write,
+                      analysis::ScalarSlot{analysis::Accumulator{}}))
+          return Fail(SourceError::kInvalidEffect, instruction.pc);
+        // The input accumulator is a naming flag, while the normal result is
+        // the object. Preserve both; no accessor descriptor is guessed here.
+        operation = SourceAssignment{
+            analysis::ScalarSlot{analysis::Accumulator{}},
+            AccessorExpression{*accessor, {}}};
       } else if (const auto* store =
                      std::get_if<analysis::ModuleStore>(&instruction.operation)) {
         // Input verification proves the stored accumulator is Language. Slot

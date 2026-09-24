@@ -52,6 +52,17 @@ struct ClassExpression {
   analysis::ClassCreation creation;
   abc::CodeOffset origin;
 };
+// These nodes preserve assembly operations before class ownership is proved.
+// They are not ordinary function literals or calls to mutable JS intrinsics.
+struct MethodExpression {
+  analysis::FunctionCreation creation;
+  analysis::InstructionId instruction;
+  analysis::Accumulator home;
+};
+struct AccessorExpression {
+  analysis::DefineAccessor definition;
+  analysis::Accumulator naming_flag;
+};
 using SourceExpression =
     std::variant<analysis::ScalarExpression, MemberExpression,
                  StringExpression, CallExpression, MemberCallExpression,
@@ -60,7 +71,8 @@ using SourceExpression =
                  analysis::ConstructorCall, CapturedExpression,
                  FunctionExpression, LocalExpression, analysis::RestCopy,
                  analysis::BufferedArrayCreation, analysis::AwaitValue,
-                 analysis::SuperRange, ClassExpression>;
+                 analysis::SuperRange, ClassExpression, MethodExpression,
+                 AccessorExpression>;
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;
@@ -150,6 +162,7 @@ enum class SourceError : std::uint8_t {
   kOutput,
   kCreation,
   kSuperInitialization,
+  kClassAssembly,
 };
 struct SourceFailure {
   SourceError kind;

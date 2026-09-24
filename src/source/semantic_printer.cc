@@ -379,6 +379,12 @@ class SourcePrinter {
         throw SourceFailure{resource ? SourceError::kResourceLimit
                                      : SourceError::kCreation, current_pc_};
       }
+    } else if (std::holds_alternative<MethodExpression>(expression) ||
+               std::holds_alternative<AccessorExpression>(expression)) {
+      // Native syntax needs an unescaped class/home-object assembly proof.
+      // Keeping a typed AST node does not authorize changing function kind,
+      // descriptor attributes, key conversion, naming or exception order.
+      throw SourceFailure{SourceError::kClassAssembly, current_pc_};
     } else if (const auto* created = std::get_if<ClassExpression>(&expression)) {
       if (!constants_.leaf_methods ||
           created->creation.parent.value >= names_.registers.size())
