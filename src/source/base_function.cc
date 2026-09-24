@@ -21,7 +21,7 @@
 #include "abcd/source/class_method.h"
 #include "abcd/source/string_literal.h"
 #include "abcd/source/semantic_body.h"
-#include "async_completion.h"
+#include "abcd/source/async_completion.h"
 #include "capture_stream.h"
 #include "branch_value_proof.h"
 #include "branch_source_facts.h"

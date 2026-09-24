@@ -1308,6 +1308,36 @@ return, signed displacement limits, loops, multiple waits, live mode uses and
 rejection ordering need regression coverage when testing resumes. Full record
 completion, idiomatic source recovery and complete nested PC spans remain open.
 
+### Survey uses production async normalization (2026-09-25)
+
+The all-record survey now calls the same `ProveAsyncCompletion` API as callable
+emission before CFG/SSA, source proof, regions, AST and printing. Its public
+header lives under `include/abcd/source`; there is no second normalizer or
+method-name dispatch. Retained original/normalized bodies, origin indexes and
+await annotations reduce the downstream byte allowance. Metadata resource
+failures remain resource failures rather than frame-layout errors.
+
+Survey schema 4 appends the `normalize` failure stage without renumbering old
+stages. Normalized artifacts carry `requires_async_callable: true`; both body
+fragments and capture templates explicitly carry `executable: false`. Analysis
+failures are translated back to original ABC PCs, whereas printer failures
+already use origins and must not be translated twice.
+
+ABC-only output `build/pasteboard-semantic-normalized.jsonl` has stage counts
+`[0,0,27,2,0,8,0,12,113,54,3]` across the same 219 methods. The five newly visible
+async artifacts are bodies 5437/5465 and capture templates 7421/8164/10361.
+Their capability already existed in production callable emission; this is
+consistent reporting, not five newly implemented methods or complete records.
+The latter three templates map their native await text to original PCs
+100/100/458. Methods 9165/9468/10333 still fail normalization; method 9193 reaches
+source proof and fails at original PC 318. These are the next async blockers,
+not permission to bypass ownership or language-value proofs.
+
+Both CLI targets compiled. Tests and RSS collection remain paused; regression
+coverage for schema compatibility, normalized error PCs, async ownership and
+resource classification is deferred. Nested child-position propagation,
+eliminated-wrapper coverage and full record completion remain open.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

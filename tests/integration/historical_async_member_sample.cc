@@ -17,7 +17,7 @@
 #include "abcd/source/local_lexical_body.h"
 #include "abcd/source/module_exports.h"
 #include "abcd/source/record_module_context.h"
-#include "async_completion.h"
+#include "abcd/source/async_completion.h"
 #include "class_emission.h"
 
 namespace {
