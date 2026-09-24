@@ -137,6 +137,32 @@ const deferredValue = source.deferred(deferredReceiver, 17, () => {
 });
 assert.equal(deferredValue, 17);
 assert.deepEqual(deferredEvents, ['get', 'argument', 'call']);
+const stagedEvents = [];
+const stagedReceiver = {
+  get method() {
+    stagedEvents.push('get');
+    const callable = function(value) {
+      stagedEvents.push('call');
+      assert.equal(this, stagedReceiver);
+      return {value};
+    };
+    Object.defineProperty(callable, 'call', {
+      get() { throw new Error('call lookup'); },
+    });
+    Object.defineProperty(callable, 'apply', {
+      get() { throw new Error('apply lookup'); },
+    });
+    return callable;
+  },
+};
+const stagedResult = source.staged(stagedReceiver, 29, () => {
+  stagedEvents.push('argument');
+  Object.defineProperty(stagedReceiver, 'method', {
+    value() { throw new Error('second lookup'); }, configurable: true,
+  });
+});
+assert.deepEqual(stagedResult, {value: 29});
+assert.deepEqual(stagedEvents, ['get', 'argument', 'call']);
 const deferredFailure = new Error('argument failed');
 let reached = false;
 assert.throws(() => source.deferred({

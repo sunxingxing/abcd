@@ -1,5 +1,6 @@
 #include "abcd/analysis/named_invocation.h"
 
+#include "abcd/abc/control_transfer.h"
 #include "abcd/abc/register_access.h"
 #include "abcd/analysis/register_effect.h"
 #include "abcd/analysis/scalar.h"
@@ -262,27 +263,13 @@ std::optional<CopiedArgumentInvocation> MatchCopiedArgumentInvocation(
       NamedInvocation{*read, *call_value, 1}};
 }
 
-std::optional<TailNamedInvocation> MatchTailNamedInvocation(
-    const abc::MethodBody& body, std::uint64_t frame_size) {
+namespace {
+std::optional<StagedNamedInvocation> MatchStagedAt(
+    const abc::MethodBody& body, std::uint64_t frame_size,
+    std::size_t call_index) {
   const auto& instructions = body.instructions;
-  if (!body.tries.empty() || !body.handlers.empty() || instructions.size() < 7)
-    return {};
   using abc::Opcode;
-  const auto terminal = instructions.back().decoded.opcode;
-  if (terminal != Opcode::kRETURN && terminal != Opcode::kRETURNUNDEFINED &&
-      terminal != Opcode::kTHROW_PREF_NONE)
-    return {};
-  std::size_t call_index = instructions.size() - 1;
-  while (call_index != 0) {
-    const auto& suffix = instructions[call_index - 1].decoded;
-    if (suffix.operand_count != 0 ||
-        (suffix.opcode != Opcode::kNOP &&
-         suffix.opcode != Opcode::kLDUNDEFINED))
-      break;
-    --call_index;
-  }
-  if (call_index < 5) return {};
-  --call_index;
+  if (call_index < 5 || call_index >= instructions.size()) return {};
   const auto lifted =
       LiftReceiverCall(instructions[call_index].decoded, frame_size);
   const auto* invoke = std::get_if<ReceiverCall>(&lifted);
@@ -371,7 +358,75 @@ std::optional<TailNamedInvocation> MatchTailNamedInvocation(
         return {};
     }
   }
-  return TailNamedInvocation{property, *spill, reload, call_index, *read,
-                             *invoke, *callee};
+  for (std::size_t i = call_index + 1; i < instructions.size(); ++i) {
+    const auto accesses =
+        abc::GetRegisterAccesses(instructions[i].decoded, frame_size);
+    const auto* known = std::get_if<abc::RegisterAccesses>(&accesses);
+    if (!known) return {};
+    bool killed = false;
+    for (std::size_t window = 0; window < known->count; ++window) {
+      const auto& access = known->windows[window];
+      if (callee->value < access.first.value ||
+          callee->value - access.first.value >= access.count)
+        continue;
+      if (access.access != abc::OperandAccess::kWrite) return {};
+      killed = true;
+    }
+    if (killed)
+      return StagedNamedInvocation{property, *spill, reload, call_index,
+                                   *read, *invoke, *callee};
+  }
+  return StagedNamedInvocation{property, *spill, reload, call_index, *read,
+                               *invoke, *callee};
+}
+}  // namespace
+
+std::optional<StagedNamedInvocation> MatchTailNamedInvocation(
+    const abc::MethodBody& body, std::uint64_t frame_size) {
+  const auto& instructions = body.instructions;
+  if (!body.tries.empty() || !body.handlers.empty() || instructions.size() < 7)
+    return {};
+  using abc::Opcode;
+  const auto terminal = instructions.back().decoded.opcode;
+  if (terminal != Opcode::kRETURN && terminal != Opcode::kRETURNUNDEFINED &&
+      terminal != Opcode::kTHROW_PREF_NONE)
+    return {};
+  std::size_t call_index = instructions.size() - 1;
+  while (call_index != 0) {
+    const auto& suffix = instructions[call_index - 1].decoded;
+    if (suffix.operand_count != 0 ||
+        (suffix.opcode != Opcode::kNOP &&
+         suffix.opcode != Opcode::kLDUNDEFINED))
+      break;
+    --call_index;
+  }
+  if (call_index == 0) return {};
+  return MatchStagedAt(body, frame_size, call_index - 1);
+}
+
+std::optional<StagedNamedInvocation> MatchStagedNamedInvocation(
+    const abc::MethodBody& body, std::uint64_t frame_size) {
+  const auto& instructions = body.instructions;
+  if (!body.tries.empty() || !body.handlers.empty() || instructions.empty())
+    return {};
+  std::optional<std::size_t> call;
+  for (std::size_t i = 0; i < instructions.size(); ++i) {
+    const auto transfer =
+        abc::GetControlTransfer(instructions[i].decoded.opcode);
+    if (!transfer || instructions[i].branch_target ||
+        (i + 1 == instructions.size()
+             ? *transfer != abc::ControlTransfer::kReturn &&
+                   *transfer != abc::ControlTransfer::kThrow
+             : *transfer != abc::ControlTransfer::kFallthrough))
+      return {};
+    if (std::holds_alternative<ReceiverCall>(
+            LiftReceiverCall(instructions[i].decoded, frame_size))) {
+      if (call) return {};
+      call = i;
+    }
+  }
+  if (call && MatchCopiedArgumentInvocation(instructions, *call, frame_size))
+    return {};
+  return call ? MatchStagedAt(body, frame_size, *call) : std::nullopt;
 }
 }  // namespace abcd::analysis

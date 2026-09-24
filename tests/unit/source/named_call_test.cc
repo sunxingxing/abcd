@@ -84,6 +84,87 @@ int main(int argc, char** argv) {
       "acc = (object)[\"method\"]((() => {\n") != std::string::npos);
   test::Check(deferred_source.str().find("return b;\n})());\n") !=
               std::string::npos);
+  const auto staged = test::Body({
+      0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 3, 0x29, 0,
+      0x60, 2, 0x60, 1, 0x2e, 0, 0, 2, 0x61, 1, 0x60, 1, 0x64});
+  std::ostringstream staged_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(staged, {"acc", registers},
+                                    staged_source, {}, &constants)));
+  test::Check(staged_source.str().find(
+      "acc = (object)[\"method\"]((() => {\n") != std::string::npos);
+  test::Check(staged_source.str().ends_with(
+      "a = acc;\nacc = a;\nreturn acc;\n"));
+  const auto staged_match =
+      analysis::MatchStagedNamedInvocation(staged, registers.size());
+  test::Check(staged_match && staged_match->property == 1 &&
+              staged_match->call == 7);
+  const auto dead_callee = test::Body({
+      0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 3, 0x29, 0,
+      0x60, 2, 0x60, 1, 0x2e, 0, 0, 2, 0x61, 2, 0x60, 2, 0x64});
+  test::Check(analysis::MatchStagedNamedInvocation(dead_callee,
+                                                   registers.size()).has_value());
+  std::ostringstream dead_callee_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(dead_callee, {"acc", registers},
+                                    dead_callee_source, {}, &constants)));
+  test::Check(dead_callee_source.str().ends_with(
+      "b = acc;\nacc = b;\nreturn acc;\n"));
+  const auto delayed_overwrite = test::Body({
+      0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 3, 0x29, 0,
+      0x60, 2, 0x60, 1, 0x2e, 0, 0, 2, 0x61, 2, 0x60, 2,
+      0x61, 1, 0x60, 1, 0x64});
+  test::Check(analysis::MatchStagedNamedInvocation(delayed_overwrite,
+                                                   registers.size()).has_value());
+  std::ostringstream delayed_source;
+  test::Check(std::holds_alternative<std::size_t>(
+      source::WriteLocalLexicalBody(delayed_overwrite, {"acc", registers},
+                                    delayed_source, {}, &constants)));
+  test::Check(delayed_source.str().ends_with(
+      "b = acc;\nacc = b;\na = acc;\nacc = a;\nreturn acc;\n"));
+  auto old_callee_read = staged;
+  old_callee_read.instructions[8].decoded =
+      test::Body({0x60, 1}).instructions[0].decoded;
+  test::Check(!analysis::MatchStagedNamedInvocation(old_callee_read,
+                                                   registers.size()));
+  auto read_write_callee = staged;
+  read_write_callee.instructions[8].decoded =
+      test::Body({0x44, 0x11}).instructions[0].decoded;
+  test::Check(!analysis::MatchStagedNamedInvocation(read_write_callee,
+                                                   registers.size()));
+  auto overwritten_receiver = staged;
+  overwritten_receiver.instructions[3].decoded =
+      test::Body({0x61, 0}).instructions[0].decoded;
+  test::Check(!analysis::MatchStagedNamedInvocation(overwritten_receiver,
+                                                   registers.size()));
+  auto branched_staged = staged;
+  branched_staged.instructions[4].branch_target = abc::CodeOffset{0};
+  test::Check(!analysis::MatchStagedNamedInvocation(branched_staged,
+                                                   registers.size()));
+  auto two_calls = staged;
+  two_calls.instructions[8].decoded =
+      test::Body({0x2d, 0, 0}).instructions[0].decoded;
+  test::Check(!analysis::MatchStagedNamedInvocation(two_calls,
+                                                   registers.size()));
+  for (const std::size_t count : {200U, 201U, 402U}) {
+    std::vector<std::uint8_t> code{
+        0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 3, 0x29, 0};
+    code.insert(code.end(), count, 0xd5);
+    code.insert(code.end(),
+                {0x60, 2, 0x60, 1, 0x2e, 0, 0, 2, 0x61, 1,
+                 0x60, 1, 0x64});
+    const auto many = test::Body(code);
+    test::Check(analysis::MatchStagedNamedInvocation(many, registers.size())
+                    .has_value());
+    std::ostringstream many_source;
+    test::Check(std::holds_alternative<std::size_t>(
+        source::WriteLocalLexicalBody(many, {"acc", registers}, many_source,
+                                      {}, &constants)));
+    test::Check(many_source.str() == staged_source.str());
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--emit")
+    std::cout << "export function staged(object,b,c){let acc,a;\n"
+              << staged_source.str() << "}\n";
   const auto deferred_discard = test::Body({
       0x60, 0, 0x42, 0, 0, 0, 0x61, 1, 0x60, 3, 0x29, 0,
       0x60, 2, 0x60, 1, 0x2e, 0, 0, 2, 0x00, 0x65});

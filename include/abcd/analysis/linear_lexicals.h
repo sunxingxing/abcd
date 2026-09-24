@@ -95,7 +95,7 @@ class LinearLexicals {
       CapturedValues captured_values = CapturedValues::kReject,
       std::span<const std::uint8_t> named_scopes = {},
       std::span<const std::uint8_t> guarded_module_loads = {},
-      std::optional<TailNamedInvocation> tail_call = {});
+      std::optional<StagedNamedInvocation> staged_call = {});
   std::span<const LinearStatement> Statements() const {
     return {statements_.get(), statements_ ? statement_count_ : 0};
   }

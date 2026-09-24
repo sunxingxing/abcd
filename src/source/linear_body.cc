@@ -66,7 +66,7 @@ class BodyWriter {
     }
   }
 
-  BodyEmitResult TailCallHead(const TailNamedInvocation& invocation,
+  BodyEmitResult StagedCallHead(const StagedNamedInvocation& invocation,
                               abc::CodeOffset offset) {
     offset_ = offset;
     try {
@@ -84,7 +84,7 @@ class BodyWriter {
     }
   }
 
-  BodyEmitResult TailCallEnd(const TailNamedInvocation& invocation,
+  BodyEmitResult StagedCallEnd(const StagedNamedInvocation& invocation,
                              abc::CodeOffset offset) {
     offset_ = offset;
     try {
@@ -685,19 +685,19 @@ BodyEmitResult WriteFreshFieldBatch(
       .FieldBatch(fields, first_ordinal, offset);
 }
 
-BodyEmitResult WriteTailCallHead(
-    const analysis::TailNamedInvocation& invocation, abc::CodeOffset offset,
+BodyEmitResult WriteStagedCallHead(
+    const analysis::StagedNamedInvocation& invocation, abc::CodeOffset offset,
     ScalarNames names, std::ostream& output, EmitBudget budget,
     const MethodConstants* constants) {
   return BodyWriter(names, output, budget, constants, {})
-      .TailCallHead(invocation, offset);
+      .StagedCallHead(invocation, offset);
 }
 
-BodyEmitResult WriteTailCallEnd(
-    const analysis::TailNamedInvocation& invocation, abc::CodeOffset offset,
+BodyEmitResult WriteStagedCallEnd(
+    const analysis::StagedNamedInvocation& invocation, abc::CodeOffset offset,
     ScalarNames names, std::ostream& output, EmitBudget budget) {
   return BodyWriter(names, output, budget, nullptr, {})
-      .TailCallEnd(invocation, offset);
+      .StagedCallEnd(invocation, offset);
 }
 
 BodyEmitResult WriteNamedInvocation(const analysis::NamedInvocation& invocation,

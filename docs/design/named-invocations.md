@@ -56,6 +56,24 @@ effect-aware scheduling. The proof and emission are O(I + source bytes) with
 constant matcher storage. `LinearLexicals` validates the planned call before
 output publication.
 
+## Staged Nonterminal Calls
+
+The same getter-before-argument source form also admits one nonterminal
+receiver call in a complete straight-line, handler-free method. The matcher
+requires exactly one receiver call, the same typed named-read/spill/reload
+sequence, and an accumulator-clobbering first argument operation. Register
+access windows prove the receiver unchanged before the call and the eliminated
+callee slot unread until it is overwritten or the method ends. A read/write
+of that slot is a read and is rejected. The original result remains in the
+accumulator for subsequent statements. The single-call restriction avoids
+repeated per-call suffix scans; the current proof is O(I) with constant
+scratch storage. Multi-call and branch-containing methods remain refusals.
+
+The arrow IIFE preserves ordinary getter, argument and receiver behavior,
+but introduces a JS frame and closure. Stack-observing code and allocation
+failure timing are not proven equivalent; this remains an explicit admission
+limit rather than a general expression scheduler.
+
 ## Nonterminal Pure Copy
 
 `MatchCopiedArgumentInvocation` admits one additional fixed, nonterminal
@@ -72,10 +90,11 @@ The call is emitted at the call site as native `receiver[name](argument)`;
 the original getter, spill and reload are omitted, while the pure argument
 copy remains. This preserves the callee result's later register use because
 the next instruction overwrites its old slot. The matcher is O(1) per call,
-with no backward liveness walk. Other deferred nonterminal calls remain
-refusals. A synthetic Node oracle and the real Immersive
+with no backward liveness walk. Other deferred nonterminal shapes require
+the staged proof above or remain refusals. A synthetic Node oracle and the real Immersive
 `EntryBackupAbility.onRestore` record oracle check receiver, getter order,
-argument order, result and Promise rejection.
+argument order, result and Promise rejection. The staged nonterminal form has
+separate synthetic C++ and Node tests, including post-call callee liveness.
 
 ## Implementation Plan
 

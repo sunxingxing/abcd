@@ -26,7 +26,7 @@ struct NamedInvocation {
   // Direct read/call is two; compiler spill/reload form is four.
   std::uint8_t instruction_count = 2;
 };
-struct TailNamedInvocation {
+struct StagedNamedInvocation {
   std::size_t property;
   std::size_t spill;
   std::size_t reload;
@@ -55,14 +55,19 @@ struct CopiedArgumentInvocation {
 MatchCopiedArgumentInvocation(
     std::span<const abc::BodyInstruction> block, std::size_t call,
     std::uint64_t frame_size);
-// Straight-line tail CALLTHIS1..3 or narrow CALLTHISRANGE with at least one
-// argument, whose callee is one named property read.
+// Straight-line CALLTHIS1..3 or narrow CALLTHISRANGE with at least one
+// argument, whose callee is one earlier named property read.
 // The first post-spill operation must overwrite acc without reading it; the
-// callee register is dead except for the final reload, and the receiver
-// register is not overwritten. Source may put intervening statements inside
+// callee register is dead after the call or overwritten before reuse, and the
+// receiver register is not overwritten. Source puts intervening statements inside
 // the first argument's arrow IIFE, retaining getter-before-argument order.
 // O(instructions), constant extra storage; no mutable call intrinsic.
-[[nodiscard]] std::optional<TailNamedInvocation> MatchTailNamedInvocation(
+[[nodiscard]] std::optional<StagedNamedInvocation> MatchTailNamedInvocation(
+    const abc::MethodBody& body, std::uint64_t frame_size);
+// Non-tail form currently admits exactly one receiver call in a complete
+// straight-line body. This bounds proof work to O(instructions)
+// and leaves multi-call bodies for a shared liveness index.
+[[nodiscard]] std::optional<StagedNamedInvocation> MatchStagedNamedInvocation(
     const abc::MethodBody& body, std::uint64_t frame_size);
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_NAMED_INVOCATION_H_

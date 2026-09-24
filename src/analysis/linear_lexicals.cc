@@ -24,7 +24,7 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
     CapturedValues captured_values,
     std::span<const std::uint8_t> named_scopes,
     std::span<const std::uint8_t> guarded_module_loads,
-    std::optional<TailNamedInvocation> tail_call) {
+    std::optional<StagedNamedInvocation> staged_call) {
   using Error = LinearLexicalError;
   abc::CodeOffset offset{};
   const auto fail = [&](Error kind) {
@@ -246,23 +246,23 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
         statement = copied->invoke;
         continue;
       }
-      if (tail_call && i == tail_call->call) {
+      if (staged_call && i == staged_call->call) {
         bool arguments_ready = true;
         for (std::uint32_t argument = 0;
-             argument < tail_call->invoke.Count(); ++argument)
-          arguments_ready &= state(*tail_call->invoke.At(argument)).IsLanguage();
-        if (tail_call->property >= tail_call->spill ||
-            tail_call->spill >= tail_call->reload ||
-            tail_call->reload + 1 != i ||
+             argument < staged_call->invoke.Count(); ++argument)
+          arguments_ready &= state(*staged_call->invoke.At(argument)).IsLanguage();
+        if (staged_call->property >= staged_call->spill ||
+            staged_call->spill >= staged_call->reload ||
+            staged_call->reload + 1 != i ||
             !std::holds_alternative<KeepInstruction>(
-                statements[tail_call->property]) ||
+                statements[staged_call->property]) ||
             !std::holds_alternative<KeepInstruction>(
-                statements[tail_call->spill]) ||
+                statements[staged_call->spill]) ||
             !std::holds_alternative<KeepInstruction>(
-                statements[tail_call->reload]) ||
-            !state(tail_call->invoke.receiver).IsLanguage() ||
+                statements[staged_call->reload]) ||
+            !state(staged_call->invoke.receiver).IsLanguage() ||
             !arguments_ready ||
-            !state(tail_call->callee).IsLanguage())
+            !state(staged_call->callee).IsLanguage())
           return fail(Error::kInstruction);
         accumulator = ValueKinds::Language();
         statement = OmitInstruction{};
