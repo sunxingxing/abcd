@@ -27,6 +27,23 @@ class SourcePrinter {
       : ast_(ast), method_(method), frame_(frame), form_(form), name_(name),
         constants_(constants), limit_(bytes) {}
 
+  std::variant<PrintedSource, SourceFailure> PrintBody(ScalarNames names) {
+    try {
+      names_ = names;
+      if (ast_.statements.size() > limit_ / sizeof(GeneratedSpan))
+        return SourceFailure{SourceError::kResourceLimit, {}};
+      result_.spans.reserve(ast_.statements.size());
+      Region(ast_.regions.root);
+      return std::move(result_);
+    } catch (const SourceFailure& failure) {
+      return failure;
+    } catch (const std::bad_alloc&) {
+      return SourceFailure{SourceError::kResourceLimit, {}};
+    } catch (const std::length_error&) {
+      return SourceFailure{SourceError::kResourceLimit, {}};
+    }
+  }
+
   std::variant<PrintedSource, SourceFailure> Print() {
     try {
       if (!IsSourceIdentifier(name_))
@@ -144,11 +161,34 @@ class SourcePrinter {
   void PoolName(abc::PoolIndex slot) {
     PoolString(slot, StringUse::kPropertyName);
   }
+  template <typename Call>
+  void Arguments(const Call& call) {
+    Text("(");
+    for (std::uint32_t i = 0; i < call.Count(); ++i) {
+      if (i) Text(", ");
+      const auto argument = call.At(i);
+      if (!argument) throw SourceFailure{SourceError::kOutput, current_pc_};
+      Value(ScalarValue{*argument});
+    }
+    Text(")");
+  }
   void Expression(const SourceExpression& expression) {
     if (const auto* scalar = std::get_if<ScalarExpression>(&expression)) {
       Scalar(*scalar);
     } else if (const auto* string = std::get_if<StringExpression>(&expression)) {
       PoolString(string->value, StringUse::kValue);
+    } else if (const auto* call = std::get_if<CallExpression>(&expression)) {
+      Text("(0, ");
+      Value(ScalarValue{Accumulator{}});
+      Text(")");
+      Arguments(call->call);
+    } else if (const auto* call = std::get_if<MemberCallExpression>(&expression)) {
+      Text("(");
+      Value(ScalarValue{call->call.receiver});
+      Text(")[");
+      PoolName(call->name);
+      Text("]");
+      Arguments(call->call);
     } else {
       const auto& member = std::get<MemberExpression>(expression);
       Text("(");
@@ -200,6 +240,24 @@ class SourcePrinter {
           }
         },
         statement.operation);
+    if (statement.fused_read) {
+      const auto relocate = [&](abc::CodeOffset pc, std::size_t distance) {
+        if (result_.spans.size() < distance ||
+            result_.spans[result_.spans.size() - distance].pc != pc)
+          throw SourceFailure{SourceError::kOutput, current_pc_};
+        auto& span = result_.spans[result_.spans.size() - distance];
+        span.begin = begin;
+        span.end = position_;
+      };
+      if (statement.fused_spill && statement.fused_reload) {
+        constexpr std::size_t kSpilledPrefix = 3;
+        relocate(*statement.fused_read, kSpilledPrefix);
+        relocate(*statement.fused_spill, kSpilledPrefix - 1);
+        relocate(*statement.fused_reload, 1);
+      } else {
+        relocate(*statement.fused_read, 1);
+      }
+    }
     result_.spans.push_back({statement.pc, begin, position_});
   }
   void Region(const analysis::RegionNode& node) {
@@ -260,5 +318,13 @@ std::variant<PrintedSource, SourceFailure> PrintSourceAst(
     const MethodConstants& constants, std::size_t output_bytes) {
   return SourcePrinter(ast, method, frame, form, name, constants,
                        output_bytes).Print();
+}
+std::variant<PrintedSource, SourceFailure> PrintSourceBody(
+    const SourceAst& ast, const analysis::SemanticMethod& method,
+    ScalarNames names, const MethodConstants& constants,
+    std::size_t output_bytes) {
+  const abc::FrameLayout unused_frame{};
+  return SourcePrinter(ast, method, unused_frame, SourceForm::kFunction,
+                       {}, constants, output_bytes).PrintBody(names);
 }
 }  // namespace abcd::source

@@ -22,9 +22,16 @@ struct MemberExpression {
 struct StringExpression {
   abc::PoolIndex value;
 };
+struct CallExpression {
+  analysis::OrdinaryCall call;
+};
+struct MemberCallExpression {
+  abc::PoolIndex name;
+  analysis::ReceiverCall call;
+};
 using SourceExpression =
     std::variant<analysis::ScalarExpression, MemberExpression,
-                 StringExpression>;
+                 StringExpression, CallExpression, MemberCallExpression>;
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;
@@ -50,6 +57,11 @@ using SourceOperation =
 struct SourceStatement {
   abc::CodeOffset pc;
   SourceOperation operation;
+  // A fused property read and optional dead spill/reload share the call span.
+  // Their PCs are retained, never recovered by searching generated text.
+  std::optional<abc::CodeOffset> fused_read;
+  std::optional<abc::CodeOffset> fused_spill;
+  std::optional<abc::CodeOffset> fused_reload;
 };
 struct SourceAst {
   analysis::SemanticRegionTree regions;
@@ -101,5 +113,12 @@ enum class SourceForm : std::uint8_t { kFunction, kClassConstructor };
     const SourceAst& ast, const analysis::SemanticMethod& method,
     const abc::FrameLayout& frame, SourceForm form, std::string_view name,
     const MethodConstants& constants, std::size_t output_bytes);
+
+// Caller supplies distinct private register bindings in an already validated
+// strict callable. This emits only its body; spans are relative to that body.
+[[nodiscard]] std::variant<PrintedSource, SourceFailure> PrintSourceBody(
+    const SourceAst& ast, const analysis::SemanticMethod& method,
+    ScalarNames names, const MethodConstants& constants,
+    std::size_t output_bytes);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_SEMANTIC_SOURCE_H_

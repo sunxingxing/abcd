@@ -11,6 +11,7 @@
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/module_load.h"
 #include "abcd/analysis/named_read.h"
+#include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/normal_flow.h"
 #include "abcd/analysis/own_write.h"
@@ -59,7 +60,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        ValueWrite, ModuleLoad, HoleGuard,
                                        GlobalAccess, BranchOperation,
                                        JumpOperation, ReturnOperation,
-                                       StringLoad>;
+                                       StringLoad, OrdinaryCall, ReceiverCall>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

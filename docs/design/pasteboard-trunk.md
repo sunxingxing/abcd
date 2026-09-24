@@ -57,6 +57,43 @@ skip record initializers. Proven class/module ownership and ABI must precede
 printer admission and record-level integration. Generated source positions
 must come from printer emission, never from matching generated text.
 
+The survey now proceeds through the body printer. `body_ready` rows contain
+body text and body-relative PC spans. These fragments require the callable
+owner's strict context, register declarations and ABI initialization; they
+are not standalone functions. Record completeness remains false in this report.
+
+## Integrated Body Path
+
+`BuildSemanticBody` composes the shared IR, value/environment validation,
+regions, AST and body printer. The existing callable owner invokes it for
+fixed-parameter ordinary functions, base constructors, methods and accessors.
+The owner still proves syntax, ABI, names and signature and initializes the
+private register bindings. Unsupported cases fall back to the existing writers;
+async, arrow, derived-constructor and non-simple signature admission is not
+silently widened. This is incremental integration, not a second wrapper model.
+
+Ordinary calls and explicit-receiver calls now retain typed arguments and
+normal/exception effects in the IR. Source lowering admits an adjacent named
+read/call or a read/spill/reload/call group in one basic block, with SSA
+receiver-identity and callee-use proofs. Spill liveness includes phi inputs.
+The getter runs exactly once, before argument reads, with the original receiver;
+no `.call`, `.apply` or mutable Reflect intrinsic is synthesized. All fused PCs
+share the generated call span. Other receiver calls still fail AST admission.
+
+After this increment, all 219 methods were inspected: 130 fail semantic build,
+17 fail proof, 26 fail AST, and 46 produce body source plus position maps.
+Examples include Home's `uri` (5712), `curBp` (5878) and `rerender` (6295).
+The integrated `abc_structure --source` run emits CommonConstants and Logger;
+the remaining eight application records still fail source admission. These
+record outputs mix generic bodies with existing verified structural writers.
+The method spans are not yet relocated into record-wide source coordinates.
+
+Both CLI targets compile. Only targeted sample generation/inspection was run;
+runtime regression tests, full-corpus tests and RSS tracking remain paused.
+Follow-up functional regressions must cover getter count/order, receiver
+identity, indirect eval, saved-callee reuse/phi escape, thrown calls, and fused
+PC spans before claiming behavioral verification of the new call path.
+
 ## Work Order
 
 1. Use the full inventory to identify shared typed semantic gaps. The initial

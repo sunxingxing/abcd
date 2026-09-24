@@ -1,0 +1,18 @@
+#ifndef ABCD_SOURCE_SEMANTIC_BODY_H_
+#define ABCD_SOURCE_SEMANTIC_BODY_H_
+
+#include "abcd/source/semantic_source.h"
+
+namespace abcd::source {
+using SemanticBodyResult = std::variant<
+    PrintedSource, analysis::SemanticFailure, analysis::SemanticProofFailure,
+    analysis::RegionFailure, SourceFailure>;
+
+// The callable owner proves its ABI and private bindings before entry. All
+// stages operate on this exact body; no text is published before admission.
+[[nodiscard]] SemanticBodyResult BuildSemanticBody(
+    const abc::MethodBody& body, const abc::FrameLayout& frame,
+    ScalarNames names, const MethodConstants& constants,
+    analysis::SemanticBudget budget, std::size_t output_bytes);
+}  // namespace abcd::source
+#endif  // ABCD_SOURCE_SEMANTIC_BODY_H_

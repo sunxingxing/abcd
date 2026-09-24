@@ -20,6 +20,7 @@
 #include "abcd/source/base_constructor.h"
 #include "abcd/source/class_method.h"
 #include "abcd/source/string_literal.h"
+#include "abcd/source/semantic_body.h"
 #include "async_completion.h"
 #include "capture_stream.h"
 #include "branch_value_proof.h"
@@ -322,13 +323,34 @@ class FunctionWriter {
         body_constants = &*scoped_constants;
       }
       FunctionEmitResult result{std::size_t{0}};
+      std::optional<PrintedSource> semantic_body;
+      const bool ordinary_body =
+          function_.syntax == CallableSyntax::kFunctionExpression ||
+          function_.syntax == CallableSyntax::kBaseConstructor ||
+          function_.syntax == CallableSyntax::kClassMethod ||
+          function_.syntax == CallableSyntax::kClassGetter ||
+          function_.syntax == CallableSyntax::kClassSetter;
+      if (ordinary_body && function_.parameters == ParameterForm::kFixed &&
+          body_constants) {
+        auto prepared = BuildSemanticBody(
+            body, frame, names_, *body_constants,
+            {body_budget.bytes, body_budget.work}, body_budget.output.bytes);
+        if (auto* source = std::get_if<PrintedSource>(&prepared))
+          semantic_body = std::move(*source);
+      }
       const auto first_for_in =
           body_constants &&
                   body_constants->header.profile == abc::ProfileId::kDynamic1301 &&
                   captured_values_ == analysis::CapturedValues::kReject
               ? analysis::MatchFirstForIn(body, function_.frame)
               : std::nullopt;
-      if (first_for_in) {
+      if (semantic_body) {
+        // The owning writer retains proven callable syntax/ABI. The generic
+        // path emits no wrapper and cannot change a method into a function.
+        // Its PC spans remain body-relative; record-wide relocation is separate.
+        Text(semantic_body->text);
+        if (error_) return *error_;
+      } else if (first_for_in) {
         // The v7 frontend's acquisition catch only rethrows; the complete
         // body proof permits native for-in without exposing VM iterator state.
         Text("for (const $forInKey in ");

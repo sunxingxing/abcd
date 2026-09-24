@@ -24,6 +24,8 @@ enum class Stage : std::uint8_t {
   kRegion,
   kAst,
   kAstReady,
+  kPrint,
+  kBodyReady,
   kCount,
 };
 struct MethodProgress {
@@ -31,6 +33,7 @@ struct MethodProgress {
   std::optional<unsigned> error;
   std::optional<abc::CodeOffset> pc;
   std::optional<abc::Opcode> opcode;
+  std::optional<source::PrintedSource> source;
 };
 constexpr std::size_t kStageCount = static_cast<std::size_t>(Stage::kCount);
 constexpr std::size_t kMethodBytes = 64 * 1024 * 1024;
@@ -43,6 +46,8 @@ constexpr std::string_view StageLabel(Stage stage) {
     case Stage::kRegion: return "region";
     case Stage::kAst: return "ast";
     case Stage::kAstReady: return "ast_ready";
+    case Stage::kPrint: return "print";
+    case Stage::kBodyReady: return "body_ready";
     case Stage::kCount: break;
   }
   std::terminate();
@@ -62,7 +67,8 @@ MethodProgress Failure(Stage stage, unsigned error, abc::CodeOffset pc,
 }
 
 MethodProgress InspectMethod(const corpus::AbcFile& file,
-                             abc::ProfileId profile,
+                             const abc::Header& header,
+                             const abc::MetadataIndex& index,
                              const abc::MethodInfo& method) {
   if (!method.code) return {Stage::kNoCode, {}, {}, {}};
   const auto& code = *method.code;
@@ -70,7 +76,7 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
       std::numeric_limits<std::uint32_t>::max() - code.arguments)
     return {Stage::kDecode,
             static_cast<unsigned>(abc::BodyError::kRegisterRange), {}, {}};
-  const auto decoded = abc::DecodeMethodBody(file, profile, code);
+  const auto decoded = abc::DecodeMethodBody(file, header.profile, code);
   const auto* body = std::get_if<abc::MethodBody>(&decoded);
   if (!body) {
     const auto& failure = std::get<abc::BodyFailure>(decoded);
@@ -78,7 +84,7 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
             failure.offset, {}};
   }
   const auto built = analysis::BuildSemanticMethod(
-      *body, profile, code.registers + code.arguments);
+      *body, header.profile, code.registers + code.arguments);
   const auto* ir = std::get_if<analysis::SemanticMethod>(&built);
   if (!ir) {
     const auto& failure = std::get<analysis::SemanticFailure>(built);
@@ -106,7 +112,28 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
   if (const auto* failure = std::get_if<source::SourceFailure>(&lowered))
     return Failure(Stage::kAst, static_cast<unsigned>(failure->kind),
                    failure->pc, *body);
-  return {Stage::kAstReady, {}, {}, {}};
+  const auto& ast = std::get<source::SourceAst>(lowered);
+  const auto register_count = code.registers + code.arguments;
+  constexpr auto kBindingBytes = sizeof(std::string) + sizeof(std::string_view);
+  if (register_count > kMethodBytes / kBindingBytes)
+    return {Stage::kPrint,
+            static_cast<unsigned>(source::SourceError::kResourceLimit), {}, {}};
+  std::vector<std::string> bindings;
+  std::vector<std::string_view> names;
+  bindings.reserve(register_count);
+  names.reserve(register_count);
+  for (std::uint32_t i = 0; i < register_count; ++i)
+    bindings.push_back("$r" + std::to_string(i));
+  for (const auto& name : bindings) names.push_back(name);
+  source::MethodConstants constants{file, header, index, method.offset,
+                                    {kMethodBytes}};
+  auto printed = source::PrintSourceBody(
+      ast, *ir, {"$acc", names}, constants, kMethodBytes);
+  if (auto* source = std::get_if<source::PrintedSource>(&printed))
+    return {Stage::kBodyReady, {}, {}, {}, std::move(*source)};
+  const auto& failure = std::get<source::SourceFailure>(printed);
+  return Failure(Stage::kPrint, static_cast<unsigned>(failure.kind),
+                 failure.pc, *body);
 }
 }  // namespace
 
@@ -129,7 +156,7 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
                             {"methods", record.method_count}} << '\n';
     for (std::size_t i = 0; i < record.method_count; ++i) {
       const auto& method = index.methods.at(record.first_method + i);
-      const auto progress = InspectMethod(file, header.profile, method);
+      const auto progress = InspectMethod(file, header, index, method);
       ++counts.at(static_cast<std::size_t>(progress.stage));
       nlohmann::json row{{"record", record.offset.value},
                          {"method", method.offset.value},
@@ -142,6 +169,15 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
       // claim that the instruction at that PC caused the failure.
       if (progress.opcode)
         row["opcode_at_pc"] = static_cast<unsigned>(*progress.opcode);
+      if (progress.source) {
+        row["body"] = progress.source->text;
+        row["positions"] = nlohmann::json::array();
+        for (const auto& span : progress.source->spans)
+          row["positions"].push_back({
+              {"pc", span.pc.value},
+              {"begin", {span.begin.byte, span.begin.line, span.begin.column}},
+              {"end", {span.end.byte, span.end.line, span.end.column}}});
+      }
       output << row << '\n';
       if (!output) return EXIT_FAILURE;
     }

@@ -48,6 +48,14 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
       break;
   }
   if (decoded.opcode == Opcode::kNOP) return NoOperation{};
+  const auto call = LiftOrdinaryCall(decoded, frame_size);
+  if (const auto* value = std::get_if<OrdinaryCall>(&call)) return *value;
+  if (std::get<CallError>(call) != CallError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
+  const auto receiver_call = LiftReceiverCall(decoded, frame_size);
+  if (const auto* value = std::get_if<ReceiverCall>(&receiver_call)) return *value;
+  if (std::get<CallError>(receiver_call) != CallError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
   if (decoded.opcode == Opcode::kLDA_STR_ID16) {
     if (!std::holds_alternative<RegisterEffect>(
             LiftRegisterEffect(decoded, frame_size)))
@@ -117,6 +125,12 @@ SemanticEffects Effects(const SemanticOperation& operation,
             effects.before_throw = effects.normal;
             effects.exceptional = ExceptionalCompletion::kMayThrow;
           }
+        } else if constexpr (std::is_same_v<T, OrdinaryCall> ||
+                             std::is_same_v<T, ReceiverCall>) {
+          effects.normal = LanguageEffect::kHeapRead |
+                           LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, NamedRead>) {
           effects.normal = LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
           effects.before_throw = effects.normal;
@@ -172,7 +186,7 @@ SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
   }
   if (!body.tries.empty() || !body.handlers.empty())
     return Fail(SemanticError::kExceptionRegions);
-  const auto built = BuildNormalFlow(body, {budget.bytes});
+  auto built = BuildNormalFlow(body, {budget.bytes});
   if (const auto* failure = std::get_if<FlowFailure>(&built))
     return Fail(failure->kind == FlowError::kResourceLimit
                     ? SemanticError::kResourceLimit
