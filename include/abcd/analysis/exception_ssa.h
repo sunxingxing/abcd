@@ -18,6 +18,9 @@ class ExceptionSsa {
   [[nodiscard]] std::span<const SsaRead> Reads(ExceptionNodeId node) const {
     return registers_.Reads(InstructionId{node.value});
   }
+  [[nodiscard]] std::span<const SsaRead> AllReads() const {
+    return registers_.AllReads();
+  }
   [[nodiscard]] std::optional<SsaValueId> Write(ExceptionNodeId node) const {
     return registers_.Write(InstructionId{node.value});
   }

@@ -83,6 +83,11 @@ class RegisterSsa {
     return {values_.get(), values_ ? value_count_ : 0};
   }
   [[nodiscard]] std::span<const SsaRead> Reads(InstructionId instruction) const;
+  // Sorted by instruction then operand ordinal; borrowed from this immutable
+  // SSA. Sequential consumers should not repeat per-instruction binary lookup.
+  [[nodiscard]] std::span<const SsaRead> AllReads() const {
+    return {reads_.get(), reads_ ? read_count_ : 0};
+  }
   [[nodiscard]] std::optional<SsaValueId> Write(
       InstructionId instruction) const;
   [[nodiscard]] std::span<const PhiInput> Inputs(SsaValueId phi) const;

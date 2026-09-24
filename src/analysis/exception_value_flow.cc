@@ -8,7 +8,8 @@ namespace abcd::analysis {
 std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
     const ExceptionFlow& flow, const ExceptionSsa& ssa,
     std::span<const EntryValueFact> entries, IdfQuota& quota, IdfBudget budget,
-    PendingExceptionValues pending_values) {
+    PendingExceptionValues pending_values,
+    std::span<const ExceptionLoadFact> loads) {
   using Error = ValueFlowError;
   using Kind = detail::ValueRuleKind;
   const auto invalid = [] { return ValueFlowFailure{Error::kInvalidSsa, {}, {}}; };
@@ -30,6 +31,30 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
     std::pmr::vector<detail::ValueNode> nodes(count, {}, &memory);
     std::pmr::vector<ValueKinds> facts(count, {}, &memory);
     std::pmr::vector<std::uint8_t> marked(count, 0, &memory);
+    std::pmr::vector<std::uint8_t> trusted{&memory};
+    if (!loads.empty()) trusted.resize(count);
+    for (const auto& load : loads) {
+      charge();
+      const InstructionId site{load.commit.value};
+      if (load.commit.value >= flow.nodes.size())
+        return ValueFlowFailure{Error::kInvalidLoadFact, site, {}};
+      const auto& node = flow.nodes[load.commit.value];
+      if (node.phase != ExceptionPhase::kCommit ||
+          node.instruction.value >= flow.instructions.size())
+        return ValueFlowFailure{Error::kInvalidLoadFact, site, {}};
+      const auto& operation = flow.instructions[node.instruction.value].operation;
+      const auto value = ssa.Write(load.commit);
+      if ((!std::holds_alternative<LexicalLoad>(operation) &&
+           !std::holds_alternative<ModuleLoad>(operation)) ||
+          !value || value->value >= count)
+        return ValueFlowFailure{Error::kInvalidLoadFact, site, {}};
+      const auto* origin = std::get_if<InstructionValue>(&ssa.Values()[value->value].origin);
+      if (!origin || origin->instruction != site)
+        return ValueFlowFailure{Error::kInvalidLoadFact, site, {}};
+      if (trusted[value->value])
+        return ValueFlowFailure{Error::kDuplicateLoadFact, site, {}};
+      trusted[value->value] = 1;
+    }
     std::pmr::vector<detail::ValueDependency> edges{&memory};
     std::pmr::vector<std::optional<ExceptionNodeId>> before(flow.instructions.size(), {}, &memory);
     std::pmr::vector<std::uint8_t> reached(flow.nodes.size(), 0, &memory);
@@ -90,6 +115,12 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
           return invalid();
         const auto& destination = flow.instructions[node.instruction.value].effects.normal_registers.write;
         if (!destination || !same_slot(value.slot, *destination)) return invalid();
+        // Owner premises affect only normal Commit values. They never move a
+        // load's exception edge or upgrade the handler's pending exception.
+        if (!trusted.empty() && trusted[i]) {
+          facts[i] = ValueKinds::Language();
+          continue;
+        }
         const auto described = detail::DescribeRegisterValue(flow.instructions[node.instruction.value]);
         if (const auto* error = std::get_if<ScalarError>(&described))
           return ValueFlowFailure{Error::kInstruction, InstructionId{site}, *error};

@@ -68,6 +68,48 @@ is not an acceptable shortcut.
 
 ## Verification Status
 
+### Exception Input Admission
+
+`VerifyExceptionInputs` checks all reachable Before reads against converged
+SSA value categories, including lexical stores, explicit throws and returns.
+An unknown/internal value produces a typed failure with its original PC,
+phase-node ID and SSA value ID. Environment presence supplies reachability,
+not a claim that lexical cells are initialized. The API requires the same
+unchanged flow/SSA/environment/value analyses. A successful input check is
+conditional on owner premises and does not grant region, AST or source
+publication proof.
+
+`ExceptionLoadFact` carries a typed Commit-node identity for an owner-proven
+normal lexical/module load result. The solver validates operation kind,
+reachable SSA definition ownership and duplicates. Such facts seed only the
+normal result; neither exception dispatch nor Catch value categories change.
+No adjacent load/Hole-guard fusion is inferred. With handlers, changing the
+throwing instruction can change the state observed by catch, so the ordinary
+exception-free guard-pair shortcut is not a sufficient proof here. Captured
+and local lexical initialization and module-owner facts must still be derived
+and discharged by their respective analyses/owners.
+
+The verifier consumes the immutable `AllReads()` span in node/operand order,
+avoiding repeated per-node binary searches. It uses O(N+U) time, O(1) extra
+storage and charges each node/read to its work budget. Load-premise scratch is
+admitted by the existing value solver's bounded allocator and work quota.
+
+ABC-only inspection schema 5 now distinguishes `source_inputs_proven` from
+environment/value-flow completion and emits the first typed input refusal.
+Without extra owner load/exception premises, pasteboard methods 4945, 5165,
+6350 and 6733 refuse at PCs 36, 14, 8 and 24 respectively, with SSA values
+194, 22, 19 and 26. Artifacts are
+`build/pasteboard-<method>-exception-inputs.jsonl`. These are precise unresolved
+inputs, not successful decompilations. Tests and RSS remain paused; malformed,
+duplicate and unreachable load premises, mixed exception categories, range
+reads, mismatched analyses and quota exhaustion need regression coverage.
+After switching to sequential reads, method 4357 passes 35 input reads through
+the same phased analysis (`build/pasteboard-4357-exception-inputs.jsonl`), while
+5165 retains its PC 14 refusal. Both CLI targets compiled. Read-only review
+confirmed the linear scan and premise boundaries. The all-record survey
+`build/pasteboard-semantic-exception-inputs.jsonl` retains stage counts
+`[0,0,27,1,0,8,0,11,113,56,3]`; no additional complete record is claimed.
+
 ### Exception Environment Topology
 
 `AnalyzeEnvironmentSites` now shares the existing flat agreement lattice and

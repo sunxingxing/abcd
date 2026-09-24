@@ -5,6 +5,11 @@
 
 namespace abcd::analysis {
 enum class PendingExceptionValues : std::uint8_t { kUnknown, kLanguage };
+struct ExceptionLoadFact {
+  // Owner-proven Language result on normal completion, not a guard-fusion
+  // certificate. Must name a reachable lexical/module load's Commit node.
+  ExceptionNodeId commit;
+};
 class ExceptionValueFlow {
  public:
   ExceptionValueFlow(ExceptionValueFlow&&) noexcept = default;
@@ -18,7 +23,8 @@ class ExceptionValueFlow {
       const ExceptionFlow& flow, const ExceptionSsa& ssa,
       std::span<const EntryValueFact> entries, IdfQuota& quota,
       IdfBudget budget = {},
-      PendingExceptionValues pending = PendingExceptionValues::kUnknown);
+      PendingExceptionValues pending = PendingExceptionValues::kUnknown,
+      std::span<const ExceptionLoadFact> loads = {});
   [[nodiscard]] std::span<const ValueKinds> Facts() const {
     return {facts_.get(), facts_ ? count_ : 0};
   }
