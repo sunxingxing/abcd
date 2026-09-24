@@ -10,22 +10,14 @@
 #include "idf_scratch.h"
 #include "lexical_value_index.h"
 #include "register_value_rule.h"
+#include "value_propagation.h"
 
 namespace abcd::analysis {
 namespace {
-inline constexpr std::size_t kScalarInputs = 2;
-struct ValueNodeId {
-  std::uint32_t value = 0;
-};
-struct ValueDependency {
-  ValueNodeId source;
-  ValueNodeId target;
-};
-struct ValueNode {
-  detail::ValueRuleKind kind = detail::ValueRuleKind::kFixed;
-  std::array<SsaValueId, kScalarInputs> inputs{};
-  std::uint8_t input_count = 0;
-};
+using detail::kScalarInputs;
+using detail::ValueNode;
+using detail::ValueNodeId;
+using detail::ValueDependency;
 bool SameSlot(ScalarSlot a, ScalarSlot b) {
   const auto* left = std::get_if<abc::RegisterId>(&a);
   const auto* right = std::get_if<abc::RegisterId>(&b);
@@ -217,86 +209,9 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
       marked[id] = 1;
       facts[id] = entry.kinds;
     }
-    std::pmr::vector<std::size_t> begin(count + 1, 0, &memory);
-    std::pmr::vector<std::size_t> cursor(count, 0, &memory);
-    for (const auto edge : edges) {
-      charge();
-      ++begin[std::size_t(edge.source.value) + 1];
-    }
-    for (std::size_t i = 1; i < begin.size(); ++i) {
-      charge();
-      begin[i] += begin[i - 1];
-      cursor[i - 1] = begin[i - 1];
-    }
-    std::pmr::vector<ValueNodeId> targets(edges.size(), {}, &memory);
-    for (const auto edge : edges) {
-      charge();
-      targets[cursor[edge.source.value]++] = edge.target;
-    }
     RegisterValueFlow result;
-    result.work.dependencies = edges.size();
     result.work.cells = cells.cells.size();
-    std::pmr::vector<ValueNodeId> pending{&memory};
-    for (std::size_t i = 0; i < count; ++i) {
-      charge();
-      marked[i] = !facts[i].IsEmpty();
-      if (marked[i]) {
-        ++result.work.changes;
-        pending.push_back({static_cast<std::uint32_t>(i)});
-      }
-    }
-    // Incremental join propagation is essential: rescanning all inputs of a
-    // high-fan-in Phi after each changed source would be quadratic. A fact
-    // gains four VM atoms and can lose a scalar refinement once;
-    // operation nodes have at most two fixed inputs.
-    for (std::size_t head = 0; head < pending.size(); ++head) {
-      charge();
-      ++result.work.queue_visits;
-      const auto source = pending[head].value;
-      const auto incoming = facts[source];
-      marked[source] = 0;
-      for (std::size_t edge = begin[source];
-           edge < begin[std::size_t(source) + 1]; ++edge) {
-        charge();
-        ++result.work.edge_visits;
-        const auto target = targets[edge].value;
-        ValueKinds propagated = incoming;
-        if (nodes[target].kind == Kind::kLanguageOperation ||
-            nodes[target].kind == Kind::kStringAdd ||
-            nodes[target].kind == Kind::kNonNaNUnary) {
-          bool ready = true, language = true, string = false;
-          bool non_nan_number = true;
-          for (std::size_t i = 0; i < nodes[target].input_count; ++i) {
-            const auto input = facts[nodes[target].inputs[i].value];
-            ready &= !input.IsEmpty();
-            language &= input.IsLanguage();
-            string |= input.IsString();
-            non_nan_number &= input.IsNonNaNNumber();
-          }
-          if (!ready) {
-            propagated = {};
-          } else if (!language) {
-            propagated = ValueKinds::Unknown();
-          } else if (nodes[target].kind == Kind::kStringAdd) {
-            propagated = string ? ValueKinds::String()
-                                : ValueKinds::Unknown();
-          } else if (nodes[target].kind == Kind::kNonNaNUnary) {
-            propagated = non_nan_number ? ValueKinds::NonNaNNumber()
-                                        : ValueKinds::Unknown();
-          } else {
-            propagated = ValueKinds::Language();
-          }
-        }
-        const auto joined = facts[target].Join(propagated);
-        if (joined == facts[target]) continue;
-        facts[target] = joined;
-        ++result.work.changes;
-        if (!marked[target]) {
-          marked[target] = 1;
-          pending.push_back({target});
-        }
-      }
-    }
+    detail::PropagateValues(nodes, edges, facts, marked, memory, charge, result.work);
     charge(value_count);
     if (value_count > memory.Available() / sizeof(ValueKinds))
       throw std::bad_alloc{};

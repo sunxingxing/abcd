@@ -120,7 +120,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
   }
   if (detail == InspectDetail::kExceptionFlow)
     return InspectExceptionFlow(*body, header->profile,
-                                 code.registers + code.arguments, std::cout);
+                                 code.registers + code.arguments, code.registers, std::cout);
   if (detail == InspectDetail::kInstructions) {
     constexpr std::size_t kDispatchBytes = 16 * 1024 * 1024;
     const auto dispatched = analysis::BuildExceptionDispatch(

@@ -34,6 +34,7 @@ class IdfQuota {
   friend class RegisterUses;
   friend class RegisterSsa;
   friend class ExceptionSsa;
+  friend class ExceptionValueFlow;
   friend class RegisterValueFlow;
   friend class GuardedReads;
   friend class EnvironmentEscape;

@@ -68,6 +68,39 @@ is not an acceptable shortcut.
 
 ## Verification Status
 
+### Exception Value Flow
+
+`ExceptionValueFlow` now uses the same typed register-value rules and sparse
+worklist as `RegisterValueFlow`. The shared solver lives in the private
+`value_propagation.h`; it does not interpret opcodes. Normal Commit definitions
+depend on their original Before operands. Catch definitions join reachable
+exception payloads, and explicit throws preserve their source SSA categories.
+Pending runtime/user-code exceptions default to Unknown. Only an explicit owner
+premise may classify pending exceptions as Language; that premise never changes
+explicit-throw facts. Entry facts likewise remain owner-supplied assumptions.
+
+The adapter validates SSA definition slots and operand/dependency bounds.
+Its phase lookup and reachability passes are O(N+E); shared finite-height
+propagation is O(V+D) for SSA values and actual dependency edges. Incremental
+phi joins avoid repeated fan-in scans. Scratch arrays and the simultaneously
+live published fact array are byte-admitted; work consumes the shared quota.
+This establishes register value propagation, not lexical/environment state,
+module/capture load proof, input validation or try/catch source admission.
+
+Both CLI targets compiled after integration. ABC-only inspections in
+`build/pasteboard-4945-exception-values.jsonl` and
+`build/pasteboard-5165-exception-values.jsonl` report schema 3. In method 4945,
+normal Commit value 39 is Language, while Catch value 161 remains Unknown.
+In method 5165, register-5 phi value 15 retains String across three incoming
+definitions. The inspector explicitly reports `requires_language_abi: true`,
+`pending_exception_values_proven: false`, `value_flow_complete: true`, and
+keeps `ssa_complete` and `source_complete` false. The all-record survey
+`build/pasteboard-semantic-exception-values.jsonl` retains stage counts
+`[0,0,27,1,0,8,0,11,113,56,3]`. No additional complete record is claimed.
+Read-only review found no concrete correctness defect. Tests and RSS remain
+paused; explicit-throw joins, unreachable exceptions, loops, invalid SSA and
+byte/work exhaustion still require regression coverage when testing resumes.
+
 ### Exception Register SSA
 
 `RegisterUses::BuildSites` and `RegisterSsa::BuildSites` now accept a typed
@@ -84,9 +117,9 @@ The adapter preserves successor identity and retains the typed exception graph
 as provenance, rather than treating exceptional edges as normal completion.
 Register SSA result instruction/phi indices refer to phase nodes, not original
 ABC instructions; callers use the flow's node-to-instruction/PC mapping. This
-does not yet prove exception value categories, environment restoration or
-the relationship between a normal result's value rule and its Before reads.
-Those are necessary before try/catch source admission.
+does not itself prove exception value categories or environment restoration.
+The value-flow layer above now connects normal result rules to Before reads;
+environment validation remains necessary before try/catch source admission.
 
 Adapter storage is O(N+E) for phase nodes/arcs; it deducts its live arrays from
 the SSA byte budget and charges its work to the shared method quota. The SSA
@@ -119,9 +152,9 @@ accumulator. Always-throw instructions have no Before-to-Commit edge. Caller
 propagation remains an explicit exception exit rather than a normal successor.
 Unused Commit nodes can be unreachable; consumers must compute reachability.
 
-This is graph infrastructure, not exception-aware SSA or source admission.
-Environment restoration, catch-entry phi definitions and region integration
-remain open. Raw unsupported coroutine operations still reject graph building;
+The graph itself does not grant source admission. Register SSA and value flow
+are described above; environment restoration and region integration remain
+open. Raw unsupported coroutine operations still reject graph building;
 owner-proven async normalization has not been routed through this API yet.
 
 Storage reserves two nodes per instruction plus at most min(I,H) catch nodes.

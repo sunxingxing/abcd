@@ -5,9 +5,11 @@
 #include <nlohmann/json.hpp>
 #include "abcd/analysis/exception_flow.h"
 #include "abcd/analysis/exception_ssa.h"
+#include "abcd/analysis/exception_value_flow.h"
 
 int InspectExceptionFlow(const abcd::abc::MethodBody& body,
-    abcd::abc::ProfileId profile, std::uint64_t frame_size, std::ostream& output) {
+    abcd::abc::ProfileId profile, std::uint64_t frame_size,
+    std::uint32_t first_abi_register, std::ostream& output) {
   using namespace abcd;
   const analysis::ExceptionFlowBudget budget;
   const auto built = analysis::BuildExceptionFlow(body, profile, frame_size, budget);
@@ -42,9 +44,32 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     }, renamed);
     return EXIT_FAILURE;
   }
-  output << nlohmann::json{{"schema", 2}, {"instructions", flow->instructions.size()},
+  auto remaining = budget.bytes - flow->allocated_bytes - ssa->AllocatedBytes();
+  std::vector<analysis::EntryValueFact> entries;
+  if (ssa->Values().size() > remaining / sizeof(analysis::EntryValueFact)) return EXIT_FAILURE;
+  entries.reserve(ssa->Values().size());
+  if (entries.capacity() > remaining / sizeof(analysis::EntryValueFact)) return EXIT_FAILURE;
+  remaining -= entries.capacity() * sizeof(analysis::EntryValueFact);
+  for (std::size_t i = 0; i < ssa->Values().size(); ++i) {
+    const auto& value = ssa->Values()[i];
+    const auto* reg = std::get_if<abc::RegisterId>(&value.slot);
+    if (reg && reg->value >= first_abi_register &&
+        std::holds_alternative<analysis::MethodEntry>(value.origin))
+      entries.push_back({analysis::SsaValueId{static_cast<std::uint32_t>(i)},
+                         analysis::ValueKinds::Language()});
+  }
+  const auto analyzed = analysis::ExceptionValueFlow::Build(*flow, *ssa, entries, quota, {remaining});
+  const auto* values = std::get_if<analysis::ExceptionValueFlow>(&analyzed);
+  if (!values) {
+    const auto& failure = std::get<analysis::ValueFlowFailure>(analyzed);
+    output << nlohmann::json{{"value_flow_error", static_cast<unsigned>(failure.kind)}} << '\n';
+    return EXIT_FAILURE;
+  }
+  output << nlohmann::json{{"schema", 3}, {"instructions", flow->instructions.size()},
       {"nodes", flow->nodes.size()}, {"source_complete", false}, {"ssa_complete", false},
-      {"register_ssa_complete", true}, {"ssa_values", ssa->Values().size()}}
+      {"register_ssa_complete", true}, {"value_flow_complete", true},
+      {"requires_language_abi", true}, {"pending_exception_values_proven", false},
+      {"ssa_values", ssa->Values().size()}}
       << '\n';
   for (std::size_t i = 0; i < flow->nodes.size(); ++i) {
     const auto& node = flow->nodes[i];
@@ -78,6 +103,13 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
   for (std::size_t i = 0; i < ssa->Values().size(); ++i) {
     const auto& value = ssa->Values()[i];
     nlohmann::json row{{"ssa_value", i}};
+    const auto kinds = values->Facts()[i];
+    row["value_kinds"] = nlohmann::json::array();
+    for (const auto kind : {analysis::VmValueKind::kLanguage, analysis::VmValueKind::kHole,
+                           analysis::VmValueKind::kEnvironment, analysis::VmValueKind::kOtherInternal})
+      if (kinds.Contains(kind)) row["value_kinds"].push_back(static_cast<unsigned>(kind));
+    if (kinds.IsNonNaNNumber()) row["non_nan_number"] = true;
+    if (kinds.IsString()) row["string"] = true;
     if (const auto* reg = std::get_if<abc::RegisterId>(&value.slot)) row["register"] = reg->value;
     else row["accumulator"] = true;
     if (const auto* site = std::get_if<analysis::InstructionValue>(&value.origin))
