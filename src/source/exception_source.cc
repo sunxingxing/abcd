@@ -1,6 +1,7 @@
 #include "abcd/source/exception_source.h"
 
 #include "semantic_ast_input.h"
+#include "abcd/analysis/exception_calls.h"
 
 namespace abcd::source {
 SourceAstResult BuildExceptionSourceAst(
@@ -25,10 +26,18 @@ SourceAstResult BuildExceptionSourceAst(
         std::get<analysis::InstructionSsaError>(indexed) ==
                 analysis::InstructionSsaError::kResourceLimit
             ? SourceError::kResourceLimit : SourceError::kInvalidEffect, {}};
+  const auto routed = analysis::ProveExceptionCalls(input.flow,
+      {budget.bytes - regions.allocated_bytes - ssa->AllocatedBytes(),
+       budget.work - std::get<analysis::ExceptionInputProof>(checked).work_units});
+  const auto* calls = std::get_if<analysis::ExceptionCalls>(&routed);
+  if (!calls)
+    return SourceFailure{
+        std::get<analysis::ExceptionCallError>(routed) == analysis::ExceptionCallError::kResourceLimit
+            ? SourceError::kResourceLimit : SourceError::kInvalidEffect, {}};
   const AstMethod method{input.flow.instructions, input.blocks, *ssa};
   const AstProof proof{input.flow.instructions.size(), input.values.Facts(),
-                       input.locals.plan, input.module_reads, {}};
+                       input.locals.plan, input.module_reads, {}, calls->properties};
   return BuildSourceAst(method, proof, std::move(regions),
-      budget.bytes - ssa->AllocatedBytes(), named_scopes, rest);
+      budget.bytes - ssa->AllocatedBytes() - calls->AllocatedBytes(), named_scopes, rest);
 }
 }  // namespace abcd::source

@@ -18,6 +18,7 @@ struct AstProof {
   const analysis::LocalAccessPlan& locals;
   std::span<const analysis::ModuleReadFact> module_reads;
   std::span<const analysis::CapturedReadFact> captured_reads;
+  std::span<const std::optional<analysis::InstructionId>> call_properties = {};
   std::optional<analysis::ValueKinds> At(analysis::SsaValueId id) const {
     if (id.value >= values.size()) return {};
     return values[id.value];

@@ -2,6 +2,36 @@
 
 ## Current Boundary
 
+### Receiver Calls on Exception Paths
+
+`ProveExceptionCalls` supplies original-coordinate property/call route
+certificates for direct read/call and exact read/spill/reload/call intervals.
+Interiors have one entry and only normal fallthrough; copies are pure and
+nonthrowing. Property read and call must propagate to caller or share both
+the complete dispatch target and actual Catch gateway. It scans the graph
+once and checks fixed-size candidates in O(I+N+E) time and O(I+N) bounded
+storage. It does not itself authorize deleting any register definition.
+
+The common AST consumes these certificates while retaining its receiver-SSA
+identity check and single-use checks for callee, spill and reload values.
+Use counts include handler reads and phi inputs, so a spill visible to a
+handler is not removed. Phased staged argument regions remain rejected.
+`BuildExceptionSourceAst` admits route analysis alongside its live index and
+region tree; no normal-only SSA is substituted.
+
+ABC-only schema-13 inspection of pasteboard uri method 5712 produces a common
+AST/body containing the receiver-preserving `($r5)["get"]()` call and 14 PC
+spans (`build/pasteboard-5712-exception-calls.jsonl`). This method has no
+encoded catch, and the body remains an explicitly non-executable fragment.
+Method 6350 yields route candidates 16/24 and 78/86 but still fails input
+proof at catch PC 91 (`build/pasteboard-6350-exception-calls.jsonl`). Candidate
+routes are reported independently, never as full fusion/source success.
+Both CLI targets compiled and ordinary all-record output is unchanged in
+`build/pasteboard-semantic-exception-calls.jsonl`. Read-only review found no
+concrete defect. Tests and RSS remain paused; catch-visible spill refusal,
+runtime getter order/receiver equivalence, mismatched routes and resource
+boundary cases remain unverified. No complete record is added.
+
 ### Edge-Specific Pending Values
 
 `ExceptionValueFlow::Build` accepts `ExceptionPendingFact` premises keyed by
@@ -102,8 +132,9 @@ no normal-only SSA or fabricated handler-free bytecode is constructed.
 The public borrowed-input contract requires all analysis owners to match and
 local-load premises to have seeded the provided value solution. Captured-read
 facts remain absent at this boundary; module-read facts now accept the
-caller-only and shared-catch certificates above. Phased receiver-call fusion and unproven
-guarded-module fusion remain disabled.
+caller-only and shared-catch certificates above. Phased receiver calls now
+require the restricted route/SSA certificates above; staged calls and
+unproven guarded-module fusion remain disabled.
 
 The common printer now reads block layout independently of normal-method
 capture proofs. Its layout-only `PrintSourceBody` overload cannot authorize

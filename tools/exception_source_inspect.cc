@@ -7,6 +7,7 @@
 #include <new>
 #include <stdexcept>
 #include <nlohmann/json.hpp>
+#include "abcd/analysis/exception_calls.h"
 
 void InspectExceptionSource(const abcd::source::ExceptionAstInput& input,
     abcd::analysis::SemanticRegionTree regions,
@@ -17,6 +18,22 @@ void InspectExceptionSource(const abcd::source::ExceptionAstInput& input,
     output << nlohmann::json{{"exception_source_error", static_cast<unsigned>(failure.kind)},
                              {"pc", failure.pc.value}} << '\n';
   };
+  // Expose route candidates independently of input-value admission; they are
+  // not AST/source success. Release this inspection plan before AST building.
+  if (regions.allocated_bytes <= bytes) {
+    const auto routed = analysis::ProveExceptionCalls(input.flow,
+        {bytes - regions.allocated_bytes, analysis::kDefaultSemanticWork});
+    if (const auto* calls = std::get_if<analysis::ExceptionCalls>(&routed)) {
+      for (std::size_t i = 0; i < calls->properties.size(); ++i)
+        if (calls->properties[i])
+          output << nlohmann::json{{"receiver_route_call", i},
+              {"pc", input.flow.instructions[i].pc.value},
+              {"property_pc", input.flow.instructions[calls->properties[i]->value].pc.value}} << '\n';
+    } else {
+      output << nlohmann::json{{"receiver_route_error", static_cast<unsigned>(
+          std::get<analysis::ExceptionCallError>(routed))}} << '\n';
+    }
+  }
   const auto lowered = source::BuildExceptionSourceAst(input, std::move(regions),
       {bytes, analysis::kDefaultSemanticWork});
   const auto* ast = std::get_if<source::SourceAst>(&lowered);

@@ -392,8 +392,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
       } else if (const auto* call =
                      std::get_if<analysis::ReceiverCall>(&instruction.operation)) {
         const auto i = ast.statements.size();
-        // Normal-only reference fusion has no exceptional-state certificate.
-        if (method.ssa.IsPhased() || !i || Target(method.flow, instruction.pc))
+        if (!i || Target(method.flow, instruction.pc))
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         const auto callee = ReadValue(
             method, i, analysis::ScalarSlot{analysis::Accumulator{}});
@@ -415,6 +414,12 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
             return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         }
         if (!property_id || !last_effect)
+          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+        // Route proof is only half the argument. The preceding SSA use counts
+        // include handler phis, preventing removal of observable spill values.
+        if (method.ssa.IsPhased() &&
+            (i >= proof.call_properties.size() || !proof.call_properties[i] ||
+             proof.call_properties[i]->value != *property_id))
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         const bool across_blocks =
             *property_id < method.flow.blocks[block_id].first_instruction;
@@ -440,6 +445,8 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
             effect.exceptional != analysis::ExceptionalCompletion::kMayThrow)
           return Fail(SourceError::kInvalidEffect, instruction.pc);
         const bool staged = across_blocks || *last_effect != property;
+        if (method.ssa.IsPhased() && staged)
+          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         if (staged && (!spill || !reload || !call->Count()))
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         if (staged) {

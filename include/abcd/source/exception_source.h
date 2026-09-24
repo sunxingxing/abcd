@@ -26,7 +26,7 @@ struct ExceptionAstInput {
 // premises or normal-only call fusion are inferred at this boundary.
 // Named-scope/rest certificates obey BuildSourceAst's ownership contract.
 // Byte admission includes the instruction-coordinate index and AST scratch.
-// budget.work bounds input verification; the shared AST retains its existing
+// budget.work bounds input verification and call-route analysis; AST retains its existing
 // size-bounded algorithm contract, not a new shared work counter.
 [[nodiscard]] SourceAstResult BuildExceptionSourceAst(
     const ExceptionAstInput& input, analysis::SemanticRegionTree regions,

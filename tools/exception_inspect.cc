@@ -164,7 +164,7 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
   auto* tree = std::get_if<analysis::SemanticRegionTree>(&tree_result);
   const auto caller_modules = std::count_if(modules->reads.begin(), modules->reads.end(),
       [](const auto& read) { return read.proof == analysis::ModuleReadProof::kCallerGuarded; });
-  output << nlohmann::json{{"schema", 12}, {"instructions", flow->instructions.size()},
+  output << nlohmann::json{{"schema", 13}, {"instructions", flow->instructions.size()},
       {"nodes", flow->nodes.size()}, {"source_complete", false}, {"ssa_complete", false},
       {"register_ssa_complete", true}, {"value_flow_complete", true},
       {"environment_topology_complete", true}, {"lexical_values_proven", false},
