@@ -12,7 +12,8 @@ namespace {
 AcyclicResult WriteBody(const abc::MethodBody& body, ScalarNames names,
                         std::ostream& output, AcyclicBudget budget,
                         const MethodConstants* constants, bool self_loops,
-                        const BranchSourceFacts* facts = nullptr) {
+                        const BranchSourceFacts* facts = nullptr,
+                        StructuredExit exit = StructuredExit::kReturn) {
   if (!body.tries.empty() || !body.handlers.empty())
     return BodyEmitFailure{BodyEmitError::kExceptionRegions, {}, {}, {}};
   const auto built = analysis::BuildNormalFlow(body, {budget.bytes});
@@ -51,9 +52,13 @@ AcyclicResult WriteBody(const abc::MethodBody& body, ScalarNames names,
         nesting = std::max(nesting, flow.order.blocks.size() - position);
   }
   if (nesting > budget.max_nesting) return AcyclicError::kNestingLimit;
-  const auto staged = BuildBranchStagedCalls(
-      body, graph, names.registers.size(),
-      analysis_budget - flow.allocated_bytes, budget.work);
+  const auto staged = budget.allow_staged_calls
+                          ? BuildBranchStagedCalls(
+                                body, graph, names.registers.size(),
+                                analysis_budget - flow.allocated_bytes,
+                                budget.work)
+                          : std::variant<BranchStagedCalls, BodyEmitFailure>{
+                                BranchStagedCalls{}};
   if (const auto* error = std::get_if<BodyEmitFailure>(&staged)) return *error;
   const auto& calls = std::get<BranchStagedCalls>(staged);
   if (calls.AllocatedBytes() > analysis_budget - flow.allocated_bytes)
@@ -62,7 +67,7 @@ AcyclicResult WriteBody(const abc::MethodBody& body, ScalarNames names,
                                        budget.output, constants,
                                        {analysis_budget - flow.allocated_bytes -
                                         calls.AllocatedBytes()},
-                                       facts, calls.calls);
+                                       facts, calls.calls, exit);
   if (const auto* error = std::get_if<BodyEmitFailure>(&result)) return *error;
   return std::get<std::size_t>(result);
 }
@@ -80,7 +85,7 @@ AcyclicResult WriteBlockLoopBody(const abc::MethodBody& body, ScalarNames names,
 AcyclicResult WriteCapturedBranchBody(
     const abc::MethodBody& body, ScalarNames names, std::ostream& output,
     AcyclicBudget budget, const MethodConstants* constants,
-    const BranchSourceFacts& facts) {
+    const BranchSourceFacts& facts, StructuredExit exit) {
   constexpr std::string_view kImportPrefix = "$import";
   const auto collision = [](std::string_view name) {
     return name.starts_with(kImportPrefix) ||
@@ -96,6 +101,6 @@ AcyclicResult WriteCapturedBranchBody(
   if (facts.AllocatedBytes() > budget.bytes)
     return AcyclicError::kResourceLimit;
   budget.bytes -= facts.AllocatedBytes();
-  return WriteBody(body, names, output, budget, constants, true, &facts);
+  return WriteBody(body, names, output, budget, constants, true, &facts, exit);
 }
 }  // namespace abcd::source

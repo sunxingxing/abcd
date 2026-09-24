@@ -3,6 +3,7 @@
 
 #include "abcd/analysis/accumulator_flow.h"
 #include "abcd/analysis/named_invocation.h"
+#include "abcd/source/acyclic_body.h"
 #include "abcd/source/linear_body.h"
 
 namespace abcd::source {
@@ -20,7 +21,8 @@ BodyEmitResult WriteOrderedBody(const abc::MethodBody& body,
                                 ObjectBufferBudget object_budget,
                                 const BranchSourceFacts* facts = nullptr,
                                 std::span<const analysis::StagedNamedInvocation>
-                                    staged_calls = {});
+                                    staged_calls = {},
+                                StructuredExit exit = StructuredExit::kReturn);
 // A proof-owned straight-line prefix/suffix; the caller preflights the full
 // staged expression before publication. first indexes unchanged body facts.
 BodyEmitResult WriteBranchSegment(

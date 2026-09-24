@@ -34,6 +34,7 @@ namespace abcd::source {
 namespace {
 using namespace analysis;
 enum class StringUse { kLiteral, kPropertyName };
+constexpr std::uint8_t kDirectNamedInstructions = 2;
 class DiscardBuffer : public std::streambuf {
   std::streamsize xsputn(const char*, std::streamsize count) override {
     return count;
@@ -46,13 +47,14 @@ class BodyWriter {
              const MethodConstants* constants,
              ObjectBufferBudget object_budget,
              const BranchSourceFacts* facts = nullptr,
-             std::span<const StagedNamedInvocation> staged_calls = {})
+             std::span<const StagedNamedInvocation> staged_calls = {},
+             StructuredExit exit = StructuredExit::kReturn)
       : names_(names),
         output_(output),
         remaining_(budget.bytes),
         constants_(constants),
         object_budget_(object_budget), facts_(facts),
-        staged_calls_(staged_calls) {}
+        staged_calls_(staged_calls), exit_(exit) {}
 
   BodyEmitResult Write(const abc::MethodBody& body) {
     if (!body.tries.empty() || !body.handlers.empty())
@@ -182,6 +184,13 @@ class BodyWriter {
   BodyEmitResult Ordered(const abc::MethodBody& body, const NormalFlow& graph,
                          const AccumulatorFlow& flow) {
     try {
+      if (exit_ != StructuredExit::kReturn) {
+        if (body.instructions.empty() ||
+            body.instructions.back().decoded.opcode !=
+                abc::Opcode::kRETURNUNDEFINED)
+          return Fail(BodyEmitError::kMissingTerminator);
+        synthetic_terminal_ = body.instructions.size() - 1;
+      }
       // Each label surrounds the prefix ending immediately before its target.
       // Quotient order makes every non-self edge forward: breaking that label
       // executes its target next. A self edge repeats only its enclosing while.
@@ -413,7 +422,10 @@ class BodyWriter {
           if (!accumulator_defined)
             return Fail(BodyEmitError::kAccumulatorHole);
           if (const auto invocation = MatchNamedInvocation(
-                  instructions, i, names_.registers.size())) {
+                  instructions, i, names_.registers.size());
+              invocation &&
+              (exit_ != StructuredExit::kTryBreak ||
+               invocation->instruction_count == kDirectNamedInstructions)) {
             NamedCall(*invocation);
             i += invocation->instruction_count - 1;
           } else {
@@ -465,7 +477,23 @@ class BodyWriter {
           Text(";\n");
           accumulator_defined = true;
         } else if (opcode == Opcode::kRETURNUNDEFINED) {
-          Text("return;\n");
+          if (synthetic_terminal_ && position == *synthetic_terminal_) {
+            switch (exit_) {
+              case StructuredExit::kPrefixBreak:
+                Text("break $prefix_exit;\n");
+                break;
+              case StructuredExit::kTryBreak:
+                Text("break $try_exit;\n");
+                break;
+              case StructuredExit::kHandlerBreak:
+                Text("break $handler_exit;\n");
+                break;
+              case StructuredExit::kReturn:
+                return Fail(BodyEmitError::kUnsupportedInstruction);
+            }
+          } else {
+            Text("return;\n");
+          }
           terminated = true;
         } else if (opcode == Opcode::kRETURN ||
                    opcode == Opcode::kTHROW_PREF_NONE) {
@@ -808,6 +836,8 @@ class BodyWriter {
   ObjectBufferBudget object_budget_;
   const BranchSourceFacts* facts_;
   std::span<const StagedNamedInvocation> staged_calls_;
+  StructuredExit exit_;
+  std::optional<std::size_t> synthetic_terminal_;
 };
 }  // namespace
 
@@ -904,18 +934,19 @@ BodyEmitResult WriteOrderedBody(const abc::MethodBody& body,
                                 ObjectBufferBudget object_budget,
                                 const BranchSourceFacts* facts,
                                 std::span<const StagedNamedInvocation>
-                                    staged_calls) {
+                                    staged_calls,
+                                StructuredExit exit) {
   if (const auto failure = ValidateGlobalScalarNames(body, names, constants))
     return *failure;
   CaptureDiscard buffer;
   std::ostream discard(&buffer);
   const auto checked =
       BodyWriter(names, discard, budget, constants, object_budget, facts,
-                 staged_calls)
+                 staged_calls, exit)
           .Ordered(body, graph, flow);
   if (std::holds_alternative<BodyEmitFailure>(checked)) return checked;
   return BodyWriter(names, output, budget, constants, object_budget, facts,
-                    staged_calls)
+                    staged_calls, exit)
       .Ordered(body, graph, flow);
 }
 

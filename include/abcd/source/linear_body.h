@@ -13,6 +13,7 @@ class MethodRoleIndex;
 }
 
 namespace abcd::source {
+inline constexpr std::uint64_t kDefaultMethodWork = 100000000;
 enum class BodyEmitError {
   kExceptionRegions,
   kUnsupportedInstruction,

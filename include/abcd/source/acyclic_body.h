@@ -6,10 +6,12 @@
 
 namespace abcd::source {
 enum class AcyclicError { kResourceLimit, kNestingLimit };
+enum class StructuredExit { kReturn, kPrefixBreak, kTryBreak, kHandlerBreak };
 struct AcyclicBudget {
   std::size_t bytes = 64 * 1024 * 1024;
-  std::uint64_t work = 100000000;
+  std::uint64_t work = kDefaultMethodWork;
   std::size_t max_nesting = 128;
+  bool allow_staged_calls = true;
   EmitBudget output;
 };
 using AcyclicResult =

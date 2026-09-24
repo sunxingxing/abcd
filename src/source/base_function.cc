@@ -25,6 +25,7 @@
 #include "constructor_fields.h"
 #include "function_template.h"
 #include "staged_branch_call.h"
+#include "structured_catch.h"
 
 namespace abcd::source {
 namespace {
@@ -328,6 +329,9 @@ class FunctionWriter {
         Text(names_.registers[first_for_in->source.value]);
         Text(") {\nreturn $forInKey;\n}\nreturn;\n");
         if (error_) return *error_;
+      } else if (!body.tries.empty() || !body.handlers.empty()) {
+        result = WriteStructuredCatch(body, names_, output_, body_budget,
+                                      body_constants);
       } else {
         const auto lexical =
             captured_values_ == analysis::CapturedValues::kLanguage

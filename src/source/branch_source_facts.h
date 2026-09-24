@@ -37,7 +37,8 @@ BuildCapturedBranchFacts(const abc::MethodBody& body,
 [[nodiscard]] AcyclicResult WriteCapturedBranchBody(
     const abc::MethodBody& body, ScalarNames names, std::ostream& output,
     AcyclicBudget budget, const MethodConstants* constants,
-    const BranchSourceFacts& facts);
+    const BranchSourceFacts& facts,
+    StructuredExit exit = StructuredExit::kReturn);
 }  // namespace abcd::source
 
 #endif  // ABCD_SOURCE_BRANCH_SOURCE_FACTS_H_
