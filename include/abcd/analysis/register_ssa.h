@@ -88,6 +88,9 @@ class RegisterSsa {
   [[nodiscard]] std::span<const SsaRead> AllReads() const {
     return {reads_.get(), reads_ ? read_count_ : 0};
   }
+  [[nodiscard]] std::span<const PhiInput> AllInputs() const {
+    return {inputs_.get(), inputs_ ? input_count_ : 0};
+  }
   [[nodiscard]] std::optional<SsaValueId> Write(
       InstructionId instruction) const;
   [[nodiscard]] std::span<const PhiInput> Inputs(SsaValueId phi) const;
