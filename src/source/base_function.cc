@@ -826,6 +826,15 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
   try {
     std::vector<std::string_view> sorted_parameters;
     std::optional<MethodConstants> named_constants;
+    if (constants && constants->global_scope &&
+        std::any_of(constants->source_parameters.begin(), constants->source_parameters.end(),
+            [&](auto name) { return ShadowsImport(name, *constants->global_scope); })) {
+      // A recovered formal must not shadow an import used by this function or
+      // a descendant. Private ABI formals preserve behavior without guessing.
+      named_constants.emplace(*constants);
+      named_constants->source_parameters = {};
+      constants = &*named_constants;
+    }
     if (constants && !constants->source_parameters.empty()) {
       const auto parameters = constants->source_parameters;
       if (parameters.size() != function.frame.parameters)

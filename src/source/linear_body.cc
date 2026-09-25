@@ -362,9 +362,15 @@ class BodyWriter {
             const auto* module = std::get_if<ModuleLoad>(&loaded);
             if (!module)
               return Fail(BodyEmitError::kUnsupportedInstruction);
-            Text(module->space == ModuleSpace::kExternal ? "$import"
-                                                           : "$local");
-            Number(module->slot.value);
+            const auto alias = module->space == ModuleSpace::kExternal
+                ? ImportBinding(constants_ && constants_->global_scope
+                    ? &*constants_->global_scope : nullptr, module->slot.value)
+                : std::string_view{};
+            if (!alias.empty()) Text(alias);
+            else {
+              Text(module->space == ModuleSpace::kExternal ? "$import" : "$local");
+              Number(module->slot.value);
+            }
           }
           Text(";\n");
           accumulator_defined = true;

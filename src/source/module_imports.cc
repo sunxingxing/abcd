@@ -37,9 +37,9 @@ class ImportWriter {
  public:
   ImportWriter(const corpus::AbcFile& file, const abc::Header& header,
                const abc::ModuleInfo& module, EmitBudget budget,
-               abc::StringBudget strings)
+               abc::StringBudget strings, std::span<const std::string> names)
       : file_(file), header_(header), module_(module), remaining_(budget.bytes),
-        strings_(strings) {}
+        strings_(strings), names_(names) {}
 
   void Write() {
     std::size_t count = 0;
@@ -113,8 +113,12 @@ class ImportWriter {
       case ImportForm::kNamed:
         Text("import { ");
         ModuleName(imported, entry.imported);
-        Text(" as ");
-        Alias(slot);
+        if (slot >= names_.size() || names_[slot].empty() ||
+            !std::equal(imported.begin(), imported.end(),
+                        names_[slot].begin(), names_[slot].end())) {
+          Text(" as ");
+          Alias(slot);
+        }
         Text(" }");
         break;
     }
@@ -201,6 +205,10 @@ class ImportWriter {
   }
 
   void Alias(std::size_t slot) {
+    if (slot < names_.size() && !names_[slot].empty()) {
+      Text(names_[slot]);
+      return;
+    }
     Text("$import");
     std::array<char, std::numeric_limits<std::size_t>::digits10 + 2> digits{};
     const auto [end, error] =
@@ -223,6 +231,7 @@ class ImportWriter {
   const abc::ModuleInfo& module_;
   std::size_t remaining_;
   abc::StringBudget strings_;
+  std::span<const std::string> names_;
   std::size_t used_ = 0;
   std::ostringstream stream_;
 };
@@ -232,9 +241,10 @@ ModuleImportResult WriteModuleImports(const corpus::AbcFile& file,
                                       const abc::Header& header,
                                       const abc::ModuleInfo& module,
                                       std::ostream& output, EmitBudget budget,
-                                      abc::StringBudget strings) {
+                                      abc::StringBudget strings,
+                                      std::span<const std::string> names) {
   try {
-    ImportWriter writer(file, header, module, budget, strings);
+    ImportWriter writer(file, header, module, budget, strings, names);
     writer.Write();
     const auto size = writer.Size();
     if (size > static_cast<std::size_t>(

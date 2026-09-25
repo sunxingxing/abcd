@@ -26,8 +26,9 @@ constexpr auto kIndentChunk = [] {
 class LiteralWriter {
  public:
   LiteralWriter(std::span<const RecordLiteralNode> nodes,
-                std::ostream& output, EmitBudget budget)
-      : nodes_(nodes), output_(output), remaining_(budget.bytes) {}
+                std::ostream& output, EmitBudget budget,
+                std::span<const std::string> imports = {})
+      : nodes_(nodes), output_(output), remaining_(budget.bytes), imports_(imports) {}
 
   RecordLiteralResult Write(std::size_t root) {
     try {
@@ -179,8 +180,14 @@ class LiteralWriter {
         break;
       case RecordLiteralKind::kImportedConstruct:
         if (!node.fields.empty()) throw RecordLiteralError::kInvalidGraph;
-        Text("new $import");
-        Number(node.imported_slot.value);
+        Text("new ");
+        if (node.imported_slot.value < imports_.size() &&
+            !imports_[node.imported_slot.value].empty())
+          Text(imports_[node.imported_slot.value]);
+        else {
+          Text("$import");
+          Number(node.imported_slot.value);
+        }
         Text("(");
         for (std::size_t i = 0; i < node.elements.size(); ++i) {
           if (i) Text(", ");
@@ -194,13 +201,14 @@ class LiteralWriter {
   std::ostream& output_;
   std::size_t remaining_;
   std::size_t written_ = 0;
+  std::span<const std::string> imports_;
 };
 }  // namespace
 
 RecordLiteralResult WriteRecordLiteral(
     std::span<const RecordLiteralNode> nodes, std::size_t root,
-    std::ostream& output, EmitBudget budget) {
-  return LiteralWriter(nodes, output, budget).Write(root);
+    std::ostream& output, EmitBudget budget, std::span<const std::string> imports) {
+  return LiteralWriter(nodes, output, budget, imports).Write(root);
 }
 std::variant<std::size_t, EmitError> WriteDenseArray(
     std::span<const StaticAtom> elements, std::ostream& output, EmitBudget budget) {

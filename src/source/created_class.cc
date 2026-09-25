@@ -375,7 +375,9 @@ class ClassWriter {
     }
     if (const auto* node = std::get_if<RecordNodeRef>(&value)) {
       const auto written = WriteRecordLiteral(
-          static_fields_->nodes, node->id, output_, budget_.output);
+          static_fields_->nodes, node->id, output_, budget_.output,
+          enclosing_scope_ ? enclosing_scope_->import_bindings
+                           : std::span<const std::string>{});
       if (const auto* error = std::get_if<EmitError>(&written))
         throw ClassFailure{*error};
       if (std::holds_alternative<RecordLiteralError>(written))

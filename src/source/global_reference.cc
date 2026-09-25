@@ -31,6 +31,14 @@ bool ContainsAscii(std::span<const std::string_view> bindings,
 }
 }  // namespace
 
+std::string_view ImportBinding(const GlobalScope* scope, std::size_t slot) {
+  return scope && slot < scope->import_bindings.size()
+      ? std::string_view{scope->import_bindings[slot]} : std::string_view{};
+}
+bool ShadowsImport(std::string_view name, const GlobalScope& scope) {
+  return std::binary_search(scope.import_names.begin(), scope.import_names.end(), name);
+}
+
 bool AllowsGlobalReference(std::u16string_view name, GlobalScope scope) {
   if (name.empty() || !IdentifierStart(name.front()) ||
       !std::all_of(name.begin() + 1, name.end(), IdentifierPart) ||
@@ -40,6 +48,7 @@ bool AllowsGlobalReference(std::u16string_view name, GlobalScope scope) {
       (scope.realm_binding && name == scope.realm_binding->name))
     return false;
   if (ContainsAscii(scope.enclosing_bindings, name) ||
+      ContainsAscii(scope.import_names, name) ||
       ContainsAscii(scope.parameter_bindings, name))
     return false;
   // Matches the strict/module reserved binding set. Generated private names

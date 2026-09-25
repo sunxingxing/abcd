@@ -23,7 +23,8 @@ using RecordLiteralResult =
 // elements reproduce STOWNBYINDEX. Depth is bounded independently of bytes.
 [[nodiscard]] RecordLiteralResult WriteRecordLiteral(
     std::span<const RecordLiteralNode> nodes, std::size_t root,
-    std::ostream& output, EmitBudget budget);
+    std::ostream& output, EmitBudget budget,
+    std::span<const std::string> imports = {});
 }  // namespace abcd::source
 
 #endif  // ABCD_SOURCE_RECORD_LITERAL_H_

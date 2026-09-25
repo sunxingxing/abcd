@@ -160,7 +160,9 @@ class SourcePrinter {
         stream.exceptions(std::ios::badbit | std::ios::failbit);
         const auto imports = WriteModuleImports(
             constants_.file, constants_.header, *constants_.module, stream,
-            {limit_ - result_.text.size()}, constants_.string_budget);
+            {limit_ - result_.text.size()}, constants_.string_budget,
+            constants_.global_scope ? constants_.global_scope->import_bindings
+                                    : std::span<const std::string>{});
         if (const auto* failure = std::get_if<ModuleImportFailure>(&imports))
           return SourceFailure{
               failure->kind == ModuleImportError::kResourceLimit ||
@@ -1006,6 +1008,9 @@ class SourcePrinter {
         const auto& owner = *constants_.module;
         if (slot >= owner.imports.size() + owner.namespace_imports.size())
           throw SourceFailure{SourceError::kConstant, current_pc_};
+        const auto alias = ImportBinding(constants_.global_scope
+            ? &*constants_.global_scope : nullptr, slot);
+        if (!alias.empty()) { Text(alias); return; }
         Text("$import");
       } else {
         if (!constants_.global_scope ||

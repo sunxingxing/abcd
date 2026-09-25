@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <span>
+#include <string>
 #include <string_view>
 
 namespace abcd::source {
@@ -32,7 +33,15 @@ struct GlobalScope {
   // creation site; no later STMODULEVAR is processed until nested source ends.
   const ModuleExports* module_exports = nullptr;
   const HostRealmBinding* realm_binding = nullptr;
+  // Record-owned plan, borrowed through synchronous descendant emission.
+  // Empty slot names retain the generated $importN spelling.
+  std::span<const std::string> import_bindings{};
+  std::span<const std::string_view> import_names{};
 };
+
+[[nodiscard]] std::string_view ImportBinding(const GlobalScope* scope,
+                                             std::size_t slot);
+[[nodiscard]] bool ShadowsImport(std::string_view name, const GlobalScope& scope);
 
 // A free identifier reaches the v7 global record/object only if the generated
 // module/class wrapper cannot shadow it. Non-ASCII and strict-reserved names

@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "abcd/abc/call_type.h"
+#include "import_names.h"
 
 namespace abcd::source {
 RecordSourceResult BuildRecordSource(
@@ -82,6 +83,16 @@ RecordSourceResult BuildRecordSource(
     // Reserve both alongside the live body before building IR and proof state.
     retain(budget.export_bytes, 1);
     retain(budget.strings.bytes, 1);
+    retain(budget.export_bytes, 1);
+    auto named = RecoverImportNames(file, header, *module,
+        std::span(index.methods).subspan(record.first_method, record.method_count),
+        budget.export_bytes, budget.strings);
+    const auto* imports = std::get_if<ImportNames>(&named);
+    if (!imports) {
+      const auto& error = std::get<ModuleImportFailure>(named);
+      return fail(error.kind == ModuleImportError::kResourceLimit
+          ? Error::kResourceLimit : Error::kModule);
+    }
     auto planned = BuildModuleExports(file, header, *module,
                                       {budget.export_bytes, budget.strings});
     auto* exports = std::get_if<ModuleExports>(&planned);
@@ -103,6 +114,8 @@ RecordSourceResult BuildRecordSource(
     constants.global_scope->module_slots = exports->slot_count();
     constants.global_scope->module_exports = exports;
     constants.global_scope->realm_binding = realm_binding;
+    constants.global_scope->import_bindings = imports->slots;
+    constants.global_scope->import_names = imports->sorted;
     auto result = BuildEntrySource(*body, *method, *frame, SourceForm::kRecord,
         entry->name, constants, exports, {budget.bytes}, budget.output.bytes);
     if (file.CheckUnchanged()) return fail(Error::kFileChanged);

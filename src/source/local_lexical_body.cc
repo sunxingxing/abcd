@@ -185,8 +185,10 @@ class LexicalWriter {
                        std::get_if<analysis::ExternalImport>(&statement)) {
           Slot(analysis::Accumulator{});
           Text(" = ");
-          Text(kImportPrefix);
-          Number(load->slot.value);
+          const auto alias = ImportBinding(constants_ && constants_->global_scope
+              ? &*constants_->global_scope : nullptr, load->slot.value);
+          if (!alias.empty()) Text(alias);
+          else { Text(kImportPrefix); Number(load->slot.value); }
           Text(";\n");
         } else if (const auto* load =
                        std::get_if<analysis::LocalModuleLoad>(&statement)) {

@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <iosfwd>
 #include <optional>
+#include <span>
+#include <string>
 #include <variant>
 
 #include "abcd/abc/module_info.h"
@@ -27,7 +29,7 @@ struct ModuleImportFailure {
 using ModuleImportResult = std::variant<std::size_t, ModuleImportFailure>;
 
 // Caller supplies module and header from the same unchanged ABC file. Emit
-// this prelude in the record module before bodies that use $import<slot>.
+// this prelude before bodies using the same slot names ($importN by default).
 // v7.0 module-environment slots are regular imports, then namespace imports;
 // declarations are emitted in request order without changing those slots.
 // Requests without import bindings retain bare imports. Indirect and star
@@ -35,12 +37,16 @@ using ModuleImportResult = std::variant<std::size_t, ModuleImportFailure>;
 // Temporary directive capacity shares the caller-admitted strings allowance;
 // string parsing receives the remainder. O(E log E + R + emitted text) for E
 // import entries and R requests, O(E) temporary storage.
+// Optional names is a record-owned, validated slot plan shared with every
+// consumer. Empty entries keep $importN; nonempty entries must be distinct
+// strict binding identifiers with proven source-scope collision handling.
 // Semantic failures leave
 // output untouched; IO failure can leave a partial write.
 [[nodiscard]] ModuleImportResult WriteModuleImports(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::ModuleInfo& module, std::ostream& output,
-    EmitBudget budget = {}, abc::StringBudget strings = {});
+    EmitBudget budget = {}, abc::StringBudget strings = {},
+    std::span<const std::string> names = {});
 
 }  // namespace abcd::source
 
