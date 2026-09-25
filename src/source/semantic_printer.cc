@@ -1039,6 +1039,7 @@ class SourcePrinter {
       throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
     if (form == StatementForm::kArgument &&
         !std::holds_alternative<SourceAssignment>(statement.operation) &&
+        !std::holds_alternative<SourceStagedCall>(statement.operation) &&
         !std::holds_alternative<analysis::NoOperation>(statement.operation))
       throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
     const auto begin = position_;
@@ -1220,7 +1221,7 @@ class SourcePrinter {
             if (operation.stored_result) {
               const auto saved = operation.stored_result->statement.value;
               if (operation.return_statement ||
-                  operation.result != AssignmentResult::kStored ||
+                  operation.result == AssignmentResult::kUnused ||
                   saved >= ast_.statements.size() ||
                   saved != operation.call_statement.value + 1)
                 throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
@@ -1261,7 +1262,11 @@ class SourcePrinter {
                   throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
                 break;
               case AssignmentResult::kArgumentOnly:
-                throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+                if (form != StatementForm::kArgument || !operation.stored_result ||
+                    operation.return_statement ||
+                    operation.arguments != CallArgumentLayout::kValues)
+                  throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+                break;
             }
             if (operation.binding_receiver) {
               const auto property = static_cast<std::size_t>(&statement - ast_.statements.data());
@@ -1287,20 +1292,22 @@ class SourcePrinter {
                 ast_.statements.begin() + first_statement,
                 ast_.statements.begin() + last_statement,
                 IsSequenceStatement);
-            const bool ordered = sequence && HasOrderedArguments(
-                std::span<const SourceStatement>{ast_.statements}.subspan(
-                    first_statement, last_statement - first_statement), operation.call);
+            const bool ordered = !region && HasOrderedArguments(
+                ast_.statements, first_statement, last_statement, operation.call);
             if (!operation.call.Count() && !ordered)
               throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
             if (ordered) {
               Text("(");
               bool first_argument = true;
               for (auto i = first_statement; i < last_statement; ++i) {
-                if (std::holds_alternative<SourceAssignment>(ast_.statements[i].operation)) {
+                const auto* nested = std::get_if<SourceStagedCall>(
+                    &ast_.statements[i].operation);
+                if (nested || std::holds_alternative<SourceAssignment>(ast_.statements[i].operation)) {
                   if (!first_argument) Text(", ");
                   first_argument = false;
                 }
                 Statement(ast_.statements[i], StatementForm::kArgument);
+                if (nested) i = nested->call_statement.value;
               }
               current_pc_ = ast_.statements[last_statement].pc;
             } else {
@@ -1326,7 +1333,8 @@ class SourcePrinter {
                 Value(ScalarValue{*argument});
               }
             }
-            Text(");\n");
+            Text(")");
+            AssignmentEnd(form);
             --call_depth_;
           } else {
             static_assert(std::is_same_v<T, analysis::NoOperation>);

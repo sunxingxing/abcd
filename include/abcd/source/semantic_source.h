@@ -200,6 +200,7 @@ struct CallResultStore {
   abc::RegisterId target;
   analysis::InstructionId statement;
 };
+enum class CallArgumentLayout : std::uint8_t { kStaged, kOrdered, kValues };
 struct SourceStagedCall {
   abc::PoolIndex name;
   analysis::ReceiverCall call;
@@ -211,6 +212,8 @@ struct SourceStagedCall {
   std::optional<analysis::InstructionId> return_statement = {};
   // Commit after invocation; the adjacent original save remains a PC anchor.
   std::optional<CallResultStore> stored_result = {};
+  // kValues proves all argument commits elided, including nested owners.
+  CallArgumentLayout arguments = CallArgumentLayout::kStaged;
 };
 // Unprintable until same-home, non-escape assembly and initializer-body proof.
 struct SourceInitializerCall { analysis::ReceiverCall call; };

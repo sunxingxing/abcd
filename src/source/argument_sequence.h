@@ -55,23 +55,57 @@ inline bool HasArgumentValue(const SourceExpression& expression) {
     }
   }, expression);
 }
-// Keep all assignments, but distribute their values over native arguments.
+struct ArgumentStep {
+  abc::RegisterId target;
+  std::size_t next;
+};
+inline std::optional<ArgumentStep> OrderedArgument(
+    std::span<const SourceStatement> statements, std::size_t position,
+    std::size_t end) {
+  if (position >= end || end > statements.size()) return {};
+  const auto& node = statements[position];
+  if (const auto* assignment = std::get_if<SourceAssignment>(&node.operation)) {
+    const auto* target = std::get_if<abc::RegisterId>(&assignment->target);
+    if (!target || assignment->result == AssignmentResult::kUnused ||
+        !HasArgumentValue(assignment->value)) return {};
+    return ArgumentStep{*target, position + 1};
+  }
+  const auto* call = std::get_if<SourceStagedCall>(&node.operation);
+  // The child's arguments must have no private commits: otherwise they could
+  // overwrite an earlier outer argument before the original outer invocation.
+  // Bottom-up certification avoids recursively scanning nested intervals.
+  if (!call || call->arguments != CallArgumentLayout::kValues ||
+      !call->stored_result || call->return_statement ||
+      call->result == AssignmentResult::kUnused ||
+      call->first_argument_statement.value != position + 1 ||
+      call->call_statement.value <= position ||
+      call->call_statement.value >= end ||
+      call->stored_result->statement.value != call->call_statement.value + 1 ||
+      call->stored_result->statement.value >= end) return {};
+  // Leave the saved-result origin for the outer traversal to emit once.
+  return ArgumentStep{call->stored_result->target,
+                      std::size_t(call->call_statement.value) + 1};
+}
+// Keep unelided assignments, but distribute their values over native arguments.
 // Strictly increasing targets prove distinct slots without pairwise searches.
 // This is not dead-store elimination: later instructions may still read them.
 inline bool HasOrderedArguments(std::span<const SourceStatement> statements,
+                                std::size_t first, std::size_t end,
                                 const analysis::ReceiverCall& call) {
+  if (first > end || end > statements.size()) return false;
   std::uint32_t ordinal = 0;
   std::optional<abc::RegisterId> previous;
-  for (const auto& statement : statements) {
-    if (std::holds_alternative<analysis::NoOperation>(statement.operation)) continue;
-    const auto* assignment = std::get_if<SourceAssignment>(&statement.operation);
-    const auto* target = assignment
-        ? std::get_if<abc::RegisterId>(&assignment->target) : nullptr;
+  for (auto i = first; i < end;) {
+    if (std::holds_alternative<analysis::NoOperation>(statements[i].operation)) {
+      ++i;
+      continue;
+    }
+    const auto step = OrderedArgument(statements, i, end);
     const auto argument = call.At(ordinal);
-    if (!target || !argument || *target != *argument ||
-        (previous && previous->value >= target->value)) return false;
-    if (!HasArgumentValue(assignment->value)) return false;
-    previous = *target;
+    if (!step || !argument || step->target != *argument ||
+        (previous && previous->value >= step->target.value)) return false;
+    previous = step->target;
+    i = step->next;
     ++ordinal;
   }
   // Zero arguments qualify only when every interval node was NoOperation;

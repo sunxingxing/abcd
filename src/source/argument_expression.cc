@@ -73,8 +73,10 @@ std::optional<analysis::SsaValueId> ArgumentDefinition(
 void FoldArgumentExpressions(const AstMethod& method, SourceAst& ast,
                              std::span<const std::size_t> uses) {
   if (ast.regions.catches || method.ssa.IsPhased()) return;
-  for (const auto& statement : ast.statements) {
-    const auto* staged = std::get_if<SourceStagedCall>(&statement.operation);
+  // Owners precede children in the flat AST. Reverse order certifies each
+  // child's private-write-free arguments before its parent inspects it.
+  for (auto owner = ast.statements.size(); owner-- > 0;) {
+    auto* staged = std::get_if<SourceStagedCall>(&ast.statements[owner].operation);
     if (!staged) continue;
     // Only this call owns the branch-argument IIFE. Other calls in the method
     // may still have ordered straight-line arguments. Match the printer's
@@ -85,8 +87,7 @@ void FoldArgumentExpressions(const AstMethod& method, SourceAst& ast,
     const auto end = staged->call_statement.value;
     if (first > end || end >= ast.statements.size() ||
         end >= method.instructions.size() ||
-        !HasOrderedArguments(std::span<const SourceStatement>{ast.statements}.subspan(
-            first, end - first), staged->call)) continue;
+        !HasOrderedArguments(ast.statements, first, end, staged->call)) continue;
     const auto* call = std::get_if<analysis::ReceiverCall>(&method.instructions[end].operation);
     if (!call || call->Count() != staged->call.Count()) continue;
     const auto reads = method.ssa.Reads(staged->call_statement);
@@ -96,20 +97,35 @@ void FoldArgumentExpressions(const AstMethod& method, SourceAst& ast,
     // no per-argument scan of all call reads or method uses is permitted.
     const auto arguments = reads.last(call->Count());
     std::uint32_t ordinal = 0;
+    bool values = true;
     for (auto i = first; i < end; ++i) {
+      if (std::holds_alternative<analysis::NoOperation>(ast.statements[i].operation))
+        continue;
+      const auto step = OrderedArgument(ast.statements, i, end);
+      if (!step) { values = false; break; }
       auto* assignment = std::get_if<SourceAssignment>(&ast.statements[i].operation);
-      if (!assignment) continue;
-      const auto target = std::get<abc::RegisterId>(assignment->target);
+      auto* nested = std::get_if<SourceStagedCall>(&ast.statements[i].operation);
+      const auto target = step->target;
       const auto& read = arguments[ordinal];
       const auto original = call->At(ordinal++);
-      if (!original || *original != target) continue;
-      const auto output = ArgumentDefinition(method, ast, i, end, target, uses);
+      const auto producer = nested ? nested->call_statement.value : i;
+      const auto output = nested
+          ? RetargetedOutput(method, ast, producer, end, target, uses)
+          : ArgumentDefinition(method, ast, i, end, target, uses);
       const auto slot = method.ssa.Slot(read.value);
       const auto* reg = slot ? std::get_if<abc::RegisterId>(&*slot) : nullptr;
-      if (!output || !reg || *reg != target ||
-          !ReachesArgument(method, ast, i, end, target, *output, read.value, uses)) continue;
-      assignment->result = AssignmentResult::kArgumentOnly;
+      if (!original || *original != target || !output || !reg || *reg != target ||
+          !ReachesArgument(method, ast, producer, end, target, *output, read.value, uses)) {
+        values = false;
+      } else if (nested) {
+        nested->result = AssignmentResult::kArgumentOnly;
+      } else {
+        assignment->result = AssignmentResult::kArgumentOnly;
+      }
+      i = step->next - 1;
     }
+    staged->arguments = values ? CallArgumentLayout::kValues
+                               : CallArgumentLayout::kOrdered;
   }
 }
 }  // namespace abcd::source

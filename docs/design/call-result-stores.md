@@ -21,7 +21,8 @@ throws do not commit it. The printer uses Target for the destination, preserving
 slot declaration and ABI-binding checks. The removed save retains an adjacent
 previous_origin link to the invocation, and printing validates that coordinate
 and its NoOperation anchor. A stored-result certificate is incompatible with
-returned, unused or argument-only call results at this stage. Result liveness
+returned or unused call results. Argument-only consumption additionally needs
+the certificate described in nested-call-arguments.md. Result liveness
 and return folding must not reinterpret the owner's getter SSA as invocation SSA.
 
 This builds on the existing call interval and sparse SSA machinery; it adds no
