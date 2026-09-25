@@ -5,7 +5,8 @@
 
 namespace abcd::source {
 class CopyOrigins;
-// Exact original SSA uses, including handler phis. Only still-emitted private
+// Original SSA uses, less explicitly certified consumed reads, including all
+// handler phis. Only still-emitted private
 // slot copies and primitive loads are removed; effects and fused nodes remain
 // roots. PC statements remain in place as zero-width anchors.
 // O(V+C) with phased Reads, O(V+C log R) with normal Reads; C<=I removed

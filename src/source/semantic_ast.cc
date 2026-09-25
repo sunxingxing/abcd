@@ -656,6 +656,16 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
                 read->name, *call,
                 analysis::InstructionId{static_cast<std::uint32_t>(property + 1)},
                 analysis::InstructionId{static_cast<std::uint32_t>(i)}};
+            // Native property Reference retains the already-proven receiver.
+            // Its explicit VM call-operand read disappears, not any argument
+            // or phi use of that value. Let sparse DCE remove only private
+            // saves made dead by this exact consumption; phased routes keep
+            // conservative original counts until their state audit expands.
+            if (!method.ssa.IsPhased()) {
+              if (!uses[receiver->value])
+                return Fail(SourceError::kInvalidEffect, instruction.pc);
+              --uses[receiver->value];
+            }
             // Emission visits the interval through its owner, not twice through
             // the enclosing block. The original call PC receives its own span.
             operation = analysis::NoOperation{};
