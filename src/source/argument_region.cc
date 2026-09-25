@@ -1,9 +1,31 @@
 #include "argument_region.h"
 #include "semantic_ast_input.h"
+#include "argument_sequence.h"
+#include "conditional_value.h"
 
 #include <algorithm>
 
 namespace abcd::source {
+bool CanSequenceArgumentRegion(const SourceAst& ast,
+    const analysis::NormalFlow& flow, const analysis::RegionIf& region) {
+  if (!ast.argument_region || region.header != ast.argument_region->first_block ||
+      region.join != ast.argument_region->last_block ||
+      region.header.value >= flow.blocks.size() || region.join.value >= flow.blocks.size() ||
+      !ProveConditionalValue(ast, flow, region)) return false;
+  const auto& header = flow.blocks[region.header.value];
+  const auto& join = flow.blocks[region.join.value];
+  const auto first = std::size_t(ast.argument_region->property.value) + 1;
+  const auto header_end = std::size_t(header.first_instruction) + header.instruction_count;
+  const auto call = ast.argument_region->call.value;
+  if (!header.instruction_count || first < header.first_instruction || first >= header_end ||
+      header_end > ast.statements.size() || call >= ast.statements.size() ||
+      call < join.first_instruction ||
+      call >= std::size_t(join.first_instruction) + join.instruction_count) return false;
+  return std::all_of(ast.statements.begin() + first,
+                     ast.statements.begin() + header_end - 1, IsSequenceStatement) &&
+         std::all_of(ast.statements.begin() + join.first_instruction,
+                     ast.statements.begin() + call, IsSequenceStatement);
+}
 std::optional<analysis::RegionIf> ProveArgumentIf(
     const SourceAst& ast, const analysis::NormalFlow& flow) {
   if (!ast.argument_region) return {};

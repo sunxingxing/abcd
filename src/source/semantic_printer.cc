@@ -1311,7 +1311,9 @@ class SourcePrinter {
             // expression-statement grammar qualifies; own stores retain their
             // independent descriptor proof. Declarations,
             // control flow and nested staged calls retain their region writer.
-            const bool sequence = !region && std::all_of(
+            const bool sequence = region
+                ? argument_if_ && CanSequenceArgumentRegion(ast_, blocks_, *argument_if_)
+                : std::all_of(
                 ast_.statements.begin() + first_statement,
                 ast_.statements.begin() + last_statement,
                 IsSequenceStatement);
@@ -1335,7 +1337,9 @@ class SourcePrinter {
               current_pc_ = ast_.statements[last_statement].pc;
             } else {
               Text(sequence ? "((\n" : "((() => {\n");
-              if (sequence) {
+              if (sequence && region) {
+                ArgumentRegion(*ast_.argument_region, StatementForm::kSequence);
+              } else if (sequence) {
                 for (auto i = first_statement; i < last_statement; ++i)
                   Statement(ast_.statements[i], StatementForm::kSequence);
               } else if (region)
@@ -1425,13 +1429,21 @@ class SourcePrinter {
     Text("];\n");
     result_.spans[save_span].end = position_;
   }
-  void ArgumentRegion(const SourceArgumentRegion& region) {
+  void ArgumentRegion(const SourceArgumentRegion& region,
+                      StatementForm form = StatementForm::kStatement) {
     if (argument_if_) {
-      IfRegion(*argument_if_, true);
+      IfRegion(*argument_if_, true, form);
       const auto& join = blocks_.blocks[region.last_block.value];
-      Statements(join.first_instruction, region.call.value, true);
+      if (form == StatementForm::kSequence) {
+        for (auto i = join.first_instruction; i < region.call.value; ++i)
+          Statement(ast_.statements[i], form);
+      } else {
+        Statements(join.first_instruction, region.call.value, true);
+      }
       return;
     }
+    if (form != StatementForm::kStatement)
+      throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
     for (auto b = region.last_block.value; b > region.first_block.value; --b) {
       Label(analysis::BlockId{b});
       Text(": {\n");
@@ -1580,7 +1592,8 @@ class SourcePrinter {
       }
     }
   }
-  void IfRegion(const analysis::RegionIf& region, bool argument = false) {
+  void IfRegion(const analysis::RegionIf& region, bool argument = false,
+                StatementForm form = StatementForm::kStatement) {
     if (region.header.value >= blocks_.blocks.size() ||
         region.body.value >= blocks_.blocks.size() ||
         (region.alternate && region.alternate->value >= blocks_.blocks.size()))
@@ -1628,7 +1641,14 @@ class SourcePrinter {
       throw SourceFailure{SourceError::kInvalidEffect, terminator.pc};
     const auto first = argument ? ast_.argument_region->property.value + 1
                                 : header.first_instruction;
-    Statements(first, header_end - 1, argument);
+    if (form == StatementForm::kSequence) {
+      if (!argument || !CanSequenceArgumentRegion(ast_, blocks_, region))
+        throw SourceFailure{SourceError::kInvalidEffect, terminator.pc};
+      for (auto i = first; i < header_end - 1; ++i)
+        Statement(ast_.statements[i], form);
+    } else {
+      Statements(first, header_end - 1, argument);
+    }
     current_pc_ = terminator.pc;
     const auto begin = position_;
     {
@@ -1650,10 +1670,10 @@ class SourcePrinter {
           ConditionalArm(region.body, value->body);
           Text(" : ");
           ConditionalArm(*region.alternate, value->alternate);
-          Text(";\n");
+          AssignmentEnd(form);
           return;
         }
-        Text(";\n");
+        AssignmentEnd(form);
         current_pc_ = terminator.pc;
         RelocateFusedOrigins(terminator, begin);
         result_.spans.push_back({terminator.pc, begin, position_});
@@ -1669,6 +1689,8 @@ class SourcePrinter {
         return;
       }
     }
+    if (form != StatementForm::kStatement)
+      throw SourceFailure{SourceError::kInvalidEffect, terminator.pc};
     Text("if (");
     Predicate(branch->condition, true, branch->input);
     Text(") {\n");

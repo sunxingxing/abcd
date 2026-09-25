@@ -85,3 +85,40 @@ incomplete, two host constructors refused at PC 14 and nine metadata-only.
 Read-only review found no concrete defect. Tests, generated JS execution and
 RSS remain paused. Native outer conditional-argument emission and whole-program
 equivalence remain unfinished.
+
+## Conditional Argument Sequences
+
+CanSequenceArgumentRegion now admits a proved argument diamond when both the
+header prefix (after the owning property read) and join suffix (before the call)
+contain only existing sequence-expression statements. It reuses ConditionalValue
+for the two arms and validates region/block/instruction boundaries. Declarations,
+additional control transfers and nested staged calls retain the wrapper path.
+
+The shared call printer emits this region as a parenthesized comma sequence in
+the original first-argument position. It obtains the outer Reference first,
+then evaluates the original header, selected arm, join commits and final argument
+read in order. All private commits remain; this is not SSA dead-store elimination
+or early argument evaluation. Own stores keep their independent descriptor proof.
+Remaining arguments retain the original staged-call protocol. The only removed
+construct is the synthetic arrow invocation around that sequence.
+
+StatementForm is propagated through ArgumentRegion and IfRegion so assignments
+receive comma separators rather than semicolons. ConditionalArm continues to
+emit its source/guard/RHS anchors at actual positions; joins and outer calls
+retain their origins. Admission and emission may each inspect the one owned
+interval a constant number of times, with no allocation or per-variable scans.
+No new execution-contract premise is introduced. Deferred checks include
+throwing header/arm getters, selected module guards, multiple arguments, target
+aliasing, malformed boundaries, unsupported statement fallbacks and PC spans.
+
+Production builds and ABC-only export
+build/pasteboard-conditional-sequences-20260925 succeeded. Eleven width arguments
+across six pages now use comma sequences without an IIFE. Output totals are
+4,021 lines / 88,411 bytes. PageA method 7366 source/guard PCs 110/112 map to
+[5995,6003), `$import1`; member PC 120 maps to [5995,6016),
+`$import1.FULL_PERCENT`; alternate PC 126 maps to [6019,6024), `(448)`.
+PC 124 remains a zero-width join anchor. Partial maps retain 195 methods / 9,745
+spans. Statuses remain eight incomplete records, two constructors refused at
+PC 14 and nine metadata-only records. Read-only review found no concrete defect.
+Tests, generated JS execution and RSS remain paused; these observations do not
+establish whole-program equivalence or completion of the structural gate.

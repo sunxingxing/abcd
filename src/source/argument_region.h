@@ -26,5 +26,9 @@ std::optional<SourceArgumentRegion> ProveArgumentRegion(
 // A contiguous two-arm diamond can use the normal if writer inside the IIFE.
 std::optional<analysis::RegionIf> ProveArgumentIf(
     const SourceAst& ast, const analysis::NormalFlow& flow);
+// The conditional assignment and every header/join statement must have
+// expression grammar. Keep all private commits and the live call Reference.
+bool CanSequenceArgumentRegion(const SourceAst& ast,
+    const analysis::NormalFlow& flow, const analysis::RegionIf& region);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_ARGUMENT_REGION_H_
