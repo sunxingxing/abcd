@@ -19,6 +19,13 @@ std::optional<ReceiverBinding> ReadBinding(
     if (std::holds_alternative<analysis::LexicalLoad>(operation)) return *local;
   } else if (const auto* captured = std::get_if<CapturedExpression>(&expression)) {
     if (std::holds_alternative<analysis::LexicalLoad>(operation)) return *captured;
+  } else if (const auto* member = std::get_if<MemberExpression>(&expression)) {
+    const auto* read = std::get_if<analysis::NamedRead>(&operation);
+    // Preserve one getter evaluation as the next receiver. Already-composed
+    // receivers have their own origin coordinates and must not be flattened
+    // until the whole expression path can carry every source/guard origin.
+    if (read && read->name == member->name && !member->receiver)
+      return PropertyReceiver{member->object, member->name};
   } else if (const auto* scalar =
                  std::get_if<analysis::ScalarExpression>(&expression)) {
     const auto* value = std::get_if<analysis::ScalarValue>(scalar);
@@ -134,7 +141,7 @@ void FoldBindingReceivers(const AstMethod& method, SourceAst& ast,
       if (!output || !HasReceiverUse(method, ast, *producer, i, uses)) continue;
       const auto slot = method.ssa.Slot(*output);
       if (!slot || !std::holds_alternative<analysis::Accumulator>(*slot)) continue;
-      // Read the binding once at the same effect boundary; no global lookup,
+      // Read the binding/property once at the same effect boundary; no global lookup,
       // lexical capture/domain obligation or getter is bypassed. Arguments
       // still execute after the receiver's property Reference is obtained.
       auto receiver = BindingReceiver{

@@ -49,9 +49,13 @@ struct CapturedExpression {
   analysis::CaptureDomain requirement = analysis::CaptureDomain::kLanguage;
 };
 struct LocalExpression { analysis::LocalCellId cell; };
+struct PropertyReceiver {
+  analysis::ScalarValue object;
+  abc::PoolIndex name;
+};
 using ReceiverBinding = std::variant<ModuleExpression, GlobalExpression,
                                      LocalExpression, CapturedExpression,
-                                     abc::RegisterId>;
+                                     abc::RegisterId, PropertyReceiver>;
 struct BindingReceiver {
   ReceiverBinding value;
   analysis::InstructionId source;

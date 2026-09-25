@@ -740,6 +740,10 @@ class SourcePrinter {
         // Private bindings are identifiers or owner-proven `this`, never
         // numeric literals. Keep slot observation and ABI binding through Value.
         Value(ScalarValue{value});
+      } else if constexpr (std::is_same_v<V, PropertyReceiver>) {
+        // Member preserves primitive grouping and observes the original base
+        // through Value. This is an effectful getter, evaluated exactly once.
+        Member(value.object, value.name);
       } else {
         Expression(SourceExpression{value});
       }

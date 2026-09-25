@@ -82,8 +82,9 @@ bool HasObservedReads(const SourceAst& ast, SlotReadMode mode) {
         // Staged calls bind/observe their accumulator and arguments through
         // Slot/Value. Their child statements are audited by this same flat
         // traversal, including nested intervals; do not skip their children.
-        // BindingReceiver register reads also use Value; its other alternatives
-        // are binding/cell reads without VM slots. Re-audit new receiver kinds.
+        // BindingReceiver register reads and PropertyReceiver bases use Value;
+        // other alternatives are binding/cell reads without VM slots.
+        // Re-audit new receiver kinds.
         // Native array owners observe their target and each element via
         // Target/Slot/Statement. Their retained indexed-store anchors are
         // consumed by ArrayLiteral; standalone indexed stores still reject.

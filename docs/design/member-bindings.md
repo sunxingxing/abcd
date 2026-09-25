@@ -85,3 +85,38 @@ the `$lex0_0` receiver. Partial maps retain 195 methods / 9,745 spans; statuses
 remain eight incomplete, two host constructors refused at PC 14 and nine
 metadata-only records. Read-only review found no concrete defect. Tests,
 generated JS and RSS remain paused; semantic equivalence remains unproven.
+
+## Property Results as Receivers
+
+ReceiverBinding additionally accepts a typed PropertyReceiver containing a
+scalar base and a property pool ID. A plain MemberExpression can be consumed
+when its original NamedRead name matches and the existing same-block, exact
+SSA and no-intervening-effects receiver proof succeeds. This preserves the
+first getter as the receiver evaluation of the next property/call, exactly
+once and before the outer getter and arguments. It neither assumes an own
+data property nor treats getters or Proxies as pure.
+
+The shared printer emits this alternative through Member, preserving primitive
+base grouping, slot observation and ABI binding. Its original property PC maps
+to the actual nested receiver text through BoundReceiver; the outer operation
+retains its own origin. A MemberExpression that already owns a composed receiver
+is deliberately not flattened because its additional source/guard coordinates
+must also survive. Arbitrary recursive paths remain unfinished.
+
+This introduces one inline typed alternative, charged by existing AST size
+admission, with no scratch allocation or new dependency. The existing disjoint
+interval scan and indexed SSA complexity are unchanged. Deferred regressions
+include getters throwing or returning primitives, Proxy bases, extra/phi uses,
+primitive grouping, argument side effects and nested origin propagation.
+
+Production build of abc_semantic and abc_structure succeeded. ABC-only export
+to build/pasteboard-property-receivers-01 emits 4,258 lines / 90,947 bytes,
+69 lines / 905 bytes fewer than pasteboard-call-returns-01. PageA's getter
+7228 emits `return this.__curBp.get();`; its PC 12 maps to bytes [4193, 4205),
+the nested receiver `this.__curBp`, while PCs 20, 28 and 31 map to the complete
+return statement [4186, 4213). Setters and dependency/lifecycle calls also
+consume property receivers without accumulator staging. Partial maps retain
+195 methods / 9,745 spans. Statuses remain eight incomplete, two host
+constructors refused at PC 14 and nine metadata-only records. Read-only review
+found no concrete defect. Tests, generated JS execution and RSS remain paused;
+this export does not establish full semantic equivalence or memory compliance.
