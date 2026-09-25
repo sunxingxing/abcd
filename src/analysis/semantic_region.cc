@@ -7,6 +7,7 @@
 
 #include "abcd/analysis/block_order.h"
 #include "loop_intervals.h"
+#include "region_if.h"
 
 namespace abcd::analysis {
 namespace {
@@ -23,7 +24,7 @@ RegionResult BuildLoopRegions(const SemanticMethod& method,
   if (count > kMaxSemanticRegionDepth) return Fail(RegionError::kDepth);
   constexpr auto kLoopNodesPerBlock = kNodesPerBlock + 2;
   constexpr auto kBlockBytes = kLoopNodesPerBlock * sizeof(RegionNode) +
-      3 * sizeof(std::uint32_t) + sizeof(std::uint8_t) +
+      3 * sizeof(std::uint32_t) + sizeof(std::uint8_t) + sizeof(EntryCount) +
       2 * sizeof(std::optional<std::uint32_t>);
   if (!count || count > budget_bytes / kBlockBytes)
     return Fail(RegionError::kResourceLimit);
@@ -32,9 +33,11 @@ RegionResult BuildLoopRegions(const SemanticMethod& method,
     std::vector<std::uint32_t> pending;
     pending.reserve(count);
     std::vector<std::uint8_t> reached(count);
+    std::vector<EntryCount> entries(count);
     if (ends.capacity() > count || enclosing.capacity() > count ||
-        pending.capacity() > count || reached.capacity() > count)
+        pending.capacity() > count || reached.capacity() > count || entries.capacity() > count)
       return Fail(RegionError::kResourceLimit);
+    if (const auto failure = CountRegionEntries(method.flow, entries)) return *failure;
     if (const auto failure = FindLoopIntervals(method.flow, ends, enclosing, pending))
       return *failure;
     reached[0] = 1;
@@ -64,6 +67,11 @@ RegionResult BuildLoopRegions(const SemanticMethod& method,
           node = RegionNode{RegionLoop{BlockId{id},
               std::make_unique<RegionNode>(self(self, i, *ends[i], true))}};
           i = *ends[i] + 1;
+        } else if (i + kIfBlocks <= last &&
+                   CanFormIf(method.flow, entries, BlockId{i}, BlockId{i + 1},
+                             BlockId{i + kIfBlocks})) {
+          node = RegionNode{RegionIf{BlockId{i}, BlockId{i + 1}, BlockId{i + kIfBlocks}}};
+          i += kIfBlocks;
         } else {
           ++i;
         }
@@ -116,11 +124,14 @@ RegionResult BuildSemanticRegions(const SemanticMethod& method,
   if (order.blocks.size() > kMaxSemanticRegionDepth)
     return Fail(RegionError::kDepth);
   if (method.flow.blocks.size() >
-      budget_bytes / (sizeof(std::uint32_t) +
+      budget_bytes / (sizeof(std::uint32_t) + sizeof(EntryCount) +
                       kNodesPerBlock * sizeof(RegionNode)))
     return Fail(RegionError::kResourceLimit);
   try {
     SemanticRegionTree tree;
+    std::vector<EntryCount> entries(method.flow.blocks.size());
+    if (entries.capacity() > method.flow.blocks.size()) return Fail(RegionError::kResourceLimit);
+    if (const auto failure = CountRegionEntries(method.flow, entries)) return *failure;
     tree.order_positions.resize(method.flow.blocks.size());
     for (std::size_t i = 0; i < order.blocks.size(); ++i)
       tree.order_positions[order.blocks[i].value] = i;
@@ -134,17 +145,27 @@ RegionResult BuildSemanticRegions(const SemanticMethod& method,
           return Fail(RegionError::kBackwardEdge, block.end);
       }
     }
-    RegionNode root{RegionBlock{order.blocks.front()}};
-    for (std::size_t i = 1; i < order.blocks.size(); ++i) {
-      RegionSequence sequence;
-      sequence.children.reserve(2);
-      sequence.children.push_back(
-          {RegionLabel{order.blocks[i],
-                       std::make_unique<RegionNode>(std::move(root))}});
-      sequence.children.push_back({RegionBlock{order.blocks[i]}});
-      root = RegionNode{std::move(sequence)};
+    std::optional<RegionNode> root;
+    for (std::size_t i = 0; i < order.blocks.size();) {
+      const auto start = order.blocks[i];
+      RegionNode node{RegionBlock{start}};
+      if (i + kIfBlocks < order.blocks.size() &&
+          CanFormIf(method.flow, entries, start, order.blocks[i + 1],
+                    order.blocks[i + kIfBlocks])) {
+        node = RegionNode{RegionIf{start, order.blocks[i + 1], order.blocks[i + kIfBlocks]}};
+        i += kIfBlocks;
+      } else ++i;
+      if (!root) root = std::move(node);
+      else {
+        RegionSequence sequence;
+        sequence.children.reserve(2);
+        sequence.children.push_back({RegionLabel{start,
+            std::make_unique<RegionNode>(std::move(*root))}});
+        sequence.children.push_back(std::move(node));
+        root = RegionNode{std::move(sequence)};
+      }
     }
-    tree.root = std::move(root);
+    tree.root = std::move(*root);
     tree.allocated_bytes = tree.order_positions.capacity() *
                                sizeof(std::uint32_t) +
                            order.blocks.size() * kNodesPerBlock *

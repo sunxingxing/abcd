@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include "loop_intervals.h"
+#include "region_if.h"
 
 namespace abcd::analysis {
 namespace {
@@ -52,7 +53,7 @@ RegionResult BuildExceptionRegionTree(const ExceptionFlow& flow,
   available -= count * sizeof(std::optional<TryId>);
   constexpr auto kLoopScratchPerBlock =
       2 * sizeof(std::optional<std::uint32_t>) + sizeof(std::uint32_t) +
-      sizeof(std::size_t);
+      sizeof(std::size_t) + sizeof(EntryCount);
   if (count > available / kLoopScratchPerBlock)
     return fail(RegionError::kResourceLimit);
   try {
@@ -63,10 +64,12 @@ RegionResult BuildExceptionRegionTree(const ExceptionFlow& flow,
     std::vector<std::uint32_t> stack;
     stack.reserve(count);
     std::vector<std::size_t> scope_runs(count);
+    std::vector<EntryCount> entries(count);
     if (boundaries.capacity() > map_count || blocks.capacity() > catches || gaps.capacity() > count ||
         ends.capacity() > count || enclosing.capacity() > count ||
-        stack.capacity() > count || scope_runs.capacity() > count)
+        stack.capacity() > count || scope_runs.capacity() > count || entries.capacity() > count)
       return fail(RegionError::kResourceLimit);
+    if (const auto failure = CountRegionEntries(normal, entries)) return *failure;
     if (const auto failure = FindLoopIntervals(normal, ends, enclosing, stack))
       return *failure;
     std::size_t covered = 0;
@@ -167,6 +170,11 @@ RegionResult BuildExceptionRegionTree(const ExceptionFlow& flow,
           node = RegionNode{RegionLoop{BlockId{i},
               std::make_unique<RegionNode>(self(self, i, *ends[i] + 1, true))}};
           i = *ends[i] + 1;
+        } else if (i + kIfBlocks < last && scope_runs[i] == scope_runs[i + 1] &&
+                   CanFormIf(normal, entries, BlockId{i}, BlockId{i + 1},
+                             BlockId{i + kIfBlocks})) {
+          node = RegionNode{RegionIf{BlockId{i}, BlockId{i + 1}, BlockId{i + kIfBlocks}}};
+          i += kIfBlocks;
         } else {
           ++i;
         }

@@ -978,6 +978,59 @@ class SourcePrinter {
     root_prefix_end_ = end;
     Region(ast_.regions.root);
   }
+  void IfRegion(const analysis::RegionIf& region) {
+    if (region.header.value >= blocks_.blocks.size() ||
+        region.body.value >= blocks_.blocks.size())
+      throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+    const auto& header = blocks_.blocks[region.header.value];
+    const auto& body = blocks_.blocks[region.body.value];
+    const auto header_end = std::size_t(header.first_instruction) + header.instruction_count;
+    const auto body_end = std::size_t(body.first_instruction) + body.instruction_count;
+    if (!header.instruction_count || !body.instruction_count ||
+        header_end > ast_.statements.size() || body_end > ast_.statements.size())
+      throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+    // Cross-block staged arguments own their own branch emission. Keep the
+    // equivalent label layout here so its existing consumption rules apply.
+    const auto staged = [&](std::size_t first, std::size_t end) {
+      return ast_.argument_region && ast_.argument_region->property.value < end &&
+             ast_.argument_region->call.value >= first;
+    };
+    if (staged(header.first_instruction, header_end) ||
+        staged(body.first_instruction, body_end)) {
+      Label(region.body);
+      Text(": {\n");
+      ++scope_depth_;
+      Region(analysis::RegionNode{analysis::RegionBlock{region.header}});
+      --scope_depth_;
+      Text("}\n");
+      Region(analysis::RegionNode{analysis::RegionBlock{region.body}});
+      return;
+    }
+    const auto& terminator = ast_.statements[header_end - 1];
+    const auto* branch = std::get_if<SourceConditionalBreak>(&terminator.operation);
+    if (!branch || branch->target != region.join)
+      throw SourceFailure{SourceError::kInvalidEffect, terminator.pc};
+    Statements(header.first_instruction, header_end - 1);
+    current_pc_ = terminator.pc;
+    const auto begin = position_;
+    Text("if (!(");
+    Scalar(ScalarExpression{branch->condition});
+    Text(")) {\n");
+    result_.spans.push_back({terminator.pc, begin, position_});
+    ++scope_depth_;
+    if (body.transfer == abc::ControlTransfer::kJump) {
+      const auto& last = ast_.statements[body_end - 1];
+      const auto* jump = std::get_if<SourceBreak>(&last.operation);
+      if (!jump || jump->target != region.join)
+        throw SourceFailure{SourceError::kInvalidEffect, last.pc};
+      Statements(body.first_instruction, body_end - 1);
+      Statement(SourceStatement{last.pc, analysis::NoOperation{}});
+    } else {
+      Statements(body.first_instruction, body_end);
+    }
+    --scope_depth_;
+    Text("}\n");
+  }
   void Region(const analysis::RegionNode& node) {
     std::visit(
         [&](const auto& region) {
@@ -1020,6 +1073,8 @@ class SourcePrinter {
             Region(*region.body);
             --scope_depth_;
             Text("}\n");
+          } else if constexpr (std::is_same_v<T, analysis::RegionIf>) {
+            IfRegion(region);
           } else if constexpr (std::is_same_v<T, analysis::RegionTry>) {
             if (!ast_.regions.catches || !region.body || !region.handler)
               throw SourceFailure{SourceError::kInvalidEffect, current_pc_};

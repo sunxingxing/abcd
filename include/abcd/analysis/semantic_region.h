@@ -25,6 +25,13 @@ struct RegionLoop {
   BlockId header;
   std::unique_ptr<RegionNode> body;
 };
+// One conditional header, one single-entry fallthrough body, and a forward
+// join. The taken edge skips the body; no instruction is duplicated.
+struct RegionIf {
+  BlockId header;
+  BlockId body;
+  BlockId join;
+};
 struct RegionTry {
   TryId id;
   std::unique_ptr<RegionNode> body;
@@ -34,7 +41,8 @@ struct RegionTry {
   std::optional<InstructionId> skip;
 };
 struct RegionNode {
-  std::variant<RegionBlock, RegionLabel, RegionSequence, RegionLoop, RegionTry> value;
+  std::variant<RegionBlock, RegionLabel, RegionSequence, RegionLoop, RegionTry,
+               RegionIf> value;
 };
 struct SemanticRegionTree {
   RegionNode root;
