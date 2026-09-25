@@ -6,11 +6,11 @@
 namespace abcd::source {
 class CopyOrigins;
 // Exact original SSA uses, including handler phis. Only still-emitted private
-// slot copies are removed; all effects and already-fused instructions remain
+// slot copies and primitive loads are removed; effects and fused nodes remain
 // roots. PC statements remain in place as zero-width anchors.
 // O(V+C) with phased Reads, O(V+C log R) with normal Reads; C<=I removed
-// copies, R native reads. O(I) admitted queue, exact counts are caller storage.
-std::optional<SourceFailure> ElideDeadCopies(const AstMethod& method,
+// assignments, R native reads. O(I) admitted queue, counts are caller storage.
+std::optional<SourceFailure> ElideDeadAssignments(const AstMethod& method,
     SourceAst& ast, std::span<std::size_t> uses, std::size_t bytes);
 // Remove adjacent acc -> private register -> acc transport only when its SSA
 // value has no other use (including handler phis). Original use counts remain

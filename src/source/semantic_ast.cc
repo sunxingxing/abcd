@@ -720,7 +720,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
                               sizeof(std::optional<analysis::BlockId>);
     const auto copy_bytes = remaining - ast.statements.capacity() * sizeof(SourceStatement) -
         ast.fallthrough.capacity() * sizeof(std::optional<analysis::BlockId>);
-    if (const auto failure = ElideDeadCopies(method, ast, uses, copy_bytes)) return *failure;
+    if (const auto failure = ElideDeadAssignments(method, ast, uses, copy_bytes)) return *failure;
     ElideCopyReloads(method, ast, uses);
     FoldStoredExpressions(method, ast, uses);
     ElideKnownReloads(method, ast, copies);

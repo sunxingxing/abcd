@@ -10,6 +10,26 @@ bool SlotCopy(const analysis::SemanticOperation& operation) {
   return value && (std::holds_alternative<analysis::Accumulator>(*value) ||
                    std::holds_alternative<abc::RegisterId>(*value));
 }
+bool PrimitiveLoad(const analysis::ScalarExpression& expression) {
+  const auto* value = std::get_if<analysis::ScalarValue>(&expression);
+  return value && (std::holds_alternative<analysis::SpecialValue>(*value) ||
+                   std::holds_alternative<analysis::IntegerLiteral>(*value) ||
+                   std::holds_alternative<analysis::Float64Bits>(*value));
+}
+bool DeadAssignment(const analysis::SemanticInstruction& instruction,
+                    const SourceStatement& statement) {
+  const auto* source = std::get_if<SourceAssignment>(&statement.operation);
+  const auto* original = std::get_if<analysis::ScalarAssignment>(&instruction.operation);
+  if (!source || !original || statement.fused_read || statement.fused_spill ||
+      statement.fused_reload || statement.class_origin || statement.previous_origin ||
+      original->completion != analysis::CompletionEffect::kNormal ||
+      instruction.effects.exceptional != analysis::ExceptionalCompletion::kImpossible ||
+      instruction.effects.normal != analysis::LanguageEffect::kNone ||
+      instruction.effects.before_throw != analysis::LanguageEffect::kNone) return false;
+  if (SlotCopy(instruction.operation)) return true;
+  const auto* expression = std::get_if<analysis::ScalarExpression>(&source->value);
+  return expression && PrimitiveLoad(original->expression) && PrimitiveLoad(*expression);
+}
 bool SameSlot(const analysis::ScalarSlot& left, const analysis::ScalarSlot& right) {
   if (left.index() != right.index()) return false;
   const auto* reg = std::get_if<abc::RegisterId>(&left);
@@ -23,7 +43,7 @@ std::optional<analysis::ScalarSlot> CopyInput(const analysis::ScalarExpression& 
   return {};
 }
 }
-std::optional<SourceFailure> ElideDeadCopies(const AstMethod& method,
+std::optional<SourceFailure> ElideDeadAssignments(const AstMethod& method,
     SourceAst& ast, std::span<std::size_t> uses, std::size_t bytes) {
   if (method.instructions.size() > bytes / sizeof(analysis::InstructionId))
     return SourceFailure{SourceError::kResourceLimit, {}};
@@ -34,25 +54,29 @@ std::optional<SourceFailure> ElideDeadCopies(const AstMethod& method,
   const auto enqueue = [&](analysis::SsaValueId value) {
     if (uses[value.value]) return;
     const auto origin = method.ssa.Definition(value);
-    if (origin && SlotCopy(method.instructions[origin->value].operation) &&
-        std::holds_alternative<SourceAssignment>(ast.statements[origin->value].operation))
+    if (origin && DeadAssignment(method.instructions[origin->value],
+                                 ast.statements[origin->value]))
       pending.push_back(*origin);
   };
   for (std::size_t i = 0; i < uses.size(); ++i)
     enqueue(analysis::SsaValueId{static_cast<std::uint32_t>(i)});
-  // Sparse DCE restricted to slot copies. Each definition enters once when
+  // Sparse DCE restricted to slot copies and primitive loads (no allocation,
+  // coercion or language effects). Each definition enters once when
   // its exact count reaches zero, including chains visited out of PC order.
   // Never decrement uses for fused nodes: their replacement still consumes
   // the original values, potentially at a different generated position.
   for (std::size_t head = 0; head < pending.size(); ++head) {
     const auto instruction = pending[head];
     const auto reads = method.ssa.Reads(instruction);
-    if (reads.size() != 1 || reads.front().value.value >= uses.size() ||
-        !uses[reads.front().value.value])
+    const bool copy = SlotCopy(method.instructions[instruction.value].operation);
+    if ((copy && (reads.size() != 1 || reads.front().value.value >= uses.size() ||
+                  !uses[reads.front().value.value])) || (!copy && !reads.empty()))
       return SourceFailure{SourceError::kInvalidEffect, ast.statements[instruction.value].pc};
     ast.statements[instruction.value].operation = analysis::NoOperation{};
-    --uses[reads.front().value.value];
-    enqueue(reads.front().value);
+    if (copy) {
+      --uses[reads.front().value.value];
+      enqueue(reads.front().value);
+    }
   }
   return {};
 }
