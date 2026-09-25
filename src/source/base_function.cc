@@ -60,6 +60,11 @@ bool IsArrowSyntax(CallableSyntax syntax) {
   return syntax == CallableSyntax::kArrowExpression ||
          syntax == CallableSyntax::kAsyncArrowExpression;
 }
+bool IsAnonymousFunction(const CallableShape& function) {
+  return function.name.empty() &&
+         (function.syntax == CallableSyntax::kFunctionExpression ||
+          function.syntax == CallableSyntax::kAsyncFunctionExpression);
+}
 constexpr std::size_t kIndexDigits =
     std::numeric_limits<std::uint32_t>::digits10 + 1;
 using RegisterName = std::array<char, kIndexDigits + 2>;
@@ -227,7 +232,8 @@ class FunctionWriter {
     try {
       const bool non_simple_parameters =
           function_.parameters != ParameterForm::kFixed;
-      const bool strict_wrapper = non_simple_parameters &&
+      const bool anonymous_function = IsAnonymousFunction(function_);
+      const bool strict_wrapper = non_simple_parameters && !anonymous_function &&
           (function_.syntax == CallableSyntax::kFunctionExpression ||
            function_.syntax == CallableSyntax::kAsyncFunctionExpression);
       if (strict_wrapper) Text("(() => {\"use strict\"; return ");
@@ -261,6 +267,15 @@ class FunctionWriter {
         ArrowName();
         Text(function_.syntax == CallableSyntax::kAsyncArrowExpression
                  ? "]: async (" : "]: (");
+      } else if (anonymous_function) {
+        // SetFunctionName with an empty computed key preserves the ABC name.
+        // The private binding supplies the ABI self slot without changing the
+        // ordinary function's this/new.target or exposing a synthetic name.
+        Text(non_simple_parameters
+                 ? "(() => {\n\"use strict\";\nconst $function = ({[\"\"]: "
+                 : "(() => {\nconst $function = ({[\"\"]: ");
+        Text(function_.syntax == CallableSyntax::kAsyncFunctionExpression
+                 ? "async function(" : "function(");
       } else {
         Text(function_.syntax == CallableSyntax::kAsyncFunctionExpression
                  ? "(async function " : "(function ");
@@ -291,12 +306,8 @@ class FunctionWriter {
         const abc::RegisterId slot{i};
         if (frame.function == slot) {
           Text(" = ");
-          Text(function_.syntax == CallableSyntax::kClassGetter ||
-                       function_.syntax == CallableSyntax::kClassSetter
-                   ? "void 0"
-                   : IsArrowSyntax(function_.syntax)
-                         ? "$arrow"
-                         : function_.name);
+          Text(names_.current_function.empty() ? "void 0"
+                                               : names_.current_function);
         } else if (frame.new_target == slot) {
           if (!IsArrowSyntax(function_.syntax))
             Text(" = new.target");
@@ -528,6 +539,8 @@ class FunctionWriter {
         Text("}})[");
         ArrowName();
         Text("];\nreturn $arrow;\n})()");
+      } else if (anonymous_function) {
+        Text("}})[\"\"];\nreturn $function;\n})()");
       } else {
         Text(function_.syntax == CallableSyntax::kFunctionExpression ||
                      function_.syntax == CallableSyntax::kAsyncFunctionExpression
@@ -676,7 +689,7 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
   // private source namespace; never let a supplied function name shadow it.
   CaptureDiscard buffer;
   std::ostream discard(&buffer);
-  if (!IsArrowSyntax(function.syntax)) {
+  if (!IsArrowSyntax(function.syntax) && !IsAnonymousFunction(function)) {
     if (function.name.starts_with('$')) return FunctionEmitError::kName;
     const auto name_check =
         WriteScalarExpression(analysis::ScalarValue{analysis::Accumulator{}},
@@ -763,6 +776,7 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
       switch (function.syntax) {
         case CallableSyntax::kFunctionExpression:
         case CallableSyntax::kAsyncFunctionExpression:
+          return IsAnonymousFunction(function) ? "$function" : function.name;
         case CallableSyntax::kBaseConstructor:
         case CallableSyntax::kRangeDerivedConstructor:
         case CallableSyntax::kClassMethod:
