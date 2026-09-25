@@ -231,7 +231,9 @@ bool RouteObligationsClosed(
   return true;
 }
 
-std::string SerializeRouteReceipt(const MethodRouteReceipt& receipt) {
+std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
+    const MethodRouteReceipt& receipt) {
+  if (const auto error = ValidateRouteReceipt(receipt)) return *error;
   Json failure = nullptr;
   if (receipt.failure) {
     failure = Json{{"class", RouteFailureClassName(

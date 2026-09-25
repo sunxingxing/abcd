@@ -137,6 +137,24 @@ int main(int argc, char** argv) {
   test::Check(std::get<std::size_t>(result) == output.str().size());
   test::Check(output.str().find("function Recovered($p0)") !=
               std::string::npos);
+  // A01: this exact body succeeds on the legacy route above. Requiring the
+  // new route must refuse before emitting even a function header.
+  std::ostringstream route_output;
+  const auto route_result = source::WriteBaseFunction(
+      Function(), body, route_output, source::RoutePolicy::kRequireValueTree);
+  test::Check(std::holds_alternative<source::RouteRefusal>(route_result));
+  test::Check(route_output.str().empty());
+  const auto template_result = source::WriteBaseFunctionTemplate(
+      Function(), body, route_output, {}, nullptr,
+      source::RoutePolicy::kRequireValueTree);
+  test::Check(std::holds_alternative<source::RouteRefusal>(template_result));
+  test::Check(route_output.str().empty());
+  auto invalid_owner = Function();
+  invalid_owner.name = "not a function identifier";
+  test::Check(std::holds_alternative<source::RouteRefusal>(
+      source::WriteBaseFunction(invalid_owner, body, route_output,
+                               source::RoutePolicy::kRequireValueTree)));
+  test::Check(route_output.str().empty());
   auto length_marker = Function();
   length_marker.creation.length.value = 0;
   std::ostringstream marker_output;

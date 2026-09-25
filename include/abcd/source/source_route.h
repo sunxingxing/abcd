@@ -218,7 +218,9 @@ enum class RouteReceiptError : std::uint8_t {
 //   artifact is Incomplete, never Complete.
 [[nodiscard]] std::optional<RouteReceiptError> ValidateRouteReceipt(
     const MethodRouteReceipt& receipt);
-[[nodiscard]] std::string SerializeRouteReceipt(const MethodRouteReceipt& receipt);
+// Invalid evidence is a typed boundary failure, never a JSON receipt.
+[[nodiscard]] std::variant<std::string, RouteReceiptError>
+SerializeRouteReceipt(const MethodRouteReceipt& receipt);
 [[nodiscard]] std::variant<MethodRouteReceipt, RouteReceiptError>
 ParseRouteReceipt(std::string_view text);
 

@@ -95,11 +95,18 @@ source::MethodRouteReceipt ValueRouteReceipt(
   return receipt;
 }
 int ReportRouteReceipt(const source::MethodRouteReceipt& receipt) {
+  const auto serialized = source::SerializeRouteReceipt(receipt);
+  const auto* json = std::get_if<std::string>(&serialized);
+  if (!json) {
+    std::cerr << "invalid route receipt: "
+              << static_cast<unsigned>(
+                     std::get<source::RouteReceiptError>(serialized)) << '\n';
+    return EXIT_FAILURE;
+  }
   // The receipt is the requested product; a non-Complete coverage is still a
   // non-success exit so automation cannot mistake refusal for recovery.
   std::cout << nlohmann::json{
-      {"route_receipt", nlohmann::json::parse(
-          source::SerializeRouteReceipt(receipt))},
+      {"route_receipt", nlohmann::json::parse(*json)},
       {"source_complete", false},
       {"executable", false}}
             << '\n';

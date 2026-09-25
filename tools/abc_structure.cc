@@ -35,7 +35,8 @@ enum class ExportError {
   kOutput,
   kChanged,
   kDestination,
-  kRoles
+  kRoles,
+  kRouteReceipt
 };
 enum class SourceStatus : unsigned {
   kWritten = 0,
@@ -282,8 +283,10 @@ int Export(const std::filesystem::path& input,
           std::string(source::SourceRouteName(receipt.route));
       record_manifest["source_status"] =
           static_cast<unsigned>(SourceStatus::kValueRouteRefused);
-      record_manifest["route_receipt"] =
-          nlohmann::json::parse(source::SerializeRouteReceipt(receipt));
+      const auto serialized = source::SerializeRouteReceipt(receipt);
+      const auto* json = std::get_if<std::string>(&serialized);
+      if (!json) return Fail(ExportError::kRouteReceipt, record.offset.value);
+      record_manifest["route_receipt"] = nlohmann::json::parse(*json);
     } else if (emit_source) {
       record_manifest["source_route"] =
           std::string(source::SourceRouteName(source::SourceRoute::kLegacy));
@@ -369,6 +372,7 @@ int Export(const std::filesystem::path& input,
             } else {
               record_manifest["source_status"] = static_cast<unsigned>(SourceStatus::kProgram);
               record_manifest["shared_failure_variant"] = built.index();
+              bool invalid_receipt = false;
               std::visit([&](const auto& failure) {
                 using T = std::decay_t<decltype(failure)>;
                 if constexpr (std::is_same_v<T, source::RouteRefusal>) {
@@ -381,13 +385,18 @@ int Export(const std::filesystem::path& input,
                   receipt.route = source::SourceRoute::kValueTree;
                   receipt.coverage = source::Coverage::kUnsupported;
                   receipt.failure = failure.failure;
-                  record_manifest["route_receipt"] = nlohmann::json::parse(
-                      source::SerializeRouteReceipt(receipt));
+                  const auto serialized = source::SerializeRouteReceipt(receipt);
+                  if (const auto* json = std::get_if<std::string>(&serialized))
+                    record_manifest["route_receipt"] = nlohmann::json::parse(*json);
+                  else
+                    invalid_receipt = true;
                 } else if constexpr (!std::is_same_v<T, source::PrintedSource>) {
                   record_manifest["source_error"] = static_cast<unsigned>(failure.kind);
                   record_manifest["source_pc"] = failure.pc.value;
                 }
               }, built);
+              if (invalid_receipt)
+                return Fail(ExportError::kRouteReceipt, record.offset.value);
             }
           } else {
             std::filesystem::create_directories(

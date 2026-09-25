@@ -176,7 +176,10 @@ int main() {
   const auto samples = {RefusedReceipt(), unstaged_record, complete_value,
                         legacy_complete};
   for (const auto& receipt : samples) {
-    const auto parsed = ParseRouteReceipt(SerializeRouteReceipt(receipt));
+    const auto serialized = SerializeRouteReceipt(receipt);
+    const auto* json = std::get_if<std::string>(&serialized);
+    Check(json != nullptr);
+    const auto parsed = ParseRouteReceipt(*json);
     const auto* recovered = std::get_if<MethodRouteReceipt>(&parsed);
     Check(recovered != nullptr);
     Check(SameReceipt(receipt, *recovered));
@@ -185,7 +188,7 @@ int main() {
   // Unknown versions, labels, out-of-range integers, missing fields and
   // contradictory states are rejected; a parse never defaults into success.
   // Each rejection works on a fresh copy.
-  const auto text = SerializeRouteReceipt(RefusedReceipt());
+  const auto text = std::get<std::string>(SerializeRouteReceipt(RefusedReceipt()));
   const auto reject = [&text](std::string_view from, std::string_view to,
                               RouteReceiptError expected) {
     std::string mutated{text};
@@ -257,17 +260,28 @@ int main() {
         RouteReceiptError::kFailure);
   // Contradictory receipts are rejected by the same central validator the
   // producers use (R2/R4).
-  const auto serialized = [](MethodRouteReceipt receipt) {
-    return SerializeRouteReceipt(receipt);
+  const auto rejected = [](const MethodRouteReceipt& receipt,
+                           RouteReceiptError error) {
+    const auto result = SerializeRouteReceipt(receipt);
+    const auto* actual = std::get_if<RouteReceiptError>(&result);
+    Check(actual != nullptr && *actual == error);
   };
-  Check(std::get<RouteReceiptError>(ParseRouteReceipt(
-            serialized(value_writer))) == RouteReceiptError::kWriter);
-  Check(std::get<RouteReceiptError>(ParseRouteReceipt(
-            serialized(complete_early))) == RouteReceiptError::kStage);
-  Check(std::get<RouteReceiptError>(ParseRouteReceipt(
-            serialized(complete_failed))) == RouteReceiptError::kCoverage);
-  Check(std::get<RouteReceiptError>(ParseRouteReceipt(
-            serialized(legacy_failed))) == RouteReceiptError::kFailure);
+  rejected(value_writer, RouteReceiptError::kWriter);
+  rejected(complete_early, RouteReceiptError::kStage);
+  rejected(complete_failed, RouteReceiptError::kCoverage);
+  rejected(legacy_failed, RouteReceiptError::kFailure);
+  rejected(unbound, RouteReceiptError::kIdentity);
+  rejected(invented_revision, RouteReceiptError::kSchema);
+  rejected(published_refusal, RouteReceiptError::kStage);
+  // Invalid external evidence must be rejected independently of publication.
+  auto contradiction = nlohmann::json::parse(text);
+  contradiction["legacy_writer_used"] = true;
+  Check(std::get<RouteReceiptError>(ParseRouteReceipt(contradiction.dump())) ==
+        RouteReceiptError::kWriter);
+  contradiction = nlohmann::json::parse(text);
+  contradiction["stage"] = "published";
+  Check(std::get<RouteReceiptError>(ParseRouteReceipt(contradiction.dump())) ==
+        RouteReceiptError::kStage);
   // An identity-free receipt never parses (R6: compare the error alternative,
   // not the variant index).
   const auto identity_free =
@@ -278,9 +292,7 @@ int main() {
   MethodRouteReceipt parse_anonymous = RefusedReceipt();
   parse_anonymous.method = {};
   parse_anonymous.record = {};
-  Check(std::get<RouteReceiptError>(
-            ParseRouteReceipt(SerializeRouteReceipt(parse_anonymous))) ==
-        RouteReceiptError::kIdentity);
+  rejected(parse_anonymous, RouteReceiptError::kIdentity);
   Check(std::get<RouteReceiptError>(ParseRouteReceipt("{")) ==
         RouteReceiptError::kSyntax);
 
