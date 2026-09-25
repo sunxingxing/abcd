@@ -28,6 +28,8 @@ struct ExceptionFlow {
   std::vector<SemanticInstruction> instructions;
   std::vector<ExceptionNode> nodes;
   std::size_t allocated_bytes = 0;
+  // Charged lifting/connection work; upstream byte-bounded validation excluded.
+  std::uint64_t work_units = 0;
 };
 using ExceptionFlowResult = std::variant<ExceptionFlow, SemanticFailure,
                                          FlowFailure, DispatchFailure>;

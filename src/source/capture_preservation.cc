@@ -10,6 +10,8 @@
 #include "abcd/abc/class_buffer.h"
 #include "abcd/abc/literal_array.h"
 #include "abcd/abc/method_target.h"
+#include "abcd/analysis/exception_environment.h"
+#include "abcd/analysis/exception_ssa.h"
 
 namespace abcd::source {
 namespace {
@@ -301,6 +303,7 @@ class CaptureProof {
     scratch.Take(body->instructions.capacity() * sizeof(abc::BodyInstruction));
     scratch.Take(body->tries.capacity() * sizeof(abc::TryRegion));
     scratch.Take(body->handlers.capacity() * sizeof(abc::CatchHandler));
+    if (!body->tries.empty()) return InspectException(target, *body, frame);
     const auto lifted = analysis::BuildSemanticMethod(*body, constants_.header.profile,
                                                       frame, {bytes_, work_});
     const auto* method = std::get_if<analysis::SemanticMethod>(&lifted);
@@ -320,31 +323,103 @@ class CaptureProof {
     }
     scratch.Take(bound->allocated_bytes);
     Charge(bound->instruction_visits);
-    for (const auto& binding : bound->bindings) {
+    return InspectCaptures(target, method->instructions, *bound, method->ssa,
+        [](analysis::InstructionId site) { return std::optional{site}; });
+  }
+  bool InspectException(abc::MethodPosition target, const abc::MethodBody& body,
+                        std::uint64_t frame) {
+    const auto built = analysis::BuildExceptionFlow(body, constants_.header.profile,
+                                                   frame, {bytes_, work_});
+    const auto* flow = std::get_if<analysis::ExceptionFlow>(&built);
+    if (!flow) {
+      std::visit([](const auto& error) {
+        using T = std::decay_t<decltype(error)>;
+        if constexpr (std::is_same_v<T, analysis::SemanticFailure>) {
+          if (Exhausted(error)) throw Resource();
+        } else if constexpr (std::is_same_v<T, analysis::FlowFailure>) {
+          if (error.kind == analysis::FlowError::kResourceLimit) throw Resource();
+        } else if constexpr (std::is_same_v<T, analysis::DispatchFailure>) {
+          if (error.kind == analysis::DispatchError::kResourceLimit) throw Resource();
+        }
+      }, built);
+      return false;
+    }
+    CaptureScratch scratch(bytes_);
+    scratch.Take(flow->allocated_bytes);
+    Charge(flow->work_units);
+    analysis::IdfQuota quota{work_};
+    const auto renamed = analysis::ExceptionSsa::Build(*flow, frame, quota, {bytes_});
+    Charge(quota.Consumed());
+    const auto* ssa = std::get_if<analysis::ExceptionSsa>(&renamed);
+    if (!ssa) {
+      std::visit([](const auto& error) {
+        using T = std::decay_t<decltype(error)>;
+        if constexpr (std::is_same_v<T, analysis::RegisterUseFailure>) {
+          if (error.kind == analysis::RegisterUseError::kResourceLimit ||
+              error.kind == analysis::RegisterUseError::kWorkLimit) throw Resource();
+        } else if constexpr (!std::is_same_v<T, analysis::ExceptionSsa>) {
+          if (error == T::kResourceLimit) throw Resource();
+          if constexpr (requires { T::kWorkLimit; })
+            if (error == T::kWorkLimit) throw Resource();
+        }
+      }, renamed);
+      return false;
+    }
+    scratch.Take(ssa->AllocatedBytes());
+    const auto analyzed = analysis::AnalyzeExceptionEnvironments(*flow, {bytes_});
+    const auto* environments = std::get_if<analysis::EnvironmentFlow>(&analyzed);
+    if (!environments) {
+      if (std::get<analysis::EnvironmentFlowFailure>(analyzed).kind ==
+          analysis::EnvironmentFlowError::kResourceLimit) throw Resource();
+      return false;
+    }
+    scratch.Take(environments->allocated_bytes);
+    Charge(environments->instruction_visits);
+    // SSA/environment indices belong to phase nodes, not ABC instructions.
+    // Catch defines a pending exception, never a NEWLEXENV result; bindings
+    // occur at Before and allocation results at Commit. Keep every catch edge.
+    return InspectCaptures(target, flow->instructions, *environments, *ssa,
+        [&](analysis::InstructionId site) -> std::optional<analysis::InstructionId> {
+          const auto& node = flow->nodes.at(site.value);
+          if (node.phase == analysis::ExceptionPhase::kCatch) return {};
+          return node.instruction;
+        });
+  }
+  template <typename Ssa, typename OriginalSite>
+  bool InspectCaptures(abc::MethodPosition target,
+      std::span<const analysis::SemanticInstruction> instructions,
+      const analysis::EnvironmentFlow& environments, const Ssa& ssa,
+      OriginalSite original_site) {
+    const auto& info = constants_.index.methods[target.value];
+    for (const auto& binding : environments.bindings) {
       Charge();
+      const auto site = original_site(analysis::InstructionId{binding.instruction});
+      if (!site) return false;
       if (std::holds_alternative<analysis::CapturedDepth>(binding.binding.environment) &&
           std::holds_alternative<analysis::LexicalStore>(
-              method->instructions[binding.instruction].operation)) return false;
+              instructions[site->value].operation)) return false;
     }
     const auto exposed = [&](analysis::SsaValueId id) {
-      if (id.value >= method->ssa.Values().size()) return true;
-      const auto* origin = std::get_if<analysis::InstructionValue>(&method->ssa.Values()[id.value].origin);
-      return origin && std::holds_alternative<analysis::PushEnvironment>(
-          method->instructions[origin->instruction.value].operation);
+      if (id.value >= ssa.Values().size()) return true;
+      const auto* origin = std::get_if<analysis::InstructionValue>(&ssa.Values()[id.value].origin);
+      if (!origin) return false;
+      const auto site = original_site(origin->instruction);
+      return site && std::holds_alternative<analysis::PushEnvironment>(
+          instructions[site->value].operation);
     };
-    for (const auto& read : method->ssa.AllReads()) {
+    for (const auto& read : ssa.AllReads()) {
       Charge();
       if (exposed(read.value)) return false;
     }
-    for (std::size_t i = 0; i < method->ssa.Values().size(); ++i) {
+    for (std::size_t i = 0; i < ssa.Values().size(); ++i) {
       Charge();
-      if (!std::holds_alternative<analysis::PhiValue>(method->ssa.Values()[i].origin)) continue;
-      for (const auto& input : method->ssa.Inputs({static_cast<std::uint32_t>(i)})) {
+      if (!std::holds_alternative<analysis::PhiValue>(ssa.Values()[i].origin)) continue;
+      for (const auto& input : ssa.Inputs({static_cast<std::uint32_t>(i)})) {
         Charge();
         if (exposed(input.value)) return false;
       }
     }
-    for (const auto& site : method->instructions) {
+    for (const auto& site : instructions) {
       Charge();
       if (std::holds_alternative<analysis::CurrentEnvironment>(site.operation)) return false;
       if (const auto* creation = std::get_if<analysis::ClassCreation>(&site.operation)) {

@@ -115,3 +115,41 @@ reallocation in loops, forward initialization scopes and allocation limits.
 Class-specific deferred cases include writing getters/setters, unknown literal
 targets, read-only/writing dependency cycles through classes, duplicate method
 templates, partial root failure and literal/edge growth resource exhaustion.
+
+## Exception-Aware Inspection
+
+Bodies with try regions now use the existing BuildExceptionFlow, ExceptionSsa
+and AnalyzeExceptionEnvironments pipeline instead of the normal-only builder.
+The original exception table is retained. Both pipelines share captured-store,
+environment-result escape and descendant dependency checks. Binding and SSA
+definition indices in this pipeline are phase-node IDs: they are explicitly
+mapped to original instructions. Catch definitions are pending exceptions, not
+allocation results. Thus a handler that writes an incoming lexical cell blocks
+the same certificate as a normal-path write, and a phi carrying an allocated
+environment remains an escape. Unsupported suspension and ambiguous environment
+joins still refuse certification. No exception value-domain assumption is
+needed to prove absence of captured writes; executable source admission retains
+its independent checks and versioned source contract.
+
+The exception graph exposes its charged lifting/connection work through
+`work_units`. Capture inspection deducts graph work, SSA quota consumption and
+environment visits from the shared budget, with simultaneously live graph,
+SSA and environment storage admitted separately. Existing byte-bounded normal
+flow/dispatch validation is not included in that graph work counter. Complexity
+is the established exception CFG/SSA/environment cost plus one linear inspection
+of bindings, SSA reads/phi inputs and instructions; no per-capture graph walk.
+
+ABC-only generation of Home entry 6100 now succeeds through PC419, including
+the formerly blocked route callback at PC389. Artifact:
+`build/pasteboard-home-exception-preservation.json`, 48,935 source characters
+and 150 entry-method PC spans. This is not execution-equivalence evidence or
+a claim of per-descendant position coverage. The CLI still explicitly reports
+`source_complete: false` and `executable: false`; record-file publication and
+readable source-style recovery are not finished. ProgressBar entry 9915 still
+refuses at class PC264 on its unresolved nested async path.
+
+Both production CLIs build; read-only review found no concrete defect. Tests,
+generated-JS execution and RSS remain paused. Deferred cases include writes
+only in handlers, environment allocation failure versus normal commit, handler
+phi escape, catch/normal shared targets, nested exceptions, ambiguous joins,
+unknown children in handlers, suspension and each stage's resource exhaustion.

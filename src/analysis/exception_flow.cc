@@ -121,6 +121,7 @@ ExceptionFlowResult BuildExceptionFlow(const abc::MethodBody& body,
     }
     result.allocated_bytes = result.nodes.capacity() * sizeof(ExceptionNode) +
         result.instructions.capacity() * sizeof(SemanticInstruction);
+    result.work_units = budget.graph_work - work;
     return result;
   } catch (const WorkLimit&) {
     return SemanticFailure{SemanticError::kSsa, {}, SsaError::kWorkLimit};
