@@ -34,6 +34,7 @@
 #include "entry_copy_elision.h"
 #include "argument_sequence.h"
 #include "argument_region.h"
+#include "super_arguments.h"
 #include "conditional_value.h"
 #include "rest_binding.h"
 #include "record_declarations.h"
@@ -915,9 +916,11 @@ class SourcePrinter {
           range->count > names_.registers.size() - range->first.value)
         throw SourceFailure{SourceError::kSuperInitialization, current_pc_};
       Text("super(");
-      for (std::uint32_t i = 0; i < range->count; ++i) {
-        if (i) Text(", ");
-        Value(ScalarValue{abc::RegisterId{range->first.value + i}});
+      if (!SuperArguments(*range)) {
+        for (std::uint32_t i = 0; i < range->count; ++i) {
+          if (i) Text(", ");
+          Value(ScalarValue{abc::RegisterId{range->first.value + i}});
+        }
       }
       Text(")");
     } else if (const auto* call = std::get_if<analysis::ConstructorCall>(&expression)) {
@@ -1021,6 +1024,50 @@ class SourcePrinter {
     Text("$element");
     Number(id.value);
   }
+  bool IsSuperArgumentCopy(abc::CodeOffset pc) const {
+    if (!ast_.super_arguments) return false;
+    const auto& region = *ast_.super_arguments;
+    if (region.first.value >= region.call.value ||
+        region.call.value >= ast_.statements.size())
+      throw SourceFailure{SourceError::kSuperInitialization, pc};
+    return pc >= ast_.statements[region.first.value].pc &&
+           pc < ast_.statements[region.call.value].pc;
+  }
+  bool SuperArguments(const analysis::SuperRange& range) {
+    if (!ast_.super_arguments) return false;
+    const auto& region = *ast_.super_arguments;
+    if (region.first.value >= region.call.value ||
+        region.call.value >= ast_.statements.size())
+      throw SourceFailure{SourceError::kSuperInitialization, current_pc_};
+    if (current_pc_ != ast_.statements[region.call.value].pc) return false;
+    const auto count = std::size_t(region.call.value) - region.first.value;
+    if (count / kSuperArgumentCopyInstructions != range.count ||
+        count % kSuperArgumentCopyInstructions || result_.spans.size() < count)
+      throw SourceFailure{SourceError::kSuperInitialization, current_pc_};
+    const auto first_span = result_.spans.size() - count;
+    // The certified interval contains only pure adjacent load/save pairs.
+    // Each already emitted one empty anchor; relocate both to the actual arg.
+    for (std::size_t offset = 0; offset < count; offset += kSuperArgumentCopyInstructions) {
+      const auto& node = ast_.statements[region.first.value + offset];
+      const auto* assignment = std::get_if<SourceAssignment>(&node.operation);
+      const auto* scalar = assignment
+          ? std::get_if<ScalarExpression>(&assignment->value) : nullptr;
+      const auto* value = scalar ? std::get_if<ScalarValue>(scalar) : nullptr;
+      if (!value || !std::holds_alternative<abc::RegisterId>(*value))
+        throw SourceFailure{SourceError::kSuperInitialization, current_pc_};
+      if (offset) Text(", ");
+      const auto begin = position_;
+      Value(*value);
+      for (std::size_t part = 0; part < kSuperArgumentCopyInstructions; ++part) {
+        auto& span = result_.spans[first_span + offset + part];
+        if (span.pc != ast_.statements[region.first.value + offset + part].pc)
+          throw SourceFailure{SourceError::kOutput, current_pc_};
+        span.begin = begin;
+        span.end = position_;
+      }
+    }
+    return true;
+  }
   void ArrayCapture(analysis::InstructionId id) {
     Text("const ");
     ArrayElement(id);
@@ -1069,6 +1116,7 @@ class SourcePrinter {
     std::visit(
         [&](const auto& operation) {
           using T = std::decay_t<decltype(operation)>;
+          if (IsSuperArgumentCopy(statement.pc)) return;
           if constexpr (std::is_same_v<T, SourceAssignment>) {
             if (!comma && elide_entry_copies_ &&
                 IsBoundEntryCopy(statement, entry_bindings_)) return;

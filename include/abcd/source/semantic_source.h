@@ -248,6 +248,10 @@ struct SourceArgumentRegion {
   analysis::BlockId first_block;
   analysis::BlockId last_block;
 };
+struct SuperArgumentRegion {
+  analysis::InstructionId first;
+  analysis::InstructionId call;
+};
 struct SourceAst {
   analysis::SemanticRegionTree regions;
   std::vector<SourceStatement> statements;
@@ -256,6 +260,7 @@ struct SourceAst {
   std::optional<SourceArgumentRegion> argument_region;
   std::size_t allocated_bytes = 0;
   std::size_t array_captures = 0;
+  std::optional<SuperArgumentRegion> super_arguments;
 };
 enum class SourceError : std::uint8_t {
   kUnsupportedOperation,

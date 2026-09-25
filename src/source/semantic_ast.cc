@@ -10,6 +10,7 @@
 #include "object_initialization.h"
 #include "semantic_ast_input.h"
 #include "argument_expression.h"
+#include "super_arguments.h"
 #include "unused_results.h"
 #include "binding_receivers.h"
 #include "dead_copies.h"
@@ -778,6 +779,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     ElideKnownReloads(method, ast, copies);
     FoldBindingReceivers(method, ast, uses);
     FoldArgumentExpressions(method, ast, uses);
+    ast.super_arguments = ProveSuperArguments(method, ast, uses);
     return ast;
   } catch (const std::bad_alloc&) {
     return Fail(SourceError::kResourceLimit);
