@@ -8,5 +8,9 @@ namespace abcd::source {
 // Keep original use counts conservative and eliminated PCs as no-op anchors.
 void FoldScalarValues(const AstMethod& method, SourceAst& ast,
                       std::span<const std::size_t> uses);
+// Run after paired reload elimination so receiver substitution cannot hide
+// the original copy pair. Getter effects remain at the consumer's PC.
+void FoldMemberReceivers(const AstMethod& method, SourceAst& ast,
+                         std::span<const std::size_t> uses);
 }  // namespace abcd::source
 #endif

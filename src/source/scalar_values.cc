@@ -4,6 +4,7 @@
 
 namespace abcd::source {
 namespace {
+enum class OperandForm { kScalar, kMember };
 const analysis::ScalarValue* PureValue(const analysis::ScalarExpression& expression) {
   const auto* value = std::get_if<analysis::ScalarValue>(&expression);
   if (!value) return nullptr;
@@ -42,10 +43,8 @@ bool ReplaceAccumulator(analysis::ScalarExpression& expression,
   }, expression);
   return replaced;
 }
-}  // namespace
-
-void FoldScalarValues(const AstMethod& method, SourceAst& ast,
-                      std::span<const std::size_t> uses) {
+void FoldValues(const AstMethod& method, SourceAst& ast,
+                std::span<const std::size_t> uses, OperandForm form) {
   for (const auto& block : method.flow.blocks) {
     const auto end = std::size_t(block.first_instruction) + block.instruction_count;
     for (std::size_t i = block.first_instruction; i + 1 < end; ++i) {
@@ -57,14 +56,27 @@ void FoldScalarValues(const AstMethod& method, SourceAst& ast,
           !std::holds_alternative<analysis::Accumulator>(load->target)) continue;
       const auto* input = std::get_if<analysis::ScalarExpression>(&load->value);
       auto* expression = std::get_if<analysis::ScalarExpression>(&assignment->value);
+      auto* member = std::get_if<MemberExpression>(&assignment->value);
+      switch (form) {
+        case OperandForm::kScalar: member = nullptr; break;
+        case OperandForm::kMember: expression = nullptr; break;
+      }
       const auto* value = input ? PureValue(*input) : nullptr;
-      if (!value || !expression) continue;
+      if (!value || (!expression && !member)) continue;
       // Preserve acc/register transport shape for the later paired reload
       // proof. Substituting a slot into a copy early can hide that pair and
       // retain more transports even though it preserves execution semantics.
       if ((std::holds_alternative<analysis::Accumulator>(*value) ||
            std::holds_alternative<abc::RegisterId>(*value)) &&
-          std::holds_alternative<analysis::ScalarValue>(*expression)) continue;
+          expression && std::holds_alternative<analysis::ScalarValue>(*expression)) continue;
+      const auto& consumer = method.instructions[i + 1];
+      if (member) {
+        const auto* read = std::get_if<analysis::NamedRead>(&consumer.operation);
+        if (!read || read->name != member->name ||
+            !std::holds_alternative<analysis::Accumulator>(member->object)) continue;
+      } else if (!std::holds_alternative<analysis::ScalarAssignment>(consumer.operation)) {
+        continue;
+      }
       const auto& original = method.instructions[i];
       const auto* scalar = std::get_if<analysis::ScalarAssignment>(&original.operation);
       if (!scalar || !PureValue(scalar->expression) ||
@@ -72,15 +84,15 @@ void FoldScalarValues(const AstMethod& method, SourceAst& ast,
           scalar->completion != analysis::CompletionEffect::kNormal ||
           original.effects.normal != analysis::LanguageEffect::kNone ||
           original.effects.before_throw != analysis::LanguageEffect::kNone ||
-          original.effects.exceptional != analysis::ExceptionalCompletion::kImpossible ||
-          !std::holds_alternative<analysis::ScalarAssignment>(
-              method.instructions[i + 1].operation)) continue;
+          original.effects.exceptional != analysis::ExceptionalCompletion::kImpossible) continue;
       const auto output = method.ssa.Write({static_cast<std::uint32_t>(i)});
       if (!output || uses[output->value] != 1) continue;
       const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(i + 1)});
       bool consumed = false;
       for (const auto& read : reads) consumed |= read.value == *output;
-      if (!consumed || !ReplaceAccumulator(*expression, *value)) continue;
+      if (!consumed) continue;
+      if (member) member->object = *value;
+      else if (!ReplaceAccumulator(*expression, *value)) continue;
       // Private slot reads and primitive evaluation have no allocation or
       // coercion effects. No intervening instruction can redefine the slot;
       // the consumer reads its RHS before committing any destination write.
@@ -88,5 +100,15 @@ void FoldScalarValues(const AstMethod& method, SourceAst& ast,
       head.operation = analysis::NoOperation{};
     }
   }
+}
+}  // namespace
+
+void FoldScalarValues(const AstMethod& method, SourceAst& ast,
+                      std::span<const std::size_t> uses) {
+  FoldValues(method, ast, uses, OperandForm::kScalar);
+}
+void FoldMemberReceivers(const AstMethod& method, SourceAst& ast,
+                         std::span<const std::size_t> uses) {
+  FoldValues(method, ast, uses, OperandForm::kMember);
 }
 }  // namespace abcd::source

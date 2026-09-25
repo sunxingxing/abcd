@@ -66,3 +66,26 @@ output falls from 10,074 lines / 170,817 bytes to 10,047 lines / 170,464 bytes.
 Slot/destination aliasing, coercion ordering, copy-pair interaction and chained
 boolean folds remain deferred execution regressions; tests, JS and RSS remain
 paused. Generic names and labels still prevent a full source-style claim.
+
+## Named Read Receivers
+
+`FoldMemberReceivers` reuses the same proof for a MemberExpression whose
+original instruction is NamedRead, whose pool key matches, and whose receiver
+is acc. Only the adjacent pure slot/primitive producer is omitted. Getter,
+Proxy and null/undefined receiver behavior stays at the original read PC.
+Existing call-reference fusion is neither rerun nor relaxed.
+
+The two public phases share a typed OperandForm implementation: scalar
+operands run before boolean refinement, while member receivers run after
+paired reload elimination and before direct stored-expression folding. An
+initial ABC export demonstrated that running the member phase earlier hid
+copy pairs and retained extra temporaries. The final ordering preserves those
+existing simplifications, with the same linear scans/indexed lookup costs and
+no new allocation.
+
+Both CLIs build. Final ABC export `build/pasteboard-member-receivers-02`
+contains 10,036 lines / 170,321 bytes versus 10,047 / 170,464 previously.
+Logger's prototype read now uses `($r5).prototype` directly; the rest of its
+body remains unchanged. PC anchors, throwing receivers, observed handler
+values, copy-pair ordering and call receiver identity remain deferred runtime
+checks. No tests, generated JS execution or RSS measurements were run.

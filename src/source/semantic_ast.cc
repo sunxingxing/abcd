@@ -727,6 +727,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     FoldBranchExpressions(method, ast, uses);
     if (const auto failure = ElideDeadAssignments(method, ast, uses, copy_bytes)) return *failure;
     ElideCopyReloads(method, ast, uses);
+    FoldMemberReceivers(method, ast, uses);
     FoldStoredExpressions(method, ast, uses);
     ElideKnownReloads(method, ast, copies);
     const auto retained_before = ast.allocated_bytes;
