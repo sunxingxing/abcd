@@ -102,6 +102,12 @@ int main() {
           DominatorError::kResourceLimit);
     Check(std::holds_alternative<DominatorTree>(
         BuildNormalDominators(graph, {}, {tree.work.allocated_bytes})));
+    Check(tree.work.steps != 0);
+    Check(std::get<DominatorError>(BuildNormalDominators(
+        graph, {}, {tree.work.allocated_bytes, tree.work.steps - 1})) ==
+        DominatorError::kWorkLimit);
+    Check(std::holds_alternative<DominatorTree>(BuildNormalDominators(
+        graph, {}, {tree.work.allocated_bytes, tree.work.steps})));
     Check(std::get<DominatorError>(BuildNormalDominators(
               graph, {}, {tree.work.allocated_bytes - 1})) ==
           DominatorError::kResourceLimit);

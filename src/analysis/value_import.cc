@@ -6,6 +6,7 @@
 #include <type_traits>
 
 #include "value_operands.h"
+#include "value_flow.h"
 
 namespace abcd::analysis {
 namespace {
@@ -35,6 +36,7 @@ class ImportBudget {
     values.reserve(count);
     if (values.capacity() > count) Admit(values.capacity() - count, sizeof(T));
   }
+  SemanticBudget Remaining() const { return {bytes_, work_}; }
  private:
   std::size_t bytes_;
   std::uint64_t work_;
@@ -281,6 +283,21 @@ std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
     quota.Work(graph.uses.size());
     quota.Work(graph.ops.size());
     Require(!VerifyValueUses(graph, use_capacity), Error::kInvalidGraph);
+    const auto flow = VerifyValueFlow(graph, quota.Remaining());
+    if (const auto* error = std::get_if<ValueAvailabilityError>(&flow)) {
+      switch (*error) {
+        case ValueAvailabilityError::kWorkLimit: throw ValueImportFailure{Error::kWorkLimit, {}};
+        case ValueAvailabilityError::kResourceLimit: throw ValueImportFailure{Error::kResourceLimit, {}};
+        case ValueAvailabilityError::kResumeFlow: throw ValueImportFailure{Error::kResumeFlow, {}};
+        case ValueAvailabilityError::kUnreachableBlock: throw ValueImportFailure{Error::kUnreachableFlow, {}};
+        case ValueAvailabilityError::kInvalidPhi: throw ValueImportFailure{Error::kInvalidPhi, {}};
+        case ValueAvailabilityError::kInvalidGraph:
+        case ValueAvailabilityError::kInvalidTerminator:
+        case ValueAvailabilityError::kUnavailableValue:
+          throw ValueImportFailure{Error::kInvalidGraph, {}};
+      }
+    }
+    quota.Work(std::get<ValueFlowProof>(flow).work);
     return graph;
   } catch (const ValueImportFailure& failure) {
     return failure;

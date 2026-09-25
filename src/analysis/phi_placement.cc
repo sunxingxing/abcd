@@ -43,6 +43,8 @@ std::variant<IdfIndex, IdfError> IdfIndex::Build(const NormalFlow& graph,
         return IdfError::kInvalidEntry;
       case DominatorError::kInvalidEdge:
         return IdfError::kInvalidEdge;
+      case DominatorError::kWorkLimit:
+        return IdfError::kWorkLimit;
       case DominatorError::kResourceLimit:
         return IdfError::kResourceLimit;
     }

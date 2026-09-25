@@ -6,7 +6,7 @@
 
 namespace abcd::analysis {
 enum class ValueImportError : std::uint8_t {
-  kUnsupportedOperation, kExceptionFlow, kResumeFlow, kInputMismatch,
+  kUnsupportedOperation, kExceptionFlow, kResumeFlow, kUnreachableFlow, kInputMismatch,
   kOperandMismatch, kInvalidPhi, kInvalidGraph, kWorkLimit, kResourceLimit
 };
 struct ValueImportFailure {

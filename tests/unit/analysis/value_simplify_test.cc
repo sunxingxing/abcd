@@ -85,7 +85,8 @@ void FailureRollback() {
   check_original();
   Check(!ReplaceUse(graph, UseId{0}, ValueId{kLength}));
   result = SimplifyValues(graph, graph.revision);
-  Check(std::get<ValueSimplifyError>(result) == ValueSimplifyError::kCopyCycle);
+  // A copy-only cycle violates ordinary SSA availability before aliasing starts.
+  Check(std::get<ValueSimplifyError>(result) == ValueSimplifyError::kInvalidGraph);
   Check(graph.revision == IrRevision{0});
 }
 

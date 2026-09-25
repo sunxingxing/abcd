@@ -109,7 +109,37 @@ cover copy lengths 200/201/4096, multiple uses, stale/overflow revisions, budget
 rollback, copy cycles, unused getters and dead phi cycles. They remain unrun.
 The production abc_semantic target builds with these changes.
 
-Live trivial-phi SCC collapse and transformed dominance/effect verification are
-still outstanding. SimplifyValues is internal and requires a verified input;
-structural use checks alone do not issue a ValuesVerified certificate. It is not
-yet called by the source CLI, and no new source-output claim is made here.
+Live trivial-phi SCC collapse and the independent transformed effect/input
+correspondence certificate remain outstanding. SimplifyValues is internal and
+requires verified input effects; it is not yet called by the source CLI. No new
+source-output claim is made here.
+
+### Working Flow Verification
+
+Normal import and both sides of a simplification batch now run VerifyValueFlow.
+It checks stable operation placement, complete block/edge ranges, terminal
+control shape, dominance and within-block definition order. A normal result is
+available after the producing operation, never before it or after an always-
+throwing completion. Each phi must have exactly one input for each incoming edge,
+plus MethodEntry for block zero. Edge IDs preserve parallel branch alternatives;
+an entry input must be an actual entry definition, not a loop-body value.
+
+The verifier reuses the existing iterative simple Lengauer-Tarjan dominator
+implementation with a remaining-work allowance. Sparse phi keys are sorted to
+check uniqueness and combined with predecessor counts to prove completeness:
+O(I+V+U+(B+E) log B+P log P), no value-by-block or phi-by-edge matrix. Additional
+storage is admitted alongside the graph; dominance builder peak storage is
+conservatively charged even after its scratch is freed. This is not RSS evidence.
+
+Unreachable blocks and resume flow are explicit unsupported normal-import cases,
+not silently discarded instructions. Rules revision 4 records the stronger
+ValuesImported boundary; receipt schema stays 3. Unit specifications include
+parallel edges, duplicate/missing phi inputs, unavailable values, malformed
+terminators, unreachable blocks and exact dominator work limits. They are unrun.
+
+Production abc_semantic build passed. Fresh ABC-only inspections of pasteboard
+7586 and Immersive 21082 both passed the rules-4 import gate with the same
+21 operations / 29 values / 23 uses / 3 blocks / 3 edges / 3 exceptional exits.
+Both reported ValuesImported, revision 0, no failure, no legacy writer and
+incomplete/non-executable output (exit 1). No test executable, generated JS,
+holdout sample, sidecar source or RSS measurement was run.

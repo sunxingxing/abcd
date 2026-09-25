@@ -59,6 +59,7 @@ ImportedMethod BuildValueStage(RouteInputIdentity identity, abc::EntityOffset me
     switch (error.kind) {
       case analysis::ValueImportError::kUnsupportedOperation:
       case analysis::ValueImportError::kExceptionFlow:
+      case analysis::ValueImportError::kUnreachableFlow:
       case analysis::ValueImportError::kResumeFlow: kind = RouteFailureClass::kUnsupported; break;
       case analysis::ValueImportError::kWorkLimit: kind = RouteFailureClass::kWorkLimit; break;
       case analysis::ValueImportError::kResourceLimit: kind = RouteFailureClass::kMemoryLimit; break;

@@ -13,6 +13,7 @@ struct DominatorNode {
   std::uint32_t end = 0;
 };
 struct DominatorWork {
+  std::uint64_t steps = 0;
   std::uint64_t edge_visits = 0;
   std::uint64_t eval_steps = 0;
   std::size_t allocated_bytes = 0;
@@ -26,10 +27,14 @@ enum class DominatorError {
   kEmptyGraph,
   kInvalidEntry,
   kInvalidEdge,
+  kWorkLimit,
   kResourceLimit
 };
 struct DominatorBudget {
   std::size_t bytes = 64 * 1024 * 1024;
+  // Existing input analyzers retain their historical allowance when absent.
+  // Working-IR verification supplies its remaining shared work quota.
+  std::optional<std::uint64_t> work;
 };
 using DominatorResult = std::variant<DominatorTree, DominatorError>;
 

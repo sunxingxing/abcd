@@ -197,7 +197,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Engine/rules provenance of the admission and stage semantics above. Bump
 // with any change to them; receipts signed under other rules are rejected
 // rather than reinterpreted.
-inline constexpr std::uint32_t kRouteEvidenceRules = 3;
+// Rules 4 require normal-flow availability/phi completeness at ValuesImported.
+inline constexpr std::uint32_t kRouteEvidenceRules = 4;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

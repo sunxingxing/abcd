@@ -6,6 +6,7 @@
 #include <type_traits>
 
 #include "value_edits.h"
+#include "value_flow.h"
 
 namespace abcd::analysis {
 namespace {
@@ -41,6 +42,23 @@ class BatchBudget {
     if (const auto error = VerifyValueUses(graph, graph.uses.size()))
       throw *error == ValueGraphError::kResourceLimit
           ? Error::kResourceLimit : Error::kInvalidGraph;
+  }
+  void CheckFlow(const ValueProgram& graph) {
+    const auto checked = VerifyValueFlow(graph, {bytes_, work_});
+    if (const auto* proof = std::get_if<ValueFlowProof>(&checked)) {
+      Work(proof->work);
+      return;  // All verifier storage is released before returning.
+    }
+    switch (std::get<ValueAvailabilityError>(checked)) {
+      case ValueAvailabilityError::kWorkLimit: throw Error::kWorkLimit;
+      case ValueAvailabilityError::kResourceLimit: throw Error::kResourceLimit;
+      case ValueAvailabilityError::kUnreachableBlock:
+      case ValueAvailabilityError::kResumeFlow: throw Error::kUnsupportedFlow;
+      case ValueAvailabilityError::kInvalidGraph:
+      case ValueAvailabilityError::kInvalidTerminator:
+      case ValueAvailabilityError::kInvalidPhi:
+      case ValueAvailabilityError::kUnavailableValue: throw Error::kInvalidGraph;
+    }
   }
  private:
   std::size_t bytes_;
@@ -226,6 +244,7 @@ std::variant<ValueSimplifyStats, ValueSimplifyError> SimplifyValues(
     quota.Admit(graph.uses.size(), sizeof(std::uint8_t));
     auto candidate = Clone(graph, quota);
     quota.CheckUses(candidate);
+    quota.CheckFlow(candidate);
     BatchScratch scratch{candidate, quota};
     ValueSimplifyStats stats{expected};
     Canonicalize(candidate, scratch, quota, stats);
@@ -252,6 +271,7 @@ std::variant<ValueSimplifyStats, ValueSimplifyError> SimplifyValues(
     Require(!EraseUnmarkedValues(candidate, scratch.live_ops, scratch.live_values),
             Error::kInvalidGraph);
     quota.CheckUses(candidate);
+    quota.CheckFlow(candidate);
     if (stats.replaced_uses == 0 && stats.removed_ops == 0 && stats.removed_phis == 0)
       return stats;
     Require(expected.value != std::numeric_limits<std::uint64_t>::max(),

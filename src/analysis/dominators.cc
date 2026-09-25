@@ -30,7 +30,8 @@ class DominatorBuilder {
  public:
   DominatorBuilder(const NormalFlow& graph, BlockId entry,
                    DominatorBudget budget)
-      : graph_(graph), entry_(entry.value), budget_(budget.bytes) {}
+      : graph_(graph), entry_(entry.value), budget_(budget.bytes),
+        remaining_work_(budget.work) {}
 
   DominatorResult Build() {
     const auto count = graph_.blocks.size();
@@ -39,9 +40,11 @@ class DominatorBuilder {
     if (count >= kAbsent) return DominatorError::kResourceLimit;
     std::size_t edges = 0;
     for (const auto& block : graph_.blocks) {
+      Step();
       if (block.successor_count > block.successors.size())
         return DominatorError::kInvalidEdge;
       for (std::size_t i = 0; i < block.successor_count; ++i) {
+        Step();
         ++tree_.work.edge_visits;
         if (block.successors[i].target.value >= count)
           return DominatorError::kInvalidEdge;
@@ -63,8 +66,16 @@ class DominatorBuilder {
   }
 
  private:
+  void Step(std::size_t count = 1) {
+    if (remaining_work_) {
+      if (count > *remaining_work_) throw DominatorError::kWorkLimit;
+      *remaining_work_ -= count;
+    }
+    tree_.work.steps += count;
+  }
   template <class T>
   bool Allocate(std::vector<T>& values, std::size_t count) {
+    Step(count);
     auto& spent = tree_.work.allocated_bytes;
     if (count > values.max_size() || count > (budget_ - spent) / sizeof(T))
       return false;
@@ -86,6 +97,7 @@ class DominatorBuilder {
     std::size_t depth = 1;
     stack_[0] = {entry_, 0};
     while (depth != 0) {
+      Step();
       auto& frame = stack_[depth - 1];
       const auto& block = graph_.blocks[frame.node];
       if (frame.next == block.successor_count) {
@@ -102,20 +114,26 @@ class DominatorBuilder {
   }
 
   void IndexPredecessors() {
-    for (const auto& block : graph_.blocks)
+    for (const auto& block : graph_.blocks) {
+      Step();
       for (std::size_t i = 0; i < block.successor_count; ++i) {
+        Step();
         ++nodes_[block.successors[i].target.value].pred_count;
         ++tree_.work.edge_visits;
       }
+    }
     std::uint32_t offset = 0;
     for (auto& node : nodes_) {
+      Step();
       node.pred_begin = offset;
       offset += node.pred_count;
       node.pred_count = 0;
     }
     for (std::uint32_t from = 0; from < graph_.blocks.size(); ++from) {
+      Step();
       const auto& block = graph_.blocks[from];
       for (std::size_t i = 0; i < block.successor_count; ++i) {
+        Step();
         auto& target = nodes_[block.successors[i].target.value];
         predecessors_[target.pred_begin + target.pred_count++] = from;
         ++tree_.work.edge_visits;
@@ -128,6 +146,7 @@ class DominatorBuilder {
     auto cursor = vertex;
     while (nodes_[cursor].ancestor != kAbsent &&
            nodes_[nodes_[cursor].ancestor].ancestor != kAbsent) {
+      Step();
       path_[length++] = cursor;
       cursor = nodes_[cursor].ancestor;
       ++tree_.work.eval_steps;
@@ -135,6 +154,7 @@ class DominatorBuilder {
     // Reverse the compress recursion. Updating ancestors on descent would lose
     // the minimum-semidominator label on the remaining path.
     while (length != 0) {
+      Step();
       auto& node = nodes_[path_[--length]];
       const auto& ancestor = nodes_[node.ancestor];
       if (nodes_[ancestor.label].semi < nodes_[node.label].semi)
@@ -147,9 +167,11 @@ class DominatorBuilder {
 
   void ComputeParents() {
     for (std::uint32_t i = reachable_ - 1; i != 0; --i) {
+      Step();
       const auto vertex = order_[i];
       auto& node = nodes_[vertex];
       for (std::uint32_t j = 0; j < node.pred_count; ++j) {
+        Step();
         const auto pred = predecessors_[node.pred_begin + j];
         ++tree_.work.edge_visits;
         if (nodes_[pred].number != 0)
@@ -163,6 +185,7 @@ class DominatorBuilder {
       auto pending = parent.bucket_head;
       parent.bucket_head = kAbsent;
       while (pending != kAbsent) {
+        Step();
         auto& candidate = nodes_[pending];
         const auto label = Eval(pending);
         candidate.idom =
@@ -171,6 +194,7 @@ class DominatorBuilder {
       }
     }
     for (std::uint32_t i = 1; i < reachable_; ++i) {
+      Step();
       auto& node = nodes_[order_[i]];
       if (node.idom != order_[node.semi - 1])
         node.idom = nodes_[node.idom].idom;
@@ -180,6 +204,7 @@ class DominatorBuilder {
 
   void IndexTree() {
     for (std::uint32_t i = reachable_; i > 1; --i) {
+      Step();
       const auto vertex = order_[i - 1];
       auto& node = nodes_[vertex];
       node.child_next = nodes_[node.idom].child_head;
@@ -190,6 +215,7 @@ class DominatorBuilder {
     std::size_t depth = 1;
     stack_[0] = {entry_, nodes_[entry_].child_head};
     while (depth != 0) {
+      Step();
       auto& frame = stack_[depth - 1];
       if (frame.next == kAbsent) {
         tree_.nodes[frame.node].end = stamp;
@@ -206,6 +232,7 @@ class DominatorBuilder {
   const NormalFlow& graph_;
   std::uint32_t entry_;
   std::size_t budget_;
+  std::optional<std::uint64_t> remaining_work_;
   DominatorTree tree_;
   std::vector<DfsNode> nodes_;
   std::vector<std::uint32_t> order_, path_, predecessors_;
@@ -226,6 +253,8 @@ DominatorResult BuildNormalDominators(const NormalFlow& graph, BlockId entry,
                                       DominatorBudget budget) {
   try {
     return DominatorBuilder(graph, entry, budget).Build();
+  } catch (DominatorError error) {
+    return error;
   } catch (const std::bad_alloc&) {
     return DominatorError::kResourceLimit;
   }
