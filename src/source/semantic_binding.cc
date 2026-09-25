@@ -35,10 +35,11 @@ void Advance(GeneratedPosition& position, std::string_view text) {
 }  // namespace
 
 GeneratedPosition RelocateCapturePosition(const PrintedTemplate& source,
-                           std::span<const std::size_t> prefix,
+                           std::span<const CaptureShift> prefix,
                            GeneratedPosition position, abc::CodeOffset pc) {
   const auto count = position.captures;
-  if (prefix.size() != source.captures.size() + 1 || prefix.front() != 0 ||
+  if (prefix.size() != source.captures.size() + 1 || prefix.front().bytes != 0 ||
+      prefix.front().captures != 0 ||
       !position.line || position.byte > source.text.size() ||
       count > source.captures.size()) throw Invalid(pc);
   if (count) {
@@ -59,13 +60,13 @@ GeneratedPosition RelocateCapturePosition(const PrintedTemplate& source,
       [](const SourceCapture& capture, std::uint32_t line) {
         return capture.position.line < line;
       });
-  const auto column_shift = prefix[count] - prefix[first - begin];
+  const auto column_shift = prefix[count].bytes - prefix[first - begin].bytes;
   if (column_shift > std::numeric_limits<std::uint32_t>::max() - position.column ||
-      prefix[count] > std::numeric_limits<std::size_t>::max() - position.byte)
+      prefix[count].bytes > std::numeric_limits<std::size_t>::max() - position.byte)
     throw Resource();
-  position.byte += prefix[count];
+  position.byte += prefix[count].bytes;
   position.column += static_cast<std::uint32_t>(column_shift);
-  position.captures = 0;
+  position.captures = prefix[count].captures;
   return position;
 }
 
@@ -77,18 +78,18 @@ std::variant<PrintedSource, SourceFailure> BindSourceTemplate(
     if (capture.requirement != analysis::CaptureDomain::kLanguage)
       return Invalid();
   try {
-    if (bindings.size() >= budget_bytes / sizeof(std::size_t)) return Resource();
-    std::vector<std::size_t> prefix(bindings.size() + 1);
-    if (prefix.capacity() > budget_bytes / sizeof(std::size_t)) return Resource();
-    auto remaining = budget_bytes - prefix.capacity() * sizeof(std::size_t);
+    if (bindings.size() >= budget_bytes / sizeof(CaptureShift)) return Resource();
+    std::vector<CaptureShift> prefix(bindings.size() + 1);
+    if (prefix.capacity() > budget_bytes / sizeof(CaptureShift)) return Resource();
+    auto remaining = budget_bytes - prefix.capacity() * sizeof(CaptureShift);
     if (source.text.size() > remaining) return Resource();
     const auto name_budget = remaining - source.text.size();
     for (std::size_t i = 0; i < bindings.size(); ++i) {
       const LexicalName name{bindings[i]};
-      if (name.Text().size() > name_budget - prefix[i]) return Resource();
-      prefix[i + 1] = prefix[i] + name.Text().size();
+      if (name.Text().size() > name_budget - prefix[i].bytes) return Resource();
+      prefix[i + 1].bytes = prefix[i].bytes + name.Text().size();
     }
-    const auto bytes = source.text.size() + prefix.back();
+    const auto bytes = source.text.size() + prefix.back().bytes;
     PrintedSource result;
     result.contract = source.contract;
     if (source.host_realm) {
@@ -106,6 +107,12 @@ std::variant<PrintedSource, SourceFailure> BindSourceTemplate(
     result.spans.reserve(source.spans.size());
     if (result.spans.capacity() > remaining / sizeof(GeneratedSpan)) return Resource();
     remaining -= result.spans.capacity() * sizeof(GeneratedSpan);
+    if (bytes >= remaining || source.method_spans.size() >
+        (remaining - bytes - 1) / sizeof(MethodGeneratedSpan)) return Resource();
+    result.method_spans.reserve(source.method_spans.size());
+    if (result.method_spans.capacity() > remaining / sizeof(MethodGeneratedSpan))
+      return Resource();
+    remaining -= result.method_spans.capacity() * sizeof(MethodGeneratedSpan);
     result.text.reserve(bytes);
     if (result.text.capacity() >= remaining) return Resource();
 
@@ -127,16 +134,19 @@ std::variant<PrintedSource, SourceFailure> BindSourceTemplate(
     const auto tail = std::string_view(source.text).substr(original.byte);
     Advance(original, tail);
     result.text.append(tail);
-    for (const auto& span : source.spans) {
+    const auto relocate = [&](const GeneratedSpan& span) {
       if (std::tie(span.begin.byte, span.begin.captures) >
-          std::tie(span.end.byte, span.end.captures)) return Invalid(span.pc);
+          std::tie(span.end.byte, span.end.captures)) throw Invalid(span.pc);
       const auto begin = RelocateCapturePosition(source, prefix, span.begin, span.pc);
       const auto end = RelocateCapturePosition(source, prefix, span.end, span.pc);
       if (begin.byte > result.text.size() || end.byte > result.text.size() ||
           begin.line > original.line || end.line > original.line)
-        return Invalid(span.pc);
-      result.spans.push_back({span.pc, begin, end, span.origin});
-    }
+        throw Invalid(span.pc);
+      return GeneratedSpan{span.pc, begin, end, span.origin};
+    };
+    for (const auto& span : source.spans) result.spans.push_back(relocate(span));
+    for (const auto& mapped : source.method_spans)
+      result.method_spans.push_back({mapped.method, relocate(mapped.span)});
     return result;
   } catch (const SourceFailure& failure) {
     return failure;

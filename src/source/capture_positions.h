@@ -4,11 +4,15 @@
 #include "abcd/source/semantic_source.h"
 
 namespace abcd::source {
-// Prefix contains cumulative inserted byte lengths, starting with zero, and
+struct CaptureShift {
+  std::size_t bytes = 0;
+  std::size_t captures = 0;
+};
+// Prefix contains cumulative byte and unresolved capture shifts, starting at zero,
 // one entry per capture plus its sentinel. Insertions contain no newlines.
 // Throws SourceFailure for invalid coordinates or arithmetic overflow.
 GeneratedPosition RelocateCapturePosition(
-    const PrintedTemplate& source, std::span<const std::size_t> prefix,
+    const PrintedTemplate& source, std::span<const CaptureShift> prefix,
     GeneratedPosition position, abc::CodeOffset pc);
 }  // namespace abcd::source
 #endif

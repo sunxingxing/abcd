@@ -18,28 +18,32 @@ spans distinguished by their generated ranges.
 The admission boundary is deliberately explicit:
 
 - Bound generic bodies forward their own spans and any retained descendants.
-- A generic template forwards its own spans when the receiving sink can
-  resolve its captures into a bound source file.
-- A receiving template printer does not collect descendant coordinates yet.
+- A generic template forwards its own and descendant spans through both bound
+  source and template sinks. Template endpoints retain unresolved cursors.
 - Legacy writers, buffered leaf-fragment caches and other streams without a
   position owner do not claim descendant coverage.
 
-For captures resolved by a bound-source sink, FunctionWriter samples the
+For captures resolved or forwarded by a position-aware sink, FunctionWriter samples the
 actual printer cursor immediately before and after each capture emission.
-Only same-line insertions without unresolved capture-cursor changes are
-accepted. Byte and column deltas must agree. Their checked cumulative lengths
-form a prefix table. RelocateCapturePosition, shared with BindSourceTemplate,
+Only same-line insertions with monotone unresolved capture cursors are
+accepted. Byte and column deltas must agree. CaptureShift holds separate
+cumulative byte and unresolved-token counts. RelocateCapturePosition, shared with BindSourceTemplate,
 uses the endpoint's capture cursor to select insertions before that endpoint,
 including multiple zero-width tokens at one template byte. Only insertions on
 the endpoint's original line affect its column; the total prefix affects bytes.
-Finally the saved body-start position relocates the endpoint into the record.
+The selected prefix's unresolved count becomes the endpoint's new capture
+cursor. Finally the saved body-start position, including its capture cursor,
+relocates the endpoint into the parent. Each template owns its descendant
+spans until the next insertion/replay; only the bound-source boundary requires
+all capture cursors to be zero. BindSourceTemplate also relocates descendants.
 No binding name is predicted and no generated JS is parsed for locations.
 
 Prefix capacity is admitted alongside retained template text, PC spans,
-capture tokens and any owned host-realm binding. The temporary table remains
+capture tokens, descendant maps and any owned host-realm binding. The temporary table remains
 bounded. This adds O(C + S log C) work and O(C) scratch for C captures and S
-spans. Nested template-to-template propagation and fragment replay still need
-an ordered position-event transport. Omitted methods remain omitted, not
+spans. Work across owners is proportional to propagated spans at each layer;
+the existing CreationExpansion limit bounds ancestry to 32 layers. Fragment
+cache replay still lacks this transport. Omitted methods remain omitted, not
 mapped to a parent's span, and `complete` stays false.
 
 Method span buffers grow geometrically, with the old and full replacement
@@ -56,6 +60,18 @@ Neither this artifact nor its presence upgrades source completion/executable
 status or establishes runtime equivalence.
 
 ## ABC-Only Evidence
+
+Nested-template transport builds in both production CLIs and read-only review
+found no concrete defect. `build/pasteboard-nested-positions-01` has 9,742 spans
+for 194 methods, up by 100 methods. Only the six page method-position files
+change versus the previous export; all JS and entry maps remain identical.
+Per-record method counts match all non-entry methods for the six pages and
+Logger. CommonConstants still omits static_initializer method 4439 (its entry
+4329 is mapped separately). This count check does not prove every original
+instruction is mapped or that every endpoint is correct. Status remains eight
+incomplete application records and two constructor refusals at PC14.
+
+Earlier capture-resolved transport evidence:
 
 Capture-resolved transport builds in both production CLIs. Read-only review
 identified the owned host-realm binding as additional live prefix scratch;

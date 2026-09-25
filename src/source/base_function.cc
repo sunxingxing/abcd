@@ -30,6 +30,7 @@
 #include "function_template.h"
 #include "member_key.h"
 #include "parameter_aliases.h"
+#include "capture_positions.h"
 #include "staged_branch_call.h"
 #include "structured_catch.h"
 
@@ -442,11 +443,12 @@ class FunctionWriter {
         auto* captures = dynamic_cast<CaptureBuffer*>(output_.rdbuf());
         if (!captures) return EmitError::kWrite;
         if (semantic_template->captures.empty())
-          captures->Positions(body_constants->method, semantic_template->spans, {});
+          captures->Positions(body_constants->method, semantic_template->spans,
+                              semantic_template->method_spans);
         GeneratedPosition origin;
         const bool map_captures = !semantic_template->captures.empty() &&
                                   captures->Position(origin);
-        std::vector<std::size_t> prefix;
+        std::vector<CaptureShift> prefix;
         if (map_captures) {
           auto remaining = body_budget.bytes;
           const auto charge = [&](std::size_t count, std::size_t width) {
@@ -458,15 +460,16 @@ class FunctionWriter {
               !charge(1, sizeof(char)) ||
               !charge(semantic_template->spans.capacity(), sizeof(GeneratedSpan)) ||
               !charge(semantic_template->captures.capacity(), sizeof(SourceCapture)) ||
+              !charge(semantic_template->method_spans.capacity(), sizeof(MethodGeneratedSpan)) ||
               (semantic_template->host_realm &&
                (!charge(semantic_template->host_realm->binding.capacity(), sizeof(char)) ||
                 !charge(1, sizeof(char)))) ||
-              semantic_template->captures.size() >= remaining / sizeof(std::size_t))
+              semantic_template->captures.size() >= remaining / sizeof(CaptureShift))
             return FunctionEmitError::kResourceLimit;
           prefix.reserve(semantic_template->captures.size() + 1);
-          if (prefix.capacity() > remaining / sizeof(std::size_t))
+          if (prefix.capacity() > remaining / sizeof(CaptureShift))
             return FunctionEmitError::kResourceLimit;
-          prefix.push_back(0);
+          prefix.push_back({});
         }
         std::size_t begin = 0;
         for (const auto& capture : semantic_template->captures) {
@@ -482,14 +485,17 @@ class FunctionWriter {
           if (map_captures) {
             GeneratedPosition after;
             if (!captures->Position(after) || after.line != before.line ||
-                after.captures != before.captures || after.byte < before.byte ||
+                after.captures < before.captures || after.byte < before.byte ||
                 after.column < before.column ||
                 after.byte - before.byte != after.column - before.column)
               return EmitError::kWrite;
             const auto inserted = after.byte - before.byte;
-            if (inserted > SIZE_MAX - prefix.back())
+            const auto holes = after.captures - before.captures;
+            if (inserted > SIZE_MAX - prefix.back().bytes ||
+                holes > SIZE_MAX - prefix.back().captures)
               return FunctionEmitError::kResourceLimit;
-            prefix.push_back(prefix.back() + inserted);
+            prefix.push_back({prefix.back().bytes + inserted,
+                              prefix.back().captures + holes});
           }
           begin = end;
         }

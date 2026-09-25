@@ -296,6 +296,8 @@ struct PrintedTemplate {
   std::vector<SourceCapture> captures;
   SourceContract contract = kSourceContract;
   std::optional<HostRealmRequirement> host_realm;
+  // Descendant endpoints retain this template's capture cursors.
+  std::vector<MethodGeneratedSpan> method_spans;
 };
 // source is the unchanged PrintSourceTemplate result. bindings is one
 // parent-PROVEN initialized local cell per capture occurrence,

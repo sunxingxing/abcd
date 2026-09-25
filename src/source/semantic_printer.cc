@@ -59,7 +59,8 @@ class SourcePrinter {
     if (const auto* failure = std::get_if<SourceFailure>(&printed)) return *failure;
     auto& source = std::get<PrintedSource>(printed);
     return PrintedTemplate{std::move(source.text), std::move(source.spans),
-                            std::move(captures_), source.contract, std::move(source.host_realm)};
+                            std::move(captures_), source.contract, std::move(source.host_realm),
+                            std::move(source.method_spans)};
   }
 
   std::variant<PrintedSource, SourceFailure> PrintBody(ScalarNames names) {
@@ -219,13 +220,13 @@ class SourcePrinter {
       printer_.MethodPositions(method, spans, descendants);
     }
     bool Position(GeneratedPosition& position) const override {
-      if (printer_.capture_mode_ == CaptureMode::kTemplate) return false;
       position = printer_.position_;
       return true;
     }
     void CapturedPositions(abc::EntityOffset method, const PrintedTemplate& source,
-        std::span<const std::size_t> prefix, const GeneratedPosition& origin) override {
-      printer_.MethodPositions(method, source.spans, {}, &origin, &source, prefix);
+        std::span<const CaptureShift> prefix, const GeneratedPosition& origin) override {
+      printer_.MethodPositions(method, source.spans, source.method_spans,
+                               &origin, &source, prefix);
     }
     bool Capture(analysis::CapturedSlot capture,
                  analysis::CaptureDomain requirement) override {
@@ -261,13 +262,13 @@ class SourcePrinter {
     LeafBuffer(SourcePrinter& printer, const FunctionExpression& function)
         : printer_(printer), function_(function) {}
     bool Position(GeneratedPosition& position) const override {
-      if (printer_.capture_mode_ == CaptureMode::kTemplate) return false;
       position = printer_.position_;
       return true;
     }
     void CapturedPositions(abc::EntityOffset method, const PrintedTemplate& source,
-        std::span<const std::size_t> prefix, const GeneratedPosition& origin) override {
-      printer_.MethodPositions(method, source.spans, {}, &origin, &source, prefix);
+        std::span<const CaptureShift> prefix, const GeneratedPosition& origin) override {
+      printer_.MethodPositions(method, source.spans, source.method_spans,
+                               &origin, &source, prefix);
     }
     void Positions(abc::EntityOffset method, std::span<const GeneratedSpan> spans,
                    std::span<const MethodGeneratedSpan> descendants) override {
@@ -313,10 +314,9 @@ class SourcePrinter {
                        std::span<const MethodGeneratedSpan> descendants,
                        const GeneratedPosition* base = nullptr,
                        const PrintedTemplate* source = nullptr,
-                       std::span<const std::size_t> prefix = {}) {
-    // A template's later capture insertions invalidate file coordinates. Keep
-    // this first transport confined to bound-source owners, not text inference.
-    if (capture_mode_ == CaptureMode::kTemplate) return;
+                       std::span<const CaptureShift> prefix = {}) {
+    // Template endpoints retain unresolved capture cursors through each owner.
+    // They become final file coordinates only at the bound record printer.
     auto& mapped = result_.method_spans;
     if (spans.size() > SIZE_MAX - descendants.size())
       throw SourceFailure{SourceError::kResourceLimit, current_pc_};
@@ -346,7 +346,9 @@ class SourcePrinter {
     }
     const auto origin = base ? *base : position_;
     const auto relocate = [&](GeneratedPosition point) {
-      if (!point.line || point.captures ||
+      if (!point.line ||
+          (capture_mode_ == CaptureMode::kReject && (point.captures || origin.captures)) ||
+          point.captures > SIZE_MAX - origin.captures ||
           point.byte > SIZE_MAX - origin.byte ||
           point.line - 1 > UINT32_MAX - origin.line ||
           (point.line == 1 && point.column > UINT32_MAX - origin.column))
@@ -354,6 +356,7 @@ class SourcePrinter {
       point.byte += origin.byte;
       if (point.line == 1) point.column += origin.column;
       point.line += origin.line - 1;
+      point.captures += origin.captures;
       return point;
     };
     const auto append = [&](abc::EntityOffset owner, GeneratedSpan span) {
