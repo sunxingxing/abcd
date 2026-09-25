@@ -97,7 +97,7 @@ class SourcePrinter {
         return SourceFailure{SourceError::kResourceLimit, {}};
       if (const auto failure = AppendAwaitPositions(ast_, result_, limit_ - capture_bytes))
         return *failure;
-      if (elide_entry_copies_) result_.vm_slots = vm_slots_;
+      if (observe_body_slots_) result_.vm_slots = vm_slots_;
       return std::move(result_);
     } catch (const SourceFailure& failure) {
       return failure;
@@ -538,9 +538,11 @@ class SourcePrinter {
     Text({buffer, static_cast<std::size_t>(converted.ptr - buffer)});
   }
   void PrepareEntryBindings() {
-    // Phased exception owners have different SSA coordinates. Keep this first
-    // certificate on normal methods. Missing ABI substitutions do not prevent
-    // a slot census: all reads/targets still pass the complete AST audit.
+    observe_body_slots_ = CanObserveBodySlots(ast_);
+    if (observe_body_slots_) PrepareSlotUses();
+    // Phased exception owners have different SSA coordinates. Their slot
+    // census is independent: never apply normal-SSA aliases or rest transport
+    // merely because every emitted operand can be observed.
     if (!capture_method_ || ast_.regions.catches) return;
     // Body-only APIs deliberately have no wrapper FrameLayout. The owner
     // supplies the real register span and formal range in ScalarNames.
@@ -558,7 +560,6 @@ class SourcePrinter {
     if (elide_entry_copies_) {
       if (names_.rest)
         rest_local_ = FindRestLocal(*capture_method_, ast_, names_.rest->first_argument);
-      PrepareSlotUses();
     }
   }
   void PrepareSlotUses() {
@@ -586,7 +587,7 @@ class SourcePrinter {
   }
   void Value(const ScalarValue& value) { Scalar(ScalarExpression{value}); }
   void ObserveSlots(const ScalarExpression& expression, bool read) {
-    if (!elide_entry_copies_ && !observe_record_slots_) return;
+    if (!observe_body_slots_ && !observe_record_slots_) return;
     const auto observe = [&](const ScalarValue& value) {
       if (std::holds_alternative<Accumulator>(value)) {
         result_.accumulator_used = true;
@@ -1579,7 +1580,7 @@ class SourcePrinter {
             }
             Text("} catch ($caught) {\n");
             const auto caught_begin = position_;
-            Slot(analysis::ScalarSlot{Accumulator{}});
+            Target(analysis::ScalarSlot{Accumulator{}});
             Text(" = $caught;\n");
             const auto first_span = result_.spans.size();
             Region(*region.handler);
@@ -1600,6 +1601,7 @@ class SourcePrinter {
   std::vector<EntryBinding> entry_bindings_;
   std::optional<abc::RegisterId> rest_local_;
   bool elide_entry_copies_ = false;
+  bool observe_body_slots_ = false;
   VmSlotUse vm_slots_ = VmSlotUse::kNone;
   bool observe_record_slots_ = false;
   std::vector<LabelUse> label_uses_;

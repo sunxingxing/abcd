@@ -52,8 +52,8 @@ bool HasBoundReads(const SourceExpression& expression, SlotReadMode mode) {
 bool HasObservedReads(const SourceAst& ast, SlotReadMode mode) {
   // ArgumentRegion delegates every branch statement to the same slot-aware
   // printer and reads its final arguments via Value. The flat audit below
-  // includes the entire region. Exception owners retain separate protocols.
-  if (ast.regions.catches) return false;
+  // includes the entire region. RegionTry installs the caught accumulator via
+  // Target and delegates both bodies to Region; it has no hidden register read.
   return std::all_of(ast.statements.begin(), ast.statements.end(), [mode](const auto& statement) {
     return std::visit([mode](const auto& operation) {
       using T = std::decay_t<decltype(operation)>;
@@ -98,11 +98,15 @@ bool HasObservedReads(const SourceAst& ast, SlotReadMode mode) {
 }  // namespace
 
 bool CanElideEntryCopies(const SourceAst& ast) {
+  return !ast.regions.catches && HasObservedReads(ast, SlotReadMode::kBound);
+}
+
+bool CanObserveBodySlots(const SourceAst& ast) {
   return HasObservedReads(ast, SlotReadMode::kBound);
 }
 
 bool CanObserveRecordSlots(const SourceAst& ast) {
-  return HasObservedReads(ast, SlotReadMode::kRecord);
+  return !ast.regions.catches && HasObservedReads(ast, SlotReadMode::kRecord);
 }
 
 bool IsBoundEntryCopy(const SourceStatement& statement,

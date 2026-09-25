@@ -8,6 +8,9 @@ namespace abcd::source {
 // Reject any path that can print register identifiers outside bound reads.
 // Declaration removal needs a separate proof; this only omits initialization.
 bool CanElideEntryCopies(const SourceAst& ast);
+// Slot census does not use SSA coordinates. Exception bodies can be observed
+// without authorizing entry substitutions or rest transport elimination.
+bool CanObserveBodySlots(const SourceAst& ast);
 // Record printing does not substitute ABI reads. Its identifier-only class
 // parent and module-store accumulator are explicitly observed by the printer.
 bool CanObserveRecordSlots(const SourceAst& ast);
