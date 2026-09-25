@@ -1,14 +1,9 @@
 #ifndef ABCD_ANALYSIS_VALUE_OPERANDS_H_
 #define ABCD_ANALYSIS_VALUE_OPERANDS_H_
 
-#include "abcd/analysis/semantic_ir.h"
+#include "abcd/analysis/value_ir.h"
 
 namespace abcd::analysis {
-enum class OperandRole : std::uint8_t {
-  kInput, kBase, kKey, kStoredValue, kLeft, kRight, kCondition,
-  kReturnValue, kGuardValue, kDiagnosticName
-};
-enum class ReadPurpose : std::uint8_t { kOperand, kProtocol };
 struct InputOperand {
   OperandRole role;
   ScalarValue value;
