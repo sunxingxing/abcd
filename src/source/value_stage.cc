@@ -1,10 +1,11 @@
 #include "abcd/source/value_stage.h"
+#include "abcd/analysis/value_simplify.h"
 
 namespace abcd::source {
-ImportedMethod BuildValueStage(RouteInputIdentity identity, abc::EntityOffset method,
+ValueMethod BuildValueStage(RouteInputIdentity identity, abc::EntityOffset method,
     abc::EntityOffset record, const abc::MethodBody& body,
     const abc::FrameLayout& frame, analysis::SemanticBudget budget) {
-  ImportedMethod result;
+  ValueMethod result;
   auto& receipt = result.receipt;
   receipt.identity = identity;
   receipt.method = method;
@@ -79,6 +80,22 @@ ImportedMethod BuildValueStage(RouteInputIdentity identity, abc::EntityOffset me
                     ? RouteFailureClass::kWorkLimit : RouteFailureClass::kInvariantViolation,
                 ValueRouteError::kImportStage, verified->pc);
   receipt.stage = SourceStage::kValuesImported;
+  receipt.work_revision = graph->revision.value;
+  const auto simplified = analysis::SimplifyValues(*graph, graph->revision, {remaining, budget.work});
+  if (const auto* error = std::get_if<analysis::ValueSimplifyError>(&simplified)) {
+    auto kind = RouteFailureClass::kInvariantViolation;
+    switch (*error) {
+      case analysis::ValueSimplifyError::kWorkLimit: kind = RouteFailureClass::kWorkLimit; break;
+      case analysis::ValueSimplifyError::kResourceLimit: kind = RouteFailureClass::kMemoryLimit; break;
+      case analysis::ValueSimplifyError::kUnsupportedFlow: kind = RouteFailureClass::kUnsupported; break;
+      case analysis::ValueSimplifyError::kStaleRevision:
+      case analysis::ValueSimplifyError::kRevisionLimit:
+      case analysis::ValueSimplifyError::kInvalidGraph:
+      case analysis::ValueSimplifyError::kCopyCycle: break;
+    }
+    return fail(kind, ValueRouteError::kTransformStage);
+  }
+  receipt.stage = SourceStage::kValuesVerified;
   receipt.coverage = Coverage::kIncomplete;
   receipt.work_revision = graph->revision.value;
   result.graph = std::move(*graph);

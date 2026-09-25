@@ -205,9 +205,9 @@ int main() {
   // 4294967297 must not narrow to 1 on this platform (R4).
   reject("\"schema\":3", "\"schema\":4294967297", RouteReceiptError::kSchema);
   reject("\"schema\":3", "\"schema\":2.5", RouteReceiptError::kSchema);
-  reject("\"evidence_rules\":4", "\"evidence_rules\":1",
+  reject("\"evidence_rules\":5", "\"evidence_rules\":1",
          RouteReceiptError::kEvidence);
-  reject("\"evidence_rules\":4", "\"evidence_rules\":4294967297",
+  reject("\"evidence_rules\":5", "\"evidence_rules\":4294967297",
          RouteReceiptError::kEvidence);
   reject("\"method\":7586", "\"method\":4294967297",
          RouteReceiptError::kIdentity);
@@ -289,7 +289,7 @@ int main() {
   // An identity-free receipt never parses (R6: compare the error alternative,
   // not the variant index).
   const auto identity_free =
-      ParseRouteReceipt("{\"schema\":3,\"evidence_rules\":4}");
+      ParseRouteReceipt("{\"schema\":3,\"evidence_rules\":5}");
   const auto* identity_error = std::get_if<RouteReceiptError>(&identity_free);
   Check(identity_error != nullptr &&
         *identity_error == RouteReceiptError::kIdentity);
@@ -299,6 +299,17 @@ int main() {
   rejected(parse_anonymous, RouteReceiptError::kIdentity);
   Check(std::get<RouteReceiptError>(ParseRouteReceipt("{")) ==
         RouteReceiptError::kSyntax);
+  auto transform_refusal = RefusedReceipt();
+  transform_refusal.stage = SourceStage::kValuesImported;
+  transform_refusal.work_revision = 0;
+  transform_refusal.failure = RouteFailure{RouteFailureClass::kWorkLimit,
+                                           ValueRouteError::kTransformStage, {}};
+  Check(!ValidateRouteReceipt(transform_refusal));
+  const auto transform_json = SerializeRouteReceipt(transform_refusal);
+  Check(std::holds_alternative<MethodRouteReceipt>(
+      ParseRouteReceipt(std::get<std::string>(transform_json))));
+  transform_refusal.stage = SourceStage::kValuesVerified;
+  rejected(transform_refusal, RouteReceiptError::kStage);
 
   // Stage ledgers only move forward along their own route's sequence: a
   // fresh ledger starts at its first stage, never jumps, and the legacy

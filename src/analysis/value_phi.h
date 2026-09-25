@@ -1,7 +1,8 @@
 #ifndef ABCD_ANALYSIS_VALUE_PHI_H_
 #define ABCD_ANALYSIS_VALUE_PHI_H_
 
-#include "value_simplify.h"
+#include "abcd/analysis/value_simplify.h"
+#include <span>
 
 namespace abcd::analysis {
 struct PhiSimplifyStats {
@@ -13,6 +14,7 @@ struct PhiSimplifyStats {
 // Failure requires discarding the candidate. Caller checks resulting flow before
 // committing. Budget covers additional scratch, not the already admitted graph.
 [[nodiscard]] std::variant<PhiSimplifyStats, ValueSimplifyError> SimplifyPhis(
-    ValueProgram& candidate, SemanticBudget budget);
+    ValueProgram& candidate, SemanticBudget budget,
+    std::span<ValueId> representatives = {});
 }  // namespace abcd::analysis
 #endif

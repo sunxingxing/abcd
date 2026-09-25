@@ -16,8 +16,8 @@ struct ValueSimplifyStats {
 };
 // One owned candidate per batch, never one clone per value. Budget includes
 // both graphs plus simultaneous scratch. Failure leaves the original unchanged.
-// Requires verified input effects; flow and structural validation here do
-// not produce a ValuesVerified publication certificate. No motion or load CSE.
+// Requires verified input effects/identity. Checks flow, anchored identity
+// equations, effects and origins before committing. No motion or load CSE.
 [[nodiscard]] std::variant<ValueSimplifyStats, ValueSimplifyError> SimplifyValues(
     ValueProgram& graph, IrRevision expected, SemanticBudget budget = {});
 }  // namespace abcd::analysis

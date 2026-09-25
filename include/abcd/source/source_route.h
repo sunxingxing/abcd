@@ -63,6 +63,7 @@ enum class ValueRouteError : std::uint8_t {
   kRouteUnavailable = 0,
   kInputStage,
   kImportStage,
+  kTransformStage,
 };
 struct RouteFailure {
   RouteFailureClass failure_class;
@@ -160,6 +161,7 @@ constexpr std::string_view ValueRouteErrorName(ValueRouteError reason) {
     case ValueRouteError::kRouteUnavailable: return "route_unavailable";
     case ValueRouteError::kInputStage: return "input_stage";
     case ValueRouteError::kImportStage: return "import_stage";
+    case ValueRouteError::kTransformStage: return "transform_stage";
   }
   return {};
 }
@@ -197,8 +199,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Engine/rules provenance of the admission and stage semantics above. Bump
 // with any change to them; receipts signed under other rules are rejected
 // rather than reinterpreted.
-// Rules 4 require normal-flow availability/phi completeness at ValuesImported.
-inline constexpr std::uint32_t kRouteEvidenceRules = 4;
+// Rules 5 add verified copy/phi/dead-value batches at ValuesVerified.
+inline constexpr std::uint32_t kRouteEvidenceRules = 5;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

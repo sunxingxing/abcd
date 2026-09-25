@@ -1,4 +1,4 @@
-#include "value_simplify.h"
+#include "abcd/analysis/value_simplify.h"
 
 #include <limits>
 #include <new>
@@ -8,6 +8,7 @@
 #include "value_edits.h"
 #include "value_flow.h"
 #include "value_phi.h"
+#include "value_rewrite.h"
 
 namespace abcd::analysis {
 namespace {
@@ -252,7 +253,7 @@ std::variant<ValueSimplifyStats, ValueSimplifyError> SimplifyValues(
     BatchScratch scratch{candidate, quota};
     ValueSimplifyStats stats{expected};
     Canonicalize(candidate, scratch, quota, stats);
-    const auto phis = SimplifyPhis(candidate, quota.Remaining());
+    const auto phis = SimplifyPhis(candidate, quota.Remaining(), scratch.canonical);
     if (const auto* error = std::get_if<ValueSimplifyError>(&phis)) throw *error;
     const auto& collapsed = std::get<PhiSimplifyStats>(phis);
     quota.Work(collapsed.work);
@@ -281,6 +282,13 @@ std::variant<ValueSimplifyStats, ValueSimplifyError> SimplifyValues(
             Error::kInvalidGraph);
     quota.CheckUses(candidate);
     quota.CheckFlow(candidate);
+    const auto rewritten = VerifyValueRewrite(graph, candidate, scratch.canonical, quota.Remaining());
+    if (const auto* error = std::get_if<ValueRewriteError>(&rewritten)) {
+      if (*error == ValueRewriteError::kWorkLimit) throw Error::kWorkLimit;
+      if (*error == ValueRewriteError::kResourceLimit) throw Error::kResourceLimit;
+      throw Error::kInvalidGraph;
+    }
+    quota.Work(std::get<ValueRewriteProof>(rewritten).work);
     if (stats.replaced_uses == 0 && stats.removed_ops == 0 && stats.removed_phis == 0)
       return stats;
     Require(expected.value != std::numeric_limits<std::uint64_t>::max(),

@@ -44,7 +44,9 @@ struct PhiFrame {
 class PhiCollapse {
  public:
   PhiCollapse(ValueProgram& graph, PhiQuota& quota) : graph_(graph), quota_(quota) {}
-  PhiSimplifyStats Run() {
+  PhiSimplifyStats Run(std::span<ValueId> representatives) {
+    if (!representatives.empty() && representatives.size() != graph_.values.size())
+      throw Error::kInvalidGraph;
     const auto sized = [&](auto& items, std::size_t size) {
       quota_.Reserve(items, size);
       quota_.Work(size);
@@ -110,6 +112,11 @@ class PhiCollapse {
       if (ReplaceUse(graph_, UseId{static_cast<std::uint32_t>(i)}, canonical_[value->value]))
         throw Error::kInvalidGraph;
       ++stats_.replaced_uses;
+    }
+    for (auto& value : representatives) {
+      quota_.Work();
+      if (value.value >= canonical_.size()) throw Error::kInvalidGraph;
+      value = canonical_[value.value];
     }
     return stats_;
   }
@@ -178,10 +185,11 @@ class PhiCollapse {
 }  // namespace
 
 std::variant<PhiSimplifyStats, ValueSimplifyError> SimplifyPhis(
-    ValueProgram& candidate, SemanticBudget budget) {
+    ValueProgram& candidate, SemanticBudget budget,
+    std::span<ValueId> representatives) {
   try {
     PhiQuota quota{budget};
-    auto result = PhiCollapse(candidate, quota).Run();
+    auto result = PhiCollapse(candidate, quota).Run(representatives);
     result.work = budget.work - quota.RemainingWork();
     return result;
   } catch (Error error) {

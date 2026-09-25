@@ -111,11 +111,20 @@ int ReportRouteReceipt(const source::MethodRouteReceipt& receipt,
       {"route_receipt", nlohmann::json::parse(*json)},
       {"source_complete", false},
       {"executable", false}};
-  if (graph) report["value_graph"] = {
+  if (graph) {
+    const auto live = [](const auto& items) {
+      return std::count_if(items.begin(), items.end(), [](const auto& item) {
+        return item.life == analysis::ValueLife::kLive;
+      });
+    };
+    report["value_graph"] = {
       {"operations", graph->ops.size()}, {"values", graph->values.size()},
       {"uses", graph->uses.size()}, {"blocks", graph->blocks.size()},
       {"edges", graph->edges.size()},
-      {"exceptional_exits", graph->exceptional_exits.size()}};
+      {"exceptional_exits", graph->exceptional_exits.size()},
+      {"live_operations", live(graph->ops)}, {"live_values", live(graph->values)},
+      {"live_uses", live(graph->uses)}};
+  }
   std::cout << report << '\n';
   if (!std::cout) return EXIT_FAILURE;
   return receipt.coverage == source::Coverage::kComplete &&

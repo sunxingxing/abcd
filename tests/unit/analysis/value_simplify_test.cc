@@ -1,5 +1,6 @@
-#include "../../../src/analysis/value_simplify.h"
+#include "abcd/analysis/value_simplify.h"
 #include "../../../src/analysis/value_edits.h"
+#include "../../../src/analysis/value_rewrite.h"
 
 #include <array>
 #include <cstdlib>
@@ -139,6 +140,34 @@ void DeadPhiCycle() {
   Check(graph.ops[0].life == ValueLife::kLive);
   Check(!VerifyValueUses(graph, graph.uses.size()));
 }
+
+void RewriteCertificate() {
+  const auto before = CopyChain(2);
+  auto after = before;
+  Check(std::holds_alternative<ValueSimplifyStats>(SimplifyValues(after, {})));
+  // The checker consumes an uncommitted candidate; publication increments the
+  // revision only after checking. A stale committed revision must be rejected.
+  const std::array<ValueId, 3> roots{ValueId{0}, ValueId{0}, ValueId{0}};
+  Check(std::get<ValueRewriteError>(VerifyValueRewrite(before, after, roots)) ==
+        ValueRewriteError::kRevision);
+  after.revision = before.revision;
+  Check(std::holds_alternative<ValueRewriteProof>(VerifyValueRewrite(before, after, roots)));
+  after.origins[0].pc.value += 1;
+  Check(std::get<ValueRewriteError>(VerifyValueRewrite(before, after, roots)) ==
+        ValueRewriteError::kOrigin);
+  after.origins[0].pc = before.origins[0].pc;
+  after.ops[2].normal = LanguageEffect::kHeapRead;
+  Check(std::get<ValueRewriteError>(VerifyValueRewrite(before, after, roots)) ==
+        ValueRewriteError::kEffect);
+  after.ops[2].normal = LanguageEffect::kNone;
+  auto invented = roots;
+  invented[0] = ValueId{1};
+  Check(std::get<ValueRewriteError>(VerifyValueRewrite(before, after, invented)) ==
+        ValueRewriteError::kAlias);
+  after.uses[2].role = OperandRole::kCondition;
+  Check(std::get<ValueRewriteError>(VerifyValueRewrite(before, after, roots)) ==
+        ValueRewriteError::kOperand);
+}
 }  // namespace
 
 int main() {
@@ -146,4 +175,5 @@ int main() {
   FailureRollback();
   KeepObservable();
   DeadPhiCycle();
+  RewriteCertificate();
 }

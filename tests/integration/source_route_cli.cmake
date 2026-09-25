@@ -45,7 +45,7 @@ foreach(arguments IN ITEMS
   endif()
 endforeach()
 
-# T01 imports this method in either option order, without emitting source or
+# T02 verifies this method in either option order, without emitting source or
 # entering the legacy writer. The method is still incomplete until T03.
 foreach(arguments IN ITEMS "--function-source;--value-source"
                             "--value-source;--function-source")
@@ -59,7 +59,7 @@ foreach(arguments IN ITEMS "--function-source;--value-source"
     message(FATAL_ERROR "refusal lost its route: ${report}")
   endif()
   string(JSON stage GET "${report}" route_receipt stage)
-  if(NOT stage STREQUAL "values_imported")
+  if(NOT stage STREQUAL "values_verified")
     message(FATAL_ERROR "unexpected import stage: ${report}")
   endif()
   string(JSON coverage GET "${report}" route_receipt coverage)
@@ -73,7 +73,7 @@ foreach(arguments IN ITEMS "--function-source;--value-source"
   endif()
   string(JSON failure_type TYPE "${report}" route_receipt failure)
   string(JSON revision GET "${report}" route_receipt work_revision)
-  if(NOT failure_type STREQUAL "NULL" OR NOT revision EQUAL 0)
+  if(NOT failure_type STREQUAL "NULL" OR NOT revision EQUAL 1)
     message(FATAL_ERROR "import lost its revision or claims failure: ${report}")
   endif()
   string(JSON sha256 GET "${report}" route_receipt identity sha256)

@@ -109,10 +109,8 @@ cover copy lengths 200/201/4096, multiple uses, stale/overflow revisions, budget
 rollback, copy cycles, unused getters and dead phi cycles. They remain unrun.
 The production abc_semantic target builds with these changes.
 
-The independent transformed effect/input correspondence certificate remains
-outstanding. SimplifyValues is internal and
-requires verified input effects; it is not yet called by the source CLI. No new
-source-output claim is made here.
+The independent transformed effect/input correspondence checker and source-stage
+integration are described below. Complete source emission remains outstanding.
 
 ### Working Flow Verification
 
@@ -161,3 +159,31 @@ not a new third-party dependency. Tests specify chains and rings of 200/201/4096
 phis, mixed external inputs, domain refinement, and the unanchored/self-only
 case. The full batch rejects malformed entry flow before SCC processing. Test
 execution and RSS measurement remain paused; no ValuesVerified/source claim yet.
+
+### Verified Rewrite Boundary
+
+VerifyValueRewrite independently checks the proposed representative map instead
+of rerunning copy/SCC optimization. Only pure identity copies and phi equations
+may substitute a value. All equations preserve or refine domains, and a reverse
+use-list traversal must ground every alias in a fixed representative. Equations
+without an anchor are rejected. Graph layout, operation payloads, input read
+identities, incoming-edge keys, observable effects, exceptional exits and source
+PCs must remain unchanged. Only proved pure deletion may mark an origin ElidedPure;
+old tombstones cannot be resurrected or silently rewritten.
+
+This O(V+U+I+E+origins) checker runs inside the admitted transaction, before revision
+commit. It complements, rather than replaces, both normal-flow checks and the
+immutable input correspondence verifier. The public analysis/value_simplify.h
+boundary requires verified input identity/effects. The source wrapper establishes
+those premises from a fresh method/proof before calling it. Rules 5 expose the
+result as ValuesVerified with its committed revision, never as complete source.
+CLI counts now distinguish retained operations/values/uses from stable-ID arena
+slots. The structural source tree, binding/control plans and printer are still
+required before publishing executable source. Test and RSS execution remain paused.
+
+Fresh production-build ABC-only observations: pasteboard 7586 and Immersive 21082
+both reached ValuesVerified under rules 5, revision 1, without legacy output or
+failure. Each retains 7 operations, 9 operand occurrences and 15 value entries
+from stable arenas of 21/23/29; all 3 original exceptional exits remain. They
+still report incomplete/non-executable (exit 1). This is real pipeline evidence,
+not execution of the regression suites or proof of full-corpus coverage.
