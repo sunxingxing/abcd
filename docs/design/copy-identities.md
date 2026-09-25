@@ -103,3 +103,39 @@ Read-only review found no concrete defect. Tests, JS execution and RSS remain
 paused. Deferred regressions include repeated chains, distinct-register copies,
 intermediate extra reads, phi uses, malformed/backward definitions, origin
 conflicts and live register commits. Complete semantic equivalence is unproven.
+
+## Copy Bridge Canonicalization
+
+ElideCopyReloads can erase acc-to-register and register-to-acc instructions
+while leaving a following acc-to-the-same-register save emitted. FoldCopyBridges
+restores the first save as the emitted commit and erases the final one. All three
+original operations must be exact pure normal copies of that register, in one
+block, with unmerged origins; the first two AST nodes must already be NoOperation.
+The last AST save must still match. The original first save and reload SSA
+results each have exactly one use, the next instruction, including phi uses.
+Catches and phased SSA are excluded. No original use counts are subtracted.
+
+Only a private register commit crosses two pure copies; no allocation or user
+effect moves. The reload and final save become the same identity certificate
+already understood by native argument recovery. Their PC anchors remain, with
+the final save pointing to the reload via previous_origin. This makes the first
+save visible to existing producer-to-save folding, without adding an object- or
+sample-specific expression path. It runs immediately after copy-reload elision.
+The scan and constant-size candidate checks cost O(I log(I + U)) with indexed
+SSA reads for I instructions and U reads, constant scratch and no dependency.
+
+Production builds and ABC-only export `build/pasteboard-copy-bridges-01`
+succeeded. PageABuilder now passes its callback and `{name: "PageA"}` directly
+as two native arguments; NavDestination.create likewise accepts the callback
+and moduleName/pagePath literal without the former comma transport. Six pages
+change, with source totals 5,390 lines / 103,027 bytes, down 73 lines / 691
+bytes. This includes private declarations removed by the existing slot audit,
+not newly supported methods or a claim of complete source equivalence.
+
+PageA method 7449 PCs 63/67 share the literal span [2014,2031); PCs 69/71 retain
+zero-width anchors at 2031. Partial maps retain 195 methods / 9,745 spans and
+the same eight incomplete, two refused and nine metadata-only record statuses.
+Read-only review found no concrete defect. Tests, JS execution and RSS remain
+paused. Deferred regressions include different-register bridges, extra/phi
+consumers, non-pure copies, merged origins, repeated bridges, retained live
+registers and interaction with constructor/array assembly.

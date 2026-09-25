@@ -18,6 +18,10 @@ std::optional<SourceFailure> ElideDeadAssignments(const AstMethod& method,
 // conservative upper bounds for later folds. No allocation or value movement.
 void ElideCopyReloads(const AstMethod& method, SourceAst& ast,
                      std::span<const std::size_t> uses);
+// Canonicalize an erased save/reload followed by a live same-register save.
+// Preserve original SSA identities and keep the reload/final-save PC anchors.
+void FoldCopyBridges(const AstMethod& method, SourceAst& ast,
+                     std::span<const std::size_t> uses);
 // Reuse exact SSA copy identities within uninterrupted emitted slot-copy
 // sequences. Keep live register saves, eliding only redundant acc reloads.
 // No allocation; one pass with indexed SSA reads, no inter-block propagation.

@@ -1,5 +1,6 @@
 #include "dead_copies.h"
 #include "copy_origins.h"
+#include "private_copy.h"
 
 namespace abcd::source {
 namespace {
@@ -117,6 +118,58 @@ void ElideCopyReloads(const AstMethod& method, SourceAst& ast,
       spill.operation = analysis::NoOperation{};
       reload.operation = analysis::NoOperation{};
       ++i;
+    }
+  }
+}
+void FoldCopyBridges(const AstMethod& method, SourceAst& ast,
+                     std::span<const std::size_t> uses) {
+  if (method.ssa.IsPhased() || ast.regions.catches) return;
+  const auto unmerged = [](const SourceStatement& node) {
+    return !node.fused_read && !node.fused_spill && !node.fused_reload &&
+           !node.previous_origin && !node.class_origin && !node.literal_origin;
+  };
+  for (const auto& block : method.flow.blocks) {
+    const auto end = std::size_t(block.first_instruction) + block.instruction_count;
+    for (std::size_t i = block.first_instruction; i + 2 < end; ++i) {
+      auto& first = ast.statements[i];
+      const auto& reload = ast.statements[i + 1];
+      auto& last = ast.statements[i + 2];
+      const auto* save = std::get_if<SourceAssignment>(&last.operation);
+      const auto* target = save ? std::get_if<abc::RegisterId>(&save->target) : nullptr;
+      const auto* scalar = save ? std::get_if<analysis::ScalarExpression>(&save->value) : nullptr;
+      const auto* input = scalar ? std::get_if<analysis::ScalarValue>(scalar) : nullptr;
+      if (!std::holds_alternative<analysis::NoOperation>(first.operation) ||
+          !std::holds_alternative<analysis::NoOperation>(reload.operation) ||
+          !unmerged(first) || !unmerged(reload) || !unmerged(last) ||
+          !target || !input || !std::holds_alternative<analysis::Accumulator>(*input) ||
+          save->result != AssignmentResult::kStored || save->object_field) continue;
+      bool matches = true;
+      for (auto cursor = i; cursor <= i + 2; ++cursor) {
+        const auto& instruction = method.instructions[cursor];
+        const auto* copy = std::get_if<analysis::ScalarAssignment>(&instruction.operation);
+        const auto source = copy ? CopyInput(copy->expression) : std::nullopt;
+        const analysis::ScalarSlot from = cursor == i + 1
+            ? analysis::ScalarSlot{*target} : analysis::ScalarSlot{analysis::Accumulator{}};
+        const analysis::ScalarSlot to = cursor == i + 1
+            ? analysis::ScalarSlot{analysis::Accumulator{}} : analysis::ScalarSlot{*target};
+        if (!copy || !source || !SameSlot(*source, from) ||
+            !SameSlot(copy->destination, to) ||
+            copy->completion != analysis::CompletionEffect::kNormal ||
+            !IsPureCopyStep(instruction)) { matches = false; break; }
+        if (cursor == i + 2) continue;
+        const auto output = method.ssa.Write({static_cast<std::uint32_t>(cursor)});
+        const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(cursor + 1)});
+        if (!output || output->value >= uses.size() || uses[output->value] != 1 ||
+            reads.size() != 1 || reads.front().value != *output) { matches = false; break; }
+      }
+      if (!matches) continue;
+      // Restore the first save as the emitted commit. The erased reload and
+      // final save form a same-register identity pair. No effect is crossed,
+      // and neither intermediate SSA value has an external/phi observer.
+      first.operation = *save;
+      last.operation = analysis::NoOperation{};
+      last.previous_origin = reload.pc;
+      i += 2;
     }
   }
 }

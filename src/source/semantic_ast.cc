@@ -745,6 +745,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     FoldBranchExpressions(method, ast, uses);
     if (const auto failure = ElideDeadAssignments(method, ast, uses, copy_bytes)) return *failure;
     ElideCopyReloads(method, ast, uses);
+    FoldCopyBridges(method, ast, uses);
     FoldMemberReceivers(method, ast, uses, copies);
     FoldStoredExpressions(method, ast, uses);
     FoldStoreReceivers(method, ast, uses);
