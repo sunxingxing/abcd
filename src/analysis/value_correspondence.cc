@@ -84,7 +84,8 @@ std::optional<ValueImportFailure> VerifyImportedValues(
   if (edge_index != graph.edges.size()) return fail(Error::kInvalidGraph);
   for (std::size_t v = 0; v < graph.values.size(); ++v) {
     if (!take(1)) return fail(Error::kWorkLimit);
-    if (graph.input.values[v].value != v ||
+    if (graph.values[v].life != ValueLife::kLive ||
+        graph.input.values[v].value != v ||
         graph.values[v].domain != proof.values.Facts()[v]) return fail(Error::kInputMismatch);
     const auto& input = method.ssa.Values()[v];
     if (const auto* origin = std::get_if<InstructionValue>(&input.origin)) {

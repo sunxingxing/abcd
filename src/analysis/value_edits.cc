@@ -1,4 +1,5 @@
 #include "value_edits.h"
+#include <type_traits>
 
 namespace abcd::analysis {
 namespace {
@@ -15,21 +16,42 @@ void Unlink(ValueProgram& graph, UseId id) {
   use.next.reset();
 }
 
-bool HasControlOrOwnerRole(const ValueOperation& operation) {
-  return std::holds_alternative<ValueBranch>(operation) ||
-         std::holds_alternative<ValueJump>(operation) ||
-         std::holds_alternative<ValueReturn>(operation) ||
-         std::holds_alternative<ValueGuard>(operation) ||
-         std::holds_alternative<ValueArrayAllocation>(operation);
-}
 }  // namespace
+
+bool CanErasePureOp(const ValueOp& op) {
+  if (op.normal != LanguageEffect::kNone ||
+      op.before_throw != LanguageEffect::kNone ||
+      op.exceptional != ExceptionalCompletion::kImpossible) return false;
+  // Explicit admission: new owner/control variants must not become erasable
+  // merely because an effects field happened to be empty.
+  return std::visit([](const auto& operation) {
+    using T = std::decay_t<decltype(operation)>;
+    if constexpr (std::is_same_v<T, ValueCopy> ||
+                  std::is_same_v<T, ValueUnary> ||
+                  std::is_same_v<T, ValueBinary> ||
+                  std::is_same_v<T, ValueString> ||
+                  std::is_same_v<T, ValueNop>) return true;
+    else {
+      static_assert(std::is_same_v<T, ValueNamedRead> ||
+                    std::is_same_v<T, ValueNamedWrite> ||
+                    std::is_same_v<T, ValuePropertyRead> ||
+                    std::is_same_v<T, ValueBranch> ||
+                    std::is_same_v<T, ValueJump> ||
+                    std::is_same_v<T, ValueReturn> ||
+                    std::is_same_v<T, ValueGuard> ||
+                    std::is_same_v<T, ValueArrayAllocation>);
+      return false;
+    }
+  }, op.operation);
+}
 
 std::optional<ValueEditError> ReplaceUse(
     ValueProgram& graph, UseId id, ValueId replacement) {
   if (id.value >= graph.uses.size() ||
       graph.uses[id.value].life != ValueLife::kLive)
     return ValueEditError::kInvalidUse;
-  if (replacement.value >= graph.values.size())
+  if (replacement.value >= graph.values.size() ||
+      graph.values[replacement.value].life != ValueLife::kLive)
     return ValueEditError::kInvalidValue;
   if (const auto* result = std::get_if<OpResult>(
           &graph.values[replacement.value].origin);
@@ -52,10 +74,7 @@ std::optional<ValueEditError> ErasePureOp(ValueProgram& graph, OpId id) {
       graph.ops[id.value].life != ValueLife::kLive)
     return ValueEditError::kInvalidOp;
   auto& op = graph.ops[id.value];
-  if (op.normal != LanguageEffect::kNone ||
-      op.before_throw != LanguageEffect::kNone ||
-      op.exceptional != ExceptionalCompletion::kImpossible ||
-      HasControlOrOwnerRole(op.operation))
+  if (!CanErasePureOp(op))
     return ValueEditError::kObservable;
   if (op.result && graph.values[op.result->value].first_use)
     return ValueEditError::kLiveResult;
@@ -63,11 +82,62 @@ std::optional<ValueEditError> ErasePureOp(ValueProgram& graph, OpId id) {
     return ValueEditError::kInvalidOrigin;
   for (std::uint32_t ordinal = 0; ordinal < op.use_count; ++ordinal) {
     const UseId use{op.first_use.value + ordinal};
+    if (graph.uses[use.value].life == ValueLife::kRemoved) continue;
     Unlink(graph, use);
     graph.uses[use.value].life = ValueLife::kRemoved;
   }
   op.life = ValueLife::kRemoved;
+  if (op.result) graph.values[op.result->value].life = ValueLife::kRemoved;
   graph.origins[op.origin.value].disposition = OriginDisposition::kElidedPure;
+  return {};
+}
+
+std::optional<ValueEditError> EraseUnmarkedValues(
+    ValueProgram& graph, std::span<const std::uint8_t> live_ops,
+    std::span<const std::uint8_t> live_values) {
+  if (live_ops.size() != graph.ops.size() ||
+      live_values.size() != graph.values.size()) return ValueEditError::kInvalidOp;
+  const auto retained = [&](ValueId id) {
+    const auto& value = graph.values[id.value];
+    if (const auto* result = std::get_if<OpResult>(&value.origin))
+      return live_ops[result->op.value] != 0;
+    return std::holds_alternative<EntryDefinition>(value.origin) ||
+           live_values[id.value] != 0;
+  };
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    const auto& op = graph.ops[i];
+    if (op.life == ValueLife::kRemoved || live_ops[i]) continue;
+    if (!CanErasePureOp(op)) return ValueEditError::kObservable;
+    if (op.origin.value >= graph.origins.size()) return ValueEditError::kInvalidOrigin;
+  }
+  // Dead SCCs may have internal users. Check external users first, then detach
+  // all dead owners' occurrences before deleting any definition.
+  const auto owner_retained = [&](const OperandUse& use) {
+    if (const auto* op = std::get_if<OpId>(&use.owner))
+      return live_ops[op->value] != 0;
+    return live_values[std::get<ValueId>(use.owner).value] != 0;
+  };
+  for (const auto& use : graph.uses) {
+    if (use.life != ValueLife::kLive || !owner_retained(use)) continue;
+    if (const auto* value = std::get_if<ValueId>(&use.operand);
+        value && !retained(*value)) return ValueEditError::kLiveResult;
+  }
+  for (std::size_t i = 0; i < graph.uses.size(); ++i) {
+    auto& use = graph.uses[i];
+    if (use.life != ValueLife::kLive || owner_retained(use)) continue;
+    Unlink(graph, UseId{static_cast<std::uint32_t>(i)});
+    use.life = ValueLife::kRemoved;
+  }
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    if (graph.ops[i].life == ValueLife::kRemoved || live_ops[i]) continue;
+    if (const auto error = ErasePureOp(graph, OpId{static_cast<std::uint32_t>(i)}))
+      return error;
+  }
+  for (std::size_t i = 0; i < graph.values.size(); ++i) {
+    auto& value = graph.values[i];
+    if (std::holds_alternative<PhiDefinition>(value.origin) && !live_values[i])
+      value.life = ValueLife::kRemoved;
+  }
   return {};
 }
 }  // namespace abcd::analysis

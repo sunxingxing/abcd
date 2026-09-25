@@ -94,7 +94,22 @@ live users of removed definitions. Observable/throwing operations and control or
 owner operations cannot be erased by this primitive. Regression specifications
 cover multi-use relinking, removal and effect retention; execution remains paused.
 
-These are candidate-only primitives, not a committed transformation API. Batch
-budget admission, rollback/revision publication, copy canonicalization, phi SCCs,
-reverse liveness and transformed dominance/effect verification remain outstanding.
-No CLI stage promotion or source-output claim is made by this change.
+The internal SimplifyValues batch now admits original capacities, one candidate
+copy and all simultaneous scratch. It resolves identity-copy chains with a
+linear functional-graph walk/path compression and replaces each occurrence once.
+Reverse liveness starts at observable/control/owner roots and includes protocol
+operands and phi dependencies. Dead phi cycles are detached as a batch, avoiding
+erase-to-fixpoint scans. A failed edit, budget, revision or structural check leaves
+the original untouched; a successful nonempty batch increments IR revision once
+without changing CFG revision. A no-op batch preserves the revision.
+
+The pure-op allowlist is exhaustive over the current operation variant; even a
+member read with incorrectly empty effects cannot become erasable. Specifications
+cover copy lengths 200/201/4096, multiple uses, stale/overflow revisions, budget
+rollback, copy cycles, unused getters and dead phi cycles. They remain unrun.
+The production abc_semantic target builds with these changes.
+
+Live trivial-phi SCC collapse and transformed dominance/effect verification are
+still outstanding. SimplifyValues is internal and requires a verified input;
+structural use checks alone do not issue a ValuesVerified certificate. It is not
+yet called by the source CLI, and no new source-output claim is made here.

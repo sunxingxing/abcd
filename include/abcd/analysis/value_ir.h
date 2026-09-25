@@ -69,6 +69,7 @@ struct ValueDefinition {
   std::variant<EntryDefinition, OpResult, PhiDefinition> origin;
   ValueKinds domain;
   std::optional<UseId> first_use;
+  ValueLife life = ValueLife::kLive;
 };
 struct MethodEntryKey {};
 using IncomingKey = std::variant<MethodEntryKey, EdgeId>;

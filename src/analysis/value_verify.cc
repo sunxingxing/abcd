@@ -12,14 +12,19 @@ std::optional<ValueGraphError> VerifyValueUses(
     std::vector<std::uint8_t> linked(program.uses.size());
     for (std::size_t index = 0; index < program.values.size(); ++index) {
       const auto& definition = program.values[index];
+      if (definition.life == ValueLife::kRemoved && definition.first_use)
+        return ValueGraphError::kDefinition;
       if (const auto* result = std::get_if<OpResult>(&definition.origin)) {
         if (result->op.value >= program.ops.size() ||
             !program.ops[result->op.value].result ||
-            program.ops[result->op.value].result->value != index)
+            program.ops[result->op.value].result->value != index ||
+            program.ops[result->op.value].life != definition.life)
           return ValueGraphError::kDefinition;
       } else if (const auto* phi = std::get_if<PhiDefinition>(&definition.origin)) {
         if (phi->block.value >= program.blocks.size())
           return ValueGraphError::kDefinition;
+      } else if (definition.life != ValueLife::kLive) {
+        return ValueGraphError::kDefinition;
       }
       std::optional<UseId> previous;
       auto cursor = definition.first_use;
@@ -64,19 +69,30 @@ std::optional<ValueGraphError> VerifyValueUses(
       if (use.life == ValueLife::kRemoved) {
         if (use.previous || use.next || linked[index])
           return ValueGraphError::kUseLink;
-        const auto* owner = std::get_if<OpId>(&use.owner);
-        if (!owner || owner->value >= program.ops.size() ||
-            program.ops[owner->value].life != ValueLife::kRemoved)
-          return ValueGraphError::kUseOwner;
-        const auto& op = program.ops[owner->value];
-        if (index < op.first_use.value ||
-            index - op.first_use.value >= op.use_count)
-          return ValueGraphError::kUseRange;
+        if (const auto* owner = std::get_if<OpId>(&use.owner)) {
+          if (owner->value >= program.ops.size() ||
+              program.ops[owner->value].life != ValueLife::kRemoved)
+            return ValueGraphError::kUseOwner;
+          const auto& op = program.ops[owner->value];
+          if (index < op.first_use.value ||
+              index - op.first_use.value >= op.use_count || use.incoming)
+            return ValueGraphError::kUseRange;
+        } else {
+          const auto phi = std::get<ValueId>(use.owner);
+          if (phi.value >= program.values.size() || !use.incoming || use.input ||
+              use.role != OperandRole::kPhiInput ||
+              !std::holds_alternative<ValueId>(use.operand) ||
+              program.values[phi.value].life != ValueLife::kRemoved ||
+              !std::holds_alternative<PhiDefinition>(program.values[phi.value].origin))
+            return ValueGraphError::kUseOwner;
+        }
         continue;
       }
       if (std::holds_alternative<ValueId>(use.operand)) {
         if (!linked[index]) return ValueGraphError::kUseLink;
         const auto value = std::get<ValueId>(use.operand);
+        if (program.values[value.value].life != ValueLife::kLive)
+          return ValueGraphError::kDefinition;
         const auto* result = std::get_if<OpResult>(
             &program.values[value.value].origin);
         if (result && program.ops[result->op.value].life == ValueLife::kRemoved)
@@ -93,6 +109,7 @@ std::optional<ValueGraphError> VerifyValueUses(
       } else {
         const auto phi = std::get<ValueId>(use.owner);
         if (phi.value >= program.values.size() || !use.incoming || use.input ||
+            program.values[phi.value].life != ValueLife::kLive ||
             use.role != OperandRole::kPhiInput ||
             !std::holds_alternative<ValueId>(use.operand) ||
             !std::holds_alternative<PhiDefinition>(program.values[phi.value].origin))
