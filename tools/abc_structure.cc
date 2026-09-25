@@ -10,6 +10,8 @@
 #include <optional>
 #include <string_view>
 
+#include "abcd/source/source_contract.h"
+
 #include "abcd/corpus/detect.h"
 #include "abcd/source/record_module_context.h"
 #include "abcd/source/record_program.h"
@@ -153,7 +155,9 @@ int Export(const std::filesystem::path& input,
                            : "declarations_only")
            << "\",\"sha256\":\"" << Hex(hash->sha256)
            << "\",\"packaging\":" << static_cast<unsigned>(*packaging)
-           << ",\"records\":[";
+           << ",\"source_contract\":\""
+           << source::SourceContractName(source::kSourceContract)
+           << "\",\"records\":[";
   structure::RecordCounts totals;
   bool comma = false;
   std::size_t record_index = 0;

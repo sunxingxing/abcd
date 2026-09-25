@@ -98,6 +98,7 @@ void InspectExceptionSource(const abcd::source::ExceptionAstInput& input,
       return;
     }
     output << nlohmann::json{{"exception_body_printed", source->captures.empty()},
+                             {"source_contract", source::SourceContractName(source->contract)},
                              {"exception_template_printed", true},
                              {"requires_unshadowed_globals", true},
                              {"requires_module_bindings", constants.module != nullptr},

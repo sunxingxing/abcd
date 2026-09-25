@@ -15,6 +15,7 @@
 #include "abcd/analysis/semantic_region.h"
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/source/linear_body.h"
+#include "abcd/source/source_contract.h"
 
 namespace abcd::analysis { struct ExceptionLocals; }
 namespace abcd::source {
@@ -234,6 +235,7 @@ struct GeneratedSpan {
 struct PrintedSource {
   std::string text;
   std::vector<GeneratedSpan> spans;
+  SourceContract contract = kSourceContract;
 };
 struct SourceCapture {
   GeneratedPosition position;
@@ -246,6 +248,7 @@ struct PrintedTemplate {
   std::string text;
   std::vector<GeneratedSpan> spans;
   std::vector<SourceCapture> captures;
+  SourceContract contract = kSourceContract;
 };
 // source is the unchanged PrintSourceTemplate result. bindings is one
 // parent-PROVEN initialized local cell per capture occurrence,

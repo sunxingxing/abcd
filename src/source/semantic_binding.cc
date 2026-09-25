@@ -87,6 +87,7 @@ std::variant<PrintedSource, SourceFailure> BindSourceTemplate(
     }
     const auto bytes = source.text.size() + prefix.back();
     PrintedSource result;
+    result.contract = source.contract;
     // Admit final text, maps and simultaneous prefix scratch before allocation.
     if (bytes >= remaining || source.spans.size() >
         (remaining - bytes - 1) / sizeof(GeneratedSpan)) return Resource();

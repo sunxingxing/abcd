@@ -137,8 +137,11 @@ auto BuildException(
         entries.push_back({SsaValueId{static_cast<std::uint32_t>(i)}, ValueKinds::Language()});
     }
     IdfQuota value_work{work_left};
+    // The source owner supplies the approved execution contract. Explicit
+    // THROW payloads still flow from SSA, and VerifyExceptionInputs below
+    // independently rejects internal/uninitialized VM register categories.
     const auto analyzed = ExceptionValueFlow::Build(*flow, *ssa, entries, value_work,
-        {remaining}, PendingExceptionValues::kUnknown, loads);
+        {remaining}, PendingExceptions(kSourceContract), loads);
     const auto* values = std::get_if<ExceptionValueFlow>(&analyzed);
     if (!values) {
       const auto& error = std::get<ValueFlowFailure>(analyzed);

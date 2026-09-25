@@ -510,6 +510,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
                      {"end", {span.end.byte, span.end.line,
                                span.end.column}}});
     std::cout << nlohmann::json{{"entity", entity},
+                                {"source_contract", source::SourceContractName(printed->contract)},
                                 {"source_complete", false},
                                 {"executable", false},
                                 {"requires_module_bindings", bindings.has_value() &&

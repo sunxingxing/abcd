@@ -1,7 +1,7 @@
 # Exception boundary decision
 
 Status: user selected source-language/host-contract equivalence on 2026-09-25.
-Production admission remains strict until this contract is wired explicitly.
+Shared source admission now selects the versioned `kLanguageAndHostV1` contract.
 
 ## Accepted execution premise
 
@@ -64,8 +64,20 @@ proves all possible payload paths.
    rejection remains correct under this stronger scope. No runtime wrapper or
    fabricated Error may substitute for an unrepresentable payload.
 
-The first scope is now selected for source decompilation. Its implementation
-must still distinguish contract-derived facts from ABC-derived proofs. No
-global Language pending policy has yet been enabled, and no successful source
-emission or increased coverage is claimed by this decision alone.
+The first scope is now selected for source decompilation. The shared exception
+body owner and source inspector explicitly pass `PendingExceptions(kSourceContract)`.
+`ExceptionValueFlow` itself still defaults to Unknown: raw analysis clients do
+not inherit the source premise. Explicit throws still transfer their original
+SSA categories, and input validation is unchanged.
+
+`SourceContract` is an immutable, versioned whole-source-engine policy, not a
+per-method option or a fact inferred from a host name. This prevents silently
+switching premises during nested function/class expansion. `PrintedSource`
+and `PrintedTemplate` retain the typed contract, including template binding;
+the source JSON, exception inspection, record survey and export manifest
+serialize `source_contract: language_and_host_v1`. Any future source cache must
+include the contract version along with the existing engine/profile options;
+there is currently no source-result cache to invalidate. Arbitrary-tagged
+analysis remains available through the lower-level analysis API, not through
+a purported strict source mode that nested emitters cannot honor.
 Tests and RSS tracking remain paused.

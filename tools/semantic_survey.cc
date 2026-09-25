@@ -251,6 +251,7 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
   // methods without code. Stream results; release all IR between methods.
   output << nlohmann::json{
       {"schema", 4}, {"sha256_bytes", fingerprint.sha256.bytes},
+      {"source_contract", source::SourceContractName(source::kSourceContract)},
       {"profile", static_cast<unsigned>(header.profile)},
       {"records", index.records.size()}, {"methods", index.methods.size()},
       {"source_complete", false}} << '\n';

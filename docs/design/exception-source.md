@@ -2,6 +2,31 @@
 
 ## Current Boundary
 
+### Source Execution Contract
+
+The user approved legal JS/ArkTS plus compliant host APIs on 2026-09-25.
+The shared source owner and inspector now explicitly select the versioned
+`SourceContract::kLanguageAndHostV1`. Implicit pending exceptions may be any JS
+value, not merely Error objects, but cannot expose VM-internal markers. This
+is an environment assumption; it does not come from an ABC opcode or API name.
+Explicit THROW operands and all instruction inputs retain independent SSA
+validation. The lower-level value-flow API still defaults to Unknown.
+
+Source/template objects retain the typed contract, and published JSON/export
+manifests carry `source_contract: language_and_host_v1`. Inspection distinguishes
+`pending_exception_values_assumed: true` from
+`pending_exception_values_proven: false`. Historical Unknown-policy results
+below describe earlier milestones, not current source admission.
+
+Current ABC-only evidence: 6350 and 4945 pass exception input verification,
+then stop at AST PCs 59 and 145. Method 5165 still fails input verification at
+PC44. In the actual Home class owner (entry 6100), method 6733 advances past
+the catch-input failure at PC96 and now stops in AST lowering at receiver call
+PC64. The detached inspector still lacks that owner's capture-preservation
+context and rejects 6733 at local PC504; do not confuse these two contexts.
+No complete record or semantic execution equivalence is claimed. Production
+CLIs compile; tests, JS execution and RSS remain paused.
+
 ### Captured-Cell Templates
 
 `PlanExceptionCaptures` projects reachable outer `CapturedDepth` lexical
@@ -17,7 +42,7 @@ loads and uses the common AST/layout-only template printer. It preserves typed
 capture insertions and their positions; it does not use a normal-CFG proof to
 bind child closures. The child-rebasing extension below uses phased topology.
 `BuildExceptionBody` still rejects unbound outer captures,
-and both paths keep pending exceptions Unknown. Local captured-environment
+and both paths apply the source execution contract above. Local captured-environment
 loads still need separate closure-write proof.
 
 `abc_semantic --exception-template` explicitly enables this conditional

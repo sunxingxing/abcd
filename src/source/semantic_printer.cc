@@ -56,7 +56,7 @@ class SourcePrinter {
     if (const auto* failure = std::get_if<SourceFailure>(&printed)) return *failure;
     auto& source = std::get<PrintedSource>(printed);
     return PrintedTemplate{std::move(source.text), std::move(source.spans),
-                            std::move(captures_)};
+                            std::move(captures_), source.contract};
   }
 
   std::variant<PrintedSource, SourceFailure> PrintBody(ScalarNames names) {

@@ -65,8 +65,14 @@ The record now enters these bodies rather than stopping unconditionally at
 PC295. Complete class publication remains refused at outer PC264: expansion
 reaches method 9804, whose PC24 creates method 9832; the current nested emitter
 reports `LinearLexicalError::kInstruction` at child PC18, a further DEFINEFUNC
-targeting method 9887. This is the next
-concrete function-body gate, not evidence of a complete ProgressBar record.
+targeting method 9887. That diagnostic comes from the legacy fallback, not
+the common path's deepest failure. Subsequent common-path debugger inspection
+shows 9832 actually reaches PC401 (target 10222), which reaches PC145 (target
+10333). The async 10333 is rejected by `ProveAsyncCompletion` before common
+body construction: it has a lexical-environment prologue and multiple exception
+regions, outside the current single-wrapper normalization contract. Preserve
+those regions rather than stripping user catches to pass the gate. This is
+not evidence of a complete ProgressBar record.
 
 Both production CLIs compile; read-only review found no confirmed defect.
 Tests, generated-JS execution and RSS tracking remain paused by user request.

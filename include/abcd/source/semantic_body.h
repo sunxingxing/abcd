@@ -14,8 +14,9 @@ using SemanticTemplateResult = std::variant<
 // The callable owner proves its ABI and private bindings before entry. All
 // stages operate on this exact body; no text is published before admission.
 // Raw bodies with exception tables use the shared phased pipeline. Pending
-// payloads remain Unknown without an owner proof. Normalized async bodies need
-// separate handler ownership; captured cells require the template contract.
+// payloads use the explicit versioned kSourceContract environment premise;
+// explicit THROW still uses its checked SSA value. Normalized async bodies
+// need separate handler ownership; captured cells require the template contract.
 [[nodiscard]] SemanticBodyResult BuildSemanticBody(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,

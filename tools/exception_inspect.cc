@@ -16,6 +16,7 @@
 #include "abcd/analysis/exception_locals.h"
 #include "abcd/analysis/exception_modules.h"
 #include "abcd/analysis/exception_captures.h"
+#include "abcd/source/source_contract.h"
 
 int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     abcd::abc::ProfileId profile, std::uint64_t frame_size,
@@ -23,6 +24,7 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
     const abcd::source::MethodConstants& constants, std::ostream& output,
     abcd::analysis::CapturedValues captured_values) {
   using namespace abcd;
+  output << nlohmann::json{{"source_contract", source::SourceContractName(source::kSourceContract)}} << '\n';
   const analysis::ExceptionFlowBudget budget;
   const auto built = analysis::BuildExceptionFlow(body, profile, frame_size, budget);
   const auto* flow = std::get_if<analysis::ExceptionFlow>(&built);
@@ -129,7 +131,7 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
       locals->plan.work_units - modules->work_units - captures.work_units;
   analysis::IdfQuota value_quota{value_work};
   const auto analyzed = analysis::ExceptionValueFlow::Build(*flow, *ssa, entries,
-      value_quota, {remaining}, analysis::PendingExceptionValues::kUnknown, loads);
+      value_quota, {remaining}, source::PendingExceptions(source::kSourceContract), loads);
   const auto* values = std::get_if<analysis::ExceptionValueFlow>(&analyzed);
   if (!values) {
     const auto& failure = std::get<analysis::ValueFlowFailure>(analyzed);
@@ -195,6 +197,7 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
       {"catch_guarded_modules", modules->reads.size() - caller_modules},
       {"value_flow_models_lowered_pairs", !modules->reads.empty()},
       {"requires_language_abi", true}, {"pending_exception_values_proven", false},
+      {"pending_exception_values_assumed", true},
       {"requires_parent_capture_proof", !captures.reads.empty()},
       {"captured_read_premises", captures.reads.size()},
       {"ssa_values", ssa->Values().size()}}
