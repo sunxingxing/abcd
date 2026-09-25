@@ -29,6 +29,7 @@
 #include "constructor_fields.h"
 #include "function_template.h"
 #include "member_key.h"
+#include "parameter_aliases.h"
 #include "staged_branch_call.h"
 #include "structured_catch.h"
 
@@ -220,14 +221,16 @@ class FunctionWriter {
                  std::ostream& output, LocalLexicalBudget budget,
                  const MethodConstants* constants,
                  const abc::MethodLookup* methods,
-                 analysis::CapturedValues captured_values)
+                 analysis::CapturedValues captured_values,
+                 std::span<const std::int64_t> parameter_writes)
       : function_(function),
         names_(names),
         output_(output),
         budget_(budget),
         constants_(constants),
         methods_(methods),
-        captured_values_(captured_values) {}
+        captured_values_(captured_values),
+        parameter_writes_(parameter_writes) {}
 
   FunctionEmitResult Write(const abc::MethodBody& body) {
     try {
@@ -314,7 +317,11 @@ class FunctionWriter {
                                 : ") {\n\"use strict\";\nlet $acc;\n");
       // Each VM register is independently writable. In particular, a function
       // slot must not alias the immutable named-expression self binding.
+      // Only separately proved read-only fixed-parameter slots reuse formals.
       for (std::uint32_t i = 0; i < frame.registers && !error_; ++i) {
+        if (i >= frame.first_parameter.value &&
+            i - frame.first_parameter.value < parameter_writes_.size() &&
+            parameter_writes_[i - frame.first_parameter.value] == 0) continue;
         Text("let ");
         Text(names_.registers[i]);
         const abc::RegisterId slot{i};
@@ -609,6 +616,7 @@ class FunctionWriter {
   const MethodConstants* constants_;
   const abc::MethodLookup* methods_;
   analysis::CapturedValues captured_values_;
+  std::span<const std::int64_t> parameter_writes_;
   std::size_t written_ = 0;
   std::optional<EmitError> error_;
 };
@@ -786,6 +794,36 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
           std::to_chars(name.data() + 2, name.data() + name.size(), i).ptr;
       names[i] = {name.data(), static_cast<std::size_t>(end - name.data())};
     }
+    std::vector<std::int64_t> parameter_writes;
+    if (shape.parameters == ParameterForm::kFixed && shape.frame.parameters) {
+      const auto counters = std::size_t(shape.frame.parameters) + 1;
+      if (counters > budget.bytes / sizeof(std::int64_t) ||
+          body.instructions.size() > budget.work ||
+          shape.frame.parameters > budget.work - body.instructions.size())
+        return FunctionEmitError::kResourceLimit;
+      parameter_writes.resize(counters);
+      if (parameter_writes.capacity() > budget.bytes / sizeof(std::int64_t))
+        return FunctionEmitError::kResourceLimit;
+      budget.bytes -= parameter_writes.capacity() * sizeof(std::int64_t);
+      budget.work -= body.instructions.size() + shape.frame.parameters;
+      if (!FindParameterWrites(body, shape.frame, parameter_writes)) {
+        parameter_writes.clear();
+      } else {
+        parameter_writes.resize(shape.frame.parameters);
+        for (std::uint32_t p = 0; p < shape.frame.parameters; ++p) {
+          if (parameter_writes[p]) continue;
+          const auto slot = shape.frame.first_parameter.value + p;
+          if (constants && !constants->source_parameters.empty()) {
+            names[slot] = constants->source_parameters[p];
+          } else {
+            auto& name = storage[slot];
+            name[1] = 'p';
+            const auto end = std::to_chars(name.data() + 2, name.data() + name.size(), p).ptr;
+            names[slot] = {name.data(), static_cast<std::size_t>(end - name.data())};
+          }
+        }
+      }
+    }
     const std::string_view current_function = [&]() -> std::string_view {
       switch (function.syntax) {
         case CallableSyntax::kFunctionExpression:
@@ -843,21 +881,21 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
     if (direct_writes.sites.empty() &&
         dynamic_cast<UnpublishedOutput*>(output.rdbuf()))
       return FunctionWriter(shape, bindings, output, budget, constants,
-                            methods, captured_values).Write(body);
+                            methods, captured_values, parameter_writes).Write(body);
     auto checked = FunctionWriter(shape, bindings, discard, budget,
-                                  constants, methods, captured_values)
+                                  constants, methods, captured_values, parameter_writes)
                        .Write(body);
     if (!direct_writes.sites.empty() && IsResourceFailure(checked)) {
       bindings.constructor_this_writes = {};
       std::vector<abc::CodeOffset>().swap(direct_writes.sites);
       budget = ordinary_budget;
       checked = FunctionWriter(shape, bindings, discard, budget, constants,
-                               methods, captured_values)
+                               methods, captured_values, parameter_writes)
                     .Write(body);
     }
     if (!std::holds_alternative<std::size_t>(checked)) return checked;
     return FunctionWriter(shape, bindings, output, budget, constants,
-                          methods, captured_values)
+                          methods, captured_values, parameter_writes)
         .Write(body);
   } catch (const std::bad_alloc&) {
     return FunctionEmitError::kResourceLimit;

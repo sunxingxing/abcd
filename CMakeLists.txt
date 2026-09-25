@@ -148,6 +148,7 @@ target_sources(abcd_source PRIVATE src/source/argument_region.cc src/source/sema
   src/source/stored_expression.cc
   src/source/branch_predicate.cc
   src/source/scalar_values.cc
+  src/source/parameter_aliases.cc
   src/source/class_assembly.cc src/source/assembled_class.cc)
 target_sources(abcd_source PRIVATE src/source/async_completion.cc src/source/async_handlers.cc)
 target_sources(abcd_source PRIVATE src/source/exception_source.cc)
