@@ -612,7 +612,13 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
                         analysis::ScalarSlot{analysis::Accumulator{}}) ||
               effect.exceptional != analysis::ExceptionalCompletion::kMayThrow)
             return Fail(SourceError::kInvalidEffect, instruction.pc);
-          const bool staged = across_blocks || *last_effect != property ||
+          // Keep a proven saved property Reference at its original PC even
+          // when arguments are pure. This lets the common argument AST own
+          // their evaluation instead of committing every value to VM slots.
+          // Phased calls remain governed by their exception-route certificate.
+          const bool native_arguments = !method.ssa.IsPhased() && spill && reload &&
+              call->Count() != 0;
+          const bool staged = native_arguments || across_blocks || *last_effect != property ||
               (method.ssa.IsPhased() && proof.call_routes[i]->evaluation ==
                   analysis::ReceiverEvaluation::kPreserveOrder);
           if (method.ssa.IsPhased()) {
