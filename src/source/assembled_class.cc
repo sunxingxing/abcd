@@ -4,6 +4,7 @@
 #include <new>
 
 #include "class_emission.h"
+#include "abcd/source/static_fields.h"
 
 namespace abcd::source {
 CreatedClassResult WriteAssembledClass(const ClassExpression& expression,
@@ -60,12 +61,37 @@ CreatedClassResult WriteAssembledClass(const ClassExpression& expression,
           return CreatedClassError::kMembers;
       }
     }
+    std::optional<StaticFields> fields;
+    if (expression.initializer) {
+      const auto caller = constants.leaf_methods->Find(constants.method);
+      const auto target = TakeClassValue<abc::MethodTarget>(abc::ResolveMethodTarget(
+          constants.file, constants.header, constants.index, *constants.leaf_methods,
+          constants.method, expression.initializer->method));
+      if (!caller || target.attributes.sendable ||
+          target.attributes.kind != abc::FunctionKind::kNone ||
+          constants.index.methods[target.position.value].owner_offset !=
+              constants.index.methods[caller->value].owner_offset)
+        return CreatedClassError::kMembers;
+      auto recovered = RecoverStaticFields(constants.file, constants.header,
+          constants.index, constants.index.methods[target.position.value],
+          budget.bytes, constants.string_budget, constants.module);
+      if (const auto* failure = std::get_if<StaticFieldFailure>(&recovered)) {
+        switch (failure->kind) {
+          case StaticFieldError::kResourceLimit: return CreatedClassError::kResourceLimit;
+          case StaticFieldError::kRead: return abc::MetadataError::kRead;
+          case StaticFieldError::kFileChanged: return abc::MetadataError::kFileChanged;
+          default: return CreatedClassError::kStaticFieldValue;
+        }
+      }
+      fields.emplace(std::get<StaticFields>(std::move(recovered)));
+      AdmitClassBytes(fields->AllocatedBytes(), 1, budget.bytes);
+    }
     return WriteCreatedClass(constants.file, constants.header, constants.index,
         *constants.leaf_methods, constants.method, expression.creation, expression.origin,
         {expression.origin, expression.heritage}, output, budget,
         constants.string_budget, constants.roles, constants.module,
         constants.global_scope ? &*constants.global_scope : nullptr,
-        nullptr, accessors, parent, attached, expansion);
+        fields ? &*fields : nullptr, accessors, parent, attached, expansion);
   } catch (const ClassFailure& failure) {
     return failure.result;
   } catch (const std::bad_alloc&) {

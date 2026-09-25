@@ -754,6 +754,8 @@ class SourcePrinter {
             Text("throw ");
             Value(operation.value);
             Text(";\n");
+          } else if constexpr (std::is_same_v<T, SourceInitializerCall>) {
+            throw SourceFailure{SourceError::kClassAssembly, current_pc_};
           } else if constexpr (std::is_same_v<T, SourceStagedCall>) {
             constexpr std::size_t kMaxCallDepth = 128;
             if (call_depth_ >= kMaxCallDepth || !operation.call.Count() ||

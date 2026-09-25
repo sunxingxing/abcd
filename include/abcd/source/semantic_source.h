@@ -63,6 +63,7 @@ struct ClassExpression {
   std::optional<abc::PoolIndex> prototype_key = {};
   std::vector<SourceClassMember> assembled_members = {};
   analysis::HeritageKind heritage = analysis::HeritageKind::kUnknown;
+  std::optional<analysis::FunctionCreation> initializer = {};
 };
 // These nodes preserve assembly operations before class ownership is proved.
 // They are not ordinary function literals or calls to mutable JS intrinsics.
@@ -148,6 +149,8 @@ struct SourceStagedCall {
   analysis::InstructionId first_argument_statement;
   analysis::InstructionId call_statement;
 };
+// Unprintable until same-home, non-escape assembly and initializer-body proof.
+struct SourceInitializerCall { analysis::ReceiverCall call; };
 using SourceOperation =
     std::variant<analysis::NoOperation, SourceAssignment, SourceMemberStore, SourceOwnStore,
                  SourceLocalStore, SourceModuleStore, SourceMethodStore,
@@ -155,7 +158,7 @@ using SourceOperation =
                  SourceArrayCapture, SourceArrayCommit,
                  SourceConditionalBreak, SourceBreak, SourceConditionalContinue,
                  SourceContinue, SourceReturn, SourceThrow,
-                 SourceStagedCall>;
+                 SourceStagedCall, SourceInitializerCall>;
 struct SourceStatement {
   abc::CodeOffset pc;
   SourceOperation operation;

@@ -79,6 +79,7 @@ std::optional<SourceFailure> FoldClassAssembly(
       removed.clear();
       std::vector<SourceClassMember> members;
       std::optional<abc::PoolIndex> prototype;
+      std::optional<analysis::FunctionCreation> initializer;
       bool ordinary = false;
       bool valid = true;
       auto cursor = begin + 1;
@@ -150,6 +151,25 @@ std::optional<SourceFailure> FoldClassAssembly(
               std::get<analysis::FunctionCreation>(method.instructions[function->creation.value].operation),
               store->write.name, home->placement, abc::ClassMethodKind::kOrdinary};
           ordinary = true;
+        } else if (const auto* call = std::get_if<SourceInitializerCall>(
+                       &ast.statements[cursor].operation)) {
+          const auto receiver = input(id, call->call.receiver);
+          const auto callee = input(id, analysis::Accumulator{});
+          const auto* home = std::get_if<ClassHome>(&receiver);
+          const auto* function = std::get_if<MethodHome>(&callee);
+          if (!members.empty() || initializer || call->call.Count() != 0 ||
+              !home || home->creation != owner ||
+              home->placement != abc::ClassPlacement::kStatic || !function ||
+              !SameHome(*home, function->home) || installed[function->creation.value]) break;
+          const auto& creation = std::get<analysis::FunctionCreation>(
+              method.instructions[function->creation.value].operation);
+          if (creation.length.value != 0) break;
+          installed[function->creation.value] = true;
+          initializer = creation;
+          // Only pure unobserved class assembly precedes this effect. Stop
+          // here: later effects/members must not move ahead of initialization.
+          ++cursor;
+          break;
         } else break;
         if (const auto output = method.ssa.Write(id)) facts[output->value] = value;
         if (member) {
@@ -175,7 +195,7 @@ std::optional<SourceFailure> FoldClassAssembly(
         if (!output || !function || !installed[function->creation.value] ||
             last_use[output->value] >= cursor) { valid = false; break; }
       }
-      if (valid && !members.empty()) {
+      if (valid && (!members.empty() || initializer)) {
         auto* assignment = std::get_if<SourceAssignment>(&ast.statements[begin].operation);
         auto* expression = assignment ? std::get_if<ClassExpression>(&assignment->value) : nullptr;
         if (!expression) return SourceFailure{SourceError::kInvalidEffect, method.instructions[begin].pc};
@@ -184,6 +204,7 @@ std::optional<SourceFailure> FoldClassAssembly(
         ast.allocated_bytes += retained;
         expression->prototype_key = prototype;
         expression->assembled_members = std::move(members);
+        expression->initializer = initializer;
         for (const auto id : removed) {
           ast.statements[id.value].operation = analysis::NoOperation{};
           ast.statements[id.value].class_origin = owner;
@@ -195,6 +216,10 @@ std::optional<SourceFailure> FoldClassAssembly(
                 analysis::ScalarExpression{analysis::ScalarValue{accessor->object}}};
           } else if (std::holds_alternative<SourceMethodStore>(statement.operation)) {
             statement.operation = analysis::NoOperation{};
+          } else if (std::holds_alternative<SourceInitializerCall>(statement.operation)) {
+            // RecoverStaticFields must independently prove return undefined.
+            statement.operation = SourceAssignment{analysis::Accumulator{},
+                analysis::ScalarExpression{analysis::ScalarValue{analysis::SpecialValue::kUndefined}}};
           } else continue;
           statement.class_origin = owner;
         }

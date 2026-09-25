@@ -525,125 +525,134 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         const auto callee = ReadValue(
             method, i, analysis::ScalarSlot{analysis::Accumulator{}});
-        auto property_id = Definition(method, callee);
-        std::optional<std::size_t> spill;
-        std::optional<std::size_t> reload;
-        if (!callee || uses[callee->value] != 1)
-          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-        if (property_id && IsSlotCopy(method.instructions[*property_id].operation)) {
-          const auto saved = CopyInput(method, callee);
-          const auto fetched = CopyInput(method, saved);
-          spill = Definition(method, saved);
-          reload = property_id;
-          property_id = Definition(method, fetched);
-          if (!saved || !fetched || !callee || !spill || !property_id ||
-              uses[saved->value] != 1 || uses[fetched->value] != 1 ||
-              uses[callee->value] != 1 || *property_id >= *spill ||
-              *spill >= *reload || *reload >= i)
-            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-        }
-        if (!property_id || !last_effect)
-          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-        // Route proof is only half the argument. The preceding SSA use counts
-        // include handler phis, preventing removal of observable spill values.
-        if (method.ssa.IsPhased() &&
-            (i >= proof.call_routes.size() || !proof.call_routes[i] ||
-             proof.call_routes[i]->property.value != *property_id))
-          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-        const bool across_blocks =
-            *property_id < method.flow.blocks[block_id].first_instruction;
-        if (method.ssa.IsPhased()) {
-          switch (proof.call_routes[i]->region) {
-            case analysis::ReceiverRegion::kLinear:
-              if (across_blocks) return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-              break;
-            case analysis::ReceiverRegion::kForward:
-              if (!across_blocks || ast.regions.catches)
-                return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-              break;
-          }
-        }
-        if (across_blocks) {
-          if (ast.argument_region)
-            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-          ast.argument_region = ProveArgumentRegion(method, *property_id, i);
-          if (!ast.argument_region)
-            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-        }
-        const auto property = *property_id;
-        const auto& preceding = method.instructions[property];
-        const auto* read = std::get_if<analysis::NamedRead>(&preceding.operation);
-        const auto receiver = ReadValue(method, i, analysis::ScalarSlot{call->receiver});
-        const auto object = ReadValue(
-            method, property, analysis::ScalarSlot{analysis::Accumulator{}});
-        if (!read || !object || !receiver ||
-            (object != receiver && CopyInput(method, object) != receiver &&
-             object != CopyInput(method, receiver)) || !callee)
-          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-        if (!SameSlot(effect.normal_registers.write,
-                      analysis::ScalarSlot{analysis::Accumulator{}}) ||
-            effect.exceptional != analysis::ExceptionalCompletion::kMayThrow)
-          return Fail(SourceError::kInvalidEffect, instruction.pc);
-        const bool staged = across_blocks || *last_effect != property ||
-            (method.ssa.IsPhased() && proof.call_routes[i]->evaluation ==
-                analysis::ReceiverEvaluation::kPreserveOrder);
-        if (method.ssa.IsPhased()) {
-          // Effectful argument preparation stays inside the existing staged
-          // Reference call. Forward-region admission above requires both the
-          // phased caller-exit certificate and the normal single-entry proof;
-          // neither permits delayed property evaluation. Linear local-catch
-          // routes also require staging for pure arguments, preserving the
-          // register snapshot if the getter throws before argument evaluation.
-          switch (proof.call_routes[i]->evaluation) {
-            case analysis::ReceiverEvaluation::kFuse:
-              if (staged) return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-              break;
-            case analysis::ReceiverEvaluation::kPreserveOrder:
-              if (!staged) return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-              break;
-          }
-        }
-        if (staged && (!spill || !reload || !call->Count()))
-          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-        if (staged) {
-          // End-ordered interval stack: accept nesting, reject crossing. Each
-          // completed interval is pushed/popped once, with no suffix scans.
-          while (!call_roots.empty() && call_roots.back().last > property) {
-            if (call_roots.back().first < property)
-              return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-            call_roots.pop_back();
-          }
-          call_roots.push_back({property, i});
-        }
-        // Private slot copies cannot observe or change getter effects. The
-        // last-effect index proves no effect is crossed in O(1) per call.
-        ast.statements[property].operation = analysis::NoOperation{};
-        if (spill && reload) {
-          ast.statements[*spill].operation = analysis::NoOperation{};
-          ast.statements[*reload].operation = analysis::NoOperation{};
-          fused_spill = SourcePc(method.instructions[*spill]);
-          fused_reload = SourcePc(method.instructions[*reload]);
-          spill_distance = i - *spill;
-          reload_distance = i - *reload;
-        }
-        if (staged) {
-          ast.statements[property].operation = SourceStagedCall{
-              read->name, *call,
-              analysis::InstructionId{static_cast<std::uint32_t>(property + 1)},
-              analysis::InstructionId{static_cast<std::uint32_t>(i)}};
-          // Emission visits the interval through its owner, not twice through
-          // the enclosing block. The original call PC receives its own span.
-          operation = analysis::NoOperation{};
-          fused_spill.reset();
-          fused_reload.reset();
-          spill_distance = 0;
-          reload_distance = 0;
+        const auto callable_origin = callee ? Definition(method, copies.At(*callee)) : std::nullopt;
+        const auto* initializer = callable_origin ? std::get_if<analysis::FunctionCreation>(
+            &method.instructions[*callable_origin].operation) : nullptr;
+        if (!method.ssa.IsPhased() && call->Count() == 0 && initializer &&
+            initializer->kind == analysis::CreationKind::kMethod &&
+            initializer->length.value == 0) {
+          operation = SourceInitializerCall{*call};
         } else {
-          fused_read = SourcePc(preceding);
-          read_distance = i - property;
-          operation = SourceAssignment{
-              analysis::ScalarSlot{analysis::Accumulator{}},
-              MemberCallExpression{read->name, *call}};
+          auto property_id = Definition(method, callee);
+          std::optional<std::size_t> spill;
+          std::optional<std::size_t> reload;
+          if (!callee || uses[callee->value] != 1)
+            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+          if (property_id && IsSlotCopy(method.instructions[*property_id].operation)) {
+            const auto saved = CopyInput(method, callee);
+            const auto fetched = CopyInput(method, saved);
+            spill = Definition(method, saved);
+            reload = property_id;
+            property_id = Definition(method, fetched);
+            if (!saved || !fetched || !callee || !spill || !property_id ||
+                uses[saved->value] != 1 || uses[fetched->value] != 1 ||
+                uses[callee->value] != 1 || *property_id >= *spill ||
+                *spill >= *reload || *reload >= i)
+              return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+          }
+          if (!property_id || !last_effect)
+            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+          // Route proof is only half the argument. The preceding SSA use counts
+          // include handler phis, preventing removal of observable spill values.
+          if (method.ssa.IsPhased() &&
+              (i >= proof.call_routes.size() || !proof.call_routes[i] ||
+               proof.call_routes[i]->property.value != *property_id))
+            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+          const bool across_blocks =
+              *property_id < method.flow.blocks[block_id].first_instruction;
+          if (method.ssa.IsPhased()) {
+            switch (proof.call_routes[i]->region) {
+              case analysis::ReceiverRegion::kLinear:
+                if (across_blocks) return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+                break;
+              case analysis::ReceiverRegion::kForward:
+                if (!across_blocks || ast.regions.catches)
+                  return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+                break;
+            }
+          }
+          if (across_blocks) {
+            if (ast.argument_region)
+              return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+            ast.argument_region = ProveArgumentRegion(method, *property_id, i);
+            if (!ast.argument_region)
+              return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+          }
+          const auto property = *property_id;
+          const auto& preceding = method.instructions[property];
+          const auto* read = std::get_if<analysis::NamedRead>(&preceding.operation);
+          const auto receiver = ReadValue(method, i, analysis::ScalarSlot{call->receiver});
+          const auto object = ReadValue(
+              method, property, analysis::ScalarSlot{analysis::Accumulator{}});
+          if (!read || !object || !receiver ||
+              (object != receiver && CopyInput(method, object) != receiver &&
+               object != CopyInput(method, receiver)) || !callee)
+            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+          if (!SameSlot(effect.normal_registers.write,
+                        analysis::ScalarSlot{analysis::Accumulator{}}) ||
+              effect.exceptional != analysis::ExceptionalCompletion::kMayThrow)
+            return Fail(SourceError::kInvalidEffect, instruction.pc);
+          const bool staged = across_blocks || *last_effect != property ||
+              (method.ssa.IsPhased() && proof.call_routes[i]->evaluation ==
+                  analysis::ReceiverEvaluation::kPreserveOrder);
+          if (method.ssa.IsPhased()) {
+            // Effectful argument preparation stays inside the existing staged
+            // Reference call. Forward-region admission above requires both the
+            // phased caller-exit certificate and the normal single-entry proof;
+            // neither permits delayed property evaluation. Linear local-catch
+            // routes also require staging for pure arguments, preserving the
+            // register snapshot if the getter throws before argument evaluation.
+            switch (proof.call_routes[i]->evaluation) {
+              case analysis::ReceiverEvaluation::kFuse:
+                if (staged) return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+                break;
+              case analysis::ReceiverEvaluation::kPreserveOrder:
+                if (!staged) return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+                break;
+            }
+          }
+          if (staged && (!spill || !reload || !call->Count()))
+            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+          if (staged) {
+            // End-ordered interval stack: accept nesting, reject crossing. Each
+            // completed interval is pushed/popped once, with no suffix scans.
+            while (!call_roots.empty() && call_roots.back().last > property) {
+              if (call_roots.back().first < property)
+                return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+              call_roots.pop_back();
+            }
+            call_roots.push_back({property, i});
+          }
+          // Private slot copies cannot observe or change getter effects. The
+          // last-effect index proves no effect is crossed in O(1) per call.
+          ast.statements[property].operation = analysis::NoOperation{};
+          if (spill && reload) {
+            ast.statements[*spill].operation = analysis::NoOperation{};
+            ast.statements[*reload].operation = analysis::NoOperation{};
+            fused_spill = SourcePc(method.instructions[*spill]);
+            fused_reload = SourcePc(method.instructions[*reload]);
+            spill_distance = i - *spill;
+            reload_distance = i - *reload;
+          }
+          if (staged) {
+            ast.statements[property].operation = SourceStagedCall{
+                read->name, *call,
+                analysis::InstructionId{static_cast<std::uint32_t>(property + 1)},
+                analysis::InstructionId{static_cast<std::uint32_t>(i)}};
+            // Emission visits the interval through its owner, not twice through
+            // the enclosing block. The original call PC receives its own span.
+            operation = analysis::NoOperation{};
+            fused_spill.reset();
+            fused_reload.reset();
+            spill_distance = 0;
+            reload_distance = 0;
+          } else {
+            fused_read = SourcePc(preceding);
+            read_distance = i - property;
+            operation = SourceAssignment{
+                analysis::ScalarSlot{analysis::Accumulator{}},
+                MemberCallExpression{read->name, *call}};
+          }
         }
       } else if (const auto* branch =
                      std::get_if<analysis::BranchOperation>(
