@@ -78,6 +78,11 @@ class SourcePrinter {
       if (const auto failure = VerifyOwnFields(ast_, constants_)) return *failure;
       PrepareLabels();
       names_ = names;
+      if (ast_.receiver_binding) {
+        if (!names_.range_derived_constructor || names_.this_binding)
+          throw SourceFailure{SourceError::kInvalidEffect, {}};
+        names_.this_binding = ast_.receiver_binding;
+      }
       PrepareEntryBindings();
       DeclareLocals();
       if (ast_.statements.size() > limit_ / sizeof(GeneratedSpan))

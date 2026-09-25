@@ -274,6 +274,7 @@ struct SourceAst {
   std::size_t array_captures = 0;
   std::optional<SuperArgumentRegion> super_arguments;
   std::vector<ParameterDefault> parameter_defaults;
+  std::optional<abc::RegisterId> receiver_binding;
 };
 enum class SourceError : std::uint8_t {
   kUnsupportedOperation,

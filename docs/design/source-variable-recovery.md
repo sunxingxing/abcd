@@ -13,8 +13,9 @@ return constraints, not separate decompilation paths. Priorities are:
 3. Expression composition and final dead-write cleanup without changing
    evaluation order, property effects, throws or observable captures.
 
-The current implementation completes only the immutable parameter-copy part
-of item 1. It does not recover arbitrary local variables by renaming registers.
+The current implementation covers immutable parameter copies and a stable
+super-result receiver binding (see receiver-binding.md). It does not recover
+arbitrary local variables by renaming registers.
 Register reuse needs value/liveness-based binding recovery; receiver captures
 need explicit identity and scope evidence before substituting native this.
 Do not replace all lexical cells with this or infer a local from its slot.
@@ -70,6 +71,6 @@ application equivalence are not established by these exports.
 Deferred regressions: overwritten formals, reads before copies, loop/phi entry
 seeds, other local writes after defaults, argument-only owners, retargeted
 results, captured variables, rest/catch/async boundaries, all callable kinds,
-PC coordinates, admission limits and 200/201 scaling. Receiver/capture
+PC coordinates, admission limits and 200/201 scaling. Broader receiver/capture
 recovery, general local live-range splitting and expression composition are
 the next milestones, not completed work.

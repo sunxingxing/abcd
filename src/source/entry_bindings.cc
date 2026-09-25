@@ -4,52 +4,21 @@
 #include <type_traits>
 
 #include "abcd/source/semantic_source.h"
+#include "register_commits.h"
 
 namespace abcd::source {
 namespace {
 void CheckEmittedWrites(const SourceAst& ast, std::span<EntryBinding> bindings) {
-  const auto invalidate = [&](abc::RegisterId target) {
-    if (target.value < bindings.size()) bindings[target.value].source.reset();
-  };
-  for (const auto& node : ast.statements) {
-    std::visit([&](const auto& operation) {
-      using T = std::decay_t<decltype(operation)>;
-      if constexpr (std::is_same_v<T, SourceAssignment>) {
-        const auto* target = std::get_if<abc::RegisterId>(&operation.target);
-        if (!target || target->value >= bindings.size() ||
-            !bindings[target->value].source ||
-            operation.result != AssignmentResult::kStored) return;
-        const auto* expression = std::get_if<analysis::ScalarExpression>(&operation.value);
-        const auto* value = expression ? std::get_if<analysis::ScalarValue>(expression) : nullptr;
-        const auto* source = value ? std::get_if<abc::RegisterId>(value) : nullptr;
-        if (operation.object_field || !source || bindings[target->value].source != *source)
-          invalidate(*target);
-      } else if constexpr (std::is_same_v<T, SourceStagedCall>) {
-        if (operation.stored_result) invalidate(operation.stored_result->target);
-      } else if constexpr (std::is_same_v<T, SourceArrayLiteral> ||
-                           std::is_same_v<T, SourceArrayCommit>) {
-        invalidate(operation.target);
-      } else {
-        static_assert(std::is_same_v<T, analysis::NoOperation> ||
-                      std::is_same_v<T, SourceMemberStore> ||
-                      std::is_same_v<T, SourceOwnStore> ||
-                      std::is_same_v<T, SourceLocalStore> ||
-                      std::is_same_v<T, SourceLocalAssignment> ||
-                      std::is_same_v<T, SourceModuleStore> ||
-                      std::is_same_v<T, SourceMethodStore> ||
-                      std::is_same_v<T, SourceIndexedStore> ||
-                      std::is_same_v<T, SourceArrayCapture> ||
-                      std::is_same_v<T, SourceConditionalBreak> ||
-                      std::is_same_v<T, SourceBreak> ||
-                      std::is_same_v<T, SourceConditionalContinue> ||
-                      std::is_same_v<T, SourceContinue> ||
-                      std::is_same_v<T, SourceReturn> ||
-                      std::is_same_v<T, SourceReturnExpression> ||
-                      std::is_same_v<T, SourceThrow> ||
-                      std::is_same_v<T, SourceInitializerCall>);
-      }
-    }, node.operation);
-  }
+  VisitRegisterCommits(ast, [&](const SourceStatement& node, abc::RegisterId target) {
+    if (target.value >= bindings.size() || !bindings[target.value].source) return;
+    const auto* assignment = std::get_if<SourceAssignment>(&node.operation);
+    const auto* expression = assignment
+        ? std::get_if<analysis::ScalarExpression>(&assignment->value) : nullptr;
+    const auto* value = expression ? std::get_if<analysis::ScalarValue>(expression) : nullptr;
+    const auto* source = value ? std::get_if<abc::RegisterId>(value) : nullptr;
+    if (!assignment || assignment->object_field || !source || bindings[target.value].source != *source)
+      bindings[target.value].source.reset();
+  });
 }
 }  // namespace
 void FindEntryBindings(const analysis::SemanticMethod& method,
