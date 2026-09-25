@@ -85,7 +85,8 @@ getters, property getters and exceptions therefore retain their order.
 
 The moved load span retains full GeneratedPosition endpoints, including capture
 cursors, before final binding insertion. Staged-call slot audits remain valid:
-these four receiver alternatives contain no unobserved caller VM-register read.
+these four binding/cell alternatives contain no caller VM-register read; the
+register alternative below is explicitly observed through Value.
 The variant has no dynamic allocation. Its increased size is included in the
 existing sizeof(SourceStatement) AST admission. The same disjoint-interval
 algorithm retains O(I log(I + U)) time and O(1) extra scratch, with no new
@@ -106,3 +107,34 @@ generated JS execution and RSS checks remain paused. Deferred regressions add
 global getter ordering, mutable lexical captures, stronger capture domains,
 same-byte capture cursor relocation, and register/phi-observed receiver values.
 Source equivalence and process memory-cap compliance remain unverified.
+
+## Register Receivers
+
+ReceiverBinding also admits a RegisterId when both the AST and its original
+SemanticInstruction are the same register-to-accumulator copy. The original
+destination must be the accumulator, completion normal, and effects pure.
+Literal, unary, binary and property expressions do not pass this rule. The
+existing same-block single-use/transport proof still licenses removing the
+accumulator commit; no use count is changed and no emitted register write is
+crossed. Already-eliminated pure NoOps do not mutate source register bindings.
+
+Printing uses Value rather than a raw register name, so immutable this/formal
+substitution and VM-slot observation remain active. Its spelling is a validated
+identifier or owner-proven this, both valid member-access bases. Numeric literal
+parenthesization is not broadened. Property Reference evaluation still happens
+before argument effects, including arguments that later write this register.
+The register id adds no dynamic allocation or extra scan; the same AST-size
+admission and complexity bounds apply. Independent read-only review found no
+concrete correctness issue. Tests, generated JS and RSS remain paused.
+
+Production builds and ABC-only export `build/pasteboard-register-receivers-01`
+succeeded. Five register receiver transfers disappeared across Home and
+PasteBoard, including PasteBoard's addEntry calls on `$r6`. Totals are 6,471
+lines / 119,355 bytes versus 6,476 / 119,430 previously. The other six source
+records and their maps are byte-identical to `pasteboard-binding-receivers-01`.
+No newly direct this call was observed in this corpus export. Statuses remain
+eight incomplete records, two refused constructors at PC 14, nine metadata
+records; partial maps remain 195 methods / 9,745 spans. Deferred cases include
+later argument writes to the receiver slot, read-only formal substitution,
+live phi consumers, and mismatched or effectful copy origins. Full behavioral
+equivalence and memory-cap compliance remain unverified.

@@ -6,7 +6,8 @@ namespace abcd::source {
 namespace {
 std::optional<ReceiverBinding> ReadBinding(
     const SourceExpression& expression,
-    const analysis::SemanticOperation& operation) {
+    const analysis::SemanticInstruction& instruction) {
+  const auto& operation = instruction.operation;
   if (const auto* module = std::get_if<ModuleExpression>(&expression)) {
     if (std::holds_alternative<analysis::ModuleLoad>(operation)) return *module;
   } else if (const auto* global = std::get_if<GlobalExpression>(&expression)) {
@@ -17,6 +18,18 @@ std::optional<ReceiverBinding> ReadBinding(
     if (std::holds_alternative<analysis::LexicalLoad>(operation)) return *local;
   } else if (const auto* captured = std::get_if<CapturedExpression>(&expression)) {
     if (std::holds_alternative<analysis::LexicalLoad>(operation)) return *captured;
+  } else if (const auto* scalar =
+                 std::get_if<analysis::ScalarExpression>(&expression)) {
+    const auto* value = std::get_if<analysis::ScalarValue>(scalar);
+    const auto* reg = value ? std::get_if<abc::RegisterId>(value) : nullptr;
+    const auto* copy = std::get_if<analysis::ScalarAssignment>(&operation);
+    const auto* input = copy
+        ? std::get_if<analysis::ScalarValue>(&copy->expression) : nullptr;
+    const auto* original = input ? std::get_if<abc::RegisterId>(input) : nullptr;
+    if (reg && original && *reg == *original &&
+        std::holds_alternative<analysis::Accumulator>(copy->destination) &&
+        copy->completion == analysis::CompletionEffect::kNormal &&
+        IsPureCopyStep(instruction)) return *reg;
   }
   return {};
 }
@@ -97,7 +110,7 @@ void FoldBindingReceivers(const AstMethod& method, SourceAst& ast,
       auto& head = ast.statements[*producer];
       const auto* assignment = std::get_if<SourceAssignment>(&head.operation);
       const auto binding = assignment
-          ? ReadBinding(assignment->value, method.instructions[*producer].operation)
+          ? ReadBinding(assignment->value, method.instructions[*producer])
           : std::nullopt;
       if (!binding || HasMergedOrigin(head) ||
           assignment->result != AssignmentResult::kStored ||

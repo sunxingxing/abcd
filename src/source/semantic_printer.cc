@@ -1178,7 +1178,15 @@ class SourcePrinter {
                 throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
               const auto receiver_begin = position_;
               std::visit([&](const auto& value) {
-                Expression(SourceExpression{value});
+                using V = std::decay_t<decltype(value)>;
+                if constexpr (std::is_same_v<V, abc::RegisterId>) {
+                  // Bind/observe this read like every other private slot. Its
+                  // spelling is an identifier or owner-proven `this`, never a
+                  // numeric literal requiring MemberExpression parentheses.
+                  Value(ScalarValue{value});
+                } else {
+                  Expression(SourceExpression{value});
+                }
               }, operation.binding_receiver->value);
               result_.spans[index].begin = receiver_begin;
               result_.spans[index].end = position_;

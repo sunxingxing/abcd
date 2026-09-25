@@ -172,7 +172,8 @@ struct SourceThrow {
   analysis::ScalarValue value;
 };
 using ReceiverBinding = std::variant<ModuleExpression, GlobalExpression,
-                                     LocalExpression, CapturedExpression>;
+                                     LocalExpression, CapturedExpression,
+                                     abc::RegisterId>;
 struct BindingReceiver {
   ReceiverBinding value;
   analysis::InstructionId source;
