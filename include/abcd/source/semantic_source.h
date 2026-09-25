@@ -234,15 +234,21 @@ struct PrintedTemplate {
     const PrintedTemplate& source,
     std::span<const analysis::LocalCell> bindings,
     std::size_t budget_bytes);
-enum class SourceForm : std::uint8_t { kFunction, kClassConstructor };
+enum class SourceForm : std::uint8_t { kFunction, kClassConstructor, kRecord };
 
 // The printer records each span as it emits its AST node, including zero-width
 // anchors for elided NOPs. No source-text search or sourceMap input is used.
+// Record form requires an owner-validated ESM entry, zero parameters, no
+// observed incoming ABI values, and fresh same-record exports. Entry-derived
+// values are independently restricted to erased scalar copies. The export plan
+// is mutated during printing, including failed attempts: do not reuse it.
+// Other forms must not supply record_exports. No partial source is returned.
 [[nodiscard]] std::variant<PrintedSource, SourceFailure> PrintSourceAst(
     const SourceAst& ast, const analysis::SemanticMethod& method,
     const abc::FrameLayout& frame, SourceForm form, std::string_view name,
     const MethodConstants& constants, std::size_t output_bytes,
-    const analysis::SemanticProof* proof = nullptr);
+    const analysis::SemanticProof* proof = nullptr,
+    ModuleExports* record_exports = nullptr);
 
 // Caller supplies distinct private register bindings in an already validated
 // strict callable. This emits only its body; spans are relative to that body.

@@ -12,6 +12,7 @@
 #include "abcd/abc/string_entity.h"
 #include "abcd/source/string_literal.h"
 #include "abcd/source/module_exports.h"
+#include "abcd/source/module_imports.h"
 #include "abcd/source/created_class.h"
 #include "element_name.h"
 #include "leaf_creation.h"
@@ -23,6 +24,7 @@
 #include "record_literal.h"
 #include "semantic_fields.h"
 #include "creation_expansion.h"
+#include "record_inputs.h"
 
 namespace abcd::source {
 namespace {
@@ -40,11 +42,13 @@ class SourcePrinter {
                 const analysis::SemanticProof* proof = nullptr,
                 const analysis::SemanticMethod* capture_method = nullptr,
                 const analysis::EnvironmentFlow* capture_environments = nullptr,
-                const analysis::ExceptionLocals* capture_locals = nullptr)
+                const analysis::ExceptionLocals* capture_locals = nullptr,
+                ModuleExports* record_exports = nullptr)
       : ast_(ast), blocks_(blocks), capture_method_(capture_method), frame_(frame), form_(form), name_(name),
         constants_(constants), limit_(bytes), capture_mode_(captures), proof_(proof),
         expansion_(constants.method, bytes, kDefaultMethodWork),
-        capture_environments_(capture_environments), capture_locals_(capture_locals) {}
+        capture_environments_(capture_environments), capture_locals_(capture_locals),
+        record_exports_(record_exports) {}
 
   std::variant<PrintedTemplate, SourceFailure> PrintTemplate(ScalarNames names) {
     auto printed = PrintBody(names);
@@ -91,7 +95,26 @@ class SourcePrinter {
       if (!constants_.awaits.empty())
         return SourceFailure{SourceError::kUnsupportedOperation, {}};
       if (const auto failure = VerifyOwnFields(ast_, constants_)) return *failure;
-      if (!IsSourceIdentifier(name_))
+      const bool record = form_ == SourceForm::kRecord;
+      if (record != (record_exports_ != nullptr))
+        return SourceFailure{SourceError::kInvalidEffect, {}};
+      if (record && (!constants_.module || !constants_.global_scope ||
+          constants_.global_scope->module_exports != record_exports_ ||
+          constants_.global_scope->module_slots != record_exports_->slot_count() ||
+          frame_.parameters || ast_.regions.catches))
+        return SourceFailure{SourceError::kInvalidEffect, {}};
+      if (record) {
+        if (!capture_method_)
+          return SourceFailure{SourceError::kInvalidEffect, {}};
+        if (const auto failure = VerifyRecordInputs(*capture_method_, ast_, limit_))
+          return *failure;
+      }
+      if (record)
+        for (std::size_t slot = 0; slot < record_exports_->slot_count(); ++slot)
+          if (record_exports_->IsInitialized(
+                  analysis::ModuleSlot{static_cast<std::uint16_t>(slot)}))
+            return SourceFailure{SourceError::kInvalidEffect, {}};
+      if (!record && !IsSourceIdentifier(name_))
         return SourceFailure{SourceError::kOutput, {}};
       if (frame_.registers > limit_ / sizeof(std::string))
         return SourceFailure{SourceError::kResourceLimit, {}};
@@ -105,7 +128,26 @@ class SourcePrinter {
       if (ast_.statements.size() > limit_ / sizeof(GeneratedSpan))
         return SourceFailure{SourceError::kResourceLimit, {}};
       result_.spans.reserve(ast_.statements.size());
-      if (form_ == SourceForm::kClassConstructor) {
+      if (record) {
+        ClassBuffer buffer(*this);
+        std::ostream stream(&buffer);
+        stream.exceptions(std::ios::badbit | std::ios::failbit);
+        const auto imports = WriteModuleImports(
+            constants_.file, constants_.header, *constants_.module, stream,
+            {limit_ - result_.text.size()}, constants_.string_budget);
+        if (const auto* failure = std::get_if<ModuleImportFailure>(&imports))
+          return SourceFailure{
+              failure->kind == ModuleImportError::kResourceLimit ||
+                      failure->kind == ModuleImportError::kOutputLimit
+                  ? SourceError::kResourceLimit : SourceError::kConstant, {}};
+        const auto aliases = record_exports_->WriteAliases(
+            stream, {limit_ - result_.text.size()});
+        if (const auto* failure = std::get_if<ModuleExportError>(&aliases))
+          return SourceFailure{
+              *failure == ModuleExportError::kResourceLimit ||
+                      *failure == ModuleExportError::kOutputLimit
+                  ? SourceError::kResourceLimit : SourceError::kConstant, {}};
+      } else if (form_ == SourceForm::kClassConstructor) {
         Text("export default class ");
         Text(name_);
         Text(" {\nconstructor(");
@@ -119,11 +161,13 @@ class SourcePrinter {
         Text("$p");
         Number(i);
       }
-      Text(") {\n\"use strict\";\nlet $acc;\n");
+      Text(record ? "let $acc;\n" : ") {\n\"use strict\";\nlet $acc;\n");
       for (std::uint32_t i = 0; i < frame_.registers; ++i) {
         Text("let ");
         Text(bindings_[i]);
-        if (frame_.function == abc::RegisterId{i}) {
+        if (record) {
+          // All incoming ABI values are rejected by the record owner's proof.
+        } else if (frame_.function == abc::RegisterId{i}) {
           Text(" = ");
           Text(name_);
         } else if (frame_.new_target == abc::RegisterId{i}) {
@@ -139,7 +183,12 @@ class SourcePrinter {
       }
       DeclareLocals();
       Root();
-      Text(form_ == SourceForm::kClassConstructor ? "}\n}\n" : "}\n");
+      if (record) {
+        if (!record_exports_->Complete())
+          return SourceFailure{SourceError::kConstant, current_pc_};
+      } else {
+        Text(form_ == SourceForm::kClassConstructor ? "}\n}\n" : "}\n");
+      }
       return std::move(result_);
     } catch (const SourceFailure& failure) {
       return failure;
@@ -575,6 +624,25 @@ class SourcePrinter {
             Slot(operation.value);
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceModuleStore>) {
+            if (record_exports_) {
+              if (scope_depth_ || call_depth_ ||
+                  !std::holds_alternative<Accumulator>(operation.value) ||
+                  operation.slot.value >= record_exports_->slot_count())
+                throw SourceFailure{SourceError::kConstant, current_pc_};
+              ClassBuffer buffer(*this);
+              std::ostream stream(&buffer);
+              stream.exceptions(std::ios::badbit | std::ios::failbit);
+              const auto stored = record_exports_->WriteStore(
+                  analysis::ModuleStore{operation.slot}, stream,
+                  {limit_ - result_.text.size()});
+              if (const auto* failure = std::get_if<ModuleExportError>(&stored))
+                throw SourceFailure{
+                    *failure == ModuleExportError::kResourceLimit ||
+                            *failure == ModuleExportError::kOutputLimit
+                        ? SourceError::kResourceLimit : SourceError::kOutput,
+                    current_pc_};
+              return;
+            }
             // A callable can update an owner-proven initialized live binding.
             // Never turn an uninitialized VM slot into a hoisted JS let here:
             // first initialization needs a top-level declaration-site proof.
@@ -631,6 +699,13 @@ class SourcePrinter {
             LoopLabel(operation.target);
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceReturn>) {
+            if (record_exports_) {
+              const auto* value = std::get_if<analysis::SpecialValue>(&operation.value);
+              if (&statement != &ast_.statements.back() || scope_depth_ ||
+                  !value || *value != analysis::SpecialValue::kUndefined)
+                throw SourceFailure{SourceError::kUnsupportedOperation, current_pc_};
+              return;
+            }
             Text("return ");
             Value(operation.value);
             Text(";\n");
@@ -826,14 +901,18 @@ class SourcePrinter {
           } else if constexpr (std::is_same_v<T, analysis::RegionLabel>) {
             Label(region.exit);
             Text(": {\n");
+            ++scope_depth_;
             Region(*region.body);
+            --scope_depth_;
             Text("}\n");
           } else if constexpr (std::is_same_v<T, analysis::RegionSequence>) {
             for (const auto& child : region.children) Region(child);
           } else if constexpr (std::is_same_v<T, analysis::RegionLoop>) {
             LoopLabel(region.header);
             Text(": while (true) {\n");
+            ++scope_depth_;
             Region(*region.body);
+            --scope_depth_;
             Text("}\n");
           } else if constexpr (std::is_same_v<T, analysis::RegionTry>) {
             if (!ast_.regions.catches || !region.body || !region.handler)
@@ -881,12 +960,14 @@ class SourcePrinter {
   abc::CodeOffset current_pc_{};
   std::size_t call_depth_ = 0;
   std::size_t root_prefix_end_ = 0;
+  std::size_t scope_depth_ = 0;
   CaptureMode capture_mode_;
   std::vector<SourceCapture> captures_;
   const analysis::SemanticProof* proof_;
   CreationExpansion expansion_;
   const analysis::EnvironmentFlow* capture_environments_;
   const analysis::ExceptionLocals* capture_locals_;
+  ModuleExports* record_exports_;
 };
 }  // namespace
 
@@ -894,9 +975,10 @@ std::variant<PrintedSource, SourceFailure> PrintSourceAst(
     const SourceAst& ast, const analysis::SemanticMethod& method,
     const abc::FrameLayout& frame, SourceForm form, std::string_view name,
     const MethodConstants& constants, std::size_t output_bytes,
-    const analysis::SemanticProof* proof) {
+    const analysis::SemanticProof* proof, ModuleExports* record_exports) {
   return SourcePrinter(ast, method.flow, frame, form, name, constants,
-                       output_bytes, SourcePrinter::CaptureMode::kReject, proof, &method).Print();
+                       output_bytes, SourcePrinter::CaptureMode::kReject, proof,
+                       &method, nullptr, nullptr, record_exports).Print();
 }
 std::variant<PrintedSource, SourceFailure> PrintSourceBody(
     const SourceAst& ast, const analysis::SemanticMethod& method,

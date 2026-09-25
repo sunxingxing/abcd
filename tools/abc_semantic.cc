@@ -27,6 +27,7 @@
 #include "abcd/source/semantic_source.h"
 #include "abcd/source/capture_preservation.h"
 #include "abcd/source/named_scope.h"
+#include "abcd/source/record_program.h"
 #include "abcd/abc/pool_reference.h"
 #include "semantic_survey.h"
 #include "exception_inspect.h"
@@ -365,6 +366,26 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
                    position - owner.first_method < owner.method_count;
           });
       if (record == index->records.end()) return Fail(InspectError::kIndex);
+      if (*form == source::SourceForm::kRecord) {
+        // Pinned translator wire entry name, not instruction/string dispatch.
+        constexpr std::string_view kEntryName = "func_main_0";
+        if (method->name != kEntryName ||
+            !source::SupportsRecordProgramProfile(header->profile) ||
+            record->first_method > index->methods.size() ||
+            record->method_count > index->methods.size() - record->first_method)
+          return Fail(InspectError::kMethod);
+        const auto entries = std::count_if(
+            index->methods.begin() + record->first_method,
+            index->methods.begin() + record->first_method + record->method_count,
+            [](const auto& item) { return item.name == kEntryName; });
+        if (entries != 1) return Fail(InspectError::kMethod);
+        const auto attributes = abc::ReadMergedRecordAttributes(
+            file, *header, *index, *record, {kRecordContextBytes});
+        const auto* flags = std::get_if<abc::RecordAttributes>(&attributes);
+        if (!flags || flags->common_js.value_or(false) ||
+            flags->shared.value_or(false) || flags->top_level_await.value_or(false))
+          return Fail(InspectError::kMethod);
+      }
       auto loaded = ReadRecordModule(file, *header, *index, *record,
           {{kModuleTableBytes}, {kExportPlanBytes, {kExportStringBytes}},
            {kRecordContextBytes}});
@@ -375,11 +396,14 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
         available -= kRecordContextBytes;
         constants.module = &bindings->module;
         constants.global_scope.emplace();
-        constants.global_scope->enclosing_bindings = wrapper_bindings;
+        if (*form != source::SourceForm::kRecord)
+          constants.global_scope->enclosing_bindings = wrapper_bindings;
         constants.global_scope->module_slots = bindings->exports.slot_count();
         constants.global_scope->module_exports = &bindings->exports;
       }
     }
+    if (*form == source::SourceForm::kRecord && !bindings)
+      return Fail(InspectError::kMethod);
     const auto preserved = source::ProveCapturePreservation(
         *body, constants, methods,
         {available - method_ir->allocated_bytes});
@@ -461,7 +485,8 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     if (!frame) return Fail(InspectError::kFrame);
     const auto rendered = source::PrintSourceAst(
         *ast, *method_ir, *frame, *form, method->name, constants,
-        kMethodBytes, &std::get<analysis::SemanticProof>(proof));
+        kMethodBytes, &std::get<analysis::SemanticProof>(proof),
+        *form == source::SourceForm::kRecord ? &bindings->exports : nullptr);
     const auto* printed = std::get_if<source::PrintedSource>(&rendered);
     if (!printed) {
       const auto& failure = std::get<source::SourceFailure>(rendered);
@@ -479,7 +504,8 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     std::cout << nlohmann::json{{"entity", entity},
                                 {"source_complete", false},
                                 {"executable", false},
-                                {"requires_module_bindings", bindings.has_value()},
+                                {"requires_module_bindings", bindings.has_value() &&
+                                    *form != source::SourceForm::kRecord},
                                 {"source", printed->text},
                                 {"positions", std::move(map)}}
               << '\n';
@@ -497,7 +523,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
 
 int main(int argc, char** argv) {
   if (argc != 3 && argc != 4) {
-    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source|--instructions|--exception-flow|--exception-template]\n"
+    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source|--record-source|--instructions|--exception-flow|--exception-template]\n"
                  "       abc_semantic INPUT.abc --all-records\n";
     return Fail(InspectError::kArguments);
   }
@@ -517,6 +543,8 @@ int main(int argc, char** argv) {
       form = source::SourceForm::kClassConstructor;
     else if (option == "--function-source")
       form = source::SourceForm::kFunction;
+    else if (option == "--record-source")
+      form = source::SourceForm::kRecord;
     else if (option == "--instructions")
       return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kInstructions);
     else if (option == "--exception-flow")

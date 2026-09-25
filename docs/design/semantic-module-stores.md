@@ -64,3 +64,44 @@ still refuses first module initialization at PC15. Production CLI builds and
 read-only review completed; no new complete source is claimed. Tests and RSS
 tracking remain paused. Deferred regressions include entry backedges, catches,
 staged calls, fused/zero-width spans, and exact-once side-effect ordering.
+
+## Explicit record printing
+
+`SourceForm::kRecord` is now an explicit shared-printer mode, exercised by
+`abc_semantic INPUT ENTRY --record-source`. The CLI checks the unique pinned
+`func_main_0` entry identity, record ownership, merged ESM metadata and the
+already admitted record profiles. CommonJS, shared and top-level-await records
+remain refused. This mode does not replace the retained batch record writer.
+
+The owner supplies a fresh isolated `ModuleExports` plan from the same record.
+The printer emits native imports/reexports and export aliases, followed by
+private registers and the common AST, without a function wrapper. Root-scope
+module stores call the existing declaration/update writer at the original
+instruction position. Nested stores remain refused in this initial owner.
+The plan advances synchronously, so child printing sees only slots initialized
+at its creation site. All slots must be initialized before success. Only the
+last root-scope `return undefined` can become a zero-width completion anchor;
+other returns refuse instead of producing invalid module-level JS.
+
+Entry ABI inputs are not synthesized as undefined/function/this. An independent
+`VerifyRecordInputs` check admits only forward CFGs and tracks entry-derived
+SSA values through scalar copies. Every such copy must already have been
+eliminated to a no-op by shared dead-copy elimination; any other read or phi
+input refuses. This accommodates compiler ABI-saving prologues without
+granting a source interpretation to their values. Cost is O(V + I log I + R + P)
+with one temporary byte per SSA value, released before printing; R and P are
+read and phi-input counts. No work per variable traverses the CFG.
+
+The export plan is consumed even on failure and must not be reused. Output
+text/spans stay private until the entire print succeeds. The inspection JSON
+still marks results incomplete/non-executable pending record publication and
+equivalence validation. Module aliases/prelude are emitted through the same
+position cursor, not prepended after PC spans have been computed.
+
+ABC-only ProgressBar entry 9915 now passes its dead ABI-copy prologue and the
+first module declaration at PC15. Record printing reaches class creation at
+PC264 and refuses there. The unchanged function mode still refuses at PC15.
+Both production CLI targets build and read-only review completed; tests and
+RSS tracking remain paused. No complete record or semantic-equivalence result
+is claimed. Remaining work includes class assembly, generalized module-store
+control flow, atomic batch publication and child-method position maps.
