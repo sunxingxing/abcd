@@ -15,9 +15,19 @@ bool HasBoundReads(const SourceExpression& expression) {
                   std::is_same_v<T, ModuleExpression> ||
                   std::is_same_v<T, LocalExpression> ||
                   std::is_same_v<T, analysis::EmptyObjectCreation> ||
+                  std::is_same_v<T, GlobalExpression> ||
+                  std::is_same_v<T, analysis::GlobalObjectLoad> ||
+                  std::is_same_v<T, analysis::BufferedObjectCreation> ||
+                  std::is_same_v<T, analysis::BufferedArrayCreation> ||
+                  std::is_same_v<T, analysis::AwaitValue> ||
+                  std::is_same_v<T, analysis::RestCopy> ||
                   std::is_same_v<T, CallExpression> ||
                   std::is_same_v<T, MemberCallExpression> ||
                   std::is_same_v<T, analysis::ConstructorCall>) {
+      // Globals and literal buffers have no caller VM-slot inputs. RestCopy
+      // uses an owner-proven native rest formal, not the accumulator name used
+      // by its isolated scalar writer. AwaitValue reads through Value(). Keep
+      // their effect/allocation/await admission checks in Expression unchanged.
       return true;
     } else {
       // Creation/capture and external-name consumers retain identifier-based
@@ -27,13 +37,7 @@ bool HasBoundReads(const SourceExpression& expression) {
                     std::is_same_v<T, MethodExpression> ||
                     std::is_same_v<T, AccessorExpression> ||
                     std::is_same_v<T, CapturedExpression> ||
-                    std::is_same_v<T, GlobalExpression> ||
-                    std::is_same_v<T, analysis::GlobalObjectLoad> ||
-                    std::is_same_v<T, analysis::BufferedObjectCreation> ||
-                    std::is_same_v<T, analysis::BufferedArrayCreation> ||
-                    std::is_same_v<T, analysis::AwaitValue> ||
-                    std::is_same_v<T, analysis::SuperRange> ||
-                    std::is_same_v<T, analysis::RestCopy>);
+                    std::is_same_v<T, analysis::SuperRange>);
       return false;
     }
   }, expression);

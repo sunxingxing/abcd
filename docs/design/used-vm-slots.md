@@ -42,3 +42,29 @@ Coverage remains eight incomplete source records, two refused constructors
 position maps still contain 195 distinct methods and 9,745 spans. These counts
 are structural export evidence, not executable-source or equivalence evidence.
 Tests, generated JS execution and RSS measurements were not run.
+
+## Expression Read Audit
+
+The exhaustive audit also admits GlobalExpression, GlobalObjectLoad,
+BufferedObjectCreation, BufferedArrayCreation, AwaitValue and RestCopy.
+Global loads consume names/realm requirements, not caller VM slots. Buffered
+literal writers consume constant-pool data and retain their existing literal
+admission restrictions. AwaitValue reads its operand through Value, which binds
+and observes the actual slot. RestCopy prints the owner-validated native rest
+formal: its isolated scalar writer's Accumulator alternative is a formatting
+input, not a read of the caller accumulator. Targets remain observed separately.
+
+This does not authorize new global bindings, async staging, buffer contents or
+rest allocations. Existing printer checks remain mandatory. Class/function
+creation, captured expressions, super calls, staged arguments and catch regions
+remain outside this audit. No generated text is inspected for slot references.
+
+After successful production builds, the ABC-only export in
+`build/pasteboard-expression-slots-01` contains 8,938 lines / 154,233 bytes,
+65 fewer lines than `build/pasteboard-used-slots-01`. Record statuses remain
+eight incomplete, two refused and nine metadata; partial method maps remain
+195 methods / 9,745 spans. Independent read-only review found no concrete
+correctness issue. Tests, JS execution and RSS checks remain paused. Deferred
+regressions must exercise operand/target-only await use, rest-formal identity,
+fresh literal allocation, global binding refusal and conservative catch/staging
+fallback; export counts do not establish those behavioral properties.
