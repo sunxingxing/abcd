@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cstdint>
 #include <filesystem>
@@ -325,7 +326,60 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     const auto* methods = std::get_if<abc::MethodLookup>(&lookup);
     if (!methods) return Fail(InspectError::kIndex);
     constants.leaf_methods = methods;
-    const auto available = kMethodBytes - methods->AllocatedBytes();
+    auto available = kMethodBytes - methods->AllocatedBytes();
+    // Nested arrow/template emission needs the complete same-file role proof,
+    // just like record and exception owners. Never treat a missing index as
+    // kUnseen or infer roles from the inspected function alone.
+    const auto role_index = analysis::MethodRoleIndex::Build(
+        file, *header, *index, *methods,
+        {available - method_ir->allocated_bytes});
+    const auto* roles = std::get_if<analysis::MethodRoleIndex>(&role_index);
+    if (roles) {
+      if (roles->AllocatedBytes() > available - method_ir->allocated_bytes)
+        return Fail(InspectError::kIndex);
+      available -= roles->AllocatedBytes();
+      constants.roles = roles;
+    }
+    // Reserve the complete module context, including export-name decoding
+    // scratch, alongside the live IR/lookup/roles. Planning is not execution:
+    // these slots remain uninitialized in detached function inspection.
+    constexpr std::size_t kRecordContextBytes = 16 * 1024 * 1024;
+    constexpr std::size_t kModuleTableBytes = kRecordContextBytes / 2;
+    constexpr std::size_t kExportPlanBytes = kRecordContextBytes / 4;
+    constexpr std::size_t kExportStringBytes =
+        kRecordContextBytes - kModuleTableBytes - kExportPlanBytes;
+    if (kRecordContextBytes > available - method_ir->allocated_bytes)
+      return Fail(InspectError::kIndex);
+    const auto packaging = abc::DetectFilePackaging(
+        file, *header, *index, {kRecordContextBytes});
+    const auto* layout = std::get_if<abc::FilePackaging>(&packaging);
+    if (!layout) return Fail(InspectError::kIndex);
+    std::optional<RecordModule> bindings;
+    const std::array wrapper_bindings{std::string_view(method->name)};
+    if (*layout == abc::FilePackaging::kMerged) {
+      const auto position = static_cast<std::size_t>(method - index->methods.begin());
+      const auto record = std::find_if(index->records.begin(), index->records.end(),
+          [&](const auto& owner) {
+            return owner.offset == method->owner_offset &&
+                   position >= owner.first_method &&
+                   position - owner.first_method < owner.method_count;
+          });
+      if (record == index->records.end()) return Fail(InspectError::kIndex);
+      auto loaded = ReadRecordModule(file, *header, *index, *record,
+          {{kModuleTableBytes}, {kExportPlanBytes, {kExportStringBytes}},
+           {kRecordContextBytes}});
+      auto* module = std::get_if<std::optional<RecordModule>>(&loaded);
+      if (!module) return Fail(InspectError::kIndex);
+      bindings = std::move(*module);
+      if (bindings) {
+        available -= kRecordContextBytes;
+        constants.module = &bindings->module;
+        constants.global_scope.emplace();
+        constants.global_scope->enclosing_bindings = wrapper_bindings;
+        constants.global_scope->module_slots = bindings->exports.slot_count();
+        constants.global_scope->module_exports = &bindings->exports;
+      }
+    }
     const auto preserved = source::ProveCapturePreservation(
         *body, constants, methods,
         {available - method_ir->allocated_bytes});
@@ -423,6 +477,9 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
                      {"end", {span.end.byte, span.end.line,
                                span.end.column}}});
     std::cout << nlohmann::json{{"entity", entity},
+                                {"source_complete", false},
+                                {"executable", false},
+                                {"requires_module_bindings", bindings.has_value()},
                                 {"source", printed->text},
                                 {"positions", std::move(map)}}
               << '\n';

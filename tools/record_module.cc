@@ -4,16 +4,18 @@
 
 std::variant<std::optional<RecordModule>, RecordModuleError> ReadRecordModule(
     const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
-    const abcd::abc::MetadataIndex& index, const abcd::abc::RecordInfo& record) {
+    const abcd::abc::MetadataIndex& index, const abcd::abc::RecordInfo& record,
+    RecordModuleBudget budget) {
   using namespace abcd;
-  const auto parsed = abc::ReadMergedRecordAttributes(file, header, index, record);
+  const auto parsed = abc::ReadMergedRecordAttributes(
+      file, header, index, record, budget.names);
   const auto* attributes = std::get_if<abc::RecordAttributes>(&parsed);
   if (!attributes) return RecordModuleError::kAttributes;
   if (!attributes->module) return std::optional<RecordModule>{};
-  auto loaded = abc::ReadModuleInfo(file, header, *attributes->module);
+  auto loaded = abc::ReadModuleInfo(file, header, *attributes->module, budget.module);
   auto* module = std::get_if<abc::ModuleInfo>(&loaded);
   if (!module) return RecordModuleError::kModule;
-  auto planned = source::BuildModuleExports(file, header, *module);
+  auto planned = source::BuildModuleExports(file, header, *module, budget.exports);
   auto* exports = std::get_if<source::ModuleExports>(&planned);
   if (!exports) return RecordModuleError::kExports;
   return std::optional<RecordModule>{RecordModule{std::move(*module), std::move(*exports)}};

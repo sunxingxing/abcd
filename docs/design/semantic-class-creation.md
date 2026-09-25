@@ -234,3 +234,33 @@ Deferred tests: long copy chains, overwritten receivers, distinct and shared
 phi inputs, cross-block/cyclic creation, exceptional owners, identity after
 publication, low budgets, and preservation of own-write exception/accumulator
 effects. Tests and RSS tracking remain paused.
+
+### Record context in normal single-method inspection
+
+The normal `--function-source` pipeline now supplies the same-file role index
+and the owning merged record's module table/export plan, matching the existing
+exception inspection owner. A failed role index grants no role assumptions.
+Record lookup checks both metadata ownership and method range. No export store
+is executed to manufacture initialized slots, and bundle packaging does not
+guess merged-record metadata.
+
+Role storage is charged alongside IR and lookup. Module inspection reserves
+16 MiB from the method-stage allowance: 8 MiB for the table, 4 MiB for export
+planning and 4 MiB for live string-decoding scratch. Attribute/packaging reads
+borrow that reservation before module storage exists. Existing callers retain
+their default budgets through `RecordModuleBudget`. These are conservative
+admission limits, not a process RSS measurement.
+
+The generated top-level wrapper name remains in the enclosing-binding set
+even when child owners install their own self names, preventing accidental
+shadowing of VM global reads. Successful inspection JSON is explicitly marked
+`source_complete: false`, `executable: false`, with a module-binding requirement
+flag: printing a detached wrapper is not publication of a complete module.
+
+ABC-only debugger inspection traced the previous PC10 failure to an inner
+arrow's missing role proof; supplying that index exposed `kMissingModule`.
+With both contexts provided, entry 9915 now passes the child creation and stops
+at PC15 (`SourceError::kConstant`): the first `STMODULEVAR` needs a record-owned
+declaration-site proof. That initialization guard is unchanged. No completed
+source or new record coverage is claimed. CLI compilation and read-only review
+are the verification performed; tests and RSS tracking remain paused.
