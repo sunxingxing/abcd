@@ -141,3 +141,36 @@ Tests, JS and RSS were not run. Additional deferred cases: read-before-write,
 write-before-read, ranged operand reads, throwing normal writes, handler branches,
 shared catch targets, unknown operations, environment identity versus cell
 mutation, capture expansion isolation and low memory/work budgets.
+
+## Final Settlement and Actual PasteBoard Path
+
+The rejected-register proof now recognizes the exact final RESOLVE/RETURN pair
+immediately before the independently proved completion handler. With no user
+catch selected there, that pair exits; its typed state and value operands still
+count as reads. Other coroutine instructions and settlements routed to a user
+catch remain Unknown. This closes a false refusal where a catch never reads the
+resume temporaries but exits through the compiler's normal settlement.
+
+Actual owner inspection follows PasteBoard entry 8831, class constructor 9277,
+child 9082's DEFINEFUNC at PC145, and async child 9165. The constructor already
+produces a 193-span shared body. Child 9165 has a MOV-only prelude and four awaits;
+its user handler at PC994 defines child 9221, then falls through PC999's undefined
+load, RESOLVE at PC1000 and RETURN at PC1002. Compiler rejection starts at PC1003.
+Its catch-register proof now succeeds (125 charged work units in this inspection),
+and the actual owner reaches shared exception region construction after phased
+SSA, environment and input validation. The next refusal is a backward jump at
+original PC852, reported at its normalized block end PC766. Exception region
+construction still supports forward edges only, although normal regions already
+have a typed RegionLoop. No emitted record completion is claimed.
+
+Both production CLIs build and read-only review found no concrete defect; no
+tests, JS or RSS ran. Deferred cases include watched state/value operands in the
+final settlement, user-catch dispatch on that settlement, nonadjacent/malformed
+tails, shared handlers and loops around await.
+
+ProgressBar 10333 remains independently refused at its environment-allocation
+prologue. Pinned `Heap::AllocateYoungOrHugeObject` can call the OOM error path;
+moving a pre-promise allocation into native async may change synchronous throw
+to promise rejection on resource exhaustion. The user has been asked whether
+VM-internal resource-exhaustion differences are outside source equivalence.
+No such premise has been adopted and the decompiler's own 1G limit is unchanged.

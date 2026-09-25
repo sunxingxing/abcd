@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "abcd/analysis/exception_dispatch.h"
+#include "abcd/analysis/coroutine.h"
 
 namespace abcd::analysis {
 namespace {
@@ -142,7 +143,27 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
       const auto lifted = LiftSemanticInstruction(*site, profile, frame_size);
       const auto* instruction = std::get_if<SemanticInstruction>(&lifted);
       if (!instruction) {
-        uses.Reset(FirstUse::kUnknown);
+        const auto coroutine = LiftCoroutineInstruction(site->decoded, frame_size);
+        const auto* transfer = std::get_if<CoroutineTransfer>(&coroutine);
+        const auto next = site.base();
+        // The owner proved this final settlement/return tail and private state.
+        // It exits without observing other registers. Do not treat arbitrary
+        // coroutine operations or settlements under a user catch as exits.
+        const bool final_resolve = transfer &&
+            transfer->kind == CoroutineTransferKind::kResolve &&
+            next != body.instructions.end() &&
+            next->decoded.opcode == abc::Opcode::kRETURN &&
+            next->decoded.operand_count == 0 &&
+            std::uint64_t(site->offset.value) + site->decoded.size == next->offset.value &&
+            std::uint64_t(next->offset.value) + next->decoded.size ==
+                completion_handler.value;
+        if (final_resolve && !local(site->offset)) {
+          uses.Reset(FirstUse::kExit);
+          mark(transfer->state, FirstUse::kRead);
+          mark(transfer->value, FirstUse::kRead);
+        } else {
+          uses.Reset(FirstUse::kUnknown);
+        }
       } else {
         const bool throws_locally = instruction->effects.exceptional !=
             ExceptionalCompletion::kImpossible && local(site->offset);
