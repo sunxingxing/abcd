@@ -1,5 +1,6 @@
 #include "abcd/source/base_function.h"
 #include "abcd/source/linear_body.h"
+#include "abcd/source/semantic_entry.h"
 #include "function_template.h"
 
 #include <unistd.h>
@@ -234,6 +235,21 @@ int main(int argc, char** argv) {
     abc::MetadataIndex index;
     const auto first_key = FirstKeyBody();
     const source::MethodConstants constants{file, header, index, {0}, {}};
+    // A01: refuse before exception analysis, proof budgets or empty-IR
+    // inspection. These exercise public guards rather than their helper.
+    const auto required = source::RoutePolicy::kRequireValueTree;
+    const auto frame = Function(2).frame;
+    test::Check(std::holds_alternative<source::RouteRefusal>(
+        source::BuildSemanticBody(first_key, frame, {}, constants, {}, 0,
+                                  {}, required)));
+    test::Check(std::holds_alternative<source::RouteRefusal>(
+        source::BuildSemanticTemplate(first_key, frame, {}, constants, {}, 0,
+                                      {}, required)));
+    const analysis::SemanticMethod empty_ir;
+    test::Check(std::holds_alternative<source::RouteRefusal>(
+        source::BuildEntrySource(first_key, empty_ir, frame,
+            source::SourceForm::kFunction, "Recovered", constants, nullptr,
+            {}, 0, required)));
     std::ostringstream recovered;
     const auto emitted = source::WriteBaseFunction(
         Function(2), first_key, recovered, source::RoutePolicy::kLegacyAllowed,

@@ -8,6 +8,8 @@
 
 #include "abcd/corpus/abc_file.h"
 #include "abcd/source/record_module_context.h"
+#include "abcd/source/record_source.h"
+#include "abcd/analysis/method_roles.h"
 
 namespace {
 void Check(bool condition) {
@@ -72,6 +74,21 @@ int main() {
   Check(context.ForOwner(file, record.offset) != nullptr);
   Check(context.ForOwner(file, {kRecord + 1}) == nullptr);
   Check(context.ForOwner(file, record.offset)->requests[0].value == kRequest);
+  const auto lookup_result = abc::MethodLookup::Build(index.methods);
+  const auto& lookup = std::get<abc::MethodLookup>(lookup_result);
+  const auto roles_result = analysis::MethodRoleIndex::Build(
+      file, header, index, lookup);
+  const auto& roles = std::get<analysis::MethodRoleIndex>(roles_result);
+  // The empty method inventory has no valid record entry. Required-route
+  // admission must precede that legacy failure, without fabricating metadata.
+  const auto refused = source::BuildRecordSource(file, header, index, lookup,
+      record, context, roles, {}, nullptr,
+      source::RoutePolicy::kRequireValueTree);
+  Check(std::holds_alternative<source::RouteRefusal>(refused));
+  const auto legacy = source::BuildRecordSource(file, header, index, lookup,
+      record, context, roles, {}, nullptr,
+      source::RoutePolicy::kLegacyAllowed);
+  Check(!std::holds_alternative<source::RouteRefusal>(legacy));
   auto second_opened = corpus::AbcFile::Open(path);
   Check(std::holds_alternative<std::unique_ptr<corpus::AbcFile>>(second_opened));
   const auto& second = *std::get<std::unique_ptr<corpus::AbcFile>>(second_opened);
