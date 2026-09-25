@@ -225,6 +225,10 @@ using SourceOperation =
                  SourceConditionalBreak, SourceBreak, SourceConditionalContinue,
                  SourceContinue, SourceReturn, SourceReturnExpression, SourceThrow,
                  SourceStagedCall, SourceInitializerCall>;
+struct ConstructorArguments {
+  analysis::InstructionId first;
+  analysis::InstructionId call;
+};
 struct SourceStatement {
   abc::CodeOffset pc;
   SourceOperation operation;
@@ -241,6 +245,9 @@ struct SourceStatement {
   std::optional<analysis::InstructionId> class_origin = {};
   // Removed allocation/field instructions share the native literal's span.
   std::optional<analysis::InstructionId> literal_origin = {};
+  // Same-block ordered preparation; every member names the same owner.
+  // Original nodes and commits survive, and are printed exactly once.
+  std::optional<ConstructorArguments> constructor_arguments = {};
 };
 struct SourceArgumentRegion {
   analysis::InstructionId property;

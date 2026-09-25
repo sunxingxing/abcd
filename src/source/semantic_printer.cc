@@ -927,11 +927,20 @@ class SourcePrinter {
       Text("new (");
       Value(ScalarValue{call->inputs.first});
       Text(")(");
+      if (construction_ && current_pc_ == ast_.statements[construction_->call.value].pc) {
+        const auto call_pc = current_pc_;
+        Text("(\n");
+        for (auto i = construction_->first.value; i < construction_->call.value; ++i)
+          Statement(ast_.statements[i], StatementForm::kSequence);
+        current_pc_ = call_pc;
+      }
       for (std::uint32_t i = 0; i < call->ArgumentCount(); ++i) {
         if (i) Text(", ");
         const auto argument = call->ArgumentAt(i);
         if (!argument) throw SourceFailure{SourceError::kOutput, current_pc_};
         Value(ScalarValue{*argument});
+        if (!i && construction_ &&
+            current_pc_ == ast_.statements[construction_->call.value].pc) Text(")");
       }
       Text(")");
     } else if (const auto* global = std::get_if<GlobalExpression>(&expression)) {
@@ -1103,6 +1112,18 @@ class SourcePrinter {
   }
   void Statement(const SourceStatement& statement,
                  StatementForm form = StatementForm::kStatement) {
+    if (statement.constructor_arguments && !construction_) {
+      const auto region = *statement.constructor_arguments;
+      if (region.first.value >= region.call.value || region.call.value >= ast_.statements.size())
+        throw SourceFailure{SourceError::kInvalidEffect, statement.pc};
+      if (statement.pc != ast_.statements[region.first.value].pc) return;
+      // Evaluate preparation inside native new's first argument, retaining
+      // every private commit. The certificate excludes writes to its callee.
+      construction_ = region;
+      Statement(ast_.statements[region.call.value], form);
+      construction_.reset();
+      return;
+    }
     const bool comma = form != StatementForm::kStatement;
     current_pc_ = statement.pc;
     if (form == StatementForm::kSequence && !IsSequenceStatement(statement))
@@ -1593,6 +1614,7 @@ class SourcePrinter {
           end = std::min(end, std::size_t(ast_.argument_region->property.value));
         for (std::size_t i = 0; i < end; ++i) {
           if (std::holds_alternative<SourceStagedCall>(ast_.statements[i].operation) ||
+              ast_.statements[i].constructor_arguments ||
               std::holds_alternative<SourceArrayLiteral>(ast_.statements[i].operation)) {
             end = i;
             break;
@@ -1904,6 +1926,7 @@ class SourcePrinter {
   bool observe_record_slots_ = false;
   std::vector<LabelUse> label_uses_;
   std::optional<analysis::RegionIf> argument_if_;
+  std::optional<ConstructorArguments> construction_;
   const analysis::NormalFlow& blocks_;
   const analysis::SemanticMethod* capture_method_;
   const abc::FrameLayout& frame_;

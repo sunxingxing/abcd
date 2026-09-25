@@ -1,7 +1,8 @@
 # Constructor Argument Recovery
 
-Status: implementation design, not an implemented optimization or equivalence
-claim. This extends the approved common IR/region/AST/printer pipeline. It does
+Status: straight-line preparation ownership implemented; argument partitioning,
+commit elimination and cross-block recovery remain open. This is not an
+equivalence claim. It extends the approved common IR/region/AST/printer pipeline. It does
 not introduce a record-specific writer or change superclass admission.
 
 ## Current Evidence
@@ -95,8 +96,9 @@ cloning effects or adding a second owner for its instructions.
 3. Integrate argument emission into the common printer. Visit owned operations
    at their original PCs, preserve statement-form restrictions and slot census,
    and attach their spans to emitted arguments. Do not print prefix anchors
-   twice or infer offsets from generated text. Call and saved-result spans must
-   continue to denote the invocation and its original commit.
+   twice or infer offsets from generated text. Call and saved-result spans
+   cover the complete native expression, including its argument syntax;
+   preparation PCs have narrower nested spans, as with existing staged calls.
 4. Extend exact definition tracing from argument_expression.cc to the typed
    constructor input view, including erased load/save pairs. Keep normal-call
    and constructor operand conventions explicit. Remove commits individually,
@@ -128,3 +130,53 @@ handler-visible partial state; exact position ranges; memory-budget rejection;
 200/201 and geometric scaling. Tests, generated JS execution and RSS tracking
 remain paused. Full application equivalence and the 1G process limit remain
 unverified, and exported records must remain explicitly incomplete.
+
+## Implemented Preparation Slice
+
+`RecoverConstructorArguments` records a ConstructorArguments interval inline
+on its existing SourceStatement members. No expression nodes or argument
+arrays are duplicated; the existing sizeof(SourceStatement) admission accounts
+for the annotation. The pass consumes the original typed ConstructorCall and
+verifies its SSA read slots against the complete constructor/argument window.
+
+Each basic block is scanned once for candidate preparation runs. Unsupported
+statements end a run, and staged-call and array-literal owners are skipped with
+their entire intervals. At each constructor, a reverse suffix scan admits only
+ordinary expression assignments and no-ops, with writes restricted to the
+accumulator and argument registers, never the constructor register. Runs reset
+after each constructor, so suffix scans and annotations are disjoint. Cost is
+O(I + U), with constant scratch; inline certificates use O(I) AST storage.
+Phased SSA, catches, cross-block argument owners and super-argument owners
+retain their previous output path.
+
+The first member delegates printing to the original call statement. Its native
+`new` argument list evaluates all preparation in a comma expression before
+reading any final argument register. Thus no per-argument value is captured
+early, even if later preparation overwrites an earlier argument register.
+Every preparation commit remains. The constructor register is read earlier
+but cannot be written by the admitted expressions; closure captures use typed
+lexical cells, not the caller's private VM register bindings. No IIFE or new
+lexical scope is introduced, and native constructibility checking still occurs
+after argument evaluation. Root-prefix extraction stops before an owner.
+
+The printer visits original preparation nodes in order and records their PCs
+once, then the call PC. Subsequent flat visits to already-owned members emit
+nothing. The saved-result anchor follows the call as before. Original fused,
+previous and literal origin handling remains active within preparation.
+
+Both production targets built. ABC-only export
+`build/pasteboard-constructor-arguments-20260925` admits ten constructor
+preparation intervals across the seven affected source files, including method
+7089. Its PC 43 spans [1037,1049); closure PCs 55/60 span [1094,1157);
+buffer PC 62 spans [1157,1230); argument save PC 70 spans [1230,1243).
+Construction and result-save PCs 72/76 both span [1019,1280), enclosing the
+native expression and its nested argument syntax. Source totals are 3,607
+lines / 83,711 bytes: this slice establishes ownership, not text reduction.
+Statuses remain eight incomplete sources, two refused constructors and nine
+metadata-only records; maps contain 195 methods / 9,745 spans.
+
+Read-only review checked ownership, evaluation order, spans and complexity.
+Array-literal intervals were explicitly excluded during implementation; no
+additional concrete defect was reported. Tests, JS execution and RSS tracking
+were not run. Ordered argument distribution, exact-use commit removal, nested
+construction and conditional argument ownership remain required follow-up work.
