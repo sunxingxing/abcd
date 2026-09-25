@@ -1111,19 +1111,38 @@ class SourcePrinter {
             Value(ScalarValue{Accumulator{}});
             Text(")");
             MemberKey(operation.name);
-            Text("((() => {\n");
-            if (ast_.argument_region &&
-                ast_.argument_region->call == operation.call_statement)
+            const bool region = ast_.argument_region &&
+                ast_.argument_region->call == operation.call_statement;
+            const auto first_statement = operation.first_argument_statement.value;
+            const auto last_statement = operation.call_statement.value;
+            if (first_statement > last_statement)
+              throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+            // A comma sequence preserves the live property Reference and all
+            // argument effects without introducing a call frame. Only the
+            // same assignment/NoOp grammar used for array elements qualifies;
+            // control flow and nested staged calls retain their region writer.
+            const bool sequence = !region && std::all_of(
+                ast_.statements.begin() + first_statement,
+                ast_.statements.begin() + last_statement,
+                [](const SourceStatement& argument) {
+                  return std::holds_alternative<SourceAssignment>(argument.operation) ||
+                         std::holds_alternative<analysis::NoOperation>(argument.operation);
+                });
+            Text(sequence ? "((\n" : "((() => {\n");
+            if (sequence) {
+              for (auto i = first_statement; i < last_statement; ++i)
+                Statement(ast_.statements[i], true);
+            } else if (region)
               ArgumentRegion(*ast_.argument_region);
             else
               Statements(operation.first_argument_statement.value,
                          operation.call_statement.value, true);
             current_pc_ = ast_.statements[operation.call_statement.value].pc;
-            Text("return ");
+            if (!sequence) Text("return ");
             const auto first = operation.call.At(0);
             if (!first) throw SourceFailure{SourceError::kOutput, current_pc_};
             Value(ScalarValue{*first});
-            Text(";\n})()");
+            Text(sequence ? ")" : ";\n})()");
             for (std::uint32_t i = 1; i < operation.call.Count(); ++i) {
               Text(", ");
               const auto argument = operation.call.At(i);
