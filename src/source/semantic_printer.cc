@@ -597,6 +597,8 @@ class SourcePrinter {
             Text("] = ");
             Value(operation.value);
             Text(";\n");
+          } else if constexpr (std::is_same_v<T, SourceMethodStore>) {
+            throw SourceFailure{SourceError::kClassAssembly, current_pc_};
           } else if constexpr (std::is_same_v<T, SourceOwnStore>) {
             // Pinned RuntimeDefineField sets all data attributes true. On a
             // private ordinary object with this existing data key, strict Set

@@ -141,7 +141,8 @@ target_sources(abcd_source PRIVATE src/source/record_module_context.cc)
 target_sources(abcd_source PRIVATE src/source/base_function.cc)
 target_sources(abcd_source PRIVATE src/source/argument_region.cc src/source/semantic_ast.cc src/source/semantic_printer.cc
   src/source/semantic_body.cc src/source/semantic_fields.cc
-  src/source/semantic_objects.cc src/source/dead_copies.cc)
+  src/source/semantic_objects.cc src/source/copy_origins.cc
+  src/source/dead_copies.cc)
 target_sources(abcd_source PRIVATE src/source/async_completion.cc)
 target_sources(abcd_source PRIVATE src/source/exception_source.cc)
 target_sources(abcd_source PRIVATE src/source/exception_body.cc)

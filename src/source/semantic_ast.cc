@@ -9,6 +9,7 @@
 #include "argument_region.h"
 #include "semantic_ast_input.h"
 #include "dead_copies.h"
+#include "copy_origins.h"
 
 namespace abcd::source {
 namespace {
@@ -115,7 +116,8 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
   if (regions.allocated_bytes > budget_bytes)
     return Fail(SourceError::kResourceLimit);
   constexpr auto kProofValueBytes =
-      sizeof(std::size_t) + sizeof(PrivateObjects::Origin);
+      sizeof(std::size_t) + sizeof(PrivateObjects::Origin) +
+      sizeof(analysis::SsaValueId);
   if (method.ssa.ValueCount() >
       (budget_bytes - regions.allocated_bytes) / kProofValueBytes)
     return Fail(SourceError::kResourceLimit);
@@ -139,6 +141,10 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
               sizeof(std::optional<analysis::BlockId>))
     return Fail(SourceError::kResourceLimit);
   try {
+    CopyOrigins copies(method.ssa.ValueCount());
+    if (copies.AllocatedBytes() >
+        method.ssa.ValueCount() * sizeof(analysis::SsaValueId))
+      return Fail(SourceError::kResourceLimit);
     PrivateObjects objects(method.ssa.ValueCount(), method.instructions.size());
     if (objects.AllocatedBytes() >
         method.ssa.ValueCount() * sizeof(PrivateObjects::Origin) + allocation_bytes)
@@ -295,19 +301,44 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
             StringExpression{string->value}};
       } else if (const auto* write =
                      std::get_if<analysis::OwnWrite>(&instruction.operation)) {
+        if (effect.normal_registers.write ||
+            effect.exceptional != analysis::ExceptionalCompletion::kMayThrow)
+          return Fail(SourceError::kInvalidEffect, instruction.pc);
         const auto object = ReadValue(method, position,
                                        analysis::ScalarSlot{write->object});
-        const auto origin = objects.Find(
-            object, method.flow.blocks[block_id].first_instruction);
-        if (write->kind != analysis::OwnWriteKind::kDefineField || !origin)
+        if (write->kind == analysis::OwnWriteKind::kStore) {
+          const auto value = ReadValue(method, position,
+              analysis::ScalarSlot{analysis::Accumulator{}});
+          const auto creation = value ? method.ssa.Definition(copies.At(*value))
+                                      : std::nullopt;
+          const auto block_begin = method.flow.blocks[block_id].first_instruction;
+          if (method.ssa.IsPhased() || !object || !creation ||
+              creation->value < block_begin || creation->value >= position)
+            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+          const auto* created = std::get_if<analysis::FunctionCreation>(
+              &method.instructions[creation->value].operation);
+          const auto home = ReadValue(method, creation->value,
+              analysis::ScalarSlot{analysis::Accumulator{}});
+          if (!created || created->kind != analysis::CreationKind::kMethod ||
+              created->home_object != analysis::HomeObjectInput::kAccumulator ||
+              !home || copies.At(*home) != copies.At(*object))
+            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+          operation = SourceMethodStore{*write, *creation, copies.At(*home)};
+        } else if (write->kind == analysis::OwnWriteKind::kDefineField) {
+          const auto origin = objects.Find(
+              object, method.flow.blocks[block_id].first_instruction);
+          if (!origin)
+            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+          const auto* buffered = std::get_if<analysis::BufferedObjectCreation>(
+              &method.instructions[origin->value].operation);
+          if (!buffered)
+            return Fail(SourceError::kUnsupportedOperation, instruction.pc);
+          // Unpublished same-block allocation, possibly across unrelated user
+          // effects. The printer still proves an existing writable data key.
+          operation = SourceOwnStore{*write, *buffered};
+        } else {
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-        const auto* buffered = std::get_if<analysis::BufferedObjectCreation>(
-            &method.instructions[origin->value].operation);
-        if (!buffered)
-          return Fail(SourceError::kUnsupportedOperation, instruction.pc);
-        // Unpublished same-block allocation, possibly across unrelated user
-        // effects. The printer must still prove an existing writable data key.
-        operation = SourceOwnStore{*write, *buffered};
+        }
       } else if (const auto* call =
                      std::get_if<analysis::ConstructorCall>(&instruction.operation)) {
         operation = SourceAssignment{
@@ -617,6 +648,8 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
                                 fused_spill, fused_reload, read_distance,
                                 spill_distance, reload_distance, previous_origin});
       if (!IsPrivateValue(instruction.operation)) last_effect = position;
+      copies.Observe(method,
+          analysis::InstructionId{static_cast<std::uint32_t>(position)});
       objects.Observe(method,
           analysis::InstructionId{static_cast<std::uint32_t>(position)},
           method.flow.blocks[block_id].first_instruction,

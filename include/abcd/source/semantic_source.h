@@ -94,6 +94,13 @@ struct SourceOwnStore {
   analysis::OwnWrite write;
   analysis::BufferedObjectCreation origin;
 };
+struct SourceMethodStore {
+  analysis::OwnWrite write;
+  analysis::InstructionId creation;
+  // Same SSA value as the creation's home, modulo normal scalar copies.
+  // This is NOT a class ownership, descriptor or non-escape certificate.
+  analysis::SsaValueId home;
+};
 struct SourceConditionalBreak {
   analysis::UnaryExpression condition;
   analysis::BlockId target;
@@ -122,7 +129,7 @@ struct SourceStagedCall {
 };
 using SourceOperation =
     std::variant<analysis::NoOperation, SourceAssignment, SourceMemberStore, SourceOwnStore,
-                 SourceLocalStore, SourceModuleStore,
+                 SourceLocalStore, SourceModuleStore, SourceMethodStore,
                  SourceConditionalBreak, SourceBreak, SourceConditionalContinue,
                  SourceContinue, SourceReturn, SourceThrow,
                  SourceStagedCall>;

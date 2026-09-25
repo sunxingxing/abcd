@@ -200,3 +200,37 @@ throwing key/descriptor operations and closure environment changes. Retain all
 participating PCs; do not merely delete the intervening instructions, identify
 members by source strings, or infer class ownership from an arbitrary property
 named `prototype`. Constructor/member role and capture checks remain mandatory.
+
+### Exact method-home identity at installation
+
+`CopyOrigins` indexes SSA value identities during the existing AST traversal.
+Only normal scalar slot copies propagate identity. Entry and phi values keep
+distinct IDs; no equivalence is inferred from matching names, printed values,
+property reads or structurally similar instructions. Each SSA value has one
+charged index entry. The additional cost is O(V + I log I) time with the
+existing SSA lookup interface and O(V) scratch, not a suffix walk per store.
+
+For normal-CFG `STOWNBYNAME`, the AST now accepts `SourceMethodStore` only
+when its accumulator comes from a same-block preceding `DEFINEMETHOD` and
+its receiver is the exact creation-time home value modulo those copies.
+The node retains the own-write operands, creation instruction and canonical
+home ID; accumulator preservation and may-throw completion are checked.
+Phased exception owners are not admitted by this proof. Ordinary assignments
+and existing buffered-object field proofs remain separate.
+
+This proves neither class provenance nor non-escape, and does not merge
+allocation/installation or weaken the printer's `kClassAssembly` rejection.
+Aliases are identities, not fresh/private objects. The original semantic
+method remains the source of heap effects and exceptional behavior.
+
+ABC-only ProgressBar entry 9915 inspection now completes its entire AST,
+including installations at PCs384 and 396. It reaches printing and rejects
+the child function creation at PC10 (`SourceError::kCreation`), before module
+initialization or class printing. No complete source is produced. The CLI's
+standalone context does not supply the record's module/role ownership; a
+successful AST is not an end-to-end source-equivalence result.
+
+Deferred tests: long copy chains, overwritten receivers, distinct and shared
+phi inputs, cross-block/cyclic creation, exceptional owners, identity after
+publication, low budgets, and preservation of own-write exception/accumulator
+effects. Tests and RSS tracking remain paused.
