@@ -26,6 +26,7 @@ bool HasBoundReads(const SourceExpression& expression, SlotReadMode mode) {
                   std::is_same_v<T, analysis::RestCopy> ||
                   std::is_same_v<T, CallExpression> ||
                   std::is_same_v<T, MemberCallExpression> ||
+                  std::is_same_v<T, analysis::SuperRange> ||
                   std::is_same_v<T, analysis::ConstructorCall>) {
       // Globals and literal buffers have no caller VM-slot inputs. RestCopy
       // uses an owner-proven native rest formal, not the accumulator name used
@@ -36,6 +37,9 @@ bool HasBoundReads(const SourceExpression& expression, SlotReadMode mode) {
       // initialization/domain checks and zero-width capture tokens remain.
       // MemberExpression's optional binding receiver uses the same Value and
       // Expression dispatch as staged calls, including register observation.
+      // SuperRange reads each explicit argument through Value. Native super
+      // supplies the current function/new.target; no ABI identifier is read.
+      // Keep the owner's derived-constructor proof and printer gate intact.
       return true;
     } else if constexpr (std::is_same_v<T, ClassExpression>) {
       // The class parent identifier is observed explicitly in record mode.
@@ -45,8 +49,7 @@ bool HasBoundReads(const SourceExpression& expression, SlotReadMode mode) {
       // These owner-specific protocols remain outside the bound-read audit.
       // Never infer their reads from the already generated source.
       static_assert(std::is_same_v<T, MethodExpression> ||
-                    std::is_same_v<T, AccessorExpression> ||
-                    std::is_same_v<T, analysis::SuperRange>);
+                    std::is_same_v<T, AccessorExpression>);
       return false;
     }
   }, expression);

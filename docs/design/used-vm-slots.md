@@ -57,7 +57,8 @@ input, not a read of the caller accumulator. Targets remain observed separately.
 This does not authorize new global bindings, async staging, buffer contents or
 rest allocations. Existing printer checks remain mandatory. Class/function
 creation, captured expressions, super calls, branch argument and catch regions
-remain outside this audit. No generated text is inspected for slot references.
+were outside this initial audit; later sections and the linked audit documents
+record subsequent admission. No generated text is inspected for slot references.
 
 After successful production builds, the ABC-only export in
 `build/pasteboard-expression-slots-01` contains 8,938 lines / 154,233 bytes,
@@ -90,3 +91,39 @@ Tests, JS execution and RSS remain paused. Deferred regressions include nested
 staged intervals with bound entry reads, comma-mode target-only registers,
 fallback arrow lexical bindings and zero-width copy anchors. Rest-formal
 transport and effectful argument temporaries are not eliminated by this audit.
+
+## Range Super Reads
+
+The exhaustive expression audit now includes SuperRange. Its shared printer
+checks the range and derived-constructor authority, then reads every explicit
+argument through Value, in order. The result target is observed by its owning
+assignment. Native super syntax supplies current-function and new.target
+semantics; it does not read their synthetic ABI register names. Any other
+retained use of those registers still records them independently.
+
+This enables precise declaration census and existing immutable entry-copy
+elision in admitted range-derived constructors. The whole-constructor proof,
+guard ownership, single-super restrictions, private VM this initialization and
+normal/exception effects are unchanged. In particular, no substitution of
+native this before super or widening of spread-super admission is authorized.
+Identifier-only class creation and unsupported member protocols retain their
+conservative fallback. Removed entry copies retain zero-width PC anchors.
+
+The audit remains a single O(I) traversal; each emitted argument adds constant
+slot bookkeeping to its existing emission work. No new storage is introduced
+beyond the existing bounded register-use and entry-binding tables. Deferred
+regressions include zero/multiple arguments, argument-only registers, writable
+and immutable parameter copies, explicit function/new.target uses, pre-super
+VM this, thrown super calls, narrow/wide encodings and refused spread calls.
+
+Both production targets built. ABC-only export
+`build/pasteboard-super-slot-audit-20260925` yields 3,899 lines / 86,780 bytes,
+81 lines / 1,049 bytes fewer than the neutral-parameter-aliases export. All six
+page constructors lose unused declarations or immutable entry transport. PageA
+method 7201 PCs 9/12/15 and 24 now retain zero-width anchors; super PC 79 and
+its fused store PC 83 both map to [2602,2640), the retained super assignment.
+Partial maps retain 195 methods / 9,745 spans; record statuses remain eight
+incomplete, two host constructors refused at PC 14 and nine metadata-only.
+Read-only review found no concrete defect. Tests, generated JS execution and
+RSS remain paused. These observations do not establish full equivalence,
+complete source-variable recovery or structural gate completion.
