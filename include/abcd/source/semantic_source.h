@@ -282,6 +282,7 @@ struct HostRealmRequirement {
   // ASCII lexical name, owned by the artifact, not a JS expression.
   std::string binding;
 };
+enum class VmSlotUse : std::uint8_t { kUnknown, kNone, kRequired };
 struct PrintedSource {
   std::string text;
   std::vector<GeneratedSpan> spans;
@@ -289,6 +290,7 @@ struct PrintedSource {
   std::optional<HostRealmRequirement> host_realm;
   // Partial descendant coverage, never evidence that every method is mapped.
   std::vector<MethodGeneratedSpan> method_spans;
+  VmSlotUse vm_slots = VmSlotUse::kUnknown;
 };
 struct SourceCapture {
   GeneratedPosition position;
@@ -305,6 +307,7 @@ struct PrintedTemplate {
   std::optional<HostRealmRequirement> host_realm;
   // Descendant endpoints retain this template's capture cursors.
   std::vector<MethodGeneratedSpan> method_spans;
+  VmSlotUse vm_slots = VmSlotUse::kUnknown;
 };
 // source is the unchanged PrintSourceTemplate result. bindings is one
 // parent-PROVEN initialized local cell per capture occurrence,

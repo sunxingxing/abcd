@@ -312,38 +312,10 @@ class FunctionWriter {
           Text(" = void 0");
       }
       Text(IsArrowSyntax(function_.syntax)
-               ? non_simple_parameters ? ") => {\nlet $acc;\n"
-                                : ") => {\n\"use strict\";\nlet $acc;\n"
-               : non_simple_parameters ? ") {\nlet $acc;\n"
-                                : ") {\n\"use strict\";\nlet $acc;\n");
-      // Each VM register is independently writable. In particular, a function
-      // slot must not alias the immutable named-expression self binding.
-      // Only separately proved read-only fixed-parameter slots reuse formals.
-      for (std::uint32_t i = 0; i < frame.registers && !error_; ++i) {
-        if (i >= frame.first_parameter.value &&
-            i - frame.first_parameter.value < parameter_writes_.size() &&
-            parameter_writes_[i - frame.first_parameter.value] == 0) continue;
-        Text("let ");
-        Text(names_.registers[i]);
-        const abc::RegisterId slot{i};
-        if (frame.function == slot) {
-          Text(" = ");
-          Text(names_.current_function.empty() ? "void 0"
-                                               : names_.current_function);
-        } else if (frame.new_target == slot) {
-          if (!IsArrowSyntax(function_.syntax))
-            Text(" = new.target");
-        } else if (frame.this_value == slot) {
-          if (function_.syntax == CallableSyntax::kRangeDerivedConstructor)
-            Text(" = void 0");
-          else if (!IsArrowSyntax(function_.syntax))
-            Text(" = this");
-        } else if (i >= frame.first_parameter.value) {
-          Text(" = ");
-          Parameter(i - frame.first_parameter.value);
-        }
-        Text(";\n");
-      }
+               ? non_simple_parameters ? ") => {\n"
+                                : ") => {\n\"use strict\";\n"
+               : non_simple_parameters ? ") {\n"
+                                : ") {\n\"use strict\";\n");
       if (error_) return *error_;
       auto body_budget = budget_;
       body_budget.output.bytes -= written_;
@@ -429,6 +401,14 @@ class FunctionWriter {
                   captured_values_ == analysis::CapturedValues::kReject
               ? analysis::MatchFirstForIn(body, function_.frame)
               : std::nullopt;
+      // Only a common-printer certificate may suppress ABI declarations.
+      // Unknown/legacy paths keep the original prologue. Decide before body
+      // positions are rebased into the actual enclosing output cursor.
+      const auto vm_slots = semantic_body ? semantic_body->vm_slots
+          : semantic_template ? semantic_template->vm_slots : VmSlotUse::kUnknown;
+      if (vm_slots != VmSlotUse::kNone) DeclareVmSlots();
+      if (error_) return *error_;
+      body_budget.output.bytes = budget_.output.bytes - written_;
       if (semantic_body) {
         // The owning writer retains proven callable syntax/ABI. The generic
         // path emits no wrapper and cannot change a method into a function.
@@ -628,6 +608,33 @@ class FunctionWriter {
   }
 
  private:
+  void DeclareVmSlots() {
+    Text("let $acc;\n");
+    const auto& frame = function_.frame;
+    // Writable VM slots stay distinct from immutable self/formal bindings.
+    for (std::uint32_t i = 0; i < frame.registers && !error_; ++i) {
+      if (i >= frame.first_parameter.value &&
+          i - frame.first_parameter.value < parameter_writes_.size() &&
+          parameter_writes_[i - frame.first_parameter.value] == 0) continue;
+      Text("let ");
+      Text(names_.registers[i]);
+      const abc::RegisterId slot{i};
+      if (frame.function == slot) {
+        Text(" = ");
+        Text(names_.current_function.empty() ? "void 0" : names_.current_function);
+      } else if (frame.new_target == slot) {
+        if (!IsArrowSyntax(function_.syntax)) Text(" = new.target");
+      } else if (frame.this_value == slot) {
+        if (function_.syntax == CallableSyntax::kRangeDerivedConstructor)
+          Text(" = void 0");
+        else if (!IsArrowSyntax(function_.syntax)) Text(" = this");
+      } else if (i >= frame.first_parameter.value) {
+        Text(" = ");
+        Parameter(i - frame.first_parameter.value);
+      }
+      Text(";\n");
+    }
+  }
   void ArrowName() {
     if (error_) return;
     const auto result = WriteStringLiteral(

@@ -63,7 +63,7 @@ class SourcePrinter {
     auto& source = std::get<PrintedSource>(printed);
     return PrintedTemplate{std::move(source.text), std::move(source.spans),
                             std::move(captures_), source.contract, std::move(source.host_realm),
-                            std::move(source.method_spans)};
+                            std::move(source.method_spans), source.vm_slots};
   }
 
   std::variant<PrintedSource, SourceFailure> PrintBody(ScalarNames names) {
@@ -93,6 +93,7 @@ class SourcePrinter {
         return SourceFailure{SourceError::kResourceLimit, {}};
       if (const auto failure = AppendAwaitPositions(ast_, result_, limit_ - capture_bytes))
         return *failure;
+      if (elide_entry_copies_) result_.vm_slots = vm_slots_;
       return std::move(result_);
     } catch (const SourceFailure& failure) {
       return failure;
@@ -545,6 +546,7 @@ class SourcePrinter {
   void Scalar(const ScalarExpression& expression, bool read = true) {
     auto bound = expression;
     if (read) BindEntryReads(bound, entry_bindings_);
+    ObserveSlots(bound);
     std::ostringstream stream;
     const auto emitted = WriteScalarExpression(
         bound, names_, stream, {limit_ - result_.text.size()});
@@ -553,6 +555,35 @@ class SourcePrinter {
     Text(stream.str());
   }
   void Value(const ScalarValue& value) { Scalar(ScalarExpression{value}); }
+  void ObserveSlots(const ScalarExpression& expression) {
+    if (!elide_entry_copies_ || vm_slots_ == VmSlotUse::kRequired) return;
+    const auto observe = [&](const ScalarValue& value) {
+      if (std::holds_alternative<Accumulator>(value)) {
+        vm_slots_ = VmSlotUse::kRequired;
+      } else if (const auto* reg = std::get_if<abc::RegisterId>(&value)) {
+        if (names_.this_binding == *reg) return;
+        if (reg->value >= names_.first_parameter.value) {
+          const auto ordinal = reg->value - names_.first_parameter.value;
+          if (ordinal < names_.parameter_writes.size() &&
+              names_.parameter_writes[ordinal] == 0) return;
+        }
+        vm_slots_ = VmSlotUse::kRequired;
+      }
+    };
+    std::visit([&](const auto& value) {
+      using T = std::decay_t<decltype(value)>;
+      if constexpr (std::is_same_v<T, ScalarValue>) observe(value);
+      else if constexpr (std::is_same_v<T, analysis::UnaryExpression>) observe(value.input);
+      else if constexpr (std::is_same_v<T, analysis::BinaryExpression>) {
+        observe(value.left);
+        observe(value.right);
+      } else {
+        static_assert(std::is_same_v<T, analysis::PropertyRead>);
+        observe(value.receiver);
+        observe(value.key);
+      }
+    }, expression);
+  }
   void Predicate(const analysis::UnaryExpression& condition, bool inverted = false,
                  const std::optional<PredicateInput>& input = {}) {
     using analysis::UnaryOperator;
@@ -1425,6 +1456,7 @@ class SourcePrinter {
   const SourceAst& ast_;
   std::vector<EntryBinding> entry_bindings_;
   bool elide_entry_copies_ = false;
+  VmSlotUse vm_slots_ = VmSlotUse::kNone;
   std::vector<LabelUse> label_uses_;
   const analysis::NormalFlow& blocks_;
   const analysis::SemanticMethod* capture_method_;

@@ -91,6 +91,7 @@ std::variant<PrintedSource, SourceFailure> BindSourceTemplate(
     }
     const auto bytes = source.text.size() + prefix.back().bytes;
     PrintedSource result;
+    result.vm_slots = source.vm_slots;
     result.contract = source.contract;
     if (source.host_realm) {
       if (source.host_realm->binding.size() >= remaining) return Resource();
