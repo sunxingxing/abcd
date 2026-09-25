@@ -720,6 +720,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
         ast.fallthrough.capacity() * sizeof(std::optional<analysis::BlockId>);
     if (const auto failure = ElideDeadCopies(method, ast, uses, copy_bytes)) return *failure;
     ElideCopyReloads(method, ast, uses);
+    ElideKnownReloads(method, ast, copies);
     const auto retained_before = ast.allocated_bytes;
     if (const auto failure = FoldArrayExpressions(method, ast, uses, copy_bytes)) return *failure;
     if (const auto failure = FoldArrayLiterals(

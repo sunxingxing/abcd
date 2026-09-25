@@ -4,6 +4,7 @@
 #include "semantic_ast_input.h"
 
 namespace abcd::source {
+class CopyOrigins;
 // Exact original SSA uses, including handler phis. Only still-emitted private
 // slot copies are removed; all effects and already-fused instructions remain
 // roots. PC statements remain in place as zero-width anchors.
@@ -16,5 +17,10 @@ std::optional<SourceFailure> ElideDeadCopies(const AstMethod& method,
 // conservative upper bounds for later folds. No allocation or value movement.
 void ElideCopyReloads(const AstMethod& method, SourceAst& ast,
                      std::span<const std::size_t> uses);
+// Reuse exact SSA copy identities within uninterrupted emitted slot-copy
+// sequences. Keep live register saves, eliding only redundant acc reloads.
+// No allocation; one pass with indexed SSA reads, no inter-block propagation.
+void ElideKnownReloads(const AstMethod& method, SourceAst& ast,
+                       const CopyOrigins& copies);
 }  // namespace abcd::source
 #endif

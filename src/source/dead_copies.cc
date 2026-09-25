@@ -1,4 +1,5 @@
 #include "dead_copies.h"
+#include "copy_origins.h"
 
 namespace abcd::source {
 namespace {
@@ -8,6 +9,18 @@ bool SlotCopy(const analysis::SemanticOperation& operation) {
   const auto* value = std::get_if<analysis::ScalarValue>(&copy->expression);
   return value && (std::holds_alternative<analysis::Accumulator>(*value) ||
                    std::holds_alternative<abc::RegisterId>(*value));
+}
+bool SameSlot(const analysis::ScalarSlot& left, const analysis::ScalarSlot& right) {
+  if (left.index() != right.index()) return false;
+  const auto* reg = std::get_if<abc::RegisterId>(&left);
+  return !reg || *reg == std::get<abc::RegisterId>(right);
+}
+std::optional<analysis::ScalarSlot> CopyInput(const analysis::ScalarExpression& expression) {
+  const auto* value = std::get_if<analysis::ScalarValue>(&expression);
+  if (!value) return {};
+  if (const auto* reg = std::get_if<abc::RegisterId>(value)) return *reg;
+  if (std::holds_alternative<analysis::Accumulator>(*value)) return analysis::Accumulator{};
+  return {};
 }
 }
 std::optional<SourceFailure> ElideDeadCopies(const AstMethod& method,
@@ -80,6 +93,42 @@ void ElideCopyReloads(const AstMethod& method, SourceAst& ast,
       spill.operation = analysis::NoOperation{};
       reload.operation = analysis::NoOperation{};
       ++i;
+    }
+  }
+}
+void ElideKnownReloads(const AstMethod& method, SourceAst& ast,
+                       const CopyOrigins& copies) {
+  for (const auto& block : method.flow.blocks) {
+    std::optional<analysis::SsaValueId> accumulator;
+    const auto end = std::size_t(block.first_instruction) + block.instruction_count;
+    for (std::size_t i = block.first_instruction; i < end; ++i) {
+      auto& statement = ast.statements[i];
+      const auto* source = std::get_if<SourceAssignment>(&statement.operation);
+      const auto* original = std::get_if<analysis::ScalarAssignment>(
+          &method.instructions[i].operation);
+      const auto* expression = source
+          ? std::get_if<analysis::ScalarExpression>(&source->value) : nullptr;
+      const auto input = expression ? CopyInput(*expression) : std::nullopt;
+      const auto old_input = original ? CopyInput(original->expression) : std::nullopt;
+      // Fused statements may perform hidden acc writes at a different source
+      // position. Even a no-op anchor ends this deliberately local proof.
+      if (!source || !original || !input || !old_input ||
+          original->completion != analysis::CompletionEffect::kNormal ||
+          !SameSlot(source->target, original->destination) || !SameSlot(*input, *old_input) ||
+          statement.fused_read || statement.fused_spill || statement.fused_reload ||
+          statement.class_origin || statement.previous_origin) {
+        accumulator.reset();
+        continue;
+      }
+      const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(i)});
+      if (reads.size() != 1) { accumulator.reset(); continue; }
+      const auto identity = copies.At(reads.front().value);
+      if (std::holds_alternative<analysis::Accumulator>(*input)) accumulator = identity;
+      if (std::holds_alternative<analysis::Accumulator>(source->target)) {
+        if (accumulator && *accumulator == identity)
+          statement.operation = analysis::NoOperation{};
+        accumulator = identity;
+      }
     }
   }
 }
