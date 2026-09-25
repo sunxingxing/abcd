@@ -63,6 +63,18 @@ application/profile candidates, entry/phi adversarial cases and stronger
 input/owner verification remain outstanding; no full T01 validation claim.
 Regression specifications and generated-JS/resource execution remain paused.
 
+Independent application/profile observation: Immersive method 21082, record
+19072, hash `8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a`,
+profile 13.0.1, reached ValuesImported through the same CLI. Its decoded body
+contains named reads at PC14/36, a branch at PC24 and named write at PC40.
+The graph has 21 operations, 29 values, 23 uses, 3 blocks/edges/exceptional
+exits. Candidate 12473 was inspected but has no branch or member effects and
+is not counted as G1 evidence. No paired source or holdout inputs were read.
+
+Input correspondence now checks entry definition kind and formal ordinal
+against FrameLayout, not merely the value domain. An entry-loop fixture keeps
+both MethodEntryKey and its real backedge input; this specification is unrun.
+
 ### Remaining Input Work
 
 Use immutable SemanticMethod/SSA and its source proof as the input layer.

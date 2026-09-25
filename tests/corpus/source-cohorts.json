@@ -19,9 +19,12 @@
       "family": "Immersive",
       "sha256": "8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a",
       "capabilities": ["normal_branch", "parameter_binding", "property_read", "property_write"],
-      "entity": null,
-      "status": "unfrozen",
-      "reason": "Method-level ABC inspection pending; file identity alone is not capability evidence."
+      "entity": 21082,
+      "record": 19072,
+      "profile": "dynamic_13_0_1_0",
+      "status": "identity_frozen",
+      "observed_stage": "values_imported",
+      "reason": "ABC-only method inspection: 21 operations, 29 values, 23 uses, 3 blocks, 3 edges and 3 exceptional exits; no legacy writer. Behavioral validation and source-tree output remain pending."
     },
     {
       "gate": "G2",

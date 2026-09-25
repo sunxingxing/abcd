@@ -26,6 +26,7 @@ struct ValueImportFailure {
 // input. Does not reconstruct another graph or certify transformed revisions.
 [[nodiscard]] std::optional<ValueImportFailure> VerifyImportedValues(
     const ValueProgram& graph, const SemanticMethod& method,
-    const SemanticProof& proof, SemanticBudget budget = {});
+    const SemanticProof& proof, const abc::FrameLayout& frame,
+    SemanticBudget budget = {});
 }  // namespace abcd::analysis
 #endif

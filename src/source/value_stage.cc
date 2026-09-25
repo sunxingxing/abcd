@@ -71,7 +71,7 @@ ImportedMethod BuildValueStage(RouteInputIdentity identity, abc::EntityOffset me
   }
   // Import already admitted this one-byte/use verifier scratch alongside its
   // graph. Correspondence uses no additional allocation beyond that scratch.
-  const auto verified = analysis::VerifyImportedValues(*graph, *input, *proof,
+  const auto verified = analysis::VerifyImportedValues(*graph, *input, *proof, frame,
       {graph->uses.size(), budget.work});
   if (verified)
     return fail(verified->kind == analysis::ValueImportError::kWorkLimit

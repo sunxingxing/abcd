@@ -4,6 +4,24 @@
 
 namespace abcd::analysis {
 namespace {
+bool EntryMatches(const EntryDefinition& entry, const ScalarSlot& slot,
+                  const abc::FrameLayout& frame) {
+  const auto* reg = std::get_if<abc::RegisterId>(&slot);
+  if (reg) {
+    if (reg->value >= frame.registers) return false;
+    if (frame.this_value == *reg) return std::holds_alternative<ReceiverEntry>(entry);
+    if (frame.function == *reg) return std::holds_alternative<CallableEntry>(entry);
+    if (frame.new_target == *reg) return std::holds_alternative<NewTargetEntry>(entry);
+    if (reg->value >= frame.first_parameter.value &&
+        reg->value - frame.first_parameter.value < frame.parameters) {
+      const auto* parameter = std::get_if<ParameterEntry>(&entry);
+      return parameter && parameter->index == reg->value - frame.first_parameter.value;
+    }
+  }
+  const auto* unknown = std::get_if<UnknownEntry>(&entry);
+  if (!unknown || unknown->slot.index() != slot.index()) return false;
+  return !reg || *reg == std::get<abc::RegisterId>(unknown->slot);
+}
 bool LiteralMatches(const ScalarValue& expected, const ValueOperand& actual) {
   return std::visit([&](const auto& value) {
     using T = std::decay_t<decltype(value)>;
@@ -21,7 +39,8 @@ bool LiteralMatches(const ScalarValue& expected, const ValueOperand& actual) {
 
 std::optional<ValueImportFailure> VerifyImportedValues(
     const ValueProgram& graph, const SemanticMethod& method,
-    const SemanticProof& proof, SemanticBudget budget) {
+    const SemanticProof& proof, const abc::FrameLayout& frame,
+    SemanticBudget budget) {
   using Error = ValueImportError;
   const auto fail = [](Error kind, std::optional<abc::CodeOffset> pc = {}) {
     return std::optional<ValueImportFailure>{{kind, pc}};
@@ -74,8 +93,9 @@ std::optional<ValueImportFailure> VerifyImportedValues(
     } else if (const auto* origin = std::get_if<PhiValue>(&input.origin)) {
       const auto* phi = std::get_if<PhiDefinition>(&graph.values[v].origin);
       if (!phi || phi->block.value != origin->block.value) return fail(Error::kInvalidPhi);
-    } else if (!std::holds_alternative<EntryDefinition>(graph.values[v].origin)) {
-      return fail(Error::kInputMismatch);
+    } else {
+      const auto* entry = std::get_if<EntryDefinition>(&graph.values[v].origin);
+      if (!entry || !EntryMatches(*entry, input.slot, frame)) return fail(Error::kInputMismatch);
     }
   }
   std::size_t read_index = 0;
