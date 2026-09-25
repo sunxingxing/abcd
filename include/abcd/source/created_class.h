@@ -75,7 +75,7 @@ using CreatedClassResult =
                  analysis::CreationError,
                  abc::MethodTargetError, abc::MetadataError,
                  abc::MethodAttributeError, abc::FrameError, abc::BodyFailure,
-                 abc::LiteralFailure, abc::ClassBufferError>;
+                 abc::LiteralFailure, abc::ClassBufferError, RouteRefusal>;
 // Same unchanged indexed file/lookup and pinned 7.0 semantics as
 // WriteCreatedFunction. Caller supplies heritage proven from this caller body
 // and matching site; matching PC alone is not provenance authentication.

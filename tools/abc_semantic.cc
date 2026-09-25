@@ -28,6 +28,7 @@
 #include "abcd/source/semantic_entry.h"
 #include "abcd/source/named_scope.h"
 #include "abcd/source/record_program.h"
+#include "abcd/source/source_route.h"
 #include "abcd/abc/pool_reference.h"
 #include "semantic_survey.h"
 #include "exception_inspect.h"
@@ -73,6 +74,38 @@ enum class InspectError : std::uint8_t {
   kPrint,
 };
 enum class InspectDetail : std::uint8_t { kSummary, kInstructions, kExceptionFlow, kExceptionTemplate };
+// Value-tree route receipts for methods the new pipeline cannot serve yet.
+// Stage kDecoded is honest here: this tool decodes the body before the route
+// attempt; nothing past admission runs and no legacy text is produced (A01).
+source::MethodRouteReceipt ValueRouteReceipt(
+    std::uint32_t entity, std::optional<std::uint32_t> record) {
+  source::MethodRouteReceipt receipt;
+  receipt.method = abc::EntityOffset{entity};
+  if (record) receipt.record = abc::EntityOffset{*record};
+  receipt.route = source::SourceRoute::kValueTree;
+  receipt.stage = source::SourceStage::kDecoded;
+  receipt.coverage = source::Coverage::kUnsupported;
+  receipt.legacy_writer_used = false;
+  receipt.failure = source::RouteFailure{
+      source::RouteFailureClass::kUnsupported,
+      source::ValueRouteError::kRouteUnavailable, {}};
+  return receipt;
+}
+int ReportRouteReceipt(const source::MethodRouteReceipt& receipt) {
+  // The receipt is the requested product; a non-Complete coverage is still a
+  // non-success exit so automation cannot mistake refusal for recovery.
+  std::cout << nlohmann::json{
+      {"route_receipt", nlohmann::json::parse(
+          source::SerializeRouteReceipt(receipt))},
+      {"source_complete", false},
+      {"executable", false}}
+            << '\n';
+  if (!std::cout) return EXIT_FAILURE;
+  return receipt.coverage == source::Coverage::kComplete &&
+                 !receipt.failure
+             ? EXIT_SUCCESS
+             : EXIT_FAILURE;
+}
 int Fail(InspectError kind, std::uint32_t pc = 0) {
   std::cerr << nlohmann::json{{"error", static_cast<unsigned>(kind)},
                               {"pc", pc}}
@@ -89,7 +122,8 @@ int FailStage(InspectError kind, unsigned stage_error,
 }
 int Inspect(const std::filesystem::path& path, std::uint32_t entity,
             std::optional<source::SourceForm> form, bool all_records = false,
-            InspectDetail detail = InspectDetail::kSummary) {
+            InspectDetail detail = InspectDetail::kSummary,
+            source::RoutePolicy policy = source::RoutePolicy::kLegacyAllowed) {
   auto opened = corpus::AbcFile::Open(path);
   const auto* owned = std::get_if<std::unique_ptr<corpus::AbcFile>>(&opened);
   if (!owned) return Fail(InspectError::kOpen);
@@ -427,13 +461,18 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     const auto rendered = source::BuildEntrySource(
         *body, *method_ir, *frame, *form, method->name, constants,
         *form == source::SourceForm::kRecord ? &bindings->exports : nullptr,
-        {available}, kMethodBytes);
+        {available}, kMethodBytes, policy);
     const auto* printed = std::get_if<source::PrintedSource>(&rendered);
     if (!printed) {
-      return std::visit([](const auto& failure) -> int {
+      return std::visit([&](const auto& failure) -> int {
         using T = std::decay_t<decltype(failure)>;
         if constexpr (std::is_same_v<T, source::PrintedSource>) {
           std::terminate();
+        } else if constexpr (std::is_same_v<T, source::RouteRefusal>) {
+          // A01: RequireValueTree kept its typed refusal; no legacy attempt,
+          // no source text. The receipt is the product.
+          return ReportRouteReceipt(
+              ValueRouteReceipt(entity, method->owner_offset.value));
         } else {
           constexpr auto stage = [] {
             if constexpr (std::is_same_v<T, analysis::SemanticFailure>)
@@ -457,6 +496,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
                      {"end", {span.end.byte, span.end.line,
                                span.end.column}}});
     std::cout << nlohmann::json{{"entity", entity},
+                                {"source_route", source::SourceRouteName(source::SourceRoute::kLegacy)},
                                 {"source_contract", source::SourceContractName(printed->contract)},
                                 {"host_realm_binding", printed->host_realm
                                     ? nlohmann::json(printed->host_realm->binding) : nlohmann::json(nullptr)},
@@ -475,14 +515,26 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
                    {"blocks", method_ir->flow.blocks.size()},
                    {"ssa_values", method_ir->ssa.Values().size()}}
             << '\n';
-  return std::cout ? EXIT_SUCCESS : EXIT_FAILURE;
+  if (!std::cout) return EXIT_FAILURE;
+  if (policy == source::RoutePolicy::kRequireValueTree) {
+    // The body above was decoded for this summary; nothing past route
+    // admission ran. Report the typed refusal instead of implying the legacy
+    // pipeline stands in for the value-tree route.
+    return ReportRouteReceipt(
+        ValueRouteReceipt(entity, method->owner_offset.value));
+  }
+  return EXIT_SUCCESS;
 }
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 3 && argc != 4) {
-    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source|--record-source|--instructions|--exception-flow|--exception-template]\n"
-                 "       abc_semantic INPUT.abc --all-records\n";
+  if (argc < 3 || argc > 5) {
+    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source|--record-source] [--value-source]\n"
+                 "       abc_semantic INPUT.abc METHOD_ENTITY --instructions|--exception-flow|--exception-template\n"
+                 "       abc_semantic INPUT.abc --all-records\n"
+                 "  --value-source requires the unified value-tree route; stages that are\n"
+                 "  not implemented return a typed route receipt with no source text and\n"
+                 "  never fall back to the legacy writer\n";
     return Fail(InspectError::kArguments);
   }
   std::uint32_t entity = 0;
@@ -495,22 +547,40 @@ int main(int argc, char** argv) {
       number.ptr != token.data() + token.size())
     return Fail(InspectError::kArguments);
   std::optional<source::SourceForm> form;
-  if (argc == 4) {
-    const std::string_view option{argv[3]};
-    if (option == "--class-source")
-      form = source::SourceForm::kClassConstructor;
-    else if (option == "--function-source")
-      form = source::SourceForm::kFunction;
-    else if (option == "--record-source")
-      form = source::SourceForm::kRecord;
-    else if (option == "--instructions")
-      return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kInstructions);
-    else if (option == "--exception-flow")
-      return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kExceptionFlow);
-    else if (option == "--exception-template")
-      return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kExceptionTemplate);
-    else
+  InspectDetail detail = InspectDetail::kSummary;
+  bool detail_selected = false;
+  bool value_route = false;
+  for (int i = 3; i < argc; ++i) {
+    const std::string_view option{argv[i]};
+    if (option == "--value-source") {
+      value_route = true;
+    } else if (option == "--instructions" ||
+               option == "--exception-flow" ||
+               option == "--exception-template") {
+      // Raw inspection modes predate route receipts; do not mix them with a
+      // route policy until those views carry receipts too.
+      if (value_route || detail_selected || form)
+        return Fail(InspectError::kArguments);
+      detail_selected = true;
+      detail = option == "--instructions" ? InspectDetail::kInstructions
+              : option == "--exception-flow" ? InspectDetail::kExceptionFlow
+                                             : InspectDetail::kExceptionTemplate;
+    } else if (detail_selected) {
       return Fail(InspectError::kArguments);
+    } else if (option == "--class-source") {
+      form = source::SourceForm::kClassConstructor;
+    } else if (option == "--function-source") {
+      form = source::SourceForm::kFunction;
+    } else if (option == "--record-source") {
+      form = source::SourceForm::kRecord;
+    } else {
+      return Fail(InspectError::kArguments);
+    }
   }
-  return Inspect(argv[1], entity, form);
+  if (detail_selected)
+    return Inspect(argv[1], entity, std::nullopt, false, detail);
+  const auto policy = value_route
+                          ? source::RoutePolicy::kRequireValueTree
+                          : source::RoutePolicy::kLegacyAllowed;
+  return Inspect(argv[1], entity, form, false, InspectDetail::kSummary, policy);
 }

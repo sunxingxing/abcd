@@ -53,10 +53,13 @@ BodyEmitResult CreationResult(const CreatedFunctionResult& result,
             if (value.kind == BodyEmitError::kWorkLimit)
               failure.kind = BodyEmitError::kWorkLimit;
           } else {
+            // RouteRefusal carries no body-failure detail and cannot occur
+            // under the default policy this leaf path always runs with.
             static_assert(std::is_same_v<T, analysis::CreationError> ||
                           std::is_same_v<T, abc::MethodTargetError> ||
                           std::is_same_v<T, abc::MethodAttributeError> ||
-                          std::is_same_v<T, abc::FrameError>);
+                          std::is_same_v<T, abc::FrameError> ||
+                          std::is_same_v<T, RouteRefusal>);
           }
           if (resource) failure.kind = BodyEmitError::kResourceLimit;
           return failure;

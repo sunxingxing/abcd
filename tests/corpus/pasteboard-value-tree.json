@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "purpose": "Freezes the pasteboard value-tree development slice: route policy, real entities and ABC-only typed operation inventories. Not a success report; the value-tree route has no implemented stages yet.",
+  "route_policy": "require_value_tree",
+  "input": {
+    "paths": [
+      "/home/rabbit/sample/abc_with_code/pasteboard/modules.abc",
+      "/home/rabbit/sample/abc/pasteboard.abc"
+    ],
+    "sha256": "854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e",
+    "content_identity_note": "Both paths carry the same content hash and count once; verified read-only 2026-09-26.",
+    "classification_manifest": "tests/corpus/abc-index.json",
+    "index_profile": "dynamic_12_0_6_0",
+    "records": 19,
+    "methods": 219,
+    "record_manifest": "tests/corpus/pasteboard.json"
+  },
+  "slices": {
+    "P1": {
+      "record": 6897,
+      "method": 7586,
+      "mangled_name": "#~@1>#setInitiallyProvidedValue",
+      "acceptance": ["S01", "S03", "S08", "S09", "A01", "A03", "A04"],
+      "gate": "G1",
+      "instruction_count": 21,
+      "opcode_inventory": {
+        "LDUNDEFINED": 2,
+        "STRICTNOTEQ_IMM8_V8": 1,
+        "LDOBJBYNAME_IMM8_ID16": 2,
+        "STOBJBYNAME_IMM8_ID16_V8": 1,
+        "MOV_V4_V4": 4,
+        "JEQZ_IMM8": 1,
+        "LDA_V8": 5,
+        "STA_V8": 4,
+        "RETURNUNDEFINED": 1
+      },
+      "legacy_reference": "Legacy survey reaches body_ready; its output still declares VM registers ($r2/$r3), which the value route must not reproduce.",
+      "route_expectation_t00": "unsupported/route_unavailable after decode; no source text; legacy writer unused"
+    },
+    "P2": {
+      "record": 6897,
+      "method": 7559,
+      "mangled_name": "#~@1>#aboutToBeDeleted",
+      "acceptance": ["S04", "V09", "S09"],
+      "gate": "G2",
+      "instruction_count": 43,
+      "opcode_inventory": {
+        "LDUNDEFINED": 1,
+        "CALLTHIS0_IMM8_V8": 4,
+        "CALLTHIS1_IMM8_V8_V8": 1,
+        "TRYLDGLOBALBYNAME_IMM8_ID16": 1,
+        "LDOBJBYNAME_IMM8_ID16": 6,
+        "MOV_V4_V4": 3,
+        "LDA_V8": 14,
+        "STA_V8": 12,
+        "RETURNUNDEFINED": 1
+      },
+      "legacy_reference": "Legacy survey reaches body_ready.",
+      "route_expectation_t00": "unsupported/route_unavailable after decode"
+    },
+    "P3": {
+      "record": 6897,
+      "method": 7366,
+      "mangled_name": "#~@1>@2***#^1",
+      "acceptance": ["V08", "V11", "S06", "A02", "A08"],
+      "gate": "G4",
+      "instruction_count": 85,
+      "opcode_inventory": {
+        "LDUNDEFINED": 1,
+        "CREATEEMPTYARRAY_IMM8": 2,
+        "CREATEOBJECTWITHBUFFER_IMM8_ID16": 2,
+        "STRICTEQ_IMM8_V8": 1,
+        "CALLTHIS1_IMM8_V8_V8": 6,
+        "DEFINEFUNC_IMM8_ID16_IMM8": 1,
+        "LDLEXVAR_IMM4_IMM4": 1,
+        "LDA_STR_ID16": 1,
+        "TRYLDGLOBALBYNAME_IMM8_ID16": 6,
+        "LDOBJBYNAME_IMM8_ID16": 8,
+        "MOV_V4_V4": 5,
+        "JMP_IMM8": 1,
+        "JEQZ_IMM8": 1,
+        "LDA_V8": 16,
+        "STA_V8": 25,
+        "LDAI_IMM32": 3,
+        "RETURNUNDEFINED": 1,
+        "LDEXTERNALMODULEVAR_IMM8": 1,
+        "DEFINEPROPERTYBYNAME_IMM8_ID16_V8": 2,
+        "THROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16": 1
+      },
+      "legacy_reference": "Legacy survey reaches template_ready (captures pending); the value route must close child obligations instead.",
+      "route_expectation_t00": "unsupported/route_unavailable after decode"
+    }
+  },
+  "a01_fixture": {
+    "value_route_command": "abc_semantic modules.abc 7586 --function-source --value-source",
+    "observed_value_route": "exit 1; receipt {route:value_tree, stage:decoded, coverage:unsupported, failure:unsupported/route_unavailable, legacy_writer_used:false}; no source field",
+    "legacy_route_command": "abc_structure modules.abc OUT --shared-source",
+    "observed_legacy_route": "exit 0; sources published with source_route:legacy per record",
+    "value_route_export_command": "abc_structure modules.abc OUT --value-source",
+    "observed_value_export": "exit 0; view declarations_with_value_route_receipts; per-record receipts with stage:null (no route stage ran); no sources/ directory",
+    "detached_form_note": "abc_semantic --function-source/--class-source on record-owned methods fails in the legacy path both before and after T00 (pre-existing boundary); A01 pairing therefore uses the record-level commands."
+  },
+  "status": {
+    "value_route_stages_implemented": [],
+    "evidence_date": "2026-09-26",
+    "evidence_method": "abc_semantic --instructions / --all-records ABC-only inspection; sha256sum; no paired source read",
+    "tests_executed": false,
+    "test_pause": "Unit/integration runs, generated-JS execution, benchmarks and RSS measurement remain suspended by the user."
+  }
+}

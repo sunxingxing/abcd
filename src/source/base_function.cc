@@ -376,7 +376,11 @@ class FunctionWriter {
       const auto resource_failure = [](const auto& prepared) {
         return std::visit([](const auto& value) {
           using T = std::decay_t<decltype(value)>;
-          if constexpr (std::is_same_v<T, PrintedSource> ||
+          // A route refusal is a typed product, not a retryable resource
+          // failure; the public entry guard makes it unreachable here.
+          if constexpr (std::is_same_v<T, RouteRefusal>) {
+            return false;
+          } else if constexpr (std::is_same_v<T, PrintedSource> ||
                         std::is_same_v<T, PrintedTemplate>) {
             return false;
           } else {
@@ -1241,7 +1245,14 @@ FunctionEmitResult WriteBaseFunction(const BaseFunction& function,
                                      std::ostream& output,
                                      LocalLexicalBudget budget,
                                      const MethodConstants* constants,
-                                     const abc::MethodLookup* methods) {
+                                     const abc::MethodLookup* methods,
+                                     RoutePolicy policy) {
+  // Child callables inherit the caller's route policy here. Admission
+  // precedes every emission stage, so a refused route never reaches the
+  // recursive legacy body writers below (A01).
+  const auto admission = AdmitLegacyWriter(policy);
+  if (!admission.legacy_permitted)
+    return RouteRefusal{*admission.value_route_failure};
   return WriteFunction(function, body, output, budget, constants, methods,
                        analysis::CapturedValues::kReject);
 }
@@ -1249,7 +1260,11 @@ FunctionEmitResult WriteBaseFunctionTemplate(const BaseFunction& function,
                                              const abc::MethodBody& body,
                                              std::ostream& output,
                                              LocalLexicalBudget budget,
-                                             const MethodConstants* constants) {
+                                             const MethodConstants* constants,
+                                             RoutePolicy policy) {
+  const auto admission = AdmitLegacyWriter(policy);
+  if (!admission.legacy_permitted)
+    return RouteRefusal{*admission.value_route_failure};
   return WriteFunction(function, body, output, budget, constants, nullptr,
                        analysis::CapturedValues::kLanguage);
 }

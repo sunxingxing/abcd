@@ -6,9 +6,11 @@
 #include "abcd/source/semantic_entry.h"
 
 namespace abcd::source {
+// RouteRefusal is appended (stable indices); it can only appear when a caller
+// threads RoutePolicy::kRequireValueTree into the entry pipeline.
 using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure,
     analysis::SemanticFailure, analysis::SemanticProofFailure,
-    analysis::RegionFailure, SourceFailure>;
+    analysis::RegionFailure, SourceFailure, RouteRefusal>;
 // Shared-pipeline artifact, not a complete/equivalent-source certificate.
 // Context proves same-file module ownership. Metadata/lookup/roles/context are
 // caller-owned; budget covers decoded body, exports and analysis. Output has

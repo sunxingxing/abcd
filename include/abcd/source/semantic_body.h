@@ -2,14 +2,18 @@
 #define ABCD_SOURCE_SEMANTIC_BODY_H_
 
 #include "abcd/source/semantic_source.h"
+#include "abcd/source/source_route.h"
 
 namespace abcd::source {
+// RouteRefusal is appended so existing variant indices stay stable. It can
+// only occur when the caller passed RoutePolicy::kRequireValueTree; entries
+// never fall back to the legacy pipeline after refusing (A01).
 using SemanticBodyResult = std::variant<
     PrintedSource, analysis::SemanticFailure, analysis::SemanticProofFailure,
-    analysis::RegionFailure, SourceFailure>;
+    analysis::RegionFailure, SourceFailure, RouteRefusal>;
 using SemanticTemplateResult = std::variant<
     PrintedTemplate, analysis::SemanticFailure, analysis::SemanticProofFailure,
-    analysis::RegionFailure, SourceFailure>;
+    analysis::RegionFailure, SourceFailure, RouteRefusal>;
 
 // The callable owner proves its ABI and private bindings before entry. All
 // stages operate on this exact body; no text is published before admission.
@@ -24,13 +28,15 @@ using SemanticTemplateResult = std::variant<
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
     analysis::SemanticBudget budget, std::size_t output_bytes,
-    std::optional<std::uint16_t> default_length = {});
+    std::optional<std::uint16_t> default_length = {},
+    RoutePolicy policy = RoutePolicy::kLegacyAllowed);
 // Parametric child only. The caller must replay every typed capture into the
 // parent binding proof; text alone is not a publishable function body.
 [[nodiscard]] SemanticTemplateResult BuildSemanticTemplate(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
     analysis::SemanticBudget budget, std::size_t output_bytes,
-    std::optional<std::uint16_t> default_length = {});
+    std::optional<std::uint16_t> default_length = {},
+    RoutePolicy policy = RoutePolicy::kLegacyAllowed);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_SEMANTIC_BODY_H_

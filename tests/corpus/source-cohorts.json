@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "purpose": "Corpus-wide grouping and holdout policy for the unified source recovery effort. Groups reference content hashes; classification evidence is reused from the existing manifest, never duplicated here.",
+  "roots": {
+    "paired": "/home/rabbit/sample/abc_with_code",
+    "batch": "/home/rabbit/sample/abc"
+  },
+  "classification_manifest": "tests/corpus/abc-index.json",
+  "manifest_summary": "900 files, 894 unique contents, 402 dynamic, 498 static, 0 unknown/malformed (recorded evidence; not a re-scan).",
+  "deduplication": "Same sha256 counts as one sample regardless of path; pasteboard appears in both roots under one identity.",
+  "cohorts": [
+    {
+      "id": "pasteboard",
+      "kind": "development",
+      "family": "pasteboard",
+      "inputs": [
+        {
+          "path": "pasteboard/modules.abc",
+          "sha256": "854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e",
+          "index_profile": "dynamic_12_0_6_0",
+          "index_kind": "dynamic"
+        }
+      ],
+      "role": "First vertical slice and fixed regression subset (19 records / 219 methods). Tuning on these inputs is allowed."
+    },
+    {
+      "id": "immersive",
+      "kind": "development",
+      "family": "Immersive",
+      "inputs": [
+        {
+          "path": "Immersive/modules.abc",
+          "sha256": "8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a",
+          "index_profile": "dynamic_13_0_1_0",
+          "index_kind": "dynamic"
+        }
+      ],
+      "role": "Cross-application ArkUI/class/lifecycle stress sample; also the first non-12.0.6 profile evidence source."
+    },
+    {
+      "id": "push-kit",
+      "kind": "development",
+      "family": "push-kit-sample-code-clientdemo-arkts",
+      "inputs": [
+        {
+          "path": "push-kit-sample-code-clientdemo-arkts/modules.abc",
+          "sha256": "b2074425e0e2a4a20b547c8b711727b0160d299efc8eeb2af266aa6983eab44f",
+          "index_profile": "dynamic_12_0_6_0",
+          "index_kind": "dynamic"
+        },
+        {
+          "path": "push-kit-sample-code-clientdemo-arkts/widgets.abc",
+          "sha256": "ea57a51cb1c6c474363410ec48fd014249fe3bf55d178de3d9544eff6b426687",
+          "index_profile": "dynamic_12_0_6_0",
+          "index_kind": "dynamic"
+        }
+      ],
+      "role": "Multi-ABC / distinct module contexts.",
+      "cross_application_note": "modules.abc and widgets.abc belong to one application family and never count as two independent cross-application evidences."
+    },
+    {
+      "id": "multi-community",
+      "kind": "holdout",
+      "family": "MultiCommunityApplication",
+      "inputs": [
+        {
+          "path": "MultiCommunityApplication/modules.abc",
+          "sha256": "45ffdc7d5075b4de3f1c6860dcbc929bae048097af4478d09136afbec1b6c5a8",
+          "index_profile": "dynamic_12_0_2_0",
+          "index_kind": "dynamic"
+        }
+      ],
+      "role": "First independent-application holdout. No rule tuning against these inputs until a frozen implementation is verified; any earlier holdout failure moves the input to the regression set and a fresh holdout is selected.",
+      "candidate_methods": "Identity not yet frozen; select by content hash + entity after the method-level route exists (T01+). Do not guess entities."
+    },
+    {
+      "id": "batch-anonymous",
+      "kind": "development_pool",
+      "inputs": "remaining 895 batch-manifest files",
+      "role": "Bulk robustness and coverage pool.",
+      "leakage_note": "Application family is unknown for anonymous files; any cross-application claim built on them must be flagged as unproven family association."
+    }
+  ],
+  "profile_layering": {
+    "profiles_in_named_cohorts": ["dynamic_12_0_2_0", "dynamic_12_0_6_0", "dynamic_13_0_1_0"],
+    "v7_reference": "OpenHarmony-v7.0-Release pinned in docs/reference/openharmony-v7.0-release.lock.json",
+    "rule": "Historical profiles never use v7 rules without pinned per-profile evidence; multiple applications on one profile do not count as cross-profile validation. Where a real corpus lacks a profile, existing historical fixtures cover it and the gap is recorded."
+  },
+  "static_inputs": {
+    "policy": "Persisted skip per abc-index evidence; never counted as source-recovery success; unknown/malformed/decode-failure are never classified static."
+  },
+  "status": {
+    "scans_executed": false,
+    "hash_verification_date": "2026-09-26",
+    "hash_verification_method": "sha256sum read-only over the five paired inputs; all five match abc-index.json entries under corpus_id paired",
+    "notes": "No batch validation, JS execution or RSS measurement has run; those remain suspended by the user."
+  }
+}

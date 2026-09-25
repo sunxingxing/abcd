@@ -15,7 +15,9 @@ FunctionEmitResult WriteBaseFunctionTemplate(const BaseFunction& function,
                                              const abc::MethodBody& body,
                                              std::ostream& output,
                                              LocalLexicalBudget budget,
-                                             const MethodConstants* constants);
+                                             const MethodConstants* constants,
+                                             RoutePolicy policy =
+                                                 RoutePolicy::kLegacyAllowed);
 FunctionEmitResult WriteArrowFunction(
     const BaseFunction& function, const abc::MethodBody& body,
     std::ostream& output, LocalLexicalBudget budget,

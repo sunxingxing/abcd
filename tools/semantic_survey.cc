@@ -254,9 +254,12 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
                   std::ostream& output) {
   // Keep the complete record denominator, including annotation records and
   // methods without code. Stream results; release all IR between methods.
+  // This survey runs the legacy pipeline only (LegacyAllowed); its stage
+  // labels predate route receipts and must not be read as value-tree stages.
   output << nlohmann::json{
-      {"schema", 4}, {"sha256_bytes", fingerprint.sha256.bytes},
+      {"schema", 5}, {"sha256_bytes", fingerprint.sha256.bytes},
       {"source_contract", source::SourceContractName(source::kSourceContract)},
+      {"source_route", source::SourceRouteName(source::SourceRoute::kLegacy)},
       {"profile", static_cast<unsigned>(header.profile)},
       {"records", index.records.size()}, {"methods", index.methods.size()},
       {"source_complete", false}} << '\n';
@@ -292,6 +295,8 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
       nlohmann::json row{{"record", record.offset.value},
                          {"method", method.offset.value},
                          {"name", method.name},
+                         {"source_route",
+                          source::SourceRouteName(source::SourceRoute::kLegacy)},
                          {"stage", static_cast<unsigned>(progress.stage)},
                          {"stage_label", StageLabel(progress.stage)}};
       if (progress.error) row["error"] = *progress.error;

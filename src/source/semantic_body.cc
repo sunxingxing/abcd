@@ -144,7 +144,12 @@ SemanticBodyResult BuildSemanticBody(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
     analysis::SemanticBudget budget, std::size_t output_bytes,
-    std::optional<std::uint16_t> default_length) {
+    std::optional<std::uint16_t> default_length, RoutePolicy policy) {
+  // Admission precedes every body stage, including the phased exception
+  // pipeline, so a refused route can never reach any legacy writer below.
+  const auto admission = AdmitLegacyWriter(policy);
+  if (!admission.legacy_permitted)
+    return RouteRefusal{*admission.value_route_failure};
   if (!body.tries.empty())
     return BuildExceptionBody(body, frame, names, constants, budget, output_bytes);
   return BuildBody<analysis::CapturedValues::kReject>(
@@ -154,7 +159,10 @@ SemanticTemplateResult BuildSemanticTemplate(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
     analysis::SemanticBudget budget, std::size_t output_bytes,
-    std::optional<std::uint16_t> default_length) {
+    std::optional<std::uint16_t> default_length, RoutePolicy policy) {
+  const auto admission = AdmitLegacyWriter(policy);
+  if (!admission.legacy_permitted)
+    return RouteRefusal{*admission.value_route_failure};
   if (!body.tries.empty())
     return BuildExceptionTemplate(body, frame, names, constants, budget, output_bytes);
   return BuildBody<analysis::CapturedValues::kLanguage>(

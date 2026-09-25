@@ -11,7 +11,14 @@ SemanticBodyResult BuildEntrySource(
     const abc::MethodBody& body, const analysis::SemanticMethod& method,
     const abc::FrameLayout& frame, SourceForm form, std::string_view name,
     const MethodConstants& constants, ModuleExports* exports,
-    analysis::SemanticBudget budget, std::size_t output_bytes) {
+    analysis::SemanticBudget budget, std::size_t output_bytes,
+    RoutePolicy policy) {
+  // Admission precedes every entry stage: a refused route never starts the
+  // legacy proof/region/AST/print chain below (A01), and callers must not
+  // retry the same method without the value-tree route on another entry.
+  const auto admission = AdmitLegacyWriter(policy);
+  if (!admission.legacy_permitted)
+    return RouteRefusal{*admission.value_route_failure};
   const SourceFailure resource{SourceError::kResourceLimit, {}};
   try {
     if (method.allocated_bytes > budget.bytes) return resource;

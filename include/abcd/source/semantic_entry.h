@@ -16,6 +16,7 @@ namespace abcd::source {
     const abc::MethodBody& body, const analysis::SemanticMethod& method,
     const abc::FrameLayout& frame, SourceForm form, std::string_view name,
     const MethodConstants& constants, ModuleExports* exports,
-    analysis::SemanticBudget budget, std::size_t output_bytes);
+    analysis::SemanticBudget budget, std::size_t output_bytes,
+    RoutePolicy policy = RoutePolicy::kLegacyAllowed);
 }  // namespace abcd::source
 #endif

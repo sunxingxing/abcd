@@ -21,7 +21,8 @@ using CreatedFunctionResult =
                  analysis::AccumulatorFailure, AcyclicError,
                  analysis::CreationError,
                  abc::MethodTargetError, abc::MetadataError,
-                 abc::MethodAttributeError, abc::FrameError, abc::BodyFailure>;
+                 abc::MethodAttributeError, abc::FrameError, abc::BodyFailure,
+                 RouteRefusal>;
 
 // Same unchanged file/header/index/lookup and a decoded creation from caller
 // required. Uses pinned 7.0 name/ABI semantics; container profile alone does

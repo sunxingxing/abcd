@@ -6,6 +6,7 @@
 #include "abcd/analysis/function_creation.h"
 #include "abcd/source/local_lexical_body.h"
 #include "abcd/source/acyclic_body.h"
+#include "abcd/source/source_route.h"
 
 namespace abcd::source {
 enum class FunctionEmitError {
@@ -24,11 +25,13 @@ struct BaseFunction {
   abc::FrameLayout frame;
   std::string_view name;
 };
+// RouteRefusal is appended so existing variant indices stay stable; it can
+// only occur when the caller passed RoutePolicy::kRequireValueTree.
 using FunctionEmitResult =
     std::variant<std::size_t, FunctionEmitError, EmitError, BodyEmitFailure,
                  analysis::FlowFailure, analysis::EnvironmentFlowFailure,
                  analysis::LinearLexicalFailure,
-                 analysis::AccumulatorFailure, AcyclicError>;
+                 analysis::AccumulatorFailure, AcyclicError, RouteRefusal>;
 
 // Caller proves matching creation, target, decoded body, ABI and runtime-parsed
 // name under the pinned 7.0 semantics. Emits a strict named function
@@ -45,6 +48,7 @@ using FunctionEmitResult =
     const BaseFunction& function, const abc::MethodBody& body,
     std::ostream& output, LocalLexicalBudget budget = {},
     const MethodConstants* constants = nullptr,
-    const abc::MethodLookup* methods = nullptr);
+    const abc::MethodLookup* methods = nullptr,
+    RoutePolicy policy = RoutePolicy::kLegacyAllowed);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_BASE_FUNCTION_H_

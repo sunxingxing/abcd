@@ -17,6 +17,7 @@
 #include "abcd/source/record_module_context.h"
 #include "abcd/source/record_program.h"
 #include "abcd/source/record_source.h"
+#include "abcd/source/source_route.h"
 #include "abcd/structure/record_path.h"
 #include "abcd/structure/record_writer.h"
 
@@ -41,9 +42,12 @@ enum class SourceStatus : unsigned {
   kModuleContext = 1,
   kNoModule = 2,
   kProgram = 3,
-  kIncomplete = 4
+  kIncomplete = 4,
+  // Value-tree route refused the record before any stage ran; no source file
+  // exists for it and no legacy writer was consulted (A01).
+  kValueRouteRefused = 5
 };
-enum class SourceMode { kNone, kLegacy, kShared };
+enum class SourceMode { kNone, kLegacy, kShared, kValueTree };
 bool FatalMetadata(abc::MetadataError error) {
   return error == abc::MetadataError::kResourceLimit ||
          error == abc::MetadataError::kRead ||
@@ -64,6 +68,9 @@ bool FatalSharedSource(const source::RecordSourceResult& result) {
   return std::visit([](const auto& failure) {
     using T = std::decay_t<decltype(failure)>;
     if constexpr (std::is_same_v<T, source::PrintedSource>) {
+      return false;
+    } else if constexpr (std::is_same_v<T, source::RouteRefusal>) {
+      // Typed route product, not a process-level export failure.
       return false;
     } else if constexpr (std::is_same_v<T, source::RecordProgramFailure>) {
       return failure.kind == source::RecordProgramError::kRead ||
@@ -136,6 +143,10 @@ std::string Hex(const corpus::Sha256& hash) {
 int Export(const std::filesystem::path& input,
            const std::filesystem::path& output, SourceMode mode) {
   const bool emit_source = mode != SourceMode::kNone;
+  // Value-tree mode admits the route per record and never plans legacy
+  // emission: role indexes and source paths below exist only for the legacy
+  // and shared writers, and consulting them would already be a fallback.
+  const bool route_value = mode == SourceMode::kValueTree;
   if (output.filename().empty() ||
       std::filesystem::exists(std::filesystem::symlink_status(output)))
     return Fail(ExportError::kDestination);
@@ -166,7 +177,8 @@ int Export(const std::filesystem::path& input,
   const auto* packaging = std::get_if<abc::FilePackaging>(&packed);
   if (!packaging) return Fail(ExportError::kPackaging);
   std::optional<analysis::MethodRoleIndex> roles;
-  if (emit_source && source::SupportsRecordProgramProfile(header->profile)) {
+  if (emit_source && !route_value &&
+      source::SupportsRecordProgramProfile(header->profile)) {
     auto built =
         analysis::MethodRoleIndex::Build(file, *header, *index, *lookup);
     if (auto* ready = std::get_if<analysis::MethodRoleIndex>(&built))
@@ -175,7 +187,7 @@ int Export(const std::filesystem::path& input,
       return Fail(ExportError::kRoles);
   }
   std::vector<structure::RecordPath> source_paths;
-  if (emit_source) {
+  if (emit_source && !route_value) {
     auto planned = structure::PlanRecordSourcePaths(file, *header, *index);
     if (const auto* error = std::get_if<structure::PathError>(&planned)) {
       std::cerr << nlohmann::json{{"path_error", static_cast<unsigned>(*error)}}
@@ -191,12 +203,17 @@ int Export(const std::filesystem::path& input,
   std::ofstream manifest(tree.path / "manifest.json", std::ios::binary);
   manifest << "{\"schema\":1,\"view\":\""
            << (mode == SourceMode::kShared ? "declarations_with_incomplete_source"
+               : route_value ? "declarations_with_value_route_receipts"
                : emit_source ? "declarations_with_verified_source"
                            : "declarations_only")
            << "\",\"sha256\":\"" << Hex(hash->sha256)
            << "\",\"packaging\":" << static_cast<unsigned>(*packaging)
            << ",\"source_contract\":\""
            << source::SourceContractName(source::kSourceContract)
+           << "\",\"source_route\":\""
+           << (route_value ? source::SourceRouteName(source::SourceRoute::kValueTree)
+               : emit_source ? source::SourceRouteName(source::SourceRoute::kLegacy)
+                           : "none")
            << "\",\"records\":[";
   structure::RecordCounts totals;
   bool comma = false;
@@ -236,7 +253,28 @@ int Export(const std::filesystem::path& input,
     nlohmann::json record_manifest{{"entity", record.offset.value},
                                    {"metadata", metadata_path},
                                    {"declarations", declaration_path}};
-    if (emit_source) {
+    if (emit_source && route_value) {
+      // Per-record value-tree route receipt. No route stage ran for this
+      // record and no legacy writer was consulted; the absent stage claim is
+      // the honest state, not a decoded claim (A01/G0).
+      source::MethodRouteReceipt receipt;
+      receipt.record = record.offset;
+      receipt.route = source::SourceRoute::kValueTree;
+      receipt.stage = {};
+      receipt.coverage = source::Coverage::kUnsupported;
+      receipt.legacy_writer_used = false;
+      receipt.failure = source::RouteFailure{
+          source::RouteFailureClass::kUnsupported,
+          source::ValueRouteError::kRouteUnavailable, {}};
+      record_manifest["source_route"] =
+          std::string(source::SourceRouteName(receipt.route));
+      record_manifest["source_status"] =
+          static_cast<unsigned>(SourceStatus::kValueRouteRefused);
+      record_manifest["route_receipt"] =
+          nlohmann::json::parse(source::SerializeRouteReceipt(receipt));
+    } else if (emit_source) {
+      record_manifest["source_route"] =
+          std::string(source::SourceRouteName(source::SourceRoute::kLegacy));
       const auto source_stem = std::filesystem::path("sources") /
                                source_paths[record_index].stem;
       const auto source_path = source_stem.string() +
@@ -320,7 +358,13 @@ int Export(const std::filesystem::path& input,
               record_manifest["shared_failure_variant"] = built.index();
               std::visit([&](const auto& failure) {
                 using T = std::decay_t<decltype(failure)>;
-                if constexpr (!std::is_same_v<T, source::PrintedSource>) {
+                if constexpr (std::is_same_v<T, source::RouteRefusal>) {
+                  record_manifest["route_receipt"] = nlohmann::json::parse(
+                      source::SerializeRouteReceipt(source::MethodRouteReceipt{
+                          {}, record.offset, source::SourceRoute::kValueTree,
+                          {}, source::Coverage::kUnsupported, false,
+                          failure.failure}));
+                } else if constexpr (!std::is_same_v<T, source::PrintedSource>) {
                   record_manifest["source_error"] = static_cast<unsigned>(failure.kind);
                   record_manifest["source_pc"] = failure.pc.value;
                 }
@@ -402,8 +446,11 @@ int Export(const std::filesystem::path& input,
 int main(int argc, char** argv) {
   if (argc != 3 &&
       !(argc == 4 && (std::string_view(argv[3]) == "--source" ||
-                      std::string_view(argv[3]) == "--shared-source"))) {
-    std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR [--source|--shared-source]\n";
+                      std::string_view(argv[3]) == "--shared-source" ||
+                      std::string_view(argv[3]) == "--value-source"))) {
+    std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR [--source|--shared-source|--value-source]\n"
+                 "  --value-source requires the unified value-tree route for every record;\n"
+                 "  unimplemented stages publish typed route receipts without source files\n";
     return EXIT_FAILURE;
   }
   constexpr rlim_t kProcessBytes = 1000000000;
@@ -414,6 +461,7 @@ int main(int argc, char** argv) {
   try {
     const auto mode = argc == 3 ? SourceMode::kNone
         : std::string_view(argv[3]) == "--shared-source" ? SourceMode::kShared
+        : std::string_view(argv[3]) == "--value-source" ? SourceMode::kValueTree
                                                         : SourceMode::kLegacy;
     return Export(argv[1], argv[2], mode);
   } catch (const std::exception& error) {
