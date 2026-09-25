@@ -40,3 +40,27 @@ block-boundary refusals, fused calls, function/class captures, async returns,
 constructor results, PC aliases and output budgets. All artifacts remain
 explicitly incomplete; this does not establish full semantic equivalence or
 source-style completion.
+# Member Call Results
+
+An already-proved MemberCallExpression may now become a return expression
+without dropping its fused property-read/spill/reload origins. Admission
+requires a read origin with nonzero distance and either no spill/reload pair
+or both with nonzero distances. Class/previous origins remain excluded. The
+existing same-block adjacency and exact one-use SSA proof (including handler
+phis) remain mandatory. Staged calls are a separate node and are not admitted.
+
+The call expression, receiver and arguments stay in the original head node;
+only its private acc assignment becomes return. Unified origin relocation
+therefore maps its existing origins to the return-call span, and the original
+RETURN statement continues to alias that span through previous_origin. No
+getter/call proof is repeated or weakened, and no additional storage or graph
+traversal is introduced.
+
+Both production CLIs build; read-only review found no concrete defect.
+ABC-only export to `build/pasteboard-return-calls-01` preserves eight incomplete
+application records and two host-constructor refusals at PC14. ProgressBar's
+curBp and progressInfo getters now emit `return ($r5).get()` instead of writing
+acc and immediately returning it. Nested final-file PC maps remain incomplete;
+this export does not claim to verify all nested alias positions. Tests, JS
+execution and RSS remain paused. Deferred checks include getter/call throws,
+handler snapshots, receiver identity, source-span aliases and output budgets.
