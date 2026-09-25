@@ -82,8 +82,10 @@ bool FoldFieldValue(const AstMethod& method, std::size_t position,
       : define && own->write.kind == define->kind &&
             own->write.object == define->object && own->write.name == define->name;
   const auto& written = producer.effects.normal_registers.write;
+  const auto allowed_effect = array ? analysis::LanguageEffect::kAllocation
+                                   : analysis::LanguageEffect::kNone;
   if (!written || !std::holds_alternative<analysis::Accumulator>(*written) ||
-      producer.effects.normal != analysis::LanguageEffect::kNone ||
+      producer.effects.normal != allowed_effect ||
       producer.effects.before_throw != analysis::LanguageEffect::kNone ||
       producer.effects.exceptional != analysis::ExceptionalCompletion::kImpossible ||
       !same_store)

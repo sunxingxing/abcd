@@ -210,7 +210,14 @@ SemanticEffects Effects(const SemanticOperation& operation,
       [&](const auto& value) {
         using T = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<T, ScalarAssignment>) {
-          if (std::holds_alternative<PropertyRead>(value.expression)) {
+          const auto* atom = std::get_if<ScalarValue>(&value.expression);
+          if (atom && std::holds_alternative<EmptyArray>(*atom)) {
+            // v7 CREATEEMPTYARRAY calls RuntimeCreateEmptyArray and commits
+            // acc without an abrupt-completion check. Fresh identity remains
+            // an allocation effect even though the scalar value is compact.
+            // Never classify this as a pure copy or duplicate its evaluation.
+            effects.normal = LanguageEffect::kAllocation;
+          } else if (std::holds_alternative<PropertyRead>(value.expression)) {
             effects.normal = LanguageEffect::kHeapRead |
                              LanguageEffect::kUserCode;
             effects.before_throw = effects.normal;

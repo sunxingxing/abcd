@@ -8,7 +8,8 @@ not turn arbitrary property stores into source class fields.
 
 FoldFieldValue extends the existing adjacent named-store fold to own stores.
 It requires unchanged receiver/name/kind, unmerged origins, an accumulator
-producer with normal completion and no language/exception effects, and exactly
+producer with normal completion and no language/exception effects except the
+explicit empty-array allocation case below, and exactly
 one SSA use at the original store. Handler/phi consumers count as additional
 uses. The store stays at its original PC, while the removed producer retains a
 zero-width anchor. Strings remain constant-pool references; private register

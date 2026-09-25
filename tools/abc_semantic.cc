@@ -225,6 +225,9 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
       const auto semantic = analysis::LiftSemanticInstruction(
           site, header->profile, code.registers + code.arguments);
       if (const auto* lifted = std::get_if<analysis::SemanticInstruction>(&semantic)) {
+        output["normal_effects"] = static_cast<unsigned>(lifted->effects.normal);
+        output["before_throw_effects"] =
+            static_cast<unsigned>(lifted->effects.before_throw);
         output["exceptional_completion"] =
             static_cast<unsigned>(lifted->effects.exceptional);
         if (const auto* created =
