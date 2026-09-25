@@ -245,82 +245,87 @@ class FunctionWriter {
       const bool strict_wrapper = non_simple_parameters && !anonymous_function &&
           (function_.syntax == CallableSyntax::kFunctionExpression ||
            function_.syntax == CallableSyntax::kAsyncFunctionExpression);
-      if (strict_wrapper) Text("(() => {\"use strict\"; return ");
-      if (function_.syntax == CallableSyntax::kClassMethod ||
-          function_.syntax == CallableSyntax::kAsyncClassMethod ||
-          function_.syntax == CallableSyntax::kClassGetter ||
-          function_.syntax == CallableSyntax::kClassSetter) {
-        if (function_.placement == abc::ClassPlacement::kStatic)
-          Text("static ");
-        Text(function_.syntax == CallableSyntax::kAsyncClassMethod
-                 ? "async "
-             : function_.syntax == CallableSyntax::kClassGetter
-                 ? "get "
-             : function_.syntax == CallableSyntax::kClassSetter ? "set " : "");
-        if (error_) return *error_;
-        switch (ClassifyMethodKey(function_.key)) {
-          case MemberKeySyntax::kIdentifier:
-            for (const auto unit : function_.key) {
-              const char ch = static_cast<char>(unit);
-              Text({&ch, 1});
-            }
-            break;
-          case MemberKeySyntax::kQuoted: {
-            Text("[");
-            if (error_) return *error_;
-            const auto key = WriteStringLiteral(function_.key, output_,
-                                                {budget_.output.bytes - written_});
-            if (const auto* error = std::get_if<EmitError>(&key)) return *error;
-            written_ += std::get<std::size_t>(key);
-            Text("]");
-            break;
-          }
-        }
-        Text("(");
-      } else if (function_.syntax == CallableSyntax::kBaseConstructor ||
-                 function_.syntax == CallableSyntax::kRangeDerivedConstructor) {
-        Text("constructor(");
-      } else if (IsArrowSyntax(function_.syntax)) {
-        // A computed data-property name applies SetFunctionName without a
-        // mutable intrinsic; arrow IIFEs retain lexical this/new.target.
-        Text(non_simple_parameters
-                 ? "(() => {\n\"use strict\";\nconst $arrow = ({["
-                 : "(() => {\nconst $arrow = ({[");
-        ArrowName();
-        Text(function_.syntax == CallableSyntax::kAsyncArrowExpression
-                 ? "]: async (" : "]: (");
-      } else if (anonymous_function) {
-        // SetFunctionName with an empty computed key preserves the ABC name.
-        // The private binding supplies the ABI self slot without changing the
-        // ordinary function's this/new.target or exposing a synthetic name.
-        Text(non_simple_parameters
-                 ? "(() => {\n\"use strict\";\nconst $function = ({[\"\"]: "
-                 : "(() => {\nconst $function = ({[\"\"]: ");
-        Text(function_.syntax == CallableSyntax::kAsyncFunctionExpression
-                 ? "async function(" : "function(");
-      } else {
-        Text(function_.syntax == CallableSyntax::kAsyncFunctionExpression
-                 ? "(async function " : "(function ");
-        Text(function_.name);
-        Text("(");
-      }
       const auto& frame = function_.frame;
-      for (std::uint32_t i = 0; i < frame.parameters && !error_; ++i) {
-        if (i != 0) Text(", ");
-        if (function_.parameters == ParameterForm::kRest &&
-            i + 1 == frame.parameters)
-          Text("...");
-        Parameter(i);
-        if (function_.parameters == ParameterForm::kNeutralDefault &&
-            i == function_.length)
-          Text(" = void 0");
-      }
-      Text(IsArrowSyntax(function_.syntax)
-               ? non_simple_parameters ? ") => {\n"
-                                : ") => {\n\"use strict\";\n"
-               : non_simple_parameters ? ") {\n"
-                                : ") {\n\"use strict\";\n");
-      if (error_) return *error_;
+      // Prepare the common body before choosing a self-binding wrapper. This
+      // lambda writes syntax only; it never repeats analysis or body printing.
+      const auto header = [&](bool direct_arrow) -> FunctionEmitResult {
+        if (strict_wrapper) Text("(() => {\"use strict\"; return ");
+        if (function_.syntax == CallableSyntax::kClassMethod ||
+            function_.syntax == CallableSyntax::kAsyncClassMethod ||
+            function_.syntax == CallableSyntax::kClassGetter ||
+            function_.syntax == CallableSyntax::kClassSetter) {
+          if (function_.placement == abc::ClassPlacement::kStatic)
+            Text("static ");
+          Text(function_.syntax == CallableSyntax::kAsyncClassMethod
+                   ? "async "
+               : function_.syntax == CallableSyntax::kClassGetter
+                   ? "get "
+               : function_.syntax == CallableSyntax::kClassSetter ? "set " : "");
+          if (error_) return *error_;
+          switch (ClassifyMethodKey(function_.key)) {
+            case MemberKeySyntax::kIdentifier:
+              for (const auto unit : function_.key) {
+                const char ch = static_cast<char>(unit);
+                Text({&ch, 1});
+              }
+              break;
+            case MemberKeySyntax::kQuoted: {
+              Text("[");
+              if (error_) return *error_;
+              const auto key = WriteStringLiteral(function_.key, output_,
+                                                  {budget_.output.bytes - written_});
+              if (const auto* error = std::get_if<EmitError>(&key)) return *error;
+              written_ += std::get<std::size_t>(key);
+              Text("]");
+              break;
+            }
+          }
+          Text("(");
+        } else if (function_.syntax == CallableSyntax::kBaseConstructor ||
+                   function_.syntax == CallableSyntax::kRangeDerivedConstructor) {
+          Text("constructor(");
+        } else if (IsArrowSyntax(function_.syntax)) {
+          // A computed data-property name applies SetFunctionName without a
+          // mutable intrinsic; arrow IIFEs retain lexical this/new.target.
+          Text(direct_arrow ? "({[" : non_simple_parameters
+                   ? "(() => {\n\"use strict\";\nconst $arrow = ({["
+                   : "(() => {\nconst $arrow = ({[");
+          ArrowName();
+          Text(function_.syntax == CallableSyntax::kAsyncArrowExpression
+                   ? "]: async (" : "]: (");
+        } else if (anonymous_function) {
+          // SetFunctionName with an empty computed key preserves the ABC name.
+          // The private binding supplies the ABI self slot without changing the
+          // ordinary function's this/new.target or exposing a synthetic name.
+          Text(non_simple_parameters
+                   ? "(() => {\n\"use strict\";\nconst $function = ({[\"\"]: "
+                   : "(() => {\nconst $function = ({[\"\"]: ");
+          Text(function_.syntax == CallableSyntax::kAsyncFunctionExpression
+                   ? "async function(" : "function(");
+        } else {
+          Text(function_.syntax == CallableSyntax::kAsyncFunctionExpression
+                   ? "(async function " : "(function ");
+          Text(function_.name);
+          Text("(");
+        }
+        for (std::uint32_t i = 0; i < frame.parameters && !error_; ++i) {
+          if (i != 0) Text(", ");
+          if (function_.parameters == ParameterForm::kRest &&
+              i + 1 == frame.parameters)
+            Text("...");
+          Parameter(i);
+          if (function_.parameters == ParameterForm::kNeutralDefault &&
+              i == function_.length)
+            Text(" = void 0");
+        }
+        Text(IsArrowSyntax(function_.syntax)
+                 ? non_simple_parameters ? ") => {\n"
+                                  : ") => {\n\"use strict\";\n"
+                 : non_simple_parameters ? ") {\n"
+                                  : ") {\n\"use strict\";\n");
+        if (error_) return *error_;
+        return written_;
+      };
       auto body_budget = budget_;
       body_budget.output.bytes -= written_;
       std::optional<MethodConstants> scoped_constants;
@@ -419,16 +424,24 @@ class FunctionWriter {
           : semantic_template ? semantic_template->accumulator_used : true;
       if (precise_slots && register_uses.size() != frame.registers)
         return FunctionEmitError::kFrame;
+      if (precise_slots && frame.function &&
+          frame.function->value >= register_uses.size())
+        return FunctionEmitError::kFrame;
+      const bool self_unused = precise_slots && (!frame.function ||
+          register_uses[frame.function->value] == RegisterUse::kUnused);
+      // Non-simple arrow parameters need the outer strict context: a body
+      // directive would be illegal. Keep that wrapper even without self uses.
+      const bool direct_arrow = IsArrowSyntax(function_.syntax) &&
+                                !non_simple_parameters && self_unused;
       if (function_.self_use) {
         *function_.self_use = SelfBindingUse::kUnknown;
         if (precise_slots) {
-          if (frame.function && frame.function->value >= register_uses.size())
-            return FunctionEmitError::kFrame;
-          const bool used = frame.function &&
-              register_uses[frame.function->value] == RegisterUse::kUsed;
-          *function_.self_use = used ? SelfBindingUse::kRequired : SelfBindingUse::kUnused;
+          *function_.self_use = self_unused ? SelfBindingUse::kUnused
+                                           : SelfBindingUse::kRequired;
         }
       }
+      const auto prefix = header(direct_arrow);
+      if (!std::holds_alternative<std::size_t>(prefix)) return prefix;
       DeclareVmSlots(precise_slots, accumulator_used, register_uses);
       if (error_) return *error_;
       body_budget.output.bytes = budget_.output.bytes - written_;
@@ -615,7 +628,7 @@ class FunctionWriter {
       if (IsArrowSyntax(function_.syntax)) {
         Text("}})[");
         ArrowName();
-        Text("];\nreturn $arrow;\n})()");
+        Text(direct_arrow ? "]" : "];\nreturn $arrow;\n})()");
       } else if (anonymous_function) {
         Text("}})[\"\"];\nreturn $function;\n})()");
       } else {
