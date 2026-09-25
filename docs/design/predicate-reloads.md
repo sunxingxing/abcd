@@ -42,3 +42,29 @@ pasteboard-reload-proof-order-20260925. Partial maps retain 195 methods /
 refused at PC 14 and nine metadata-only records. Read-only review found no
 concrete defect. Tests, generated JS and RSS checks were not run; these results
 are not proof of full semantic equivalence.
+
+## Boolean Polarity at Emission
+
+In conditional contexts, Predicate now composes an outer ToBoolean/LogicalNot
+with a typed inner ToBoolean/LogicalNot. Its polarity is the XOR of the outer
+negation (including structural if inversion) and the inner logical negation.
+The operand is emitted once through Value, so slot observation and ABI binding
+remain intact. ToBoolean does not invoke object coercion; evaluating it again
+only as the native condition cannot add getter, Proxy or host effects.
+
+This identity is not used for expression-valued results, FalseOrZero or
+TrueOrNonzeroNumber. It neither changes the AST's effect/SSA proof nor source
+origins: condition spans are measured while emitting the simplified condition.
+The local typed check is constant time with no allocation. Deferred checks
+include all polarity/inversion combinations, primitive/object truthiness,
+numeric VM predicates remaining unchanged, and operand/PC preservation.
+
+Production builds and ABC-only export to
+build/pasteboard-boolean-polarity-20260925 succeeded. All six pages have simpler
+conditional spelling, including `if (!$r4)` and `if ($acc)` instead of composed
+boolean conversions. Totals retain 4,204 lines and decrease to 90,181 bytes
+(128 fewer). Method 9193 PCs 263, 267 and 270 now map to [18587,18599), the
+actual `if (!$r4) {` header including newline. Maps retain 195 methods / 9,745
+spans and the same eight incomplete, two refused and nine metadata-only record
+statuses. Read-only review found no concrete defect. Tests, JS execution and
+RSS remain paused; control-flow recovery and full equivalence remain unfinished.

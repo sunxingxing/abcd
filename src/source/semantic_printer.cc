@@ -628,7 +628,21 @@ class SourcePrinter {
         condition.op == UnaryOperator::kLogicalNot) {
       // If already applies ToBoolean. Collapse only boolean operators here,
       // never the VM's distinct numeric/boolean branch predicates.
-      if ((condition.op == UnaryOperator::kLogicalNot) != inverted) Text("!");
+      const bool negate = (condition.op == UnaryOperator::kLogicalNot) != inverted;
+      const auto* scalar = input ? std::get_if<ScalarExpression>(&*input) : nullptr;
+      const auto* unary = scalar
+          ? std::get_if<analysis::UnaryExpression>(scalar) : nullptr;
+      if (unary && (unary->op == UnaryOperator::kToBoolean ||
+                    unary->op == UnaryOperator::kLogicalNot)) {
+        // ToBoolean never invokes user coercion. In a condition only polarity
+        // matters; preserve the operand read once, including slot observation.
+        // Do not apply this identity to expression-valued results or numeric
+        // VM tests such as FalseOrZero.
+        if (negate != (unary->op == UnaryOperator::kLogicalNot)) Text("!");
+        Value(unary->input);
+        return;
+      }
+      if (negate) Text("!");
       if (input) std::visit([&](const auto& value) {
         using T = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<T, ScalarExpression>) Scalar(value);
