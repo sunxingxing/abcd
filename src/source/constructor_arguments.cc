@@ -1,6 +1,7 @@
 #include "constructor_arguments.h"
 
 #include "argument_sequence.h"
+#include "argument_expression.h"
 
 namespace abcd::source {
 namespace {
@@ -11,9 +12,27 @@ bool Preparation(const SourceStatement& node) {
          HasArgumentValue(assignment->value) &&
          !std::holds_alternative<analysis::ConstructorCall>(assignment->value);
 }
+bool OrderedPreparation(const SourceAst& ast, std::size_t first, std::size_t end,
+                        const analysis::ConstructorCall& call) {
+  std::uint32_t ordinal = 0;
+  for (auto i = first; i < end; ++i) {
+    const auto* assignment = std::get_if<SourceAssignment>(&ast.statements[i].operation);
+    if (!assignment) continue;
+    if (ordinal == call.ArgumentCount()) return false;
+    const auto* target = std::get_if<abc::RegisterId>(&assignment->target);
+    if (!target) continue;
+    const auto argument = call.ArgumentAt(ordinal);
+    if (!argument || *target != *argument) return false;
+    ++ordinal;
+  }
+  // Every register commit closes one argument segment. Remaining operations
+  // only write acc, so later preparation cannot overwrite an earlier result.
+  return ordinal == call.ArgumentCount();
+}
 }  // namespace
 
-void RecoverConstructorArguments(const AstMethod& method, SourceAst& ast) {
+void RecoverConstructorArguments(const AstMethod& method, SourceAst& ast,
+                                 std::span<const std::size_t> uses) {
   if (method.ssa.IsPhased() || ast.regions.catches || ast.argument_region ||
       ast.super_arguments || method.instructions.size() != ast.statements.size()) return;
   for (const auto& block : method.flow.blocks) {
@@ -82,8 +101,24 @@ void RecoverConstructorArguments(const AstMethod& method, SourceAst& ast) {
         --start;
       }
       if (!argument_write) continue;
-      const ConstructorArguments region{{static_cast<std::uint32_t>(start)},
-                                         {static_cast<std::uint32_t>(i)}};
+      ConstructorArguments region{{static_cast<std::uint32_t>(start)},
+                                   {static_cast<std::uint32_t>(i)}};
+      if (OrderedPreparation(ast, start, i, *call)) {
+        region.layout = CallArgumentLayout::kOrdered;
+        // The first SSA read is the constructor, unlike ReceiverCall's suffix
+        // convention. Original window validation above pins all operand slots.
+        const auto arguments = reads.last(call->ArgumentCount());
+        std::size_t ordinal = 0;
+        for (auto member = start; member < i; ++member) {
+          auto* value = std::get_if<SourceAssignment>(&ast.statements[member].operation);
+          const auto* target = value ? std::get_if<abc::RegisterId>(&value->target) : nullptr;
+          if (!target) continue;
+          if (HasSoleArgumentUse(method, ast, member, i, *target,
+                                 arguments[ordinal].value, uses))
+            value->result = AssignmentResult::kArgumentOnly;
+          ++ordinal;
+        }
+      }
       for (auto member = start; member <= i; ++member)
         ast.statements[member].constructor_arguments = region;
     }

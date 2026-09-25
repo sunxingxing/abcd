@@ -927,6 +927,10 @@ class SourcePrinter {
       Text("new (");
       Value(ScalarValue{call->inputs.first});
       Text(")(");
+      if (OrderedConstruction(*call)) {
+        Text(")");
+        return;
+      }
       if (construction_ && current_pc_ == ast_.statements[construction_->call.value].pc) {
         const auto call_pc = current_pc_;
         Text("(\n");
@@ -1024,6 +1028,50 @@ class SourcePrinter {
   void Label(analysis::BlockId id) {
     Text("next_");
     Number(id.value);
+  }
+  bool OrderedConstruction(const analysis::ConstructorCall& call) {
+    if (!construction_ ||
+        current_pc_ != ast_.statements[construction_->call.value].pc) return false;
+    switch (construction_->layout) {
+      case CallArgumentLayout::kStaged: return false;
+      case CallArgumentLayout::kOrdered: break;
+      case CallArgumentLayout::kValues:
+        throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+    }
+    const auto call_pc = current_pc_;
+    std::uint32_t ordinal = 0;
+    bool open = false;
+    bool sequence = false;
+    for (auto i = construction_->first.value; i < construction_->call.value; ++i) {
+      const auto& node = ast_.statements[i];
+      const auto* assignment = std::get_if<SourceAssignment>(&node.operation);
+      if (!assignment) {
+        Statement(node, StatementForm::kSequence);
+        continue;
+      }
+      const auto* target = std::get_if<abc::RegisterId>(&assignment->target);
+      if (!open) {
+        if (ordinal) Text(", ");
+        sequence = !target;
+        if (sequence) Text("(");
+        open = true;
+      }
+      if (target) {
+        const auto argument = call.ArgumentAt(ordinal);
+        if (!argument || *argument != *target)
+          throw SourceFailure{SourceError::kInvalidEffect, node.pc};
+        Statement(node, StatementForm::kArgument);
+        if (sequence) Text(")");
+        open = false;
+        ++ordinal;
+      } else {
+        Statement(node, StatementForm::kSequence);
+      }
+    }
+    if (open || ordinal != call.ArgumentCount())
+      throw SourceFailure{SourceError::kInvalidEffect, call_pc};
+    current_pc_ = call_pc;
+    return true;
   }
   void LoopLabel(analysis::BlockId id) {
     Text("loop_");

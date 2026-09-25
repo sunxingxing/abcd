@@ -783,7 +783,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     FoldBindingReceivers(method, ast, uses);
     FoldArgumentExpressions(method, ast, uses);
     ast.super_arguments = ProveSuperArguments(method, ast, uses);
-    RecoverConstructorArguments(method, ast);
+    RecoverConstructorArguments(method, ast, uses);
     return ast;
   } catch (const std::bad_alloc&) {
     return Fail(SourceError::kResourceLimit);

@@ -70,6 +70,17 @@ std::optional<analysis::SsaValueId> ArgumentDefinition(
 }
 }  // namespace
 
+bool HasSoleArgumentUse(const AstMethod& method, const SourceAst& ast,
+                       std::size_t producer, std::size_t call,
+                       abc::RegisterId target, analysis::SsaValueId input,
+                       std::span<const std::size_t> uses) {
+  const auto output = ArgumentDefinition(method, ast, producer, call, target, uses);
+  const auto slot = method.ssa.Slot(input);
+  const auto* reg = slot ? std::get_if<abc::RegisterId>(&*slot) : nullptr;
+  return output && reg && *reg == target &&
+         ReachesArgument(method, ast, producer, call, target, *output, input, uses);
+}
+
 void FoldArgumentExpressions(const AstMethod& method, SourceAst& ast,
                              std::span<const std::size_t> uses) {
   if (ast.regions.catches || method.ssa.IsPhased()) return;

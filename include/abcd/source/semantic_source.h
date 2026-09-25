@@ -228,6 +228,7 @@ using SourceOperation =
 struct ConstructorArguments {
   analysis::InstructionId first;
   analysis::InstructionId call;
+  CallArgumentLayout layout = CallArgumentLayout::kStaged;
 };
 struct SourceStatement {
   abc::CodeOffset pc;

@@ -1,7 +1,7 @@
 # Constructor Argument Recovery
 
-Status: straight-line preparation ownership implemented; argument partitioning,
-commit elimination and cross-block recovery remain open. This is not an
+Status: straight-line preparation ownership, ordered partitioning and exact-use
+commit elimination implemented; cross-block recovery remains open. This is not an
 equivalence claim. It extends the approved common IR/region/AST/printer pipeline. It does
 not introduce a record-specific writer or change superclass admission.
 
@@ -178,5 +178,64 @@ metadata-only records; maps contain 195 methods / 9,745 spans.
 Read-only review checked ownership, evaluation order, spans and complexity.
 Array-literal intervals were explicitly excluded during implementation; no
 additional concrete defect was reported. Tests, JS execution and RSS tracking
-were not run. Ordered argument distribution, exact-use commit removal, nested
-construction and conditional argument ownership remain required follow-up work.
+were not run. At that checkpoint, ordered argument distribution, exact-use
+commit removal, nested construction and conditional argument ownership remained
+required follow-up work.
+
+## Ordered Arguments And Private Commits
+
+The construction certificate now distinguishes staged and ordered layouts.
+OrderedPreparation requires the emitted register assignments to target every
+argument exactly once, in input-window order. Accumulator assignments may
+precede each final register assignment but cannot trail the last argument;
+no-ops retain their original positions. HasArgumentValue's existing contract
+excludes hidden writes to caller-private registers. Capturing one argument's
+value before the next segment is therefore safe, even when an argument value
+is an object that later evaluations mutate. No cloning or freezing occurs.
+
+The common printer closes each segment at its register assignment. Single
+expressions print as native arguments; accumulator preparation uses a comma
+expression without an IIFE. Every segment still visits each original node
+once. Constructor and saved-result spans cover the full native invocation;
+argument and erased-copy spans remain nested within it.
+
+HasSoleArgumentUse shares ArgumentDefinition and ReachesArgument with receiver
+argument recovery. It requires the exact original call-read definition and one
+remaining SSA use, including phi uses; it follows only certified erased
+same-register load/save chains. Retargeted accumulator results require the
+existing adjacent save proof. A successful terminal assignment becomes
+ArgumentOnly and prints its RHS, retaining origins and evaluation. Other
+terminal assignments keep their register commit. Accumulator preparation is
+never removed by this certificate. Constructor reads are independently checked
+against the complete input window before selecting its argument suffix.
+
+Ownership and partition scans remain O(I + U) with constant scratch. Exact
+definition lookups add the existing SSA lookup cost; erased copy chains for
+distinct argument slots are disjoint, so they do not introduce per-variable
+whole-interval walks. Certificate size remains included in AST admission.
+
+### Ordered Export Evidence
+
+Both production targets rebuilt. ABC-only export
+`build/pasteboard-constructor-values-20260925` removes all six argument-register
+declarations and commits in PageA method 7089. The first argument reads the
+branch-selected accumulator value before the last argument updates it; the
+last argument retains its necessary buffered-object accumulator commit.
+Logger's constructor argument becomes the direct string literal "Pasteboard".
+Home's non-ordered preparation remains unchanged.
+
+For method 7089, PC 43 now maps to the first argument at [976,980), closure
+PCs 55/60 to [1006,1060), buffer PC 62 to [1063,1136), and terminal argument
+read PC 70 to [1136,1140). Call/result-save PCs 72/76 cover [960,1144).
+The eight source files total 3,531 lines / 82,945 bytes, compared with the
+previous 3,607 / 83,711. There remain 195 mapped methods / 9,745 spans, eight
+incomplete source records, two refused constructors at PC 14, and nine
+metadata-only records.
+
+Read-only review found no concrete defect in partition ownership, exact-use
+proof, origin ordering or complexity. Tests, JS execution and RSS remain
+paused. Deferred focused cases include an early argument reading acc before
+a later acc overwrite, phi/live argument commits, erased copy chains, no-op
+origins after a segment boundary, mixed retained/elided commits, non-ordered
+fallback and exact generated coordinates. Cross-block/nested construction,
+full application equivalence and memory-cap verification remain open.
