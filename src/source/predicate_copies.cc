@@ -79,7 +79,7 @@ void FoldPredicateCopies(const AstMethod& method, SourceAst& ast,
       const auto* value = scalar ? std::get_if<analysis::ScalarValue>(scalar) : nullptr;
       if (!target || !value || HasMergedOrigin(head) ||
           std::holds_alternative<analysis::EmptyArray>(*value)) continue;
-      const auto output = PrivateCopyOutput(method, ast, *producer, *target, uses);
+      const auto output = PrivateCopyOutput(method, ast, *producer, i - 1, *target, uses);
       if (!output || uses[output->value] != 1) continue;
       bool consumed = false;
       for (const auto& read : method.ssa.Reads({static_cast<std::uint32_t>(i - 1)}))

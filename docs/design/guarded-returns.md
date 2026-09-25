@@ -66,3 +66,30 @@ metadata-only statuses. Read-only review found no concrete defect. Tests, JS
 execution and RSS remain paused. Deferred checks include lexical commits,
 multiple guards, self-copies, extra uses and downstream non-adjacent-copy
 interaction. Complete field recovery and equivalence remain unfinished.
+
+## Saved SSA Identity
+
+RetargetedOutput now shares saved-definition recovery between argument admission
+and private-copy consumers. An exclusive bound supplied by the caller prevents
+crossing its block or consumer. From the original accumulator producer, it
+checks each guarded previous_origin link, exact SSA read, and the total guard
+plus save count. The final node must anchor a pure original accumulator-to-the-
+requested-register save. The returned identity is that save's SSA definition,
+not the producer's accumulator value. No SSA or use count is rewritten.
+
+The initialized-guard helper accepts an explicit expected previous origin for
+this already-folded chain; default absence preserves its prior callers' strict
+unmerged contract. Field-receiver folding can traverse these anchors but still
+requires the saved register's sole consumer to be the original named write.
+Other copy consumers retain their original effect and operand restrictions.
+Producer intervals and ordered argument targets bound scans to disjoint chains;
+the indexed SSA cost and constant scratch requirements are unchanged.
+
+Production builds and ABC-only export `build/pasteboard-guarded-commits-01`
+succeeded. Five page constructors now write paramsGenerator_ directly through
+the original receiver register instead of a temporary. Totals become 5,015
+lines / 99,075 bytes, down five lines / 65 bytes. Maps retain 195 methods /
+9,745 spans, with eight incomplete, two refused and nine metadata-only records.
+Read-only review found no concrete defect. Tests, JS execution and RSS remain
+paused. Deferred checks include non-adjacent argument commits, malformed origin
+chains, mismatched counts, end boundaries and multi-use saved definitions.

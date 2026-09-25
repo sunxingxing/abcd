@@ -66,21 +66,7 @@ std::optional<analysis::SsaValueId> ArgumentDefinition(
   // Stored-expression and object-initialization folding retarget a producer
   // to its next private register save. The removed commit is that save's SSA definition,
   // not the earlier accumulator definition. Keep the origin anchor untouched.
-  if (position + 1 >= end || uses[output->value] != 1 ||
-      !IsRetargetedCopyAnchor(ast.statements[position + 1], statement)) return {};
-  const auto& instruction = method.instructions[position + 1];
-  const auto* save = std::get_if<analysis::ScalarAssignment>(&instruction.operation);
-  const auto* saved = save ? std::get_if<abc::RegisterId>(&save->destination) : nullptr;
-  const auto* input = save
-      ? std::get_if<analysis::ScalarValue>(&save->expression) : nullptr;
-  if (!saved || *saved != target || !input ||
-      !std::holds_alternative<analysis::Accumulator>(*input) ||
-      save->completion != analysis::CompletionEffect::kNormal ||
-      !IsPureCopyStep(instruction)) return {};
-  const auto id = analysis::InstructionId{static_cast<std::uint32_t>(position + 1)};
-  const auto reads = method.ssa.Reads(id);
-  if (reads.size() != 1 || reads.front().value != *output) return {};
-  return method.ssa.Write(id);
+  return RetargetedOutput(method, ast, position, end, target, uses);
 }
 }  // namespace
 

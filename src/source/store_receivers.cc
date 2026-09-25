@@ -1,6 +1,7 @@
 #include "store_receivers.h"
 
 #include "private_copy.h"
+#include "initialized_guard.h"
 
 namespace abcd::source {
 namespace {
@@ -23,8 +24,10 @@ void FoldStoreReceivers(const AstMethod& method, SourceAst& ast,
       // the scan even if an earlier transformation emitted no text there.
       if (std::holds_alternative<analysis::NoOperation>(tail.operation) &&
           !HasMergedOrigin(tail) && IsPureCopyStep(original)) continue;
-      if (previous && i == *previous + 1 &&
-          IsRetargetedCopyAnchor(tail, ast.statements[*previous]) && IsPureCopyStep(original))
+      if (previous && i > *previous &&
+          IsRetargetedCopyAnchor(tail, ast.statements[i - 1]) &&
+          (IsPureCopyStep(original) || IsElidedInitializedGuard(
+              method, ast, i, ast.statements[i - 1].pc)))
         continue;
       const auto producer = previous;
       previous = i;
@@ -44,7 +47,7 @@ void FoldStoreReceivers(const AstMethod& method, SourceAst& ast,
           ? std::get_if<analysis::ScalarValue>(expression) : nullptr;
       if (!target || *target != *receiver || !value || HasMergedOrigin(head) ||
           std::holds_alternative<analysis::EmptyArray>(*value)) continue;
-      const auto output = PrivateCopyOutput(method, ast, *producer, *target, uses);
+      const auto output = PrivateCopyOutput(method, ast, *producer, i, *target, uses);
       if (!output || uses[output->value] != 1) continue;
       bool consumed = false;
       for (const auto& read : method.ssa.Reads({static_cast<std::uint32_t>(i)}))
