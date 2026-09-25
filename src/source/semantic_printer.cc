@@ -288,10 +288,11 @@ class SourcePrinter {
       throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
     LocalName(ast_.local_cells[id.value]);
   }
-  void AdmitRealmBinding() {
-    if (!constants_.global_scope || !constants_.global_scope->realm_binding) return;
+  void CheckRealmName(std::u16string_view name) {
+    // Missing scope is unknown, not proof of an empty enclosing environment.
+    if (!constants_.global_scope)
+      throw SourceFailure{SourceError::kRealmBinding, current_pc_};
     auto scope = *constants_.global_scope;
-    const auto name = scope.realm_binding->name;
     scope.realm_binding = nullptr;
     if (!AllowsGlobalReference(name, scope))
       throw SourceFailure{SourceError::kRealmBinding, current_pc_};
@@ -305,6 +306,11 @@ class SourcePrinter {
         std::any_of(names_.registers.begin(), names_.registers.end(), same) ||
         std::any_of(constants_.source_parameters.begin(), constants_.source_parameters.end(), same))
       throw SourceFailure{SourceError::kRealmBinding, current_pc_};
+  }
+  void AdmitRealmBinding() {
+    if (!constants_.global_scope || !constants_.global_scope->realm_binding) return;
+    const auto name = constants_.global_scope->realm_binding->name;
+    CheckRealmName(name);
     if (name.size() >= limit_ - result_.text.size())
       throw SourceFailure{SourceError::kResourceLimit, current_pc_};
     result_.host_realm.emplace();
@@ -316,9 +322,23 @@ class SourcePrinter {
     for (const auto ch : name) binding.push_back(static_cast<char>(ch));
   }
   void RealmObject() {
-    if (!result_.host_realm)
-      throw SourceFailure{SourceError::kRealmBinding, current_pc_};
-    Text(result_.host_realm->binding);
+    if (result_.host_realm) {
+      Text(result_.host_realm->binding);
+      return;
+    }
+    switch (RealmBinding(result_.contract)) {
+      case RealmBindingPolicy::kExplicitHost:
+        throw SourceFailure{SourceError::kRealmBinding, current_pc_};
+      case RealmBindingPolicy::kStableGlobalThis:
+        // Contract supplies realm identity; generated scopes must still not
+        // introduce shadowing. This spelling is output text, not an IR tag.
+        if (!global_this_checked_) {
+          CheckRealmName(u"globalThis");
+          global_this_checked_ = true;
+        }
+        Text("globalThis");
+        return;
+    }
   }
   void DeclareLocals() {
     // Record the binding even if only a descendant consumes LDGLOBAL. Child
@@ -1174,6 +1194,7 @@ class SourcePrinter {
   std::vector<std::string_view> views_;
   ScalarNames names_{};
   PrintedSource result_;
+  bool global_this_checked_ = false;
   GeneratedPosition position_;
   abc::CodeOffset current_pc_{};
   std::size_t call_depth_ = 0;

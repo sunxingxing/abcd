@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_REGISTER_VALUE_FLOW_H_
 
 #include "abcd/analysis/register_ssa.h"
+#include "abcd/analysis/call_result.h"
 #include "abcd/analysis/value_kinds.h"
 
 namespace abcd::analysis {
@@ -67,13 +68,16 @@ class RegisterValueFlow {
   // With semantic instructions, both load-premise validation and value rules
   // consume that unchanged IR, which must also have supplied the SSA effects.
   // The span is borrowed during this call only; no duplicate rule table is kept.
+  // Non-default call results require typed semantics. They do not certify any
+  // instruction input, lexical/module load, or explicit method return operand.
   [[nodiscard]] static std::variant<RegisterValueFlow, ValueFlowFailure>
   BuildWithLanguageLoads(const abc::MethodBody& body, const RegisterSsa& ssa,
                          std::uint64_t frame_size,
                          std::span<const EntryValueFact> entries,
                          std::span<const LanguageLoadFact> loads,
                          IdfQuota& quota, IdfBudget budget = {},
-                         std::span<const SemanticInstruction> semantics = {});
+                         std::span<const SemanticInstruction> semantics = {},
+                         CallResultValues calls = CallResultValues::kUnknown);
   // Same unchanged inputs as the escape proof. Nonescaping local cells join
   // Hole and ALL stores, not reaching stores. Captured/escaped cells stay top.
   [[nodiscard]] static std::variant<RegisterValueFlow, ValueFlowFailure>
@@ -101,7 +105,8 @@ class RegisterValueFlow {
       std::uint64_t frame_size, std::span<const EntryValueFact> entries,
       const LexicalValueContext* lexicals,
       std::span<const LanguageLoadFact> loads, IdfQuota& quota,
-      IdfBudget budget, std::span<const SemanticInstruction> semantics = {});
+      IdfBudget budget, std::span<const SemanticInstruction> semantics = {},
+      CallResultValues calls = CallResultValues::kUnknown);
   RegisterValueFlow() = default;
   std::unique_ptr<ValueKinds[]> facts_;
   std::size_t count_ = 0;

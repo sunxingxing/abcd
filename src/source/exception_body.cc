@@ -155,7 +155,8 @@ auto BuildException(
     // THROW payloads still flow from SSA, and VerifyExceptionInputs below
     // independently rejects internal/uninitialized VM register categories.
     const auto analyzed = ExceptionValueFlow::Build(*flow, *ssa, entries, value_work,
-        {remaining}, PendingExceptions(kSourceContract), loads);
+        {remaining}, PendingExceptions(kSourceContract), loads, {},
+        NormalCallResults(kSourceContract));
     const auto* values = std::get_if<ExceptionValueFlow>(&analyzed);
     if (!values) {
       const auto& error = std::get<ValueFlowFailure>(analyzed);

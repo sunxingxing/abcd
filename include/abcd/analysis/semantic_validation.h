@@ -142,6 +142,8 @@ using SemanticProofResult = std::variant<SemanticProof,
 // preserved contains sorted, unique same-body creation PCs certified not to
 // write incoming lexical cells. It removes only those capture barriers, never
 // initialization or store-domain checks. The owning file/profile is unchanged.
+// calls constrains normal call results under an execution contract; every
+// read (including callees, arguments and explicit returns) is still checked.
 [[nodiscard]] SemanticProofResult VerifySemanticSource(
     const abc::MethodBody& body, const SemanticMethod& method,
     std::uint64_t frame_size, std::uint32_t first_abi_register,
@@ -149,6 +151,7 @@ using SemanticProofResult = std::variant<SemanticProof,
     CapturedValues captures = CapturedValues::kReject,
     std::span<const LanguageLoadFact> initialized_modules = {},
     ClosureWrites closure_writes = ClosureWrites::kUnknown,
-    std::span<const CapturePreservation> preserved = {});
+    std::span<const CapturePreservation> preserved = {},
+    CallResultValues calls = CallResultValues::kUnknown);
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_SEMANTIC_VALIDATION_H_

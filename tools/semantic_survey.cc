@@ -171,7 +171,9 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
     for (std::size_t i = 0; i < origins.size(); ++i) ir->instructions[i].origin = origins[i];
     const auto verified = analysis::VerifySemanticSource(
         *body, *ir, code.registers + code.arguments, code.registers,
-        {available}, analysis::CapturedValues::kLanguage);
+        {available}, analysis::CapturedValues::kLanguage, {},
+        analysis::ClosureWrites::kUnknown, {},
+        source::NormalCallResults(source::kSourceContract));
     const auto* proof = std::get_if<analysis::SemanticProof>(&verified);
     if (!proof) {
       const auto& failure = std::get<analysis::SemanticProofFailure>(verified);

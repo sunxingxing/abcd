@@ -10,7 +10,8 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
     std::span<const EntryValueFact> entries, IdfQuota& quota, IdfBudget budget,
     PendingExceptionValues pending_values,
     std::span<const ExceptionLoadFact> loads,
-    std::span<const ExceptionPendingFact> pending_facts) {
+    std::span<const ExceptionPendingFact> pending_facts,
+    CallResultValues calls) {
   using Error = ValueFlowError;
   using Kind = detail::ValueRuleKind;
   const auto invalid = [] { return ValueFlowFailure{Error::kInvalidSsa, {}, {}}; };
@@ -147,7 +148,8 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
           facts[i] = ValueKinds::Language();
           continue;
         }
-        const auto described = detail::DescribeRegisterValue(flow.instructions[node.instruction.value]);
+        const auto described = detail::DescribeRegisterValue(
+            flow.instructions[node.instruction.value], calls);
         if (const auto* error = std::get_if<ScalarError>(&described))
           return ValueFlowFailure{Error::kInstruction, InstructionId{site}, *error};
         const auto rule = std::get<detail::ValueRule>(described);

@@ -6,13 +6,13 @@
 
 namespace abcd::analysis::detail {
 std::variant<ValueRule, ScalarError> DescribeRegisterValue(
-    const SemanticInstruction& instruction) {
+    const SemanticInstruction& instruction, CallResultValues calls) {
   if (!instruction.effects.normal_registers.write)
     return ScalarError::kMalformedInstruction;
   // This is the typed counterpart of the decoded rule boundary. Preserve its
   // conservative facts; adding a new IR alternative must require review here,
   // not default to Language or silently re-read its original opcode.
-  return std::visit([](const auto& operation)
+  return std::visit([calls](const auto& operation)
       -> std::variant<ValueRule, ScalarError> {
     using T = std::decay_t<decltype(operation)>;
     if constexpr (std::is_same_v<T, ScalarAssignment>) {
@@ -52,8 +52,15 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
           return ScalarError::kMalformedInstruction;
       }
       return ScalarError::kMalformedInstruction;
-    } else if constexpr (std::is_same_v<T, OrdinaryCall> ||
-                         std::is_same_v<T, ModuleLoad> ||
+    } else if constexpr (std::is_same_v<T, OrdinaryCall>) {
+      switch (calls) {
+        case CallResultValues::kUnknown:
+          return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
+        case CallResultValues::kLanguage:
+          return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
+      }
+      return ScalarError::kMalformedInstruction;
+    } else if constexpr (std::is_same_v<T, ModuleLoad> ||
                          std::is_same_v<T, LexicalLoad> ||
                          std::is_same_v<T, CurrentEnvironment>) {
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};

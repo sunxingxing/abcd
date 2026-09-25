@@ -62,7 +62,8 @@ auto BuildBody(
   budget.work -= initialized->work_units;
   auto verified = analysis::VerifySemanticSource(
       body, *method, frame.registers, frame.locals, budget, Captures,
-      initialized->loads, analysis::ClosureWrites::kLanguage);
+      initialized->loads, analysis::ClosureWrites::kLanguage, {},
+      NormalCallResults(kSourceContract));
   auto* proof = std::get_if<analysis::SemanticProof>(&verified);
   if (!proof) return std::get<analysis::SemanticProofFailure>(verified);
   if (proof->allocated_bytes > budget.bytes)

@@ -131,7 +131,8 @@ int InspectExceptionFlow(const abcd::abc::MethodBody& body,
       locals->plan.work_units - modules->work_units - captures.work_units;
   analysis::IdfQuota value_quota{value_work};
   const auto analyzed = analysis::ExceptionValueFlow::Build(*flow, *ssa, entries,
-      value_quota, {remaining}, source::PendingExceptions(source::kSourceContract), loads);
+      value_quota, {remaining}, source::PendingExceptions(source::kSourceContract), loads, {},
+      source::NormalCallResults(source::kSourceContract));
   const auto* values = std::get_if<analysis::ExceptionValueFlow>(&analyzed);
   if (!values) {
     const auto& failure = std::get<analysis::ValueFlowFailure>(analyzed);

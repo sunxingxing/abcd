@@ -31,6 +31,8 @@ class ExceptionValueFlow {
   // runtime/user-code exceptions. Explicit throws retain their SSA categories
   // even under that premise. This is not source admission: operation inputs,
   // captured/module loads and environments still need independent validation.
+  // calls is a separate normal-Commit result premise. It changes neither
+  // exception payloads nor Before operand validation.
   [[nodiscard]] static std::variant<ExceptionValueFlow, ValueFlowFailure> Build(
       const ExceptionFlow& flow, const ExceptionSsa& ssa,
       std::span<const EntryValueFact> entries, IdfQuota& quota,
@@ -41,7 +43,8 @@ class ExceptionValueFlow {
       // Unknown remains the default elsewhere. Owners must cover all possible
       // runtime and user-code sources on each certified edge; opcode names or
       // a NewJSError call alone do not establish that contract.
-      std::span<const ExceptionPendingFact> pending_facts = {});
+      std::span<const ExceptionPendingFact> pending_facts = {},
+      CallResultValues calls = CallResultValues::kUnknown);
   [[nodiscard]] std::span<const ValueKinds> Facts() const {
     return {facts_.get(), facts_ ? count_ : 0};
   }

@@ -6,8 +6,8 @@ the VM's global object directly into acc, with no user code, lookup or throw.
 The typed value rule yields Defined; the AST retains the same typed identity.
 This adds constant per-instruction work and no new retained tables.
 
-The printer refuses this expression with SourceError::kRealmBinding until an
-owner-validated realm-object source binding is available. A mutable globalThis
+Under V1 the printer refuses this expression with SourceError::kRealmBinding
+until an owner-validated realm-object source binding is available. A mutable globalThis
 property/name, Function constructor, or lexical free identifier is not assumed
 equivalent. On 2026-09-25 the user explicitly rejected a lifetime globalThis
 identity/non-shadowing assumption and required a trusted host-provided global
@@ -16,6 +16,7 @@ was installed at that decision. The user's later explicit approval supersedes
 the globalThis refusal; see `source-contract-v2.md` for the approved scope and
 its rollout status. Until the new policy is activated or an explicit trusted
 binding is supplied, source emission must retain `kRealmBinding` refusal.
+V2 now activates the approved policy while retaining generated-scope checks.
 An API for supplying that binding is now available as `HostRealmBinding`;
 a free identifier alone cannot establish its identity
 or protection from shadowing. This decision does not settle normal-call return
@@ -47,11 +48,13 @@ with the existing sorted-scope binary lookups; storage is one owned name per
 artifact. Future source cache identities must include binding configuration
 and trust-policy revision, not the name alone.
 
-No production CLI currently supplies this capability. Default refusal remains
-until V2 integration. Tests, JS execution and RSS measurement remain paused;
+No production CLI currently supplies this capability. V2 uses its separate
+approved `globalThis` premise by default. Tests, JS execution and RSS remain paused;
 new binding acceptance/collision and nested propagation regressions are deferred.
 
-ABC-only inspection of pasteboard callback 7061 now builds 27 IR instructions,
+## Earlier Inspection
+
+Before V2, ABC-only inspection of pasteboard callback 7061 built 27 IR instructions,
 3 blocks and 36 SSA values, rather than failing at LDGLOBAL PC6. Detached
 function-source inspection proceeds to an independent local-module value
 refusal at PC46. In actual PageA entry 7283 emission, deeper debugger tracing

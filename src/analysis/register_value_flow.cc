@@ -49,9 +49,10 @@ RegisterValueFlow::BuildWithLanguageLoads(
     const abc::MethodBody& body, const RegisterSsa& ssa,
     std::uint64_t frame_size, std::span<const EntryValueFact> entries,
     std::span<const LanguageLoadFact> loads, IdfQuota& quota,
-    IdfBudget budget, std::span<const SemanticInstruction> semantics) {
+    IdfBudget budget, std::span<const SemanticInstruction> semantics,
+    CallResultValues calls) {
   return Analyze(body, ssa, frame_size, entries, nullptr, loads, quota,
-                 budget, semantics);
+                 budget, semantics, calls);
 }
 
 std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
@@ -59,7 +60,8 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
     std::uint64_t frame_size, std::span<const EntryValueFact> entries,
     const LexicalValueContext* lexicals,
     std::span<const LanguageLoadFact> loads, IdfQuota& quota,
-    IdfBudget budget, std::span<const SemanticInstruction> semantics) {
+    IdfBudget budget, std::span<const SemanticInstruction> semantics,
+    CallResultValues calls) {
   using Kind = detail::ValueRuleKind;
   using Error = ValueFlowError;
   try {
@@ -68,6 +70,9 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
       if (!quota.Take(units)) throw detail::IdfWorkLimit{};
     };
     if (!semantics.empty() && semantics.size() != body.instructions.size())
+      return ValueFlowFailure{Error::kInvalidSemantics, {}, {}};
+    if (calls != CallResultValues::kUnknown && semantics.empty() &&
+        !body.instructions.empty())
       return ValueFlowFailure{Error::kInvalidSemantics, {}, {}};
     for (std::size_t i = 0; i < semantics.size(); ++i) {
       charge();
@@ -154,7 +159,7 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
         const auto lifted = semantics.empty()
             ? detail::DescribeRegisterValue(
                   body.instructions[instruction.value].decoded, frame_size)
-            : detail::DescribeRegisterValue(semantics[instruction.value]);
+            : detail::DescribeRegisterValue(semantics[instruction.value], calls);
         if (const auto* error = std::get_if<ScalarError>(&lifted))
           return ValueFlowFailure{Error::kInstruction, instruction, *error};
         const auto rule = std::get<detail::ValueRule>(lifted);

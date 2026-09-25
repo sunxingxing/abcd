@@ -34,7 +34,8 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
                                          CapturedValues captures,
                                          std::span<const LanguageLoadFact> initialized_modules,
                                          ClosureWrites closure_writes,
-                                         std::span<const CapturePreservation> preserved) {
+                                         std::span<const CapturePreservation> preserved,
+                                         CallResultValues calls) {
   try {
   if (first_abi_register > frame_size ||
       method.instructions.size() != body.instructions.size() ||
@@ -157,7 +158,7 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     IdfQuota quota{budget.work - locals->work_units};
     auto values = RegisterValueFlow::BuildWithLanguageLoads(
         body, method.ssa, frame_size, entries, loads, quota, {remaining},
-        method.instructions);
+        method.instructions, calls);
     auto* analyzed = std::get_if<RegisterValueFlow>(&values);
     if (!analyzed) {
       const auto& failure = std::get<ValueFlowFailure>(values);

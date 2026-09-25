@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_REGISTER_VALUE_RULE_H_
 
 #include "abcd/analysis/register_effect.h"
+#include "abcd/analysis/call_result.h"
 #include "abcd/analysis/value_kinds.h"
 
 namespace abcd::analysis {
@@ -36,6 +37,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size);
 ValueRule DescribeScalarValue(const ScalarAssignment& assignment);
 std::variant<ValueRule, ScalarError> DescribeRegisterValue(
-    const SemanticInstruction& instruction);
+    const SemanticInstruction& instruction,
+    CallResultValues calls = CallResultValues::kUnknown);
 }  // namespace abcd::analysis::detail
 #endif  // ABCD_ANALYSIS_REGISTER_VALUE_RULE_H_

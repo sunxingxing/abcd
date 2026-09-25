@@ -25,7 +25,7 @@ SemanticBodyResult BuildEntrySource(
     const auto proof = analysis::VerifySemanticSource(body, method,
         frame.registers, frame.locals, {proof_bytes, budget.work - sites->work_units},
         analysis::CapturedValues::kReject, {}, analysis::ClosureWrites::kUnknown,
-        sites->sites);
+        sites->sites, NormalCallResults(kSourceContract));
     const auto* verified = std::get_if<analysis::SemanticProof>(&proof);
     if (!verified) return std::get<analysis::SemanticProofFailure>(proof);
     if (verified->allocated_bytes > proof_bytes) return resource;
