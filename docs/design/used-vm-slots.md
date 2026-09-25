@@ -77,7 +77,8 @@ the flat AST scan, including nested intervals. This must never become an audit
 that skips children after visiting the interval owner. Comma-mode assignments
 retain and observe their actual targets, while fallback arrow IIFEs preserve
 lexical this and formal bindings. Entry-copy suppression retains zero-width PC
-anchors. Branch argument regions and catch regions remain excluded.
+anchors. Catch regions remain excluded; branch argument regions and native
+array owners now have the additional audit in `region-slot-audit.md`.
 
 Production targets built successfully. ABC-only export
 `build/pasteboard-staged-slots-01` contains 8,457 lines / 147,149 bytes, down

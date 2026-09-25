@@ -5,12 +5,13 @@ the shared printer, but only after an exhaustive typed AST audit proves that
 every supported register read uses the bound Value/Slot path. This is distinct
 from declaration liveness: declarations remain emitted.
 
-The audit admits scalar/member/string/local/module expressions, ordinary and
-member calls, constructor calls and basic statements with bound reads. It
-rejects creation/capture/global-name/buffer/rest/await/super expressions and
-staged/array/unsupported stores, plus catch and argument regions. Any rejected
-node preserves entry copies for the whole method. New AST alternatives must
-be classified explicitly through compile-time exhaustive visitors.
+The initial audit admitted scalar/member/string/local/module expressions,
+calls and basic statements. Subsequent explicit audits are documented in
+`used-vm-slots.md`, `closure-slot-audit.md` and `region-slot-audit.md`.
+Bound substitution still excludes identifier-only class creation, unsupported
+owner protocols and catch regions. Any rejected node preserves entry copies
+for the whole method. New AST alternatives must be classified explicitly
+through compile-time exhaustive visitors.
 
 An omitted statement must be a register-to-register copy whose destination
 has the existing unique-definition/all-reads SSA certificate and whose source
