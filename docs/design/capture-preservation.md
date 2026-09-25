@@ -28,6 +28,24 @@ walk and are certified only after propagation finishes. This is a conventional
 monotone graph fixed point; no new library or license is introduced. It is
 deliberately more conservative than a cell-sensitive interprocedural analysis.
 
+Both DEFINEFUNC and DEFINEMETHOD enter this graph. The pinned interpreter's
+DEFINEMETHOD handlers pass the current frame environment to DefineMethod;
+their accumulator home object does not change lexical capture ownership.
+Function/home-object combinations are checked before resolving a target.
+Ordinary class creation contributes its constructor plus every method decoded
+from the class buffer, including accessors and generator templates. Literal
+targets require actual method membership and decoded non-sendable attributes.
+Missing targets, malformed buffers and unsupported children never certify a
+class. A root stores a range of dependencies and emits one PC certificate only
+when all targets are read-only. Nested class dependencies use the same reverse
+propagation graph; source syntax/descriptor validation remains independent.
+
+Class literal entries and decoded properties are scratch allocations charged
+while target/edge storage grows. Root target ranges use geometrically grown,
+budgeted storage. Add O(L + T log M) inspection work for L class literal entries
+and T referenced templates, plus O(T) root target storage. Unknown descendants
+may retain conservative queued work, but cannot leave a successful empty root.
+
 ## Cost and Ownership
 
 For M indexed methods, E discovered creation edges and R root creation sites,
@@ -81,8 +99,19 @@ The production CLIs build and read-only review found no concrete defect. An
 ABC-only Home entry 6100 inspection still refuses at PC389: capture depth 0,
 slot 0 is initialized, but 15 unpreserved creation sites remain between its
 allocation (instruction 0) and creation (instruction 138), ending at instruction
-130. Consequently this change does not increase complete-record coverage.
-The next proof work must address those sites, not bypass the remaining barrier.
+130. That checkpoint preceded class/method dependency support.
+
+With class/method dependency support, the same ABC-only inspection retains only
+instructions 115 and 118 (PC305/317, targets 6350/6733). The class site and the
+other 12 method sites now receive certificates. Both remaining methods fail
+the normal semantic builder with `SemanticError::kExceptionRegions`; this is
+not evidence of a captured write. The next work is exception-aware inspection,
+not ignoring catches. Home still refuses at PC389, so complete-record coverage
+has not increased. Both production CLIs compile and read-only review found no
+concrete defect in the dependency extension.
 Tests, generated-JS execution and RSS remain paused. Deferred regression cases
 include preserved function/class/buffer sites, unknown barriers, same-block
 reallocation in loops, forward initialization scopes and allocation limits.
+Class-specific deferred cases include writing getters/setters, unknown literal
+targets, read-only/writing dependency cycles through classes, duplicate method
+templates, partial root failure and literal/edge growth resource exhaustion.

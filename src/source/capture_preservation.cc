@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <type_traits>
 
+#include "abcd/abc/class_buffer.h"
 #include "abcd/abc/literal_array.h"
 #include "abcd/abc/method_target.h"
 
@@ -14,7 +15,11 @@ namespace abcd::source {
 namespace {
 enum class State : std::uint8_t { kUnseen, kQueued, kReadOnly, kUnknown };
 struct Dependency { abc::MethodPosition parent; abc::MethodPosition child; };
-struct Root { abc::CodeOffset pc; std::optional<abc::MethodPosition> child; };
+struct Root {
+  abc::CodeOffset pc;
+  std::size_t begin;
+  std::size_t end;
+};
 SourceFailure Resource() { return {SourceError::kResourceLimit, {}}; }
 bool Exhausted(const analysis::SemanticFailure& failure) {
   if (failure.kind == analysis::SemanticError::kResourceLimit) return true;
@@ -56,13 +61,23 @@ class CaptureProof {
     Reserve(roots_, body.instructions.size());
     for (const auto& instruction : body.instructions) {
       Charge();
+      const auto begin = root_targets_.size();
       const auto creation = analysis::LiftFunctionCreation(instruction.decoded);
       if (const auto* function = std::get_if<analysis::FunctionCreation>(&creation)) {
-        if (const auto target = Target(constants_.method, *function))
-          roots_.push_back({instruction.offset, *target});
+        if (const auto target = Target(constants_.method, *function)) {
+          RootTarget(*target);
+          roots_.push_back({instruction.offset, begin, root_targets_.size()});
+        }
+      } else if (const auto lifted = analysis::LiftClassCreation(instruction.decoded);
+                 std::holds_alternative<analysis::ClassCreation>(lifted)) {
+        if (ClassTargets(constants_.method, std::get<analysis::ClassCreation>(lifted),
+                         [&](auto target) { RootTarget(target); }))
+          roots_.push_back({instruction.offset, begin, root_targets_.size()});
+        else
+          root_targets_.resize(begin);
       } else if (const auto literal = Buffer(instruction.decoded)) {
         if (PrimitiveBuffer(constants_.method, *literal))
-          roots_.push_back({instruction.offset, {}});
+          roots_.push_back({instruction.offset, begin, begin});
       }
     }
     for (std::size_t cursor = 0; cursor < pending_.size(); ++cursor) {
@@ -97,7 +112,12 @@ class CaptureProof {
     Reserve(result.sites, roots_.size());
     for (const auto& root : roots_) {
       Charge();
-      if (!root.child || states_[root.child->value] == State::kReadOnly)
+      bool read_only = true;
+      for (auto i = root.begin; i < root.end; ++i) {
+        Charge();
+        if (states_[root_targets_[i].value] != State::kReadOnly) read_only = false;
+      }
+      if (read_only)
         result.sites.push_back({root.pc});
     }
     result.work_units = initial_work_ - work_;
@@ -131,24 +151,100 @@ class CaptureProof {
   }
   std::optional<abc::MethodPosition> Target(
       abc::EntityOffset caller, const analysis::FunctionCreation& creation) {
-    if (!methods_ || creation.kind != analysis::CreationKind::kFunction ||
-        creation.home_object != analysis::HomeObjectInput::kCurrentFunction)
-      return {};
+    // Both pinned DEFINEFUNC and DEFINEMETHOD capture the current lexical
+    // environment. Their different home-object inputs do not grant read-only
+    // status; every reachable body is still checked for captured stores.
+    switch (creation.kind) {
+      case analysis::CreationKind::kFunction:
+        if (creation.home_object != analysis::HomeObjectInput::kCurrentFunction) return {};
+        break;
+      case analysis::CreationKind::kMethod:
+        if (creation.home_object != analysis::HomeObjectInput::kAccumulator) return {};
+        break;
+    }
+    return Target(caller, creation.method);
+  }
+  std::optional<abc::MethodPosition> Target(abc::EntityOffset caller, abc::PoolIndex slot) {
+    if (!methods_) return {};
     Charge(std::bit_width(constants_.index.regions.size()) +
            std::bit_width(methods_->Size()) + 1);
     const auto resolved = abc::ResolveMethodTarget(constants_.file, constants_.header,
-        constants_.index, *methods_, caller, creation.method);
+        constants_.index, *methods_, caller, slot);
     const auto* target = std::get_if<abc::MethodTarget>(&resolved);
     if (const auto* error = std::get_if<abc::MetadataError>(&resolved);
         error && *error == abc::MetadataError::kResourceLimit) throw Resource();
     if (!target || target->attributes.sendable) return {};
-    const auto position = target->position;
+    return Queue(target->position);
+  }
+  std::optional<abc::MethodPosition> Queue(abc::MethodPosition position) {
     if (position.value >= states_.size()) return {};
     if (states_[position.value] == State::kUnseen) {
       states_[position.value] = State::kQueued;
       pending_.push_back(position);
     }
     return position;
+  }
+  void RootTarget(abc::MethodPosition target) {
+    if (root_targets_.size() == root_targets_.capacity()) {
+      constexpr std::size_t kInitialTargets = 4;
+      const auto available = bytes_ / sizeof(abc::MethodPosition);
+      const auto size = root_targets_.size();
+      if (size == SIZE_MAX || size + 1 > available) throw Resource();
+      Reserve(root_targets_, size == 0 ? std::min(kInitialTargets, available)
+          : size > available / 2 ? available : size * 2);
+    }
+    root_targets_.push_back(target);
+  }
+  template <typename Accept>
+  bool ClassTargets(abc::EntityOffset caller, const analysis::ClassCreation& creation,
+                    Accept accept) {
+    const auto constructor = Target(caller, creation.constructor);
+    if (!constructor) return false;
+    accept(*constructor);
+    Charge(std::bit_width(constants_.index.regions.size()) + 1);
+    const auto reference = abc::ResolvePoolReference(constants_.file, constants_.header,
+        constants_.index, caller, creation.literal, abc::PoolEntityKind::kLiteralArray);
+    const auto* entity = std::get_if<abc::PoolReference>(&reference);
+    if (const auto* error = std::get_if<abc::MetadataError>(&reference);
+        error && *error == abc::MetadataError::kResourceLimit) throw Resource();
+    if (!entity) return false;
+    const auto decoded = abc::ReadLiteralArray(constants_.file, constants_.header,
+                                               entity->offset, {bytes_});
+    const auto* literal = std::get_if<abc::LiteralArray>(&decoded);
+    if (!literal) {
+      if (std::get<abc::LiteralFailure>(decoded).kind == abc::LiteralError::kResourceLimit)
+        throw Resource();
+      return false;
+    }
+    CaptureScratch scratch(bytes_);
+    scratch.Take(literal->entries.capacity() * sizeof(abc::LiteralEntry));
+    Charge(literal->entries.size());
+    const auto parsed = abc::DecodeClassBuffer(*literal, {bytes_});
+    const auto* members = std::get_if<abc::ClassBuffer>(&parsed);
+    if (!members) {
+      if (std::get<abc::ClassBufferError>(parsed) == abc::ClassBufferError::kResourceLimit)
+        throw Resource();
+      return false;
+    }
+    scratch.Take(members->properties.capacity() * sizeof(abc::ClassProperty));
+    for (const auto& property : members->properties) {
+      Charge();
+      const auto* member = std::get_if<abc::ClassMethod>(&property.value);
+      if (!member) continue;
+      Charge(std::bit_width(methods_->Size()) + 1);
+      const auto position = methods_->Find(member->target);
+      if (!position || position->value >= states_.size()) return false;
+      const auto& info = constants_.index.methods[position->value];
+      if (info.offset != member->target) return false;
+      const auto attributes = abc::DecodeMethodAttributes(info.access_flags,
+                                                         constants_.header.profile);
+      const auto* flags = std::get_if<abc::MethodAttributes>(&attributes);
+      if (!flags || flags->sendable) return false;
+      const auto queued = Queue(*position);
+      if (!queued) return false;
+      accept(*queued);
+    }
+    return true;
   }
   static std::optional<abc::PoolIndex> Buffer(const abc::DecodedInstruction& instruction) {
     const auto object = analysis::LiftObjectCreation(instruction);
@@ -251,11 +347,10 @@ class CaptureProof {
     for (const auto& site : method->instructions) {
       Charge();
       if (std::holds_alternative<analysis::CurrentEnvironment>(site.operation)) return false;
-      // Class constructors and literal methods capture this environment too.
-      // Until their full dependency set is resolved, never certify the parent
-      // as read-only merely because class creation now lifts into semantic IR.
-      if (std::holds_alternative<analysis::ClassCreation>(site.operation))
-        return false;
+      if (const auto* creation = std::get_if<analysis::ClassCreation>(&site.operation)) {
+        if (!ClassTargets(info.offset, *creation,
+                          [&](auto child) { Edge(target, child); })) return false;
+      }
       if (const auto* child = std::get_if<analysis::FunctionCreation>(&site.operation)) {
         const auto resolved = Target(info.offset, *child);
         if (!resolved) return false;
@@ -277,6 +372,7 @@ class CaptureProof {
   std::vector<abc::MethodPosition> pending_;
   std::vector<Dependency> edges_;
   std::vector<Root> roots_;
+  std::vector<abc::MethodPosition> root_targets_;
 };
 }  // namespace
 
