@@ -240,10 +240,20 @@ struct GeneratedPosition {
   // capture at this byte. Always zero in fully bound source coordinates.
   std::size_t captures = 0;
 };
+enum class SpanOrigin : std::uint8_t { kInstruction, kAwaitProtocol };
+// Serialization only; engine decisions use SpanOrigin, never these labels.
+constexpr std::string_view SpanOriginName(SpanOrigin origin) {
+  switch (origin) {
+    case SpanOrigin::kInstruction: return "instruction";
+    case SpanOrigin::kAwaitProtocol: return "await_protocol";
+  }
+  std::terminate();
+}
 struct GeneratedSpan {
   abc::CodeOffset pc;
   GeneratedPosition begin;
   GeneratedPosition end;
+  SpanOrigin origin = SpanOrigin::kInstruction;
 };
 struct PrintedSource {
   std::string text;

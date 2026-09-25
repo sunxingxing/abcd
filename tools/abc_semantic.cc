@@ -448,6 +448,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     nlohmann::json map = nlohmann::json::array();
     for (const auto& span : printed->spans)
       map.push_back({{"pc", span.pc.value},
+                     {"origin_kind", source::SpanOriginName(span.origin)},
                      {"begin", {span.begin.byte, span.begin.line,
                                  span.begin.column}},
                      {"end", {span.end.byte, span.end.line,

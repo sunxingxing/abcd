@@ -26,6 +26,7 @@
 #include "creation_expansion.h"
 #include "record_inputs.h"
 #include "class_assembly.h"
+#include "await_positions.h"
 
 namespace abcd::source {
 namespace {
@@ -79,6 +80,11 @@ class SourcePrinter {
           return SourceFailure{SourceError::kResourceLimit, {}};
       }
       Root();
+      const auto capture_bytes = captures_.capacity() * sizeof(SourceCapture);
+      if (capture_bytes > limit_)
+        return SourceFailure{SourceError::kResourceLimit, {}};
+      if (const auto failure = AppendAwaitPositions(ast_, result_, limit_ - capture_bytes))
+        return *failure;
       return std::move(result_);
     } catch (const SourceFailure& failure) {
       return failure;

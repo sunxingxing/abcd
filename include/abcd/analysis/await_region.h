@@ -2,6 +2,8 @@
 #define ABCD_ANALYSIS_AWAIT_REGION_H_
 
 #include <cstddef>
+#include <array>
+#include <optional>
 #include <variant>
 #include <vector>
 
@@ -9,6 +11,9 @@
 #include "abcd/abc/register_access.h"
 
 namespace abcd::analysis {
+// Exact instruction sequence admitted by await_region.cc's AwaitStep schema,
+// including the retained continuation load. Not a byte width or opcode value.
+inline constexpr std::size_t kAwaitProtocolInstructions = 14;
 struct AwaitRegion {
   abc::CodeOffset await;
   abc::CodeOffset suspend;
@@ -22,6 +27,7 @@ struct AwaitRegion {
   abc::RegisterId state;
   abc::RegisterId result;
   abc::RegisterId resume_mode;
+  std::optional<std::array<abc::CodeOffset, kAwaitProtocolInstructions>> instructions;
 };
 // A callable owner supplies this only after proving its async completion
 // wrapper and private state, then maps await and mode PCs to the normalized

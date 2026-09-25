@@ -283,6 +283,7 @@ int Export(const std::filesystem::path& input,
                 if (span_comma) positions << ',';
                 span_comma = true;
                 positions << nlohmann::json{{"pc", span.pc.value},
+                    {"origin_kind", source::SpanOriginName(span.origin)},
                     {"begin", {span.begin.byte, span.begin.line, span.begin.column}},
                     {"end", {span.end.byte, span.end.line, span.end.column}}};
               }

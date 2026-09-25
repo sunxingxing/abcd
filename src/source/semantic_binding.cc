@@ -123,7 +123,7 @@ std::variant<PrintedSource, SourceFailure> BindSourceTemplate(
       if (begin.byte > result.text.size() || end.byte > result.text.size() ||
           begin.line > original.line || end.line > original.line)
         return Invalid(span.pc);
-      result.spans.push_back({span.pc, begin, end});
+      result.spans.push_back({span.pc, begin, end, span.origin});
     }
     return result;
   } catch (const SourceFailure& failure) {

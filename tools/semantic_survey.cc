@@ -309,6 +309,7 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
         for (const auto& span : progress.source->spans)
           row["positions"].push_back({
               {"pc", span.pc.value},
+              {"origin_kind", source::SpanOriginName(span.origin)},
               {"begin", {span.begin.byte, span.begin.line, span.begin.column}},
               {"end", {span.end.byte, span.end.line, span.end.column}}});
       }
@@ -333,6 +334,7 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
         for (const auto& span : source.spans)
           row["template_positions"].push_back({
               {"pc", span.pc.value},
+              {"origin_kind", source::SpanOriginName(span.origin)},
               {"begin", {span.begin.byte, span.begin.line, span.begin.column}},
               {"end", {span.end.byte, span.end.line, span.end.column}},
               {"begin_capture_cursor", span.begin.captures},

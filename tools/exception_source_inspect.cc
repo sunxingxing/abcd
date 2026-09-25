@@ -108,6 +108,7 @@ void InspectExceptionSource(const abcd::source::ExceptionAstInput& input,
                              {"position_count", source->spans.size()}} << '\n';
     for (const auto& span : source->spans)
       output << nlohmann::json{{"pc", span.pc.value},
+          {"origin_kind", source::SpanOriginName(span.origin)},
           {"begin", {span.begin.byte, span.begin.line, span.begin.column, span.begin.captures}},
           {"end", {span.end.byte, span.end.line, span.end.column, span.end.captures}}} << '\n';
     for (const auto& capture : source->captures)

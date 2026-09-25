@@ -20,6 +20,7 @@ enum AwaitStep : std::size_t {
   kReadMode, kSaveMode, kThrowMode, kCompareMode, kBranch,
   kLoadRejected, kThrow, kContinue, kStepCount
 };
+static_assert(kStepCount == kAwaitProtocolInstructions);
 
 std::optional<abc::RegisterId> CopyRegister(
     const abc::BodyInstruction& site, std::uint64_t frame_size, bool store) {
@@ -94,11 +95,15 @@ std::optional<AwaitRegion> Match(std::span<const abc::BodyInstruction> sites,
       sites[kThrow].decoded.opcode != abc::Opcode::kTHROW_PREF_NONE ||
       sites[kThrow].decoded.operand_count != 0)
     return std::nullopt;
-  return AwaitRegion{sites[kAwait].offset, sites[kSuspend].offset,
+  AwaitRegion region{sites[kAwait].offset, sites[kSuspend].offset,
                      sites[kResume].offset, sites[kSaveResult].offset,
                      sites[kReadMode].offset, sites[kSaveMode].offset,
                      sites[kBranch].offset, sites[kThrow].offset,
                      sites[kContinue].offset, *state, *result, *mode};
+  region.instructions.emplace();
+  for (std::size_t i = 0; i < kStepCount; ++i)
+    (*region.instructions)[i] = sites[i].offset;
+  return region;
 }
 // Strict interior excludes the continuation, whose original load is retained.
 const AwaitRegion* Interior(const std::vector<AwaitRegion>& regions,
