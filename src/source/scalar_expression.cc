@@ -162,6 +162,10 @@ class ExpressionWriter {
       Append("this");
       return;
     }
+    if (names_.rest && names_.rest->local == reg) {
+      Name(names_.rest->name);
+      return;
+    }
     Name(names_.registers[reg.value]);
   }
   void Value(IntegerLiteral integer) { NumberToken(integer.value); }

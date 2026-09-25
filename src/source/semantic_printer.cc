@@ -33,6 +33,7 @@
 #include "entry_bindings.h"
 #include "entry_copy_elision.h"
 #include "argument_sequence.h"
+#include "rest_binding.h"
 
 namespace abcd::source {
 namespace {
@@ -531,7 +532,7 @@ class SourcePrinter {
     // Phased exception owners have different SSA coordinates. Keep this first
     // certificate on normal methods; names_.this_binding excludes arrows and
     // derived constructors. Identifier-only capture consumers stay unchanged.
-    if ((!names_.this_binding && names_.parameter_writes.empty()) ||
+    if ((!names_.this_binding && names_.parameter_writes.empty() && !names_.rest) ||
         !capture_method_ || ast_.regions.catches) return;
     // Body-only APIs deliberately have no wrapper FrameLayout. The owner
     // supplies the real register span and formal range in ScalarNames.
@@ -545,6 +546,8 @@ class SourcePrinter {
     FindEntryBindings(*capture_method_, names_, entry_bindings_);
     elide_entry_copies_ = CanElideEntryCopies(ast_);
     if (elide_entry_copies_) {
+      if (names_.rest)
+        rest_local_ = FindRestLocal(*capture_method_, ast_, names_.rest->first_argument);
       if (names_.registers.size() > limit_ / sizeof(RegisterUse))
         throw SourceFailure{SourceError::kResourceLimit, {}};
       result_.register_uses.resize(names_.registers.size(), RegisterUse::kUnused);
@@ -557,22 +560,26 @@ class SourcePrinter {
   void Scalar(const ScalarExpression& expression, bool read = true) {
     auto bound = expression;
     if (read) BindEntryReads(bound, entry_bindings_);
-    ObserveSlots(bound);
+    ObserveSlots(bound, read);
+    auto scalar_names = names_;
+    if (scalar_names.rest)
+      scalar_names.rest->local = read ? rest_local_ : std::nullopt;
     std::ostringstream stream;
     const auto emitted = WriteScalarExpression(
-        bound, names_, stream, {limit_ - result_.text.size()});
+        bound, scalar_names, stream, {limit_ - result_.text.size()});
     if (!std::holds_alternative<std::size_t>(emitted))
       throw SourceFailure{SourceError::kOutput, current_pc_};
     Text(stream.str());
   }
   void Value(const ScalarValue& value) { Scalar(ScalarExpression{value}); }
-  void ObserveSlots(const ScalarExpression& expression) {
+  void ObserveSlots(const ScalarExpression& expression, bool read) {
     if (!elide_entry_copies_) return;
     const auto observe = [&](const ScalarValue& value) {
       if (std::holds_alternative<Accumulator>(value)) {
         result_.accumulator_used = true;
         vm_slots_ = VmSlotUse::kRequired;
       } else if (const auto* reg = std::get_if<abc::RegisterId>(&value)) {
+        if (read && rest_local_ == *reg) return;
         if (names_.this_binding == *reg) return;
         if (reg->value >= names_.first_parameter.value) {
           const auto ordinal = reg->value - names_.first_parameter.value;
@@ -968,6 +975,14 @@ class SourcePrinter {
           if constexpr (std::is_same_v<T, SourceAssignment>) {
             if (!comma && elide_entry_copies_ &&
                 IsBoundEntryCopy(statement, entry_bindings_)) return;
+            if (!comma && rest_local_) {
+              const auto* target = std::get_if<abc::RegisterId>(&operation.target);
+              const auto* rest = std::get_if<analysis::RestCopy>(&operation.value);
+              // FindRestLocal certified this unique initialized definition;
+              // the owner emits the allocation as the native rest formal.
+              // Keep this and the following save PC as zero-width anchors.
+              if (target && *target == *rest_local_ && rest) return;
+            }
             switch (operation.result) {
               case AssignmentResult::kStored:
                 Target(operation.target);
@@ -1521,6 +1536,7 @@ class SourcePrinter {
 
   const SourceAst& ast_;
   std::vector<EntryBinding> entry_bindings_;
+  std::optional<abc::RegisterId> rest_local_;
   bool elide_entry_copies_ = false;
   VmSlotUse vm_slots_ = VmSlotUse::kNone;
   std::vector<LabelUse> label_uses_;

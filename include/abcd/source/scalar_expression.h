@@ -16,6 +16,8 @@ struct ScalarNames {
   struct RestBinding {
     std::uint16_t first_argument;
     std::string_view name;
+    // Read-only printer substitution, never the original ABI argument slot.
+    std::optional<abc::RegisterId> local{};
   };
   std::string_view accumulator;
   std::span<const std::string_view> registers;
