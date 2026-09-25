@@ -230,6 +230,12 @@ class ClassWriter {
                     const abc::ClassBuffer& members, std::string_view name) {
     const bool has_members = !members.properties.empty() ||
                              !attached_methods_.empty();
+    if (members.properties.size() > SIZE_MAX - attached_methods_.size())
+      throw ClassFailure{CreatedClassError::kResourceLimit};
+    const auto self_count = members.properties.size() + attached_methods_.size();
+    AdmitClassBytes(self_count, sizeof(SelfBindingUse), budget_.bytes);
+    std::vector<SelfBindingUse> self_uses(self_count, SelfBindingUse::kUnknown);
+    AdmitClassBytes(self_uses.capacity() - self_count, sizeof(SelfBindingUse), budget_.bytes);
     if (has_members) Text("(() => {\nconst ClassValue = ");
     Text("(class ");
     Text(name);
@@ -252,7 +258,7 @@ class ClassWriter {
     Constructor(creation, target, name);
     for (std::size_t i = 0; i < members.properties.size(); ++i) {
       Text("\n");
-      Member(members.properties[i], SelfName(i, name), name);
+      Member(members.properties[i], SelfName(i, name), name, self_uses[i]);
     }
     for (const auto& accessor : accessors_) {
       Text("\n");
@@ -261,7 +267,8 @@ class ClassWriter {
     for (std::size_t i = 0; i < attached_methods_.size(); ++i) {
       Text("\n");
       Attached(attached_methods_[i],
-               SelfName(members.properties.size() + i, name), name);
+               SelfName(members.properties.size() + i, name), name,
+               self_uses[members.properties.size() + i]);
     }
     if (static_fields_)
       for (const auto& field : static_fields_->fields) {
@@ -301,6 +308,7 @@ class ClassWriter {
       // code can run before these captures, and the class has not escaped.
       // Never move these lookups into the method body: properties are mutable.
       for (std::size_t i = 0; i < members.properties.size(); ++i) {
+        if (self_uses[i] == SelfBindingUse::kUnused) continue;
         const auto& property = members.properties[i];
         Text("const ");
         Text(SelfName(i, name));
@@ -314,6 +322,7 @@ class ClassWriter {
         Text("];\n");
       }
       for (std::size_t i = 0; i < attached_methods_.size(); ++i) {
+        if (self_uses[members.properties.size() + i] == SelfBindingUse::kUnused) continue;
         const auto& method = attached_methods_[i];
         Text("const ");
         Text(SelfName(members.properties.size() + i, name));
@@ -525,7 +534,7 @@ class ClassWriter {
          });
   }
   void Member(const abc::ClassProperty& property, std::string_view self,
-              std::string_view class_name) {
+              std::string_view class_name, SelfBindingUse& self_use) {
     const auto target =
         ResolveClassMember(header_, index_, lookup_, property, roles_);
     const auto key = ReadClassKey(file_, header_, property, strings_);
@@ -544,7 +553,7 @@ class ClassWriter {
                                     self,
                                     EffectiveMethodKind::kOrdinary};
            return WriteClassMethod(method, body, output_, remaining,
-                                   &constants, &lookup_, captures_);
+                                   &constants, &lookup_, captures_, &self_use);
          });
   }
   void Accessor(const ClassAccessor& accessor, std::string_view class_name) {
@@ -571,7 +580,7 @@ class ClassWriter {
          });
   }
   void Attached(const ClassAttachedMethod& attached, std::string_view self,
-                std::string_view class_name) {
+                std::string_view class_name, SelfBindingUse& self_use) {
     const auto& target = index_.methods[attached.method.value];
     const auto attributes = TakeClassValue<abc::MethodAttributes>(
         abc::DecodeMethodAttributes(target.access_flags, header_.profile));
@@ -587,7 +596,7 @@ class ClassWriter {
                                     attached.key, self,
                                     EffectiveMethodKind::kOrdinary};
            return WriteClassMethod(method, body, output_, remaining,
-                                   &constants, &lookup_, captures_);
+                                   &constants, &lookup_, captures_, &self_use);
          });
   }
   const corpus::AbcFile& file_;

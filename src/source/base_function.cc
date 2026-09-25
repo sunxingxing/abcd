@@ -58,6 +58,7 @@ struct CallableShape {
   abc::ClassPlacement placement = abc::ClassPlacement::kPrototype;
   std::u16string_view arrow_name{};
   ParameterForm parameters = ParameterForm::kFixed;
+  SelfBindingUse* self_use = nullptr;
 };
 bool IsArrowSyntax(CallableSyntax syntax) {
   return syntax == CallableSyntax::kArrowExpression ||
@@ -234,6 +235,9 @@ class FunctionWriter {
         parameter_writes_(parameter_writes) {}
 
   FunctionEmitResult Write(const abc::MethodBody& body) {
+    // Preflight and final emission are separate attempts. Never reuse a
+    // precise certificate if a later attempt selects a conservative path.
+    if (function_.self_use) *function_.self_use = SelfBindingUse::kUnknown;
     try {
       const bool non_simple_parameters =
           function_.parameters != ParameterForm::kFixed;
@@ -415,6 +419,16 @@ class FunctionWriter {
           : semantic_template ? semantic_template->accumulator_used : true;
       if (precise_slots && register_uses.size() != frame.registers)
         return FunctionEmitError::kFrame;
+      if (function_.self_use) {
+        *function_.self_use = SelfBindingUse::kUnknown;
+        if (precise_slots) {
+          if (frame.function && frame.function->value >= register_uses.size())
+            return FunctionEmitError::kFrame;
+          const bool used = frame.function &&
+              register_uses[frame.function->value] == RegisterUse::kUsed;
+          *function_.self_use = used ? SelfBindingUse::kRequired : SelfBindingUse::kUnused;
+        }
+      }
       DeclareVmSlots(precise_slots, accumulator_used, register_uses);
       if (error_) return *error_;
       body_budget.output.bytes = budget_.output.bytes - written_;
@@ -1045,7 +1059,9 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
                                     LocalLexicalBudget budget,
                                     const MethodConstants* constants,
                                     const abc::MethodLookup* methods,
-                                    analysis::CapturedValues captures) {
+                                    analysis::CapturedValues captures,
+                                    SelfBindingUse* self_use) {
+  if (self_use) *self_use = SelfBindingUse::kUnknown;
   if (method.attributes.sendable) return FunctionEmitError::kSendable;
   if (method.attributes.kind != abc::FunctionKind::kNone &&
       method.attributes.kind != abc::FunctionKind::kAsync)
@@ -1083,6 +1099,9 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
     if (const auto failure = AccessorFunctionSlot(
             body, method.frame, budget.bytes))
       return *failure;
+  CallableShape shape{method.frame, method.self_binding, method.member.length,
+                      syntax, method.key, method.placement};
+  shape.self_use = self_use;
   if (syntax == CallableSyntax::kAsyncClassMethod) {
     std::vector<abc::CodeOffset> origins;
     std::vector<analysis::AwaitSite> awaits;
@@ -1106,14 +1125,12 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
       scoped->body_layout = BodyLayout::kNormalizedAsync;
     }
     return WriteCallable(
-        {method.frame, method.self_binding, method.member.length,
-         syntax, method.key, method.placement},
+        shape,
         normalized, output, budget, scoped ? &*scoped : nullptr, methods,
         captures);
   }
   return WriteCallable(
-      {method.frame, method.self_binding, method.member.length,
-       syntax, method.key, method.placement},
+      shape,
       body, output, budget, constants, methods,
       captures);
 }

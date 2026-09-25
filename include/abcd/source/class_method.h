@@ -6,6 +6,7 @@
 namespace abcd::source {
 // FunctionTemplate/Method kind at member materialization, NOT the file flag.
 enum class EffectiveMethodKind { kUnknown, kOrdinary, kGetter, kSetter };
+enum class SelfBindingUse : std::uint8_t { kUnknown, kUnused, kRequired };
 struct ClassMethod {
   abc::ClassMethod member;
   abc::MethodAttributes attributes;
@@ -20,6 +21,7 @@ struct ClassMethod {
 // name equal to key and descriptor placement. Ordinary methods additionally
 // need an immutable self_binding holding their exact function object: reading
 // Class.prototype[key] at invocation is NOT valid because it is mutable.
+// A successful kUnused self-use result permits omitting that external binding.
 // Default output rejects outer captures. kLanguage requires a typed capture
 // sink whose owner binds every obligation at the actual creation environment;
 // an unbound template is never standalone executable source.
@@ -37,11 +39,14 @@ struct ClassMethod {
 // Simple formal count, preflight, budgets and publication match BaseFunction.
 // A supplied method lookup enables typed nested ordinary closures. Unsupported
 // child kinds reject the entire method instead of changing function semantics.
+// Optional self_use is conservative by default and valid only on success.
+// It describes emitted self references, not whether the ABC reads its ABI slot.
 [[nodiscard]] FunctionEmitResult WriteClassMethod(
     const ClassMethod& method, const abc::MethodBody& body,
     std::ostream& output, LocalLexicalBudget budget = {},
     const MethodConstants* constants = nullptr,
     const abc::MethodLookup* methods = nullptr,
-    analysis::CapturedValues captures = analysis::CapturedValues::kReject);
+    analysis::CapturedValues captures = analysis::CapturedValues::kReject,
+    SelfBindingUse* self_use = nullptr);
 }  // namespace abcd::source
 #endif
