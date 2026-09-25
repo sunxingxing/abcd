@@ -9,7 +9,7 @@
 #include "argument_region.h"
 #include "semantic_ast_input.h"
 #include "argument_expression.h"
-#include "call_results.h"
+#include "unused_results.h"
 #include "module_receivers.h"
 #include "dead_copies.h"
 #include "return_expression.h"
@@ -757,7 +757,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
             method, ast, copy_bytes - (ast.allocated_bytes - retained_before))) return *failure;
     FoldReturnExpressions(method, ast, uses);
     FoldArgumentExpressions(method, ast, uses);
-    ElideCallResults(method, ast, uses);
+    ElideUnusedResults(method, ast, uses);
     FoldModuleReceivers(method, ast, uses);
     return ast;
   } catch (const std::bad_alloc&) {

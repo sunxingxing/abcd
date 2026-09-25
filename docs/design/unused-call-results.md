@@ -1,6 +1,6 @@
 # Unused Call Results
 
-ElideCallResults is a final shared AST annotation pass. It preserves each
+ElideUnusedResults (originally ElideCallResults) is a final shared AST annotation pass. It preserves each
 ordinary call, member call, constructor call and staged receiver call, while
 omitting an accumulator commit proven unobserved by the existing SSA counts.
 It is not call elimination and never assumes a callee is pure.
@@ -45,3 +45,37 @@ assignments, retaining all four native argument expressions.
 Statuses remain eight incomplete source records, two refused constructors at
 PC 14 and nine metadata records. Partial maps retain 195 methods and 9,745
 spans. No tests, generated JS execution or RSS measurements were run.
+
+## General Expression Results
+
+The same pass now admits scalar/property expressions, comparisons, module,
+global, realm and lexical/captured reads, and empty/primitive-buffer aggregate
+creation. HasStandaloneValue exhaustively enumerates admitted SourceExpression
+alternatives. The source grammar is audited separately from effect purity:
+objects remain parenthesized, arrays and scalar expressions remain valid
+expression statements, and capture tokens still require their original owner.
+No getter, Proxy operation, coercion, allocation or exception is removed.
+
+StringExpression remains excluded because a standalone string can become a
+directive. Callable/class naming and super/rest/await owner protocols are not
+admitted by this change. All original SSA, normal-flow, target and provenance
+checks remain; no use count is decremented merely because a commit disappears.
+The following module-receiver fold requires an exact single use, which does not
+overlap the zero-use case here. Complexity is O(N + E log(N + U)) for E candidate
+expressions and U reads, with constant extra scratch and no new dependencies.
+
+Production builds and ABC-only export `build/pasteboard-unused-results-01`
+succeeded. Logger now emits `$r5.prototype;` instead of assigning the unused
+read result to `$acc`; CommonConstants has two analogous changes. All six page
+outputs are unchanged. Totals are 6,618 lines / 121,555 bytes versus 121,576
+bytes in `build/pasteboard-callback-arguments-01`. These reads deliberately
+remain: unused values alone do not prove absence of getter/Proxy effects.
+
+Statuses remain eight incomplete records, two constructors refused at PC 14,
+and nine metadata records; partial maps retain 195 methods / 9,745 spans.
+Independent read-only review found no concrete correctness issue. Tests,
+generated JS and RSS remain paused. Deferred regressions additionally include
+throwing property reads, effectful numeric conversion, captured-cell reads,
+allocation identity, leading string directives and adjacent module receivers.
+This output evidence does not establish full source equivalence or memory-cap
+compliance.
