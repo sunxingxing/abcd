@@ -29,6 +29,7 @@
 #include "class_assembly.h"
 #include "await_positions.h"
 #include "capture_positions.h"
+#include "label_uses.h"
 
 namespace abcd::source {
 namespace {
@@ -66,6 +67,7 @@ class SourcePrinter {
   std::variant<PrintedSource, SourceFailure> PrintBody(ScalarNames names) {
     try {
       if (const auto failure = VerifyOwnFields(ast_, constants_)) return *failure;
+      PrepareLabels();
       names_ = names;
       DeclareLocals();
       if (ast_.statements.size() > limit_ / sizeof(GeneratedSpan))
@@ -105,6 +107,7 @@ class SourcePrinter {
       if (!constants_.awaits.empty())
         return SourceFailure{SourceError::kUnsupportedOperation, {}};
       if (const auto failure = VerifyOwnFields(ast_, constants_)) return *failure;
+      PrepareLabels();
       const bool record = form_ == SourceForm::kRecord;
       if (record != (record_exports_ != nullptr))
         return SourceFailure{SourceError::kInvalidEffect, {}};
@@ -1175,6 +1178,21 @@ class SourcePrinter {
       }
     }
   }
+  void PrepareLabels() {
+    // No lexical declarations live in these wrappers: locals are declared at
+    // function entry. Keep record declarations and array-capture scopes intact,
+    // and retain the staged-argument printer's independent label layout.
+    if (!record_exports_ && !ast_.argument_region && !ast_.array_captures) {
+      if (blocks_.blocks.size() > limit_ / sizeof(LabelUse))
+        throw SourceFailure{SourceError::kResourceLimit, {}};
+      label_uses_.resize(blocks_.blocks.size(), LabelUse::kAbsent);
+      const auto bytes = label_uses_.capacity() * sizeof(LabelUse);
+      if (bytes > limit_)
+        throw SourceFailure{SourceError::kResourceLimit, {}};
+      limit_ -= bytes;
+      CollectLabelUses(ast_, blocks_, label_uses_);
+    }
+  }
   void Root() {
     // Labels have no evaluation effect, but create lexical scopes. Keep the
     // unconditional entry prefix outside them so future record declarations
@@ -1318,6 +1336,18 @@ class SourcePrinter {
               result_.spans.back().end = position_;
             }
           } else if constexpr (std::is_same_v<T, analysis::RegionLabel>) {
+            if (!label_uses_.empty()) {
+              if (region.exit.value >= label_uses_.size())
+                throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+              if (label_uses_[region.exit.value] == LabelUse::kAbsent) {
+                // Preserve conservative scope-sensitive admission even though
+                // this declaration-free lexical wrapper emits no source text.
+                ++scope_depth_;
+                Region(*region.body);
+                --scope_depth_;
+                return;
+              }
+            }
             Label(region.exit);
             Text(": {\n");
             ++scope_depth_;
@@ -1366,6 +1396,7 @@ class SourcePrinter {
   }
 
   const SourceAst& ast_;
+  std::vector<LabelUse> label_uses_;
   const analysis::NormalFlow& blocks_;
   const analysis::SemanticMethod* capture_method_;
   const abc::FrameLayout& frame_;
