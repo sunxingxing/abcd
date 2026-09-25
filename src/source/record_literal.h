@@ -18,8 +18,8 @@ using RecordLiteralResult =
 [[nodiscard]] std::variant<std::size_t, EmitError> WriteDenseArray(
     std::span<const StaticAtom> elements, std::ostream& output, EmitBudget budget);
 
-// Caller proves a fresh, unescaped, single-parent tree. Computed object keys
-// reproduce DefineField including an own "__proto__" property; dense array
+// Caller proves a fresh, unescaped, single-parent tree. Object data keys keep
+// "__proto__" computed to reproduce its own DefineField property; dense array
 // elements reproduce STOWNBYINDEX. Depth is bounded independently of bytes.
 [[nodiscard]] RecordLiteralResult WriteRecordLiteral(
     std::span<const RecordLiteralNode> nodes, std::size_t root,

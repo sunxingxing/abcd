@@ -9,6 +9,7 @@
 
 #include "abcd/source/scalar_expression.h"
 #include "abcd/source/string_literal.h"
+#include "member_key.h"
 
 namespace abcd::source {
 namespace {
@@ -138,10 +139,21 @@ class LiteralWriter {
           if (i) Text(",");
           Text("\n");
           Indent(depth + 1);
-          Text("[");
-          Account(WriteStringLiteral(node.fields[i].key, output_,
-                                     {remaining_}));
-          Text("]: ");
+          switch (ClassifyObjectKey(node.fields[i].key)) {
+            case MemberKeySyntax::kIdentifier:
+              for (const auto unit : node.fields[i].key) {
+                const auto ch = static_cast<char>(unit);
+                Text({&ch, 1});
+              }
+              break;
+            case MemberKeySyntax::kQuoted:
+              Text("[");
+              Account(WriteStringLiteral(node.fields[i].key, output_,
+                                         {remaining_}));
+              Text("]");
+              break;
+          }
+          Text(": ");
           Value(node.fields[i].value, id, depth);
         }
         if (!node.fields.empty()) {

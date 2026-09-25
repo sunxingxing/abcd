@@ -13,6 +13,7 @@
 
 #include "abcd/abc/pool_reference.h"
 #include "abcd/source/string_literal.h"
+#include "member_key.h"
 
 namespace abcd::source {
 namespace {
@@ -49,9 +50,20 @@ class ObjectWriter {
       Text("({");
       for (std::size_t i = 0; i < keys.size() && !error_; ++i) {
         if (i) Text(", ");
-        Text("[");
-        String(keys[i]);
-        Text("]: ");
+        switch (ClassifyObjectKey(keys[i])) {
+          case MemberKeySyntax::kIdentifier:
+            for (const auto unit : keys[i]) {
+              const auto ch = static_cast<char>(unit);
+              Text({&ch, 1});
+            }
+            break;
+          case MemberKeySyntax::kQuoted:
+            Text("[");
+            String(keys[i]);
+            Text("]");
+            break;
+        }
+        Text(": ");
         Value(literal.entries[i * kPairEntries + 1], constants, string_bytes);
       }
       Text("})");

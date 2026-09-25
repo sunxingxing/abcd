@@ -36,5 +36,12 @@ inline MemberKeySyntax ClassifyStaticFieldKey(std::u16string_view name) {
     return MemberKeySyntax::kQuoted;
   return ClassifyMemberKey(name);
 }
+// Object PropertyDefinition with a colon: literal __proto__ changes the
+// prototype instead of defining an own data property, even when quoted.
+// Keep it computed. Keywords and constructor/prototype are ordinary data keys.
+inline MemberKeySyntax ClassifyObjectKey(std::u16string_view name) {
+  if (name == u"__proto__") return MemberKeySyntax::kQuoted;
+  return ClassifyMemberKey(name);
+}
 }  // namespace abcd::source
 #endif
