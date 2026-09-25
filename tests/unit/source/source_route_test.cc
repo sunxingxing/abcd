@@ -1,5 +1,7 @@
 #include "abcd/source/source_route.h"
 
+#include <nlohmann/json.hpp>
+
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -220,35 +222,23 @@ int main() {
   Check(std::get<RouteReceiptError>(ParseRouteReceipt(numeric_stage)) ==
         RouteReceiptError::kStage);
   // Absent keys are typed rejections, never defaults (R4).
-  const auto remove_field = [](std::string_view field) {
-    std::string mutated{text};
-    const auto at = mutated.find(field);
-    Check(at != std::string::npos);
-    mutated.erase(at, field.size());
-    return mutated;
+  const auto remove_field = [&text](std::string_view field) {
+    auto mutated = nlohmann::json::parse(text);
+    Check(mutated.erase(std::string(field)) == 1);
+    return mutated.dump();
   };
   Check(std::get<RouteReceiptError>(
-            ParseRouteReceipt(remove_field(",\"stage\":\"decoded\""))) ==
+            ParseRouteReceipt(remove_field("stage"))) ==
         RouteReceiptError::kStage);
   Check(std::get<RouteReceiptError>(ParseRouteReceipt(
-            remove_field(",\"legacy_writer_used\":false"))) ==
+            remove_field("legacy_writer_used"))) ==
         RouteReceiptError::kWriter);
   Check(std::get<RouteReceiptError>(ParseRouteReceipt(
-            remove_field(",\"evidence_rules\":1"))) ==
+            remove_field("evidence_rules"))) ==
         RouteReceiptError::kEvidence);
-  std::string missing_identity{text};
-  const auto identity_at = missing_identity.find(",\"identity\":");
-  missing_identity.erase(identity_at,
-                         missing_identity.find('}', identity_at) -
-                             identity_at + 1);
-  Check(std::get<RouteReceiptError>(ParseRouteReceipt(missing_identity)) ==
+  Check(std::get<RouteReceiptError>(ParseRouteReceipt(remove_field("identity"))) ==
         RouteReceiptError::kIdentity);
-  std::string missing_failure{text};
-  const auto failure_at = missing_failure.find(",\"failure\":");
-  missing_failure.erase(failure_at,
-                        missing_failure.find('}', failure_at) - failure_at +
-                            1);
-  Check(std::get<RouteReceiptError>(ParseRouteReceipt(missing_failure)) ==
+  Check(std::get<RouteReceiptError>(ParseRouteReceipt(remove_field("failure"))) ==
         RouteReceiptError::kFailure);
   // Contradictory receipts are rejected by the same central validator the
   // producers use (R2/R4).
@@ -311,34 +301,27 @@ int main() {
   // Child obligations close only on receipts that bind to the expected
   // input identity and are valid and Complete on the policy's accepted
   // routes (A02).
-  const auto obligation = [](MethodRouteReceipt receipt) {
-    return ChildRouteObligation{abc::EntityOffset{7586},
-                                SampleIdentity(), receipt};
+  const auto closes = [](RoutePolicy policy, MethodRouteReceipt receipt) {
+    const ChildRouteObligation obligation{abc::EntityOffset{7586},
+                                          SampleIdentity(), receipt};
+    return RouteObligationsClosed(policy, {&obligation, 1});
   };
-  Check(RouteObligationsClosed(RoutePolicy::kRequireValueTree,
-                               {&obligation(complete_value), 1}));
-  Check(RouteObligationsClosed(RoutePolicy::kLegacyAllowed,
-                               {&obligation(complete_value), 1}));
-  Check(RouteObligationsClosed(RoutePolicy::kLegacyAllowed,
-                               {&obligation(legacy_complete), 1}));
-  Check(!RouteObligationsClosed(RoutePolicy::kRequireValueTree,
-                                {&obligation(legacy_complete), 1}));
-  Check(!RouteObligationsClosed(RoutePolicy::kRequireValueTree,
-                                {&obligation(RefusedReceipt()), 1}));
-  Check(!RouteObligationsClosed(RoutePolicy::kLegacyAllowed,
-                                {&obligation(tree_only), 1}));
+  Check(closes(RoutePolicy::kRequireValueTree, complete_value));
+  Check(closes(RoutePolicy::kLegacyAllowed, complete_value));
+  Check(closes(RoutePolicy::kLegacyAllowed, legacy_complete));
+  Check(!closes(RoutePolicy::kRequireValueTree, legacy_complete));
+  Check(!closes(RoutePolicy::kRequireValueTree, RefusedReceipt()));
+  Check(!closes(RoutePolicy::kLegacyAllowed, tree_only));
   auto other_input = complete_value;
   other_input.identity.file_size += 1;
-  Check(!RouteObligationsClosed(RoutePolicy::kRequireValueTree,
-                                {&obligation(other_input), 1}));
+  Check(!closes(RoutePolicy::kRequireValueTree, other_input));
   ChildRouteObligation missing{abc::EntityOffset{7586}, SampleIdentity(), {}};
   Check(!RouteObligationsClosed(RoutePolicy::kRequireValueTree,
                                 {&missing, 1}));
   Check(RouteObligationsClosed(RoutePolicy::kRequireValueTree, {}));
   auto mismatched = complete_value;
   mismatched.method = abc::EntityOffset{7559};
-  Check(!RouteObligationsClosed(RoutePolicy::kRequireValueTree,
-                                {&obligation(mismatched), 1}));
+  Check(!closes(RoutePolicy::kRequireValueTree, mismatched));
 
   std::cout << "source_route_test: ok\n";
   return EXIT_SUCCESS;
