@@ -68,3 +68,38 @@ Deferred regressions include different source/save registers, live accumulator
 reads, handler phis, effectful separators, fused origins, mutable ABI slots,
 sequence output and adjacent zero-width mapping. Native object construction
 recovery and complete source equivalence remain unfinished.
+
+## Argument Identity Chains
+
+Ordered native argument admission can now follow an already-erased
+register-to-accumulator-to-same-register pair from the call's SSA operand back
+to its source assignment. It reuses the typed previous_origin copy certificate,
+then independently checks original destinations, normal completion, pure
+effects, exact SSA reads/writes and a single remaining use for every value,
+including the starting producer and phi consumers. Different registers,
+emitted copies, merged origins and any extra use retain the assignment.
+
+The walk follows definitions backwards, bounded by the producer and call;
+instruction positions strictly decrease. It does not rewrite SSA or subtract
+counts. Ordered arguments have distinct register targets, so admitted chains
+are disjoint. Cost is O(I log(I + U)) for I instructions and U indexed SSA reads,
+with constant scratch and no new dependency. Expressions and effects stay in
+place, and erased copy PC anchors remain unchanged. This closes the identity
+gap between object initialization and the existing native argument printer,
+without matching names, source text or sample identities.
+
+Production abc_semantic/abc_structure builds and ABC-only export to
+`build/pasteboard-argument-identities-01` succeeded. All 37 native object
+arguments from the preceding integration now omit their private register
+commit, for example Button.createWithLabel(({id: ..., params: [], ...})).
+Output remains 5,509 lines and becomes 104,313 bytes (222 fewer); this is
+source-expression recovery, not additional method coverage. Statuses remain
+eight incomplete records, two host constructors refused at PC 14 and nine
+metadata-only records. Partial maps retain 195 methods / 9,745 spans.
+
+Home method 6016 PCs 24/28/30/34 map to the literal at bytes [19648,19748);
+the erased self-copy PCs 39/41 retain zero-width anchors at byte 19748.
+Read-only review found no concrete defect. Tests, JS execution and RSS remain
+paused. Deferred regressions include repeated chains, distinct-register copies,
+intermediate extra reads, phi uses, malformed/backward definitions, origin
+conflicts and live register commits. Complete semantic equivalence is unproven.

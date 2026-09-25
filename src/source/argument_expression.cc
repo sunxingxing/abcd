@@ -5,6 +5,52 @@
 
 namespace abcd::source {
 namespace {
+bool ReachesArgument(const AstMethod& method, const SourceAst& ast,
+                     std::size_t producer, std::size_t end, abc::RegisterId target,
+                     analysis::SsaValueId definition, analysis::SsaValueId argument,
+                     std::span<const std::size_t> uses) {
+  // Follow only erased r -> acc -> r identity pairs backwards. Every value
+  // must have one original remaining consumer, including phi uses. Distinct
+  // ordered argument slots own disjoint chains; never scan a suffix per value.
+  while (argument.value < uses.size() && uses[argument.value] == 1) {
+    if (argument == definition) return true;
+    const auto save_id = method.ssa.Definition(argument);
+    if (!save_id || save_id->value <= producer + 1 || save_id->value >= end) return false;
+    const auto load_id = analysis::InstructionId{save_id->value - 1};
+    const auto& load_node = ast.statements[load_id.value];
+    if (!std::holds_alternative<analysis::NoOperation>(load_node.operation) ||
+        load_node.fused_read || load_node.fused_spill || load_node.fused_reload ||
+        load_node.previous_origin || load_node.class_origin || load_node.literal_origin ||
+        !IsRetargetedCopyAnchor(ast.statements[save_id->value], load_node)) return false;
+    const auto& load_instruction = method.instructions[load_id.value];
+    const auto& save_instruction = method.instructions[save_id->value];
+    const auto* load = std::get_if<analysis::ScalarAssignment>(&load_instruction.operation);
+    const auto* save = std::get_if<analysis::ScalarAssignment>(&save_instruction.operation);
+    const auto* load_value = load
+        ? std::get_if<analysis::ScalarValue>(&load->expression) : nullptr;
+    const auto* save_value = save
+        ? std::get_if<analysis::ScalarValue>(&save->expression) : nullptr;
+    const auto* source = load_value ? std::get_if<abc::RegisterId>(load_value) : nullptr;
+    const auto* destination = save ? std::get_if<abc::RegisterId>(&save->destination) : nullptr;
+    if (!source || *source != target || !destination || *destination != target ||
+        !save_value || !std::holds_alternative<analysis::Accumulator>(*save_value) ||
+        !std::holds_alternative<analysis::Accumulator>(load->destination) ||
+        load->completion != analysis::CompletionEffect::kNormal ||
+        save->completion != analysis::CompletionEffect::kNormal ||
+        !IsPureCopyStep(load_instruction) || !IsPureCopyStep(save_instruction)) return false;
+    const auto loaded = method.ssa.Write(load_id);
+    const auto saved = method.ssa.Write(*save_id);
+    const auto load_reads = method.ssa.Reads(load_id);
+    const auto save_reads = method.ssa.Reads(*save_id);
+    if (!loaded || !saved || *saved != argument || loaded->value >= uses.size() ||
+        uses[loaded->value] != 1 || load_reads.size() != 1 || save_reads.size() != 1 ||
+        save_reads.front().value != *loaded) return false;
+    argument = load_reads.front().value;
+    // Enforce strictly descending instruction positions even for malformed SSA.
+    end = load_id.value;
+  }
+  return false;
+}
 std::optional<analysis::SsaValueId> ArgumentDefinition(
     const AstMethod& method, const SourceAst& ast, std::size_t position,
     std::size_t end, abc::RegisterId target, std::span<const std::size_t> uses) {
@@ -74,8 +120,8 @@ void FoldArgumentExpressions(const AstMethod& method, SourceAst& ast,
       const auto output = ArgumentDefinition(method, ast, i, end, target, uses);
       const auto slot = method.ssa.Slot(read.value);
       const auto* reg = slot ? std::get_if<abc::RegisterId>(&*slot) : nullptr;
-      if (!output || output->value >= uses.size() || uses[output->value] != 1 ||
-          read.value != *output || !reg || *reg != target) continue;
+      if (!output || !reg || *reg != target ||
+          !ReachesArgument(method, ast, i, end, target, *output, read.value, uses)) continue;
       assignment->result = AssignmentResult::kArgumentOnly;
     }
   }
