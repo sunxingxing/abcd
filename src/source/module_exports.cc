@@ -11,6 +11,7 @@
 #include <streambuf>
 
 #include "abcd/source/string_literal.h"
+#include "member_key.h"
 #include "module_binding_name.h"
 
 namespace abcd::source {
@@ -158,13 +159,28 @@ std::variant<std::size_t, ModuleExportError> ModuleExports::WriteAliasesPass(
           !text(" as "))
         return output ? ModuleExportError::kOutputLimit
                       : ModuleExportError::kWrite;
-      const auto literal = WriteStringLiteral(alias.exported, output,
-                                              {budget.bytes - used});
-      if (const auto* error = std::get_if<EmitError>(&literal))
-        return *error == EmitError::kOutputLimit
-                   ? ModuleExportError::kOutputLimit
-                   : ModuleExportError::kWrite;
-      used += std::get<std::size_t>(literal);
+      // Exported names use IdentifierName, including keywords; this does not
+      // rename the private module binding or select BindingIdentifier syntax.
+      switch (ClassifyMemberKey(alias.exported)) {
+        case MemberKeySyntax::kIdentifier:
+          for (const auto unit : alias.exported) {
+            const char ch = static_cast<char>(unit);
+            if (!text({&ch, 1}))
+              return output ? ModuleExportError::kOutputLimit
+                            : ModuleExportError::kWrite;
+          }
+          break;
+        case MemberKeySyntax::kQuoted: {
+          const auto literal = WriteStringLiteral(alias.exported, output,
+                                                  {budget.bytes - used});
+          if (const auto* error = std::get_if<EmitError>(&literal))
+            return *error == EmitError::kOutputLimit
+                       ? ModuleExportError::kOutputLimit
+                       : ModuleExportError::kWrite;
+          used += std::get<std::size_t>(literal);
+          break;
+        }
+      }
       if (!text(" };\n"))
         return output ? ModuleExportError::kOutputLimit
                       : ModuleExportError::kWrite;

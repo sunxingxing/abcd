@@ -13,6 +13,14 @@ Default reexports remain inside braces; namespace reexports retain their
 separate form. Local import aliases, module specifiers, slot indices and
 indirect export resolution do not change.
 
+Local export aliases use the same IdentifierName classifier. For example,
+`export { $local0 as PasteBoard }` and `export { $local0 as default }` retain
+their original live bindings; they do not become `export default` value
+snapshots. Special/empty/non-ASCII exported names keep string-literal escaping.
+This spelling is not used to infer a private local name. The export writer's
+dry run still validates the complete output before publication, with each
+emitted byte charged to the original output budget and no new allocation.
+
 The writer now builds a typed directive index for regular and namespace
 imports, sorted by request ID, kind and original entry index. Requests are
 visited in ABC order, emitting their imports with original binding-slot aliases.
@@ -33,6 +41,14 @@ Request-only modules need no directive allocation. Invalid import request IDs
 are rejected before emission; reexport failures also leave output untouched.
 
 ## Evidence
+
+Local export spelling builds in both production CLIs; read-only review found
+no concrete defect. ABC-only `build/pasteboard-export-names-01` publishes the
+same eight incomplete records and rejects the same two constructors at PC14.
+Thirteen local export aliases use IdentifierName spelling, including Logger's
+default export and PasteBoard's two exports. This is not runtime verification;
+export spelling golden updates and keyword/escaping/budget regressions remain
+deferred with the paused test work.
 
 Request-ordered emission builds in both production CLIs; read-only review found
 no concrete defect. ABC-only export `build/pasteboard-request-imports-01`
