@@ -33,8 +33,9 @@ is cloned. Existing simple if/else reductions run first. Child sequences retain
 their normal label structure, including explicit exits to the enclosing join.
 The common printer emits the header predicate once and visits the two child
 regions under native if/else. Each arm receives the proved join as its natural
-continuation. Only a sequence's final child inherits it; labels pass it through,
-while loops and try regions do not. A block's final unconditional jump or
+continuation. Only a sequence's final child inherits it; labels supply their
+own proved exit (see unused-source-labels.md), while loops and try regions do
+not inherit an outer continuation. A block's final unconditional jump or
 fallthrough to that exact continuation needs no emitted break. Earlier exits
 and different targets remain explicit. Label-use collection applies the same
 rules, so it can omit a join label only when no emitted exit references it.
