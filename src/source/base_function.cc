@@ -893,7 +893,10 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
       names[i] = {name.data(), static_cast<std::size_t>(end - name.data())};
     }
     std::vector<std::int64_t> parameter_writes;
-    if (shape.parameters == ParameterForm::kFixed && shape.frame.parameters) {
+    // A neutral default evaluates only void 0: every formal still holds its
+    // incoming argument at body entry. Actual default initialization stays in
+    // the bytecode body. Rest formals instead denote an array, not an ABI slot.
+    if (shape.parameters != ParameterForm::kRest && shape.frame.parameters) {
       const auto counters = std::size_t(shape.frame.parameters) + 1;
       if (counters > budget.bytes / sizeof(std::int64_t) ||
           body.instructions.size() > budget.work ||

@@ -1,13 +1,14 @@
 # Immutable Entry Bindings
 
-The common printer now shares one entry-binding proof for receiver and fixed
+The common printer now shares one entry-binding proof for receiver and non-rest
 formal copies. It replaces the single-candidate receiver-copy implementation;
 there is no separate per-parameter path or graph traversal.
 
-The callable owner lends its existing complete fixed-parameter may-write counts
+The callable owner lends its existing complete non-rest parameter may-write counts
 through ScalarNames. Zero proves that the ABI slot retains the formal's entry
-value. Unknown accesses, rest parameters and neutral-default forms do not
-provide this certificate. The vector remains alive across synchronous print,
+value. Unknown accesses and rest parameters do not provide this certificate.
+Neutral-default forms use the entry-value argument in `parameter-aliases.md`.
+The vector remains alive across synchronous print,
 preflight and constructor fallback. Native receiver authority remains the
 separate typed this-binding certificate; parameter authority does not authorize
 arrow/derived receiver substitution.

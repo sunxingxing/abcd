@@ -7,8 +7,8 @@ opcode string or generated text. The common body/AST receives the alias through
 ScalarNames, and the wrapper omits only that redundant register declaration.
 When metadata names are unavailable the existing generated `$pN` name is used.
 
-The first implementation admits only fixed parameter forms. Rest and neutral
-default forms keep independent register bindings. Canonical frame validation
+Admission covers fixed and neutral-default parameter forms. Rest forms keep
+independent register bindings. Canonical frame validation
 prevents overlap with function, new.target or this slots; those bindings are
 unchanged. Every explicit register write, including unreachable instructions,
 counts conservatively. Unknown access analysis yields no alias certificate.
@@ -45,5 +45,39 @@ source-variable recovery or runtime equivalence.
 Tests, generated JS execution and RSS remain paused. Deferred regressions
 include writable/read-only mixtures, writes on exception/unreachable paths,
 overlapping/ranged writes, unknown access failure, zero/many parameters,
-200/201 scaling, rest/default exclusion, strict arguments, normalized async,
+200/201 scaling, rest exclusion, neutral defaults, strict arguments, normalized async,
 constructor retries, nested shadowing, metadata-free names and budget limits.
+
+## Neutral Defaults
+
+The callable owner already represents a non-rest length mismatch with one
+`= void 0` formal. Its initializer has no side effects and preserves the incoming
+value, including a missing or explicitly undefined argument. All actual default
+expressions and assignments remain at their original locations in the body.
+Read-only ABI registers may therefore share these formal bindings under the
+same complete may-write proof as fixed parameters. Writable registers keep
+their private snapshots; the first default ordinal is not a blanket certificate.
+
+This also lets the existing entry-copy proof consume these aliases in derived
+constructors and Builder functions. It does not substitute native this before
+super, change strict/non-simple wrapper rules, move defaults into the signature,
+or alias rest arrays to ABI argument slots. No source-text recognition or new
+execution assumption is introduced. Time and storage remain O(I+P), with the
+existing instruction/work/capacity admission and unknown-access fallback.
+
+Deferred checks include missing/undefined/null arguments, writes to only some
+formals, default bodies with side effects or throws, exception paths, nested
+captures, constructor super ordering, .length and strict arguments behavior.
+
+Both production CLI targets built. ABC-only export
+`build/pasteboard-neutral-parameter-aliases-20260925` removes 41 parameter-copy
+declaration lines across the six pages, yielding 3,980 lines / 87,829 bytes.
+PageA's constructor now reads `parent`, `__localStorage`, `extraInfo` and
+`params` through existing entry aliases; mutable local default targets remain
+independent. Its Builder captures `$p0` directly rather than an ABI snapshot.
+Method 7201 PC 9 maps to [2525,2539), the retained `$r3 = parent;` statement.
+Partial maps still contain 195 methods / 9,745 spans. Record statuses remain
+eight incomplete, two constructor refusals at PC 14 and nine metadata-only.
+Read-only review found no concrete defect. Tests, generated JS execution and
+RSS remain paused; source equivalence and structural gate completion are not
+established by this export.
