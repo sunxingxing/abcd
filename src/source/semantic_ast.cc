@@ -11,6 +11,7 @@
 #include "semantic_ast_input.h"
 #include "argument_expression.h"
 #include "super_arguments.h"
+#include "result_copies.h"
 #include "unused_results.h"
 #include "binding_receivers.h"
 #include "dead_copies.h"
@@ -772,6 +773,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     ElideUnusedResults(method, ast, uses);
     FoldObjectInitialization(method, ast, uses);
     FoldObjectCopies(method, ast, uses);
+    FoldResultCopies(method, ast, uses);
     // Known reloads rely on the *emitted* acc commit, not just original SSA
     // identity. Finish all result retargeting before establishing this fact;
     // moving a retargeting pass below this point can leave stale acc reads.

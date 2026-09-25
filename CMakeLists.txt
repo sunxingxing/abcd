@@ -160,6 +160,7 @@ target_sources(abcd_source PRIVATE src/source/argument_region.cc src/source/sema
   src/source/entry_copy_elision.cc
   src/source/argument_expression.cc
   src/source/super_arguments.cc
+  src/source/result_copies.cc
   src/source/rest_binding.cc
   src/source/unused_results.cc
   src/source/binding_receivers.cc
