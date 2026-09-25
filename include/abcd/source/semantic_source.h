@@ -101,6 +101,10 @@ struct SourceLocalStore {
   analysis::LocalCellId cell;
   analysis::ScalarSlot value;
 };
+struct SourceLocalAssignment {
+  analysis::LocalCellId cell;
+  SourceExpression value;
+};
 struct SourceModuleStore {
   analysis::ModuleSlot slot;
   analysis::ScalarSlot value;
@@ -165,7 +169,7 @@ struct SourceStagedCall {
 struct SourceInitializerCall { analysis::ReceiverCall call; };
 using SourceOperation =
     std::variant<analysis::NoOperation, SourceAssignment, SourceMemberStore, SourceOwnStore,
-                 SourceLocalStore, SourceModuleStore, SourceMethodStore,
+                 SourceLocalStore, SourceLocalAssignment, SourceModuleStore, SourceMethodStore,
                  SourceIndexedStore,
                  SourceArrayCapture, SourceArrayCommit, SourceArrayLiteral,
                  SourceConditionalBreak, SourceBreak, SourceConditionalContinue,

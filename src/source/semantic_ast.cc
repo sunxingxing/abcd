@@ -10,7 +10,7 @@
 #include "semantic_ast_input.h"
 #include "dead_copies.h"
 #include "return_expression.h"
-#include "register_assignment.h"
+#include "stored_expression.h"
 #include "copy_origins.h"
 #include "array_literals.h"
 #include "class_assembly.h"
@@ -722,7 +722,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
         ast.fallthrough.capacity() * sizeof(std::optional<analysis::BlockId>);
     if (const auto failure = ElideDeadCopies(method, ast, uses, copy_bytes)) return *failure;
     ElideCopyReloads(method, ast, uses);
-    FoldRegisterAssignments(method, ast, uses);
+    FoldStoredExpressions(method, ast, uses);
     ElideKnownReloads(method, ast, copies);
     const auto retained_before = ast.allocated_bytes;
     if (const auto failure = FoldArrayExpressions(method, ast, uses, copy_bytes)) return *failure;

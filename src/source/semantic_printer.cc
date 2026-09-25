@@ -743,6 +743,11 @@ class SourcePrinter {
             Text(" = ");
             Slot(operation.value);
             Text(";\n");
+          } else if constexpr (std::is_same_v<T, SourceLocalAssignment>) {
+            Local(operation.cell);
+            Text(" = ");
+            Expression(operation.value);
+            Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceModuleStore>) {
             if (record_exports_) {
               if (scope_depth_ || call_depth_ ||

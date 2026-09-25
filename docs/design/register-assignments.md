@@ -1,4 +1,4 @@
-# Direct Register Assignments
+# Direct Stored Expressions
 
 The common AST redirects a single-use accumulator expression directly into
 the private register saved by the immediately following instruction. The RHS
@@ -14,6 +14,14 @@ exceptional phi inputs. No fused or special-origin statement participates.
 This preserves the old destination if RHS evaluation throws and admits no
 other observer of the removed acc commit.
 
+`FoldStoredExpressions` also accepts an adjacent verified `SourceLocalStore`.
+Its original IR must be a nonthrowing `LexicalStore` taking acc, and the AST
+must still store acc. The destination is the existing certified `LocalCellId`,
+never a raw environment slot or a guessed source name. The producer becomes
+`SourceLocalAssignment` with the same expression and cell; all block, SSA-use,
+origin and aggregate exclusions above remain in force. Cell initialization and
+capture proofs are prerequisites, not inferred by this presentation pass.
+
 ## Pass Order
 
 The pass runs after dead-copy and single-use adjacent save/reload removal,
@@ -22,6 +30,8 @@ previously elided reload could rely on the acc definition this pass removes.
 The later identity pass rejects the changed target as a mismatch with original
 IR, preventing an invalid acc-preservation inference. Original use counts
 remain conservative; they are not recomputed by scanning source text.
+The new local-assignment node also stops reload identity propagation and is
+not admitted into comma-only argument/array folds.
 
 Class, buffered-object, buffered-array and empty-array creation retain their
 acc/save shape for subsequent aggregate folding. Other expression-owned
@@ -41,6 +51,15 @@ and the two rejected host constructors at PC14. Compared with
 `pasteboard-member-access-01`, combined source decreases from 11,422 lines /
 194,770 bytes to 10,463 lines / 181,937 bytes. Logger emits direct assignments
 such as `$r7 = ($acc).domain` and `$r3 = args` through the shared AST.
+
+The local-cell extension builds both production CLIs and received read-only
+review without a concrete defect. ABC-only export to
+`build/pasteboard-local-assignments-01` preserves the same eight incomplete
+records and two constructor refusals. Combined source is 10,443 lines /
+181,677 bytes. ProgressBar methods 10693 and 10639 now directly initialize
+their certified cells from parameter/receiver registers, for example
+`$inner10639_0_0 = $r10`. This is expression integration, not recovery of the
+original variable names or completion of the globals/signatures gate.
 
 Tests, generated JS execution and RSS measurement remain paused. Deferred
 regressions include throwing RHSs and handler snapshots, destination aliases,
