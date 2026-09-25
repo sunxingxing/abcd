@@ -59,6 +59,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
       static_assert(std::is_same_v<T, NoOperation> ||
                     std::is_same_v<T, NamedWrite> ||
                     std::is_same_v<T, OwnWrite> ||
+                    std::is_same_v<T, IndexedWrite> ||
                     std::is_same_v<T, ValueWrite> ||
                     std::is_same_v<T, HoleGuard> ||
                     std::is_same_v<T, BranchOperation> ||

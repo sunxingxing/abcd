@@ -43,6 +43,9 @@ std::variant<IndexedWrite, IndexedWriteError> LiftIndexedWrite(
   if (object >= frame_size) return IndexedWriteError::kRegisterRange;
   return IndexedWrite{{static_cast<std::uint32_t>(object)},
                       static_cast<std::uint32_t>(
-                          instruction.operands[index_operand].raw_bits)};
+                          instruction.operands[index_operand].raw_bits),
+                      object_operand == 0 ? std::nullopt
+                          : std::optional<std::uint16_t>{
+                              static_cast<std::uint16_t>(instruction.operands[0].raw_bits)}};
 }
 }  // namespace abcd::analysis

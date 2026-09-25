@@ -245,6 +245,14 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
               {"setter_register", accessor->setter.value},
               {"name_flag", Slot(analysis::Accumulator{})}};
         }
+        if (const auto* write =
+                std::get_if<analysis::IndexedWrite>(&lifted->operation)) {
+          output["indexed_definition"] = {
+              {"object_register", write->object.value},
+              {"index", write->index}, {"value", Slot(analysis::Accumulator{})}};
+          if (write->cache_slot)
+            output["indexed_definition"]["cache_slot"] = *write->cache_slot;
+        }
         if (dispatch) {
           if (const auto edge = analysis::ResolveExceptionEdge(*lifted, *dispatch)) {
             nlohmann::json exception{{"register_state_before_pc", edge->before.value}};

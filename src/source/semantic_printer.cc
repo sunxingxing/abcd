@@ -667,6 +667,10 @@ class SourcePrinter {
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceMethodStore>) {
             throw SourceFailure{SourceError::kClassAssembly, current_pc_};
+          } else if constexpr (std::is_same_v<T, SourceIndexedStore>) {
+            // Assignment can invoke an inherited setter. Array construction
+            // or own-descriptor provenance is required before native emission.
+            throw SourceFailure{SourceError::kOwnProperty, current_pc_};
           } else if constexpr (std::is_same_v<T, SourceOwnStore>) {
             // Pinned RuntimeDefineField sets all data attributes true. On a
             // private ordinary object with this existing data key, strict Set

@@ -16,6 +16,7 @@
 #include "abcd/analysis/function_creation.h"
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
+#include "abcd/analysis/indexed_write.h"
 #include "abcd/analysis/lexical.h"
 #include "abcd/analysis/module_load.h"
 #include "abcd/analysis/module_store.h"
@@ -97,7 +98,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        LoadHole, SuperCheck, RestCopy,
                                        BufferedArrayCreation, AwaitValue,
                                        ThrowOperation, SuperRange, ClassCreation,
-                                       DefineAccessor>;
+                                       DefineAccessor, IndexedWrite>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

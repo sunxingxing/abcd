@@ -141,6 +141,10 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   if (const auto* write = std::get_if<OwnWrite>(&own_write)) return *write;
   if (std::get<OwnWriteError>(own_write) != OwnWriteError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
+  const auto indexed_write = LiftIndexedWrite(decoded, frame_size);
+  if (const auto* write = std::get_if<IndexedWrite>(&indexed_write)) return *write;
+  if (std::get<IndexedWriteError>(indexed_write) != IndexedWriteError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto value_write = LiftValueWrite(decoded, frame_size);
   if (const auto* write = std::get_if<ValueWrite>(&value_write)) return *write;
   if (std::get<ValueWriteError>(value_write) !=
@@ -280,6 +284,13 @@ SemanticEffects Effects(const SemanticOperation& operation,
                            LanguageEffect::kHeapWrite |
                            LanguageEffect::kUserCode |
                            LanguageEffect::kAllocation;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, IndexedWrite>) {
+          // Own-index definition may inspect descriptors/array length, invoke
+          // a proxy and allocate storage before success or abrupt completion.
+          effects.normal = LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite |
+                           LanguageEffect::kUserCode | LanguageEffect::kAllocation;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, NamedWrite> ||

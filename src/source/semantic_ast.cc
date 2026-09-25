@@ -339,6 +339,12 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
         } else {
           return Fail(SourceError::kUnsupportedOperation, instruction.pc);
         }
+      } else if (const auto* write =
+                     std::get_if<analysis::IndexedWrite>(&instruction.operation)) {
+        if (effect.normal_registers.write ||
+            effect.exceptional != analysis::ExceptionalCompletion::kMayThrow)
+          return Fail(SourceError::kInvalidEffect, instruction.pc);
+        operation = SourceIndexedStore{*write, {}};
       } else if (const auto* call =
                      std::get_if<analysis::ConstructorCall>(&instruction.operation)) {
         operation = SourceAssignment{

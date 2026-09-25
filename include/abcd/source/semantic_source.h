@@ -101,6 +101,10 @@ struct SourceMethodStore {
   // This is NOT a class ownership, descriptor or non-escape certificate.
   analysis::SsaValueId home;
 };
+struct SourceIndexedStore {
+  analysis::IndexedWrite write;
+  analysis::Accumulator value;
+};
 struct SourceConditionalBreak {
   analysis::UnaryExpression condition;
   analysis::BlockId target;
@@ -130,6 +134,7 @@ struct SourceStagedCall {
 using SourceOperation =
     std::variant<analysis::NoOperation, SourceAssignment, SourceMemberStore, SourceOwnStore,
                  SourceLocalStore, SourceModuleStore, SourceMethodStore,
+                 SourceIndexedStore,
                  SourceConditionalBreak, SourceBreak, SourceConditionalContinue,
                  SourceContinue, SourceReturn, SourceThrow,
                  SourceStagedCall>;
@@ -170,6 +175,7 @@ enum class SourceError : std::uint8_t {
   kCreation,
   kSuperInitialization,
   kClassAssembly,
+  kOwnProperty,
 };
 struct SourceFailure {
   SourceError kind;
