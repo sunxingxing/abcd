@@ -29,7 +29,12 @@ every direct normal successor. Multi-hop successor liveness remains deferred.
 Accumulator may-liveness and adjacent named-field read composition now run on
 the final AST (field-read-composition.md). This is the first effectful RHS
 composition slice, not general expression recovery. Register live-range names,
-conditional register temporaries and captured receivers remain unfinished.
+general conditional register recovery and captured receivers remain unfinished.
+
+Member-predicate recovery (member-predicates.md) now uses the shared slot
+analysis for one selected temporary register per method. Strict comparisons
+can directly consume an adjacent named-property read when the slot is dead
+after the branch. General multi-register recovery and captures remain deferred.
 
 ## Immutable Parameter Copies
 

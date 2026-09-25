@@ -659,9 +659,18 @@ class SourcePrinter {
       if (input) std::visit([&](const auto& value) {
         using T = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<T, ScalarExpression>) Scalar(value);
-        else {
-          static_assert(std::is_same_v<T, StringComparison>);
+        else if constexpr (std::is_same_v<T, StringComparison>) {
           CompareString(value);
+        } else {
+          static_assert(std::is_same_v<T, MemberComparison>);
+          Text("(");
+          Expression(SourceExpression{value.left});
+          switch (value.test) {
+            case StrictEquality::kEqual: Text(" === "); break;
+            case StrictEquality::kNotEqual: Text(" !== "); break;
+          }
+          Value(value.right);
+          Text(")");
         }
       }, *input);
       else Value(condition.input);
@@ -1175,6 +1184,16 @@ class SourcePrinter {
       relocate(*statement.fused_spill, statement.spill_distance);
     if (statement.fused_reload)
       relocate(*statement.fused_reload, statement.reload_distance);
+    const auto* branch = std::get_if<SourceConditionalBreak>(&statement.operation);
+    const auto* loop = std::get_if<SourceConditionalContinue>(&statement.operation);
+    const auto* input = branch ? &branch->input : loop ? &loop->input : nullptr;
+    const auto* member = input && *input ? std::get_if<MemberComparison>(&**input) : nullptr;
+    if (member) {
+      const auto position = static_cast<std::size_t>(&statement - ast_.statements.data());
+      if (member->source.value >= position)
+        throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+      relocate(ast_.statements[member->source.value].pc, position - member->source.value);
+    }
   }
   enum class StatementForm { kStatement, kSequence, kArgument };
   void AssignmentEnd(StatementForm form) {

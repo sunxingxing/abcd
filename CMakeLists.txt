@@ -168,8 +168,9 @@ target_sources(abcd_source PRIVATE src/source/argument_region.cc src/source/sema
   src/source/receiver_binding.cc
   src/source/register_reads.cc
   src/source/store_snapshots.cc
-  src/source/accumulator_liveness.cc
+  src/source/slot_liveness.cc
   src/source/field_reads.cc
+  src/source/member_predicates.cc
   src/source/result_copies.cc
   src/source/rest_binding.cc
   src/source/unused_results.cc

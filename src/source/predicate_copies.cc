@@ -27,6 +27,9 @@ std::size_t ReplaceSlot(PredicateInput& input, const analysis::ScalarSlot& targe
     using T = std::decay_t<decltype(predicate)>;
     if constexpr (std::is_same_v<T, StringComparison>) {
       replace(predicate.left);
+    } else if constexpr (std::is_same_v<T, MemberComparison>) {
+      // Late effectful property predicates own their source coordinates.
+      return;
     } else {
       static_assert(std::is_same_v<T, analysis::ScalarExpression>);
       std::visit([&](auto& expression) {

@@ -1,26 +1,36 @@
-#include "accumulator_liveness.h"
+#include "slot_liveness.h"
 
 #include <algorithm>
 #include <type_traits>
 
+#include "register_reads.h"
+
 namespace abcd::source {
 namespace {
-using Access = AccumulatorAccess;
-bool Reads(const analysis::ScalarValue& value) {
+using Access = SlotAccess;
+bool SameSlot(const analysis::ScalarSlot& left, const analysis::ScalarSlot& right) {
+  const auto* reg = std::get_if<abc::RegisterId>(&left);
+  const auto* other = std::get_if<abc::RegisterId>(&right);
+  return reg ? other && *reg == *other : !other;
+}
+bool Reads(const analysis::ScalarValue& value, analysis::ScalarSlot slot) {
+  if (const auto* reg = std::get_if<abc::RegisterId>(&slot)) return ReadsRegister(value, *reg);
   return std::holds_alternative<analysis::Accumulator>(value);
 }
-bool Reads(const MemberExpression& member) {
-  return member.receiver || Reads(member.object);
+bool Reads(const MemberExpression& member, analysis::ScalarSlot slot) {
+  return member.receiver || Reads(member.object, slot);
 }
-bool Reads(const SourceExpression& expression) {
-  return std::visit([](const auto& value) {
+bool Reads(const SourceExpression& expression, analysis::ScalarSlot slot) {
+  if (const auto* reg = std::get_if<abc::RegisterId>(&slot))
+    return ReadsRegister(expression, *reg) != RegisterRead::kAbsent;
+  return std::visit([slot](const auto& value) {
     using T = std::decay_t<decltype(value)>;
     if constexpr (std::is_same_v<T, analysis::ScalarExpression>) {
       return analysis::ReadsAccumulator(value);
     } else if constexpr (std::is_same_v<T, MemberExpression>) {
-      return Reads(value);
+      return Reads(value, slot);
     } else if constexpr (std::is_same_v<T, StringComparison>) {
-      return Reads(value.left);
+      return Reads(value.left, slot);
     } else if constexpr (std::is_same_v<T, StringExpression> ||
                          std::is_same_v<T, GlobalExpression> ||
                          std::is_same_v<T, ModuleExpression> ||
@@ -46,46 +56,50 @@ bool Reads(const SourceExpression& expression) {
     }
   }, expression);
 }
-bool Reads(const FieldValue& stored) {
-  return std::visit([](const auto& value) {
+bool Reads(const FieldValue& stored, analysis::ScalarSlot slot) {
+  return std::visit([slot](const auto& value) {
     using T = std::decay_t<decltype(value)>;
     if constexpr (std::is_same_v<T, StringExpression>) return false;
-    else return Reads(value);
+    else return Reads(value, slot);
   }, stored);
 }
 Access Read(bool value) { return value ? Access::kRead : Access::kNone; }
-Access Classify(const SourceStatement& node) {
+Access Classify(const SourceStatement& node, analysis::ScalarSlot slot) {
   if (node.constructor_arguments || node.class_origin || node.literal_origin) return Access::kRead;
   // Predicate origins relocate PC spans only. Predicate() reads the typed
   // condition/input below, not the erased acc-producing instructions.
   const bool predicate = std::holds_alternative<SourceConditionalBreak>(node.operation) ||
       std::holds_alternative<SourceConditionalContinue>(node.operation);
-  if (!predicate && (node.fused_read || node.fused_spill || node.fused_reload)) return Access::kRead;
-  return std::visit([](const auto& op) -> Access {
+  const bool field = std::holds_alternative<SourceMemberStore>(node.operation);
+  if (!predicate && !field && (node.fused_read || node.fused_spill || node.fused_reload)) return Access::kRead;
+  return std::visit([slot](const auto& op) -> Access {
     using T = std::decay_t<decltype(op)>;
     if constexpr (std::is_same_v<T, SourceAssignment>) {
-      if (op.object_field || op.result == AssignmentResult::kArgumentOnly || Reads(op.value))
+      if (op.object_field || op.result == AssignmentResult::kArgumentOnly || Reads(op.value, slot))
         return Access::kRead;
       return op.result == AssignmentResult::kStored &&
-          std::holds_alternative<analysis::Accumulator>(op.target)
+          SameSlot(op.target, slot)
           ? Access::kWrite : Access::kNone;
     } else if constexpr (std::is_same_v<T, SourceMemberStore>) {
-      return Read(Reads(op.object) || Reads(op.value));
+      return Read(Reads(op.object, slot) || Reads(op.value, slot));
     } else if constexpr (std::is_same_v<T, SourceOwnStore>) {
-      return Read(Reads(op.value));
+      return Read(SameSlot(analysis::ScalarSlot{op.write.object}, slot) || Reads(op.value, slot));
     } else if constexpr (std::is_same_v<T, SourceReturn> || std::is_same_v<T, SourceThrow>) {
-      return Read(Reads(op.value));
+      return Read(Reads(op.value, slot));
     } else if constexpr (std::is_same_v<T, SourceReturnExpression> ||
                          std::is_same_v<T, SourceLocalAssignment>) {
-      return Read(Reads(op.value));
+      return Read(Reads(op.value, slot));
     } else if constexpr (std::is_same_v<T, SourceLocalStore> ||
                          std::is_same_v<T, SourceModuleStore>) {
-      return Read(std::holds_alternative<analysis::Accumulator>(op.value));
+      return Read(SameSlot(op.value, slot));
     } else if constexpr (std::is_same_v<T, SourceConditionalBreak> ||
                          std::is_same_v<T, SourceConditionalContinue>) {
-      if (!op.input) return Read(Reads(op.condition.input));
-      return Read(std::visit([](const auto& input) {
-        return Reads(SourceExpression{input});
+      if (!op.input) return Read(Reads(op.condition.input, slot));
+      return Read(std::visit([slot](const auto& input) {
+        using P = std::decay_t<decltype(input)>;
+        if constexpr (std::is_same_v<P, MemberComparison>)
+          return Reads(input.left, slot) || Reads(input.right, slot);
+        else return Reads(SourceExpression{input}, slot);
       }, *op.input));
     } else if constexpr (std::is_same_v<T, analysis::NoOperation> ||
                          std::is_same_v<T, SourceBreak> ||
@@ -119,8 +133,9 @@ bool Charge(std::size_t count, std::size_t width, std::size_t& bytes) {
 }
 }  // namespace
 
-std::variant<AccumulatorLiveness, SourceFailure> FindAccumulatorLiveness(
-    const AstMethod& method, const SourceAst& ast, std::size_t budget_bytes) {
+std::variant<SlotLiveness, SourceFailure> FindSlotLiveness(
+    const AstMethod& method, const SourceAst& ast, analysis::ScalarSlot slot,
+    std::size_t budget_bytes) {
   const auto invalid = SourceFailure{SourceError::kInvalidEffect, {}};
   const auto exhausted = SourceFailure{SourceError::kResourceLimit, {}};
   if (method.ssa.IsPhased() || ast.regions.catches || ast.argument_region ||
@@ -134,10 +149,10 @@ std::variant<AccumulatorLiveness, SourceFailure> FindAccumulatorLiveness(
     edges_count += block.successor_count;
   }
   auto available = budget_bytes;
-  if (!Charge(ast.statements.size(), sizeof(AccumulatorAccess) + sizeof(std::uint8_t), available) ||
+  if (!Charge(ast.statements.size(), sizeof(SlotAccess) + sizeof(std::uint8_t), available) ||
       !Charge(count, sizeof(BlockAccess) + sizeof(analysis::BlockId), available) ||
       !Charge(edges_count, sizeof(BackEdge), available)) return exhausted;
-  AccumulatorLiveness result;
+  SlotLiveness result;
   result.accesses.resize(ast.statements.size());
   result.after.resize(ast.statements.size());
   std::vector<BlockAccess> blocks(count);
@@ -146,7 +161,7 @@ std::variant<AccumulatorLiveness, SourceFailure> FindAccumulatorLiveness(
   edges.reserve(edges_count);
   queue.reserve(count);
   available = budget_bytes;
-  if (!Charge(result.accesses.capacity(), sizeof(AccumulatorAccess), available) ||
+  if (!Charge(result.accesses.capacity(), sizeof(SlotAccess), available) ||
       !Charge(result.after.capacity(), sizeof(std::uint8_t), available) ||
       !Charge(blocks.capacity(), sizeof(BlockAccess), available) ||
       !Charge(edges.capacity(), sizeof(BackEdge), available) ||
@@ -166,7 +181,7 @@ std::variant<AccumulatorLiveness, SourceFailure> FindAccumulatorLiveness(
     const bool owned = (owned_end && i <= *owned_end) ||
         (ast.super_arguments && i >= ast.super_arguments->first.value &&
          i <= ast.super_arguments->call.value);
-    result.accesses[i] = owned ? Access::kRead : Classify(node);
+    result.accesses[i] = owned ? Access::kRead : Classify(node, slot);
   }
   for (std::size_t b = 0; b < count; ++b) {
     const auto& block = method.flow.blocks[b];
@@ -190,7 +205,7 @@ std::variant<AccumulatorLiveness, SourceFailure> FindAccumulatorLiveness(
     }
   }
   // One monotone false->true transition per block. Propagate only through
-  // blocks with no first access; an overwrite kills incoming accumulator state.
+  // blocks with no first access; an overwrite kills incoming slot state.
   for (std::size_t next = 0; next < queue.size(); ++next) {
     for (auto edge = blocks[queue[next].value].incoming; edge; edge = edges[*edge].next) {
       auto& source = blocks[edges[*edge].source.value];

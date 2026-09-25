@@ -1,6 +1,6 @@
 #include "field_reads.h"
 
-#include "accumulator_liveness.h"
+#include "slot_liveness.h"
 
 namespace abcd::source {
 namespace {
@@ -15,16 +15,16 @@ std::optional<SourceFailure> FoldFieldReads(
   for (const auto& block : method.flow.blocks)
     for (std::size_t e = 0; e < block.successor_count && e < block.successors.size(); ++e)
       if (block.successors[e].kind == analysis::FlowEdgeKind::kResume) return {};
-  auto result = FindAccumulatorLiveness(method, ast, budget_bytes);
+  auto result = FindSlotLiveness(method, ast, analysis::Accumulator{}, budget_bytes);
   if (const auto* failure = std::get_if<SourceFailure>(&result)) return *failure;
-  const auto& live = std::get<AccumulatorLiveness>(result);
+  const auto& live = std::get<SlotLiveness>(result);
   for (const auto& block : method.flow.blocks) {
     const auto end = std::size_t(block.first_instruction) + block.instruction_count;
     for (auto i = std::size_t(block.first_instruction); i + 1 < end; ++i) {
       auto& head = ast.statements[i];
       auto& tail = ast.statements[i + 1];
       if (HasOwner(head) || HasOwner(tail) ||
-          live.accesses[i] != AccumulatorAccess::kWrite || live.after[i + 1]) continue;
+          live.accesses[i] != SlotAccess::kWrite || live.after[i + 1]) continue;
       const auto* assignment = std::get_if<SourceAssignment>(&head.operation);
       const auto* read = assignment ? std::get_if<MemberExpression>(&assignment->value) : nullptr;
       auto* store = std::get_if<SourceMemberStore>(&tail.operation);

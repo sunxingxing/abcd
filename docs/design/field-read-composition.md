@@ -16,6 +16,8 @@ once, so loops converge without repeated graph walks. A backwards statement
 scan then records live-after using the union of successor live-in values.
 This is conventional backwards may-liveness specialized to one VM slot, not
 a new inference of source variables or a dependency on opcode strings.
+The implementation is now shared SlotLiveness; member-predicates.md describes
+its additional bounded register-slot consumer.
 
 Staged calls and array owner intervals are entirely marked as reads, including
 their flat child statements. Super argument intervals are also barriers.

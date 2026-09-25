@@ -31,7 +31,6 @@ struct StringComparison {
   abc::PoolIndex right;
   StrictEquality test;
 };
-using PredicateInput = std::variant<analysis::ScalarExpression, StringComparison>;
 struct CallExpression {
   analysis::OrdinaryCall call;
 };
@@ -73,6 +72,13 @@ struct MemberExpression {
   abc::PoolIndex name;
   std::optional<MemberReceiver> receiver = {};
 };
+struct MemberComparison {
+  MemberExpression left;
+  analysis::ScalarValue right;
+  StrictEquality test;
+  analysis::InstructionId source;
+};
+using PredicateInput = std::variant<analysis::ScalarExpression, StringComparison, MemberComparison>;
 struct FunctionExpression {
   analysis::FunctionCreation creation;
   analysis::InstructionId instruction;
