@@ -569,7 +569,8 @@ class FieldReader {
       throw Fail(Error::kValue, pc_);
     Charge(name.capacity(), sizeof(char16_t));
     const auto old_capacity = fields_.fields.capacity();
-    fields_.fields.push_back({std::move(name), accumulator_.value});
+    fields_.fields.push_back({std::move(name), accumulator_.value,
+                             StaticFieldOrigin{method_.offset, pc_}});
     Charge(fields_.fields.capacity() - old_capacity, sizeof(StaticField));
     if (array) array_refs_[accumulator_.value] = kArraySeen;
     if (node) fields_.nodes[node->id].emitted = true;

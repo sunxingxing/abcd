@@ -215,6 +215,10 @@ class SourcePrinter {
     explicit ClassBuffer(SourcePrinter& printer,
         std::optional<analysis::InstructionId> creation = {})
         : printer_(printer), creation_(creation) {}
+    void MappedSpan(abc::EntityOffset method, const GeneratedSpan& span) override {
+      const GeneratedPosition origin;
+      printer_.MethodPositions(method, {&span, 1}, {}, &origin);
+    }
     void Positions(abc::EntityOffset method, std::span<const GeneratedSpan> spans,
                    std::span<const MethodGeneratedSpan> descendants) override {
       printer_.MethodPositions(method, spans, descendants);
@@ -261,6 +265,10 @@ class SourcePrinter {
    public:
     LeafBuffer(SourcePrinter& printer, const FunctionExpression& function)
         : printer_(printer), function_(function) {}
+    void MappedSpan(abc::EntityOffset method, const GeneratedSpan& span) override {
+      const GeneratedPosition origin;
+      printer_.MethodPositions(method, {&span, 1}, {}, &origin);
+    }
     bool Position(GeneratedPosition& position) const override {
       position = printer_.position_;
       return true;

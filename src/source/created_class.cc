@@ -16,6 +16,7 @@
 #include "abcd/source/base_constructor.h"
 #include "abcd/source/class_method.h"
 #include "abcd/source/string_literal.h"
+#include "abcd/source/semantic_source.h"
 #include "capture_stream.h"
 #include "creation_expansion.h"
 #include "class_emission.h"
@@ -263,12 +264,22 @@ class ClassWriter {
     }
     if (static_fields_)
       for (const auto& field : static_fields_->fields) {
-        Text("\nstatic [");
+        Text("\n");
+        auto* positions = dynamic_cast<CaptureBuffer*>(output_.rdbuf());
+        GeneratedPosition begin;
+        const bool mapped = field.origin && positions && positions->Position(begin);
+        Text("static [");
         Account(TakeClassValue<std::size_t>(WriteStringLiteral(
             field.name, output_, budget_.output)));
         Text("] = ");
         StaticValueText(static_fields_->values[field.value]);
         Text(";");
+        if (mapped) {
+          GeneratedPosition end;
+          if (!positions->Position(end)) throw ClassFailure{EmitError::kWrite};
+          positions->MappedSpan(field.origin->method,
+                                {field.origin->pc, begin, end});
+        }
       }
     Text("\n})");
     if (has_members) {

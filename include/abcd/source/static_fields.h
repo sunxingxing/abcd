@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_STATIC_FIELDS_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -16,9 +17,15 @@ struct StaticArray {
   std::vector<StaticAtom> elements;
 };
 using StaticValue = std::variant<StaticAtom, StaticArray, RecordNodeRef>;
+struct StaticFieldOrigin {
+  abc::EntityOffset method;
+  abc::CodeOffset pc;
+};
 struct StaticField {
   std::u16string name;
   std::size_t value = 0;
+  // Exact receiver-field definition, not the value's construction provenance.
+  std::optional<StaticFieldOrigin> origin = {};
 };
 struct StaticFields {
   std::vector<StaticValue> values;

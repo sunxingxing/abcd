@@ -38,6 +38,8 @@ class CaptureBuffer : public std::streambuf {
   // Template sinks return template coordinates with capture cursors, not final
   // file positions. Their spans must survive later insertion/replay intact.
   virtual bool Position(GeneratedPosition&) const { return false; }
+  // Already measured in this sink's coordinate space, possibly a template.
+  virtual void MappedSpan(abc::EntityOffset, const GeneratedSpan&) {}
   virtual void CapturedPositions(abc::EntityOffset, const PrintedTemplate&,
       std::span<const CaptureShift>, const GeneratedPosition&) {}
   virtual bool Capture(analysis::CapturedSlot cell,

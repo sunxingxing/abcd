@@ -59,7 +59,35 @@ method entity, original PC, origin kind and final-file endpoint coordinates.
 Neither this artifact nor its presence upgrades source completion/executable
 status or establishes runtime equivalence.
 
+## Recovered Static Fields
+
+StaticField optionally retains a StaticFieldOrigin containing the initializer
+method entity and the exact receiver-field definition PC. FieldReader records
+it when AddField accepts that definition, not from a name match or generated
+text. Existing sizeof-based field capacity accounting includes the new value.
+Manually supplied fields without an origin do not fabricate one.
+
+ClassWriter samples the position-owning sink immediately before and after the
+static field statement. MappedSpan forwards these already owner-relative
+coordinates without adding the current cursor a second time. Template capture
+cursors survive the same descendant transport as ordinary method spans. Dry
+streams without positions collect nothing. This only maps the field definition;
+literal construction, ABI transport and return instructions require separate
+origin evidence and remain unmapped for this recovered initializer path.
+
 ## ABC-Only Evidence
+
+Static-field origin transport builds in both production CLIs and read-only
+review found no concrete defect. `build/pasteboard-static-positions-01` adds
+initializer 4439 PCs 13, 21 and 29 at CommonConstants lines 31, 32 and 33.
+The original instruction listing confirms these three definition sites.
+Coverage is now 195 methods / 9,745 spans. Only CommonConstants' method map
+differs from the preceding export; JS and entry maps are unchanged. All method
+entities in the eight published records now appear in either entry or method
+artifacts, but complete per-instruction coverage and endpoint correctness have
+not been established. The source completion/refusal statuses are unchanged.
+
+Earlier nested-template evidence:
 
 Nested-template transport builds in both production CLIs and read-only review
 found no concrete defect. `build/pasteboard-nested-positions-01` has 9,742 spans
