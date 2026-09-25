@@ -992,6 +992,10 @@ class SourcePrinter {
                 if (form != StatementForm::kArgument)
                   throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
                 break;
+              case AssignmentResult::kUnused:
+                if (form == StatementForm::kArgument)
+                  throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+                break;
             }
             Expression(operation.value);
             switch (form) {
@@ -1137,8 +1141,16 @@ class SourcePrinter {
             ++call_depth_;
             // Keep the property Reference alive across argument evaluation;
             // registers are private, and the saved callee has no escaping use.
-            Slot(analysis::ScalarSlot{Accumulator{}});
-            Text(" = (");
+            switch (operation.result) {
+              case AssignmentResult::kStored:
+                Target(analysis::ScalarSlot{Accumulator{}});
+                Text(" = ");
+                break;
+              case AssignmentResult::kUnused: break;
+              case AssignmentResult::kArgumentOnly:
+                throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+            }
+            Text("(");
             Value(ScalarValue{Accumulator{}});
             Text(")");
             MemberKey(operation.name);

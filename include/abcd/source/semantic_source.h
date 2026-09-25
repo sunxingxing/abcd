@@ -95,7 +95,7 @@ using SourceExpression =
                  analysis::BufferedArrayCreation, analysis::AwaitValue,
                  analysis::SuperRange, ClassExpression, MethodExpression,
                  AccessorExpression, analysis::GlobalObjectLoad, StringComparison>;
-enum class AssignmentResult : std::uint8_t { kStored, kArgumentOnly };
+enum class AssignmentResult : std::uint8_t { kStored, kArgumentOnly, kUnused };
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;
@@ -176,6 +176,7 @@ struct SourceStagedCall {
   analysis::ReceiverCall call;
   analysis::InstructionId first_argument_statement;
   analysis::InstructionId call_statement;
+  AssignmentResult result = AssignmentResult::kStored;
 };
 // Unprintable until same-home, non-escape assembly and initializer-body proof.
 struct SourceInitializerCall { analysis::ReceiverCall call; };
