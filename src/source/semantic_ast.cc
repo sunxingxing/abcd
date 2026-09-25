@@ -11,6 +11,7 @@
 #include "dead_copies.h"
 #include "return_expression.h"
 #include "stored_expression.h"
+#include "store_receivers.h"
 #include "branch_predicate.h"
 #include "scalar_values.h"
 #include "copy_origins.h"
@@ -729,6 +730,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     ElideCopyReloads(method, ast, uses);
     FoldMemberReceivers(method, ast, uses, copies);
     FoldStoredExpressions(method, ast, uses);
+    FoldStoreReceivers(method, ast, uses);
     ElideKnownReloads(method, ast, copies);
     const auto retained_before = ast.allocated_bytes;
     if (const auto failure = FoldArrayExpressions(method, ast, uses, copy_bytes)) return *failure;
