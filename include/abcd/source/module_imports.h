@@ -29,8 +29,12 @@ using ModuleImportResult = std::variant<std::size_t, ModuleImportFailure>;
 // Caller supplies module and header from the same unchanged ABC file. Emit
 // this prelude in the record module before bodies that use $import<slot>.
 // v7.0 module-environment slots are regular imports, then namespace imports;
-// request-only declarations retain evaluation order. Indirect and star
+// declarations are emitted in request order without changing those slots.
+// Requests without import bindings retain bare imports. Indirect and star
 // exports use native ESM reexports to preserve live-binding resolution.
+// Temporary directive capacity shares the caller-admitted strings allowance;
+// string parsing receives the remainder. O(E log E + R + emitted text) for E
+// import entries and R requests, O(E) temporary storage.
 // Semantic failures leave
 // output untouched; IO failure can leave a partial write.
 [[nodiscard]] ModuleImportResult WriteModuleImports(

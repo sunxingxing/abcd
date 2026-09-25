@@ -1,5 +1,6 @@
 #include "abcd/source/module_imports.h"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <limits>
@@ -8,6 +9,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+#include <tuple>
+#include <vector>
 
 #include "abcd/source/string_literal.h"
 #include "member_key.h"
@@ -15,6 +18,12 @@
 namespace abcd::source {
 namespace {
 enum class ImportForm { kNamed, kDefault, kNamespace };
+enum class DirectiveKind { kImport, kNamespace };
+struct ModuleDirective {
+  abc::ModuleRequestId request;
+  DirectiveKind kind;
+  std::size_t index;
+};
 
 // The pinned SourceTextModule loader uses the wire imported name "*" as a
 // namespace import. This is a validated wire-boundary conversion only.
@@ -33,58 +42,52 @@ class ImportWriter {
         strings_(strings) {}
 
   void Write() {
-    for (const auto request : module_.requests) {
-      Text("import ");
-      Literal(request);
-      Text(";\n");
+    std::size_t count = 0;
+    const auto limit = strings_.bytes / sizeof(ModuleDirective);
+    for (const auto size : {module_.imports.size(), module_.namespace_imports.size()}) {
+      if (size > limit - count)
+        throw ModuleImportFailure{ModuleImportError::kResourceLimit, {}, {}};
+      count += size;
     }
-    std::size_t slot = 0;
-    for (const auto& entry : module_.imports) {
-      const auto imported = Read(entry.imported);
-      switch (ClassifyImport(imported)) {
-        case ImportForm::kNamespace:
-          Text("import * as ");
-          Alias(slot);
-          break;
-        case ImportForm::kDefault:
-          Text("import ");
-          Alias(slot);
-          break;
-        case ImportForm::kNamed:
-          Text("import { ");
-          ModuleName(imported, entry.imported);
-          Text(" as ");
-          Alias(slot);
-          Text(" }");
-          break;
+    std::vector<ModuleDirective> directives;
+    directives.reserve(count);
+    if (directives.capacity() > limit)
+      throw ModuleImportFailure{ModuleImportError::kResourceLimit, {}, {}};
+    strings_.bytes -= directives.capacity() * sizeof(ModuleDirective);
+    const auto add = [&](abc::ModuleRequestId request, DirectiveKind kind,
+                         std::size_t index) {
+      if (request.value >= module_.requests.size())
+        throw ModuleImportFailure{ModuleImportError::kRequestIndex, {}, {}};
+      directives.push_back({request, kind, index});
+    };
+    for (std::size_t i = 0; i < module_.imports.size(); ++i)
+      add(module_.imports[i].request, DirectiveKind::kImport, i);
+    for (std::size_t i = 0; i < module_.namespace_imports.size(); ++i)
+      add(module_.namespace_imports[i].request, DirectiveKind::kNamespace, i);
+    std::sort(directives.begin(), directives.end(), [](const auto& a, const auto& b) {
+      return std::tie(a.request, a.kind, a.index) < std::tie(b.request, b.kind, b.index);
+    });
+    // ESM dependency traversal follows first source occurrence, not import
+    // binding slot order. Keep ABC requests ordered while retaining every
+    // original slot; requests with no import binding keep their bare import.
+    std::size_t next = 0;
+    for (std::size_t request = 0; request < module_.requests.size(); ++request) {
+      if (next == directives.size() || directives[next].request.value != request) {
+        Text("import ");
+        Literal(module_.requests[request]);
+        Text(";\n");
       }
-      From(entry.request);
-      ++slot;
-    }
-    for (const auto& entry : module_.namespace_imports) {
-      Text("import * as ");
-      Alias(slot);
-      From(entry.request);
-      ++slot;
-    }
-    for (const auto& entry : module_.indirect_exports) {
-      const auto imported = Read(entry.imported);
-      switch (ClassifyImport(imported)) {
-        case ImportForm::kNamespace:
-          Text("export * as ");
-          ModuleName(Read(entry.exported), entry.exported);
-          break;
-        case ImportForm::kDefault:
-        case ImportForm::kNamed:
-          Text("export { ");
-          ModuleName(imported, entry.imported);
-          Text(" as ");
-          ModuleName(Read(entry.exported), entry.exported);
-          Text(" }");
-          break;
+      while (next < directives.size() && directives[next].request.value == request) {
+        const auto& directive = directives[next++];
+        switch (directive.kind) {
+          case DirectiveKind::kImport: Import(directive.index); break;
+          case DirectiveKind::kNamespace: Namespace(directive.index); break;
+        }
       }
-      From(entry.request);
     }
+    // Preserve reexport table order as well as dependency traversal order,
+    // including cyclic star resolution. Reexport-only requests stay bare above.
+    for (std::size_t i = 0; i < module_.indirect_exports.size(); ++i) Reexport(i);
     for (const auto request : module_.star_exports) {
       Text("export *");
       From(request);
@@ -95,6 +98,53 @@ class ImportWriter {
   std::size_t Size() const { return used_; }
 
  private:
+  void Import(std::size_t slot) {
+    const auto& entry = module_.imports[slot];
+    const auto imported = Read(entry.imported);
+    switch (ClassifyImport(imported)) {
+      case ImportForm::kNamespace:
+        Text("import * as ");
+        Alias(slot);
+        break;
+      case ImportForm::kDefault:
+        Text("import ");
+        Alias(slot);
+        break;
+      case ImportForm::kNamed:
+        Text("import { ");
+        ModuleName(imported, entry.imported);
+        Text(" as ");
+        Alias(slot);
+        Text(" }");
+        break;
+    }
+    From(entry.request);
+  }
+  void Namespace(std::size_t index) {
+    const auto& entry = module_.namespace_imports[index];
+    Text("import * as ");
+    Alias(module_.imports.size() + index);
+    From(entry.request);
+  }
+  void Reexport(std::size_t index) {
+    const auto& entry = module_.indirect_exports[index];
+    const auto imported = Read(entry.imported);
+    switch (ClassifyImport(imported)) {
+      case ImportForm::kNamespace:
+        Text("export * as ");
+        ModuleName(Read(entry.exported), entry.exported);
+        break;
+      case ImportForm::kDefault:
+      case ImportForm::kNamed:
+        Text("export { ");
+        ModuleName(imported, entry.imported);
+        Text(" as ");
+        ModuleName(Read(entry.exported), entry.exported);
+        Text(" }");
+        break;
+    }
+    From(entry.request);
+  }
   void ModuleName(std::u16string_view value, abc::EntityOffset offset) {
     // ModuleExportName accepts IdentifierName (including keywords), not a
     // binding identifier. Non-ASCII/arbitrary names retain exact escaping.

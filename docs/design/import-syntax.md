@@ -13,19 +13,36 @@ Default reexports remain inside braces; namespace reexports retain their
 separate form. Local import aliases, module specifiers, slot indices and
 indirect export resolution do not change.
 
-Request-only declarations remain in ABC request order before binding
-declarations. Import-slot order is not necessarily request order (PasteBoard
-is an example); deleting those declarations without a request-order-aware
-emission plan would change the order of module dependency traversal. This
-change intentionally does not perform that deletion or rename local bindings.
-Original local-name recovery still requires shared scope/collision proofs.
+The writer now builds a typed directive index for regular and namespace
+imports, sorted by request ID, kind and original entry index. Requests are
+visited in ABC order, emitting their imports with original binding-slot aliases.
+Only requests without import bindings retain a request-only declaration.
+Import-slot order is not necessarily request order (PasteBoard is an example);
+the index preserves dependency traversal without duplicate bare imports.
+Indirect/star reexports still follow in their original table order; requests
+used only by reexports keep their bare declaration. Original local-name
+recovery still requires shared scope/collision proofs.
 
-Names are decoded once per existing writer visit. Classification and output
-are linear in name length with constant extra scratch, using the existing
-output budget and buffered atomic semantic-failure boundary. There is no new
-dependency, name cache, sorting pass or semantic string dispatch.
+For E import entries and R requests, planning takes O(E log E + R), with O(E)
+temporary storage. Count accumulation and actual vector capacity are checked
+against the caller-admitted temporary string allowance; decoding receives the
+remaining allowance while the index lives. There is no quadratic scan per
+request or name cache. Classification and printing remain linear in textual
+data, with the existing output budget and buffered semantic-failure boundary.
+Request-only modules need no directive allocation. Invalid import request IDs
+are rejected before emission; reexport failures also leave output untouched.
 
 ## Evidence
+
+Request-ordered emission builds in both production CLIs; read-only review found
+no concrete defect. ABC-only export `build/pasteboard-request-imports-01`
+retains the eight incomplete records and two constructor refusals. It removes
+22 duplicate import lines across published records, yielding 9,696 lines /
+164,171 bytes. PasteBoard's request order is pasteboard, multimedia.image,
+CommonConstants, hilog, while their aliases remain slots 3, 2, 0, 1 respectively.
+Reexport order and original record paths remain unchanged.
+
+Earlier syntax-only evidence follows:
 
 Both production CLIs build; read-only review found no concrete defect.
 ABC-only export to `build/pasteboard-import-syntax-01` retains eight incomplete
@@ -38,3 +55,10 @@ checks cover default live bindings, namespace imports, default and namespace
 reexports, keyword/empty/Unicode keys, dependency evaluation order and output
 exhaustion. Export evidence does not establish runtime equivalence, original
 local names or completion of the overall source recovery goal.
+
+Additional deferred checks for request-ordered emission include mismatched
+slot/request order, cyclic dependencies, interleaved request-only imports,
+duplicate specifiers, reexport-only requests, invalid request IDs, zero
+entries, temporary-budget exhaustion and 200/201 scaling. Dependency order
+follows the first ESM request occurrence; declaration spelling does not infer
+source local names or erase distinct binding slots.
