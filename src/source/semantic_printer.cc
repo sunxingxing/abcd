@@ -430,6 +430,20 @@ class SourcePrinter {
     Text(stream.str());
   }
   void Value(const ScalarValue& value) { Scalar(ScalarExpression{value}); }
+  void Predicate(const analysis::UnaryExpression& condition, bool inverted = false) {
+    using analysis::UnaryOperator;
+    if (condition.op == UnaryOperator::kToBoolean ||
+        condition.op == UnaryOperator::kLogicalNot) {
+      // If already applies ToBoolean. Collapse only boolean operators here,
+      // never the VM's distinct numeric/boolean branch predicates.
+      if ((condition.op == UnaryOperator::kLogicalNot) != inverted) Text("!");
+      Value(condition.input);
+      return;
+    }
+    if (inverted) Text("!(");
+    Scalar(ScalarExpression{condition});
+    if (inverted) Text(")");
+  }
   void Slot(const analysis::ScalarSlot& slot) {
     std::visit([&](const auto& value) { Value(ScalarValue{value}); }, slot);
   }
@@ -825,7 +839,7 @@ class SourcePrinter {
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceConditionalBreak>) {
             Text("if (");
-            Scalar(ScalarExpression{operation.condition});
+            Predicate(operation.condition);
             Text(") break ");
             Label(operation.target);
             Text(";\n");
@@ -835,7 +849,7 @@ class SourcePrinter {
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceConditionalContinue>) {
             Text("if (");
-            Scalar(ScalarExpression{operation.condition});
+            Predicate(operation.condition);
             Text(") continue ");
             LoopLabel(operation.target);
             Text(";\n");
@@ -1136,9 +1150,9 @@ class SourcePrinter {
     Statements(header.first_instruction, header_end - 1);
     current_pc_ = terminator.pc;
     const auto begin = position_;
-    Text("if (!(");
-    Scalar(ScalarExpression{branch->condition});
-    Text(")) {\n");
+    Text("if (");
+    Predicate(branch->condition, true);
+    Text(") {\n");
     result_.spans.push_back({terminator.pc, begin, position_});
     ++scope_depth_;
     IfArm(region.body, region.join);

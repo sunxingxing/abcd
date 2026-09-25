@@ -11,6 +11,7 @@
 #include "dead_copies.h"
 #include "return_expression.h"
 #include "stored_expression.h"
+#include "branch_predicate.h"
 #include "copy_origins.h"
 #include "array_literals.h"
 #include "class_assembly.h"
@@ -720,6 +721,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
                               sizeof(std::optional<analysis::BlockId>);
     const auto copy_bytes = remaining - ast.statements.capacity() * sizeof(SourceStatement) -
         ast.fallthrough.capacity() * sizeof(std::optional<analysis::BlockId>);
+    RefineBranchPredicates(method, ast, copies);
     if (const auto failure = ElideDeadAssignments(method, ast, uses, copy_bytes)) return *failure;
     ElideCopyReloads(method, ast, uses);
     FoldStoredExpressions(method, ast, uses);
