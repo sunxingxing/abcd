@@ -10,6 +10,7 @@
 #include "semantic_ast_input.h"
 #include "dead_copies.h"
 #include "copy_origins.h"
+#include "array_literals.h"
 
 namespace abcd::source {
 namespace {
@@ -668,6 +669,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     const auto copy_bytes = remaining - ast.statements.capacity() * sizeof(SourceStatement) -
         ast.fallthrough.capacity() * sizeof(std::optional<analysis::BlockId>);
     if (const auto failure = ElideDeadCopies(method, ast, uses, copy_bytes)) return *failure;
+    if (const auto failure = FoldArrayLiterals(method, ast, copy_bytes)) return *failure;
     return ast;
   } catch (const std::bad_alloc&) {
     return Fail(SourceError::kResourceLimit);

@@ -105,6 +105,11 @@ struct SourceIndexedStore {
   analysis::IndexedWrite write;
   analysis::Accumulator value;
 };
+struct SourceArrayCapture { analysis::InstructionId element; };
+struct SourceArrayCommit {
+  abc::RegisterId target;
+  std::vector<analysis::InstructionId> elements;
+};
 struct SourceConditionalBreak {
   analysis::UnaryExpression condition;
   analysis::BlockId target;
@@ -135,6 +140,7 @@ using SourceOperation =
     std::variant<analysis::NoOperation, SourceAssignment, SourceMemberStore, SourceOwnStore,
                  SourceLocalStore, SourceModuleStore, SourceMethodStore,
                  SourceIndexedStore,
+                 SourceArrayCapture, SourceArrayCommit,
                  SourceConditionalBreak, SourceBreak, SourceConditionalContinue,
                  SourceContinue, SourceReturn, SourceThrow,
                  SourceStagedCall>;
@@ -164,6 +170,7 @@ struct SourceAst {
   std::vector<analysis::LocalCell> local_cells;
   std::optional<SourceArgumentRegion> argument_region;
   std::size_t allocated_bytes = 0;
+  std::size_t array_captures = 0;
 };
 enum class SourceError : std::uint8_t {
   kUnsupportedOperation,

@@ -38,13 +38,37 @@ owner reaches the shared printer and refuses `kOwnProperty` at PC249, so
 the constructor's semantic proof, regions and AST are no longer the gate.
 Instruction inspection retains receiver register 13 and indices 0/1 at
 PC249/262, with cache slots 26/29 and their exceptional register snapshots.
-The containing record still refuses class creation at PC264; no complete
-constructor or record is claimed.
+This was the gate before the array-construction fold below.
 
-Next, prove the unescaped empty-array construction and its element evaluation
-order before folding these definitions into a native array literal. Do not
-change array identity, expose partially initialized aliases, duplicate object
-construction, or change getter/call/exception ordering to improve coverage.
+## Dense object-array construction
+
+The shared AST now recognizes an empty array saved to a register followed by
+contiguous primitive object-buffer creations, spill/reload pairs and own-index
+definitions starting at zero. The entire interval must stay in one normal CFG
+block; phased exception SSA is excluded. No calls, array reads, extra aliases
+or control flow may intervene. Object buffers must still pass the printer's
+primitive-only validation; an unsupported buffer rejects the whole artifact.
+
+Typed `SourceArrayCapture` nodes retain each element at its original store PC.
+The final `SourceArrayCommit` emits one native array literal into the original
+receiver register. Object allocation order, accumulator and temporary register
+results remain unchanged. Array allocation is deferred across only these
+unobservable operations under the existing no-OOM/debugger contract. Partial
+matches commit their completed prefix before leaving later operations untouched;
+this does not grant general own-property assignment permission.
+
+The original empty-array PC maps to the final commit span; every instruction
+retains its source anchor. Element temporaries use reserved generated names,
+checked against local and enclosing source bindings. The fold scans instructions
+linearly and stores O(E) element IDs. Geometric vector growth admits old plus
+new capacity, and all retained plans share the existing AST byte budget.
+
+ABC-only inspection of constructor 10501 now produces `PrintedSource` through
+the shared pipeline, including `[$element97, $element101]`, subsequent instance
+property initialization and 154 PC spans. Record entry 9915 passes class creation
+at PC264 and next refuses method assembly at PC295. This is not complete record
+publication or executable-equivalence evidence; the batch record path has not
+been migrated to this record printer.
 
 Lifting and AST lowering add constant work/storage per instruction; existing
 SSA/region/AST budgets account for retained structures. Both production CLIs
@@ -52,3 +76,6 @@ compile and read-only review completed. Tests/RSS remain paused. Deferred
 regressions include all encodings/bounds, absent cache slot, unchanged
 accumulator, proxy failures, inherited setters, class enumerability, array
 length limits and descriptor-aware source admission.
+Also deferred: dense prefixes, receiver/temporary alias rejection, interrupted
+construction, generated-name conflicts, source span relocation and plan-budget
+boundaries. No test, generated-JS execution or RSS measurement was performed.

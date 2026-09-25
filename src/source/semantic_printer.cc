@@ -282,9 +282,10 @@ class SourcePrinter {
     LocalName(ast_.local_cells[id.value]);
   }
   void DeclareLocals() {
-    if (ast_.local_cells.empty() && !ast_.regions.catches) return;
+    if (ast_.local_cells.empty() && !ast_.regions.catches && !ast_.array_captures) return;
     const auto reserved = [&](std::string_view name) {
       return name.starts_with("$lex") || name.starts_with("$inner") ||
+             (ast_.array_captures && name.starts_with("$element")) ||
              (ast_.regions.catches && name == "$caught");
     };
     if (reserved(names_.accumulator) || reserved(names_.current_function) ||
@@ -305,6 +306,13 @@ class SourcePrinter {
     if (ast_.regions.catches && constants_.global_scope) {
       const auto bindings = constants_.global_scope->enclosing_bindings;
       if (std::binary_search(bindings.begin(), bindings.end(), std::string_view{"$caught"}))
+        throw SourceFailure{SourceError::kOutput, {}};
+    }
+    if (ast_.array_captures && constants_.global_scope) {
+      const auto bindings = constants_.global_scope->enclosing_bindings;
+      const auto first = std::lower_bound(
+          bindings.begin(), bindings.end(), std::string_view{"$element"});
+      if (first != bindings.end() && first->starts_with("$element"))
         throw SourceFailure{SourceError::kOutput, {}};
     }
     for (std::size_t i = 0; i < ast_.local_cells.size(); ++i) {
@@ -607,6 +615,17 @@ class SourcePrinter {
     Text("loop_");
     Number(id.value);
   }
+  void ArrayElement(analysis::InstructionId id) {
+    Text("$element");
+    Number(id.value);
+  }
+  void ArrayCapture(analysis::InstructionId id) {
+    Text("const ");
+    ArrayElement(id);
+    Text(" = ");
+    Slot(analysis::ScalarSlot{Accumulator{}});
+    Text(";\n");
+  }
   void Statement(const SourceStatement& statement) {
     current_pc_ = statement.pc;
     const auto begin = position_;
@@ -667,6 +686,19 @@ class SourcePrinter {
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceMethodStore>) {
             throw SourceFailure{SourceError::kClassAssembly, current_pc_};
+          } else if constexpr (std::is_same_v<T, SourceArrayCapture>) {
+            ArrayCapture(operation.element);
+          } else if constexpr (std::is_same_v<T, SourceArrayCommit>) {
+            if (operation.elements.empty())
+              throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+            ArrayCapture(operation.elements.back());
+            Slot(analysis::ScalarSlot{operation.target});
+            Text(" = [");
+            for (std::size_t i = 0; i < operation.elements.size(); ++i) {
+              if (i) Text(", ");
+              ArrayElement(operation.elements[i]);
+            }
+            Text("];\n");
           } else if constexpr (std::is_same_v<T, SourceIndexedStore>) {
             // Assignment can invoke an inherited setter. Array construction
             // or own-descriptor provenance is required before native emission.
