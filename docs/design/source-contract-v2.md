@@ -37,9 +37,9 @@ per immutable printer scope, not repeated for every LDGLOBAL. The versioned
 artifact contract records the premise; no source text or opcode-name dispatch
 is used to infer it.
 
-`ResourceFailureScope::kExcluded` records the approved resource-exhaustion
-scope, but lexical async prologue admission still needs integration and remains
-conservative. The rejected superclass invariant is unchanged. These decisions
+`ResourceFailureScope::kExcluded` gates a retained leading lexical allocation
+in the supported modern async prologue; see `async-lexical-prelude.md` for its
+independent proof boundaries. The rejected superclass invariant is unchanged. These decisions
 do not assert complete pasteboard coverage or runtime equivalence. Tests, JS
 execution and RSS measurement remain paused; call-result/operand, exception
 Commit, realm-shadowing and V1-default regressions remain deferred.

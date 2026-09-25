@@ -8,6 +8,7 @@
 #include "abcd/abc/register_access.h"
 #include "abcd/analysis/coroutine.h"
 #include "abcd/analysis/await_catch.h"
+#include "abcd/analysis/lexical.h"
 #include "async_handlers.h"
 
 namespace abcd::source {
@@ -27,6 +28,22 @@ bool IsRegister(const abc::BodyInstruction& instruction,
 bool IsReturn(const abc::BodyInstruction& instruction) {
   return instruction.decoded.opcode == abc::Opcode::kRETURN &&
          instruction.decoded.operand_count == 0;
+}
+bool AllowsLexicalPrelude(abc::ProfileId profile, ResourceFailureScope resources) {
+  if (resources != ResourceFailureScope::kExcluded) return false;
+  // Same modern resume profiles as FindAwaitRegions. Do not infer support
+  // for historical/future encodings from a matching opcode spelling.
+  switch (profile) {
+    case abc::ProfileId::kDynamic1202:
+    case abc::ProfileId::kDynamic1206:
+    case abc::ProfileId::kDynamic1301: return true;
+    case abc::ProfileId::kUnknown:
+    case abc::ProfileId::kDynamic9:
+    case abc::ProfileId::kDynamic1102:
+    case abc::ProfileId::kDynamic2400:
+    case abc::ProfileId::kStatic0107: return false;
+  }
+  return false;
 }
 bool TouchesRegister(const abc::BodyInstruction& instruction,
                      abc::RegisterId register_id, std::uint32_t count) {
@@ -89,12 +106,21 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
                                      std::size_t bytes,
                                      std::vector<abc::CodeOffset>* source_pcs,
                                      std::vector<analysis::AwaitSite>* awaits,
-                                     abc::ProfileId profile) {
+                                     abc::ProfileId profile,
+                                     ResourceFailureScope resources) {
   using abc::Opcode;
   const auto& sites = body.instructions;
   if (sites.size() < 7 || body.tries.empty() || body.handlers.empty())
     return FunctionEmitError::kKind;
   std::size_t enter = 0;
+  // v7 NEWLEXENV[WITHNAME] allocates VM-only state before promise creation.
+  // Keep it in normalized IR; only OOM timing is excluded by the contract.
+  // No user-visible prefix effects or arbitrary stores are admitted here.
+  if (AllowsLexicalPrelude(profile, resources) &&
+      std::holds_alternative<analysis::PushEnvironment>(
+          analysis::LiftLexicalInstruction(sites.front().decoded, frame.registers)))
+    ++enter;
+  const auto copy_begin = enter;
   while (enter < sites.size() &&
          sites[enter].decoded.opcode != Opcode::kASYNCFUNCTIONENTER) {
     if (sites[enter].decoded.opcode != Opcode::kMOV_V4_V4 &&
@@ -109,7 +135,7 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
   if (!IsRegister(sites[enter + 1], Opcode::kSTA_V8, &promise) ||
       promise.value >= frame.locals)
     return FunctionEmitError::kKind;
-  for (std::size_t i = 0; i < enter; ++i) {
+  for (std::size_t i = copy_begin; i < enter; ++i) {
     const auto& copy = sites[i].decoded;
     if (copy.operand_count != 2 ||
         copy.operands[0].kind != abc::OperandKind::kRegister ||

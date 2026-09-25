@@ -876,7 +876,8 @@ FunctionEmitResult WriteFunction(const BaseFunction& function,
     std::vector<analysis::AwaitSite> awaits;
     const auto checked = ProveAsyncCompletion(body, function.frame, budget.bytes,
         &origins, constants ? &awaits : nullptr,
-        constants ? constants->header.profile : abc::ProfileId::kUnknown);
+        constants ? constants->header.profile : abc::ProfileId::kUnknown,
+        ResourceFailures(kSourceContract));
     if (const auto* error = std::get_if<FunctionEmitError>(&checked)) return *error;
     const auto& normalized = std::get<abc::MethodBody>(checked);
     budget.bytes -= normalized.tries.capacity() * sizeof(abc::TryRegion) +
@@ -949,7 +950,8 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
     std::vector<analysis::AwaitSite> awaits;
     const auto checked = ProveAsyncCompletion(body, method.frame, budget.bytes,
         &origins, constants ? &awaits : nullptr,
-        constants ? constants->header.profile : abc::ProfileId::kUnknown);
+        constants ? constants->header.profile : abc::ProfileId::kUnknown,
+        ResourceFailures(kSourceContract));
     if (const auto* error = std::get_if<FunctionEmitError>(&checked))
       return *error;
     const auto& normalized = std::get<abc::MethodBody>(checked);
@@ -1047,7 +1049,8 @@ FunctionEmitResult WriteArrowFunction(
     std::vector<analysis::AwaitSite> awaits;
     const auto checked = ProveAsyncCompletion(body, function.frame, budget.bytes,
         &origins, constants ? &awaits : nullptr,
-        constants ? constants->header.profile : abc::ProfileId::kUnknown);
+        constants ? constants->header.profile : abc::ProfileId::kUnknown,
+        ResourceFailures(kSourceContract));
     if (const auto* error = std::get_if<FunctionEmitError>(&checked))
       return *error;
     const auto& normalized = std::get<abc::MethodBody>(checked);

@@ -137,7 +137,8 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
     if (!frame)
       return {Stage::kNormalize, static_cast<unsigned>(source::FunctionEmitError::kFrame)};
     auto prepared = source::ProveAsyncCompletion(*body, *frame, available,
-                                                 &origins, &awaits, header.profile);
+        &origins, &awaits, header.profile,
+        source::ResourceFailures(source::kSourceContract));
     if (const auto* error = std::get_if<source::FunctionEmitError>(&prepared))
       return {Stage::kNormalize, static_cast<unsigned>(*error)};
     normalized = std::get<abc::MethodBody>(std::move(prepared));
