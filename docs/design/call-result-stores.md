@@ -4,6 +4,8 @@ The unified call owner must represent its result destination before nested
 call-as-argument recovery can consume that destination. CallResultStore keeps
 the private register and original save instruction ID, not a printed binding.
 FoldStoredCalls runs after return recovery and before receiver/argument folding.
+It must also precede known-reload elimination; see reload-proof-order.md for
+the stale-accumulator regression caused by the initial pass order.
 It inspects each staged owner, its indexed invocation and the adjacent save;
 there is no per-owner interval scan, recursion or scratch allocation.
 

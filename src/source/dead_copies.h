@@ -25,6 +25,8 @@ void FoldCopyBridges(const AstMethod& method, SourceAst& ast,
 // Reuse exact SSA copy identities within uninterrupted emitted slot-copy
 // sequences. Keep live register saves, eliding only redundant acc reloads.
 // No allocation; one pass with indexed SSA reads, no inter-block propagation.
+// Run after result retargeting: its physical acc fact must not be invalidated
+// by later removal of a producer commit. See docs/design/reload-proof-order.md.
 void ElideKnownReloads(const AstMethod& method, SourceAst& ast,
                        const CopyOrigins& copies);
 }  // namespace abcd::source

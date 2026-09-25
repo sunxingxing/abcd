@@ -189,7 +189,10 @@ void ElideKnownReloads(const AstMethod& method, SourceAst& ast,
       const auto old_input = original ? CopyInput(original->expression) : std::nullopt;
       // Fused statements may perform hidden acc writes at a different source
       // position. Even a no-op anchor ends this deliberately local proof.
-      if (!source || !original || !input || !old_input ||
+      // An expression-only result does not commit its AST target. Never use
+      // it to establish physical slot equality, even if SSA identities match.
+      if (!source || source->result != AssignmentResult::kStored ||
+          !original || !input || !old_input ||
           original->completion != analysis::CompletionEffect::kNormal ||
           !SameSlot(source->target, original->destination) || !SameSlot(*input, *old_input) ||
           statement.fused_read || statement.fused_spill || statement.fused_reload ||

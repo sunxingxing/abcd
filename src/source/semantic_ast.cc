@@ -760,7 +760,6 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     FoldStoredExpressions(method, ast, uses);
     FoldStoreReceivers(method, ast, uses);
     FoldPredicateCopies(method, ast, uses);
-    ElideKnownReloads(method, ast, copies);
     const auto retained_before = ast.allocated_bytes;
     if (const auto failure = FoldArrayExpressions(method, ast, uses, copy_bytes)) return *failure;
     if (const auto failure = FoldArrayLiterals(
@@ -770,9 +769,14 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     FoldReturnExpressions(method, ast, uses);
     FoldStoredCalls(method, ast, uses);
     ElideUnusedResults(method, ast, uses);
-    FoldBindingReceivers(method, ast, uses);
     FoldObjectInitialization(method, ast, uses);
     FoldObjectCopies(method, ast, uses);
+    // Known reloads rely on the *emitted* acc commit, not just original SSA
+    // identity. Finish all result retargeting before establishing this fact;
+    // moving a retargeting pass below this point can leave stale acc reads.
+    // Receiver/argument consumers below prove and consume their own copies.
+    ElideKnownReloads(method, ast, copies);
+    FoldBindingReceivers(method, ast, uses);
     FoldArgumentExpressions(method, ast, uses);
     return ast;
   } catch (const std::bad_alloc&) {
