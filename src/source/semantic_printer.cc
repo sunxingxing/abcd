@@ -636,8 +636,11 @@ class SourcePrinter {
     Slot(analysis::ScalarSlot{Accumulator{}});
     Text(";\n");
   }
-  void Statement(const SourceStatement& statement) {
+  void Statement(const SourceStatement& statement, bool comma = false) {
     current_pc_ = statement.pc;
+    if (comma && !std::holds_alternative<SourceAssignment>(statement.operation) &&
+        !std::holds_alternative<analysis::NoOperation>(statement.operation))
+      throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
     const auto begin = position_;
     std::visit(
         [&](const auto& operation) {
@@ -646,7 +649,7 @@ class SourcePrinter {
             Slot(operation.target);
             Text(" = ");
             Expression(operation.value);
-            Text(";\n");
+            Text(comma ? ",\n" : ";\n");
           } else if constexpr (std::is_same_v<T, SourceLocalStore>) {
             Local(operation.cell);
             Text(" = ");
@@ -698,6 +701,9 @@ class SourcePrinter {
             throw SourceFailure{SourceError::kClassAssembly, current_pc_};
           } else if constexpr (std::is_same_v<T, SourceArrayCapture>) {
             ArrayCapture(operation.element);
+          } else if constexpr (std::is_same_v<T, SourceArrayLiteral>) {
+            // The sequence owner emits its child expressions and PC spans.
+            throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
           } else if constexpr (std::is_same_v<T, SourceArrayCommit>) {
             if (operation.elements.empty())
               throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
@@ -840,6 +846,39 @@ class SourcePrinter {
       result_.spans.push_back({ast_.statements[staged->call_statement.value].pc,
                                begin, position_});
   }
+  void ArrayLiteral(const SourceArrayLiteral& literal, std::size_t first,
+                    std::size_t end) {
+    if (literal.elements.empty() || literal.save.value != first + 1 ||
+        literal.elements.back().value >= end)
+      throw SourceFailure{SourceError::kInvalidEffect, ast_.statements[first].pc};
+    current_pc_ = ast_.statements[first].pc;
+    const auto begin = position_;
+    Slot(analysis::ScalarSlot{literal.target});
+    Text(" = [");
+    // Array allocation remains before element evaluation. Delaying the private
+    // save is permitted only by the SSA non-observation certificate; neither
+    // a host intrinsic nor an IIFE may substitute for native array semantics.
+    result_.spans.push_back({current_pc_, begin, position_});
+    const auto save_span = result_.spans.size();
+    result_.spans.push_back({ast_.statements[literal.save.value].pc, begin, position_});
+    auto cursor = literal.save.value + 1;
+    for (const auto element : literal.elements) {
+      if (element.value < cursor || element.value >= end ||
+          !std::holds_alternative<SourceIndexedStore>(ast_.statements[element.value].operation))
+        throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+      if (cursor != literal.save.value + 1) Text(", ");
+      Text("(\n");
+      for (; cursor < element.value; ++cursor) Statement(ast_.statements[cursor], true);
+      current_pc_ = ast_.statements[element.value].pc;
+      const auto element_begin = position_;
+      Slot(analysis::ScalarSlot{Accumulator{}});
+      Text(")");
+      result_.spans.push_back({current_pc_, element_begin, position_});
+      cursor = element.value + 1;
+    }
+    Text("];\n");
+    result_.spans[save_span].end = position_;
+  }
   void ArgumentRegion(const SourceArgumentRegion& region) {
     for (auto b = region.last_block.value; b > region.first_block.value; --b) {
       Label(analysis::BlockId{b});
@@ -878,7 +917,10 @@ class SourcePrinter {
         continue;
       }
       const auto& statement = ast_.statements[i];
-      if (const auto* staged = std::get_if<SourceStagedCall>(&statement.operation)) {
+      if (const auto* literal = std::get_if<SourceArrayLiteral>(&statement.operation)) {
+        ArrayLiteral(*literal, i, end);
+        i = std::size_t(literal->elements.back().value) + 1;
+      } else if (const auto* staged = std::get_if<SourceStagedCall>(&statement.operation)) {
         if (staged->first_argument_statement.value != i + 1 ||
             staged->call_statement.value < i + 1 ||
             (staged->call_statement.value >= end &&
@@ -918,7 +960,8 @@ class SourcePrinter {
         if (ast_.argument_region)
           end = std::min(end, std::size_t(ast_.argument_region->property.value));
         for (std::size_t i = 0; i < end; ++i) {
-          if (std::holds_alternative<SourceStagedCall>(ast_.statements[i].operation)) {
+          if (std::holds_alternative<SourceStagedCall>(ast_.statements[i].operation) ||
+              std::holds_alternative<SourceArrayLiteral>(ast_.statements[i].operation)) {
             end = i;
             break;
           }

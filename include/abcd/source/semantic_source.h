@@ -123,6 +123,13 @@ struct SourceArrayCommit {
   abc::RegisterId target;
   std::vector<analysis::InstructionId> elements;
 };
+// The owner proves a private same-block array with one final read. Element
+// intervals contain assignments/no-ops only and retain original PC anchors.
+struct SourceArrayLiteral {
+  abc::RegisterId target;
+  analysis::InstructionId save;
+  std::vector<analysis::InstructionId> elements;
+};
 struct SourceConditionalBreak {
   analysis::UnaryExpression condition;
   analysis::BlockId target;
@@ -155,7 +162,7 @@ using SourceOperation =
     std::variant<analysis::NoOperation, SourceAssignment, SourceMemberStore, SourceOwnStore,
                  SourceLocalStore, SourceModuleStore, SourceMethodStore,
                  SourceIndexedStore,
-                 SourceArrayCapture, SourceArrayCommit,
+                 SourceArrayCapture, SourceArrayCommit, SourceArrayLiteral,
                  SourceConditionalBreak, SourceBreak, SourceConditionalContinue,
                  SourceContinue, SourceReturn, SourceThrow,
                  SourceStagedCall, SourceInitializerCall>;
