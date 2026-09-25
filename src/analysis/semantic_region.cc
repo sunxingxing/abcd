@@ -1,5 +1,6 @@
 #include "abcd/analysis/semantic_region.h"
 
+#include <algorithm>
 #include <new>
 #include <optional>
 #include <stdexcept>
@@ -15,6 +16,41 @@ namespace {
 constexpr std::size_t kNodesPerBlock = 4;
 RegionFailure Fail(RegionError kind, abc::CodeOffset pc = {}) {
   return {kind, pc};
+}
+
+// Kahn already proved a complete reachable DAG. Reuse admitted storage for
+// iterative DFS reverse postorder; taken-first traversal lays out fallthrough
+// arms first without interleaving independent ready branches. This is source
+// layout only: all original edges are checked again before building regions.
+void OrderSourceBlocks(const NormalFlow& flow, std::vector<BlockId>& order,
+                       std::span<std::uint32_t> cursors,
+                       std::vector<BlockId>& pending) {
+  const auto entry = order.front();
+  order.clear();
+  pending.push_back(entry);
+  constexpr std::uint32_t kVisited = 1;
+  cursors[entry.value] = kVisited;
+  while (!pending.empty()) {
+    const auto id = pending.back();
+    const auto& block = flow.blocks[id.value];
+    const auto edge = cursors[id.value] - kVisited;
+    if (edge == block.successor_count) {
+      order.push_back(id);
+      pending.pop_back();
+      continue;
+    }
+    ++cursors[id.value];
+    const bool reverse = block.successor_count == kMaxNormalSuccessors &&
+        block.successors.front().kind == FlowEdgeKind::kFallthrough &&
+        block.successors.back().kind == FlowEdgeKind::kTaken;
+    const auto target = block.successors[reverse ? block.successor_count - 1 - edge : edge].target;
+    if (!cursors[target.value]) {
+      cursors[target.value] = kVisited;
+      pending.push_back(target);
+    }
+  }
+  std::reverse(order.begin(), order.end());
+  std::fill(cursors.begin(), cursors.end(), 0);
 }
 
 RegionResult BuildLoopRegions(const SemanticMethod& method,
@@ -145,6 +181,7 @@ RegionResult BuildSemanticRegions(const SemanticMethod& method,
     std::vector<BlockId> adjacent;
     adjacent.reserve(order.blocks.size());
     if (adjacent.capacity() > order.blocks.size()) return Fail(RegionError::kResourceLimit);
+    OrderSourceBlocks(method.flow, order.blocks, tree.order_positions, adjacent);
     OrderTerminalArms(method.flow, entries, order.blocks, tree.order_positions, adjacent);
     if (adjacent.size() != order.blocks.size()) return Fail(RegionError::kBackwardEdge);
     order.blocks.swap(adjacent);
