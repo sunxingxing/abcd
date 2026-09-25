@@ -1168,8 +1168,8 @@ class SourcePrinter {
               case AssignmentResult::kArgumentOnly:
                 throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
             }
-            if (operation.module_receiver) {
-              const auto source = operation.module_receiver->source.value;
+            if (operation.binding_receiver) {
+              const auto source = operation.binding_receiver->source.value;
               const auto property = static_cast<std::size_t>(&statement - ast_.statements.data());
               if (source >= property || result_.spans.size() < property - source)
                 throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
@@ -1177,10 +1177,12 @@ class SourcePrinter {
               if (result_.spans[index].pc != ast_.statements[source].pc)
                 throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
               const auto receiver_begin = position_;
-              Expression(SourceExpression{operation.module_receiver->value});
+              std::visit([&](const auto& value) {
+                Expression(SourceExpression{value});
+              }, operation.binding_receiver->value);
               result_.spans[index].begin = receiver_begin;
               result_.spans[index].end = position_;
-              if (const auto guard = operation.module_receiver->guard) {
+              if (const auto guard = operation.binding_receiver->guard) {
                 if (guard->value != source + 1 || guard->value >= property ||
                     index + 1 >= result_.spans.size() ||
                     result_.spans[index + 1].pc != ast_.statements[guard->value].pc)

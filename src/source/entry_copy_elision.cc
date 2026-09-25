@@ -73,6 +73,8 @@ bool HasObservedReads(const SourceAst& ast, SlotReadMode mode) {
         // Staged calls bind/observe their accumulator and arguments through
         // Slot/Value. Their child statements are audited by this same flat
         // traversal, including nested intervals; do not skip their children.
+        // BindingReceiver alternatives are binding/cell reads with no hidden
+        // VM slots. Re-audit here if that receiver variant grows other inputs.
         return true;
       } else {
         static_assert(std::is_same_v<T, SourceMethodStore> ||

@@ -10,7 +10,7 @@
 #include "semantic_ast_input.h"
 #include "argument_expression.h"
 #include "unused_results.h"
-#include "module_receivers.h"
+#include "binding_receivers.h"
 #include "dead_copies.h"
 #include "return_expression.h"
 #include "stored_expression.h"
@@ -758,7 +758,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     FoldReturnExpressions(method, ast, uses);
     FoldArgumentExpressions(method, ast, uses);
     ElideUnusedResults(method, ast, uses);
-    FoldModuleReceivers(method, ast, uses);
+    FoldBindingReceivers(method, ast, uses);
     return ast;
   } catch (const std::bad_alloc&) {
     return Fail(SourceError::kResourceLimit);

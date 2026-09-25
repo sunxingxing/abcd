@@ -1,9 +1,25 @@
-#include "module_receivers.h"
+#include "binding_receivers.h"
 
 #include "private_copy.h"
 
 namespace abcd::source {
 namespace {
+std::optional<ReceiverBinding> ReadBinding(
+    const SourceExpression& expression,
+    const analysis::SemanticOperation& operation) {
+  if (const auto* module = std::get_if<ModuleExpression>(&expression)) {
+    if (std::holds_alternative<analysis::ModuleLoad>(operation)) return *module;
+  } else if (const auto* global = std::get_if<GlobalExpression>(&expression)) {
+    const auto* read = std::get_if<analysis::GlobalAccess>(&operation);
+    if (read && read->operation == analysis::GlobalOp::kReadName &&
+        read->name == global->name) return *global;
+  } else if (const auto* local = std::get_if<LocalExpression>(&expression)) {
+    if (std::holds_alternative<analysis::LexicalLoad>(operation)) return *local;
+  } else if (const auto* captured = std::get_if<CapturedExpression>(&expression)) {
+    if (std::holds_alternative<analysis::LexicalLoad>(operation)) return *captured;
+  }
+  return {};
+}
 bool HasMergedOrigin(const SourceStatement& statement) {
   return statement.fused_read || statement.fused_spill || statement.fused_reload ||
          statement.previous_origin || statement.class_origin;
@@ -63,7 +79,7 @@ bool HasReceiverUse(const AstMethod& method, const SourceAst& ast,
 }
 }  // namespace
 
-void FoldModuleReceivers(const AstMethod& method, SourceAst& ast,
+void FoldBindingReceivers(const AstMethod& method, SourceAst& ast,
                          std::span<const std::size_t> uses) {
   if (method.ssa.IsPhased() || ast.regions.catches || ast.argument_region) return;
   for (const auto& block : method.flow.blocks) {
@@ -77,26 +93,27 @@ void FoldModuleReceivers(const AstMethod& method, SourceAst& ast,
       const auto producer = previous;
       previous = i;
       auto* call = std::get_if<SourceStagedCall>(&tail.operation);
-      if (!producer || !call || call->module_receiver || HasMergedOrigin(tail)) continue;
+      if (!producer || !call || call->binding_receiver || HasMergedOrigin(tail)) continue;
       auto& head = ast.statements[*producer];
       const auto* assignment = std::get_if<SourceAssignment>(&head.operation);
-      const auto* module = assignment
-          ? std::get_if<ModuleExpression>(&assignment->value) : nullptr;
-      if (!module || HasMergedOrigin(head) ||
+      const auto binding = assignment
+          ? ReadBinding(assignment->value, method.instructions[*producer].operation)
+          : std::nullopt;
+      if (!binding || HasMergedOrigin(head) ||
           assignment->result != AssignmentResult::kStored ||
           !std::holds_alternative<analysis::Accumulator>(assignment->target) ||
-          !std::holds_alternative<analysis::ModuleLoad>(method.instructions[*producer].operation) ||
           !std::holds_alternative<analysis::NamedRead>(method.instructions[i].operation)) continue;
       const auto output = method.ssa.Write({static_cast<std::uint32_t>(*producer)});
       if (!output || !HasReceiverUse(method, ast, *producer, i, uses)) continue;
       const auto slot = method.ssa.Slot(*output);
       if (!slot || !std::holds_alternative<analysis::Accumulator>(*slot)) continue;
-      // The live module binding is read exactly once at the same effect
-      // boundary. Keep getter evaluation and argument evaluation after it.
-      call->module_receiver = ModuleReceiver{
-          *module, analysis::InstructionId{static_cast<std::uint32_t>(*producer)}};
+      // Read the binding once at the same effect boundary; no global lookup,
+      // lexical capture/domain obligation or getter is bypassed. Arguments
+      // still execute after the receiver's property Reference is obtained.
+      call->binding_receiver = BindingReceiver{
+          *binding, analysis::InstructionId{static_cast<std::uint32_t>(*producer)}};
       if (IsModuleGuard(method, ast, *producer, *producer + 1))
-        call->module_receiver->guard = analysis::InstructionId{
+        call->binding_receiver->guard = analysis::InstructionId{
             static_cast<std::uint32_t>(*producer + 1)};
       head.operation = analysis::NoOperation{};
     }

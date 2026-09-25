@@ -1,6 +1,6 @@
 # Module Receiver Expressions
 
-FoldModuleReceivers connects an already-proven module load to a staged member
+FoldBindingReceivers (originally FoldModuleReceivers) connects an already-proven module load to a staged member
 call's receiver. It operates on shared typed AST nodes, not method names or
 source fragments. Normal SSA, no catch region and no branch argument region
 are required.
@@ -22,7 +22,7 @@ exact source/target identities and sole-use definitions. After accounting for
 the guard, the current value must have exactly one use at each transfer and
 finally at the property read. No raw use count is mutated by this pass.
 
-The module expression and original InstructionId become a ModuleReceiver on
+The module expression and original InstructionId become a BindingReceiver on
 SourceStagedCall. The old assignment becomes a zero-width NoOperation. Native
 module binding emission and all existing scope/import/export checks remain
 mandatory. The live binding is evaluated exactly once, before getter lookup
@@ -65,3 +65,44 @@ remain eight incomplete, two refused constructors at PC 14, and nine metadata.
 The expanded proof received independent read-only review with no concrete
 issue. No tests, generated JS execution or RSS checks were run; complete
 behavioral equivalence remains unproven.
+
+## General Binding Receivers
+
+BindingReceiver now owns a ReceiverBinding variant of module, global, local
+and captured reads. ReadBinding checks the original semantic operation:
+ModuleLoad, read-name GlobalAccess with the same pool key, or LexicalLoad for
+the AST's already-proven local/captured cell. It does not infer bindings from
+register names or generated source. All existing single-use, same-block,
+pure-transport, provenance and exception-region restrictions remain unchanged.
+Module guard handling remains the original module-specific certificate.
+
+The shared printer dispatches each variant back through Expression. Global
+admission and lexical/capture initialization/domain obligations still apply;
+captured receivers retain typed zero-width tokens. No mutable binding is
+snapshotted early or reread late: the binding is evaluated once before its
+property Reference and arguments, across no observable operation. Global
+getters, property getters and exceptions therefore retain their order.
+
+The moved load span retains full GeneratedPosition endpoints, including capture
+cursors, before final binding insertion. Staged-call slot audits remain valid:
+these four receiver alternatives contain no unobserved caller VM-register read.
+The variant has no dynamic allocation. Its increased size is included in the
+existing sizeof(SourceStatement) AST admission. The same disjoint-interval
+algorithm retains O(I log(I + U)) time and O(1) extra scratch, with no new
+dependency or licensing obligation.
+
+Production abc_semantic/abc_structure builds and ABC-only export
+`build/pasteboard-binding-receivers-01` succeeded. Six page records improve,
+with direct Reflect.set, NavDestination.onReady and lexical-cell
+observeComponentCreation2 calls. Totals are 6,476 lines / 119,430 bytes versus
+6,618 / 121,555 in `build/pasteboard-unused-results-01`; common-record sizes
+are unchanged. PageA method 7505 PC 12 now maps to [4981,4995), the directly
+emitted lexical receiver. Statuses remain eight incomplete records, two
+constructors refused at PC 14 and nine metadata records; partial maps retain
+195 methods / 9,745 spans.
+
+Independent read-only review found no concrete correctness issue. Tests,
+generated JS execution and RSS checks remain paused. Deferred regressions add
+global getter ordering, mutable lexical captures, stronger capture domains,
+same-byte capture cursor relocation, and register/phi-observed receiver values.
+Source equivalence and process memory-cap compliance remain unverified.

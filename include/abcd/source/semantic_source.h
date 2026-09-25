@@ -171,8 +171,10 @@ struct SourceReturnExpression {
 struct SourceThrow {
   analysis::ScalarValue value;
 };
-struct ModuleReceiver {
-  ModuleExpression value;
+using ReceiverBinding = std::variant<ModuleExpression, GlobalExpression,
+                                     LocalExpression, CapturedExpression>;
+struct BindingReceiver {
+  ReceiverBinding value;
   analysis::InstructionId source;
   std::optional<analysis::InstructionId> guard = {};
 };
@@ -182,7 +184,7 @@ struct SourceStagedCall {
   analysis::InstructionId first_argument_statement;
   analysis::InstructionId call_statement;
   AssignmentResult result = AssignmentResult::kStored;
-  std::optional<ModuleReceiver> module_receiver = {};
+  std::optional<BindingReceiver> binding_receiver = {};
 };
 // Unprintable until same-home, non-escape assembly and initializer-body proof.
 struct SourceInitializerCall { analysis::ReceiverCall call; };
