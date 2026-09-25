@@ -17,15 +17,20 @@ using SemanticTemplateResult = std::variant<
 // payloads use the explicit versioned kSourceContract environment premise;
 // explicit THROW still uses its checked SSA value. Normalized async bodies
 // need separate handler ownership; captured cells require the template contract.
+// default_length opts an owning derived constructor into literal-default
+// recovery. A successful result's parameter_defaults MUST be emitted by that
+// owner in its formal list; its body alone is not an equivalent replacement.
 [[nodiscard]] SemanticBodyResult BuildSemanticBody(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
-    analysis::SemanticBudget budget, std::size_t output_bytes);
+    analysis::SemanticBudget budget, std::size_t output_bytes,
+    std::optional<std::uint16_t> default_length = {});
 // Parametric child only. The caller must replay every typed capture into the
 // parent binding proof; text alone is not a publishable function body.
 [[nodiscard]] SemanticTemplateResult BuildSemanticTemplate(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
-    analysis::SemanticBudget budget, std::size_t output_bytes);
+    analysis::SemanticBudget budget, std::size_t output_bytes,
+    std::optional<std::uint16_t> default_length = {});
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_SEMANTIC_BODY_H_

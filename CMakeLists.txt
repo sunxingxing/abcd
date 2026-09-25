@@ -164,6 +164,7 @@ target_sources(abcd_source PRIVATE src/source/argument_region.cc src/source/sema
   src/source/constructor_arguments.cc
   src/source/class_parent_read.cc
   src/source/overwritten_accumulator.cc
+  src/source/parameter_defaults.cc
   src/source/result_copies.cc
   src/source/rest_binding.cc
   src/source/unused_results.cc

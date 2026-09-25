@@ -9,6 +9,7 @@
 #include "exception_body.h"
 #include "abcd/source/capture_preservation.h"
 #include "defined_captures.h"
+#include "parameter_defaults.h"
 
 namespace abcd::source {
 namespace {
@@ -16,7 +17,8 @@ template <analysis::CapturedValues Captures>
 auto BuildBody(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
-    analysis::SemanticBudget budget, std::size_t output_bytes)
+    analysis::SemanticBudget budget, std::size_t output_bytes,
+    std::optional<std::uint16_t> default_length)
     -> std::conditional_t<Captures == analysis::CapturedValues::kReject,
                            SemanticBodyResult, SemanticTemplateResult> {
   try {
@@ -102,8 +104,15 @@ auto BuildBody(
     return SourceFailure{SourceError::kInvalidEffect, {}};
   auto lowered = BuildSourceAst(*method, *proof, std::move(*regions), remaining,
                                 scopes->admitted, rest, derived);
-  const auto* ast = std::get_if<SourceAst>(&lowered);
+  auto* ast = std::get_if<SourceAst>(&lowered);
   if (!ast) return std::get<SourceFailure>(lowered);
+  if (default_length && names.range_derived_constructor &&
+      constants.body_layout == BodyLayout::kOriginal && constants.source_pcs.empty()) {
+    if (ast->allocated_bytes > remaining)
+      return SourceFailure{SourceError::kResourceLimit, {}};
+    if (const auto failure = RecoverParameterDefaults(
+        *method, frame, *default_length, *ast, remaining - ast->allocated_bytes)) return *failure;
+  }
   // This owner discharges ClosureWrites::kLanguage only by completing the
   // printer: every creation is retained, all children validate their stores,
   // and typed capture rebasing proves initialization at each creation. A
@@ -111,11 +120,17 @@ auto BuildBody(
   // as an unconditional proof, or infer immutable/non-undefined captures.
   if constexpr (Captures == analysis::CapturedValues::kReject) {
     auto printed = PrintSourceBody(*ast, *method, names, constants, output_bytes, proof);
-    if (auto* source = std::get_if<PrintedSource>(&printed)) return std::move(*source);
+    if (auto* source = std::get_if<PrintedSource>(&printed)) {
+      source->parameter_defaults = std::move(ast->parameter_defaults);
+      return std::move(*source);
+    }
     return std::get<SourceFailure>(printed);
   } else {
     auto printed = PrintSourceTemplate(*ast, *method, names, constants, output_bytes, proof);
-    if (auto* source = std::get_if<PrintedTemplate>(&printed)) return std::move(*source);
+    if (auto* source = std::get_if<PrintedTemplate>(&printed)) {
+      source->parameter_defaults = std::move(ast->parameter_defaults);
+      return std::move(*source);
+    }
     return std::get<SourceFailure>(printed);
   }
   } catch (const std::bad_alloc&) {
@@ -128,19 +143,21 @@ auto BuildBody(
 SemanticBodyResult BuildSemanticBody(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
-    analysis::SemanticBudget budget, std::size_t output_bytes) {
+    analysis::SemanticBudget budget, std::size_t output_bytes,
+    std::optional<std::uint16_t> default_length) {
   if (!body.tries.empty())
     return BuildExceptionBody(body, frame, names, constants, budget, output_bytes);
   return BuildBody<analysis::CapturedValues::kReject>(
-      body, frame, names, constants, budget, output_bytes);
+      body, frame, names, constants, budget, output_bytes, default_length);
 }
 SemanticTemplateResult BuildSemanticTemplate(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
-    analysis::SemanticBudget budget, std::size_t output_bytes) {
+    analysis::SemanticBudget budget, std::size_t output_bytes,
+    std::optional<std::uint16_t> default_length) {
   if (!body.tries.empty())
     return BuildExceptionTemplate(body, frame, names, constants, budget, output_bytes);
   return BuildBody<analysis::CapturedValues::kLanguage>(
-      body, frame, names, constants, budget, output_bytes);
+      body, frame, names, constants, budget, output_bytes, default_length);
 }
 }  // namespace abcd::source

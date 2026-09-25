@@ -6,6 +6,7 @@
 #include <charconv>
 #include <cstdint>
 #include <limits>
+#include <iterator>
 #include <memory>
 #include <ostream>
 #include <streambuf>
@@ -246,6 +247,7 @@ class FunctionWriter {
           (function_.syntax == CallableSyntax::kFunctionExpression ||
            function_.syntax == CallableSyntax::kAsyncFunctionExpression);
       const auto& frame = function_.frame;
+      std::span<const ParameterDefault> parameter_defaults;
       // Prepare the common body before choosing a self-binding wrapper. This
       // lambda writes syntax only; it never repeats analysis or body printing.
       const auto header = [&](bool direct_arrow) -> FunctionEmitResult {
@@ -308,13 +310,40 @@ class FunctionWriter {
           Text(function_.name);
           Text("(");
         }
+        std::size_t default_index = 0;
         for (std::uint32_t i = 0; i < frame.parameters && !error_; ++i) {
           if (i != 0) Text(", ");
           if (function_.parameters == ParameterForm::kRest &&
               i + 1 == frame.parameters)
             Text("...");
           Parameter(i);
-          if (function_.parameters == ParameterForm::kNeutralDefault &&
+          if (default_index < parameter_defaults.size() &&
+              parameter_defaults[default_index].parameter == i) {
+            Text(" = ");
+            const auto& recovered = parameter_defaults[default_index++];
+            const auto& value = recovered.value;
+            static_assert(std::variant_size_v<std::remove_cvref_t<decltype(value)>> == 2);
+            auto* sink = dynamic_cast<CaptureBuffer*>(output_.rdbuf());
+            GeneratedPosition begin;
+            const bool mapped = sink && sink->Position(begin);
+            if (const auto* integer = std::get_if<DefaultInteger>(&value)) {
+              if (integer->negated) Text("-");
+              std::array<char, std::numeric_limits<std::int32_t>::digits10 + 2> digits{};
+              const auto end = std::to_chars(digits.data(), digits.data() + digits.size(),
+                                              integer->value).ptr;
+              Text({digits.data(), static_cast<std::size_t>(end - digits.data())});
+            } else {
+              // Unlike the identifier undefined, void 0 cannot be shadowed
+              // by another formal, an import, or an enclosing lexical name.
+              Text("void 0");
+            }
+            if (mapped && !error_) {
+              GeneratedPosition end;
+              if (!sink->Position(end) || !constants_) return EmitError::kWrite;
+              for (auto index = recovered.first.value; index < recovered.end.value; ++index)
+                sink->MappedSpan(constants_->method, {body.instructions[index].offset, begin, end});
+            }
+          } else if (function_.parameters == ParameterForm::kNeutralDefault &&
               i == function_.length)
             Text(" = void 0");
         }
@@ -378,25 +407,44 @@ class FunctionWriter {
           function_.syntax == CallableSyntax::kAsyncClassMethod ||
           function_.syntax == CallableSyntax::kClassGetter ||
           function_.syntax == CallableSyntax::kClassSetter;
-      // The wrapper already proves neutral-default .length adaptation. The
-      // original default-assignment bytecode stays in the generic body; do not
-      // route non-simple formals back to a dedicated body writer.
+      // The wrapper proves neutral-default .length adaptation. Only a common
+      // body's literal-default certificate can move initialization into the
+      // signature; fallback keeps the original default-assignment bytecode.
       if (ordinary_body && body_constants) {
+        const auto default_length = function_.syntax == CallableSyntax::kRangeDerivedConstructor &&
+            function_.parameters == ParameterForm::kNeutralDefault
+            ? std::optional<std::uint16_t>{function_.length} : std::nullopt;
         if (captured_values_ == analysis::CapturedValues::kLanguage) {
           auto prepared = BuildSemanticTemplate(
               body, frame, names_, *body_constants,
-              {body_budget.bytes, body_budget.work}, body_budget.output.bytes);
+              {body_budget.bytes, body_budget.work}, body_budget.output.bytes, default_length);
           semantic_resource_limit = resource_failure(prepared);
           if (auto* source = std::get_if<PrintedTemplate>(&prepared))
             semantic_template = std::move(*source);
         } else {
           auto prepared = BuildSemanticBody(
               body, frame, names_, *body_constants,
-              {body_budget.bytes, body_budget.work}, body_budget.output.bytes);
+              {body_budget.bytes, body_budget.work}, body_budget.output.bytes, default_length);
           semantic_resource_limit = resource_failure(prepared);
           if (auto* source = std::get_if<PrintedSource>(&prepared))
             semantic_body = std::move(*source);
         }
+      }
+      if (semantic_body) parameter_defaults = semantic_body->parameter_defaults;
+      if (semantic_template) parameter_defaults = semantic_template->parameter_defaults;
+      // Transfer the erased body's anchors to the initializer as it is
+      // emitted above. Never recover parameter positions by scanning JS text.
+      const auto moved_default = [&](const GeneratedSpan& span) {
+        const auto it = std::upper_bound(parameter_defaults.begin(), parameter_defaults.end(), span.pc,
+            [&](abc::CodeOffset pc, const ParameterDefault& value) {
+              return pc < body.instructions[value.first.value].offset;
+            });
+        return it != parameter_defaults.begin() &&
+            span.pc < body.instructions[std::prev(it)->end.value].offset;
+      };
+      if (!parameter_defaults.empty()) {
+        if (semantic_body) std::erase_if(semantic_body->spans, moved_default);
+        if (semantic_template) std::erase_if(semantic_template->spans, moved_default);
       }
       // A recovered await's source semantics exist only in the generic IR.
       // Legacy writers must never reinterpret the retained VM await opcode.
@@ -478,6 +526,7 @@ class FunctionWriter {
               !charge(semantic_template->captures.capacity(), sizeof(SourceCapture)) ||
               !charge(semantic_template->method_spans.capacity(), sizeof(MethodGeneratedSpan)) ||
               !charge(semantic_template->register_uses.capacity(), sizeof(RegisterUse)) ||
+              !charge(semantic_template->parameter_defaults.capacity(), sizeof(ParameterDefault)) ||
               (semantic_template->host_realm &&
                (!charge(semantic_template->host_realm->binding.capacity(), sizeof(char)) ||
                 !charge(1, sizeof(char)))) ||

@@ -548,7 +548,7 @@ class SourcePrinter {
     // Phased exception owners have different SSA coordinates. Their slot
     // census is independent: never apply normal-SSA aliases or rest transport
     // merely because every emitted operand can be observed.
-    if (!capture_method_ || ast_.regions.catches) return;
+    if (!capture_method_ || ast_.regions.catches || !ast_.parameter_defaults.empty()) return;
     // Body-only APIs deliberately have no wrapper FrameLayout. The owner
     // supplies the real register span and formal range in ScalarNames.
     if (names_.this_binding || !names_.parameter_writes.empty() || names_.rest) {
@@ -1775,6 +1775,21 @@ class SourcePrinter {
       return;
     }
     const auto& terminator = ast_.statements[header_end - 1];
+    const auto recovered_default = std::lower_bound(
+        ast_.parameter_defaults.begin(), ast_.parameter_defaults.end(), header_end - 1,
+        [](const ParameterDefault& value, auto index) { return value.branch.value < index; });
+    if (recovered_default != ast_.parameter_defaults.end() &&
+        recovered_default->branch.value == header_end - 1) {
+      if (argument || region.alternate || recovered_default->end.value != body_end ||
+          recovered_default->first.value < header.first_instruction ||
+          body.first_instruction != header_end)
+        throw SourceFailure{SourceError::kInvalidEffect, terminator.pc};
+      // The callable emits this initializer in its formal list. Keep all
+      // original body PCs, now zero-width, instead of printing an empty if.
+      Statements(header.first_instruction, header_end);
+      Statements(body.first_instruction, body_end);
+      return;
+    }
     const auto* branch = std::get_if<SourceConditionalBreak>(&terminator.operation);
     if (!branch || branch->target != region.alternate.value_or(region.join))
       throw SourceFailure{SourceError::kInvalidEffect, terminator.pc};

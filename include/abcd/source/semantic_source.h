@@ -18,6 +18,7 @@
 #include "abcd/source/linear_body.h"
 #include "abcd/source/source_contract.h"
 #include "abcd/source/object_field.h"
+#include "abcd/source/parameter_default.h"
 
 namespace abcd::analysis { struct ExceptionLocals; }
 namespace abcd::source {
@@ -272,6 +273,7 @@ struct SourceAst {
   std::size_t allocated_bytes = 0;
   std::size_t array_captures = 0;
   std::optional<SuperArgumentRegion> super_arguments;
+  std::vector<ParameterDefault> parameter_defaults;
 };
 enum class SourceError : std::uint8_t {
   kUnsupportedOperation,
@@ -352,6 +354,7 @@ struct PrintedSource {
   VmSlotUse vm_slots = VmSlotUse::kUnknown;
   bool accumulator_used = false;
   std::vector<RegisterUse> register_uses;
+  std::vector<ParameterDefault> parameter_defaults;
 };
 struct SourceCapture {
   GeneratedPosition position;
@@ -371,6 +374,7 @@ struct PrintedTemplate {
   VmSlotUse vm_slots = VmSlotUse::kUnknown;
   bool accumulator_used = false;
   std::vector<RegisterUse> register_uses;
+  std::vector<ParameterDefault> parameter_defaults;
 };
 // source is the unchanged PrintSourceTemplate result. bindings is one
 // parent-PROVEN initialized local cell per capture occurrence,
