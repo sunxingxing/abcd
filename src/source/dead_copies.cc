@@ -52,6 +52,30 @@ std::optional<SourceFailure> ElideDeadAssignments(const AstMethod& method,
   pending.reserve(method.instructions.size());
   if (pending.capacity() > bytes / sizeof(analysis::InstructionId))
     return SourceFailure{SourceError::kResourceLimit, {}};
+  if (!method.ssa.IsPhased() && !ast.regions.catches) {
+    for (std::size_t i = 0; i < method.instructions.size(); ++i) {
+      const auto& instruction = method.instructions[i];
+      const auto& node = ast.statements[i];
+      if (!std::holds_alternative<analysis::SuperCheck>(instruction.operation) ||
+          !std::holds_alternative<analysis::NoOperation>(node.operation) ||
+          node.fused_read || node.fused_spill || node.fused_reload ||
+          node.previous_origin || node.class_origin || node.literal_origin ||
+          instruction.effects.normal_registers.write) continue;
+      const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(i)});
+      if (reads.size() != 1 || reads.front().value.value >= uses.size()) continue;
+      const auto input = reads.front().value;
+      const auto producer = method.ssa.Definition(input);
+      if (uses[input.value] != 1 || !producer ||
+          ast.statements[producer->value].literal_origin ||
+          !DeadAssignment(method.instructions[producer->value],
+                          ast.statements[producer->value])) continue;
+      // BuildSourceAst already discharged this check using the whole-derived
+      // constructor or Defined-value proof. Only release a sole dead-copy use:
+      // mixed live/guard counts still belong to later guarded-retarget proofs.
+      // NoOperation by itself never licenses removing arbitrary IR reads.
+      --uses[input.value];
+    }
+  }
   const auto enqueue = [&](analysis::SsaValueId value) {
     if (uses[value.value]) return;
     const auto origin = method.ssa.Definition(value);

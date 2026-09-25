@@ -72,3 +72,46 @@ performance. Tests, generated JS execution and RSS remain paused. Deferred
 regressions additionally include dead constants behind copy chains, constants
 live through handler phis, special numeric values, and effectful expressions
 whose results are unused but whose evaluation must remain.
+
+## Sole Uses By Discharged Super Checks
+
+Before seeding the existing DCE worklist, normal-SSA methods inspect original
+SuperCheck sites that BuildSourceAst has already lowered to plain NoOperation.
+That lowering requires either the complete derived-constructor certificate or
+the existing Defined-value/capture-domain proof (or a typed no-op check). This
+pass does not independently assume initialization, convert arbitrary NoOperation
+nodes into dead reads, or remove an unproved exception.
+
+The original check must have exactly one SSA input, no register result and no
+merged origin. Its input must have one total remaining use, including every
+phi observer, and be defined by a still-emitted pure copy/primitive assignment
+already eligible for DCE. Only then is the check use subtracted. The ordinary
+worklist removes that dead assignment and recursively releases private input
+copies. Check and removed-copy PCs remain zero-width anchors. Effectful inputs,
+capture loads, shared inputs, exception/phased methods and origin owners stay
+unchanged. Original IR/SSA and constructor proof are not rewritten.
+
+The sole-use restriction intentionally retains mixed check/live counts: later
+guarded-expression and retargeted-copy proofs still count their original guard
+reads. It avoids changing that shared accounting contract. Multiple guards of
+one value are conservatively retained, rather than performing repeated scans.
+
+One extra instruction scan uses the existing SSA read index and allocates no
+additional storage. For G check sites, ordinary-facade cost becomes
+O(I+V+(G+C) log R); the existing admitted queue remains bounded by I. Deferred
+regressions include pre-super uninitialized checks, post-super checks, live
+and phi observers, effectful producers, capture requirements, repeated guards,
+exception fallback, zero-width origins and worklist cascades. Tests, generated
+JS execution and RSS remain paused.
+
+Production CLI builds and ABC-only export
+`build/pasteboard-dead-super-inputs-20260925` succeeded. Five page constructors
+lose their unused initial VM-this declaration/copy and the accumulator load
+used only by the discharged uninitialized check. Home is unchanged. Totals
+are 3,852 lines / 86,173 bytes, down 15 lines / 215 bytes from super-arguments.
+PageA method 7201 PC 6 now anchors at [2350,2350); PCs 85/87 anchor at
+[2537,2537). Super/result-save PCs 79/83 retain [2483,2537). Partial maps
+retain 195 methods / 9,745 spans; statuses remain eight incomplete records,
+two constructors refused at PC 14 and nine metadata-only records. Read-only
+review found no concrete defect. No tests, JS execution or RSS tracking ran;
+these observations do not establish full source equivalence.
