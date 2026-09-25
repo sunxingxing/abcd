@@ -12,6 +12,7 @@
 #include "return_expression.h"
 #include "stored_expression.h"
 #include "branch_predicate.h"
+#include "scalar_constants.h"
 #include "copy_origins.h"
 #include "array_literals.h"
 #include "class_assembly.h"
@@ -721,6 +722,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
                               sizeof(std::optional<analysis::BlockId>);
     const auto copy_bytes = remaining - ast.statements.capacity() * sizeof(SourceStatement) -
         ast.fallthrough.capacity() * sizeof(std::optional<analysis::BlockId>);
+    FoldScalarConstants(method, ast, uses);
     RefineBranchPredicates(method, ast, copies);
     FoldBranchExpressions(method, ast, uses);
     if (const auto failure = ElideDeadAssignments(method, ast, uses, copy_bytes)) return *failure;
