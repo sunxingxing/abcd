@@ -1018,10 +1018,12 @@ class SourcePrinter {
       span.end = position_;
     };
     relocate(*statement.fused_read, statement.read_distance);
-    if (statement.fused_spill && statement.fused_reload) {
+    // Predicate folding can own a reload without a spill. Each typed origin
+    // independently identifies an earlier instruction's emitted expression.
+    if (statement.fused_spill)
       relocate(*statement.fused_spill, statement.spill_distance);
+    if (statement.fused_reload)
       relocate(*statement.fused_reload, statement.reload_distance);
-    }
   }
   enum class StatementForm { kStatement, kSequence, kArgument };
   void AssignmentEnd(StatementForm form) {
