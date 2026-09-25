@@ -59,7 +59,8 @@ using RegionResult = std::variant<SemanticRegionTree, RegionFailure>;
 
 // Same unchanged body/phased-flow certificate and BuildNormalFlow topology.
 // Produces the common RegionNode tree without copying/rebasing instructions.
-// Forward normal edges only; enclosing labels preserve exits across catches.
+// Single-entry laminar loops confined to one unchanged catch scope are allowed;
+// enclosing labels preserve normal exits across loops and catches.
 // The only elided gap is a single proven jump over its handler. No value or
 // exception-input admission is implied. Bounded depth, O(I+B+R+E) construction.
 [[nodiscard]] RegionResult BuildExceptionRegionTree(

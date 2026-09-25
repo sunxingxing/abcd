@@ -1,12 +1,12 @@
 #include "abcd/analysis/semantic_region.h"
 
 #include <new>
-#include <algorithm>
 #include <optional>
 #include <stdexcept>
 #include <utility>
 
 #include "abcd/analysis/block_order.h"
+#include "loop_intervals.h"
 
 namespace abcd::analysis {
 namespace {
@@ -35,25 +35,8 @@ RegionResult BuildLoopRegions(const SemanticMethod& method,
     if (ends.capacity() > count || enclosing.capacity() > count ||
         pending.capacity() > count || reached.capacity() > count)
       return Fail(RegionError::kResourceLimit);
-    // Each backwards edge defines a candidate header-to-latch interval. A
-    // sweep below proves laminar intervals and single entry, not merely that
-    // an edge looks backwards. This is deliberately not an irreducible-CFG
-    // dispatcher: crossing intervals must remain unsupported.
-    for (std::size_t i = 0; i < count; ++i) {
-      const auto& block = blocks[i];
-      if (block.successor_count > block.successors.size())
-        return Fail(RegionError::kBackwardEdge, block.end);
-      for (std::size_t e = 0; e < block.successor_count; ++e) {
-        const auto& edge = block.successors[e];
-        const auto target = edge.target.value;
-        if (target >= count || edge.kind == FlowEdgeKind::kResume ||
-            (edge.kind == FlowEdgeKind::kFallthrough && target != i + 1))
-          return Fail(RegionError::kBackwardEdge, block.end);
-        if (target <= i)
-          ends[target] = std::max(ends[target].value_or(target),
-                                 static_cast<std::uint32_t>(i));
-      }
-    }
+    if (const auto failure = FindLoopIntervals(method.flow, ends, enclosing, pending))
+      return *failure;
     reached[0] = 1;
     pending.push_back(0);
     for (std::size_t head = 0; head < pending.size(); ++head) {
@@ -68,23 +51,6 @@ RegionResult BuildLoopRegions(const SemanticMethod& method,
     }
     if (pending.size() != count) return Fail(RegionError::kUnreachable);
     pending.clear();
-    for (std::uint32_t i = 0; i < count; ++i) {
-      while (!pending.empty() && *ends[pending.back()] < i) pending.pop_back();
-      if (!pending.empty()) enclosing[i] = pending.back();
-      if (ends[i]) {
-        if (!pending.empty() && *ends[i] > *ends[pending.back()])
-          return Fail(RegionError::kCycle, blocks[i].begin);
-        pending.push_back(i);
-      }
-    }
-    for (std::uint32_t i = 0; i < count; ++i) {
-      const auto& block = blocks[i];
-      for (std::size_t e = 0; e < block.successor_count; ++e) {
-        const auto owner = enclosing[block.successors[e].target.value];
-        if (owner && (i < *owner || i > *ends[*owner]))
-          return Fail(RegionError::kCycle, block.end);
-      }
-    }
     // Intervals are nested or disjoint; each block and label is built once.
     // A loop header has a break label outside its loop for forward entries,
     // and a distinct continue label inside it for proven backedges.

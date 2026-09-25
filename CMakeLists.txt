@@ -43,7 +43,8 @@ add_library(abcd_analysis src/analysis/normal_flow.cc src/analysis/exception_dis
 target_sources(abcd_analysis PRIVATE src/analysis/branch_condition.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_ir.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_value_rule.cc)
-target_sources(abcd_analysis PRIVATE src/analysis/semantic_region.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/semantic_region.cc
+  src/analysis/loop_intervals.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_edge.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_flow.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_ssa.cc)

@@ -3,6 +3,8 @@
 #include <new>
 #include <stdexcept>
 
+#include "loop_intervals.h"
+
 namespace abcd::analysis {
 namespace {
 struct CatchBlocks {
@@ -11,6 +13,11 @@ struct CatchBlocks {
   BlockId handler_begin;
   BlockId handler_end;
 };
+bool SameScope(const std::optional<CatchScope>& left,
+               const std::optional<CatchScope>& right) {
+  if (!left || !right) return left.has_value() == right.has_value();
+  return left->region == right->region && left->part == right->part;
+}
 }
 RegionResult BuildExceptionRegionTree(const ExceptionFlow& flow,
     const ExceptionRegions& regions, const NormalFlow& normal,
@@ -29,7 +36,7 @@ RegionResult BuildExceptionRegionTree(const ExceptionFlow& flow,
   // Each sequence join uses a label and two children. Catch adds its node,
   // two owned subtrees and an optional skip label. These are upper bounds,
   // admitted together with all scratch before recursive construction.
-  constexpr std::size_t kNodesPerBlock = 4;
+  constexpr std::size_t kNodesPerBlock = 6;
   constexpr std::size_t kNodesPerCatch = 4;
   const auto tree_bytes = (count * kNodesPerBlock + catches * kNodesPerCatch) * sizeof(RegionNode) +
       count * sizeof(std::uint32_t);
@@ -42,13 +49,29 @@ RegionResult BuildExceptionRegionTree(const ExceptionFlow& flow,
   if (catches > available / sizeof(CatchBlocks)) return fail(RegionError::kResourceLimit);
   available -= catches * sizeof(CatchBlocks);
   if (count > available / sizeof(std::optional<TryId>)) return fail(RegionError::kResourceLimit);
+  available -= count * sizeof(std::optional<TryId>);
+  constexpr auto kLoopScratchPerBlock =
+      2 * sizeof(std::optional<std::uint32_t>) + sizeof(std::uint32_t) +
+      sizeof(std::size_t);
+  if (count > available / kLoopScratchPerBlock)
+    return fail(RegionError::kResourceLimit);
   try {
     std::vector<std::optional<BlockId>> boundaries(map_count);
     std::vector<CatchBlocks> blocks(catches);
     std::vector<std::optional<TryId>> gaps(count);
-    if (boundaries.capacity() > map_count || blocks.capacity() > catches || gaps.capacity() > count)
+    std::vector<std::optional<std::uint32_t>> ends(count), enclosing(count);
+    std::vector<std::uint32_t> stack;
+    stack.reserve(count);
+    std::vector<std::size_t> scope_runs(count);
+    if (boundaries.capacity() > map_count || blocks.capacity() > catches || gaps.capacity() > count ||
+        ends.capacity() > count || enclosing.capacity() > count ||
+        stack.capacity() > count || scope_runs.capacity() > count)
       return fail(RegionError::kResourceLimit);
+    if (const auto failure = FindLoopIntervals(normal, ends, enclosing, stack))
+      return *failure;
     std::size_t covered = 0;
+    std::size_t scope_run = 0;
+    std::size_t loops = 0;
     for (std::size_t i = 0; i < count; ++i) {
       const auto& block = normal.blocks[i];
       if (block.first_instruction != covered || !block.instruction_count ||
@@ -56,14 +79,25 @@ RegionResult BuildExceptionRegionTree(const ExceptionFlow& flow,
           block.successor_count > block.successors.size())
         return fail(RegionError::kExceptionShape, block.begin);
       boundaries[covered] = BlockId{static_cast<std::uint32_t>(i)};
+      if (covered && !SameScope(regions.scopes[covered - 1], regions.scopes[covered]))
+        ++scope_run;
+      scope_runs[i] = scope_run;
+      for (auto instruction = covered + 1;
+           instruction < covered + block.instruction_count; ++instruction)
+        if (!SameScope(regions.scopes[covered], regions.scopes[instruction]))
+          return fail(RegionError::kExceptionShape, block.begin);
       covered += block.instruction_count;
-      for (std::size_t e = 0; e < block.successor_count; ++e)
-        if (block.successors[e].target.value <= i ||
-            block.successors[e].target.value >= count ||
-            block.successors[e].kind == FlowEdgeKind::kResume)
-          return fail(RegionError::kBackwardEdge, block.end);
+      if (ends[i]) ++loops;
     }
     if (covered != flow.instructions.size()) return fail(RegionError::kExceptionShape);
+    if (loops > kMaxSemanticRegionDepth - count - 2 * catches)
+      return fail(RegionError::kDepth);
+    // A constant scope run proves the entire loop stays in one protected body
+    // or handler, not just that its endpoints share a scope. Exceptional exits
+    // retain the enclosing catch; crossing or enclosing catches stays refused.
+    for (std::size_t i = 0; i < count; ++i)
+      if (ends[i] && scope_runs[i] != scope_runs[*ends[i]])
+        return fail(RegionError::kExceptionShape, normal.blocks[i].begin);
     boundaries[covered] = BlockId{static_cast<std::uint32_t>(count)};
     const auto at = [&](InstructionId instruction) {
       if (instruction.value >= boundaries.size() || !boundaries[instruction.value])
@@ -104,7 +138,7 @@ RegionResult BuildExceptionRegionTree(const ExceptionFlow& flow,
       }
     std::size_t next = 0;
     const auto sequence = [&](auto&& self, std::uint32_t first,
-                              std::uint32_t last) -> RegionNode {
+                              std::uint32_t last, bool loop_body) -> RegionNode {
       if (first >= last) throw fail(RegionError::kExceptionShape);
       std::optional<RegionNode> root;
       for (auto i = first; i < last;) {
@@ -118,16 +152,21 @@ RegionResult BuildExceptionRegionTree(const ExceptionFlow& flow,
           const auto id = regions.source_order[next++];
           const auto& region = blocks[id.value];
           if (region.handler_end.value > last) throw fail(RegionError::kExceptionShape);
-          auto body = self(self, region.begin.value, region.end.value);
+          auto body = self(self, region.begin.value, region.end.value, false);
           std::optional<InstructionId> skip;
           if (region.end != region.handler_begin) {
             body = RegionNode{RegionLabel{region.end, std::make_unique<RegionNode>(std::move(body))}};
             skip = regions.regions[id.value].body.end;
           }
-          auto handler = self(self, region.handler_begin.value, region.handler_end.value);
+          auto handler = self(self, region.handler_begin.value, region.handler_end.value, false);
           node = RegionNode{RegionTry{id, std::make_unique<RegionNode>(std::move(body)),
               std::make_unique<RegionNode>(std::move(handler)), skip}};
           i = region.handler_end.value;
+        } else if (ends[i] && !(loop_body && i == first)) {
+          if (*ends[i] >= last) throw fail(RegionError::kExceptionShape);
+          node = RegionNode{RegionLoop{BlockId{i},
+              std::make_unique<RegionNode>(self(self, i, *ends[i] + 1, true))}};
+          i = *ends[i] + 1;
         } else {
           ++i;
         }
@@ -147,7 +186,7 @@ RegionResult BuildExceptionRegionTree(const ExceptionFlow& flow,
     tree.order_positions.resize(count);
     if (tree.order_positions.capacity() > count) return fail(RegionError::kResourceLimit);
     for (std::uint32_t i = 0; i < count; ++i) tree.order_positions[i] = i;
-    tree.root = sequence(sequence, 0, static_cast<std::uint32_t>(count));
+    tree.root = sequence(sequence, 0, static_cast<std::uint32_t>(count), false);
     if (next != catches) return fail(RegionError::kExceptionShape);
     tree.catches = catches;
     tree.allocated_bytes = tree_bytes;

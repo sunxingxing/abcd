@@ -174,3 +174,37 @@ moving a pre-promise allocation into native async may change synchronous throw
 to promise rejection on resource exhaustion. The user has been asked whether
 VM-internal resource-exhaustion differences are outside source equivalence.
 No such premise has been adopted and the decompiler's own 1G limit is unchanged.
+
+## Loops Inside an Exception Scope
+
+Normal and exception region construction now share `FindLoopIntervals`:
+backward edges establish candidate inclusive header-to-latch intervals; a stack
+sweep rejects crossing intervals and normal entries into loop interiors. This
+extracts the existing normal-region algorithm, without importing a dependency.
+It takes O(B+E) time and O(B) scratch. Normal-entry reachability remains the
+ordinary owner's requirement; catch entry topology remains the exception
+region certificate's requirement.
+
+The exception owner additionally numbers consecutive catch-scope runs, checking
+every instruction and block boundary in O(I+B). An entire loop must belong to
+one run, not merely have matching endpoint scopes. Loops crossing or enclosing
+try/catch boundaries still refuse. The extra loop scratch, region nodes and
+nesting are admitted before construction. Try ownership is established before
+constructing a loop at the protected body's first block. Existing RegionLoop,
+conditional/unconditional continue and explicit fallthrough breaks are reused
+by the common AST/printer; instructions and PC origins are not copied or rebased.
+
+Actual PasteBoard owner 8831 now takes async child 9165 past the former original
+PC852 loop refusal and through exception AST construction. The next failure is
+the shared printer's `SourceError::kOwnProperty` at original PC272:
+an indexed own-property definition into v14 (index zero) has not been folded
+into array construction. Emitting ordinary assignment without provenance could
+invoke an inherited setter and is not admitted.
+
+Both production CLI targets build, and read-only review found no concrete
+defect. ABC-only export `build/pasteboard-catch-loops-01` retains three explicitly
+incomplete records; no additional record or execution equivalence is claimed.
+Tests, JS execution and RSS remain paused. Deferred regression coverage includes
+conditional-latch fallthrough, nested same-scope loops, handler-local loops,
+cross-scope intervals, multi-entry/crossing intervals, exception exits from a
+loop, exact low-memory/depth limits and ordinary-path regression coverage.
