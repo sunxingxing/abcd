@@ -33,3 +33,34 @@ module-store AST node at PC15 and stops at class creation PC264. The command
 `abc_semantic ... 9915 --function-source` still refuses output; it does not
 claim first-initialization printer admission. Both CLI targets compiled and
 read-only review completed; no tests or RSS tracking were run.
+
+## Root scope before synthetic labels
+
+The generic forward-region layout originally nested the entire entry block
+inside synthetic labels. A first module store there cannot become a module
+lexical declaration merely by spelling `let`: the declaration would have the
+label's block scope. Hoisting an initialized binding would instead destroy TDZ.
+
+The shared printer now emits the unconditional entry prefix before those
+labels. Admission requires no catch regions, entry first in region order,
+and no CFG edge back to entry. The final entry-block instruction remains in
+the region, keeping its control transfer within the labels. Prefix extraction
+stops before a staged call or argument-region property boundary. Ordinary
+instruction evaluation order is unchanged; labels themselves have no effects.
+Subsequent region printing skips exactly the already emitted prefix. This is
+layout only: no statement is erased from the AST, no initialization state is
+invented and no first module store becomes legal in a function body.
+
+Spans are recorded at actual emission positions, including the root prefix;
+there is no text-based PC reconstruction. The extra scan is O(B + E + P) for
+blocks, edges and the candidate prefix, using constant additional storage.
+Loop entry and exception layouts remain unchanged. This prepares root-scope
+declarations for a record owner, not nested declarations in the existing
+standalone function wrapper.
+
+ABC-only inspection of ProgressBar entry 9915 selects 14 prefix statements,
+PC0 through PC37, leaving control transfer PC40 inside the region. Printing
+still refuses first module initialization at PC15. Production CLI builds and
+read-only review completed; no new complete source is claimed. Tests and RSS
+tracking remain paused. Deferred regressions include entry backedges, catches,
+staged calls, fused/zero-width spans, and exact-once side-effect ordering.

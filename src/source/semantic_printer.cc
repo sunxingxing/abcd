@@ -73,7 +73,7 @@ class SourcePrinter {
             (limit_ - span_bytes) / sizeof(SourceCapture))
           return SourceFailure{SourceError::kResourceLimit, {}};
       }
-      Region(ast_.regions.root);
+      Root();
       return std::move(result_);
     } catch (const SourceFailure& failure) {
       return failure;
@@ -138,7 +138,7 @@ class SourcePrinter {
         Text(";\n");
       }
       DeclareLocals();
-      Region(ast_.regions.root);
+      Root();
       Text(form_ == SourceForm::kClassConstructor ? "}\n}\n" : "}\n");
       return std::move(result_);
     } catch (const SourceFailure& failure) {
@@ -737,6 +737,7 @@ class SourcePrinter {
   void Statements(std::size_t first, std::size_t end, bool argument = false) {
     if (first > end || end > ast_.statements.size())
       throw SourceFailure{SourceError::kOutput, current_pc_};
+    first = std::max(first, std::min(end, root_prefix_end_));
     for (std::size_t i = first; i < end;) {
       if (!argument && ast_.argument_region &&
           i > ast_.argument_region->property.value &&
@@ -759,6 +760,42 @@ class SourcePrinter {
         ++i;
       }
     }
+  }
+  void Root() {
+    // Labels have no evaluation effect, but create lexical scopes. Keep the
+    // unconditional entry prefix outside them so future record declarations
+    // can retain module scope. Never extract a repeated loop entry or a try
+    // body; do not split staged calls or the entry block's final instruction.
+    std::size_t end = 0;
+    if (!ast_.regions.catches && blocks_.blocks.size() > 1 &&
+        ast_.regions.order_positions.size() == blocks_.blocks.size() &&
+        ast_.regions.order_positions.front() == 0) {
+      const auto& entry = blocks_.blocks.front();
+      bool entered_again = false;
+      for (const auto& block : blocks_.blocks) {
+        if (block.successor_count > block.successors.size())
+          throw SourceFailure{SourceError::kInvalidEffect, block.begin};
+        for (std::size_t edge = 0; edge < block.successor_count; ++edge)
+          entered_again |= block.successors[edge].target.value == 0;
+      }
+      if (!entered_again && entry.first_instruction == 0 &&
+          entry.instruction_count > 1) {
+        end = entry.instruction_count - 1;
+        if (end > ast_.statements.size())
+          throw SourceFailure{SourceError::kInvalidEffect, entry.begin};
+        if (ast_.argument_region)
+          end = std::min(end, std::size_t(ast_.argument_region->property.value));
+        for (std::size_t i = 0; i < end; ++i) {
+          if (std::holds_alternative<SourceStagedCall>(ast_.statements[i].operation)) {
+            end = i;
+            break;
+          }
+        }
+      }
+    }
+    Statements(0, end);
+    root_prefix_end_ = end;
+    Region(ast_.regions.root);
   }
   void Region(const analysis::RegionNode& node) {
     std::visit(
@@ -843,6 +880,7 @@ class SourcePrinter {
   GeneratedPosition position_;
   abc::CodeOffset current_pc_{};
   std::size_t call_depth_ = 0;
+  std::size_t root_prefix_end_ = 0;
   CaptureMode capture_mode_;
   std::vector<SourceCapture> captures_;
   const analysis::SemanticProof* proof_;
