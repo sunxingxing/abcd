@@ -63,7 +63,11 @@ bool CanElideEntryCopies(const SourceAst& ast) {
                            std::is_same_v<T, SourceBreak> ||
                            std::is_same_v<T, SourceContinue> ||
                            std::is_same_v<T, SourceReturn> ||
-                           std::is_same_v<T, SourceThrow>) {
+                           std::is_same_v<T, SourceThrow> ||
+                           std::is_same_v<T, SourceStagedCall>) {
+        // Staged calls bind/observe their accumulator and arguments through
+        // Slot/Value. Their child statements are audited by this same flat
+        // traversal, including nested intervals; do not skip their children.
         return true;
       } else {
         static_assert(std::is_same_v<T, SourceMethodStore> ||
@@ -71,7 +75,6 @@ bool CanElideEntryCopies(const SourceAst& ast) {
                       std::is_same_v<T, SourceArrayCapture> ||
                       std::is_same_v<T, SourceArrayCommit> ||
                       std::is_same_v<T, SourceArrayLiteral> ||
-                      std::is_same_v<T, SourceStagedCall> ||
                       std::is_same_v<T, SourceInitializerCall>);
         return false;
       }

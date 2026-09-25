@@ -56,7 +56,7 @@ input, not a read of the caller accumulator. Targets remain observed separately.
 
 This does not authorize new global bindings, async staging, buffer contents or
 rest allocations. Existing printer checks remain mandatory. Class/function
-creation, captured expressions, super calls, staged arguments and catch regions
+creation, captured expressions, super calls, branch argument and catch regions
 remain outside this audit. No generated text is inspected for slot references.
 
 After successful production builds, the ABC-only export in
@@ -68,3 +68,24 @@ correctness issue. Tests, JS execution and RSS checks remain paused. Deferred
 regressions must exercise operand/target-only await use, rest-formal identity,
 fresh literal allocation, global binding refusal and conservative catch/staging
 fallback; export counts do not establish those behavioral properties.
+
+## Staged Call Reads
+
+SourceStagedCall is admitted by the exhaustive operation audit. Its callee,
+result and arguments pass through Slot/Value; its child statements remain in
+the flat AST scan, including nested intervals. This must never become an audit
+that skips children after visiting the interval owner. Comma-mode assignments
+retain and observe their actual targets, while fallback arrow IIFEs preserve
+lexical this and formal bindings. Entry-copy suppression retains zero-width PC
+anchors. Branch argument regions and catch regions remain excluded.
+
+Production targets built successfully. ABC-only export
+`build/pasteboard-staged-slots-01` contains 8,457 lines / 147,149 bytes, down
+270 lines from `build/pasteboard-argument-sequences-01`; Logger accounts for
+40 lines. Eight incomplete records, two refused constructors at PC 14, nine
+metadata records and partial maps with 195 methods / 9,745 spans remain
+unchanged. Independent read-only review found no concrete correctness issue.
+Tests, JS execution and RSS remain paused. Deferred regressions include nested
+staged intervals with bound entry reads, comma-mode target-only registers,
+fallback arrow lexical bindings and zero-width copy anchors. Rest-formal
+transport and effectful argument temporaries are not eliminated by this audit.
