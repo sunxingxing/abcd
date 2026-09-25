@@ -5,11 +5,12 @@ namespace {
 bool IsConditionalOperand(const SourceExpression& expression) {
   if (const auto* scalar = std::get_if<analysis::ScalarExpression>(&expression))
     return std::holds_alternative<analysis::ScalarValue>(*scalar);
-  // No creation naming, call owner, composed source origins or intermediate
-  // commits enter here. Binding reads keep their domain checks at emission.
+  // No creation naming, call owner or intermediate commits enter here.
+  // ValueArm separately validates a member's composed receiver coordinates.
   return std::holds_alternative<StringExpression>(expression) ||
          std::holds_alternative<LocalExpression>(expression) ||
-         std::holds_alternative<CapturedExpression>(expression);
+         std::holds_alternative<CapturedExpression>(expression) ||
+         std::holds_alternative<MemberExpression>(expression);
 }
 std::optional<bool> BooleanValue(const SourceExpression& expression) {
   const auto* scalar = std::get_if<analysis::ScalarExpression>(&expression);
@@ -30,10 +31,15 @@ std::optional<analysis::InstructionId> ValueArm(const SourceAst& ast,
       (block.transfer != abc::ControlTransfer::kJump &&
        block.transfer != abc::ControlTransfer::kFallthrough)) return {};
   std::optional<analysis::InstructionId> result;
+  std::optional<analysis::InstructionId> guard;
   for (std::size_t i = block.first_instruction; i < end; ++i) {
     const auto& node = ast.statements[i];
     if (node.fused_read || node.fused_spill || node.fused_reload ||
-        node.previous_origin || node.class_origin || node.literal_origin) return {};
+        node.class_origin || node.literal_origin) return {};
+    if (node.previous_origin) {
+      if (guard || !std::holds_alternative<analysis::NoOperation>(node.operation)) return {};
+      guard = analysis::InstructionId{static_cast<std::uint32_t>(i)};
+    }
     if (i + 1 == end && block.transfer == abc::ControlTransfer::kJump) {
       const auto* jump = std::get_if<SourceBreak>(&node.operation);
       if (!jump || jump->target != join) return {};
@@ -45,6 +51,17 @@ std::optional<analysis::InstructionId> ValueArm(const SourceAst& ast,
         assignment->object_field || !IsConditionalOperand(assignment->value)) return {};
     result = analysis::InstructionId{static_cast<std::uint32_t>(i)};
   }
+  if (!result) return {};
+  const auto& assignment = std::get<SourceAssignment>(ast.statements[result->value].operation);
+  const auto* member = std::get_if<MemberExpression>(&assignment.value);
+  if (member && member->receiver) {
+    const auto& receiver = *member->receiver;
+    const auto source = receiver.binding.source.value;
+    if (receiver.property != *result || source < block.first_instruction ||
+        source >= result->value || receiver.binding.guard != guard) return {};
+    if (guard && (guard->value != source + 1 || guard->value >= result->value ||
+        ast.statements[guard->value].previous_origin != ast.statements[source].pc)) return {};
+  } else if (guard) return {};
   return result;
 }
 }  // namespace

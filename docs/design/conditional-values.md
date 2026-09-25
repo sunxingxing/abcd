@@ -44,3 +44,44 @@ Statuses remain eight incomplete, two host constructors refused at PC 14 and
 nine metadata-only records. Read-only review found no concrete defect. Tests,
 generated JS execution and RSS checks were not run; complete source structure
 and semantic equivalence remain unfinished.
+
+## Member Operands and Argument Regions
+
+MemberExpression is now admitted as an operand without treating a getter or
+Proxy access as pure. Only the selected arm performs the binding/property
+evaluation, once, and it still commits the target after successful evaluation.
+An annotated receiver must originate inside that same arm, precede the member,
+and name this exact member instruction. At most one previous_origin NoOperation
+is allowed, and it must match that receiver's certified adjacent source guard.
+Other fused, class, literal and previous-origin combinations remain refused.
+
+ConditionalArm emits the arm's original prefix anchors before its expression,
+allowing BoundReceiver to relocate source/guard spans using the same instruction
+coordinates as ordinary arm emission. The expression receives its actual RHS
+span, and the removed join jump remains a zero-width anchor. The header and its
+fused origins now map to the emitted condition prefix, before the arms. This
+supersedes the earlier whole-assignment mapping for non-Boolean headers/jumps.
+Boolean diamond maps remain unchanged.
+
+The same admission now applies inside a ProveArgumentIf-owned IIFE. It changes
+only that region's two-arm assignment, not the outer Reference or argument
+commit/return protocol; elimination of the wrapper remains separate work.
+Prefix anchors and expressions are each visited once, preserving linear arm
+work and constant scratch. Deferred cases additionally include throwing getters,
+unselected missing modules, receiver/guard coordinates outside the arm, nested
+argument ownership and exact module-guard source positions.
+
+Production builds and ABC-only export
+build/pasteboard-conditional-members-20260925 succeeded. Eleven width arguments
+across the six pages now use a conditional member expression inside their
+existing IIFE. Totals become 4,032 lines / 88,620 bytes, down 44 lines / 242
+bytes from pasteboard-conditional-values-20260925. PageA method 7366 PCs 110
+and 112 (module source/guard) map to [6002,6010), `$import1`; member PC 120 maps
+to [6002,6023), `$import1.FULL_PERCENT`; alternate PC 126 maps to the actual
+numeric operand [6026,6031). The join jump remains a zero-width anchor.
+
+Partial maps retain 195 methods / 9,745 spans and record statuses remain eight
+incomplete, two host constructors refused at PC 14 and nine metadata-only.
+Read-only review found no concrete defect. Tests, generated JS execution and
+RSS remain paused. Native outer conditional-argument emission and whole-program
+equivalence remain unfinished.

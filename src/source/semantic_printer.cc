@@ -1561,6 +1561,25 @@ class SourcePrinter {
       Statements(block.first_instruction, end, argument);
     }
   }
+  void ConditionalArm(analysis::BlockId block_id, analysis::InstructionId operand) {
+    const auto& block = blocks_.blocks[block_id.value];
+    const auto end = std::size_t(block.first_instruction) + block.instruction_count;
+    // Emit every prefix anchor before its expression. BoundReceiver resolves
+    // source/guard positions against these original instruction coordinates.
+    for (std::size_t i = block.first_instruction; i < end; ++i) {
+      const auto& node = ast_.statements[i];
+      if (i == operand.value) {
+        current_pc_ = node.pc;
+        const auto begin = position_;
+        Expression(std::get<SourceAssignment>(node.operation).value);
+        result_.spans.push_back({node.pc, begin, position_});
+      } else if (std::holds_alternative<SourceBreak>(node.operation)) {
+        Statement(SourceStatement{node.pc, analysis::NoOperation{}});
+      } else {
+        Statement(node);
+      }
+    }
+  }
   void IfRegion(const analysis::RegionIf& region, bool argument = false) {
     if (region.header.value >= blocks_.blocks.size() ||
         region.body.value >= blocks_.blocks.size() ||
@@ -1612,14 +1631,10 @@ class SourcePrinter {
     Statements(first, header_end - 1, argument);
     current_pc_ = terminator.pc;
     const auto begin = position_;
-    if (!argument) {
+    {
       if (const auto value = ProveConditionalValue(ast_, blocks_, region)) {
         Target(value->target);
         Text(" = ");
-        auto body_begin = begin;
-        auto body_end = begin;
-        auto alternate_begin = begin;
-        auto alternate_end = begin;
         if (value->boolean_body) {
           // Boolean diamonds must retain a Boolean-valued result, not merely
           // the truthy operand accepted by a condition context.
@@ -1627,19 +1642,16 @@ class SourcePrinter {
                     PredicateForm::kBooleanValue);
         } else {
           Predicate(branch->condition, true, branch->input);
+          // Finalize the header before arm anchors so receiver-origin lookup
+          // sees the same instruction order as ordinary IfArm emission.
+          RelocateFusedOrigins(terminator, begin);
+          result_.spans.push_back({terminator.pc, begin, position_});
           Text(" ? ");
-          const auto operand = [&](analysis::InstructionId id) {
-            const auto& node = ast_.statements[id.value];
-            current_pc_ = node.pc;
-            Expression(std::get<SourceAssignment>(node.operation).value);
-          };
-          body_begin = position_;
-          operand(value->body);
-          body_end = position_;
+          ConditionalArm(region.body, value->body);
           Text(" : ");
-          alternate_begin = position_;
-          operand(value->alternate);
-          alternate_end = position_;
+          ConditionalArm(*region.alternate, value->alternate);
+          Text(";\n");
+          return;
         }
         Text(";\n");
         current_pc_ = terminator.pc;
@@ -1651,16 +1663,7 @@ class SourcePrinter {
           const auto& arm = blocks_.blocks[id.value];
           const auto end = std::size_t(arm.first_instruction) + arm.instruction_count;
           for (std::size_t i = arm.first_instruction; i < end; ++i) {
-            auto from = begin;
-            auto to = position_;
-            if (!value->boolean_body && i == value->body.value) {
-              from = body_begin;
-              to = body_end;
-            } else if (!value->boolean_body && i == value->alternate.value) {
-              from = alternate_begin;
-              to = alternate_end;
-            }
-            result_.spans.push_back({ast_.statements[i].pc, from, to});
+            result_.spans.push_back({ast_.statements[i].pc, begin, position_});
           }
         }
         return;
