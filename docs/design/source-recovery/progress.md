@@ -187,3 +187,31 @@ failure. Each retains 7 operations, 9 operand occurrences and 15 value entries
 from stable arenas of 21/23/29; all 3 original exceptional exits remain. They
 still report incomplete/non-executable (exit 1). This is real pipeline evidence,
 not execution of the regression suites or proof of full-corpus coverage.
+
+### T03 Syntax and Control Foundations
+
+The new FunctionTree is separate from legacy SourceAst. It owns typed expression,
+statement, symbol and lexical-scope arenas, name/literal storage, source-origin
+references and explicit no-text control anchors. Expressions contain syntax IDs,
+not registers or ValueIds. Working operation IDs occur only in validation side
+tables. Storage measurement includes arena capacities and UTF-16 payloads with
+checked arithmetic; it is not a tree certificate or a process RSS measurement.
+
+BuildControlPlan consumes the verified working CFG without invoking old regions
+or source writers. For the G1 DAG subset, Kahn ordering plus reverse-topological
+postdominator construction finds shared continuations. The recurrence is
+postdom(v) = {v} union intersection(postdom(successors)); with successor trees
+already built, the intersection's immediate root is their LCA. Binary lifting
+provides O(log B) LCA, with O((B+E) log B) time and O(B log B+E) storage. A virtual
+function exit handles separate return arms. There is no repeated set intersection,
+per-variable walk or branch-body duplication. This local implementation adds no
+dependency; its prerequisite is acyclicity, not a claim to handle general loops.
+
+An independent VerifyControlPlan checks revision, unique block ownership and every
+edge placement against the original CFG, including parallel taken/fallthrough
+edges. Region syntax is not a lexical scope and does not modify basic blocks.
+Cycles, cross-entry shapes and uncovered blocks are typed refusals. Specifications
+cover diamonds, skipped/early-return arms, nested branches, parallel edges, stale
+revisions and 200/201/4096-block chains. Execution remains paused. Control/AST
+construction is not yet connected to source publication; the current public route
+still stops truthfully at ValuesVerified.

@@ -1,0 +1,133 @@
+#ifndef ABCD_SOURCE_SOURCE_TREE_H_
+#define ABCD_SOURCE_SOURCE_TREE_H_
+
+#include <string>
+#include <optional>
+#include <variant>
+#include <vector>
+
+#include "abcd/analysis/value_ir.h"
+#include "abcd/source/source_route.h"
+
+namespace abcd::source {
+struct ExprId { std::uint32_t value = 0; auto operator<=>(const ExprId&) const = default; };
+struct StmtId { std::uint32_t value = 0; auto operator<=>(const StmtId&) const = default; };
+struct SymbolId { std::uint32_t value = 0; auto operator<=>(const SymbolId&) const = default; };
+struct ScopeId { std::uint32_t value = 0; auto operator<=>(const ScopeId&) const = default; };
+struct NameId { std::uint32_t value = 0; auto operator<=>(const NameId&) const = default; };
+struct TextId { std::uint32_t value = 0; auto operator<=>(const TextId&) const = default; };
+struct TreeOriginId { std::uint32_t value = 0; auto operator<=>(const TreeOriginId&) const = default; };
+struct AnchorId { std::uint32_t value = 0; auto operator<=>(const AnchorId&) const = default; };
+struct FunctionOwnerId { std::uint32_t value = 0; auto operator<=>(const FunctionOwnerId&) const = default; };
+enum class CallableKind : std::uint8_t {
+  kFunction, kMethod, kArrow, kBaseConstructor, kDerivedConstructor,
+  kAsyncFunction, kAsyncMethod
+};
+enum class Strictness : std::uint8_t { kStrict, kSloppy };
+enum class ScopeKind : std::uint8_t { kParameters, kFunctionBody, kBlock };
+enum class BindingKind : std::uint8_t { kParameter, kLocal, kFunctionSelf, kCompilerTemporary };
+enum class NameEvidence : std::uint8_t { kMetadata, kDebugRange, kSynthesized };
+enum class DeclarationKind : std::uint8_t { kParameter, kLet, kConst };
+enum class TemporaryReason : std::uint8_t {
+  kMultipleUses, kEffectSnapshot, kPhiJoin, kParallelCopyCycle,
+  kCrossRegionValue, kReferenceSnapshot, kUnprovedInline
+};
+struct TreeScope {
+  ScopeKind kind;
+  std::optional<ScopeId> parent;
+};
+struct TreeSymbol {
+  ScopeId scope;
+  NameId name;
+  BindingKind kind;
+  DeclarationKind declaration;
+  NameEvidence evidence;
+  std::optional<TemporaryReason> temporary;
+};
+struct TreeParameter {
+  SymbolId symbol;
+  std::optional<ExprId> initializer;
+  bool rest = false;
+};
+struct UndefinedLiteral {};
+struct NullLiteral {};
+struct BooleanLiteral { bool value; };
+struct IntegerLiteral { std::int32_t value; };
+struct NumberLiteral { std::uint64_t bits; };
+using TreeLiteral = std::variant<UndefinedLiteral, NullLiteral, BooleanLiteral,
+                                 IntegerLiteral, NumberLiteral, TextId>;
+struct SymbolExpr { SymbolId symbol; };
+struct ThisExpr { FunctionOwnerId owner; };
+struct ComputedKey { ExprId expression; };
+using MemberKey = std::variant<NameId, ComputedKey>;
+struct MemberExpr { ExprId base; MemberKey key; };
+enum class TreeUnary : std::uint8_t { kNot, kNegate, kBitNot, kPlus, kTypeof };
+struct UnaryExpr { TreeUnary operation; ExprId operand; };
+struct BinaryExpr { analysis::BinaryOperator operation; ExprId left; ExprId right; };
+enum class TreeLogical : std::uint8_t { kAnd, kOr };
+struct LogicalExpr { TreeLogical operation; ExprId left; ExprId right; };
+struct SymbolTarget { SymbolId symbol; };
+struct MemberTarget { ExprId base; MemberKey key; };
+using AssignmentTarget = std::variant<SymbolTarget, MemberTarget>;
+struct AssignmentExpr { AssignmentTarget target; ExprId value; };
+using TreeExpression = std::variant<TreeLiteral, SymbolExpr, ThisExpr, MemberExpr,
+                                    UnaryExpr, BinaryExpr, LogicalExpr, AssignmentExpr>;
+struct ExprNode { TreeExpression expression; TreeOriginId origin; };
+struct BlockStmt { ScopeId scope; std::uint32_t first_child; std::uint32_t child_count; };
+struct DeclarationStmt { SymbolId symbol; std::optional<ExprId> initializer; };
+struct ExpressionStmt { ExprId expression; };
+struct IfStmt { ExprId condition; StmtId consequent; std::optional<StmtId> alternate; };
+struct ReturnStmt { std::optional<ExprId> value; };
+using TreeStatement = std::variant<BlockStmt, DeclarationStmt, ExpressionStmt, IfStmt, ReturnStmt>;
+struct StmtNode { TreeStatement statement; TreeOriginId origin; };
+
+// Origins/validation side tables may refer to working IDs. Executable node
+// operands above never do. Combined origins share references, not PC copies.
+struct OriginalSite { analysis::InputSiteId site; abc::CodeOffset pc; };
+struct CombinedOrigin { std::uint32_t first_part; std::uint32_t part_count; };
+struct ElidedOrigin { analysis::InputSiteId site; abc::CodeOffset pc; };
+struct EdgeOrigin { analysis::EdgeId edge; };
+struct BindingOrigin { SymbolId symbol; };
+using TreeOrigin = std::variant<OriginalSite, CombinedOrigin, ElidedOrigin, EdgeOrigin, BindingOrigin>;
+enum class AnchorKind : std::uint8_t { kBlockExit, kFunctionExit };
+struct TreeAnchor { StmtId statement; AnchorKind kind; TreeOriginId origin; };
+struct OpPlacement {
+  analysis::OpId operation;
+  std::variant<ExprId, StmtId, AnchorId> node;
+};
+struct FunctionTree {
+  RouteInputIdentity identity;
+  abc::EntityOffset method;
+  analysis::IrRevision value_revision;
+  analysis::CfgRevision cfg_revision;
+  FunctionOwnerId owner;
+  CallableKind callable;
+  Strictness strictness;
+  std::optional<SymbolId> self;
+  ScopeId parameter_scope;
+  ScopeId body_scope;
+  StmtId body;
+  std::vector<TreeParameter> parameters;
+  std::vector<TreeScope> scopes;
+  std::vector<TreeSymbol> symbols;
+  std::vector<std::u16string> names;
+  std::vector<std::u16string> texts;
+  std::vector<ExprNode> expressions;
+  std::vector<StmtNode> statements;
+  std::vector<StmtId> children;
+  std::vector<TreeOrigin> origins;
+  std::vector<TreeOriginId> origin_parts;
+  std::vector<TreeAnchor> anchors;
+  std::vector<OpPlacement> operations;
+};
+// This is a construction product, not a source-publication certificate. The
+// printer will accept only a frozen verified owner, never raw ValueProgram.
+struct TreeStorage { std::size_t bytes; std::uint64_t work; };
+enum class TreeStorageError : std::uint8_t { kResourceLimit, kWorkLimit };
+// Capacity-based owned storage accounting, including UTF-16 name/literal
+// payloads. No allocation and no traversal of expression graphs. SSO payloads
+// are conservatively counted twice; this is not whole-process RSS evidence.
+[[nodiscard]] std::variant<TreeStorage, TreeStorageError> MeasureTreeStorage(
+    const FunctionTree& tree, analysis::SemanticBudget budget = {});
+}  // namespace abcd::source
+#endif
