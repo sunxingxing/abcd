@@ -10,15 +10,18 @@
 #include <string_view>
 
 #include "abcd/source/string_literal.h"
+#include "member_key.h"
 
 namespace abcd::source {
 namespace {
-enum class ImportForm { kNamed, kNamespace };
+enum class ImportForm { kNamed, kDefault, kNamespace };
 
 // The pinned SourceTextModule loader uses the wire imported name "*" as a
 // namespace import. This is a validated wire-boundary conversion only.
 ImportForm ClassifyImport(std::u16string_view name) {
-  return name == u"*" ? ImportForm::kNamespace : ImportForm::kNamed;
+  if (name == u"*") return ImportForm::kNamespace;
+  if (name == u"default") return ImportForm::kDefault;
+  return ImportForm::kNamed;
 }
 
 class ImportWriter {
@@ -38,15 +41,22 @@ class ImportWriter {
     std::size_t slot = 0;
     for (const auto& entry : module_.imports) {
       const auto imported = Read(entry.imported);
-      if (ClassifyImport(imported) == ImportForm::kNamespace) {
-        Text("import * as ");
-        Alias(slot);
-      } else {
-        Text("import { ");
-        Literal(imported, entry.imported);
-        Text(" as ");
-        Alias(slot);
-        Text(" }");
+      switch (ClassifyImport(imported)) {
+        case ImportForm::kNamespace:
+          Text("import * as ");
+          Alias(slot);
+          break;
+        case ImportForm::kDefault:
+          Text("import ");
+          Alias(slot);
+          break;
+        case ImportForm::kNamed:
+          Text("import { ");
+          ModuleName(imported, entry.imported);
+          Text(" as ");
+          Alias(slot);
+          Text(" }");
+          break;
       }
       From(entry.request);
       ++slot;
@@ -59,15 +69,19 @@ class ImportWriter {
     }
     for (const auto& entry : module_.indirect_exports) {
       const auto imported = Read(entry.imported);
-      if (ClassifyImport(imported) == ImportForm::kNamespace) {
-        Text("export * as ");
-        Literal(entry.exported);
-      } else {
-        Text("export { ");
-        Literal(imported, entry.imported);
-        Text(" as ");
-        Literal(entry.exported);
-        Text(" }");
+      switch (ClassifyImport(imported)) {
+        case ImportForm::kNamespace:
+          Text("export * as ");
+          ModuleName(Read(entry.exported), entry.exported);
+          break;
+        case ImportForm::kDefault:
+        case ImportForm::kNamed:
+          Text("export { ");
+          ModuleName(imported, entry.imported);
+          Text(" as ");
+          ModuleName(Read(entry.exported), entry.exported);
+          Text(" }");
+          break;
       }
       From(entry.request);
     }
@@ -81,6 +95,22 @@ class ImportWriter {
   std::size_t Size() const { return used_; }
 
  private:
+  void ModuleName(std::u16string_view value, abc::EntityOffset offset) {
+    // ModuleExportName accepts IdentifierName (including keywords), not a
+    // binding identifier. Non-ASCII/arbitrary names retain exact escaping.
+    // This spelling choice never changes the private local import alias.
+    switch (ClassifyMemberKey(value)) {
+      case MemberKeySyntax::kIdentifier:
+        for (const auto unit : value) {
+          const char ch = static_cast<char>(unit);
+          Text({&ch, 1});
+        }
+        break;
+      case MemberKeySyntax::kQuoted:
+        Literal(value, offset);
+        break;
+    }
+  }
   std::u16string Read(abc::EntityOffset offset) const {
     const auto parsed = abc::ReadStringEntity(file_, header_, offset, strings_);
     if (const auto* failure = std::get_if<abc::MetadataError>(&parsed))
