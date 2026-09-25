@@ -11,5 +11,9 @@ struct AstMethod;
 std::optional<SourceArgumentRegion> ProveArgumentRegion(
     const AstMethod& method, std::size_t property,
     std::size_t call);
+// Refine the proven forward interval using its CFG, never printed source.
+// A contiguous two-arm diamond can use the normal if writer inside the IIFE.
+std::optional<analysis::RegionIf> ProveArgumentIf(
+    const SourceAst& ast, const analysis::NormalFlow& flow);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_ARGUMENT_REGION_H_

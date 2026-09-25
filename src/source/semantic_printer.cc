@@ -33,6 +33,7 @@
 #include "entry_bindings.h"
 #include "entry_copy_elision.h"
 #include "argument_sequence.h"
+#include "argument_region.h"
 #include "rest_binding.h"
 #include "record_declarations.h"
 
@@ -1325,6 +1326,12 @@ class SourcePrinter {
     result_.spans[save_span].end = position_;
   }
   void ArgumentRegion(const SourceArgumentRegion& region) {
+    if (argument_if_) {
+      IfRegion(*argument_if_, true);
+      const auto& join = blocks_.blocks[region.last_block.value];
+      Statements(join.first_instruction, region.call.value, true);
+      return;
+    }
     for (auto b = region.last_block.value; b > region.first_block.value; --b) {
       Label(analysis::BlockId{b});
       Text(": {\n");
@@ -1381,6 +1388,7 @@ class SourcePrinter {
     }
   }
   void PrepareLabels() {
+    argument_if_ = ProveArgumentIf(ast_, blocks_);
     // No lexical declarations live in these wrappers: locals are declared at
     // function entry. Keep record declarations and array-capture scopes intact,
     // and retain the staged-argument printer's independent label layout.
@@ -1432,7 +1440,8 @@ class SourcePrinter {
     root_prefix_end_ = end;
     Region(ast_.regions.root);
   }
-  void IfArm(analysis::BlockId id, analysis::BlockId join) {
+  void IfArm(analysis::BlockId id, analysis::BlockId join,
+             bool argument = false) {
     const auto& block = blocks_.blocks[id.value];
     const auto end = std::size_t(block.first_instruction) + block.instruction_count;
     if (!block.instruction_count || end > ast_.statements.size())
@@ -1442,13 +1451,13 @@ class SourcePrinter {
       const auto* jump = std::get_if<SourceBreak>(&last.operation);
       if (!jump || jump->target != join)
         throw SourceFailure{SourceError::kInvalidEffect, last.pc};
-      Statements(block.first_instruction, end - 1);
+      Statements(block.first_instruction, end - 1, argument);
       Statement(SourceStatement{last.pc, analysis::NoOperation{}});
     } else {
-      Statements(block.first_instruction, end);
+      Statements(block.first_instruction, end, argument);
     }
   }
-  void IfRegion(const analysis::RegionIf& region) {
+  void IfRegion(const analysis::RegionIf& region, bool argument = false) {
     if (region.header.value >= blocks_.blocks.size() ||
         region.body.value >= blocks_.blocks.size() ||
         (region.alternate && region.alternate->value >= blocks_.blocks.size()))
@@ -1467,10 +1476,10 @@ class SourcePrinter {
       return ast_.argument_region && ast_.argument_region->property.value < end &&
              ast_.argument_region->call.value >= first;
     };
-    if (staged(header.first_instruction, header_end) ||
+    if (!argument && (staged(header.first_instruction, header_end) ||
         staged(body.first_instruction, body_end) ||
         (alternate && staged(alternate->first_instruction,
-            std::size_t(alternate->first_instruction) + alternate->instruction_count))) {
+            std::size_t(alternate->first_instruction) + alternate->instruction_count)))) {
       if (region.alternate) {
         Label(*region.alternate);
         Text(": {\n");
@@ -1494,7 +1503,9 @@ class SourcePrinter {
     const auto* branch = std::get_if<SourceConditionalBreak>(&terminator.operation);
     if (!branch || branch->target != region.alternate.value_or(region.join))
       throw SourceFailure{SourceError::kInvalidEffect, terminator.pc};
-    Statements(header.first_instruction, header_end - 1);
+    const auto first = argument ? ast_.argument_region->property.value + 1
+                                : header.first_instruction;
+    Statements(first, header_end - 1, argument);
     current_pc_ = terminator.pc;
     const auto begin = position_;
     Text("if (");
@@ -1503,10 +1514,10 @@ class SourcePrinter {
     RelocateFusedOrigins(terminator, begin);
     result_.spans.push_back({terminator.pc, begin, position_});
     ++scope_depth_;
-    IfArm(region.body, region.join);
+    IfArm(region.body, region.join, argument);
     if (region.alternate) {
       Text("} else {\n");
-      IfArm(*region.alternate, region.join);
+      IfArm(*region.alternate, region.join, argument);
     }
     --scope_depth_;
     Text("}\n");
@@ -1605,6 +1616,7 @@ class SourcePrinter {
   VmSlotUse vm_slots_ = VmSlotUse::kNone;
   bool observe_record_slots_ = false;
   std::vector<LabelUse> label_uses_;
+  std::optional<analysis::RegionIf> argument_if_;
   const analysis::NormalFlow& blocks_;
   const analysis::SemanticMethod* capture_method_;
   const abc::FrameLayout& frame_;
