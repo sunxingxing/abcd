@@ -13,6 +13,7 @@
 #include "super_arguments.h"
 #include "constructor_arguments.h"
 #include "class_parent_read.h"
+#include "overwritten_accumulator.h"
 #include "result_copies.h"
 #include "unused_results.h"
 #include "binding_receivers.h"
@@ -786,6 +787,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     ast.super_arguments = ProveSuperArguments(method, ast, uses);
     RecoverConstructorArguments(method, ast, uses);
     FoldClassParentReads(method, ast, uses);
+    ElideOverwrittenAccumulator(method, ast);
     return ast;
   } catch (const std::bad_alloc&) {
     return Fail(SourceError::kResourceLimit);
