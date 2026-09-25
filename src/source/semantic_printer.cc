@@ -1217,10 +1217,29 @@ class SourcePrinter {
             // registers are private, and the saved callee has no escaping use.
             switch (operation.result) {
               case AssignmentResult::kStored:
-                Target(analysis::ScalarSlot{Accumulator{}});
-                Text(" = ");
+                if (operation.return_statement) {
+                  if (record_exports_)
+                    throw SourceFailure{SourceError::kUnsupportedOperation, current_pc_};
+                  const auto returned = operation.return_statement->value;
+                  if (returned >= ast_.statements.size() ||
+                      returned != operation.call_statement.value + 1)
+                    throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+                  const auto& anchor = ast_.statements[returned];
+                  if (!std::holds_alternative<analysis::NoOperation>(anchor.operation) ||
+                      anchor.previous_origin != ast_.statements[operation.call_statement.value].pc ||
+                      anchor.fused_read || anchor.fused_spill || anchor.fused_reload ||
+                      anchor.class_origin || anchor.literal_origin)
+                    throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+                  Text("return ");
+                } else {
+                  Target(analysis::ScalarSlot{Accumulator{}});
+                  Text(" = ");
+                }
                 break;
-              case AssignmentResult::kUnused: break;
+              case AssignmentResult::kUnused:
+                if (operation.return_statement)
+                  throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+                break;
               case AssignmentResult::kArgumentOnly:
                 throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
             }

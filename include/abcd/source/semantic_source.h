@@ -199,6 +199,8 @@ struct SourceStagedCall {
   analysis::InstructionId call_statement;
   AssignmentResult result = AssignmentResult::kStored;
   std::optional<BindingReceiver> binding_receiver = {};
+  // Sole-use direct return; the original return node remains a mapped anchor.
+  std::optional<analysis::InstructionId> return_statement = {};
 };
 // Unprintable until same-home, non-escape assembly and initializer-body proof.
 struct SourceInitializerCall { analysis::ReceiverCall call; };

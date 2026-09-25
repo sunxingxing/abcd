@@ -9,10 +9,44 @@ bool HasMergedOrigin(const SourceStatement& statement) {
   return statement.fused_read || statement.fused_spill || statement.fused_reload ||
          statement.class_origin || statement.previous_origin || statement.literal_origin;
 }
+void FoldCallReturns(const AstMethod& method, SourceAst& ast,
+                     std::span<const std::size_t> uses) {
+  if (method.ssa.IsPhased() || ast.regions.catches) return;
+  for (const auto& block : method.flow.blocks) {
+    const auto end = std::size_t(block.first_instruction) + block.instruction_count;
+    if (block.instruction_count < 2) continue;
+    auto& tail = ast.statements[end - 1];
+    const auto* returned = std::get_if<SourceReturn>(&tail.operation);
+    if (!returned || !std::holds_alternative<analysis::Accumulator>(returned->value) ||
+        HasMergedOrigin(tail)) continue;
+    // One scan per block; no backwards suffix search for every call owner.
+    for (std::size_t i = block.first_instruction; i + 1 < end; ++i) {
+      auto& head = ast.statements[i];
+      auto* call = std::get_if<SourceStagedCall>(&head.operation);
+      if (!call || call->return_statement || call->result != AssignmentResult::kStored ||
+          HasMergedOrigin(head) || call->call_statement.value != end - 2 ||
+          call->call_statement.value <= i) continue;
+      const auto& anchor = ast.statements[call->call_statement.value];
+      if (!std::holds_alternative<analysis::NoOperation>(anchor.operation) ||
+          HasMergedOrigin(anchor)) continue;
+      const auto output = method.ssa.Write(call->call_statement);
+      const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(end - 1)});
+      if (!output || output->value >= uses.size() || uses[output->value] != 1 ||
+          reads.size() != 1 || reads.front().value != *output) continue;
+      // The Reference/argument owner stays intact; only its unobserved result
+      // commit becomes a return after invocation. Getter/argument effects stay.
+      call->return_statement = analysis::InstructionId{static_cast<std::uint32_t>(end - 1)};
+      tail.operation = analysis::NoOperation{};
+      tail.previous_origin = anchor.pc;
+      break;
+    }
+  }
+}
 }  // namespace
 
 void FoldReturnExpressions(const AstMethod& method, SourceAst& ast,
                            std::span<const std::size_t> uses) {
+  FoldCallReturns(method, ast, uses);
   for (const auto& block : method.flow.blocks) {
     if (block.instruction_count < 2) continue;
     const auto end = std::size_t(block.first_instruction) + block.instruction_count;
