@@ -89,3 +89,32 @@ Logger's prototype read now uses `($r5).prototype` directly; the rest of its
 body remains unchanged. PC anchors, throwing receivers, observed handler
 values, copy-pair ordering and call receiver identity remain deferred runtime
 checks. No tests, generated JS execution or RSS measurements were run.
+
+## Eliminated Transport Gaps
+
+The member phase now retains one producer candidate while scanning across
+independently eliminated transports. Each skipped statement must be NoOperation
+without fused origins, have no original language/exception effects, and be
+either an original NoOperation or a pure scalar load/copy whose SSA output has
+at most one use. Other statements reset the candidate. No instruction that
+still executes, invokes a getter or changes the lexical environment is crossed.
+
+For nonadjacent candidates, the completed CopyOrigins index must identify the
+consumer input with the producer output, and the consumer's SSA input must have
+one use. The producer retains its one-use requirement. Thus a removed save/
+reload pair does not obscure identity, while exceptional phi observations,
+escaping values and unknown phi identities still block the fold. The pass
+never follows a copy chain per field: one forward scan with indexed lookups
+uses O(1) new scratch and the existing immutable copy-origin table.
+
+Both CLIs build and read-only review found no concrete defect. ABC-only export
+`build/pasteboard-receiver-copies-01` retains eight incomplete application
+records and two host-constructor refusals. Total source falls from 10,036 lines /
+170,321 bytes to 9,899 lines / 168,540 bytes. Logger's four logging methods
+read domain, prefix and format directly from `$r2` without intermediate acc
+loads. This is receiver expression recovery, not original local naming.
+
+Deferred checks additionally cover long removed-copy sequences, live or
+handler-observed intermediates, mixed unrelated dead constants, producer
+register redefinitions, original no-ops, loop/phi barriers, and source anchors.
+Tests, JS execution and RSS remain paused; no runtime-equivalence claim is made.

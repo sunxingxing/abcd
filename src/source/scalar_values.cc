@@ -2,6 +2,8 @@
 
 #include <type_traits>
 
+#include "copy_origins.h"
+
 namespace abcd::source {
 namespace {
 enum class OperandForm { kScalar, kMember };
@@ -43,13 +45,40 @@ bool ReplaceAccumulator(analysis::ScalarExpression& expression,
   }, expression);
   return replaced;
 }
+bool ElidedTransport(const AstMethod& method, const SourceAst& ast,
+                     std::size_t position, std::span<const std::size_t> uses) {
+  const auto& statement = ast.statements[position];
+  if (!std::holds_alternative<analysis::NoOperation>(statement.operation) ||
+      HasMergedOrigin(statement)) return false;
+  const auto& original = method.instructions[position];
+  if (original.effects.normal != analysis::LanguageEffect::kNone ||
+      original.effects.before_throw != analysis::LanguageEffect::kNone ||
+      original.effects.exceptional != analysis::ExceptionalCompletion::kImpossible)
+    return false;
+  if (std::holds_alternative<analysis::NoOperation>(original.operation)) return true;
+  const auto* scalar = std::get_if<analysis::ScalarAssignment>(&original.operation);
+  if (!scalar || scalar->completion != analysis::CompletionEffect::kNormal ||
+      !PureValue(scalar->expression)) return false;
+  const auto output = method.ssa.Write({static_cast<std::uint32_t>(position)});
+  return output && uses[output->value] <= 1;
+}
 void FoldValues(const AstMethod& method, SourceAst& ast,
-                std::span<const std::size_t> uses, OperandForm form) {
+                std::span<const std::size_t> uses, OperandForm form,
+                const CopyOrigins* copies = nullptr) {
   for (const auto& block : method.flow.blocks) {
     const auto end = std::size_t(block.first_instruction) + block.instruction_count;
-    for (std::size_t i = block.first_instruction; i + 1 < end; ++i) {
+    std::optional<std::size_t> previous;
+    for (std::size_t consumer_id = block.first_instruction; consumer_id < end; ++consumer_id) {
+      // A bounded forward scan, never a repeated search over no-op suffixes.
+      // Only the member phase crosses independently eliminated transports.
+      if (form == OperandForm::kMember &&
+          ElidedTransport(method, ast, consumer_id, uses)) continue;
+      const auto producer_id = previous;
+      previous = consumer_id;
+      if (!producer_id) continue;
+      const auto i = *producer_id;
       auto& head = ast.statements[i];
-      auto& tail = ast.statements[i + 1];
+      auto& tail = ast.statements[consumer_id];
       const auto* load = std::get_if<SourceAssignment>(&head.operation);
       auto* assignment = std::get_if<SourceAssignment>(&tail.operation);
       if (!load || !assignment || HasMergedOrigin(head) || HasMergedOrigin(tail) ||
@@ -69,7 +98,7 @@ void FoldValues(const AstMethod& method, SourceAst& ast,
       if ((std::holds_alternative<analysis::Accumulator>(*value) ||
            std::holds_alternative<abc::RegisterId>(*value)) &&
           expression && std::holds_alternative<analysis::ScalarValue>(*expression)) continue;
-      const auto& consumer = method.instructions[i + 1];
+      const auto& consumer = method.instructions[consumer_id];
       if (member) {
         const auto* read = std::get_if<analysis::NamedRead>(&consumer.operation);
         if (!read || read->name != member->name ||
@@ -87,14 +116,18 @@ void FoldValues(const AstMethod& method, SourceAst& ast,
           original.effects.exceptional != analysis::ExceptionalCompletion::kImpossible) continue;
       const auto output = method.ssa.Write({static_cast<std::uint32_t>(i)});
       if (!output || uses[output->value] != 1) continue;
-      const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(i + 1)});
+      const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(consumer_id)});
       bool consumed = false;
-      for (const auto& read : reads) consumed |= read.value == *output;
+      for (const auto& read : reads) {
+        consumed |= read.value == *output;
+        if (copies && uses[read.value.value] == 1)
+          consumed |= copies->At(read.value) == copies->At(*output);
+      }
       if (!consumed) continue;
       if (member) member->object = *value;
       else if (!ReplaceAccumulator(*expression, *value)) continue;
       // Private slot reads and primitive evaluation have no allocation or
-      // coercion effects. No intervening instruction can redefine the slot;
+      // coercion effects. No intervening emitted instruction redefines a slot;
       // the consumer reads its RHS before committing any destination write.
       // Handler phi uses prevent removing an observable acc commit.
       head.operation = analysis::NoOperation{};
@@ -108,7 +141,8 @@ void FoldScalarValues(const AstMethod& method, SourceAst& ast,
   FoldValues(method, ast, uses, OperandForm::kScalar);
 }
 void FoldMemberReceivers(const AstMethod& method, SourceAst& ast,
-                         std::span<const std::size_t> uses) {
-  FoldValues(method, ast, uses, OperandForm::kMember);
+                         std::span<const std::size_t> uses,
+                         const CopyOrigins& copies) {
+  FoldValues(method, ast, uses, OperandForm::kMember, &copies);
 }
 }  // namespace abcd::source
