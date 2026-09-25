@@ -31,6 +31,7 @@
 #include "capture_positions.h"
 #include "label_uses.h"
 #include "entry_bindings.h"
+#include "entry_copy_elision.h"
 
 namespace abcd::source {
 namespace {
@@ -539,6 +540,7 @@ class SourcePrinter {
       throw SourceFailure{SourceError::kResourceLimit, {}};
     limit_ -= bytes;
     FindEntryBindings(*capture_method_, names_, entry_bindings_);
+    elide_entry_copies_ = CanElideEntryCopies(ast_);
   }
   void Scalar(const ScalarExpression& expression, bool read = true) {
     auto bound = expression;
@@ -915,6 +917,8 @@ class SourcePrinter {
         [&](const auto& operation) {
           using T = std::decay_t<decltype(operation)>;
           if constexpr (std::is_same_v<T, SourceAssignment>) {
+            if (!comma && elide_entry_copies_ &&
+                IsBoundEntryCopy(statement, entry_bindings_)) return;
             Target(operation.target);
             Text(" = ");
             Expression(operation.value);
@@ -1420,6 +1424,7 @@ class SourcePrinter {
 
   const SourceAst& ast_;
   std::vector<EntryBinding> entry_bindings_;
+  bool elide_entry_copies_ = false;
   std::vector<LabelUse> label_uses_;
   const analysis::NormalFlow& blocks_;
   const analysis::SemanticMethod* capture_method_;

@@ -38,6 +38,10 @@ captures, class-parent references, declarations and initialization remain intact
 Catch/phased methods are outside this initial proof. This does not yet remove
 all transport statements or recover mutable source variables.
 
+The subsequent `entry-copy-elision.md` audit permits omission of redundant
+initialization only in methods with entirely bound read paths. Opaque consumers
+retain initialization; declarations remain unchanged.
+
 Read-only review found no concrete correctness issue. Tests, generated JS
 execution and RSS measurement remain paused. Deferred checks include mutable
 inputs, multiple writes to candidate destinations, phis, initialization-before-
