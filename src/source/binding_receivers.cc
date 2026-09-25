@@ -94,7 +94,10 @@ bool HasReceiverUse(const AstMethod& method, const SourceAst& ast,
 
 void FoldBindingReceivers(const AstMethod& method, SourceAst& ast,
                          std::span<const std::size_t> uses) {
-  if (method.ssa.IsPhased() || ast.regions.catches || ast.argument_region) return;
+  if (method.ssa.IsPhased() || ast.regions.catches) return;
+  // Branching arguments execute after the property Reference is obtained.
+  // Only the receiver-to-property interval must stay in one basic block;
+  // never extend this proof across the argument region's joins or effects.
   for (const auto& block : method.flow.blocks) {
     std::optional<std::size_t> previous;
     const auto end = std::size_t(block.first_instruction) + block.instruction_count;

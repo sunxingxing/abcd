@@ -9,7 +9,8 @@ An assignment receives AssignmentResult::kArgumentOnly only when its original
 register definition has exactly one remaining SSA use, and that value is the
 corresponding argument read at the original receiver call. Counts include phi
 inputs. Uses removed by the earlier sparse dead-copy pass are already deducted.
-Phased SSA, catches and branch argument regions remain excluded.
+Phased SSA and catches remain excluded. The branch-region-owning call remains
+excluded, but other calls in the same method may qualify independently.
 
 Direct register definitions are checked against the target. For a retargeted
 accumulator expression, the following NoOperation must carry the existing
@@ -58,3 +59,21 @@ Statuses remain eight incomplete source records, two refused constructors at
 PC 14 and nine metadata records. Partial method maps retain 195 methods and
 9,745 spans. Independent read-only review found no concrete correctness issue.
 No tests, generated JS execution or RSS measurements were run.
+
+## Per-Call Region Admission
+
+FoldArgumentExpressions now matches the printer's exact region ownership test:
+the call whose InstructionId equals SourceArgumentRegion::call is skipped.
+Other calls still require the complete ordered-assignment interval and exact
+SSA argument-definition proof. An outer interval containing a nested staged
+call fails the ordered grammar; the nested call may qualify on its own. Every
+marked assignment must therefore be emitted through StatementForm::kArgument,
+never as an IIFE statement or comma-sequence commit.
+
+No new traversal/storage or exception semantics are introduced. In ABC-only
+`build/pasteboard-branch-calls-01`, 11 callback commits disappear across the six
+pages compared with `pasteboard-branch-receivers-01`, saving 66 bytes. Source
+line counts, record statuses and method/span counts remain unchanged. Production
+builds and read-only review completed; tests, JS execution and RSS remain
+paused. Deferred cases include straight-line calls before/after a region,
+nested calls inside its branches, live callback targets and owner-call fallback.

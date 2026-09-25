@@ -40,10 +40,15 @@ std::optional<analysis::SsaValueId> ArgumentDefinition(
 
 void FoldArgumentExpressions(const AstMethod& method, SourceAst& ast,
                              std::span<const std::size_t> uses) {
-  if (ast.argument_region || ast.regions.catches || method.ssa.IsPhased()) return;
+  if (ast.regions.catches || method.ssa.IsPhased()) return;
   for (const auto& statement : ast.statements) {
     const auto* staged = std::get_if<SourceStagedCall>(&statement.operation);
     if (!staged) continue;
+    // Only this call owns the branch-argument IIFE. Other calls in the method
+    // may still have ordered straight-line arguments. Match the printer's
+    // native-argument admission; never mark an IIFE statement ArgumentOnly.
+    if (ast.argument_region &&
+        ast.argument_region->call == staged->call_statement) continue;
     const auto first = staged->first_argument_statement.value;
     const auto end = staged->call_statement.value;
     if (first > end || end >= ast.statements.size() ||

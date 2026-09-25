@@ -2,8 +2,8 @@
 
 FoldBindingReceivers (originally FoldModuleReceivers) connects an already-proven module load to a staged member
 call's receiver. It operates on shared typed AST nodes, not method names or
-source fragments. Normal SSA, no catch region and no branch argument region
-are required.
+source fragments. Normal SSA and no catch region are required. Branch argument
+regions retain the local receiver proof described below.
 
 The load and property read must be in the same basic block. Only unmerged
 NoOperation statements with impossible exceptions and no language effects, or
@@ -138,3 +138,32 @@ records; partial maps remain 195 methods / 9,745 spans. Deferred cases include
 later argument writes to the receiver slot, read-only formal substitution,
 live phi consumers, and mismatched or effectful copy origins. Full behavioral
 equivalence and memory-cap compliance remain unverified.
+
+## Branch-Argument Methods
+
+A branch argument region no longer excludes the entire method from receiver
+folding. The producer/property interval must still lie in one basic block and
+satisfy the same exact SSA-use, pure-transport and provenance checks. The
+property Reference is obtained before ArgumentRegion executes any argument
+branch. Nothing is moved across a join, argument write, getter or host effect.
+This applies both to the region-owning call and unrelated calls in that method.
+
+Receiver span relocation occurs before recursive argument emission. The
+region's structural labels do not add instruction spans between the producer
+and property. Existing distance/PC checks stay mandatory. No storage or scan
+is added; exception/phased SSA remains excluded.
+
+Production builds and ABC-only `build/pasteboard-branch-receivers-01` export
+succeeded. Compared with `pasteboard-catch-slots-02`, all six page records
+remove receiver transfers, including Button.createWithLabel/width/onClick.
+Totals decrease from 6,258 lines / 116,713 bytes to 6,212 / 116,023. The
+following argument pass change produces `pasteboard-branch-calls-01` with
+6,212 / 115,957, removing 11 additional sole-use callback argument commits.
+The branch IIFEs and control flow remain; this is not branch reconstruction.
+
+Statuses remain eight incomplete, two refused constructors at PC 14, and nine
+metadata-only records. Partial maps retain 195 methods / 9,745 spans. Read-only
+review found no concrete issue in either step. Tests, JS execution and RSS
+remain paused. Deferred cases include argument branches mutating a receiver
+register or binding, throwing getters, nested staged calls, phi consumers and
+span relocation around region labels. Full equivalence remains unproven.
