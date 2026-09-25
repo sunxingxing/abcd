@@ -45,13 +45,18 @@ struct ExceptionFlowBudget {
 // node defining acc from the edge's exception. Other registers retain their
 // pre-instruction values. A normal jump to handler code bypasses Catch.
 // No lexical environment restoration or exception-aware SSA is claimed here.
-// All raw instructions must lift; async owner normalization is separate.
+// AwaitSite certificates select the same normalized source effects as normal
+// CFG lifting. Exception arcs bypass their result Commit. This models the
+// supplied normalized body, not equivalence to the original resume protocol:
+// the owner must separately prove handler routing and observable register
+// snapshots on rejected awaits. Raw coroutine instructions still reject.
 // Total O((I+R+H) log(I+1) + R log(R+1) + I log(R+1) + E) time;
 // O(I+H+R) memory. bytes includes simultaneous scratch, excludes input body.
 // graph_work bounds lifting/connection passes and lookup comparisons, not the
 // byte-bounded upstream normal-flow/dispatch construction listed above.
 [[nodiscard]] ExceptionFlowResult BuildExceptionFlow(
     const abc::MethodBody& body, abc::ProfileId profile,
-    std::uint64_t frame_size, ExceptionFlowBudget budget = {});
+    std::uint64_t frame_size, ExceptionFlowBudget budget = {},
+    std::span<const AwaitSite> awaits = {});
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_EXCEPTION_FLOW_H_

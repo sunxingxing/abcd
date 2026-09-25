@@ -56,3 +56,37 @@ value domain is Unknown. Pending-exception `language_and_host_v1` admission is
 not silently extended to normal returns. A separate user confirmation was
 requested; any accepted normal-return premise must be typed and versioned,
 without weakening explicit operand/return verification.
+
+## Shared Await Lifting
+
+Normal and exception CFG construction now use the same borrowed `SemanticLifter`
+cursor. It produces `AwaitValue` with accumulator input/output, suspension and
+user-code effects, and a possible exception, followed by an exact NEXT mode on
+normal continuation. It never reads the discarded private state register in SSA.
+Profiles, ordered/nonoverlapping await-mode certificates, raw operand shape,
+state identity, skipped PCs and unconsumed certificates are checked. Without
+certificates, raw await/resume instructions remain unsupported.
+
+`BuildExceptionFlow` accepts the same optional typed certificates. Its Before
+node can route to the existing catch gateway without visiting the result Commit.
+The existing exception SSA and value solver thus see the normalized operation's
+effects, not the VM opcode's register effects. Cursor work is O(I+A), storage is
+O(1) excluding borrowed certificates, and per-instruction lifting remains charged
+to the graph quota. There is no second owned semantic-instruction array.
+
+This is deliberately not original-protocol equivalence. On rejected resumption,
+the original VM sequence writes its result/mode temporaries before THROW. Native
+await instead throws before the normalized result Commit. A user catch could
+observe those different register snapshots even when its selected handler is
+unchanged. The async source owner still rejects rebased exception bodies until
+that observation is ruled out or represented explicitly. The table-remapping
+certificate alone does not establish register-snapshot equivalence.
+
+Both production CLIs compile after this integration, and read-only review found
+no concrete defect. ABC-only export to `build/pasteboard-shared-lift-01` still
+publishes CommonConstants, Logger and Home as explicitly incomplete files under
+their ABC-derived source paths. Seven application records remain refused; nine
+records are metadata. No record-completion increase or execution proof is
+claimed. Deferred validation additionally includes rejected-await catch reads of
+result/mode registers, overwritten/dead temporaries, nested rejection routes,
+certificate gaps/duplicates, unsupported profiles and graph-quota exhaustion.

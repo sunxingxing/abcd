@@ -5,6 +5,7 @@
 #include <limits>
 #include <new>
 #include <stdexcept>
+#include "semantic_lifter.h"
 
 namespace abcd::analysis {
 namespace {
@@ -20,7 +21,8 @@ SemanticFailure Resource() { return {SemanticError::kResourceLimit, {}}; }
 }
 
 ExceptionFlowResult BuildExceptionFlow(const abc::MethodBody& body,
-    abc::ProfileId profile, std::uint64_t frame_size, ExceptionFlowBudget budget) {
+    abc::ProfileId profile, std::uint64_t frame_size, ExceptionFlowBudget budget,
+    std::span<const AwaitSite> awaits) {
   auto normal = BuildNormalFlow(body, {budget.bytes});
   if (const auto* failure = std::get_if<FlowFailure>(&normal)) return *failure;
   const auto& graph = std::get<NormalFlow>(normal);
@@ -57,15 +59,18 @@ ExceptionFlowResult BuildExceptionFlow(const abc::MethodBody& body,
     if (result.nodes.capacity() > node_limit ||
         result.instructions.capacity() > count || entries.capacity() > count)
       return Resource();
+    detail::SemanticLifter lifter{profile, frame_size, awaits};
     for (std::size_t i = 0; i < count; ++i) {
       charge();
-      auto lifted = LiftSemanticInstruction(body.instructions[i], profile, frame_size);
+      auto lifted = lifter.Lift(body.instructions[i]);
       if (const auto* failure = std::get_if<SemanticFailure>(&lifted)) return *failure;
       result.instructions.push_back(std::get<SemanticInstruction>(std::move(lifted)));
       const InstructionId instruction{static_cast<std::uint32_t>(i)};
       result.nodes.push_back({instruction, ExceptionPhase::kBefore});
       result.nodes.push_back({instruction, ExceptionPhase::kCommit});
     }
+    if (!lifter.Complete())
+      return SemanticFailure{SemanticError::kMalformedInstruction, {}};
     const auto find = [&](abc::CodeOffset pc) -> std::optional<std::size_t> {
       const auto it = std::lower_bound(body.instructions.begin(), body.instructions.end(), pc,
           [&](const auto& site, auto target) {

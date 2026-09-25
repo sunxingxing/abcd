@@ -8,6 +8,7 @@
 #include "abcd/abc/control_transfer.h"
 #include "abcd/analysis/coroutine.h"
 #include "abcd/analysis/constant_object.h"
+#include "semantic_lifter.h"
 
 namespace abcd::analysis {
 namespace {
@@ -17,6 +18,22 @@ using abc::Opcode;
 
 SemanticFailure Fail(SemanticError kind, abc::CodeOffset pc = {}) {
   return {kind, pc};
+}
+
+bool SupportsSemantics(abc::ProfileId profile) {
+  switch (profile) {
+    case abc::ProfileId::kDynamic1202:
+    case abc::ProfileId::kDynamic1206:
+    case abc::ProfileId::kDynamic1301:
+      return true;
+    case abc::ProfileId::kUnknown:
+    case abc::ProfileId::kDynamic9:
+    case abc::ProfileId::kDynamic1102:
+    case abc::ProfileId::kDynamic2400:
+    case abc::ProfileId::kStatic0107:
+      return false;
+  }
+  return false;
 }
 
 std::variant<SemanticOperation, SemanticFailure> LiftOperation(
@@ -359,18 +376,8 @@ SemanticEffects Effects(const SemanticOperation& operation,
 InstructionLift LiftSemanticInstruction(const abc::BodyInstruction& site,
                                         abc::ProfileId profile,
                                         std::uint64_t frame_size) {
-  switch (profile) {
-    case abc::ProfileId::kDynamic1202:
-    case abc::ProfileId::kDynamic1206:
-    case abc::ProfileId::kDynamic1301:
-      break;
-    case abc::ProfileId::kUnknown:
-    case abc::ProfileId::kDynamic9:
-    case abc::ProfileId::kDynamic1102:
-    case abc::ProfileId::kDynamic2400:
-    case abc::ProfileId::kStatic0107:
-      return Fail(SemanticError::kUnsupportedProfile, site.offset);
-  }
+  if (!SupportsSemantics(profile))
+    return Fail(SemanticError::kUnsupportedProfile, site.offset);
   auto operation = LiftOperation(site, frame_size);
   if (const auto* failure = std::get_if<SemanticFailure>(&operation)) return *failure;
   const auto registers = LiftRegisterEffect(site.decoded, frame_size);
@@ -383,23 +390,69 @@ InstructionLift LiftSemanticInstruction(const abc::BodyInstruction& site,
   return SemanticInstruction{site.offset, std::move(semantic), effects};
 }
 
+InstructionLift detail::SemanticLifter::Lift(const abc::BodyInstruction& site) {
+  if (!SupportsSemantics(profile_))
+    return Fail(SemanticError::kUnsupportedProfile, site.offset);
+  if ((next_mode_ < awaits_.size() &&
+       awaits_[next_mode_].mode_pc < site.offset) ||
+      (next_await_ < awaits_.size() &&
+       awaits_[next_await_].pc < site.offset))
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
+  if (next_mode_ < awaits_.size() &&
+      awaits_[next_mode_].mode_pc == site.offset) {
+    if (next_mode_ >= next_await_)
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    ++next_mode_;
+    const auto lifted = LiftCoroutineInstruction(site.decoded, frame_size_);
+    const auto* read = std::get_if<CoroutineRead>(&lifted);
+    if (!read || read->kind != CoroutineReadKind::kResumeMode ||
+        !std::holds_alternative<Accumulator>(read->state))
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    // Rejection leaves through the native await's exception edge. Only its
+    // normal continuation reaches this exact NEXT mode definition.
+    SemanticOperation operation = ScalarAssignment{
+        Accumulator{}, ScalarValue{IntegerLiteral{
+            static_cast<std::int32_t>(CoroutineResumeMode::kNext)}}};
+    RegisterEffect registers;
+    registers.write = Accumulator{};
+    const auto effects = Effects(operation, registers);
+    return SemanticInstruction{site.offset, std::move(operation), effects};
+  }
+  if (next_await_ < awaits_.size() &&
+      awaits_[next_await_].pc == site.offset) {
+    const auto& awaited = awaits_[next_await_];
+    if (next_mode_ != next_await_ || awaited.mode_pc <= awaited.pc ||
+        (next_await_ + 1 < awaits_.size() &&
+         awaits_[next_await_ + 1].pc <= awaited.mode_pc))
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    ++next_await_;
+    const auto lifted = LiftCoroutineInstruction(site.decoded, frame_size_);
+    const auto* transfer = std::get_if<CoroutineTransfer>(&lifted);
+    const auto* state = transfer
+        ? std::get_if<abc::RegisterId>(&transfer->state) : nullptr;
+    if (!transfer || transfer->kind != CoroutineTransferKind::kAwait ||
+        !state || *state != awaited.origin.state ||
+        !std::holds_alternative<Accumulator>(transfer->value))
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    // Normal and exception SSA must consume these source effects, not the
+    // raw opcode's discarded private-state operand. Owner proof is separate.
+    SemanticOperation operation = AwaitValue{Accumulator{}, awaited.origin};
+    RegisterEffect registers;
+    registers.reads[registers.read_count++] = Accumulator{};
+    registers.write = Accumulator{};
+    const auto effects = Effects(operation, registers);
+    return SemanticInstruction{site.offset, std::move(operation), effects};
+  }
+  return LiftSemanticInstruction(site, profile_, frame_size_);
+}
+
 SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
                                    abc::ProfileId profile,
                                    std::uint64_t frame_size,
                                    SemanticBudget budget,
                                    std::span<const AwaitSite> awaits) {
-  switch (profile) {
-    case abc::ProfileId::kDynamic1202:
-    case abc::ProfileId::kDynamic1206:
-    case abc::ProfileId::kDynamic1301:
-      break;
-    case abc::ProfileId::kUnknown:
-    case abc::ProfileId::kDynamic9:
-    case abc::ProfileId::kDynamic1102:
-    case abc::ProfileId::kDynamic2400:
-    case abc::ProfileId::kStatic0107:
-      return Fail(SemanticError::kUnsupportedProfile);
-  }
+  if (!SupportsSemantics(profile))
+    return Fail(SemanticError::kUnsupportedProfile);
   if (!body.tries.empty() || !body.handlers.empty())
     return Fail(SemanticError::kExceptionRegions);
   auto built = BuildNormalFlow(body, {budget.bytes});
@@ -426,59 +479,14 @@ SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
   // Lift once before SSA. The exact same typed normal effects drive def/use,
   // renaming and subsequent source validation; future recovered operations
   // must not silently revert to the original VM operand effects in SSA.
-  std::size_t next_await = 0;
-  std::size_t next_mode = 0;
+  detail::SemanticLifter lifter{profile, frame_size, awaits};
   for (const auto& site : body.instructions) {
-    if (next_mode < awaits.size() && awaits[next_mode].mode_pc < site.offset)
-      return Fail(SemanticError::kMalformedInstruction, site.offset);
-    if (next_mode < awaits.size() && awaits[next_mode].mode_pc == site.offset) {
-      if (next_mode >= next_await)
-        return Fail(SemanticError::kMalformedInstruction, site.offset);
-      ++next_mode;
-      const auto lifted = LiftCoroutineInstruction(site.decoded, frame_size);
-      const auto* read = std::get_if<CoroutineRead>(&lifted);
-      if (!read || read->kind != CoroutineReadKind::kResumeMode ||
-          !std::holds_alternative<Accumulator>(read->state))
-        return Fail(SemanticError::kMalformedInstruction, site.offset);
-      // The private async state can only resume NEXT or THROW. Native await
-      // already takes the throwing path; normal continuation has exact NEXT.
-      SemanticOperation operation = ScalarAssignment{
-          Accumulator{}, ScalarValue{IntegerLiteral{
-              static_cast<std::int32_t>(CoroutineResumeMode::kNext)}}};
-      RegisterEffect registers;
-      registers.write = Accumulator{};
-      const auto effects = Effects(operation, registers);
-      instructions.push_back({site.offset, std::move(operation), effects});
-      continue;
-    }
-    if (next_await < awaits.size() && awaits[next_await].pc < site.offset)
-      return Fail(SemanticError::kMalformedInstruction, site.offset);
-    if (next_await < awaits.size() && awaits[next_await].pc == site.offset) {
-      const auto& awaited = awaits[next_await++];
-      const auto lifted = LiftCoroutineInstruction(site.decoded, frame_size);
-      const auto* transfer = std::get_if<CoroutineTransfer>(&lifted);
-      const auto* state = transfer
-          ? std::get_if<abc::RegisterId>(&transfer->state) : nullptr;
-      if (!transfer || transfer->kind != CoroutineTransferKind::kAwait ||
-          !state || *state != awaited.origin.state ||
-          !std::holds_alternative<Accumulator>(transfer->value))
-        return Fail(SemanticError::kMalformedInstruction, site.offset);
-      // Ownership and region equivalence belong to the async normalizer.
-      // Native await reads the source value, never the discarded VM state.
-      SemanticOperation operation = AwaitValue{Accumulator{}, awaited.origin};
-      RegisterEffect registers;
-      registers.reads[registers.read_count++] = Accumulator{};
-      registers.write = Accumulator{};
-      const auto effects = Effects(operation, registers);
-      instructions.push_back({site.offset, std::move(operation), effects});
-      continue;
-    }
-    auto lifted = LiftSemanticInstruction(site, profile, frame_size);
+    auto lifted = lifter.Lift(site);
     if (const auto* failure = std::get_if<SemanticFailure>(&lifted))
       return *failure;
     instructions.push_back(std::get<SemanticInstruction>(std::move(lifted)));
   }
-  if (next_await != awaits.size() || next_mode != awaits.size())
+  if (!lifter.Complete())
     return Fail(SemanticError::kMalformedInstruction);
   const auto instruction_bytes =
       instructions.capacity() * sizeof(SemanticInstruction);
