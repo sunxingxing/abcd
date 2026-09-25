@@ -9,9 +9,14 @@ This adds constant per-instruction work and no new retained tables.
 The printer refuses this expression with SourceError::kRealmBinding until an
 owner-validated realm-object source binding is available. A mutable globalThis
 property/name, Function constructor, or lexical free identifier is not assumed
-equivalent. No new execution premise has been installed. The user has been
-asked whether a versioned lifetime globalThis identity/non-shadowing premise
-is acceptable; pending that decision, no source substitution is performed.
+equivalent. On 2026-09-25 the user explicitly rejected a lifetime globalThis
+identity/non-shadowing assumption and required a trusted host-provided global
+object binding instead. No name-based substitution or such execution premise
+is installed. Until an explicit trusted binding is supplied, source emission
+must retain `kRealmBinding` refusal. An API for supplying that binding still
+needs implementation; a free identifier alone cannot establish its identity
+or protection from shadowing. This decision does not settle normal-call return
+value admission or expand the approved pending-exception contract.
 
 ABC-only inspection of pasteboard callback 7061 now builds 27 IR instructions,
 3 blocks and 36 SSA values, rather than failing at LDGLOBAL PC6. Detached

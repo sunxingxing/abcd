@@ -128,9 +128,13 @@ The separate lifetime parent-brand requirement remains unchanged.
 ABC-only debugger inspection of EntryBackupAbility constructor 5493 confirms
 the proof returns an empty writes vector. Class emission then rejects the
 actual `ParentRuntimeInvariant::kUnproven`, explaining the record's remaining
-PC14 refusal. This is not an async method failure. A user decision about a
-versioned, narrowly scoped host-base-class premise has been requested; no such
-premise is currently installed. Both production CLIs build and read-only review
+PC14 refusal. This is not an async method failure. The user explicitly rejected
+the proposed narrowly scoped host-base-class premise on 2026-09-25.
+EntryAbility and EntryBackupAbility must remain conservatively refused: neither
+their API identity nor an import name licenses a lifetime ordinary-JSFunction
+or non-Proxy prototype-chain assumption. No such premise is installed, and the
+existing `ParentRuntimeInvariant::kUnproven` gate remains unchanged.
+Both production CLIs build and read-only review
 found no concrete defect in the zero-field extension. Tests, generated-JS
 execution and RSS collection remain paused. Deferred regressions cover empty
 field sequences with malformed rest/guards, extra effects, nonterminal returns,
