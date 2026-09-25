@@ -18,14 +18,54 @@ manifests carry `source_contract: language_and_host_v1`. Inspection distinguishe
 `pending_exception_values_proven: false`. Historical Unknown-policy results
 below describe earlier milestones, not current source admission.
 
-Current ABC-only evidence: 6350 and 4945 pass exception input verification,
-then stop at AST PCs 59 and 145. Method 5165 still fails input verification at
-PC44. In the actual Home class owner (entry 6100), method 6733 advances past
-the catch-input failure at PC96 and now stops in AST lowering at receiver call
-PC64. The detached inspector still lacks that owner's capture-preservation
-context and rejects 6733 at local PC504; do not confuse these two contexts.
-No complete record or semantic execution equivalence is claimed. Production
-CLIs compile; tests, JS execution and RSS remain paused.
+After contract admission, 6350 and 4945 initially stopped at AST PCs 59 and
+145; the same-catch argument extension below now emits their source/template.
+Method 5165 still fails independent input verification at PC44. The actual
+Home owner also emits method 6733 through the shared exception body pipeline.
+Its detached inspector still lacks the owner's capture-preservation context
+and rejects 6733 at local PC504; do not confuse these two contexts. No complete
+record or semantic execution equivalence is claimed. Production CLIs compile;
+tests, JS execution and RSS remain paused.
+
+### Same-Catch Argument Evaluation
+
+`ProveExceptionCalls` now admits longer linear argument intervals inside a
+local catch when the property, every throwing argument evaluation and the
+final call have the exact same DispatchTarget and Catch gateway. A prefix
+count of dispatch changes makes each interval query O(1); normal private
+instructions do not create spurious changes. Invalid exits, route changes,
+alternate normal entries and local cross-block control still reject admission.
+This keeps O(I+N+E+R) analysis and bounded O(I+N) scratch, with no per-call
+walk of potentially overlapping argument ranges.
+
+Local-catch intervals always use `kPreserveOrder`, including pure arguments.
+Moving private argument writes before a getter could change the handler's
+register snapshot on getter failure, so pure does not authorize delayed
+property evaluation here. The existing SourceStagedCall keeps the property
+Reference alive while an arrow evaluates arguments inside the same enclosing
+try. Receiver identity and single-use callee/spill/reload SSA checks, including
+handler phi inputs, remain mandatory. The Catch node replaces the accumulator
+with the thrown value; no removed callee spill may be observed in the handler.
+Caller-only pure intervals retain their existing fusion behavior.
+
+ABC-only evidence after this change:
+
+- 6350 emits a complete body template with no captures and 74 original-PC
+  spans, including the formerly refused hasDataType call inside try/catch.
+  Module/global/wrapper binding obligations still make the detached artifact
+  non-executable by itself.
+- 4945 emits a 203-span template with two capture insertions; it is not a
+  complete source body until the parent discharges those captures.
+- In actual Home entry 6100's class owner, 6733 yields `PrintedSource` and
+  201 spans instead of refusing the PC64 receiver call. The full entry still
+  refuses with a resource limit at outer PC98; no record-completion gain is
+  claimed and no budget was enlarged to bypass admission.
+
+Both production CLIs compile and read-only review found no confirmed defect.
+Deferred tests: getter failure before pure argument writes, argument/call
+failure snapshots, catch-observed spill rejection, mixed dispatch regions or
+gateways, nested staged calls, phi uses, no-catch behavior, 200/201 scaling and
+budget boundaries. No tests, generated-JS execution or RSS were run.
 
 ### Captured-Cell Templates
 

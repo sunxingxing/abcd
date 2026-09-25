@@ -102,8 +102,13 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
       if (!normal || exit.handler.has_value() != node.exception->target.has_value()) return {};
       return exit;
     };
-    struct Barriers { std::size_t edge = 0, argument = 0, ordered = 0; };
+    struct Barriers {
+      std::size_t edge = 0, argument = 0, ordered = 0, dispatch = 0;
+    };
     std::pmr::vector<Barriers> barriers(sites.size() + 1, {}, &memory);
+    std::optional<DispatchTarget> previous_target;
+    std::optional<ExceptionNodeId> previous_handler;
+    bool seen_dispatch = false;
     // Prefix counts make arbitrarily long, overlapping candidate intervals
     // constant-time queries. All storage shares the stage's admission budget.
     for (std::size_t i = 0; i < sites.size(); ++i) {
@@ -118,6 +123,7 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
       }
       bool pure = false;
       bool ordered = false;
+      bool dispatch_change = false;
       if (sites[i].before && sites[i].commit) {
         const auto& before = flow.nodes[sites[i].before->value];
         const auto& effects = flow.instructions[i].effects;
@@ -126,7 +132,14 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
             before.successors.front().target == *sites[i].commit &&
             effects.exceptional == ExceptionalCompletion::kImpossible;
         const auto exit = before.exception ? route(sites[i]) : std::nullopt;
-        ordered = normal || (exit && !exit->handler);
+        ordered = normal || exit.has_value();
+        if (exit) {
+          dispatch_change = !seen_dispatch || previous_target != before.exception->target ||
+                            previous_handler != exit->handler;
+          previous_target = before.exception->target;
+          previous_handler = exit->handler;
+          seen_dispatch = true;
+        }
         pure = normal &&
             effects.normal == LanguageEffect::kNone &&
             effects.before_throw == LanguageEffect::kNone &&
@@ -134,7 +147,8 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
       }
       barriers[i + 1] = {barriers[i].edge + !linear,
                          barriers[i].argument + !pure,
-                         barriers[i].ordered + !ordered};
+                         barriers[i].ordered + !ordered,
+                         barriers[i].dispatch + dispatch_change};
     }
     const auto callee_property = [&](std::size_t call) -> std::optional<std::size_t> {
       std::optional<SsaValueId> callee;
@@ -179,14 +193,18 @@ std::variant<ExceptionCalls, ExceptionCallError> ProveExceptionCalls(
           flow.nodes[sites[*property].before->value].exception->target !=
               flow.nodes[sites[call].before->value].exception->target) continue;
       if (!short_interval) {
-        // Longer intervals are caller-only. Fusion moves private writes;
-        // ordered emission instead encloses arguments in an arrow. Neither
-        // route proves ownership or observable register state for a local catch.
+        // Keep every exceptional evaluation inside the same original dispatch
+        // and Catch gateway. A local catch forbids even pure-argument fusion:
+        // getter failure must precede argument register writes. The staged
+        // Reference call preserves those writes; AST SSA-use checks separately
+        // reject any removed callee spill observed by a handler or its phis.
         const bool linear = barriers[call].edge == barriers[*property].edge;
-        if (!read_exit->handler && !call_exit->handler && (linear || !has_catch) &&
+        const bool same_dispatch = barriers[call + 1].dispatch == barriers[*property + 1].dispatch;
+        if ((linear || !has_catch) && same_dispatch &&
             barriers[call].ordered == barriers[*property + 1].ordered) {
           const auto evaluation =
-              linear && barriers[call].argument == barriers[*property + 1].argument
+              !read_exit->handler && linear &&
+                  barriers[call].argument == barriers[*property + 1].argument
                   ? ReceiverEvaluation::kFuse : ReceiverEvaluation::kPreserveOrder;
           result.routes[call] = ExceptionCallRoute{
               InstructionId{static_cast<std::uint32_t>(*property)}, evaluation,

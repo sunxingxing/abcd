@@ -557,12 +557,16 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
                       analysis::ScalarSlot{analysis::Accumulator{}}) ||
             effect.exceptional != analysis::ExceptionalCompletion::kMayThrow)
           return Fail(SourceError::kInvalidEffect, instruction.pc);
-        const bool staged = across_blocks || *last_effect != property;
+        const bool staged = across_blocks || *last_effect != property ||
+            (method.ssa.IsPhased() && proof.call_routes[i]->evaluation ==
+                analysis::ReceiverEvaluation::kPreserveOrder);
         if (method.ssa.IsPhased()) {
           // Effectful argument preparation stays inside the existing staged
           // Reference call. Forward-region admission above requires both the
           // phased caller-exit certificate and the normal single-entry proof;
-          // neither permits local catches or delayed property evaluation.
+          // neither permits delayed property evaluation. Linear local-catch
+          // routes also require staging for pure arguments, preserving the
+          // register snapshot if the getter throws before argument evaluation.
           switch (proof.call_routes[i]->evaluation) {
             case analysis::ReceiverEvaluation::kFuse:
               if (staged) return Fail(SourceError::kUnsupportedOperation, instruction.pc);

@@ -22,10 +22,10 @@ struct ExceptionCalls {
 enum class ExceptionCallError : std::uint8_t { kInvalidFlow, kResourceLimit };
 // Same immutable BuildExceptionFlow result and matching phased SSA. Accepts direct read/call and exact
 // read/spill/reload/call intervals, with single-entry interiors and equal
-// dispatch/Catch gateways; longer private scalar/string argument intervals
-// require both exceptions to propagate to the caller. Effectful interiors
-// require caller-only exits at every site and kPreserveOrder emission; they
-// are never permission to delay the property read. This is NOT full call
+// dispatch/Catch gateways. Longer intervals require a single dispatch and
+// Catch gateway across all throwing evaluations. Effectful interiors and any
+// longer local-catch interval require kPreserveOrder emission; they are never
+// permission to delay the property read. This is NOT full call
 // emission permission: AST must
 // prove receiver identity and single uses of all removed SSA definitions,
 // including phi inputs, so no handler observes an eliminated register write.
