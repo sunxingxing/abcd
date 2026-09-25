@@ -1,6 +1,17 @@
 # Exception boundary decision
 
-Status: awaiting user choice; current production behavior remains strict.
+Status: user selected source-language/host-contract equivalence on 2026-09-25.
+Production admission remains strict until this contract is wired explicitly.
+
+## Accepted execution premise
+
+The user confirmed: legitimate JS/ArkTS source and compliant host APIs may
+throw any JavaScript value, but do not expose VM-internal tagged markers.
+This is an execution-environment assumption, not evidence inferred from ABC.
+Record it explicitly in admission, emitted artifact metadata and eventual cache
+keys. Preserve arbitrary JS thrown values; do not replace them with Error.
+Internal ABC operands and explicit throws still require independent validation.
+Arbitrary-tagged-runtime equivalence is outside this selected source contract.
 
 ## Concrete unresolved boundary
 
@@ -53,7 +64,8 @@ proves all possible payload paths.
    rejection remains correct under this stronger scope. No runtime wrapper or
    fabricated Error may substitute for an unrepresentable payload.
 
-The first scope was recommended to the user for source decompilation. No
-choice has yet been applied, no global Language pending policy was enabled,
-and no successful source emission or increased coverage is claimed here.
+The first scope is now selected for source decompilation. Its implementation
+must still distinguish contract-derived facts from ABC-derived proofs. No
+global Language pending policy has yet been enabled, and no successful source
+emission or increased coverage is claimed by this decision alone.
 Tests and RSS tracking remain paused.
