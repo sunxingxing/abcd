@@ -7,6 +7,7 @@
 
 #include "value_edits.h"
 #include "value_flow.h"
+#include "value_phi.h"
 
 namespace abcd::analysis {
 namespace {
@@ -26,6 +27,7 @@ class BatchBudget {
     Require(count <= bytes_ / width, Error::kResourceLimit);
     bytes_ -= count * width;
   }
+  SemanticBudget Remaining() const { return {bytes_, work_}; }
   template <typename T> void Reserve(std::vector<T>& items, std::size_t count) {
     Require(count <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
     Admit(count, sizeof(T));
@@ -141,7 +143,9 @@ void Canonicalize(ValueProgram& graph, BatchScratch& scratch,
     Require(*source != *op.result, Error::kCopyCycle);
     // Do not broaden a refined input certificate by replacing it with a value
     // whose facts are weaker. Constants are not materialized as fake ValueIds.
-    if (graph.values[source->value].domain != graph.values[op.result->value].domain)
+    const auto domain = graph.values[source->value].domain;
+    const auto admitted = graph.values[op.result->value].domain;
+    if (domain.IsEmpty() || domain.Join(admitted) != admitted)
       continue;
     aliases[op.result->value] = *source;
   }
@@ -248,6 +252,11 @@ std::variant<ValueSimplifyStats, ValueSimplifyError> SimplifyValues(
     BatchScratch scratch{candidate, quota};
     ValueSimplifyStats stats{expected};
     Canonicalize(candidate, scratch, quota, stats);
+    const auto phis = SimplifyPhis(candidate, quota.Remaining());
+    if (const auto* error = std::get_if<ValueSimplifyError>(&phis)) throw *error;
+    const auto& collapsed = std::get<PhiSimplifyStats>(phis);
+    quota.Work(collapsed.work);
+    stats.replaced_uses += collapsed.replaced_uses;
     MarkLive(candidate, scratch, quota);
     for (std::size_t i = 0; i < candidate.ops.size(); ++i) {
       quota.Work();

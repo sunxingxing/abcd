@@ -109,8 +109,8 @@ cover copy lengths 200/201/4096, multiple uses, stale/overflow revisions, budget
 rollback, copy cycles, unused getters and dead phi cycles. They remain unrun.
 The production abc_semantic target builds with these changes.
 
-Live trivial-phi SCC collapse and the independent transformed effect/input
-correspondence certificate remain outstanding. SimplifyValues is internal and
+The independent transformed effect/input correspondence certificate remains
+outstanding. SimplifyValues is internal and
 requires verified input effects; it is not yet called by the source CLI. No new
 source-output claim is made here.
 
@@ -143,3 +143,21 @@ Production abc_semantic build passed. Fresh ABC-only inspections of pasteboard
 Both reported ValuesImported, revision 0, no failure, no legacy writer and
 incomplete/non-executable output (exit 1). No test executable, generated JS,
 holdout sample, sidecar source or RSS measurement was run.
+
+### Phi Dependency Components
+
+SimplifyValues now runs a single iterative Tarjan traversal of live phi
+dependencies after identity-copy canonicalization. Components finish in dependency
+order. A component collapses only when all external inputs resolve to one value
+whose nonempty domain is no broader than each replaced phi's domain. Components
+with no external input or distinct external values stay intact. One final
+occurrence pass updates users, followed by reverse liveness and normal-flow
+verification inside the existing rollback/revision transaction.
+
+The additional algorithm is O(V+U) with explicitly admitted arrays and stacks;
+no recursion, per-variable CFG walks, repeated input rescans or dense relation
+matrix. References remain those in algorithms.md; this is a local implementation,
+not a new third-party dependency. Tests specify chains and rings of 200/201/4096
+phis, mixed external inputs, domain refinement, and the unanchored/self-only
+case. The full batch rejects malformed entry flow before SCC processing. Test
+execution and RSS measurement remain paused; no ValuesVerified/source claim yet.
