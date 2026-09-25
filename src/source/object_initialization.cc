@@ -110,4 +110,53 @@ void FoldObjectInitialization(const AstMethod& method, SourceAst& ast,
     }
   }
 }
+void FoldObjectCopies(const AstMethod& method, SourceAst& ast,
+                      std::span<const std::size_t> uses) {
+  if (method.ssa.IsPhased() || ast.regions.catches) return;
+  for (const auto& block : method.flow.blocks) {
+    const auto end = std::size_t(block.first_instruction) + block.instruction_count;
+    for (std::size_t i = block.first_instruction; i + 1 < end; ++i) {
+      auto& head = ast.statements[i];
+      auto& tail = ast.statements[i + 1];
+      auto* assignment = std::get_if<SourceAssignment>(&head.operation);
+      const auto* buffer = assignment
+          ? std::get_if<analysis::BufferedObjectCreation>(&assignment->value) : nullptr;
+      const auto* original = std::get_if<analysis::BufferedObjectCreation>(
+          &method.instructions[i].operation);
+      const auto* save = std::get_if<SourceAssignment>(&tail.operation);
+      const auto* target = save ? std::get_if<abc::RegisterId>(&save->target) : nullptr;
+      const auto* scalar = save ? std::get_if<analysis::ScalarExpression>(&save->value) : nullptr;
+      const auto* input = scalar ? std::get_if<analysis::ScalarValue>(scalar) : nullptr;
+      const auto* original_save = std::get_if<analysis::ScalarAssignment>(
+          &method.instructions[i + 1].operation);
+      const auto* saved_input = original_save
+          ? std::get_if<analysis::ScalarValue>(&original_save->expression) : nullptr;
+      const auto* saved_target = original_save
+          ? std::get_if<abc::RegisterId>(&original_save->destination) : nullptr;
+      if (!buffer || !original || buffer->literal != original->literal ||
+          Merged(head) || Merged(tail) || assignment->object_field ||
+          assignment->result != AssignmentResult::kStored ||
+          !std::holds_alternative<analysis::Accumulator>(assignment->target) ||
+          !target || !input || !std::holds_alternative<analysis::Accumulator>(*input) ||
+          save->result != AssignmentResult::kStored || save->object_field ||
+          !saved_target || *saved_target != *target || !saved_input ||
+          !std::holds_alternative<analysis::Accumulator>(*saved_input) ||
+          original_save->completion != analysis::CompletionEffect::kNormal ||
+          !IsPureCopyStep(method.instructions[i + 1])) continue;
+      const auto output = method.ssa.Write({static_cast<std::uint32_t>(i)});
+      const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(i + 1)});
+      const auto& written = method.instructions[i].effects.normal_registers.write;
+      if (!written || !std::holds_alternative<analysis::Accumulator>(*written) ||
+          !output || output->value >= uses.size() || uses[output->value] != 1 ||
+          reads.size() != 1 || reads.front().value != *output) continue;
+      // Evaluation and failure stay at the creation PC. Only its unobserved
+      // accumulator commit disappears; the register commits after success.
+      // Subsequent own-field writes keep their original provenance and order.
+      assignment->target = *target;
+      tail.operation = analysis::NoOperation{};
+      tail.previous_origin = head.pc;
+      ++i;
+    }
+  }
+}
 }  // namespace abcd::source

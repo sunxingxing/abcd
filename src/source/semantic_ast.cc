@@ -760,6 +760,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     ElideUnusedResults(method, ast, uses);
     FoldBindingReceivers(method, ast, uses);
     FoldObjectInitialization(method, ast, uses);
+    FoldObjectCopies(method, ast, uses);
     FoldArgumentExpressions(method, ast, uses);
     return ast;
   } catch (const std::bad_alloc&) {

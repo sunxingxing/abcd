@@ -97,3 +97,36 @@ with the same incomplete, refused and metadata-only statuses. Read-only review
 reported no concrete new defects. Tests, JS execution and RSS remain paused;
 deferred checks additionally include sole-call-use removal, retained phi uses,
 extra receiver reads and multi-use object commits.
+
+## Remaining Object Copies
+
+After initialization recovery, FoldObjectCopies retargets remaining buffered
+object allocations to their adjacent register save. Original and AST buffer
+identities and save operands must match. The exact accumulator SSA definition
+has that save as its only use, including phi consumers. Both statements have
+unmerged origins, and the save is a pure normal copy in the same block.
+
+Allocation/evaluation/failure stay at the original PC and the register commits
+only on success. No initialization is folded here: later own-field writes keep
+their order and verified buffer provenance. Annotated object assignments and
+catches remain excluded. The eliminated save has previous_origin pointing at
+the producer. Existing ordered argument admission can then consume the literal
+without a register commit only when its independent sole-use proof succeeds.
+This pass changes destinations, not expression shape, and introduces no resource
+failure assumption. It is O(I log(I + U)) with constant scratch for I instructions
+and U indexed SSA reads. No dependency, textual dispatch or sample identity is
+introduced.
+
+Production builds and ABC-only export `build/pasteboard-object-copies-01`
+succeeded. Across six pages, 46 buffered-object accumulator transports disappear;
+subsequent field writes stay explicit. Source totals become 5,463 lines / 103,718
+bytes, down 46 lines / 595 bytes. This does not yet recover every plain object
+argument or multi-field initialization, and is not additional method coverage.
+
+PageA method 7255 creation PC 154 and save PC 158 share bytes [5605,5640),
+`$r8 = ({right: null, left: null});` including its newline. Partial maps retain
+195 methods / 9,745 spans. Statuses remain eight incomplete, two refused host
+constructors at PC 14 and nine metadata-only records. Read-only review found no
+concrete defect. Tests, JS execution and RSS remain paused. Deferred checks
+include extra accumulator uses, pool mismatch, subsequent own-field writes,
+throwing allocation, catch/phi observations and already-annotated objects.
