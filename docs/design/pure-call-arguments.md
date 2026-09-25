@@ -45,3 +45,41 @@ retains getter/call spans and eliminated transport anchors.
 Read-only review found no concrete defect. More calls now enter existing staged
 depth/output admission, so deeply nested inputs may still be conservatively
 refused under those bounds. No test, generated JS execution or RSS run was made.
+
+## Empty Argument Lists
+
+Normal-SSA zero-argument calls can also use the common Reference owner when
+property, callee save, reload and call are exactly consecutive instructions.
+The same callee single-use and receiver identity proofs remain mandatory.
+After fusion the interval contains only the erased save/reload anchors, so
+there is no argument effect or live assignment to represent inside `()`.
+Other zero-argument layouts and phased calls retain their previous policy.
+
+HasOrderedArguments admits a zero-size argument list only when all interval
+nodes are NoOperation: an assignment still fails the missing first-argument
+lookup. The ordinary staged printer visits those anchors and emits `()`; it
+does not synthesize a dummy argument, comma expression or wrapper call. Getter
+and invocation PCs retain the existing call span. Receiver use accounting and
+binding recovery remain shared, including initialized/captured receivers.
+
+No new storage, dependency or asymptotic work is introduced. Deferred checks
+include non-adjacent layouts, live intervening copies, getters throwing,
+receiver alias changes, return consumers and empty-list source positions.
+
+The first ABC-only attempt (`build/pasteboard-empty-arguments-01`) exposed an
+obsolete printer entry check rejecting every zero-argument call as a resource
+error (record 9550). The entry check was removed; an explicit InvalidEffect
+check now rejects zero-argument non-ordered intervals before the first-argument
+fallback. Read-only review independently identified this issue and reviewed the
+fix. Production builds and the subsequent ABC-only export
+`build/pasteboard-empty-arguments-02` succeeded.
+
+All six pages change. Examples include Column.create(), Button.pop(),
+this.updateDirtyElements() and direct captured/imported zero-argument receivers.
+Totals become 4,337 lines / 91,982 bytes, down 300 lines / 3,090 bytes. Partial
+maps retain 195 methods / 9,745 spans, with unchanged eight incomplete, two
+refused and nine metadata-only record statuses. Tests, JS execution and RSS
+were not run. There are still expression-composition gaps: nested staged calls
+can require the existing argument IIFE fallback, and returned staged calls can
+retain an accumulator commit. These are not claims of completed source-style
+or semantic-equivalence recovery merely because total text decreased.

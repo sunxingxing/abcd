@@ -616,9 +616,12 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
           // when arguments are pure. This lets the common argument AST own
           // their evaluation instead of committing every value to VM slots.
           // Phased calls remain governed by their exception-route certificate.
-          const bool native_arguments = !method.ssa.IsPhased() && spill && reload &&
-              call->Count() != 0;
-          const bool staged = native_arguments || across_blocks || *last_effect != property ||
+          const bool empty_arguments = !method.ssa.IsPhased() && call->Count() == 0 &&
+              spill && reload && *spill == property + 1 && *reload == *spill + 1 &&
+              i == *reload + 1;
+          const bool native_reference = !method.ssa.IsPhased() && spill && reload &&
+              (call->Count() != 0 || empty_arguments);
+          const bool staged = native_reference || across_blocks || *last_effect != property ||
               (method.ssa.IsPhased() && proof.call_routes[i]->evaluation ==
                   analysis::ReceiverEvaluation::kPreserveOrder);
           if (method.ssa.IsPhased()) {
@@ -637,7 +640,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
                 break;
             }
           }
-          if (staged && (!spill || !reload || !call->Count()))
+          if (staged && (!spill || !reload || (!call->Count() && !empty_arguments)))
             return Fail(SourceError::kUnsupportedOperation, instruction.pc);
           if (staged) {
             // End-ordered interval stack: accept nesting, reject crossing. Each

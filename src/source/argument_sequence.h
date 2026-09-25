@@ -74,7 +74,9 @@ inline bool HasOrderedArguments(std::span<const SourceStatement> statements,
     previous = *target;
     ++ordinal;
   }
-  return ordinal != 0 && ordinal == call.Count();
+  // Zero arguments qualify only when every interval node was NoOperation;
+  // any emitted assignment above fails call.At(0). Keep their PC anchors.
+  return ordinal == call.Count();
 }
 }  // namespace abcd::source
 

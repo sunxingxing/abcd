@@ -1209,7 +1209,7 @@ class SourcePrinter {
             throw SourceFailure{SourceError::kClassAssembly, current_pc_};
           } else if constexpr (std::is_same_v<T, SourceStagedCall>) {
             constexpr std::size_t kMaxCallDepth = 128;
-            if (call_depth_ >= kMaxCallDepth || !operation.call.Count() ||
+            if (call_depth_ >= kMaxCallDepth ||
                 operation.call_statement.value >= ast_.statements.size())
               throw SourceFailure{SourceError::kResourceLimit, current_pc_};
             ++call_depth_;
@@ -1251,6 +1251,8 @@ class SourcePrinter {
             const bool ordered = sequence && HasOrderedArguments(
                 std::span<const SourceStatement>{ast_.statements}.subspan(
                     first_statement, last_statement - first_statement), operation.call);
+            if (!operation.call.Count() && !ordered)
+              throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
             if (ordered) {
               Text("(");
               bool first_argument = true;
