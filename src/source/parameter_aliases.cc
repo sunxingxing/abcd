@@ -6,6 +6,22 @@
 #include "abcd/abc/register_access.h"
 
 namespace abcd::source {
+bool IsReadOnlyRegister(const abc::MethodBody& body, const abc::FrameLayout& frame,
+                        abc::RegisterId slot) {
+  if (slot.value >= frame.registers) return false;
+  for (const auto& site : body.instructions) {
+    const auto accesses = abc::GetRegisterAccesses(site.decoded, frame.registers);
+    const auto* known = std::get_if<abc::RegisterAccesses>(&accesses);
+    if (!known) return false;
+    for (std::size_t i = 0; i < known->count; ++i) {
+      const auto& window = known->windows[i];
+      if (window.access != abc::OperandAccess::kRead &&
+          slot.value >= window.first.value &&
+          slot.value - window.first.value < window.count) return false;
+    }
+  }
+  return true;
+}
 bool FindParameterWrites(const abc::MethodBody& body, const abc::FrameLayout& frame,
                          std::span<std::int64_t> counts) {
   if (counts.size() != std::size_t(frame.parameters) + 1 ||

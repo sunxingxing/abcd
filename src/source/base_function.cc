@@ -911,6 +911,19 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
                      static_cast<std::size_t>(end - rest_storage.data())};
       }
     }
+    std::optional<abc::RegisterId> this_binding;
+    // Native ordinary callables and base constructors have an initialized
+    // receiver at entry. Arrows have lexical this; derived constructors may
+    // read VM sentinels before super, so neither may use this substitution.
+    if (!IsArrowSyntax(function.syntax) &&
+        function.syntax != CallableSyntax::kRangeDerivedConstructor &&
+        function.frame.this_value) {
+      if (body.instructions.size() > budget.work)
+        return FunctionEmitError::kResourceLimit;
+      budget.work -= body.instructions.size();
+      if (IsReadOnlyRegister(body, function.frame, *function.frame.this_value))
+        this_binding = function.frame.this_value;
+    }
     auto direct_writes =
         function.syntax == CallableSyntax::kBaseConstructor
             ? ProveConstructorThisWrites(body, function.frame, budget.bytes)
@@ -925,7 +938,8 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
                    ScalarNames::RestBinding{function.length, rest_name}}
              : std::nullopt,
         direct_writes.sites,
-        function.syntax == CallableSyntax::kRangeDerivedConstructor};
+        function.syntax == CallableSyntax::kRangeDerivedConstructor,
+        this_binding};
     // The common printer owns an unpublished artifact and discards it on
     // failure. Re-running nested bodies for its preflight doubles expansion
     // at every depth. Keep preflight when this owner may retry a constructor

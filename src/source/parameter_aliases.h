@@ -14,5 +14,9 @@ namespace abcd::source {
 // no expansion of overlapping register windows and no per-parameter scan.
 bool FindParameterWrites(const abc::MethodBody& body, const abc::FrameLayout& frame,
                          std::span<std::int64_t> counts);
+// Whole-body may-write proof, including unreachable instructions and ranged
+// operands. Unknown accesses refuse; O(instructions), fixed scratch.
+bool IsReadOnlyRegister(const abc::MethodBody& body, const abc::FrameLayout& frame,
+                        abc::RegisterId slot);
 }  // namespace abcd::source
 #endif

@@ -26,10 +26,15 @@ struct ScalarNames {
   std::span<const abc::CodeOffset> constructor_this_writes{};
   // Set only after the complete derived-constructor super/guard proof.
   bool range_derived_constructor = false;
+  // Owner-proven read-only ABI receiver in an ordinary non-derived callable.
+  // Keep the register identifier for capture/legacy consumers; this typed
+  // binding applies only to expression reads, never arbitrary identifier text.
+  std::optional<abc::RegisterId> this_binding{};
 };
 // Emits an expression, not a method/record. Referenced names must be declared,
 // initialized, side-effect-free local bindings supplied by the caller. Only
-// strict-safe ASCII identifiers are accepted; nothing is silently renamed.
+// strict-safe ASCII identifiers are accepted for names; the separate typed
+// this_binding certificate permits receiver reads. Nothing is silently renamed.
 // Raw binary64 NaNs are rejected rather than discarding payload bits.
 // O(referenced name bytes), fixed scratch; budget/validation failure writes
 // nothing. A stream failure may leave partial output. Inputs must remain

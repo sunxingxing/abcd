@@ -158,6 +158,10 @@ class ExpressionWriter {
       error_ = EmitError::kInvalidBinding;
       return;
     }
+    if (names_.this_binding == reg) {
+      Append("this");
+      return;
+    }
     Name(names_.registers[reg.value]);
   }
   void Value(IntegerLiteral integer) { NumberToken(integer.value); }
