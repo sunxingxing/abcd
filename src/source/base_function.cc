@@ -907,7 +907,8 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
                                     std::ostream& output,
                                     LocalLexicalBudget budget,
                                     const MethodConstants* constants,
-                                    const abc::MethodLookup* methods) {
+                                    const abc::MethodLookup* methods,
+                                    analysis::CapturedValues captures) {
   if (method.attributes.sendable) return FunctionEmitError::kSendable;
   if (method.attributes.kind != abc::FunctionKind::kNone &&
       method.attributes.kind != abc::FunctionKind::kAsync)
@@ -971,13 +972,13 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
         {method.frame, method.self_binding, method.member.length,
          syntax, method.key, method.placement},
         normalized, output, budget, scoped ? &*scoped : nullptr, methods,
-        analysis::CapturedValues::kReject);
+        captures);
   }
   return WriteCallable(
       {method.frame, method.self_binding, method.member.length,
        syntax, method.key, method.placement},
       body, output, budget, constants, methods,
-      analysis::CapturedValues::kReject);
+      captures);
 }
 FunctionEmitResult WriteBaseConstructor(const BaseConstructor& constructor,
                                         const abc::MethodBody& body,

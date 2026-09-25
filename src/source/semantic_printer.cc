@@ -207,9 +207,24 @@ class SourcePrinter {
   }
 
  private:
-  class ClassBuffer : public std::streambuf, public UnpublishedOutput {
+  class ClassBuffer : public CaptureBuffer, public UnpublishedOutput {
    public:
-    explicit ClassBuffer(SourcePrinter& printer) : printer_(printer) {}
+    explicit ClassBuffer(SourcePrinter& printer,
+        std::optional<analysis::InstructionId> creation = {})
+        : printer_(printer), creation_(creation) {}
+    bool Capture(analysis::CapturedSlot capture,
+                 analysis::CaptureDomain requirement) override {
+      if (!creation_ || !printer_.capture_method_ || !printer_.proof_)
+        throw SourceFailure{SourceError::kCreation, printer_.current_pc_};
+      const auto resolved = ResolveCreationCapture(*printer_.capture_method_,
+          *printer_.proof_, *creation_, capture, requirement);
+      if (const auto* failure = std::get_if<SourceFailure>(&resolved)) throw *failure;
+      if (const auto* outer = std::get_if<analysis::CapturedSlot>(&resolved))
+        printer_.Capture(*outer, requirement);
+      else
+        printer_.LocalName(std::get<analysis::LocalCell>(resolved));
+      return true;
+    }
    private:
     std::streamsize xsputn(const char* text, std::streamsize count) override {
       if (count < 0) return 0;
@@ -224,6 +239,7 @@ class SourcePrinter {
       return ch;
     }
     SourcePrinter& printer_;
+    std::optional<analysis::InstructionId> creation_;
   };
   class LeafBuffer : public CaptureBuffer, public UnpublishedOutput {
    public:
@@ -237,7 +253,7 @@ class SourcePrinter {
           ? ResolveCreationCapture(*printer_.capture_environments_, function_, capture,
                                    printer_.current_pc_, printer_.capture_locals_)
           : ResolveCreationCapture(*printer_.capture_method_, *printer_.proof_,
-                                   function_, capture, requirement);
+                                   function_.instruction, capture, requirement);
       if (const auto* failure = std::get_if<SourceFailure>(&resolved)) throw *failure;
       if (const auto* outer = std::get_if<analysis::CapturedSlot>(&resolved)) {
         printer_.Capture(*outer, requirement);
@@ -513,9 +529,10 @@ class SourcePrinter {
       // Exact Hole heritage is represented by absent extends, never undefined.
       // Attached members carry the AST's unobserved-assembly proof, with pool
       // keys checked by the adapter.
-      // The class owner rejects unresolved outer captures, so this stream
-      // deliberately cannot carry template capture tokens.
-      ClassBuffer buffer(*this);
+      // Class assembly admits no environment changes or lexical stores between
+      // creation and folded members. Rebase their obligations at that site;
+      // initialization/domain proofs remain the same as ordinary closures.
+      ClassBuffer buffer(*this, created->capture_instruction);
       std::ostream stream(&buffer);
       stream.exceptions(std::ios::badbit | std::ios::failbit);
       const auto remaining = limit_ - result_.text.size();

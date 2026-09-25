@@ -20,7 +20,9 @@ struct ClassMethod {
 // name equal to key and descriptor placement. Ordinary methods additionally
 // need an immutable self_binding holding their exact function object: reading
 // Class.prototype[key] at invocation is NOT valid because it is mutable.
-// The body cannot read unresolved outer captures.
+// Default output rejects outer captures. kLanguage requires a typed capture
+// sink whose owner binds every obligation at the actual creation environment;
+// an unbound template is never standalone executable source.
 // Templates need initial NONE and a proven effective method kind. Accessors
 // additionally need an unobserved function ABI slot: native get/set syntax
 // has no lexical self binding to initialize that slot.
@@ -39,6 +41,7 @@ struct ClassMethod {
     const ClassMethod& method, const abc::MethodBody& body,
     std::ostream& output, LocalLexicalBudget budget = {},
     const MethodConstants* constants = nullptr,
-    const abc::MethodLookup* methods = nullptr);
+    const abc::MethodLookup* methods = nullptr,
+    analysis::CapturedValues captures = analysis::CapturedValues::kReject);
 }  // namespace abcd::source
 #endif

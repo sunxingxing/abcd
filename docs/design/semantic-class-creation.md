@@ -151,8 +151,9 @@ nested body output exhaustion, retain resource classification in the common
 printer. This does not implement the deferred asynchronous scheduler or prove
 the process-wide memory cap.
 
-The stream deliberately does not accept capture tokens: unresolved outer
-captures still reject emission. Hole heritage and subsequent accessor/method
+At this initial stage the stream did not accept capture tokens: unresolved outer
+captures rejected emission. See `class-captures.md` for the later shared binding
+integration. Hole heritage and subsequent accessor/method
 assembly remain unsupported here. No empty substitute class is emitted.
 
 ABC-only inspection of entry 9915 now passes class AST construction at PC264

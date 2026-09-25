@@ -400,6 +400,9 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
         const auto kinds = parent ? proof.At(*parent) : std::nullopt;
         if (!kinds) return Fail(SourceError::kInvalidEffect, instruction.pc);
         ClassExpression expression{*created, SourcePc(instruction)};
+        if (!method.ssa.IsPhased())
+          expression.capture_instruction = analysis::InstructionId{
+              static_cast<std::uint32_t>(position)};
         if (*kinds == analysis::ValueKinds::Hole())
           expression.heritage = analysis::HeritageKind::kAbsent;
         else if (!kinds->IsLanguage())

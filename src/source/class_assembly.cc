@@ -196,6 +196,9 @@ std::optional<SourceFailure> FoldClassAssembly(
             last_use[output->value] >= cursor) { valid = false; break; }
       }
       if (valid && (!members.empty() || initializer)) {
+        // Capture rebasing uses the class creation environment. The whitelist
+        // above must keep rejecting environment changes and lexical stores;
+        // folding across either requires per-member creation proofs instead.
         auto* assignment = std::get_if<SourceAssignment>(&ast.statements[begin].operation);
         auto* expression = assignment ? std::get_if<ClassExpression>(&assignment->value) : nullptr;
         if (!expression) return SourceFailure{SourceError::kInvalidEffect, method.instructions[begin].pc};

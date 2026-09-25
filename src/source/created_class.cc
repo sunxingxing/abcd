@@ -203,7 +203,8 @@ class ClassWriter {
               std::optional<ClassParent> parent,
               CreationExpansion& expansion,
               std::ostream& output,
-              LocalLexicalBudget budget, abc::StringBudget strings)
+              LocalLexicalBudget budget, abc::StringBudget strings,
+              analysis::CapturedValues captures)
       : file_(file),
         header_(header),
         index_(index),
@@ -216,6 +217,7 @@ class ClassWriter {
         accessors_(accessors),
         attached_methods_(attached_methods),
         parent_(parent),
+        captures_(captures),
         expansion_(expansion),
         output_(output),
         budget_(budget),
@@ -518,7 +520,7 @@ class ClassWriter {
                                     self,
                                     EffectiveMethodKind::kOrdinary};
            return WriteClassMethod(method, body, output_, remaining,
-                                   &constants, &lookup_);
+                                   &constants, &lookup_, captures_);
          });
   }
   void Accessor(const ClassAccessor& accessor, std::string_view class_name) {
@@ -541,7 +543,7 @@ class ClassWriter {
                                         ? EffectiveMethodKind::kGetter
                                         : EffectiveMethodKind::kSetter};
            return WriteClassMethod(method, body, output_, remaining,
-                                   &constants, &lookup_);
+                                   &constants, &lookup_, captures_);
          });
   }
   void Attached(const ClassAttachedMethod& attached, std::string_view self,
@@ -561,7 +563,7 @@ class ClassWriter {
                                     attached.key, self,
                                     EffectiveMethodKind::kOrdinary};
            return WriteClassMethod(method, body, output_, remaining,
-                                   &constants, &lookup_);
+                                   &constants, &lookup_, captures_);
          });
   }
   const corpus::AbcFile& file_;
@@ -576,6 +578,7 @@ class ClassWriter {
   std::span<const ClassAccessor> accessors_;
   std::span<const ClassAttachedMethod> attached_methods_;
   std::optional<ClassParent> parent_;
+  analysis::CapturedValues captures_;
   CreationExpansion& expansion_;
   std::ostream& output_;
   LocalLexicalBudget budget_;
@@ -669,18 +672,22 @@ CreatedClassResult WriteCreatedClass(
                          attached_methods, roles, caller_owner, budget.bytes);
     CreationExpansion root(caller, budget.bytes, budget.work);
     auto& context = expansion ? *expansion : root;
+    // Determine the real sink's capability once. The dry sink must not grant
+    // capture support that the publication sink does not have.
+    const auto captures = dynamic_cast<CaptureBuffer*>(output.rdbuf())
+        ? analysis::CapturedValues::kLanguage : analysis::CapturedValues::kReject;
     if (!dynamic_cast<UnpublishedOutput*>(output.rdbuf())) {
       CaptureDiscard discard;
       std::ostream dry(&discard);
       ClassWriter(file, header, index, lookup, roles, module, caller_owner,
                   enclosing_scope, static_fields, accessors, attached_methods,
-                  parent, context, dry, budget, strings)
+                  parent, context, dry, budget, strings, captures)
           .Write(creation, target, members, *name);
     }
     return ClassWriter(file, header, index, lookup, roles, module, caller_owner,
                        enclosing_scope, static_fields, accessors,
                        attached_methods, parent, context,
-                       output, budget, strings)
+                       output, budget, strings, captures)
         .Write(creation, target, members, *name);
   } catch (const ClassFailure& failure) {
     return failure.result;

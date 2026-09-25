@@ -10,7 +10,7 @@ namespace abcd::source {
 std::variant<analysis::LocalCell, analysis::CapturedSlot, SourceFailure>
 ResolveCreationCapture(
     const analysis::SemanticMethod& method,
-    const analysis::SemanticProof& proof, const FunctionExpression& function,
+    const analysis::SemanticProof& proof, analysis::InstructionId creation,
     analysis::CapturedSlot capture,
     analysis::CaptureDomain requirement = analysis::CaptureDomain::kLanguage);
 // Rebase through the exact creation Before environment. Outer bindings remain

@@ -42,9 +42,9 @@ ResolveCreationCapture(const analysis::EnvironmentFlow& environments,
 std::variant<analysis::LocalCell, analysis::CapturedSlot, SourceFailure>
 ResolveCreationCapture(
     const analysis::SemanticMethod& method,
-    const analysis::SemanticProof& proof, const FunctionExpression& function,
+    const analysis::SemanticProof& proof, analysis::InstructionId creation,
     analysis::CapturedSlot capture, analysis::CaptureDomain requirement) {
-  const auto instruction = function.instruction.value;
+  const auto instruction = creation.value;
   const auto fail = [&] {
     return SourceFailure{SourceError::kCreation,
         instruction < method.instructions.size() ? method.instructions[instruction].pc
@@ -102,7 +102,7 @@ ResolveCreationCapture(
     // still block binding; read-only descendants do not erase initialization.
     const auto& barriers = proof.locals.capture_barriers;
     const auto next = std::lower_bound(barriers.begin(), barriers.end(),
-        function.instruction);
+        creation);
     if (next != barriers.begin() && (next - 1)->value >= allocation->value)
       return fail();
   }

@@ -64,6 +64,8 @@ struct ClassExpression {
   std::vector<SourceClassMember> assembled_members = {};
   analysis::HeritageKind heritage = analysis::HeritageKind::kUnknown;
   std::optional<analysis::FunctionCreation> initializer = {};
+  // Normal-SSA creation site; folded members share its lexical environment.
+  std::optional<analysis::InstructionId> capture_instruction = {};
 };
 // These nodes preserve assembly operations before class ownership is proved.
 // They are not ordinary function literals or calls to mutable JS intrinsics.
