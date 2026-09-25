@@ -121,6 +121,8 @@ struct SourceModuleStore {
 struct SourceOwnStore {
   analysis::OwnWrite write;
   analysis::BufferedObjectCreation origin;
+  std::variant<analysis::ScalarValue, StringExpression> value =
+      analysis::ScalarValue{analysis::Accumulator{}};
 };
 struct SourceMethodStore {
   analysis::OwnWrite write;
