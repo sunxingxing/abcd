@@ -20,6 +20,11 @@ Register reuse needs value/liveness-based binding recovery; receiver captures
 need explicit identity and scope evidence before substituting native this.
 Do not replace all lexical cells with this or infer a local from its slot.
 
+Final-AST store-receiver copy propagation now complements these bindings;
+see store-snapshots.md. It replaces stable receiver snapshots in both ordinary
+methods and constructors, deleting the copy only after a same-block overwrite.
+It does not yet eliminate copies on the basis of successor liveness.
+
 ## Immutable Parameter Copies
 
 FindEntryBindings scans the whole entry block for pure copies of caller-proved

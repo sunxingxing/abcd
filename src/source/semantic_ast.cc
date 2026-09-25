@@ -15,6 +15,7 @@
 #include "class_parent_read.h"
 #include "overwritten_accumulator.h"
 #include "receiver_binding.h"
+#include "store_snapshots.h"
 #include "result_copies.h"
 #include "unused_results.h"
 #include "binding_receivers.h"
@@ -790,6 +791,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     FoldClassParentReads(method, ast, uses);
     ElideOverwrittenAccumulator(method, ast);
     if (derived) RecoverReceiverBinding(method, ast, uses, copies, *derived);
+    FoldStoreSnapshots(method, ast);
     return ast;
   } catch (const std::bad_alloc&) {
     return Fail(SourceError::kResourceLimit);
