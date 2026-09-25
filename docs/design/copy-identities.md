@@ -36,3 +36,35 @@ uses, intervening effects, different SSA versions of the same physical slot,
 phi/handler boundaries, fused call staging, consecutive copy chains and
 position anchors. All artifacts remain incomplete; source-style recovery,
 full nested position mapping and semantic equivalence are not yet complete.
+
+## Adjacent Self Copies
+
+FoldStoredExpressions now recognizes an exact register-to-accumulator load
+followed immediately by a save back to that same register. Instead of
+retargeting the load into `r = r`, it emits two NoOperation anchors. Both the
+typed source expression and original load must name that exact register;
+original destination is accumulator, completion normal, and both instructions
+have no normal, pre-throw or exceptional effect. The existing same-block,
+unmerged-origin and exact sole-use accumulator proof remains mandatory,
+including phi/handler consumers. No register or accumulator write is moved
+across an instruction, branch or effect.
+
+The saved register keeps its prior identical value. The accumulator has no
+other observer, so its removed commit is unobservable. Original SSA definitions
+and use counts are retained conservatively; later transformations do not gain
+invented liveness evidence. The save retains previous_origin pointing to the
+load's zero-width PC span. This works in statement and sequence output without
+inspecting generated strings, and adds only constant checks to the existing
+linear adjacent-pair pass, with no allocation or dependency.
+
+Production builds and ABC-only `build/pasteboard-self-copies-01` export
+succeeded. All six pages lose self-copy lines, totaling 69 lines / 767 bytes;
+source totals become 5,935 lines / 112,679 bytes. Statuses remain eight
+incomplete, two refused constructors at PC 14 and nine metadata-only records.
+Partial maps retain 195 methods / 9,745 spans. Independent read-only review
+found no concrete issue. Tests, JS execution and RSS remain paused.
+
+Deferred regressions include different source/save registers, live accumulator
+reads, handler phis, effectful separators, fused origins, mutable ABI slots,
+sequence output and adjacent zero-width mapping. Native object construction
+recovery and complete source equivalence remain unfinished.

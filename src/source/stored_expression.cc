@@ -1,6 +1,7 @@
 #include "stored_expression.h"
 
 #include "expression_origins.h"
+#include "private_copy.h"
 
 namespace abcd::source {
 namespace {
@@ -19,6 +20,21 @@ bool NeedsAggregateFold(const SourceExpression& expression) {
   const auto* scalar = std::get_if<analysis::ScalarExpression>(&expression);
   const auto* value = scalar ? std::get_if<analysis::ScalarValue>(scalar) : nullptr;
   return value && std::holds_alternative<analysis::EmptyArray>(*value);
+}
+bool IsRegisterReload(const SourceExpression& expression,
+                      const analysis::SemanticInstruction& instruction,
+                      abc::RegisterId target) {
+  const auto* scalar = std::get_if<analysis::ScalarExpression>(&expression);
+  const auto* value = scalar ? std::get_if<analysis::ScalarValue>(scalar) : nullptr;
+  const auto* reg = value ? std::get_if<abc::RegisterId>(value) : nullptr;
+  const auto* copy = std::get_if<analysis::ScalarAssignment>(&instruction.operation);
+  const auto* input = copy
+      ? std::get_if<analysis::ScalarValue>(&copy->expression) : nullptr;
+  const auto* original = input ? std::get_if<abc::RegisterId>(input) : nullptr;
+  return reg && *reg == target && original && *original == target &&
+         std::holds_alternative<analysis::Accumulator>(copy->destination) &&
+         copy->completion == analysis::CompletionEffect::kNormal &&
+         IsPureCopyStep(instruction);
 }
 bool FoldMemberValue(const AstMethod& method, std::size_t position,
                      SourceStatement& head, SourceStatement& tail,
@@ -124,7 +140,15 @@ void FoldStoredExpressions(const AstMethod& method, SourceAst& ast,
       // original PC. The destination still commits only after normal return.
       // No other observer sees the removed acc value, including handler phis.
       if (destination) {
-        assignment->target = *destination;
+        if (IsRegisterReload(assignment->value, method.instructions[i], *destination) &&
+            IsPureCopyStep(original)) {
+          // Exact adjacent acc transport back into its source register cannot
+          // change the private value. The acc has no other use (including phi
+          // observers). Keep both PC anchors; do not rewire SSA or use counts.
+          head.operation = analysis::NoOperation{};
+        } else {
+          assignment->target = *destination;
+        }
       } else {
         // LocalCellId comes from the existing environment/initialization
         // certificate. Never infer a cell or declaration from a register name.
