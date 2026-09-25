@@ -7,6 +7,7 @@
 #include "abcd/abc/control_transfer.h"
 #include "abcd/abc/register_access.h"
 #include "abcd/analysis/coroutine.h"
+#include "abcd/analysis/await_catch.h"
 #include "async_handlers.h"
 
 namespace abcd::source {
@@ -160,6 +161,11 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
   const auto region_bytes = regions.capacity() * sizeof(analysis::AwaitRegion);
   if (region_bytes > bytes) return FunctionEmitError::kResourceLimit;
   bytes -= region_bytes;
+  const auto catch_inputs = analysis::ProveAwaitCatchInputs(
+      body, regions, profile, frame.registers, sites[handler].offset, {bytes});
+  if (const auto* failure = std::get_if<analysis::AwaitCatchFailure>(&catch_inputs))
+    return failure->kind == analysis::AwaitCatchError::kResourceLimit
+        ? FunctionEmitError::kResourceLimit : FunctionEmitError::kKind;
   std::size_t next_region = 0;
   for (std::size_t i = enter + 2; i < handler - 2; ++i) {
     const auto& site = sites[i];

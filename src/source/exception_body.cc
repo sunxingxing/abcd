@@ -28,10 +28,21 @@ auto BuildException(
   try {
     if (names.registers.size() != frame.registers || frame.locals > frame.registers)
       return fail(false);
-    // Normalized async and rebased bodies need their own exception-owner
-    // certificate. Never attach an original handler table to changed code.
-    if (!constants.source_pcs.empty() || !constants.awaits.empty())
-      return SourceFailure{SourceError::kUnsupportedOperation, {}};
+    // Only the async owner may certify that handlers and rejected-resume
+    // snapshots survived normalization. Source PCs alone are not that proof.
+    switch (constants.body_layout) {
+      case BodyLayout::kOriginal:
+        if (!constants.source_pcs.empty() || !constants.awaits.empty())
+          return SourceFailure{SourceError::kUnsupportedOperation, {}};
+        break;
+      case BodyLayout::kNormalizedAsync:
+        if (constants.source_pcs.size() != body.instructions.size())
+          return fail(false);
+        for (std::size_t i = 1; i < constants.source_pcs.size(); ++i)
+          if (constants.source_pcs[i] <= constants.source_pcs[i - 1])
+            return fail(false);
+        break;
+    }
     auto remaining = budget.bytes;
     const auto retain = [&](std::size_t bytes) {
       if (bytes > remaining) throw fail(true);
@@ -43,9 +54,9 @@ auto BuildException(
       if (units > work_left) throw fail(true);
       work_left -= units;
     };
-    const auto built = BuildExceptionFlow(body, constants.header.profile, frame.registers,
-        {remaining, budget.work});
-    const auto* flow = std::get_if<ExceptionFlow>(&built);
+    auto built = BuildExceptionFlow(body, constants.header.profile, frame.registers,
+        {remaining, budget.work}, constants.awaits);
+    auto* flow = std::get_if<ExceptionFlow>(&built);
     if (!flow) {
       if (const auto* error = std::get_if<SemanticFailure>(&built)) return *error;
       if (const auto* error = std::get_if<FlowFailure>(&built))
@@ -53,6 +64,9 @@ auto BuildException(
       const auto& error = std::get<DispatchFailure>(built);
       return fail(error.kind == DispatchError::kResourceLimit, error.offset);
     }
+    if (constants.body_layout == BodyLayout::kNormalizedAsync)
+      for (std::size_t i = 0; i < flow->instructions.size(); ++i)
+        flow->instructions[i].origin = constants.source_pcs[i];
     retain(flow->allocated_bytes);
     IdfQuota ssa_work{work_left};
     const auto renamed = ExceptionSsa::Build(*flow, frame.registers, ssa_work, {remaining});

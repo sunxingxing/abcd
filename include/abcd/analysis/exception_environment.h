@@ -9,6 +9,8 @@ namespace abcd::analysis {
 // nodes, not original instructions: allocations occur at Commit, accesses at
 // Before. Catch preserves the throwing frame's environment identity. This is
 // topology/binding proof only, not lexical cell values or source admission.
+// Owner-normalized AwaitValue retains the saved environment identity across
+// normal/rejected resumption. Other suspension effects are still refused.
 // O(N+E+(P+L)log D) time and bounded storage including the site/graph adapter.
 // Unequal environment identities at joins remain an explicit refusal.
 [[nodiscard]] std::variant<EnvironmentFlow, EnvironmentFlowFailure>

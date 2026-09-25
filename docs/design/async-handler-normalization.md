@@ -29,11 +29,11 @@ and the inspection survey subtract retained try/handler capacities too.
 
 ## Current Integration Boundary
 
-This change produces normalized bytecode with preserved user exception tables.
-It does not yet grant the exception-source owner permission to accept rebased
-async bodies. That owner still requires a normalization certificate and shared
-await lifting into phased exception SSA. Ordinary normal-flow lifting cannot
-replace exception SSA or recover these catches by printing text around a body.
+Normalization produces bytecode with preserved user exception tables. The source
+owner now accepts it only with the typed ownership and rejected-register proof
+described below. Shared await lifting feeds phased exception SSA; ordinary
+normal-flow lifting cannot replace that SSA or recover catches by printing text
+around a body.
 
 ProgressBar child 10333 provides the target evidence: its user catch starts at
 PC352, while the compiler rejection tail starts at PC437; await PC320 rejects
@@ -78,9 +78,9 @@ This is deliberately not original-protocol equivalence. On rejected resumption,
 the original VM sequence writes its result/mode temporaries before THROW. Native
 await instead throws before the normalized result Commit. A user catch could
 observe those different register snapshots even when its selected handler is
-unchanged. The async source owner still rejects rebased exception bodies until
-that observation is ruled out or represented explicitly. The table-remapping
-certificate alone does not establish register-snapshot equivalence.
+unchanged. The async source owner initially rejected rebased exception bodies
+until that observation could be ruled out; the next section describes the new
+proof. The table-remapping certificate alone does not establish equivalence.
 
 Both production CLIs compile after this integration, and read-only review found
 no concrete defect. ABC-only export to `build/pasteboard-shared-lift-01` still
@@ -90,3 +90,54 @@ records are metadata. No record-completion increase or execution proof is
 claimed. Deferred validation additionally includes rejected-await catch reads of
 result/mode registers, overwritten/dead temporaries, nested rejection routes,
 certificate gaps/duplicates, unsupported profiles and graph-quota exhaustion.
+
+## Rejected Registers and Source Ownership
+
+`ProveAwaitCatchInputs` consumes the original decoded body and verified await
+regions. The selected dispatch target at await and its rejected-value THROW
+must agree. The final, independently proved compiler rejection handler cannot
+observe result/mode temporaries; other catch entries require first-use proof.
+
+For each queried register at a user catch entry, a straight-line prefix must
+overwrite its incoming value before reading it, or exit the function without
+reading it. Unknown instructions, branches and possible further user catch
+transfers end that proof conservatively. A possibly throwing instruction's
+normal write never kills the incoming value on its local exceptional edge.
+Reads win over writes of the same instruction. Fixed and ranged call operands
+are included, without expanding large argument windows into individual slots.
+
+The implementation independently combines an offline reverse instruction sweep,
+coordinate compression and a lazy range-assignment segment tree. This standard
+indexing technique introduces no dependency, imported implementation or license.
+Only the queried result/mode registers are indexed. All catch probes share one
+sweep; there is no per-await handler scan or frame-sized reset. With I
+instructions, A await regions and R dispatch spans, cost after dispatch
+construction is O((I+A) log(A+1) + I log(R+1)); extra storage is O(A), plus the
+retained dispatch index. Allocation capacities, sort/query work and tree visits
+are admitted explicitly. Timing/scaling/RSS measurement remains deferred.
+
+After this proof and existing normalization checks succeed, ordinary async,
+async method and async arrow owners set `BodyLayout::kNormalizedAsync` on their
+own MethodConstants. Child expansions reconstruct constants and do not inherit
+that premise. The exception source owner requires matching monotone original-PC
+provenance, lifts typed awaits into exception CFG/SSA, and sets IR origins before
+AST printing. Original bodies with unexpected normalization facts still refuse.
+
+Exception environment topology now permits suspension only for typed AwaitValue
+with no environment-write effect. In the pinned v7 runtime,
+`RuntimeStubs::SaveFrameToContext` (`stubs/runtime_stubs.cpp`, around 3914) saves
+the current lexical environment and `EcmaInterpreter::GeneratorReEnter`
+(`interpreter/interpreter-inl.cpp`, around 868) restores it. This preserves
+environment identity across normal/rejected resumption, not captured cell
+values. Other suspension remains unsupported.
+
+Production CLI builds and read-only review completed. The review's dispatch
+lookup complexity omission and missing suspension/environment gate were fixed.
+ABC-only export `build/pasteboard-await-catch-01` still publishes the same three
+explicitly incomplete records. ProgressBar 10333's named-environment prologue
+is still refused, so its full normalized exception path is not yet exercised
+by a published record. No runtime equivalence or record completion is claimed.
+Tests, JS and RSS were not run. Additional deferred cases: read-before-write,
+write-before-read, ranged operand reads, throwing normal writes, handler branches,
+shared catch targets, unknown operations, environment identity versus cell
+mutation, capture expansion isolation and low memory/work budgets.

@@ -888,6 +888,7 @@ FunctionEmitResult WriteFunction(const BaseFunction& function,
     if (scoped) {
       scoped->source_pcs = origins;
       scoped->awaits = awaits;
+      scoped->body_layout = BodyLayout::kNormalizedAsync;
     }
     return WriteCallable(
         {function.frame, function.name, function.creation.length.value, syntax},
@@ -962,6 +963,7 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
     if (scoped) {
       scoped->source_pcs = origins;
       scoped->awaits = awaits;
+      scoped->body_layout = BodyLayout::kNormalizedAsync;
     }
     return WriteCallable(
         {method.frame, method.self_binding, method.member.length,
@@ -1059,6 +1061,7 @@ FunctionEmitResult WriteArrowFunction(
     if (scoped) {
       scoped->source_pcs = origins;
       scoped->awaits = awaits;
+      scoped->body_layout = BodyLayout::kNormalizedAsync;
     }
     return WriteCallable(
         {function.frame, function.name, function.creation.length.value,

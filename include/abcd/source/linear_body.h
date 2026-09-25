@@ -60,6 +60,7 @@ struct ObjectBufferBudget {
   std::size_t bytes = 16 * 1024 * 1024;
 };
 
+enum class BodyLayout : std::uint8_t { kOriginal, kNormalizedAsync };
 struct MethodConstants {
   MethodConstants(const corpus::AbcFile& input, const abc::Header& profile,
                   const abc::MetadataIndex& metadata, abc::EntityOffset target,
@@ -94,6 +95,10 @@ struct MethodConstants {
   // Native async owner only: normalized await sites with original region
   // evidence. Borrowed alongside source_pcs, never inherited by child methods.
   std::span<const analysis::AwaitSite> awaits;
+  // kNormalizedAsync requires successful ProveAsyncCompletion on this body:
+  // rebased user handlers, private state and rejected-await register proof.
+  // Never inherit this owner premise when expanding a child method.
+  BodyLayout body_layout = BodyLayout::kOriginal;
 };
 
 // Emits statements inside a function, not a wrapper or record. Requires a
