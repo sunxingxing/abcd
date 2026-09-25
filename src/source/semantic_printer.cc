@@ -447,18 +447,26 @@ class SourcePrinter {
       if (!constants_.leaf_methods ||
           created->creation.parent.value >= names_.registers.size())
         throw SourceFailure{SourceError::kCreation, current_pc_};
-      // Shared input verification admits only Language heritage here. Absent
-      // (Hole) heritage is separate; attached members carry the AST's
-      // unobserved-assembly proof, with pool keys checked by the adapter.
+      // Exact Hole heritage is represented by absent extends, never undefined.
+      // Attached members carry the AST's unobserved-assembly proof, with pool
+      // keys checked by the adapter.
       // The class owner rejects unresolved outer captures, so this stream
       // deliberately cannot carry template capture tokens.
       ClassBuffer buffer(*this);
       std::ostream stream(&buffer);
       stream.exceptions(std::ios::badbit | std::ios::failbit);
       const auto remaining = limit_ - result_.text.size();
+      std::optional<ClassParent> parent;
+      switch (created->heritage) {
+        case analysis::HeritageKind::kUnknown:
+          parent = BoundClassParent{names_.registers[created->creation.parent.value]};
+          break;
+        case analysis::HeritageKind::kAbsent: break;
+        case analysis::HeritageKind::kNull:
+          throw SourceFailure{SourceError::kCreation, current_pc_};
+      }
       const auto emitted = WriteAssembledClass(
-          *created, constants_, BoundClassParent{
-              names_.registers[created->creation.parent.value]},
+          *created, constants_, parent,
           stream, {remaining, analysis::kDefaultSemanticWork, {remaining}},
           constants_.expansion ? constants_.expansion : &expansion_);
       if (!std::holds_alternative<std::size_t>(emitted)) {

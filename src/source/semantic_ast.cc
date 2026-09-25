@@ -238,13 +238,32 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
         operation = analysis::NoOperation{};
       } else if (std::holds_alternative<analysis::PopEnvironment>(instruction.operation)) {
         operation = analysis::NoOperation{};
+      } else if (std::holds_alternative<analysis::LoadHole>(instruction.operation)) {
+        const auto written = method.ssa.Write(
+            analysis::InstructionId{static_cast<std::uint32_t>(position)});
+        const auto kinds = written ? proof.At(*written) : std::nullopt;
+        if (!kinds || *kinds != analysis::ValueKinds::Hole())
+          return Fail(SourceError::kInvalidEffect, instruction.pc);
+        operation = analysis::NoOperation{};
       } else if (const auto* assignment =
               std::get_if<analysis::ScalarAssignment>(&instruction.operation)) {
         if (!SameSlot(effect.normal_registers.write,
                       assignment->destination))
           return Fail(SourceError::kInvalidEffect, instruction.pc);
-        operation = SourceAssignment{assignment->destination,
-                                     assignment->expression};
+        const auto written = method.ssa.Write(
+            analysis::InstructionId{static_cast<std::uint32_t>(position)});
+        const auto kinds = written ? proof.At(*written) : std::nullopt;
+        if (kinds && *kinds == analysis::ValueKinds::Hole()) {
+          // The input owner admits only marker copies and absent heritage.
+          // Erase VM transport, never emit Hole as a language literal.
+          if (assignment->completion != analysis::CompletionEffect::kNormal ||
+              !std::holds_alternative<analysis::ScalarValue>(assignment->expression))
+            return Fail(SourceError::kInvalidEffect, instruction.pc);
+          operation = analysis::NoOperation{};
+        } else {
+          operation = SourceAssignment{assignment->destination,
+                                       assignment->expression};
+        }
       } else if (const auto* awaited =
                      std::get_if<analysis::AwaitValue>(&instruction.operation)) {
         if (!SameSlot(effect.normal_registers.write,
@@ -371,9 +390,17 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
             analysis::ScalarSlot{analysis::Accumulator{}}, *array};
       } else if (const auto* created =
                      std::get_if<analysis::ClassCreation>(&instruction.operation)) {
+        const auto parent = ReadValue(method, position, analysis::ScalarSlot{created->parent});
+        const auto kinds = parent ? proof.At(*parent) : std::nullopt;
+        if (!kinds) return Fail(SourceError::kInvalidEffect, instruction.pc);
+        ClassExpression expression{*created, SourcePc(instruction)};
+        if (*kinds == analysis::ValueKinds::Hole())
+          expression.heritage = analysis::HeritageKind::kAbsent;
+        else if (!kinds->IsLanguage())
+          return Fail(SourceError::kInvalidEffect, instruction.pc);
         operation = SourceAssignment{
             analysis::ScalarSlot{analysis::Accumulator{}},
-            ClassExpression{*created, SourcePc(instruction)}};
+            std::move(expression)};
       } else if (const auto* accessor =
                      std::get_if<analysis::DefineAccessor>(&instruction.operation)) {
         if (!SameSlot(effect.normal_registers.write,

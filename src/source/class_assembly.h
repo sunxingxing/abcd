@@ -10,7 +10,7 @@ std::optional<SourceFailure> FoldClassAssembly(
 // Resolves the retained pool keys/targets at the textual boundary. Prototype
 // identity is conditional until its pool key is validated here.
 CreatedClassResult WriteAssembledClass(const ClassExpression& expression,
-    const MethodConstants& constants, BoundClassParent parent,
+    const MethodConstants& constants, std::optional<ClassParent> parent,
     std::ostream& output, LocalLexicalBudget budget, CreationExpansion* expansion);
 }  // namespace abcd::source
 #endif

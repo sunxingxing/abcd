@@ -12,6 +12,7 @@
 
 #include "abcd/abc/frame_layout.h"
 #include "abcd/abc/class_buffer.h"
+#include "abcd/analysis/class_heritage.h"
 #include "abcd/analysis/semantic_region.h"
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/source/linear_body.h"
@@ -61,6 +62,7 @@ struct ClassExpression {
   abc::CodeOffset origin;
   std::optional<abc::PoolIndex> prototype_key = {};
   std::vector<SourceClassMember> assembled_members = {};
+  analysis::HeritageKind heritage = analysis::HeritageKind::kUnknown;
 };
 // These nodes preserve assembly operations before class ownership is proved.
 // They are not ordinary function literals or calls to mutable JS intrinsics.

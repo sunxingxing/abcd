@@ -7,7 +7,7 @@
 
 namespace abcd::source {
 CreatedClassResult WriteAssembledClass(const ClassExpression& expression,
-    const MethodConstants& constants, BoundClassParent parent,
+    const MethodConstants& constants, std::optional<ClassParent> parent,
     std::ostream& output, LocalLexicalBudget budget, CreationExpansion* expansion) {
   try {
     if (!constants.leaf_methods) return CreatedClassError::kMembers;
@@ -62,7 +62,7 @@ CreatedClassResult WriteAssembledClass(const ClassExpression& expression,
     }
     return WriteCreatedClass(constants.file, constants.header, constants.index,
         *constants.leaf_methods, constants.method, expression.creation, expression.origin,
-        {expression.origin, analysis::HeritageKind::kUnknown}, output, budget,
+        {expression.origin, expression.heritage}, output, budget,
         constants.string_budget, constants.roles, constants.module,
         constants.global_scope ? &*constants.global_scope : nullptr,
         nullptr, accessors, parent, attached, expansion);

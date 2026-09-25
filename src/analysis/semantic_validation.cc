@@ -11,6 +11,19 @@ SemanticProofFailure Fail(SemanticProofError kind,
                           abc::CodeOffset pc = {}) {
   return {kind, pc};
 }
+bool AcceptsHeritageHole(const SemanticOperation& operation, const RegisterValue& value) {
+  if (const auto* copy = std::get_if<ScalarAssignment>(&operation)) {
+    const auto* input = std::get_if<ScalarValue>(&copy->expression);
+    return copy->completion == CompletionEffect::kNormal && input &&
+        (std::holds_alternative<Accumulator>(*input) ||
+         std::holds_alternative<abc::RegisterId>(*input));
+  }
+  if (const auto* creation = std::get_if<ClassCreation>(&operation)) {
+    const auto* reg = std::get_if<abc::RegisterId>(&value.slot);
+    return reg && *reg == creation->parent;
+  }
+  return false;
+}
 }  // namespace
 
 SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
@@ -162,6 +175,12 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
       for (const auto& read : method.ssa.Reads(
                InstructionId{static_cast<std::uint32_t>(i)})) {
         const auto kinds = analyzed->At(read.value);
+        // Hole is not JS undefined. Permit only exact marker transport and
+        // DEFINECLASS's absent-heritage operand; every observable use remains
+        // rejected. The source AST erases these copies and records kAbsent.
+        if (kinds && *kinds == ValueKinds::Hole() &&
+            AcceptsHeritageHole(method.instructions[i].operation,
+                                method.ssa.Values()[read.value.value])) continue;
         if (!kinds || !kinds->IsLanguage())
           return Fail(SemanticProofError::kInternalValue,
                       body.instructions[i].offset);
