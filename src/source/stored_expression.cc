@@ -38,6 +38,7 @@ bool IsRegisterReload(const SourceExpression& expression,
          IsPureCopyStep(instruction);
 }
 bool FoldFieldValue(const AstMethod& method, std::size_t position,
+                     std::size_t store_position,
                      SourceStatement& head, SourceStatement& tail,
                      std::span<const std::size_t> uses) {
   const auto* assignment = std::get_if<SourceAssignment>(&head.operation);
@@ -71,9 +72,9 @@ bool FoldFieldValue(const AstMethod& method, std::size_t position,
     return false;
   }
   const auto* store = std::get_if<analysis::NamedWrite>(
-      &method.instructions[position + 1].operation);
+      &method.instructions[store_position].operation);
   const auto* define = std::get_if<analysis::OwnWrite>(
-      &method.instructions[position + 1].operation);
+      &method.instructions[store_position].operation);
   const auto* receiver = member ? std::get_if<abc::RegisterId>(&member->object)
                                 : &own->write.object;
   const bool same_store = member
@@ -89,7 +90,7 @@ bool FoldFieldValue(const AstMethod& method, std::size_t position,
     return false;
   const auto output = method.ssa.Write({static_cast<std::uint32_t>(position)});
   if (!output || uses[output->value] != 1) return false;
-  const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(position + 1)});
+  const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(store_position)});
   bool consumed = false;
   for (const auto& read : reads) consumed |= read.value == *output;
   if (!consumed) return false;
@@ -114,9 +115,29 @@ void FoldStoredExpressions(const AstMethod& method, SourceAst& ast,
     for (std::size_t i = block.first_instruction; i + 1 < end; ++i) {
       auto& head = ast.statements[i];
       auto& tail = ast.statements[i + 1];
-      if (FoldFieldValue(method, i, head, tail, uses)) {
-        ++i;
-        continue;
+      if (std::holds_alternative<SourceAssignment>(head.operation)) {
+        auto field = i + 1;
+        // Only an emitted producer starts this scan, so skipped NoOp intervals
+        // are disjoint. Their original copies must be pure; the final store
+        // must still read the producer's exact SSA value, not a reload alias.
+        for (; field < end; ++field) {
+          const auto& skipped = ast.statements[field];
+          const auto& instruction = method.instructions[field];
+          const auto* copy = std::get_if<analysis::ScalarAssignment>(&instruction.operation);
+          const auto* input = copy
+              ? std::get_if<analysis::ScalarValue>(&copy->expression) : nullptr;
+          if (!std::holds_alternative<analysis::NoOperation>(skipped.operation) ||
+              HasMergedOrigin(skipped) || !copy ||
+              copy->completion != analysis::CompletionEffect::kNormal ||
+              !input || (!std::holds_alternative<analysis::Accumulator>(*input) &&
+                         !std::holds_alternative<abc::RegisterId>(*input)) ||
+              !IsPureCopyStep(instruction)) break;
+        }
+        if (field < end && FoldFieldValue(method, i, field, head,
+                                           ast.statements[field], uses)) {
+          i = field;
+          continue;
+        }
       }
       auto* assignment = std::get_if<SourceAssignment>(&head.operation);
       const auto* save = std::get_if<SourceAssignment>(&tail.operation);

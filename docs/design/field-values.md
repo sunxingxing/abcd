@@ -41,3 +41,32 @@ and own stores, descriptor refusal, different original write kinds, extra
 accumulator/handler consumers, fresh-array identity, resource-contract fallback,
 throwing receivers/setters, captured registers, output budgets and PC anchors.
 General object construction folding and full source equivalence remain open.
+
+## Elided Copy Gaps
+
+The field-value fold can now cross already-eliminated scalar slot-copy NoOps
+within the same block. Every skipped node must have no merged origins, and its
+original instruction must copy a register/accumulator with normal completion
+and no normal/pre-throw/exception effect. Constants, allocations, guards and
+non-scalar nodes do not qualify. The final field store must still read the
+producer's exact SSA definition, not a reload or merely equivalent value.
+
+Only emitted assignments start the gap scan, so skipped intervals are disjoint;
+the total pass remains linear with constant scratch. Intermediate PC anchors
+are unchanged. This extends proximity, not the allowed receiver/RHS effects,
+resource contract, property descriptor proof or liveness assumptions.
+
+Read-only instruction inspection found the motivating shape in Home method
+6016: PC 30 creates the array, PC 32 is a dead temporary save, and PC 34 defines
+the field. The earlier strict adjacency rule could not reach the field even
+after the save was eliminated. Production builds and ABC-only
+`build/pasteboard-array-field-values-01` now emit direct `params = []` writes
+across all six pages. Source totals decrease by 103 lines / 1,339 bytes to
+5,787 lines / 108,131 bytes. Eight incomplete records, two refused constructors
+at PC 14, nine metadata-only records and 195 methods / 9,745 spans remain.
+
+Independent read-only review found no concrete issue. Tests, JS execution and
+RSS remain paused. Deferred regressions add long dead-copy gaps, live saves,
+reload-definition changes, merged-origin anchors, allocation/guard separators,
+handler observations, tight budgets and geometric scaling. Full native object
+literal assembly and executable equivalence remain unfinished.
