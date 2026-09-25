@@ -979,11 +979,21 @@ class SourcePrinter {
     }
   }
   enum class StatementForm { kStatement, kSequence, kArgument };
+  void AssignmentEnd(StatementForm form) {
+    switch (form) {
+      case StatementForm::kStatement: Text(";\n"); break;
+      case StatementForm::kSequence: Text(",\n"); break;
+      case StatementForm::kArgument: break;
+    }
+  }
   void Statement(const SourceStatement& statement,
                  StatementForm form = StatementForm::kStatement) {
     const bool comma = form != StatementForm::kStatement;
     current_pc_ = statement.pc;
-    if (comma && !std::holds_alternative<SourceAssignment>(statement.operation) &&
+    if (form == StatementForm::kSequence && !IsSequenceStatement(statement))
+      throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+    if (form == StatementForm::kArgument &&
+        !std::holds_alternative<SourceAssignment>(statement.operation) &&
         !std::holds_alternative<analysis::NoOperation>(statement.operation))
       throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
     const auto begin = position_;
@@ -1016,11 +1026,7 @@ class SourcePrinter {
                 break;
             }
             Expression(operation.value);
-            switch (form) {
-              case StatementForm::kStatement: Text(";\n"); break;
-              case StatementForm::kSequence: Text(",\n"); break;
-              case StatementForm::kArgument: break;
-            }
+            AssignmentEnd(form);
           } else if constexpr (std::is_same_v<T, SourceLocalStore>) {
             Local(operation.cell);
             Text(" = ");
@@ -1079,7 +1085,7 @@ class SourcePrinter {
                 QuotedString(PoolText(value.value));
               }
             }, operation.value);
-            Text(";\n");
+            AssignmentEnd(form);
           } else if constexpr (std::is_same_v<T, SourceMethodStore>) {
             throw SourceFailure{SourceError::kClassAssembly, current_pc_};
           } else if constexpr (std::is_same_v<T, SourceArrayCapture>) {
@@ -1109,7 +1115,7 @@ class SourcePrinter {
             Member(ScalarValue{operation.write.object}, operation.write.name);
             Text(" = ");
             Value(ScalarValue{Accumulator{}});
-            Text(";\n");
+            AssignmentEnd(form);
           } else if constexpr (std::is_same_v<T, SourceConditionalBreak>) {
             Text("if (");
             Predicate(operation.condition, false, operation.input);
@@ -1214,15 +1220,13 @@ class SourcePrinter {
               throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
             // A comma sequence preserves the live property Reference and all
             // argument effects without introducing a call frame. Only the
-            // same assignment/NoOp grammar used for array elements qualifies;
+            // expression-statement grammar qualifies; own stores retain their
+            // independent descriptor proof. Declarations,
             // control flow and nested staged calls retain their region writer.
             const bool sequence = !region && std::all_of(
                 ast_.statements.begin() + first_statement,
                 ast_.statements.begin() + last_statement,
-                [](const SourceStatement& argument) {
-                  return std::holds_alternative<SourceAssignment>(argument.operation) ||
-                         std::holds_alternative<analysis::NoOperation>(argument.operation);
-                });
+                IsSequenceStatement);
             const bool ordered = sequence && HasOrderedArguments(
                 std::span<const SourceStatement>{ast_.statements}.subspan(
                     first_statement, last_statement - first_statement), operation.call);

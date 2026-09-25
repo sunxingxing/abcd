@@ -143,3 +143,38 @@ empty/named callable identities, live self bindings, default/rest strictness,
 captured-cell mutation, multiple callback arguments, throwing property lookup,
 retained target dependencies and creation/save/call position spans. Overall
 source equivalence and memory-cap compliance remain unverified.
+
+## Field-Write Sequences
+
+IsSequenceStatement admits SourceMemberStore and SourceOwnStore alongside
+assignments and NoOperation. These stores already print assignment expressions;
+StatementForm::kSequence changes only their delimiter to a comma. The shared
+AssignmentEnd handles delimiters without parsing generated source. Member
+reference, RHS, setter/Proxy effects and exceptions retain their original order.
+VerifyOwnFields remains mandatory for own-store lowering: this syntax change
+does not authorize replacing an unproven DefineField with ordinary Set.
+
+The staged-call property Reference remains live before the full argument
+sequence. Removing the zero-parameter arrow IIFE preserves lexical this and
+strictness. Every assignment is retained, and the final argument slot is read
+after all writes. StatementForm::kArgument still accepts only assignments and
+NoOperation, so a store cannot accidentally become a separate native argument.
+Declarations, local/module stores, indexed stores, branch regions and nested
+staged calls retain their previous fallback. Array folding admission is not
+expanded by sharing the sequence emitter.
+
+No extra scan, storage or dependency is introduced: the existing linear
+interval check uses the same typed predicate as the statement emitter. PC spans,
+fused origins and slot observation stay on their original emission paths.
+Production builds and ABC-only `build/pasteboard-field-sequences-01` export
+succeeded. Sixty-five straight-line argument IIFEs across the six pages become
+comma sequences, including resource objects and showToast parameter fields.
+Totals decrease from 6,069 lines / 114,681 bytes to 6,004 / 113,446. Field writes
+remain explicit; native object-literal recovery is not claimed.
+
+Statuses remain eight incomplete, two refused constructors at PC 14 and nine
+metadata-only; partial maps retain 195 methods / 9,745 spans. Independent
+read-only review found no concrete issue. Tests, JS execution and RSS remain
+paused. Deferred regressions include throwing setters/Proxies, existing versus
+missing own descriptors, multiple argument slots, live assignment targets,
+sequence-mode refusal, nested fallback and generated-coordinate rebasing.

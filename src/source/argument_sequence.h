@@ -6,6 +6,15 @@
 #include "abcd/source/semantic_source.h"
 
 namespace abcd::source {
+// These nodes emit expressions without declarations or control transfers.
+// Own stores still require VerifyOwnFields; sequence syntax grants no new
+// object provenance and never substitutes Set for an unproven DefineField.
+inline bool IsSequenceStatement(const SourceStatement& statement) {
+  return std::holds_alternative<SourceAssignment>(statement.operation) ||
+         std::holds_alternative<SourceMemberStore>(statement.operation) ||
+         std::holds_alternative<SourceOwnStore>(statement.operation) ||
+         std::holds_alternative<analysis::NoOperation>(statement.operation);
+}
 inline bool HasArgumentValue(const SourceExpression& expression) {
   return std::visit([](const auto& value) {
     using T = std::decay_t<decltype(value)>;
