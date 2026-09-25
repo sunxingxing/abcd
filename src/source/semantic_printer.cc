@@ -25,6 +25,7 @@
 #include "semantic_fields.h"
 #include "creation_expansion.h"
 #include "record_inputs.h"
+#include "member_key.h"
 #include "class_assembly.h"
 #include "await_positions.h"
 
@@ -432,7 +433,6 @@ class SourcePrinter {
   void Slot(const analysis::ScalarSlot& slot) {
     std::visit([&](const auto& value) { Value(ScalarValue{value}); }, slot);
   }
-  enum class StringUse { kValue, kPropertyName };
   std::u16string PoolText(abc::PoolIndex slot) {
     const auto reference = abc::ResolvePoolReference(
         constants_.file, constants_.header, constants_.index,
@@ -446,10 +446,7 @@ class SourcePrinter {
     if (!name) throw SourceFailure{SourceError::kConstant, current_pc_};
     return std::move(*name);
   }
-  void PoolString(abc::PoolIndex slot, StringUse use) {
-    const auto name = PoolText(slot);
-    if (use == StringUse::kPropertyName && IsElementName(name))
-      throw SourceFailure{SourceError::kConstant, current_pc_};
+  void QuotedString(std::u16string_view name) {
     std::ostringstream stream;
     const auto written = WriteStringLiteral(
         name, stream, {limit_ - result_.text.size()});
@@ -457,8 +454,26 @@ class SourcePrinter {
       throw SourceFailure{SourceError::kOutput, current_pc_};
     Text(stream.str());
   }
-  void PoolName(abc::PoolIndex slot) {
-    PoolString(slot, StringUse::kPropertyName);
+  void MemberKey(abc::PoolIndex slot) {
+    const auto name = PoolText(slot);
+    // Keep the existing by-name/index semantic admission boundary. Choosing
+    // shorter source spelling must never admit a previously rejected key.
+    if (IsElementName(name))
+      throw SourceFailure{SourceError::kConstant, current_pc_};
+    switch (ClassifyMemberKey(name)) {
+      case MemberKeySyntax::kIdentifier:
+        Text(".");
+        for (const auto unit : name) {
+          const auto ch = static_cast<char>(unit);
+          Text({&ch, 1});
+        }
+        return;
+      case MemberKeySyntax::kQuoted:
+        Text("[");
+        QuotedString(name);
+        Text("]");
+        return;
+    }
   }
   template <typename Call>
   void Arguments(const Call& call) {
@@ -583,7 +598,7 @@ class SourcePrinter {
       // binding is mandatory even when this load's register result is unused.
       Capture(captured->cell, captured->requirement);
     } else if (const auto* string = std::get_if<StringExpression>(&expression)) {
-      PoolString(string->value, StringUse::kValue);
+      QuotedString(PoolText(string->value));
     } else if (const auto* call = std::get_if<CallExpression>(&expression)) {
       Text("(0, ");
       Value(ScalarValue{Accumulator{}});
@@ -592,9 +607,8 @@ class SourcePrinter {
     } else if (const auto* call = std::get_if<MemberCallExpression>(&expression)) {
       Text("(");
       Value(ScalarValue{call->call.receiver});
-      Text(")[");
-      PoolName(call->name);
-      Text("]");
+      Text(")");
+      MemberKey(call->name);
       Arguments(call->call);
     } else if (const auto* range = std::get_if<analysis::SuperRange>(&expression)) {
       if (!names_.range_derived_constructor ||
@@ -687,9 +701,8 @@ class SourcePrinter {
       const auto& member = std::get<MemberExpression>(expression);
       Text("(");
       Value(member.object);
-      Text(")[");
-      PoolName(member.name);
-      Text("]");
+      Text(")");
+      MemberKey(member.name);
     }
   }
   void Label(analysis::BlockId id) {
@@ -767,9 +780,9 @@ class SourcePrinter {
           } else if constexpr (std::is_same_v<T, SourceMemberStore>) {
             Text("(");
             Value(operation.object);
-            Text(")[");
-            PoolName(operation.name);
-            Text("] = ");
+            Text(")");
+            MemberKey(operation.name);
+            Text(" = ");
             Value(operation.value);
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceMethodStore>) {
@@ -800,9 +813,9 @@ class SourcePrinter {
             // has the same effect and cannot consult an inherited setter.
             Text("(");
             Value(ScalarValue{operation.write.object});
-            Text(")[");
-            PoolName(operation.write.name);
-            Text("] = ");
+            Text(")");
+            MemberKey(operation.write.name);
+            Text(" = ");
             Value(ScalarValue{Accumulator{}});
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceConditionalBreak>) {
@@ -859,9 +872,9 @@ class SourcePrinter {
             Slot(analysis::ScalarSlot{Accumulator{}});
             Text(" = (");
             Value(ScalarValue{Accumulator{}});
-            Text(")[");
-            PoolName(operation.name);
-            Text("]((() => {\n");
+            Text(")");
+            MemberKey(operation.name);
+            Text("((() => {\n");
             if (ast_.argument_region &&
                 ast_.argument_region->call == operation.call_statement)
               ArgumentRegion(*ast_.argument_region);
