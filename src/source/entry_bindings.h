@@ -5,15 +5,20 @@
 #include "abcd/analysis/semantic_ir.h"
 
 namespace abcd::source {
+struct SourceAst;
 struct EntryBinding {
   std::optional<abc::RegisterId> source;
   analysis::SsaValueId definition;
+  std::optional<analysis::SsaValueId> initialized;
 };
 // Caller supplies one admitted entry per register. All candidates share the
 // SSA scans; never run a per-parameter graph walk. Input slots are independently
-// certified immutable by the callable owner. This does not erase declarations.
+// certified immutable by the callable owner. Recovered literal defaults admit
+// their copy/initialization phi web, but never an entry seed or another write.
+// Final AST commits are audited after SSA: retargeting can change slot writes.
+// Declaration removal remains the common printer's emitted-slot census.
 void FindEntryBindings(const analysis::SemanticMethod& method,
-                       ScalarNames names,
+                       const SourceAst& ast, ScalarNames names,
                        std::span<EntryBinding> bindings);
 void BindEntryReads(analysis::ScalarExpression& expression,
                     std::span<const EntryBinding> bindings);

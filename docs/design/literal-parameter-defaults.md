@@ -1,14 +1,15 @@
 # Literal Parameter Defaults
 
 The neutral `= void 0` formal preserves callable length, but does not recover
-the initializer represented by the bytecode. Derived constructors now obtain
+the initializer represented by the bytecode. Non-rest callables now obtain
 typed ParameterDefault certificates from the common semantic-body pipeline.
 There is no source-sidecar input or rewrite of printed JavaScript.
 
 ## Admission
 
-The callable explicitly supplies its length only for a non-rest range-derived
-constructor. The body must have original instruction coordinates and no catch
+The callable explicitly supplies its length for a neutral-default signature,
+including ordinary functions, arrows, methods and constructors. The body must
+have original instruction coordinates and no catch
 or cross-block argument region. Existing IR, CFG, SSA, environment, value and
 constructor checks run on the unchanged method before recovery.
 
@@ -30,8 +31,9 @@ Later blocks cannot branch back into the initialization prefix. An existing
 super-argument owner is allowed only after the complete recovered interval.
 
 The final AST is audited separately: no object fields, expression-only results,
-nested owners or origins crossing the removed interval. Printer entry-binding
-substitution is disabled for these bodies, retaining the ABI-to-local copies.
+nested owners or origins crossing the removed interval. Entry-binding
+substitution separately proves the initialized copy/phi equivalence class;
+it is no longer disabled for an entire body with recovered defaults.
 Unsupported evidence leaves neutral formals and the complete original body.
 
 ## Emission And Positions
@@ -68,14 +70,15 @@ regressions include undefined/null/zero/provided arguments, negative zero,
 integer limits, skipped default ordinals, modified or escaping raw formals,
 observed scratch values, phi uses, backward edges, exceptional/default calls,
 owner overlap, scope shadowing, origin relocation, budgets and 200/201 scaling.
-Nonliteral defaults, other callable forms, local renaming and constructor
+Nonliteral defaults, normalized async/catch bodies, local renaming and
 capture-to-this recovery remain separate work.
 
 ## Production Evidence
 
 Both production CLI targets built. ABC-only pasteboard export recovered
 `elmtId = -1, paramsLambda = void 0` in all six page constructors and removed
-their two body-initialization conditionals. Initial parameter copies remain.
+their two body-initialization conditionals. The subsequent unified entry-binding
+pass now removes the proved parameter copies and their unused declarations.
 Home method 5851 PCs 42 and 51 now map to the two-character `-1` initializer;
 PC 65 maps to the six-character `void 0` initializer on the same signature.
 These coordinates were inspected in the generated method-position artifact.

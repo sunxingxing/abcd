@@ -411,8 +411,7 @@ class FunctionWriter {
       // body's literal-default certificate can move initialization into the
       // signature; fallback keeps the original default-assignment bytecode.
       if (ordinary_body && body_constants) {
-        const auto default_length = function_.syntax == CallableSyntax::kRangeDerivedConstructor &&
-            function_.parameters == ParameterForm::kNeutralDefault
+        const auto default_length = function_.parameters == ParameterForm::kNeutralDefault
             ? std::optional<std::uint16_t>{function_.length} : std::nullopt;
         if (captured_values_ == analysis::CapturedValues::kLanguage) {
           auto prepared = BuildSemanticTemplate(

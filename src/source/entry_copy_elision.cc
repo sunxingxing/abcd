@@ -125,7 +125,8 @@ bool IsBoundEntryCopy(const SourceStatement& statement,
       ? std::get_if<analysis::ScalarExpression>(&assignment->value) : nullptr;
   const auto* value = expression ? std::get_if<analysis::ScalarValue>(expression) : nullptr;
   const auto* source = value ? std::get_if<abc::RegisterId>(value) : nullptr;
-  return target && source && target->value < bindings.size() &&
+  return target && source && assignment->result == AssignmentResult::kStored &&
+         !assignment->object_field && target->value < bindings.size() &&
          bindings[target->value].source == *source;
 }
 }  // namespace abcd::source

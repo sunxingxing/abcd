@@ -3,9 +3,57 @@
 #include <algorithm>
 #include <type_traits>
 
+#include "abcd/source/semantic_source.h"
+
 namespace abcd::source {
+namespace {
+void CheckEmittedWrites(const SourceAst& ast, std::span<EntryBinding> bindings) {
+  const auto invalidate = [&](abc::RegisterId target) {
+    if (target.value < bindings.size()) bindings[target.value].source.reset();
+  };
+  for (const auto& node : ast.statements) {
+    std::visit([&](const auto& operation) {
+      using T = std::decay_t<decltype(operation)>;
+      if constexpr (std::is_same_v<T, SourceAssignment>) {
+        const auto* target = std::get_if<abc::RegisterId>(&operation.target);
+        if (!target || target->value >= bindings.size() ||
+            !bindings[target->value].source ||
+            operation.result != AssignmentResult::kStored) return;
+        const auto* expression = std::get_if<analysis::ScalarExpression>(&operation.value);
+        const auto* value = expression ? std::get_if<analysis::ScalarValue>(expression) : nullptr;
+        const auto* source = value ? std::get_if<abc::RegisterId>(value) : nullptr;
+        if (operation.object_field || !source || bindings[target->value].source != *source)
+          invalidate(*target);
+      } else if constexpr (std::is_same_v<T, SourceStagedCall>) {
+        if (operation.stored_result) invalidate(operation.stored_result->target);
+      } else if constexpr (std::is_same_v<T, SourceArrayLiteral> ||
+                           std::is_same_v<T, SourceArrayCommit>) {
+        invalidate(operation.target);
+      } else {
+        static_assert(std::is_same_v<T, analysis::NoOperation> ||
+                      std::is_same_v<T, SourceMemberStore> ||
+                      std::is_same_v<T, SourceOwnStore> ||
+                      std::is_same_v<T, SourceLocalStore> ||
+                      std::is_same_v<T, SourceLocalAssignment> ||
+                      std::is_same_v<T, SourceModuleStore> ||
+                      std::is_same_v<T, SourceMethodStore> ||
+                      std::is_same_v<T, SourceIndexedStore> ||
+                      std::is_same_v<T, SourceArrayCapture> ||
+                      std::is_same_v<T, SourceConditionalBreak> ||
+                      std::is_same_v<T, SourceBreak> ||
+                      std::is_same_v<T, SourceConditionalContinue> ||
+                      std::is_same_v<T, SourceContinue> ||
+                      std::is_same_v<T, SourceReturn> ||
+                      std::is_same_v<T, SourceReturnExpression> ||
+                      std::is_same_v<T, SourceThrow> ||
+                      std::is_same_v<T, SourceInitializerCall>);
+      }
+    }, node.operation);
+  }
+}
+}  // namespace
 void FindEntryBindings(const analysis::SemanticMethod& method,
-                       ScalarNames names,
+                       const SourceAst& ast, ScalarNames names,
                        std::span<EntryBinding> bindings) {
   std::fill(bindings.begin(), bindings.end(), EntryBinding{});
   if (bindings.size() != names.registers.size() || method.flow.blocks.empty() ||
@@ -35,17 +83,38 @@ void FindEntryBindings(const analysis::SemanticMethod& method,
         instruction.effects.normal != analysis::LanguageEffect::kNone ||
         instruction.effects.before_throw != analysis::LanguageEffect::kNone ||
         instruction.effects.exceptional != analysis::ExceptionalCompletion::kImpossible)
-      break;
+      continue;
     if (!immutable(*source) || *destination == *source) continue;
     if (const auto output = method.ssa.Write({i}))
       bindings[destination->value] = {*source, *output};
   }
   const auto values = method.ssa.Values();
+  // Native literal defaults have already removed their guarded local write.
+  // Both original SSA alternatives now denote the same initialized formal.
+  // This certificate belongs to the common callable/body pair, not to a
+  // constructor-specific naming convention.
+  for (const auto& value : ast.parameter_defaults) {
+    if (value.first.value >= method.instructions.size() ||
+        value.end.value <= value.first.value || value.end.value > method.instructions.size()) continue;
+    const auto reads = method.ssa.Reads(value.first);
+    const auto initialized = method.ssa.Write({value.end.value - 1});
+    if (reads.size() != 1 || !initialized) continue;
+    const auto* reg = std::get_if<abc::RegisterId>(&values[reads.front().value.value].slot);
+    if (!reg || reg->value >= bindings.size()) continue;
+    auto& binding = bindings[reg->value];
+    const auto* written = std::get_if<abc::RegisterId>(&values[initialized->value].slot);
+    if (!binding.source || binding.source->value < names.first_parameter.value ||
+        binding.source->value - names.first_parameter.value != value.parameter ||
+        binding.definition != reads.front().value || !written || *written != *reg) continue;
+    binding.initialized = initialized;
+  }
   for (std::size_t v = 0; v < values.size(); ++v) {
     const auto* reg = std::get_if<abc::RegisterId>(&values[v].slot);
     if (!reg || reg->value >= bindings.size()) continue;
     auto& binding = bindings[reg->value];
     if (binding.source && v != binding.definition.value &&
+        (!binding.initialized || (v != binding.initialized->value &&
+         !std::holds_alternative<analysis::PhiValue>(values[v].origin))) &&
         !std::holds_alternative<analysis::MethodEntry>(values[v].origin))
       binding.source.reset();
   }
@@ -57,8 +126,32 @@ void FindEntryBindings(const analysis::SemanticMethod& method,
     const auto* reg = std::get_if<abc::RegisterId>(&values[read.value.value].slot);
     if (!reg || reg->value >= bindings.size()) continue;
     auto& binding = bindings[reg->value];
-    if (binding.source && read.value != binding.definition) binding.source.reset();
+    if (binding.source && read.value != binding.definition &&
+        (!binding.initialized || (read.value != *binding.initialized &&
+         !std::holds_alternative<analysis::PhiValue>(values[read.value.value].origin))))
+      binding.source.reset();
   }
+  // A phi web may merge only the copy and removed default initialization.
+  // All other instruction definitions were rejected above; reject entry
+  // seeds too, including loop paths that could read before the copy.
+  for (std::size_t v = 0; v < values.size(); ++v) {
+    if (!std::holds_alternative<analysis::PhiValue>(values[v].origin)) continue;
+    const auto* reg = std::get_if<abc::RegisterId>(&values[v].slot);
+    if (!reg || reg->value >= bindings.size()) continue;
+    auto& binding = bindings[reg->value];
+    if (!binding.source || !binding.initialized) continue;
+    for (const auto& input : method.ssa.Inputs({static_cast<std::uint32_t>(v)})) {
+      const auto& value = values[input.value.value];
+      const auto* slot = std::get_if<abc::RegisterId>(&value.slot);
+      if (!slot || *slot != *reg || std::holds_alternative<analysis::MethodEntry>(value.origin)) {
+        binding.source.reset();
+        break;
+      }
+    }
+  }
+  // Original SSA alone cannot certify physical writes after retargeting.
+  // Keep only emitted commits that still copy the immutable formal verbatim.
+  CheckEmittedWrites(ast, bindings);
 }
 
 void BindEntryReads(analysis::ScalarExpression& expression,

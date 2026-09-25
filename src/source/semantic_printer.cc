@@ -548,7 +548,7 @@ class SourcePrinter {
     // Phased exception owners have different SSA coordinates. Their slot
     // census is independent: never apply normal-SSA aliases or rest transport
     // merely because every emitted operand can be observed.
-    if (!capture_method_ || ast_.regions.catches || !ast_.parameter_defaults.empty()) return;
+    if (!capture_method_ || ast_.regions.catches) return;
     // Body-only APIs deliberately have no wrapper FrameLayout. The owner
     // supplies the real register span and formal range in ScalarNames.
     if (names_.this_binding || !names_.parameter_writes.empty() || names_.rest) {
@@ -559,7 +559,7 @@ class SourcePrinter {
       if (bytes > limit_)
         throw SourceFailure{SourceError::kResourceLimit, {}};
       limit_ -= bytes;
-      FindEntryBindings(*capture_method_, names_, entry_bindings_);
+      FindEntryBindings(*capture_method_, ast_, names_, entry_bindings_);
     }
     elide_entry_copies_ = CanElideEntryCopies(ast_);
     if (elide_entry_copies_) {

@@ -106,7 +106,7 @@ auto BuildBody(
                                 scopes->admitted, rest, derived);
   auto* ast = std::get_if<SourceAst>(&lowered);
   if (!ast) return std::get<SourceFailure>(lowered);
-  if (default_length && names.range_derived_constructor &&
+  if (default_length &&
       constants.body_layout == BodyLayout::kOriginal && constants.source_pcs.empty()) {
     if (ast->allocated_bytes > remaining)
       return SourceFailure{SourceError::kResourceLimit, {}};

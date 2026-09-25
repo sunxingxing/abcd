@@ -17,7 +17,7 @@ using SemanticTemplateResult = std::variant<
 // payloads use the explicit versioned kSourceContract environment premise;
 // explicit THROW still uses its checked SSA value. Normalized async bodies
 // need separate handler ownership; captured cells require the template contract.
-// default_length opts an owning derived constructor into literal-default
+// default_length opts an owning non-rest callable into literal-default
 // recovery. A successful result's parameter_defaults MUST be emitted by that
 // owner in its formal list; its body alone is not an equivalent replacement.
 [[nodiscard]] SemanticBodyResult BuildSemanticBody(
