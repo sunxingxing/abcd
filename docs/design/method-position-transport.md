@@ -1,0 +1,63 @@
+# Method Position Transport
+
+The unified body printer already records original-PC spans, but FunctionWriter
+previously discarded them when embedding body text into a callable wrapper.
+The first transport now forwards these typed spans through CaptureBuffer to
+the enclosing SourcePrinter before the corresponding body bytes are written.
+
+MethodGeneratedSpan pairs the original ABC method entity with GeneratedSpan.
+PrintedSource owns a separate descendant vector: intermixing descendants with
+entry spans would invalidate existing fused-origin distance/index proofs.
+ClassBuffer and LeafBuffer relocate incoming endpoints using the printer's
+current byte, line and column. The first child line inherits the parent's
+column; subsequent child lines retain their own column. Byte and line offsets
+are added with overflow checks. This uses emitted-position state, not searching
+or parsing generated JS. Repeated emission of one method can retain multiple
+spans distinguished by their generated ranges.
+
+The initial admission boundary is deliberately explicit:
+
+- Bound generic bodies forward their own spans and any retained descendants.
+- A generic template may forward its own spans only when it has no captures.
+- A receiving template printer does not collect descendant coordinates yet.
+- Legacy writers, buffered leaf-fragment caches and other streams without a
+  position owner do not claim descendant coverage.
+
+Capture-dependent templates require a subsequent ordered position-event
+transport through each capture insertion and fragment replay. Merely shifting
+all endpoints by the wrapper prefix would be incorrect there. Until that work
+is implemented, omitted methods remain omitted, not mapped to a parent span.
+
+Method span buffers grow geometrically, with the old and full replacement
+buffers simultaneously admitted alongside current text, entry spans and
+capture capacity. Retained growth reduces the remaining printer allowance.
+Relocation is O(S) in received spans, with amortized O(S) vector growth; no
+per-span scan of emitted text or instruction list is performed.
+
+The CLI preserves `.entry-positions.json` unchanged and additionally streams
+`.method-positions.json`, referenced by the record manifest. Its scope is
+`partial_methods` and `complete` is always false at this stage. It contains
+method entity, original PC, origin kind and final-file endpoint coordinates.
+Neither this artifact nor its presence upgrades source completion/executable
+status or establishes runtime equivalence.
+
+## ABC-Only Evidence
+
+Both production CLIs built successfully. Review found a missing entry-span
+capacity charge during descendant-map growth; this was fixed and reviewed
+again before export. `build/pasteboard-method-positions-01` contains 3,315
+descendant PC spans covering 91 distinct ABC methods. Logger contributes 150
+spans for constructor 4740 and methods 4604, 4631, 4658 and 4685. Constructor
+PC4 maps to bytes [394,405), lines 30-31 in the generated Logger file, the
+emitted `$r2 = $r8;` statement.
+
+Directory comparison against `build/pasteboard-export-names-01` shows only
+the eight new method-position JSON files: generated JS and entry maps are
+unchanged. Eight incomplete application records and both host-constructor
+refusals at PC14 remain. These observations do not establish complete mapping
+or runtime equivalence.
+
+Tests, generated JS execution and RSS remain paused. Deferred regressions
+include multiline/prefix relocation, repeated method expansion, zero-width
+anchors, await-protocol spans, nonempty capture exclusion, resource/overflow
+failures and fragment replay. Full descendant coverage remains unfinished.

@@ -213,6 +213,10 @@ class SourcePrinter {
     explicit ClassBuffer(SourcePrinter& printer,
         std::optional<analysis::InstructionId> creation = {})
         : printer_(printer), creation_(creation) {}
+    void Positions(abc::EntityOffset method, std::span<const GeneratedSpan> spans,
+                   std::span<const MethodGeneratedSpan> descendants) override {
+      printer_.MethodPositions(method, spans, descendants);
+    }
     bool Capture(analysis::CapturedSlot capture,
                  analysis::CaptureDomain requirement) override {
       if (!creation_ || !printer_.capture_method_ || !printer_.proof_)
@@ -246,6 +250,10 @@ class SourcePrinter {
    public:
     LeafBuffer(SourcePrinter& printer, const FunctionExpression& function)
         : printer_(printer), function_(function) {}
+    void Positions(abc::EntityOffset method, std::span<const GeneratedSpan> spans,
+                   std::span<const MethodGeneratedSpan> descendants) override {
+      printer_.MethodPositions(method, spans, descendants);
+    }
     bool Capture(analysis::CapturedSlot capture,
                  analysis::CaptureDomain requirement) override {
       if ((!printer_.proof_ || !printer_.capture_method_) && !printer_.capture_environments_)
@@ -282,6 +290,57 @@ class SourcePrinter {
     SourcePrinter& printer_;
     const FunctionExpression& function_;
   };
+  void MethodPositions(abc::EntityOffset method, std::span<const GeneratedSpan> spans,
+                       std::span<const MethodGeneratedSpan> descendants) {
+    // A template's later capture insertions invalidate file coordinates. Keep
+    // this first transport confined to bound-source owners, not text inference.
+    if (capture_mode_ == CaptureMode::kTemplate) return;
+    auto& mapped = result_.method_spans;
+    if (spans.size() > SIZE_MAX - descendants.size())
+      throw SourceFailure{SourceError::kResourceLimit, current_pc_};
+    const auto extra = spans.size() + descendants.size();
+    if (extra > SIZE_MAX - mapped.size())
+      throw SourceFailure{SourceError::kResourceLimit, current_pc_};
+    const auto needed = mapped.size() + extra;
+    if (needed > mapped.capacity()) {
+      // Geometric growth, with both old and replacement buffers admitted.
+      auto available = limit_ > result_.text.capacity()
+          ? limit_ - result_.text.capacity() - 1 : 0;
+      if (result_.spans.capacity() > available / sizeof(GeneratedSpan))
+        throw SourceFailure{SourceError::kResourceLimit, current_pc_};
+      available -= result_.spans.capacity() * sizeof(GeneratedSpan);
+      if (captures_.capacity() > available / sizeof(SourceCapture))
+        throw SourceFailure{SourceError::kResourceLimit, current_pc_};
+      available -= captures_.capacity() * sizeof(SourceCapture);
+      const auto old = mapped.capacity();
+      const auto capacity = std::max(needed, old <= SIZE_MAX / 2 ? old * 2 : needed);
+      if (capacity > available / sizeof(MethodGeneratedSpan))
+        throw SourceFailure{SourceError::kResourceLimit, current_pc_};
+      mapped.reserve(capacity);
+      if (mapped.capacity() > available / sizeof(MethodGeneratedSpan))
+        throw SourceFailure{SourceError::kResourceLimit, current_pc_};
+      const auto growth = mapped.capacity() - old;
+      limit_ -= growth * sizeof(MethodGeneratedSpan);
+    }
+    const auto relocate = [&](GeneratedPosition point) {
+      if (!point.line || point.captures ||
+          point.byte > SIZE_MAX - position_.byte ||
+          point.line - 1 > UINT32_MAX - position_.line ||
+          (point.line == 1 && point.column > UINT32_MAX - position_.column))
+        throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+      point.byte += position_.byte;
+      if (point.line == 1) point.column += position_.column;
+      point.line += position_.line - 1;
+      return point;
+    };
+    const auto append = [&](abc::EntityOffset owner, GeneratedSpan span) {
+      span.begin = relocate(span.begin);
+      span.end = relocate(span.end);
+      mapped.push_back({owner, span});
+    };
+    for (const auto& span : spans) append(method, span);
+    for (const auto& span : descendants) append(span.method, span.span);
+  }
   void Capture(analysis::CapturedSlot cell,
       analysis::CaptureDomain requirement =
           analysis::CaptureDomain::kLanguage) {

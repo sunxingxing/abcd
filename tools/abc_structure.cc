@@ -293,6 +293,25 @@ int Export(const std::filesystem::path& input,
               record_manifest["source_status"] = static_cast<unsigned>(SourceStatus::kIncomplete);
               record_manifest["incomplete_source"] = source_path;
               record_manifest["entry_positions"] = positions_path;
+              const auto methods_path = source_stem.string() + ".method-positions.json";
+              std::ofstream method_positions(tree.path / methods_path, std::ios::binary);
+              method_positions << "{\"record\":" << record.offset.value
+                               << ",\"scope\":\"partial_methods\",\"complete\":false,\"positions\":[";
+              bool method_comma = false;
+              for (const auto& mapped : artifact->method_spans) {
+                if (method_comma) method_positions << ',';
+                method_comma = true;
+                const auto& span = mapped.span;
+                method_positions << nlohmann::json{{"method", mapped.method.value},
+                    {"pc", span.pc.value},
+                    {"origin_kind", source::SpanOriginName(span.origin)},
+                    {"begin", {span.begin.byte, span.begin.line, span.begin.column}},
+                    {"end", {span.end.byte, span.end.line, span.end.column}}};
+              }
+              method_positions << "]}\n";
+              method_positions.close();
+              if (!method_positions) return Fail(ExportError::kOutput, record.offset.value);
+              record_manifest["method_positions"] = methods_path;
               record_manifest["source_contract"] = source::SourceContractName(artifact->contract);
               if (artifact->host_realm)
                 record_manifest["host_realm_binding"] = artifact->host_realm->binding;

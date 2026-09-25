@@ -431,7 +431,9 @@ class FunctionWriter {
       if (semantic_body) {
         // The owning writer retains proven callable syntax/ABI. The generic
         // path emits no wrapper and cannot change a method into a function.
-        // Its PC spans remain body-relative; record-wide relocation is separate.
+        if (auto* sink = dynamic_cast<CaptureBuffer*>(output_.rdbuf()))
+          sink->Positions(body_constants->method, semantic_body->spans,
+                          semantic_body->method_spans);
         Text(semantic_body->text);
         if (error_) return *error_;
       } else if (semantic_template) {
@@ -439,6 +441,8 @@ class FunctionWriter {
         // proof. Template bytes and coordinates are not standalone source.
         auto* captures = dynamic_cast<CaptureBuffer*>(output_.rdbuf());
         if (!captures) return EmitError::kWrite;
+        if (semantic_template->captures.empty())
+          captures->Positions(body_constants->method, semantic_template->spans, {});
         std::size_t begin = 0;
         for (const auto& capture : semantic_template->captures) {
           const auto end = capture.position.byte;

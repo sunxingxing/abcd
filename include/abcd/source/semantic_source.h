@@ -267,6 +267,10 @@ struct GeneratedSpan {
   GeneratedPosition end;
   SpanOrigin origin = SpanOrigin::kInstruction;
 };
+struct MethodGeneratedSpan {
+  abc::EntityOffset method;
+  GeneratedSpan span;
+};
 struct HostRealmRequirement {
   // ASCII lexical name, owned by the artifact, not a JS expression.
   std::string binding;
@@ -276,6 +280,8 @@ struct PrintedSource {
   std::vector<GeneratedSpan> spans;
   SourceContract contract = kSourceContract;
   std::optional<HostRealmRequirement> host_realm;
+  // Partial descendant coverage, never evidence that every method is mapped.
+  std::vector<MethodGeneratedSpan> method_spans;
 };
 struct SourceCapture {
   GeneratedPosition position;
