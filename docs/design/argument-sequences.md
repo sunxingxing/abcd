@@ -53,7 +53,7 @@ The increasing-ID restriction is conservative: it proves distinct targets in
 O(A) time and O(1) storage without sorting or pairwise comparison. Duplicate,
 reversed, missing, extra and non-register targets fall back to the sequence.
 
-Only scalar, member and string expressions participate. These expressions have
+The initial audit admitted scalar, member and string expressions. These have
 no hidden writes to caller-private register bindings. Since later targets are
 distinct, immediately capturing each assignment's result as its argument equals
 reading that target after all assignments. Getter effects, assignment order,
@@ -75,3 +75,30 @@ Read-only review found no concrete issue. Tests, JS execution and RSS checks
 remain paused. Deferred cases additionally include duplicate/out-of-order
 arguments, later reads of retained targets, getters observing exception state,
 empty intervals and PC coordinates across adjacent argument separators.
+
+## Broader Value Audit
+
+HasArgumentValue now exhaustively admits comparisons, module/global/realm
+reads, local/captured reads, ordinary/member/constructor calls and empty or
+primitive-buffer object/array creation. These expressions can have heap effects
+or throw, but cannot rewrite caller-private VM argument bindings. They remain
+evaluated in the same order. Buffer admission, capture tokens, module scope and
+host-contract checks still belong to their existing typed writers. Calls are
+not treated as pure.
+
+Anonymous function/class definitions remain excluded: omitting an assignment
+target can affect inferred names. Method/accessor creation, rest, await and
+super also retain separate admission protocols. The ordered-target check and
+SSA use proof are unchanged; admitting an expression kind does not by itself
+permit removing a live register commit. New SourceExpression alternatives
+require an explicit compile-time audit decision.
+
+Production builds and ABC-only export `build/pasteboard-argument-values-01`
+succeeded. Five page records now emit updateStateVarsOfChildByElmtId with direct
+elmtId and fresh empty-object arguments. Totals are 8,041 lines / 137,914 bytes,
+down from 8,056 / 138,039. Statuses remain eight incomplete, two refused at PC
+14 and nine metadata; partial maps remain 195 methods / 9,745 spans.
+Independent read-only review found no concrete issue. Tests, generated JS and
+RSS remain paused. Deferred regressions additionally include fresh allocation
+identity, throwing calls/constructors, capture mutation without VM-slot aliasing,
+global/module binding validation and anonymous-definition fallback.
