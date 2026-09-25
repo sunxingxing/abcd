@@ -20,7 +20,22 @@ Other reads of the copied register, unknown expressions, owner protocols or
 source writes discard the pending candidate. A later stored assignment to the
 copied register removes the old copy only after proving its RHS does not read
 that old value. A block end alone is never proof of deadness. Replacements made
-before a barrier remain valid, but the original copy is retained.
+before a barrier remain valid, but the original copy is retained unless one of
+the exit proofs below applies.
+
+A return or throw can discard a pending copy when its emitted value does not
+read the copied register. At a block exit, preserve the candidate through an
+unconditional jump only; conditional predicates remain barriers. After local
+rewriting, index each block's first actual operation once. A pending tail copy
+is dead only if every direct normal successor starts by overwriting its target
+without reading it, or exits without reading it. There is no alias propagation
+into the successor, no multi-hop traversal and no resume-edge admission.
+Empty blocks, unsupported first operations and owner prefixes give no proof.
+
+First-operation indexes reference the current AST. If another deletion changes
+that operation to a no-op, a later query conservatively fails; it never uses a
+cached kill claim after the underlying assignment disappears. This is a bounded
+first-access certificate, not complete CFG liveness recovery.
 
 Calls, allocations and getters are not moved, duplicated or deleted. Private
 registers are not lexical cells; property writes cannot mutate these slots.
@@ -39,8 +54,11 @@ Unreviewed protocols return unknown, never an assumed absent read.
 
 ## Cost And Provenance
 
-For I final statements and B basic blocks the traversal is O(I+B), with O(1)
-additional storage and no allocation. Keeping one candidate may miss unrelated
+For I final statements, B basic blocks and E normal edges, traversal is
+O(I+B+E), with O(B) scratch storage for first-operation indexes and pending
+tails. The common AST owner admits this vector against its remaining scratch
+budget after retained allocations; allocation failure reports ResourceLimit.
+The local scan itself keeps one candidate, which may miss unrelated
 overlapping copies; this deliberately bounds the initial implementation and
 does not discard semantics. Do not replace it with per-copy suffix scans.
 
@@ -55,8 +73,10 @@ ABC-only pasteboard export removes five receiver-copy statements from its
 PasteBoard constructor and emits direct this stores for pasteController,
 pasteTextController, pastePixelMapController, editController and pathStack.
 All six page outputs also recover receiver accesses in ordinary methods such
-as setInitiallyProvidedValue. Copies at branch ends remain because this pass
-does not yet prove successor liveness. Home's captured receiver is unchanged.
+as setInitiallyProvidedValue. The direct-successor/exit extension additionally
+removes 22 copies across those six ordinary methods: Home 4, PageA 1, PageB 1,
+PasteBoard 10, ProgressBar 5 and ShareDitect 1. Home's captured receiver is
+unchanged. Accumulator-to-field expression composition remains unfinished.
 
 Production abc_structure and abc_semantic builds succeed. Export retains eight
 incomplete sources, two refused records, nine metadata-only records and 195
@@ -67,5 +87,5 @@ at the user's request; output inspection is not an equivalence test.
 Deferred regressions: source overwrites, target reads on RHS, multiple receiver
 uses, throwing overwrites, successor reads, loops, own-store provenance, range
 endpoints, every owner protocol, PC coordinates and 200/201 scaling. Broader
-local live-range splitting, branch-aware dead-copy elimination and expression
+local live-range splitting, multi-hop dead-copy elimination and expression
 composition remain separate unfinished milestones.

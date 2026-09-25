@@ -5,6 +5,7 @@
 
 namespace abcd::source {
 // Final-AST local copy propagation; no original SSA liveness assumptions.
-void FoldStoreSnapshots(const AstMethod& method, SourceAst& ast);
+std::optional<SourceFailure> FoldStoreSnapshots(
+    const AstMethod& method, SourceAst& ast, std::size_t budget_bytes);
 }  // namespace abcd::source
 #endif

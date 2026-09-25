@@ -791,7 +791,8 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     FoldClassParentReads(method, ast, uses);
     ElideOverwrittenAccumulator(method, ast);
     if (derived) RecoverReceiverBinding(method, ast, uses, copies, *derived);
-    FoldStoreSnapshots(method, ast);
+    if (const auto failure = FoldStoreSnapshots(
+            method, ast, copy_bytes - (ast.allocated_bytes - retained_before))) return *failure;
     return ast;
   } catch (const std::bad_alloc&) {
     return Fail(SourceError::kResourceLimit);
