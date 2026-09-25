@@ -40,3 +40,49 @@ break targets, loop exits, try/handler scopes, staged-argument fallback,
 array-capture declarations, record declarations, tight output budgets and
 generated-position offsets. Artifacts remain explicitly incomplete and
 non-executable; no end-to-end semantic-equivalence claim is made.
+
+## Label Continuations
+
+Ordinary RegionLabel nodes wrap the prefix immediately preceding their exit
+block in a RegionSequence. The exception builder also wraps a try body with a
+label targeting its verified skip-over-handler gap. That gap has no language
+effects and prints only a zero-width anchor before the try closes; it is not
+an ordinary sequence child. Both forms therefore admit their exit as the
+body's natural continuation, supplied by the printer and label-use collector.
+Existing continuation rules propagate only to a sequence's last child and
+never through a loop or try region. Thus a final unconditional jump or synthetic
+fallthrough to the label's own exit can be omitted; earlier exits and different
+targets remain explicit. A now-unreferenced declaration-free wrapper may then
+disappear through the existing label policy.
+
+Methods with a cross-block argument owner retain the previous protocol: they
+do not acquire a label-derived continuation. This prevents bypassing that
+owner's interval consumption or creating a second anchor for its instructions.
+Record and array-capture scope restrictions remain unchanged; removing a
+redundant final jump does not license removing a lexical scope. Explicit jump
+PCs retain zero-width anchors, while implicit fallthrough emits no extra text.
+No graph, effects, source operands or exception dispatch is changed. Complexity
+and storage remain those of the existing single region traversal.
+
+Deferred cases include nested labels with different exits, early conditional
+breaks, prefixes before try blocks, loop entry/backedges, argument intervals,
+scope-sensitive declarations and exact PC spans. Tests, JS execution and RSS
+remain paused.
+
+### Production Evidence
+
+Both production CLI targets rebuilt successfully. The ABC-only export at
+`build/pasteboard-label-continuations-final-20260925` contains 19 records and
+219 methods. Publication remains nine metadata-only records, two refused
+constructors (entities 4767 and 5246 at PC 14), and eight incomplete sources.
+The latter total 3,597 lines / 83,681 bytes, compared with 3,702 / 84,688 in
+`build/pasteboard-branch-continuations-20260925`. Position artifacts retain
+195 distinct methods and 9,745 spans. Counts alone do not prove span accuracy
+or semantic equivalence.
+
+Inspection of Home's emitted diff confirms that the conditional early exit
+inside onPageShow remains while its trailing jump and wrappers before try
+blocks disappear. The exception builder verifies skip-gap effects and forbids
+outside entries; the printer preserves the gap's zero-width anchor inside try.
+Read-only review found no concrete correctness defect and prompted the
+distinction above between ordinary prefix labels and try-gap labels.

@@ -1833,18 +1833,22 @@ class SourcePrinter {
               result_.spans.back().end = position_;
             }
           } else if constexpr (std::is_same_v<T, analysis::RegionLabel>) {
+            // Labels precede their exit block or a verified try skip gap.
+            // A final edge to that exit is lexical fallthrough; earlier
+            // exits and staged argument owners keep their own protocol.
+            const auto next = ast_.argument_region ? continuation : region.exit;
             if (!NeedsLabel(region.exit)) {
               // Preserve conservative scope-sensitive admission even though
               // this declaration-free lexical wrapper emits no source text.
               ++scope_depth_;
-              Region(*region.body, continuation);
+              Region(*region.body, next);
               --scope_depth_;
               return;
             }
             Label(region.exit);
             Text(": {\n");
             ++scope_depth_;
-            Region(*region.body, continuation);
+            Region(*region.body, next);
             --scope_depth_;
             Text("}\n");
           } else if constexpr (std::is_same_v<T, analysis::RegionSequence>) {

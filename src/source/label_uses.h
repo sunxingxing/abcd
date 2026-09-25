@@ -97,12 +97,15 @@ inline void CollectLabelUses(const SourceAst& ast,
           throw SourceFailure{SourceError::kInvalidEffect, {}};
         self(self, *region.body, depth + 1);
         self(self, *region.handler, depth + 1);
-      } else if constexpr (std::is_same_v<T, analysis::RegionLabel> ||
-                           std::is_same_v<T, analysis::RegionLoop>) {
+      } else if constexpr (std::is_same_v<T, analysis::RegionLabel>) {
         if (!region.body)
           throw SourceFailure{SourceError::kInvalidEffect, {}};
         self(self, *region.body, depth + 1,
-             std::is_same_v<T, analysis::RegionLabel> ? continuation : std::nullopt);
+             ast.argument_region ? continuation : region.exit);
+      } else if constexpr (std::is_same_v<T, analysis::RegionLoop>) {
+        if (!region.body)
+          throw SourceFailure{SourceError::kInvalidEffect, {}};
+        self(self, *region.body, depth + 1);
       } else {
         static_assert(std::is_same_v<T, void>, "unhandled source region");
       }
