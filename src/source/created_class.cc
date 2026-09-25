@@ -24,6 +24,7 @@
 #include "record_literal.h"
 #include "runtime_name.h"
 #include "spread_field_constructor.h"
+#include "member_key.h"
 
 namespace abcd::source {
 namespace {
@@ -268,10 +269,22 @@ class ClassWriter {
         auto* positions = dynamic_cast<CaptureBuffer*>(output_.rdbuf());
         GeneratedPosition begin;
         const bool mapped = field.origin && positions && positions->Position(begin);
-        Text("static [");
-        Account(TakeClassValue<std::size_t>(WriteStringLiteral(
-            field.name, output_, budget_.output)));
-        Text("] = ");
+        Text("static ");
+        switch (ClassifyStaticFieldKey(field.name)) {
+          case MemberKeySyntax::kIdentifier:
+            for (const auto unit : field.name) {
+              const auto ch = static_cast<char>(unit);
+              Text({&ch, 1});
+            }
+            break;
+          case MemberKeySyntax::kQuoted:
+            Text("[");
+            Account(TakeClassValue<std::size_t>(WriteStringLiteral(
+                field.name, output_, budget_.output)));
+            Text("]");
+            break;
+        }
+        Text(" = ");
         StaticValueText(static_fields_->values[field.value]);
         Text(";");
         if (mapped) {

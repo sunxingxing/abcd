@@ -28,5 +28,13 @@ inline MemberKeySyntax ClassifyMethodKey(std::u16string_view name) {
     return MemberKeySyntax::kQuoted;
   return ClassifyMemberKey(name);
 }
+// ECMA-262 2024 15.7.1: literal static fields named constructor or prototype
+// are early errors. Keep computed spelling and the independent field proof;
+// unlike object literals, class fields named __proto__ define own data keys.
+inline MemberKeySyntax ClassifyStaticFieldKey(std::u16string_view name) {
+  if (name == u"constructor" || name == u"prototype")
+    return MemberKeySyntax::kQuoted;
+  return ClassifyMemberKey(name);
+}
 }  // namespace abcd::source
 #endif
