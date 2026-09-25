@@ -33,6 +33,14 @@ struct RegionIf {
   BlockId join;
   std::optional<BlockId> alternate;
 };
+struct RegionBranch {
+  BlockId header;
+  BlockId body_entry;
+  BlockId alternate_entry;
+  BlockId join;
+  std::unique_ptr<RegionNode> body;
+  std::unique_ptr<RegionNode> alternate;
+};
 struct RegionTry {
   TryId id;
   std::unique_ptr<RegionNode> body;
@@ -43,7 +51,7 @@ struct RegionTry {
 };
 struct RegionNode {
   std::variant<RegionBlock, RegionLabel, RegionSequence, RegionLoop, RegionTry,
-               RegionIf> value;
+               RegionIf, RegionBranch> value;
 };
 struct SemanticRegionTree {
   RegionNode root;

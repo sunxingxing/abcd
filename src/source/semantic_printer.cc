@@ -1753,7 +1753,54 @@ class SourcePrinter {
     --scope_depth_;
     Text("}\n");
   }
-  void Region(const analysis::RegionNode& node) {
+  void BranchRegion(const analysis::RegionBranch& region) {
+    if (!region.body || !region.alternate || region.header.value >= blocks_.blocks.size() ||
+        region.body_entry.value >= blocks_.blocks.size() ||
+        region.alternate_entry.value >= blocks_.blocks.size() || region.join.value >= blocks_.blocks.size())
+      throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+    if (ast_.argument_region) {
+      // Preserve the old forward-label representation when the method has a
+      // cross-block argument owner. Its interval emits its own branch bodies.
+      Label(region.alternate_entry);
+      Text(": {\n");
+      ++scope_depth_;
+      Label(region.body_entry);
+      Text(": {\n");
+      ++scope_depth_;
+      Region(analysis::RegionNode{analysis::RegionBlock{region.header}});
+      --scope_depth_;
+      Text("}\n");
+      Region(*region.body);
+      --scope_depth_;
+      Text("}\n");
+      Region(*region.alternate);
+      return;
+    }
+    const auto& header = blocks_.blocks[region.header.value];
+    const auto end = std::size_t(header.first_instruction) + header.instruction_count;
+    if (!header.instruction_count || end > ast_.statements.size())
+      throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+    const auto& terminator = ast_.statements[end - 1];
+    const auto* branch = std::get_if<SourceConditionalBreak>(&terminator.operation);
+    if (!branch || branch->target != region.alternate_entry)
+      throw SourceFailure{SourceError::kInvalidEffect, terminator.pc};
+    Statements(header.first_instruction, end - 1);
+    current_pc_ = terminator.pc;
+    const auto begin = position_;
+    Text("if (");
+    Predicate(branch->condition, true, branch->input);
+    Text(") {\n");
+    RelocateFusedOrigins(terminator, begin);
+    result_.spans.push_back({terminator.pc, begin, position_});
+    ++scope_depth_;
+    Region(*region.body, region.join);
+    Text("} else {\n");
+    Region(*region.alternate, region.join);
+    --scope_depth_;
+    Text("}\n");
+  }
+  void Region(const analysis::RegionNode& node,
+              std::optional<analysis::BlockId> continuation = {}) {
     std::visit(
         [&](const auto& region) {
           using T = std::decay_t<decltype(region)>;
@@ -1765,11 +1812,19 @@ class SourcePrinter {
                              block.instruction_count;
             if (end > ast_.statements.size())
               throw SourceFailure{SourceError::kOutput, current_pc_};
-            Statements(block.first_instruction, end);
+            const auto* last_jump = block.instruction_count
+                ? std::get_if<SourceBreak>(&ast_.statements[end - 1].operation) : nullptr;
+            if (continuation && last_jump && last_jump->target == *continuation) {
+              Statements(block.first_instruction, end - 1);
+              Statement(SourceStatement{ast_.statements[end - 1].pc, analysis::NoOperation{}});
+            } else {
+              Statements(block.first_instruction, end);
+            }
             if (region.id.value >= ast_.fallthrough.size())
               throw SourceFailure{SourceError::kOutput, current_pc_};
             const bool consumed_terminator = IsArgumentInterior(ast_, end);
-            if (ast_.fallthrough[region.id.value] && !consumed_terminator) {
+            if (ast_.fallthrough[region.id.value] && !consumed_terminator &&
+                ast_.fallthrough[region.id.value] != continuation) {
               Text("break ");
               Label(*ast_.fallthrough[region.id.value]);
               Text(";\n");
@@ -1782,18 +1837,19 @@ class SourcePrinter {
               // Preserve conservative scope-sensitive admission even though
               // this declaration-free lexical wrapper emits no source text.
               ++scope_depth_;
-              Region(*region.body);
+              Region(*region.body, continuation);
               --scope_depth_;
               return;
             }
             Label(region.exit);
             Text(": {\n");
             ++scope_depth_;
-            Region(*region.body);
+            Region(*region.body, continuation);
             --scope_depth_;
             Text("}\n");
           } else if constexpr (std::is_same_v<T, analysis::RegionSequence>) {
-            for (const auto& child : region.children) Region(child);
+            for (std::size_t i = 0; i < region.children.size(); ++i)
+              Region(region.children[i], i + 1 == region.children.size() ? continuation : std::nullopt);
           } else if constexpr (std::is_same_v<T, analysis::RegionLoop>) {
             LoopLabel(region.header);
             Text(": while (true) {\n");
@@ -1803,6 +1859,8 @@ class SourcePrinter {
             Text("}\n");
           } else if constexpr (std::is_same_v<T, analysis::RegionIf>) {
             IfRegion(region);
+          } else if constexpr (std::is_same_v<T, analysis::RegionBranch>) {
+            BranchRegion(region);
           } else if constexpr (std::is_same_v<T, analysis::RegionTry>) {
             if (!ast_.regions.catches || !region.body || !region.handler)
               throw SourceFailure{SourceError::kInvalidEffect, current_pc_};

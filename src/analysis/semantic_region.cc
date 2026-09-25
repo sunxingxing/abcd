@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "abcd/analysis/block_order.h"
+#include "branch_intervals.h"
 #include "loop_intervals.h"
 #include "region_if.h"
 #include "terminal_arms.h"
@@ -14,6 +15,7 @@
 namespace abcd::analysis {
 namespace {
 constexpr std::size_t kNodesPerBlock = 4;
+constexpr std::size_t kBranchNodesPerBlock = kNodesPerBlock + 2;
 RegionFailure Fail(RegionError kind, abc::CodeOffset pc = {}) {
   return {kind, pc};
 }
@@ -168,7 +170,7 @@ RegionResult BuildSemanticRegions(const SemanticMethod& method,
     return Fail(RegionError::kDepth);
   if (method.flow.blocks.size() >
       budget_bytes / (sizeof(std::uint32_t) + sizeof(EntryCount) + sizeof(BlockId) +
-                      kNodesPerBlock * sizeof(RegionNode)))
+                      kBranchIntervalBytesPerBlock + kBranchNodesPerBlock * sizeof(RegionNode)))
     return Fail(RegionError::kResourceLimit);
   try {
     SemanticRegionTree tree;
@@ -198,36 +200,53 @@ RegionResult BuildSemanticRegions(const SemanticMethod& method,
           return Fail(RegionError::kBackwardEdge, block.end);
       }
     }
-    std::optional<RegionNode> root;
-    for (std::size_t i = 0; i < order.blocks.size();) {
-      const auto start = order.blocks[i];
-      RegionNode node{RegionBlock{start}};
-      if (i + kIfElseBlocks < order.blocks.size() &&
-          CanFormIf(method.flow, entries, start, order.blocks[i + 1],
-                    order.blocks[i + kIfElseBlocks], order.blocks[i + kIfBlocks])) {
-        node = RegionNode{RegionIf{start, order.blocks[i + 1], order.blocks[i + kIfElseBlocks],
-                                   order.blocks[i + kIfBlocks]}};
-        i += kIfElseBlocks;
-      } else if (i + kIfBlocks < order.blocks.size() &&
-          CanFormIf(method.flow, entries, start, order.blocks[i + 1],
-                    order.blocks[i + kIfBlocks])) {
-        node = RegionNode{RegionIf{start, order.blocks[i + 1], order.blocks[i + kIfBlocks]}};
-        i += kIfBlocks;
-      } else ++i;
-      if (!root) root = std::move(node);
-      else {
-        RegionSequence sequence;
-        sequence.children.reserve(2);
-        sequence.children.push_back({RegionLabel{start,
-            std::make_unique<RegionNode>(std::move(*root))}});
-        sequence.children.push_back(std::move(node));
-        root = RegionNode{std::move(sequence)};
+    std::vector<std::optional<BranchInterval>> intervals(order.blocks.size());
+    std::vector<BranchEdges> edges(kBranchTreeChildren * order.blocks.size());
+    if (intervals.capacity() > order.blocks.size() ||
+        edges.capacity() > kBranchTreeChildren * order.blocks.size())
+      return Fail(RegionError::kResourceLimit);
+    if (!FindBranchIntervals(method.flow, order.blocks, tree.order_positions, intervals, edges))
+      return Fail(RegionError::kBackwardEdge);
+    const auto sequence = [&](auto&& self, std::size_t first, std::size_t end) -> RegionNode {
+      std::optional<RegionNode> root;
+      for (auto i = first; i < end;) {
+        const auto start = order.blocks[i];
+        RegionNode node{RegionBlock{start}};
+        if (i + kIfElseBlocks < end &&
+            CanFormIf(method.flow, entries, start, order.blocks[i + 1],
+                      order.blocks[i + kIfElseBlocks], order.blocks[i + kIfBlocks])) {
+          node = RegionNode{RegionIf{start, order.blocks[i + 1], order.blocks[i + kIfElseBlocks],
+                                     order.blocks[i + kIfBlocks]}};
+          i += kIfElseBlocks;
+        } else if (i + kIfBlocks < end &&
+            CanFormIf(method.flow, entries, start, order.blocks[i + 1],
+                      order.blocks[i + kIfBlocks])) {
+          node = RegionNode{RegionIf{start, order.blocks[i + 1], order.blocks[i + kIfBlocks]}};
+          i += kIfBlocks;
+        } else if (intervals[i] && intervals[i]->join <= end) {
+          const auto interval = *intervals[i];
+          node = RegionNode{RegionBranch{start, order.blocks[i + 1],
+              order.blocks[interval.alternate], order.blocks[interval.join],
+              std::make_unique<RegionNode>(self(self, i + 1, interval.alternate)),
+              std::make_unique<RegionNode>(self(self, interval.alternate, interval.join))}};
+          i = interval.join;
+        } else ++i;
+        if (!root) root = std::move(node);
+        else {
+          RegionSequence joined;
+          joined.children.reserve(2);
+          joined.children.push_back({RegionLabel{start,
+              std::make_unique<RegionNode>(std::move(*root))}});
+          joined.children.push_back(std::move(node));
+          root = RegionNode{std::move(joined)};
+        }
       }
-    }
-    tree.root = std::move(*root);
+      return std::move(*root);
+    };
+    tree.root = sequence(sequence, 0, order.blocks.size());
     tree.allocated_bytes = tree.order_positions.capacity() *
                                sizeof(std::uint32_t) +
-                           order.blocks.size() * kNodesPerBlock *
+                           order.blocks.size() * kBranchNodesPerBlock *
                                sizeof(RegionNode);
     return tree;
   } catch (const std::bad_alloc&) {
