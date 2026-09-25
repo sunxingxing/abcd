@@ -9,6 +9,7 @@
 #include "argument_region.h"
 #include "semantic_ast_input.h"
 #include "dead_copies.h"
+#include "return_expression.h"
 #include "copy_origins.h"
 #include "array_literals.h"
 #include "class_assembly.h"
@@ -727,6 +728,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
             method, ast, copy_bytes - (ast.allocated_bytes - retained_before))) return *failure;
     if (const auto failure = FoldClassAssembly(
             method, ast, copy_bytes - (ast.allocated_bytes - retained_before))) return *failure;
+    FoldReturnExpressions(method, ast, uses);
     return ast;
   } catch (const std::bad_alloc&) {
     return Fail(SourceError::kResourceLimit);

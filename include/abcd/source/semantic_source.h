@@ -149,6 +149,9 @@ struct SourceContinue {
 struct SourceReturn {
   analysis::ScalarValue value;
 };
+struct SourceReturnExpression {
+  SourceExpression value;
+};
 struct SourceThrow {
   analysis::ScalarValue value;
 };
@@ -166,7 +169,7 @@ using SourceOperation =
                  SourceIndexedStore,
                  SourceArrayCapture, SourceArrayCommit, SourceArrayLiteral,
                  SourceConditionalBreak, SourceBreak, SourceConditionalContinue,
-                 SourceContinue, SourceReturn, SourceThrow,
+                 SourceContinue, SourceReturn, SourceReturnExpression, SourceThrow,
                  SourceStagedCall, SourceInitializerCall>;
 struct SourceStatement {
   abc::CodeOffset pc;

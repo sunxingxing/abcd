@@ -836,6 +836,12 @@ class SourcePrinter {
             Text("return ");
             Value(operation.value);
             Text(";\n");
+          } else if constexpr (std::is_same_v<T, SourceReturnExpression>) {
+            if (record_exports_)
+              throw SourceFailure{SourceError::kUnsupportedOperation, current_pc_};
+            Text("return ");
+            Expression(operation.value);
+            Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceThrow>) {
             Text("throw ");
             Value(operation.value);
