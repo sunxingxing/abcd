@@ -5,6 +5,10 @@
 `pasteboard.json` 固定通用贯通路径的 Pasteboard 实验范围：同一内容指纹下的
 全部 19 个 record、219 个方法。它不是成功率报告或新的静态分类缓存。
 阶段探查和后续工作顺序见 [实验设计](../../docs/design/pasteboard-trunk.md)。
+Pasteboard 只是启动/回归子集，不是通用引擎覆盖范围。新的主干设计与全语料分组、
+跨应用/profile/留出验收及覆盖分母见
+[全样本能力合同](../../docs/design/source-recovery/corpus.md)。其计划不代表已重新运行验证；
+当前用户暂停的测试、生成 JS 执行和 RSS 测量仍保持暂停。
 
 ## 语料来源
 
