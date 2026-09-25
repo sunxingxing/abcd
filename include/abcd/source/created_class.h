@@ -44,8 +44,15 @@ struct BoundClassParent {
   std::string_view binding;
   ParentRuntimeInvariant runtime = ParentRuntimeInvariant::kUnproven;
 };
+// Caller-proven source identifier read at class creation. Unlike a local
+// snapshot it may throw; the owner proves original order and non-shadowing.
+struct NamedClassParent {
+  std::string_view binding;
+  ParentRuntimeInvariant runtime = ParentRuntimeInvariant::kUnproven;
+};
 using ClassParent =
-    std::variant<ImportedClassParent, GlobalClassParent, BoundClassParent>;
+    std::variant<ImportedClassParent, GlobalClassParent, BoundClassParent,
+                 NamedClassParent>;
 enum class CreatedClassError {
   kHeritage,
   kMembers,

@@ -93,6 +93,9 @@ struct ClassExpression {
   std::optional<analysis::FunctionCreation> initializer = {};
   // Normal-SSA creation site; folded members share its lexical environment.
   std::optional<analysis::InstructionId> capture_instruction = {};
+  // Sole-use global load/save immediately before creation, evaluated once
+  // by native extends. This is not a superclass runtime-brand invariant.
+  std::optional<GlobalExpression> parent_read = {};
 };
 // These nodes preserve assembly operations before class ownership is proved.
 // They are not ordinary function literals or calls to mutable JS intrinsics.

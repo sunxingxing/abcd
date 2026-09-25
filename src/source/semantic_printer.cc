@@ -852,10 +852,26 @@ class SourcePrinter {
       ClassBuffer buffer(*this, created->capture_instruction);
       std::ostream stream(&buffer);
       stream.exceptions(std::ios::badbit | std::ios::failbit);
-      const auto remaining = limit_ - result_.text.size();
+      auto remaining = limit_ - result_.text.size();
       std::optional<ClassParent> parent;
+      std::string parent_name;
       switch (created->heritage) {
         case analysis::HeritageKind::kUnknown:
+          if (created->parent_read) {
+            const auto name = PoolText(created->parent_read->name);
+            if (!constants_.global_scope ||
+                !AllowsGlobalReference(name, *constants_.global_scope))
+              throw SourceFailure{SourceError::kConstant, current_pc_};
+            const auto scratch = name.capacity() * sizeof(char16_t);
+            if (scratch >= remaining || name.size() >= remaining - scratch)
+              throw SourceFailure{SourceError::kResourceLimit, current_pc_};
+            parent_name.assign(name.begin(), name.end());
+            if (parent_name.capacity() >= remaining - scratch)
+              throw SourceFailure{SourceError::kResourceLimit, current_pc_};
+            remaining -= parent_name.capacity() + 1;
+            parent = NamedClassParent{parent_name};
+            break;
+          }
           // The class adapter takes an identifier instead of calling Value.
           // Record slot census must include this read without ABI substitution.
           ObserveSlots(ScalarValue{created->creation.parent}, true);

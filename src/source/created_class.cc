@@ -250,7 +250,8 @@ class ClassWriter {
           Text(" extends ");
           Text(origin.binding);
         }
-        if constexpr (!std::is_same_v<Origin, BoundClassParent>)
+        if constexpr (std::is_same_v<Origin, ImportedClassParent> ||
+                      std::is_same_v<Origin, GlobalClassParent>)
           Number(origin.snapshot);
       }, *parent_);
     }
@@ -691,11 +692,15 @@ CreatedClassResult WriteCreatedClass(
     const auto name = RuntimeName(index.methods[target.position.value]);
     if (!name) return CreatedClassError::kName;
     if (parent) {
-      if (const auto* bound = std::get_if<BoundClassParent>(&*parent);
-          bound && (!IsSourceIdentifier(bound->binding) ||
-                    bound->binding == *name || bound->binding == "ClassValue" ||
-                    bound->binding.starts_with("MethodSelf")))
-        return CreatedClassError::kHeritage;
+      const bool valid = std::visit([&](const auto& origin) {
+        using Origin = std::decay_t<decltype(origin)>;
+        if constexpr (std::is_same_v<Origin, BoundClassParent> ||
+                      std::is_same_v<Origin, NamedClassParent>)
+          return IsSourceIdentifier(origin.binding) && origin.binding != *name &&
+                 origin.binding != "ClassValue" && !origin.binding.starts_with("MethodSelf");
+        else return true;
+      }, *parent);
+      if (!valid) return CreatedClassError::kHeritage;
     }
     abc::EntityOffset caller_owner{};
     if (module || !accessors.empty() || !attached_methods.empty()) {
