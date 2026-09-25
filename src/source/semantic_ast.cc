@@ -238,6 +238,12 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
         operation = analysis::NoOperation{};
       } else if (std::holds_alternative<analysis::PopEnvironment>(instruction.operation)) {
         operation = analysis::NoOperation{};
+      } else if (const auto* realm =
+                     std::get_if<analysis::GlobalObjectLoad>(&instruction.operation)) {
+        if (!SameSlot(effect.normal_registers.write, analysis::ScalarSlot{analysis::Accumulator{}}) ||
+            effect.exceptional != analysis::ExceptionalCompletion::kImpossible)
+          return Fail(SourceError::kInvalidEffect, instruction.pc);
+        operation = SourceAssignment{analysis::Accumulator{}, *realm};
       } else if (std::holds_alternative<analysis::LoadHole>(instruction.operation)) {
         const auto written = method.ssa.Write(
             analysis::InstructionId{static_cast<std::uint32_t>(position)});

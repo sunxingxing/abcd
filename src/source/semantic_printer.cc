@@ -437,6 +437,11 @@ class SourcePrinter {
         throw SourceFailure{resource ? SourceError::kResourceLimit
                                      : SourceError::kCreation, current_pc_};
       }
+    } else if (std::holds_alternative<analysis::GlobalObjectLoad>(expression)) {
+      // Source needs an owner-validated realm binding contract. A mutable
+      // globalThis property, free identifier or Function constructor is not
+      // an unconditional representation of the VM's original realm object.
+      throw SourceFailure{SourceError::kRealmBinding, current_pc_};
     } else if (std::holds_alternative<MethodExpression>(expression) ||
                std::holds_alternative<AccessorExpression>(expression)) {
       // Native syntax needs an unescaped class/home-object assembly proof.

@@ -7,6 +7,7 @@
 
 #include "abcd/abc/control_transfer.h"
 #include "abcd/analysis/coroutine.h"
+#include "abcd/analysis/constant_object.h"
 
 namespace abcd::analysis {
 namespace {
@@ -55,6 +56,13 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
       break;
   }
   if (decoded.opcode == Opcode::kNOP) return NoOperation{};
+  if (decoded.opcode == Opcode::kLDGLOBAL) {
+    const auto constant = LiftConstantObjectInstruction(decoded);
+    const auto* load = std::get_if<ConstantObjectInstruction>(&constant);
+    if (!load || load->kind != ConstantObjectKind::kGlobalObject)
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    return GlobalObjectLoad{};
+  }
   const auto lexical = LiftLexicalInstruction(decoded, frame_size);
   if (!std::holds_alternative<LexicalError>(lexical)) {
     return std::visit([&](const auto& value)
@@ -337,6 +345,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
           static_assert(std::is_same_v<T, NoOperation> ||
                         std::is_same_v<T, LoadHole> ||
                         std::is_same_v<T, StringLoad> ||
+                        std::is_same_v<T, GlobalObjectLoad> ||
                         std::is_same_v<T, BranchOperation> ||
                         std::is_same_v<T, JumpOperation> ||
                         std::is_same_v<T, ReturnOperation>);

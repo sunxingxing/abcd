@@ -85,7 +85,7 @@ using SourceExpression =
                  FunctionExpression, LocalExpression, analysis::RestCopy,
                  analysis::BufferedArrayCreation, analysis::AwaitValue,
                  analysis::SuperRange, ClassExpression, MethodExpression,
-                 AccessorExpression>;
+                 AccessorExpression, analysis::GlobalObjectLoad>;
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;
@@ -200,6 +200,7 @@ enum class SourceError : std::uint8_t {
   kSuperInitialization,
   kClassAssembly,
   kOwnProperty,
+  kRealmBinding,
 };
 struct SourceFailure {
   SourceError kind;

@@ -80,6 +80,8 @@ struct NoOperation {};
 struct StringLoad {
   abc::PoolIndex value;
 };
+// Realm-owned object identity, not a mutable globalThis identifier lookup.
+struct GlobalObjectLoad {};
 struct AwaitValue {
   ScalarValue input;
   AwaitRegion origin;
@@ -98,7 +100,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        LoadHole, SuperCheck, RestCopy,
                                        BufferedArrayCreation, AwaitValue,
                                        ThrowOperation, SuperRange, ClassCreation,
-                                       DefineAccessor, IndexedWrite>;
+                                       DefineAccessor, IndexedWrite, GlobalObjectLoad>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;
