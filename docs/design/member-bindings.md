@@ -54,3 +54,34 @@ spans. Statuses remain eight incomplete, two host constructors refused at PC 14
 and nine metadata-only records. Read-only review and its follow-up found no
 concrete defect. The checks above are build and generation evidence only;
 tests, JS execution and RSS were not run.
+
+## Initialized Receiver Guards
+
+The shared receiver pass also admits an immediately following SuperCheck that
+BuildSourceAst has already reduced to an unmerged NoOperation using its
+whole-constructor or Defined-value/capture proof. Only RequireInitialized and
+Noop kinds qualify, with no register write; RequireUninitialized and emitted
+checks do not. This consumes an existing proof, not a new assumption that a
+Language-valued receiver is initialized.
+
+HasReceiverUse accounts for the guard's exact SSA read separately, then still
+requires the property to be the sole remaining consumer. Extra normal/phi uses
+retain the original receiver assignment. The original binding's captured domain
+requirement stays intact. The existing optional guard instruction ID and shared
+printer map both the binding and guard PCs to the receiver text. No AST storage,
+dependency or asymptotic cost is added; ordinary and call property reads share
+the same proof. Deferred regressions include initialized versus uninitialized
+checks, extra uses, mismatched guard SSA, capture domains and source-map origins.
+
+Production builds and ABC-only export `build/pasteboard-guarded-receivers-01`
+succeeded. Home now emits captured receiver properties directly (pageStack,
+uri, dialogControllerImage) and calls createStorageProp on the same captured
+binding. PasteBoard and ProgressBar also change. Totals become 5,053 lines /
+99,585 bytes, down 27 lines / 285 bytes, including declarations removed by the
+existing slot audit. This is expression recovery, not additional method support.
+
+Home method 6486 load PC 6 and initialization guard PC 8 share bytes [4052,4059),
+the `$lex0_0` receiver. Partial maps retain 195 methods / 9,745 spans; statuses
+remain eight incomplete, two host constructors refused at PC 14 and nine
+metadata-only records. Read-only review found no concrete defect. Tests,
+generated JS and RSS remain paused; semantic equivalence remains unproven.

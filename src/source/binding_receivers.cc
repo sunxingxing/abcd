@@ -37,15 +37,28 @@ bool HasMergedOrigin(const SourceStatement& statement) {
   return statement.fused_read || statement.fused_spill || statement.fused_reload ||
          statement.previous_origin || statement.class_origin || statement.literal_origin;
 }
-bool IsModuleGuard(const AstMethod& method, const SourceAst& ast,
+bool IsReceiverGuard(const AstMethod& method, const SourceAst& ast,
                    std::size_t source, std::size_t position) {
+  if (position != source + 1) return false;
   const auto& node = ast.statements[position];
-  const auto* guard = std::get_if<analysis::HoleGuard>(&method.instructions[position].operation);
-  return position == source + 1 && guard &&
-      std::holds_alternative<analysis::Accumulator>(guard->value) &&
-      std::holds_alternative<analysis::NoOperation>(node.operation) &&
-      node.previous_origin == ast.statements[source].pc &&
-      !node.fused_read && !node.fused_spill && !node.fused_reload && !node.class_origin;
+  const auto& instruction = method.instructions[position];
+  if (!std::holds_alternative<analysis::NoOperation>(node.operation) ||
+      node.fused_read || node.fused_spill || node.fused_reload || node.class_origin ||
+      node.literal_origin || instruction.effects.normal_registers.write) return false;
+  if (const auto* guard = std::get_if<analysis::HoleGuard>(&instruction.operation))
+    return std::holds_alternative<analysis::Accumulator>(guard->value) &&
+           node.previous_origin == ast.statements[source].pc;
+  const auto* check = std::get_if<analysis::SuperCheck>(&instruction.operation);
+  if (!check || node.previous_origin) return false;
+  // A NoOp here consumes BuildSourceAst's constructor/Defined-value proof.
+  // Preserve the binding's captured requirement; never infer initialization
+  // from a getter, receiver name, or merely Language-valued capture.
+  switch (check->kind) {
+    case analysis::SuperCheckKind::kRequireInitialized:
+    case analysis::SuperCheckKind::kNoop: return true;
+    case analysis::SuperCheckKind::kRequireUninitialized: return false;
+  }
+  return false;
 }
 bool HasReceiverUse(const AstMethod& method, const SourceAst& ast,
                     std::size_t source, std::size_t property,
@@ -56,7 +69,7 @@ bool HasReceiverUse(const AstMethod& method, const SourceAst& ast,
   for (auto i = source + 1; i < property; ++i) {
     const auto id = analysis::InstructionId{static_cast<std::uint32_t>(i)};
     const auto reads = method.ssa.Reads(id);
-    if (IsModuleGuard(method, ast, source, i)) {
+    if (IsReceiverGuard(method, ast, source, i)) {
       if (!remaining || reads.size() != 1 || reads.front().value != *value) return false;
       --remaining;
       continue;
@@ -105,7 +118,7 @@ void FoldBindingReceivers(const AstMethod& method, SourceAst& ast,
       auto& tail = ast.statements[i];
       if (std::holds_alternative<analysis::NoOperation>(tail.operation) &&
           ((!HasMergedOrigin(tail) && IsPureCopyStep(method.instructions[i])) ||
-           (previous && IsModuleGuard(method, ast, *previous, i)))) continue;
+           (previous && IsReceiverGuard(method, ast, *previous, i)))) continue;
       const auto producer = previous;
       previous = i;
       auto* call = std::get_if<SourceStagedCall>(&tail.operation);
@@ -135,7 +148,7 @@ void FoldBindingReceivers(const AstMethod& method, SourceAst& ast,
       // still execute after the receiver's property Reference is obtained.
       auto receiver = BindingReceiver{
           *binding, analysis::InstructionId{static_cast<std::uint32_t>(*producer)}};
-      if (IsModuleGuard(method, ast, *producer, *producer + 1))
+      if (IsReceiverGuard(method, ast, *producer, *producer + 1))
         receiver.guard = analysis::InstructionId{
             static_cast<std::uint32_t>(*producer + 1)};
       if (call) call->binding_receiver = receiver;
