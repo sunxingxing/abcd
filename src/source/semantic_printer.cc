@@ -623,6 +623,17 @@ class SourcePrinter {
         return;
     }
   }
+  void Member(const ScalarValue& object, abc::PoolIndex name) {
+    // Slot reads render only validated identifiers or owner-proven `this`.
+    // They are MemberExpression bases without grouping. Keep every other
+    // value grouped (notably numeric literals); never classify printed text.
+    const bool grouped = !std::holds_alternative<Accumulator>(object) &&
+                         !std::holds_alternative<abc::RegisterId>(object);
+    if (grouped) Text("(");
+    Value(object);
+    if (grouped) Text(")");
+    MemberKey(name);
+  }
   template <typename Call>
   void Arguments(const Call& call) {
     Text("(");
@@ -765,10 +776,7 @@ class SourcePrinter {
       Text(")");
       Arguments(call->call);
     } else if (const auto* call = std::get_if<MemberCallExpression>(&expression)) {
-      Text("(");
-      Value(ScalarValue{call->call.receiver});
-      Text(")");
-      MemberKey(call->name);
+      Member(ScalarValue{call->call.receiver}, call->name);
       Arguments(call->call);
     } else if (const auto* range = std::get_if<analysis::SuperRange>(&expression)) {
       if (!names_.range_derived_constructor ||
@@ -859,10 +867,7 @@ class SourcePrinter {
       Number(slot);
     } else {
       const auto& member = std::get<MemberExpression>(expression);
-      Text("(");
-      Value(member.object);
-      Text(")");
-      MemberKey(member.name);
+      Member(member.object, member.name);
     }
   }
   void Label(analysis::BlockId id) {
@@ -959,10 +964,7 @@ class SourcePrinter {
             Slot(operation.value);
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceMemberStore>) {
-            Text("(");
-            Value(operation.object);
-            Text(")");
-            MemberKey(operation.name);
+            Member(operation.object, operation.name);
             Text(" = ");
             std::visit([&](const auto& value) {
               using V = std::decay_t<decltype(value)>;
@@ -1000,10 +1002,7 @@ class SourcePrinter {
             // Pinned RuntimeDefineField sets all data attributes true. On a
             // private ordinary object with this existing data key, strict Set
             // has the same effect and cannot consult an inherited setter.
-            Text("(");
-            Value(ScalarValue{operation.write.object});
-            Text(")");
-            MemberKey(operation.write.name);
+            Member(ScalarValue{operation.write.object}, operation.write.name);
             Text(" = ");
             Value(ScalarValue{Accumulator{}});
             Text(";\n");
