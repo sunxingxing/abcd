@@ -11,5 +11,10 @@ namespace abcd::source {
 // copies, R native reads. O(I) admitted queue, exact counts are caller storage.
 std::optional<SourceFailure> ElideDeadCopies(const AstMethod& method,
     SourceAst& ast, std::span<std::size_t> uses, std::size_t bytes);
+// Remove adjacent acc -> private register -> acc transport only when its SSA
+// value has no other use (including handler phis). Original use counts remain
+// conservative upper bounds for later folds. No allocation or value movement.
+void ElideCopyReloads(const AstMethod& method, SourceAst& ast,
+                     std::span<const std::size_t> uses);
 }  // namespace abcd::source
 #endif

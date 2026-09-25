@@ -72,3 +72,29 @@ Deferred regression coverage: inherited numeric setters, throwing getters and
 module loads, handler phi observations, dead versus live aliases, receiver
 overwrites, sparse/out-of-order indices, nested candidates, native awaits,
 root-prefix extraction, fused/previous-origin spans and exact capacity limits.
+
+## Adjacent Copy Elision
+
+`ElideCopyReloads` now removes an adjacent accumulator-to-register save and
+register-to-accumulator reload in one normal block when the saved SSA value's
+only remaining use is that exact reload. Phi inputs, including handler inputs,
+are counted. Fused statements and special origin mappings are excluded. Both
+operations must still be ordinary nonthrowing scalar copies; neither an
+intervening effect nor a block boundary is crossed. This applies to the common
+AST, not only array elements.
+
+The accumulator is already unchanged, and the private saved register has no
+other observer. Both statements become no-ops with their original PC anchors.
+The existing counts are left as conservative upper bounds for subsequent
+folds, which may refuse but cannot gain alias admission from this elision.
+The pass allocates nothing, scans blocks once and retains the SSA facade's
+native lookup costs: O(I) with phased lookup, O(I log R) with normal lookup.
+
+Actual 9165 PCs264/266 now become no-op anchors before array folding. Its
+shared template still contains 362 PC spans and six capture obligations; the
+observed template text is 6256 bytes. Both production targets build and
+read-only review found no concrete defect. ABC-only export
+`build/pasteboard-copy-reloads-01` still has three incomplete source records.
+No runtime test, JS execution or RSS measurement was performed. Deferred cases
+include handler phi uses, multiple live uses, block-entry reloads, intervening
+effects, fused origins and array folding after copy elision.

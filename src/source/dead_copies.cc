@@ -43,4 +43,44 @@ std::optional<SourceFailure> ElideDeadCopies(const AstMethod& method,
   }
   return {};
 }
+void ElideCopyReloads(const AstMethod& method, SourceAst& ast,
+                     std::span<const std::size_t> uses) {
+  for (const auto& block : method.flow.blocks) {
+    const auto end = std::size_t(block.first_instruction) + block.instruction_count;
+    for (std::size_t i = block.first_instruction; i + 1 < end; ++i) {
+      auto& spill = ast.statements[i];
+      auto& reload = ast.statements[i + 1];
+      const auto* save = std::get_if<SourceAssignment>(&spill.operation);
+      const auto* load = std::get_if<SourceAssignment>(&reload.operation);
+      if (!save || !load || !SlotCopy(method.instructions[i].operation) ||
+          !SlotCopy(method.instructions[i + 1].operation) ||
+          spill.fused_read || spill.fused_spill || spill.fused_reload ||
+          spill.class_origin || spill.previous_origin ||
+          reload.fused_read || reload.fused_spill || reload.fused_reload ||
+          reload.class_origin || reload.previous_origin) continue;
+      const auto* reg = std::get_if<abc::RegisterId>(&save->target);
+      if (!reg || !std::holds_alternative<analysis::Accumulator>(load->target)) continue;
+      const auto* saved_expression = std::get_if<analysis::ScalarExpression>(&save->value);
+      const auto* loaded_expression = std::get_if<analysis::ScalarExpression>(&load->value);
+      const auto* saved_value = saved_expression
+          ? std::get_if<analysis::ScalarValue>(saved_expression) : nullptr;
+      const auto* loaded_value = loaded_expression
+          ? std::get_if<analysis::ScalarValue>(loaded_expression) : nullptr;
+      const auto* loaded_register = loaded_value
+          ? std::get_if<abc::RegisterId>(loaded_value) : nullptr;
+      if (!saved_value || !std::holds_alternative<analysis::Accumulator>(*saved_value) ||
+          !loaded_register || *loaded_register != *reg) continue;
+      const auto saved = method.ssa.Write({static_cast<std::uint32_t>(i)});
+      const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(i + 1)});
+      if (!saved || uses[saved->value] != 1 || reads.size() != 1 ||
+          reads.front().value != *saved) continue;
+      // No branch/handler can enter at the reload inside this normal block.
+      // Both operations are nonthrowing slot copies; acc already holds the
+      // reloaded value. Never generalize this to copies across an effect.
+      spill.operation = analysis::NoOperation{};
+      reload.operation = analysis::NoOperation{};
+      ++i;
+    }
+  }
+}
 }  // namespace abcd::source
