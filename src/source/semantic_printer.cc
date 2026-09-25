@@ -30,6 +30,7 @@
 #include "await_positions.h"
 #include "capture_positions.h"
 #include "label_uses.h"
+#include "receiver_copy.h"
 
 namespace abcd::source {
 namespace {
@@ -69,6 +70,7 @@ class SourcePrinter {
       if (const auto failure = VerifyOwnFields(ast_, constants_)) return *failure;
       PrepareLabels();
       names_ = names;
+      PrepareReceiverCopy();
       DeclareLocals();
       if (ast_.statements.size() > limit_ / sizeof(GeneratedSpan))
         return SourceFailure{SourceError::kResourceLimit, {}};
@@ -521,10 +523,20 @@ class SourcePrinter {
       throw SourceFailure{SourceError::kOutput, current_pc_};
     Text({buffer, static_cast<std::size_t>(converted.ptr - buffer)});
   }
-  void Scalar(const ScalarExpression& expression) {
+  void PrepareReceiverCopy() {
+    // Phased exception owners have different SSA coordinates. Keep this first
+    // certificate on normal methods; names_.this_binding excludes arrows and
+    // derived constructors. Identifier-only capture consumers stay unchanged.
+    if (names_.this_binding && capture_method_ && !ast_.regions.catches)
+      receiver_copy_ = FindReceiverCopy(*capture_method_, *names_.this_binding);
+  }
+  void Scalar(const ScalarExpression& expression, bool read = true) {
+    auto bound = expression;
+    if (read && receiver_copy_ && names_.this_binding)
+      BindReceiverCopy(bound, *receiver_copy_, *names_.this_binding);
     std::ostringstream stream;
     const auto emitted = WriteScalarExpression(
-        expression, names_, stream, {limit_ - result_.text.size()});
+        bound, names_, stream, {limit_ - result_.text.size()});
     if (!std::holds_alternative<std::size_t>(emitted))
       throw SourceFailure{SourceError::kOutput, current_pc_};
     Text(stream.str());
@@ -556,6 +568,9 @@ class SourcePrinter {
   }
   void Slot(const analysis::ScalarSlot& slot) {
     std::visit([&](const auto& value) { Value(ScalarValue{value}); }, slot);
+  }
+  void Target(const analysis::ScalarSlot& slot) {
+    std::visit([&](const auto& value) { Scalar(ScalarValue{value}, false); }, slot);
   }
   std::u16string PoolText(abc::PoolIndex slot) {
     const auto reference = abc::ResolvePoolReference(
@@ -886,7 +901,7 @@ class SourcePrinter {
         [&](const auto& operation) {
           using T = std::decay_t<decltype(operation)>;
           if constexpr (std::is_same_v<T, SourceAssignment>) {
-            Slot(operation.target);
+            Target(operation.target);
             Text(" = ");
             Expression(operation.value);
             Text(comma ? ",\n" : ";\n");
@@ -961,7 +976,7 @@ class SourcePrinter {
             if (operation.elements.empty())
               throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
             ArrayCapture(operation.elements.back());
-            Slot(analysis::ScalarSlot{operation.target});
+            Target(analysis::ScalarSlot{operation.target});
             Text(" = [");
             for (std::size_t i = 0; i < operation.elements.size(); ++i) {
               if (i) Text(", ");
@@ -1096,7 +1111,7 @@ class SourcePrinter {
       throw SourceFailure{SourceError::kInvalidEffect, ast_.statements[first].pc};
     current_pc_ = ast_.statements[first].pc;
     const auto begin = position_;
-    Slot(analysis::ScalarSlot{literal.target});
+    Target(analysis::ScalarSlot{literal.target});
     Text(" = [");
     // Array allocation remains before element evaluation. Delaying the private
     // save is permitted only by the SSA non-observation certificate; neither
@@ -1396,6 +1411,7 @@ class SourcePrinter {
   }
 
   const SourceAst& ast_;
+  std::optional<abc::RegisterId> receiver_copy_;
   std::vector<LabelUse> label_uses_;
   const analysis::NormalFlow& blocks_;
   const analysis::SemanticMethod* capture_method_;
