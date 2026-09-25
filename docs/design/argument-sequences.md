@@ -43,3 +43,35 @@ property getter before argument effects, throwing intermediate assignment,
 empty/NoOp-only intervals, reference receiver identity, nested calls and branch
 fallback, invalid bounds, await refusal, and map coordinates after wrapper
 removal. Export counts are not behavioral-equivalence evidence.
+
+## Ordered Native Arguments
+
+`HasOrderedArguments` now recognizes straight-line intervals with one assignment
+per argument, in call order, interspersed only with NoOperation anchors. Targets
+must exactly match the call operands and have strictly increasing register IDs.
+The increasing-ID restriction is conservative: it proves distinct targets in
+O(A) time and O(1) storage without sorting or pairwise comparison. Duplicate,
+reversed, missing, extra and non-register targets fall back to the sequence.
+
+Only scalar, member and string expressions participate. These expressions have
+no hidden writes to caller-private register bindings. Since later targets are
+distinct, immediately capturing each assignment's result as its argument equals
+reading that target after all assignments. Getter effects, assignment order,
+property Reference and receiver identity are unchanged. Assignments remain in
+the output, preserving subsequent uses and exception-visible state; removing
+them requires a separate SSA use proof and is not part of this transformation.
+
+StatementForm distinguishes ordinary statements, sequence items and native
+arguments. The argument mode omits only the terminator, not the target or its
+slot observation. Every child still passes through Statement, including NoOp
+anchors and fused-origin relocation. No new retained allocation is introduced.
+
+Production builds and ABC-only export `build/pasteboard-ordered-arguments-01`
+succeeded. Output totals are 8,420 lines / 146,977 bytes versus 8,457 /
+147,149 previously. Logger's four log methods now have native argument lists
+with retained assignments. Record statuses and partial map counts remain eight
+incomplete, two refused at PC 14, nine metadata; 195 methods / 9,745 spans.
+Read-only review found no concrete issue. Tests, JS execution and RSS checks
+remain paused. Deferred cases additionally include duplicate/out-of-order
+arguments, later reads of retained targets, getters observing exception state,
+empty intervals and PC coordinates across adjacent argument separators.

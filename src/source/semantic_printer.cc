@@ -32,6 +32,7 @@
 #include "label_uses.h"
 #include "entry_bindings.h"
 #include "entry_copy_elision.h"
+#include "argument_sequence.h"
 
 namespace abcd::source {
 namespace {
@@ -952,7 +953,10 @@ class SourcePrinter {
       relocate(*statement.fused_reload, statement.reload_distance);
     }
   }
-  void Statement(const SourceStatement& statement, bool comma = false) {
+  enum class StatementForm { kStatement, kSequence, kArgument };
+  void Statement(const SourceStatement& statement,
+                 StatementForm form = StatementForm::kStatement) {
+    const bool comma = form != StatementForm::kStatement;
     current_pc_ = statement.pc;
     if (comma && !std::holds_alternative<SourceAssignment>(statement.operation) &&
         !std::holds_alternative<analysis::NoOperation>(statement.operation))
@@ -967,7 +971,11 @@ class SourcePrinter {
             Target(operation.target);
             Text(" = ");
             Expression(operation.value);
-            Text(comma ? ",\n" : ";\n");
+            switch (form) {
+              case StatementForm::kStatement: Text(";\n"); break;
+              case StatementForm::kSequence: Text(",\n"); break;
+              case StatementForm::kArgument: break;
+            }
           } else if constexpr (std::is_same_v<T, SourceLocalStore>) {
             Local(operation.cell);
             Text(" = ");
@@ -1128,26 +1136,42 @@ class SourcePrinter {
                   return std::holds_alternative<SourceAssignment>(argument.operation) ||
                          std::holds_alternative<analysis::NoOperation>(argument.operation);
                 });
-            Text(sequence ? "((\n" : "((() => {\n");
-            if (sequence) {
-              for (auto i = first_statement; i < last_statement; ++i)
-                Statement(ast_.statements[i], true);
-            } else if (region)
-              ArgumentRegion(*ast_.argument_region);
-            else
-              Statements(operation.first_argument_statement.value,
-                         operation.call_statement.value, true);
-            current_pc_ = ast_.statements[operation.call_statement.value].pc;
-            if (!sequence) Text("return ");
-            const auto first = operation.call.At(0);
-            if (!first) throw SourceFailure{SourceError::kOutput, current_pc_};
-            Value(ScalarValue{*first});
-            Text(sequence ? ")" : ";\n})()");
-            for (std::uint32_t i = 1; i < operation.call.Count(); ++i) {
-              Text(", ");
-              const auto argument = operation.call.At(i);
-              if (!argument) throw SourceFailure{SourceError::kOutput, current_pc_};
-              Value(ScalarValue{*argument});
+            const bool ordered = sequence && HasOrderedArguments(
+                std::span<const SourceStatement>{ast_.statements}.subspan(
+                    first_statement, last_statement - first_statement), operation.call);
+            if (ordered) {
+              Text("(");
+              bool first_argument = true;
+              for (auto i = first_statement; i < last_statement; ++i) {
+                if (std::holds_alternative<SourceAssignment>(ast_.statements[i].operation)) {
+                  if (!first_argument) Text(", ");
+                  first_argument = false;
+                }
+                Statement(ast_.statements[i], StatementForm::kArgument);
+              }
+              current_pc_ = ast_.statements[last_statement].pc;
+            } else {
+              Text(sequence ? "((\n" : "((() => {\n");
+              if (sequence) {
+                for (auto i = first_statement; i < last_statement; ++i)
+                  Statement(ast_.statements[i], StatementForm::kSequence);
+              } else if (region)
+                ArgumentRegion(*ast_.argument_region);
+              else
+                Statements(operation.first_argument_statement.value,
+                           operation.call_statement.value, true);
+              current_pc_ = ast_.statements[operation.call_statement.value].pc;
+              if (!sequence) Text("return ");
+              const auto first = operation.call.At(0);
+              if (!first) throw SourceFailure{SourceError::kOutput, current_pc_};
+              Value(ScalarValue{*first});
+              Text(sequence ? ")" : ";\n})()");
+              for (std::uint32_t i = 1; i < operation.call.Count(); ++i) {
+                Text(", ");
+                const auto argument = operation.call.At(i);
+                if (!argument) throw SourceFailure{SourceError::kOutput, current_pc_};
+                Value(ScalarValue{*argument});
+              }
             }
             Text(");\n");
             --call_depth_;
@@ -1202,7 +1226,8 @@ class SourcePrinter {
         throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
       if (cursor != literal.save.value + 1) Text(", ");
       Text("(\n");
-      for (; cursor < element.value; ++cursor) Statement(ast_.statements[cursor], true);
+      for (; cursor < element.value; ++cursor)
+        Statement(ast_.statements[cursor], StatementForm::kSequence);
       current_pc_ = ast_.statements[element.value].pc;
       const auto element_begin = position_;
       Slot(analysis::ScalarSlot{Accumulator{}});
