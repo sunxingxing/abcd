@@ -119,6 +119,32 @@ RouteAdmission AdmitLegacyWriter(RoutePolicy policy) {
 std::optional<RouteReceiptError> ValidateRouteReceipt(
     const MethodRouteReceipt& receipt) {
   if (!receipt.method && !receipt.record) return RouteReceiptError::kIdentity;
+  const auto& identity = receipt.identity;
+  if (identity.file_size < abc::kDynamicHeaderSize ||
+      identity.profile == abc::ProfileId::kUnknown ||
+      std::find(kProfiles.begin(), kProfiles.end(), identity.profile) ==
+          kProfiles.end() ||
+      identity.abc_version == abc::AbcVersion{} ||
+      (identity.contract != SourceContract::kLanguageAndHostV1 &&
+       identity.contract != SourceContract::kLanguageAndHostV2))
+    return RouteReceiptError::kIdentity;
+  const auto valid_entity = [&](const auto& entity) {
+    return !entity || (entity->value >= abc::kDynamicHeaderSize &&
+                      entity->value < identity.file_size);
+  };
+  if (!valid_entity(receipt.method) || !valid_entity(receipt.record))
+    return RouteReceiptError::kIdentity;
+  // Schema 2 has no working-IR revision producer. In-memory obligations must
+  // reject the same invented provenance as the JSON boundary.
+  if (receipt.work_revision) return RouteReceiptError::kSchema;
+  if (receipt.stage &&
+      std::find(kValueStages.begin(), kValueStages.end(), *receipt.stage) ==
+          kValueStages.end())
+    return RouteReceiptError::kStage;
+  if (receipt.coverage != Coverage::kComplete &&
+      receipt.coverage != Coverage::kIncomplete &&
+      receipt.coverage != Coverage::kUnsupported)
+    return RouteReceiptError::kCoverage;
   switch (receipt.route) {
     case SourceRoute::kLegacy:
       // A legacy receipt certifies legacy-writer text only: earlier stages
@@ -139,6 +165,12 @@ std::optional<RouteReceiptError> ValidateRouteReceipt(
         // A refusal carries its typed reason and claims no product.
         if (receipt.coverage != Coverage::kUnsupported)
           return RouteReceiptError::kCoverage;
+        if (receipt.failure->reason != ValueRouteError::kRouteUnavailable ||
+            receipt.failure->failure_class != RouteFailureClass::kUnsupported ||
+            receipt.failure->pc)
+          return RouteReceiptError::kFailure;
+        if (receipt.stage && *receipt.stage != SourceStage::kDecoded)
+          return RouteReceiptError::kStage;
         return {};
       }
       switch (receipt.coverage) {
@@ -161,6 +193,8 @@ std::optional<RouteReceiptError> ValidateRouteReceipt(
 }
 
 bool RouteStageLedger::Advance(SourceStage stage) {
+  if (route_ != SourceRoute::kLegacy && route_ != SourceRoute::kValueTree)
+    return false;
   const std::span<const SourceStage> sequence =
       route_ == SourceRoute::kLegacy
           ? std::span<const SourceStage>{kLegacyStages}
@@ -178,6 +212,9 @@ bool RouteStageLedger::Advance(SourceStage stage) {
 
 bool RouteObligationsClosed(
     RoutePolicy policy, std::span<const ChildRouteObligation> obligations) {
+  if (policy != RoutePolicy::kLegacyAllowed &&
+      policy != RoutePolicy::kRequireValueTree)
+    return false;
   for (const auto& obligation : obligations) {
     if (!obligation.receipt) return false;
     const auto& receipt = *obligation.receipt;

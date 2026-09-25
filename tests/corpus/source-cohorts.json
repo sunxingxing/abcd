@@ -8,6 +8,40 @@
   "classification_manifest": "tests/corpus/abc-index.json",
   "manifest_summary": "900 files, 894 unique contents, 402 dynamic, 498 static, 0 unknown/malformed (recorded evidence; not a re-scan).",
   "deduplication": "Same sha256 counts as one sample regardless of path; pasteboard appears in both roots under one identity.",
+  "membership": {
+    "key": "sha256",
+    "precedence": ["holdout", "development", "development_pool"],
+    "rule": "Resolve membership before method selection: a holdout hash is excluded from every development path alias and pool. Explicit named development cohorts precede the residual pool. Contradictory named families require reconciliation, not duplicate evidence."
+  },
+  "independent_method_candidates": [
+    {
+      "gate": "G1",
+      "family": "Immersive",
+      "sha256": "8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a",
+      "capabilities": ["normal_branch", "parameter_binding", "property_read", "property_write"],
+      "entity": null,
+      "status": "unfrozen",
+      "reason": "Method-level ABC inspection pending; file identity alone is not capability evidence."
+    },
+    {
+      "gate": "G2",
+      "family": "push-kit-sample-code-clientdemo-arkts",
+      "sha256": "b2074425e0e2a4a20b547c8b711727b0160d299efc8eeb2af266aa6983eab44f",
+      "capabilities": ["ordered_call", "callee_reference", "effect_order"],
+      "entity": null,
+      "status": "unfrozen",
+      "reason": "Method-level ABC inspection pending; no call shape is inferred from the application name."
+    },
+    {
+      "gate": "G3",
+      "family": "Immersive",
+      "sha256": "8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a",
+      "capabilities": ["object_initialization", "own_property_definition", "closure_capture"],
+      "entity": null,
+      "status": "unfrozen",
+      "reason": "Method-level ABC inspection pending; all required capabilities must occur in the selected whole method."
+    }
+  ],
   "cohorts": [
     {
       "id": "pasteboard",
@@ -76,7 +110,10 @@
     {
       "id": "batch-anonymous",
       "kind": "development_pool",
-      "inputs": "remaining 895 batch-manifest files",
+      "inputs": "batch-manifest contents after hash-based holdout and named-development exclusions",
+      "excluded_sha256": [
+        "45ffdc7d5075b4de3f1c6860dcbc929bae048097af4478d09136afbec1b6c5a8"
+      ],
       "role": "Bulk robustness and coverage pool.",
       "leakage_note": "Application family is unknown for anonymous files; any cross-application claim built on them must be flagged as unproven family association."
     }

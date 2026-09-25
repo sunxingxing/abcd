@@ -154,6 +154,21 @@ int main() {
   anonymous.method = {};
   anonymous.record = {};
   Check(ValidateRouteReceipt(anonymous) == RouteReceiptError::kIdentity);
+  auto unbound = complete_value;
+  unbound.identity = {};
+  Check(ValidateRouteReceipt(unbound) == RouteReceiptError::kIdentity);
+  auto invented_revision = complete_value;
+  invented_revision.work_revision = 0;
+  Check(ValidateRouteReceipt(invented_revision) == RouteReceiptError::kSchema);
+  auto published_refusal = RefusedReceipt();
+  published_refusal.stage = SourceStage::kPublished;
+  Check(ValidateRouteReceipt(published_refusal) == RouteReceiptError::kStage);
+  auto wrong_failure = RefusedReceipt();
+  wrong_failure.failure->failure_class = RouteFailureClass::kUnproved;
+  Check(ValidateRouteReceipt(wrong_failure) == RouteReceiptError::kFailure);
+  auto invalid_stage = complete_value;
+  invalid_stage.stage = static_cast<SourceStage>(255);
+  Check(ValidateRouteReceipt(invalid_stage) == RouteReceiptError::kStage);
 
   // Receipt round trip through the versioned boundary: a refusal with no
   // stage, a refused decoded method, a complete value-tree product and a
@@ -184,9 +199,9 @@ int main() {
   // 4294967297 must not narrow to 1 on this platform (R4).
   reject("\"schema\":2", "\"schema\":4294967297", RouteReceiptError::kSchema);
   reject("\"schema\":2", "\"schema\":2.5", RouteReceiptError::kSchema);
-  reject("\"evidence_rules\":1", "\"evidence_rules\":2",
+  reject("\"evidence_rules\":2", "\"evidence_rules\":1",
          RouteReceiptError::kEvidence);
-  reject("\"evidence_rules\":1", "\"evidence_rules\":4294967297",
+  reject("\"evidence_rules\":2", "\"evidence_rules\":4294967297",
          RouteReceiptError::kEvidence);
   reject("\"method\":7586", "\"method\":4294967297",
          RouteReceiptError::kIdentity);
@@ -256,7 +271,7 @@ int main() {
   // An identity-free receipt never parses (R6: compare the error alternative,
   // not the variant index).
   const auto identity_free =
-      ParseRouteReceipt("{\"schema\":2,\"evidence_rules\":1}");
+      ParseRouteReceipt("{\"schema\":2,\"evidence_rules\":2}");
   const auto* identity_error = std::get_if<RouteReceiptError>(&identity_free);
   Check(identity_error != nullptr &&
         *identity_error == RouteReceiptError::kIdentity);
@@ -322,6 +337,10 @@ int main() {
   auto mismatched = complete_value;
   mismatched.method = abc::EntityOffset{7559};
   Check(!closes(RoutePolicy::kRequireValueTree, mismatched));
+  const ChildRouteObligation unbound_child{abc::EntityOffset{7586}, {}, unbound};
+  Check(!RouteObligationsClosed(RoutePolicy::kRequireValueTree,
+                                {&unbound_child, 1}));
+  Check(!closes(RoutePolicy::kRequireValueTree, invented_revision));
 
   std::cout << "source_route_test: ok\n";
   return EXIT_SUCCESS;
