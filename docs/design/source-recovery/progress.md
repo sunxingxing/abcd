@@ -267,3 +267,40 @@ executed while the test pause remains in force. The production abc_semantic
 target builds. Name assignment, tree assembly/verification, printer and source
 positions remain pending; the CLI still stops at ValuesVerified, not executable
 source. This is progress within T03, not acceptance of T03.
+
+### T03 Expression and Statement Construction
+
+BuildExpressionForest now lowers the verified evaluation forest into owned
+Literal/Symbol/This/Member/Unary/Binary/Logical/Assignment nodes. Each property
+read remains its own occurrence. FalseOrZero and TrueOrNonzeroNumber lower to
+their exact predicates; repeated reads clone only binding/literal/receiver
+leaves, never effectful subtrees. Boolean operands use the one-evaluation form.
+ToNumeric and increment/decrement remain typed refusals until their
+Number-or-BigInt preserving syntax is implemented. Pool text resolution remains
+an adapter obligation; syntax nodes contain NameId/TextId, not pool operands.
+
+BuildFunctionTree connects ControlPlan, EvaluationPlan and BindingPlan to raw
+function syntax. Iterative region assembly creates nested lexical block scopes,
+If/Return/Expression statements and explicit function-body snapshot declarations.
+Snapshot assignment stays at the original evaluation root. Direct formal and
+receiver reads produce no VM register declarations. Unused formals stay in the
+signature. Validated debug/metadata names share the existing conservative ASCII
+boundary; generated $arg/$value names cannot collide with admitted input names.
+Name uniqueness uses sorting; expression and statement assembly are linear in
+their input/output sizes and use admitted arenas, not recursive graph walks.
+
+Origins retain input site, PC and optional original PC; pure identity lowering
+combines provenance without copying PC lists. Normalized jumps use a zero-width
+BlockBoundary at the exact child ordinal, not a misleading enclosing-block exit.
+Operation placements connect retained operations to expressions, statements or
+these anchors. No text-based origin inference or legacy AST/writer is involved.
+
+This product is deliberately named ConstructedFunction, not VerifiedFunction.
+Independent scope/ownership/effect/edge/origin verification and a frozen printer
+API are still pending, as are callable/strictness evidence integration, ABC pool
+adapter integration and public source-route advancement. Construction alone is
+not source acceptance. The CLI still stops at ValuesVerified. Regression sources
+cover a branch with two distinct reads and PC40 write, a shared getter snapshot,
+both repeated-read VM predicates, retained original PC, names/constants refusal
+and work-budget failure. Production abc_semantic builds; tests, generated-JS
+execution and RSS measurements remain paused.

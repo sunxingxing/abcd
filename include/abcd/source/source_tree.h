@@ -83,14 +83,29 @@ struct StmtNode { TreeStatement statement; TreeOriginId origin; };
 
 // Origins/validation side tables may refer to working IDs. Executable node
 // operands above never do. Combined origins share references, not PC copies.
-struct OriginalSite { analysis::InputSiteId site; abc::CodeOffset pc; };
+struct OriginalSite {
+  analysis::InputSiteId site;
+  abc::CodeOffset pc;
+  std::optional<abc::CodeOffset> original = {};
+};
 struct CombinedOrigin { std::uint32_t first_part; std::uint32_t part_count; };
-struct ElidedOrigin { analysis::InputSiteId site; abc::CodeOffset pc; };
+struct ElidedOrigin {
+  analysis::InputSiteId site;
+  abc::CodeOffset pc;
+  std::optional<abc::CodeOffset> original = {};
+};
 struct EdgeOrigin { analysis::EdgeId edge; };
 struct BindingOrigin { SymbolId symbol; };
 using TreeOrigin = std::variant<OriginalSite, CombinedOrigin, ElidedOrigin, EdgeOrigin, BindingOrigin>;
-enum class AnchorKind : std::uint8_t { kBlockExit, kFunctionExit };
-struct TreeAnchor { StmtId statement; AnchorKind kind; TreeOriginId origin; };
+struct BlockBoundary {
+  StmtId block;
+  // A zero-width position before child[index], or after all children at count.
+  // Internal CFG jumps cannot be mapped to the enclosing block's exit token.
+  std::uint32_t index;
+};
+struct FunctionExit {};
+using AnchorPosition = std::variant<BlockBoundary, FunctionExit>;
+struct TreeAnchor { AnchorPosition position; TreeOriginId origin; };
 struct OpPlacement {
   analysis::OpId operation;
   std::variant<ExprId, StmtId, AnchorId> node;
