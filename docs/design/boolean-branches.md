@@ -39,3 +39,36 @@ include numeric/NaN/BigInt/object inputs that must retain VM tests, copy chains,
 unknown and boolean-only phi inputs (both conservatively retained), throwing
 comparisons with handlers, loops, region inversion, source positions and
 resource limits. This export is not runtime-equivalence evidence.
+
+## Direct Condition Expressions
+
+After predicate refinement, `FoldBranchExpressions` admits the last two
+instructions in one normal block when the first still assigns a pure boolean
+scalar expression to acc and the second tests that value. Both original IR
+and AST must retain the admitted scalar shape. Original language effects and
+exceptional completion must be absent. Exact SSA use count must be one,
+including handler phis, and the branch must consume that same value. Existing
+fused origins are excluded. Throwing comparisons remain separate statements.
+
+The branch's typed optional input owns the scalar expression. The old producer
+becomes NoOperation; the branch keeps its target and predicate polarity. Use
+counts remain conservative, so later DCE retains the expression's dependencies.
+No local binding, allocation, call or property access is moved. The block scan
+adds O(blocks) plus indexed SSA lookups and O(1) scratch; the enlarged typed
+statement size remains charged by existing AST capacity admission.
+
+The producer PC aliases the condition's generated span through the existing
+fused-origin mechanism. Ordinary conditional breaks/continues and structured
+if headers now share that relocation operation. Root-prefix emission keeps the
+producer's zero-width anchor until the consuming branch relocates it.
+
+Both CLIs build and read-only review found no concrete defect. ABC-only export
+to `build/pasteboard-branch-expressions-01` retains the same eight incomplete
+application records and two constructor refusals. ProgressBarBuilder emits
+`if (($r5 === $acc))` without the intermediate comparison-result assignment.
+ProgressBar entry PCs 46 and 49 both map to byte interval [3555,3571), line
+223 column 0 through line 224 column 0 in the generated record file.
+This demonstrates one entry-position alias, not complete nested-method maps.
+Deferred checks also include fused-condition PC aliases, root-prefix splitting,
+loop continues, multiple consumers and handler-visible accumulator values.
+Tests, JS execution and RSS remain paused.

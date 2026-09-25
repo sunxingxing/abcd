@@ -58,6 +58,10 @@ bool BooleanResult(const analysis::ScalarExpression& expression) {
   }
   return false;
 }
+bool HasMergedOrigin(const SourceStatement& statement) {
+  return statement.fused_read || statement.fused_spill || statement.fused_reload ||
+         statement.class_origin || statement.previous_origin;
+}
 }  // namespace
 
 void RefineBranchPredicates(const AstMethod& method, SourceAst& ast,
@@ -82,6 +86,50 @@ void RefineBranchPredicates(const AstMethod& method, SourceAst& ast,
     // effects move into the branch. Entry, catch and phi values stay unknown.
     condition->op = condition->op == UnaryOperator::kFalseOrZero
                         ? UnaryOperator::kLogicalNot : UnaryOperator::kToBoolean;
+  }
+}
+
+void FoldBranchExpressions(const AstMethod& method, SourceAst& ast,
+                           std::span<const std::size_t> uses) {
+  using analysis::UnaryOperator;
+  for (const auto& block : method.flow.blocks) {
+    if (block.instruction_count < 2) continue;
+    const auto branch_id = std::size_t(block.first_instruction) + block.instruction_count - 1;
+    auto& tail = ast.statements[branch_id];
+    auto& head = ast.statements[branch_id - 1];
+    auto* branch = std::get_if<SourceConditionalBreak>(&tail.operation);
+    auto* loop = std::get_if<SourceConditionalContinue>(&tail.operation);
+    auto* condition = branch ? &branch->condition : loop ? &loop->condition : nullptr;
+    if (!condition || HasMergedOrigin(head) || HasMergedOrigin(tail) ||
+        (condition->op != UnaryOperator::kLogicalNot &&
+         condition->op != UnaryOperator::kToBoolean) ||
+        !std::holds_alternative<analysis::Accumulator>(condition->input)) continue;
+    const auto* assignment = std::get_if<SourceAssignment>(&head.operation);
+    const auto* expression = assignment
+        ? std::get_if<analysis::ScalarExpression>(&assignment->value) : nullptr;
+    if (!expression || !BooleanResult(*expression) ||
+        !std::holds_alternative<analysis::Accumulator>(assignment->target)) continue;
+    const auto& original = method.instructions[branch_id - 1];
+    const auto* scalar = std::get_if<analysis::ScalarAssignment>(&original.operation);
+    if (!scalar || !BooleanResult(scalar->expression) ||
+        !std::holds_alternative<analysis::Accumulator>(scalar->destination) ||
+        scalar->completion != analysis::CompletionEffect::kNormal ||
+        original.effects.normal != analysis::LanguageEffect::kNone ||
+        original.effects.before_throw != analysis::LanguageEffect::kNone ||
+        original.effects.exceptional != analysis::ExceptionalCompletion::kImpossible)
+      continue;
+    const auto value = method.ssa.Write({static_cast<std::uint32_t>(branch_id - 1)});
+    const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(branch_id)});
+    if (!value || uses[value->value] != 1 || reads.size() != 1 ||
+        reads.front().value != *value) continue;
+    auto& input = branch ? branch->input : loop->input;
+    if (input) continue;
+    // No effect crosses the branch and no normal/exceptional observer can
+    // see the removed acc commit. Both PCs share the generated condition.
+    input = *expression;
+    head.operation = analysis::NoOperation{};
+    tail.fused_read = head.pc;
+    tail.read_distance = 1;
   }
 }
 }  // namespace abcd::source

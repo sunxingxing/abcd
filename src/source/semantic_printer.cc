@@ -430,16 +430,19 @@ class SourcePrinter {
     Text(stream.str());
   }
   void Value(const ScalarValue& value) { Scalar(ScalarExpression{value}); }
-  void Predicate(const analysis::UnaryExpression& condition, bool inverted = false) {
+  void Predicate(const analysis::UnaryExpression& condition, bool inverted = false,
+                 const std::optional<ScalarExpression>& input = {}) {
     using analysis::UnaryOperator;
     if (condition.op == UnaryOperator::kToBoolean ||
         condition.op == UnaryOperator::kLogicalNot) {
       // If already applies ToBoolean. Collapse only boolean operators here,
       // never the VM's distinct numeric/boolean branch predicates.
       if ((condition.op == UnaryOperator::kLogicalNot) != inverted) Text("!");
-      Value(condition.input);
+      if (input) Scalar(*input);
+      else Value(condition.input);
       return;
     }
+    if (input) throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
     if (inverted) Text("!(");
     Scalar(ScalarExpression{condition});
     if (inverted) Text(")");
@@ -738,6 +741,22 @@ class SourcePrinter {
     Slot(analysis::ScalarSlot{Accumulator{}});
     Text(";\n");
   }
+  void RelocateFusedOrigins(const SourceStatement& statement, GeneratedPosition begin) {
+    if (!statement.fused_read) return;
+    const auto relocate = [&](abc::CodeOffset pc, std::size_t distance) {
+      if (!distance || result_.spans.size() < distance ||
+          result_.spans[result_.spans.size() - distance].pc != pc)
+        throw SourceFailure{SourceError::kOutput, current_pc_};
+      auto& span = result_.spans[result_.spans.size() - distance];
+      span.begin = begin;
+      span.end = position_;
+    };
+    relocate(*statement.fused_read, statement.read_distance);
+    if (statement.fused_spill && statement.fused_reload) {
+      relocate(*statement.fused_spill, statement.spill_distance);
+      relocate(*statement.fused_reload, statement.reload_distance);
+    }
+  }
   void Statement(const SourceStatement& statement, bool comma = false) {
     current_pc_ = statement.pc;
     if (comma && !std::holds_alternative<SourceAssignment>(statement.operation) &&
@@ -839,7 +858,7 @@ class SourcePrinter {
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceConditionalBreak>) {
             Text("if (");
-            Predicate(operation.condition);
+            Predicate(operation.condition, false, operation.input);
             Text(") break ");
             Label(operation.target);
             Text(";\n");
@@ -849,7 +868,7 @@ class SourcePrinter {
             Text(";\n");
           } else if constexpr (std::is_same_v<T, SourceConditionalContinue>) {
             Text("if (");
-            Predicate(operation.condition);
+            Predicate(operation.condition, false, operation.input);
             Text(") continue ");
             LoopLabel(operation.target);
             Text(";\n");
@@ -919,23 +938,7 @@ class SourcePrinter {
           }
         },
         statement.operation);
-    if (statement.fused_read) {
-      const auto relocate = [&](abc::CodeOffset pc, std::size_t distance) {
-        if (!distance || result_.spans.size() < distance ||
-            result_.spans[result_.spans.size() - distance].pc != pc)
-          throw SourceFailure{SourceError::kOutput, current_pc_};
-        auto& span = result_.spans[result_.spans.size() - distance];
-        span.begin = begin;
-        span.end = position_;
-      };
-      if (statement.fused_spill && statement.fused_reload) {
-        relocate(*statement.fused_read, statement.read_distance);
-        relocate(*statement.fused_spill, statement.spill_distance);
-        relocate(*statement.fused_reload, statement.reload_distance);
-      } else {
-        relocate(*statement.fused_read, statement.read_distance);
-      }
-    }
+    RelocateFusedOrigins(statement, begin);
     if (statement.class_origin) {
       const auto index = static_cast<std::size_t>(&statement - ast_.statements.data());
       const auto origin = statement.class_origin->value;
@@ -1151,8 +1154,9 @@ class SourcePrinter {
     current_pc_ = terminator.pc;
     const auto begin = position_;
     Text("if (");
-    Predicate(branch->condition, true);
+    Predicate(branch->condition, true, branch->input);
     Text(") {\n");
+    RelocateFusedOrigins(terminator, begin);
     result_.spans.push_back({terminator.pc, begin, position_});
     ++scope_depth_;
     IfArm(region.body, region.join);

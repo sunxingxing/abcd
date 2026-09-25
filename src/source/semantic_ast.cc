@@ -722,6 +722,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     const auto copy_bytes = remaining - ast.statements.capacity() * sizeof(SourceStatement) -
         ast.fallthrough.capacity() * sizeof(std::optional<analysis::BlockId>);
     RefineBranchPredicates(method, ast, copies);
+    FoldBranchExpressions(method, ast, uses);
     if (const auto failure = ElideDeadAssignments(method, ast, uses, copy_bytes)) return *failure;
     ElideCopyReloads(method, ast, uses);
     FoldStoredExpressions(method, ast, uses);

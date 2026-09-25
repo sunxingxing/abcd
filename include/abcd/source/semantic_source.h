@@ -139,6 +139,8 @@ struct SourceArrayLiteral {
 struct SourceConditionalBreak {
   analysis::UnaryExpression condition;
   analysis::BlockId target;
+  // Proved replacement for condition.input; never parse it from source text.
+  std::optional<analysis::ScalarExpression> input = {};
 };
 struct SourceBreak {
   analysis::BlockId target;
@@ -146,6 +148,7 @@ struct SourceBreak {
 struct SourceConditionalContinue {
   analysis::UnaryExpression condition;
   analysis::BlockId target;
+  std::optional<analysis::ScalarExpression> input = {};
 };
 struct SourceContinue {
   analysis::BlockId target;
@@ -178,7 +181,7 @@ using SourceOperation =
 struct SourceStatement {
   abc::CodeOffset pc;
   SourceOperation operation;
-  // A fused property read and optional dead spill/reload share the call span.
+  // A fused expression and optional dead spill/reload share the consumer span.
   // Their PCs are retained, never recovered by searching generated text.
   std::optional<abc::CodeOffset> fused_read;
   std::optional<abc::CodeOffset> fused_spill;
