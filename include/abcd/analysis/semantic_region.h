@@ -25,12 +25,13 @@ struct RegionLoop {
   BlockId header;
   std::unique_ptr<RegionNode> body;
 };
-// One conditional header, one single-entry fallthrough body, and a forward
-// join. The taken edge skips the body; no instruction is duplicated.
+// Conditional header, single-entry arms and a forward continuation. Without
+// alternate, the taken edge skips body; an arm may also return/throw directly.
 struct RegionIf {
   BlockId header;
   BlockId body;
   BlockId join;
+  std::optional<BlockId> alternate;
 };
 struct RegionTry {
   TryId id;

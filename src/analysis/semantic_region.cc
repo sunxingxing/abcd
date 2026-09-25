@@ -67,6 +67,12 @@ RegionResult BuildLoopRegions(const SemanticMethod& method,
           node = RegionNode{RegionLoop{BlockId{id},
               std::make_unique<RegionNode>(self(self, i, *ends[i], true))}};
           i = *ends[i] + 1;
+        } else if (i + kIfElseBlocks <= last &&
+                   CanFormIf(method.flow, entries, BlockId{i}, BlockId{i + 1},
+                             BlockId{i + kIfElseBlocks}, BlockId{i + kIfBlocks})) {
+          node = RegionNode{RegionIf{BlockId{i}, BlockId{i + 1}, BlockId{i + kIfElseBlocks},
+                                     BlockId{i + kIfBlocks}}};
+          i += kIfElseBlocks;
         } else if (i + kIfBlocks <= last &&
                    CanFormIf(method.flow, entries, BlockId{i}, BlockId{i + 1},
                              BlockId{i + kIfBlocks})) {
@@ -149,7 +155,13 @@ RegionResult BuildSemanticRegions(const SemanticMethod& method,
     for (std::size_t i = 0; i < order.blocks.size();) {
       const auto start = order.blocks[i];
       RegionNode node{RegionBlock{start}};
-      if (i + kIfBlocks < order.blocks.size() &&
+      if (i + kIfElseBlocks < order.blocks.size() &&
+          CanFormIf(method.flow, entries, start, order.blocks[i + 1],
+                    order.blocks[i + kIfElseBlocks], order.blocks[i + kIfBlocks])) {
+        node = RegionNode{RegionIf{start, order.blocks[i + 1], order.blocks[i + kIfElseBlocks],
+                                   order.blocks[i + kIfBlocks]}};
+        i += kIfElseBlocks;
+      } else if (i + kIfBlocks < order.blocks.size() &&
           CanFormIf(method.flow, entries, start, order.blocks[i + 1],
                     order.blocks[i + kIfBlocks])) {
         node = RegionNode{RegionIf{start, order.blocks[i + 1], order.blocks[i + kIfBlocks]}};

@@ -978,14 +978,32 @@ class SourcePrinter {
     root_prefix_end_ = end;
     Region(ast_.regions.root);
   }
+  void IfArm(analysis::BlockId id, analysis::BlockId join) {
+    const auto& block = blocks_.blocks[id.value];
+    const auto end = std::size_t(block.first_instruction) + block.instruction_count;
+    if (!block.instruction_count || end > ast_.statements.size())
+      throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+    if (block.transfer == abc::ControlTransfer::kJump) {
+      const auto& last = ast_.statements[end - 1];
+      const auto* jump = std::get_if<SourceBreak>(&last.operation);
+      if (!jump || jump->target != join)
+        throw SourceFailure{SourceError::kInvalidEffect, last.pc};
+      Statements(block.first_instruction, end - 1);
+      Statement(SourceStatement{last.pc, analysis::NoOperation{}});
+    } else {
+      Statements(block.first_instruction, end);
+    }
+  }
   void IfRegion(const analysis::RegionIf& region) {
     if (region.header.value >= blocks_.blocks.size() ||
-        region.body.value >= blocks_.blocks.size())
+        region.body.value >= blocks_.blocks.size() ||
+        (region.alternate && region.alternate->value >= blocks_.blocks.size()))
       throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
     const auto& header = blocks_.blocks[region.header.value];
     const auto& body = blocks_.blocks[region.body.value];
     const auto header_end = std::size_t(header.first_instruction) + header.instruction_count;
     const auto body_end = std::size_t(body.first_instruction) + body.instruction_count;
+    const auto* alternate = region.alternate ? &blocks_.blocks[region.alternate->value] : nullptr;
     if (!header.instruction_count || !body.instruction_count ||
         header_end > ast_.statements.size() || body_end > ast_.statements.size())
       throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
@@ -996,7 +1014,14 @@ class SourcePrinter {
              ast_.argument_region->call.value >= first;
     };
     if (staged(header.first_instruction, header_end) ||
-        staged(body.first_instruction, body_end)) {
+        staged(body.first_instruction, body_end) ||
+        (alternate && staged(alternate->first_instruction,
+            std::size_t(alternate->first_instruction) + alternate->instruction_count))) {
+      if (region.alternate) {
+        Label(*region.alternate);
+        Text(": {\n");
+        ++scope_depth_;
+      }
       Label(region.body);
       Text(": {\n");
       ++scope_depth_;
@@ -1004,11 +1029,16 @@ class SourcePrinter {
       --scope_depth_;
       Text("}\n");
       Region(analysis::RegionNode{analysis::RegionBlock{region.body}});
+      if (region.alternate) {
+        --scope_depth_;
+        Text("}\n");
+        Region(analysis::RegionNode{analysis::RegionBlock{*region.alternate}});
+      }
       return;
     }
     const auto& terminator = ast_.statements[header_end - 1];
     const auto* branch = std::get_if<SourceConditionalBreak>(&terminator.operation);
-    if (!branch || branch->target != region.join)
+    if (!branch || branch->target != region.alternate.value_or(region.join))
       throw SourceFailure{SourceError::kInvalidEffect, terminator.pc};
     Statements(header.first_instruction, header_end - 1);
     current_pc_ = terminator.pc;
@@ -1018,15 +1048,10 @@ class SourcePrinter {
     Text(")) {\n");
     result_.spans.push_back({terminator.pc, begin, position_});
     ++scope_depth_;
-    if (body.transfer == abc::ControlTransfer::kJump) {
-      const auto& last = ast_.statements[body_end - 1];
-      const auto* jump = std::get_if<SourceBreak>(&last.operation);
-      if (!jump || jump->target != region.join)
-        throw SourceFailure{SourceError::kInvalidEffect, last.pc};
-      Statements(body.first_instruction, body_end - 1);
-      Statement(SourceStatement{last.pc, analysis::NoOperation{}});
-    } else {
-      Statements(body.first_instruction, body_end);
+    IfArm(region.body, region.join);
+    if (region.alternate) {
+      Text("} else {\n");
+      IfArm(*region.alternate, region.join);
     }
     --scope_depth_;
     Text("}\n");

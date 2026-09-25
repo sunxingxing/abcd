@@ -170,6 +170,12 @@ RegionResult BuildExceptionRegionTree(const ExceptionFlow& flow,
           node = RegionNode{RegionLoop{BlockId{i},
               std::make_unique<RegionNode>(self(self, i, *ends[i] + 1, true))}};
           i = *ends[i] + 1;
+        } else if (i + kIfElseBlocks < last && scope_runs[i] == scope_runs[i + kIfBlocks] &&
+                   CanFormIf(normal, entries, BlockId{i}, BlockId{i + 1},
+                             BlockId{i + kIfElseBlocks}, BlockId{i + kIfBlocks})) {
+          node = RegionNode{RegionIf{BlockId{i}, BlockId{i + 1}, BlockId{i + kIfElseBlocks},
+                                     BlockId{i + kIfBlocks}}};
+          i += kIfElseBlocks;
         } else if (i + kIfBlocks < last && scope_runs[i] == scope_runs[i + 1] &&
                    CanFormIf(normal, entries, BlockId{i}, BlockId{i + 1},
                              BlockId{i + kIfBlocks})) {
