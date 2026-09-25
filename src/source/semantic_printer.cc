@@ -57,7 +57,7 @@ class SourcePrinter {
     if (const auto* failure = std::get_if<SourceFailure>(&printed)) return *failure;
     auto& source = std::get<PrintedSource>(printed);
     return PrintedTemplate{std::move(source.text), std::move(source.spans),
-                            std::move(captures_), source.contract};
+                            std::move(captures_), source.contract, std::move(source.host_realm)};
   }
 
   std::variant<PrintedSource, SourceFailure> PrintBody(ScalarNames names) {
@@ -288,7 +288,42 @@ class SourcePrinter {
       throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
     LocalName(ast_.local_cells[id.value]);
   }
+  void AdmitRealmBinding() {
+    if (!constants_.global_scope || !constants_.global_scope->realm_binding) return;
+    auto scope = *constants_.global_scope;
+    const auto name = scope.realm_binding->name;
+    scope.realm_binding = nullptr;
+    if (!AllowsGlobalReference(name, scope))
+      throw SourceFailure{SourceError::kRealmBinding, current_pc_};
+    const auto same = [&](std::string_view binding) {
+      return name.size() == binding.size() &&
+             std::equal(name.begin(), name.end(), binding.begin());
+    };
+    if ((form_ != SourceForm::kRecord && same(name_)) ||
+        same(names_.accumulator) || same(names_.current_function) ||
+        (names_.rest && same(names_.rest->name)) ||
+        std::any_of(names_.registers.begin(), names_.registers.end(), same) ||
+        std::any_of(constants_.source_parameters.begin(), constants_.source_parameters.end(), same))
+      throw SourceFailure{SourceError::kRealmBinding, current_pc_};
+    if (name.size() >= limit_ - result_.text.size())
+      throw SourceFailure{SourceError::kResourceLimit, current_pc_};
+    result_.host_realm.emplace();
+    auto& binding = result_.host_realm->binding;
+    binding.reserve(name.size());
+    if (binding.capacity() >= limit_ - result_.text.size())
+      throw SourceFailure{SourceError::kResourceLimit, current_pc_};
+    limit_ -= binding.capacity() + 1;
+    for (const auto ch : name) binding.push_back(static_cast<char>(ch));
+  }
+  void RealmObject() {
+    if (!result_.host_realm)
+      throw SourceFailure{SourceError::kRealmBinding, current_pc_};
+    Text(result_.host_realm->binding);
+  }
   void DeclareLocals() {
+    // Record the binding even if only a descendant consumes LDGLOBAL. Child
+    // owners inherit the same trusted scope, never infer it from globalThis.
+    AdmitRealmBinding();
     if (ast_.local_cells.empty() && !ast_.regions.catches && !ast_.array_captures) return;
     const auto reserved = [&](std::string_view name) {
       return name.starts_with("$lex") || name.starts_with("$inner") ||
@@ -444,10 +479,7 @@ class SourcePrinter {
                                      : SourceError::kCreation, current_pc_};
       }
     } else if (std::holds_alternative<analysis::GlobalObjectLoad>(expression)) {
-      // Source needs an owner-validated realm binding contract. A mutable
-      // globalThis property, free identifier or Function constructor is not
-      // an unconditional representation of the VM's original realm object.
-      throw SourceFailure{SourceError::kRealmBinding, current_pc_};
+      RealmObject();
     } else if (std::holds_alternative<MethodExpression>(expression) ||
                std::holds_alternative<AccessorExpression>(expression)) {
       // Native syntax needs an unescaped class/home-object assembly proof.

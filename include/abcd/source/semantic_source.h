@@ -255,10 +255,15 @@ struct GeneratedSpan {
   GeneratedPosition end;
   SpanOrigin origin = SpanOrigin::kInstruction;
 };
+struct HostRealmRequirement {
+  // ASCII lexical name, owned by the artifact, not a JS expression.
+  std::string binding;
+};
 struct PrintedSource {
   std::string text;
   std::vector<GeneratedSpan> spans;
   SourceContract contract = kSourceContract;
+  std::optional<HostRealmRequirement> host_realm;
 };
 struct SourceCapture {
   GeneratedPosition position;
@@ -272,6 +277,7 @@ struct PrintedTemplate {
   std::vector<GeneratedSpan> spans;
   std::vector<SourceCapture> captures;
   SourceContract contract = kSourceContract;
+  std::optional<HostRealmRequirement> host_realm;
 };
 // source is the unchanged PrintSourceTemplate result. bindings is one
 // parent-PROVEN initialized local cell per capture occurrence,

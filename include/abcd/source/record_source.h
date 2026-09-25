@@ -13,10 +13,13 @@ using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure,
 // Context proves same-file module ownership. Metadata/lookup/roles/context are
 // caller-owned; budget covers decoded body, exports and analysis. Output has
 // its separate allowance. The caller must stage publication and recheck file.
+// Optional realm_binding is an explicit embedding-host trust capability; it
+// is never fabricated from an import, free identifier or mutable property.
 [[nodiscard]] RecordSourceResult BuildRecordSource(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const abc::RecordInfo& record, const RecordModuleContext& context,
-    const analysis::MethodRoleIndex& roles, RecordProgramBudget budget = {});
+    const analysis::MethodRoleIndex& roles, RecordProgramBudget budget = {},
+    const HostRealmBinding* realm_binding = nullptr);
 }  // namespace abcd::source
 #endif

@@ -294,6 +294,8 @@ int Export(const std::filesystem::path& input,
               record_manifest["incomplete_source"] = source_path;
               record_manifest["entry_positions"] = positions_path;
               record_manifest["source_contract"] = source::SourceContractName(artifact->contract);
+              if (artifact->host_realm)
+                record_manifest["host_realm_binding"] = artifact->host_realm->binding;
             } else {
               record_manifest["source_status"] = static_cast<unsigned>(SourceStatus::kProgram);
               record_manifest["shared_failure_variant"] = built.index();

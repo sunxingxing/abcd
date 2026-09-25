@@ -88,6 +88,15 @@ std::variant<PrintedSource, SourceFailure> BindSourceTemplate(
     const auto bytes = source.text.size() + prefix.back();
     PrintedSource result;
     result.contract = source.contract;
+    if (source.host_realm) {
+      if (source.host_realm->binding.size() >= remaining) return Resource();
+      result.host_realm.emplace();
+      auto& binding = result.host_realm->binding;
+      binding.reserve(source.host_realm->binding.size());
+      if (binding.capacity() >= remaining) return Resource();
+      remaining -= binding.capacity() + 1;
+      binding = source.host_realm->binding;
+    }
     // Admit final text, maps and simultaneous prefix scratch before allocation.
     if (bytes >= remaining || source.spans.size() >
         (remaining - bytes - 1) / sizeof(GeneratedSpan)) return Resource();

@@ -36,7 +36,8 @@ bool AllowsGlobalReference(std::u16string_view name, GlobalScope scope) {
       !std::all_of(name.begin() + 1, name.end(), IdentifierPart) ||
       EqualsAscii(name, scope.class_binding) ||
       EqualsAscii(name, scope.self_binding) || name == u"ClassValue" ||
-      name.starts_with(u"MethodSelf"))
+      name.starts_with(u"MethodSelf") ||
+      (scope.realm_binding && name == scope.realm_binding->name))
     return false;
   if (ContainsAscii(scope.enclosing_bindings, name) ||
       ContainsAscii(scope.parameter_bindings, name))

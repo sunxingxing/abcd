@@ -299,6 +299,8 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
       if (progress.opcode)
         row["opcode_at_pc"] = static_cast<unsigned>(*progress.opcode);
       if (progress.source) {
+        if (progress.source->host_realm)
+          row["host_realm_binding"] = progress.source->host_realm->binding;
         row["executable"] = false;
         // Detached bodies have only generated '$' private bindings. Embedding
         // must repeat global collision checks against the actual callable scope.
@@ -315,6 +317,7 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
       }
       if (progress.source_template) {
         const auto& source = *progress.source_template;
+        if (source.host_realm) row["host_realm_binding"] = source.host_realm->binding;
         row["template_text"] = source.text;
         row["executable"] = false;
         row["requires_capture_binding"] = true;

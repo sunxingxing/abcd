@@ -7,6 +7,13 @@
 
 namespace abcd::source {
 class ModuleExports;
+// Embedding-host trust boundary, not evidence inferred from a name or ABC.
+// Host supplies an initialized immutable lexical binding to this ABC realm's
+// original global object, visible for the generated code's entire lifetime.
+// The borrowed name must remain stable during synchronous source emission.
+struct HostRealmBinding {
+  std::u16string_view name;
+};
 struct GlobalScope {
   // Caller-proven complete ASCII outer source bindings, sorted by byte name;
   // non-ASCII names cannot collide with admitted ASCII global references.
@@ -24,6 +31,7 @@ struct GlobalScope {
   // Record emission is synchronous. This points to the store state at the
   // creation site; no later STMODULEVAR is processed until nested source ends.
   const ModuleExports* module_exports = nullptr;
+  const HostRealmBinding* realm_binding = nullptr;
 };
 
 // A free identifier reaches the v7 global record/object only if the generated

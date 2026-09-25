@@ -11,7 +11,8 @@ RecordSourceResult BuildRecordSource(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const abc::RecordInfo& record, const RecordModuleContext& context,
-    const analysis::MethodRoleIndex& roles, RecordProgramBudget budget) {
+    const analysis::MethodRoleIndex& roles, RecordProgramBudget budget,
+    const HostRealmBinding* realm_binding) {
   using Error = RecordProgramError;
   const auto fail = [](Error kind) { return RecordProgramFailure{kind, {}}; };
   const auto metadata = [&](abc::MetadataError kind) {
@@ -101,6 +102,7 @@ RecordSourceResult BuildRecordSource(
     constants.global_scope.emplace();
     constants.global_scope->module_slots = exports->slot_count();
     constants.global_scope->module_exports = exports;
+    constants.global_scope->realm_binding = realm_binding;
     auto result = BuildEntrySource(*body, *method, *frame, SourceForm::kRecord,
         entry->name, constants, exports, {budget.bytes}, budget.output.bytes);
     if (file.CheckUnchanged()) return fail(Error::kFileChanged);
