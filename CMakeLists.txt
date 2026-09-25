@@ -146,6 +146,7 @@ target_sources(abcd_source PRIVATE src/source/argument_region.cc src/source/sema
   src/source/dead_copies.cc src/source/array_literals.cc src/source/await_positions.cc
   src/source/return_expression.cc
   src/source/stored_expression.cc
+  src/source/stored_calls.cc
   src/source/object_initialization.cc
   src/source/store_receivers.cc
   src/source/private_copy.cc

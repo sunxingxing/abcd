@@ -57,7 +57,8 @@ void ElideUnusedResults(const AstMethod& method, SourceAst& ast,
     if (auto* staged = std::get_if<SourceStagedCall>(&statement.operation)) {
       // The node lives at the property PC but commits at the original call.
       // Never inspect the getter's SSA result to decide call-result liveness.
-      if (!staged->return_statement && unused(staged->call_statement))
+      if (!staged->return_statement && !staged->stored_result &&
+          unused(staged->call_statement))
         staged->result = AssignmentResult::kUnused;
       continue;
     }

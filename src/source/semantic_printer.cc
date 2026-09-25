@@ -1217,6 +1217,20 @@ class SourcePrinter {
                 operation.call_statement.value >= ast_.statements.size())
               throw SourceFailure{SourceError::kResourceLimit, current_pc_};
             ++call_depth_;
+            if (operation.stored_result) {
+              const auto saved = operation.stored_result->statement.value;
+              if (operation.return_statement ||
+                  operation.result != AssignmentResult::kStored ||
+                  saved >= ast_.statements.size() ||
+                  saved != operation.call_statement.value + 1)
+                throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+              const auto& anchor = ast_.statements[saved];
+              if (!std::holds_alternative<analysis::NoOperation>(anchor.operation) ||
+                  anchor.previous_origin != ast_.statements[operation.call_statement.value].pc ||
+                  anchor.fused_read || anchor.fused_spill || anchor.fused_reload ||
+                  anchor.class_origin || anchor.literal_origin)
+                throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+            }
             // Keep the property Reference alive across argument evaluation;
             // registers are private, and the saved callee has no escaping use.
             switch (operation.result) {
@@ -1236,7 +1250,9 @@ class SourcePrinter {
                     throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
                   Text("return ");
                 } else {
-                  Target(analysis::ScalarSlot{Accumulator{}});
+                  Target(operation.stored_result
+                      ? analysis::ScalarSlot{operation.stored_result->target}
+                      : analysis::ScalarSlot{Accumulator{}});
                   Text(" = ");
                 }
                 break;

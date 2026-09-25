@@ -196,6 +196,10 @@ struct SourceReturnExpression {
 struct SourceThrow {
   analysis::ScalarValue value;
 };
+struct CallResultStore {
+  abc::RegisterId target;
+  analysis::InstructionId statement;
+};
 struct SourceStagedCall {
   abc::PoolIndex name;
   analysis::ReceiverCall call;
@@ -205,6 +209,8 @@ struct SourceStagedCall {
   std::optional<BindingReceiver> binding_receiver = {};
   // Sole-use direct return; the original return node remains a mapped anchor.
   std::optional<analysis::InstructionId> return_statement = {};
+  // Commit after invocation; the adjacent original save remains a PC anchor.
+  std::optional<CallResultStore> stored_result = {};
 };
 // Unprintable until same-home, non-escape assembly and initializer-body proof.
 struct SourceInitializerCall { analysis::ReceiverCall call; };

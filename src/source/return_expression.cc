@@ -23,7 +23,8 @@ void FoldCallReturns(const AstMethod& method, SourceAst& ast,
     for (std::size_t i = block.first_instruction; i + 1 < end; ++i) {
       auto& head = ast.statements[i];
       auto* call = std::get_if<SourceStagedCall>(&head.operation);
-      if (!call || call->return_statement || call->result != AssignmentResult::kStored ||
+      if (!call || call->return_statement || call->stored_result ||
+          call->result != AssignmentResult::kStored ||
           HasMergedOrigin(head) || call->call_statement.value != end - 2 ||
           call->call_statement.value <= i) continue;
       const auto& anchor = ast.statements[call->call_statement.value];

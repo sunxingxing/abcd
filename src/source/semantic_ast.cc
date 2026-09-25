@@ -15,6 +15,7 @@
 #include "dead_copies.h"
 #include "return_expression.h"
 #include "stored_expression.h"
+#include "stored_calls.h"
 #include "store_receivers.h"
 #include "string_comparison.h"
 #include "branch_predicate.h"
@@ -767,6 +768,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     if (const auto failure = FoldClassAssembly(
             method, ast, copy_bytes - (ast.allocated_bytes - retained_before))) return *failure;
     FoldReturnExpressions(method, ast, uses);
+    FoldStoredCalls(method, ast, uses);
     ElideUnusedResults(method, ast, uses);
     FoldBindingReceivers(method, ast, uses);
     FoldObjectInitialization(method, ast, uses);
