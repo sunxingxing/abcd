@@ -669,13 +669,14 @@ CreatedClassResult WriteCreatedClass(
                          attached_methods, roles, caller_owner, budget.bytes);
     CreationExpansion root(caller, budget.bytes, budget.work);
     auto& context = expansion ? *expansion : root;
-    CaptureDiscard discard;
-    std::ostream dry(&discard);
-    ClassWriter(file, header, index, lookup, roles, module, caller_owner,
-                enclosing_scope, static_fields, accessors, attached_methods,
-                parent, context, dry,
-                budget, strings)
-        .Write(creation, target, members, *name);
+    if (!dynamic_cast<UnpublishedOutput*>(output.rdbuf())) {
+      CaptureDiscard discard;
+      std::ostream dry(&discard);
+      ClassWriter(file, header, index, lookup, roles, module, caller_owner,
+                  enclosing_scope, static_fields, accessors, attached_methods,
+                  parent, context, dry, budget, strings)
+          .Write(creation, target, members, *name);
+    }
     return ClassWriter(file, header, index, lookup, roles, module, caller_owner,
                        enclosing_scope, static_fields, accessors,
                        attached_methods, parent, context,

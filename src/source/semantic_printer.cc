@@ -201,7 +201,7 @@ class SourcePrinter {
   }
 
  private:
-  class ClassBuffer : public std::streambuf {
+  class ClassBuffer : public std::streambuf, public UnpublishedOutput {
    public:
     explicit ClassBuffer(SourcePrinter& printer) : printer_(printer) {}
    private:
@@ -219,7 +219,7 @@ class SourcePrinter {
     }
     SourcePrinter& printer_;
   };
-  class LeafBuffer : public CaptureBuffer {
+  class LeafBuffer : public CaptureBuffer, public UnpublishedOutput {
    public:
     LeafBuffer(SourcePrinter& printer, const FunctionExpression& function)
         : printer_(printer), function_(function) {}

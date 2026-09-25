@@ -808,6 +808,14 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
              : std::nullopt,
         direct_writes.sites,
         function.syntax == CallableSyntax::kRangeDerivedConstructor};
+    // The common printer owns an unpublished artifact and discards it on
+    // failure. Re-running nested bodies for its preflight doubles expansion
+    // at every depth. Keep preflight when this owner may retry a constructor
+    // proof, because that retry must not append to a failed output prefix.
+    if (direct_writes.sites.empty() &&
+        dynamic_cast<UnpublishedOutput*>(output.rdbuf()))
+      return FunctionWriter(shape, bindings, output, budget, constants,
+                            methods, captured_values).Write(body);
     auto checked = FunctionWriter(shape, bindings, discard, budget,
                                   constants, methods, captured_values)
                        .Write(body);

@@ -58,8 +58,9 @@ ABC-only evidence after this change:
   complete source body until the parent discharges those captures.
 - In actual Home entry 6100's class owner, 6733 yields `PrintedSource` and
   201 spans instead of refusing the PC64 receiver call. The full entry still
-  refuses with a resource limit at outer PC98; no record-completion gain is
-  claimed and no budget was enlarged to bypass admission.
+  initially refused with a resource limit at outer PC98. The subsequent
+  unpublished-emission change removes redundant nested preflights and reaches
+  PC389 instead; no record-completion gain is claimed and no budget was enlarged.
 
 Both production CLIs compile and read-only review found no confirmed defect.
 Deferred tests: getter failure before pure argument writes, argument/call
