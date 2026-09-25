@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_REGION_IF_H_
 
 #include <span>
+#include <utility>
 
 #include "abcd/analysis/semantic_region.h"
 
@@ -60,6 +61,19 @@ inline bool CanFormIf(const NormalFlow& flow, std::span<const EntryCount> entrie
     fallthrough |= edge.kind == FlowEdgeKind::kFallthrough && edge.target == body;
   }
   return taken && fallthrough;
+}
+// Kahn's ready queue may discover the taken arm first. These two adjacent
+// single-entry arms have no edge between them: each terminates or reaches
+// the same forward join. Normalize only this certified local diamond, leaving
+// shared graph ordering and all unrelated blocks untouched.
+inline void OrderIfArms(const NormalFlow& flow,
+                       std::span<const EntryCount> entries,
+                       std::span<BlockId> order) {
+  for (std::size_t i = 0; i + kIfElseBlocks < order.size(); ++i) {
+    if (CanFormIf(flow, entries, order[i], order[i + kIfBlocks],
+                  order[i + kIfElseBlocks], order[i + 1]))
+      std::swap(order[i + 1], order[i + kIfBlocks]);
+  }
 }
 }  // namespace abcd::analysis
 #endif

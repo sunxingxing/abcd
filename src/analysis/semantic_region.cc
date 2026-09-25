@@ -148,6 +148,7 @@ RegionResult BuildSemanticRegions(const SemanticMethod& method,
     OrderTerminalArms(method.flow, entries, order.blocks, tree.order_positions, adjacent);
     if (adjacent.size() != order.blocks.size()) return Fail(RegionError::kBackwardEdge);
     order.blocks.swap(adjacent);
+    OrderIfArms(method.flow, entries, order.blocks);
     for (std::size_t i = 0; i < order.blocks.size(); ++i)
       tree.order_positions[order.blocks[i].value] = i;
     for (std::size_t i = 0; i < order.blocks.size(); ++i) {
