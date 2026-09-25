@@ -29,7 +29,8 @@ std::optional<ValueGraphError> VerifyValueUses(
         linked[cursor->value] = 1;
         const auto& use = program.uses[cursor->value];
         const auto* value = std::get_if<ValueId>(&use.operand);
-        if (!value || value->value != index || use.previous != previous)
+        if (use.life != ValueLife::kLive || !value ||
+            value->value != index || use.previous != previous)
           return ValueGraphError::kUseLink;
         previous = cursor;
         cursor = use.next;
@@ -53,14 +54,33 @@ std::optional<ValueGraphError> VerifyValueUses(
       for (std::size_t ordinal = 0; ordinal < op.use_count; ++ordinal) {
         const auto& use = program.uses[op.first_use.value + ordinal];
         const auto* owner = std::get_if<OpId>(&use.owner);
-        if (!owner || owner->value != index || use.incoming)
+        if (!owner || owner->value != index || use.incoming ||
+            use.life != op.life)
           return ValueGraphError::kUseOwner;
       }
     }
     for (std::size_t index = 0; index < program.uses.size(); ++index) {
       const auto& use = program.uses[index];
+      if (use.life == ValueLife::kRemoved) {
+        if (use.previous || use.next || linked[index])
+          return ValueGraphError::kUseLink;
+        const auto* owner = std::get_if<OpId>(&use.owner);
+        if (!owner || owner->value >= program.ops.size() ||
+            program.ops[owner->value].life != ValueLife::kRemoved)
+          return ValueGraphError::kUseOwner;
+        const auto& op = program.ops[owner->value];
+        if (index < op.first_use.value ||
+            index - op.first_use.value >= op.use_count)
+          return ValueGraphError::kUseRange;
+        continue;
+      }
       if (std::holds_alternative<ValueId>(use.operand)) {
         if (!linked[index]) return ValueGraphError::kUseLink;
+        const auto value = std::get<ValueId>(use.operand);
+        const auto* result = std::get_if<OpResult>(
+            &program.values[value.value].origin);
+        if (result && program.ops[result->op.value].life == ValueLife::kRemoved)
+          return ValueGraphError::kDefinition;
       } else if (use.previous || use.next || linked[index]) {
         return ValueGraphError::kUseLink;
       }

@@ -84,3 +84,17 @@ per-operation exceptional exits. Reject handler/resume inputs at the normal
 import boundary. Do not invoke the legacy SourceAst or a legacy printer to
 fill missing stages. Admission progress must produce truthful intermediate
 receipts, not complete-source claims. T02 through T12 remain outstanding.
+
+### T02 Candidate Edits Started
+
+Internal ReplaceUse and ErasePureOp now maintain bidirectional occurrence lists
+without scanning unrelated users. Erasure retains stable IDs and marks origins
+ElidedPure. The structural verifier understands removed occurrences and rejects
+live users of removed definitions. Observable/throwing operations and control or
+owner operations cannot be erased by this primitive. Regression specifications
+cover multi-use relinking, removal and effect retention; execution remains paused.
+
+These are candidate-only primitives, not a committed transformation API. Batch
+budget admission, rollback/revision publication, copy canonicalization, phi SCCs,
+reverse liveness and transformed dominance/effect verification remain outstanding.
+No CLI stage promotion or source-output claim is made by this change.

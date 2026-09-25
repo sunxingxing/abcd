@@ -86,6 +86,7 @@ struct OperandUse {
   std::optional<InputRead> input;
   std::optional<UseId> previous;
   std::optional<UseId> next;
+  ValueLife life = ValueLife::kLive;
 };
 struct ValueCopy { bool operator==(const ValueCopy&) const = default; };
 struct ValueUnary { UnaryOperator op; bool operator==(const ValueUnary&) const = default; };

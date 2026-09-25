@@ -1,4 +1,5 @@
 #include "abcd/analysis/value_ir.h"
+#include "../../../src/analysis/value_edits.h"
 
 #include <cstdlib>
 
@@ -38,4 +39,25 @@ int main() {
   graph.ops[0].use_count = 2;
   graph.ops[0].result.reset();
   Check(VerifyValueUses(graph, graph.uses.size()) == ValueGraphError::kDefinition);
+  graph.ops[0].result = ValueId{1};
+  graph.origins.push_back({{0}, {0}, {}});
+  graph.values.push_back({EntryDefinition{ParameterEntry{1}},
+                         ValueKinds::Language(), {}});
+  Check(!ReplaceUse(graph, UseId{0}, ValueId{2}));
+  Check(!VerifyValueUses(graph, graph.uses.size()));
+  Check(graph.values[0].first_use == UseId{1});
+  Check(graph.values[2].first_use == UseId{0});
+  Check(!ReplaceUse(graph, UseId{1}, ValueId{2}));
+  Check(!VerifyValueUses(graph, graph.uses.size()));
+  Check(!graph.values[0].first_use);
+  graph.ops[0].normal = LanguageEffect::kHeapRead;
+  Check(ErasePureOp(graph, OpId{0}) == ValueEditError::kObservable);
+  graph.ops[0].normal = LanguageEffect::kNone;
+  Check(!ErasePureOp(graph, OpId{0}));
+  Check(!VerifyValueUses(graph, graph.uses.size()));
+  Check(!graph.values[2].first_use);
+  Check(graph.origins[0].disposition == OriginDisposition::kElidedPure);
+  Check(ReplaceUse(graph, UseId{0}, ValueId{0}) == ValueEditError::kInvalidUse);
+  graph.uses[0].life = ValueLife::kLive;
+  Check(VerifyValueUses(graph, graph.uses.size()) == ValueGraphError::kUseOwner);
 }
