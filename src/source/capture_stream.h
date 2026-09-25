@@ -9,6 +9,8 @@
 namespace abcd::source {
 struct GeneratedSpan;
 struct MethodGeneratedSpan;
+struct GeneratedPosition;
+struct PrintedTemplate;
 // Internal publication capability, not a general stream optimization. The
 // owner must discard the entire buffered artifact on any descendant failure.
 // A sink that has published bytes or may retry into the same prefix must not
@@ -32,6 +34,11 @@ class CaptureBuffer : public std::streambuf {
   // Sinks without a position owner intentionally do not claim map coverage.
   virtual void Positions(abc::EntityOffset, std::span<const GeneratedSpan>,
                          std::span<const MethodGeneratedSpan>) {}
+  // Only bound-source sinks provide a cursor. Unresolved capture templates
+  // must not expose their insertion coordinates as final file positions.
+  virtual bool Position(GeneratedPosition&) const { return false; }
+  virtual void CapturedPositions(abc::EntityOffset, const PrintedTemplate&,
+      std::span<const std::size_t>, const GeneratedPosition&) {}
   virtual bool Capture(analysis::CapturedSlot cell,
       analysis::CaptureDomain requirement =
           analysis::CaptureDomain::kLanguage) = 0;

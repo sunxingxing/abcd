@@ -28,6 +28,7 @@
 #include "member_key.h"
 #include "class_assembly.h"
 #include "await_positions.h"
+#include "capture_positions.h"
 
 namespace abcd::source {
 namespace {
@@ -217,6 +218,15 @@ class SourcePrinter {
                    std::span<const MethodGeneratedSpan> descendants) override {
       printer_.MethodPositions(method, spans, descendants);
     }
+    bool Position(GeneratedPosition& position) const override {
+      if (printer_.capture_mode_ == CaptureMode::kTemplate) return false;
+      position = printer_.position_;
+      return true;
+    }
+    void CapturedPositions(abc::EntityOffset method, const PrintedTemplate& source,
+        std::span<const std::size_t> prefix, const GeneratedPosition& origin) override {
+      printer_.MethodPositions(method, source.spans, {}, &origin, &source, prefix);
+    }
     bool Capture(analysis::CapturedSlot capture,
                  analysis::CaptureDomain requirement) override {
       if (!creation_ || !printer_.capture_method_ || !printer_.proof_)
@@ -250,6 +260,15 @@ class SourcePrinter {
    public:
     LeafBuffer(SourcePrinter& printer, const FunctionExpression& function)
         : printer_(printer), function_(function) {}
+    bool Position(GeneratedPosition& position) const override {
+      if (printer_.capture_mode_ == CaptureMode::kTemplate) return false;
+      position = printer_.position_;
+      return true;
+    }
+    void CapturedPositions(abc::EntityOffset method, const PrintedTemplate& source,
+        std::span<const std::size_t> prefix, const GeneratedPosition& origin) override {
+      printer_.MethodPositions(method, source.spans, {}, &origin, &source, prefix);
+    }
     void Positions(abc::EntityOffset method, std::span<const GeneratedSpan> spans,
                    std::span<const MethodGeneratedSpan> descendants) override {
       printer_.MethodPositions(method, spans, descendants);
@@ -291,7 +310,10 @@ class SourcePrinter {
     const FunctionExpression& function_;
   };
   void MethodPositions(abc::EntityOffset method, std::span<const GeneratedSpan> spans,
-                       std::span<const MethodGeneratedSpan> descendants) {
+                       std::span<const MethodGeneratedSpan> descendants,
+                       const GeneratedPosition* base = nullptr,
+                       const PrintedTemplate* source = nullptr,
+                       std::span<const std::size_t> prefix = {}) {
     // A template's later capture insertions invalidate file coordinates. Keep
     // this first transport confined to bound-source owners, not text inference.
     if (capture_mode_ == CaptureMode::kTemplate) return;
@@ -322,18 +344,23 @@ class SourcePrinter {
       const auto growth = mapped.capacity() - old;
       limit_ -= growth * sizeof(MethodGeneratedSpan);
     }
+    const auto origin = base ? *base : position_;
     const auto relocate = [&](GeneratedPosition point) {
       if (!point.line || point.captures ||
-          point.byte > SIZE_MAX - position_.byte ||
-          point.line - 1 > UINT32_MAX - position_.line ||
-          (point.line == 1 && point.column > UINT32_MAX - position_.column))
+          point.byte > SIZE_MAX - origin.byte ||
+          point.line - 1 > UINT32_MAX - origin.line ||
+          (point.line == 1 && point.column > UINT32_MAX - origin.column))
         throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
-      point.byte += position_.byte;
-      if (point.line == 1) point.column += position_.column;
-      point.line += position_.line - 1;
+      point.byte += origin.byte;
+      if (point.line == 1) point.column += origin.column;
+      point.line += origin.line - 1;
       return point;
     };
     const auto append = [&](abc::EntityOffset owner, GeneratedSpan span) {
+      if (source) {
+        span.begin = RelocateCapturePosition(*source, prefix, span.begin, span.pc);
+        span.end = RelocateCapturePosition(*source, prefix, span.end, span.pc);
+      }
       span.begin = relocate(span.begin);
       span.end = relocate(span.end);
       mapped.push_back({owner, span});

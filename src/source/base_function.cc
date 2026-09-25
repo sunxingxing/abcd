@@ -443,6 +443,31 @@ class FunctionWriter {
         if (!captures) return EmitError::kWrite;
         if (semantic_template->captures.empty())
           captures->Positions(body_constants->method, semantic_template->spans, {});
+        GeneratedPosition origin;
+        const bool map_captures = !semantic_template->captures.empty() &&
+                                  captures->Position(origin);
+        std::vector<std::size_t> prefix;
+        if (map_captures) {
+          auto remaining = body_budget.bytes;
+          const auto charge = [&](std::size_t count, std::size_t width) {
+            if (count > remaining / width) return false;
+            remaining -= count * width;
+            return true;
+          };
+          if (!charge(semantic_template->text.capacity(), sizeof(char)) ||
+              !charge(1, sizeof(char)) ||
+              !charge(semantic_template->spans.capacity(), sizeof(GeneratedSpan)) ||
+              !charge(semantic_template->captures.capacity(), sizeof(SourceCapture)) ||
+              (semantic_template->host_realm &&
+               (!charge(semantic_template->host_realm->binding.capacity(), sizeof(char)) ||
+                !charge(1, sizeof(char)))) ||
+              semantic_template->captures.size() >= remaining / sizeof(std::size_t))
+            return FunctionEmitError::kResourceLimit;
+          prefix.reserve(semantic_template->captures.size() + 1);
+          if (prefix.capacity() > remaining / sizeof(std::size_t))
+            return FunctionEmitError::kResourceLimit;
+          prefix.push_back(0);
+        }
         std::size_t begin = 0;
         for (const auto& capture : semantic_template->captures) {
           const auto end = capture.position.byte;
@@ -450,12 +475,29 @@ class FunctionWriter {
             return EmitError::kWrite;
           Text(std::string_view(semantic_template->text).substr(begin, end - begin));
           if (error_) return *error_;
+          GeneratedPosition before;
+          if (map_captures && !captures->Position(before)) return EmitError::kWrite;
           if (!captures->Capture(capture.cell, capture.requirement))
             return EmitError::kWrite;
+          if (map_captures) {
+            GeneratedPosition after;
+            if (!captures->Position(after) || after.line != before.line ||
+                after.captures != before.captures || after.byte < before.byte ||
+                after.column < before.column ||
+                after.byte - before.byte != after.column - before.column)
+              return EmitError::kWrite;
+            const auto inserted = after.byte - before.byte;
+            if (inserted > SIZE_MAX - prefix.back())
+              return FunctionEmitError::kResourceLimit;
+            prefix.push_back(prefix.back() + inserted);
+          }
           begin = end;
         }
         Text(std::string_view(semantic_template->text).substr(begin));
         if (error_) return *error_;
+        if (map_captures)
+          captures->CapturedPositions(body_constants->method, *semantic_template,
+                                      prefix, origin);
       } else if (first_for_in) {
         // The v7 frontend's acquisition catch only rethrows; the complete
         // body proof permits native for-in without exposing VM iterator state.

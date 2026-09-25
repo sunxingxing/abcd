@@ -7,6 +7,7 @@
 #include <tuple>
 
 #include "lexical_name.h"
+#include "capture_positions.h"
 
 namespace abcd::source {
 namespace {
@@ -31,11 +32,14 @@ void Advance(GeneratedPosition& position, std::string_view text) {
   }
 }
 
-GeneratedPosition Relocate(const PrintedTemplate& source,
+}  // namespace
+
+GeneratedPosition RelocateCapturePosition(const PrintedTemplate& source,
                            std::span<const std::size_t> prefix,
                            GeneratedPosition position, abc::CodeOffset pc) {
   const auto count = position.captures;
-  if (!position.line || position.byte > source.text.size() ||
+  if (prefix.size() != source.captures.size() + 1 || prefix.front() != 0 ||
+      !position.line || position.byte > source.text.size() ||
       count > source.captures.size()) throw Invalid(pc);
   if (count) {
     const auto& preceding = source.captures[count - 1].position;
@@ -64,7 +68,6 @@ GeneratedPosition Relocate(const PrintedTemplate& source,
   position.captures = 0;
   return position;
 }
-}  // namespace
 
 std::variant<PrintedSource, SourceFailure> BindSourceTemplate(
     const PrintedTemplate& source,
@@ -127,8 +130,8 @@ std::variant<PrintedSource, SourceFailure> BindSourceTemplate(
     for (const auto& span : source.spans) {
       if (std::tie(span.begin.byte, span.begin.captures) >
           std::tie(span.end.byte, span.end.captures)) return Invalid(span.pc);
-      const auto begin = Relocate(source, prefix, span.begin, span.pc);
-      const auto end = Relocate(source, prefix, span.end, span.pc);
+      const auto begin = RelocateCapturePosition(source, prefix, span.begin, span.pc);
+      const auto end = RelocateCapturePosition(source, prefix, span.end, span.pc);
       if (begin.byte > result.text.size() || end.byte > result.text.size() ||
           begin.line > original.line || end.line > original.line)
         return Invalid(span.pc);
