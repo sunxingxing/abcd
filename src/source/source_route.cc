@@ -2,16 +2,57 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+#include <array>
+#include <limits>
 #include <utility>
 
 namespace abcd::source {
 namespace {
 using Json = nlohmann::json;
 
-constexpr std::optional<abc::CodeOffset> ParsePc(const Json& value) {
-  if (value.is_null()) return {};
+// Route-specific ordered stage sequences. The legacy pipeline never claims a
+// value stage; both sequences must be walked in order, never jumped.
+constexpr std::array kLegacyStages{
+    SourceStage::kDecoded, SourceStage::kInputVerified,
+    SourceStage::kPrinted, SourceStage::kPublished};
+constexpr std::array kValueStages{
+    SourceStage::kDecoded,        SourceStage::kInputVerified,
+    SourceStage::kValuesImported, SourceStage::kValuesVerified,
+    SourceStage::kControlFrozen,  SourceStage::kBindingsFrozen,
+    SourceStage::kTreeVerified,   SourceStage::kPrinted,
+    SourceStage::kPublished};
+constexpr std::array kProfiles{
+    abc::ProfileId::kUnknown,     abc::ProfileId::kDynamic9,
+    abc::ProfileId::kDynamic1102, abc::ProfileId::kDynamic1202,
+    abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301,
+    abc::ProfileId::kDynamic2400, abc::ProfileId::kStatic0107};
+constexpr std::string_view kContractNames[]{"language_and_host_v1",
+                                            "language_and_host_v2"};
+constexpr std::string_view kRouteNames[]{"legacy", "value_tree"};
+constexpr std::string_view kStageNames[]{
+    "decoded", "input_verified", "values_imported", "values_verified",
+    "control_frozen", "bindings_frozen", "tree_verified", "printed",
+    "published"};
+constexpr std::string_view kCoverageNames[]{"complete", "incomplete",
+                                            "unsupported"};
+constexpr std::string_view kFailureClassNames[]{
+    "unsupported", "unproved", "invalid_input", "invariant_violation",
+    "work_limit", "memory_limit", "output_failure"};
+constexpr std::string_view kFailureReasonNames[]{"route_unavailable"};
+constexpr std::size_t kSha256TextBytes = 64;
+
+// Exact-range unsigned access (T00 correction R4): every integer field is
+// validated against its declared width before conversion, so an oversized
+// JSON number such as 4294967297 is rejected instead of narrowing to a
+// valid-looking offset.
+template <typename UInt>
+std::optional<UInt> ParseUnsigned(const Json& value) {
+  static_assert(std::is_unsigned_v<UInt>);
   if (!value.is_number_unsigned()) return {};
-  return abc::CodeOffset{value.get<std::uint32_t>()};
+  const auto raw = value.get<std::uint64_t>();
+  if (raw > std::numeric_limits<UInt>::max()) return {};
+  return static_cast<UInt>(raw);
 }
 
 // Label-to-enum lookups reject unknown labels instead of defaulting; the
@@ -23,7 +64,45 @@ std::optional<Enum> ParseLabel(std::string_view label,
     if (names[i] == label) return static_cast<Enum>(i);
   return {};
 }
+
+std::optional<corpus::Sha256> ParseSha256(std::string_view text) {
+  if (text.size() != kSha256TextBytes) return {};
+  corpus::Sha256 hash;
+  for (std::size_t i = 0; i < hash.bytes.size(); ++i) {
+    std::uint8_t byte = 0;
+    for (std::size_t half = 0; half < 2; ++half) {
+      const auto digit = text[2 * i + half];
+      std::uint8_t value;
+      if (digit >= '0' && digit <= '9')
+        value = static_cast<std::uint8_t>(digit - '0');
+      else if (digit >= 'a' && digit <= 'f')
+        value = static_cast<std::uint8_t>(digit - 'a' + 10);
+      else
+        return {};
+      byte = static_cast<std::uint8_t>(byte << 4 | value);
+    }
+    hash.bytes[i] = byte;
+  }
+  return hash;
+}
+
+std::string Sha256Text(const corpus::Sha256& hash) {
+  constexpr std::string_view digits = "0123456789abcdef";
+  std::string text;
+  text.reserve(kSha256TextBytes);
+  for (const auto byte : hash.bytes) {
+    text += digits[byte >> 4];
+    text += digits[byte & 0xf];
+  }
+  return text;
+}
 }  // namespace
+
+RouteInputIdentity MakeRouteInputIdentity(
+    const corpus::FileFingerprint& fingerprint, const abc::Header& header) {
+  return RouteInputIdentity{fingerprint.sha256, fingerprint.size,
+                            header.version, header.profile, kSourceContract};
+}
 
 RouteAdmission AdmitLegacyWriter(RoutePolicy policy) {
   // T00: the value-tree route has no stages implemented, so requiring it is
@@ -37,18 +116,80 @@ RouteAdmission AdmitLegacyWriter(RoutePolicy policy) {
                                      ValueRouteError::kRouteUnavailable, {}}};
 }
 
+std::optional<RouteReceiptError> ValidateRouteReceipt(
+    const MethodRouteReceipt& receipt) {
+  if (!receipt.method && !receipt.record) return RouteReceiptError::kIdentity;
+  switch (receipt.route) {
+    case SourceRoute::kLegacy:
+      // A legacy receipt certifies legacy-writer text only: earlier stages
+      // and the value stages are not legacy products, and legacy failures
+      // stay in their own result variants until a task defines the mapping.
+      if (!receipt.stage || *receipt.stage < SourceStage::kPrinted)
+        return RouteReceiptError::kStage;
+      if (receipt.failure) return RouteReceiptError::kFailure;
+      if (!receipt.legacy_writer_used) return RouteReceiptError::kWriter;
+      if (receipt.coverage == Coverage::kUnsupported)
+        return RouteReceiptError::kCoverage;
+      return {};
+    case SourceRoute::kValueTree:
+      // The value-tree route never publishes through the legacy writer; a
+      // run that used it is honestly a Legacy receipt.
+      if (receipt.legacy_writer_used) return RouteReceiptError::kWriter;
+      if (receipt.failure) {
+        // A refusal carries its typed reason and claims no product.
+        if (receipt.coverage != Coverage::kUnsupported)
+          return RouteReceiptError::kCoverage;
+        return {};
+      }
+      switch (receipt.coverage) {
+        case Coverage::kUnsupported:
+          // Unsupported without a typed reason is exactly the capability
+          // gap the old writer used to mask; it never closes obligations.
+          return RouteReceiptError::kCoverage;
+        case Coverage::kIncomplete:
+          return {};
+        case Coverage::kComplete:
+          // Only an emitted product is complete; TreeVerified alone stays
+          // Incomplete, separately represented by its stage.
+          if (!receipt.stage || *receipt.stage < SourceStage::kPrinted)
+            return RouteReceiptError::kStage;
+          return {};
+      }
+      return RouteReceiptError::kCoverage;
+  }
+  return RouteReceiptError::kRoute;
+}
+
+bool RouteStageLedger::Advance(SourceStage stage) {
+  const std::span<const SourceStage> sequence =
+      route_ == SourceRoute::kLegacy
+          ? std::span<const SourceStage>{kLegacyStages}
+          : std::span<const SourceStage>{kValueStages};
+  auto next = sequence.begin();
+  if (reached_) {
+    next = std::find(sequence.begin(), sequence.end(), *reached_);
+    if (next == sequence.end()) return false;
+    ++next;
+  }
+  if (next == sequence.end() || *next != stage) return false;
+  reached_ = stage;
+  return true;
+}
+
 bool RouteObligationsClosed(
     RoutePolicy policy, std::span<const ChildRouteObligation> obligations) {
-  const auto required_route = policy == RoutePolicy::kRequireValueTree
-                                  ? SourceRoute::kValueTree
-                                  : SourceRoute::kLegacy;
   for (const auto& obligation : obligations) {
     if (!obligation.receipt) return false;
     const auto& receipt = *obligation.receipt;
     if (receipt.method != obligation.method) return false;
-    if (receipt.route != required_route) return false;
+    // Evidence binds to the expected input context, not just the method
+    // number (T00 correction R3).
+    if (!(receipt.identity == obligation.identity)) return false;
+    if (ValidateRouteReceipt(receipt)) return false;
     if (receipt.coverage != Coverage::kComplete) return false;
-    if (receipt.failure) return false;
+    if (policy == RoutePolicy::kRequireValueTree &&
+        receipt.route != SourceRoute::kValueTree)
+      return false;
   }
   return true;
 }
@@ -63,8 +204,21 @@ std::string SerializeRouteReceipt(const MethodRouteReceipt& receipt) {
                               ? Json(receipt.failure->pc->value)
                               : Json(nullptr)}};
   }
+  Json version = Json::array();
+  for (const auto byte : receipt.identity.abc_version.bytes)
+    version.push_back(byte);
   return Json{
       {"schema", kRouteReceiptSchema},
+      {"evidence_rules", kRouteEvidenceRules},
+      {"identity",
+       Json{{"sha256", Sha256Text(receipt.identity.file_hash)},
+            {"file_size", receipt.identity.file_size},
+            {"abc_version", std::move(version)},
+            {"profile", static_cast<unsigned>(receipt.identity.profile)},
+            {"source_contract",
+             SourceContractName(receipt.identity.contract)}}},
+      {"work_revision", receipt.work_revision ? Json(*receipt.work_revision)
+                                              : Json(nullptr)},
       {"method", receipt.method ? Json(receipt.method->value) : Json(nullptr)},
       {"record", receipt.record ? Json(receipt.record->value) : Json(nullptr)},
       {"route", SourceRouteName(receipt.route)},
@@ -81,26 +235,77 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
   Json parsed = Json::parse(text, nullptr, false);
   if (parsed.is_discarded() || !parsed.is_object())
     return RouteReceiptError::kSyntax;
+  // Schema and evidence rules gate the interpretation of every other field.
   const auto schema = parsed.find("schema");
-  if (schema == parsed.end() || !schema->is_number_unsigned() ||
-      schema->get<unsigned>() != kRouteReceiptSchema)
+  if (schema == parsed.end() ||
+      ParseUnsigned<unsigned>(*schema) != kRouteReceiptSchema)
     return RouteReceiptError::kSchema;
+  const auto rules = parsed.find("evidence_rules");
+  if (rules == parsed.end() ||
+      ParseUnsigned<std::uint32_t>(*rules) != kRouteEvidenceRules)
+    return RouteReceiptError::kEvidence;
   MethodRouteReceipt receipt;
+  const auto identity = parsed.find("identity");
+  if (identity == parsed.end() || !identity->is_object())
+    return RouteReceiptError::kIdentity;
+  const auto hash = identity->find("sha256");
+  if (hash == identity->end() || !hash->is_string())
+    return RouteReceiptError::kIdentity;
+  if (const auto bytes = ParseSha256(hash->get<std::string>()))
+    receipt.identity.file_hash = *bytes;
+  else
+    return RouteReceiptError::kIdentity;
+  const auto file_size = identity->find("file_size");
+  if (file_size == identity->end() || !file_size->is_number_unsigned())
+    return RouteReceiptError::kIdentity;
+  receipt.identity.file_size = file_size->get<std::uint64_t>();
+  const auto version = identity->find("abc_version");
+  if (version == identity->end() || !version->is_array() ||
+      version->size() != receipt.identity.abc_version.bytes.size())
+    return RouteReceiptError::kIdentity;
+  for (std::size_t i = 0; i < version->size(); ++i) {
+    const auto byte = ParseUnsigned<std::uint8_t>((*version)[i]);
+    if (!byte) return RouteReceiptError::kIdentity;
+    receipt.identity.abc_version.bytes[i] = *byte;
+  }
+  const auto profile = identity->find("profile");
+  std::optional<unsigned> profile_id;
+  if (profile != identity->end()) profile_id = ParseUnsigned<unsigned>(*profile);
+  if (!profile_id ||
+      std::find(kProfiles.begin(), kProfiles.end(),
+                static_cast<abc::ProfileId>(*profile_id)) == kProfiles.end())
+    return RouteReceiptError::kIdentity;
+  receipt.identity.profile = static_cast<abc::ProfileId>(*profile_id);
+  const auto contract = identity->find("source_contract");
+  if (contract == identity->end() || !contract->is_string())
+    return RouteReceiptError::kIdentity;
+  if (const auto value = ParseLabel<SourceContract>(
+          contract->get<std::string>(), kContractNames))
+    receipt.identity.contract = *value;
+  else
+    return RouteReceiptError::kIdentity;
+  // Work revisions do not exist at admission yet: schema 2 receipts carry
+  // the typed absence only, and later tasks bump the schema when they start
+  // signing revisions (T00 correction R3).
+  const auto work_revision = parsed.find("work_revision");
+  if (work_revision == parsed.end() || !work_revision->is_null())
+    return RouteReceiptError::kSchema;
   const auto method = parsed.find("method");
   const auto record = parsed.find("record");
   if (method == parsed.end() || record == parsed.end())
     return RouteReceiptError::kIdentity;
   if (!method->is_null()) {
-    if (!method->is_number_unsigned()) return RouteReceiptError::kIdentity;
-    receipt.method = abc::EntityOffset{method->get<std::uint32_t>()};
+    const auto value = ParseUnsigned<std::uint32_t>(*method);
+    if (!value) return RouteReceiptError::kIdentity;
+    receipt.method = abc::EntityOffset{*value};
   }
   if (!record->is_null()) {
-    if (!record->is_number_unsigned()) return RouteReceiptError::kIdentity;
-    receipt.record = abc::EntityOffset{record->get<std::uint32_t>()};
+    const auto value = ParseUnsigned<std::uint32_t>(*record);
+    if (!value) return RouteReceiptError::kIdentity;
+    receipt.record = abc::EntityOffset{*value};
   }
   if (!receipt.method && !receipt.record)
     return RouteReceiptError::kIdentity;
-  static constexpr std::string_view kRouteNames[]{"legacy", "value_tree"};
   const auto route = parsed.find("route");
   if (route == parsed.end() || !route->is_string())
     return RouteReceiptError::kRoute;
@@ -113,56 +318,52 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
   if (stage == parsed.end()) return RouteReceiptError::kStage;
   if (!stage->is_null()) {
     if (!stage->is_string()) return RouteReceiptError::kStage;
-    static constexpr std::string_view kStageNames[]{
-        "decoded", "input_verified", "values_imported", "values_verified",
-        "control_frozen", "bindings_frozen", "tree_verified", "printed",
-        "published"};
-    const auto value = ParseLabel<SourceStage>(stage->get<std::string>(),
-                                                kStageNames);
+    const auto value =
+        ParseLabel<SourceStage>(stage->get<std::string>(), kStageNames);
     if (!value) return RouteReceiptError::kStage;
     receipt.stage = *value;
   }
-  static constexpr std::string_view kCoverageNames[]{"complete", "incomplete",
-                                                    "unsupported"};
   const auto coverage = parsed.find("coverage");
   if (coverage == parsed.end() || !coverage->is_string())
     return RouteReceiptError::kCoverage;
-  if (const auto value = ParseLabel<Coverage>(coverage->get<std::string>(),
-                                              kCoverageNames))
+  if (const auto value = ParseLabel<Coverage>(
+          coverage->get<std::string>(), kCoverageNames))
     receipt.coverage = *value;
   else
     return RouteReceiptError::kCoverage;
+  // Required boolean: a missing or nonboolean value never defaults to false
+  // (T00 correction R4).
   const auto legacy = parsed.find("legacy_writer_used");
-  if (legacy != parsed.end() && legacy->is_boolean())
-    receipt.legacy_writer_used = legacy->get<bool>();
+  if (legacy == parsed.end() || !legacy->is_boolean())
+    return RouteReceiptError::kWriter;
+  receipt.legacy_writer_used = legacy->get<bool>();
   const auto failure = parsed.find("failure");
-  if (failure != parsed.end() && !failure->is_null()) {
+  if (failure == parsed.end()) return RouteReceiptError::kFailure;
+  if (!failure->is_null()) {
     if (!failure->is_object()) return RouteReceiptError::kFailure;
-    static constexpr std::string_view kClassNames[]{
-        "unsupported", "unproved", "invalid_input", "invariant_violation",
-        "work_limit", "memory_limit", "output_failure"};
-    static constexpr std::string_view kReasonNames[]{"route_unavailable"};
     const auto failure_class = failure->find("class");
     const auto reason = failure->find("reason");
     if (failure_class == failure->end() || !failure_class->is_string() ||
         reason == failure->end() || !reason->is_string())
       return RouteReceiptError::kFailure;
-    const auto parsed_class =
-        ParseLabel<RouteFailureClass>(failure_class->get<std::string>(),
-                                      kClassNames);
-    const auto parsed_reason =
-        ParseLabel<ValueRouteError>(reason->get<std::string>(),
-                                    kReasonNames);
+    const auto parsed_class = ParseLabel<RouteFailureClass>(
+        failure_class->get<std::string>(), kFailureClassNames);
+    const auto parsed_reason = ParseLabel<ValueRouteError>(
+        reason->get<std::string>(), kFailureReasonNames);
     if (!parsed_class || !parsed_reason) return RouteReceiptError::kFailure;
     RouteFailure typed{*parsed_class, *parsed_reason, {}};
     const auto pc = failure->find("pc");
-    if (pc != failure->end()) {
-      const auto offset = ParsePc(*pc);
-      if (!pc->is_null() && !offset) return RouteReceiptError::kFailure;
-      typed.pc = offset;
+    if (pc == failure->end()) return RouteReceiptError::kFailure;
+    if (!pc->is_null()) {
+      const auto offset = ParseUnsigned<std::uint32_t>(*pc);
+      if (!offset) return RouteReceiptError::kFailure;
+      typed.pc = abc::CodeOffset{*offset};
     }
     receipt.failure = std::move(typed);
   }
+  // A syntactically complete receipt must still describe a state the reached
+  // stages could prove (T00 correction R2).
+  if (const auto invalid = ValidateRouteReceipt(receipt)) return *invalid;
   return receipt;
 }
 }  // namespace abcd::source

@@ -8,7 +8,10 @@
 #include <string_view>
 #include <variant>
 
+#include "abcd/abc/header.h"
 #include "abcd/abc/method_body.h"
+#include "abcd/corpus/abc_file.h"
+#include "abcd/source/source_contract.h"
 
 namespace abcd::source {
 // Source route identity (docs/design/source-recovery/acceptance.md §2).
@@ -65,10 +68,32 @@ struct RouteFailure {
   std::optional<abc::CodeOffset> pc = {};
 };
 
+// Typed identity binding route evidence to the exact input it describes
+// (T00 correction R3). Reuses the existing content-hash, ABC-version, profile
+// and source-contract types: the same numeric method in another file, or the
+// same file under another contract, is a different identity. profile is the
+// one combined container/ISA/semantic enum the engine currently pins; it is
+// recorded together with the raw abc_version bytes and must not be presented
+// as three independently certified profile identities.
+struct RouteInputIdentity {
+  corpus::Sha256 file_hash{};
+  std::uint64_t file_size = 0;
+  abc::AbcVersion abc_version{};
+  abc::ProfileId profile = abc::ProfileId::kUnknown;
+  SourceContract contract = kSourceContract;
+  auto operator<=>(const RouteInputIdentity&) const = default;
+};
+[[nodiscard]] RouteInputIdentity MakeRouteInputIdentity(
+    const corpus::FileFingerprint& fingerprint, const abc::Header& header);
+
 // Per-method (or per-record when method is absent) route receipt. Stage
 // evidence is signed by the stage that reached it; nullopt records that no
 // route stage ran. Serializers must not invent stages or coverage.
+// work_revision binds a receipt to the working-IR revision it was produced
+// from; no such revision exists at route admission yet, so it is typed absent
+// here and serialized as an explicit null, never invented (T00).
 struct MethodRouteReceipt {
+  RouteInputIdentity identity{};
   std::optional<abc::EntityOffset> method = {};
   std::optional<abc::EntityOffset> record = {};
   SourceRoute route = SourceRoute::kLegacy;
@@ -76,6 +101,7 @@ struct MethodRouteReceipt {
   Coverage coverage = Coverage::kUnsupported;
   bool legacy_writer_used = false;
   std::optional<RouteFailure> failure = {};
+  std::optional<std::uint32_t> work_revision = {};
 };
 
 // Boundary label names; serialization only, engine decisions use the enums.
@@ -139,6 +165,15 @@ constexpr std::string_view ValueRouteErrorName(ValueRouteError reason) {
 // value_route_failure as its typed product and must not run the legacy
 // pipeline, in whole or in part (A01: no legacy body may replace a refused
 // new-route attempt).
+//
+// Invocation-context rule: RoutePolicy is decided once per invocation at a
+// guarded entry (BuildSemanticBody, BuildSemanticTemplate, BuildEntrySource,
+// BuildRecordSource, WriteBaseFunction, WriteBaseFunctionTemplate). Guarded
+// entries take the policy as a required argument - no default silently
+// resets it - and descendant writers inherit the admitting entry's policy by
+// construction: a refused policy never reaches them, and they must not
+// re-admit, downgrade or re-default it. Writers that only ever run inside a
+// legacy invocation context state that context explicitly at their calls.
 struct RouteAdmission {
   bool legacy_permitted = true;
   std::optional<RouteFailure> value_route_failure = {};
@@ -150,10 +185,15 @@ struct RouteRefusal {
   RouteFailure failure;
 };
 
-// Versioned receipt serialization. Unknown schema versions, unknown labels
-// and receipts identifying neither a method nor a record are rejected; a
-// parse result is never defaulted into success.
-inline constexpr unsigned kRouteReceiptSchema = 1;
+// Versioned receipt serialization. Unknown schema versions, unknown labels,
+// out-of-range integers, missing fields and receipts identifying neither a
+// method nor a record are rejected; a parse result is never defaulted into
+// success, and a parsed receipt must still satisfy ValidateRouteReceipt.
+inline constexpr unsigned kRouteReceiptSchema = 2;
+// Engine/rules provenance of the admission and stage semantics above. Bump
+// with any change to them; receipts signed under other rules are rejected
+// rather than reinterpreted.
+inline constexpr std::uint32_t kRouteEvidenceRules = 1;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,
@@ -162,22 +202,36 @@ enum class RouteReceiptError : std::uint8_t {
   kStage = 4,
   kCoverage = 5,
   kFailure = 6,
+  kWriter = 7,
+  kContradiction = 8,
+  kEvidence = 9,
 };
+// Central typed receipt validation (T00 correction R2). Producers, the
+// boundary parser and obligation closure all consult this one contract; no
+// code path may certify a receipt state that the reached stages do not prove:
+// - Legacy receipts exist only for legacy-writer text: stage Printed or
+//   Published, legacy_writer_used set, no failure (legacy failures are not
+//   mapped into receipts yet) and coverage Complete or Incomplete.
+// - ValueTree receipts never used the legacy writer. Coverage Unsupported
+//   requires the typed failure that refused it; Complete requires an emitted
+//   product (stage at least Printed) and no failure. A TreeVerified-only
+//   artifact is Incomplete, never Complete.
+[[nodiscard]] std::optional<RouteReceiptError> ValidateRouteReceipt(
+    const MethodRouteReceipt& receipt);
 [[nodiscard]] std::string SerializeRouteReceipt(const MethodRouteReceipt& receipt);
 [[nodiscard]] std::variant<MethodRouteReceipt, RouteReceiptError>
 ParseRouteReceipt(std::string_view text);
 
-// Monotonic stage ledger. Advance succeeds only forward; a receipt can never
-// regress its highest reached stage. Each Advance call is made by the owner
-// of that stage after it succeeded, not by the serializer.
+// Monotonic route-aware stage ledger. Each route may only walk its own
+// ordered stage sequence (legacy: Decoded, InputVerified, Printed, Published;
+// value tree: the full ladder), one step at a time from its first stage: a
+// legacy ledger can never claim a value stage, and no ledger may jump
+// straight to a terminal stage. Each Advance call is made by the owner of
+// that stage after it succeeded, not by the serializer.
 class RouteStageLedger {
  public:
   explicit RouteStageLedger(SourceRoute route) : route_(route) {}
-  [[nodiscard]] bool Advance(SourceStage stage) {
-    if (reached_ && *reached_ >= stage) return false;
-    reached_ = stage;
-    return true;
-  }
+  [[nodiscard]] bool Advance(SourceStage stage);
   [[nodiscard]] std::optional<SourceStage> reached() const { return reached_; }
   [[nodiscard]] SourceRoute route() const { return route_; }
 
@@ -186,13 +240,17 @@ class RouteStageLedger {
   std::optional<SourceStage> reached_ = {};
 };
 
-// Child-method route obligations (A02). A parent may report Complete only
-// when every obligation carries a receipt on the policy's route with closed
-// coverage and no failure; a missing child receipt, a child on the other
-// route (legacy child under RequireValueTree), an incomplete or unsupported
-// child, or a failed child leaves the parent's obligations open.
+// Child-method route obligations (A02). The obligation names the expected
+// input identity as well as the method: closure requires a receipt that is
+// valid under ValidateRouteReceipt, matches both identities and is Complete
+// on a route the policy accepts (RequireValueTree accepts only ValueTree
+// children; LegacyAllowed accepts a valid completed Legacy or ValueTree
+// child - it is not RequireLegacy). A missing child receipt, a child on the
+// wrong route, an incomplete or unsupported child, a failed child or a
+// receipt from another input leaves the parent's obligations open.
 struct ChildRouteObligation {
   abc::EntityOffset method{0};
+  RouteInputIdentity identity{};
   std::optional<MethodRouteReceipt> receipt = {};
 };
 [[nodiscard]] bool RouteObligationsClosed(

@@ -54,8 +54,8 @@ abc::MethodBody FirstKeyBody() {
 void Emit(std::string_view name, source::BaseFunction function,
           const abc::MethodBody& body) {
   std::cout << "export const " << name << " = ";
-  test::Check(std::holds_alternative<std::size_t>(
-      source::WriteBaseFunction(function, body, std::cout)));
+  test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
+      function, body, std::cout, source::RoutePolicy::kLegacyAllowed)));
   std::cout << ";\n";
 }
 void EmitFixtures() {
@@ -101,7 +101,8 @@ void EmitFixtures() {
   Emit("leadingRest", leading_rest, LeadingRestBody());
   std::cout << "export function fresh() { return ";
   test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
-      Function(), test::Body({0x60, 0, 0x64}), std::cout)));
+      Function(), test::Body({0x60, 0, 0x64}), std::cout,
+      source::RoutePolicy::kLegacyAllowed)));
   std::cout << "; }\n";
   char path[] = "/tmp/abcd-first-for-in-XXXXXX";
   const auto fd = mkstemp(path);
@@ -117,7 +118,8 @@ void EmitFixtures() {
   const source::MethodConstants constants{file, header, index, {0}, {}};
   std::cout << "export const firstForIn = ";
   test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
-      Function(2), FirstKeyBody(), std::cout, {}, &constants)));
+      Function(2), FirstKeyBody(), std::cout,
+      source::RoutePolicy::kLegacyAllowed, {}, &constants)));
   std::cout << ";\n";
 }
 }  // namespace
@@ -129,7 +131,8 @@ int main(int argc, char** argv) {
   }
   const auto body = test::Body({0x60, 3, 0x64});
   std::ostringstream output;
-  const auto result = source::WriteBaseFunction(Function(), body, output);
+  const auto result = source::WriteBaseFunction(Function(), body, output,
+                                                source::RoutePolicy::kLegacyAllowed);
   test::Check(std::holds_alternative<std::size_t>(result));
   test::Check(std::get<std::size_t>(result) == output.str().size());
   test::Check(output.str().find("function Recovered($p0)") !=
@@ -138,7 +141,8 @@ int main(int argc, char** argv) {
   length_marker.creation.length.value = 0;
   std::ostringstream marker_output;
   test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
-      length_marker, body, marker_output)));
+      length_marker, body, marker_output,
+      source::RoutePolicy::kLegacyAllowed)));
   test::Check(marker_output.str().find(
                   "function Recovered($p0 = void 0)") != std::string::npos);
   test::Check(marker_output.str().starts_with(
@@ -147,7 +151,8 @@ int main(int argc, char** argv) {
   second_marker.creation.length.value = 1;
   std::ostringstream second_output;
   test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
-      second_marker, test::Body({0x60, 4, 0x64}), second_output)));
+      second_marker, test::Body({0x60, 4, 0x64}), second_output,
+      source::RoutePolicy::kLegacyAllowed)));
   test::Check(second_output.str().find(
                   "function Recovered($p0, $p1 = void 0)") !=
               std::string::npos);
@@ -155,40 +160,46 @@ int main(int argc, char** argv) {
   rest.creation.length.value = 0;
   std::ostringstream rest_output;
   test::Check(std::holds_alternative<std::size_t>(
-      source::WriteBaseFunction(rest, RestBody(), rest_output)));
+      source::WriteBaseFunction(rest, RestBody(), rest_output,
+                                source::RoutePolicy::kLegacyAllowed)));
   test::Check(rest_output.str().find("function Recovered(...$p0)") !=
               std::string::npos);
   source::LocalLexicalBudget rest_budget;
   rest_budget.output.bytes = rest_output.str().size() - 1;
   std::ostringstream rest_limited;
   test::Check(std::get<source::EmitError>(source::WriteBaseFunction(
-                  rest, RestBody(), rest_limited, rest_budget)) ==
+                  rest, RestBody(), rest_limited,
+                  source::RoutePolicy::kLegacyAllowed, rest_budget)) ==
               source::EmitError::kOutputLimit);
   test::Check(rest_limited.str().empty());
   auto leading_rest = Function(5, 2);
   leading_rest.creation.length.value = 1;
   std::ostringstream leading_rest_output;
   test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
-      leading_rest, LeadingRestBody(), leading_rest_output)));
+      leading_rest, LeadingRestBody(), leading_rest_output,
+      source::RoutePolicy::kLegacyAllowed)));
   test::Check(leading_rest_output.str().find(
                   "function Recovered($p0, ...$p1)") != std::string::npos);
   auto bad_rest = RestBody();
   bad_rest.instructions[4].decoded.operands[0].raw_bits = 1;
   std::ostringstream rest_rejected;
   test::Check(std::get<source::FunctionEmitError>(source::WriteBaseFunction(
-                  rest, bad_rest, rest_rejected)) ==
+                  rest, bad_rest, rest_rejected,
+                  source::RoutePolicy::kLegacyAllowed)) ==
               source::FunctionEmitError::kLength);
   test::Check(rest_rejected.str().empty());
   bad_rest = RestBody();
   bad_rest.instructions[6].decoded.operands[0].raw_bits = 7;
   test::Check(std::get<source::FunctionEmitError>(source::WriteBaseFunction(
-                  rest, bad_rest, rest_rejected)) ==
+                  rest, bad_rest, rest_rejected,
+                  source::RoutePolicy::kLegacyAllowed)) ==
               source::FunctionEmitError::kLength);
   test::Check(rest_rejected.str().empty());
   auto no_extra = rest;
   no_extra.frame.extra_arguments = false;
   test::Check(std::get<source::FunctionEmitError>(source::WriteBaseFunction(
-                  no_extra, RestBody(), rest_rejected)) ==
+                  no_extra, RestBody(), rest_rejected,
+                  source::RoutePolicy::kLegacyAllowed)) ==
               source::FunctionEmitError::kLength);
   test::Check(rest_rejected.str().empty());
   {
@@ -207,7 +218,8 @@ int main(int argc, char** argv) {
     const source::MethodConstants constants{file, header, index, {0}, {}};
     std::ostringstream recovered;
     const auto emitted = source::WriteBaseFunction(
-        Function(2), first_key, recovered, {}, &constants);
+        Function(2), first_key, recovered, source::RoutePolicy::kLegacyAllowed,
+        {}, &constants);
     test::Check(std::holds_alternative<std::size_t>(emitted));
     test::Check(recovered.str().find(
                     "for (const $forInKey in $r5) {\n"
@@ -217,13 +229,15 @@ int main(int argc, char** argv) {
     limited_budget.output.bytes = recovered.str().size() - 1;
     std::ostringstream limited;
     test::Check(std::get<source::EmitError>(source::WriteBaseFunction(
-                    Function(2), first_key, limited, limited_budget,
+                    Function(2), first_key, limited,
+                    source::RoutePolicy::kLegacyAllowed, limited_budget,
                     &constants)) == source::EmitError::kOutputLimit);
     test::Check(limited.str().empty());
     header.profile = abc::ProfileId::kDynamic1206;
     std::ostringstream historical;
     const auto refused = source::WriteBaseFunction(
-        Function(2), first_key, historical, {}, &constants);
+        Function(2), first_key, historical, source::RoutePolicy::kLegacyAllowed,
+        {}, &constants);
     test::Check(!std::holds_alternative<std::size_t>(refused));
     test::Check(historical.str().empty());
     auto marked = Function();
@@ -231,11 +245,13 @@ int main(int argc, char** argv) {
     std::ostringstream admitted_marker;
     test::Check(std::holds_alternative<std::size_t>(
         source::WriteBaseFunction(marked, body, admitted_marker,
+                                  source::RoutePolicy::kLegacyAllowed,
                                   {}, &constants)));
     header.profile = abc::ProfileId::kDynamic1102;
     std::ostringstream old_marker;
     test::Check(std::get<source::FunctionEmitError>(
                     source::WriteBaseFunction(marked, body, old_marker,
+                                              source::RoutePolicy::kLegacyAllowed,
                                               {}, &constants)) ==
                 source::FunctionEmitError::kLength);
     test::Check(old_marker.str().empty());
@@ -271,7 +287,8 @@ int main(int argc, char** argv) {
                           source::FunctionEmitError expected) {
     std::ostringstream rejected;
     test::Check(std::get<source::FunctionEmitError>(source::WriteBaseFunction(
-                    function, body, rejected)) == expected);
+                    function, body, rejected,
+                    source::RoutePolicy::kLegacyAllowed)) == expected);
     test::Check(rejected.str().empty());
   };
   auto invalid = Function();
@@ -294,7 +311,7 @@ int main(int argc, char** argv) {
   invalid.attributes.kind = abc::FunctionKind::kAsync;
   std::ostringstream async_output;
   test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
-      invalid, body, async_output)));
+      invalid, body, async_output, source::RoutePolicy::kLegacyAllowed)));
   test::Check(async_output.str().find("async function Recovered($p0)") !=
               std::string::npos);
   for (const auto name : {"", "eval", "arguments", "await", "class", "a-b",
@@ -341,15 +358,17 @@ int main(int argc, char** argv) {
     function.frame =
         std::get<abc::FrameLayout>(abc::BuildFrameLayout(2, hidden, call));
     std::ostringstream rendered;
-    test::Check(std::holds_alternative<std::size_t>(
-        source::WriteBaseFunction(function, test::Body({0x65}), rendered)));
+    test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
+        function, test::Body({0x65}), rendered,
+        source::RoutePolicy::kLegacyAllowed)));
   }
   for (const auto bytes : {output.str().size() - 1, output.str().size()}) {
     source::LocalLexicalBudget budget;
     budget.output.bytes = bytes;
     std::ostringstream rendered;
-    const auto limited =
-        source::WriteBaseFunction(Function(), body, rendered, budget);
+    const auto limited = source::WriteBaseFunction(
+        Function(), body, rendered, source::RoutePolicy::kLegacyAllowed,
+        budget);
     test::Check(std::holds_alternative<std::size_t>(limited) ==
                 (bytes == output.str().size()));
     test::Check(rendered.str() ==
@@ -360,8 +379,9 @@ int main(int argc, char** argv) {
         test::Body({0x09, 1, 0x3c, 0, 0x64}), test::Body({0x3c, 0, 0x64}),
         test::Body({0x60, 3, 0x0a, 0, 3, 0x64})}) {
     std::ostringstream rejected;
-    test::Check(!std::holds_alternative<std::size_t>(
-        source::WriteBaseFunction(Function(), unsupported, rejected)));
+    test::Check(!std::holds_alternative<std::size_t>(source::WriteBaseFunction(
+        Function(), unsupported, rejected,
+        source::RoutePolicy::kLegacyAllowed)));
     test::Check(rejected.str().empty());
   }
   {
@@ -369,21 +389,24 @@ int main(int argc, char** argv) {
     // impure NaN encoding. A later CFG read must fail before publishing text.
     const auto unsafe = test::Body({0x00, 0x1f, 0, 0x4f, 3, 0x64, 0x65});
     std::ostringstream rejected;
-    const auto proof = source::WriteBaseFunction(Function(), unsafe, rejected);
+    const auto proof = source::WriteBaseFunction(Function(), unsafe, rejected,
+                                                 source::RoutePolicy::kLegacyAllowed);
     test::Check(std::get<source::BodyEmitFailure>(proof).kind ==
                 source::BodyEmitError::kInternalValue);
     test::Check(rejected.str().empty());
     const auto joined = test::Body(
         {0x00, 0x4f, 6, 0x1f, 0, 0x4d, 3, 0x00, 0x64});
-    const auto mixed = source::WriteBaseFunction(Function(), joined, rejected);
+    const auto mixed = source::WriteBaseFunction(Function(), joined, rejected,
+                                                 source::RoutePolicy::kLegacyAllowed);
     test::Check(std::get<source::BodyEmitFailure>(mixed).kind ==
                 source::BodyEmitError::kInternalValue);
     test::Check(rejected.str().empty());
   }
   for (const auto count : {200u, 201u, 4096u, 65536u}) {
     std::ostringstream rendered;
-    const auto result = source::WriteBaseFunction(Function(count, 0),
-                                                  test::Body({0x65}), rendered);
+    const auto result = source::WriteBaseFunction(
+        Function(count, 0), test::Body({0x65}), rendered,
+        source::RoutePolicy::kLegacyAllowed);
     test::Check(std::get<std::size_t>(result) == rendered.str().size());
     test::Check(rendered.str().size() < std::size_t(count) * 24 + 256);
   }
@@ -393,8 +416,9 @@ int main(int argc, char** argv) {
     source::LocalLexicalBudget budget;
     budget.bytes = middle;
     std::ostringstream rendered;
-    const auto limited =
-        source::WriteBaseFunction(Function(), body, rendered, budget);
+    const auto limited = source::WriteBaseFunction(
+        Function(), body, rendered, source::RoutePolicy::kLegacyAllowed,
+        budget);
     if (std::holds_alternative<std::size_t>(limited))
       high = middle;
     else {
@@ -408,6 +432,8 @@ int main(int argc, char** argv) {
     std::ostream failed(&buffer);
     if (exceptions) failed.exceptions(std::ios::badbit | std::ios::failbit);
     test::Check(std::get<source::EmitError>(source::WriteBaseFunction(
-                    Function(), body, failed)) == source::EmitError::kWrite);
+                    Function(), body, failed,
+                    source::RoutePolicy::kLegacyAllowed)) ==
+                source::EmitError::kWrite);
   }
 }

@@ -345,6 +345,15 @@ if(BUILD_TESTING)
     add_test(NAME historical_async_member_sample_test
       COMMAND historical_async_member_sample_test
         "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+    if(ABCD_BUILD_TOOLS)
+      # Route admission CLI regressions (T00 corrections R1/R5/R6):
+      # specification only, NOT executed during the user's test pause.
+      add_test(NAME source_route_cli_test COMMAND ${CMAKE_COMMAND}
+        "-DABCD_SEMANTIC=$<TARGET_FILE:abc_semantic>"
+        "-DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>"
+        "-DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/source_route_cli.cmake)
+    endif()
   endif()
   add_executable(capture_summary_test tests/unit/analysis/capture_summary_test.cc)
   target_link_libraries(capture_summary_test PRIVATE abcd_analysis)

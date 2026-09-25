@@ -303,7 +303,8 @@ int main(int argc, char** argv) {
         frame, "globalValue"};
     std::ostringstream self_shadowed;
     Check(std::get<source::BodyEmitFailure>(source::WriteBaseFunction(
-              self, global, self_shadowed, {}, &constants)).kind ==
+              self, global, self_shadowed, source::RoutePolicy::kLegacyAllowed,
+              {}, &constants)).kind ==
           source::BodyEmitError::kGlobalReference);
     Check(self_shadowed.str().empty());
     const auto named_frame = std::get<abc::FrameLayout>(
@@ -317,14 +318,16 @@ int main(int argc, char** argv) {
     constants.source_parameters = shadowing_parameter;
     std::ostringstream parameter_shadowed;
     Check(std::get<source::BodyEmitFailure>(source::WriteBaseFunction(
-              named, global, parameter_shadowed, {}, &constants)).kind ==
+              named, global, parameter_shadowed,
+              source::RoutePolicy::kLegacyAllowed, {}, &constants)).kind ==
           source::BodyEmitError::kGlobalReference);
     Check(parameter_shadowed.str().empty());
     const std::array<std::string_view, 1> safe_parameter{"width"};
     constants.source_parameters = safe_parameter;
     std::ostringstream named_output;
     Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
-        named, global, named_output, {}, &constants)));
+        named, global, named_output, source::RoutePolicy::kLegacyAllowed,
+        {}, &constants)));
     Check(named_output.str().find("function Recovered(width)") !=
           std::string::npos);
     const auto double_frame = std::get<abc::FrameLayout>(
@@ -337,13 +340,15 @@ int main(int argc, char** argv) {
     constants.source_parameters = duplicated;
     std::ostringstream invalid_parameters;
     Check(std::get<source::FunctionEmitError>(source::WriteBaseFunction(
-              double_named, global_body(empty_method), invalid_parameters, {},
+              double_named, global_body(empty_method), invalid_parameters,
+              source::RoutePolicy::kLegacyAllowed, {},
               &constants)) == source::FunctionEmitError::kName);
     Check(invalid_parameters.str().empty());
     const std::array<std::string_view, 2> private_name{"$acc", "width"};
     constants.source_parameters = private_name;
     Check(std::get<source::FunctionEmitError>(source::WriteBaseFunction(
-              double_named, global_body(empty_method), invalid_parameters, {},
+              double_named, global_body(empty_method), invalid_parameters,
+              source::RoutePolicy::kLegacyAllowed, {},
               &constants)) == source::FunctionEmitError::kName);
     Check(invalid_parameters.str().empty());
     constants.source_parameters = {};

@@ -166,6 +166,18 @@ int Export(const std::filesystem::path& input,
   const auto* header = std::get_if<abc::Header>(&parsed);
   if (!header || header->checksum != hash->adler32)
     return Fail(ExportError::kHeader);
+  // Identity for every receipt this export signs, and the one authoritative
+  // route decision for value mode: the same admission the pipeline entries
+  // consult, never a refusal fabricated here (T00 correction R5).
+  const auto identity = source::MakeRouteInputIdentity(*hash, *header);
+  const auto route_policy = route_value
+                                ? source::RoutePolicy::kRequireValueTree
+                                : source::RoutePolicy::kLegacyAllowed;
+  std::optional<source::RouteFailure> route_refusal;
+  if (route_value) {
+    const auto admission = source::AdmitLegacyWriter(route_policy);
+    route_refusal = *admission.value_route_failure;
+  }
   constexpr std::size_t kIndexBytes = 256 * 1024 * 1024;
   const auto indexed = abc::BuildMetadataIndex(file, *header, {kIndexBytes});
   const auto* index = std::get_if<abc::MetadataIndex>(&indexed);
@@ -256,16 +268,16 @@ int Export(const std::filesystem::path& input,
     if (emit_source && route_value) {
       // Per-record value-tree route receipt. No route stage ran for this
       // record and no legacy writer was consulted; the absent stage claim is
-      // the honest state, not a decoded claim (A01/G0).
+      // the honest state, not a decoded claim (A01/G0). The failure is the
+      // authoritative admission decision, not a per-record fabrication.
       source::MethodRouteReceipt receipt;
+      receipt.identity = identity;
       receipt.record = record.offset;
       receipt.route = source::SourceRoute::kValueTree;
       receipt.stage = {};
       receipt.coverage = source::Coverage::kUnsupported;
       receipt.legacy_writer_used = false;
-      receipt.failure = source::RouteFailure{
-          source::RouteFailureClass::kUnsupported,
-          source::ValueRouteError::kRouteUnavailable, {}};
+      receipt.failure = *route_refusal;
       record_manifest["source_route"] =
           std::string(source::SourceRouteName(receipt.route));
       record_manifest["source_status"] =
@@ -298,7 +310,8 @@ int Export(const std::filesystem::path& input,
                 static_cast<unsigned>(SourceStatus::kNoModule);
           } else if (mode == SourceMode::kShared) {
             const auto built = source::BuildRecordSource(
-                file, *header, *index, *lookup, record, *ready, *roles);
+                file, *header, *index, *lookup, record, *ready, *roles, {},
+                nullptr, route_policy);
             if (FatalSharedSource(built))
               return Fail(ExportError::kRecord, record.offset.value);
             record_manifest["source_complete"] = false;
@@ -359,11 +372,17 @@ int Export(const std::filesystem::path& input,
               std::visit([&](const auto& failure) {
                 using T = std::decay_t<decltype(failure)>;
                 if constexpr (std::is_same_v<T, source::RouteRefusal>) {
+                  // Defense in depth: shared mode runs LegacyAllowed, so the
+                  // record entry cannot refuse here. Consume its typed
+                  // failure if it ever does.
+                  source::MethodRouteReceipt receipt;
+                  receipt.identity = identity;
+                  receipt.record = record.offset;
+                  receipt.route = source::SourceRoute::kValueTree;
+                  receipt.coverage = source::Coverage::kUnsupported;
+                  receipt.failure = failure.failure;
                   record_manifest["route_receipt"] = nlohmann::json::parse(
-                      source::SerializeRouteReceipt(source::MethodRouteReceipt{
-                          {}, record.offset, source::SourceRoute::kValueTree,
-                          {}, source::Coverage::kUnsupported, false,
-                          failure.failure}));
+                      source::SerializeRouteReceipt(receipt));
                 } else if constexpr (!std::is_same_v<T, source::PrintedSource>) {
                   record_manifest["source_error"] = static_cast<unsigned>(failure.kind);
                   record_manifest["source_pc"] = failure.pc.value;

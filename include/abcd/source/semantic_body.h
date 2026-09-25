@@ -24,19 +24,19 @@ using SemanticTemplateResult = std::variant<
 // default_length opts an owning non-rest callable into literal-default
 // recovery. A successful result's parameter_defaults MUST be emitted by that
 // owner in its formal list; its body alone is not an equivalent replacement.
+// policy has no default (invocation-context rule in source_route.h): every
+// caller states the policy of its admitting entry.
 [[nodiscard]] SemanticBodyResult BuildSemanticBody(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
     analysis::SemanticBudget budget, std::size_t output_bytes,
-    std::optional<std::uint16_t> default_length = {},
-    RoutePolicy policy = RoutePolicy::kLegacyAllowed);
+    std::optional<std::uint16_t> default_length, RoutePolicy policy);
 // Parametric child only. The caller must replay every typed capture into the
 // parent binding proof; text alone is not a publishable function body.
 [[nodiscard]] SemanticTemplateResult BuildSemanticTemplate(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     ScalarNames names, const MethodConstants& constants,
     analysis::SemanticBudget budget, std::size_t output_bytes,
-    std::optional<std::uint16_t> default_length = {},
-    RoutePolicy policy = RoutePolicy::kLegacyAllowed);
+    std::optional<std::uint16_t> default_length, RoutePolicy policy);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_SEMANTIC_BODY_H_

@@ -13,7 +13,7 @@ RecordSourceResult BuildRecordSource(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const abc::RecordInfo& record, const RecordModuleContext& context,
     const analysis::MethodRoleIndex& roles, RecordProgramBudget budget,
-    const HostRealmBinding* realm_binding) {
+    const HostRealmBinding* realm_binding, RoutePolicy policy) {
   using Error = RecordProgramError;
   const auto fail = [](Error kind) { return RecordProgramFailure{kind, {}}; };
   const auto metadata = [&](abc::MetadataError kind) {
@@ -24,6 +24,12 @@ RecordSourceResult BuildRecordSource(
       default: return fail(Error::kModule);
     }
   };
+  // The record entry owns route admission for every record-level stage below;
+  // abc_structure consumes this decision instead of fabricating its own
+  // refusal (T00 correction R5).
+  const auto admission = AdmitLegacyWriter(policy);
+  if (!admission.legacy_permitted)
+    return RouteRefusal{*admission.value_route_failure};
   try {
     if (header.kind != abc::AbcKind::kDynamic ||
         !SupportsRecordProgramProfile(header.profile)) return fail(Error::kProfile);
@@ -117,7 +123,8 @@ RecordSourceResult BuildRecordSource(
     constants.global_scope->import_bindings = imports->slots;
     constants.global_scope->import_names = imports->sorted;
     auto result = BuildEntrySource(*body, *method, *frame, SourceForm::kRecord,
-        entry->name, constants, exports, {budget.bytes}, budget.output.bytes);
+        entry->name, constants, exports, {budget.bytes}, budget.output.bytes,
+        policy);
     if (file.CheckUnchanged()) return fail(Error::kFileChanged);
     return std::visit([](auto&& value) -> RecordSourceResult {
       return std::move(value);

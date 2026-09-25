@@ -198,7 +198,8 @@ int main(int argc, char** argv) {
   const auto parent_body = test::Body({0x09, 1, 0x33, 0, 0, 0, 1, 0x64});
   std::ostringstream factory;
   test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
-      parent, parent_body, factory, {}, &parent_constants, &lookup)));
+      parent, parent_body, factory, source::RoutePolicy::kLegacyAllowed, {},
+      &parent_constants, &lookup)));
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
     std::cout << "export const factory = " << factory.str() << ";\n";
   target.code = abc::CodeInfo{{780}, {784}, 0, 4, 5, 0};
@@ -229,7 +230,8 @@ int main(int argc, char** argv) {
       file, header, index, {kCaller}, {}, nullptr, nullptr, complete_scope};
   std::ostringstream nested_global;
   test::Check(std::holds_alternative<std::size_t>(source::WriteBaseFunction(
-      parent, parent_body, nested_global, {}, &scoped_parent, &lookup)));
+      parent, parent_body, nested_global, source::RoutePolicy::kLegacyAllowed,
+      {}, &scoped_parent, &lookup)));
   test::Check(nested_global.str().find("$acc = createdGlobal;") !=
               std::string::npos);
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
@@ -347,7 +349,8 @@ int main(int argc, char** argv) {
     budget = {};
     budget.bytes = low + (high - low) / 2;
     std::ostringstream rendered;
-    const auto result = source::WriteBaseFunction(base, body, rendered, budget);
+    const auto result = source::WriteBaseFunction(
+        base, body, rendered, source::RoutePolicy::kLegacyAllowed, budget);
     if (std::holds_alternative<std::size_t>(result))
       high = budget.bytes;
     else

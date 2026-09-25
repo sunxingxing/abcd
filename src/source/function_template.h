@@ -11,13 +11,14 @@ LocalLexicalResult WriteLocalLexicalTemplate(const abc::MethodBody& body,
                                              std::ostream& output,
                                              LocalLexicalBudget budget,
                                              const MethodConstants* constants);
+// policy is required (invocation-context rule in source_route.h): callers
+// state the policy of their admitting entry; descendants inherit it.
 FunctionEmitResult WriteBaseFunctionTemplate(const BaseFunction& function,
                                              const abc::MethodBody& body,
                                              std::ostream& output,
                                              LocalLexicalBudget budget,
                                              const MethodConstants* constants,
-                                             RoutePolicy policy =
-                                                 RoutePolicy::kLegacyAllowed);
+                                             RoutePolicy policy);
 FunctionEmitResult WriteArrowFunction(
     const BaseFunction& function, const abc::MethodBody& body,
     std::ostream& output, LocalLexicalBudget budget,

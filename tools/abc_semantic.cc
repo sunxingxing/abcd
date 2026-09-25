@@ -75,20 +75,23 @@ enum class InspectError : std::uint8_t {
 };
 enum class InspectDetail : std::uint8_t { kSummary, kInstructions, kExceptionFlow, kExceptionTemplate };
 // Value-tree route receipts for methods the new pipeline cannot serve yet.
-// Stage kDecoded is honest here: this tool decodes the body before the route
-// attempt; nothing past admission runs and no legacy text is produced (A01).
+// Stage kDecoded is honest: this selector decodes the body to identify the
+// method, then admission refuses the route before any analysis or emission;
+// no value-tree stage ran, no legacy stage ran and no legacy text exists
+// (A01). The failure is the admission decision's own typed product.
 source::MethodRouteReceipt ValueRouteReceipt(
-    std::uint32_t entity, std::optional<std::uint32_t> record) {
+    const source::RouteInputIdentity& identity,
+    const source::RouteFailure& failure, std::uint32_t entity,
+    std::optional<std::uint32_t> record) {
   source::MethodRouteReceipt receipt;
+  receipt.identity = identity;
   receipt.method = abc::EntityOffset{entity};
   if (record) receipt.record = abc::EntityOffset{*record};
   receipt.route = source::SourceRoute::kValueTree;
   receipt.stage = source::SourceStage::kDecoded;
   receipt.coverage = source::Coverage::kUnsupported;
   receipt.legacy_writer_used = false;
-  receipt.failure = source::RouteFailure{
-      source::RouteFailureClass::kUnsupported,
-      source::ValueRouteError::kRouteUnavailable, {}};
+  receipt.failure = failure;
   return receipt;
 }
 int ReportRouteReceipt(const source::MethodRouteReceipt& receipt) {
@@ -121,9 +124,8 @@ int FailStage(InspectError kind, unsigned stage_error,
   return EXIT_FAILURE;
 }
 int Inspect(const std::filesystem::path& path, std::uint32_t entity,
-            std::optional<source::SourceForm> form, bool all_records = false,
-            InspectDetail detail = InspectDetail::kSummary,
-            source::RoutePolicy policy = source::RoutePolicy::kLegacyAllowed) {
+            std::optional<source::SourceForm> form, bool all_records,
+            InspectDetail detail, source::RoutePolicy policy) {
   auto opened = corpus::AbcFile::Open(path);
   const auto* owned = std::get_if<std::unique_ptr<corpus::AbcFile>>(&opened);
   if (!owned) return Fail(InspectError::kOpen);
@@ -157,6 +159,17 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
   if (!body) {
     const auto& failure = std::get<abc::BodyFailure>(decoded);
     return Fail(InspectError::kBody, failure.offset.value);
+  }
+  // Route admission follows only the identity/decode steps this selector
+  // needs, before any legacy analysis or emission (T00 correction R5): a
+  // required value tree yields one unambiguous receipt product, and the
+  // legacy semantic/proof/region/print pipeline below never starts, in whole
+  // or in part.
+  if (policy == source::RoutePolicy::kRequireValueTree) {
+    const auto admission = source::AdmitLegacyWriter(policy);
+    return ReportRouteReceipt(ValueRouteReceipt(
+        source::MakeRouteInputIdentity(*hash, *header),
+        *admission.value_route_failure, entity, method->owner_offset.value));
   }
   if (detail == InspectDetail::kExceptionFlow || detail == InspectDetail::kExceptionTemplate) {
     // Child templates need the same-file membership and role owners used by
@@ -469,10 +482,12 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
         if constexpr (std::is_same_v<T, source::PrintedSource>) {
           std::terminate();
         } else if constexpr (std::is_same_v<T, source::RouteRefusal>) {
-          // A01: RequireValueTree kept its typed refusal; no legacy attempt,
-          // no source text. The receipt is the product.
-          return ReportRouteReceipt(
-              ValueRouteReceipt(entity, method->owner_offset.value));
+          // Defense in depth: admission already refused above, so this is
+          // unreachable today. Consume the typed failure rather than
+          // re-deriving it (A01).
+          return ReportRouteReceipt(ValueRouteReceipt(
+              source::MakeRouteInputIdentity(*hash, *header),
+              failure.failure, entity, method->owner_offset.value));
         } else {
           constexpr auto stage = [] {
             if constexpr (std::is_same_v<T, analysis::SemanticFailure>)
@@ -515,15 +530,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
                    {"blocks", method_ir->flow.blocks.size()},
                    {"ssa_values", method_ir->ssa.Values().size()}}
             << '\n';
-  if (!std::cout) return EXIT_FAILURE;
-  if (policy == source::RoutePolicy::kRequireValueTree) {
-    // The body above was decoded for this summary; nothing past route
-    // admission ran. Report the typed refusal instead of implying the legacy
-    // pipeline stands in for the value-tree route.
-    return ReportRouteReceipt(
-        ValueRouteReceipt(entity, method->owner_offset.value));
-  }
-  return EXIT_SUCCESS;
+  return std::cout ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 }  // namespace
 
@@ -532,6 +539,9 @@ int main(int argc, char** argv) {
     std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source|--record-source] [--value-source]\n"
                  "       abc_semantic INPUT.abc METHOD_ENTITY --instructions|--exception-flow|--exception-template\n"
                  "       abc_semantic INPUT.abc --all-records\n"
+                 "  exactly one source form per invocation; duplicates, conflicting forms\n"
+                 "  and any combination of a detail mode with --value-source are rejected\n"
+                 "  regardless of option order\n"
                  "  --value-source requires the unified value-tree route; stages that are\n"
                  "  not implemented return a typed route receipt with no source text and\n"
                  "  never fall back to the legacy writer\n";
@@ -540,46 +550,55 @@ int main(int argc, char** argv) {
   std::uint32_t entity = 0;
   const std::string_view token{argv[2]};
   if (token == "--all-records" && argc == 3)
-    return Inspect(argv[1], 0, std::nullopt, true);
+    return Inspect(argv[1], 0, std::nullopt, true, InspectDetail::kSummary,
+                   source::RoutePolicy::kLegacyAllowed);
   const auto number = std::from_chars(
       token.data(), token.data() + token.size(), entity);
   if (number.ec != std::errc{} ||
       number.ptr != token.data() + token.size())
     return Fail(InspectError::kArguments);
+  // Parse every option first, then validate combinations independent of
+  // order before any file access (T00 correction R1): an earlier-accepted
+  // option can no longer mute a later --value-source.
   std::optional<source::SourceForm> form;
   InspectDetail detail = InspectDetail::kSummary;
-  bool detail_selected = false;
-  bool value_route = false;
+  unsigned forms = 0;
+  unsigned details = 0;
+  unsigned value_routes = 0;
   for (int i = 3; i < argc; ++i) {
     const std::string_view option{argv[i]};
     if (option == "--value-source") {
-      value_route = true;
+      ++value_routes;
     } else if (option == "--instructions" ||
                option == "--exception-flow" ||
                option == "--exception-template") {
-      // Raw inspection modes predate route receipts; do not mix them with a
-      // route policy until those views carry receipts too.
-      if (value_route || detail_selected || form)
-        return Fail(InspectError::kArguments);
-      detail_selected = true;
+      ++details;
       detail = option == "--instructions" ? InspectDetail::kInstructions
               : option == "--exception-flow" ? InspectDetail::kExceptionFlow
                                              : InspectDetail::kExceptionTemplate;
-    } else if (detail_selected) {
-      return Fail(InspectError::kArguments);
     } else if (option == "--class-source") {
+      ++forms;
       form = source::SourceForm::kClassConstructor;
     } else if (option == "--function-source") {
+      ++forms;
       form = source::SourceForm::kFunction;
     } else if (option == "--record-source") {
+      ++forms;
       form = source::SourceForm::kRecord;
     } else {
       return Fail(InspectError::kArguments);
     }
   }
-  if (detail_selected)
-    return Inspect(argv[1], entity, std::nullopt, false, detail);
-  const auto policy = value_route
+  // Duplicate or conflicting selectors are rejected in every order.
+  if (forms > 1 || details > 1 || value_routes > 1 || (forms && details))
+    return Fail(InspectError::kArguments);
+  // Raw inspection modes predate route receipts; do not mix them with a
+  // route policy until those views carry receipts too.
+  if (details && value_routes) return Fail(InspectError::kArguments);
+  if (details)
+    return Inspect(argv[1], entity, std::nullopt, false, detail,
+                   source::RoutePolicy::kLegacyAllowed);
+  const auto policy = value_routes
                           ? source::RoutePolicy::kRequireValueTree
                           : source::RoutePolicy::kLegacyAllowed;
   return Inspect(argv[1], entity, form, false, InspectDetail::kSummary, policy);

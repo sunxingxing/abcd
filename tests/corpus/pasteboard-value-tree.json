@@ -98,7 +98,8 @@
     "observed_legacy_route": "exit 0; sources published with source_route:legacy per record",
     "value_route_export_command": "abc_structure modules.abc OUT --value-source",
     "observed_value_export": "exit 0; view declarations_with_value_route_receipts; per-record receipts with stage:null (no route stage ran); no sources/ directory",
-    "detached_form_note": "abc_semantic --function-source/--class-source on record-owned methods fails in the legacy path both before and after T00 (pre-existing boundary); A01 pairing therefore uses the record-level commands."
+    "detached_form_note": "abc_semantic --function-source/--class-source on record-owned methods fails in the legacy path both before and after T00 (pre-existing boundary); A01 pairing therefore uses the record-level commands.",
+    "correction_note": "Observations above were recorded against the pre-correction build (commit 0dd813b, schema 1 receipts). The corrected T00 boundary (schema 2: identity-bound receipts with sha256/file_size/abc_version/profile/source_contract, typed-absent work_revision, central validator, order-independent CLI option rejection, admission before legacy analysis) is implemented and production-built, but its ABC-only inspection was NOT re-run in this session; re-observation is pending."
   },
   "status": {
     "value_route_stages_implemented": [],

@@ -44,11 +44,12 @@ using FunctionEmitResult =
 // separately admits inputs, transient strings and output. Optional same-context
 // methods/constants enable leaf creations with proven initialized captures;
 // WriteCreatedFunction remains leaf-only to avoid recursive preflight.
+// policy is required (invocation-context rule in source_route.h) and precedes
+// the defaulted conveniences so no caller can omit it silently.
 [[nodiscard]] FunctionEmitResult WriteBaseFunction(
     const BaseFunction& function, const abc::MethodBody& body,
-    std::ostream& output, LocalLexicalBudget budget = {},
+    std::ostream& output, RoutePolicy policy, LocalLexicalBudget budget = {},
     const MethodConstants* constants = nullptr,
-    const abc::MethodLookup* methods = nullptr,
-    RoutePolicy policy = RoutePolicy::kLegacyAllowed);
+    const abc::MethodLookup* methods = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_BASE_FUNCTION_H_

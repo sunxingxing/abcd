@@ -122,6 +122,9 @@ CreatedFunctionResult WriteCreation(
   const BaseFunction function{creation, target.attributes,
                               std::get<abc::FrameLayout>(frame), *name};
   FunctionEmitResult emitted;
+  // Created functions are legacy-context descendants (invocation-context rule
+  // in source_route.h): a refused policy never reaches this writer, and it
+  // states that context explicitly instead of a silent default.
   if (target.attributes.kind == abc::FunctionKind::kArrow ||
       target.attributes.kind == abc::FunctionKind::kAsyncArrow) {
     emitted = WriteArrowFunction(function, body, output, budget, &constants,
@@ -129,8 +132,10 @@ CreatedFunctionResult WriteCreation(
   } else {
     emitted = captured_values == analysis::CapturedValues::kLanguage
                   ? WriteBaseFunctionTemplate(function, body, output, budget,
-                                              &constants)
-                  : WriteBaseFunction(function, body, output, budget,
+                                              &constants,
+                                              RoutePolicy::kLegacyAllowed)
+                  : WriteBaseFunction(function, body, output,
+                                      RoutePolicy::kLegacyAllowed, budget,
                                       &constants);
   }
   return std::visit([](auto value) -> CreatedFunctionResult { return value; },

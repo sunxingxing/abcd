@@ -225,7 +225,8 @@ class FunctionWriter {
                  const MethodConstants* constants,
                  const abc::MethodLookup* methods,
                  analysis::CapturedValues captured_values,
-                 std::span<const std::int64_t> parameter_writes)
+                 std::span<const std::int64_t> parameter_writes,
+                 RoutePolicy policy)
       : function_(function),
         names_(names),
         output_(output),
@@ -233,7 +234,8 @@ class FunctionWriter {
         constants_(constants),
         methods_(methods),
         captured_values_(captured_values),
-        parameter_writes_(parameter_writes) {}
+        parameter_writes_(parameter_writes),
+        policy_(policy) {}
 
   FunctionEmitResult Write(const abc::MethodBody& body) {
     // Preflight and final emission are separate attempts. Never reuse a
@@ -420,14 +422,16 @@ class FunctionWriter {
         if (captured_values_ == analysis::CapturedValues::kLanguage) {
           auto prepared = BuildSemanticTemplate(
               body, frame, names_, *body_constants,
-              {body_budget.bytes, body_budget.work}, body_budget.output.bytes, default_length);
+              {body_budget.bytes, body_budget.work}, body_budget.output.bytes,
+              default_length, policy_);
           semantic_resource_limit = resource_failure(prepared);
           if (auto* source = std::get_if<PrintedTemplate>(&prepared))
             semantic_template = std::move(*source);
         } else {
           auto prepared = BuildSemanticBody(
               body, frame, names_, *body_constants,
-              {body_budget.bytes, body_budget.work}, body_budget.output.bytes, default_length);
+              {body_budget.bytes, body_budget.work}, body_budget.output.bytes,
+              default_length, policy_);
           semantic_resource_limit = resource_failure(prepared);
           if (auto* source = std::get_if<PrintedSource>(&prepared))
             semantic_body = std::move(*source);
@@ -767,6 +771,7 @@ class FunctionWriter {
   const abc::MethodLookup* methods_;
   analysis::CapturedValues captured_values_;
   std::span<const std::int64_t> parameter_writes_;
+  RoutePolicy policy_;
   std::size_t written_ = 0;
   std::optional<EmitError> error_;
 };
@@ -797,7 +802,8 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
                                  LocalLexicalBudget budget,
                                  const MethodConstants* constants,
                                  const abc::MethodLookup* methods,
-                                 analysis::CapturedValues captured_values) {
+                                 analysis::CapturedValues captured_values,
+                                 RoutePolicy policy) {
   if (!CanonicalFrame(function.frame)) return FunctionEmitError::kFrame;
   if (function.syntax == CallableSyntax::kRangeDerivedConstructor) {
     CapturePreservations preserved;
@@ -1057,21 +1063,24 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
     if (direct_writes.sites.empty() &&
         dynamic_cast<UnpublishedOutput*>(output.rdbuf()))
       return FunctionWriter(shape, bindings, output, budget, constants,
-                            methods, captured_values, parameter_writes).Write(body);
+                            methods, captured_values, parameter_writes, policy)
+          .Write(body);
     auto checked = FunctionWriter(shape, bindings, discard, budget,
-                                  constants, methods, captured_values, parameter_writes)
+                                  constants, methods, captured_values,
+                                  parameter_writes, policy)
                        .Write(body);
     if (!direct_writes.sites.empty() && IsResourceFailure(checked)) {
       bindings.constructor_this_writes = {};
       std::vector<abc::CodeOffset>().swap(direct_writes.sites);
       budget = ordinary_budget;
       checked = FunctionWriter(shape, bindings, discard, budget, constants,
-                               methods, captured_values, parameter_writes)
+                               methods, captured_values, parameter_writes,
+                               policy)
                     .Write(body);
     }
     if (!std::holds_alternative<std::size_t>(checked)) return checked;
     return FunctionWriter(shape, bindings, output, budget, constants,
-                          methods, captured_values, parameter_writes)
+                          methods, captured_values, parameter_writes, policy)
         .Write(body);
   } catch (const std::bad_alloc&) {
     return FunctionEmitError::kResourceLimit;
@@ -1085,7 +1094,8 @@ FunctionEmitResult WriteFunction(const BaseFunction& function,
                                  LocalLexicalBudget budget,
                                  const MethodConstants* constants,
                                  const abc::MethodLookup* methods,
-                                 analysis::CapturedValues captured_values) {
+                                 analysis::CapturedValues captured_values,
+                                 RoutePolicy policy) {
   if (function.creation.kind != analysis::CreationKind::kFunction ||
       function.creation.home_object !=
           analysis::HomeObjectInput::kCurrentFunction)
@@ -1122,12 +1132,12 @@ FunctionEmitResult WriteFunction(const BaseFunction& function,
     return WriteCallable(
         {function.frame, function.name, function.creation.length.value, syntax},
         normalized, output, budget, scoped ? &*scoped : nullptr, methods,
-        captured_values);
+        captured_values, policy);
   }
   return WriteCallable(
       {function.frame, function.name, function.creation.length.value,
        syntax},
-      body, output, budget, constants, methods, captured_values);
+      body, output, budget, constants, methods, captured_values, policy);
 }
 }  // namespace
 FunctionEmitResult WriteClassMethod(const ClassMethod& method,
@@ -1138,6 +1148,8 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
                                     const abc::MethodLookup* methods,
                                     analysis::CapturedValues captures,
                                     SelfBindingUse* self_use) {
+  // Legacy-context entry (invocation-context rule in source_route.h): this
+  // writer only ever runs inside an already admitted legacy invocation.
   if (self_use) *self_use = SelfBindingUse::kUnknown;
   if (method.attributes.sendable) return FunctionEmitError::kSendable;
   if (method.attributes.kind != abc::FunctionKind::kNone &&
@@ -1204,12 +1216,12 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
     return WriteCallable(
         shape,
         normalized, output, budget, scoped ? &*scoped : nullptr, methods,
-        captures);
+        captures, RoutePolicy::kLegacyAllowed);
   }
   return WriteCallable(
       shape,
       body, output, budget, constants, methods,
-      captures);
+      captures, RoutePolicy::kLegacyAllowed);
 }
 FunctionEmitResult WriteBaseConstructor(const BaseConstructor& constructor,
                                         const abc::MethodBody& body,
@@ -1218,11 +1230,13 @@ FunctionEmitResult WriteBaseConstructor(const BaseConstructor& constructor,
                                         const MethodConstants* constants,
                                         const abc::MethodLookup* methods) {
   if (constructor.attributes.sendable) return FunctionEmitError::kSendable;
+  // Legacy-context entry (invocation-context rule in source_route.h): these
+  // writers only ever run inside an already admitted legacy invocation.
   return WriteCallable(
       {constructor.frame, constructor.class_binding,
        constructor.creation.length, CallableSyntax::kBaseConstructor},
       body, output, budget, constants, methods,
-      analysis::CapturedValues::kReject);
+      analysis::CapturedValues::kReject, RoutePolicy::kLegacyAllowed);
 }
 FunctionEmitResult WriteRangeDerivedConstructor(
     const RangeDerivedConstructor& constructor, const abc::MethodBody& body,
@@ -1233,20 +1247,20 @@ FunctionEmitResult WriteRangeDerivedConstructor(
       constants->header.profile != abc::ProfileId::kDynamic1206 &&
       constants->header.profile != abc::ProfileId::kDynamic1301)
     return FunctionEmitError::kKind;
+  // Legacy-context entry (invocation-context rule in source_route.h).
   return WriteCallable(
       {constructor.frame, constructor.class_binding,
        constructor.creation.length,
        CallableSyntax::kRangeDerivedConstructor},
       body, output, budget, constants, methods,
-      analysis::CapturedValues::kReject);
+      analysis::CapturedValues::kReject, RoutePolicy::kLegacyAllowed);
 }
 FunctionEmitResult WriteBaseFunction(const BaseFunction& function,
                                      const abc::MethodBody& body,
-                                     std::ostream& output,
+                                     std::ostream& output, RoutePolicy policy,
                                      LocalLexicalBudget budget,
                                      const MethodConstants* constants,
-                                     const abc::MethodLookup* methods,
-                                     RoutePolicy policy) {
+                                     const abc::MethodLookup* methods) {
   // Child callables inherit the caller's route policy here. Admission
   // precedes every emission stage, so a refused route never reaches the
   // recursive legacy body writers below (A01).
@@ -1254,7 +1268,7 @@ FunctionEmitResult WriteBaseFunction(const BaseFunction& function,
   if (!admission.legacy_permitted)
     return RouteRefusal{*admission.value_route_failure};
   return WriteFunction(function, body, output, budget, constants, methods,
-                       analysis::CapturedValues::kReject);
+                       analysis::CapturedValues::kReject, policy);
 }
 FunctionEmitResult WriteBaseFunctionTemplate(const BaseFunction& function,
                                              const abc::MethodBody& body,
@@ -1266,12 +1280,13 @@ FunctionEmitResult WriteBaseFunctionTemplate(const BaseFunction& function,
   if (!admission.legacy_permitted)
     return RouteRefusal{*admission.value_route_failure};
   return WriteFunction(function, body, output, budget, constants, nullptr,
-                       analysis::CapturedValues::kLanguage);
+                       analysis::CapturedValues::kLanguage, policy);
 }
 FunctionEmitResult WriteArrowFunction(
     const BaseFunction& function, const abc::MethodBody& body,
     std::ostream& output, LocalLexicalBudget budget,
     const MethodConstants* constants, analysis::CapturedValues captured_values) {
+  // Legacy-context entry (invocation-context rule in source_route.h).
   if (function.creation.kind != analysis::CreationKind::kFunction ||
       function.creation.home_object !=
           analysis::HomeObjectInput::kCurrentFunction)
@@ -1312,11 +1327,13 @@ FunctionEmitResult WriteArrowFunction(
     return WriteCallable(
         {function.frame, function.name, function.creation.length.value,
          CallableSyntax::kAsyncArrowExpression},
-        normalized, output, budget, scoped ? &*scoped : nullptr, nullptr, captured_values);
+        normalized, output, budget, scoped ? &*scoped : nullptr, nullptr,
+        captured_values, RoutePolicy::kLegacyAllowed);
   }
   return WriteCallable(
       {function.frame, function.name, function.creation.length.value,
        CallableSyntax::kArrowExpression},
-      body, output, budget, constants, nullptr, captured_values);
+      body, output, budget, constants, nullptr, captured_values,
+      RoutePolicy::kLegacyAllowed);
 }
 }  // namespace abcd::source

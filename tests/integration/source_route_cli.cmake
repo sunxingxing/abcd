@@ -1,0 +1,174 @@
+# Route admission CLI regression specification (T00, corrections R1/R5/R6).
+# NOT EXECUTED while the user's test pause is in force; this script is the
+# runnable specification for later verification. It requires:
+#   - prohibited detail/value and duplicate/conflicting option combinations
+#     are rejected in both orders before any file access, without receipts;
+#   - --value-source yields one typed refusal receipt bound to the frozen
+#     pasteboard identity, with no source text and no legacy summary fields;
+#   - abc_structure --value-source publishes per-record refusal receipts and
+#     no source files, while the legacy shared writer succeeds on the same
+#     input (A01 contrast: new route fails honestly, old writer can succeed).
+# Run via `ctest --test-dir build -R '^source_route_cli_test$'`.
+set(ABCD_ROUTE_HASH
+  "854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e")
+
+foreach(detail IN ITEMS --instructions --exception-flow --exception-template)
+  foreach(first IN ITEMS 1 0)
+    if(first)
+      set(arguments "${detail}" "--value-source")
+    else()
+      set(arguments "--value-source" "${detail}")
+    endif()
+    execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}" "7586"
+      ${arguments} RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
+    if(status EQUAL 0)
+      message(FATAL_ERROR "prohibited combination accepted: ${arguments}")
+    endif()
+    string(FIND "${report}" "route_receipt" receipt_at)
+    if(NOT receipt_at EQUAL -1)
+      message(FATAL_ERROR "argument rejection must not emit a receipt")
+    endif()
+  endforeach()
+endforeach()
+
+foreach(arguments IN ITEMS
+    "--function-source;--record-source" "--record-source;--class-source"
+    "--value-source;--value-source" "--function-source;--instructions")
+  execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}" "7586" ${arguments}
+    RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
+  if(status EQUAL 0)
+    message(FATAL_ERROR "conflicting options accepted: ${arguments}")
+  endif()
+  string(FIND "${report}" "route_receipt" receipt_at)
+  if(NOT receipt_at EQUAL -1)
+    message(FATAL_ERROR "argument rejection must not emit a receipt")
+  endif()
+endforeach()
+
+# The requested refusal product, in both option orders: the receipt is the
+# only product, carries the admission's typed failure plus the input
+# identity, and no legacy stage ran (no source text, no legacy summary).
+foreach(arguments IN ITEMS "--function-source;--value-source"
+                            "--value-source;--function-source")
+  execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}" "7586" ${arguments}
+    RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
+  if(status EQUAL 0)
+    message(FATAL_ERROR "refused route must not exit 0: ${arguments}")
+  endif()
+  string(JSON route GET "${report}" route_receipt route)
+  if(NOT route STREQUAL "value_tree")
+    message(FATAL_ERROR "refusal lost its route: ${report}")
+  endif()
+  string(JSON stage GET "${report}" route_receipt stage)
+  if(NOT stage STREQUAL "decoded")
+    message(FATAL_ERROR "unexpected refusal stage: ${report}")
+  endif()
+  string(JSON coverage GET "${report}" route_receipt coverage)
+  if(NOT coverage STREQUAL "unsupported")
+    message(FATAL_ERROR "unexpected refusal coverage: ${report}")
+  endif()
+  string(JSON writer GET "${report}" route_receipt legacy_writer_used)
+  if(NOT writer STREQUAL "false")
+    message(FATAL_ERROR "refusal claims the legacy writer: ${report}")
+  endif()
+  string(JSON failure_class GET "${report}" route_receipt failure class)
+  string(JSON failure_reason GET "${report}" route_receipt failure reason)
+  if(NOT failure_class STREQUAL "unsupported" OR
+     NOT failure_reason STREQUAL "route_unavailable")
+    message(FATAL_ERROR "refusal lost its typed failure: ${report}")
+  endif()
+  string(JSON sha256 GET "${report}" route_receipt identity sha256)
+  if(NOT sha256 STREQUAL "${ABCD_ROUTE_HASH}")
+    message(FATAL_ERROR "receipt identity is not bound to the input: ${report}")
+  endif()
+  string(JSON method GET "${report}" route_receipt method)
+  string(JSON record GET "${report}" route_receipt record)
+  if(NOT method EQUAL 7586 OR NOT record EQUAL 6897)
+    message(FATAL_ERROR "receipt identity lost its entities: ${report}")
+  endif()
+  string(FIND "${report}" "\"source\":" source_at)
+  if(NOT source_at EQUAL -1)
+    message(FATAL_ERROR "refusal must not emit source text: ${report}")
+  endif()
+endforeach()
+
+# Summary mode: admission happens before the legacy semantic summary.
+execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}" "7586"
+  "--value-source" RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
+if(status EQUAL 0)
+  message(FATAL_ERROR "refused summary must not exit 0")
+endif()
+string(FIND "${report}" "route_receipt" receipt_at)
+if(receipt_at EQUAL -1)
+  message(FATAL_ERROR "summary mode lost its receipt: ${report}")
+endif()
+foreach(legacy_field IN ITEMS "\"ssa_values\"" "\"blocks\"" "\"instructions\"")
+  string(FIND "${report}" "${legacy_field}" field_at)
+  if(NOT field_at EQUAL -1)
+    message(FATAL_ERROR "legacy summary ran before admission: ${report}")
+  endif()
+endforeach()
+
+string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef nonce)
+set(root "${CMAKE_CURRENT_BINARY_DIR}/source_route_cli_${nonce}")
+execute_process(COMMAND "${ABCD_STRUCTURE}" "${ABCD_SAMPLE}" "${root}"
+  "--value-source" RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
+if(NOT status EQUAL 0)
+  message(FATAL_ERROR "value-route export failed: ${report}")
+endif()
+file(READ "${root}/manifest.json" manifest)
+string(JSON view GET "${manifest}" view)
+if(NOT view STREQUAL "declarations_with_value_route_receipts")
+  message(FATAL_ERROR "unexpected value-route view: ${manifest}")
+endif()
+string(JSON sha256 GET "${manifest}" sha256)
+if(NOT sha256 STREQUAL "${ABCD_ROUTE_HASH}")
+  message(FATAL_ERROR "manifest identity mismatch: ${manifest}")
+endif()
+string(JSON count LENGTH "${manifest}" records)
+if(count EQUAL 0)
+  message(FATAL_ERROR "value-route export lost its records")
+endif()
+math(EXPR last "${count} - 1")
+set(refused 0)
+foreach(index RANGE ${last})
+  string(JSON source_status GET "${manifest}" records ${index} source_status)
+  if(NOT source_status EQUAL 5)
+    message(FATAL_ERROR "record ${index} lacks a value-route refusal")
+  endif()
+  string(JSON route GET "${manifest}" records ${index} route_receipt route)
+  string(JSON record_sha GET "${manifest}" records ${index}
+    route_receipt identity sha256)
+  if(NOT route STREQUAL "value_tree" OR NOT record_sha STREQUAL "${ABCD_ROUTE_HASH}")
+    message(FATAL_ERROR "record ${index} receipt is not input-bound")
+  endif()
+  math(EXPR refused "${refused} + 1")
+endforeach()
+if(NOT refused EQUAL 19)
+  message(FATAL_ERROR "expected 19 refused records, saw ${refused}")
+endif()
+if(EXISTS "${root}/sources")
+  message(FATAL_ERROR "value route must not publish source files")
+endif()
+file(REMOVE_RECURSE "${root}")
+
+# A01 contrast on the same input: the legacy shared writer succeeds where the
+# value route refuses, and its artifacts are honestly marked Legacy.
+execute_process(COMMAND "${ABCD_STRUCTURE}" "${ABCD_SAMPLE}" "${root}"
+  "--shared-source" RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
+if(NOT status EQUAL 0)
+  message(FATAL_ERROR "legacy shared export failed: ${report}")
+endif()
+file(READ "${root}/manifest.json" manifest)
+string(JSON view GET "${manifest}" view)
+if(NOT view STREQUAL "declarations_with_incomplete_source")
+  message(FATAL_ERROR "unexpected shared view: ${manifest}")
+endif()
+string(JSON route GET "${manifest}" source_route)
+if(NOT route STREQUAL "legacy")
+  message(FATAL_ERROR "shared export lost its legacy route marking")
+endif()
+if(NOT EXISTS "${root}/sources")
+  message(FATAL_ERROR "legacy writer must still publish its sources")
+endif()
+file(REMOVE_RECURSE "${root}")

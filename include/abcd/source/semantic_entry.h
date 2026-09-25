@@ -12,11 +12,13 @@ namespace abcd::source {
 // work bounds retain the existing per-stage contract, not an aggregate quota.
 // Record exports are private mutable state:
 // discard them after any failed attempt, never retry with a partially used plan.
+// policy has no default (invocation-context rule in source_route.h): every
+// caller states the policy of its admitting entry.
 [[nodiscard]] SemanticBodyResult BuildEntrySource(
     const abc::MethodBody& body, const analysis::SemanticMethod& method,
     const abc::FrameLayout& frame, SourceForm form, std::string_view name,
     const MethodConstants& constants, ModuleExports* exports,
     analysis::SemanticBudget budget, std::size_t output_bytes,
-    RoutePolicy policy = RoutePolicy::kLegacyAllowed);
+    RoutePolicy policy);
 }  // namespace abcd::source
 #endif

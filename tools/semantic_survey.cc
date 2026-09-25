@@ -257,9 +257,10 @@ int SurveyRecords(const abcd::corpus::AbcFile& file,
   // This survey runs the legacy pipeline only (LegacyAllowed); its stage
   // labels predate route receipts and must not be read as value-tree stages.
   output << nlohmann::json{
-      {"schema", 5}, {"sha256_bytes", fingerprint.sha256.bytes},
+      {"schema", 6}, {"sha256_bytes", fingerprint.sha256.bytes},
       {"source_contract", source::SourceContractName(source::kSourceContract)},
       {"source_route", source::SourceRouteName(source::SourceRoute::kLegacy)},
+      {"abc_version", header.version.bytes},
       {"profile", static_cast<unsigned>(header.profile)},
       {"records", index.records.size()}, {"methods", index.methods.size()},
       {"source_complete", false}} << '\n';

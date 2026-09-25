@@ -42,8 +42,9 @@ void CheckLeafFunctions(const corpus::AbcFile& file, const abc::Header& header,
   const auto render = [&](const abc::MethodBody& body,
                           source::LocalLexicalBudget budget = {}) {
     std::ostringstream output;
-    const auto result = source::WriteBaseFunction(parent, body, output, budget,
-                                                  &constants, &lookup);
+    const auto result = source::WriteBaseFunction(
+        parent, body, output, source::RoutePolicy::kLegacyAllowed, budget,
+        &constants, &lookup);
     if (!std::holds_alternative<std::size_t>(result))
       Check(output.str().empty());
     return std::pair(result, output.str());

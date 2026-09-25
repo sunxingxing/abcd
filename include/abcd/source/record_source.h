@@ -17,11 +17,14 @@ using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure,
 // its separate allowance. The caller must stage publication and recheck file.
 // Optional realm_binding is an explicit embedding-host trust capability; it
 // is never fabricated from an import, free identifier or mutable property.
+// policy has no default (invocation-context rule in source_route.h): the
+// record entry refuses before any stage when the legacy writer is not
+// permitted, so callers never receive a legacy fallback here.
 [[nodiscard]] RecordSourceResult BuildRecordSource(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const abc::RecordInfo& record, const RecordModuleContext& context,
-    const analysis::MethodRoleIndex& roles, RecordProgramBudget budget = {},
-    const HostRealmBinding* realm_binding = nullptr);
+    const analysis::MethodRoleIndex& roles, RecordProgramBudget budget,
+    const HostRealmBinding* realm_binding, RoutePolicy policy);
 }  // namespace abcd::source
 #endif
