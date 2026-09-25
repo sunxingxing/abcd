@@ -199,6 +199,7 @@ target_sources(abcd_source PRIVATE src/source/leaf_creation.cc)
 target_sources(abcd_source PRIVATE src/source/leaf_sources.cc
   src/source/semantic_binding.cc src/source/semantic_capture.cc)
 target_sources(abcd_source PRIVATE src/source/source_route.cc)
+target_sources(abcd_source PRIVATE src/source/value_stage.cc)
 target_link_libraries(abcd_source PUBLIC abcd_analysis PRIVATE abcd_json)
 target_compile_features(abcd_source PUBLIC cxx_std_20)
 target_include_directories(abcd_source PUBLIC include)

@@ -61,6 +61,8 @@ enum class RouteFailureClass : std::uint8_t {
 enum class ValueRouteError : std::uint8_t {
   // No value-tree stage is implemented past route admission yet (T00).
   kRouteUnavailable = 0,
+  kInputStage,
+  kImportStage,
 };
 struct RouteFailure {
   RouteFailureClass failure_class;
@@ -90,8 +92,8 @@ struct RouteInputIdentity {
 // evidence is signed by the stage that reached it; nullopt records that no
 // route stage ran. Serializers must not invent stages or coverage.
 // work_revision binds a receipt to the working-IR revision it was produced
-// from; no such revision exists at route admission yet, so it is typed absent
-// here and serialized as an explicit null, never invented (T00).
+// from; it is absent before ValuesImported and mandatory on working products.
+// Legacy products never carry a working revision (schema 3).
 struct MethodRouteReceipt {
   RouteInputIdentity identity{};
   std::optional<abc::EntityOffset> method = {};
@@ -101,7 +103,7 @@ struct MethodRouteReceipt {
   Coverage coverage = Coverage::kUnsupported;
   bool legacy_writer_used = false;
   std::optional<RouteFailure> failure = {};
-  std::optional<std::uint32_t> work_revision = {};
+  std::optional<std::uint64_t> work_revision = {};
 };
 
 // Boundary label names; serialization only, engine decisions use the enums.
@@ -156,6 +158,8 @@ constexpr std::string_view RouteFailureClassName(RouteFailureClass kind) {
 constexpr std::string_view ValueRouteErrorName(ValueRouteError reason) {
   switch (reason) {
     case ValueRouteError::kRouteUnavailable: return "route_unavailable";
+    case ValueRouteError::kInputStage: return "input_stage";
+    case ValueRouteError::kImportStage: return "import_stage";
   }
   return {};
 }
@@ -189,11 +193,11 @@ struct RouteRefusal {
 // out-of-range integers, missing fields and receipts identifying neither a
 // method nor a record are rejected; a parse result is never defaulted into
 // success, and a parsed receipt must still satisfy ValidateRouteReceipt.
-inline constexpr unsigned kRouteReceiptSchema = 2;
+inline constexpr unsigned kRouteReceiptSchema = 3;
 // Engine/rules provenance of the admission and stage semantics above. Bump
 // with any change to them; receipts signed under other rules are rejected
 // rather than reinterpreted.
-inline constexpr std::uint32_t kRouteEvidenceRules = 2;
+inline constexpr std::uint32_t kRouteEvidenceRules = 3;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

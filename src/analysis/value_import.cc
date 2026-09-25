@@ -189,6 +189,12 @@ std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
         Require(instruction.pc == body.instructions[index].offset,
                 Error::kInputMismatch, instruction.pc);
         Require(!instruction.origin, Error::kResumeFlow, instruction.pc);
+        const auto operands = DescribeValueOperands(instruction);
+        if (const auto* error = std::get_if<OperandError>(&operands))
+          throw ValueImportFailure{
+              *error == OperandError::kUnsupportedOperation
+                  ? Error::kUnsupportedOperation : Error::kOperandMismatch,
+              instruction.pc};
         graph.origins.push_back({{index}, instruction.pc, {}});
         graph.input.sites[index] = OpId{index};
         graph.ops.push_back({Operation(instruction.operation),

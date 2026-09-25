@@ -14,7 +14,7 @@ Validated：测试、生成 JS 执行、基准与 RSS 测量仍被用户暂停�
 
 | ID | 能力 | 状态 | 说明与阻塞 |
 |---|---|---|---|
-| CAP-ROUTE | 路线策略/收据/义务闭合（RoutePolicy、MethodRouteReceipt、版本化边界） | BuildChecked | T00 交付并按评审修正：schema 2 收据绑定输入身份（sha256/file_size/abc_version/profile/source_contract），work_revision typed-absent；中央 ValidateRouteReceipt 用于解析与义务闭合；CLI 选项按序无关校验，admission 先于旧分析。`--value-source` 输出类型化拒绝，无旧 writer 回退。单测与 CLI 回归已写未运行；修正版 ABC-only 复查未执行。 |
+| CAP-ROUTE | 路线策略/收据/义务闭合（RoutePolicy、MethodRouteReceipt、版本化边界） | BuildChecked | T01 更新为 schema/rules 3：收据绑定输入身份；ValuesImported 起记录 work_revision，此前及 Legacy 保持缺省。中央校验覆盖解析、序列化和义务闭合。方法 CLI 可报告真实中间阶段，无旧 writer 回退。P1 ABC-only 核对见 progress.md；回归未执行。 |
 | CAP-DECODE | 容器/版本识别、指令解码、方法体解码 | BuildChecked | 既有能力；历史 normal-flow 记录曾覆盖 5,486,254 动态方法（早期证据，非新路成功数）。 |
 | CAP-CLASSIFY | 静态/动态分类与持久化 | BuildChecked | 900 文件/894 唯一内容/402 动态/498 静态为已记录证据；静态一律 skip，不计成功。 |
 
@@ -39,7 +39,7 @@ Validated：测试、生成 JS 执行、基准与 RSS 测量仍被用户暂停�
 
 | ID | 能力 | 状态 | 任务/阻塞 |
 |---|---|---|---|
-| CAP-VALUE-IMPORT | 只读输入 → ValueProgram typed 导入 + InputCorrespondence | Designed | T01。read-ordinal/role 映射、MethodEntry phi、may-throw 侧表。 |
+| CAP-VALUE-IMPORT | 只读输入 → ValueProgram typed 导入 + InputCorrespondence | BuildChecked | T01 部分实现：G1 operand/role、SSA 值、MethodEntry phi、逐操作异常侧表、使用链与对应验证；P1 达 ValuesImported。独立应用/profile、对抗图和完整输入/owner 验证仍待完成，非 T01 完成声明。 |
 | CAP-VALUE-SIMPLIFY | 可维护 use 链、identity copy 传播、phi-only SCC、死纯值清理 | Designed | T02。禁止删未用 getter/call。 |
 | CAP-TREE-G1 | 直线/if 函数树：Literal/SymbolRef/This/Member/Compare/Assignment + Block/If/Return | Designed | T03。P1 首个纵向贯通。 |
 | CAP-BINDING | Symbol/Scope/NameEvidence/TemporaryReason、参数 entry 绑定、默认值签名迁移 | Designed | T06。 |

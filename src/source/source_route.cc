@@ -39,7 +39,7 @@ constexpr std::string_view kCoverageNames[]{"complete", "incomplete",
 constexpr std::string_view kFailureClassNames[]{
     "unsupported", "unproved", "invalid_input", "invariant_violation",
     "work_limit", "memory_limit", "output_failure"};
-constexpr std::string_view kFailureReasonNames[]{"route_unavailable"};
+constexpr std::string_view kFailureReasonNames[]{"route_unavailable", "input_stage", "import_stage"};
 constexpr std::size_t kSha256TextBytes = 64;
 
 // Exact-range unsigned access (T00 correction R4): every integer field is
@@ -134,13 +134,13 @@ std::optional<RouteReceiptError> ValidateRouteReceipt(
   };
   if (!valid_entity(receipt.method) || !valid_entity(receipt.record))
     return RouteReceiptError::kIdentity;
-  // Schema 2 has no working-IR revision producer. In-memory obligations must
-  // reject the same invented provenance as the JSON boundary.
-  if (receipt.work_revision) return RouteReceiptError::kSchema;
   if (receipt.stage &&
       std::find(kValueStages.begin(), kValueStages.end(), *receipt.stage) ==
           kValueStages.end())
     return RouteReceiptError::kStage;
+  const bool has_work = receipt.route == SourceRoute::kValueTree &&
+      receipt.stage && *receipt.stage >= SourceStage::kValuesImported;
+  if (has_work != receipt.work_revision.has_value()) return RouteReceiptError::kSchema;
   if (receipt.coverage != Coverage::kComplete &&
       receipt.coverage != Coverage::kIncomplete &&
       receipt.coverage != Coverage::kUnsupported)
@@ -165,12 +165,23 @@ std::optional<RouteReceiptError> ValidateRouteReceipt(
         // A refusal carries its typed reason and claims no product.
         if (receipt.coverage != Coverage::kUnsupported)
           return RouteReceiptError::kCoverage;
-        if (receipt.failure->reason != ValueRouteError::kRouteUnavailable ||
-            receipt.failure->failure_class != RouteFailureClass::kUnsupported ||
-            receipt.failure->pc)
-          return RouteReceiptError::kFailure;
-        if (receipt.stage && *receipt.stage != SourceStage::kDecoded)
-          return RouteReceiptError::kStage;
+        if (static_cast<unsigned>(receipt.failure->failure_class) >=
+            std::size(kFailureClassNames)) return RouteReceiptError::kFailure;
+        switch (receipt.failure->reason) {
+          case ValueRouteError::kRouteUnavailable:
+            if (receipt.failure->failure_class != RouteFailureClass::kUnsupported ||
+                receipt.failure->pc) return RouteReceiptError::kFailure;
+            if (receipt.stage && *receipt.stage != SourceStage::kDecoded)
+              return RouteReceiptError::kStage;
+            break;
+          case ValueRouteError::kInputStage:
+            if (receipt.stage != SourceStage::kDecoded) return RouteReceiptError::kStage;
+            break;
+          case ValueRouteError::kImportStage:
+            if (receipt.stage != SourceStage::kInputVerified) return RouteReceiptError::kStage;
+            break;
+          default: return RouteReceiptError::kFailure;
+        }
         return {};
       }
       switch (receipt.coverage) {
@@ -323,12 +334,13 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
     receipt.identity.contract = *value;
   else
     return RouteReceiptError::kIdentity;
-  // Work revisions do not exist at admission yet: schema 2 receipts carry
-  // the typed absence only, and later tasks bump the schema when they start
-  // signing revisions (T00 correction R3).
+  // Schema 3 signs working revisions only after successful value import.
   const auto work_revision = parsed.find("work_revision");
-  if (work_revision == parsed.end() || !work_revision->is_null())
-    return RouteReceiptError::kSchema;
+  if (work_revision == parsed.end()) return RouteReceiptError::kSchema;
+  if (!work_revision->is_null()) {
+    receipt.work_revision = ParseUnsigned<std::uint64_t>(*work_revision);
+    if (!receipt.work_revision) return RouteReceiptError::kSchema;
+  }
   const auto method = parsed.find("method");
   const auto record = parsed.find("record");
   if (method == parsed.end() || record == parsed.end())

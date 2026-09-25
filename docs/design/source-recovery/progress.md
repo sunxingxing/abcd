@@ -40,7 +40,30 @@ This is expected admission refusal, not recovered source. Behavioral regression
 and resource validation remain unverified. Existing review findings have been
 addressed in implementation/specifications; this does not assert tests passed.
 
-## T01 Next
+## T01 In Progress
+
+Normal operand mapping, owned work graph, SSA import, use-chain checking and
+independent input correspondence traversal are implemented. The method CLI now
+calls BuildValueStage instead of refusing every decoded method at admission.
+It builds fresh input analysis/proof without legacy AST/printer participation.
+Receipt schema/evidence rules 3 require a working revision from ValuesImported
+onward; pre-import and legacy products keep typed absence.
+
+ABC-only inspection of pasteboard method 7586 now reports:
+
+```text
+stage=values_imported, coverage=incomplete, work_revision=0
+operations=21, values=29, uses=23, blocks=3, edges=3, exceptional_exits=3
+legacy_writer_used=false, failure=null, source_complete=false, executable=false
+exit 1 (no complete source yet)
+```
+
+This supersedes its T00-only route-unavailable observation above. Independent
+application/profile candidates, entry/phi adversarial cases and stronger
+input/owner verification remain outstanding; no full T01 validation claim.
+Regression specifications and generated-JS/resource execution remain paused.
+
+### Remaining Input Work
 
 Use immutable SemanticMethod/SSA and its source proof as the input layer.
 Import a separate owned ValueProgram with typed operation operands, explicit

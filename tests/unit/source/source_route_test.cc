@@ -100,6 +100,7 @@ int main() {
   MethodRouteReceipt tree_only = RefusedReceipt();
   tree_only.failure = {};
   tree_only.stage = SourceStage::kTreeVerified;
+  tree_only.work_revision = 0;
   tree_only.coverage = Coverage::kIncomplete;
   Check(valid(tree_only));  // TreeVerified alone is incomplete, not complete
   tree_only.coverage = Coverage::kComplete;
@@ -110,6 +111,7 @@ int main() {
   Check(valid(complete_value));
   MethodRouteReceipt complete_early = complete_value;
   complete_early.stage = SourceStage::kDecoded;
+  complete_early.work_revision.reset();
   Check(ValidateRouteReceipt(complete_early) == RouteReceiptError::kStage);
   MethodRouteReceipt complete_failed = complete_value;
   complete_failed.failure = RouteFailure{RouteFailureClass::kUnproved,
@@ -157,11 +159,12 @@ int main() {
   auto unbound = complete_value;
   unbound.identity = {};
   Check(ValidateRouteReceipt(unbound) == RouteReceiptError::kIdentity);
-  auto invented_revision = complete_value;
+  auto invented_revision = RefusedReceipt();
   invented_revision.work_revision = 0;
   Check(ValidateRouteReceipt(invented_revision) == RouteReceiptError::kSchema);
   auto published_refusal = RefusedReceipt();
   published_refusal.stage = SourceStage::kPublished;
+  published_refusal.work_revision = 0;
   Check(ValidateRouteReceipt(published_refusal) == RouteReceiptError::kStage);
   auto wrong_failure = RefusedReceipt();
   wrong_failure.failure->failure_class = RouteFailureClass::kUnproved;
@@ -197,14 +200,14 @@ int main() {
     mutated.replace(at, from.size(), to);
     Check(std::get<RouteReceiptError>(ParseRouteReceipt(mutated)) == expected);
   };
-  reject("\"schema\":2", "\"schema\":3", RouteReceiptError::kSchema);
-  reject("\"schema\":2", "\"schema\":\"2\"", RouteReceiptError::kSchema);
+  reject("\"schema\":3", "\"schema\":2", RouteReceiptError::kSchema);
+  reject("\"schema\":3", "\"schema\":\"3\"", RouteReceiptError::kSchema);
   // 4294967297 must not narrow to 1 on this platform (R4).
-  reject("\"schema\":2", "\"schema\":4294967297", RouteReceiptError::kSchema);
-  reject("\"schema\":2", "\"schema\":2.5", RouteReceiptError::kSchema);
-  reject("\"evidence_rules\":2", "\"evidence_rules\":1",
+  reject("\"schema\":3", "\"schema\":4294967297", RouteReceiptError::kSchema);
+  reject("\"schema\":3", "\"schema\":2.5", RouteReceiptError::kSchema);
+  reject("\"evidence_rules\":3", "\"evidence_rules\":1",
          RouteReceiptError::kEvidence);
-  reject("\"evidence_rules\":2", "\"evidence_rules\":4294967297",
+  reject("\"evidence_rules\":3", "\"evidence_rules\":4294967297",
          RouteReceiptError::kEvidence);
   reject("\"method\":7586", "\"method\":4294967297",
          RouteReceiptError::kIdentity);
@@ -280,12 +283,13 @@ int main() {
         RouteReceiptError::kWriter);
   contradiction = nlohmann::json::parse(text);
   contradiction["stage"] = "published";
+  contradiction["work_revision"] = 0;
   Check(std::get<RouteReceiptError>(ParseRouteReceipt(contradiction.dump())) ==
         RouteReceiptError::kStage);
   // An identity-free receipt never parses (R6: compare the error alternative,
   // not the variant index).
   const auto identity_free =
-      ParseRouteReceipt("{\"schema\":2,\"evidence_rules\":2}");
+      ParseRouteReceipt("{\"schema\":3,\"evidence_rules\":3}");
   const auto* identity_error = std::get_if<RouteReceiptError>(&identity_free);
   Check(identity_error != nullptr &&
         *identity_error == RouteReceiptError::kIdentity);

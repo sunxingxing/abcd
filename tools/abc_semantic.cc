@@ -14,6 +14,7 @@
 #include "abcd/abc/metadata_index.h"
 #include "abcd/abc/call_type.h"
 #include "abcd/abc/frame_layout.h"
+#include "abcd/source/value_stage.h"
 #include "abcd/abc/method_body.h"
 #include "abcd/abc/method_lookup.h"
 #include "abcd/analysis/method_roles.h"
@@ -94,7 +95,8 @@ source::MethodRouteReceipt ValueRouteReceipt(
   receipt.failure = failure;
   return receipt;
 }
-int ReportRouteReceipt(const source::MethodRouteReceipt& receipt) {
+int ReportRouteReceipt(const source::MethodRouteReceipt& receipt,
+                       const analysis::ValueProgram* graph = nullptr) {
   const auto serialized = source::SerializeRouteReceipt(receipt);
   const auto* json = std::get_if<std::string>(&serialized);
   if (!json) {
@@ -105,11 +107,16 @@ int ReportRouteReceipt(const source::MethodRouteReceipt& receipt) {
   }
   // The receipt is the requested product; a non-Complete coverage is still a
   // non-success exit so automation cannot mistake refusal for recovery.
-  std::cout << nlohmann::json{
+  nlohmann::json report{
       {"route_receipt", nlohmann::json::parse(*json)},
       {"source_complete", false},
-      {"executable", false}}
-            << '\n';
+      {"executable", false}};
+  if (graph) report["value_graph"] = {
+      {"operations", graph->ops.size()}, {"values", graph->values.size()},
+      {"uses", graph->uses.size()}, {"blocks", graph->blocks.size()},
+      {"edges", graph->edges.size()},
+      {"exceptional_exits", graph->exceptional_exits.size()}};
+  std::cout << report << '\n';
   if (!std::cout) return EXIT_FAILURE;
   return receipt.coverage == source::Coverage::kComplete &&
                  !receipt.failure
@@ -167,16 +174,20 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     const auto& failure = std::get<abc::BodyFailure>(decoded);
     return Fail(InspectError::kBody, failure.offset.value);
   }
-  // Route admission follows only the identity/decode steps this selector
-  // needs, before any legacy analysis or emission (T00 correction R5): a
-  // required value tree yields one unambiguous receipt product, and the
-  // legacy semantic/proof/region/print pipeline below never starts, in whole
-  // or in part.
+  // The required route consumes input analysis but never enters the legacy
+  // region/AST/printer path. T01 publishes intermediate evidence, not source.
   if (policy == source::RoutePolicy::kRequireValueTree) {
-    const auto admission = source::AdmitLegacyWriter(policy);
-    return ReportRouteReceipt(ValueRouteReceipt(
-        source::MakeRouteInputIdentity(*hash, *header),
-        *admission.value_route_failure, entity, method->owner_offset.value));
+    const auto call = abc::ReadCallType(file, *header, *index, method->annotations);
+    const auto* call_type = std::get_if<abc::CallType>(&call);
+    if (!call_type) return Fail(InspectError::kFrame);
+    const auto layout = abc::BuildFrameLayout(code.registers, code.arguments,
+                                              abc::DecodeCallFlags(call_type->value));
+    const auto* frame = std::get_if<abc::FrameLayout>(&layout);
+    if (!frame) return Fail(InspectError::kFrame);
+    auto stage = source::BuildValueStage(source::MakeRouteInputIdentity(*hash, *header),
+        method->offset, method->owner_offset, *body, *frame);
+    if (file.CheckUnchanged()) return Fail(InspectError::kBody);
+    return ReportRouteReceipt(stage.receipt, stage.graph ? &*stage.graph : nullptr);
   }
   if (detail == InspectDetail::kExceptionFlow || detail == InspectDetail::kExceptionTemplate) {
     // Child templates need the same-file membership and role owners used by

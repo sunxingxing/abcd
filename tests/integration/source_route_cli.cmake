@@ -45,9 +45,8 @@ foreach(arguments IN ITEMS
   endif()
 endforeach()
 
-# The requested refusal product, in both option orders: the receipt is the
-# only product, carries the admission's typed failure plus the input
-# identity, and no legacy stage ran (no source text, no legacy summary).
+# T01 imports this method in either option order, without emitting source or
+# entering the legacy writer. The method is still incomplete until T03.
 foreach(arguments IN ITEMS "--function-source;--value-source"
                             "--value-source;--function-source")
   execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}" "7586" ${arguments}
@@ -60,23 +59,22 @@ foreach(arguments IN ITEMS "--function-source;--value-source"
     message(FATAL_ERROR "refusal lost its route: ${report}")
   endif()
   string(JSON stage GET "${report}" route_receipt stage)
-  if(NOT stage STREQUAL "decoded")
-    message(FATAL_ERROR "unexpected refusal stage: ${report}")
+  if(NOT stage STREQUAL "values_imported")
+    message(FATAL_ERROR "unexpected import stage: ${report}")
   endif()
   string(JSON coverage GET "${report}" route_receipt coverage)
-  if(NOT coverage STREQUAL "unsupported")
-    message(FATAL_ERROR "unexpected refusal coverage: ${report}")
+  if(NOT coverage STREQUAL "incomplete")
+    message(FATAL_ERROR "unexpected import coverage: ${report}")
   endif()
   string(JSON writer GET "${report}" route_receipt legacy_writer_used)
   string(JSON writer_type TYPE "${report}" route_receipt legacy_writer_used)
   if(NOT writer_type STREQUAL "BOOLEAN" OR writer)
     message(FATAL_ERROR "refusal claims the legacy writer: ${report}")
   endif()
-  string(JSON failure_class GET "${report}" route_receipt failure class)
-  string(JSON failure_reason GET "${report}" route_receipt failure reason)
-  if(NOT failure_class STREQUAL "unsupported" OR
-     NOT failure_reason STREQUAL "route_unavailable")
-    message(FATAL_ERROR "refusal lost its typed failure: ${report}")
+  string(JSON failure_type TYPE "${report}" route_receipt failure)
+  string(JSON revision GET "${report}" route_receipt work_revision)
+  if(NOT failure_type STREQUAL "NULL" OR NOT revision EQUAL 0)
+    message(FATAL_ERROR "import lost its revision or claims failure: ${report}")
   endif()
   string(JSON sha256 GET "${report}" route_receipt identity sha256)
   if(NOT sha256 STREQUAL "${ABCD_ROUTE_HASH}")
@@ -103,7 +101,7 @@ string(FIND "${report}" "route_receipt" receipt_at)
 if(receipt_at EQUAL -1)
   message(FATAL_ERROR "summary mode lost its receipt: ${report}")
 endif()
-foreach(legacy_field IN ITEMS "\"ssa_values\"" "\"blocks\"" "\"instructions\"")
+foreach(legacy_field IN ITEMS "\"ssa_values\"" "\"instructions\"")
   string(FIND "${report}" "${legacy_field}" field_at)
   if(NOT field_at EQUAL -1)
     message(FATAL_ERROR "legacy summary ran before admission: ${report}")
