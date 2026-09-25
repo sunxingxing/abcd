@@ -34,6 +34,7 @@
 #include "entry_copy_elision.h"
 #include "argument_sequence.h"
 #include "rest_binding.h"
+#include "record_declarations.h"
 
 namespace abcd::source {
 namespace {
@@ -145,6 +146,8 @@ class SourcePrinter {
       for (const auto& binding : bindings_)
         views_.push_back(binding);
       names_ = {"$acc", views_};
+      observe_record_slots_ = record && CanObserveRecordSlots(ast_);
+      if (observe_record_slots_) PrepareSlotUses();
       if (ast_.statements.size() > limit_ / sizeof(GeneratedSpan))
         return SourceFailure{SourceError::kResourceLimit, {}};
       result_.spans.reserve(ast_.statements.size());
@@ -181,8 +184,10 @@ class SourcePrinter {
         Text("$p");
         Number(i);
       }
-      Text(record ? "let $acc;\n" : ") {\n\"use strict\";\nlet $acc;\n");
-      for (std::uint32_t i = 0; i < frame_.registers; ++i) {
+      const auto record_body = position_;
+      if (!observe_record_slots_)
+        Text(record ? "let $acc;\n" : ") {\n\"use strict\";\nlet $acc;\n");
+      for (std::uint32_t i = 0; !observe_record_slots_ && i < frame_.registers; ++i) {
         Text("let ");
         Text(bindings_[i]);
         if (record) {
@@ -206,6 +211,10 @@ class SourcePrinter {
       if (record) {
         if (!record_exports_->Complete())
           return SourceFailure{SourceError::kConstant, current_pc_};
+        if (observe_record_slots_) {
+          result_.vm_slots = vm_slots_;
+          InsertRecordDeclarations(result_, names_, record_body, limit_);
+        }
       } else {
         Text(form_ == SourceForm::kClassConstructor ? "}\n}\n" : "}\n");
       }
@@ -548,14 +557,17 @@ class SourcePrinter {
     if (elide_entry_copies_) {
       if (names_.rest)
         rest_local_ = FindRestLocal(*capture_method_, ast_, names_.rest->first_argument);
-      if (names_.registers.size() > limit_ / sizeof(RegisterUse))
-        throw SourceFailure{SourceError::kResourceLimit, {}};
-      result_.register_uses.resize(names_.registers.size(), RegisterUse::kUnused);
-      const auto use_bytes = result_.register_uses.capacity() * sizeof(RegisterUse);
-      if (use_bytes > limit_)
-        throw SourceFailure{SourceError::kResourceLimit, {}};
-      limit_ -= use_bytes;
+      PrepareSlotUses();
     }
+  }
+  void PrepareSlotUses() {
+    if (names_.registers.size() > limit_ / sizeof(RegisterUse))
+      throw SourceFailure{SourceError::kResourceLimit, {}};
+    result_.register_uses.resize(names_.registers.size(), RegisterUse::kUnused);
+    const auto use_bytes = result_.register_uses.capacity() * sizeof(RegisterUse);
+    if (use_bytes > limit_)
+      throw SourceFailure{SourceError::kResourceLimit, {}};
+    limit_ -= use_bytes;
   }
   void Scalar(const ScalarExpression& expression, bool read = true) {
     auto bound = expression;
@@ -573,7 +585,7 @@ class SourcePrinter {
   }
   void Value(const ScalarValue& value) { Scalar(ScalarExpression{value}); }
   void ObserveSlots(const ScalarExpression& expression, bool read) {
-    if (!elide_entry_copies_) return;
+    if (!elide_entry_copies_ && !observe_record_slots_) return;
     const auto observe = [&](const ScalarValue& value) {
       if (std::holds_alternative<Accumulator>(value)) {
         result_.accumulator_used = true;
@@ -780,6 +792,9 @@ class SourcePrinter {
       std::optional<ClassParent> parent;
       switch (created->heritage) {
         case analysis::HeritageKind::kUnknown:
+          // The class adapter takes an identifier instead of calling Value.
+          // Record slot census must include this read without ABI substitution.
+          ObserveSlots(ScalarValue{created->creation.parent}, true);
           parent = BoundClassParent{names_.registers[created->creation.parent.value]};
           break;
         case analysis::HeritageKind::kAbsent: break;
@@ -1019,6 +1034,8 @@ class SourcePrinter {
                   !std::holds_alternative<Accumulator>(operation.value) ||
                   operation.slot.value >= record_exports_->slot_count())
                 throw SourceFailure{SourceError::kConstant, current_pc_};
+              // ModuleExports owns the spelling but consumes the entry acc.
+              ObserveSlots(ScalarValue{Accumulator{}}, true);
               ClassBuffer buffer(*this);
               std::ostream stream(&buffer);
               stream.exceptions(std::ios::badbit | std::ios::failbit);
@@ -1573,6 +1590,7 @@ class SourcePrinter {
   std::optional<abc::RegisterId> rest_local_;
   bool elide_entry_copies_ = false;
   VmSlotUse vm_slots_ = VmSlotUse::kNone;
+  bool observe_record_slots_ = false;
   std::vector<LabelUse> label_uses_;
   const analysis::NormalFlow& blocks_;
   const analysis::SemanticMethod* capture_method_;

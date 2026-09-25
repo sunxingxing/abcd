@@ -173,6 +173,7 @@ target_sources(abcd_source PRIVATE src/source/catch_register_liveness.cc)
 target_sources(abcd_source PRIVATE src/source/created_function.cc)
 target_sources(abcd_source PRIVATE src/source/created_class.cc
   src/source/class_members.cc src/source/class_source.cc)
+target_sources(abcd_source PRIVATE src/source/record_declarations.cc)
 target_sources(abcd_source PRIVATE src/source/spread_field_constructor.cc)
 target_sources(abcd_source PRIVATE src/source/leaf_creation.cc)
 target_sources(abcd_source PRIVATE src/source/leaf_sources.cc

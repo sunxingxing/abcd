@@ -5,8 +5,9 @@
 
 namespace abcd::source {
 namespace {
-bool HasBoundReads(const SourceExpression& expression) {
-  return std::visit([](const auto& value) {
+enum class SlotReadMode { kBound, kRecord };
+bool HasBoundReads(const SourceExpression& expression, SlotReadMode mode) {
+  return std::visit([mode](const auto& value) {
     using T = std::decay_t<decltype(value)>;
     if constexpr (std::is_same_v<T, analysis::ScalarExpression> ||
                   std::is_same_v<T, MemberExpression> ||
@@ -29,30 +30,32 @@ bool HasBoundReads(const SourceExpression& expression) {
       // by its isolated scalar writer. AwaitValue reads through Value(). Keep
       // their effect/allocation/await admission checks in Expression unchanged.
       return true;
+    } else if constexpr (std::is_same_v<T, FunctionExpression> ||
+                         std::is_same_v<T, ClassExpression> ||
+                         std::is_same_v<T, CapturedExpression>) {
+      // Record-only census: child captures use lexical cells, not caller VM
+      // registers. The class parent identifier is observed explicitly. Do not
+      // extend ABI-copy substitution to these identifier-only consumers.
+      return mode == SlotReadMode::kRecord;
     } else {
       // Creation/capture and external-name consumers retain identifier-based
       // paths. Never infer their reads from the already generated source.
-      static_assert(std::is_same_v<T, FunctionExpression> ||
-                    std::is_same_v<T, ClassExpression> ||
-                    std::is_same_v<T, MethodExpression> ||
+      static_assert(std::is_same_v<T, MethodExpression> ||
                     std::is_same_v<T, AccessorExpression> ||
-                    std::is_same_v<T, CapturedExpression> ||
                     std::is_same_v<T, analysis::SuperRange>);
       return false;
     }
   }, expression);
 }
-}  // namespace
-
-bool CanElideEntryCopies(const SourceAst& ast) {
+bool HasObservedReads(const SourceAst& ast, SlotReadMode mode) {
   if (ast.argument_region || ast.regions.catches) return false;
-  return std::all_of(ast.statements.begin(), ast.statements.end(), [](const auto& statement) {
-    return std::visit([](const auto& operation) {
+  return std::all_of(ast.statements.begin(), ast.statements.end(), [mode](const auto& statement) {
+    return std::visit([mode](const auto& operation) {
       using T = std::decay_t<decltype(operation)>;
       if constexpr (std::is_same_v<T, SourceAssignment> ||
                     std::is_same_v<T, SourceLocalAssignment> ||
                     std::is_same_v<T, SourceReturnExpression>) {
-        return HasBoundReads(operation.value);
+        return HasBoundReads(operation.value, mode);
       } else if constexpr (std::is_same_v<T, analysis::NoOperation> ||
                            std::is_same_v<T, SourceMemberStore> ||
                            std::is_same_v<T, SourceOwnStore> ||
@@ -80,6 +83,15 @@ bool CanElideEntryCopies(const SourceAst& ast) {
       }
     }, statement.operation);
   });
+}
+}  // namespace
+
+bool CanElideEntryCopies(const SourceAst& ast) {
+  return HasObservedReads(ast, SlotReadMode::kBound);
+}
+
+bool CanObserveRecordSlots(const SourceAst& ast) {
+  return HasObservedReads(ast, SlotReadMode::kRecord);
 }
 
 bool IsBoundEntryCopy(const SourceStatement& statement,
