@@ -86,8 +86,9 @@ evaluated in the same order. Buffer admission, capture tokens, module scope and
 host-contract checks still belong to their existing typed writers. Calls are
 not treated as pure.
 
-Anonymous function/class definitions remain excluded: omitting an assignment
-target can affect inferred names. Method/accessor creation, rest, await and
+Class definitions remain excluded: their assembly needs a separate audit.
+Function creation now has the explicit-name audit described below.
+Method/accessor creation, rest, await and
 super also retain separate admission protocols. The ordered-target check and
 SSA use proof are unchanged; admitting an expression kind does not by itself
 permit removing a live register commit. New SourceExpression alternatives
@@ -102,3 +103,43 @@ Independent read-only review found no concrete issue. Tests, generated JS and
 RSS remain paused. Deferred regressions additionally include fresh allocation
 identity, throwing calls/constructors, capture mutation without VM-slot aliasing,
 global/module binding validation and anonymous-definition fallback.
+
+## Callable Arguments
+
+FunctionExpression now passes HasArgumentValue. The existing callable writer
+does not rely on an enclosing register assignment for SetFunctionName: named
+ordinary/async functions have explicit identifiers, anonymous ordinary/async
+functions use a computed empty property, and arrows use their explicit ABC
+name as a computed property. Both self-free arrows and self-retaining wrappers
+preserve that rule. Removing an assignment cannot infer a different `$r` name.
+
+The function's original creation instruction and PC remain in the AST. The
+existing LeafBuffer resolves typed lexical captures at that same site, retaining
+initialization, domain and owner checks. Child bodies have their own VM frame;
+creation does not write caller-private argument registers. Native argument
+evaluation preserves property lookup before closure creation and subsequent
+arguments, including exceptions. No callback is invoked by this transformation.
+
+This is an extension of the existing common argument path, not a callback-only
+writer. Ordered distinct targets and the exact SSA argument-read/use proof are
+unchanged. Live targets remain assignments even inside the native parameter
+list. No additional allocation, scan, dependency or asymptotic cost is added.
+Class/home-object assembly, rest, await and super retain their separate gates.
+
+Production abc_semantic/abc_structure builds and ABC-only export
+`build/pasteboard-callback-arguments-01` succeeded. Six pages improved; totals
+are 6,618 lines / 121,576 bytes versus 6,827 / 123,187 in
+`build/pasteboard-arrow-wrappers-02`. PageA.initialRender now passes callbacks
+and Column/Button/NavDestination directly to observeComponentCreation2 where
+the certificates hold. A still-used async callback target remains an assignment
+inside onClick, demonstrating that expression admission alone does not discard
+the register commit. CommonConstants and Logger sizes remain unchanged.
+
+Statuses remain eight incomplete records, two refused constructors at PC 14,
+and nine metadata records; partial maps retain 195 methods / 9,745 spans.
+Independent read-only review found no concrete correctness issue. Tests,
+generated JS execution and RSS checks remain paused. Deferred regressions add
+empty/named callable identities, live self bindings, default/rest strictness,
+captured-cell mutation, multiple callback arguments, throwing property lookup,
+retained target dependencies and creation/save/call position spans. Overall
+source equivalence and memory-cap compliance remain unverified.

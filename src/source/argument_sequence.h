@@ -18,6 +18,7 @@ inline bool HasArgumentValue(const SourceExpression& expression) {
                   std::is_same_v<T, analysis::GlobalObjectLoad> ||
                   std::is_same_v<T, LocalExpression> ||
                   std::is_same_v<T, CapturedExpression> ||
+                  std::is_same_v<T, FunctionExpression> ||
                   std::is_same_v<T, CallExpression> ||
                   std::is_same_v<T, MemberCallExpression> ||
                   std::is_same_v<T, analysis::ConstructorCall> ||
@@ -27,13 +28,15 @@ inline bool HasArgumentValue(const SourceExpression& expression) {
       // Effects remain in original order. These expressions cannot assign
       // caller-private VM bindings except through their explicit AST target.
       // Buffer writers still require primitive literals; calls are not pure.
+      // Callable writers preserve names explicitly (named function syntax or
+      // computed-property SetFunctionName), never by this assignment target.
+      // Closure capture tokens/domain proofs stay at the original creation PC.
       return true;
     } else {
-      // Named evaluation of anonymous function/class definitions can depend
-      // on their assignment target. Super, rest and await have separate owner
+      // Class/home-object assembly is not covered by the callable-name audit.
+      // Super, rest and await have separate owner
       // protocols. Do not admit them merely because they print expressions.
-      static_assert(std::is_same_v<T, FunctionExpression> ||
-                    std::is_same_v<T, ClassExpression> ||
+      static_assert(std::is_same_v<T, ClassExpression> ||
                     std::is_same_v<T, MethodExpression> ||
                     std::is_same_v<T, AccessorExpression> ||
                     std::is_same_v<T, analysis::SuperRange> ||
