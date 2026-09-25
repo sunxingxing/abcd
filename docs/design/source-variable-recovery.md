@@ -26,6 +26,11 @@ methods and constructors. Deletion requires a same-block overwrite, an audited
 exit without reading the copied value, or an immediate first-access kill in
 every direct normal successor. Multi-hop successor liveness remains deferred.
 
+Accumulator may-liveness and adjacent named-field read composition now run on
+the final AST (field-read-composition.md). This is the first effectful RHS
+composition slice, not general expression recovery. Register live-range names,
+conditional register temporaries and captured receivers remain unfinished.
+
 ## Immutable Parameter Copies
 
 FindEntryBindings scans the whole entry block for pure copies of caller-proved

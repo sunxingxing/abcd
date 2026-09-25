@@ -1292,9 +1292,11 @@ class SourcePrinter {
               using V = std::decay_t<decltype(value)>;
               if constexpr (std::is_same_v<V, analysis::ScalarValue>) {
                 Value(value);
-              } else {
-                static_assert(std::is_same_v<V, StringExpression>);
+              } else if constexpr (std::is_same_v<V, StringExpression>) {
                 QuotedString(PoolText(value.value));
+              } else {
+                static_assert(std::is_same_v<V, MemberExpression>);
+                Expression(SourceExpression{value});
               }
             }, operation.value);
             AssignmentEnd(form);
@@ -1329,9 +1331,11 @@ class SourcePrinter {
             std::visit([&](const auto& value) {
               using V = std::decay_t<decltype(value)>;
               if constexpr (std::is_same_v<V, analysis::ScalarValue>) Value(value);
-              else {
-                static_assert(std::is_same_v<V, StringExpression>);
+              else if constexpr (std::is_same_v<V, StringExpression>) {
                 QuotedString(PoolText(value.value));
+              } else {
+                static_assert(std::is_same_v<V, MemberExpression>);
+                Expression(SourceExpression{value});
               }
             }, operation.value);
             AssignmentEnd(form);

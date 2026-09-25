@@ -128,10 +128,11 @@ struct SourceAssignment {
   // annotation if later passes ever move the buffered allocation.
   std::optional<ObjectField> object_field;
 };
+using FieldValue = std::variant<analysis::ScalarValue, StringExpression, MemberExpression>;
 struct SourceMemberStore {
   analysis::ScalarValue object;
   abc::PoolIndex name;
-  std::variant<analysis::ScalarValue, StringExpression> value;
+  FieldValue value;
 };
 struct SourceLocalStore {
   analysis::LocalCellId cell;
@@ -148,7 +149,7 @@ struct SourceModuleStore {
 struct SourceOwnStore {
   analysis::OwnWrite write;
   analysis::BufferedObjectCreation origin;
-  std::variant<analysis::ScalarValue, StringExpression> value =
+  FieldValue value =
       analysis::ScalarValue{analysis::Accumulator{}};
 };
 struct SourceMethodStore {

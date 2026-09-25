@@ -16,6 +16,7 @@
 #include "overwritten_accumulator.h"
 #include "receiver_binding.h"
 #include "store_snapshots.h"
+#include "field_reads.h"
 #include "result_copies.h"
 #include "unused_results.h"
 #include "binding_receivers.h"
@@ -792,6 +793,8 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     ElideOverwrittenAccumulator(method, ast);
     if (derived) RecoverReceiverBinding(method, ast, uses, copies, *derived);
     if (const auto failure = FoldStoreSnapshots(
+            method, ast, copy_bytes - (ast.allocated_bytes - retained_before))) return *failure;
+    if (const auto failure = FoldFieldReads(
             method, ast, copy_bytes - (ast.allocated_bytes - retained_before))) return *failure;
     return ast;
   } catch (const std::bad_alloc&) {

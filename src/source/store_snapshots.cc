@@ -35,9 +35,11 @@ std::optional<StoreSnapshot> Snapshot(const AstMethod& method,
   return StoreSnapshot{position, *target, *source};
 }
 bool ReadsStoreValue(
-    const std::variant<analysis::ScalarValue, StringExpression>& stored,
+    const FieldValue& stored,
     abc::RegisterId reg) {
   const auto* value = std::get_if<analysis::ScalarValue>(&stored);
+  if (const auto* member = std::get_if<MemberExpression>(&stored))
+    return ReadsRegister(SourceExpression{*member}, reg) != RegisterRead::kAbsent;
   return value && ReadsRegister(*value, reg);
 }
 bool EndsValue(const SourceOperation& operation, abc::RegisterId reg) {
