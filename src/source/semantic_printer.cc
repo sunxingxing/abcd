@@ -968,8 +968,16 @@ class SourcePrinter {
           if constexpr (std::is_same_v<T, SourceAssignment>) {
             if (!comma && elide_entry_copies_ &&
                 IsBoundEntryCopy(statement, entry_bindings_)) return;
-            Target(operation.target);
-            Text(" = ");
+            switch (operation.result) {
+              case AssignmentResult::kStored:
+                Target(operation.target);
+                Text(" = ");
+                break;
+              case AssignmentResult::kArgumentOnly:
+                if (form != StatementForm::kArgument)
+                  throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+                break;
+            }
             Expression(operation.value);
             switch (form) {
               case StatementForm::kStatement: Text(";\n"); break;

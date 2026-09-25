@@ -95,9 +95,11 @@ using SourceExpression =
                  analysis::BufferedArrayCreation, analysis::AwaitValue,
                  analysis::SuperRange, ClassExpression, MethodExpression,
                  AccessorExpression, analysis::GlobalObjectLoad, StringComparison>;
+enum class AssignmentResult : std::uint8_t { kStored, kArgumentOnly };
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;
+  AssignmentResult result = AssignmentResult::kStored;
 };
 struct SourceMemberStore {
   analysis::ScalarValue object;
