@@ -25,22 +25,35 @@ bool FoldMemberValue(const AstMethod& method, std::size_t position,
                      std::span<const std::size_t> uses) {
   const auto* assignment = std::get_if<SourceAssignment>(&head.operation);
   auto* member = std::get_if<SourceMemberStore>(&tail.operation);
+  const auto* member_value = member
+      ? std::get_if<analysis::ScalarValue>(&member->value) : nullptr;
   if (!assignment || !member || HasMergedOrigin(head) || HasMergedOrigin(tail) ||
       !std::holds_alternative<analysis::Accumulator>(assignment->target) ||
-      !std::holds_alternative<analysis::Accumulator>(member->value)) return false;
+      !member_value ||
+      !std::holds_alternative<analysis::Accumulator>(*member_value)) return false;
   const auto* expression = std::get_if<analysis::ScalarExpression>(&assignment->value);
   const auto* value = expression ? std::get_if<analysis::ScalarValue>(expression) : nullptr;
-  if (!value || std::holds_alternative<analysis::EmptyArray>(*value)) return false;
+  const auto* string = std::get_if<StringExpression>(&assignment->value);
+  if ((!value && !string) ||
+      (value && std::holds_alternative<analysis::EmptyArray>(*value))) return false;
   const auto& producer = method.instructions[position];
   const auto* scalar = std::get_if<analysis::ScalarAssignment>(&producer.operation);
   const auto* original_value = scalar
       ? std::get_if<analysis::ScalarValue>(&scalar->expression) : nullptr;
+  if (string) {
+    const auto* load = std::get_if<analysis::StringLoad>(&producer.operation);
+    if (!load || load->value != string->value) return false;
+  } else if (!original_value ||
+             std::holds_alternative<analysis::EmptyArray>(*original_value) ||
+             !std::holds_alternative<analysis::Accumulator>(scalar->destination) ||
+             scalar->completion != analysis::CompletionEffect::kNormal) {
+    return false;
+  }
   const auto* store = std::get_if<analysis::NamedWrite>(
       &method.instructions[position + 1].operation);
   const auto* receiver = std::get_if<abc::RegisterId>(&member->object);
-  if (!original_value || std::holds_alternative<analysis::EmptyArray>(*original_value) ||
-      !std::holds_alternative<analysis::Accumulator>(scalar->destination) ||
-      scalar->completion != analysis::CompletionEffect::kNormal ||
+  const auto& written = producer.effects.normal_registers.write;
+  if (!written || !std::holds_alternative<analysis::Accumulator>(*written) ||
       producer.effects.normal != analysis::LanguageEffect::kNone ||
       producer.effects.before_throw != analysis::LanguageEffect::kNone ||
       producer.effects.exceptional != analysis::ExceptionalCompletion::kImpossible ||
@@ -55,7 +68,10 @@ bool FoldMemberValue(const AstMethod& method, std::size_t position,
   // Only private slot reads or primitive constants move past receiver/key
   // evaluation. The named Set stays at its original PC with all setter/Proxy
   // effects. Exact uses include handler phis observing the removed acc write.
-  member->value = *value;
+  // Constant-pool strings remain typed pool references until the printer;
+  // no text parsing, allocation expression, or user-code evaluation moves.
+  if (string) member->value = *string;
+  else member->value = *value;
   head.operation = analysis::NoOperation{};
   return true;
 }

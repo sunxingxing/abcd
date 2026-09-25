@@ -95,7 +95,7 @@ struct SourceAssignment {
 struct SourceMemberStore {
   analysis::ScalarValue object;
   abc::PoolIndex name;
-  analysis::ScalarValue value;
+  std::variant<analysis::ScalarValue, StringExpression> value;
 };
 struct SourceLocalStore {
   analysis::LocalCellId cell;
