@@ -10,15 +10,15 @@ std::optional<analysis::SsaValueId> ArgumentDefinition(
     std::size_t end, abc::RegisterId target, std::span<const std::size_t> uses) {
   const auto& statement = ast.statements[position];
   if (statement.fused_read || statement.fused_spill || statement.fused_reload ||
-      statement.class_origin || statement.previous_origin) return {};
+      statement.class_origin || statement.literal_origin || statement.previous_origin) return {};
   const auto output = method.ssa.Write({static_cast<std::uint32_t>(position)});
   if (!output || output->value >= uses.size()) return {};
   const auto slot = method.ssa.Slot(*output);
   if (!slot) return {};
   if (const auto* reg = std::get_if<abc::RegisterId>(&*slot))
     return *reg == target ? output : std::nullopt;
-  // FoldStoredExpressions retargets an accumulator producer to the following
-  // private register save. The removed commit is that save's SSA definition,
+  // Stored-expression and object-initialization folding retarget a producer
+  // to its next private register save. The removed commit is that save's SSA definition,
   // not the earlier accumulator definition. Keep the origin anchor untouched.
   if (position + 1 >= end || uses[output->value] != 1 ||
       !IsRetargetedCopyAnchor(ast.statements[position + 1], statement)) return {};

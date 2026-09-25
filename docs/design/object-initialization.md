@@ -2,7 +2,7 @@
 
 ## Shared AST Contract
 
-FoldObjectInitialization is the final common AST pass. It annotates a buffered
+FoldObjectInitialization is the final expression-changing AST pass. It annotates a buffered
 SourceAssignment with a typed ObjectField rather than matching property names,
 source text or corpus identities. This first vertical slice admits one existing
 data-property initialization with EmptyArray; it is not a general multi-field
@@ -14,7 +14,8 @@ resource-exhaustion differences. Within one block it checks:
 - The original buffer allocation still targets the accumulator with unmerged
   origins, and its exact SSA result is consumed only by the next register save.
 - That save is an unchanged pure accumulator-to-register copy, including its
-  original destination and normal completion. The runtime save stays emitted.
+  original destination and normal completion. Its register commit is retargeted
+  to the literal producer, with the removed copy retaining a previous_origin anchor.
 - Until the field write, only already-eliminated pure slot copies and exactly
   one eliminated, normally completing EmptyArray allocation occur. No emitted
   read, call, getter, store, branch or publication is crossed.
@@ -32,7 +33,13 @@ This does not fold arbitrary Set operations or weaken own-property provenance.
 
 ObjectField currently emits only EmptyArray and rejects other typed values.
 The annotation stays on the assignment, so this pass must remain after generic
-expression/return/argument wrappers unless those are extended to carry it.
+expression/return wrappers unless those are extended to carry it. The subsequent
+FoldArgumentExpressions only annotates assignment results and preserves ObjectField.
+Exactly one certified own-store receiver read is deducted from the saved SSA
+definition's use count; all later and phi uses remain. The accumulator producer's
+count remains unchanged as evidence for its retargeted-copy certificate. Ordered
+native arguments may omit the register commit only when the call is that saved
+definition's sole remaining use. Other uses keep the register assignment.
 It introduces no hidden register reads to the exact-slot audit.
 
 ## Positions and Resources
@@ -72,3 +79,21 @@ effects, mismatched original identities, multiple fields, resource-profile
 fallback, hostile strings, output limits and fused map origins. Complete source
 equivalence, general object recovery and whole-process memory compliance remain
 unverified.
+
+## Native Argument Integration
+
+Production build and ABC-only export `build/pasteboard-object-args-01` succeeded.
+The 102 initialized literals now commit directly to their saved register rather
+than through an accumulator copy. Of these, 37 are emitted directly in native
+call argument positions instead of comma sequences. This corpus still retains
+their register commits under the conservative SSA use census; it does not prove
+the sole-call-use elimination branch. Output totals are 5,509 lines / 104,535
+bytes, down 176 lines / 1,622 bytes, not an increase in method coverage.
+
+Home method 6016 PCs 24, 28, 30 and 34 share bytes [19660,19766), the literal
+argument assignment in Button.createWithLabel. The save PC now joins the
+allocation and own-store origins. Partial maps retain 195 methods / 9,745 spans,
+with the same incomplete, refused and metadata-only statuses. Read-only review
+reported no concrete new defects. Tests, JS execution and RSS remain paused;
+deferred checks additionally include sole-call-use removal, retained phi uses,
+extra receiver reads and multi-use object commits.

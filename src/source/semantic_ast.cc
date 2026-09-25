@@ -757,10 +757,10 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     if (const auto failure = FoldClassAssembly(
             method, ast, copy_bytes - (ast.allocated_bytes - retained_before))) return *failure;
     FoldReturnExpressions(method, ast, uses);
-    FoldArgumentExpressions(method, ast, uses);
     ElideUnusedResults(method, ast, uses);
     FoldBindingReceivers(method, ast, uses);
     FoldObjectInitialization(method, ast, uses);
+    FoldArgumentExpressions(method, ast, uses);
     return ast;
   } catch (const std::bad_alloc&) {
     return Fail(SourceError::kResourceLimit);

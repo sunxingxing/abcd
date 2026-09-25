@@ -12,7 +12,7 @@ bool IsRetargetedCopyAnchor(const SourceStatement& statement,
   return std::holds_alternative<analysis::NoOperation>(statement.operation) &&
          statement.previous_origin == producer.pc && !statement.fused_read &&
          !statement.fused_spill && !statement.fused_reload &&
-         !statement.class_origin;
+         !statement.class_origin && !statement.literal_origin;
 }
 std::optional<analysis::SsaValueId> PrivateCopyOutput(
     const AstMethod& method, const SourceAst& ast, std::size_t producer,

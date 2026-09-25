@@ -11,7 +11,7 @@ bool Merged(const SourceStatement& statement) {
 }
 }
 void FoldObjectInitialization(const AstMethod& method, SourceAst& ast,
-                              std::span<const std::size_t> uses) {
+                              std::span<std::size_t> uses) {
   if (method.ssa.IsPhased() || ast.regions.catches ||
       ResourceFailures(kSourceContract) != ResourceFailureScope::kExcluded) return;
   for (const auto& block : method.flow.blocks) {
@@ -27,7 +27,7 @@ void FoldObjectInitialization(const AstMethod& method, SourceAst& ast,
           Merged(head) || assignment->object_field ||
           assignment->result != AssignmentResult::kStored ||
           !std::holds_alternative<analysis::Accumulator>(assignment->target)) continue;
-      const auto& save_node = ast.statements[i + 1];
+      auto& save_node = ast.statements[i + 1];
       const auto* save = std::get_if<SourceAssignment>(&save_node.operation);
       const auto* target = save ? std::get_if<abc::RegisterId>(&save->target) : nullptr;
       const auto* scalar = save ? std::get_if<analysis::ScalarExpression>(&save->value) : nullptr;
@@ -49,6 +49,7 @@ void FoldObjectInitialization(const AstMethod& method, SourceAst& ast,
       const auto saved = method.ssa.Write({static_cast<std::uint32_t>(i + 1)});
       const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(i + 1)});
       if (!output || !saved || output->value >= uses.size() ||
+          saved->value >= uses.size() || uses[saved->value] == 0 ||
           uses[output->value] != 1 || reads.size() != 1 || reads.front().value != *output)
         continue;
       auto field = i + 2;
@@ -84,17 +85,24 @@ void FoldObjectInitialization(const AstMethod& method, SourceAst& ast,
       const auto array = method.ssa.Write(*allocation);
       if (!array || array->value >= uses.size() || uses[array->value] != 1) continue;
       const auto inputs = method.ssa.Reads({static_cast<std::uint32_t>(field)});
-      bool receiver = false;
+      std::size_t receiver_reads = 0;
       bool rhs = false;
       for (const auto& read : inputs) {
-        receiver |= read.value == *saved;
+        receiver_reads += read.value == *saved;
         rhs |= read.value == *array;
       }
-      if (!receiver || !rhs) continue;
+      if (receiver_reads != 1 || !rhs || *saved == *array) continue;
       // No emitted operation observes the object between allocation and field
       // initialization. Buffer values are primitive and the writer verifies
       // that this key already exists, preserving order and data descriptors.
       assignment->object_field = ObjectField{store->write.name, *value};
+      // Retain the original save's SSA identity through the copy anchor. Only
+      // the certified own-store receiver read disappears; phi/later reads stay
+      // live. Argument folding may then remove a sole remaining call commit.
+      assignment->target = *target;
+      save_node.operation = analysis::NoOperation{};
+      save_node.previous_origin = head.pc;
+      --uses[saved->value];
       tail.operation = analysis::NoOperation{};
       tail.literal_origin = analysis::InstructionId{static_cast<std::uint32_t>(i)};
       ast.statements[allocation->value].literal_origin = tail.literal_origin;
