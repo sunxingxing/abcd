@@ -539,20 +539,21 @@ class SourcePrinter {
   }
   void PrepareEntryBindings() {
     // Phased exception owners have different SSA coordinates. Keep this first
-    // certificate on normal methods; names_.this_binding excludes arrows and
-    // derived constructors. Identifier-only capture consumers stay unchanged.
-    if ((!names_.this_binding && names_.parameter_writes.empty() && !names_.rest) ||
-        !capture_method_ || ast_.regions.catches) return;
+    // certificate on normal methods. Missing ABI substitutions do not prevent
+    // a slot census: all reads/targets still pass the complete AST audit.
+    if (!capture_method_ || ast_.regions.catches) return;
     // Body-only APIs deliberately have no wrapper FrameLayout. The owner
     // supplies the real register span and formal range in ScalarNames.
-    if (names_.registers.size() > limit_ / sizeof(EntryBinding))
-      throw SourceFailure{SourceError::kResourceLimit, {}};
-    entry_bindings_.resize(names_.registers.size());
-    const auto bytes = entry_bindings_.capacity() * sizeof(EntryBinding);
-    if (bytes > limit_)
-      throw SourceFailure{SourceError::kResourceLimit, {}};
-    limit_ -= bytes;
-    FindEntryBindings(*capture_method_, names_, entry_bindings_);
+    if (names_.this_binding || !names_.parameter_writes.empty() || names_.rest) {
+      if (names_.registers.size() > limit_ / sizeof(EntryBinding))
+        throw SourceFailure{SourceError::kResourceLimit, {}};
+      entry_bindings_.resize(names_.registers.size());
+      const auto bytes = entry_bindings_.capacity() * sizeof(EntryBinding);
+      if (bytes > limit_)
+        throw SourceFailure{SourceError::kResourceLimit, {}};
+      limit_ -= bytes;
+      FindEntryBindings(*capture_method_, names_, entry_bindings_);
+    }
     elide_entry_copies_ = CanElideEntryCopies(ast_);
     if (elide_entry_copies_) {
       if (names_.rest)

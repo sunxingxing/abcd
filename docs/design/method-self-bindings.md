@@ -9,8 +9,9 @@ Only the existing complete bound-read audit and precise VM-slot metadata can
 produce Unused. The method function-ABI register must not be emitted; a missing
 function slot is also unused under this certificate. Bounds are checked before
 indexing the usage vector. Admitted expression kinds have no separate hidden
-current-function name emission. Identifier-only creation/capture consumers and
+current-function name emission. Unaudited identifier-only class consumers and
 legacy body paths keep Unknown and therefore retain their self bindings.
+Function/capture consumers now pass the separate audit in `closure-slot-audit.md`.
 
 ClassWriter stores one admitted enum per ordinary buffered/attached member and
 passes its stable address through synchronous method emission. It omits the

@@ -16,8 +16,10 @@ adapter, so the printer explicitly observes that parent. The module export
 writer consumes the entry accumulator through its own text boundary, so that
 read is explicitly observed too. Absent heritage does not use a parent slot.
 
-This does not widen `CanElideEntryCopies`: creation consumers are still excluded
-from ABI-copy substitution. Record printing has no this/formal/rest substitution
+The record mode does not itself widen `CanElideEntryCopies`: class creation is
+still excluded from ABI-copy substitution. Function/capture consumers have
+since received their own common audit in `closure-slot-audit.md`.
+Record printing has no this/formal/rest substitution
 and does not remove assignments. Statement alternatives outside the audited set
 retain the previous full declaration prologue; they are not treated as unused.
 

@@ -15,6 +15,8 @@ bool HasBoundReads(const SourceExpression& expression, SlotReadMode mode) {
                   std::is_same_v<T, StringComparison> ||
                   std::is_same_v<T, ModuleExpression> ||
                   std::is_same_v<T, LocalExpression> ||
+                  std::is_same_v<T, FunctionExpression> ||
+                  std::is_same_v<T, CapturedExpression> ||
                   std::is_same_v<T, analysis::EmptyObjectCreation> ||
                   std::is_same_v<T, GlobalExpression> ||
                   std::is_same_v<T, analysis::GlobalObjectLoad> ||
@@ -29,17 +31,17 @@ bool HasBoundReads(const SourceExpression& expression, SlotReadMode mode) {
       // uses an owner-proven native rest formal, not the accumulator name used
       // by its isolated scalar writer. AwaitValue reads through Value(). Keep
       // their effect/allocation/await admission checks in Expression unchanged.
+      // Leaf functions receive MethodConstants, never caller ScalarNames.
+      // Their outer bindings and CapturedExpression use typed lexical cells;
+      // initialization/domain checks and zero-width capture tokens remain.
       return true;
-    } else if constexpr (std::is_same_v<T, FunctionExpression> ||
-                         std::is_same_v<T, ClassExpression> ||
-                         std::is_same_v<T, CapturedExpression>) {
-      // Record-only census: child captures use lexical cells, not caller VM
-      // registers. The class parent identifier is observed explicitly. Do not
-      // extend ABI-copy substitution to these identifier-only consumers.
+    } else if constexpr (std::is_same_v<T, ClassExpression>) {
+      // The class parent identifier is observed explicitly in record mode.
+      // Do not extend ABI substitution to this identifier-only consumer.
       return mode == SlotReadMode::kRecord;
     } else {
-      // Creation/capture and external-name consumers retain identifier-based
-      // paths. Never infer their reads from the already generated source.
+      // These owner-specific protocols remain outside the bound-read audit.
+      // Never infer their reads from the already generated source.
       static_assert(std::is_same_v<T, MethodExpression> ||
                     std::is_same_v<T, AccessorExpression> ||
                     std::is_same_v<T, analysis::SuperRange>);
