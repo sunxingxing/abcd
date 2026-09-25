@@ -30,7 +30,7 @@
 #include "await_positions.h"
 #include "capture_positions.h"
 #include "label_uses.h"
-#include "receiver_copy.h"
+#include "entry_bindings.h"
 
 namespace abcd::source {
 namespace {
@@ -70,7 +70,7 @@ class SourcePrinter {
       if (const auto failure = VerifyOwnFields(ast_, constants_)) return *failure;
       PrepareLabels();
       names_ = names;
-      PrepareReceiverCopy();
+      PrepareEntryBindings();
       DeclareLocals();
       if (ast_.statements.size() > limit_ / sizeof(GeneratedSpan))
         return SourceFailure{SourceError::kResourceLimit, {}};
@@ -523,17 +523,26 @@ class SourcePrinter {
       throw SourceFailure{SourceError::kOutput, current_pc_};
     Text({buffer, static_cast<std::size_t>(converted.ptr - buffer)});
   }
-  void PrepareReceiverCopy() {
+  void PrepareEntryBindings() {
     // Phased exception owners have different SSA coordinates. Keep this first
     // certificate on normal methods; names_.this_binding excludes arrows and
     // derived constructors. Identifier-only capture consumers stay unchanged.
-    if (names_.this_binding && capture_method_ && !ast_.regions.catches)
-      receiver_copy_ = FindReceiverCopy(*capture_method_, *names_.this_binding);
+    if ((!names_.this_binding && names_.parameter_writes.empty()) ||
+        !capture_method_ || ast_.regions.catches) return;
+    // Body-only APIs deliberately have no wrapper FrameLayout. The owner
+    // supplies the real register span and formal range in ScalarNames.
+    if (names_.registers.size() > limit_ / sizeof(EntryBinding))
+      throw SourceFailure{SourceError::kResourceLimit, {}};
+    entry_bindings_.resize(names_.registers.size());
+    const auto bytes = entry_bindings_.capacity() * sizeof(EntryBinding);
+    if (bytes > limit_)
+      throw SourceFailure{SourceError::kResourceLimit, {}};
+    limit_ -= bytes;
+    FindEntryBindings(*capture_method_, names_, entry_bindings_);
   }
   void Scalar(const ScalarExpression& expression, bool read = true) {
     auto bound = expression;
-    if (read && receiver_copy_ && names_.this_binding)
-      BindReceiverCopy(bound, *receiver_copy_, *names_.this_binding);
+    if (read) BindEntryReads(bound, entry_bindings_);
     std::ostringstream stream;
     const auto emitted = WriteScalarExpression(
         bound, names_, stream, {limit_ - result_.text.size()});
@@ -1411,7 +1420,7 @@ class SourcePrinter {
   }
 
   const SourceAst& ast_;
-  std::optional<abc::RegisterId> receiver_copy_;
+  std::vector<EntryBinding> entry_bindings_;
   std::vector<LabelUse> label_uses_;
   const analysis::NormalFlow& blocks_;
   const analysis::SemanticMethod* capture_method_;

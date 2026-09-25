@@ -1,5 +1,9 @@
 # Entry Receiver Copy
 
+The initial single-receiver implementation below has been superseded by the
+shared bounded entry-binding table in `entry-bindings.md`. Its receiver proof
+boundaries remain; immutable formal copies now share the same SSA scans.
+
 The common printer can now recover the first direct ABI receiver copy in a
 normal method's pure entry register-copy prefix. This builds on the owner's
 typed read-only native-this binding, not the register's spelling or debug name.

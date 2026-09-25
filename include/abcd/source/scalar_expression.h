@@ -30,6 +30,11 @@ struct ScalarNames {
   // Keep the register identifier for capture/legacy consumers; this typed
   // binding applies only to expression reads, never arbitrary identifier text.
   std::optional<abc::RegisterId> this_binding{};
+  // Complete fixed-parameter may-write counts, indexed by formal ordinal.
+  // Empty means no certificate. Borrowed from the callable owner; zero means
+  // the corresponding ABI slot retains its entry value for the whole body.
+  std::span<const std::int64_t> parameter_writes{};
+  abc::RegisterId first_parameter{};
 };
 // Emits an expression, not a method/record. Referenced names must be declared,
 // initialized, side-effect-free local bindings supplied by the caller. Only

@@ -939,7 +939,7 @@ FunctionEmitResult WriteCallable(const CallableShape& function,
              : std::nullopt,
         direct_writes.sites,
         function.syntax == CallableSyntax::kRangeDerivedConstructor,
-        this_binding};
+        this_binding, parameter_writes, function.frame.first_parameter};
     // The common printer owns an unpublished artifact and discards it on
     // failure. Re-running nested bodies for its preflight doubles expansion
     // at every depth. Keep preflight when this owner may retry a constructor
