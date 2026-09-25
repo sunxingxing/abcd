@@ -73,7 +73,9 @@ SpreadFieldConstructorResult ProveSpreadFieldDerivedConstructor(
             abc::Opcode::kSTOBJBYNAME_IMM16_ID16_V8) {
       if (++field_count > field_budget) return Error::kResourceLimit;
     }
-  if (field_count == 0) return Error::kInstruction;
+  // A compiler-generated default constructor uses the same rest/super/guard
+  // protocol with no trailing fields. Zero fields does not relax that proof
+  // or the source owner's separate lifetime parent-brand requirement.
   try {
     std::vector<Origin> registers(frame.registers);
     SpreadFieldDerivedConstructor proof;

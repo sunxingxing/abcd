@@ -115,3 +115,23 @@ record remains
 unpublished. With a trusted witness, its next class-member obstacle is an
 exception-region environment-flow proof. This proof does not claim all
 derived constructors.
+
+### Zero-field Rest-spread Constructors
+
+The same proof now accepts zero trailing string-field writes. It still requires
+the exact rest prologue, current constructor, rest-array provenance, single
+super call, this guards/binding and terminal super-result return. Source
+emission keeps explicit `constructor(...$rest) { super(...$rest); }`; it does
+not omit the constructor or substitute a default native forwarding protocol.
+The separate lifetime parent-brand requirement remains unchanged.
+
+ABC-only debugger inspection of EntryBackupAbility constructor 5493 confirms
+the proof returns an empty writes vector. Class emission then rejects the
+actual `ParentRuntimeInvariant::kUnproven`, explaining the record's remaining
+PC14 refusal. This is not an async method failure. A user decision about a
+versioned, narrowly scoped host-base-class premise has been requested; no such
+premise is currently installed. Both production CLIs build and read-only review
+found no concrete defect in the zero-field extension. Tests, generated-JS
+execution and RSS collection remain paused. Deferred regressions cover empty
+field sequences with malformed rest/guards, extra effects, nonterminal returns,
+wrong length, unknown parent brand and explicit-spread semantics.

@@ -64,7 +64,7 @@ FunctionEmitResult WriteSpreadFieldConstructor(
     const analysis::SpreadFieldDerivedConstructor& proof,
     std::uint16_t length, const MethodConstants& constants,
     std::ostream& output, EmitBudget budget) {
-  if (length != 0 || proof.writes.empty()) return FunctionEmitError::kLength;
+  if (length != 0) return FunctionEmitError::kLength;
   try {
     CaptureDiscard discard;
     std::ostream dry(&discard);

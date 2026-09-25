@@ -88,6 +88,8 @@ using SpreadFieldConstructorResult =
     std::variant<SpreadFieldDerivedConstructor, DerivedConstructorError>;
 // Exact pinned-v7 rest-spread constructor template. The proof preserves
 // ordered strict setter effects; it never reclassifies them as field defines.
+// An empty writes vector admits the default constructor protocol, not a
+// parent-brand invariant or permission to omit the explicit spread operation.
 // O(instructions + registers), bounded by the caller's byte admission.
 [[nodiscard]] SpreadFieldConstructorResult ProveSpreadFieldDerivedConstructor(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
