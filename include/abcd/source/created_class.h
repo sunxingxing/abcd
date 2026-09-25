@@ -91,9 +91,10 @@ using CreatedClassResult =
 // Other derived constructors and outer captures are not supported. Internal class
 // name supplies an immutable self binding without consulting mutable exports.
 // Retained target/buffer and scratch share budget.bytes; input indexes, strings
-// and output are separately admitted. Preflight rejects semantic/budget errors
-// without output. IO/file mutation/allocation failure require atomic
-// publication.
+// and output are separately admitted. A private class template separates body
+// preparation from publication, preserving typed captures and PC positions.
+// Preparation failures publish nothing; IO/file mutation/allocation and final
+// creation-site capture resolution failures require atomic publication.
 // A supplied module belongs to the caller's record. Constructors and members
 // in other records are rejected before receiving its import environment.
 // Optional enclosing_scope certifies every outer source binding, sorted by

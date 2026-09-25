@@ -19,10 +19,10 @@ the original immutable capture. Existing class-key validation proves these
 lookups are fresh own data properties; no getter effect is removed. The emitter
 does not replace a required self binding with a mutable prototype lookup.
 
-The class wrapper remains because its prefix is streamed before member-use
-results exist. Removing that wrapper requires a separate preparation/emission
-change and is not claimed here. No source-text reference counting or repeated
-body decompilation was added.
+Class preparation now retains these results before publishing its prefix;
+see `class-source-template.md`. The wrapper is omitted only when every member
+is Unused. No source-text reference counting or repeated body decompilation
+is used to make this decision.
 
 Storage is O(M) bytes for M member-use enums, admitted before allocation and
 charged by actual vector capacity. Usage checks are O(1) per method and class

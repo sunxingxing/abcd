@@ -6,6 +6,7 @@
 #include <limits>
 #include <new>
 #include <ostream>
+#include <stdexcept>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -20,6 +21,7 @@
 #include "capture_stream.h"
 #include "creation_expansion.h"
 #include "class_emission.h"
+#include "class_source.h"
 #include "parameter_names.h"
 #include "record_literal.h"
 #include "runtime_name.h"
@@ -227,16 +229,14 @@ class ClassWriter {
 
   std::size_t Write(const analysis::ClassCreation& creation,
                     const abc::MethodTarget& target,
-                    const abc::ClassBuffer& members, std::string_view name) {
-    const bool has_members = !members.properties.empty() ||
-                             !attached_methods_.empty();
+                    const abc::ClassBuffer& members, std::string_view name,
+                    bool& needs_wrapper) {
     if (members.properties.size() > SIZE_MAX - attached_methods_.size())
       throw ClassFailure{CreatedClassError::kResourceLimit};
     const auto self_count = members.properties.size() + attached_methods_.size();
     AdmitClassBytes(self_count, sizeof(SelfBindingUse), budget_.bytes);
     std::vector<SelfBindingUse> self_uses(self_count, SelfBindingUse::kUnknown);
     AdmitClassBytes(self_uses.capacity() - self_count, sizeof(SelfBindingUse), budget_.bytes);
-    if (has_members) Text("(() => {\nconst ClassValue = ");
     Text("(class ");
     Text(name);
     if (parent_) {
@@ -302,7 +302,9 @@ class ClassWriter {
         }
       }
     Text("\n})");
-    if (has_members) {
+    needs_wrapper = std::any_of(self_uses.begin(), self_uses.end(),
+        [](SelfBindingUse use) { return use != SelfBindingUse::kUnused; });
+    if (needs_wrapper) {
       Text(";\n");
       // All admitted keys are constant ordinary own data properties. No user
       // code can run before these captures, and the class has not escaped.
@@ -705,27 +707,40 @@ CreatedClassResult WriteCreatedClass(
                          attached_methods, roles, caller_owner, budget.bytes);
     CreationExpansion root(caller, budget.bytes, budget.work);
     auto& context = expansion ? *expansion : root;
-    // Determine the real sink's capability once. The dry sink must not grant
+    // Determine the real sink's capability once. The template must not grant
     // capture support that the publication sink does not have.
     const auto captures = dynamic_cast<CaptureBuffer*>(output.rdbuf())
         ? analysis::CapturedValues::kLanguage : analysis::CapturedValues::kReject;
-    if (!dynamic_cast<UnpublishedOutput*>(output.rdbuf())) {
-      CaptureDiscard discard;
-      std::ostream dry(&discard);
-      ClassWriter(file, header, index, lookup, roles, module, caller_owner,
-                  enclosing_scope, static_fields, accessors, attached_methods,
-                  parent, context, dry, budget, strings, captures)
-          .Write(creation, target, members, *name);
-    }
-    return ClassWriter(file, header, index, lookup, roles, module, caller_owner,
-                       enclosing_scope, static_fields, accessors,
-                       attached_methods, parent, context,
-                       output, budget, strings, captures)
-        .Write(creation, target, members, *name);
+    // Reserve disjoint allowances for the retained class template and live
+    // method preparation. No method is decompiled again to choose its wrapper.
+    constexpr std::size_t kPreparationShares = 2;
+    const auto retained_bytes = budget.bytes / kPreparationShares;
+    budget.bytes -= retained_bytes;
+    constexpr std::string_view kWrapper = "(() => {\nconst ClassValue = ";
+    ClassSource prepared(retained_bytes);
+    std::ostream buffered(&prepared);
+    // Preserve typed resource failures raised by the private buffer.
+    buffered.exceptions(std::ios_base::badbit | std::ios_base::failbit);
+    bool needs_wrapper = false;
+    const auto written = ClassWriter(
+        file, header, index, lookup, roles, module, caller_owner,
+        enclosing_scope, static_fields, accessors, attached_methods, parent,
+        context, buffered, budget, strings, captures)
+        .Write(creation, target, members, *name, needs_wrapper);
+    if (needs_wrapper && kWrapper.size() > budget.output.bytes - written)
+      return EmitError::kOutputLimit;
+    prepared.Replay(output, needs_wrapper ? kWrapper : std::string_view{});
+    return written + (needs_wrapper ? kWrapper.size() : 0);
   } catch (const ClassFailure& failure) {
     return failure.result;
   } catch (const std::bad_alloc&) {
     return CreatedClassError::kResourceLimit;
+  } catch (const std::length_error&) {
+    return CreatedClassError::kResourceLimit;
+  } catch (const SourceFailure& failure) {
+    return failure.kind == SourceError::kResourceLimit
+        ? CreatedClassResult{CreatedClassError::kResourceLimit}
+        : CreatedClassResult{EmitError::kInvalidExpression};
   } catch (const std::ios_base::failure&) {
     return EmitError::kWrite;
   }

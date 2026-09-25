@@ -171,7 +171,8 @@ target_sources(abcd_source PRIVATE src/source/branch_staged_calls.cc)
 target_sources(abcd_source PRIVATE src/source/structured_catch.cc)
 target_sources(abcd_source PRIVATE src/source/catch_register_liveness.cc)
 target_sources(abcd_source PRIVATE src/source/created_function.cc)
-target_sources(abcd_source PRIVATE src/source/created_class.cc src/source/class_members.cc)
+target_sources(abcd_source PRIVATE src/source/created_class.cc
+  src/source/class_members.cc src/source/class_source.cc)
 target_sources(abcd_source PRIVATE src/source/spread_field_constructor.cc)
 target_sources(abcd_source PRIVATE src/source/leaf_creation.cc)
 target_sources(abcd_source PRIVATE src/source/leaf_sources.cc
