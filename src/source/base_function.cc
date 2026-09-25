@@ -879,7 +879,9 @@ FunctionEmitResult WriteFunction(const BaseFunction& function,
         constants ? constants->header.profile : abc::ProfileId::kUnknown);
     if (const auto* error = std::get_if<FunctionEmitError>(&checked)) return *error;
     const auto& normalized = std::get<abc::MethodBody>(checked);
-    budget.bytes -= normalized.instructions.capacity() * sizeof(abc::BodyInstruction) +
+    budget.bytes -= normalized.tries.capacity() * sizeof(abc::TryRegion) +
+                    normalized.handlers.capacity() * sizeof(abc::CatchHandler) +
+                    normalized.instructions.capacity() * sizeof(abc::BodyInstruction) +
                     origins.capacity() * sizeof(abc::CodeOffset) +
                     awaits.capacity() * sizeof(analysis::AwaitSite);
     auto scoped = constants ? std::optional<MethodConstants>(*constants) : std::nullopt;
@@ -950,7 +952,9 @@ FunctionEmitResult WriteClassMethod(const ClassMethod& method,
     if (const auto* error = std::get_if<FunctionEmitError>(&checked))
       return *error;
     const auto& normalized = std::get<abc::MethodBody>(checked);
-    budget.bytes -= normalized.instructions.capacity() *
+    budget.bytes -= normalized.tries.capacity() * sizeof(abc::TryRegion) +
+                    normalized.handlers.capacity() * sizeof(abc::CatchHandler) +
+                    normalized.instructions.capacity() *
                     sizeof(abc::BodyInstruction) +
                     origins.capacity() * sizeof(abc::CodeOffset) +
                     awaits.capacity() * sizeof(analysis::AwaitSite);
@@ -1045,7 +1049,9 @@ FunctionEmitResult WriteArrowFunction(
     if (const auto* error = std::get_if<FunctionEmitError>(&checked))
       return *error;
     const auto& normalized = std::get<abc::MethodBody>(checked);
-    budget.bytes -= normalized.instructions.capacity() *
+    budget.bytes -= normalized.tries.capacity() * sizeof(abc::TryRegion) +
+                    normalized.handlers.capacity() * sizeof(abc::CatchHandler) +
+                    normalized.instructions.capacity() *
                     sizeof(abc::BodyInstruction) +
                     origins.capacity() * sizeof(abc::CodeOffset) +
                     awaits.capacity() * sizeof(analysis::AwaitSite);

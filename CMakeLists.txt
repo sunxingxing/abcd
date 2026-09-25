@@ -144,7 +144,7 @@ target_sources(abcd_source PRIVATE src/source/argument_region.cc src/source/sema
   src/source/semantic_objects.cc src/source/copy_origins.cc src/source/record_inputs.cc
   src/source/dead_copies.cc src/source/array_literals.cc
   src/source/class_assembly.cc src/source/assembled_class.cc)
-target_sources(abcd_source PRIVATE src/source/async_completion.cc)
+target_sources(abcd_source PRIVATE src/source/async_completion.cc src/source/async_handlers.cc)
 target_sources(abcd_source PRIVATE src/source/exception_source.cc)
 target_sources(abcd_source PRIVATE src/source/exception_body.cc)
 target_sources(abcd_source PRIVATE src/source/module_read_snapshot.cc)

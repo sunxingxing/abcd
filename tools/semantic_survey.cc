@@ -142,6 +142,8 @@ MethodProgress InspectMethod(const corpus::AbcFile& file,
       return {Stage::kNormalize, static_cast<unsigned>(*error)};
     normalized = std::get<abc::MethodBody>(std::move(prepared));
     if (!admit(normalized->instructions.capacity(), sizeof(abc::BodyInstruction)) ||
+        !admit(normalized->tries.capacity(), sizeof(abc::TryRegion)) ||
+        !admit(normalized->handlers.capacity(), sizeof(abc::CatchHandler)) ||
         !admit(origins.capacity(), sizeof(abc::CodeOffset)) ||
         !admit(awaits.capacity(), sizeof(analysis::AwaitSite)))
       return {Stage::kNormalize, static_cast<unsigned>(source::FunctionEmitError::kResourceLimit)};

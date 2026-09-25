@@ -7,6 +7,7 @@
 #include "abcd/abc/control_transfer.h"
 #include "abcd/abc/register_access.h"
 #include "abcd/analysis/coroutine.h"
+#include "async_handlers.h"
 
 namespace abcd::source {
 namespace {
@@ -90,8 +91,7 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
                                      abc::ProfileId profile) {
   using abc::Opcode;
   const auto& sites = body.instructions;
-  if (sites.size() < 7 || body.tries.size() != 1 ||
-      body.handlers.size() != 1)
+  if (sites.size() < 7 || body.tries.empty() || body.handlers.empty())
     return FunctionEmitError::kKind;
   std::size_t enter = 0;
   while (enter < sites.size() &&
@@ -136,17 +136,10 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
   const auto site_bytes = sizeof(abc::BodyInstruction) + sizeof(abc::CodeOffset);
   if (retained > bytes / site_bytes)
     return FunctionEmitError::kResourceLimit;
-  const auto& region = body.tries[0];
-  const auto& catch_handler = body.handlers[0];
   const std::uint64_t code_end =
       std::uint64_t(sites.back().offset.value) + sites.back().decoded.size;
-  if (region.offset != sites[enter + 2].offset ||
-      std::uint64_t(region.offset.value) + region.length !=
-          sites[handler].offset.value ||
-      region.first_handler != 0 || region.handler_count != 1 ||
-      catch_handler.type || catch_handler.offset != sites[handler].offset ||
-      std::uint64_t(catch_handler.offset.value) + catch_handler.length !=
-      code_end || code_end > std::numeric_limits<std::uint32_t>::max())
+  if (!HasAsyncCompletionCatch(body, sites[enter + 2].offset,
+                               sites[handler].offset, code_end))
     return FunctionEmitError::kKind;
   try {
   std::vector<analysis::AwaitRegion> regions;
@@ -262,6 +255,12 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       next_pc += site.decoded.size;
     }
     if (!RebaseBranches(body, origins, source)) return FunctionEmitError::kKind;
+    const auto retained_bytes = source.instructions.capacity() *
+        sizeof(abc::BodyInstruction) + origins.capacity() * sizeof(abc::CodeOffset);
+    if (retained_bytes > bytes) return FunctionEmitError::kResourceLimit;
+    if (const auto failure = RebaseAsyncHandlers(body, origins, source,
+                                                 bytes - retained_bytes))
+      return *failure;
     if (source_pcs) *source_pcs = std::move(origins);
     if (awaits) *awaits = std::move(await_sites);
     return source;

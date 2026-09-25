@@ -12,7 +12,9 @@ namespace abcd::source {
 // implicit rejection path. With awaits supplied, verified modern resume
 // regions are collapsed while retaining await, result and mode definitions;
 // only the generic IR may interpret these using the returned AwaitSite facts.
-// Other suspension and handler shapes are refused. Requires decoded input.
+// The exact final completion catch is removed; contained user handlers remain
+// in file order with rebased ranges. Other suspension/wrapper shapes are refused.
+// Requires decoded input. Exception-source admission is a separate proof.
 // The origin index rebases branches, including targets at removed settlement
 // operations. Optional provenance publishes it to the caller. All retained
 // arrays and temporary indexing share the normalization byte budget.
