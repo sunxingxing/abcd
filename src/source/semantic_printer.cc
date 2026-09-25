@@ -34,6 +34,7 @@
 #include "entry_copy_elision.h"
 #include "argument_sequence.h"
 #include "argument_region.h"
+#include "boolean_diamond.h"
 #include "rest_binding.h"
 #include "record_declarations.h"
 
@@ -621,8 +622,10 @@ class SourcePrinter {
       }
     }, expression);
   }
+  enum class PredicateForm { kCondition, kBooleanValue };
   void Predicate(const analysis::UnaryExpression& condition, bool inverted = false,
-                 const std::optional<PredicateInput>& input = {}) {
+                 const std::optional<PredicateInput>& input = {},
+                 PredicateForm form = PredicateForm::kCondition) {
     using analysis::UnaryOperator;
     if (condition.op == UnaryOperator::kToBoolean ||
         condition.op == UnaryOperator::kLogicalNot) {
@@ -636,13 +639,15 @@ class SourcePrinter {
                     unary->op == UnaryOperator::kLogicalNot)) {
         // ToBoolean never invokes user coercion. In a condition only polarity
         // matters; preserve the operand read once, including slot observation.
-        // Do not apply this identity to expression-valued results or numeric
-        // VM tests such as FalseOrZero.
+        // A value-producing region needs !! when no negation remains. Numeric
+        // VM tests such as FalseOrZero keep their distinct semantics below.
         if (negate != (unary->op == UnaryOperator::kLogicalNot)) Text("!");
+        else if (form == PredicateForm::kBooleanValue) Text("!!");
         Value(unary->input);
         return;
       }
       if (negate) Text("!");
+      else if (form == PredicateForm::kBooleanValue) Text("!!");
       if (input) std::visit([&](const auto& value) {
         using T = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<T, ScalarExpression>) Scalar(value);
@@ -655,9 +660,11 @@ class SourcePrinter {
       return;
     }
     if (input) throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+    if (form == PredicateForm::kBooleanValue) Text("!!(");
     if (inverted) Text("!(");
     Scalar(ScalarExpression{condition});
     if (inverted) Text(")");
+    if (form == PredicateForm::kBooleanValue) Text(")");
   }
   void Slot(const analysis::ScalarSlot& slot) {
     std::visit([&](const auto& value) { Value(ScalarValue{value}); }, slot);
@@ -1605,6 +1612,28 @@ class SourcePrinter {
     Statements(first, header_end - 1, argument);
     current_pc_ = terminator.pc;
     const auto begin = position_;
+    if (!argument) {
+      if (const auto diamond = ProveBooleanDiamond(ast_, blocks_, region)) {
+        Target(diamond->target);
+        // A value-producing diamond must still produce an actual boolean;
+        // condition-context simplification alone may produce a truthy object.
+        Text(" = ");
+        Predicate(branch->condition, diamond->body_value, branch->input,
+                  PredicateForm::kBooleanValue);
+        Text(";\n");
+        RelocateFusedOrigins(terminator, begin);
+        result_.spans.push_back({terminator.pc, begin, position_});
+        // Both exclusive arms represent this one commit. Retain every PC in
+        // original arm order, including eliminated pure copies and join jumps.
+        for (const auto id : {region.body, *region.alternate}) {
+          const auto& arm = blocks_.blocks[id.value];
+          const auto end = std::size_t(arm.first_instruction) + arm.instruction_count;
+          for (std::size_t i = arm.first_instruction; i < end; ++i)
+            result_.spans.push_back({ast_.statements[i].pc, begin, position_});
+        }
+        return;
+      }
+    }
     Text("if (");
     Predicate(branch->condition, true, branch->input);
     Text(") {\n");

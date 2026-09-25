@@ -52,8 +52,10 @@ The operand is emitted once through Value, so slot observation and ABI binding
 remain intact. ToBoolean does not invoke object coercion; evaluating it again
 only as the native condition cannot add getter, Proxy or host effects.
 
-This identity is not used for expression-valued results, FalseOrZero or
-TrueOrNonzeroNumber. It neither changes the AST's effect/SSA proof nor source
+This identity does not rewrite general expression-valued results, FalseOrZero
+or TrueOrNonzeroNumber. Boolean region emission additionally uses an explicit
+Boolean-value mode (see boolean-diamonds.md), retaining coercion when polarity
+alone would yield the operand value. It neither changes the AST's effect/SSA proof nor source
 origins: condition spans are measured while emitting the simplified condition.
 The local typed check is constant time with no allocation. Deferred checks
 include all polarity/inversion combinations, primitive/object truthiness,
