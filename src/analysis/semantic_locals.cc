@@ -10,6 +10,12 @@ namespace {
 auto Key(LocalCell cell) {
   return std::tuple(cell.environment.value, cell.slot.value);
 }
+bool CapturesEnvironment(const SemanticOperation& operation) {
+  return std::holds_alternative<FunctionCreation>(operation) ||
+         std::holds_alternative<ClassCreation>(operation) ||
+         std::holds_alternative<BufferedObjectCreation>(operation) ||
+         std::holds_alternative<BufferedArrayCreation>(operation);
+}
 }  // namespace
 std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
     const SemanticMethod& method, const EnvironmentFlow& environments,
@@ -36,6 +42,14 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
                                sizeof(LocalStoreSite) +
                                sizeof(std::optional<InstructionId>);
     if (count > budget.bytes / kCellBytes) return resource();
+    std::size_t captures_count = 0;
+    for (const auto& instruction : method.instructions) {
+      charge();
+      captures_count += CapturesEnvironment(instruction.operation);
+    }
+    if (captures_count > (budget.bytes - count * kCellBytes) / sizeof(InstructionId))
+      return resource();
+    plan.capture_barriers.reserve(captures_count);
     plan.cells.reserve(count);
     plan.accesses.reserve(count);
     plan.stores.reserve(count);
@@ -110,10 +124,7 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
              method.flow.blocks[block + 1].first_instruction <= i) ++block;
       const auto first = method.flow.blocks[block].first_instruction;
       const auto& operation = method.instructions[i].operation;
-      const bool captures = std::holds_alternative<FunctionCreation>(operation) ||
-                            std::holds_alternative<ClassCreation>(operation) ||
-                            std::holds_alternative<BufferedObjectCreation>(operation) ||
-                            std::holds_alternative<BufferedArrayCreation>(operation);
+      const bool captures = CapturesEnvironment(operation);
       bool read_only = false;
       if (preservation < preserved.size() &&
           preserved[preservation].pc <= method.instructions[i].pc) {
@@ -124,8 +135,10 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
         read_only = true;
         ++preservation;
       }
-      if (captures && !read_only)
+      if (captures && !read_only) {
         creation = InstructionId{static_cast<std::uint32_t>(i)};
+        plan.capture_barriers.push_back(*creation);
+      }
       if (binding >= environments.bindings.size() ||
           environments.bindings[binding].instruction != i) continue;
       const auto& site = environments.bindings[binding++];

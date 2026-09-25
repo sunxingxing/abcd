@@ -95,10 +95,17 @@ ResolveCreationCapture(
     initialized = scope.store.value < instruction &&
                   scope.begin <= entry && entry < scope.end;
   }
-  if (!allocation || !initialized ||
-      (proof.closure_writes == analysis::ClosureWrites::kUnknown &&
-       function.previous_creation &&
-       function.previous_creation->value >= allocation->value)) return fail();
+  if (!allocation || !initialized) return fail();
+  if (proof.closure_writes == analysis::ClosureWrites::kUnknown) {
+    // Consume the verifier's preservation-filtered barriers, not the AST's
+    // unfiltered previous-function hint. Unknown class/buffer captures must
+    // still block binding; read-only descendants do not erase initialization.
+    const auto& barriers = proof.locals.capture_barriers;
+    const auto next = std::lower_bound(barriers.begin(), barriers.end(),
+        function.instruction);
+    if (next != barriers.begin() && (next - 1)->value >= allocation->value)
+      return fail();
+  }
   switch (requirement) {
     case analysis::CaptureDomain::kLanguage: break;
     case analysis::CaptureDomain::kDefined: {

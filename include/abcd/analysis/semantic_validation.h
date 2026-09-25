@@ -74,6 +74,10 @@ struct LocalAccessPlan {
   // independently pass Language verification. No closure mutation is inferred.
   std::vector<std::optional<LocalInitialization>> initializations;
   std::vector<std::uint32_t> block_entries;
+  // Sorted creation instructions lacking same-body CapturePreservation.
+  // Includes callable/class/buffer captures; not merely the previous function.
+  // Empty means the verifier found no unpreserved sites, not initialization.
+  std::vector<InstructionId> capture_barriers;
   std::uint64_t work_units = 0;
   std::size_t AllocatedBytes() const {
     return cells.capacity() * sizeof(LocalCell) +
@@ -81,7 +85,8 @@ struct LocalAccessPlan {
            stores.capacity() * sizeof(LocalStoreSite) +
            allocations.capacity() * sizeof(std::optional<InstructionId>) +
            initializations.capacity() * sizeof(std::optional<LocalInitialization>) +
-           block_entries.capacity() * sizeof(std::uint32_t);
+           block_entries.capacity() * sizeof(std::uint32_t) +
+           capture_barriers.capacity() * sizeof(InstructionId);
   }
 };
 struct SemanticProof {
