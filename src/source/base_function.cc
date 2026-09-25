@@ -28,6 +28,7 @@
 #include "branch_source_facts.h"
 #include "constructor_fields.h"
 #include "function_template.h"
+#include "member_key.h"
 #include "staged_branch_call.h"
 #include "structured_catch.h"
 
@@ -244,17 +245,30 @@ class FunctionWriter {
         if (function_.placement == abc::ClassPlacement::kStatic)
           Text("static ");
         Text(function_.syntax == CallableSyntax::kAsyncClassMethod
-                 ? "async ["
+                 ? "async "
              : function_.syntax == CallableSyntax::kClassGetter
-                 ? "get ["
-             : function_.syntax == CallableSyntax::kClassSetter ? "set ["
-                                                                : "[");
+                 ? "get "
+             : function_.syntax == CallableSyntax::kClassSetter ? "set " : "");
         if (error_) return *error_;
-        const auto key = WriteStringLiteral(function_.key, output_,
-                                            {budget_.output.bytes - written_});
-        if (const auto* error = std::get_if<EmitError>(&key)) return *error;
-        written_ += std::get<std::size_t>(key);
-        Text("](");
+        switch (ClassifyMethodKey(function_.key)) {
+          case MemberKeySyntax::kIdentifier:
+            for (const auto unit : function_.key) {
+              const char ch = static_cast<char>(unit);
+              Text({&ch, 1});
+            }
+            break;
+          case MemberKeySyntax::kQuoted: {
+            Text("[");
+            if (error_) return *error_;
+            const auto key = WriteStringLiteral(function_.key, output_,
+                                                {budget_.output.bytes - written_});
+            if (const auto* error = std::get_if<EmitError>(&key)) return *error;
+            written_ += std::get<std::size_t>(key);
+            Text("]");
+            break;
+          }
+        }
+        Text("(");
       } else if (function_.syntax == CallableSyntax::kBaseConstructor ||
                  function_.syntax == CallableSyntax::kRangeDerivedConstructor) {
         Text("constructor(");

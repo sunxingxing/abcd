@@ -35,3 +35,28 @@ regressions include keyword/$/_ keys, empty and Unicode keys, lone surrogates,
 numeric key refusal, getter/Proxy observation, receiver identity, own-field
 semantics, output limits and generated positions. This is source-generation
 evidence, not completed source style or semantic-equivalence validation.
+
+## Class Method Names
+
+The callable printer now uses a separate `ClassifyMethodKey` boundary for
+already-admitted MethodDefinitions. It reuses ASCII IdentifierName spelling
+but keeps `constructor` and `prototype` computed regardless of placement.
+These grammar-sensitive exclusions do not replace class ownership, layout or
+descriptor checks, and do not grant admission to previously rejected members.
+Object data properties and class field declarations do not use this decision.
+
+Ordinary, async, static and accessor prefixes are preserved. Keywords are
+valid MethodDefinition names, including contextual `static`, `async`, `get`
+and `set`; the key and SetFunctionName result do not change. ASCII characters
+pass through the existing output budget; other UTF-16 names retain computed
+string-literal escaping. Cost is linear in key length with constant scratch.
+
+Both production CLIs build and read-only review found no concrete defect.
+ABC-only export to `build/pasteboard-method-keys-01` preserves eight incomplete
+application records and both host-constructor refusals at PC14. Logger emits
+`debug(...args)` and ProgressBar emits `get curBp()` and
+`set progressInfo(newValue)` with the same recovered parameters and bodies.
+Tests, JS execution and RSS measurement remain paused. Deferred checks cover
+ordinary/async/static/accessor combinations, contextual keyword keys,
+constructor/prototype exclusion, Unicode escaping, method names/lengths and
+output exhaustion. This change does not establish full source equivalence.

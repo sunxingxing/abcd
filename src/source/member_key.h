@@ -19,5 +19,14 @@ inline MemberKeySyntax ClassifyMemberKey(std::u16string_view name) {
     return start(ch) || (ch >= u'0' && ch <= u'9');
   }) ? MemberKeySyntax::kIdentifier : MemberKeySyntax::kQuoted;
 }
+// Class MethodDefinition only, not fields or object data properties. Literal
+// constructor/prototype keys have grammar-specific restrictions; keep their
+// computed spelling irrespective of placement. This does not admit a member
+// rejected by the independent class descriptor/ownership proof.
+inline MemberKeySyntax ClassifyMethodKey(std::u16string_view name) {
+  if (name == u"constructor" || name == u"prototype")
+    return MemberKeySyntax::kQuoted;
+  return ClassifyMemberKey(name);
+}
 }  // namespace abcd::source
 #endif
