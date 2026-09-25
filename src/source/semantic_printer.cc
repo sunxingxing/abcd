@@ -25,6 +25,7 @@
 #include "semantic_fields.h"
 #include "creation_expansion.h"
 #include "record_inputs.h"
+#include "class_assembly.h"
 
 namespace abcd::source {
 namespace {
@@ -447,22 +448,18 @@ class SourcePrinter {
           created->creation.parent.value >= names_.registers.size())
         throw SourceFailure{SourceError::kCreation, current_pc_};
       // Shared input verification admits only Language heritage here. Absent
-      // (Hole) heritage and later accessor assembly require separate proofs.
+      // (Hole) heritage is separate; attached members carry the AST's
+      // unobserved-assembly proof, with pool keys checked by the adapter.
       // The class owner rejects unresolved outer captures, so this stream
       // deliberately cannot carry template capture tokens.
       ClassBuffer buffer(*this);
       std::ostream stream(&buffer);
       stream.exceptions(std::ios::badbit | std::ios::failbit);
       const auto remaining = limit_ - result_.text.size();
-      const auto emitted = WriteCreatedClass(
-          constants_.file, constants_.header, constants_.index,
-          *constants_.leaf_methods, constants_.method, created->creation,
-          created->origin, {created->origin, analysis::HeritageKind::kUnknown},
+      const auto emitted = WriteAssembledClass(
+          *created, constants_, BoundClassParent{
+              names_.registers[created->creation.parent.value]},
           stream, {remaining, analysis::kDefaultSemanticWork, {remaining}},
-          constants_.string_budget, constants_.roles, constants_.module,
-          constants_.global_scope ? &*constants_.global_scope : nullptr,
-          nullptr, {}, BoundClassParent{
-              names_.registers[created->creation.parent.value]}, {},
           constants_.expansion ? constants_.expansion : &expansion_);
       if (!std::holds_alternative<std::size_t>(emitted)) {
         const bool resource = std::visit([](const auto& failure) {
@@ -805,7 +802,16 @@ class SourcePrinter {
         relocate(*statement.fused_read, statement.read_distance);
       }
     }
-    if (statement.previous_origin) {
+    if (statement.class_origin) {
+      const auto index = static_cast<std::size_t>(&statement - ast_.statements.data());
+      const auto origin = statement.class_origin->value;
+      if (origin >= index || result_.spans.size() < index - origin)
+        throw SourceFailure{SourceError::kOutput, current_pc_};
+      const auto& span = result_.spans[result_.spans.size() - (index - origin)];
+      if (span.pc != ast_.statements[origin].pc)
+        throw SourceFailure{SourceError::kOutput, current_pc_};
+      result_.spans.push_back({statement.pc, span.begin, span.end});
+    } else if (statement.previous_origin) {
       if (result_.spans.empty() ||
           result_.spans.back().pc != *statement.previous_origin ||
           begin.byte != position_.byte)

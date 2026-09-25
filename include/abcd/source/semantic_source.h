@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "abcd/abc/frame_layout.h"
+#include "abcd/abc/class_buffer.h"
 #include "abcd/analysis/semantic_region.h"
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/source/linear_body.h"
@@ -48,9 +49,17 @@ struct FunctionExpression {
   std::optional<analysis::InstructionId> previous_creation;
   std::optional<analysis::ExceptionNodeId> capture_site = {};
 };
+struct SourceClassMember {
+  analysis::FunctionCreation creation;
+  abc::PoolIndex key;
+  abc::ClassPlacement placement;
+  abc::ClassMethodKind kind;
+};
 struct ClassExpression {
   analysis::ClassCreation creation;
   abc::CodeOffset origin;
+  std::optional<abc::PoolIndex> prototype_key = {};
+  std::vector<SourceClassMember> assembled_members = {};
 };
 // These nodes preserve assembly operations before class ownership is proved.
 // They are not ordinary function literals or calls to mutable JS intrinsics.
@@ -156,6 +165,8 @@ struct SourceStatement {
   std::size_t spill_distance = 0;
   std::size_t reload_distance = 0;
   std::optional<abc::CodeOffset> previous_origin;
+  // Assembly operations folded into an earlier class share its generated span.
+  std::optional<analysis::InstructionId> class_origin = {};
 };
 struct SourceArgumentRegion {
   analysis::InstructionId property;
