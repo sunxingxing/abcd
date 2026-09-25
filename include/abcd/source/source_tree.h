@@ -30,7 +30,7 @@ enum class NameEvidence : std::uint8_t { kMetadata, kDebugRange, kSynthesized };
 enum class DeclarationKind : std::uint8_t { kParameter, kLet, kConst };
 enum class TemporaryReason : std::uint8_t {
   kMultipleUses, kEffectSnapshot, kPhiJoin, kParallelCopyCycle,
-  kCrossRegionValue, kReferenceSnapshot, kUnprovedInline
+  kCrossRegionValue, kReferenceSnapshot, kUnprovedInline, kPredicateSnapshot
 };
 struct TreeScope {
   ScopeKind kind;

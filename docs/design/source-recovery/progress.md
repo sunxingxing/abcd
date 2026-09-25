@@ -215,3 +215,36 @@ cover diamonds, skipped/early-return arms, nested branches, parallel edges, stal
 revisions and 200/201/4096-block chains. Execution remains paused. Control/AST
 construction is not yet connected to source publication; the current public route
 still stops truthfully at ValuesVerified.
+
+### T03 Evaluation Ownership
+
+BuildEvaluationPlan now assigns every retained operation exactly one evaluation
+root or one inlining occurrence. A typed schema specifies JS operand order for
+the G1 operation subset; protocol reads, unresolved live phis and operations
+without an admitted syntax shape are explicit refusals. It does not infer order
+from opcode names or SSA read ordinal.
+
+Within a basic block, each candidate subtree carries a contiguous ordered-effect
+interval. Reverse operand traversal admits only a suffix of the effects already
+executed before the consumer. Pure ancestors carry their inlined children's
+intervals too, so they cannot hide a getter moving across a write. Rejected
+inlining remains a snapshot at the original operation; multiple uses and
+cross-block uses retain distinct typed temporary reasons. Heap reads/writes and
+control operations are always ordered. Pure DAGs are not recursively duplicated.
+
+VerifyEvaluationPlan independently expands the proposed forest using an explicit
+stack, compares its ordered occurrences with the original block sequence, and
+checks unique ownership and same-block producer availability. It does not rerun
+the suffix-selection algorithm. Construction and checking are O(I+V+U), with
+admitted storage and work limits. This is an evaluation certificate, not yet a
+binding, lexical-scope or complete source-tree certificate. Regression sources
+cover two getters, reversed operands, writes between reads and consumers, effects
+inside pure subtrees, shared values, cross-block snapshots and 200/201/4096-node
+expression chains. Tests and RSS execution remain paused.
+
+VM FalseOrZero/TrueOrNonzeroNumber predicates need additional care: their exact
+JS expansion can read the operand repeatedly. Non-Boolean producer expressions
+therefore keep a PredicateSnapshot, even for a single SSA use. Proven Boolean
+results may inline because the predicate reduces to one Boolean evaluation.
+This rule applies to unary results and branches, and the independent verifier
+rejects a forged inlining plan that would duplicate a getter through a predicate.

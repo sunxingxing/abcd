@@ -1,0 +1,47 @@
+#ifndef ABCD_SOURCE_EVALUATION_PLAN_H_
+#define ABCD_SOURCE_EVALUATION_PLAN_H_
+
+#include <span>
+#include "abcd/source/source_tree.h"
+
+namespace abcd::source {
+enum class EvaluationKind : std::uint8_t { kRemoved, kRoot, kInline };
+struct OpEvaluation {
+  EvaluationKind kind = EvaluationKind::kRemoved;
+  std::optional<analysis::UseId> consumer;
+  std::optional<TemporaryReason> temporary;
+};
+struct EvaluationPlan {
+  analysis::IrRevision revision;
+  analysis::CfgRevision cfg_revision;
+  std::vector<OpEvaluation> operations;
+  std::size_t allocated_bytes = 0;
+  std::uint64_t work = 0;
+};
+enum class EvaluationError : std::uint8_t {
+  kRevision, kInvalidGraph, kUnsupportedOperation, kProtocolOperand, kLivePhi,
+  kOwnership, kOrder, kUnavailableValue, kWorkLimit, kResourceLimit
+};
+struct EvaluationShape {
+  std::span<const analysis::OperandRole> roles;
+  bool expression;
+};
+// Explicit JS operand order for admitted G1 operations; not SSA read order.
+[[nodiscard]] std::optional<EvaluationShape> DescribeEvaluation(
+    const analysis::ValueOperation& operation);
+[[nodiscard]] bool OrderedEvaluation(const analysis::ValueOp& operation);
+[[nodiscard]] bool BooleanEvaluation(const analysis::ValueProgram& graph,
+                                     const analysis::ValueOperand& operand);
+[[nodiscard]] bool PredicateSnapshot(const analysis::ValueProgram& graph,
+    const analysis::ValueOp& consumer, const analysis::ValueOperand& operand);
+// Requires verified normal IR. Produces a single-parent expression forest;
+// a failed fusion keeps a snapshot, never duplicates or drops an effect.
+[[nodiscard]] std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {});
+// Iteratively expands the proposed forest in JS operand order, checking exact
+// ordered occurrences and same-block producer availability. No plan replay.
+[[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
+    const analysis::ValueProgram& graph, const EvaluationPlan& plan,
+    analysis::SemanticBudget budget = {});
+}  // namespace abcd::source
+#endif
