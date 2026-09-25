@@ -248,3 +248,22 @@ therefore keep a PredicateSnapshot, even for a single SSA use. Proven Boolean
 results may inline because the predicate reduces to one Boolean evaluation.
 This rule applies to unary results and branches, and the independent verifier
 rejects a forged inlining plan that would duplicate a getter through a predicate.
+
+### T03 Binding Identities
+
+BuildBindingPlan consumes verified evaluation ownership and imported ABI entry
+facts. Parameter identities map directly to SymbolId, retaining unused formals;
+receiver identities remain typed receiver bindings, not synthetic local slots.
+Only evaluation snapshots allocate temporary symbols, with producer/value
+identity and the original TemporaryReason. Live callable/new-target/unknown
+entry reads and live phis are refused rather than initialized to undefined.
+The same mapping applies to ordinary functions and constructors; it does not
+prove receiver initialization, callable kind, strictness or declaration scope.
+
+Mapping is linear with pre-admitted arrays and bounded work. Regression sources
+cover direct parameter return, unused formals, receiver return, unsupported ABI
+reads, resource refusal and 200/201/4096 formal counts. They are not compiled or
+executed while the test pause remains in force. The production abc_semantic
+target builds. Name assignment, tree assembly/verification, printer and source
+positions remain pending; the CLI still stops at ValuesVerified, not executable
+source. This is progress within T03, not acceptance of T03.
