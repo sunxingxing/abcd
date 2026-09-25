@@ -27,6 +27,13 @@ struct MemberExpression {
 struct StringExpression {
   abc::PoolIndex value;
 };
+enum class StrictEquality { kEqual, kNotEqual };
+struct StringComparison {
+  analysis::ScalarValue left;
+  abc::PoolIndex right;
+  StrictEquality test;
+};
+using PredicateInput = std::variant<analysis::ScalarExpression, StringComparison>;
 struct CallExpression {
   analysis::OrdinaryCall call;
 };
@@ -87,7 +94,7 @@ using SourceExpression =
                  FunctionExpression, LocalExpression, analysis::RestCopy,
                  analysis::BufferedArrayCreation, analysis::AwaitValue,
                  analysis::SuperRange, ClassExpression, MethodExpression,
-                 AccessorExpression, analysis::GlobalObjectLoad>;
+                 AccessorExpression, analysis::GlobalObjectLoad, StringComparison>;
 struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;
@@ -140,7 +147,7 @@ struct SourceConditionalBreak {
   analysis::UnaryExpression condition;
   analysis::BlockId target;
   // Proved replacement for condition.input; never parse it from source text.
-  std::optional<analysis::ScalarExpression> input = {};
+  std::optional<PredicateInput> input = {};
 };
 struct SourceBreak {
   analysis::BlockId target;
@@ -148,7 +155,7 @@ struct SourceBreak {
 struct SourceConditionalContinue {
   analysis::UnaryExpression condition;
   analysis::BlockId target;
-  std::optional<analysis::ScalarExpression> input = {};
+  std::optional<PredicateInput> input = {};
 };
 struct SourceContinue {
   analysis::BlockId target;

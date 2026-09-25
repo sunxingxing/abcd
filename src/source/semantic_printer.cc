@@ -528,14 +528,21 @@ class SourcePrinter {
   }
   void Value(const ScalarValue& value) { Scalar(ScalarExpression{value}); }
   void Predicate(const analysis::UnaryExpression& condition, bool inverted = false,
-                 const std::optional<ScalarExpression>& input = {}) {
+                 const std::optional<PredicateInput>& input = {}) {
     using analysis::UnaryOperator;
     if (condition.op == UnaryOperator::kToBoolean ||
         condition.op == UnaryOperator::kLogicalNot) {
       // If already applies ToBoolean. Collapse only boolean operators here,
       // never the VM's distinct numeric/boolean branch predicates.
       if ((condition.op == UnaryOperator::kLogicalNot) != inverted) Text("!");
-      if (input) Scalar(*input);
+      if (input) std::visit([&](const auto& value) {
+        using T = std::decay_t<decltype(value)>;
+        if constexpr (std::is_same_v<T, ScalarExpression>) Scalar(value);
+        else {
+          static_assert(std::is_same_v<T, StringComparison>);
+          CompareString(value);
+        }
+      }, *input);
       else Value(condition.input);
       return;
     }
@@ -600,9 +607,21 @@ class SourcePrinter {
     }
     Text(")");
   }
+  void CompareString(const StringComparison& comparison) {
+    Text("(");
+    Value(comparison.left);
+    switch (comparison.test) {
+      case StrictEquality::kEqual: Text(" === "); break;
+      case StrictEquality::kNotEqual: Text(" !== "); break;
+    }
+    QuotedString(PoolText(comparison.right));
+    Text(")");
+  }
   void Expression(const SourceExpression& expression) {
     if (const auto* scalar = std::get_if<ScalarExpression>(&expression)) {
       Scalar(*scalar);
+    } else if (const auto* comparison = std::get_if<StringComparison>(&expression)) {
+      CompareString(*comparison);
     } else if (const auto* awaited = std::get_if<analysis::AwaitValue>(&expression)) {
       // Argument staging uses a synchronous IIFE. Adding async there changes
       // promise/job ordering, so refuse rather than print an invalid await.

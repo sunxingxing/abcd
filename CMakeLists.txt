@@ -147,6 +147,7 @@ target_sources(abcd_source PRIVATE src/source/argument_region.cc src/source/sema
   src/source/return_expression.cc
   src/source/stored_expression.cc
   src/source/store_receivers.cc
+  src/source/string_comparison.cc
   src/source/branch_predicate.cc
   src/source/scalar_values.cc
   src/source/parameter_aliases.cc

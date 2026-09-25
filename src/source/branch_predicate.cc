@@ -107,7 +107,9 @@ void FoldBranchExpressions(const AstMethod& method, SourceAst& ast,
     const auto* assignment = std::get_if<SourceAssignment>(&head.operation);
     const auto* expression = assignment
         ? std::get_if<analysis::ScalarExpression>(&assignment->value) : nullptr;
-    if (!expression || !BooleanResult(*expression) ||
+    const auto* comparison = assignment
+        ? std::get_if<StringComparison>(&assignment->value) : nullptr;
+    if ((!expression && !comparison) || (expression && !BooleanResult(*expression)) ||
         !std::holds_alternative<analysis::Accumulator>(assignment->target)) continue;
     const auto& original = method.instructions[branch_id - 1];
     const auto* scalar = std::get_if<analysis::ScalarAssignment>(&original.operation);
@@ -126,7 +128,8 @@ void FoldBranchExpressions(const AstMethod& method, SourceAst& ast,
     if (input) continue;
     // No effect crosses the branch and no normal/exceptional observer can
     // see the removed acc commit. Both PCs share the generated condition.
-    input = *expression;
+    if (expression) input = *expression;
+    else input = *comparison;
     head.operation = analysis::NoOperation{};
     tail.fused_read = head.pc;
     tail.read_distance = 1;
