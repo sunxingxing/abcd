@@ -25,7 +25,7 @@
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/corpus/abc_file.h"
 #include "abcd/source/semantic_source.h"
-#include "abcd/source/capture_preservation.h"
+#include "abcd/source/semantic_entry.h"
 #include "abcd/source/named_scope.h"
 #include "abcd/source/record_program.h"
 #include "abcd/abc/pool_reference.h"
@@ -412,76 +412,6 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     }
     if (*form == source::SourceForm::kRecord && !bindings)
       return Fail(InspectError::kMethod);
-    const auto preserved = source::ProveCapturePreservation(
-        *body, constants, methods,
-        {available - method_ir->allocated_bytes});
-    const auto* sites = std::get_if<source::CapturePreservations>(&preserved);
-    if (!sites) {
-      const auto& failure = std::get<source::SourceFailure>(preserved);
-      return FailStage(InspectError::kProof,
-          static_cast<unsigned>(failure.kind), failure.pc.value);
-    }
-    if (sites->AllocatedBytes() > available - method_ir->allocated_bytes ||
-        sites->work_units > analysis::kDefaultSemanticWork)
-      return FailStage(InspectError::kProof,
-          static_cast<unsigned>(analysis::SemanticProofError::kResourceLimit), 0);
-    const auto proof_bytes = available - sites->AllocatedBytes();
-    const auto proof = analysis::VerifySemanticSource(
-        *body, *method_ir, code.registers + code.arguments,
-        code.registers,
-        {proof_bytes,
-         analysis::kDefaultSemanticWork - sites->work_units},
-        analysis::CapturedValues::kReject, {},
-        analysis::ClosureWrites::kUnknown, sites->sites);
-    if (const auto* failure =
-            std::get_if<analysis::SemanticProofFailure>(&proof))
-      return FailStage(InspectError::kProof,
-                       static_cast<unsigned>(failure->kind),
-                       failure->pc.value);
-    const auto& verified = std::get<analysis::SemanticProof>(proof);
-    if (verified.allocated_bytes > proof_bytes)
-      return FailStage(InspectError::kProof,
-          static_cast<unsigned>(analysis::SemanticProofError::kResourceLimit), 0);
-    const auto remaining = proof_bytes - verified.allocated_bytes;
-    auto recovered = analysis::BuildSemanticRegions(*method_ir, remaining);
-    auto* regions =
-        std::get_if<analysis::SemanticRegionTree>(&recovered);
-    if (!regions) {
-      const auto& failure = std::get<analysis::RegionFailure>(recovered);
-      return FailStage(InspectError::kRegion,
-                       static_cast<unsigned>(failure.kind),
-                       failure.pc.value);
-    }
-    if (regions->allocated_bytes > remaining)
-      return FailStage(InspectError::kRegion,
-          static_cast<unsigned>(analysis::RegionError::kResourceLimit), 0);
-    const auto checked = source::ValidateNamedScopes(
-        *body, code.registers + code.arguments, &constants,
-        remaining - regions->allocated_bytes,
-        analysis::kDefaultSemanticWork);
-    const auto* scopes = std::get_if<source::NamedScopes>(&checked);
-    if (!scopes) {
-      const auto& failure = std::get<source::BodyEmitFailure>(checked);
-      return FailStage(InspectError::kAst,
-          static_cast<unsigned>(failure.kind == source::BodyEmitError::kResourceLimit ||
-                                        failure.kind == source::BodyEmitError::kWorkLimit
-                                    ? source::SourceError::kResourceLimit
-                                    : source::SourceError::kConstant), failure.offset.value);
-    }
-    if (scopes->AllocatedBytes() > remaining - regions->allocated_bytes)
-      return FailStage(InspectError::kAst,
-          static_cast<unsigned>(source::SourceError::kResourceLimit), 0);
-    const auto lowered = source::BuildSourceAst(
-        *method_ir, std::get<analysis::SemanticProof>(proof),
-        std::move(*regions),
-        remaining - scopes->AllocatedBytes(), scopes->admitted);
-    const auto* ast = std::get_if<source::SourceAst>(&lowered);
-    if (!ast) {
-      const auto& failure = std::get<source::SourceFailure>(lowered);
-      return FailStage(InspectError::kAst,
-                       static_cast<unsigned>(failure.kind),
-                       failure.pc.value);
-    }
     const auto call = abc::ReadCallType(file, *header, *index,
                                         method->annotations);
     const auto* call_type = std::get_if<abc::CallType>(&call);
@@ -491,16 +421,29 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
         abc::DecodeCallFlags(call_type->value));
     const auto* frame = std::get_if<abc::FrameLayout>(&built_frame);
     if (!frame) return Fail(InspectError::kFrame);
-    const auto rendered = source::PrintSourceAst(
-        *ast, *method_ir, *frame, *form, method->name, constants,
-        kMethodBytes, &std::get<analysis::SemanticProof>(proof),
-        *form == source::SourceForm::kRecord ? &bindings->exports : nullptr);
+    const auto rendered = source::BuildEntrySource(
+        *body, *method_ir, *frame, *form, method->name, constants,
+        *form == source::SourceForm::kRecord ? &bindings->exports : nullptr,
+        {available}, kMethodBytes);
     const auto* printed = std::get_if<source::PrintedSource>(&rendered);
     if (!printed) {
-      const auto& failure = std::get<source::SourceFailure>(rendered);
-      return FailStage(InspectError::kPrint,
-                       static_cast<unsigned>(failure.kind),
-                       failure.pc.value);
+      return std::visit([](const auto& failure) -> int {
+        using T = std::decay_t<decltype(failure)>;
+        if constexpr (std::is_same_v<T, source::PrintedSource>) {
+          std::terminate();
+        } else {
+          constexpr auto stage = [] {
+            if constexpr (std::is_same_v<T, analysis::SemanticFailure>)
+              return InspectError::kSemantic;
+            else if constexpr (std::is_same_v<T, analysis::SemanticProofFailure>)
+              return InspectError::kProof;
+            else if constexpr (std::is_same_v<T, analysis::RegionFailure>)
+              return InspectError::kRegion;
+            else return InspectError::kPrint;
+          }();
+          return FailStage(stage, static_cast<unsigned>(failure.kind), failure.pc.value);
+        }
+      }, rendered);
     }
     nlohmann::json map = nlohmann::json::array();
     for (const auto& span : printed->spans)
