@@ -4,7 +4,7 @@
 #include "semantic_ast_input.h"
 
 namespace abcd::source {
-// Same-block binding load into the immediately following staged property read,
+// Same-block binding load into the next ordinary or staged property read,
 // crossing only effect-free empty nodes. Preserve the load's source origin.
 void FoldBindingReceivers(const AstMethod& method, SourceAst& ast,
                          std::span<const std::size_t> uses);

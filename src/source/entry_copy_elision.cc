@@ -34,6 +34,8 @@ bool HasBoundReads(const SourceExpression& expression, SlotReadMode mode) {
       // Leaf functions receive MethodConstants, never caller ScalarNames.
       // Their outer bindings and CapturedExpression use typed lexical cells;
       // initialization/domain checks and zero-width capture tokens remain.
+      // MemberExpression's optional binding receiver uses the same Value and
+      // Expression dispatch as staged calls, including register observation.
       return true;
     } else if constexpr (std::is_same_v<T, ClassExpression>) {
       // The class parent identifier is observed explicitly in record mode.

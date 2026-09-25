@@ -725,6 +725,36 @@ class SourcePrinter {
     QuotedString(PoolText(comparison.right));
     Text(")");
   }
+  void BoundReceiver(const BindingReceiver& receiver, std::size_t property) {
+    const auto source = receiver.source.value;
+    if (property >= ast_.statements.size() || source >= property ||
+        result_.spans.size() < property - source)
+      throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+    const auto index = result_.spans.size() - (property - source);
+    if (result_.spans[index].pc != ast_.statements[source].pc)
+      throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+    const auto begin = position_;
+    std::visit([&](const auto& value) {
+      using V = std::decay_t<decltype(value)>;
+      if constexpr (std::is_same_v<V, abc::RegisterId>) {
+        // Private bindings are identifiers or owner-proven `this`, never
+        // numeric literals. Keep slot observation and ABI binding through Value.
+        Value(ScalarValue{value});
+      } else {
+        Expression(SourceExpression{value});
+      }
+    }, receiver.value);
+    result_.spans[index].begin = begin;
+    result_.spans[index].end = position_;
+    if (const auto guard = receiver.guard) {
+      if (guard->value != source + 1 || guard->value >= property ||
+          index + 1 >= result_.spans.size() ||
+          result_.spans[index + 1].pc != ast_.statements[guard->value].pc)
+        throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+      result_.spans[index + 1].begin = begin;
+      result_.spans[index + 1].end = position_;
+    }
+  }
   void Expression(const SourceExpression& expression,
                   std::optional<ObjectField> field = {}) {
     if (field && !std::holds_alternative<analysis::BufferedObjectCreation>(expression))
@@ -946,7 +976,12 @@ class SourcePrinter {
       Number(slot);
     } else {
       const auto& member = std::get<MemberExpression>(expression);
-      Member(member.object, member.name);
+      if (member.receiver) {
+        BoundReceiver(member.receiver->binding, member.receiver->property.value);
+        MemberKey(member.name);
+      } else {
+        Member(member.object, member.name);
+      }
     }
   }
   void Label(analysis::BlockId id) {
@@ -1190,35 +1225,8 @@ class SourcePrinter {
                 throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
             }
             if (operation.binding_receiver) {
-              const auto source = operation.binding_receiver->source.value;
               const auto property = static_cast<std::size_t>(&statement - ast_.statements.data());
-              if (source >= property || result_.spans.size() < property - source)
-                throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
-              const auto index = result_.spans.size() - (property - source);
-              if (result_.spans[index].pc != ast_.statements[source].pc)
-                throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
-              const auto receiver_begin = position_;
-              std::visit([&](const auto& value) {
-                using V = std::decay_t<decltype(value)>;
-                if constexpr (std::is_same_v<V, abc::RegisterId>) {
-                  // Bind/observe this read like every other private slot. Its
-                  // spelling is an identifier or owner-proven `this`, never a
-                  // numeric literal requiring MemberExpression parentheses.
-                  Value(ScalarValue{value});
-                } else {
-                  Expression(SourceExpression{value});
-                }
-              }, operation.binding_receiver->value);
-              result_.spans[index].begin = receiver_begin;
-              result_.spans[index].end = position_;
-              if (const auto guard = operation.binding_receiver->guard) {
-                if (guard->value != source + 1 || guard->value >= property ||
-                    index + 1 >= result_.spans.size() ||
-                    result_.spans[index + 1].pc != ast_.statements[guard->value].pc)
-                  throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
-                result_.spans[index + 1].begin = receiver_begin;
-                result_.spans[index + 1].end = position_;
-              }
+              BoundReceiver(*operation.binding_receiver, property);
             } else {
               Text("(");
               Value(ScalarValue{Accumulator{}});

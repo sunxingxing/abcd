@@ -35,7 +35,7 @@ std::optional<ReceiverBinding> ReadBinding(
 }
 bool HasMergedOrigin(const SourceStatement& statement) {
   return statement.fused_read || statement.fused_spill || statement.fused_reload ||
-         statement.previous_origin || statement.class_origin;
+         statement.previous_origin || statement.class_origin || statement.literal_origin;
 }
 bool IsModuleGuard(const AstMethod& method, const SourceAst& ast,
                    std::size_t source, std::size_t position) {
@@ -109,16 +109,23 @@ void FoldBindingReceivers(const AstMethod& method, SourceAst& ast,
       const auto producer = previous;
       previous = i;
       auto* call = std::get_if<SourceStagedCall>(&tail.operation);
-      if (!producer || !call || call->binding_receiver || HasMergedOrigin(tail)) continue;
+      auto* property_assignment = std::get_if<SourceAssignment>(&tail.operation);
+      auto* member = property_assignment
+          ? std::get_if<MemberExpression>(&property_assignment->value) : nullptr;
+      if (!producer || (!call && !member) || HasMergedOrigin(tail) ||
+          (call && call->binding_receiver) ||
+          (member && (member->receiver || property_assignment->object_field ||
+                      !std::holds_alternative<analysis::Accumulator>(member->object)))) continue;
       auto& head = ast.statements[*producer];
       const auto* assignment = std::get_if<SourceAssignment>(&head.operation);
       const auto binding = assignment
           ? ReadBinding(assignment->value, method.instructions[*producer])
           : std::nullopt;
+      const auto* original = std::get_if<analysis::NamedRead>(&method.instructions[i].operation);
       if (!binding || HasMergedOrigin(head) ||
           assignment->result != AssignmentResult::kStored ||
           !std::holds_alternative<analysis::Accumulator>(assignment->target) ||
-          !std::holds_alternative<analysis::NamedRead>(method.instructions[i].operation)) continue;
+          !original || original->name != (call ? call->name : member->name)) continue;
       const auto output = method.ssa.Write({static_cast<std::uint32_t>(*producer)});
       if (!output || !HasReceiverUse(method, ast, *producer, i, uses)) continue;
       const auto slot = method.ssa.Slot(*output);
@@ -126,11 +133,14 @@ void FoldBindingReceivers(const AstMethod& method, SourceAst& ast,
       // Read the binding once at the same effect boundary; no global lookup,
       // lexical capture/domain obligation or getter is bypassed. Arguments
       // still execute after the receiver's property Reference is obtained.
-      call->binding_receiver = BindingReceiver{
+      auto receiver = BindingReceiver{
           *binding, analysis::InstructionId{static_cast<std::uint32_t>(*producer)}};
       if (IsModuleGuard(method, ast, *producer, *producer + 1))
-        call->binding_receiver->guard = analysis::InstructionId{
+        receiver.guard = analysis::InstructionId{
             static_cast<std::uint32_t>(*producer + 1)};
+      if (call) call->binding_receiver = receiver;
+      else member->receiver = MemberReceiver{
+          receiver, analysis::InstructionId{static_cast<std::uint32_t>(i)}};
       head.operation = analysis::NoOperation{};
     }
   }

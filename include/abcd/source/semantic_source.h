@@ -21,10 +21,6 @@
 
 namespace abcd::analysis { struct ExceptionLocals; }
 namespace abcd::source {
-struct MemberExpression {
-  analysis::ScalarValue object;
-  abc::PoolIndex name;
-};
 struct StringExpression {
   abc::PoolIndex value;
 };
@@ -53,6 +49,25 @@ struct CapturedExpression {
   analysis::CaptureDomain requirement = analysis::CaptureDomain::kLanguage;
 };
 struct LocalExpression { analysis::LocalCellId cell; };
+using ReceiverBinding = std::variant<ModuleExpression, GlobalExpression,
+                                     LocalExpression, CapturedExpression,
+                                     abc::RegisterId>;
+struct BindingReceiver {
+  ReceiverBinding value;
+  analysis::InstructionId source;
+  std::optional<analysis::InstructionId> guard = {};
+};
+struct MemberReceiver {
+  // Final binding fold retains the original property coordinate for PC maps.
+  // Subsequent passes may annotate results, but must not relocate this node.
+  BindingReceiver binding;
+  analysis::InstructionId property;
+};
+struct MemberExpression {
+  analysis::ScalarValue object;
+  abc::PoolIndex name;
+  std::optional<MemberReceiver> receiver = {};
+};
 struct FunctionExpression {
   analysis::FunctionCreation creation;
   analysis::InstructionId instruction;
@@ -176,14 +191,6 @@ struct SourceReturnExpression {
 };
 struct SourceThrow {
   analysis::ScalarValue value;
-};
-using ReceiverBinding = std::variant<ModuleExpression, GlobalExpression,
-                                     LocalExpression, CapturedExpression,
-                                     abc::RegisterId>;
-struct BindingReceiver {
-  ReceiverBinding value;
-  analysis::InstructionId source;
-  std::optional<analysis::InstructionId> guard = {};
 };
 struct SourceStagedCall {
   abc::PoolIndex name;
