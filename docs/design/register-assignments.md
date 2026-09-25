@@ -98,3 +98,30 @@ regressions include throwing RHSs and handler snapshots, destination aliases,
 copy chains and pass ordering, aggregate folding, staged calls, captures,
 source-span aliases and output budgets. All artifacts remain incomplete;
 this does not establish full source-style recovery or semantic equivalence.
+
+## Member Call Destinations
+
+`CanRetargetExpression` centralizes the origin-preservation admission shared
+by stored expressions and return expressions. An already-proved
+MemberCallExpression may retain its fused read and complete spill/reload pair
+while changing the result destination. Missing distances, partial pairs,
+class origins and previous-origin aliases remain excluded. Ordinary unfused
+expressions keep the existing admission rules. Property stores do not use
+this relaxation, and staged-call nodes remain outside it.
+
+The stored-expression fold still requires the same-block adjacent nonthrowing
+register save or certified LocalCell store and the exact single-use SSA value,
+including exception observers. Receiver/arguments are evaluated before target
+commit, so a callback sees the old cell value until normal return. RHS creation
+coordinates and origin spans stay attached to the producer; the old save
+aliases its complete generated assignment span. No new allocation or scan is
+introduced. Reload elision must continue to reject the changed acc destination;
+a newly visible later acc reload can be required, not a regression to erase.
+
+Both CLIs build and read-only review found no concrete defect. ABC-only export
+`build/pasteboard-stored-calls-01` preserves eight incomplete application records
+and the two host-constructor refusals. ProgressBar emits direct getSystemPasteboard,
+getUIContext and getUriFromPath result assignments. Combined output is 9,869
+lines / 168,134 bytes. Tests, generated JS execution and RSS remain paused;
+deferred checks include receiver/target aliasing, captured-cell reentry, throwing
+calls, handler snapshots, fused span aliases and required post-call reloads.

@@ -1,5 +1,7 @@
 #include "stored_expression.h"
 
+#include "expression_origins.h"
+
 namespace abcd::source {
 namespace {
 bool HasMergedOrigin(const SourceStatement& statement) {
@@ -73,7 +75,8 @@ void FoldStoredExpressions(const AstMethod& method, SourceAst& ast,
       auto* assignment = std::get_if<SourceAssignment>(&head.operation);
       const auto* save = std::get_if<SourceAssignment>(&tail.operation);
       const auto* local = std::get_if<SourceLocalStore>(&tail.operation);
-      if (!assignment || (!save && !local) || HasMergedOrigin(head) || HasMergedOrigin(tail) ||
+      if (!assignment || (!save && !local) || HasMergedOrigin(tail) ||
+          !CanRetargetExpression(head, assignment->value) ||
           !std::holds_alternative<analysis::Accumulator>(assignment->target) ||
           NeedsAggregateFold(assignment->value)) continue;
       std::optional<abc::RegisterId> destination;
