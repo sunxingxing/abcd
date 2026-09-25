@@ -14,6 +14,7 @@
 #include "store_receivers.h"
 #include "string_comparison.h"
 #include "branch_predicate.h"
+#include "predicate_copies.h"
 #include "scalar_values.h"
 #include "copy_origins.h"
 #include "array_literals.h"
@@ -733,6 +734,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     FoldMemberReceivers(method, ast, uses, copies);
     FoldStoredExpressions(method, ast, uses);
     FoldStoreReceivers(method, ast, uses);
+    FoldPredicateCopies(method, ast, uses);
     ElideKnownReloads(method, ast, copies);
     const auto retained_before = ast.allocated_bytes;
     if (const auto failure = FoldArrayExpressions(method, ast, uses, copy_bytes)) return *failure;
