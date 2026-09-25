@@ -45,7 +45,8 @@ class ObjectWriter {
   BodyEmitResult Write(const abc::LiteralArray& literal,
                        const std::vector<std::u16string>& keys,
                        const MethodConstants& constants,
-                       std::size_t string_bytes) {
+                       std::size_t string_bytes,
+                       std::optional<std::size_t> array_field) {
     try {
       Text("({");
       for (std::size_t i = 0; i < keys.size() && !error_; ++i) {
@@ -64,7 +65,8 @@ class ObjectWriter {
             break;
         }
         Text(": ");
-        Value(literal.entries[i * kPairEntries + 1], constants, string_bytes);
+        if (array_field == i) Text("[]");
+        else Value(literal.entries[i * kPairEntries + 1], constants, string_bytes);
       }
       Text("})");
       if (error_) return *error_;
@@ -268,12 +270,38 @@ BodyEmitResult WriteObjectBuffer(const analysis::BufferedObjectCreation& creatio
                                  abc::CodeOffset offset,
                                  const MethodConstants& constants,
                                  std::ostream& output, EmitBudget output_budget,
-                                 ObjectBufferBudget scratch_budget) {
+                                 ObjectBufferBudget scratch_budget,
+                                 std::optional<ObjectField> field) {
   const auto parsed = ReadObjectBuffer(creation, offset, constants, scratch_budget);
   if (const auto* failure = std::get_if<BodyEmitFailure>(&parsed)) return *failure;
   const auto& buffer = std::get<ObjectBuffer>(parsed);
+  const auto metadata_failure = [&](abc::MetadataError error) {
+    BodyEmitFailure failure{error == abc::MetadataError::kResourceLimit
+        ? BodyEmitError::kResourceLimit : BodyEmitError::kConstant, offset};
+    failure.metadata_error = error;
+    return failure;
+  };
+  std::optional<std::size_t> array_field;
+  if (field) {
+    if (!std::holds_alternative<analysis::EmptyArray>(field->value))
+      return BodyEmitFailure{BodyEmitError::kConstant, offset};
+    const auto resolved = abc::ResolvePoolReference(constants.file, constants.header,
+        constants.index, constants.method, field->name, abc::PoolEntityKind::kString);
+    const auto* reference = std::get_if<abc::PoolReference>(&resolved);
+    if (!reference) return metadata_failure(std::get<abc::MetadataError>(resolved));
+    const auto read = abc::ReadStringEntity(constants.file, constants.header,
+        reference->offset, {std::min(constants.string_budget.bytes,
+            scratch_budget.bytes - buffer.allocated_bytes)});
+    const auto* name = std::get_if<std::u16string>(&read);
+    if (!name) return metadata_failure(std::get<abc::MetadataError>(read));
+    const auto found = std::lower_bound(buffer.order.begin(), buffer.order.end(), *name,
+        [&](std::size_t index, const std::u16string& key) { return buffer.keys[index] < key; });
+    if (found == buffer.order.end() || buffer.keys[*found] != *name)
+      return BodyEmitFailure{BodyEmitError::kConstant, offset};
+    array_field = *found;
+  }
   return ObjectWriter(output, output_budget, offset).Write(
       buffer.literal, buffer.keys, constants,
-      scratch_budget.bytes - buffer.allocated_bytes);
+      scratch_budget.bytes - buffer.allocated_bytes, array_field);
 }
 }  // namespace abcd::source

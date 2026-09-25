@@ -7,6 +7,7 @@
 
 #include "semantic_objects.h"
 #include "argument_region.h"
+#include "object_initialization.h"
 #include "semantic_ast_input.h"
 #include "argument_expression.h"
 #include "unused_results.h"
@@ -759,6 +760,7 @@ SourceAstResult BuildSourceAst(const AstMethod& method,
     FoldArgumentExpressions(method, ast, uses);
     ElideUnusedResults(method, ast, uses);
     FoldBindingReceivers(method, ast, uses);
+    FoldObjectInitialization(method, ast, uses);
     return ast;
   } catch (const std::bad_alloc&) {
     return Fail(SourceError::kResourceLimit);

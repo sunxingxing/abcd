@@ -17,6 +17,7 @@
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/source/linear_body.h"
 #include "abcd/source/source_contract.h"
+#include "abcd/source/object_field.h"
 
 namespace abcd::analysis { struct ExceptionLocals; }
 namespace abcd::source {
@@ -100,6 +101,9 @@ struct SourceAssignment {
   analysis::ScalarSlot target;
   SourceExpression value;
   AssignmentResult result = AssignmentResult::kStored;
+  // Final object-initialization proof. Expression wrappers must carry this
+  // annotation if later passes ever move the buffered allocation.
+  std::optional<ObjectField> object_field;
 };
 struct SourceMemberStore {
   analysis::ScalarValue object;
@@ -213,6 +217,8 @@ struct SourceStatement {
   std::optional<abc::CodeOffset> previous_origin;
   // Assembly operations folded into an earlier class share its generated span.
   std::optional<analysis::InstructionId> class_origin = {};
+  // Removed allocation/field instructions share the native literal's span.
+  std::optional<analysis::InstructionId> literal_origin = {};
 };
 struct SourceArgumentRegion {
   analysis::InstructionId property;

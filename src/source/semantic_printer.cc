@@ -725,7 +725,10 @@ class SourcePrinter {
     QuotedString(PoolText(comparison.right));
     Text(")");
   }
-  void Expression(const SourceExpression& expression) {
+  void Expression(const SourceExpression& expression,
+                  std::optional<ObjectField> field = {}) {
+    if (field && !std::holds_alternative<analysis::BufferedObjectCreation>(expression))
+      throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
     if (const auto* scalar = std::get_if<ScalarExpression>(&expression)) {
       Scalar(*scalar);
     } else if (const auto* comparison = std::get_if<StringComparison>(&expression)) {
@@ -889,9 +892,12 @@ class SourcePrinter {
       std::ostringstream stream;
       const auto emitted = WriteObjectBuffer(
           *buffered, current_pc_, constants_, stream,
-          {limit_ - result_.text.size()}, {});
-      if (!std::holds_alternative<std::size_t>(emitted))
-        throw SourceFailure{SourceError::kConstant, current_pc_};
+          {limit_ - result_.text.size()}, {}, field);
+      if (const auto* failure = std::get_if<BodyEmitFailure>(&emitted))
+        throw SourceFailure{failure->kind == BodyEmitError::kResourceLimit ||
+                                    failure->emit_error == EmitError::kOutputLimit
+                                ? SourceError::kResourceLimit : SourceError::kConstant,
+                            current_pc_};
       Text(stream.str());
     } else if (const auto* array =
                    std::get_if<analysis::BufferedArrayCreation>(&expression)) {
@@ -1025,7 +1031,7 @@ class SourcePrinter {
                   throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
                 break;
             }
-            Expression(operation.value);
+            Expression(operation.value, operation.object_field);
             AssignmentEnd(form);
           } else if constexpr (std::is_same_v<T, SourceLocalStore>) {
             Local(operation.cell);
@@ -1279,9 +1285,12 @@ class SourcePrinter {
         },
         statement.operation);
     RelocateFusedOrigins(statement, begin);
-    if (statement.class_origin) {
+    if (statement.class_origin || statement.literal_origin) {
+      if (statement.class_origin && statement.literal_origin)
+        throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
       const auto index = static_cast<std::size_t>(&statement - ast_.statements.data());
-      const auto origin = statement.class_origin->value;
+      const auto origin = statement.class_origin
+          ? statement.class_origin->value : statement.literal_origin->value;
       if (origin >= index || result_.spans.size() < index - origin)
         throw SourceFailure{SourceError::kOutput, current_pc_};
       const auto& span = result_.spans[result_.spans.size() - (index - origin)];
