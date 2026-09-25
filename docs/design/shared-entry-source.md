@@ -30,7 +30,37 @@ new API succeeds with 48,935 source characters and 150 entry PC spans in
 remain false. Read-only review found no extraction defect. Tests, generated-JS
 execution and RSS collection remain paused.
 
-Next integration is the staged record publisher using this API and existing
-ABC-derived record path planning, without promoting incomplete artifacts to
-complete source. Nested-method position aggregation, source-style recovery,
-publication integration and execution-equivalence verification remain open.
+## Record Publication
+
+`BuildRecordSource` is the production record owner for this pipeline. It
+requires a same-file/same-record module context, an admitted dynamic profile,
+ordinary merged ESM attributes, exactly one owned wire entry and a zero-user-
+parameter ABI. It decodes the body, builds fresh export state and semantic IR,
+then calls BuildEntrySource. Body capacities, export allowance and export-name
+scratch are retained within its analysis admission. Metadata, lookup, roles and
+module context remain caller-owned; printed output has a separate allowance.
+This is not proof of measured whole-process memory use.
+
+`abc_structure INPUT OUTPUT --shared-source` now publishes these artifacts
+through the existing no-replace staged tree. It reuses ABC-derived record path
+planning, writes `.incomplete.mjs` and streams `.entry-positions.json`. The
+manifest uses `incomplete_source`, status 4, `source_complete: false` and
+`executable: false`; it does not populate the legacy completed `source` field.
+The position sidecar explicitly labels entry-only scope. The legacy `--source`
+writer is unchanged. Shared mode does not call getrusage or report RSS; the
+existing process address-space guard remains enabled, not a measured RSS claim.
+
+Unsupported semantics produce typed per-record diagnostics without fake source.
+Read/change/resource/output failures terminate export and discard the entire
+staged tree, matching existing fatal publication policy. File identity is
+checked before publishing. A conflicting destination is never overwritten.
+
+ABC-only pasteboard export generated Home at
+`sources/entry/src/main/ets/pages/Home.incomplete.mjs` with 150 entry spans.
+All 19 records are represented in the manifest: one shared-source artifact,
+nine application records with explicit refusal, and nine records without a
+module. This does not replace the two records accepted by the legacy path or
+claim corpus completion. No source maps or sidecar source were engine inputs.
+Tests, generated-JS execution and RSS remain paused. Nested-method position
+aggregation, source-style recovery and execution-equivalence verification
+remain open, along with the explicit per-record refusal cases.

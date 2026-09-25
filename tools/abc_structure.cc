@@ -9,12 +9,14 @@
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string_view>
+#include <type_traits>
 
 #include "abcd/source/source_contract.h"
 
 #include "abcd/corpus/detect.h"
 #include "abcd/source/record_module_context.h"
 #include "abcd/source/record_program.h"
+#include "abcd/source/record_source.h"
 #include "abcd/structure/record_path.h"
 #include "abcd/structure/record_writer.h"
 
@@ -38,8 +40,10 @@ enum class SourceStatus : unsigned {
   kWritten = 0,
   kModuleContext = 1,
   kNoModule = 2,
-  kProgram = 3
+  kProgram = 3,
+  kIncomplete = 4
 };
+enum class SourceMode { kNone, kLegacy, kShared };
 bool FatalMetadata(abc::MetadataError error) {
   return error == abc::MetadataError::kResourceLimit ||
          error == abc::MetadataError::kRead ||
@@ -55,6 +59,40 @@ bool FatalContext(const source::RecordModuleFailure& failure) {
   return kind == abc::ModuleError::kFileChanged ||
          kind == abc::ModuleError::kRead ||
          kind == abc::ModuleError::kResourceLimit;
+}
+bool FatalSharedSource(const source::RecordSourceResult& result) {
+  return std::visit([](const auto& failure) {
+    using T = std::decay_t<decltype(failure)>;
+    if constexpr (std::is_same_v<T, source::PrintedSource>) {
+      return false;
+    } else if constexpr (std::is_same_v<T, source::RecordProgramFailure>) {
+      return failure.kind == source::RecordProgramError::kRead ||
+             failure.kind == source::RecordProgramError::kWrite ||
+             failure.kind == source::RecordProgramError::kFileChanged ||
+             failure.kind == source::RecordProgramError::kResourceLimit ||
+             failure.kind == source::RecordProgramError::kOutputLimit;
+    } else if constexpr (std::is_same_v<T, analysis::SemanticFailure>) {
+      if (failure.kind == analysis::SemanticError::kResourceLimit) return true;
+      return std::visit([](const auto& cause) {
+        using C = std::decay_t<decltype(cause)>;
+        if constexpr (std::is_same_v<C, analysis::RegisterUseFailure>) {
+          return cause.kind == analysis::RegisterUseError::kResourceLimit ||
+                 cause.kind == analysis::RegisterUseError::kWorkLimit;
+        } else if constexpr (requires { C::kResourceLimit; }) {
+          if (cause == C::kResourceLimit) return true;
+          if constexpr (requires { C::kWorkLimit; }) return cause == C::kWorkLimit;
+          return false;
+        } else return false;
+      }, failure.ssa_cause);
+    } else if constexpr (std::is_same_v<T, analysis::SemanticProofFailure>) {
+      return failure.kind == analysis::SemanticProofError::kResourceLimit;
+    } else if constexpr (std::is_same_v<T, analysis::RegionFailure>) {
+      return failure.kind == analysis::RegionError::kResourceLimit;
+    } else if constexpr (std::is_same_v<T, source::SourceFailure>) {
+      return failure.kind == source::SourceError::kResourceLimit ||
+             failure.kind == source::SourceError::kOutput;
+    }
+  }, result);
 }
 int Fail(ExportError kind, std::uint32_t entity = 0) {
   std::cerr << nlohmann::json{{"error", static_cast<unsigned>(kind)},
@@ -96,7 +134,8 @@ std::string Hex(const corpus::Sha256& hash) {
   return result;
 }
 int Export(const std::filesystem::path& input,
-           const std::filesystem::path& output, bool emit_source) {
+           const std::filesystem::path& output, SourceMode mode) {
+  const bool emit_source = mode != SourceMode::kNone;
   if (output.filename().empty() ||
       std::filesystem::exists(std::filesystem::symlink_status(output)))
     return Fail(ExportError::kDestination);
@@ -151,7 +190,8 @@ int Export(const std::filesystem::path& input,
   if (tree.path.empty()) return Fail(ExportError::kOutput);
   std::ofstream manifest(tree.path / "manifest.json", std::ios::binary);
   manifest << "{\"schema\":1,\"view\":\""
-           << (emit_source ? "declarations_with_verified_source"
+           << (mode == SourceMode::kShared ? "declarations_with_incomplete_source"
+               : emit_source ? "declarations_with_verified_source"
                            : "declarations_only")
            << "\",\"sha256\":\"" << Hex(hash->sha256)
            << "\",\"packaging\":" << static_cast<unsigned>(*packaging)
@@ -199,7 +239,8 @@ int Export(const std::filesystem::path& input,
     if (emit_source) {
       const auto source_stem = std::filesystem::path("sources") /
                                source_paths[record_index].stem;
-      const auto source_path = source_stem.string() + ".mjs";
+      const auto source_path = source_stem.string() +
+          (mode == SourceMode::kShared ? ".incomplete.mjs" : ".mjs");
       record_manifest["planned_source"] = source_path;
       record_manifest["source_path_origin"] =
           static_cast<unsigned>(source_paths[record_index].origin);
@@ -217,6 +258,52 @@ int Export(const std::filesystem::path& input,
           if (!module) {
             record_manifest["source_status"] =
                 static_cast<unsigned>(SourceStatus::kNoModule);
+          } else if (mode == SourceMode::kShared) {
+            const auto built = source::BuildRecordSource(
+                file, *header, *index, *lookup, record, *ready, *roles);
+            if (FatalSharedSource(built))
+              return Fail(ExportError::kRecord, record.offset.value);
+            record_manifest["source_complete"] = false;
+            record_manifest["executable"] = false;
+            if (const auto* artifact = std::get_if<source::PrintedSource>(&built)) {
+              std::filesystem::create_directories(
+                  (tree.path / source_stem).parent_path());
+              std::ofstream program(tree.path / source_path, std::ios::binary);
+              program << artifact->text;
+              program.close();
+              if (!program) return Fail(ExportError::kOutput, record.offset.value);
+              const auto positions_path = source_stem.string() + ".entry-positions.json";
+              std::ofstream positions(tree.path / positions_path, std::ios::binary);
+              // Stream spans directly; do not copy the source or build a second
+              // body-sized JSON tree. These are entry-only, not descendant maps.
+              positions << "{\"record\":" << record.offset.value
+                        << ",\"scope\":\"entry_only\",\"positions\":[";
+              bool span_comma = false;
+              for (const auto& span : artifact->spans) {
+                if (span_comma) positions << ',';
+                span_comma = true;
+                positions << nlohmann::json{{"pc", span.pc.value},
+                    {"begin", {span.begin.byte, span.begin.line, span.begin.column}},
+                    {"end", {span.end.byte, span.end.line, span.end.column}}};
+              }
+              positions << "]}\n";
+              positions.close();
+              if (!positions) return Fail(ExportError::kOutput, record.offset.value);
+              record_manifest["source_status"] = static_cast<unsigned>(SourceStatus::kIncomplete);
+              record_manifest["incomplete_source"] = source_path;
+              record_manifest["entry_positions"] = positions_path;
+              record_manifest["source_contract"] = source::SourceContractName(artifact->contract);
+            } else {
+              record_manifest["source_status"] = static_cast<unsigned>(SourceStatus::kProgram);
+              record_manifest["shared_failure_variant"] = built.index();
+              std::visit([&](const auto& failure) {
+                using T = std::decay_t<decltype(failure)>;
+                if constexpr (!std::is_same_v<T, source::PrintedSource>) {
+                  record_manifest["source_error"] = static_cast<unsigned>(failure.kind);
+                  record_manifest["source_pc"] = failure.pc.value;
+                }
+              }, built);
+            }
           } else {
             std::filesystem::create_directories(
                 (tree.path / source_stem).parent_path());
@@ -272,16 +359,19 @@ int Export(const std::filesystem::path& input,
   manifest.close();
   if (!manifest) return Fail(ExportError::kOutput);
   if (file.CheckUnchanged()) return Fail(ExportError::kChanged);
-  rusage usage{};
-  getrusage(RUSAGE_SELF, &usage);
   // Validate all report text before publishing; a non-UTF-8 Linux path must
   // not turn a successfully published tree into a reported serialization error.
-  const auto report = nlohmann::json{
+  auto report_fields = nlohmann::json{
       {"output", output.string()},
-      {"counts", counts},
-      {"peak_rss_bytes",
-       static_cast<std::uint64_t>(usage.ru_maxrss) *
-           1024}}.dump();
+      {"counts", counts}};
+  if (mode != SourceMode::kShared) {
+    rusage usage{};
+    getrusage(RUSAGE_SELF, &usage);
+    constexpr std::uint64_t kBytesPerKiB = 1024;
+    report_fields["peak_rss_bytes"] =
+        static_cast<std::uint64_t>(usage.ru_maxrss) * kBytesPerKiB;
+  }
+  const auto report = report_fields.dump();
   if (!tree.Publish(output)) return Fail(ExportError::kDestination);
   std::cout << report << '\n';
   return EXIT_SUCCESS;
@@ -289,8 +379,9 @@ int Export(const std::filesystem::path& input,
 }  // namespace
 int main(int argc, char** argv) {
   if (argc != 3 &&
-      !(argc == 4 && std::string_view(argv[3]) == "--source")) {
-    std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR [--source]\n";
+      !(argc == 4 && (std::string_view(argv[3]) == "--source" ||
+                      std::string_view(argv[3]) == "--shared-source"))) {
+    std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR [--source|--shared-source]\n";
     return EXIT_FAILURE;
   }
   constexpr rlim_t kProcessBytes = 1000000000;
@@ -299,7 +390,10 @@ int main(int argc, char** argv) {
   limit.rlim_cur = std::min(limit.rlim_cur, kProcessBytes);
   if (setrlimit(RLIMIT_AS, &limit) != 0) return EXIT_FAILURE;
   try {
-    return Export(argv[1], argv[2], argc == 4);
+    const auto mode = argc == 3 ? SourceMode::kNone
+        : std::string_view(argv[3]) == "--shared-source" ? SourceMode::kShared
+                                                        : SourceMode::kLegacy;
+    return Export(argv[1], argv[2], mode);
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
     return EXIT_FAILURE;
