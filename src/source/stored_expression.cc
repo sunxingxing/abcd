@@ -2,6 +2,7 @@
 
 #include "expression_origins.h"
 #include "private_copy.h"
+#include "initialized_guard.h"
 #include "abcd/source/source_contract.h"
 
 namespace abcd::source {
@@ -116,7 +117,6 @@ void FoldStoredExpressions(const AstMethod& method, SourceAst& ast,
     const auto end = std::size_t(block.first_instruction) + block.instruction_count;
     for (std::size_t i = block.first_instruction; i + 1 < end; ++i) {
       auto& head = ast.statements[i];
-      auto& tail = ast.statements[i + 1];
       if (std::holds_alternative<SourceAssignment>(head.operation)) {
         auto field = i + 1;
         // Only an emitted producer starts this scan, so skipped NoOp intervals
@@ -142,6 +142,14 @@ void FoldStoredExpressions(const AstMethod& method, SourceAst& ast,
         }
       }
       auto* assignment = std::get_if<SourceAssignment>(&head.operation);
+      if (!assignment || assignment->result != AssignmentResult::kStored ||
+          assignment->object_field) continue;
+      auto stored = i + 1;
+      // Only emitted producers start a scan, so guard intervals are disjoint.
+      // These checks have already been proved redundant, not merely hidden.
+      while (stored < end && IsElidedInitializedGuard(method, ast, stored)) ++stored;
+      if (stored == end) continue;
+      auto& tail = ast.statements[stored];
       const auto* save = std::get_if<SourceAssignment>(&tail.operation);
       const auto* local = std::get_if<SourceLocalStore>(&tail.operation);
       if (!assignment || (!save && !local) || HasMergedOrigin(tail) ||
@@ -149,7 +157,7 @@ void FoldStoredExpressions(const AstMethod& method, SourceAst& ast,
           !std::holds_alternative<analysis::Accumulator>(assignment->target) ||
           NeedsAggregateFold(assignment->value)) continue;
       std::optional<abc::RegisterId> destination;
-      const auto& original = method.instructions[i + 1];
+      const auto& original = method.instructions[stored];
       if (save) {
         const auto* reg = std::get_if<abc::RegisterId>(&save->target);
         const auto* input = std::get_if<analysis::ScalarExpression>(&save->value);
@@ -170,9 +178,17 @@ void FoldStoredExpressions(const AstMethod& method, SourceAst& ast,
       const auto& write = method.instructions[i].effects.normal_registers.write;
       if (!write || !std::holds_alternative<analysis::Accumulator>(*write)) continue;
       const auto value = method.ssa.Write({static_cast<std::uint32_t>(i)});
-      const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(i + 1)});
-      if (!value || uses[value->value] != 1 || reads.size() != 1 ||
+      const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(stored)});
+      if (!value || value->value >= uses.size() || reads.size() != 1 ||
           reads.front().value != *value) continue;
+      bool guarded = true;
+      std::size_t consumers = reads.size();
+      for (auto guard = i + 1; guard < stored; ++guard) {
+        const auto inputs = method.ssa.Reads({static_cast<std::uint32_t>(guard)});
+        if (inputs.size() != 1 || inputs.front().value != *value) { guarded = false; break; }
+        consumers += inputs.size();
+      }
+      if (!guarded || uses[value->value] != consumers) continue;
       // RHS evaluation, including throws and creation captures, stays at its
       // original PC. The destination still commits only after normal return.
       // No other observer sees the removed acc value, including handler phis.
@@ -193,8 +209,9 @@ void FoldStoredExpressions(const AstMethod& method, SourceAst& ast,
         head.operation = SourceLocalAssignment{local->cell, std::move(expression)};
       }
       tail.operation = analysis::NoOperation{};
-      tail.previous_origin = head.pc;
-      ++i;
+      for (auto origin = i + 1; origin <= stored; ++origin)
+        ast.statements[origin].previous_origin = ast.statements[origin - 1].pc;
+      i = stored;
     }
   }
 }

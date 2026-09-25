@@ -40,3 +40,29 @@ two host constructors refused at PC 14 and nine metadata-only records. Read-only
 review found no concrete defect. Tests, JS execution and RSS were not run.
 Complete constructor/source-style recovery and full semantic equivalence remain
 unfinished; neither the guard contract nor superclass admission was widened.
+
+## Shared Guarded Commits
+
+IsElidedInitializedGuard now centralizes the same proof-consumption contract
+for returns, receiver reads and stored expressions. FoldStoredExpressions may
+cross a contiguous sequence of these guards to a register or admitted lexical
+cell save. Each guard and the save must read the exact producer SSA value;
+its use count must equal their total, including phi consumers. The original
+RHS and capture obligations stay at the producer, and the destination commits
+only after successful evaluation. Other expression/origin restrictions remain.
+
+Only emitted assignments start guard scans, so candidate intervals are disjoint;
+the existing field-value scan and this guard scan are bounded constant passes.
+No scratch allocation or new dependency is added. Guard and save PCs retain an
+adjacent previous_origin chain. Downstream copy proofs still reject unsupported
+non-adjacent definitions rather than inventing an identity or deleting live uses.
+
+Production builds and ABC-only export `build/pasteboard-guarded-stores-01`
+succeeded. Six pages change; totals become 5,020 lines / 99,140 bytes, down
+33 lines / 445 bytes. PageA constructor 7201 PCs 183/185/188 share the direct
+save span [3422,3434), `$r10 = $r2;` including newline. Partial maps retain
+195 methods / 9,745 spans with the same eight incomplete, two refused and nine
+metadata-only statuses. Read-only review found no concrete defect. Tests, JS
+execution and RSS remain paused. Deferred checks include lexical commits,
+multiple guards, self-copies, extra uses and downstream non-adjacent-copy
+interaction. Complete field recovery and equivalence remain unfinished.

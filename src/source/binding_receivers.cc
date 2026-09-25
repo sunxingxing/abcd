@@ -1,6 +1,7 @@
 #include "binding_receivers.h"
 
 #include "private_copy.h"
+#include "initialized_guard.h"
 
 namespace abcd::source {
 namespace {
@@ -48,17 +49,7 @@ bool IsReceiverGuard(const AstMethod& method, const SourceAst& ast,
   if (const auto* guard = std::get_if<analysis::HoleGuard>(&instruction.operation))
     return std::holds_alternative<analysis::Accumulator>(guard->value) &&
            node.previous_origin == ast.statements[source].pc;
-  const auto* check = std::get_if<analysis::SuperCheck>(&instruction.operation);
-  if (!check || node.previous_origin) return false;
-  // A NoOp here consumes BuildSourceAst's constructor/Defined-value proof.
-  // Preserve the binding's captured requirement; never infer initialization
-  // from a getter, receiver name, or merely Language-valued capture.
-  switch (check->kind) {
-    case analysis::SuperCheckKind::kRequireInitialized:
-    case analysis::SuperCheckKind::kNoop: return true;
-    case analysis::SuperCheckKind::kRequireUninitialized: return false;
-  }
-  return false;
+  return IsElidedInitializedGuard(method, ast, position);
 }
 bool HasReceiverUse(const AstMethod& method, const SourceAst& ast,
                     std::size_t source, std::size_t property,

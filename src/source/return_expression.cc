@@ -1,28 +1,13 @@
 #include "return_expression.h"
 
 #include "expression_origins.h"
+#include "initialized_guard.h"
 
 namespace abcd::source {
 namespace {
 bool HasMergedOrigin(const SourceStatement& statement) {
   return statement.fused_read || statement.fused_spill || statement.fused_reload ||
          statement.class_origin || statement.previous_origin || statement.literal_origin;
-}
-bool ProvenReturnGuard(const AstMethod& method, const SourceAst& ast, std::size_t i) {
-  const auto& statement = ast.statements[i];
-  const auto* check = std::get_if<analysis::SuperCheck>(&method.instructions[i].operation);
-  if (!check || method.ssa.IsPhased() || ast.regions.catches || HasMergedOrigin(statement) ||
-      !std::holds_alternative<analysis::NoOperation>(statement.operation) ||
-      method.instructions[i].effects.normal_registers.write) return false;
-  // BuildSourceAst already proved this check redundant using either the
-  // whole-constructor certificate or Defined capture/value obligations. This
-  // pass consumes that proof; it must never erase a still-emitted check.
-  switch (check->kind) {
-    case analysis::SuperCheckKind::kRequireInitialized:
-    case analysis::SuperCheckKind::kNoop: return true;
-    case analysis::SuperCheckKind::kRequireUninitialized: return false;
-  }
-  return false;
 }
 }  // namespace
 
@@ -33,7 +18,7 @@ void FoldReturnExpressions(const AstMethod& method, SourceAst& ast,
     const auto end = std::size_t(block.first_instruction) + block.instruction_count;
     const auto returned = end - 1;
     auto defined = returned - 1;
-    while (defined > block.first_instruction && ProvenReturnGuard(method, ast, defined))
+    while (defined > block.first_instruction && IsElidedInitializedGuard(method, ast, defined))
       --defined;
     auto& tail = ast.statements[returned];
     auto& head = ast.statements[defined];
