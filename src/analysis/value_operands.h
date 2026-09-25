@@ -25,5 +25,6 @@ enum class OperandError : std::uint8_t {
 // the independent register-effect contract. Equal slots remain distinct uses.
 [[nodiscard]] std::variant<ValueOperands, OperandError> DescribeValueOperands(
     const SemanticInstruction& instruction);
+[[nodiscard]] ValueOperation ImportValueOperation(const SemanticOperation& operation);
 }  // namespace abcd::analysis
 #endif

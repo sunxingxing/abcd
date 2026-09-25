@@ -103,6 +103,10 @@ void LinkUse(ValueProgram& graph, OperandUse use) {
 }
 }  // namespace
 
+ValueOperation ImportValueOperation(const SemanticOperation& operation) {
+  return Operation(operation);
+}
+
 std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
     const abc::MethodBody& body, const SemanticMethod& method,
     const SemanticProof& proof, const abc::FrameLayout& frame,

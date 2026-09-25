@@ -21,6 +21,23 @@ int main() {
   test::Check(graph.input.sites.size() == body.instructions.size());
   test::Check(!VerifyValueUses(graph, graph.uses.size()));
   test::Check(graph.exceptional_exits.empty());
+  test::Check(!VerifyImportedValues(graph, method, proof));
+  auto corrupt = graph;
+  corrupt.ops[0].operation = ValueNop{};
+  test::Check(VerifyImportedValues(corrupt, method, proof)->kind ==
+              ValueImportError::kInputMismatch);
+  corrupt = graph;
+  corrupt.uses[0].input->ordinal += 1;
+  test::Check(VerifyImportedValues(corrupt, method, proof)->kind ==
+              ValueImportError::kOperandMismatch);
+  corrupt = graph;
+  corrupt.origins[0].pc.value += 1;
+  test::Check(VerifyImportedValues(corrupt, method, proof)->kind ==
+              ValueImportError::kInputMismatch);
+  corrupt = graph;
+  corrupt.revision.value += 1;
+  test::Check(VerifyImportedValues(corrupt, method, proof)->kind ==
+              ValueImportError::kInputMismatch);
   std::size_t occurrences = 0;
   for (const auto& use : graph.uses) {
     if (!use.input) continue;

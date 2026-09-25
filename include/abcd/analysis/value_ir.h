@@ -87,19 +87,19 @@ struct OperandUse {
   std::optional<UseId> previous;
   std::optional<UseId> next;
 };
-struct ValueCopy {};
-struct ValueUnary { UnaryOperator op; };
-struct ValueBinary { BinaryOperator op; };
-struct ValueNamedRead { abc::PoolIndex name; };
-struct ValueNamedWrite { abc::PoolIndex name; };
-struct ValuePropertyRead {};
-struct ValueBranch { UnaryOperator predicate; };
-struct ValueJump {};
-struct ValueReturn {};
-struct ValueNop {};
-struct ValueString { abc::PoolIndex string; };
-struct ValueGuard { std::optional<abc::PoolIndex> name; };
-struct ValueArrayAllocation {};
+struct ValueCopy { bool operator==(const ValueCopy&) const = default; };
+struct ValueUnary { UnaryOperator op; bool operator==(const ValueUnary&) const = default; };
+struct ValueBinary { BinaryOperator op; bool operator==(const ValueBinary&) const = default; };
+struct ValueNamedRead { abc::PoolIndex name; bool operator==(const ValueNamedRead&) const = default; };
+struct ValueNamedWrite { abc::PoolIndex name; bool operator==(const ValueNamedWrite&) const = default; };
+struct ValuePropertyRead { bool operator==(const ValuePropertyRead&) const = default; };
+struct ValueBranch { UnaryOperator predicate; bool operator==(const ValueBranch&) const = default; };
+struct ValueJump { bool operator==(const ValueJump&) const = default; };
+struct ValueReturn { bool operator==(const ValueReturn&) const = default; };
+struct ValueNop { bool operator==(const ValueNop&) const = default; };
+struct ValueString { abc::PoolIndex string; bool operator==(const ValueString&) const = default; };
+struct ValueGuard { std::optional<abc::PoolIndex> name; bool operator==(const ValueGuard&) const = default; };
+struct ValueArrayAllocation { bool operator==(const ValueArrayAllocation&) const = default; };
 using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
     ValueNamedRead, ValueNamedWrite, ValuePropertyRead, ValueBranch, ValueJump,
     ValueReturn, ValueNop, ValueString, ValueGuard, ValueArrayAllocation>;

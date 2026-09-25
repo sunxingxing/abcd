@@ -45,6 +45,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/semantic_ir.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/value_operands.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/value_verify.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/value_import.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/value_correspondence.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_value_rule.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_region.cc
   src/analysis/loop_intervals.cc)

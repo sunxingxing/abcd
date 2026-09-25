@@ -22,5 +22,10 @@ struct ValueImportFailure {
     const abc::MethodBody& body, const SemanticMethod& method,
     const SemanticProof& proof, const abc::FrameLayout& frame,
     SemanticBudget budget = {});
+// Independent traversal of the unedited imported graph against its immutable
+// input. Does not reconstruct another graph or certify transformed revisions.
+[[nodiscard]] std::optional<ValueImportFailure> VerifyImportedValues(
+    const ValueProgram& graph, const SemanticMethod& method,
+    const SemanticProof& proof, SemanticBudget budget = {});
 }  // namespace abcd::analysis
 #endif
