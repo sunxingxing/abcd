@@ -41,3 +41,28 @@ negative zero, NaN/infinity, all scalar operand positions, repeated acc reads,
 throwing coercions and property access, handler-observed acc values, original
 copy consumers removed by DCE, chained folds, PC anchors and byte budgets.
 Production export is not proof of runtime equivalence.
+
+## Private Slot Operands
+
+The pass is now named `FoldScalarValues` and also accepts acc/register reads
+as producers. The producer still has no effects and is immediately adjacent
+to the consumer, so no instruction can change the private slot before the
+replacement read. RHS operands are evaluated before the destination commits,
+including when source and destination use the same register. No heap, lexical
+or module binding is substituted merely because it has a similar name.
+
+Slot-to-slot consumer copies retain their old form for the subsequent paired
+save/reload elimination. An initial export showed that prematurely rewriting
+those copies hid existing reload pairs and increased Logger temporaries. The
+final boundary admits slot values only into unary/binary/property expressions;
+primitive-constant substitution keeps its previous admission rules. No new
+storage, scalar operation kind or complexity class is introduced.
+
+Both CLIs build and read-only review found no concrete correctness defect.
+Final ABC-only export `build/pasteboard-scalar-values-02` preserves Logger's
+text exactly compared with `pasteboard-scalar-constants-01`. ProgressBar now
+prints direct `if ((!$r4))`, `typeof $r7` and `$r14 + $r4` expressions. Total
+output falls from 10,074 lines / 170,817 bytes to 10,047 lines / 170,464 bytes.
+Slot/destination aliasing, coercion ordering, copy-pair interaction and chained
+boolean folds remain deferred execution regressions; tests, JS and RSS remain
+paused. Generic names and labels still prevent a full source-style claim.

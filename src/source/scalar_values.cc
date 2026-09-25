@@ -1,13 +1,15 @@
-#include "scalar_constants.h"
+#include "scalar_values.h"
 
 #include <type_traits>
 
 namespace abcd::source {
 namespace {
-const analysis::ScalarValue* Primitive(const analysis::ScalarExpression& expression) {
+const analysis::ScalarValue* PureValue(const analysis::ScalarExpression& expression) {
   const auto* value = std::get_if<analysis::ScalarValue>(&expression);
   if (!value) return nullptr;
-  return std::holds_alternative<analysis::SpecialValue>(*value) ||
+  return std::holds_alternative<analysis::Accumulator>(*value) ||
+                 std::holds_alternative<abc::RegisterId>(*value) ||
+                 std::holds_alternative<analysis::SpecialValue>(*value) ||
                  std::holds_alternative<analysis::IntegerLiteral>(*value) ||
                  std::holds_alternative<analysis::Float64Bits>(*value)
              ? value : nullptr;
@@ -17,11 +19,11 @@ bool HasMergedOrigin(const SourceStatement& statement) {
          statement.class_origin || statement.previous_origin;
 }
 bool ReplaceAccumulator(analysis::ScalarExpression& expression,
-                        const analysis::ScalarValue& constant) {
+                        const analysis::ScalarValue& input) {
   bool replaced = false;
   const auto replace = [&](analysis::ScalarValue& value) {
     if (std::holds_alternative<analysis::Accumulator>(value)) {
-      value = constant;
+      value = input;
       replaced = true;
     }
   };
@@ -42,8 +44,8 @@ bool ReplaceAccumulator(analysis::ScalarExpression& expression,
 }
 }  // namespace
 
-void FoldScalarConstants(const AstMethod& method, SourceAst& ast,
-                         std::span<const std::size_t> uses) {
+void FoldScalarValues(const AstMethod& method, SourceAst& ast,
+                      std::span<const std::size_t> uses) {
   for (const auto& block : method.flow.blocks) {
     const auto end = std::size_t(block.first_instruction) + block.instruction_count;
     for (std::size_t i = block.first_instruction; i + 1 < end; ++i) {
@@ -55,11 +57,17 @@ void FoldScalarConstants(const AstMethod& method, SourceAst& ast,
           !std::holds_alternative<analysis::Accumulator>(load->target)) continue;
       const auto* input = std::get_if<analysis::ScalarExpression>(&load->value);
       auto* expression = std::get_if<analysis::ScalarExpression>(&assignment->value);
-      const auto* constant = input ? Primitive(*input) : nullptr;
-      if (!constant || !expression) continue;
+      const auto* value = input ? PureValue(*input) : nullptr;
+      if (!value || !expression) continue;
+      // Preserve acc/register transport shape for the later paired reload
+      // proof. Substituting a slot into a copy early can hide that pair and
+      // retain more transports even though it preserves execution semantics.
+      if ((std::holds_alternative<analysis::Accumulator>(*value) ||
+           std::holds_alternative<abc::RegisterId>(*value)) &&
+          std::holds_alternative<analysis::ScalarValue>(*expression)) continue;
       const auto& original = method.instructions[i];
       const auto* scalar = std::get_if<analysis::ScalarAssignment>(&original.operation);
-      if (!scalar || !Primitive(scalar->expression) ||
+      if (!scalar || !PureValue(scalar->expression) ||
           !std::holds_alternative<analysis::Accumulator>(scalar->destination) ||
           scalar->completion != analysis::CompletionEffect::kNormal ||
           original.effects.normal != analysis::LanguageEffect::kNone ||
@@ -72,10 +80,11 @@ void FoldScalarConstants(const AstMethod& method, SourceAst& ast,
       const auto reads = method.ssa.Reads({static_cast<std::uint32_t>(i + 1)});
       bool consumed = false;
       for (const auto& read : reads) consumed |= read.value == *output;
-      if (!consumed || !ReplaceAccumulator(*expression, *constant)) continue;
-      // Primitive evaluation has no allocation/coercion effects. The consumer
-      // still executes at its own PC, and handler phi uses prevent removing an
-      // observable acc commit. No printed-text or numeric-value inference.
+      if (!consumed || !ReplaceAccumulator(*expression, *value)) continue;
+      // Private slot reads and primitive evaluation have no allocation or
+      // coercion effects. No intervening instruction can redefine the slot;
+      // the consumer reads its RHS before committing any destination write.
+      // Handler phi uses prevent removing an observable acc commit.
       head.operation = analysis::NoOperation{};
     }
   }
