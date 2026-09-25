@@ -92,6 +92,12 @@ std::variant<PrintedSource, SourceFailure> BindSourceTemplate(
     const auto bytes = source.text.size() + prefix.back().bytes;
     PrintedSource result;
     result.vm_slots = source.vm_slots;
+    result.accumulator_used = source.accumulator_used;
+    if (source.register_uses.size() > remaining / sizeof(RegisterUse)) return Resource();
+    result.register_uses.reserve(source.register_uses.size());
+    if (result.register_uses.capacity() > remaining / sizeof(RegisterUse)) return Resource();
+    remaining -= result.register_uses.capacity() * sizeof(RegisterUse);
+    result.register_uses.assign(source.register_uses.begin(), source.register_uses.end());
     result.contract = source.contract;
     if (source.host_realm) {
       if (source.host_realm->binding.size() >= remaining) return Resource();

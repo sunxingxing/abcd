@@ -63,7 +63,8 @@ class SourcePrinter {
     auto& source = std::get<PrintedSource>(printed);
     return PrintedTemplate{std::move(source.text), std::move(source.spans),
                             std::move(captures_), source.contract, std::move(source.host_realm),
-                            std::move(source.method_spans), source.vm_slots};
+                            std::move(source.method_spans), source.vm_slots,
+                            source.accumulator_used, std::move(source.register_uses)};
   }
 
   std::variant<PrintedSource, SourceFailure> PrintBody(ScalarNames names) {
@@ -542,6 +543,15 @@ class SourcePrinter {
     limit_ -= bytes;
     FindEntryBindings(*capture_method_, names_, entry_bindings_);
     elide_entry_copies_ = CanElideEntryCopies(ast_);
+    if (elide_entry_copies_) {
+      if (names_.registers.size() > limit_ / sizeof(RegisterUse))
+        throw SourceFailure{SourceError::kResourceLimit, {}};
+      result_.register_uses.resize(names_.registers.size(), RegisterUse::kUnused);
+      const auto use_bytes = result_.register_uses.capacity() * sizeof(RegisterUse);
+      if (use_bytes > limit_)
+        throw SourceFailure{SourceError::kResourceLimit, {}};
+      limit_ -= use_bytes;
+    }
   }
   void Scalar(const ScalarExpression& expression, bool read = true) {
     auto bound = expression;
@@ -556,9 +566,10 @@ class SourcePrinter {
   }
   void Value(const ScalarValue& value) { Scalar(ScalarExpression{value}); }
   void ObserveSlots(const ScalarExpression& expression) {
-    if (!elide_entry_copies_ || vm_slots_ == VmSlotUse::kRequired) return;
+    if (!elide_entry_copies_) return;
     const auto observe = [&](const ScalarValue& value) {
       if (std::holds_alternative<Accumulator>(value)) {
+        result_.accumulator_used = true;
         vm_slots_ = VmSlotUse::kRequired;
       } else if (const auto* reg = std::get_if<abc::RegisterId>(&value)) {
         if (names_.this_binding == *reg) return;
@@ -568,6 +579,9 @@ class SourcePrinter {
               names_.parameter_writes[ordinal] == 0) return;
         }
         vm_slots_ = VmSlotUse::kRequired;
+        if (reg->value >= result_.register_uses.size())
+          throw SourceFailure{SourceError::kOutput, current_pc_};
+        result_.register_uses[reg->value] = RegisterUse::kUsed;
       }
     };
     std::visit([&](const auto& value) {

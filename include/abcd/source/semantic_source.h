@@ -283,6 +283,7 @@ struct HostRealmRequirement {
   std::string binding;
 };
 enum class VmSlotUse : std::uint8_t { kUnknown, kNone, kRequired };
+enum class RegisterUse : std::uint8_t { kUnused, kUsed };
 struct PrintedSource {
   std::string text;
   std::vector<GeneratedSpan> spans;
@@ -291,6 +292,8 @@ struct PrintedSource {
   // Partial descendant coverage, never evidence that every method is mapped.
   std::vector<MethodGeneratedSpan> method_spans;
   VmSlotUse vm_slots = VmSlotUse::kUnknown;
+  bool accumulator_used = false;
+  std::vector<RegisterUse> register_uses;
 };
 struct SourceCapture {
   GeneratedPosition position;
@@ -308,6 +311,8 @@ struct PrintedTemplate {
   // Descendant endpoints retain this template's capture cursors.
   std::vector<MethodGeneratedSpan> method_spans;
   VmSlotUse vm_slots = VmSlotUse::kUnknown;
+  bool accumulator_used = false;
+  std::vector<RegisterUse> register_uses;
 };
 // source is the unchanged PrintSourceTemplate result. bindings is one
 // parent-PROVEN initialized local cell per capture occurrence,

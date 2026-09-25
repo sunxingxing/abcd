@@ -406,7 +406,16 @@ class FunctionWriter {
       // positions are rebased into the actual enclosing output cursor.
       const auto vm_slots = semantic_body ? semantic_body->vm_slots
           : semantic_template ? semantic_template->vm_slots : VmSlotUse::kUnknown;
-      if (vm_slots != VmSlotUse::kNone) DeclareVmSlots();
+      const bool precise_slots = vm_slots != VmSlotUse::kUnknown;
+      const auto register_uses = semantic_body
+          ? std::span<const RegisterUse>{semantic_body->register_uses}
+          : semantic_template ? std::span<const RegisterUse>{semantic_template->register_uses}
+                              : std::span<const RegisterUse>{};
+      const bool accumulator_used = semantic_body ? semantic_body->accumulator_used
+          : semantic_template ? semantic_template->accumulator_used : true;
+      if (precise_slots && register_uses.size() != frame.registers)
+        return FunctionEmitError::kFrame;
+      DeclareVmSlots(precise_slots, accumulator_used, register_uses);
       if (error_) return *error_;
       body_budget.output.bytes = budget_.output.bytes - written_;
       if (semantic_body) {
@@ -441,6 +450,7 @@ class FunctionWriter {
               !charge(semantic_template->spans.capacity(), sizeof(GeneratedSpan)) ||
               !charge(semantic_template->captures.capacity(), sizeof(SourceCapture)) ||
               !charge(semantic_template->method_spans.capacity(), sizeof(MethodGeneratedSpan)) ||
+              !charge(semantic_template->register_uses.capacity(), sizeof(RegisterUse)) ||
               (semantic_template->host_realm &&
                (!charge(semantic_template->host_realm->binding.capacity(), sizeof(char)) ||
                 !charge(1, sizeof(char)))) ||
@@ -608,11 +618,13 @@ class FunctionWriter {
   }
 
  private:
-  void DeclareVmSlots() {
-    Text("let $acc;\n");
+  void DeclareVmSlots(bool precise, bool accumulator_used,
+                      std::span<const RegisterUse> uses) {
+    if (!precise || accumulator_used) Text("let $acc;\n");
     const auto& frame = function_.frame;
     // Writable VM slots stay distinct from immutable self/formal bindings.
     for (std::uint32_t i = 0; i < frame.registers && !error_; ++i) {
+      if (precise && uses[i] == RegisterUse::kUnused) continue;
       if (i >= frame.first_parameter.value &&
           i - frame.first_parameter.value < parameter_writes_.size() &&
           parameter_writes_[i - frame.first_parameter.value] == 0) continue;

@@ -1,5 +1,8 @@
 # Slot-Free Function Bodies
 
+The subsequent `used-vm-slots.md` extension adds precise per-register facts for
+audited mixed bodies; the original Unknown/None/Required contract below remains.
+
 PrintedSource and PrintedTemplate carry a typed VmSlotUse result: Unknown,
 None or Required. Unknown is the default for legacy/unproven output. The common
 printer can publish an exact result only after the exhaustive bound-read audit
