@@ -8,6 +8,7 @@
 #include "abcd/analysis/block_order.h"
 #include "loop_intervals.h"
 #include "region_if.h"
+#include "terminal_arms.h"
 
 namespace abcd::analysis {
 namespace {
@@ -113,7 +114,7 @@ RegionResult BuildLoopRegions(const SemanticMethod& method,
 
 RegionResult BuildSemanticRegions(const SemanticMethod& method,
                                   std::size_t budget_bytes) {
-  const auto ordered = OrderAcyclicBlocks(method.flow, {}, {budget_bytes});
+  auto ordered = OrderAcyclicBlocks(method.flow, {}, {budget_bytes});
   if (const auto* error = std::get_if<OrderError>(&ordered)) {
     if (*error == OrderError::kCycle) return BuildLoopRegions(method, budget_bytes);
     const auto kind = *error == OrderError::kCycle
@@ -123,14 +124,14 @@ RegionResult BuildSemanticRegions(const SemanticMethod& method,
                                 : RegionError::kBackwardEdge;
     return Fail(kind);
   }
-  const auto& order = std::get<BlockOrder>(ordered);
+  auto& order = std::get<BlockOrder>(ordered);
   if (order.unreachable != 0 ||
       order.blocks.size() != method.flow.blocks.size())
     return Fail(RegionError::kUnreachable);
   if (order.blocks.size() > kMaxSemanticRegionDepth)
     return Fail(RegionError::kDepth);
   if (method.flow.blocks.size() >
-      budget_bytes / (sizeof(std::uint32_t) + sizeof(EntryCount) +
+      budget_bytes / (sizeof(std::uint32_t) + sizeof(EntryCount) + sizeof(BlockId) +
                       kNodesPerBlock * sizeof(RegionNode)))
     return Fail(RegionError::kResourceLimit);
   try {
@@ -139,6 +140,14 @@ RegionResult BuildSemanticRegions(const SemanticMethod& method,
     if (entries.capacity() > method.flow.blocks.size()) return Fail(RegionError::kResourceLimit);
     if (const auto failure = CountRegionEntries(method.flow, entries)) return *failure;
     tree.order_positions.resize(method.flow.blocks.size());
+    if (tree.order_positions.capacity() > method.flow.blocks.size())
+      return Fail(RegionError::kResourceLimit);
+    std::vector<BlockId> adjacent;
+    adjacent.reserve(order.blocks.size());
+    if (adjacent.capacity() > order.blocks.size()) return Fail(RegionError::kResourceLimit);
+    OrderTerminalArms(method.flow, entries, order.blocks, tree.order_positions, adjacent);
+    if (adjacent.size() != order.blocks.size()) return Fail(RegionError::kBackwardEdge);
+    order.blocks.swap(adjacent);
     for (std::size_t i = 0; i < order.blocks.size(); ++i)
       tree.order_positions[order.blocks[i].value] = i;
     for (std::size_t i = 0; i < order.blocks.size(); ++i) {
