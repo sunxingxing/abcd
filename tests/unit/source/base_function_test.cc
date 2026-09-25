@@ -245,9 +245,11 @@ int main(int argc, char** argv) {
     test::Check(std::holds_alternative<source::RouteRefusal>(
         source::BuildSemanticTemplate(first_key, frame, {}, constants, {}, 0,
                                       {}, required)));
-    const analysis::SemanticMethod empty_ir;
+    const auto input_ir = analysis::BuildSemanticMethod(
+        body, header.profile, Function().frame.registers);
+    const auto& entry_ir = std::get<analysis::SemanticMethod>(input_ir);
     test::Check(std::holds_alternative<source::RouteRefusal>(
-        source::BuildEntrySource(first_key, empty_ir, frame,
+        source::BuildEntrySource(first_key, entry_ir, frame,
             source::SourceForm::kFunction, "Recovered", constants, nullptr,
             {}, 0, required)));
     std::ostringstream recovered;

@@ -1,0 +1,95 @@
+#include "value_operands.h"
+
+#include <type_traits>
+
+namespace abcd::analysis {
+namespace {
+bool SameSlot(const ScalarSlot& left, const ScalarSlot& right) {
+  if (left.index() != right.index()) return false;
+  const auto* reg = std::get_if<abc::RegisterId>(&left);
+  return !reg || *reg == std::get<abc::RegisterId>(right);
+}
+
+ScalarValue SlotValue(const ScalarSlot& slot) {
+  return std::visit([](const auto& value) -> ScalarValue { return value; }, slot);
+}
+
+void Append(ValueOperands& plan, OperandRole role, ScalarValue value,
+            ReadPurpose purpose = ReadPurpose::kOperand) {
+  plan.operands[plan.count++] = {role, std::move(value), purpose, {}};
+}
+
+void Expression(ValueOperands& plan, const ScalarExpression& expression) {
+  std::visit([&](const auto& value) {
+    using T = std::decay_t<decltype(value)>;
+    if constexpr (std::is_same_v<T, ScalarValue>) {
+      Append(plan, OperandRole::kInput, value);
+    } else if constexpr (std::is_same_v<T, UnaryExpression>) {
+      Append(plan, OperandRole::kInput, value.input);
+    } else if constexpr (std::is_same_v<T, BinaryExpression>) {
+      Append(plan, OperandRole::kLeft, value.left);
+      Append(plan, OperandRole::kRight, value.right);
+    } else if constexpr (std::is_same_v<T, PropertyRead>) {
+      Append(plan, OperandRole::kBase, value.receiver);
+      Append(plan, OperandRole::kKey, value.key);
+    }
+  }, expression);
+}
+}  // namespace
+
+std::variant<ValueOperands, OperandError> DescribeValueOperands(
+    const SemanticInstruction& instruction) {
+  ValueOperands plan;
+  const bool supported = std::visit([&](const auto& op) {
+    using T = std::decay_t<decltype(op)>;
+    if constexpr (std::is_same_v<T, ScalarAssignment>) {
+      Expression(plan, op.expression);
+      plan.write = op.destination;
+    } else if constexpr (std::is_same_v<T, NamedRead>) {
+      Append(plan, OperandRole::kBase, Accumulator{});
+      plan.write = Accumulator{};
+    } else if constexpr (std::is_same_v<T, NamedWrite>) {
+      Append(plan, OperandRole::kBase, op.object);
+      Append(plan, OperandRole::kStoredValue, Accumulator{});
+    } else if constexpr (std::is_same_v<T, BranchOperation>) {
+      Append(plan, OperandRole::kCondition, op.predicate.input);
+    } else if constexpr (std::is_same_v<T, ReturnOperation>) {
+      Append(plan, OperandRole::kReturnValue, op.value);
+    } else if constexpr (std::is_same_v<T, StringLoad>) {
+      plan.write = Accumulator{};
+    } else if constexpr (std::is_same_v<T, HoleGuard>) {
+      Append(plan, OperandRole::kGuardValue, SlotValue(op.value));
+      // The diagnostic register is read only on the failing guard path.
+      // Preserve the protocol dependency; never make it an eager JS operand.
+      if (const auto* name = std::get_if<abc::RegisterId>(&op.name))
+        Append(plan, OperandRole::kDiagnosticName, *name, ReadPurpose::kProtocol);
+    } else if constexpr (std::is_same_v<T, NoOperation> ||
+                         std::is_same_v<T, JumpOperation>) {
+    } else {
+      return false;
+    }
+    return true;
+  }, instruction.operation);
+  if (!supported) return OperandError::kUnsupportedOperation;
+  const auto& effect = instruction.effects.normal_registers;
+  if (effect.range || effect.read_count > effect.reads.size())
+    return OperandError::kReadCount;
+  std::uint16_t ordinal = 0;
+  for (auto& operand : std::span(plan.operands).first(plan.count)) {
+    std::optional<ScalarSlot> slot;
+    if (std::holds_alternative<Accumulator>(operand.value))
+      slot = Accumulator{};
+    else if (const auto* reg = std::get_if<abc::RegisterId>(&operand.value))
+      slot = *reg;
+    if (!slot) continue;
+    if (ordinal >= effect.read_count) return OperandError::kReadCount;
+    if (!SameSlot(*slot, effect.reads[ordinal])) return OperandError::kReadSlot;
+    operand.read_ordinal = ordinal++;
+  }
+  if (ordinal != effect.read_count) return OperandError::kReadCount;
+  if (plan.write.has_value() != effect.write.has_value() ||
+      (plan.write && !SameSlot(*plan.write, *effect.write)))
+    return OperandError::kWriteSlot;
+  return plan;
+}
+}  // namespace abcd::analysis
