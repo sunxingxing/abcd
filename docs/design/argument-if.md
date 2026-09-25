@@ -55,5 +55,37 @@ edge orientation, arm cross-entry, non-join exits, resume edges, throwing branch
 effects, nested staged calls, header property slicing, join argument slicing,
 predicate-origin rebasing, zero-width jump anchors and resource limits. Full
 source equivalence and process-memory compliance remain unverified. Ternary
-recovery, redundant outer labels and general multi-block argument trees remain
+recovery and general multi-block argument trees remain
 future work rather than being represented as complete.
+
+## Outer Label Ownership
+
+CollectLabelUses now admits methods with argument regions. It counts only
+outer emitted jumps: property remains outside, instructions in (property, call]
+belong to the argument owner, and consumed block-end fallthroughs likewise do
+not reference outer labels. IsArgumentInterior and HasArgumentOverlap are
+shared with the printer so boundary decisions cannot drift independently.
+
+When a RegionIf intersects the argument interval, the outer printer uses its
+block fallback instead of consuming native-if jumps. Label collection now
+mirrors that fallback for all three blocks. Other RegionIf nodes keep their
+native-if accounting. NeedsLabel controls both ordinary RegionLabel wrappers
+and the fallback if's labels. Omitted braces do not reduce scope_depth: future
+scope-sensitive admission remains conservative. Local declarations are still
+at function entry; record and array-capture scopes remain excluded. The
+argument IIFE's internal label layout does not use this outer index.
+
+The existing O(blocks) capacity-admitted label bitmap and linear region/statement
+scan are reused. No per-label graph scan or new allocation class is introduced.
+Production builds and ABC-only `build/pasteboard-argument-labels-01` export
+succeeded. All six pages lose empty outer wrappers, totaling 66 lines / 396
+bytes: 6,069 lines / 114,681 bytes overall. Business statements and the native
+argument if/else remain unchanged in the inspected diffs. Statuses remain eight
+incomplete, two refused at PC 14 and nine metadata-only; partial maps retain
+195 methods / 9,745 spans. Read-only review found no concrete issue.
+
+Tests, JS execution and RSS remain paused. Deferred regressions include outer
+jumps before/after the interval, property/call boundary edges, partially
+overlapping RegionIf fallback, same-named IIFE/outer labels, unstructured
+argument fallback, scope-sensitive declarations and position rebasing. This
+does not claim executable-source equivalence or memory-cap verification.

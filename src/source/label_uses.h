@@ -5,18 +5,17 @@
 #include <type_traits>
 
 #include "abcd/source/semantic_source.h"
+#include "argument_region.h"
 
 namespace abcd::source {
 enum class LabelUse : std::uint8_t { kAbsent, kReferenced };
 
 // Match native if emission, not raw CFG edges: its header branch and each
-// arm's final jump are consumed. Staged arguments have a different printer
-// and must not use this index. Extra references are safe; missing ones aren't.
+// arm's final jump are consumed. Argument-interior jumps belong to the IIFE,
+// not outer labels. Extra references are safe; missing ones aren't.
 inline void CollectLabelUses(const SourceAst& ast,
                              const analysis::NormalFlow& flow,
                              std::span<LabelUse> uses) {
-  if (ast.argument_region)
-    throw SourceFailure{SourceError::kInvalidEffect, {}};
   const auto mark = [&](analysis::BlockId target) {
     if (target.value >= uses.size())
       throw SourceFailure{SourceError::kInvalidEffect, {}};
@@ -32,19 +31,28 @@ inline void CollectLabelUses(const SourceAst& ast,
       throw SourceFailure{SourceError::kInvalidEffect, value.begin};
     if (omit_last) --end;
     for (auto i = std::size_t(value.first_instruction); i < end; ++i) {
+      if (IsArgumentInterior(ast, i)) continue;
       const auto& operation = ast.statements[i].operation;
       if (const auto* jump = std::get_if<SourceBreak>(&operation))
         mark(jump->target);
       else if (const auto* branch = std::get_if<SourceConditionalBreak>(&operation))
         mark(branch->target);
     }
-    if (fallthrough && ast.fallthrough[id.value]) mark(*ast.fallthrough[id.value]);
+    if (fallthrough && !IsArgumentInterior(ast, end) && ast.fallthrough[id.value])
+      mark(*ast.fallthrough[id.value]);
   };
   const auto arm = [&](analysis::BlockId id) {
     if (id.value >= flow.blocks.size())
       throw SourceFailure{SourceError::kInvalidEffect, {}};
     block(id, flow.blocks[id.value].transfer == abc::ControlTransfer::kJump,
           false);
+  };
+  const auto staged = [&](analysis::BlockId id) {
+    if (id.value >= flow.blocks.size())
+      throw SourceFailure{SourceError::kInvalidEffect, {}};
+    const auto& value = flow.blocks[id.value];
+    return HasArgumentOverlap(ast, value.first_instruction,
+        std::size_t(value.first_instruction) + value.instruction_count);
   };
   const auto visit = [&](const auto& self, const analysis::RegionNode& node,
                          std::size_t depth) -> void {
@@ -55,9 +63,18 @@ inline void CollectLabelUses(const SourceAst& ast,
       if constexpr (std::is_same_v<T, analysis::RegionBlock>) {
         block(region.id, false, true);
       } else if constexpr (std::is_same_v<T, analysis::RegionIf>) {
-        block(region.header, true, false);
-        arm(region.body);
-        if (region.alternate) arm(*region.alternate);
+        // The printer falls back to RegionBlock emission if an argument
+        // interval intersects this if. Retain every outer jump in that mode.
+        if (staged(region.header) || staged(region.body) ||
+            (region.alternate && staged(*region.alternate))) {
+          block(region.header, false, true);
+          block(region.body, false, true);
+          if (region.alternate) block(*region.alternate, false, true);
+        } else {
+          block(region.header, true, false);
+          arm(region.body);
+          if (region.alternate) arm(*region.alternate);
+        }
       } else if constexpr (std::is_same_v<T, analysis::RegionSequence>) {
         for (const auto& child : region.children) self(self, child, depth + 1);
       } else if constexpr (std::is_same_v<T, analysis::RegionTry>) {

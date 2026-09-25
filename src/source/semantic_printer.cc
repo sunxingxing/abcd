@@ -1362,9 +1362,7 @@ class SourcePrinter {
       throw SourceFailure{SourceError::kOutput, current_pc_};
     first = std::max(first, std::min(end, root_prefix_end_));
     for (std::size_t i = first; i < end;) {
-      if (!argument && ast_.argument_region &&
-          i > ast_.argument_region->property.value &&
-          i <= ast_.argument_region->call.value) {
+      if (!argument && IsArgumentInterior(ast_, i)) {
         i = std::size_t(ast_.argument_region->call.value) + 1;
         continue;
       }
@@ -1392,7 +1390,7 @@ class SourcePrinter {
     // No lexical declarations live in these wrappers: locals are declared at
     // function entry. Keep record declarations and array-capture scopes intact,
     // and retain the staged-argument printer's independent label layout.
-    if (!record_exports_ && !ast_.argument_region && !ast_.array_captures) {
+    if (!record_exports_ && !ast_.array_captures) {
       if (blocks_.blocks.size() > limit_ / sizeof(LabelUse))
         throw SourceFailure{SourceError::kResourceLimit, {}};
       label_uses_.resize(blocks_.blocks.size(), LabelUse::kAbsent);
@@ -1402,6 +1400,12 @@ class SourcePrinter {
       limit_ -= bytes;
       CollectLabelUses(ast_, blocks_, label_uses_);
     }
+  }
+  bool NeedsLabel(analysis::BlockId target) const {
+    if (label_uses_.empty()) return true;
+    if (target.value >= label_uses_.size())
+      throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+    return label_uses_[target.value] == LabelUse::kReferenced;
   }
   void Root() {
     // Labels have no evaluation effect, but create lexical scopes. Keep the
@@ -1472,29 +1476,29 @@ class SourcePrinter {
       throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
     // Cross-block staged arguments own their own branch emission. Keep the
     // equivalent label layout here so its existing consumption rules apply.
-    const auto staged = [&](std::size_t first, std::size_t end) {
-      return ast_.argument_region && ast_.argument_region->property.value < end &&
-             ast_.argument_region->call.value >= first;
-    };
-    if (!argument && (staged(header.first_instruction, header_end) ||
-        staged(body.first_instruction, body_end) ||
-        (alternate && staged(alternate->first_instruction,
+    if (!argument && (HasArgumentOverlap(ast_, header.first_instruction, header_end) ||
+        HasArgumentOverlap(ast_, body.first_instruction, body_end) ||
+        (alternate && HasArgumentOverlap(ast_, alternate->first_instruction,
             std::size_t(alternate->first_instruction) + alternate->instruction_count)))) {
       if (region.alternate) {
-        Label(*region.alternate);
-        Text(": {\n");
+        if (NeedsLabel(*region.alternate)) {
+          Label(*region.alternate);
+          Text(": {\n");
+        }
         ++scope_depth_;
       }
-      Label(region.body);
-      Text(": {\n");
+      if (NeedsLabel(region.body)) {
+        Label(region.body);
+        Text(": {\n");
+      }
       ++scope_depth_;
       Region(analysis::RegionNode{analysis::RegionBlock{region.header}});
       --scope_depth_;
-      Text("}\n");
+      if (NeedsLabel(region.body)) Text("}\n");
       Region(analysis::RegionNode{analysis::RegionBlock{region.body}});
       if (region.alternate) {
         --scope_depth_;
-        Text("}\n");
+        if (NeedsLabel(*region.alternate)) Text("}\n");
         Region(analysis::RegionNode{analysis::RegionBlock{*region.alternate}});
       }
       return;
@@ -1537,9 +1541,7 @@ class SourcePrinter {
             Statements(block.first_instruction, end);
             if (region.id.value >= ast_.fallthrough.size())
               throw SourceFailure{SourceError::kOutput, current_pc_};
-            const bool consumed_terminator = ast_.argument_region &&
-                end > ast_.argument_region->property.value &&
-                end <= ast_.argument_region->call.value;
+            const bool consumed_terminator = IsArgumentInterior(ast_, end);
             if (ast_.fallthrough[region.id.value] && !consumed_terminator) {
               Text("break ");
               Label(*ast_.fallthrough[region.id.value]);
@@ -1549,17 +1551,13 @@ class SourcePrinter {
               result_.spans.back().end = position_;
             }
           } else if constexpr (std::is_same_v<T, analysis::RegionLabel>) {
-            if (!label_uses_.empty()) {
-              if (region.exit.value >= label_uses_.size())
-                throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
-              if (label_uses_[region.exit.value] == LabelUse::kAbsent) {
-                // Preserve conservative scope-sensitive admission even though
-                // this declaration-free lexical wrapper emits no source text.
-                ++scope_depth_;
-                Region(*region.body);
-                --scope_depth_;
-                return;
-              }
+            if (!NeedsLabel(region.exit)) {
+              // Preserve conservative scope-sensitive admission even though
+              // this declaration-free lexical wrapper emits no source text.
+              ++scope_depth_;
+              Region(*region.body);
+              --scope_depth_;
+              return;
             }
             Label(region.exit);
             Text(": {\n");

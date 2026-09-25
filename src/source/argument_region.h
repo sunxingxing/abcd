@@ -5,6 +5,17 @@
 
 namespace abcd::source {
 struct AstMethod;
+// The property node is emitted by the outer owner; its arguments and call are
+// emitted recursively. Block-end positions use the same exclusive boundary.
+inline bool IsArgumentInterior(const SourceAst& ast, std::size_t instruction) {
+  return ast.argument_region && instruction > ast.argument_region->property.value &&
+         instruction <= ast.argument_region->call.value;
+}
+inline bool HasArgumentOverlap(const SourceAst& ast, std::size_t first,
+                               std::size_t end) {
+  return ast.argument_region && ast.argument_region->property.value < end &&
+         ast.argument_region->call.value >= first;
+}
 // One cross-block interval per method for now: one O(B+E) validation, never
 // an entire CFG scan per call. All normal paths must converge at the call;
 // the outer SSA proof separately owns getter/receiver/callee identities.
