@@ -1,5 +1,9 @@
 # Boolean Assignments From If Regions
 
+The original BooleanDiamond implementation described below is now the Boolean
+specialization of ConditionalValue; see conditional-values.md. Its admission
+and Boolean-result contracts remain binding.
+
 ProveBooleanDiamond consumes the existing typed RegionIf and SourceAst, not
 instruction names or printed code. RegionIf already owns a single-entry header,
 two exclusive arms and their continuation. Each arm must have one normal CFG

@@ -34,7 +34,7 @@
 #include "entry_copy_elision.h"
 #include "argument_sequence.h"
 #include "argument_region.h"
-#include "boolean_diamond.h"
+#include "conditional_value.h"
 #include "rest_binding.h"
 #include "record_declarations.h"
 
@@ -1613,14 +1613,36 @@ class SourcePrinter {
     current_pc_ = terminator.pc;
     const auto begin = position_;
     if (!argument) {
-      if (const auto diamond = ProveBooleanDiamond(ast_, blocks_, region)) {
-        Target(diamond->target);
-        // A value-producing diamond must still produce an actual boolean;
-        // condition-context simplification alone may produce a truthy object.
+      if (const auto value = ProveConditionalValue(ast_, blocks_, region)) {
+        Target(value->target);
         Text(" = ");
-        Predicate(branch->condition, diamond->body_value, branch->input,
-                  PredicateForm::kBooleanValue);
+        auto body_begin = begin;
+        auto body_end = begin;
+        auto alternate_begin = begin;
+        auto alternate_end = begin;
+        if (value->boolean_body) {
+          // Boolean diamonds must retain a Boolean-valued result, not merely
+          // the truthy operand accepted by a condition context.
+          Predicate(branch->condition, *value->boolean_body, branch->input,
+                    PredicateForm::kBooleanValue);
+        } else {
+          Predicate(branch->condition, true, branch->input);
+          Text(" ? ");
+          const auto operand = [&](analysis::InstructionId id) {
+            const auto& node = ast_.statements[id.value];
+            current_pc_ = node.pc;
+            Expression(std::get<SourceAssignment>(node.operation).value);
+          };
+          body_begin = position_;
+          operand(value->body);
+          body_end = position_;
+          Text(" : ");
+          alternate_begin = position_;
+          operand(value->alternate);
+          alternate_end = position_;
+        }
         Text(";\n");
+        current_pc_ = terminator.pc;
         RelocateFusedOrigins(terminator, begin);
         result_.spans.push_back({terminator.pc, begin, position_});
         // Both exclusive arms represent this one commit. Retain every PC in
@@ -1628,8 +1650,18 @@ class SourcePrinter {
         for (const auto id : {region.body, *region.alternate}) {
           const auto& arm = blocks_.blocks[id.value];
           const auto end = std::size_t(arm.first_instruction) + arm.instruction_count;
-          for (std::size_t i = arm.first_instruction; i < end; ++i)
-            result_.spans.push_back({ast_.statements[i].pc, begin, position_});
+          for (std::size_t i = arm.first_instruction; i < end; ++i) {
+            auto from = begin;
+            auto to = position_;
+            if (!value->boolean_body && i == value->body.value) {
+              from = body_begin;
+              to = body_end;
+            } else if (!value->boolean_body && i == value->alternate.value) {
+              from = alternate_begin;
+              to = alternate_end;
+            }
+            result_.spans.push_back({ast_.statements[i].pc, from, to});
+          }
         }
         return;
       }

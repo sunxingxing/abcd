@@ -151,7 +151,7 @@ target_sources(abcd_source PRIVATE src/source/argument_region.cc src/source/sema
   src/source/store_receivers.cc
   src/source/private_copy.cc
   src/source/predicate_copies.cc
-  src/source/boolean_diamond.cc
+  src/source/conditional_value.cc
   src/source/string_comparison.cc
   src/source/branch_predicate.cc
   src/source/scalar_values.cc
