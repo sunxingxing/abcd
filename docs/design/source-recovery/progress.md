@@ -183,6 +183,25 @@ stay 18. Cell lifetime and capture-aware AST publication remain pending.
 Production `abc_semantic` and `abc_structure` builds exited 0 after integration;
 whitespace validation passed. No new real-method source success is claimed.
 
+### T07 Cell Storage and Access Plan
+
+Added CellPlan with typed AllocatedCell/IncomingCell storage, flat ordered
+per-cell access ranges and constant-time operation-to-cell indexing. Local
+storage keys use allocation OpId and slot; incoming cells retain captured depth
+and slot. No source name, scalar register, constness or initialization is inferred.
+Independent checking verifies storage identity, read/write shape, range/order,
+complete coverage and revisions against freshly verified environment facts.
+Grouping sorts once rather than scanning the graph per cell.
+
+VerifiedFunction preparation now builds the plan before evaluation and rebuilds
+working environment topology after default-body projection when revisions differ.
+Production `abc_semantic` and `abc_structure` builds exited 0; whitespace checking
+passed. Added uncompiled/unrun regression sources cover 0/1/2/200/201 allocation
+groups, repeated writes, distinct allocation identities, incoming captures,
+mutated storage/access/coverage/revisions and exact budgets. Testing/RSS remain
+paused. Source rules stay 18; dynamic lifetime/AST/child-tree proof is still
+required, so neither T07 nor the full T00-T12 goal is complete.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

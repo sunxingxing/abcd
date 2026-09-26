@@ -75,6 +75,22 @@ two fixed-depth ancestry passes before running it. Input/proof and working graph
 storage are admitted together with topology scratch; returned charges retain
 the upstream scratch estimate conservatively, not a claimed peak RSS result.
 
+CellPlan now indexes each verified lexical access by a stable CellId and groups
+ordered accesses in one flat arena. AllocatedCell uses the actual allocation
+OpId plus slot, not the EnvironmentIndex's temporary numbering. IncomingCell
+uses an explicit captured depth plus slot. Operation-to-cell lookup is O(1).
+Grouping sorts once, O(A log A) for A accesses; its independent checker is
+O(O+A+C) beyond environment verification for O operations and C cells. It checks
+unique storage keys, partitioned ranges, access kind/order/coverage and actual
+bindings. No per-cell graph traversal, value snapshot or constness inference.
+
+VerifiedFunction preparation builds this plan before source evaluation. A
+default-body projection must first rebuild environment topology when revisions
+change. New/old graph and topology charges remain conservatively admitted during
+replacement. The cell plan is preparation-local, not an executable certificate.
+Same allocation OpId on another loop iteration does not imply the same dynamic
+cell; later declaration placement must preserve that lifetime.
+
 These operations are still refused by source evaluation. Required next
 integration remains: proving dynamic cell lifetimes in the work graph and
 capture-aware symbol binding and AST;

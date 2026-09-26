@@ -6,6 +6,7 @@
 
 #include "abcd/source/value_stage.h"
 #include "class_tree_context.h"
+#include "cell_plan.h"
 #include "default_signature.h"
 #include "function_tree.h"
 #include "function_abi.h"
@@ -193,6 +194,35 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
                                          context->Site().length, budget));
     const auto& graph = defaults ? defaults->Graph() : *values.graph;
     receipt->work_revision = graph.revision.value;
+    std::optional<CellPlan> cells;
+    if (values.environments) {
+      // A projected default body has a new identity. Never reuse a topology or
+      // cell plan across that boundary merely because the PCs look unchanged.
+      if (values.environments->revision != graph.revision || values.environments->cfg_revision != graph.cfg_revision) {
+        auto rebuilt = analysis::BuildValueEnvironments(graph, budget.Remaining());
+        auto* environments = std::get_if<analysis::ValueEnvironments>(&rebuilt);
+        if (!environments) {
+          const auto error = std::get<analysis::ValueEnvironmentError>(rebuilt);
+          if (error == analysis::ValueEnvironmentError::kResourceLimit) throw Error::kResourceLimit;
+          if (error == analysis::ValueEnvironmentError::kWorkLimit) throw Error::kWorkLimit;
+          throw Error::kValues;
+        }
+        budget.Admit(environments->allocated_bytes, 1); budget.Step(environments->work);
+        values.environments = std::move(*environments);
+      }
+      auto planned = BuildCellPlan(graph, *values.environments, budget.Remaining());
+      auto* plan = std::get_if<CellPlan>(&planned);
+      if (!plan) {
+        const auto error = std::get<CellError>(planned);
+        if (error == CellError::kResourceLimit) throw Error::kResourceLimit;
+        if (error == CellError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kValues;
+      }
+      budget.Admit(plan->allocated_bytes, 1); budget.Step(plan->work);
+      cells = std::move(*plan);
+      // Binding topology alone does not authorize source cell reads/stores.
+      // Evaluation remains gated until lifetime and AST correspondence close.
+    }
     auto regions = BuildControlPlan(graph, budget.Remaining());
     const auto* control = std::get_if<ControlPlan>(&regions);
     if (!control) {
