@@ -55,7 +55,9 @@ using FunctionEmissionResult =
 // Explicit value-tree entry at the SAME callable boundary, before any legacy
 // header/register allocation/body writer. Match the selected owner shape, then
 // emit the whole member from its verified tree. No fallback or hidden secondary
-// self binding: the G1 ABI census proves self/new.target/arguments unobserved.
+// self binding: the ABI census proves self/new.target/arguments unobserved.
+// Literal-default syntax additionally requires the owning factory's signature
+// migration proof; accepting the census layout here is not such a proof.
 // Moves ownership into the result so record assembly can retain provenance.
 // destination is the caller's counted stream position, not tellp() or a source
 // text search. Shape refusal writes nothing; output/resource failure may leave

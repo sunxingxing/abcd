@@ -32,8 +32,12 @@ FunctionEmissionResult WriteClassMethod(const ClassMethod& method,
   const auto& abi = function.Abi();
   if (abi.callable != AbiObservation::kUnobserved ||
       abi.new_target != AbiObservation::kUnobserved ||
-      abi.arguments != AbiObservation::kUnobserved ||
-      abi.layout != ParameterLayout::kSimple) return FunctionEmitError::kFrame;
+      abi.arguments != AbiObservation::kUnobserved) return FunctionEmitError::kFrame;
+  switch (abi.layout) {
+    case ParameterLayout::kSimple:
+    case ParameterLayout::kLiteralDefaults: break;
+    default: return FunctionEmitError::kFrame;
+  }
 
   auto emitted = FunctionEmission::Write(std::move(function), output, destination,
                                          output_budget, scratch);

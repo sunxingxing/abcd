@@ -88,7 +88,7 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
   }
   for (const auto& parameter : tree.parameters) {
     budget.Step();
-    RequireTree(!parameter.initializer && !parameter.rest, Error::kUnsupportedSyntax);
+    RequireTree(!parameter.rest, Error::kUnsupportedSyntax);
     RequireTree(parameter.symbol.value < count &&
                 tree.symbols[parameter.symbol.value].kind == BindingKind::kParameter &&
                 !declared_[parameter.symbol.value], Error::kBinding);

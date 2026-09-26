@@ -55,18 +55,21 @@ class TreePrinter {
     Append("(");
     for (const auto& parameter : tree_.parameters) {
       Step();
-      if (parameter.initializer || parameter.rest) throw Error::kUnsupportedContext;
+      if (parameter.rest) throw Error::kUnsupportedContext;
       if (&parameter != tree_.parameters.data()) Append(", ");
       Name(parameter.symbol);
+      if (parameter.initializer) {
+        if (parameter.initializer->value >= tree_.expressions.size() ||
+            !std::holds_alternative<TreeLiteral>(tree_.expressions[parameter.initializer->value].expression))
+          throw Error::kUnsupportedContext;
+        Append(" = ");
+        Push(*parameter.initializer);
+        Drain();
+      }
     }
     Append(") ");
     Push(Statement{tree_.body, 0});
-    while (!actions_.empty()) {
-      Step();
-      const auto action = actions_.back();
-      actions_.pop_back();
-      std::visit([&](const auto& value) { Run(value); }, action);
-    }
+    Drain();
     for (std::size_t i = 0; i < tree_.anchors.size(); ++i) {
       Step();
       if (std::holds_alternative<FunctionExit>(tree_.anchors[i].position))
@@ -78,6 +81,14 @@ class TreePrinter {
     return std::move(result_);
   }
  private:
+  void Drain() {
+    while (!actions_.empty()) {
+      Step();
+      const auto action = actions_.back();
+      actions_.pop_back();
+      std::visit([&](const auto& value) { Run(value); }, action);
+    }
+  }
   void Step(std::uint64_t count = 1) {
     if (count > remaining_.work) throw Error::kWorkLimit;
     remaining_.work -= count;

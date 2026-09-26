@@ -16,20 +16,28 @@ class AbiBuilder {
       : graph_(graph), tree_(tree), frame_(frame), initial_(budget), remaining_(budget) {}
   ConstructedAbi Build(std::uint32_t length) {
     Require(graph_.revision == tree_.value_revision && graph_.cfg_revision == tree_.cfg_revision, Error::kRevision);
-    Require(tree_.parameters.size() == frame_.parameters && length == frame_.parameters, Error::kParameter);
+    Require(tree_.parameters.size() == frame_.parameters, Error::kParameter);
     Require(!tree_.self, Error::kSyntax);
     Array(result_.parameters, frame_.parameters);
     Array(formals_, tree_.symbols.size());
     result_.length = length;
+    std::uint32_t source_length = frame_.parameters;
     for (std::size_t i = 0; i < tree_.parameters.size(); ++i) {
       Step();
       const auto& parameter = tree_.parameters[i];
-      Require(!parameter.initializer && !parameter.rest && parameter.symbol.value < formals_.size(), Error::kParameter);
+      Require(!parameter.rest && parameter.symbol.value < formals_.size(), Error::kParameter);
+      if (parameter.initializer) {
+        Require(parameter.initializer->value < tree_.expressions.size() &&
+            std::holds_alternative<TreeLiteral>(tree_.expressions[parameter.initializer->value].expression), Error::kParameter);
+        if (result_.layout == ParameterLayout::kSimple) source_length = static_cast<std::uint32_t>(i);
+        result_.layout = ParameterLayout::kLiteralDefaults;
+      }
       Require(!formals_[parameter.symbol.value] &&
           tree_.symbols[parameter.symbol.value].kind == BindingKind::kParameter, Error::kParameter);
       formals_[parameter.symbol.value] = static_cast<std::uint32_t>(i);
       result_.parameters[i].symbol = parameter.symbol;
     }
+    Require(length == source_length, Error::kParameter);
     // SSA uses carry already-simplified entry identities. Do not count removed
     // MOVs as source ABI uses or use their register destinations as symbols.
     for (const auto& use : graph_.uses) {

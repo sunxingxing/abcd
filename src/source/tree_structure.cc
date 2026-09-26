@@ -76,6 +76,20 @@ class StructureCheck {
     const auto* root = std::get_if<BlockStmt>(&tree_.statements[tree_.body.value].statement);
     RequireTree(root && root->scope == tree_.body_scope, Error::kScope);
     scopes_.Enter(tree_.parameter_scope);
+    // Constant defaults cannot observe body bindings or the TDZ of later
+    // formals. They are separate expression occurrences in parameter scope,
+    // never borrowed body nodes. General default expressions need an ordered
+    // parameter-initialization proof before expanding this admission rule.
+    for (const auto& parameter : tree_.parameters) {
+      budget_.Step();
+      if (!parameter.initializer) continue;
+      const auto id = *parameter.initializer;
+      RequireTree(id.value < tree_.expressions.size(), Error::kRange);
+      RequireTree(std::holds_alternative<TreeLiteral>(tree_.expressions[id.value].expression),
+                  Error::kUnsupportedSyntax);
+      SyntaxFrame initializer{id, tree_.parameter_scope, 0, false};
+      Enter(initializer);
+    }
     std::size_t depth = 1;
     std::size_t maximum_depth = depth;
     stack_[0] = {tree_.body, tree_.parameter_scope, 0, false};

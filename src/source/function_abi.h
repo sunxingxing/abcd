@@ -16,6 +16,9 @@ struct ConstructedAbi {
 // that result to wrapper-facing usage/signature facts in one O(S+U+X+P) scan;
 // no per-parameter graph walk or source-text analysis. S is symbol count,
 // U is operand-use count, X is expression count and P is formal count.
+// Literal defaults are shape-checked and determine native .length. This
+// census does not prove default-prologue movement; the owner must separately
+// establish body correspondence and the parameter-environment contract.
 [[nodiscard]] std::variant<ConstructedAbi, FunctionAbiError> BuildFunctionAbi(
     const analysis::ValueProgram& graph, const FunctionTree& tree,
     const abc::FrameLayout& frame, std::uint32_t length,

@@ -765,6 +765,43 @@ and work refusal. Static inspection also corrected two earlier uncompiled
 fixture references (Float64Bits.value and the actual SpecialValue enum).
 Tests, JS execution and RSS measurement remain paused.
 
+### T06 Literal Parameter AST, Scope and ABI
+
+Tree structural verification now visits literal default initializers in the
+parameter scope before entering the body scope. Each initializer owns its own
+expression occurrence: sharing a body expression or another parameter's node
+is rejected. Literal-only admission rules out reads of body names, later
+parameters in TDZ, receiver initialization or computed properties. Parameter
+symbol uniqueness and body lexical redeclaration checks remain in force.
+Nonliteral initializers and rest are still unsupported; this is not a blanket
+default-expression scope proof.
+
+FunctionAbi distinguishes Simple from LiteralDefaults and verifies length as
+the index of the first initializer, including an explicit undefined initializer.
+The full ABI parameter count remains independent of native function length.
+The census rejects incompatible length, rest and nonliteral initializer nodes.
+It is a wrapper-facing shape check, not authorization to move an ABC prologue.
+
+The pure tree printer can render these literal parameter nodes with its same
+typed expression printer and byte-range table; no source-fragment substitution
+or bytecode access was added. Initializer actions drain before the next formal
+and before body emission. Class-member emission accepts the corresponding ABI
+layout only from an immutable VerifiedFunction. There is no public raw-tree
+publication constructor.
+
+The factory still admits only its previously proved simple signatures: the
+default-proof-to-body transformation and independent signature-origin/ABI
+integration are not finished. Therefore this change does NOT yet emit default
+signatures from real ABCs. Route evidence rules remain 7 until the new factory
+path is authorized. Added unrun structural/census cases cover -1, -0, explicit
+undefined, shared-node refusal, parameter/receiver reads in initializers, rest
+and native length mismatch. Tests, JS execution and RSS remain paused.
+
+Production abc_semantic/abc_structure compilation passed. An ABC-only PageA
+record inspection still retains method 7586 at [2307,2464), rules 7 and
+incomplete enclosing coverage. This is a compatibility observation, not a
+default-signature end-to-end acceptance result.
+
 Production `abc_semantic` and `abc_structure` compilation completed successfully
 with the discovery module included. No default-parameter output success is
 claimed before its proof and publication integration.

@@ -18,10 +18,13 @@ struct ParameterAbiUse {
   AbiReads reads;
   std::uint64_t writes = 0;
 };
-enum class ParameterLayout : std::uint8_t { kSimple };
+enum class ParameterLayout : std::uint8_t { kSimple, kLiteralDefaults };
 enum class AbiObservation : std::uint8_t { kUnobserved };
 constexpr std::string_view ParameterLayoutName(ParameterLayout layout) {
-  switch (layout) { case ParameterLayout::kSimple: return "simple"; }
+  switch (layout) {
+    case ParameterLayout::kSimple: return "simple";
+    case ParameterLayout::kLiteralDefaults: return "literal_defaults";
+  }
   return {};
 }
 constexpr std::string_view AbiObservationName(AbiObservation observation) {
@@ -34,6 +37,7 @@ struct FunctionAbi {
   std::vector<ParameterAbiUse> parameters;
   AbiReads receiver;
   ParameterLayout layout = ParameterLayout::kSimple;
+  // Number of formals before the first initializer, not the ABI slot count.
   std::uint32_t length = 0;
   // G1 admission excludes observing these inputs, argument-list operations,
   // dynamic scope and child/capture operations. Later stages must extend the

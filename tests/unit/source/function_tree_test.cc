@@ -140,6 +140,22 @@ void BranchTree() {
   Check(abi.abi.parameters[0].writes == 0);
   Check(abi.abi.receiver.operands == 1 && abi.abi.receiver.references == 1);
   Check(std::get<FunctionAbiError>(BuildFunctionAbi(f.graph, tree, frame, 2)) == FunctionAbiError::kParameter);
+  // Census is not a source-publication proof: these mutations exercise only
+  // signature shape/length. Default body correspondence is verified separately.
+  auto default_tree = tree;
+  const ExprId initializer{static_cast<std::uint32_t>(default_tree.expressions.size())};
+  default_tree.expressions.push_back({TreeLiteral{UndefinedLiteral{}}, {0}});
+  default_tree.parameters[0].initializer = initializer;
+  const auto default_census = BuildFunctionAbi(f.graph, default_tree, frame, 0);
+  Check(std::holds_alternative<ConstructedAbi>(default_census));
+  Check(std::get<ConstructedAbi>(default_census).abi.layout == ParameterLayout::kLiteralDefaults);
+  Check(std::get<ConstructedAbi>(default_census).abi.length == 0);
+  Check(std::get<FunctionAbiError>(BuildFunctionAbi(f.graph, default_tree, frame, 1)) == FunctionAbiError::kParameter);
+  default_tree.expressions.back().expression = SymbolExpr{default_tree.parameters[0].symbol};
+  Check(std::get<FunctionAbiError>(BuildFunctionAbi(f.graph, default_tree, frame, 0)) == FunctionAbiError::kParameter);
+  default_tree.expressions.back().expression = TreeLiteral{UndefinedLiteral{}};
+  default_tree.parameters[0].rest = true;
+  Check(std::get<FunctionAbiError>(BuildFunctionAbi(f.graph, default_tree, frame, 0)) == FunctionAbiError::kParameter);
   auto changed_graph = f.graph;
   ++changed_graph.revision.value;
   Check(std::get<FunctionAbiError>(BuildFunctionAbi(changed_graph, tree, frame, 1)) == FunctionAbiError::kRevision);

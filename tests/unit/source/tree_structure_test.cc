@@ -1,6 +1,7 @@
 #include "../../../src/source/tree_structure.h"
 
 #include <cstdlib>
+#include <bit>
 
 namespace {
 using namespace abcd;
@@ -118,6 +119,28 @@ void OriginsAndAnchors() {
   tree.operations = {{{0}, ExprId{1}}};
   Expect(tree, TreeStructureError::kRange);
 }
+void LiteralDefaults() {
+  for (const TreeLiteral literal : {TreeLiteral{IntegerLiteral{-1}}, TreeLiteral{UndefinedLiteral{}},
+                                   TreeLiteral{NumberLiteral{std::bit_cast<std::uint64_t>(-0.0)}}}) {
+    auto tree = Minimal();
+    tree.names.push_back(u"parameter");
+    tree.symbols.push_back({{0}, {0}, BindingKind::kParameter,
+        DeclarationKind::kParameter, NameEvidence::kSynthesized, {}});
+    tree.parameters.push_back({{0}, ExprId{1}, false});
+    tree.expressions.push_back({literal, {0}});
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+    tree.parameters[0].initializer = ExprId{0};
+    tree.expressions.pop_back();
+    Expect(tree, TreeStructureError::kOwnership); // Cannot share a body expression.
+    tree.expressions.push_back({SymbolExpr{{0}}, {0}});
+    tree.parameters[0].initializer = ExprId{1};
+    Expect(tree, TreeStructureError::kUnsupportedSyntax); // Requires ordered parameter TDZ proof.
+    tree.expressions[1].expression = ThisExpr{tree.owner};
+    Expect(tree, TreeStructureError::kUnsupportedSyntax);
+    tree.parameters[0].initializer = ExprId{2};
+    Expect(tree, TreeStructureError::kRange);
+  }
+}
 void DeepTrees() {
   for (const std::uint32_t size : {200U, 201U, 4096U}) {
     auto tree = Minimal();
@@ -143,5 +166,6 @@ int main() {
   Ownership();
   ScopesAndBindings();
   OriginsAndAnchors();
+  LiteralDefaults();
   DeepTrees();
 }
