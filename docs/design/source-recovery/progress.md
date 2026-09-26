@@ -340,6 +340,27 @@ and RSS remain paused. T07 and T00-T12 acceptance remain incomplete.
 Production `abc_semantic` and `abc_structure` builds exited 0 after the final
 changes; whitespace validation passed. Test targets were not compiled or run.
 
+### T07 Owned Function Inputs and Capture Obligations
+
+FunctionInput now retains same-body semantic IR/proof with immutable identity,
+method, record and explicit capture mode. Conditional mode records incoming
+reads and writes separately and preserves function/class/buffer child barriers.
+BindFunctionInputs checks parent/child identity and resolved target before
+reusing creation-specific CapturePlan. Outward obligations remain typed;
+binding does not discharge transitive writes, dependency cycles or child ASTs.
+The shared BuildValueStage uses Closed mode only. Source rules remain 20:
+this internal step does not relax executable-source admission.
+
+Production targets abc_semantic and abc_structure built successfully. ABC-only
+inspection retains G2 method 7559 Printed/complete METHOD, range [2638,2924),
+286 bytes; the record remains incomplete (CLI exit 1). P3 method 7366 still
+refuses input proof at PC 92, as required before incoming captures are closed.
+New regression sources specify 0/1/2/200/201 capture occurrences, read/write
+order, two creation environments, forwarded obligations, identity/target/site
+rejection and exact binding work limits. They are uncompiled and unrun under
+the test pause. No generated JS, benchmarks or RSS checks were run. T07 and
+the complete T00-T12 goal remain unfinished.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

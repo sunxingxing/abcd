@@ -8,6 +8,30 @@ ordinary/arrow tree preparation; no closure-expression publication is admitted.
 
 ## Inputs and Ownership
 
+FunctionInput now owns a same-body SemanticMethod and SemanticProof, with file
+identity, method, record and explicit Closed/Conditional capture mode. Its
+private constructor requires both successful products; there is no default
+invalid state or public constructor accepting arbitrary proof structs. Views
+are immutable and the envelope is movable, not copyable.
+
+Conditional mode retains all incoming lexical reads AND writes in instruction
+order, plus the verifier's function/class/buffer creation barriers. Its read
+ledger is independently matched to captured_reads. Write-only captures also
+require an initialized parent binding under this conservative policy. Such
+obligations are not proof of initialization, constness or completed children.
+Closed mode preserves the existing Reject/Unknown input contract; BuildValueStage
+uses ONLY that mode and cannot publish from a conditional premise.
+
+BindFunctionInputs checks input identity, record, conditional child mode and
+resolved target against the unchanged metadata index, then reuses CapturePlan
+at the actual parent instruction. Its caller must supply the genuine same-file
+BindCreation result; this is not a parser for untrusted fabricated bindings.
+Outward captures and every transitive child obligation remain unresolved.
+Envelope construction adds linear scans and O(K) storage for K incoming
+occurrences beyond the existing semantic build/proof. Capture rebasing retains
+the indexed bounds below. Existing upstream pass work grants are not yet a
+single cumulative method-wide work account; no such guarantee is claimed here.
+
 The caller must supply one unchanged, freshly verified SemanticMethod,
 EnvironmentFlow, LocalAccessPlan, DefinedCaptures and ClosureWrites premise.
 ScopeFacts borrows them; it must not outlive them or mix methods. Local cell,

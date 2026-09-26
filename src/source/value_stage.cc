@@ -1,5 +1,6 @@
 #include "abcd/source/value_stage.h"
 #include "abcd/analysis/value_simplify.h"
+#include "function_input.h"
 
 namespace abcd::source {
 ValueMethod BuildValueStage(RouteInputIdentity identity, abc::EntityOffset method,
@@ -28,28 +29,30 @@ ValueMethod BuildValueStage(RouteInputIdentity identity, abc::EntityOffset metho
       !admit(body.tries.capacity(), sizeof(abc::TryRegion)) ||
       !admit(body.handlers.capacity(), sizeof(abc::CatchHandler)))
     return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kInputStage);
-  auto lifted = analysis::BuildSemanticMethod(body, identity.profile,
-                                             frame.registers, {remaining, budget.work});
-  auto* input = std::get_if<analysis::SemanticMethod>(&lifted);
-  if (!input) {
-    const auto& error = std::get<analysis::SemanticFailure>(lifted);
-    return fail(error.kind == analysis::SemanticError::kResourceLimit
-                    ? RouteFailureClass::kMemoryLimit : RouteFailureClass::kUnsupported,
-                ValueRouteError::kInputStage, error.pc);
+  auto prepared = FunctionInput::Build(identity, method, record, body, frame,
+      InputCaptureMode::kClosed, {remaining, budget.work});
+  const auto* owner = std::get_if<FunctionInput>(&prepared);
+  if (!owner) {
+    const auto& cause = std::get<FunctionInputFailure>(prepared).cause;
+    if (const auto* error = std::get_if<analysis::SemanticFailure>(&cause))
+      return fail(error->kind == analysis::SemanticError::kResourceLimit
+          ? RouteFailureClass::kMemoryLimit : RouteFailureClass::kUnsupported, ValueRouteError::kInputStage, error->pc);
+    if (const auto* error = std::get_if<analysis::SemanticProofFailure>(&cause))
+      return fail(error->kind == analysis::SemanticProofError::kResourceLimit
+          ? RouteFailureClass::kMemoryLimit : RouteFailureClass::kUnproved, ValueRouteError::kInputStage, error->pc);
+    switch (std::get<FunctionInputError>(cause)) {
+      case FunctionInputError::kResourceLimit: return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kInputStage);
+      case FunctionInputError::kWorkLimit: return fail(RouteFailureClass::kWorkLimit, ValueRouteError::kInputStage);
+      case FunctionInputError::kMode:
+      case FunctionInputError::kCapture: return fail(RouteFailureClass::kInvariantViolation, ValueRouteError::kInputStage);
+    }
+    return fail(RouteFailureClass::kInvariantViolation, ValueRouteError::kInputStage);
   }
-  auto checked = analysis::VerifySemanticSource(body, *input, frame.registers,
-      frame.locals, {remaining, budget.work}, analysis::CapturedValues::kReject,
-      {}, analysis::ClosureWrites::kUnknown, {}, NormalCallResults(identity.contract));
-  const auto* proof = std::get_if<analysis::SemanticProof>(&checked);
-  if (!proof) {
-    const auto& error = std::get<analysis::SemanticProofFailure>(checked);
-    return fail(error.kind == analysis::SemanticProofError::kResourceLimit
-                    ? RouteFailureClass::kMemoryLimit : RouteFailureClass::kUnproved,
-                ValueRouteError::kInputStage, error.pc);
-  }
+  const auto* input = &owner->Input();
+  const auto* proof = &owner->Proof();
   receipt.stage = SourceStage::kInputVerified;
-  // SemanticProof::allocated_bytes already includes the input SemanticMethod.
-  if (!admit(proof->allocated_bytes, 1))
+  // The envelope charge includes its input method, proof and capture ledgers.
+  if (!admit(owner->AllocatedBytes(), 1))
     return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kImportStage);
   auto imported = analysis::ImportNormalValues(body, *input, *proof, frame,
                                                {remaining, budget.work});
