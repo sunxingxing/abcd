@@ -1,4 +1,5 @@
 #include "../../../src/source/cell_plan.h"
+#include "../../../src/source/cell_lifetime.h"
 #include "abcd/analysis/value_import.h"
 #include "analysis/ssa_fixture.h"
 
@@ -25,6 +26,14 @@ void Run(std::uint32_t count) {
   const auto* plan = std::get_if<CellPlan>(&planned);
   test::Check(plan && plan->cells.size() == count && plan->operations.size() == graph.ops.size());
   test::Check(std::holds_alternative<std::uint64_t>(VerifyCellPlan(graph, environments, *plan)));
+  const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+  const auto lifetime = std::get<CellLifetimes>(BuildCellLifetimes(graph, environments, *plan, control));
+  test::Check(lifetime.scopes.size() == 1 && std::holds_alternative<CellBodyScope>(lifetime.scopes[0].origin));
+  for (const auto& cell : lifetime.cells) test::Check(std::get<CellScopeId>(cell) == CellScopeId{0});
+  SemanticBudget lifetime_budget; lifetime_budget.work = lifetime.work;
+  test::Check(std::holds_alternative<CellLifetimes>(BuildCellLifetimes(graph, environments, *plan, control, lifetime_budget)));
+  --lifetime_budget.work;
+  test::Check(std::get<CellLifetimeError>(BuildCellLifetimes(graph, environments, *plan, control, lifetime_budget)) == CellLifetimeError::kWorkLimit);
   for (std::size_t i = 0; i < plan->cells.size(); ++i) {
     const auto& cell = plan->cells[i];
     test::Check(cell.count == 3 && std::get<AllocatedCell>(cell.storage).slot.value == 0);
@@ -63,6 +72,28 @@ void Incoming() {
   const auto environments = std::get<ValueEnvironments>(BuildValueEnvironments(graph));
   const auto plan = std::get<CellPlan>(BuildCellPlan(graph, environments));
   test::Check(plan.cells.size() == 1 && std::get<IncomingCell>(plan.cells[0].storage).depth.value == 0);
+  const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+  const auto lifetime = std::get<CellLifetimes>(BuildCellLifetimes(graph, environments, plan, control));
+  test::Check(std::holds_alternative<IncomingLifetime>(lifetime.cells[0]));
+}
+void Iteration() {
+  // Allocation and accesses repeat inside the loop; pop restores the entry
+  // environment before the backedge. A function-body declaration is invalid.
+  constexpr std::uint8_t kPush = 0x09, kLoad = 0x60, kStore = 0x3d,
+      kRead = 0x3c, kPop = 0x69, kJumpNonzero = 0x51, kReturnUndefined = 0x65;
+  constexpr std::int8_t kBackedgeDelta = -11;
+  const auto body = test::Body({kPush, 1, kLoad, 0, kStore, 0, kRead, 0,
+      kPop, kLoad, 0, kJumpNonzero, static_cast<std::uint8_t>(kBackedgeDelta), kReturnUndefined});
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {false, false, false, false}));
+  const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, frame.registers));
+  const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, input, frame.registers, frame.locals));
+  const auto graph = std::get<ValueProgram>(ImportNormalValues(body, input, proof, frame));
+  const auto environments = std::get<ValueEnvironments>(BuildValueEnvironments(graph));
+  const auto cells = std::get<CellPlan>(BuildCellPlan(graph, environments));
+  const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+  const auto lifetime = std::get<CellLifetimes>(BuildCellLifetimes(graph, environments, cells, control));
+  const auto scope = std::get<CellScopeId>(lifetime.cells[0]);
+  test::Check(scope != CellScopeId{0} && std::holds_alternative<CellLoopScope>(lifetime.scopes[scope.value].origin));
 }
 }  // namespace
-int main() { for (const auto count : {0U, 1U, 2U, 200U, 201U}) Run(count); Incoming(); }
+int main() { for (const auto count : {0U, 1U, 2U, 200U, 201U}) Run(count); Incoming(); Iteration(); }

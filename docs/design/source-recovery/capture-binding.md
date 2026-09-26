@@ -91,6 +91,23 @@ replacement. The cell plan is preparation-local, not an executable certificate.
 Same allocation OpId on another loop iteration does not imply the same dynamic
 cell; later declaration placement must preserve that lifetime.
 
+CellLifetimes now projects checked control regions to native lexical-container
+candidates: body, branch arm and loop body. Each local cell keeps its declaration
+at the allocation operation in that exact container. Euler intervals check that
+every direct access remains enclosed; escaping accesses refuse instead of
+lifting declarations out of an arm/loop. Incoming cells remain unresolved owner
+lifetimes. Candidate CellScopeIds are not actual AST ScopeIds and must be mapped
+by their typed control origins, not by matching numeric IDs.
+
+This projection is linear in control nodes/scopes, operations and cell accesses,
+after the fresh cell/control checks; each access uses constant-time interval
+containment. It performs no per-cell graph traversal, CFG rewrite or SSA edit.
+It is called during VerifiedFunction preparation, but is NOT an independent
+certificate of emitted declarations. Initialization, actual scope enclosure,
+declaration positions and child-capture lifetime still require AST-side checks.
+The per-iteration test specification requires loop-body residence rather than
+function-body residence; that source is not yet compiled or run.
+
 These operations are still refused by source evaluation. Required next
 integration remains: proving dynamic cell lifetimes in the work graph and
 capture-aware symbol binding and AST;

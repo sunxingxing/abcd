@@ -202,6 +202,24 @@ mutated storage/access/coverage/revisions and exact budgets. Testing/RSS remain
 paused. Source rules stay 18; dynamic lifetime/AST/child-tree proof is still
 required, so neither T07 nor the full T00-T12 goal is complete.
 
+### T07 Native Cell Lifetime Candidates
+
+Added CellLifetimes and connected it after control planning in VerifiedFunction
+preparation. It maps checked control structure to typed body/branch-arm/loop-body
+containers, preserves allocation-site declaration placement and checks direct
+access enclosure using linear Euler indexing. Incoming cells remain explicit
+owner obligations. No source scope IDs are guessed, declarations are not hoisted
+to make escaping accesses fit, and no CFG/SSA mutation occurs. The candidate is
+not an AST publication certificate; initialization and actual declaration/use/
+capture placement remain to be independently checked in generated trees.
+
+Production `abc_semantic` and `abc_structure` builds exited 0; whitespace checks
+passed. Uncompiled/unrun regression additions specify body residence, incoming
+lifetimes, exact work limits and per-iteration loop-body residence. Tests and RSS
+remain paused. Source rules remain 18; cell expressions/statements and closed
+child ASTs are still required before any new closure source success or T07
+completion can be claimed.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

@@ -7,6 +7,7 @@
 #include "abcd/source/value_stage.h"
 #include "class_tree_context.h"
 #include "cell_plan.h"
+#include "cell_lifetime.h"
 #include "default_signature.h"
 #include "function_tree.h"
 #include "function_abi.h"
@@ -232,6 +233,19 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       throw Error::kControl;
     }
     budget.Admit(control->allocated_bytes, 1); budget.Step(control->work);
+    std::optional<CellLifetimes> lifetimes;
+    if (cells) {
+      auto placed = BuildCellLifetimes(graph, *values.environments, *cells, *control, budget.Remaining());
+      auto* scopes = std::get_if<CellLifetimes>(&placed);
+      if (!scopes) {
+        const auto error = std::get<CellLifetimeError>(placed);
+        if (error == CellLifetimeError::kResourceLimit) throw Error::kResourceLimit;
+        if (error == CellLifetimeError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kControl;
+      }
+      budget.Admit(scopes->allocated_bytes, 1); budget.Step(scopes->work);
+      lifetimes = std::move(*scopes);
+    }
     receipt->stage = SourceStage::kControlFrozen;
     auto evaluated = BuildEvaluationPlan(graph, budget.Remaining());
     const auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
