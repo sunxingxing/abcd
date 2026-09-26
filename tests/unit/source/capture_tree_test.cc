@@ -139,9 +139,44 @@ void Snapshot() {
   }
   test::Check(!fixture.Valid(changed));
 }
+void NameCollisions(std::uint32_t reserved) {
+  Fixture fixture({kPush, 1, kLoad, 0, kStore, 0, kPop, kRead, 0, kReturn});
+  auto syntax = fixture.syntax;
+  std::u16string local_name;
+  for (const auto& symbol : fixture.tree.symbols)
+    if (symbol.kind == BindingKind::kLocal) local_name = fixture.tree.names[symbol.name.value];
+  test::Check(!local_name.empty());
+  // Real parent-generated aliases may use the same namespace as a child's
+  // native locals. Preserve the alias and rename only the child's declaration.
+  syntax.names[syntax.captures[0].name.value] = local_name;
+  for (std::uint32_t i = 0; i < reserved; ++i) {
+    const auto digits = std::to_string(i);
+    std::u16string name = u"$binding";
+    name.append(digits.begin(), digits.end());
+    syntax.names.push_back(std::move(name));
+  }
+  const ExpressionConstants constants{fixture.constants, syntax.names.size(), 0};
+  const auto build = [&](const FunctionSyntax& input) {
+    return std::get<ConstructedFunction>(BuildFunctionTree(fixture.graph, fixture.control,
+        fixture.evaluation, input, constants)).tree;
+  };
+  const auto tree = build(syntax);
+  test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(fixture.graph,
+      fixture.control, fixture.evaluation, tree, constants)));
+  test::Check(tree.names[tree.symbols[tree.captures[0].symbol.value].name.value] == local_name);
+  for (const auto& symbol : tree.symbols)
+    if (symbol.kind == BindingKind::kLocal) test::Check(tree.names[symbol.name.value] != local_name);
+  // Synthesized formals obey the same allocator, not a constructor-only path.
+  syntax.names[syntax.captures[0].name.value] = u"$arg0";
+  const auto parameters = build(syntax);
+  test::Check(parameters.names[parameters.symbols[parameters.parameters[0].symbol.value].name.value] != u"$arg0");
+  const auto repeated = build(syntax);
+  test::Check(parameters.names == repeated.names);
+}
 }  // namespace
 int main() {
   for (const auto count : {0U, 1U, 2U, 200U, 201U}) Cells(static_cast<std::uint8_t>(count), CallableKind::kFunction);
   Cells(2, CallableKind::kArrow);
   Snapshot();
+  for (const auto count : {0U, 1U, 2U, 200U, 201U}) NameCollisions(count);
 }

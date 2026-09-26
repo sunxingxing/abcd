@@ -491,6 +491,26 @@ was run. Full immutable family assembly, name allocation, free-global context,
 callable/strictness checks and publication are still outstanding. T07 remains
 in progress; this relationship checker alone is not an executable source gate.
 
+### T07 Capture-Aware Synthetic Names
+
+Common tree construction now indexes supplied names once and keeps generated
+formals, lexical locals and snapshots from shadowing incoming capture names.
+Preferred names remain unchanged when available. Conflicts use a disjoint
+monotone fallback namespace; this is binding-name allocation, not source text
+rewriting or scope/CFG transformation. Supplied textual names are conservatively
+reserved, including global references and property names. Metadata/debug formal
+collisions still refuse rather than silently renaming evidenced parameters.
+
+Source rules advance to 21 because generated output names can change. Regression
+sources cover captured local/formal-name conflicts, deterministic rebuilding and
+0/1/2/200/201 occupied fallback names; tests remain uncompiled/unrun. Complete
+family assembly and publication remain outstanding; this does not close T07.
+Both production targets built successfully. ABC-only G2 method 7559 retains
+Printed/complete method coverage at [2638,2924) with rules 21; the enclosing
+record remains incomplete (CLI exit 1). Generated JS was not executed and RSS
+was not measured. Distinct-cell parent/child test sources now also exercise
+1/2/200/201 captured cells alongside same-numbered child local declarations.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

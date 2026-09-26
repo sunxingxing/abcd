@@ -120,9 +120,17 @@ capture table; TreeOperands checks read/write identities against that result.
 Local allocation declarations retain their original scopes and PCs. ABI census
 recognizes explicit capture symbols as free bindings, not invented parameters.
 
-Names that collide currently refuse through these checks; capture-aware renaming
-and enclosing-target validation remain required integration, not inferred from
-target numeric IDs. VerifyTreeSemantics remains a conditional body proof.
+Generated formals/locals/snapshots now avoid every supplied name, including
+incoming capture aliases. A sorted NameId index uses no borrowed string views
+across name-arena growth. Preferred namespaces use unique symbol indices;
+conflicts enter a separate monotone `$binding` namespace. Across G generated
+symbols and N supplied names, candidate attempts are O(G+N), each with O(log N)
+indexed comparisons (UTF-16 comparison work is charged separately). Sorting is
+O(N log N), scratch O(N); candidate storage is admitted before allocation and
+discarded retries remain conservatively charged. This does not move declarations
+or change scope/CFG/cell identity. Metadata/debug formal-name conflicts still
+refuse. Enclosing targets require VerifyCaptureTree and complete family
+validation, not numeric ID agreement. VerifyTreeSemantics remains conditional.
 VerifiedFunction's standalone route explicitly rejects conditional cell mode
 and capture-bearing trees; its current printer also rejects them. No conditional
 tree can obtain executable publication merely by passing syntax/operand checks.

@@ -87,6 +87,7 @@ class TreeBuilder {
     tree_.origins = std::move(forest_.origins);
     tree_.origin_parts = std::move(forest_.origin_parts);
     Reserve();
+    ReservedNames();
     Bindings();
     Require(control_.entry.value < control_.nodes.size(), Error::kControl);
     const auto root_origin = BodyOrigin();
@@ -173,6 +174,7 @@ class TreeBuilder {
     Grow(links_, statements);
     Grow(tasks_, blocks);
     Grow(name_order_, syntax_.parameters.size());
+    Grow(reserved_names_, constants_.name_count);
     Grow(loops_, control_.loops.size());
     Step(control_.loops.size());
     loops_.resize(control_.loops.size());
@@ -194,9 +196,32 @@ class TreeBuilder {
       }
     }
   }
-  NameId SyntheticName(std::u16string_view prefix, std::size_t index) {
-    // Debug names use the existing conservative ASCII boundary, which excludes
-    // '$'. Synthesized formals and snapshots therefore cannot shadow them.
+  void ReservedNames() {
+    // Includes incoming aliases and textual global references. A generated
+    // local must not capture either merely because its preferred name matches.
+    for (std::size_t i = 0; i < constants_.name_count; ++i) {
+      Step(); reserved_names_.push_back(NameId{static_cast<std::uint32_t>(i)});
+    }
+    std::sort(reserved_names_.begin(), reserved_names_.end(), [&](NameId a, NameId b) {
+      const auto& left = tree_.names[a.value];
+      const auto& right = tree_.names[b.value];
+      Step(std::min(left.size(), right.size()) + 1);
+      return left < right;
+    });
+  }
+  bool ReservedName(std::u16string_view text) {
+    const auto found = std::lower_bound(reserved_names_.begin(), reserved_names_.end(), text,
+        [&](NameId id, std::u16string_view candidate) {
+          const auto& name = tree_.names[id.value];
+          Step(std::min(name.size(), candidate.size()) + 1);
+          return name < candidate;
+        });
+    if (found == reserved_names_.end()) return false;
+    const auto& name = tree_.names[found->value];
+    Step(std::min(name.size(), text.size()) + 1);
+    return name == text;
+  }
+  std::u16string CandidateName(std::u16string_view prefix, std::size_t index) {
     constexpr auto kMaxDigits = std::numeric_limits<std::size_t>::digits10 + 1;
     std::array<char, kMaxDigits> digits{};
     const auto converted = std::to_chars(digits.data(), digits.data() + digits.size(), index);
@@ -209,6 +234,19 @@ class TreeBuilder {
     Admit(text.capacity() - prefix.size() - suffix.size(), sizeof(char16_t));
     text.append(prefix);
     for (const auto ch : suffix) text.push_back(static_cast<char16_t>(ch));
+    return text;
+  }
+  NameId SyntheticName(std::u16string_view prefix, std::size_t index) {
+    auto text = CandidateName(prefix, index);
+    // Preferred namespaces ($arg/$local/$value/$phi/$copy) are disjoint and
+    // indexed by unique symbols. The fallback namespace has one monotone
+    // counter across the function, so retries total at most reserved names +
+    // generated symbols, not a fresh linear search for every declaration.
+    while (ReservedName(text)) {
+      Step();
+      Require(next_binding_name_ != std::numeric_limits<std::size_t>::max(), Error::kResourceLimit);
+      text = CandidateName(u"$binding", next_binding_name_++);
+    }
     const NameId name{static_cast<std::uint32_t>(tree_.names.size())};
     tree_.names.push_back(std::move(text));
     return name;
@@ -523,6 +561,8 @@ class TreeBuilder {
   std::vector<ChildLink> links_;
   std::vector<RegionTask> tasks_;
   std::vector<NameId> name_order_;
+  std::vector<NameId> reserved_names_;
+  std::size_t next_binding_name_ = 0;
   std::vector<std::optional<std::size_t>> edge_ranges_;
   std::vector<std::optional<StmtId>> loops_;
   std::optional<std::size_t> entry_range_;

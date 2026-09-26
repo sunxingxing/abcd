@@ -294,6 +294,12 @@ void DistinctCells(std::uint8_t count) {
   const auto binding = std::get<CapturedFunctionBinding>(BindCaptureEvaluation(Index(),
       {parent, parent_values}, {child, child_values}, site, Creation(parent, site), cells, {0}, {1}));
   test::Check(binding.binding.captures.size() == count);
+  const FunctionBinding functions[]{binding.binding};
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(parent_values.graph, {},
+      IncomingCells::kConditional, functions));
+  // Parent and child have identically numbered local cells before the child
+  // incoming range. Their generated names must not shadow the actual aliases.
+  TreeBinding(parent_values, child_values, evaluation, cells);
   for (std::uint32_t i = 0; i < count; ++i) {
     test::Check(cells.targets[i].child == CellId{count + i});
     test::Check(std::get<ParentCell>(cells.targets[i].target).cell == CellId{i});
