@@ -1,11 +1,13 @@
 #include "../../../src/source/class_tree_context.h"
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
+#include "abcd/source/class_method.h"
 
 #include <unistd.h>
 
 #include <algorithm>
 #include <cstdlib>
+#include <limits>
 #include <sstream>
 #include <type_traits>
 
@@ -13,12 +15,15 @@ namespace {
 using namespace abcd;
 using namespace abcd::source;
 static_assert(!std::is_copy_constructible_v<VerifiedFunction>);
+static_assert(!std::is_copy_constructible_v<FunctionEmission>);
+static_assert(!std::is_constructible_v<FunctionEmission, VerifiedFunction,
+                                     PrintedFunction, GeneratedRange, MethodRouteReceipt>);
 static_assert(!std::is_constructible_v<VerifiedFunction, FunctionTree>);
 static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);
 void Check(bool condition) { if (!condition) std::abort(); }
 void Run() {
-  constexpr std::uint32_t kPool = 64, kLiteral = 128, kCaller = 256,
+  constexpr std::uint32_t kPool = 64, kOwner = 80, kLiteral = 128, kCaller = 256,
       kConstructor = 300, kMember = 350, kCallerCode = 400, kMemberCode = 430, kName = 500;
   std::vector<std::uint8_t> bytes(640);
   const auto word = [&](std::size_t at, std::uint32_t value) {
@@ -51,11 +56,13 @@ void Run() {
   abc::Header header;
   header.kind = abc::AbcKind::kDynamic;
   header.profile = abc::ProfileId::kDynamic1206;
+  header.version = {12, 0, 6, 0};
   header.layout = abc::DynamicLayout{};
   header.file_size = bytes.size();
   abc::MetadataIndex index;
   index.regions.push_back({kCaller, kCallerCode, {}, {2, kPool}, {}, {}});
   index.methods.resize(3);
+  for (auto& method : index.methods) method.owner_offset = {kOwner};
   index.methods[0].offset = {kCaller};
   index.methods[0].code = abc::CodeInfo{{kCallerCode}, {kCallerCode + 4}, 1, 0, 10, 0};
   index.methods[1].offset = {kConstructor};
@@ -88,6 +95,10 @@ void Run() {
   Check(function.Receipt().stage == SourceStage::kTreeVerified);
   Check(function.Receipt().coverage == Coverage::kIncomplete);
   Check(!function.Receipt().failure);
+  Check(function.Abi().length == 1 && function.Abi().parameters.size() == 1);
+  Check(function.Abi().parameters[0].reads.operands == 1);
+  Check(function.Abi().parameters[0].reads.references == 1);
+  Check(function.Abi().receiver.operands == 0 && function.Abi().receiver.references == 0);
   std::ostringstream output;
   const auto printing = PrintFunctionTree(function, output);
   Check(std::holds_alternative<PrintedFunction>(printing));
@@ -109,6 +120,43 @@ void Run() {
   std::ostringstream broken;
   broken.setstate(std::ios::badbit);
   Check(std::get<TreePrintError>(PrintFunctionTree(function, broken)) == TreePrintError::kWrite);
+  const auto fresh = [&]() {
+    return std::get<VerifiedFunction>(VerifiedFunction::PrepareClass(
+        file, header, index, lookup, roles, sites, range.first, identity));
+  };
+  ClassMethod shape{{{kMember}, abc::ClassMethodKind::kOrdinary, 1},
+      {abc::FunctionKind::kNone}, function.Frame(), abc::ClassPlacement::kPrototype,
+      u"run", {}, EffectiveMethodKind::kOrdinary};
+  constexpr std::string_view prefix = "class Fixture {\n";
+  std::ostringstream composed;
+  composed << prefix;
+  auto segment = WriteClassMethod(shape, fresh(), composed, GeneratedOffset{prefix.size()});
+  Check(std::holds_alternative<FunctionEmission>(segment));
+  const auto& emission = std::get<FunctionEmission>(segment);
+  Check(emission.Destination().begin == prefix.size());
+  Check(emission.Destination().end == composed.view().size());
+  Check(composed.view().substr(emission.Destination().begin) == output.view());
+  Check(emission.Receipt().stage == SourceStage::kPrinted && emission.Receipt().coverage == Coverage::kComplete);
+  Check(!emission.Receipt().legacy_writer_used && !ValidateRouteReceipt(emission.Receipt()));
+  Check(emission.Function().Abi().parameters[0].reads.references == 1);
+  for (const auto span : emission.Positions().expressions) {
+    const auto begin = emission.Destination().begin + span.begin;
+    const auto end = emission.Destination().begin + span.end;
+    Check(begin < end && end <= emission.Destination().end);
+  }
+  auto mismatched = shape;
+  mismatched.member.target.value++;
+  Check(std::get<FunctionEmitError>(WriteClassMethod(mismatched, fresh(), denied, {})) == FunctionEmitError::kCreation);
+  mismatched = shape;
+  mismatched.frame.parameters++;
+  Check(std::get<FunctionEmitError>(WriteClassMethod(mismatched, fresh(), denied, {})) == FunctionEmitError::kFrame);
+  mismatched = shape;
+  mismatched.key = u"wrong";
+  Check(std::get<FunctionEmitError>(WriteClassMethod(mismatched, fresh(), denied, {})) == FunctionEmitError::kName);
+  Check(denied.view().empty());
+  Check(std::get<TreePrintError>(WriteClassMethod(shape, fresh(), denied,
+      GeneratedOffset{std::numeric_limits<std::size_t>::max()})) == TreePrintError::kOutputLimit);
+  Check(denied.view().empty());
   auto limited = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity, {0, 0});
   Check(std::get<FunctionPrepareFailure>(limited).kind == FunctionPrepareError::kResourceLimit);
   index.methods[2].code->arguments = 5;

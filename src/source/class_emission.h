@@ -25,14 +25,14 @@ inline void AdmitClassBytes(std::size_t count, std::size_t width,
     throw ClassFailure{CreatedClassError::kResourceLimit};
   bytes -= count * width;
 }
-struct MemberTarget {
+struct ClassMemberTarget {
   abc::MethodPosition position;
   abc::MethodAttributes attributes;
   std::string_view name;
 };
 // Same immutable metadata/role context as WriteCreatedClass. These helpers
 // throw only typed ClassFailure to the owning class emission boundary.
-MemberTarget ResolveClassMember(const abc::Header& header,
+ClassMemberTarget ResolveClassMember(const abc::Header& header,
                                 const abc::MetadataIndex& index,
                                 const abc::MethodLookup& lookup,
                                 const abc::ClassProperty& property,

@@ -6,7 +6,8 @@ Scope remains T00 through T12 in the dependency order from the implementation
 plan. No task scheduler, additional host assumptions or sidecar source inputs.
 
 Latest state: T03's two real G1 method slices reach Printed through the new
-immutable tree/printer route (schema 3, evidence rules 6). Whole-record integration
+immutable tree/printer/emission route (schema 3, evidence rules 7), with complete
+method receipts and separate incomplete record coverage. Whole-record integration
 and test acceptance remain pending. Sections below retain chronological evidence;
 earlier rule versions/stages are observations of those earlier implementations.
 
@@ -514,3 +515,57 @@ Remaining T03: FunctionEmission ABI/signature/position transport at the old
 record/base_function boundary before VM declarations; broader printer/adversarial
 cases and authorized acceptance runs. A class-member inspection is not proof of
 record integration, all-function migration or full T03 completion.
+
+### T03 ABI Census and Callable Emission Boundary
+
+VerifiedFunction now retains its source ABI census alongside the creation/frame,
+signature and tree. BuildFunctionAbi scans symbols, operand occurrences and
+expression arenas once: O(S+U+X+P) time and O(S+P) storage. It distinguishes static
+IR operand counts from static source-reference counts, preserving differences
+caused by safe pure predicate expansion. These are not dynamic invocation/read
+counts. Formal ordinal and SymbolId stay linked even for unused parameters;
+receiver references retain the checked owner. Observed callable/new.target/
+unknown entries, signature mismatch and unsupported parameter writes refuse.
+Arguments/capture/dynamic-scope operations remain excluded by G1 admission.
+
+The factory accounts constructed tree work/storage before the additional census.
+This closes the new local ownership overlap, not the previously documented
+separate work accounting in BuildValueStage or whole-process RSS obligations.
+
+WriteClassMethod has an explicit VerifiedFunction overload at the callable
+boundary. It matches method target/kind, placement/key, ABI frame, length and
+effective method kind before printing; it never invokes WriteCallable, legacy
+header generation, register-use scanning, captures or fallback writers. The
+old overload is unchanged. ClassMemberTarget is the renamed private legacy
+lookup result, avoiding collision with the AST assignment MemberTarget when
+both representations are included at this boundary.
+
+FunctionEmission is a move-only, read-only owner of the verified function,
+printed positions, destination range and method receipt. Callers cannot pair a
+raw tree or unrelated position table into this product. Emission retains the
+origin DAG and signature/census without file-reader lifetime dependencies.
+The destination start transports every local byte range by one checked offset;
+the output bytes themselves stay in the caller's stream. Shape refusal writes
+nothing. Other failures require the enclosing atomic publisher to discard any
+prefix. A complete METHOD receipt is not a complete class/record receipt.
+Evidence rules 7 record this distinction; enclosing coverage is not upgraded.
+
+The production method CLI now exercises that overload, not just the printer.
+Fresh ABC-only inspections of methods 7586 and 21082 both report stage Printed,
+method coverage Complete, no legacy writer, one simple formal (length 1), two
+parameter operands/references, one receiver operand/reference, zero parameter
+writes and unobserved callable/new.target/arguments. Source/PC spans remain as
+above; complete segment lengths are 157 and 160 bytes respectively. The public
+report still has source_complete=false, executable=false and exit 1 because
+no containing record was emitted.
+
+Production `abc_semantic` compilation succeeded. Regression sources add ABI
+census mismatches, work bounds, owned segment lifetime, nonzero segment offsets,
+wrong target/frame/key refusal, offset overflow and method/record coverage
+distinction. They are not compiled/run; no generated JS execution or RSS run.
+
+Remaining T03 integration is concrete: the record/class assembly path must
+select this overload using the actual creation occurrence and transport child
+emissions/receipts before its self/VM declarations. It must not merely inherit
+the CLI method success. Default/rest/constructor/closure cases still require
+their planned later-stage proofs. T03 is not marked validated or complete.

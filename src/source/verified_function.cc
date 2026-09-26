@@ -7,6 +7,7 @@
 #include "abcd/source/value_stage.h"
 #include "class_tree_context.h"
 #include "function_tree.h"
+#include "function_abi.h"
 #include "parameter_names.h"
 #include "tree_constants.h"
 
@@ -15,6 +16,7 @@ struct VerifiedFunction::Storage {
   ClassTreeContext context;
   FunctionTree tree;
   MethodRouteReceipt receipt;
+  FunctionAbi abi;
 };
 VerifiedFunction::VerifiedFunction(std::unique_ptr<const Storage> storage) : storage_(std::move(storage)) {}
 VerifiedFunction::VerifiedFunction(VerifiedFunction&&) noexcept = default;
@@ -24,6 +26,8 @@ const FunctionTree& VerifiedFunction::Tree() const { return storage_->tree; }
 std::u16string_view VerifiedFunction::Name() const { return storage_->context.Name(); }
 const analysis::ClassMethodSite& VerifiedFunction::Creation() const { return storage_->context.Site(); }
 const MethodRouteReceipt& VerifiedFunction::Receipt() const { return storage_->receipt; }
+const abc::FrameLayout& VerifiedFunction::Frame() const { return storage_->context.Frame(); }
+const FunctionAbi& VerifiedFunction::Abi() const { return storage_->abi; }
 
 namespace {
 using Error = FunctionPrepareError;
@@ -202,11 +206,23 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     if (function->tree.parameters.size() != context->Frame().parameters ||
         function->tree.callable != context->Callable() || function->tree.strictness != context->Mode() ||
         function->tree.method != context->Site().target || function->tree.identity != context->Identity()) throw Error::kTree;
+    if (function->allocated_bytes < transferred) throw Error::kTree;
+    budget.Admit(function->allocated_bytes - transferred, 1);
+    budget.Step(function->work);
+    auto census = BuildFunctionAbi(*values.graph, function->tree, context->Frame(),
+                                  context->Site().length, budget.Remaining());
+    auto* abi = std::get_if<ConstructedAbi>(&census);
+    if (!abi) {
+      const auto error = std::get<FunctionAbiError>(census);
+      if (error == FunctionAbiError::kResourceLimit) throw Error::kResourceLimit;
+      if (error == FunctionAbiError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kAbi;
+    }
     if (file.CheckUnchanged()) throw Error::kFileChanged;
     receipt->stage = SourceStage::kTreeVerified;
     receipt->coverage = Coverage::kIncomplete;  // No printer/publication ran.
     return VerifiedFunction(std::make_unique<const Storage>(Storage{
-        std::move(*context), std::move(function->tree), *receipt}));
+        std::move(*context), std::move(function->tree), *receipt, std::move(abi->abi)}));
   } catch (Error error) { return FunctionPrepareFailure{error, receipt, {}};
   } catch (const std::bad_alloc&) { return FunctionPrepareFailure{Error::kResourceLimit, receipt, {}};
   } catch (const std::length_error&) { return FunctionPrepareFailure{Error::kResourceLimit, receipt, {}}; }

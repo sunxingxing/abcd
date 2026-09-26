@@ -9,11 +9,12 @@
 #include "abcd/analysis/class_method_sites.h"
 #include "abcd/analysis/method_roles.h"
 #include "abcd/source/source_tree.h"
+#include "abcd/source/function_abi.h"
 
 namespace abcd::source {
 enum class FunctionPrepareError : std::uint8_t {
   kContext, kBody, kValues, kControl, kEvaluation, kConstants, kParameters,
-  kTree, kFileChanged, kResourceLimit, kWorkLimit
+  kTree, kFileChanged, kResourceLimit, kWorkLimit, kAbi
 };
 struct FunctionPrepareFailure {
   FunctionPrepareError kind;
@@ -42,6 +43,8 @@ class VerifiedFunction {
   [[nodiscard]] std::u16string_view Name() const;
   [[nodiscard]] const analysis::ClassMethodSite& Creation() const;
   [[nodiscard]] const MethodRouteReceipt& Receipt() const;
+  [[nodiscard]] const abc::FrameLayout& Frame() const;
+  [[nodiscard]] const FunctionAbi& Abi() const;
  private:
   struct Storage;
   explicit VerifiedFunction(std::unique_ptr<const Storage> storage);

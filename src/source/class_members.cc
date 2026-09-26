@@ -6,7 +6,7 @@
 #include "runtime_name.h"
 
 namespace abcd::source {
-MemberTarget ResolveClassMember(const abc::Header& header,
+ClassMemberTarget ResolveClassMember(const abc::Header& header,
                                 const abc::MetadataIndex& index,
                                 const abc::MethodLookup& lookup,
                                 const abc::ClassProperty& property,

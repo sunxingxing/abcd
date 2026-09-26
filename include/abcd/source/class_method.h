@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_CLASS_METHOD_H_
 #include "abcd/abc/class_buffer.h"
 #include "abcd/source/base_function.h"
+#include "abcd/source/function_emission.h"
 
 namespace abcd::source {
 // FunctionTemplate/Method kind at member materialization, NOT the file flag.
@@ -48,5 +49,20 @@ struct ClassMethod {
     const abc::MethodLookup* methods = nullptr,
     analysis::CapturedValues captures = analysis::CapturedValues::kReject,
     SelfBindingUse* self_use = nullptr);
+
+using FunctionEmissionResult =
+    std::variant<FunctionEmission, FunctionEmitError, TreePrintError>;
+// Explicit value-tree entry at the SAME callable boundary, before any legacy
+// header/register allocation/body writer. Match the selected owner shape, then
+// emit the whole member from its verified tree. No fallback or hidden secondary
+// self binding: the G1 ABI census proves self/new.target/arguments unobserved.
+// Moves ownership into the result so record assembly can retain provenance.
+// destination is the caller's counted stream position, not tellp() or a source
+// text search. Shape refusal writes nothing; output/resource failure may leave
+// a prefix, which the enclosing atomic publisher must discard.
+[[nodiscard]] FunctionEmissionResult WriteClassMethod(
+    const ClassMethod& method, VerifiedFunction function,
+    std::ostream& output, GeneratedOffset destination,
+    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {});
 }  // namespace abcd::source
 #endif

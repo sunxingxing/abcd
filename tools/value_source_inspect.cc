@@ -7,13 +7,14 @@
 #include <type_traits>
 
 #include "abcd/source/tree_printer.h"
+#include "abcd/source/class_method.h"
 
 namespace {
 using namespace abcd;
 using namespace abcd::source;
 enum class InspectionError : std::uint8_t {
   kLookup, kRoles, kSites, kMissingSite, kAmbiguousSite, kPrepare, kPrint,
-  kChanged
+  kChanged, kEmission
 };
 
 template <class T> RouteFailureClass IndexClass(const T& error) {
@@ -72,7 +73,8 @@ RouteFailureClass PreparationClass(FunctionPrepareError error) {
     case FunctionPrepareError::kEvaluation:
     case FunctionPrepareError::kConstants:
     case FunctionPrepareError::kParameters:
-    case FunctionPrepareError::kTree: return RouteFailureClass::kUnproved;
+    case FunctionPrepareError::kTree:
+    case FunctionPrepareError::kAbi: return RouteFailureClass::kUnproved;
   }
   return RouteFailureClass::kInvariantViolation;
 }
@@ -199,7 +201,7 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
   if (range.count == 0) return Refused(output, receipt, InspectionError::kMissingSite);
   if (range.count != 1) return Refused(output, receipt, InspectionError::kAmbiguousSite);
   auto prepared = VerifiedFunction::PrepareClass(file, header, index, *lookup, *roles, *sites, range.first, identity);
-  const auto* function = std::get_if<VerifiedFunction>(&prepared);
+  auto* function = std::get_if<VerifiedFunction>(&prepared);
   if (!function) {
     const auto& failure = std::get<FunctionPrepareFailure>(prepared);
     if (failure.values) receipt = *failure.values;
@@ -210,31 +212,54 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
   // This inspection buffer is bounded independently from printer scratch.
   constexpr std::size_t kInspectionSourceBytes = 4 * 1024 * 1024;
   std::ostringstream source;
-  const auto printing = PrintFunctionTree(*function, source, {kInspectionSourceBytes});
   receipt = function->Receipt();
-  const auto* printed = std::get_if<PrintedFunction>(&printing);
-  if (!printed) {
+  const auto attributes = abc::DecodeMethodAttributes(method.access_flags, header.profile);
+  const auto* flags = std::get_if<abc::MethodAttributes>(&attributes);
+  if (!flags) return Refused(output, receipt, InspectionError::kEmission,
+      RouteFailureClass::kInvalidInput, ValueRouteError::kPrintStage);
+  const auto site = function->Creation();
+  const ClassMethod shape{{site.target, site.kind, site.length}, *flags, function->Frame(),
+      site.placement, function->Name(), {}, EffectiveMethodKind::kOrdinary};
+  auto printing = WriteClassMethod(shape, std::move(*function), source,
+      GeneratedOffset{0}, {kInspectionSourceBytes});
+  const auto* emission = std::get_if<FunctionEmission>(&printing);
+  if (!emission) {
+    if (const auto* shape_error = std::get_if<FunctionEmitError>(&printing))
+      return Refused(output, receipt, InspectionError::kEmission,
+          RouteFailureClass::kInvariantViolation, ValueRouteError::kPrintStage,
+          static_cast<unsigned>(*shape_error));
     const auto error = std::get<TreePrintError>(printing);
     return Refused(output, receipt, InspectionError::kPrint, PrintClass(error),
         ValueRouteError::kPrintStage, static_cast<unsigned>(error));
   }
   if (file.CheckUnchanged()) return Refused(output, receipt, InspectionError::kChanged,
       RouteFailureClass::kInvalidInput, ValueRouteError::kPrintStage);
-  receipt.stage = SourceStage::kPrinted;
-  // A checked method fragment is not a complete record and has no standalone
-  // execution context. Keep the public inspection incomplete until integrated.
+  receipt = emission->Receipt();
+  // The method segment is complete; the containing record still has open
+  // obligations. These are different scopes, not competing coverage claims.
   const auto serialized = SerializeRouteReceipt(receipt);
   const auto* text = std::get_if<std::string>(&serialized);
   if (!text) return EXIT_FAILURE;
   output << "{\"route_receipt\":" << *text
          << ",\"source_complete\":false,\"executable\":false,\"method_slice_complete\":true"
          << ",\"fragment\":\"class_member\",\"creation\":";
-  const auto& creation = function->Creation();
+  const auto& creation = emission->Function().Creation();
   output << nlohmann::json{{"creator", creation.creator.value}, {"pc", creation.pc.value},
       {"literal", creation.literal.value}, {"property", creation.property},
       {"placement", creation.placement == abc::ClassPlacement::kStatic ? "static" : "prototype"}};
-  output << ",\"source\":" << nlohmann::json(source.view()) << ",\"positions\":";
-  Positions(output, function->Tree(), *printed);
+  const auto& abi = emission->Function().Abi();
+  output << ",\"abi\":{\"layout\":" << nlohmann::json(ParameterLayoutName(abi.layout)) << ",\"length\":" << abi.length
+         << ",\"receiver\":" << nlohmann::json{{"operands", abi.receiver.operands}, {"references", abi.receiver.references}}
+         << ",\"callable\":" << nlohmann::json(AbiObservationName(abi.callable))
+         << ",\"new_target\":" << nlohmann::json(AbiObservationName(abi.new_target))
+         << ",\"arguments\":" << nlohmann::json(AbiObservationName(abi.arguments)) << ",\"parameters\":";
+  Array(output, abi.parameters, [](const ParameterAbiUse& use) {
+    return nlohmann::json{{"symbol", use.symbol.value}, {"operands", use.reads.operands},
+        {"references", use.reads.references}, {"writes", use.writes}};
+  });
+  output << "},\"destination\":" << nlohmann::json{{"begin", emission->Destination().begin}, {"end", emission->Destination().end}}
+         << ",\"source\":" << nlohmann::json(source.view()) << ",\"positions\":";
+  Positions(output, emission->Function().Tree(), emission->Positions());
   output << "}\n";
   return EXIT_FAILURE;  // Incomplete record coverage, even after fragment printing.
 }

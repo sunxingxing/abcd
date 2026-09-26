@@ -1,6 +1,7 @@
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/tree_structure.h"
 #include "../../../src/source/tree_semantics.h"
+#include "../../../src/source/function_abi.h"
 
 #include <cstdlib>
 #include <utility>
@@ -129,6 +130,30 @@ void BranchTree() {
   const auto& anchor = std::get<BlockBoundary>(tree.anchors[0].position);
   Check(anchor.block == *branch.alternate && anchor.index == body.child_count);
   Check(tree.operations.size() == f.graph.ops.size());
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 4, abc::DecodeCallFlags({})));
+  const auto census = BuildFunctionAbi(f.graph, tree, frame, 1);
+  Check(std::holds_alternative<ConstructedAbi>(census));
+  const auto& abi = std::get<ConstructedAbi>(census);
+  Check(abi.abi.parameters.size() == 1 && abi.abi.length == 1);
+  Check(abi.abi.parameters[0].reads.operands == 2);
+  Check(abi.abi.parameters[0].reads.references == 2);
+  Check(abi.abi.parameters[0].writes == 0);
+  Check(abi.abi.receiver.operands == 1 && abi.abi.receiver.references == 1);
+  Check(std::get<FunctionAbiError>(BuildFunctionAbi(f.graph, tree, frame, 2)) == FunctionAbiError::kParameter);
+  auto changed_graph = f.graph;
+  ++changed_graph.revision.value;
+  Check(std::get<FunctionAbiError>(BuildFunctionAbi(changed_graph, tree, frame, 1)) == FunctionAbiError::kRevision);
+  changed_graph = f.graph;
+  changed_graph.values[0].origin = analysis::EntryDefinition{analysis::CallableEntry{}};
+  Check(std::get<FunctionAbiError>(BuildFunctionAbi(changed_graph, tree, frame, 1)) == FunctionAbiError::kEntry);
+  auto absent_receiver = frame;
+  absent_receiver.this_value.reset();
+  Check(std::get<FunctionAbiError>(BuildFunctionAbi(f.graph, tree, absent_receiver, 1)) == FunctionAbiError::kReceiver);
+  analysis::SemanticBudget census_budget;
+  census_budget.work = abi.work - 1;
+  Check(std::get<FunctionAbiError>(BuildFunctionAbi(f.graph, tree, frame, 1, census_budget)) == FunctionAbiError::kWorkLimit);
+  ++census_budget.work;
+  Check(std::holds_alternative<ConstructedAbi>(BuildFunctionAbi(f.graph, tree, frame, 1, census_budget)));
   analysis::SemanticBudget limited;
   limited.work = std::get<ConstructedFunction>(built).work - 1;
   Check(std::get<FunctionTreeError>(f.Build(limited)) == FunctionTreeError::kWorkLimit);

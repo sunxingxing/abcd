@@ -216,6 +216,8 @@ target_sources(abcd_source PRIVATE src/source/tree_operands.cc src/source/tree_c
 target_sources(abcd_source PRIVATE src/source/tree_constants.cc)
 target_sources(abcd_source PRIVATE src/source/class_tree_context.cc)
 target_sources(abcd_source PRIVATE src/source/verified_function.cc)
+target_sources(abcd_source PRIVATE src/source/function_abi.cc)
+target_sources(abcd_source PRIVATE src/source/class_method_emission.cc)
 target_sources(abcd_source PRIVATE src/source/tree_printer.cc src/source/tree_print_tokens.cc)
 target_sources(abcd_source PRIVATE src/source/evaluation_boolean.cc)
 target_link_libraries(abcd_source PUBLIC abcd_analysis PRIVATE abcd_json)

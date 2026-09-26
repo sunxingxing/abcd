@@ -205,8 +205,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Engine/rules provenance of the admission and stage semantics above. Bump
 // with any change to them; receipts signed under other rules are rejected
 // rather than reinterpreted.
-// Rules 6 add sealed class-method trees, pure printing and stage refusals.
-inline constexpr std::uint32_t kRouteEvidenceRules = 6;
+// Rules 7 bind wrapper ABI/signature census and complete method emissions;
+// enclosing record coverage remains separate from a complete member segment.
+inline constexpr std::uint32_t kRouteEvidenceRules = 7;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

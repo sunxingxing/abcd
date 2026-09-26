@@ -63,7 +63,7 @@ foreach(arguments IN ITEMS "--function-source;--value-source"
     message(FATAL_ERROR "unexpected import stage: ${report}")
   endif()
   string(JSON coverage GET "${report}" route_receipt coverage)
-  if(NOT coverage STREQUAL "incomplete")
+  if(NOT coverage STREQUAL "complete")
     message(FATAL_ERROR "unexpected import coverage: ${report}")
   endif()
   string(JSON writer GET "${report}" route_receipt legacy_writer_used)
