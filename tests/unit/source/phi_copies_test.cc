@@ -1,5 +1,6 @@
 #include "../../../src/source/phi_copies.h"
 #include "../../../src/source/binding_plan.h"
+#include "../../../src/source/expression_forest.h"
 
 #include <bit>
 #include <cstdlib>
@@ -146,6 +147,17 @@ void PhiInputSnapshot() {
   Check(std::get<SnapshotBinding>(bindings.symbols[snapshot.value]).producer == OpId{0});
   const auto phi = std::get<SymbolId>(bindings.values[2]);
   Check(phi != snapshot && std::get<PhiBinding>(bindings.symbols[phi.value]).value == ValueId{2});
+  graph.origins = {{{0}, {0}, {}}, {{1}, {1}, {}}, {{2}, {2}, {}}};
+  const std::vector<ExpressionConstant> constants{NameId{0}, std::monostate{}, std::monostate{}};
+  const auto syntax = BuildExpressionForest(graph, evaluation, 1, {0}, {constants, 1});
+  Check(std::holds_alternative<ExpressionForest>(syntax));
+  const auto& forest = std::get<ExpressionForest>(syntax);
+  const auto& copied = std::get<AssignmentExpr>(
+      forest.expressions[forest.edge_assignments[forest.edges[0].first].value].expression);
+  Check(std::get<SymbolTarget>(copied.target).symbol == phi);
+  Check(std::get<SymbolExpr>(forest.expressions[copied.value.value].expression).symbol == snapshot);
+  // The getter remains at its operation root, not duplicated on either edge.
+  Check(std::holds_alternative<MemberExpr>(forest.expressions[forest.operations[0]->value].expression));
   auto forged = evaluation;
   forged.operations[0] = {EvaluationKind::kInline, UseId{3}, {}};
   Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kOwnership);
@@ -153,5 +165,51 @@ void PhiInputSnapshot() {
   forged.phis->bundles[0].schedule.steps.clear();
   Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kLivePhi);
 }
+void EdgeSyntax() {
+  for (const std::uint32_t count : {1U, 2U, 200U, 201U, 4096U}) {
+    auto graph = Graph(count, false);
+    graph.origins = {{{0}, {0}, {}}, {{1}, {1}, {}}};
+    const auto evaluated = BuildEvaluationPlan(graph);
+    Check(std::holds_alternative<EvaluationPlan>(evaluated));
+    const auto& evaluation = std::get<EvaluationPlan>(evaluated);
+    const std::vector<ExpressionConstant> constants(graph.ops.size());
+    const auto built = BuildExpressionForest(graph, evaluation, 1, {0}, {constants});
+    Check(std::holds_alternative<ExpressionForest>(built));
+    const auto& forest = std::get<ExpressionForest>(built);
+    Check(forest.edges.size() == 2 && forest.edge_assignments.size() == count * 2);
+    std::vector<bool> owned(forest.expressions.size());
+    for (std::uint32_t edge = 0; edge < 2; ++edge) {
+      const auto& range = forest.edges[edge];
+      Check(range.edge == EdgeId{edge} && range.count == count && range.first == edge * count);
+      const auto& schedule = evaluation.phis->bundles[edge].schedule;
+      for (std::uint32_t i = 0; i < count; ++i) {
+        const auto root = forest.edge_assignments[range.first + i];
+        Check(!owned[root.value]); owned[root.value] = true;
+        const auto& node = forest.expressions[root.value];
+        Check(std::get<EdgeOrigin>(forest.origins[node.origin.value]).edge == EdgeId{edge});
+        const auto& assignment = std::get<AssignmentExpr>(node.expression);
+        const auto destination = std::get<ValueId>(schedule.steps[i].destination);
+        Check(std::get<SymbolTarget>(assignment.target).symbol ==
+              std::get<SymbolId>(forest.bindings.values[destination.value]));
+        Check(!owned[assignment.value.value]); owned[assignment.value.value] = true;
+        const auto& rhs = forest.expressions[assignment.value.value];
+        Check(rhs.origin == node.origin);
+        Check(std::get<SymbolExpr>(rhs.expression).symbol == SymbolId{0});
+      }
+    }
+    SemanticBudget budget;
+    budget.work = forest.work;
+    Check(std::holds_alternative<ExpressionForest>(BuildExpressionForest(graph, evaluation, 1, {0}, {constants}, budget)));
+    --budget.work;
+    Check(std::get<ExpressionError>(BuildExpressionForest(graph, evaluation, 1, {0}, {constants}, budget)) == ExpressionError::kWorkLimit);
+  }
+  auto entry = Graph(2, true);
+  entry.origins = {{{0}, {0}, {}}, {{1}, {1}, {}}};
+  const auto evaluated = BuildEvaluationPlan(entry);
+  Check(std::holds_alternative<EvaluationPlan>(evaluated));
+  const std::vector<ExpressionConstant> constants(entry.ops.size());
+  Check(std::get<ExpressionError>(BuildExpressionForest(entry,
+      std::get<EvaluationPlan>(evaluated), 1, {0}, {constants})) == ExpressionError::kUnsupportedOperation);
+}
 }  // namespace
-int main() { Mutations(); EntryAndScaling(); PhiInputSnapshot(); }
+int main() { Mutations(); EntryAndScaling(); PhiInputSnapshot(); EdgeSyntax(); }

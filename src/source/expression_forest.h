@@ -14,6 +14,11 @@ struct ExpressionConstants {
   std::size_t text_count = 0;
   std::optional<TextId> number_type_text;
 };
+struct EdgeExpressions {
+  analysis::EdgeId edge;
+  std::uint32_t first;
+  std::uint32_t count;
+};
 struct ExpressionForest {
   BindingPlan bindings;
   CallPlan calls;
@@ -25,6 +30,11 @@ struct ExpressionForest {
   // Jumps and removed operations have no expression. Statement assembly owns
   // control-operation placements, not this expression-only construction step.
   std::vector<std::optional<ExprId>> operations;
+  // Flat, exclusively owned assignment roots, in each verified copy schedule's
+  // order. These are not operation expressions: statement assembly must place
+  // them on the exact edge, including otherwise empty branch alternatives.
+  std::vector<ExprId> edge_assignments;
+  std::vector<EdgeExpressions> edges;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

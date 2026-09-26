@@ -1094,6 +1094,32 @@ Next: a separate call-reference plan, then variable-arity Call/Construct syntax,
 independent operand correspondence and printer support. T04, T06 and T00-T12
 remain incomplete.
 
+### T05 Edge Assignment Expression Trees
+
+ExpressionForest now lowers each verified normal-edge copy schedule into owned
+AssignmentExpr roots, with separate flat ranges keyed by exact EdgeId. Each RHS
+is a fresh syntax occurrence; parameter/phi/snapshot reads cannot share an ExprId
+between alternatives. Destinations must be provisional PhiBinding locations or
+the owning bundle's CycleBinding temporaries. Incoming operation results must
+already have a binding: the builder refuses to inline an unbound operation tree
+onto an edge, preserving evaluation order and side effects. Synthetic nodes
+carry EdgeOrigin rather than a fabricated original PC.
+
+The forest reserves two expression nodes per scheduled copy and one origin per
+bundle, checks ID arithmetic, and charges retained arrays and traversal work to
+its remaining budget. This lowering adds O(C + B) time/storage for C scheduled
+copies and B bundles. MethodEntry is still explicitly refused by syntax lowering
+until its initialization phase is proved; it is never reinterpreted as an edge.
+
+This is expression construction, not executable function publication. The
+BuildFunctionTree phi guard remains: branch-arm/exit statement insertion,
+independent actual-statement/operand/origin correspondence, and loops are still
+pending. No new source coverage or rule version is claimed. Tests added for
+distinct same-target edges, owned RHS leaves, retained getter snapshots,
+MethodEntry refusal, work limits and 200/201/4096 scale remain uncompiled and
+unrun. Production abc_semantic/abc_structure builds exited 0; diff whitespace
+checking passed. No generated JS, tests, benchmarks or RSS measurements ran.
+
 ### T04 Call Reference Proof
 
 CallPlan now distinguishes function-value calls, member-reference calls and

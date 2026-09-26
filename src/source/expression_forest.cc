@@ -45,12 +45,30 @@ class ForestBuilder {
     constexpr std::size_t kNodesPerOperation = 12;
     constexpr std::size_t kOriginPartsPerOperation = 2;
     constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
+    std::size_t copies = 0;
+    const auto bundles = evaluation_.phis ? evaluation_.phis->bundles.size() : 0;
+    if (evaluation_.phis) {
+      for (const auto& bundle : evaluation_.phis->bundles) {
+        Step();
+        // MethodEntry needs a separately proved initialization phase. Never
+        // give it an invented CFG edge or silently move it past defaults.
+        Require(std::holds_alternative<analysis::EdgeId>(bundle.incoming), Error::kUnsupportedOperation);
+        Require(bundle.schedule.steps.size() <= kMaxId - copies, Error::kResourceLimit);
+        copies += bundle.schedule.steps.size();
+      }
+    }
+    constexpr std::size_t kNodesPerCopy = 2;  // Owned RHS leaf and assignment.
     Require(graph_.ops.size() <= kMaxId / kNodesPerOperation &&
             graph_.uses.size() <= kMaxId - graph_.ops.size() * kNodesPerOperation &&
             graph_.origins.size() <= kMaxId - graph_.ops.size(), Error::kResourceLimit);
-    Reserve(forest_.expressions, graph_.uses.size() + graph_.ops.size() * kNodesPerOperation);
+    const auto operation_nodes = graph_.uses.size() + graph_.ops.size() * kNodesPerOperation;
+    Require(copies <= (kMaxId - operation_nodes) / kNodesPerCopy &&
+            bundles <= kMaxId - graph_.origins.size() - graph_.ops.size(), Error::kResourceLimit);
+    Reserve(forest_.expressions, operation_nodes + copies * kNodesPerCopy);
     Reserve(forest_.arguments, graph_.uses.size());
-    Reserve(forest_.origins, graph_.origins.size() + graph_.ops.size());
+    Reserve(forest_.origins, graph_.origins.size() + graph_.ops.size() + bundles);
+    Reserve(forest_.edge_assignments, copies);
+    Reserve(forest_.edges, bundles);
     Reserve(forest_.origin_parts, graph_.ops.size() * kOriginPartsPerOperation);
     Reserve(forest_.operations, graph_.ops.size());
     forest_.operations.resize(graph_.ops.size());
@@ -82,12 +100,66 @@ class ForestBuilder {
       }
       forest_.operations[i] = Lower(op, operands, origin, constants_.operations[i]);
     }
+    EdgeAssignments();
     forest_.allocated_bytes = budget_.bytes - bytes_;
     forest_.work = budget_.work - work_;
     return std::move(forest_);
   }
 
  private:
+  SymbolId CycleSymbol(std::uint32_t bundle, CopyTempId temporary) {
+    Require(bundle < forest_.bindings.cycle_bases.size(), Error::kBinding);
+    const auto base = forest_.bindings.cycle_bases[bundle];
+    Require(base && base->value < forest_.bindings.symbols.size() &&
+            temporary.value < forest_.bindings.symbols.size() - base->value, Error::kBinding);
+    const SymbolId symbol{base->value + temporary.value};
+    const auto* binding = std::get_if<CycleBinding>(&forest_.bindings.symbols[symbol.value]);
+    Require(binding && binding->bundle == bundle && binding->temporary == temporary, Error::kBinding);
+    return symbol;
+  }
+  SymbolId CopyDestination(const CopyTarget& target, std::uint32_t bundle) {
+    if (const auto* temporary = std::get_if<CopyTempId>(&target))
+      return CycleSymbol(bundle, *temporary);
+    const auto value = std::get<analysis::ValueId>(target);
+    Require(value.value < forest_.bindings.values.size(), Error::kBinding);
+    const auto* symbol = std::get_if<SymbolId>(&forest_.bindings.values[value.value]);
+    Require(symbol && symbol->value < forest_.bindings.symbols.size(), Error::kBinding);
+    const auto* phi = std::get_if<PhiBinding>(&forest_.bindings.symbols[symbol->value]);
+    Require(phi && phi->value == value, Error::kBinding);
+    return *symbol;
+  }
+  void EdgeAssignments() {
+    if (!evaluation_.phis) return;
+    for (std::size_t i = 0; i < evaluation_.phis->bundles.size(); ++i) {
+      Step();
+      const auto& bundle = evaluation_.phis->bundles[i];
+      const auto edge = std::get<analysis::EdgeId>(bundle.incoming);
+      const TreeOriginId origin{static_cast<std::uint32_t>(forest_.origins.size())};
+      forest_.origins.emplace_back(EdgeOrigin{edge});
+      const auto first = static_cast<std::uint32_t>(forest_.edge_assignments.size());
+      for (const auto& copy : bundle.schedule.steps) {
+        Step();
+        const auto destination = CopyDestination(copy.destination, static_cast<std::uint32_t>(i));
+        ExprId source;
+        if (const auto* temporary = std::get_if<CopyTempId>(&copy.source)) {
+          source = Add(SymbolExpr{CycleSymbol(static_cast<std::uint32_t>(i), *temporary)}, origin);
+        } else {
+          const auto& operand = std::get<analysis::ValueOperand>(copy.source);
+          // All incoming operation results must already be snapshots. Do not
+          // reuse/inline an operation tree here: doing so moves effects across
+          // the branch and gives one expression occurrence multiple owners.
+          if (const auto* value = std::get_if<analysis::ValueId>(&operand)) {
+            Require(value->value < forest_.bindings.values.size() &&
+                    !std::holds_alternative<UnboundValue>(forest_.bindings.values[value->value]),
+                    Error::kUnavailableValue);
+          }
+          source = Operand(operand, origin);
+        }
+        forest_.edge_assignments.push_back(Add(AssignmentExpr{SymbolTarget{destination}, source}, origin));
+      }
+      forest_.edges.push_back({edge, first, static_cast<std::uint32_t>(bundle.schedule.steps.size())});
+    }
+  }
   ExprId Call(const analysis::ValueOp& op, const CallBinding& binding, TreeOriginId origin) {
     const bool member = std::holds_alternative<MemberCall>(binding);
     const auto callee = Operand(graph_.uses[op.first_use.value].operand, origin);
