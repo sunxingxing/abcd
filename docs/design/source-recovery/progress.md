@@ -574,6 +574,30 @@ no-child-proof creation test expectation was corrected to the current ownership
 failure. Tests were not compiled/run; no generated JS or RSS work ran. Rules
 stay 21 because buffered-object executable admission has not been opened.
 
+### T07 Typed Buffered Object Constants
+
+ResolveTreeConstants now resolves primitive data buffers into shared typed
+ObjectConstant ranges and ConstantProperty records. It groups allocation uses
+by literal pool slot, preserving key order and primitive values without invoking
+the legacy writer. ReadObjectBuffer's existing validation is reused and now
+meters entry/key/comparison work with a typed work-limit failure. Growing output
+arenas use geometric capacity rather than per-buffer exact reallocation.
+
+Unsigned integer values follow the pinned runtime's uint32 constructor; values
+above int32 use exact double bits. String values enter the common text arena.
+Methods/accessors/duplicate keys remain refused. Source evaluation still rejects
+buffer allocations until common AST lowering and operand/origin checks are
+connected. Constant metadata is not T07 completion or executable publication.
+
+Extended regression sources specify primitive values, __proto__ data keys,
+200/201/402 fields, repeated slots, unsupported buffers and work limits. Tests
+remain uncompiled/unrun; generated JS and RSS work remain paused.
+
+Production abc_semantic and abc_structure built successfully after fixing the
+shared budget default's header visibility. ABC-only G2 7559 remains Printed with
+complete method coverage, rules 21 and [2638,2924); its enclosing record is still
+incomplete. This does not validate buffered-object AST lowering, still pending.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

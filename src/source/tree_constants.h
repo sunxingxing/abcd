@@ -13,14 +13,15 @@ struct TreeConstants {
   std::vector<std::u16string> texts;
   std::vector<ExpressionConstant> operations;
   std::optional<TextId> number_type_text;
+  std::vector<ConstantProperty> properties;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
   [[nodiscard]] ExpressionConstants View() const {
-    return {operations, names.size(), texts.size(), number_type_text};
+    return {operations, names.size(), texts.size(), number_type_text, properties};
   }
 };
 enum class TreeConstantError : std::uint8_t {
-  kElementName, kResourceLimit, kWorkLimit
+  kElementName, kResourceLimit, kWorkLimit, kObjectLiteral
 };
 using TreeConstantResult = std::variant<TreeConstants, TreeConstantError, abc::MetadataError>;
 // Same-file metadata/graph precondition. Sort/deduplicate pool slots, then

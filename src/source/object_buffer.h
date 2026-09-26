@@ -15,6 +15,7 @@ struct ObjectBuffer {
   std::vector<std::u16string> keys;
   std::vector<std::size_t> order;
   std::size_t allocated_bytes = 0;
+  std::uint64_t work = 0;
 };
 using ObjectBufferResult = std::variant<ObjectBuffer, BodyEmitFailure>;
 ObjectBufferResult ReadObjectBuffer(

@@ -7,6 +7,7 @@
 
 #include "abcd/corpus/abc_file.h"
 #include "element_name.h"
+#include "object_constants.h"
 
 namespace abcd::source {
 namespace {
@@ -123,6 +124,11 @@ class ConstantResolver {
       result_.number_type_text = TextId{static_cast<std::uint32_t>(result_.texts.size())};
       Copy(u"number", result_.texts);
     }
+    const auto objects = ResolveObjectConstants(file_, header_, index_, method_, graph_, result_, {bytes_, work_});
+    if (const auto* error = std::get_if<TreeConstantError>(&objects)) throw *error;
+    if (const auto* error = std::get_if<abc::MetadataError>(&objects)) throw *error;
+    const auto storage = std::get<ObjectConstantStorage>(objects);
+    Admit(storage.bytes, 1); Step(storage.work);
     if (file_.CheckUnchanged()) throw abc::MetadataError::kFileChanged;
     result_.allocated_bytes = budget_.bytes - bytes_;
     result_.work = budget_.work - work_;

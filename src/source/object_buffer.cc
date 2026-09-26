@@ -169,6 +169,7 @@ ObjectBufferResult ReadObjectBuffer(const analysis::BufferedObjectCreation& crea
     BodyEmitFailure failure{
         error == ObjectBufferError::kResourceLimit
             ? BodyEmitError::kResourceLimit
+            : error == ObjectBufferError::kWorkLimit ? BodyEmitError::kWorkLimit
             : BodyEmitError::kConstant,
         offset, {}, {}};
     failure.object_error = error;
@@ -212,6 +213,12 @@ ObjectBufferResult ReadObjectBuffer(const analysis::BufferedObjectCreation& crea
   if (!charge(literal.entries.capacity(), sizeof(abc::LiteralEntry)))
     return fail(ObjectBufferError::kResourceLimit);
   try {
+    auto work = scratch_budget.work;
+    const auto step = [&](std::uint64_t count = 1) {
+      if (count > work) throw ObjectBufferError::kWorkLimit;
+      work -= count;
+    };
+    step(literal.entries.size());
     if (count > remaining / sizeof(std::u16string))
       return fail(ObjectBufferError::kResourceLimit);
     std::vector<std::u16string> keys;
@@ -219,6 +226,7 @@ ObjectBufferResult ReadObjectBuffer(const analysis::BufferedObjectCreation& crea
     if (!charge(keys.capacity(), sizeof(std::u16string)))
       return fail(ObjectBufferError::kResourceLimit);
     for (std::size_t i = 0; i < count; ++i) {
+      step();
       const auto& key = literal.entries[i * kPairEntries];
       const auto& value = literal.entries[i * kPairEntries + 1];
       if (key.tag != abc::LiteralTag::kString ||
@@ -239,6 +247,7 @@ ObjectBufferResult ReadObjectBuffer(const analysis::BufferedObjectCreation& crea
         return failure;
       }
       auto text = std::move(std::get<std::u16string>(name));
+      step(text.size());
       // The retained UTF-16 allocation includes its terminator.
       if (text.capacity() >= remaining / sizeof(char16_t) ||
           !charge(text.capacity() + 1, sizeof(char16_t)))
@@ -252,14 +261,19 @@ ObjectBufferResult ReadObjectBuffer(const analysis::BufferedObjectCreation& crea
       return fail(ObjectBufferError::kResourceLimit);
     std::iota(order.begin(), order.end(), 0);
     std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+      step(std::min(keys[a].size(), keys[b].size()) + 1);
       return keys[a] < keys[b];
     });
-    for (std::size_t i = 1; i < count; ++i)
+    for (std::size_t i = 1; i < count; ++i) {
+      step(std::min(keys[order[i - 1]].size(), keys[order[i]].size()) + 1);
       if (keys[order[i - 1]] == keys[order[i]])
         return fail(ObjectBufferError::kDuplicateKey);
+    }
     return ObjectBuffer{std::move(std::get<abc::LiteralArray>(read)),
                         std::move(keys), std::move(order),
-                        scratch_budget.bytes - remaining};
+                        scratch_budget.bytes - remaining, scratch_budget.work - work};
+  } catch (ObjectBufferError error) {
+    return fail(error);
   } catch (const std::bad_alloc&) {
     return fail(ObjectBufferError::kResourceLimit);
   } catch (const std::length_error&) {

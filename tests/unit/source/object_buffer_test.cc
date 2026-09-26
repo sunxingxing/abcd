@@ -11,6 +11,7 @@
 #include "abcd/source/local_lexical_body.h"
 #include "analysis/ssa_fixture.h"
 #include "fresh_object_fields.h"
+#include "../../../src/source/tree_constants.h"
 
 int main(int argc, char** argv) {
   using namespace abcd;
@@ -128,6 +129,36 @@ int main(int argc, char** argv) {
   index.regions.push_back({200, 300, {}, {11, kPool}, {}, {}});
   const source::MethodConstants constants{file, header, index, {kMethod},
                                           {1024}};
+  for (const std::uint32_t slot : {0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U}) {
+    analysis::ValueProgram values;
+    values.origins.push_back({});
+    for (const auto unused : {0, 1}) {
+      static_cast<void>(unused);
+      analysis::ValueOp allocation{};
+      allocation.operation = analysis::ValueObjectAllocation{abc::PoolIndex{slot}};
+      values.ops.push_back(allocation);
+    }
+    const auto typed = source::ResolveTreeConstants(file, header, index, {kMethod}, values);
+    if (slot == 1 || slot == 2) {
+      test::Check(std::get<source::TreeConstantError>(typed) == source::TreeConstantError::kObjectLiteral);
+      continue;
+    }
+    const auto& resolved = std::get<source::TreeConstants>(typed);
+    const auto first = std::get<source::ObjectConstant>(resolved.operations[0]);
+    const auto second = std::get<source::ObjectConstant>(resolved.operations[1]);
+    test::Check(first.first == second.first && first.count == second.count && resolved.properties.size() == first.count);
+    if (slot >= 4 && slot <= 6) test::Check(first.count == kScaleCounts[slot - 4]);
+    if (slot == 3) test::Check(resolved.names[resolved.properties[0].key.value] == u"__proto__");
+    if (slot == 7) {
+      test::Check(first.count == 4 && std::get<source::BooleanLiteral>(resolved.properties[0].value).value);
+      test::Check(std::bit_cast<double>(std::get<source::NumberLiteral>(resolved.properties[1].value).bits) == UINT32_MAX);
+      test::Check(std::get<source::NumberLiteral>(resolved.properties[2].value).bits == real);
+      test::Check(resolved.texts[std::get<source::TextId>(resolved.properties[3].value).value] == u"hello");
+    }
+    analysis::SemanticBudget work_limit; work_limit.work = resolved.work - 1;
+    test::Check(std::get<source::TreeConstantError>(source::ResolveTreeConstants(
+        file, header, index, {kMethod}, values, work_limit)) == source::TreeConstantError::kWorkLimit);
+  }
   const auto empty = test::Body({0x04, 0x64});
   std::ostringstream empty_source;
   test::Check(std::holds_alternative<std::size_t>(source::WriteLinearBody(

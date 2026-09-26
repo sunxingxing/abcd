@@ -44,7 +44,8 @@ enum class ObjectBufferError {
   kKey,
   kValue,
   kDuplicateKey,
-  kResourceLimit
+  kResourceLimit,
+  kWorkLimit
 };
 struct BodyEmitFailure {
   BodyEmitError kind;
@@ -58,6 +59,7 @@ struct BodyEmitFailure {
 using BodyEmitResult = std::variant<std::size_t, BodyEmitFailure>;
 struct ObjectBufferBudget {
   std::size_t bytes = 16 * 1024 * 1024;
+  std::uint64_t work = kDefaultMethodWork;
 };
 
 enum class BodyLayout : std::uint8_t { kOriginal, kNormalizedAsync };

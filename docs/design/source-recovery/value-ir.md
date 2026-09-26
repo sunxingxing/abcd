@@ -105,6 +105,14 @@ MethodEntryKey，不能丢掉它或伪造 predecessor block。该输入由独立
 结果，不能变成可共享常量或被纯值删除。导入不等于缓冲内容已证明：属性、方法、
 捕获和定义顺序仍需解析。现有空对象求值、初始化合并及 AST 校验明确拒绝有
 literal 的分配，禁止把尚未解析的缓冲静默输出成 `{}`。
+
+`ResolveTreeConstants` 已接入纯数据缓冲解析，输出 `ObjectConstant` 属性范围及
+`ConstantProperty`（NameId + TreeLiteral），不通过 JS 文本表达属性语义。同一
+pool slot 的多次使用共享常量范围；它不共享对象分配或源码表达式节点。沿用
+`ReadObjectBuffer` 的键/值/重复键检查，不调用旧 writer；方法、访问器等仍拒绝。
+整数按 v7 `LiteralDataExtractor` 的 uint32 转换处理，超过 int32 上限转精确
+double；double 保留原始位模式，字符串保持 UTF-16。该结果尚未接入 AST 属性
+下降，不能凭解析成功绕过现有缓冲对象源码拒绝。
 | super/receiver init | owner、初始化前后状态、range 协议证书 | G3，共用操作管线 |
 | exception/suspend/resume | phase、completion、owner、可见状态 | G4，禁止普通 SSA 适配器接收 |
 
