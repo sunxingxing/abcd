@@ -47,7 +47,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
       }
       const auto shape = DescribeEvaluation(op.operation);
       Require(shape.has_value(), Error::kUnsupportedOperation);
-      Require(shape->roles.size() == op.use_count && shape->expression == op.result.has_value(), Error::kInvalidGraph);
+      Require(shape->Count() == op.use_count && shape->expression == op.result.has_value(), Error::kInvalidGraph);
       if (placement.kind == EvaluationKind::kInline) {
         Require(op.result && placement.consumer && !placement.temporary, Error::kOwnership);
         const auto& value = graph.values[op.result->value];
@@ -76,7 +76,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
         step();
         const auto& use = graph.uses[op.first_use.value + ordinal];
         Require(use.purpose == analysis::ReadPurpose::kOperand, Error::kProtocolOperand);
-        Require(use.role == shape->roles[ordinal], Error::kInvalidGraph);
+        Require(use.role == shape->Role(ordinal), Error::kInvalidGraph);
       }
     }
     std::size_t next_op = 0;

@@ -15,6 +15,11 @@ class Fixture {
   analysis::OpId Add(analysis::ValueOperation operation, bool result,
       std::initializer_list<std::pair<analysis::OperandRole, analysis::ValueOperand>> operands,
       analysis::LanguageEffect effects = analysis::LanguageEffect::kNone) {
+    return Add(operation, result, std::span(operands.begin(), operands.size()), effects);
+  }
+  analysis::OpId Add(analysis::ValueOperation operation, bool result,
+      std::span<const std::pair<analysis::OperandRole, analysis::ValueOperand>> operands,
+      analysis::LanguageEffect effects = analysis::LanguageEffect::kNone) {
     const analysis::OpId id{static_cast<std::uint32_t>(graph.ops.size())};
     std::optional<analysis::ValueId> value;
     if (result) {
@@ -148,6 +153,61 @@ void PredicateReads() {
   plan.operations[0] = {EvaluationKind::kInline, fixture.graph.ops[1].first_use, {}};
   Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kOwnership);
 }
+void CallOrder(bool reverse, bool barrier) {
+  Fixture fixture;
+  fixture.Read(); fixture.Read();
+  if (barrier) fixture.Write();
+  const auto call = fixture.Add(analysis::ValueInvoke{analysis::InvokeReceiver::kUndefined, 1}, true,
+      {{analysis::OperandRole::kCallee, analysis::ValueId{reverse ? 2U : 1U}},
+       {analysis::OperandRole::kArgument, analysis::ValueId{reverse ? 1U : 2U}}},
+      analysis::LanguageEffect::kUserCode);
+  fixture.Return({3});
+  auto plan = fixture.Plan();
+  Check(plan.operations[call.value].kind == EvaluationKind::kInline);
+  Check(plan.operations[0].kind == (reverse || barrier ? EvaluationKind::kRoot : EvaluationKind::kInline));
+  Check(plan.operations[1].kind == (barrier ? EvaluationKind::kRoot : EvaluationKind::kInline));
+  if (barrier) {
+    const analysis::UseId callee{fixture.graph.ops[call.value].first_use.value};
+    plan.operations[reverse ? 1 : 0] = {EvaluationKind::kInline, callee, {}};
+    Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kOrder);
+  }
+}
+void SharedAndUnusedCalls() {
+  Fixture fixture;
+  fixture.Add(analysis::ValueInvoke{analysis::InvokeReceiver::kUndefined, 0}, true,
+      {{analysis::OperandRole::kCallee, analysis::ValueId{0}}}, analysis::LanguageEffect::kUserCode);
+  fixture.Add(analysis::ValueBinary{analysis::BinaryOperator::kStrictEqual}, true,
+      {{analysis::OperandRole::kLeft, analysis::ValueId{1}},
+       {analysis::OperandRole::kRight, analysis::ValueId{1}}});
+  fixture.Return({2});
+  const auto plan = fixture.Plan();
+  Check(plan.operations[0].kind == EvaluationKind::kRoot &&
+        plan.operations[0].temporary == TemporaryReason::kMultipleUses);
+  Fixture unused;
+  unused.Add(analysis::ValueConstruct{0}, true,
+      {{analysis::OperandRole::kConstructor, analysis::ValueId{0}}}, analysis::LanguageEffect::kUserCode);
+  unused.Return({0});
+  const auto kept = unused.Plan();
+  Check(kept.operations[0].kind == EvaluationKind::kRoot && !kept.operations[0].temporary);
+}
+void CallRanges() {
+  for (const auto count : {200U, 201U, 4096U}) {
+    Fixture fixture;
+    using Operand = std::pair<analysis::OperandRole, analysis::ValueOperand>;
+    std::vector<Operand> operands{{analysis::OperandRole::kCallee, analysis::ValueId{0}},
+                                 {analysis::OperandRole::kReceiver, analysis::ValueId{0}}};
+    operands.insert(operands.end(), count, {analysis::OperandRole::kArgument, analysis::ValueId{0}});
+    fixture.Add(analysis::ValueInvoke{analysis::InvokeReceiver::kExplicit, count}, true,
+                std::span<const Operand>(operands), analysis::LanguageEffect::kUserCode);
+    fixture.Return({1});
+    const auto plan = fixture.Plan();
+    Check(plan.operations[0].kind == EvaluationKind::kInline);
+    constexpr std::uint64_t kWorkPerUseBound = 128;
+    Check(plan.work <= kWorkPerUseBound * fixture.graph.uses.size());
+    fixture.graph.uses[2].role = analysis::OperandRole::kReceiver;
+    Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kInvalidGraph);
+  }
+}
 }  // namespace
 
 int main() {
@@ -156,4 +216,7 @@ int main() {
   SharedValue(); CrossBlock();
   LongExpression();
   PredicateReads();
+  CallOrder(false, false); CallOrder(true, false);
+  CallOrder(false, true); CallOrder(true, true);
+  SharedAndUnusedCalls(); CallRanges();
 }

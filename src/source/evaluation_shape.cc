@@ -14,6 +14,9 @@ constexpr std::array kPropertyRead{Role::kBase, Role::kKey};
 constexpr std::array kNamedWrite{Role::kBase, Role::kStoredValue};
 constexpr std::array kBranch{Role::kCondition};
 constexpr std::array kReturn{Role::kReturnValue};
+constexpr std::array kCall{Role::kCallee};
+constexpr std::array kReceiverCall{Role::kCallee, Role::kReceiver};
+constexpr std::array kConstruct{Role::kConstructor};
 }  // namespace
 
 std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation& operation) {
@@ -29,9 +32,16 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else if constexpr (std::is_same_v<T, analysis::ValueReturn>) return EvaluationShape{kReturn, false};
     else if constexpr (std::is_same_v<T, analysis::ValueJump>) return EvaluationShape{kNoOperands, false};
     else if constexpr (std::is_same_v<T, analysis::ValueString>) return EvaluationShape{kNoOperands, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueInvoke>) {
+      switch (op.receiver) {
+        case analysis::InvokeReceiver::kUndefined: return EvaluationShape{kCall, true, op.arguments};
+        case analysis::InvokeReceiver::kExplicit: return EvaluationShape{kReceiverCall, true, op.arguments};
+      }
+      return {};
+    } else if constexpr (std::is_same_v<T, analysis::ValueConstruct>)
+      return EvaluationShape{kConstruct, true, op.arguments};
     else {
       static_assert(std::is_same_v<T, analysis::ValueGuard> ||
-                    std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
                     std::is_same_v<T, analysis::ValueArrayAllocation> ||
                     std::is_same_v<T, analysis::ValueNop>);
       return {};

@@ -1059,3 +1059,37 @@ call effects, exception exits, tampered call counts/roles and the correspondence
 scratch boundary. Tests, JS execution and RSS measurement remain paused.
 Next is variable-arity evaluation planning and source reference ownership, then
 Call/Construct AST/printer integration; T04 and the full objective are unfinished.
+
+### T04 Variable-Arity Evaluation Forest
+
+EvaluationShape now represents a fixed role prefix followed by argument
+occurrences. Count uses a widened sum; Role is bounded indexed access. Ordinary
+invocation, explicit-receiver invocation and construction use distinct prefixes.
+Both planning and independent verification check the full use count, roles and
+result presence without allocating a per-call role array.
+
+The existing effect-interval algorithm now handles these operations, with calls
+remaining ordered events even if malformed input reports no effects. Callee and
+argument subtrees can fuse only when the checked effect sequence is preserved;
+shared results keep one snapshot, and unused call results keep an ordered root.
+Iterative verification visits the resulting forest rather than rerunning the
+planner's decisions. Work remains linear in operations and use occurrences;
+range arity does not trigger repeated graph scans or recursive argument walks.
+
+This is staged IR-input evaluation, not yet a JS reference certificate. In
+particular the raw receiver occurrence cannot simply become another source
+evaluation, and callee inlining alone does not prove member receiver identity or
+direct-eval behavior. Call/Construct AST lowering still refuses. Source admission
+and published-stage semantics remain unchanged, so evidence rules remain 10.
+
+Production abc_semantic/abc_structure builds passed. ABC-only PageA method 7613
+now passes evaluation planning and refuses at FunctionPrepareError::kTree
+(inspection detail 7), previously kEvaluation/detail 4. The record and method
+remain unsupported for source publication; no JS was executed. Unrun regression
+sources cover getter-before-argument order, reversed order, intervening writes,
+forged motion refusal, shared and unused call results, and 200/201/4096 argument
+plans with role tampering and a linear work bound. Tests and RSS remain paused.
+
+Next: a separate call-reference plan, then variable-arity Call/Construct syntax,
+independent operand correspondence and printer support. T04, T06 and T00-T12
+remain incomplete.

@@ -58,7 +58,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
         if (op.life != analysis::ValueLife::kLive) continue;
         const auto shape = DescribeEvaluation(op.operation);
         Require(shape.has_value(), Error::kUnsupportedOperation);
-        Require(op.use_count == shape->roles.size() && shape->expression == op.result.has_value(),
+        Require(op.use_count == shape->Count() && shape->expression == op.result.has_value(),
                 Error::kInvalidGraph);
         auto& placement = plan.operations[index];
         placement.kind = EvaluationKind::kRoot;
@@ -77,8 +77,9 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
         }
         auto expected = serial;
         std::uint32_t effects = 0;
-        // Select a suffix of already-executed effects in reverse JS operand
-        // order. A rejected child stays materialized at its original point.
+        // Select a suffix of already-executed effects in reverse declared input
+        // order. Call reference legality is a later proof. A rejected child
+        // stays materialized at its original point.
         // Subtree intervals include inlined getters, so a pure parent cannot
         // carry a getter across an intervening write/call by accident.
         for (std::uint32_t ordinal = op.use_count; ordinal != 0; --ordinal) {
@@ -86,7 +87,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
           const analysis::UseId use{op.first_use.value + ordinal - 1};
           const auto& occurrence = graph.uses[use.value];
           Require(occurrence.purpose == analysis::ReadPurpose::kOperand, Error::kProtocolOperand);
-          Require(occurrence.role == shape->roles[ordinal - 1], Error::kInvalidGraph);
+          Require(occurrence.role == shape->Role(ordinal - 1), Error::kInvalidGraph);
           const auto* value = std::get_if<analysis::ValueId>(&occurrence.operand);
           if (!value) continue;
           const auto& definition = graph.values[value->value];

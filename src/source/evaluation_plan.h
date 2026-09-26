@@ -23,10 +23,21 @@ enum class EvaluationError : std::uint8_t {
   kOwnership, kOrder, kUnavailableValue, kWorkLimit, kResourceLimit
 };
 struct EvaluationShape {
+  // Fixed prefix followed by argument occurrences. No array proportional to
+  // range-call arity is allocated merely to describe their roles.
   std::span<const analysis::OperandRole> roles;
   bool expression;
+  std::uint32_t arguments = 0;
+  [[nodiscard]] std::uint64_t Count() const { return roles.size() + static_cast<std::uint64_t>(arguments); }
+  [[nodiscard]] std::optional<analysis::OperandRole> Role(std::uint32_t index) const {
+    if (index < roles.size()) return roles[index];
+    if (index < Count()) return analysis::OperandRole::kArgument;
+    return {};
+  }
 };
-// Explicit JS operand order for admitted G1 operations; not SSA read order.
+// Scalar JS order or staged invocation inputs (callee, raw receiver, args).
+// Call syntax must separately prove reference binding and avoid direct eval;
+// this forest alone does not authorize a member call or extra receiver read.
 [[nodiscard]] std::optional<EvaluationShape> DescribeEvaluation(
     const analysis::ValueOperation& operation);
 [[nodiscard]] bool OrderedEvaluation(const analysis::ValueOp& operation);
@@ -38,8 +49,9 @@ struct EvaluationShape {
 // a failed fusion keeps a snapshot, never duplicates or drops an effect.
 [[nodiscard]] std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {});
-// Iteratively expands the proposed forest in JS operand order, checking exact
-// ordered occurrences and same-block producer availability. No plan replay.
+// Iteratively expands the proposed forest in the declared input order, checking
+// exact ordered occurrences and same-block availability. Call reference/source
+// order still needs its separate certificate. No plan replay.
 [[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget = {});
