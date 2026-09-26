@@ -645,6 +645,25 @@ Printed/complete method coverage at [2638,2924), now rules 23; enclosing record
 remains incomplete. This unchanged method is not behavioral validation of the
 new composition. No tests, generated JS, benchmarks or RSS measurements ran.
 
+### T07/P3 Typed Module Reads in Working IR
+
+Local/external module loads now import as ValueModuleRead with typed space and
+slot. Original domains, effects, exception completion and PC are retained.
+Pure-operation erasure excludes these reads, and evaluation/source lowering
+continues to refuse them without an enclosing module-binding proof. This is
+not a constant import snapshot, a global name, or a new Language-value premise.
+
+Both production targets built successfully. ABC-only conditional P3 7366 now
+prepares all 85 working operations at revision 1, with one original capture
+occurrence, one indexed cell and three child obligations. It no longer fails
+import at PC 110. The command still exits 1 and reports source_complete=false,
+executable=false; no AST/publication/async completion is implied.
+
+Regression sources cover narrow/wide local/external slot identity, u16 maximum,
+space/slot tampering and retained source refusal/order checks. They remain
+uncompiled/unrun; no generated JS, benchmark or RSS work ran. Rules remain 23
+because module-read executable admission has not expanded.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

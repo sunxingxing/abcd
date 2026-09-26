@@ -100,6 +100,12 @@ MethodEntryKey，不能丢掉它或伪造 predecessor block。该输入由独立
 | object/array/own define | 分配身份、hole/length、key、descriptor、原型与定义次序 | G3/T07；定义不能降为普通赋值 |
 | create function/class | method、creation-site、home object、capture 契约 | G3，子方法失败不得发布父级完成 |
 
+`ValueModuleRead` 保留 ModuleSpace（本地／外部）与 ModuleSlot，不使用字符串
+或 pool index 冒充模块变量身份。导入沿用原始输入证明的值域及正常／异常效果，
+不会因为 opcode 是读取而假定返回 Language 或删除 Hole guard。模块读取不能
+被纯操作删除，也不能在没有 record/module 绑定证明时打印成全局或局部名称。
+当前可进入工作 IR；源码求值仍明确拒绝，等待模块环境整合。
+
 当前 `ValueObjectAllocation::literal` 用类型化可选 pool slot 区分空对象与
 `CREATEOBJECTWITHBUFFER`。缓冲创建仍为每次执行的新分配，保留输入 PC、效果和
 结果，不能变成可共享常量或被纯值删除。导入不等于缓冲内容已证明：属性、方法、

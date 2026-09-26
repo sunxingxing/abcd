@@ -119,6 +119,13 @@ struct ValueGlobalRead {
   bool operator==(const ValueGlobalRead&) const = default;
 };
 struct ValueGuard { std::optional<abc::PoolIndex> name; bool operator==(const ValueGuard&) const = default; };
+// Live module-cell read, not a pool/string/request index or a frozen imported
+// value. Source binding and TDZ equivalence require the enclosing module proof.
+struct ValueModuleRead {
+  ModuleSpace space;
+  ModuleSlot slot;
+  bool operator==(const ValueModuleRead&) const = default;
+};
 struct ValueArrayAllocation { bool operator==(const ValueArrayAllocation&) const = default; };
 struct ValueObjectAllocation {
   // Absent means CREATEEMPTYOBJECT, present is the original regional literal
@@ -174,7 +181,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
     ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValuePropertyRead, ValueBranch, ValueJump,
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation,
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueLexicalLoad, ValueLexicalStore,
-    ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment>;
+    ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

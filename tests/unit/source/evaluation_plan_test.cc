@@ -250,6 +250,12 @@ int main() {
   // properties and the independent tree operand/origin checks.
   Check(DescribeEvaluation(analysis::ValueObjectAllocation{}).has_value());
   Check(DescribeEvaluation(analysis::ValueObjectAllocation{abc::PoolIndex{0}}).has_value());
+  for (const auto space : {analysis::ModuleSpace::kLocal, analysis::ModuleSpace::kExternal}) {
+    const analysis::ValueModuleRead module{space, {0}};
+    Check(!DescribeEvaluation(module)); // Enclosing module bindings are not yet proved.
+    auto read = creation.graph.ops[0]; read.operation = module;
+    Check(OrderedEvaluation(read));
+  }
   const analysis::ValueOperation cells[]{analysis::ValueLexicalLoad{{{0}, {0}}},
       analysis::ValueLexicalStore{{{0}, {0}}}, analysis::ValueEnvironmentPush{1, {}},
       analysis::ValueEnvironmentPop{}, analysis::ValueCurrentEnvironment{}};

@@ -1,4 +1,5 @@
 #include "abcd/analysis/value_import.h"
+#include "../../../src/analysis/value_edits.h"
 
 #include "analysis/ssa_fixture.h"
 
@@ -95,6 +96,36 @@ int main() {
   // Pinned ISA forms: empty object has no operands; empty array has an IC slot.
   constexpr std::uint8_t kFirstCacheSlot = 0;
   const auto returned = static_cast<std::uint8_t>(abc::Opcode::kRETURN);
+  for (const bool external : {false, true}) for (const bool wide : {false, true}) {
+    // Pinned v7 local/external module slots, including the wide u16 boundary.
+    constexpr std::uint8_t kWidePrefix = 0xfd, kSlotByte = 0xff;
+    const auto opcode = external ? (wide ? abc::Opcode::kWIDE_LDEXTERNALMODULEVAR_PREF_IMM16 :
+        abc::Opcode::kLDEXTERNALMODULEVAR_IMM8) : (wide ? abc::Opcode::kWIDE_LDLOCALMODULEVAR_PREF_IMM16 :
+        abc::Opcode::kLDLOCALMODULEVAR_IMM8);
+    std::vector<std::uint8_t> bytes;
+    if (wide) bytes = {kWidePrefix, static_cast<std::uint8_t>(static_cast<std::uint16_t>(opcode) >> 8), kSlotByte, kSlotByte};
+    else bytes = {static_cast<std::uint8_t>(opcode), kSlotByte};
+    bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kRETURNUNDEFINED));
+    const auto body = test::Body(bytes);
+    const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, frame.registers));
+    const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, input, frame.registers, frame.locals));
+    const auto value = std::get<ValueProgram>(ImportNormalValues(body, input, proof, frame));
+    test::Check(!VerifyImportedValues(value, input, proof, frame));
+    const auto& module = std::get<ValueModuleRead>(value.ops[0].operation);
+    test::Check(module.space == (external ? ModuleSpace::kExternal : ModuleSpace::kLocal));
+    test::Check(module.slot.value == (wide ? UINT16_MAX : UINT8_MAX));
+    test::Check(value.ops[0].normal == LanguageEffect::kModuleRead &&
+        value.ops[0].exceptional == ExceptionalCompletion::kMayThrow && value.ops[0].use_count == 0);
+    auto stripped = value.ops[0];
+    stripped.normal = stripped.before_throw = LanguageEffect::kNone;
+    stripped.exceptional = ExceptionalCompletion::kImpossible;
+    test::Check(!CanErasePureOp(stripped));
+    auto changed = value;
+    std::get<ValueModuleRead>(changed.ops[0].operation).space = external ? ModuleSpace::kLocal : ModuleSpace::kExternal;
+    test::Check(VerifyImportedValues(changed, input, proof, frame)->kind == ValueImportError::kInputMismatch);
+    changed = value; --std::get<ValueModuleRead>(changed.ops[0].operation).slot.value;
+    test::Check(VerifyImportedValues(changed, input, proof, frame)->kind == ValueImportError::kInputMismatch);
+  }
   for (const bool array : {false, true}) {
     const auto allocation = array ? test::Body({
         static_cast<std::uint8_t>(abc::Opcode::kCREATEEMPTYARRAY_IMM8), kFirstCacheSlot, returned}) :

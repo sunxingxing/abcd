@@ -75,6 +75,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueNamedRead{op.name};
     } else if constexpr (std::is_same_v<T, EmptyObjectCreation>) {
       return ValueObjectAllocation{};
+    } else if constexpr (std::is_same_v<T, ModuleLoad>) {
+      return ValueModuleRead{op.space, op.slot};
     } else if constexpr (std::is_same_v<T, BufferedObjectCreation>) {
       return ValueObjectAllocation{op.literal};
     } else if constexpr (std::is_same_v<T, FunctionCreation>) {
