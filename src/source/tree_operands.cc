@@ -21,6 +21,7 @@ class OperandCheck {
     if (constants_.number_type_text)
       RequireMeaning(constants_.number_type_text->value < constants_.text_count &&
                      tree_.texts[constants_.number_type_text->value] == u"number", Error::kConstant);
+    std::size_t next_function = 0;
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto& op = graph_.ops[i];
@@ -111,9 +112,19 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
           RequireMeaning(std::holds_alternative<EmptyObjectExpr>(tree_.expressions[expression.value].expression) ||
               std::holds_alternative<ObjectExpr>(tree_.expressions[expression.value].expression), Error::kOperator);
+        } else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
+          RequireMeaning(next_function < evaluation_.functions.size(), Error::kOperand);
+          const auto& function = evaluation_.functions[next_function++];
+          const auto& created = Node<FunctionExpr>(expression);
+          RequireMeaning(function.creation == current_ && function.child != tree_.owner &&
+              created.child == function.child && created.captures.count == function.captures.size(), Error::kOperand);
+          for (std::size_t c = 0; c < function.captures.size(); ++c) {
+            budget_.Step(); const auto cell = function.captures[c];
+            RequireMeaning(cell.value < flow_.cells.size() && flow_.cells[cell.value] &&
+                tree_.closure_captures[created.captures.first + c] == *flow_.cells[cell.value], Error::kOperand);
+          }
         } else {
           static_assert(std::is_same_v<T, analysis::ValueGuard> ||
-                        std::is_same_v<T, analysis::ValueFunctionCreation> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueJump>);
@@ -121,6 +132,7 @@ class OperandCheck {
         }
       }, op.operation);
     }
+    RequireMeaning(next_function == evaluation_.functions.size(), Error::kOperand);
     CopyInputs();
   }
 

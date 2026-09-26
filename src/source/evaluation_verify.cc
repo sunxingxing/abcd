@@ -35,14 +35,23 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
     admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
     bool has_definitions = false;
     bool has_cells = false;
-    for (const auto& op : graph.ops) {
+    std::size_t next_function = 0;
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      const auto& op = graph.ops[i];
       step(); has_definitions |= op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueOwnWrite>(op.operation);
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
+      if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
+        Require(next_function < plan.functions.size() && plan.functions[next_function++].creation.value == i, Error::kOwnership);
+        pinned[i] = 1;
+      }
     }
+    Require(next_function == plan.functions.size(), Error::kOwnership);
     Require(has_definitions == plan.literals.has_value(), Error::kOwnership);
     Require(has_cells == plan.cells.has_value(), Error::kOwnership);
     if (plan.cells) {
+      Require(plan.cells->initialization.closure_writes == (plan.functions.empty()
+          ? analysis::ClosureWrites::kUnknown : analysis::ClosureWrites::kLanguage), Error::kOwnership);
       const auto checked = VerifyCellEvaluation(graph, *plan.cells, {bytes, work});
       if (const auto* error = std::get_if<CellEvaluationError>(&checked)) {
         if (*error == CellEvaluationError::kResourceLimit) return Error::kResourceLimit;
@@ -50,6 +59,12 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
         return Error::kUnsupportedOperation;
       }
       step(std::get<std::uint64_t>(checked));
+    }
+    for (const auto& function : plan.functions) {
+      step();
+      for (const auto cell : function.captures) {
+        step(); Require(plan.cells && cell.value < plan.cells->cells.cells.size(), Error::kOwnership);
+      }
     }
     if (plan.literals) {
       const auto checked = VerifyLiteralPlan(graph, *plan.literals, {bytes, work});

@@ -83,6 +83,7 @@ class TreeBuilder {
     tree_.expressions = std::move(forest_.expressions);
     tree_.properties = std::move(forest_.properties);
     tree_.arguments = std::move(forest_.arguments);
+    tree_.closure_captures = std::move(forest_.closure_captures);
     tree_.origins = std::move(forest_.origins);
     tree_.origin_parts = std::move(forest_.origin_parts);
     Reserve();

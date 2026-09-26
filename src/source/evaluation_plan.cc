@@ -12,7 +12,8 @@ struct EffectInterval { std::uint32_t count = 0; std::uint32_t end = 0; };
 }  // namespace
 
 std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming) {
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
+    std::span<const FunctionBinding> functions) {
   try {
     Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
     auto work = budget.work;
@@ -38,16 +39,38 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
           std::holds_alternative<analysis::PhiDefinition>(value.origin);
     }
     EvaluationPlan plan{graph.revision, graph.cfg_revision, {}};
+    Require(functions.size() <= graph.ops.size(), Error::kOwnership);
+    admit(functions.size(), sizeof(FunctionBinding));
+    plan.functions.reserve(functions.size());
+    admit(plan.functions.capacity() - functions.size(), sizeof(FunctionBinding));
+    for (const auto& function : functions) {
+      step();
+      admit(function.captures.size(), sizeof(CellId));
+      FunctionBinding owned{function.creation, function.child};
+      owned.captures.reserve(function.captures.size());
+      admit(owned.captures.capacity() - function.captures.size(), sizeof(CellId));
+      for (const auto cell : function.captures) { step(); owned.captures.push_back(cell); }
+      plan.functions.push_back(std::move(owned));
+    }
     admit(graph.ops.size(), sizeof(std::uint8_t)); step(graph.ops.size());
     std::vector<std::uint8_t> pinned(graph.ops.size());
     admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
     bool has_definitions = false;
     bool has_cells = false;
-    for (const auto& op : graph.ops) {
+    std::size_t next_function = 0;
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      const auto& op = graph.ops[i];
       step(); has_definitions |= op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueOwnWrite>(op.operation);
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
+      if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
+        Require(next_function < functions.size() && functions[next_function++].creation.value == i, Error::kOwnership);
+        // Creation reads an implicit lexical environment. Do not move it over
+        // push/pop or infer a closure lifetime from scalar input-use order.
+        pinned[i] = 1;
+      }
     }
+    Require(next_function == functions.size(), Error::kOwnership);
     if (has_definitions) {
       auto built = BuildLiteralPlan(graph, {bytes, work});
       const auto* error = std::get_if<LiteralError>(&built);
@@ -70,7 +93,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
       }
     }
     if (has_cells) {
-      auto built = BuildCellEvaluation(graph, {bytes, work}, incoming);
+      auto built = BuildCellEvaluation(graph, {bytes, work}, incoming,
+          functions.empty() ? analysis::ClosureWrites::kUnknown : analysis::ClosureWrites::kLanguage);
       if (const auto* error = std::get_if<CellEvaluationError>(&built)) {
         if (*error == CellEvaluationError::kResourceLimit) return Error::kResourceLimit;
         if (*error == CellEvaluationError::kWorkLimit) return Error::kWorkLimit;
@@ -181,9 +205,13 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     if (const auto* error = std::get_if<EvaluationError>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = plan.operations.capacity() * sizeof(OpEvaluation) +
+        plan.functions.capacity() * sizeof(FunctionBinding) +
         (plan.phis ? plan.phis->allocated_bytes : 0) +
         (plan.literals ? plan.literals->allocated_bytes : 0);
     if (plan.cells) plan.allocated_bytes += plan.cells->allocated_bytes;
+    for (const auto& function : plan.functions) {
+      step(); plan.allocated_bytes += function.captures.capacity() * sizeof(CellId);
+    }
     plan.work = budget.work - work;
     return plan;
   } catch (Error error) { return error;

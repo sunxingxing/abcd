@@ -97,8 +97,9 @@ closure are still separate pending obligations; this is not closure output.
 
 IncomingCells::kConditional now allows leaf-child evaluation through the same
 BuildEvaluationPlan, BindingPlan, ExpressionForest and FunctionTree pipeline.
-Default admission remains kReject. Neither mode changes ClosureWrites::Unknown:
-this step does not accept unverified nested creations or assume their writes.
+Default admission remains kReject. Without explicit FunctionBindings, closure
+writes remain Unknown and nested creations remain refused. A separate
+conditional creation path is described below; it is not child verification.
 Incoming reads retain IncomingInitialization; mutable storage is still distinct
 from scalar snapshots, with normal ordered read/write effects preserved.
 
@@ -127,6 +128,47 @@ and capture-bearing trees; its current printer also rejects them. No conditional
 tree can obtain executable publication merely by passing syntax/operand checks.
 The added binding/flow passes are linear in symbols/cells/captures beyond the
 existing name sort and graph checks; storage accounting includes capture arenas.
+
+## Conditional Creation Expressions
+
+EvaluationPlan now owns sorted FunctionBindings for every live DEFINEFUNC
+creation admitted by this path. Each records a child FunctionOwnerId and parent
+CellIds in child incoming-cell order. A binding is a child-body/capture/write
+obligation, NOT proof that the child's method, captures or behavior match.
+Missing/extra/unsorted creation entries refuse. Accumulator home-object method
+creation is still unsupported. Sendability, function kind, name, length and
+home-object validity must be bound through the real creation owner before any
+family publication; operation shape alone does not establish them.
+
+Explicit bindings allow the cell initializer to carry a Language child-write
+premise. Evaluation verification checks that this premise appears exactly when
+the creation bindings require it. No default path silently changes Unknown to
+Language. Every function creation is pinned at its original ordered root:
+scalar operand inlining is not a proof that its implicit lexical environment
+can move over push/pop, branches or loop scopes. Multiple value uses keep one
+snapshot of the single created function object.
+
+ExpressionForest lowers creation to FunctionExpr with an owned range of implicit
+parent SymbolId references in FunctionTree::closure_captures. These are lexical
+capture edges, not arguments or source-text fragments. Structural checking
+resolves each reference at the actual creation expression, rejects shadowing
+or out-of-scope symbols, requires mutable local/capture bindings, owns every
+range occurrence and rejects duplicate/self child owners. TreeOperands compares
+the actual child owner and actual parent cell symbols to the conditional plan;
+normal statement ordering and original-PC checks remain unchanged.
+
+Parent capture edges are now represented and scope-checked in the AST. They
+still need CaptureCells evidence tied to the child tree's actual incoming
+symbols and names. Complete child trees, forwarded-only outer requirements,
+name/strictness/callable syntax, dependencies and SCC closure are not yet part
+of a frozen publication owner. Standalone VerifiedFunction rejects creation
+bindings; its printer rejects FunctionExpr before writing any header. There
+is no placeholder body or partial child output.
+
+Added preparation/storage is O(F+K) for F creations and K capture edges, beyond
+existing graph/evaluation checks. Child-owner uniqueness costs O(F log F) and
+O(F) scratch; lexical references use the existing indexed name activation, not
+per-capture scope-chain scans. All creation/capture arenas are capacity-charged.
 
 ## Original Capture Evidence
 

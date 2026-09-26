@@ -60,7 +60,7 @@ std::variant<std::uint64_t, CellEvaluationError> VerifyCellEvaluation(
     auto environments = Take(analysis::BuildValueEnvironments(graph, quota.Remaining()), Error::kEnvironment);
     quota.Admit(environments.allocated_bytes); quota.Step(environments.work);
     quota.Step(Take(VerifyCellInitializations(graph, environments, plan.cells,
-        analysis::ClosureWrites::kUnknown, plan.initialization, quota.Remaining()), Error::kInitialization));
+        plan.initialization.closure_writes, plan.initialization, quota.Remaining()), Error::kInitialization));
     Identities(graph, plan.cells, plan.incoming, quota);
     return quota.Work();
   } catch (Error error) { return error;
@@ -68,7 +68,8 @@ std::variant<std::uint64_t, CellEvaluationError> VerifyCellEvaluation(
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
 std::variant<CellEvaluation, CellEvaluationError> BuildCellEvaluation(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming) {
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
+    analysis::ClosureWrites writes) {
   try {
     Quota quota(budget); quota.Admit(sizeof(CellEvaluation));
     auto environments = Take(analysis::BuildValueEnvironments(graph, quota.Remaining()), Error::kEnvironment);
@@ -76,7 +77,7 @@ std::variant<CellEvaluation, CellEvaluationError> BuildCellEvaluation(
     auto cells = Take(BuildCellPlan(graph, environments, quota.Remaining()), Error::kCells);
     quota.Admit(cells.allocated_bytes); quota.Step(cells.work);
     auto initialization = Take(BuildCellInitializations(graph, environments, cells,
-        analysis::ClosureWrites::kUnknown, quota.Remaining()), Error::kInitialization);
+        writes, quota.Remaining()), Error::kInitialization);
     quota.Admit(initialization.allocated_bytes); quota.Step(initialization.work);
     Identities(graph, cells, incoming, quota);
     const auto retained = sizeof(CellEvaluation) + cells.allocated_bytes + initialization.allocated_bytes;

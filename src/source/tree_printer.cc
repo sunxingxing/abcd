@@ -43,6 +43,12 @@ class TreePrinter {
     if (!function_.ClassCreation() || tree_.callable != CallableKind::kMethod ||
         tree_.strictness != Strictness::kStrict || tree_.self || tree_.capture_scope || !tree_.captures.empty())
       throw Error::kUnsupportedContext;
+    // Standalone printing has no verified family/child lookup. Reject before
+    // writing the header, never leave a partial fake function body behind.
+    for (const auto& expression : tree_.expressions) {
+      Step();
+      if (std::holds_alternative<FunctionExpr>(expression.expression)) throw Error::kUnsupportedContext;
+    }
     result_.identity = tree_.identity;
     result_.method = tree_.method;
     result_.value_revision = tree_.value_revision;
@@ -271,6 +277,7 @@ class TreePrinter {
   }
   void Expression(EmptyArrayExpr) { Append("[]"); }
   void Expression(EmptyObjectExpr) { Append("({})"); }
+  void Expression(FunctionExpr) { throw Error::kUnsupportedContext; }
   void Expression(ObjectExpr node) {
     Append("({"); Push(std::string_view("})")); Push(ObjectCursor{node.properties, 0});
   }

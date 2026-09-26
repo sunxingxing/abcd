@@ -26,6 +26,7 @@ struct ExpressionForest {
   std::vector<DataProperty> properties;
   std::vector<std::optional<PropertyId>> initializers;
   std::vector<ExprId> arguments;
+  std::vector<SymbolId> closure_captures;
   std::vector<TreeOrigin> origins;
   std::vector<TreeOriginId> origin_parts;
   // A branch maps to its condition; a return maps to its returned expression.

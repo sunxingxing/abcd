@@ -45,6 +45,12 @@ class ForestBuilder {
     constexpr std::size_t kNodesPerOperation = 12;
     constexpr std::size_t kOriginPartsPerOperation = 2;
     constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
+    std::size_t captures = 0;
+    for (const auto& function : evaluation_.functions) {
+      Step(); Require(function.captures.size() <= kMaxId - captures, Error::kResourceLimit);
+      captures += function.captures.size();
+    }
+    Reserve(forest_.closure_captures, captures);
     std::size_t copies = 0;
     const auto bundles = evaluation_.phis ? evaluation_.phis->bundles.size() : 0;
     if (evaluation_.phis) {
@@ -113,6 +119,7 @@ class ForestBuilder {
       }
       forest_.operations[i] = Lower({static_cast<std::uint32_t>(i)}, op, operands, origin, constants_.operations[i]);
     }
+    Require(next_function_ == evaluation_.functions.size(), Error::kOwnership);
     EdgeAssignments();
     forest_.allocated_bytes = budget_.bytes - bytes_;
     forest_.work = budget_.work - work_;
@@ -381,10 +388,21 @@ class ForestBuilder {
         return Add(EmptyArrayExpr{}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>)
         return Add(EmptyObjectExpr{}, origin);
+      else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
+        Require(next_function_ < evaluation_.functions.size(), Error::kOwnership);
+        const auto& function = evaluation_.functions[next_function_++];
+        Require(function.creation == id && function.child != owner_, Error::kOwnership);
+        const CaptureRange captures{static_cast<std::uint32_t>(forest_.closure_captures.size()),
+            static_cast<std::uint32_t>(function.captures.size())};
+        for (const auto cell : function.captures) {
+          Step(); Require(cell.value < forest_.bindings.cells.size(), Error::kBinding);
+          forest_.closure_captures.push_back(forest_.bindings.cells[cell.value]);
+        }
+        return Add(FunctionExpr{function.child, captures}, origin);
+      }
       else {
         static_assert(std::is_same_v<T, analysis::ValueGuard> ||
                       std::is_same_v<T, analysis::ValueOwnWrite> ||
-                      std::is_same_v<T, analysis::ValueFunctionCreation> ||
                       std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                       std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                       std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
@@ -403,6 +421,7 @@ class ForestBuilder {
   std::uint64_t work_;
   ExpressionForest forest_;
   std::vector<std::optional<std::size_t>> objects_;
+  std::size_t next_function_ = 0;
 };
 }  // namespace
 

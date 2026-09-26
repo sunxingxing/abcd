@@ -63,6 +63,12 @@ class StructureCheck {
     budget.Array(children_, tree.children.size());
     budget.Array(arguments_, tree.arguments.size());
     budget.Array(properties_, tree.properties.size());
+    budget.Array(capture_edges_, tree.closure_captures.size());
+    std::size_t functions = 0;
+    for (const auto& node : tree.expressions) {
+      budget.Step(); functions += std::holds_alternative<FunctionExpr>(node.expression);
+    }
+    budget.Array(functions_, functions);
     RequireTree(tree.expressions.size() <= std::numeric_limits<std::size_t>::max() - tree.statements.size(),
                 Error::kResourceLimit);
     budget.Array(stack_, tree.expressions.size() + tree.statements.size());
@@ -128,6 +134,14 @@ class StructureCheck {
     for (const auto seen : children_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
     for (const auto seen : arguments_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
     for (const auto seen : properties_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
+    for (const auto seen : capture_edges_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
+    RequireTree(next_function_ == functions_.size(), Error::kOwnership);
+    std::sort(functions_.begin(), functions_.end(), [&](auto left, auto right) {
+      budget_.Step(); return left < right;
+    });
+    for (std::size_t i = 1; i < functions_.size(); ++i) {
+      budget_.Step(); RequireTree(functions_[i - 1] != functions_[i], Error::kOwnership);
+    }
     return maximum_depth;
   }
 
@@ -158,6 +172,20 @@ class StructureCheck {
         RequireTree(AllowsGlobalReference(tree_.names[expression.name.value], {}), Error::kBinding);
       } else if constexpr (std::is_same_v<T, ThisExpr>) {
         RequireTree(expression.owner == tree_.owner, Error::kBinding);
+      } else if constexpr (std::is_same_v<T, FunctionExpr>) {
+        RequireTree(expression.child != tree_.owner && next_function_ < functions_.size(), Error::kOwnership);
+        functions_[next_function_++] = expression.child;
+        const auto range = expression.captures;
+        RequireTree(range.first <= tree_.closure_captures.size() &&
+            range.count <= tree_.closure_captures.size() - range.first, Error::kRange);
+        for (std::uint32_t i = 0; i < range.count; ++i) {
+          budget_.Step(); const auto at = range.first + i;
+          RequireTree(!capture_edges_[at], Error::kOwnership); capture_edges_[at] = 1;
+          const auto symbol = tree_.closure_captures[at];
+          scopes_.Reference(symbol);
+          RequireTree(tree_.symbols[symbol.value].kind == BindingKind::kLocal ||
+              tree_.symbols[symbol.value].kind == BindingKind::kCapture, Error::kBinding);
+        }
       } else if constexpr (std::is_same_v<T, MemberExpr>) {
         Key(expression.key);
       } else if constexpr (std::is_same_v<T, UnaryExpr>) {
@@ -270,7 +298,7 @@ class StructureCheck {
                         std::is_same_v<T, GlobalNameExpr> ||
                         std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
                         std::is_same_v<T, ConstructExpr> || std::is_same_v<T, EmptyArrayExpr> ||
-                        std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr>);
+                        std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, FunctionExpr>);
         }
       }, tree_.expressions[expression->value].expression);
     } else {
@@ -320,6 +348,9 @@ class StructureCheck {
   std::vector<std::uint8_t> arguments_;
   std::vector<std::uint8_t> properties_;
   std::vector<SyntaxFrame> stack_;
+  std::vector<FunctionOwnerId> functions_;
+  std::vector<std::uint8_t> capture_edges_;
+  std::size_t next_function_ = 0;
 };
 }  // namespace
 
@@ -340,7 +371,7 @@ std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
                 tree.origins.size() <= kMaxId && tree.origin_parts.size() <= kMaxId &&
                 tree.anchors.size() <= kMaxId && tree.children.size() <= kMaxId &&
                 tree.arguments.size() <= kMaxId && tree.properties.size() <= kMaxId &&
-                tree.captures.size() <= kMaxId, Error::kResourceLimit);
+                tree.captures.size() <= kMaxId && tree.closure_captures.size() <= kMaxId, Error::kResourceLimit);
     const auto maximum_depth = StructureCheck(tree, checked).Run();
     CheckTreeOrigins(tree, checked);
     return TreeStructure{tree.value_revision, tree.cfg_revision, maximum_depth, checked.Bytes(), checked.Work()};

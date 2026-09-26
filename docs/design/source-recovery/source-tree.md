@@ -277,8 +277,11 @@ register_uses/accumulator_used 扫描生成一组 VM let。
 别名不生成 `let`，读取/写入仍使用统一的 `SymbolExpr` / `SymbolTarget`。
 树结构检查处理真实遮蔽；值对应检查保留 incoming cell 与标量快照的区别。
 父级目标存在性、名称相等、创建位置的可见性、闭包写入与依赖闭合仍须单独验证。
-目前仅有条件叶函数建树入口，独立 `VerifiedFunction` 发布与 printer 显式拒绝
-携带未闭合捕获的树。不能把条件树检查通过视为嵌套函数源码已经贯通。
+条件父函数也可构建 `FunctionExpr{child, captures}`：每个创建节点拥有子函数归属与
+父级符号的隐式捕获边，而不是运行时参数。作用域检查在真实创建位置解析这些符号，
+操作数检查核对对应的父级词法单元。创建节点暂时固定在原有序位置，不跨环境操作内联。
+独立 `VerifiedFunction` 发布与 printer 显式拒绝未闭合捕获或子函数的树；printer
+在写入前拒绝创建节点。不能把条件父/子树检查通过视为完整闭包源码已经贯通。
 
 `PrintFunctionTree`/`PrintRecordTree` 只消费已验证 immutable tree、NameTable、输出预算。
 不接受 MethodBody/SSA/常量 reader 以便偷偷补反编译；不触发子方法反编译或 capture replay。

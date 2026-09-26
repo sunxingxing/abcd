@@ -14,6 +14,15 @@ struct OpEvaluation {
   std::optional<analysis::UseId> consumer;
   std::optional<TemporaryReason> temporary;
 };
+// Conditional child-body/capture/write obligation, not a validated child.
+// Sorted creation OpIds; distinct child owners are checked by AST ownership.
+struct FunctionBinding {
+  analysis::OpId creation;
+  FunctionOwnerId child;
+  // Parent mutable CellIds, in the child's incoming-cell order. Input/work
+  // CaptureCells evidence must independently justify every edge at publication.
+  std::vector<CellId> captures;
+};
 struct EvaluationPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
@@ -23,6 +32,7 @@ struct EvaluationPlan {
   std::optional<PhiCopies> phis;
   std::optional<LiteralPlan> literals;
   std::optional<CellEvaluation> cells;
+  std::vector<FunctionBinding> functions;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
@@ -56,10 +66,12 @@ struct EvaluationShape {
 // Requires verified normal IR. Produces a single-parent expression forest;
 // a failed fusion keeps a snapshot, never duplicates or drops an effect.
 // kConditional incoming cells retain external-binding obligations. It does not
-// change closure-write assumptions or authorize standalone source publication.
+// authorize standalone source publication. Supplying all FunctionBindings adds
+// an explicit Language child-write premise; every child must discharge it.
 [[nodiscard]] std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
-    IncomingCells incoming = IncomingCells::kReject);
+    IncomingCells incoming = IncomingCells::kReject,
+    std::span<const FunctionBinding> functions = {});
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and same-block availability. Call reference/source
 // order still needs its separate certificate. No plan replay.

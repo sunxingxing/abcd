@@ -19,10 +19,12 @@ enum class CellEvaluationError : std::uint8_t {
 [[nodiscard]] bool NeedsCellEvaluation(const analysis::ValueOperation& operation);
 // Incoming cells default to rejection. Conditional mode retains their owner
 // obligation for child-tree construction, NOT permission to publish. Neither
-// mode permits observed VM environment identities or assumes child writes.
+// mode permits observed VM environment identities. A Language writes premise
+// is explicit and must be discharged by complete child validation.
 [[nodiscard]] std::variant<CellEvaluation, CellEvaluationError> BuildCellEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
-    IncomingCells incoming = IncomingCells::kReject);
+    IncomingCells incoming = IncomingCells::kReject,
+    analysis::ClosureWrites writes = analysis::ClosureWrites::kUnknown);
 [[nodiscard]] std::variant<std::uint64_t, CellEvaluationError> VerifyCellEvaluation(
     const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source

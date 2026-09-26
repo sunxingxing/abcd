@@ -433,6 +433,32 @@ shadowing/owner/census mutations and retained snapshots across a captured write.
 They remain uncompiled/unrun under the testing pause. No JS execution, benchmark
 or RSS measurement was performed. T07 and T00-T12 remain unfinished.
 
+### T07 Parent Creation Expressions and Lexical Edges
+
+Explicit FunctionBindings now enter the shared evaluation/AST path for normal
+DEFINEFUNC with implicit current-function home input. They remain conditional
+child-body/capture/write obligations. The complete creation census is checked;
+Language child-write premises are explicit and matched to that census. Every
+creation is pinned at its original root because scalar input order does not
+prove preservation of its implicit environment. Multiple uses keep one value.
+
+FunctionExpr owns a unique child owner and implicit parent-symbol capture edges.
+TreeScope checks those references at the actual creation expression, including
+branch/loop scope and shadowing. TreeOperands checks the actual child owner and
+parent cell symbols, while existing flow/origin checks preserve order and PCs.
+Standalone publication still rejects creation obligations; the current printer
+rejects child nodes before writing a header. Child-tree assembly, real target
+and capture closure, callable/name/strictness handling and SCC validation remain
+pending. No executable closure coverage is claimed.
+
+Production abc_semantic and abc_structure builds passed. ABC-only G2 method
+7559 still reports Printed/complete METHOD under rules 20, [2638,2924), with an
+incomplete record. New function_expression_test sources specify 0/1/2/200/201
+creation contexts, distinct owners, actual capture symbols, shared function
+values, ownership/edge mutations, sibling-arm visibility and per-iteration
+declarations. Tests remain uncompiled/unrun; no JS execution, benchmarks or RSS
+measurement were performed. T07 and the T00-T12 objective remain unfinished.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

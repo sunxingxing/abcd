@@ -92,6 +92,13 @@ struct ArgumentRange { std::uint32_t first; std::uint32_t count; };
 enum class CallReference : std::uint8_t { kValue, kMember };
 struct CallExpr { ExprId callee; ArgumentRange arguments; CallReference reference; };
 struct ConstructExpr { ExprId constructor; ArgumentRange arguments; };
+// Fresh creation of an owned child function, not a function value constant.
+// The family must contain and verify that child before publication. No raw
+// method/pool/register ID is an executable operand in this node.
+// Capture edges are lexical references checked at creation, not evaluated JS
+// arguments. Moving this node requires a separate capture-lifetime proof.
+struct CaptureRange { std::uint32_t first; std::uint32_t count; };
+struct FunctionExpr { FunctionOwnerId child; CaptureRange captures; };
 // Fresh empty aggregates are expression occurrences, never TreeLiteral values.
 // Buffered elements, descriptors and own-defines need a separate initializer
 // proof before being folded into either node.
@@ -103,7 +110,7 @@ struct ObjectExpr { PropertyRange properties; };
 struct DataProperty { NameId key; ExprId value; TreeOriginId origin; };
 using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
-                                    CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr>;
+                                    CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct BlockStmt { ScopeId scope; std::uint32_t first_child; std::uint32_t child_count; };
 struct DeclarationStmt { SymbolId symbol; std::optional<ExprId> initializer; };
@@ -185,6 +192,9 @@ struct FunctionTree {
   std::vector<ExprNode> expressions;
   std::vector<DataProperty> properties;
   std::vector<ExprId> arguments;
+  // Implicit lexical references owned by FunctionExpr, not runtime arguments.
+  // The child capture table must match these before a family can be published.
+  std::vector<SymbolId> closure_captures;
   std::vector<StmtNode> statements;
   std::vector<StmtId> children;
   std::vector<TreeOrigin> origins;
