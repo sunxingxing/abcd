@@ -1093,3 +1093,29 @@ plans with role tampering and a linear work bound. Tests and RSS remain paused.
 Next: a separate call-reference plan, then variable-arity Call/Construct syntax,
 independent operand correspondence and printer support. T04, T06 and T00-T12
 remain incomplete.
+
+### T04 Call Reference Proof
+
+CallPlan now distinguishes function-value calls, member-reference calls and
+construction with typed records. Function-value calls require indirect-call
+syntax, including when the callee originated in a property read or is named
+eval. Explicit receiver calls require a same-block, earlier property read whose
+result is exclusively inlined into the callee occurrence. Its base must equal
+the raw receiver and be an immutable entry, primitive or materialized snapshot.
+This deliberately refuses shared callees and arbitrary receiver rebinding; it
+does not introduce a mutable `.call` lookup or duplicate a getter.
+
+The independent verifier checks supplied property/receiver associations against
+the verified evaluation forest. Build and verification are linear in operations
+and operand occurrences with budgeted storage/work. ExpressionForest now admits
+this proof before lowering, but Call/Construct AST lowering still refuses and no
+new source coverage is claimed. The final AST checker must separately verify the
+suppressed receiver occurrence and the actual syntax association; CallPlan alone
+is not a source certificate. Future parameter reassignment must preserve entry
+snapshots, not reinterpret these entries as mutable source parameter reads.
+
+Production targets compiled. Added unrun regression sources for member receiver
+identity, shared callee rejection, forged associations/revisions, indirect value
+calls, construction and resource/work boundaries. Tests, generated-JS execution
+and RSS measurement remain paused. Rules remain 10; call syntax and its source
+correspondence are still the next integration step.

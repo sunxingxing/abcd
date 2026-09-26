@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_EXPRESSION_FOREST_H_
 
 #include "binding_plan.h"
+#include "call_plan.h"
 
 namespace abcd::source {
 // Constants are resolved by the ABC adapter before syntax construction. Pool
@@ -15,6 +16,7 @@ struct ExpressionConstants {
 };
 struct ExpressionForest {
   BindingPlan bindings;
+  CallPlan calls;
   std::vector<ExprNode> expressions;
   std::vector<TreeOrigin> origins;
   std::vector<TreeOriginId> origin_parts;

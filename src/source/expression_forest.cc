@@ -29,6 +29,16 @@ class ForestBuilder {
   ExpressionForest Build() {
     Require(constants_.operations.size() == graph_.ops.size(), Error::kConstant);
     Admit(1, sizeof(ExpressionForest));
+    auto calls = BuildCallPlan(graph_, evaluation_, {bytes_, work_});
+    auto* call_plan = std::get_if<CallPlan>(&calls);
+    if (!call_plan) {
+      const auto error = std::get<CallPlanError>(calls);
+      if (error == CallPlanError::kResourceLimit) throw Error::kResourceLimit;
+      if (error == CallPlanError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kUnsupportedOperation;
+    }
+    Admit(call_plan->allocated_bytes, 1); Step(call_plan->work);
+    forest_.calls = std::move(*call_plan);
     // Largest admitted lowering is TrueOrNonzeroNumber: three leaf reads,
     // three comparisons/type tests and two logical nodes. Reserve a generous
     // fixed per-op bound; each input use additionally needs at most one leaf.
