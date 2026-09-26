@@ -33,14 +33,25 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   budget.Array(covered, graph.origins.size());
   budget.Array(visited, tree.origins.size());
   budget.Array(stack, tree.origin_parts.size() + 1);
+  for (const auto origin : flow.controls) {
+    budget.Step();
+    RequireMeaning(origin.value >= graph.origins.size() && origin.value < tree.origins.size() &&
+        !visited[origin.value] &&
+        (std::holds_alternative<LoopOrigin>(tree.origins[origin.value]) ||
+         std::holds_alternative<EdgeOrigin>(tree.origins[origin.value])), Error::kOrigin);
+    visited[origin.value] = 1;
+  }
   if (!flow.copies.empty()) budget.Array(edge_expressions, tree.expressions.size());
   for (const auto& copies : flow.copies) {
     budget.Step();
     for (const auto root : copies.expressions) {
       budget.Step();
       const auto& node = tree.expressions[root.value];
-      const auto* origin = std::get_if<EdgeOrigin>(&tree.origins[node.origin.value]);
-      RequireMeaning(origin && origin->edge == copies.edge, Error::kOrigin);
+      const auto& origin = tree.origins[node.origin.value];
+      if (const auto* edge = std::get_if<analysis::EdgeId>(&copies.incoming)) {
+        const auto* source = std::get_if<EdgeOrigin>(&origin);
+        RequireMeaning(source && source->edge == *edge, Error::kOrigin);
+      } else RequireMeaning(std::holds_alternative<EntryOrigin>(origin), Error::kOrigin);
       const auto& assignment = std::get<AssignmentExpr>(node.expression);
       // Flow checked the statement and RHS origins; operand checking proved
       // the RHS is a leaf. No original-PC provenance is invented for copies.
@@ -86,7 +97,8 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
     budget.Step();
     const ExprId expression{static_cast<std::uint32_t>(i)};
     const auto origin = tree.expressions[i].origin;
-    if (std::holds_alternative<EdgeOrigin>(tree.origins[origin.value])) {
+    if (std::holds_alternative<EdgeOrigin>(tree.origins[origin.value]) ||
+        std::holds_alternative<EntryOrigin>(tree.origins[origin.value])) {
       RequireMeaning(!edge_expressions.empty() && edge_expressions[i], Error::kOrigin);
       visited[origin.value] = 1;
       continue;
@@ -126,7 +138,9 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
     budget.Step();
     RequireMeaning(visited[i] && (std::holds_alternative<CombinedOrigin>(tree.origins[i]) ||
                                   std::holds_alternative<BindingOrigin>(tree.origins[i]) ||
-                                  std::holds_alternative<EdgeOrigin>(tree.origins[i])), Error::kOrigin);
+                                  std::holds_alternative<EdgeOrigin>(tree.origins[i]) ||
+                                  std::holds_alternative<LoopOrigin>(tree.origins[i]) ||
+                                  std::holds_alternative<EntryOrigin>(tree.origins[i])), Error::kOrigin);
   }
 }
 }  // namespace abcd::source

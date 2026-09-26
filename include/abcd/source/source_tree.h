@@ -119,8 +119,12 @@ struct ElidedOrigin {
   std::optional<abc::CodeOffset> original = {};
 };
 struct EdgeOrigin { analysis::EdgeId edge; };
+struct EntryOrigin {};
+// Structural loop syntax has no additional instruction PC. Header identity is
+// provenance only; executable loop and transfer operands remain syntax IDs.
+struct LoopOrigin { analysis::WorkBlockId header; };
 struct BindingOrigin { SymbolId symbol; };
-using TreeOrigin = std::variant<OriginalSite, CombinedOrigin, ElidedOrigin, EdgeOrigin, BindingOrigin>;
+using TreeOrigin = std::variant<OriginalSite, CombinedOrigin, ElidedOrigin, EdgeOrigin, BindingOrigin, LoopOrigin, EntryOrigin>;
 struct BlockBoundary {
   StmtId block;
   // A zero-width position before child[index], or after all children at count.

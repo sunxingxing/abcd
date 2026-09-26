@@ -97,10 +97,9 @@ exact transfer origin, and complete one-time coverage. It does not rerun loop
 discovery or postdominator planning. Shared budgets include the failed acyclic
 attempt conservatively. This certifies control structure, not executable source.
 
-BuildFunctionTree and independent TreeFlow both explicitly refuse plans with
-loops until source Loop/Break/Continue ownership, backedge copy placement and
-MethodEntry's separate once-only initialization phase are integrated. No source
-loop admission or completion claim is made by this control-layer change.
+BuildFunctionTree and independent TreeFlow now consume this control plan through
+owned Loop/Break/Continue statements. This integration is described below; the
+control plan alone still cannot authorize source publication.
 
 Unrun regression sources include self-loops, multiple/parallel backedges, nested
 headers, non-layout-order blocks, unreachable and irreducible graphs, exact work
@@ -131,6 +130,43 @@ bodies and invalid scope parents are rejected. No recursion or additional
 per-transfer graph walk is used. Structure tests include 200/201/4096 nesting
 and exact budget boundaries; they remain uncompiled and unrun.
 
-Printer syntax support is not publication admission. FunctionTree generation
-and TreeFlow still explicitly gate loop plans until synthetic-node provenance,
-loop body sequencing and incoming phi initialization are integrated together.
+## Body Integration and Provenance
+
+FunctionTree now handles original blocks and synthetic control units separately.
+A wrapper creates one loop statement and one distinct block scope, and queues
+its body once. Transfer nodes create typed breaks/continues to the actual loop
+statement. Existing original-edge copy placement runs before each transfer:
+straight-edge copies follow the source operations; branch copies prefix the
+selected arm. Child wrapper exits have no additional original edge and therefore
+must not duplicate a phi bundle. Loops do not create duplicate OpPlacements.
+
+TreeFlow independently traverses actual statement sequences against the checked
+control plan. It derives loop target IDs from the actual wrapper statements,
+checks body ownership, transfer kind/target, exact copy boundaries and complete
+child sequence consumption. It does not regenerate the AST or read printed text.
+The existing operand, effect, scope and original-site checks remain mandatory.
+
+LoopOrigin records a header identity for structural wrapper syntax or a nested
+wrapper-exit transfer. EdgeOrigin records an exact original edge for direct
+transfers. These origins never invent an instruction PC. TreeFlow records their
+checked origin IDs; correspondence verification permits only those records and
+independently checked copy origins in the synthetic-origin suffix. Original
+operations keep their instruction origins and anchors, so generated positions
+continue to distinguish operations from synthetic syntax.
+
+MethodEntry bundles now have EntryOrigin and typed IncomingKey throughout copy
+lowering and flow verification. They execute once after private declarations,
+before original body control. JavaScript formal defaults execute before that
+body phase; default-signature proofs remain separate. Flow checking consumes the
+entry bundle only at that phase and requires every bundle exactly once. Moving
+it into a loop, after body operations, or relabelling it as a real edge refuses.
+Phi RHS values still require fresh value-flow availability and independently
+checked parallel-copy schedules; this does not authorize arbitrary early reads.
+
+Evidence rules are 16. Production tools compile, but new loop/entry regression
+sources are not compiled/run under the testing pause. No generated JS has been
+executed and no real loop-method acceptance is claimed yet. The existing G2
+method 7559 remains Printed/complete METHOD at 286 bytes under rules 16; its
+enclosing record remains incomplete. T05 acceptance and broader T00-T12 work
+remain open, including real loop samples, multi-exit extension and behavior
+validation when authorized.

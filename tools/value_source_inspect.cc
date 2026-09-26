@@ -120,6 +120,10 @@ nlohmann::json Origin(const TreeOrigin& origin) {
       return {{"kind", "combined"}, {"first_part", node.first_part}, {"part_count", node.part_count}};
     } else if constexpr (std::is_same_v<T, EdgeOrigin>) {
       return {{"kind", "edge"}, {"edge", node.edge.value}};
+    } else if constexpr (std::is_same_v<T, LoopOrigin>) {
+      return {{"kind", "loop"}, {"header", node.header.value}};
+    } else if constexpr (std::is_same_v<T, EntryOrigin>) {
+      return {{"kind", "method_entry"}};
     } else {
       static_assert(std::is_same_v<T, BindingOrigin>);
       return {{"kind", "binding"}, {"symbol", node.symbol.value}};

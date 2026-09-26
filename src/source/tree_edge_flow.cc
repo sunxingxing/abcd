@@ -20,10 +20,15 @@ TreeEdgeFlow::TreeEdgeFlow(const analysis::ValueProgram& graph,
     budget.Step();
     const auto& bundle = evaluation.phis->bundles[i];
     const auto* edge = std::get_if<analysis::EdgeId>(&bundle.incoming);
-    Require(edge && edge->value < bundles_.size() && !bundles_[edge->value], TreeFlowError::kControl);
-    bundles_[edge->value] = i;
+    if (edge) {
+      Require(edge->value < bundles_.size() && !bundles_[edge->value], TreeFlowError::kControl);
+      bundles_[edge->value] = i;
+    } else {
+      Require(!entry_, TreeFlowError::kControl);
+      entry_ = i;
+    }
     auto& copies = flow.copies[i];
-    copies.edge = *edge;
+    copies.incoming = bundle.incoming;
     budget.Array(copies.expressions, bundle.schedule.steps.size());
     budget.Array(copies.temporaries, bundle.schedule.temporaries);
   }
@@ -47,12 +52,16 @@ void TreeEdgeFlow::Bind(std::optional<SymbolId>& binding, SymbolId symbol,
   }
 }
 
-void TreeEdgeFlow::Consume(analysis::EdgeId edge, const BlockStmt& block,
+void TreeEdgeFlow::Consume(analysis::IncomingKey incoming, const BlockStmt& block,
     std::uint32_t& child) {
   budget_.Step();
   if (!evaluation_.phis) return;
-  Require(edge.value < bundles_.size(), TreeFlowError::kControl);
-  const auto bundle = bundles_[edge.value];
+  std::optional<std::size_t> bundle;
+  const auto* edge = std::get_if<analysis::EdgeId>(&incoming);
+  if (edge) {
+    Require(edge->value < bundles_.size(), TreeFlowError::kControl);
+    bundle = bundles_[edge->value];
+  } else bundle = entry_;
   if (!bundle) return;
   Require(!visited_[*bundle], TreeFlowError::kSequence);
   visited_[*bundle] = 1;
@@ -65,8 +74,12 @@ void TreeEdgeFlow::Consume(analysis::EdgeId edge, const BlockStmt& block,
     const auto* expression = std::get_if<ExpressionStmt>(&statement.statement);
     Require(expression != nullptr, TreeFlowError::kSequence);
     const auto& node = tree_.expressions[expression->expression.value];
-    const auto* origin = std::get_if<EdgeOrigin>(&tree_.origins[node.origin.value]);
-    Require(origin && origin->edge == edge && statement.origin == node.origin, TreeFlowError::kPlacement);
+    const auto& origin = tree_.origins[node.origin.value];
+    if (edge) {
+      const auto* source = std::get_if<EdgeOrigin>(&origin);
+      Require(source && source->edge == *edge, TreeFlowError::kPlacement);
+    } else Require(std::holds_alternative<EntryOrigin>(origin), TreeFlowError::kPlacement);
+    Require(statement.origin == node.origin, TreeFlowError::kPlacement);
     const auto* assignment = std::get_if<AssignmentExpr>(&node.expression);
     Require(assignment != nullptr, TreeFlowError::kSequence);
     const auto* target = std::get_if<SymbolTarget>(&assignment->target);

@@ -10,7 +10,7 @@ enum class TreeFlowError : std::uint8_t {
   kSequence, kResourceLimit, kWorkLimit
 };
 struct TreeEdgeCopies {
-  analysis::EdgeId edge;
+  analysis::IncomingKey incoming;
   std::vector<ExprId> expressions;
   std::vector<std::optional<SymbolId>> temporaries;
 };
@@ -27,6 +27,9 @@ struct TreeFlow {
   std::vector<std::optional<SymbolId>> phis;
   // Indexed by the freshly checked PhiCopies bundle ordinal.
   std::vector<TreeEdgeCopies> copies;
+  // Origins of independently checked synthetic loop/transfer statements.
+  // Indexed by the synthetic ControlNode suffix, not inferred from text.
+  std::vector<TreeOriginId> controls;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

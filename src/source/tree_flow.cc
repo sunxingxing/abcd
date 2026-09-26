@@ -27,13 +27,17 @@ class FlowCheck {
     budget.Array(flow_.snapshots, graph.ops.size());
     budget.Array(assigned_, tree.symbols.size());
     budget.Array(declared_, tree.symbols.size());
-    budget.Array(tasks_, graph.blocks.size());
+    budget.Array(tasks_, control.nodes.size());
+    budget.Array(loops_, control.loops.size());
+    budget.Array(flow_.controls, control.nodes.size() - graph.blocks.size());
     edges_.emplace(graph, evaluation, tree, flow_, declared_, assigned_, budget);
   }
   TreeFlow Run() {
     IndexPlacements();
     CheckBodyOrigin();
-    const auto first_child = Declarations();
+    auto first_child = Declarations();
+    edges_->Consume(analysis::MethodEntryKey{},
+        std::get<BlockStmt>(tree_.statements[tree_.body.value].statement), first_child);
     std::size_t pending = 1;
     tasks_[0] = {control_.entry, tree_.body, first_child};
     while (pending != 0) {
@@ -45,6 +49,11 @@ class FlowCheck {
       while (cursor) {
         budget_.Step();
         const auto& node = control_.nodes[cursor->value];
+        if (!std::holds_alternative<std::monostate>(node.synthetic)) {
+          Loop(*cursor, block, child, pending);
+          cursor = node.next;
+          continue;
+        }
         const auto& source = graph_.blocks[node.block.value];
         for (std::uint32_t i = 0; i < source.op_count; ++i) {
           budget_.Step();
@@ -114,6 +123,51 @@ class FlowCheck {
   }
 
  private:
+  void Loop(ControlId id, const BlockStmt& block, std::uint32_t& child,
+      std::size_t& pending) {
+    Require(child < block.child_count, Error::kSequence);
+    const auto statement = tree_.children[block.first_child + child++];
+    const auto& syntax = tree_.statements[statement.value];
+    const auto& node = control_.nodes[id.value];
+    Require(id.value >= graph_.blocks.size(), Error::kControl);
+    flow_.controls[id.value - graph_.blocks.size()] = syntax.origin;
+    if (const auto* wrapper = std::get_if<LoopControl>(&node.synthetic)) {
+      const auto& loop = control_.loops[wrapper->loop.value];
+      const auto* body = std::get_if<LoopStmt>(&syntax.statement);
+      const auto* origin = std::get_if<LoopOrigin>(&tree_.origins[syntax.origin.value]);
+      Require(body && origin && origin->header == loop.header &&
+          tree_.statements[body->body.value].origin == syntax.origin &&
+          !loops_[wrapper->loop.value], Error::kControl);
+      loops_[wrapper->loop.value] = statement;
+      Require(pending < tasks_.size(), Error::kResourceLimit);
+      tasks_[pending++] = {loop.body, body->body, 0};
+      return;
+    }
+    const auto& transfer = std::get<LoopTransfer>(node.synthetic);
+    const auto target = loops_[transfer.loop.value];
+    Require(target.has_value(), Error::kControl);
+    switch (transfer.kind) {
+      case LoopTransferKind::kBreak: {
+        const auto* jump = std::get_if<BreakStmt>(&syntax.statement);
+        Require(jump && jump->target == *target, Error::kControl);
+        break;
+      }
+      case LoopTransferKind::kContinue: {
+        const auto* jump = std::get_if<ContinueStmt>(&syntax.statement);
+        Require(jump && jump->target == *target, Error::kControl);
+        break;
+      }
+    }
+    const auto& origin = tree_.origins[syntax.origin.value];
+    if (const auto* edge = std::get_if<analysis::EdgeId>(&transfer.source)) {
+      const auto* source = std::get_if<EdgeOrigin>(&origin);
+      Require(source && source->edge == *edge, Error::kPlacement);
+    } else {
+      const auto* source = std::get_if<LoopOrigin>(&origin);
+      Require(source && source->header == control_.loops[std::get<LoopId>(transfer.source).value].header,
+          Error::kPlacement);
+    }
+  }
   void CheckBodyOrigin() {
     // Independently reconstruct the retained entry operation. A tombstone
     // prologue PC must not be presented as owning all remaining body syntax.
@@ -121,6 +175,11 @@ class FlowCheck {
     while (cursor) {
       budget_.Step();
       const auto& node = control_.nodes[cursor->value];
+      if (const auto* loop = std::get_if<LoopControl>(&node.synthetic)) {
+        cursor = control_.loops[loop->loop.value].body;
+        continue;
+      }
+      Require(std::holds_alternative<std::monostate>(node.synthetic), Error::kPlacement);
       const auto& block = graph_.blocks[node.block.value];
       for (std::uint32_t i = 0; i < block.op_count; ++i) {
         budget_.Step();
@@ -227,6 +286,7 @@ class FlowCheck {
   std::vector<std::uint8_t> assigned_;
   std::vector<std::uint8_t> declared_;
   std::vector<TreeRegion> tasks_;
+  std::vector<std::optional<StmtId>> loops_;
   std::optional<TreeEdgeFlow> edges_;
 };
 }  // namespace
@@ -255,7 +315,6 @@ std::variant<TreeFlow, TreeFlowError> VerifyTreeFlow(
       return Error::kControl;
     }
     checked.Step(std::get<std::uint64_t>(regions));
-    Require(control.loops.empty(), Error::kControl);
     const auto effects = VerifyEvaluationPlan(graph, evaluation, checked.Remaining());
     if (const auto* error = std::get_if<EvaluationError>(&effects)) {
       if (*error == EvaluationError::kResourceLimit) return Error::kResourceLimit;

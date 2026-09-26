@@ -6,10 +6,10 @@ Scope remains T00 through T12 in the dependency order from the implementation
 plan. No task scheduler, additional host assumptions or sidecar source inputs.
 
 Latest state: T05 now integrates compact natural loops into checked control
-regions, preserving original edge identities and nested ownership. Typed loop
-AST nodes, nearest-loop target/scope validation and printer syntax are present.
-Loop body generation, edge-copy placement and once-only MethodEntry initialization remain gated;
-this is not loop source completion. Existing source rules remain 15. T03's G1
+regions, owned loop AST/printer syntax, independent target/scope/sequence checks,
+edge-copy placement and once-only MethodEntry phi initialization. New loop and
+entry provenance is typed and does not invent PCs. Source rules are 16. Real
+loop-method acceptance and behavioral verification remain outstanding. T03's G1
 method slices and T04's G2 slice have prior source evidence, not whole-record
 completion. Whole-record integration and test acceptance remain pending.
 Sections below retain chronological evidence;
@@ -23,6 +23,11 @@ See `loop-discovery.md` for the exact admitted subset and remaining source gate.
 The same production targets subsequently built successfully with typed loop
 syntax and target checking. Syntax regression sources also remain uncompiled
 and unrun; printer support alone is not loop source-publication evidence.
+The subsequent body integration removes the blanket loop/MethodEntry guards
+only after adding actual generation and independent sequence/origin checks.
+ABC-only G2 inspection (pasteboard 7559, record 6897) still reports rules 16,
+Printed/complete METHOD, range [2638,2924), 286 bytes; CLI exits 1 because the
+record remains incomplete. This is not loop coverage or generated-JS execution.
 
 ## T00
 

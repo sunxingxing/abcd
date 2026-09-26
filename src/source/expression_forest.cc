@@ -50,9 +50,6 @@ class ForestBuilder {
     if (evaluation_.phis) {
       for (const auto& bundle : evaluation_.phis->bundles) {
         Step();
-        // MethodEntry needs a separately proved initialization phase. Never
-        // give it an invented CFG edge or silently move it past defaults.
-        Require(std::holds_alternative<analysis::EdgeId>(bundle.incoming), Error::kUnsupportedOperation);
         Require(bundle.schedule.steps.size() <= kMaxId - copies, Error::kResourceLimit);
         copies += bundle.schedule.steps.size();
       }
@@ -133,9 +130,10 @@ class ForestBuilder {
     for (std::size_t i = 0; i < evaluation_.phis->bundles.size(); ++i) {
       Step();
       const auto& bundle = evaluation_.phis->bundles[i];
-      const auto edge = std::get<analysis::EdgeId>(bundle.incoming);
       const TreeOriginId origin{static_cast<std::uint32_t>(forest_.origins.size())};
-      forest_.origins.emplace_back(EdgeOrigin{edge});
+      if (const auto* edge = std::get_if<analysis::EdgeId>(&bundle.incoming))
+        forest_.origins.emplace_back(EdgeOrigin{*edge});
+      else forest_.origins.emplace_back(EntryOrigin{});
       const auto first = static_cast<std::uint32_t>(forest_.edge_assignments.size());
       for (const auto& copy : bundle.schedule.steps) {
         Step();
@@ -157,7 +155,7 @@ class ForestBuilder {
         }
         forest_.edge_assignments.push_back(Add(AssignmentExpr{SymbolTarget{destination}, source}, origin));
       }
-      forest_.edges.push_back({edge, first, static_cast<std::uint32_t>(bundle.schedule.steps.size())});
+      forest_.edges.push_back({bundle.incoming, first, static_cast<std::uint32_t>(bundle.schedule.steps.size())});
     }
   }
   ExprId Call(const analysis::ValueOp& op, const CallBinding& binding, TreeOriginId origin) {

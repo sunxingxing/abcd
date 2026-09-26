@@ -95,6 +95,9 @@ class TreeBuilder {
       tree_.origins.emplace_back(BindingOrigin{symbol});
       Append(root, Statement(DeclarationStmt{symbol, {}}, origin));
     }
+    // Formal defaults execute before the body. MethodEntry copies execute once
+    // after private declarations, outside all loops and before original ops.
+    if (entry_range_) EmitCopies(*entry_range_, root);
     tasks_.push_back({control_.entry, root});
     while (!tasks_.empty()) {
       Step();
@@ -104,7 +107,8 @@ class TreeBuilder {
       while (next) {
         Step();
         const auto& region = control_.nodes[next->value];
-        EmitBlock(region, task.draft);
+        if (std::holds_alternative<std::monostate>(region.synthetic)) EmitBlock(region, task.draft);
+        else EmitLoop(region, task.draft);
         next = region.next;
       }
     }
@@ -133,20 +137,23 @@ class TreeBuilder {
   }
   void Reserve() {
     constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
-    Require(graph_.blocks.size() <= (kMaxId - kFunctionScopes) / kBranchArms,
+    Require(control_.nodes.size() <= (kMaxId - kFunctionScopes) / kBranchArms,
             Error::kResourceLimit);
-    const auto blocks = graph_.blocks.size() * kBranchArms + 1;
+    const auto blocks = control_.nodes.size() * kBranchArms + 1;
+    const auto synthetic = control_.nodes.size() - graph_.blocks.size();
     const auto symbols = forest_.bindings.symbols.size();
     Require(symbols < kMaxId && graph_.ops.size() <= kMaxId - blocks &&
             symbols <= kMaxId - blocks - graph_.ops.size(), Error::kResourceLimit);
     const auto original_statements = graph_.ops.size() + blocks + symbols;
-    Require(forest_.edge_assignments.size() <= kMaxId - original_statements, Error::kResourceLimit);
-    const auto statements = original_statements + forest_.edge_assignments.size();
+    Require(synthetic <= kMaxId - original_statements &&
+        forest_.edge_assignments.size() <= kMaxId - original_statements - synthetic, Error::kResourceLimit);
+    const auto statements = original_statements + synthetic + forest_.edge_assignments.size();
     Require(tree_.names.size() <= kMaxId - symbols &&
             tree_.origins.size() <= kMaxId - symbols &&
+            synthetic <= kMaxId - symbols - tree_.origins.size() &&
             tree_.expressions.size() <= kMaxId - symbols, Error::kResourceLimit);
     Grow(tree_.names, tree_.names.size() + symbols);
-    Grow(tree_.origins, tree_.origins.size() + symbols);
+    Grow(tree_.origins, tree_.origins.size() + symbols + synthetic);
     Grow(tree_.expressions, tree_.expressions.size() + symbols);
     Grow(tree_.symbols, symbols);
     Grow(tree_.parameters, syntax_.parameters.size());
@@ -159,13 +166,22 @@ class TreeBuilder {
     Grow(links_, statements);
     Grow(tasks_, blocks);
     Grow(name_order_, syntax_.parameters.size());
+    Grow(loops_, control_.loops.size());
+    Step(control_.loops.size());
+    loops_.resize(control_.loops.size());
     if (!forest_.edges.empty()) {
       Grow(edge_ranges_, graph_.edges.size());
       Step(graph_.edges.size());
       edge_ranges_.resize(graph_.edges.size());
       for (std::size_t i = 0; i < forest_.edges.size(); ++i) {
         Step();
-        const auto edge = forest_.edges[i].edge;
+        const auto* incoming = std::get_if<analysis::EdgeId>(&forest_.edges[i].incoming);
+        if (!incoming) {
+          Require(!entry_range_, Error::kControl);
+          entry_range_ = i;
+          continue;
+        }
+        const auto edge = *incoming;
         Require(edge.value < edge_ranges_.size() && !edge_ranges_[edge.value], Error::kControl);
         edge_ranges_[edge.value] = i;
       }
@@ -249,6 +265,11 @@ class TreeBuilder {
     while (cursor) {
       Step();
       const auto& node = control_.nodes[cursor->value];
+      if (const auto* loop = std::get_if<LoopControl>(&node.synthetic)) {
+        cursor = control_.loops[loop->loop.value].body;
+        continue;
+      }
+      Require(std::holds_alternative<std::monostate>(node.synthetic), Error::kOrigin);
       const auto& range = graph_.blocks[node.block.value];
       for (std::uint32_t i = 0; i < range.op_count; ++i) {
         Step();
@@ -291,7 +312,10 @@ class TreeBuilder {
   void EmitEdge(analysis::EdgeId edge, std::size_t draft) {
     Step();
     if (edge_ranges_.empty() || !edge_ranges_[edge.value]) return;
-    const auto& range = forest_.edges[*edge_ranges_[edge.value]];
+    EmitCopies(*edge_ranges_[edge.value], draft);
+  }
+  void EmitCopies(std::size_t range_id, std::size_t draft) {
+    const auto& range = forest_.edges[range_id];
     for (std::uint32_t i = 0; i < range.count; ++i) {
       Step();
       const auto expression = forest_.edge_assignments[range.first + i];
@@ -357,6 +381,33 @@ class TreeBuilder {
     // its successor. Branch copies belong inside their selected arm instead.
     if (!region.arms && block.edge_count == 1) EmitEdge(block.first_edge, draft);
   }
+  void EmitLoop(const ControlNode& region, std::size_t draft) {
+    const TreeOriginId origin{static_cast<std::uint32_t>(tree_.origins.size())};
+    Require(tree_.origins.size() < tree_.origins.capacity(), Error::kResourceLimit);
+    if (const auto* wrapper = std::get_if<LoopControl>(&region.synthetic)) {
+      const auto& loop = control_.loops[wrapper->loop.value];
+      tree_.origins.emplace_back(LoopOrigin{loop.header});
+      const ScopeId scope{static_cast<std::uint32_t>(tree_.scopes.size())};
+      tree_.scopes.push_back({ScopeKind::kBlock, drafts_[draft].scope});
+      const auto body = Block(scope, origin);
+      const auto statement = Statement(LoopStmt{drafts_[body].statement}, origin);
+      Require(!loops_[wrapper->loop.value], Error::kControl);
+      loops_[wrapper->loop.value] = statement;
+      Append(draft, statement);
+      tasks_.push_back({loop.body, body});
+      return;
+    }
+    const auto& transfer = std::get<LoopTransfer>(region.synthetic);
+    Require(loops_[transfer.loop.value].has_value(), Error::kControl);
+    if (const auto* edge = std::get_if<analysis::EdgeId>(&transfer.source))
+      tree_.origins.emplace_back(EdgeOrigin{*edge});
+    else tree_.origins.emplace_back(LoopOrigin{control_.loops[std::get<LoopId>(transfer.source).value].header});
+    const auto target = *loops_[transfer.loop.value];
+    switch (transfer.kind) {
+      case LoopTransferKind::kBreak: Append(draft, Statement(BreakStmt{target}, origin)); break;
+      case LoopTransferKind::kContinue: Append(draft, Statement(ContinueStmt{target}, origin)); break;
+    }
+  }
   void Flatten() {
     for (const auto& draft : drafts_) {
       Step();
@@ -410,6 +461,8 @@ class TreeBuilder {
   std::vector<RegionTask> tasks_;
   std::vector<NameId> name_order_;
   std::vector<std::optional<std::size_t>> edge_ranges_;
+  std::vector<std::optional<StmtId>> loops_;
+  std::optional<std::size_t> entry_range_;
 };
 }  // namespace
 
@@ -418,10 +471,6 @@ std::variant<ConstructedFunction, FunctionTreeError> BuildFunctionTree(
     const EvaluationPlan& evaluation, FunctionSyntax syntax,
     ExpressionConstants constants, analysis::SemanticBudget budget) {
   try {
-    // Loop regions have checked CFG ownership, but executable loop statements
-    // and MethodEntry initialization are not connected yet. Do not traverse a
-    // synthetic control unit as though it were another original basic block.
-    Require(control.loops.empty(), Error::kControl);
     return TreeBuilder(graph, control, evaluation, std::move(syntax), constants, budget).Build();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

@@ -15,7 +15,7 @@ struct ExpressionConstants {
   std::optional<TextId> number_type_text;
 };
 struct EdgeExpressions {
-  analysis::EdgeId edge;
+  analysis::IncomingKey incoming;
   std::uint32_t first;
   std::uint32_t count;
 };
@@ -31,8 +31,9 @@ struct ExpressionForest {
   // control-operation placements, not this expression-only construction step.
   std::vector<std::optional<ExprId>> operations;
   // Flat, exclusively owned assignment roots, in each verified copy schedule's
-  // order. These are not operation expressions: statement assembly must place
-  // them on the exact edge, including otherwise empty branch alternatives.
+  // order. These are not operation expressions: statement assembly places them
+  // on the exact edge (including empty arms), or once at MethodEntry before the
+  // original body, after the language's formal-parameter initialization.
   std::vector<ExprId> edge_assignments;
   std::vector<EdgeExpressions> edges;
   std::size_t allocated_bytes = 0;

@@ -12,7 +12,7 @@ class TreeEdgeFlow {
   TreeEdgeFlow(const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
       const FunctionTree& tree, TreeFlow& flow, std::vector<std::uint8_t>& declared,
       std::vector<std::uint8_t>& assigned, TreeCheckBudget& budget);
-  void Consume(analysis::EdgeId edge, const BlockStmt& block, std::uint32_t& child);
+  void Consume(analysis::IncomingKey incoming, const BlockStmt& block, std::uint32_t& child);
   void Finish();
  private:
   void Bind(std::optional<SymbolId>& binding, SymbolId symbol, TemporaryReason reason);
@@ -25,6 +25,7 @@ class TreeEdgeFlow {
   TreeCheckBudget& budget_;
   std::vector<std::optional<std::size_t>> bundles_;
   std::vector<std::uint8_t> visited_;
+  std::optional<std::size_t> entry_;
 };
 }  // namespace abcd::source
 #endif

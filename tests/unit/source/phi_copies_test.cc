@@ -216,7 +216,7 @@ void EdgeSyntax() {
     std::vector<bool> owned(forest.expressions.size());
     for (std::uint32_t edge = 0; edge < 2; ++edge) {
       const auto& range = forest.edges[edge];
-      Check(range.edge == EdgeId{edge} && range.count == count && range.first == edge * count);
+      Check(range.incoming == IncomingKey{EdgeId{edge}} && range.count == count && range.first == edge * count);
       const auto& schedule = evaluation.phis->bundles[edge].schedule;
       for (std::uint32_t i = 0; i < count; ++i) {
         const auto root = forest.edge_assignments[range.first + i];
@@ -266,8 +266,31 @@ void EdgeSyntax() {
   const auto evaluated = BuildEvaluationPlan(entry);
   Check(std::holds_alternative<EvaluationPlan>(evaluated));
   const std::vector<ExpressionConstant> constants(entry.ops.size());
-  Check(std::get<ExpressionError>(BuildExpressionForest(entry,
-      std::get<EvaluationPlan>(evaluated), 1, {0}, {constants})) == ExpressionError::kUnsupportedOperation);
+  Check(std::holds_alternative<ExpressionForest>(BuildExpressionForest(entry,
+      std::get<EvaluationPlan>(evaluated), 1, {0}, {constants})));
+  const auto entry_tree = Tree(entry, std::get<EvaluationPlan>(evaluated), {constants, 2});
+  const auto control = std::get<ControlPlan>(BuildControlPlan(entry));
+  const auto flow = std::get<TreeFlow>(VerifyTreeFlow(entry, control,
+      std::get<EvaluationPlan>(evaluated), entry_tree));
+  Check(std::holds_alternative<MethodEntryKey>(flow.copies[0].incoming));
+  const auto& body = std::get<BlockStmt>(entry_tree.statements[entry_tree.body.value].statement);
+  std::optional<std::uint32_t> loop_index;
+  std::optional<std::uint32_t> entry_index;
+  for (std::uint32_t i = 0; i < body.child_count; ++i) {
+    const auto& statement = entry_tree.statements[entry_tree.children[body.first_child + i].value];
+    if (std::holds_alternative<LoopStmt>(statement.statement)) loop_index = i;
+    if (std::holds_alternative<EntryOrigin>(entry_tree.origins[statement.origin.value])) entry_index = i;
+  }
+  Check(loop_index && entry_index && *entry_index < *loop_index);
+  auto changed = entry_tree;
+  std::swap(changed.children[body.first_child + *entry_index], changed.children[body.first_child + *loop_index]);
+  Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(entry, control,
+      std::get<EvaluationPlan>(evaluated), changed, {constants, 2})));
+  changed = entry_tree;
+  const auto root = flow.copies[0].expressions[0];
+  changed.origins[changed.expressions[root.value].origin.value] = EdgeOrigin{{0}};
+  Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(entry, control,
+      std::get<EvaluationPlan>(evaluated), changed, {constants, 2})));
 }
 void DiamondSyntax() {
   ValueProgram graph;
@@ -304,7 +327,8 @@ void DiamondSyntax() {
   const auto tree = Tree(graph, evaluation, {constants, 2});
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, tree));
-  Check(flow.copies.size() == 2 && flow.copies[0].edge == EdgeId{2} && flow.copies[1].edge == EdgeId{3});
+  Check(flow.copies.size() == 2 && flow.copies[0].incoming == IncomingKey{EdgeId{2}} &&
+      flow.copies[1].incoming == IncomingKey{EdgeId{3}});
   Check(flow.snapshots[1] && flow.snapshots[3] && flow.phis[3]);
   for (std::size_t i = 0; i < flow.copies.size(); ++i) {
     const auto root = flow.copies[i].expressions[0];

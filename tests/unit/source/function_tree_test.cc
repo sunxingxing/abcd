@@ -389,6 +389,38 @@ void CallTree(CallCase kind, std::uint32_t count, bool computed) {
   }, invalid.expressions[call->value].expression);
   Check(std::get<TreeStructureError>(VerifyTreeStructure(invalid)) == TreeStructureError::kRange);
 }
+void LoopTree() {
+  auto fixture = BranchFixture();
+  // The body retains the two effectful property operations, then takes the
+  // original edge back to the header. The header read is evaluated each time.
+  fixture.graph.edges[2].target = {0};
+  const auto built = fixture.Build();
+  const auto* constructed = std::get_if<ConstructedFunction>(&built);
+  Check(constructed != nullptr);
+  const auto& tree = constructed->tree;
+  Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+  std::size_t loops = 0, breaks = 0, continues = 0;
+  for (std::size_t i = 0; i < tree.statements.size(); ++i) {
+    const auto& statement = tree.statements[i];
+    loops += std::holds_alternative<LoopStmt>(statement.statement);
+    breaks += std::holds_alternative<BreakStmt>(statement.statement);
+    continues += std::holds_alternative<ContinueStmt>(statement.statement);
+    if (const auto* transfer = std::get_if<ContinueStmt>(&statement.statement)) {
+      auto changed = tree;
+      changed.statements[i].statement = BreakStmt{transfer->target};
+      Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(changed)));
+      Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(changed)));
+      changed = tree;
+      changed.origins[statement.origin.value] = EdgeOrigin{{0}};
+      Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(changed)));
+    }
+  }
+  Check(loops == 1 && breaks == 1 && continues == 1);
+  auto changed = tree;
+  for (auto& origin : changed.origins)
+    if (auto* loop = std::get_if<LoopOrigin>(&origin)) loop->header = {1};
+  Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(changed)));
+}
 }  // namespace
 int main() {
   BranchTree();
@@ -397,6 +429,7 @@ int main() {
   PredicateSnapshot();
   SemanticMutations();
   GlobalTree();
+  LoopTree();
   for (const auto kind : {CallCase::kValue, CallCase::kMember, CallCase::kConstruct})
     for (const std::uint32_t count : {0U, 1U, 3U, 200U, 201U, 4096U})
       for (const bool computed : {false, true}) CallTree(kind, count, computed);

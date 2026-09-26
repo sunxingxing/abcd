@@ -207,7 +207,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // rather than reinterpreted.
 // Rules 15 additionally admit a checked private phi as a member-call receiver
 // when property and invocation share a block; no edge write may intervene.
-inline constexpr std::uint32_t kRouteEvidenceRules = 15;
+// Rules 16 add checked natural-loop syntax and once-only MethodEntry phi copies.
+inline constexpr std::uint32_t kRouteEvidenceRules = 16;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,
