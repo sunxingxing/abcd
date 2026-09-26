@@ -208,26 +208,31 @@ class Finder {
         fallback = &use;
       } else return {};
     }
-    if (!incoming || !fallback) return {};
+    if (!incoming || !fallback || !arm_facts.value_op) return {};
     auto literal = fallback->operand;
-    if (arm_facts.value_op) {
+    {
       const auto& initializer = graph_.ops[arm_facts.value_op->value];
       const auto* unary = std::get_if<ValueUnary>(&initializer.operation);
       const auto* value = std::get_if<ValueId>(&literal);
-      if (!unary || unary->op != UnaryOperator::kNegate || initializer.use_count != 1 ||
-          !value || initializer.result != *value) return {};
-      const auto* integer = std::get_if<IntegerLiteral>(&Use(initializer, 0).operand);
-      if (!integer) return {};
-      // JS Number negation preserves -0 and can exceed int32. Do not negate in
-      // C++ int32 or collapse the sign bit into an integer default certificate.
-      // Keep the original op identity: its conservative effect/exception flags
-      // cannot be erased until the later operand-specific migration proof.
-      literal = Float64Bits{std::bit_cast<std::uint64_t>(-static_cast<double>(integer->value))};
-    } else if (std::holds_alternative<ValueId>(literal)) return {};
+      if (initializer.use_count != 1 || !value || initializer.result != *value) return {};
+      const auto& input = Use(initializer, 0).operand;
+      if (std::holds_alternative<ValueCopy>(initializer.operation)) {
+        // Phi operands remain ValueIds even after copy propagation. Their
+        // literal producer is retained; never expect a literal phi operand.
+        if (std::holds_alternative<ValueId>(input)) return {};
+        literal = input;
+      } else {
+        const auto* integer = std::get_if<IntegerLiteral>(&input);
+        if (!unary || unary->op != UnaryOperator::kNegate || !integer) return {};
+        // JS Number negation preserves -0 and can exceed int32. Keep the
+        // original operation for independent effect/exception refinement.
+        literal = Float64Bits{std::bit_cast<std::uint64_t>(-static_cast<double>(integer->value))};
+      }
+    }
     if (const auto* special = std::get_if<SpecialValue>(&literal);
         special && *special != SpecialValue::kUndefined && *special != SpecialValue::kNull &&
         *special != SpecialValue::kTrue && *special != SpecialValue::kFalse) return {};
-    return DefaultCandidate{parameter->index, *entry, merged, literal, arm_facts.value_op,
+    return DefaultCandidate{parameter->index, *entry, merged, literal, *arm_facts.value_op,
         producer->op, *facts.last, header, arm, join, present, missing, arm_block.first_edge};
   }
   const ValueProgram& graph_;

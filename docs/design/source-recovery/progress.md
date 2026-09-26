@@ -805,3 +805,39 @@ default-signature end-to-end acceptance result.
 Production `abc_semantic` and `abc_structure` compilation completed successfully
 with the discovery module included. No default-parameter output success is
 claimed before its proof and publication integration.
+
+### T06 Residual Default Body
+
+Static review corrected a discovery assumption: normalized phi inputs must be
+ValueIds, not literal operands. Literal defaults now follow the retained
+ValueCopy producer (or numeric-negation producer), and the independent checker
+validates that producer's operand and effects. The fixture now follows the same
+ValueId-only phi contract rather than modeling an invalid normalized graph.
+
+DefaultBody is a move-only owner of a residual graph and its signature proof.
+Its factory builds a fresh proof against the exact supplied graph; matching
+revision numbers alone cannot authorize a caller-supplied proof. The original
+graph is unchanged. The residual graph interprets parameter entries as already
+initialized source formals, so it is NOT a standalone equivalent ABC method.
+Final publication must pair it with the verified native default signature.
+
+Projection removes only proved prologue operations, replaces merged default
+values with initialized formals, compacts edges and rebuilds live use chains.
+Stable operation/value/block IDs preserve provenance. Empty prologue blocks
+remain reachable along a linear fallthrough path. Original and residual graphs
+both undergo fresh use/normal-flow/dominance verification. Removed prologue PCs
+remain retained origins for pending signature placement, not ElidedPure origins.
+The original input-correspondence certificate is deliberately not copied.
+
+Projection scans and indexes are linear in graph size, in addition to the
+existing flow verifier's cost. Scratch, graph copies and proof storage share a
+bounded allowance; proof and projection work are deducted from one work budget.
+This is not process peak-memory evidence. Regression sources cover unchanged
+input, revised CFG, rebuilt uses, residual tree construction, stale/tampered
+inputs and budget refusal; these tests have not been compiled or executed.
+
+Production abc_semantic and abc_structure builds passed. DefaultBody is not yet
+connected to VerifiedFunction publication: typed signature PC placement and
+complete signature/body correspondence remain required. No real default-method
+output, JS behavior equivalence or T06 completion is claimed. Tests, generated-JS
+execution and RSS measurement remain paused.

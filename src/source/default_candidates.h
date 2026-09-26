@@ -9,7 +9,7 @@ struct DefaultCandidate {
   analysis::ValueId entry;
   analysis::ValueId merged;
   analysis::ValueOperand fallback;
-  std::optional<analysis::OpId> initializer;
+  analysis::OpId initializer;
   analysis::OpId comparison;
   analysis::OpId branch;
   analysis::WorkBlockId header;

@@ -159,17 +159,23 @@ class Checker {
     if (const auto* special = std::get_if<SpecialValue>(&c.fallback))
       Require(*special == SpecialValue::kUndefined || *special == SpecialValue::kNull ||
           *special == SpecialValue::kTrue || *special == SpecialValue::kFalse, Error::kLiteral);
-    if (c.initializer) {
-      const auto& initializer = Op(*c.initializer, c.arm);
+    {
+      const auto& initializer = Op(c.initializer, c.arm);
       const auto* unary = std::get_if<ValueUnary>(&initializer.operation);
-      Require(unary && unary->op == UnaryOperator::kNegate && initializer.use_count == 1 && initializer.result, Error::kLiteral);
-      const auto* integer = std::get_if<IntegerLiteral>(&Operand(initializer, 0, OperandRole::kInput));
-      Require(integer, Error::kLiteral);
-      Require(SameLiteral(c.fallback, Float64Bits{std::bit_cast<std::uint64_t>(-static_cast<double>(integer->value))}), Error::kLiteral);
-      // Imported generic negation over-approximates user coercion. The literal
-      // Number operand proves no callbacks/abrupt completion (including -0).
-      Require((initializer.normal == LanguageEffect::kNone || initializer.normal == LanguageEffect::kUserCode) &&
-          initializer.before_throw == initializer.normal && initializer.exceptional != ExceptionalCompletion::kAlwaysThrow, Error::kEffect);
+      Require(initializer.use_count == 1 && initializer.result, Error::kLiteral);
+      const auto& input = Operand(initializer, 0, OperandRole::kInput);
+      if (std::holds_alternative<ValueCopy>(initializer.operation)) {
+        Require(!std::holds_alternative<ValueId>(input) && SameLiteral(c.fallback, input), Error::kLiteral);
+        Pure(initializer);
+      } else {
+        const auto* integer = std::get_if<IntegerLiteral>(&input);
+        Require(unary && unary->op == UnaryOperator::kNegate && integer, Error::kLiteral);
+        Require(SameLiteral(c.fallback, Float64Bits{std::bit_cast<std::uint64_t>(-static_cast<double>(integer->value))}), Error::kLiteral);
+        // Generic negation over-approximates user coercion. A Number literal
+        // proves no callbacks/abrupt completion, including negative zero.
+        Require((initializer.normal == LanguageEffect::kNone || initializer.normal == LanguageEffect::kUserCode) &&
+            initializer.before_throw == initializer.normal && initializer.exceptional != ExceptionalCompletion::kAlwaysThrow, Error::kEffect);
+      }
       Restrict(*initializer.result, i, ValueRole::kInitializer);
     }
   }
@@ -205,7 +211,7 @@ class Checker {
         Require(!phi_counts_[i].present && SameLiteral(use.operand, c.entry)); phi_counts_[i].present = true;
       } else {
         Require(*edge == c.merge && !phi_counts_[i].missing);
-        const auto expected = c.initializer ? ValueOperand{*graph_.ops[c.initializer->value].result} : c.fallback;
+        const ValueOperand expected{*graph_.ops[c.initializer.value].result};
         Require(SameLiteral(use.operand, expected), Error::kLiteral); phi_counts_[i].missing = true;
       }
     }

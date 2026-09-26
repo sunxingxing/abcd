@@ -1,5 +1,8 @@
 #include "../../../src/source/default_candidates.h"
 #include "../../../src/source/default_value_proof.h"
+#include "../../../src/source/default_body.h"
+#include "../../../src/source/function_tree.h"
+#include "../../../src/analysis/value_flow.h"
 
 #include <cstdlib>
 #include <bit>
@@ -11,32 +14,40 @@ using namespace abcd::analysis;
 using namespace abcd::source;
 static_assert(!std::is_default_constructible_v<DefaultValueProof>);
 static_assert(!std::is_copy_constructible_v<DefaultValueProof>);
+static_assert(!std::is_default_constructible_v<DefaultBody>);
+static_assert(!std::is_copy_constructible_v<DefaultBody>);
 void Check(bool condition) { if (!condition) std::abort(); }
 ValueProgram DefaultDiamond() {
   ValueProgram graph;
   graph.values = {
       {EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), UseId{0}},
       {OpResult{{0}}, ValueKinds::Language(), UseId{2}},
-      {PhiDefinition{{2}}, ValueKinds::Language(), UseId{5}}};
+      {PhiDefinition{{2}}, ValueKinds::Language(), UseId{5}},
+      {OpResult{{2}}, ValueKinds::Language(), UseId{4}}};
   graph.uses = {
       {OpId{0}, OperandRole::kLeft, ReadPurpose::kOperand, ValueId{0}, {}, {}, {}, UseId{3}},
       {OpId{0}, OperandRole::kRight, ReadPurpose::kOperand, SpecialValue::kUndefined},
       {OpId{1}, OperandRole::kCondition, ReadPurpose::kOperand, ValueId{1}},
       {ValueId{2}, OperandRole::kPhiInput, ReadPurpose::kOperand, ValueId{0},
        IncomingKey{EdgeId{0}}, {}, UseId{0}},
-      {ValueId{2}, OperandRole::kPhiInput, ReadPurpose::kOperand, IntegerLiteral{-1}, IncomingKey{EdgeId{2}}},
-      {OpId{2}, OperandRole::kReturnValue, ReadPurpose::kOperand, ValueId{2}}};
+      {ValueId{2}, OperandRole::kPhiInput, ReadPurpose::kOperand, ValueId{3}, IncomingKey{EdgeId{2}}},
+      {OpId{3}, OperandRole::kReturnValue, ReadPurpose::kOperand, ValueId{2}},
+      {OpId{2}, OperandRole::kInput, ReadPurpose::kOperand, IntegerLiteral{-1}}};
   graph.ops = {
       {ValueBinary{BinaryOperator::kStrictNotEqual}, {0}, 0, {0}, 2, ValueId{1},
        LanguageEffect::kNone, LanguageEffect::kNone, ExceptionalCompletion::kImpossible, {0}},
       {ValueBranch{UnaryOperator::kTrueOrNonzeroNumber}, {0}, 1, {2}, 1, {},
        LanguageEffect::kNone, LanguageEffect::kNone, ExceptionalCompletion::kImpossible, {1}},
+      {ValueCopy{}, {1}, 0, {6}, 1, ValueId{3},
+       LanguageEffect::kNone, LanguageEffect::kNone, ExceptionalCompletion::kImpossible, {2}},
       {ValueReturn{}, {2}, 0, {5}, 1, {},
-       LanguageEffect::kNone, LanguageEffect::kNone, ExceptionalCompletion::kImpossible, {2}}};
-  graph.blocks = {{{0}, 2, {0}, 2}, {{2}, 0, {2}, 1}, {{2}, 1, {3}, 0}};
+       LanguageEffect::kNone, LanguageEffect::kNone, ExceptionalCompletion::kImpossible, {3}}};
+  graph.blocks = {{{0}, 2, {0}, 2}, {{2}, 1, {2}, 1}, {{3}, 1, {3}, 0}};
   graph.edges = {{{0}, {2}, FlowEdgeKind::kTaken, 0},
                  {{0}, {1}, FlowEdgeKind::kFallthrough, 1},
                  {{1}, {2}, FlowEdgeKind::kFallthrough, 0}};
+  for (std::uint32_t i = 0; i < graph.ops.size(); ++i)
+    graph.origins.push_back({{i}, {i}, {}});
   return graph;
 }
 DefaultCandidates Find(const ValueProgram& graph) {
@@ -67,7 +78,7 @@ void ProofAndEscapes() {
   Check(std::holds_alternative<DefaultValueProof>(proved));
   const auto& proof = std::get<DefaultValueProof>(proved);
   Check(proof.BodyEntry() == WorkBlockId{2} && proof.Defaults().size() == 1);
-  Check(proof.Operations().size() == 2);
+  Check(proof.Operations().size() == 3);
   Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0,
         {1024 * 1024, proof.Work() - 1})) == DefaultProofError::kWorkLimit);
   candidates.values[0].fallback = IntegerLiteral{0};
@@ -85,6 +96,42 @@ void ProofAndEscapes() {
   candidates = Find(graph);
   ++graph.cfg_revision.value;
   Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0)) == DefaultProofError::kRevision);
+}
+void BodyProjection() {
+  const auto original = DefaultDiamond();
+  const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(original, 1));
+  const auto candidates = Find(original);
+  auto projected = DefaultBody::Build(original, parameters, candidates, 0);
+  Check(std::holds_alternative<DefaultBody>(projected));
+  const auto& owner = std::get<DefaultBody>(projected);
+  const auto& graph = owner.Graph();
+  Check(graph.revision.value == original.revision.value + 1);
+  Check(graph.cfg_revision.value == original.cfg_revision.value + 1);
+  Check(original.ops[0].life == ValueLife::kLive && original.blocks[0].edge_count == 2);
+  Check(graph.ops[0].life == ValueLife::kRemoved && graph.ops[2].life == ValueLife::kRemoved);
+  Check(graph.blocks[0].edge_count == 1 && graph.edges[0].kind == FlowEdgeKind::kFallthrough);
+  Check(graph.values[2].life == ValueLife::kRemoved && graph.values[0].life == ValueLife::kLive);
+  Check(std::get<ValueId>(graph.uses[5].operand) == ValueId{0});
+  Check(graph.origins[0].disposition == OriginDisposition::kRetained);
+  Check(graph.input.sites.empty() && graph.input.values.empty());
+  Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(graph)));
+  const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+  std::vector<ExpressionConstant> constants(graph.ops.size());
+  FunctionSyntax syntax{{}, {1}, {0}, CallableKind::kMethod, Strictness::kStrict, {{{}, NameEvidence::kSynthesized}}, {}, {}};
+  auto tree = BuildFunctionTree(graph, control, evaluation, std::move(syntax), {constants, 0, 0, {}});
+  Check(std::holds_alternative<ConstructedFunction>(tree));
+  Check(std::get<ConstructedFunction>(tree).tree.symbols.size() == 1);
+  Check(std::get<DefaultBodyError>(DefaultBody::Build(original, parameters, candidates, 0, {0, 0})) == DefaultBodyError::kResourceLimit);
+  Check(std::get<DefaultBodyError>(DefaultBody::Build(original, parameters, candidates, 0,
+        {1024 * 1024, owner.Work() - 1})) == DefaultBodyError::kWorkLimit);
+  auto changed = original;
+  ++changed.cfg_revision.value;
+  Check(std::get<DefaultBodyError>(DefaultBody::Build(changed, parameters, candidates, 0)) == DefaultBodyError::kRevision);
+  changed = original;
+  changed.uses[5].operand = ValueId{0};
+  Relink(changed);
+  Check(std::get<DefaultBodyError>(DefaultBody::Build(changed, parameters, candidates, 0)) == DefaultBodyError::kProof);
 }
 void MatchAndBoundaries() {
   auto graph = DefaultDiamond();
@@ -114,7 +161,7 @@ void RejectCoincidences() {
   graph.uses[4].incoming = IncomingKey{EdgeId{1}};
   Check(Find(graph).values.empty()); // Missing path must arrive on the arm's edge.
   graph = DefaultDiamond();
-  graph.uses[4].operand = SpecialValue::kNaN;
+  graph.uses[6].operand = SpecialValue::kNaN;
   Check(Find(graph).values.empty());
   graph = DefaultDiamond();
   graph.edges.push_back({{2}, {1}, FlowEdgeKind::kTaken, 0});
@@ -128,15 +175,11 @@ void RejectCoincidences() {
 }
 void NegatedLiteral() {
   auto graph = DefaultDiamond();
-  graph.ops.insert(graph.ops.begin() + 2,
-      {ValueUnary{UnaryOperator::kNegate}, {1}, 0, {6}, 1, ValueId{3},
-       LanguageEffect::kUserCode, LanguageEffect::kUserCode, ExceptionalCompletion::kMayThrow, {3}});
-  graph.blocks[1].op_count = 1;
-  graph.blocks[2].first_op = OpId{3};
-  graph.uses[5].owner = OpId{3};
-  graph.uses.push_back({OpId{2}, OperandRole::kInput, ReadPurpose::kOperand, IntegerLiteral{1}});
-  graph.values.push_back({OpResult{{2}}, ValueKinds::Language(), UseId{4}});
-  graph.uses[4].operand = ValueId{3};
+  graph.ops[2].operation = ValueUnary{UnaryOperator::kNegate};
+  graph.ops[2].normal = graph.ops[2].before_throw = LanguageEffect::kUserCode;
+  graph.ops[2].exceptional = ExceptionalCompletion::kMayThrow;
+  graph.exceptional_exits.push_back({{2}, {2}, LanguageEffect::kUserCode});
+  graph.uses[6].operand = IntegerLiteral{1};
   Check(!VerifyValueUses(graph, 1024 * 1024));
   auto found = Find(graph);
   Check(found.values.size() == 1 && found.values[0].initializer == OpId{2});
@@ -156,4 +199,4 @@ void NegatedLiteral() {
   Check(Find(graph).values.empty()); // No speculative coercion of a parameter.
 }
 }  // namespace
-int main() { MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); }
+int main() { MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); }
