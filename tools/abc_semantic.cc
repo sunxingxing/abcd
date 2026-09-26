@@ -175,6 +175,9 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
       });
   if (method == index->methods.end() || !method->code)
     return Fail(InspectError::kMethod);
+  if (scope == ValueSourceScope::kConditionalValues)
+    return InspectValueSource(file, *header, *index, *method,
+        source::MakeRouteInputIdentity(*hash, *header), std::cout, scope);
   const auto& code = *method->code;
   if (code.registers >
       std::numeric_limits<std::uint32_t>::max() - code.arguments)
@@ -570,6 +573,8 @@ int main(int argc, char** argv) {
                  "       abc_semantic INPUT.abc METHOD_ENTITY --instructions|--exception-flow|--exception-template\n"
                  "       abc_semantic INPUT.abc --all-records\n"
                  "       abc_semantic INPUT.abc METHOD_ENTITY --record-value-slice\n"
+                 "       abc_semantic INPUT.abc METHOD_ENTITY --conditional-values\n"
+                 "  --conditional-values inspects open capture obligations; it emits no source\n"
                  "  exactly one source form per invocation; duplicates, conflicting forms\n"
                  "  and any combination of a detail mode with --value-source are rejected\n"
                  "  regardless of option order\n"
@@ -597,9 +602,12 @@ int main(int argc, char** argv) {
   unsigned details = 0;
   unsigned value_routes = 0;
   unsigned record_slices = 0;
+  unsigned conditional_values = 0;
   for (int i = 3; i < argc; ++i) {
     const std::string_view option{argv[i]};
-    if (option == "--record-value-slice") {
+    if (option == "--conditional-values") {
+      ++conditional_values;
+    } else if (option == "--record-value-slice") {
       ++record_slices;
     } else if (option == "--value-source") {
       ++value_routes;
@@ -624,6 +632,11 @@ int main(int argc, char** argv) {
     }
   }
   // Duplicate or conflicting selectors are rejected in every order.
+  if (conditional_values > 1 || (conditional_values && (forms || details || value_routes || record_slices)))
+    return Fail(InspectError::kArguments);
+  if (conditional_values)
+    return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kSummary,
+                   source::RoutePolicy::kLegacyAllowed, ValueSourceScope::kConditionalValues);
   if (forms > 1 || details > 1 || value_routes > 1 || (forms && details))
     return Fail(InspectError::kArguments);
   if (record_slices > 1 || (record_slices && (forms || details || value_routes)))

@@ -530,6 +530,32 @@ publication evidence. File-driven family preparation, callable/name/strictness,
 root enclosure, transitive effects and printing remain outstanding. Rules stay
 21 because executable admission is unchanged. T07 is still in progress.
 
+### T07 File-Driven Conditional Inputs
+
+ReadFunctionValues now owns actual decoded body, file-derived ABI frame,
+immutable original FunctionInput and shared working FunctionValues. It has
+typed failures, unchanged-file checks and combined retained-capacity admission;
+existing per-pass work limits are not claimed as cumulative family accounting.
+The explicit --conditional-values inspection selector enters this path before
+legacy decoding, emits no source/receipt and never substitutes for --value-source.
+
+Both production targets built successfully. ABC-only observations:
+- Pasteboard 7366: conditional input passes; Value IR import refuses at PC 24
+  (buffered object allocation). This replaces the closed-input capture refusal
+  only in the explicit conditional diagnostic, not executable admission.
+- Pasteboard 7421: input rejects exception regions (SemanticError::kExceptionRegions,
+  diagnostic PC 0). Instruction inspection also shows async transfers. Thus
+  complete P3 family publication needs T09/T10 capabilities as well as T07;
+  an ordinary closure-only path cannot honestly complete that gate.
+- Pasteboard 7559: 43 working operations, zero incoming captures/child obligations.
+- Immersive 21082: 21 working operations, zero incoming captures/child obligations.
+
+All conditional commands return exit 1 with source_complete=false and
+executable=false. File-backed regression sources cover ABI/input retention,
+conditional versus closed captures, identity and memory rejection; they remain
+uncompiled/unrun. No generated JS, benchmarks or RSS measurement ran. Full
+file-driven family traversal and publication are still pending; T07 remains open.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

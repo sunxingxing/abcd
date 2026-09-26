@@ -389,6 +389,22 @@ Neither this component nor its production build closes the T07 gate.
 
 ### Owned Conditional Families
 
+ReadFunctionValues supplies file-driven members: it reads call annotations and
+the actual body, derives the ABI frame, creates the immutable FunctionInput,
+then runs the shared BuildFunctionValues importer/verifier/simplifier and
+environment/cell preparation. It retains body, frame, input and working values
+under one owned FileFunction. File/header/index/hash identity remains the
+caller's same-file precondition; header identity and unchanged-file checks are
+performed at entry/exit. Body/input/value retained capacities are admitted
+together with each pass's additional allowance. The existing per-pass work
+caps are not relabeled as a cumulative family budget. No context callable or
+source receipt is inferred from successful conditional preparation.
+
+The explicit `abc_semantic ... --conditional-values` diagnostic uses this
+reader and reports open captures/children or typed failure location. It rejects
+combination with other selectors, emits no source and always reports
+source_complete=false/executable=false. It is not fallback from --value-source.
+
 BuildFunctionFamily moves common tree/flow and verified incoming CaptureCells
 products into one owned construction result. It indexes FunctionOwnerId values
 independently of storage order, derives parent edges from actual FunctionExpr

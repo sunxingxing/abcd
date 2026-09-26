@@ -1,4 +1,5 @@
 #include "../../../src/source/creation_tree_context.h"
+#include "../../../src/source/function_file.h"
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
@@ -110,6 +111,22 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child, bool all_
   if (count == 1 || all_formats) {
     const auto roles = std::get<MethodRoleIndex>(MethodRoleIndex::Build(file, header, index, lookup));
     const auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
+    const auto conditional = ReadFunctionValues(file, header, index, {1}, identity, InputCaptureMode::kConditional);
+    test::Check(std::holds_alternative<FileFunction>(conditional));
+    const auto& opened_child = std::get<FileFunction>(conditional);
+    test::Check(opened_child.input.Method() == abc::EntityOffset{kTarget} &&
+        opened_child.values.method == opened_child.input.Method() &&
+        opened_child.input.Mode() == InputCaptureMode::kConditional);
+    test::Check(opened_child.input.Captures().size() == (child == ChildBody::kCapture ? 1 : 0));
+    if (child == ChildBody::kCapture)
+      test::Check(std::holds_alternative<FunctionFileFailure>(ReadFunctionValues(file, header,
+          index, {1}, identity, InputCaptureMode::kClosed)));
+    auto stale = identity; ++stale.file_size;
+    test::Check(std::get<FunctionFileError>(std::get<FunctionFileFailure>(ReadFunctionValues(file,
+        header, index, {1}, stale, InputCaptureMode::kConditional))) == FunctionFileError::kIdentity);
+    SemanticBudget empty; empty.bytes = 0;
+    test::Check(std::get<FunctionFileError>(std::get<FunctionFileFailure>(ReadFunctionValues(file,
+        header, index, {1}, identity, InputCaptureMode::kConditional, empty))) == FunctionFileError::kResourceLimit);
     auto prepared = VerifiedFunction::PrepareCreated(file, header, index, lookup, roles, sites, range.first, identity);
     const bool refuses = child == ChildBody::kCapture || (kind == abc::FunctionKind::kArrow && child == ChildBody::kReceiver);
     test::Check(std::holds_alternative<FunctionPrepareFailure>(prepared) == refuses);

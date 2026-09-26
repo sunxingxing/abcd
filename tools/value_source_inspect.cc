@@ -11,6 +11,7 @@
 #include "abcd/source/class_method.h"
 #include "abcd/source/class_method_selection.h"
 #include "abcd/source/record_source.h"
+#include "../src/source/function_file.h"
 
 namespace {
 using namespace abcd;
@@ -317,6 +318,43 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
   const auto* lookup = std::get_if<abc::MethodLookup>(&looked_up);
   if (!lookup) return Refused(output, receipt, InspectionError::kLookup,
       IndexClass(std::get<abc::MethodLookupError>(looked_up)));
+  if (scope == ValueSourceScope::kConditionalValues) {
+    const auto position = lookup->Find(method.offset);
+    if (!position) return Refused(output, receipt, InspectionError::kLookup);
+    const auto prepared = ReadFunctionValues(file, header, index, *position, identity, InputCaptureMode::kConditional);
+    nlohmann::json report{{"source_complete", false}, {"executable", false},
+        {"conditional", true}, {"method", method.offset.value}};
+    if (const auto* function = std::get_if<FileFunction>(&prepared)) {
+      report["values_prepared"] = true;
+      report["capture_occurrences"] = function->input.Captures().size();
+      report["child_obligations"] = function->input.Children().size();
+      report["operations"] = function->values.graph.ops.size();
+      report["cells"] = function->values.cells ? function->values.cells->cells.size() : 0;
+      report["work_revision"] = function->values.graph.revision.value;
+    } else {
+      report["values_prepared"] = false;
+      const auto& failure = std::get<FunctionFileFailure>(prepared);
+      report["failure_variant"] = failure.index();
+      if (const auto* value = std::get_if<FunctionValueFailure>(&failure)) {
+        report["reason"] = ValueRouteErrorName(value->cause.reason);
+        if (value->cause.pc) report["pc"] = value->cause.pc->value;
+      }
+      if (const auto* input = std::get_if<FunctionInputFailure>(&failure)) {
+        report["input_failure_variant"] = input->cause.index();
+        std::visit([&](const auto& error) {
+          using T = std::decay_t<decltype(error)>;
+          if constexpr (std::is_same_v<T, FunctionInputError>)
+            report["input_error"] = static_cast<unsigned>(error);
+          else {
+            report["input_error"] = static_cast<unsigned>(error.kind);
+            report["pc"] = error.pc.value;
+          }
+        }, input->cause);
+      }
+    }
+    output << report << '\n';
+    return EXIT_FAILURE; // Conditional analysis is not executable source.
+  }
   const auto indexed_roles = analysis::MethodRoleIndex::Build(file, header, index, *lookup);
   const auto* roles = std::get_if<analysis::MethodRoleIndex>(&indexed_roles);
   if (!roles) return Refused(output, receipt, InspectionError::kRoles,
