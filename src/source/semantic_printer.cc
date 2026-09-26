@@ -38,6 +38,7 @@
 #include "conditional_value.h"
 #include "rest_binding.h"
 #include "record_declarations.h"
+#include "function_segments.h"
 
 namespace abcd::source {
 namespace {
@@ -70,7 +71,8 @@ class SourcePrinter {
     return PrintedTemplate{std::move(source.text), std::move(source.spans),
                             std::move(captures_), source.contract, std::move(source.host_realm),
                             std::move(source.method_spans), source.vm_slots,
-                            source.accumulator_used, std::move(source.register_uses)};
+                            source.accumulator_used, std::move(source.register_uses),
+                            std::move(source.parameter_defaults), std::move(source.function_segments)};
   }
 
   std::variant<PrintedSource, SourceFailure> PrintBody(ScalarNames names) {
@@ -106,6 +108,7 @@ class SourcePrinter {
       if (const auto failure = AppendAwaitPositions(ast_, result_, limit_ - capture_bytes))
         return *failure;
       if (observe_body_slots_) result_.vm_slots = vm_slots_;
+      CheckFunctionSegments(result_.function_segments, result_.text.size(), captures_.size());
       return std::move(result_);
     } catch (const SourceFailure& failure) {
       return failure;
@@ -228,6 +231,7 @@ class SourcePrinter {
       } else {
         Text(form_ == SourceForm::kClassConstructor ? "}\n}\n" : "}\n");
       }
+      CheckFunctionSegments(result_.function_segments, result_.text.size(), captures_.size());
       return std::move(result_);
     } catch (const SourceFailure& failure) {
       return failure;
@@ -256,10 +260,16 @@ class SourcePrinter {
       position = printer_.position_;
       return true;
     }
+    bool RetainFunction(const FunctionSegment& segment) override {
+      printer_.RetainFunction(segment);
+      return true;
+    }
     void CapturedPositions(abc::EntityOffset method, const PrintedTemplate& source,
         std::span<const CaptureShift> prefix, const GeneratedPosition& origin) override {
       printer_.MethodPositions(method, source.spans, source.method_spans,
                                &origin, &source, prefix);
+      for (const auto& segment : source.function_segments)
+        printer_.RetainFunction(RebaseFunctionSegment(BindFunctionSegment(segment, source, prefix), origin));
     }
     bool Capture(analysis::CapturedSlot capture,
                  analysis::CaptureDomain requirement) override {
@@ -302,10 +312,16 @@ class SourcePrinter {
       position = printer_.position_;
       return true;
     }
+    bool RetainFunction(const FunctionSegment& segment) override {
+      printer_.RetainFunction(segment);
+      return true;
+    }
     void CapturedPositions(abc::EntityOffset method, const PrintedTemplate& source,
         std::span<const CaptureShift> prefix, const GeneratedPosition& origin) override {
       printer_.MethodPositions(method, source.spans, source.method_spans,
                                &origin, &source, prefix);
+      for (const auto& segment : source.function_segments)
+        printer_.RetainFunction(RebaseFunctionSegment(BindFunctionSegment(segment, source, prefix), origin));
     }
     void Positions(abc::EntityOffset method, std::span<const GeneratedSpan> spans,
                    std::span<const MethodGeneratedSpan> descendants) override {
@@ -347,6 +363,20 @@ class SourcePrinter {
     SourcePrinter& printer_;
     const FunctionExpression& function_;
   };
+  void RetainFunction(const FunctionSegment& segment) {
+    if (capture_mode_ == CaptureMode::kReject && (segment.begin.captures || segment.end.captures))
+      throw SourceFailure{SourceError::kInvalidEffect, current_pc_};
+    auto available = limit_ > result_.text.capacity() ? limit_ - result_.text.capacity() - 1 : 0;
+    if (result_.spans.capacity() > available / sizeof(GeneratedSpan))
+      throw SourceFailure{SourceError::kResourceLimit, current_pc_};
+    available -= result_.spans.capacity() * sizeof(GeneratedSpan);
+    if (captures_.capacity() > available / sizeof(SourceCapture))
+      throw SourceFailure{SourceError::kResourceLimit, current_pc_};
+    available -= captures_.capacity() * sizeof(SourceCapture);
+    const auto before = available;
+    AppendFunctionSegment(result_.function_segments, segment, available);
+    limit_ -= before - available;
+  }
   void MethodPositions(abc::EntityOffset method, std::span<const GeneratedSpan> spans,
                        std::span<const MethodGeneratedSpan> descendants,
                        const GeneratedPosition* base = nullptr,

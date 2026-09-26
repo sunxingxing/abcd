@@ -13,6 +13,7 @@ class ClassSource final : public CaptureBuffer, public UnpublishedOutput {
  public:
   explicit ClassSource(std::size_t bytes);
   bool Position(GeneratedPosition& position) const override;
+  bool RetainFunction(const FunctionSegment& segment) override;
   bool Capture(analysis::CapturedSlot cell,
                analysis::CaptureDomain requirement) override;
   void Positions(abc::EntityOffset method, std::span<const GeneratedSpan> spans,

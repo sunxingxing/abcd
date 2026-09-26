@@ -6,6 +6,7 @@
 
 #include "capture_positions.h"
 #include "class_emission.h"
+#include "function_segments.h"
 
 namespace abcd::source {
 namespace {
@@ -56,6 +57,10 @@ bool ClassSource::Position(GeneratedPosition& position) const {
   position = position_;
   return true;
 }
+bool ClassSource::RetainFunction(const FunctionSegment& segment) {
+  AppendFunctionSegment(source_.function_segments, segment, remaining_);
+  return true;
+}
 
 bool ClassSource::Capture(analysis::CapturedSlot cell,
                           analysis::CaptureDomain requirement) {
@@ -101,6 +106,8 @@ void ClassSource::CapturedPositions(abc::EntityOffset method,
   for (const auto& span : source.spans) append(method, span);
   for (const auto& mapped : source.method_spans)
     append(mapped.method, mapped.span);
+  for (const auto& segment : source.function_segments)
+    RetainFunction(RebaseFunctionSegment(BindFunctionSegment(segment, source, prefix), origin));
 }
 
 std::streamsize ClassSource::xsputn(const char* text, std::streamsize count) {
@@ -135,6 +142,7 @@ ClassSource::int_type ClassSource::overflow(int_type ch) {
 }
 
 void ClassSource::Replay(std::ostream& output, std::string_view prefix_text) {
+  CheckFunctionSegments(source_.function_segments, source_.text.size(), source_.captures.size());
   auto* sink = dynamic_cast<CaptureBuffer*>(output.rdbuf());
   if (!sink && !source_.captures.empty()) Invalid();
   GeneratedPosition origin;
@@ -159,9 +167,11 @@ void ClassSource::Replay(std::ostream& output, std::string_view prefix_text) {
   if (mapped && !sink->Position(origin)) Invalid();
   if (source_.captures.empty()) {
     if (sink) sink->Positions({}, {}, source_.method_spans);
+    ForwardFunctionSegments(output, source_.function_segments);
     text(source_.text);
     return;
   }
+  if (!mapped && !source_.function_segments.empty()) Invalid();
   std::size_t begin = 0;
   for (const auto& capture : source_.captures) {
     const auto end = capture.position.byte;

@@ -8,6 +8,7 @@
 
 #include "lexical_name.h"
 #include "capture_positions.h"
+#include "function_segments.h"
 
 namespace abcd::source {
 namespace {
@@ -120,6 +121,14 @@ std::variant<PrintedSource, SourceFailure> BindSourceTemplate(
     if (result.method_spans.capacity() > remaining / sizeof(MethodGeneratedSpan))
       return Resource();
     remaining -= result.method_spans.capacity() * sizeof(MethodGeneratedSpan);
+    // Payloads remain immutable/shared; charge retained ownership alongside
+    // final text and the existing maps before allocating that final text.
+    for (const auto& segment : source.function_segments) {
+      auto rebound = BindFunctionSegment(segment, source, prefix);
+      if (rebound.end.byte > bytes) return Invalid();
+      AppendFunctionSegment(result.function_segments, rebound, remaining);
+    }
+    if (bytes >= remaining) return Resource();
     result.text.reserve(bytes);
     if (result.text.capacity() >= remaining) return Resource();
 

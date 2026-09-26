@@ -17,6 +17,7 @@ struct VerifiedFunction::Storage {
   FunctionTree tree;
   MethodRouteReceipt receipt;
   FunctionAbi abi;
+  std::size_t allocated_bytes = 0;
 };
 VerifiedFunction::VerifiedFunction(std::unique_ptr<const Storage> storage) : storage_(std::move(storage)) {}
 VerifiedFunction::VerifiedFunction(VerifiedFunction&&) noexcept = default;
@@ -28,6 +29,7 @@ const analysis::ClassMethodSite& VerifiedFunction::Creation() const { return sto
 const MethodRouteReceipt& VerifiedFunction::Receipt() const { return storage_->receipt; }
 const abc::FrameLayout& VerifiedFunction::Frame() const { return storage_->context.Frame(); }
 const FunctionAbi& VerifiedFunction::Abi() const { return storage_->abi; }
+std::size_t VerifiedFunction::AllocatedBytes() const { return storage_->allocated_bytes; }
 
 namespace {
 using Error = FunctionPrepareError;
@@ -218,11 +220,26 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       if (error == FunctionAbiError::kWorkLimit) throw Error::kWorkLimit;
       throw Error::kAbi;
     }
+    budget.Admit(abi->allocated_bytes, 1);
+    budget.Step(abi->work);
+    const auto measured = MeasureTreeStorage(function->tree, {allowance.bytes, budget.Remaining().work});
+    const auto* storage = std::get_if<TreeStorage>(&measured);
+    if (!storage) throw std::get<TreeStorageError>(measured) == TreeStorageError::kWorkLimit
+        ? Error::kWorkLimit : Error::kResourceLimit;
+    // Persistent capacity estimate, not the peak preparation scratch charge.
+    // Inline subobjects are conservatively counted again; allocator/RSS limits
+    // still belong to process admission, not this ownership measurement.
+    PreparationBudget retained(allowance);
+    retained.Admit(1, sizeof(Storage));
+    retained.Admit(context->AllocatedBytes(), 1);
+    retained.Admit(storage->bytes, 1);
+    retained.Arena(abi->abi.parameters);
+    const auto retained_bytes = allowance.bytes - retained.Remaining().bytes;
     if (file.CheckUnchanged()) throw Error::kFileChanged;
     receipt->stage = SourceStage::kTreeVerified;
     receipt->coverage = Coverage::kIncomplete;  // No printer/publication ran.
     return VerifiedFunction(std::make_unique<const Storage>(Storage{
-        std::move(*context), std::move(function->tree), *receipt, std::move(abi->abi)}));
+        std::move(*context), std::move(function->tree), *receipt, std::move(abi->abi), retained_bytes}));
   } catch (Error error) { return FunctionPrepareFailure{error, receipt, {}};
   } catch (const std::bad_alloc&) { return FunctionPrepareFailure{Error::kResourceLimit, receipt, {}};
   } catch (const std::length_error&) { return FunctionPrepareFailure{Error::kResourceLimit, receipt, {}}; }

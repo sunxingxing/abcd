@@ -58,6 +58,17 @@ std::variant<FunctionEmission, TreePrintError> FunctionEmission::Write(
   auto receipt = function.Receipt();
   receipt.stage = SourceStage::kPrinted;
   receipt.coverage = Coverage::kComplete;
-  return FunctionEmission{std::move(function), std::move(*positions), range, receipt};
+  std::size_t owned = sizeof(FunctionEmission);
+  const auto add = [&](std::size_t count, std::size_t width) {
+    if (count > (std::numeric_limits<std::size_t>::max() - owned) / width) return false;
+    owned += count * width;
+    return true;
+  };
+  if (!add(function.AllocatedBytes(), 1) ||
+      !add(positions->expressions.capacity(), sizeof(GeneratedRange)) ||
+      !add(positions->statements.capacity(), sizeof(GeneratedRange)) ||
+      !add(positions->anchors.capacity(), sizeof(std::size_t)))
+    return TreePrintError::kResourceLimit;
+  return FunctionEmission{std::move(function), std::move(*positions), range, receipt, owned};
 }
 }  // namespace abcd::source

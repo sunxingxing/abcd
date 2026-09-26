@@ -32,6 +32,7 @@
 #include "member_key.h"
 #include "parameter_aliases.h"
 #include "capture_positions.h"
+#include "function_segments.h"
 #include "staged_branch_call.h"
 #include "structured_catch.h"
 
@@ -506,6 +507,7 @@ class FunctionWriter {
         if (auto* sink = dynamic_cast<CaptureBuffer*>(output_.rdbuf()))
           sink->Positions(body_constants->method, semantic_body->spans,
                           semantic_body->method_spans);
+        ForwardFunctionSegments(output_, semantic_body->function_segments);
         Text(semantic_body->text);
         if (error_) return *error_;
       } else if (semantic_template) {
@@ -513,12 +515,16 @@ class FunctionWriter {
         // proof. Template bytes and coordinates are not standalone source.
         auto* captures = dynamic_cast<CaptureBuffer*>(output_.rdbuf());
         if (!captures) return EmitError::kWrite;
-        if (semantic_template->captures.empty())
+        if (semantic_template->captures.empty()) {
           captures->Positions(body_constants->method, semantic_template->spans,
                               semantic_template->method_spans);
+          ForwardFunctionSegments(output_, semantic_template->function_segments);
+        }
         GeneratedPosition origin;
         const bool map_captures = !semantic_template->captures.empty() &&
                                   captures->Position(origin);
+        if (!semantic_template->captures.empty() && !map_captures &&
+            !semantic_template->function_segments.empty()) return EmitError::kInvalidExpression;
         std::vector<CaptureShift> prefix;
         if (map_captures) {
           auto remaining = body_budget.bytes;
@@ -534,10 +540,16 @@ class FunctionWriter {
               !charge(semantic_template->method_spans.capacity(), sizeof(MethodGeneratedSpan)) ||
               !charge(semantic_template->register_uses.capacity(), sizeof(RegisterUse)) ||
               !charge(semantic_template->parameter_defaults.capacity(), sizeof(ParameterDefault)) ||
+              !charge(semantic_template->function_segments.capacity(), sizeof(FunctionSegment)) ||
               (semantic_template->host_realm &&
                (!charge(semantic_template->host_realm->binding.capacity(), sizeof(char)) ||
                 !charge(1, sizeof(char)))) ||
               semantic_template->captures.size() >= remaining / sizeof(CaptureShift))
+            return FunctionEmitError::kResourceLimit;
+          for (const auto& segment : semantic_template->function_segments)
+            if (!segment.function || !charge(segment.function->AllocatedBytes(), 1))
+              return FunctionEmitError::kResourceLimit;
+          if (semantic_template->captures.size() >= remaining / sizeof(CaptureShift))
             return FunctionEmitError::kResourceLimit;
           prefix.reserve(semantic_template->captures.size() + 1);
           if (prefix.capacity() > remaining / sizeof(CaptureShift))
@@ -695,6 +707,10 @@ class FunctionWriter {
       if (strict_wrapper) Text(";})()");
       if (error_) return *error_;
       return written_;
+    } catch (const SourceFailure& failure) {
+      return failure.kind == SourceError::kResourceLimit
+          ? FunctionEmitResult{FunctionEmitError::kResourceLimit}
+          : FunctionEmitResult{EmitError::kInvalidExpression};
     } catch (const std::ios_base::failure&) {
       return EmitError::kWrite;
     }

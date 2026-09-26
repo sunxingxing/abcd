@@ -23,15 +23,18 @@ class FunctionEmission {
   [[nodiscard]] const PrintedFunction& Positions() const { return positions_; }
   [[nodiscard]] GeneratedRange Destination() const { return destination_; }
   [[nodiscard]] const MethodRouteReceipt& Receipt() const { return receipt_; }
+  [[nodiscard]] std::size_t AllocatedBytes() const { return allocated_bytes_; }
  private:
   FunctionEmission(VerifiedFunction function, PrintedFunction positions,
-                   GeneratedRange destination, MethodRouteReceipt receipt)
+                   GeneratedRange destination, MethodRouteReceipt receipt,
+                   std::size_t allocated_bytes)
       : function_(std::move(function)), positions_(std::move(positions)),
-        destination_(destination), receipt_(receipt) {}
+        destination_(destination), receipt_(receipt), allocated_bytes_(allocated_bytes) {}
   VerifiedFunction function_;
   PrintedFunction positions_;
   GeneratedRange destination_;
   MethodRouteReceipt receipt_;
+  std::size_t allocated_bytes_ = 0;
 };
 }  // namespace abcd::source
 #endif

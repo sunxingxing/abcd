@@ -569,3 +569,41 @@ select this overload using the actual creation occurrence and transport child
 emissions/receipts before its self/VM declarations. It must not merely inherit
 the CLI method success. Default/rest/constructor/closure cases still require
 their planned later-stage proofs. T03 is not marked validated or complete.
+
+### T03 Function Segment Transport
+
+PrintedSource and PrintedTemplate can now retain typed FunctionSegments. Each
+segment shares one immutable FunctionEmission and records only its enclosing
+begin/end coordinates. ClassSource replay, SourcePrinter's class/leaf sinks,
+legacy callable wrapping, capture binding and late record declarations carry
+those envelopes forward. They do not flatten the new origin DAG into old spans,
+reparse JS, reconstruct ABI declarations, or upgrade the container's route.
+Sinks that cannot retain new-route evidence explicitly refuse it.
+
+Capture rebasing checks that no capture occurs inside the complete G1 member:
+endpoint capture cursors must match, and byte length must remain the emitted
+method length. Container prefixes, earlier capture insertions and declaration
+insertion move both endpoints together. Publication checks segment byte bounds
+and unresolved-capture bounds before returning a source artifact. Transport is
+linear in segment count, with logarithmic capture-prefix lookup per endpoint;
+there is no per-PC source scan or ancestor-origin expansion.
+
+VerifiedFunction and FunctionEmission expose conservative persistent-capacity
+estimates, distinct from preparation scratch. Parent buffers admit segment
+arrays plus retained payloads; repeated shared occurrences are conservatively
+charged again. This is capacity admission, not allocator-accurate or RSS proof.
+The function factory also accounts ABI work before measuring retained storage.
+
+Regression specifications reuse the encoded-class fixture's real sealed method
+to cover nested class-template replay, an earlier capture, wrapper prefixes,
+no-capture replay, missing sink refusal, interior-capture rejection, resource
+refusal and 200/201 segment collections. No test-only raw certificate API was
+introduced. These specifications remain uncompiled/unrun under the test pause.
+
+Production build `cmake --build build --target abc_semantic abc_structure -j 2`
+completed with exit 0. Fresh ABC-only inspections of 7586 and 21082 still produce
+their complete method slices, rules 7, with enclosing source/executable false.
+No JS or RSS run occurred. The transport is not yet activated by record method
+selection: the next integration step must select actual creation occurrences,
+invoke the explicit class-member route and serialize child segment evidence.
+Until then no real record-level migration is claimed.

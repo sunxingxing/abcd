@@ -2,6 +2,7 @@
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
+#include "../../support/function_segments.h"
 
 #include <unistd.h>
 
@@ -144,6 +145,7 @@ void Run() {
     const auto end = emission.Destination().begin + span.end;
     Check(begin < end && end <= emission.Destination().end);
   }
+  test::CheckFunctionTransport(std::get<FunctionEmission>(std::move(segment)), output.view());
   auto mismatched = shape;
   mismatched.member.target.value++;
   Check(std::get<FunctionEmitError>(WriteClassMethod(mismatched, fresh(), denied, {})) == FunctionEmitError::kCreation);

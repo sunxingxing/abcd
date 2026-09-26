@@ -12,6 +12,7 @@ struct MethodGeneratedSpan;
 struct GeneratedPosition;
 struct PrintedTemplate;
 struct CaptureShift;
+struct FunctionSegment;
 // Internal publication capability, not a general stream optimization. The
 // owner must discard the entire buffered artifact on any descendant failure.
 // A sink that has published bytes or may retry into the same prefix must not
@@ -42,6 +43,9 @@ class CaptureBuffer : public std::streambuf {
   virtual void MappedSpan(abc::EntityOffset, const GeneratedSpan&) {}
   virtual void CapturedPositions(abc::EntityOffset, const PrintedTemplate&,
       std::span<const CaptureShift>, const GeneratedPosition&) {}
+  // Already in this sink's coordinates. False refuses loss of new-route
+  // receipts/origins; callers must not silently publish only the method text.
+  virtual bool RetainFunction(const FunctionSegment&) { return false; }
   virtual bool Capture(analysis::CapturedSlot cell,
       analysis::CaptureDomain requirement =
           analysis::CaptureDomain::kLanguage) = 0;

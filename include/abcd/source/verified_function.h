@@ -45,6 +45,7 @@ class VerifiedFunction {
   [[nodiscard]] const MethodRouteReceipt& Receipt() const;
   [[nodiscard]] const abc::FrameLayout& Frame() const;
   [[nodiscard]] const FunctionAbi& Abi() const;
+  [[nodiscard]] std::size_t AllocatedBytes() const;
  private:
   struct Storage;
   explicit VerifiedFunction(std::unique_ptr<const Storage> storage);

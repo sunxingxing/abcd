@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -327,6 +328,16 @@ struct GeneratedPosition {
   // capture at this byte. Always zero in fully bound source coordinates.
   std::size_t captures = 0;
 };
+class FunctionEmission;
+// A separately verified value-tree method inside a possibly legacy container.
+// Only the envelope moves during replay/binding; the immutable function's local
+// byte ranges, origin DAG and receipt remain paired and shared. No captures may
+// occur inside this G1 segment. Container coverage is independent of its receipt.
+struct FunctionSegment {
+  std::shared_ptr<const FunctionEmission> function;
+  GeneratedPosition begin;
+  GeneratedPosition end;
+};
 enum class SpanOrigin : std::uint8_t { kInstruction, kAwaitProtocol };
 // Serialization only; engine decisions use SpanOrigin, never these labels.
 constexpr std::string_view SpanOriginName(SpanOrigin origin) {
@@ -363,6 +374,7 @@ struct PrintedSource {
   bool accumulator_used = false;
   std::vector<RegisterUse> register_uses;
   std::vector<ParameterDefault> parameter_defaults;
+  std::vector<FunctionSegment> function_segments;
 };
 struct SourceCapture {
   GeneratedPosition position;
@@ -383,6 +395,7 @@ struct PrintedTemplate {
   bool accumulator_used = false;
   std::vector<RegisterUse> register_uses;
   std::vector<ParameterDefault> parameter_defaults;
+  std::vector<FunctionSegment> function_segments;
 };
 // source is the unchanged PrintSourceTemplate result. bindings is one
 // parent-PROVEN initialized local cell per capture occurrence,

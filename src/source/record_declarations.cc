@@ -78,6 +78,10 @@ void InsertRecordDeclarations(PrintedSource& source, ScalarNames names,
     relocate(mapped.span.begin);
     relocate(mapped.span.end);
   }
+  for (auto& segment : source.function_segments) {
+    relocate(segment.begin);
+    relocate(segment.end);
+  }
   source.text.insert(body.byte, declarations);
 }
 }  // namespace abcd::source
