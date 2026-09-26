@@ -3,7 +3,8 @@
 T07 now shares a borrowed `ScopeFacts` view between the established semantic
 capture resolver and the new creation-specific `CapturePlan`. This is binding
 infrastructure, not permission to emit a child FunctionTree or scalarize cells.
-Source rules remain 18; no closure source domain is newly admitted.
+Source rules are 19 for checked native local declarations; no closure source
+domain is newly admitted.
 
 ## Inputs and Ownership
 
@@ -142,8 +143,8 @@ EvaluationKind::kEnvironment explicitly owns those environment operations;
 they cannot silently disappear as pure operations. Cell loads/stores retain
 ordered evaluation and normal operand validation. This uses the established
 contract excluding VM resource-exhaustion differences, not a new host premise.
-The AST must still place native declarations at each proved allocation scope
-and independently account for those operation placements before source success.
+The AST places native declarations at the actual allocation container and
+independently accounts for those operation placements before source success.
 All nested construction/check work shares the remaining invocation budget;
 no per-cell CFG walk is added. Retained evaluation storage includes both plans.
 
@@ -154,9 +155,29 @@ cell reads to SymbolExpr and stores to AssignmentExpr with SymbolTarget, retaini
 each original operation origin. Environment placements have no expression and
 remain statement-construction obligations. No source-text matching is involved.
 
-Expression lowering is connected, but complete tree construction/publication
-still refuses cells: actual declarations, scope IDs, environment placements and
-independent statement/operand/origin correspondence are not yet integrated.
+FunctionTree now emits native local `let` declarations at each original push,
+in its actual block/arm/loop body, not in the private-temporary prologue. The
+allocation owns a boundary anchor followed by one declaration per referenced
+slot, each carrying the allocation's original origin. Empty pushes, pops and
+unused current-environment operations own only boundary anchors. Printer
+statement ranges and origins provide allocation-PC-to-declaration ranges;
+multiple declarations may intentionally share one original PC. No grouping
+block is inserted and no text is reparsed to recover positions.
+
+Fresh TreeFlow checks exact allocation boundaries, consumes the actual local
+declarations in slot order, enforces unique symbol ownership and checks actual
+container ScopeIds. It derives a separate CellId-to-SymbolId table from that
+syntax, not BindingPlan. TreeOperands checks every cell read/write against this
+table and every stored RHS against SSA; TreeScope checks actual visibility.
+Snapshot/phi/copy symbols cannot alias cells. Initialization remains separately
+proved; an initialization witness never becomes a value-substitution license.
+
+For P pushes and C referenced cells, ordered CellPlan lookup costs
+O(P log(C+1)+C), with O(C) additional verifier output. All work/storage is charged
+to the shared invocation grant. No per-allocation scan over all cells is used.
+Native declaration syntax is integrated, but real cell-method printer evidence
+and behavioral acceptance remain outstanding. Incoming captures, unknown child
+writes and observed VM environment identities remain rejected.
 The read-snapshot regression specification retains an old loaded value across a
 later cell store and requires a distinct snapshot symbol; it is uncompiled/unrun.
 

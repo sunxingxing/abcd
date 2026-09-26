@@ -27,7 +27,7 @@ class OperandCheck {
       if (op.life != analysis::ValueLife::kLive) continue;
       current_ = {static_cast<std::uint32_t>(i)};
       origin_ = {op.origin.value};
-      if (std::holds_alternative<analysis::ValueJump>(op.operation)) continue;
+      if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation)) continue;
       RequireMeaning(flow_.expressions[i].has_value(), Error::kOperand);
       const auto expression = *flow_.expressions[i];
       const auto input = [&](std::uint32_t ordinal) -> const analysis::ValueOperand& {
@@ -46,6 +46,13 @@ class OperandCheck {
           const auto& binary = Node<BinaryExpr>(expression);
           RequireMeaning(binary.operation == operation.op, Error::kOperator);
           Input(input(0), binary.left); Input(input(1), binary.right);
+        } else if constexpr (std::is_same_v<T, analysis::ValueLexicalLoad>) {
+          RequireMeaning(Node<SymbolExpr>(expression).symbol == CellSymbol(), Error::kOperand);
+        } else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>) {
+          const auto& assignment = Node<AssignmentExpr>(expression);
+          const auto* target = std::get_if<SymbolTarget>(&assignment.target);
+          RequireMeaning(target && target->symbol == CellSymbol(), Error::kOperand);
+          Input(input(0), assignment.value);
         } else if constexpr (std::is_same_v<T, analysis::ValueNamedRead>) {
           const auto& member = Node<MemberExpr>(expression);
           Named(member.key, constants_.operations[i]);
@@ -107,7 +114,6 @@ class OperandCheck {
         } else {
           static_assert(std::is_same_v<T, analysis::ValueGuard> ||
                         std::is_same_v<T, analysis::ValueFunctionCreation> ||
-                        std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueJump>);
@@ -119,6 +125,12 @@ class OperandCheck {
   }
 
  private:
+  SymbolId CellSymbol() const {
+    RequireMeaning(evaluation_.cells.has_value(), Error::kOperand);
+    const auto cell = evaluation_.cells->cells.operations[current_.value];
+    RequireMeaning(cell && cell->value < flow_.cells.size() && flow_.cells[cell->value], Error::kOperand);
+    return *flow_.cells[cell->value];
+  }
   void CopyInputs() {
     if (!evaluation_.phis) return;
     RequireMeaning(flow_.copies.size() == evaluation_.phis->bundles.size(), Error::kOperand);

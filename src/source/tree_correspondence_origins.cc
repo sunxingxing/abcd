@@ -73,7 +73,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
       RequireMeaning(tree.expressions[statement.expression.value].origin == origin, Error::kOrigin);
     }
     if (std::holds_alternative<analysis::ValueJump>(op.operation) ||
-        std::holds_alternative<analysis::ValueReturn>(op.operation)) continue;
+        std::holds_alternative<analysis::ValueReturn>(op.operation) || IsEnvironmentState(op.operation)) continue;
     RequireMeaning(flow.expressions[i].has_value(), Error::kOrigin);
     auto& owner = expected[op.origin.value];
     RequireMeaning(!owner || owner == flow.expressions[i], Error::kOrigin);
@@ -88,6 +88,9 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   for (const auto& statement : tree.statements) {
     budget.Step();
     if (const auto* declaration = std::get_if<DeclarationStmt>(&statement.statement)) {
+      // Fresh TreeFlow consumed every local exactly at its allocation and
+      // checked this original origin. Several slots may share one allocation.
+      if (tree.symbols[declaration->symbol.value].kind == BindingKind::kLocal) continue;
       const auto* origin = std::get_if<BindingOrigin>(&tree.origins[statement.origin.value]);
       RequireMeaning(origin && origin->symbol == declaration->symbol && !visited[statement.origin.value], Error::kOrigin);
       visited[statement.origin.value] = 1;

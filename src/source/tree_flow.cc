@@ -1,5 +1,6 @@
 #include "tree_flow.h"
 
+#include <algorithm>
 #include <new>
 #include <stdexcept>
 
@@ -26,6 +27,7 @@ class FlowCheck {
     budget.Array(flow_.statements, graph.ops.size());
     budget.Array(flow_.initializers, graph.ops.size());
     budget.Array(flow_.snapshots, graph.ops.size());
+    if (evaluation.cells) budget.Array(flow_.cells, evaluation.cells->cells.cells.size());
     budget.Array(assigned_, tree.symbols.size());
     budget.Array(declared_, tree.symbols.size());
     budget.Array(tasks_, control.nodes.size());
@@ -64,11 +66,12 @@ class FlowCheck {
               evaluation_.operations[id.value].kind == EvaluationKind::kInline ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInitializer) continue;
           const auto& placement = tree_.operations[*placements_[id.value]].node;
-          if (std::holds_alternative<analysis::ValueJump>(op.operation)) {
+          if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation)) {
             const auto* anchor = std::get_if<AnchorId>(&placement);
             Require(anchor != nullptr, Error::kPlacement);
             const auto* boundary = std::get_if<BlockBoundary>(&tree_.anchors[anchor->value].position);
             Require(boundary && boundary->block == region.block && boundary->index == child, Error::kSequence);
+            if (IsEnvironmentState(op.operation)) CellDeclarations(id, block, child);
             continue;
           }
           Require(child < block.child_count, Error::kSequence);
@@ -116,8 +119,11 @@ class FlowCheck {
       const auto& symbol = tree_.symbols[i];
       if (symbol.kind == BindingKind::kParameter) {
         Require(!declared_[i] && !assigned_[i], Error::kSnapshot);
+      } else if (symbol.kind == BindingKind::kLocal) {
+        Require(declared_[i] && !assigned_[i], Error::kSnapshot);
       } else Require(declared_[i] && assigned_[i], Error::kSnapshot);
     }
+    for (const auto cell : flow_.cells) { budget_.Step(); Require(cell.has_value(), Error::kPlacement); }
     flow_.value_revision = graph_.revision;
     flow_.cfg_revision = graph_.cfg_revision;
     flow_.allocated_bytes = budget_.Bytes();
@@ -126,6 +132,38 @@ class FlowCheck {
   }
 
  private:
+  void CellDeclarations(analysis::OpId allocation, const BlockStmt& block, std::uint32_t& child) {
+    Require(evaluation_.cells.has_value(), Error::kEvaluation);
+    if (!std::holds_alternative<analysis::ValueEnvironmentPush>(graph_.ops[allocation.value].operation)) return;
+    const auto& cells = evaluation_.cells->cells.cells;
+    auto cell = std::lower_bound(cells.begin(), cells.end(), allocation,
+        [&](const Cell& item, analysis::OpId site) {
+          budget_.Step();
+          const auto* local = std::get_if<AllocatedCell>(&item.storage);
+          Require(local != nullptr, Error::kEvaluation);
+          return local->allocation < site;
+        });
+    for (; cell != cells.end(); ++cell) {
+      budget_.Step();
+      const auto* local = std::get_if<AllocatedCell>(&cell->storage);
+      Require(local != nullptr, Error::kEvaluation);
+      if (local->allocation != allocation) break;
+      Require(child < block.child_count, Error::kSequence);
+      const auto& statement = tree_.statements[tree_.children[block.first_child + child++].value];
+      const auto* declaration = std::get_if<DeclarationStmt>(&statement.statement);
+      Require(declaration && !declaration->initializer &&
+          statement.origin.value == graph_.ops[allocation.value].origin.value, Error::kPlacement);
+      const auto symbol = declaration->symbol;
+      const auto& binding = tree_.symbols[symbol.value];
+      Require(binding.kind == BindingKind::kLocal && binding.scope == block.scope &&
+          binding.declaration == DeclarationKind::kLet && !binding.temporary &&
+          !declared_[symbol.value], Error::kSnapshot);
+      declared_[symbol.value] = 1;
+      auto& actual = flow_.cells[static_cast<std::size_t>(cell - cells.begin())];
+      Require(!actual, Error::kPlacement);
+      actual = symbol;
+    }
+  }
   void Objects() {
     if (!evaluation_.literals) { Require(tree_.properties.empty(), Error::kPlacement); return; }
     std::size_t count = 0;
@@ -240,7 +278,7 @@ class FlowCheck {
       } else if (std::holds_alternative<analysis::ValueBranch>(op.operation) ||
           std::holds_alternative<analysis::ValueReturn>(op.operation)) {
         Require(std::holds_alternative<StmtId>(placement), Error::kPlacement);
-      } else if (std::holds_alternative<analysis::ValueJump>(op.operation)) {
+      } else if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation)) {
         Require(std::holds_alternative<AnchorId>(placement), Error::kPlacement);
       } else {
         const auto* expression = std::get_if<ExprId>(&placement);
@@ -258,17 +296,18 @@ class FlowCheck {
       const auto* declaration = std::get_if<DeclarationStmt>(&tree_.statements[id.value].statement);
       if (!declaration) break;
       const auto& symbol = tree_.symbols[declaration->symbol.value];
+      if (symbol.kind == BindingKind::kLocal) break;
       Require(symbol.kind == BindingKind::kCompilerTemporary && symbol.scope == tree_.body_scope &&
               symbol.declaration == DeclarationKind::kLet && symbol.temporary &&
               !declaration->initializer && !declared_[declaration->symbol.value], Error::kSnapshot);
       declared_[declaration->symbol.value] = 1;
       ++count;
     }
-    // Only parameters and private snapshots/phi locations are admitted here.
-    // User cells/locals require their own TDZ/initialization proof.
+    // Locals are consumed only at their checked environment allocations.
     for (const auto& symbol : tree_.symbols) {
       budget_.Step();
-      Require(symbol.kind == BindingKind::kParameter || symbol.kind == BindingKind::kCompilerTemporary,
+      Require(symbol.kind == BindingKind::kParameter || symbol.kind == BindingKind::kCompilerTemporary ||
+              symbol.kind == BindingKind::kLocal,
               Error::kSnapshot);
     }
     return count;

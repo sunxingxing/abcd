@@ -91,6 +91,7 @@ class TreeBuilder {
     tree_.body = drafts_[root].statement;
     for (std::size_t i = syntax_.parameters.size(); i < tree_.symbols.size(); ++i) {
       Step();
+      if (tree_.symbols[i].kind == BindingKind::kLocal) continue;
       const SymbolId symbol{static_cast<std::uint32_t>(i)};
       const TreeOriginId origin{static_cast<std::uint32_t>(tree_.origins.size())};
       tree_.origins.emplace_back(BindingOrigin{symbol});
@@ -244,6 +245,13 @@ class TreeBuilder {
     for (std::size_t i = syntax_.parameters.size(); i < forest_.bindings.symbols.size(); ++i) {
       Step();
       const auto& binding = forest_.bindings.symbols[i];
+      if (std::holds_alternative<CellBinding>(binding)) {
+        // Final scope is the actual allocation container, never a hoisted
+        // function-wide approximation of a possibly per-iteration cell.
+        tree_.symbols.push_back({kBodyScope, SyntheticName(u"$local", i),
+            BindingKind::kLocal, DeclarationKind::kLet, NameEvidence::kSynthesized, {}});
+        continue;
+      }
       TemporaryReason reason;
       std::u16string_view prefix;
       if (const auto* snapshot = std::get_if<SnapshotBinding>(&binding)) {
@@ -343,6 +351,13 @@ class TreeBuilder {
       if (op.life != analysis::ValueLife::kLive) continue;
       const TreeOriginId origin{op.origin.value};
       const auto expression = forest_.operations[id.value];
+      if (evaluation.kind == EvaluationKind::kEnvironment) {
+        const AnchorId anchor{static_cast<std::uint32_t>(tree_.anchors.size())};
+        tree_.anchors.push_back({BlockBoundary{drafts_[draft].statement, drafts_[draft].count}, origin});
+        tree_.operations.push_back({id, anchor});
+        EmitCells(id, draft, origin);
+        continue;
+      }
       if (evaluation.kind == EvaluationKind::kInitializer) {
         Require(forest_.initializers[id.value].has_value(), Error::kOwnership);
         tree_.operations.push_back({id, *forest_.initializers[id.value]});
@@ -386,6 +401,29 @@ class TreeBuilder {
     // A straight edge executes after the source block's operations and before
     // its successor. Branch copies belong inside their selected arm instead.
     if (!region.arms && block.edge_count == 1) EmitEdge(block.first_edge, draft);
+  }
+  void EmitCells(analysis::OpId allocation, std::size_t draft, TreeOriginId origin) {
+    Require(evaluation_.cells.has_value(), Error::kBinding);
+    if (!std::holds_alternative<analysis::ValueEnvironmentPush>(graph_.ops[allocation.value].operation)) return;
+    const auto& cells = evaluation_.cells->cells.cells;
+    // Verified CellPlan storage is ordered by allocation then slot. A binary
+    // search avoids rescanning every cell for each environment operation.
+    auto cell = std::lower_bound(cells.begin(), cells.end(), allocation,
+        [&](const Cell& item, analysis::OpId site) {
+          Step();
+          const auto* local = std::get_if<AllocatedCell>(&item.storage);
+          Require(local != nullptr, Error::kBinding);
+          return local->allocation < site;
+        });
+    for (; cell != cells.end(); ++cell) {
+      Step();
+      const auto* local = std::get_if<AllocatedCell>(&cell->storage);
+      Require(local != nullptr, Error::kBinding);
+      if (local->allocation != allocation) break;
+      const auto symbol = forest_.bindings.cells[static_cast<std::size_t>(cell - cells.begin())];
+      tree_.symbols[symbol.value].scope = drafts_[draft].scope;
+      Append(draft, Statement(DeclarationStmt{symbol, {}}, origin));
+    }
   }
   void EmitLoop(const ControlNode& region, std::size_t draft) {
     const TreeOriginId origin{static_cast<std::uint32_t>(tree_.origins.size())};

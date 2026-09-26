@@ -209,7 +209,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // when property and invocation share a block; no edge write may intervene.
 // Rules 16 add checked natural-loop syntax and once-only MethodEntry phi copies.
 // Rules 18 additionally admit independently proved fresh object initializers.
-inline constexpr std::uint32_t kRouteEvidenceRules = 18;
+// Rules 19 additionally admit allocation-site native lexical declarations
+// with independent cell identity, scope, initialization and origin checks.
+inline constexpr std::uint32_t kRouteEvidenceRules = 19;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

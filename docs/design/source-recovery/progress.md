@@ -11,7 +11,8 @@ edge-copy placement and once-only MethodEntry phi initialization. New loop and
 entry provenance is typed and does not invent PCs. T07's fresh empty object/array
 allocation slice and proved fresh named object initialization are integrated;
 buffered literals, broader own-defines and captures are not yet admitted.
-Source rules are 18. Real
+Checked native lexical declarations and actual-tree correspondence are now
+integrated under source rules 19. Real cell-method source evidence, real
 loop-method acceptance and behavioral verification remain outstanding. T03's G1
 method slices and T04's G2 slice have prior source evidence, not whole-record
 completion. Whole-record integration and test acceptance remain pending.
@@ -271,6 +272,35 @@ and read-before-mutation snapshot retention. Complete FunctionTree construction
 still refuses CellBinding until declarations and independent actual-tree checks
 are integrated. No new executable-source coverage, test result or RSS result is
 claimed; source rules remain 18 and T07 remains incomplete.
+
+### T07 Native Cell Declarations
+
+FunctionTree now emits native local declarations at original environment
+allocations in their actual body/arm/loop container. Private snapshots retain
+the existing prologue; cells never use it. Environment operations keep explicit
+boundary anchors, and each declaration retains the allocation PC through the
+existing statement origin/range tables. Multiple referenced slots share that PC
+without an artificial grouping scope.
+
+Independent TreeFlow derives cell symbols from actual allocation-site
+declarations and checks order, scope, uniqueness and boundary positions.
+TreeOperands checks cell identity and stored RHS correspondence; TreeScope
+checks visibility, and original-origin verification handles allocation-owned
+declarations. Loaded-value snapshots stay separate from mutable cell bindings.
+Lookup is O(P log(C+1)+C) for P allocations and C cells, not repeated full scans.
+Rules advance to 19 because source admission has changed.
+
+Added uncompiled/unrun specifications for 0/1/2/200/201 allocations, multiple
+slots sharing one PC, per-iteration scopes, wrong cell write targets, moved
+anchors, altered declaration origins and forged temporary kinds. Tests,
+generated-JS execution and RSS remain paused. Real cell-method printer evidence,
+capture/child integration and T07 acceptance remain outstanding.
+
+Production `abc_semantic` and `abc_structure` builds exited 0 after the rules-19
+change; whitespace validation passed. ABC-only inspection of the existing G2
+slice (pasteboard method 7559, record 6897) still reports Printed/complete METHOD
+under rules 19, range [2638,2924), 286 bytes. CLI exit 1 correctly retains
+incomplete record coverage. This is not native-cell coverage or JS execution.
 
 ## T00
 
