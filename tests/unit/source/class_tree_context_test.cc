@@ -1,13 +1,19 @@
 #include "../../../src/source/class_tree_context.h"
+#include "abcd/source/verified_function.h"
 
 #include <unistd.h>
 
 #include <algorithm>
 #include <cstdlib>
+#include <type_traits>
 
 namespace {
 using namespace abcd;
 using namespace abcd::source;
+static_assert(!std::is_copy_constructible_v<VerifiedFunction>);
+static_assert(!std::is_constructible_v<VerifiedFunction, FunctionTree>);
+static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
+                             const FunctionTree&>);
 void Check(bool condition) { if (!condition) std::abort(); }
 void Run() {
   constexpr std::uint32_t kPool = 64, kLiteral = 128, kCaller = 256,
@@ -69,9 +75,24 @@ void Run() {
   const auto& value = std::get<ClassTreeContext>(context);
   Check(value.Name() == u"run" && value.Frame().parameters == 1);
   Check(value.Callable() == CallableKind::kMethod && value.Mode() == Strictness::kStrict);
+  auto prepared = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity);
+  Check(std::holds_alternative<VerifiedFunction>(prepared));
+  const auto& function = std::get<VerifiedFunction>(prepared);
+  Check(function.Name() == u"run" && function.Creation().target == abc::EntityOffset{kMember});
+  Check(function.Tree().parameters.size() == 1);
+  Check(function.Tree().callable == CallableKind::kMethod);
+  Check(function.Tree().strictness == Strictness::kStrict);
+  Check(function.Tree().identity == identity);
+  Check(function.Receipt().stage == SourceStage::kTreeVerified);
+  Check(function.Receipt().coverage == Coverage::kIncomplete);
+  Check(!function.Receipt().failure);
+  auto limited = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity, {0, 0});
+  Check(std::get<FunctionPrepareFailure>(limited).kind == FunctionPrepareError::kResourceLimit);
   index.methods[2].code->arguments = 5;
   context = ClassTreeContext::Resolve(file, header, index, lookup, roles, sites, range.first, identity);
   Check(std::get<ClassContextError>(std::get<ClassContextFailure>(context).error) == ClassContextError::kSignature);
+  auto rejected = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity);
+  Check(std::get<FunctionPrepareFailure>(rejected).kind == FunctionPrepareError::kContext);
   index.methods[2].code->arguments = 4;
   index.methods[2].name = "bad";
   context = ClassTreeContext::Resolve(file, header, index, lookup, roles, sites, range.first, identity);

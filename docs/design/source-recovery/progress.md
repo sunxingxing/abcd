@@ -419,3 +419,29 @@ signature/name mutation refusals. They are not run during the test pause.
 Production builds pass. The immutable function publication owner, pure printer
 and public route integration are still pending; these adapters alone do not
 advance the CLI beyond ValuesVerified or satisfy T03 acceptance.
+
+### T03 Immutable Function Preparation
+
+VerifiedFunction now owns the selected creation context, checked FunctionTree
+and route receipt behind a move-only, read-only interface. Its factory decodes
+the selected ABC method itself, runs the fresh value proof and rewrite route,
+constructs control/evaluation plans, resolves same-file constants, recovers
+debug-backed parameter names where proven, and builds independently verified
+syntax. No public constructor accepts a raw tree or caller-created certificate.
+Unproved debug names use synthesized parameter bindings; failed context,
+resource exhaustion and changed input remain typed refusals.
+
+The factory preserves actual method identity and strictness rather than
+publishing an ordinary function with different constructibility. Its receipt
+stops at TreeVerified with incomplete coverage. The printer still needs to
+consume this facade; public CLI integration and PC-to-output spans remain
+pending. Preparation alone does not meet T03 acceptance.
+
+Method-owned live arenas and builder transfer storage share a byte allowance;
+file-level indexes remain caller-owned. Later preparation passes share work,
+but the constituent BuildValueStage work counters are still separately bounded.
+This is not proof of whole-process memory or whole-method work compliance.
+Regression sources cover immutable access, successful encoded-method preparation,
+identity/signature preservation, context rejection and a zero-byte budget.
+Production compilation is the only verification performed; tests, JS execution
+and RSS measurement remain paused.
