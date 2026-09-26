@@ -120,7 +120,13 @@ struct ValueGlobalRead {
 };
 struct ValueGuard { std::optional<abc::PoolIndex> name; bool operator==(const ValueGuard&) const = default; };
 struct ValueArrayAllocation { bool operator==(const ValueArrayAllocation&) const = default; };
-struct ValueObjectAllocation { bool operator==(const ValueObjectAllocation&) const = default; };
+struct ValueObjectAllocation {
+  // Absent means CREATEEMPTYOBJECT, present is the original regional literal
+  // slot. A buffer is not an empty object or a reusable object constant; its
+  // properties/methods and captured environment require source-level proof.
+  std::optional<abc::PoolIndex> literal;
+  bool operator==(const ValueObjectAllocation&) const = default;
+};
 // Unresolved creation template, not a reusable function value. The origin site
 // binds its environment/module and target profile; source publication still
 // requires CreationBinding, CapturePlan and complete child-tree verification.

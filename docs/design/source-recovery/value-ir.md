@@ -99,6 +99,12 @@ MethodEntryKey，不能丢掉它或伪造 predecessor block。该输入由独立
 | local/env/module/global write | CellId/绑定 ID、guard、初始化及 owner | G3；record 组合 G5，不用名称证明身份 |
 | object/array/own define | 分配身份、hole/length、key、descriptor、原型与定义次序 | G3/T07；定义不能降为普通赋值 |
 | create function/class | method、creation-site、home object、capture 契约 | G3，子方法失败不得发布父级完成 |
+
+当前 `ValueObjectAllocation::literal` 用类型化可选 pool slot 区分空对象与
+`CREATEOBJECTWITHBUFFER`。缓冲创建仍为每次执行的新分配，保留输入 PC、效果和
+结果，不能变成可共享常量或被纯值删除。导入不等于缓冲内容已证明：属性、方法、
+捕获和定义顺序仍需解析。现有空对象求值、初始化合并及 AST 校验明确拒绝有
+literal 的分配，禁止把尚未解析的缓冲静默输出成 `{}`。
 | super/receiver init | owner、初始化前后状态、range 协议证书 | G3，共用操作管线 |
 | exception/suspend/resume | phase、completion、owner、可见状态 | G4，禁止普通 SSA 适配器接收 |
 

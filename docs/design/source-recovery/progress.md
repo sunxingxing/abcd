@@ -556,6 +556,24 @@ conditional versus closed captures, identity and memory rejection; they remain
 uncompiled/unrun. No generated JS, benchmarks or RSS measurement ran. Full
 file-driven family traversal and publication are still pending; T07 remains open.
 
+### T07 Buffered Object Value Import
+
+ValueObjectAllocation now retains an optional typed original literal pool slot.
+Both modern buffered-object IC widths import with the original PC/effects and
+fresh result. Empty and buffered objects cannot compare equal accidentally.
+Evaluation, empty-object own-write folding, expression construction and actual
+AST operand checks explicitly refuse unresolved buffers rather than printing
+an empty object. Buffer contents/properties/methods remain unresolved obligations.
+
+Production targets built successfully. ABC-only conditional P3 method 7366 now
+advances past PC 24 and refuses import at PC 110 (opcode 126, external module
+load); G2 7559 still prepares 43 working operations. Neither report is executable
+source. Regression sources cover narrow/wide slots and mutations replacing or
+changing the literal slot, plus empty-object source-gate rejection. The existing
+no-child-proof creation test expectation was corrected to the current ownership
+failure. Tests were not compiled/run; no generated JS or RSS work ran. Rules
+stay 21 because buffered-object executable admission has not been opened.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

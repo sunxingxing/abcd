@@ -110,6 +110,7 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>) {
           static_cast<void>(Node<EmptyArrayExpr>(expression));
         } else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
+          RequireMeaning(!operation.literal, Error::kUnsupportedOperation);
           RequireMeaning(std::holds_alternative<EmptyObjectExpr>(tree_.expressions[expression.value].expression) ||
               std::holds_alternative<ObjectExpr>(tree_.expressions[expression.value].expression), Error::kOperator);
         } else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {

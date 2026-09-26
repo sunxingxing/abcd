@@ -75,6 +75,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueNamedRead{op.name};
     } else if constexpr (std::is_same_v<T, EmptyObjectCreation>) {
       return ValueObjectAllocation{};
+    } else if constexpr (std::is_same_v<T, BufferedObjectCreation>) {
+      return ValueObjectAllocation{op.literal};
     } else if constexpr (std::is_same_v<T, FunctionCreation>) {
       if ((op.kind != CreationKind::kFunction || op.home_object != HomeObjectInput::kCurrentFunction) &&
           (op.kind != CreationKind::kMethod || op.home_object != HomeObjectInput::kAccumulator))

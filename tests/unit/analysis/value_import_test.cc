@@ -114,6 +114,30 @@ int main() {
     changed.ops[0].operation = array ? ValueOperation{ValueObjectAllocation{}} : ValueOperation{ValueArrayAllocation{}};
     test::Check(VerifyImportedValues(changed, input, source, frame)->kind == ValueImportError::kInputMismatch);
   }
+  for (const bool wide : {false, true}) {
+    constexpr std::uint8_t kCacheLow = 0x34, kCacheHigh = 0x12;
+    constexpr std::uint8_t kLiteralLow = 0x78, kLiteralHigh = 0x56;
+    constexpr abc::PoolIndex kLiteral{0x5678};
+    const auto opcode = wide ? abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM16_ID16 :
+        abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16;
+    std::vector<std::uint8_t> bytes{static_cast<std::uint8_t>(opcode), kCacheLow};
+    if (wide) bytes.push_back(kCacheHigh);
+    bytes.insert(bytes.end(), {kLiteralLow, kLiteralHigh, returned});
+    const auto body = test::Body(bytes);
+    const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, frame.registers));
+    const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, input, frame.registers, frame.locals));
+    const auto value = std::get<ValueProgram>(ImportNormalValues(body, input, proof, frame));
+    test::Check(!VerifyImportedValues(value, input, proof, frame));
+    test::Check(std::get<ValueObjectAllocation>(value.ops[0].operation).literal == kLiteral);
+    test::Check(value.ops[0].use_count == 0 && value.ops[0].result &&
+        value.ops[0].normal == LanguageEffect::kAllocation);
+    auto changed = value;
+    std::get<ValueObjectAllocation>(changed.ops[0].operation).literal.reset();
+    test::Check(VerifyImportedValues(changed, input, proof, frame)->kind == ValueImportError::kInputMismatch);
+    changed = value;
+    ++std::get<ValueObjectAllocation>(changed.ops[0].operation).literal->value;
+    test::Check(VerifyImportedValues(changed, input, proof, frame)->kind == ValueImportError::kInputMismatch);
+  }
   for (const auto opcode : {abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8,
       abc::Opcode::kSTOWNBYNAME_IMM16_ID16_V8,
       abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8,

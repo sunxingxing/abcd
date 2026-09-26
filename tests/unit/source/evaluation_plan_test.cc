@@ -245,7 +245,10 @@ int main() {
       {0}, 0, analysis::HomeObjectInput::kCurrentFunction, 0}, true, {});
   creation.graph.blocks = {{{0}, 1, {0}, 0}};
   Check(OrderedEvaluation(creation.graph.ops[0]));
-  Check(std::get<EvaluationError>(BuildEvaluationPlan(creation.graph)) == EvaluationError::kUnsupportedOperation);
+  Check(std::get<EvaluationError>(BuildEvaluationPlan(creation.graph)) == EvaluationError::kOwnership);
+  // Importing a typed buffer reference never licenses printing an empty object.
+  Check(DescribeEvaluation(analysis::ValueObjectAllocation{}).has_value());
+  Check(!DescribeEvaluation(analysis::ValueObjectAllocation{abc::PoolIndex{0}}));
   const analysis::ValueOperation cells[]{analysis::ValueLexicalLoad{{{0}, {0}}},
       analysis::ValueLexicalStore{{{0}, {0}}}, analysis::ValueEnvironmentPush{1, {}},
       analysis::ValueEnvironmentPop{}, analysis::ValueCurrentEnvironment{}};

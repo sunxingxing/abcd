@@ -386,8 +386,10 @@ class ForestBuilder {
         return {};
       else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>)
         return Add(EmptyArrayExpr{}, origin);
-      else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>)
+      else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
+        Require(!operation.literal, Error::kUnsupportedOperation);
         return Add(EmptyObjectExpr{}, origin);
+      }
       else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
         Require(next_function_ < evaluation_.functions.size(), Error::kOwnership);
         const auto& function = evaluation_.functions[next_function_++];
