@@ -65,6 +65,11 @@ class OperandCheck {
           const auto* text = std::get_if<TextId>(&constants_.operations[i]);
           RequireMeaning(text && text->value < constants_.text_count, Error::kConstant);
           RequireMeaning(Literal<TextId>(expression) == *text, Error::kConstant);
+        } else if constexpr (std::is_same_v<T, analysis::ValueGlobalRead>) {
+          RequireMeaning(operation.lookup == analysis::GlobalLookup::kName, Error::kUnsupportedOperation);
+          const auto* name = std::get_if<NameId>(&constants_.operations[i]);
+          RequireMeaning(name && name->value < constants_.name_count &&
+              Node<GlobalNameExpr>(expression).name == *name, Error::kConstant);
         } else if constexpr (std::is_same_v<T, analysis::ValueInvoke>) {
           const auto& call = Node<CallExpr>(expression);
           Input(input(0), call.callee);
@@ -86,7 +91,6 @@ class OperandCheck {
           Arguments(op, construct.arguments, kConstructorPrefix, operation.arguments);
         } else {
           static_assert(std::is_same_v<T, analysis::ValueGuard> ||
-                        std::is_same_v<T, analysis::ValueGlobalRead> ||
                         std::is_same_v<T, analysis::ValueArrayAllocation> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueJump>);
           throw Error::kUnsupportedOperation;

@@ -58,11 +58,16 @@ struct NumberLiteral { std::uint64_t bits; };
 using TreeLiteral = std::variant<UndefinedLiteral, NullLiteral, BooleanLiteral,
                                  IntegerLiteral, NumberLiteral, TextId>;
 struct SymbolExpr { SymbolId symbol; };
+// Free global-name lookup, not a lexical Symbol or globalThis property read.
+// Publication additionally requires an unshadowed enclosing source context.
+struct GlobalNameExpr { NameId name; };
 struct ThisExpr { FunctionOwnerId owner; };
 struct ComputedKey { ExprId expression; };
 using MemberKey = std::variant<NameId, ComputedKey>;
 struct MemberExpr { ExprId base; MemberKey key; };
 enum class TreeUnary : std::uint8_t { kNot, kNegate, kBitNot, kPlus, kTypeof };
+// Unary operands are values, not unresolved References. In particular typeof
+// must perform GetValue (including a possible global lookup failure) first.
 struct UnaryExpr { TreeUnary operation; ExprId operand; };
 struct BinaryExpr { analysis::BinaryOperator operation; ExprId left; ExprId right; };
 enum class TreeLogical : std::uint8_t { kAnd, kOr };
@@ -78,7 +83,7 @@ struct ArgumentRange { std::uint32_t first; std::uint32_t count; };
 enum class CallReference : std::uint8_t { kValue, kMember };
 struct CallExpr { ExprId callee; ArgumentRange arguments; CallReference reference; };
 struct ConstructExpr { ExprId constructor; ArgumentRange arguments; };
-using TreeExpression = std::variant<TreeLiteral, SymbolExpr, ThisExpr, MemberExpr,
+using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
                                     CallExpr, ConstructExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };

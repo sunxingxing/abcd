@@ -42,7 +42,7 @@ std::size_t WriteSelectedClassMethod(
     const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
     const abc::ClassProperty& property, const ClassMemberTarget& target,
     std::u16string_view key, CreationExpansion& expansion,
-    std::ostream& output, LocalLexicalBudget budget) {
+    std::ostream& output, LocalLexicalBudget budget, const GlobalScope* scope) {
   auto* sink = dynamic_cast<CaptureBuffer*>(output.rdbuf());
   GeneratedPosition begin;
   if (!sink || !sink->Position(begin))
@@ -57,7 +57,7 @@ std::size_t WriteSelectedClassMethod(
   const analysis::SemanticBudget preparation{budget.bytes / kStageShares,
                                             budget.work / kStageShares};
   auto prepared = VerifiedFunction::PrepareClass(file, header, index, lookup,
-      roles, selection.sites, selection.site, selection.identity, preparation);
+      roles, selection.sites, selection.site, selection.identity, preparation, scope);
   auto* function = std::get_if<VerifiedFunction>(&prepared);
   if (!function) {
     const auto& failure = std::get<FunctionPrepareFailure>(prepared);
@@ -71,7 +71,7 @@ std::size_t WriteSelectedClassMethod(
   const ClassMethod method{std::get<abc::ClassMethod>(property.value), target.attributes,
       function->Frame(), property.placement, key, {}, EffectiveMethodKind::kOrdinary};
   auto printed = WriteClassMethod(method, std::move(*function), output, {begin.byte},
-      budget.output, {budget.bytes - preparation.bytes, budget.work - preparation.work});
+      budget.output, {budget.bytes - preparation.bytes, budget.work - preparation.work}, scope);
   auto* emission = std::get_if<FunctionEmission>(&printed);
   if (!emission) {
     if (const auto* error = std::get_if<FunctionEmitError>(&printed)) throw ClassFailure{*error};

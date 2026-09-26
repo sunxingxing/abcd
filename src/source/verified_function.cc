@@ -12,6 +12,7 @@
 #include "parameter_names.h"
 #include "tree_constants.h"
 #include "tree_semantics.h"
+#include "tree_globals.h"
 
 namespace abcd::source {
 struct VerifiedFunction::Storage {
@@ -144,7 +145,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::ClassMethodSites& sites,
     analysis::ClassSiteId site, RouteInputIdentity identity,
-    analysis::SemanticBudget allowance) {
+    analysis::SemanticBudget allowance, const GlobalScope* scope) {
   std::optional<MethodRouteReceipt> receipt;
   try {
     PreparationBudget budget(allowance);
@@ -274,6 +275,15 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       }
       budget.Admit(verified->allocated_bytes, 1); budget.Step(verified->work);
     }
+    const auto globals = VerifyTreeGlobals(function->tree, scope, budget.Remaining());
+    const auto* checked_globals = std::get_if<TreeGlobals>(&globals);
+    if (!checked_globals) {
+      const auto error = std::get<TreeGlobalError>(globals);
+      if (error == TreeGlobalError::kResourceLimit) throw Error::kResourceLimit;
+      if (error == TreeGlobalError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kContext;
+    }
+    budget.Step(checked_globals->work);
     auto census = BuildFunctionAbi(graph, function->tree, context->Frame(),
                                   context->Site().length, budget.Remaining());
     auto* abi = std::get_if<ConstructedAbi>(&census);

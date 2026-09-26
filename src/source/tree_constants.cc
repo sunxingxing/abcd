@@ -43,6 +43,8 @@ class ConstantResolver {
         uses_.push_back({write->name, id, TextUse::kMember});
       else if (const auto* string = std::get_if<analysis::ValueString>(&op.operation))
         uses_.push_back({string->string, id, TextUse::kLiteral});
+      else if (const auto* global = std::get_if<analysis::ValueGlobalRead>(&op.operation))
+        uses_.push_back({global->name, id, TextUse::kMember});
       else {
         const auto* unary = std::get_if<analysis::ValueUnary>(&op.operation);
         const auto* branch = std::get_if<analysis::ValueBranch>(&op.operation);

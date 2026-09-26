@@ -18,7 +18,8 @@ class FunctionEmission {
   FunctionEmission& operator=(FunctionEmission&&) noexcept = default;
   [[nodiscard]] static std::variant<FunctionEmission, TreePrintError> Write(
       VerifiedFunction function, std::ostream& output, GeneratedOffset destination,
-      EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {});
+      EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
+      const GlobalScope* scope = nullptr);
   [[nodiscard]] const VerifiedFunction& Function() const { return function_; }
   [[nodiscard]] const PrintedFunction& Positions() const { return positions_; }
   [[nodiscard]] GeneratedRange Destination() const { return destination_; }

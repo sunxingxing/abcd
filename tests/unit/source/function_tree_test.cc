@@ -2,6 +2,7 @@
 #include "../../../src/source/tree_structure.h"
 #include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/function_abi.h"
+#include "../../../src/source/tree_globals.h"
 
 #include <cstdlib>
 #include <type_traits>
@@ -53,6 +54,7 @@ class Fixture {
       graph.uses.push_back(occurrence);
     }
     if (std::holds_alternative<analysis::ValueNamedRead>(operation) ||
+        std::holds_alternative<analysis::ValueGlobalRead>(operation) ||
         std::holds_alternative<analysis::ValueNamedWrite>(operation))
       constants.emplace_back(NameId{1});
     else constants.emplace_back(std::monostate{});
@@ -309,6 +311,31 @@ void SemanticMutations() {
 }
 
 enum class CallCase { kValue, kMember, kConstruct };
+void GlobalTree() {
+  using namespace analysis;
+  Fixture fixture;
+  fixture.Add(0, 0, 31, ValueGlobalRead{GlobalLookup::kName, {0}}, true, {}, LanguageEffect::kGlobalAccess);
+  fixture.Add(0, 1, 35, ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{2}}});
+  fixture.graph.blocks = {{{0}, 2, {0}, 0}};
+  auto built = fixture.Build();
+  Check(std::holds_alternative<ConstructedFunction>(built));
+  auto tree = std::get<ConstructedFunction>(std::move(built)).tree;
+  Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+  const GlobalScope scope{};
+  Check(std::holds_alternative<TreeGlobals>(VerifyTreeGlobals(tree, &scope)));
+  Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, nullptr)) == TreeGlobalError::kMissingContext);
+  bool changed = false;
+  for (auto& node : tree.expressions) {
+    if (auto* global = std::get_if<GlobalNameExpr>(&node.expression)) {
+      global->name = {0}; changed = true;
+    }
+  }
+  Check(changed);
+  Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kShadowed);
+  Check(std::get<TreeSemanticError>(fixture.Verify(tree)) == TreeSemanticError::kConstant);
+  std::get<ValueGlobalRead>(fixture.graph.ops[0].operation).lookup = GlobalLookup::kVar;
+  Check(std::get<FunctionTreeError>(fixture.Build()) == FunctionTreeError::kExpression);
+}
 void CallTree(CallCase kind, std::uint32_t count, bool computed) {
   using namespace analysis;
   Fixture fixture;
@@ -369,6 +396,7 @@ int main() {
   NameAndConstantRefusals();
   PredicateSnapshot();
   SemanticMutations();
+  GlobalTree();
   for (const auto kind : {CallCase::kValue, CallCase::kMember, CallCase::kConstruct})
     for (const std::uint32_t count : {0U, 1U, 3U, 200U, 201U, 4096U})
       for (const bool computed : {false, true}) CallTree(kind, count, computed);

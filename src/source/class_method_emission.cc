@@ -15,7 +15,7 @@ bool SameFrame(const abc::FrameLayout& left, const abc::FrameLayout& right) {
 
 FunctionEmissionResult WriteClassMethod(const ClassMethod& method,
     VerifiedFunction function, std::ostream& output, GeneratedOffset destination,
-    EmitBudget output_budget, analysis::SemanticBudget scratch) {
+    EmitBudget output_budget, analysis::SemanticBudget scratch, const GlobalScope* scope) {
   const auto& site = function.Creation();
   if (method.member.target != site.target || method.member.kind != site.kind ||
       method.placement != site.placement) return FunctionEmitError::kCreation;
@@ -40,14 +40,14 @@ FunctionEmissionResult WriteClassMethod(const ClassMethod& method,
   }
 
   auto emitted = FunctionEmission::Write(std::move(function), output, destination,
-                                         output_budget, scratch);
+                                         output_budget, scratch, scope);
   if (auto* result = std::get_if<FunctionEmission>(&emitted)) return std::move(*result);
   return std::get<TreePrintError>(emitted);
 }
 
 std::variant<FunctionEmission, TreePrintError> FunctionEmission::Write(
     VerifiedFunction function, std::ostream& output, GeneratedOffset destination,
-    EmitBudget output_budget, analysis::SemanticBudget scratch) {
+    EmitBudget output_budget, analysis::SemanticBudget scratch, const GlobalScope* scope) {
   if (ValidateRouteReceipt(function.Receipt()) ||
       function.Receipt().stage != SourceStage::kTreeVerified)
     return TreePrintError::kUnsupportedContext;
@@ -55,7 +55,7 @@ std::variant<FunctionEmission, TreePrintError> FunctionEmission::Write(
   // a wrapped generated position. The caller counts the enclosing segment.
   output_budget.bytes = std::min(output_budget.bytes,
       std::numeric_limits<std::size_t>::max() - destination.byte);
-  auto printed = PrintFunctionTree(function, output, output_budget, scratch);
+  auto printed = PrintFunctionTree(function, output, output_budget, scratch, scope);
   auto* positions = std::get_if<PrintedFunction>(&printed);
   if (!positions) return std::get<TreePrintError>(printed);
   const GeneratedRange range{destination.byte, destination.byte + positions->bytes};

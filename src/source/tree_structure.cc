@@ -10,6 +10,7 @@
 #include <type_traits>
 
 #include "tree_checks.h"
+#include "abcd/source/global_reference.h"
 
 namespace abcd::source {
 namespace {
@@ -138,6 +139,12 @@ class StructureCheck {
         }
       } else if constexpr (std::is_same_v<T, SymbolExpr>) {
         scopes_.Reference(expression.symbol);
+      } else if constexpr (std::is_same_v<T, GlobalNameExpr>) {
+        RequireTree(expression.name.value < tree_.names.size(), Error::kRange);
+        // Identifier syntax only. The publication owner separately verifies
+        // local and enclosing bindings; an empty scope is not that proof.
+        budget_.Step(tree_.names[expression.name.value].size());
+        RequireTree(AllowsGlobalReference(tree_.names[expression.name.value], {}), Error::kBinding);
       } else if constexpr (std::is_same_v<T, ThisExpr>) {
         RequireTree(expression.owner == tree_.owner, Error::kBinding);
       } else if constexpr (std::is_same_v<T, MemberExpr>) {
@@ -228,6 +235,7 @@ class StructureCheck {
           add(node.value);
         } else {
           static_assert(std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
+                        std::is_same_v<T, GlobalNameExpr> ||
                         std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
                         std::is_same_v<T, ConstructExpr>);
         }

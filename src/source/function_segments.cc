@@ -40,6 +40,9 @@ void CheckFunctionSegments(std::span<const FunctionSegment> segments,
 }
 FunctionSegment RebaseFunctionSegment(const FunctionSegment& segment,
                                      const GeneratedPosition& origin) {
+  // Transport changes coordinates, not lexical enclosure. A new wrapper or
+  // binding set must go through source printing with its actual GlobalScope;
+  // a complete receipt is not permission to embed under new shadowing names.
   CheckFunctionSegment(segment);
   FunctionSegment result{segment.function, Rebase(segment.begin, origin), Rebase(segment.end, origin)};
   CheckFunctionSegment(result);

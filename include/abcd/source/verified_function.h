@@ -12,6 +12,7 @@
 #include "abcd/source/function_abi.h"
 
 namespace abcd::source {
+struct GlobalScope;
 enum class FunctionPrepareError : std::uint8_t {
   kContext, kBody, kValues, kControl, kEvaluation, kConstants, kParameters,
   kTree, kFileChanged, kResourceLimit, kWorkLimit, kAbi
@@ -28,6 +29,10 @@ struct FunctionPrepareFailure {
 // File identity, metadata, lookup, roles and sites must belong to the same
 // immutable input. Their caller-owned storage is outside the method allowance.
 // Successful preparation is not source emission or record completion.
+// The optional scope is the caller-proven complete generated enclosure, using
+// GlobalScope's existing trust contract. Absent scope refuses free global names.
+// Printing revalidates the destination scope; preparation cannot authorize a
+// later embedding under new shadowing declarations.
 class VerifiedFunction {
  public:
   VerifiedFunction(VerifiedFunction&&) noexcept;
@@ -38,7 +43,7 @@ class VerifiedFunction {
       const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
       const analysis::MethodRoleIndex& roles, const analysis::ClassMethodSites& sites,
       analysis::ClassSiteId site, RouteInputIdentity identity,
-      analysis::SemanticBudget budget = {});
+      analysis::SemanticBudget budget = {}, const GlobalScope* scope = nullptr);
   [[nodiscard]] const FunctionTree& Tree() const;
   [[nodiscard]] std::u16string_view Name() const;
   [[nodiscard]] const analysis::ClassMethodSite& Creation() const;

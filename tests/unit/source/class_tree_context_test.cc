@@ -2,6 +2,7 @@
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
+#include "abcd/source/global_reference.h"
 #include "../../support/function_segments.h"
 
 #include <unistd.h>
@@ -24,7 +25,7 @@ static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);
 void Check(bool condition) { if (!condition) std::abort(); }
 enum class DefaultEncoding { kNone, kInteger, kNegation };
-void Run(DefaultEncoding encoding = DefaultEncoding::kNone) {
+void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false) {
   const bool defaults = encoding != DefaultEncoding::kNone;
   constexpr std::uint32_t kPool = 64, kOwner = 80, kLiteral = 128, kCaller = 256,
       kConstructor = 300, kMember = 350, kCallerCode = 400, kMemberCode = 430, kName = 500;
@@ -34,6 +35,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone) {
   };
   word(kPool, kConstructor);
   word(kPool + sizeof(std::uint32_t), kLiteral);
+  word(kPool + 2 * sizeof(std::uint32_t), kName);
   word(kLiteral, 8);  // Four tag/value entries, including prototype split.
   bytes[kLiteral + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kString);
   word(kLiteral + 5, kName);
@@ -70,6 +72,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone) {
     member[kHeaderBytes + kBranchPc + 1] += kNegateBytes;
     member[kCodeSizeOffset] += kNegateBytes;
   }
+  if (global_typeof) {
+    constexpr std::uint8_t kReadGlobal = 0x3f, kTypeof = 0x1c, kGlobalBodyBytes = 7;
+    member = {0, 4, kGlobalBodyBytes, 0, kReadGlobal, 0, 2, 0, kTypeof, 0, kReturn};
+  }
   std::copy(caller.begin(), caller.end(), bytes.begin() + kCallerCode);
   std::copy(member.begin(), member.end(), bytes.begin() + kMemberCode);
   char path[] = "/tmp/abcd-class-tree-context-XXXXXX";
@@ -86,7 +92,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone) {
   header.layout = abc::DynamicLayout{};
   header.file_size = bytes.size();
   abc::MetadataIndex index;
-  index.regions.push_back({kCaller, kCallerCode, {}, {2, kPool}, {}, {}});
+  index.regions.push_back({kCaller, kCallerCode, {}, {3, kPool}, {}, {}});
   index.methods.resize(3);
   for (auto& method : index.methods) method.owner_offset = {kOwner};
   index.methods[0].offset = {kCaller};
@@ -111,6 +117,27 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone) {
   const auto& value = std::get<ClassTreeContext>(context);
   Check(value.Name() == u"run" && value.Frame().parameters == 1);
   Check(value.Callable() == CallableKind::kMethod && value.Mode() == Strictness::kStrict);
+  if (global_typeof) {
+    const GlobalScope scope{}; // Complete enclosure of this synthetic fixture.
+    const auto denied = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity);
+    Check(std::get<FunctionPrepareFailure>(denied).kind == FunctionPrepareError::kContext);
+    auto ready = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity, {}, &scope);
+    Check(std::holds_alternative<VerifiedFunction>(ready));
+    const auto& function = std::get<VerifiedFunction>(ready);
+    std::ostringstream output;
+    Check(std::get<TreePrintError>(PrintFunctionTree(function, output)) == TreePrintError::kUnsupportedContext);
+    Check(output.view().empty());
+    auto shadow = scope;
+    shadow.class_binding = "run";
+    Check(std::get<TreePrintError>(PrintFunctionTree(function, output, {}, {}, &shadow)) == TreePrintError::kUnsupportedContext);
+    Check(output.view().empty());
+    Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(function, output, {}, {}, &scope)));
+    Check(output.view().find("return (typeof (0, run));") != std::string_view::npos);
+    auto rejected = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity, {}, &shadow);
+    Check(std::get<FunctionPrepareFailure>(rejected).kind == FunctionPrepareError::kContext);
+    Check(unlink(path) == 0);
+    return;
+  }
   auto prepared = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity);
   Check(std::holds_alternative<VerifiedFunction>(prepared));
   const auto& function = std::get<VerifiedFunction>(prepared);
@@ -158,7 +185,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone) {
   std::ostringstream denied;
   Check(std::get<TreePrintError>(PrintFunctionTree(function, denied, {0})) == TreePrintError::kOutputLimit);
   Check(denied.view().empty());
-  Check(std::get<TreePrintError>(PrintFunctionTree(function, denied, {}, {0, 0})) == TreePrintError::kResourceLimit);
+  Check(std::get<TreePrintError>(PrintFunctionTree(function, denied, {}, {0, 0})) == TreePrintError::kWorkLimit);
   std::ostringstream broken;
   broken.setstate(std::ios::badbit);
   Check(std::get<TreePrintError>(PrintFunctionTree(function, broken)) == TreePrintError::kWrite);
@@ -216,4 +243,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone) {
   Check(unlink(path) == 0);
 }
 }  // namespace
-int main() { Run(); Run(DefaultEncoding::kInteger); Run(DefaultEncoding::kNegation); }
+int main() {
+  Run(); Run(DefaultEncoding::kInteger); Run(DefaultEncoding::kNegation);
+  Run(DefaultEncoding::kNone, true);
+}

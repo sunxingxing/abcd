@@ -255,13 +255,17 @@ class ForestBuilder {
         const auto* text = std::get_if<TextId>(&constant);
         Require(text && text->value < constants_.text_count, Error::kConstant);
         return Literal(*text, origin);
+      } else if constexpr (std::is_same_v<T, analysis::ValueGlobalRead>) {
+        Require(operation.lookup == analysis::GlobalLookup::kName, Error::kUnsupportedOperation);
+        const auto* name = std::get_if<NameId>(&constant);
+        Require(name && name->value < constants_.name_count, Error::kConstant);
+        return Add(GlobalNameExpr{*name}, origin);
       } else if constexpr (std::is_same_v<T, analysis::ValueReturn>)
         return operands[0];
       else if constexpr (std::is_same_v<T, analysis::ValueJump>)
         return {};
       else {
         static_assert(std::is_same_v<T, analysis::ValueGuard> ||
-                      std::is_same_v<T, analysis::ValueGlobalRead> ||
                       std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
                       std::is_same_v<T, analysis::ValueArrayAllocation> ||
                       std::is_same_v<T, analysis::ValueNop>);

@@ -42,8 +42,11 @@ struct PrintedFunction {
 // No bytecode, analysis or legacy writer is consulted. Input tree/stream storage
 // is caller-owned; temporary actions and returned positions share scratch.
 // Failure may leave partial output: callers must discard it, never publish it.
+// Globals require the actual complete destination GlobalScope, checked before
+// any output. The scope used during preparation is not transferable permission.
 [[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
     const VerifiedFunction& function, std::ostream& output,
-    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {});
+    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
+    const GlobalScope* scope = nullptr);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_TREE_PRINTER_H_

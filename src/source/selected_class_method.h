@@ -14,6 +14,6 @@ std::size_t WriteSelectedClassMethod(
     const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
     const abc::ClassProperty& property, const ClassMemberTarget& target,
     std::u16string_view key, CreationExpansion& expansion,
-    std::ostream& output, LocalLexicalBudget budget);
+    std::ostream& output, LocalLexicalBudget budget, const GlobalScope* scope);
 }  // namespace abcd::source
 #endif

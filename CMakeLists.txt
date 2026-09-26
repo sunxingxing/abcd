@@ -214,7 +214,7 @@ target_sources(abcd_source PRIVATE src/source/evaluation_shape.cc src/source/eva
 target_sources(abcd_source PRIVATE src/source/expression_forest.cc src/source/function_tree.cc)
 target_sources(abcd_source PRIVATE src/source/tree_structure.cc src/source/tree_scope.cc src/source/tree_origins.cc)
 target_sources(abcd_source PRIVATE src/source/tree_flow.cc)
-target_sources(abcd_source PRIVATE src/source/tree_operands.cc src/source/tree_correspondence_origins.cc src/source/tree_semantics.cc)
+target_sources(abcd_source PRIVATE src/source/tree_operands.cc src/source/tree_correspondence_origins.cc src/source/tree_semantics.cc src/source/tree_globals.cc)
 target_sources(abcd_source PRIVATE src/source/tree_constants.cc)
 target_sources(abcd_source PRIVATE src/source/class_tree_context.cc)
 target_sources(abcd_source PRIVATE src/source/verified_function.cc)
@@ -462,6 +462,9 @@ if(BUILD_TESTING)
   add_executable(call_plan_test tests/unit/source/call_plan_test.cc)
   target_link_libraries(call_plan_test PRIVATE abcd_source)
   add_test(NAME call_plan_test COMMAND call_plan_test)
+  add_executable(tree_globals_test tests/unit/source/tree_globals_test.cc)
+  target_link_libraries(tree_globals_test PRIVATE abcd_source)
+  add_test(NAME tree_globals_test COMMAND tree_globals_test)
   target_link_libraries(control_plan_test PRIVATE abcd_source)
   add_test(NAME control_plan_test COMMAND control_plan_test)
   target_link_libraries(value_phi_test PRIVATE abcd_analysis)
@@ -643,6 +646,9 @@ if(BUILD_TESTING)
         7586 854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e)
       add_test(NAME value_tree_call_slice_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_call_slice.mjs
+        $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+      add_test(NAME value_tree_global_call_slice_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_global_call_slice.mjs
         $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")

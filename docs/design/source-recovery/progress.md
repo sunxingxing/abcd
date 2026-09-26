@@ -1205,3 +1205,69 @@ evidence. Preserve the independent source-tree shadowing check and exact global
 read origin, and bind any embedding obligations to FunctionEmission so record
 assembly cannot place the method under a new shadow. Name lookup is not LDGLOBAL:
 do not substitute globalThis property syntax or introduce a new host assumption.
+
+### T04 G2 Global Names Through Record Embedding (Rules 13)
+
+GlobalNameExpr now represents a free global-name value lookup, distinct from
+SymbolExpr and MemberExpr. Only ValueGlobalRead/kName can lower to it; kVar
+remains refused because its IC-dependent domain is not proved equivalent.
+Same-file constant resolution supplies NameId, and independent IR/tree operand
+correspondence checks exact lookup kind and name identity.
+
+VerifyTreeGlobals rejects missing context, invalid identifiers and shadowing by
+any generated formal/local, record/import/enclosing parameter, class/self name
+or host realm binding. It consumes the existing caller-proven GlobalScope
+contract: shared complete sorted outer indexes are borrowed and queried, never
+copied or sorted per method. Local symbol names are sorted once per invocation.
+Complexity is O(E + S log S + G(log S + log B)) name comparisons, additionally
+charging compared characters; storage is O(S). This is deliberately conservative
+for disjoint local scopes. No name spelling proves a host intrinsic.
+
+The immutable VerifiedFunction factory checks the actual generated enclosure.
+PrintFunctionTree/FunctionEmission recheck the destination GlobalScope before
+writing any bytes, so a prepared function cannot silently acquire a new shadow.
+The verified tree retains the global-name requirements, not borrowed scope
+pointers. Coordinate-only segment transport must preserve lexical enclosure;
+new wrappers/bindings require reprinting with checked context. Class assembly
+passes its existing record scope plus actual generated class binding. Detached
+inspection does not invent an empty scope and still refuses global methods.
+
+Unary typeof now explicitly performs GetValue with `(typeof (0, operand))`.
+This preserves the ReferenceError from TRYLDGLOBALBYNAME of an absent name;
+printing `typeof Name` would incorrectly suppress that error. Calls already
+carry their own value/member reference mode. No globalThis rewrite, mutable
+intrinsic lookup, new host premise or generated-JS text analysis was introduced.
+
+Production abc_semantic/abc_structure builds exited 0. Fresh ABC-only inspection
+of G2 method 7559 in record 6897 via --record-value-slice now reaches Printed,
+rules 13, work_revision 1, complete METHOD coverage and legacy_writer_used=false.
+The 286-byte method lies at [2638,2924) in the still-legacy/incomplete record:
+
+```js
+aboutToBeDeleted() {
+  let $value0;
+  let $value1;
+  let $value2;
+  ($value0 = this.__curBp);
+  ($value0.aboutToBeDeleted());
+  ($value1 = SubscriberManager);
+  ($value2 = ($value1.Get()));
+  ($value2["delete"]((this.id__())));
+  (this.aboutToBeDeletedInternal());
+  return (void 0);
+}
+```
+
+Local positions: global read PC31 [139,156), property PC66 [212,221), argument
+call PC74 [211,224), outer call PC81 [192,226). PC77 is an elided copy, not a
+lost call. Detached --value-source refuses kContext/detail 0 without output.
+The enclosing record remains explicitly incomplete/non-executable; CLI exits 1.
+
+Unrun tests specify global-name correspondence, var refusal, missing/changed
+enclosures, local/import/class/self/realm collisions, budgets, 200/201/4096
+indexed-binding cases and global typeof GetValue syntax. The G2 integration
+specification checks the actual embedded method/PC spans and an independent
+getter/global/callee/argument/call trace with arbitrary JS thrown values at each
+event. Tests and generated-JS execution remain paused; no behavior, RSS or full
+T04 acceptance claim is made. Next work includes independent application G2
+evidence, reference-aware snapshot reduction and remaining T06/T05 obligations.

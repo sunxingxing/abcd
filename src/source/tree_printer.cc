@@ -13,6 +13,7 @@
 #include "abcd/source/scalar_expression.h"
 #include "abcd/source/string_literal.h"
 #include "tree_print_tokens.h"
+#include "tree_globals.h"
 
 namespace abcd::source {
 namespace {
@@ -194,6 +195,7 @@ class TreePrinter {
     std::visit([&](auto value) { Literal(value); }, node);
   }
   void Expression(SymbolExpr node) { Name(node.symbol); }
+  void Expression(GlobalNameExpr node) { Identifier(tree_.names[node.name.value]); }
   void Expression(ThisExpr) { Append("this"); }
   void Member(ExprId base, const MemberKey& key) {
     if (const auto* name = std::get_if<NameId>(&key)) Push(PropertyKey{*name});
@@ -213,7 +215,13 @@ class TreePrinter {
   void Expression(const MemberExpr& node) { Member(node.base, node.key); }
   void Expression(UnaryExpr node) {
     Append("("); Append(TreeUnaryToken(node.operation));
-    Push(std::string_view(")")); Push(node.operand);
+    // Lifted typeof consumes an already obtained value. JS typeof Identifier
+    // suppresses an unresolvable-name error, unlike TRYLDGLOBALBYNAME followed
+    // by TYPEOF. Force GetValue without evaluating the operand twice.
+    if (node.operation == TreeUnary::kTypeof) {
+      Append("(0, "); Push(std::string_view("))"));
+    } else Push(std::string_view(")"));
+    Push(node.operand);
   }
   void Expression(BinaryExpr node) {
     Append("(");
@@ -361,9 +369,21 @@ class TreePrinter {
 
 std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
     const VerifiedFunction& function, std::ostream& output,
-    EmitBudget output_budget, analysis::SemanticBudget scratch) {
+    EmitBudget output_budget, analysis::SemanticBudget scratch, const GlobalScope* scope) {
   try {
-    return TreePrinter(function, output, output_budget, scratch).Print();
+    const auto globals = VerifyTreeGlobals(function.Tree(), scope, scratch);
+    const auto* checked = std::get_if<TreeGlobals>(&globals);
+    if (!checked) {
+      const auto error = std::get<TreeGlobalError>(globals);
+      if (error == TreeGlobalError::kResourceLimit) return Error::kResourceLimit;
+      if (error == TreeGlobalError::kWorkLimit) return Error::kWorkLimit;
+      return Error::kUnsupportedContext;
+    }
+    scratch.work -= checked->work;
+    auto result = TreePrinter(function, output, output_budget, scratch).Print();
+    result.work += checked->work;
+    result.allocated_bytes = std::max(result.allocated_bytes, checked->allocated_bytes);
+    return result;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit;

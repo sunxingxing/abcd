@@ -556,8 +556,13 @@ class ClassWriter {
         if (!roles_) throw ClassFailure{CreatedClassError::kMembers};
         if (module_ && index_.methods[target.position.value].owner_offset != owner_)
           throw ClassFailure{CreatedClassError::kModuleOwner};
+        std::optional<GlobalScope> scope;
+        if (enclosing_scope_) {
+          scope = *enclosing_scope_;
+          scope->class_binding = class_name;
+        }
         Account(WriteSelectedClassMethod(*selection, file_, header_, index_, lookup_,
-            *roles_, property, target, key, expansion_, output_, budget));
+            *roles_, property, target, key, expansion_, output_, budget, scope ? &*scope : nullptr));
         self_use = SelfBindingUse::kUnused;
         return;
       }

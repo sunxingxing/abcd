@@ -65,6 +65,7 @@ using FunctionEmissionResult =
 [[nodiscard]] FunctionEmissionResult WriteClassMethod(
     const ClassMethod& method, VerifiedFunction function,
     std::ostream& output, GeneratedOffset destination,
-    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {});
+    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
+    const GlobalScope* scope = nullptr);
 }  // namespace abcd::source
 #endif

@@ -205,9 +205,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Engine/rules provenance of the admission and stage semantics above. Bump
 // with any change to them; receipts signed under other rules are rejected
 // rather than reinterpreted.
-// Rules 12 retain name/var global reads in typed IR and ordered evaluation.
-// Their source admission still requires realm and lexical-shadowing proof.
-inline constexpr std::uint32_t kRouteEvidenceRules = 12;
+// Rules 13 admit global-name syntax only with checked local/enclosing bindings.
+// Destination scope is revalidated at printing; var lookup remains unsupported.
+inline constexpr std::uint32_t kRouteEvidenceRules = 13;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,
