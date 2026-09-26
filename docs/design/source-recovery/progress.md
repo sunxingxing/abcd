@@ -689,3 +689,43 @@ Production abc_semantic/abc_structure compilation passed after integration.
 Fresh ABC-only inspections still emit Pasteboard's selected segment at
 [2307,2464) and Immersive's complete standalone method 21082. Both retain the
 existing rules-7 method receipts and incomplete enclosing coverage.
+
+### T06 Value-IR Default Candidates
+
+Added default_candidates as a read-only Value-IR discovery stage. The old
+RecoverParameterDefaults consumes register SSA and already-folded SourceAst;
+its output is not reused as a new-route certificate. The new discovery starts
+at the invocation entry and follows only consecutive undefined-test diamonds.
+It records the original parameter entry, exact comparison/branch, both header
+edges, sole default-arm edge, and the phi's two incoming edge identities.
+The first ordinal must agree with encoded length; subsequent ordinals increase.
+Foreign arm/join predecessors, entry backedges, wrong comparison polarity,
+non-parameter tests, internal-value defaults and extra arm operations do not
+match. It does not search arbitrary body conditionals for defaults.
+
+Literal fallback operands are typed IR values. The numeric-negation case
+retains its original OpId and computes a Number-bit literal from an integer
+operand, preserving -0 and avoiding int32 negation overflow. Conservative
+operation effects are NOT deleted by this recognition: the original operation
+remains part of the candidate and later migration must prove the refinement.
+Arbitrary parameter/object coercion is not treated as a constant initializer.
+
+This is intentionally NOT a signature-migration certificate and is not yet
+consumed by source publication. No CFG, phi, declaration or signature changes
+occur. Next implementation must verify all original-entry/comparison/initializer
+uses, bind the merged parameter version, preserve signature origins, and prove
+parameter/default/body scope plus length/arguments compatibility before erasing
+the prologue. Explicit undefined defaults whose phi disappeared also still need
+a separate proof. ClassTreeContext's existing signature admission stays intact
+until that integration exists; candidate count is not decompilation coverage.
+
+Discovery uses dense block/phi occurrence indexes and bounded constant-size
+matching: O(B+E+O+V+U+P) time, O(B+V+P) admitted storage, no per-parameter graph
+walks. Returned capacity/work are separate from the admitted scratch peak.
+Unrun regression sources cover exact join edges, polarity, foreign entries,
+entry backedges, -1/-0, coercion rejection and resource/revision bounds. Tests,
+generated JS execution and RSS measurement remain paused.
+
+Production `abc_semantic` and `abc_structure` compilation completed successfully
+with the discovery module included. No default-parameter output success is
+claimed before its proof and publication integration.

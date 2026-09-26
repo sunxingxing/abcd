@@ -1,0 +1,249 @@
+#include "default_candidates.h"
+
+#include <array>
+#include <bit>
+#include <limits>
+#include <new>
+#include <stdexcept>
+
+namespace abcd::source {
+namespace {
+using namespace analysis;
+using Error = DefaultCandidateError;
+void Require(bool condition, Error error = Error::kInvalidGraph) {
+  if (!condition) throw error;
+}
+struct BlockFacts {
+  std::uint32_t predecessors = 0;
+  std::uint32_t operations = 0;
+  std::uint32_t phis = 0;
+  std::optional<OpId> last;
+  std::uint32_t value_operations = 0;
+  std::optional<OpId> value_op;
+  std::optional<ValueId> phi;
+  bool visited = false;
+};
+struct PhiFacts {
+  std::array<std::optional<UseId>, 2> inputs;
+  std::uint32_t count = 0;
+};
+class Finder {
+ public:
+  Finder(const ValueProgram& graph, const ParameterPlan& parameters,
+         SemanticBudget budget) : graph_(graph), parameters_(parameters), initial_(budget), budget_(budget) {}
+  DefaultCandidates Find(std::uint32_t length) {
+    Require(parameters_.revision == graph_.revision && parameters_.cfg_revision == graph_.cfg_revision,
+            Error::kRevision);
+    Require(length <= parameters_.formals.size());
+    constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
+    Require(parameters_.formals.size() <= kMaxId && graph_.ops.size() <= kMaxId &&
+            graph_.uses.size() <= kMaxId, Error::kResourceLimit);
+    DefaultCandidates result;
+    result.revision = graph_.revision;
+    result.cfg_revision = graph_.cfg_revision;
+    Admit(1, sizeof(DefaultCandidates));
+    if (length == parameters_.formals.size() || graph_.blocks.empty()) {
+      result.allocated_bytes = initial_.bytes - budget_.bytes;
+      return result;
+    }
+    Array(blocks_, graph_.blocks.size());
+    Array(phis_, graph_.values.size());
+    Index();
+    Admit(parameters_.formals.size() - length, sizeof(DefaultCandidate));
+    result.values.reserve(parameters_.formals.size() - length);
+    Admit(result.values.capacity() - (parameters_.formals.size() - length), sizeof(DefaultCandidate));
+    WorkBlockId header{0};
+    std::uint32_t next_parameter = length;
+    while (header.value < blocks_.size()) {
+      Step();
+      if (blocks_[header.value].visited) break;
+      blocks_[header.value].visited = true;
+      auto candidate = Match(header);
+      if (!candidate || candidate->parameter < next_parameter ||
+          (result.values.empty() && candidate->parameter != length)) break;
+      result.values.push_back(*candidate);
+      next_parameter = candidate->parameter + 1;
+      header = candidate->join;
+    }
+    // Persistent result only; scratch peak was admitted alongside it above.
+    result.allocated_bytes = sizeof(DefaultCandidates) + result.values.capacity() * sizeof(DefaultCandidate);
+    result.work = initial_.work - budget_.work;
+    return result;
+  }
+ private:
+  void Step(std::uint64_t count = 1) {
+    Require(count <= budget_.work, Error::kWorkLimit); budget_.work -= count;
+  }
+  void Admit(std::size_t count, std::size_t width) {
+    Require(count <= budget_.bytes / width, Error::kResourceLimit); budget_.bytes -= count * width;
+  }
+  template <class T> void Array(std::vector<T>& values, std::size_t count) {
+    Require(count <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
+    Admit(count, sizeof(T)); Step(count); values.resize(count);
+    Admit(values.capacity() - count, sizeof(T));
+  }
+  void Index() {
+    for (const auto& edge : graph_.edges) {
+      Step(); Require(edge.source.value < blocks_.size() && edge.target.value < blocks_.size());
+      auto& count = blocks_[edge.target.value].predecessors;
+      Require(count < std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit); ++count;
+    }
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      Step(); const auto& op = graph_.ops[i];
+      Require(op.block.value < blocks_.size());
+      if (op.life != ValueLife::kLive || std::holds_alternative<ValueNop>(op.operation)) continue;
+      auto& block = blocks_[op.block.value];
+      Require(i <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
+      ++block.operations; block.last = OpId{static_cast<std::uint32_t>(i)};
+      if (!std::holds_alternative<ValueJump>(op.operation)) {
+        ++block.value_operations; block.value_op = block.last;
+      }
+    }
+    for (std::size_t i = 0; i < graph_.values.size(); ++i) {
+      Step(); const auto& value = graph_.values[i];
+      if (value.life != ValueLife::kLive) continue;
+      if (const auto* phi = std::get_if<PhiDefinition>(&value.origin)) {
+        Require(phi->block.value < blocks_.size());
+        auto& block = blocks_[phi->block.value]; ++block.phis;
+        block.phi = ValueId{static_cast<std::uint32_t>(i)};
+      }
+    }
+    for (std::size_t i = 0; i < graph_.uses.size(); ++i) {
+      Step(); const auto& use = graph_.uses[i];
+      if (use.life != ValueLife::kLive) continue;
+      if (const auto* phi = std::get_if<ValueId>(&use.owner)) {
+        Require(phi->value < phis_.size());
+        auto& inputs = phis_[phi->value];
+        // Saturate at >2: only a two-predecessor join can match this candidate.
+        if (inputs.count < inputs.inputs.size()) {
+          Require(i <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
+          inputs.inputs[inputs.count] = UseId{static_cast<std::uint32_t>(i)};
+        }
+        if (inputs.count <= inputs.inputs.size()) ++inputs.count;
+      }
+    }
+  }
+  const OperandUse& Use(const ValueOp& op, std::uint32_t ordinal) {
+    Require(ordinal < op.use_count && op.first_use.value < graph_.uses.size() &&
+        ordinal < graph_.uses.size() - op.first_use.value);
+    const auto& use = graph_.uses[op.first_use.value + ordinal];
+    Require(use.life == ValueLife::kLive && use.purpose == ReadPurpose::kOperand);
+    return use;
+  }
+  const WorkEdge& Edge(const WorkBlock& block, std::uint32_t ordinal) {
+    Require(ordinal < block.edge_count && block.first_edge.value < graph_.edges.size() &&
+        ordinal < graph_.edges.size() - block.first_edge.value);
+    return graph_.edges[block.first_edge.value + ordinal];
+  }
+  std::optional<DefaultCandidate> Match(WorkBlockId header) {
+    const auto& facts = blocks_[header.value];
+    const auto& block = graph_.blocks[header.value];
+    if (header.value == 0 && facts.predecessors != 0) return {};
+    if (facts.operations != 2 || !facts.last || block.edge_count != 2) return {};
+    const auto& branch = graph_.ops[facts.last->value];
+    const auto* condition = std::get_if<ValueBranch>(&branch.operation);
+    if (!condition || branch.use_count != 1) return {};
+    const bool true_branch = condition->predicate == UnaryOperator::kTrueOrNonzeroNumber;
+    if (!true_branch && condition->predicate != UnaryOperator::kFalseOrZero) return {};
+    const auto* tested = std::get_if<ValueId>(&Use(branch, 0).operand);
+    if (!tested) return {};
+    Require(tested->value < graph_.values.size());
+    const auto* producer = std::get_if<OpResult>(&graph_.values[tested->value].origin);
+    if (!producer) return {};
+    Require(producer->op.value < graph_.ops.size());
+    const auto& comparison = graph_.ops[producer->op.value];
+    const auto* binary = std::get_if<ValueBinary>(&comparison.operation);
+    if (comparison.block != header || comparison.life != ValueLife::kLive || comparison.use_count != 2 ||
+        !binary || (binary->op != BinaryOperator::kStrictEqual && binary->op != BinaryOperator::kStrictNotEqual)) return {};
+    const auto& left = Use(comparison, 0).operand;
+    const auto& right = Use(comparison, 1).operand;
+    const auto undefined = [](const ValueOperand& operand) {
+      const auto* special = std::get_if<SpecialValue>(&operand);
+      return special && *special == SpecialValue::kUndefined;
+    };
+    const auto* entry = std::get_if<ValueId>(undefined(left) ? &right : undefined(right) ? &left : nullptr);
+    if (!entry) return {};
+    Require(entry->value < graph_.values.size());
+    const auto* definition = std::get_if<EntryDefinition>(&graph_.values[entry->value].origin);
+    const auto* parameter = definition ? std::get_if<ParameterEntry>(definition) : nullptr;
+    if (!parameter) return {};
+    Require(parameter->index < parameters_.formals.size() &&
+        parameters_.formals[parameter->index].entry == *entry);
+    const bool missing_taken = (binary->op == BinaryOperator::kStrictEqual) == true_branch;
+    const auto& first = Edge(block, 0);
+    const auto& second = Edge(block, 1);
+    if (first.kind == second.kind ||
+        (first.kind != FlowEdgeKind::kTaken && first.kind != FlowEdgeKind::kFallthrough) ||
+        (second.kind != FlowEdgeKind::kTaken && second.kind != FlowEdgeKind::kFallthrough)) return {};
+    const auto missing_ordinal = (first.kind == FlowEdgeKind::kTaken) == missing_taken ? 0U : 1U;
+    const EdgeId missing{block.first_edge.value + missing_ordinal};
+    const EdgeId present{block.first_edge.value + (1U - missing_ordinal)};
+    const auto arm = graph_.edges[missing.value].target;
+    const auto join = graph_.edges[present.value].target;
+    if (arm == join || arm == header || join == header || blocks_[arm.value].predecessors != 1 ||
+        blocks_[join.value].predecessors != 2 || blocks_[arm.value].phis != 0 ||
+        blocks_[join.value].phis != 1) return {};
+    const auto& arm_block = graph_.blocks[arm.value];
+    if (arm_block.edge_count != 1 || Edge(arm_block, 0).target != join) return {};
+    // Copy/literal transport was removed by the verified simplifier. Allow at
+    // most one value operation and one jump; actual value semantics below are
+    // restricted to numeric literal negation, not arbitrary unary coercion.
+    const auto& arm_facts = blocks_[arm.value];
+    if (arm_facts.value_operations > 1 || arm_facts.operations > arm_facts.value_operations + 1) return {};
+    const auto merged = *blocks_[join.value].phi;
+    const auto& phi = phis_[merged.value];
+    if (phi.count != 2) return {};
+    const OperandUse* fallback = nullptr;
+    bool incoming = false;
+    for (const auto input : phi.inputs) {
+      const auto& use = graph_.uses[input->value];
+      const auto* edge = use.incoming ? std::get_if<EdgeId>(&*use.incoming) : nullptr;
+      if (!edge || use.role != OperandRole::kPhiInput) return {};
+      if (*edge == present) {
+        const auto* value = std::get_if<ValueId>(&use.operand);
+        if (incoming || !value || *value != *entry) return {};
+        incoming = true;
+      } else if (*edge == arm_block.first_edge) {
+        if (fallback) return {};
+        fallback = &use;
+      } else return {};
+    }
+    if (!incoming || !fallback) return {};
+    auto literal = fallback->operand;
+    if (arm_facts.value_op) {
+      const auto& initializer = graph_.ops[arm_facts.value_op->value];
+      const auto* unary = std::get_if<ValueUnary>(&initializer.operation);
+      const auto* value = std::get_if<ValueId>(&literal);
+      if (!unary || unary->op != UnaryOperator::kNegate || initializer.use_count != 1 ||
+          !value || initializer.result != *value) return {};
+      const auto* integer = std::get_if<IntegerLiteral>(&Use(initializer, 0).operand);
+      if (!integer) return {};
+      // JS Number negation preserves -0 and can exceed int32. Do not negate in
+      // C++ int32 or collapse the sign bit into an integer default certificate.
+      // Keep the original op identity: its conservative effect/exception flags
+      // cannot be erased until the later operand-specific migration proof.
+      literal = Float64Bits{std::bit_cast<std::uint64_t>(-static_cast<double>(integer->value))};
+    } else if (std::holds_alternative<ValueId>(literal)) return {};
+    if (const auto* special = std::get_if<SpecialValue>(&literal);
+        special && *special != SpecialValue::kUndefined && *special != SpecialValue::kNull &&
+        *special != SpecialValue::kTrue && *special != SpecialValue::kFalse) return {};
+    return DefaultCandidate{parameter->index, *entry, merged, literal, arm_facts.value_op,
+        producer->op, *facts.last, header, arm, join, present, missing, arm_block.first_edge};
+  }
+  const ValueProgram& graph_;
+  const ParameterPlan& parameters_;
+  SemanticBudget initial_;
+  SemanticBudget budget_;
+  std::vector<BlockFacts> blocks_;
+  std::vector<PhiFacts> phis_;
+};
+}  // namespace
+std::variant<DefaultCandidates, DefaultCandidateError> FindDefaultCandidates(
+    const analysis::ValueProgram& graph, const ParameterPlan& parameters,
+    std::uint32_t length, analysis::SemanticBudget budget) {
+  try { return Finder(graph, parameters, budget).Find(length);
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+}  // namespace abcd::source
