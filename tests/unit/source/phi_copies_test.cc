@@ -1,4 +1,5 @@
 #include "../../../src/source/phi_copies.h"
+#include "../../../src/source/binding_plan.h"
 
 #include <bit>
 #include <cstdlib>
@@ -89,10 +90,68 @@ void EntryAndScaling() {
       Check(std::holds_alternative<MethodEntryKey>(plan.bundles[0].incoming) == loop);
       Check(plan.bundles[0].schedule.temporaries == 0);
       Check(plan.bundles[1].schedule.temporaries == (loop && count > 1 ? 1U : 0U));
+      const auto evaluated = BuildEvaluationPlan(graph);
+      Check(std::holds_alternative<EvaluationPlan>(evaluated));
+      const auto& evaluation = std::get<EvaluationPlan>(evaluated);
+      Check(evaluation.phis && evaluation.phis->bundles.size() == 2);
+      const auto bound = BuildBindingPlan(graph, evaluation, 1);
+      Check(std::holds_alternative<BindingPlan>(bound));
+      const auto& bindings = std::get<BindingPlan>(bound);
+      for (std::uint32_t i = 1; i <= count; ++i) {
+        const auto symbol = std::get<SymbolId>(bindings.values[i]);
+        Check(std::get<PhiBinding>(bindings.symbols[symbol.value]).value == ValueId{i});
+      }
+      Check(bindings.cycle_bases.size() == 2 && !bindings.cycle_bases[0]);
+      Check(bindings.cycle_bases[1].has_value() == (loop && count > 1));
+      if (const auto base = bindings.cycle_bases[1]) {
+        const auto cycle = std::get<CycleBinding>(bindings.symbols[base->value]);
+        Check(cycle.bundle == 1 && cycle.temporary == CopyTempId{0});
+      }
+      auto missing = evaluation;
+      missing.phis.reset();
+      Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, missing)) == EvaluationError::kLivePhi);
       constexpr std::uint64_t kWorkPerInputLogBound = 512;
       Check(plan.work <= kWorkPerInputLogBound * graph.uses.size() * std::bit_width(graph.uses.size()));
     }
   }
 }
+void PhiInputSnapshot() {
+  ValueProgram graph;
+  graph.values = {{EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), {}},
+                  {OpResult{{0}}, ValueKinds::Language(), {}},
+                  {PhiDefinition{{1}}, ValueKinds::Language(), {}}};
+  graph.blocks = {{{0}, 2, {0}, 2}, {{2}, 1, {2}, 0}};
+  graph.edges = {{{0}, {1}, FlowEdgeKind::kTaken, 0}, {{0}, {1}, FlowEdgeKind::kFallthrough, 1}};
+  const auto effects = LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
+  graph.ops = {
+      {ValueNamedRead{{0}}, {0}, 0, {0}, 1, ValueId{1}, effects, effects, ExceptionalCompletion::kMayThrow, {0}},
+      {ValueBranch{UnaryOperator::kToBoolean}, {0}, 1, {1}, 1, {}, LanguageEffect::kNone,
+       LanguageEffect::kNone, ExceptionalCompletion::kImpossible, {1}},
+      {ValueReturn{}, {1}, 0, {2}, 1, {}, LanguageEffect::kNone,
+       LanguageEffect::kNone, ExceptionalCompletion::kImpossible, {2}}};
+  Append(graph, {OpId{0}, OperandRole::kBase, ReadPurpose::kOperand, ValueId{0}, {}, {}, {}, {}});
+  Append(graph, {OpId{1}, OperandRole::kCondition, ReadPurpose::kOperand, ValueId{0}, {}, {}, {}, {}});
+  Append(graph, {OpId{2}, OperandRole::kReturnValue, ReadPurpose::kOperand, ValueId{2}, {}, {}, {}, {}});
+  Append(graph, {ValueId{2}, OperandRole::kPhiInput, ReadPurpose::kOperand, ValueId{1}, EdgeId{0}, {}, {}, {}});
+  Append(graph, {ValueId{2}, OperandRole::kPhiInput, ReadPurpose::kOperand, ValueId{0}, EdgeId{1}, {}, {}, {}});
+  const auto built = BuildEvaluationPlan(graph);
+  Check(std::holds_alternative<EvaluationPlan>(built));
+  const auto& evaluation = std::get<EvaluationPlan>(built);
+  Check(evaluation.operations[0].kind == EvaluationKind::kRoot);
+  Check(evaluation.operations[0].temporary == TemporaryReason::kCrossRegionValue);
+  const auto bound = BuildBindingPlan(graph, evaluation, 1);
+  Check(std::holds_alternative<BindingPlan>(bound));
+  const auto& bindings = std::get<BindingPlan>(bound);
+  const auto snapshot = std::get<SymbolId>(bindings.values[1]);
+  Check(std::get<SnapshotBinding>(bindings.symbols[snapshot.value]).producer == OpId{0});
+  const auto phi = std::get<SymbolId>(bindings.values[2]);
+  Check(phi != snapshot && std::get<PhiBinding>(bindings.symbols[phi.value]).value == ValueId{2});
+  auto forged = evaluation;
+  forged.operations[0] = {EvaluationKind::kInline, UseId{3}, {}};
+  Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kOwnership);
+  forged = evaluation;
+  forged.phis->bundles[0].schedule.steps.clear();
+  Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kLivePhi);
+}
 }  // namespace
-int main() { Mutations(); EntryAndScaling(); }
+int main() { Mutations(); EntryAndScaling(); PhiInputSnapshot(); }

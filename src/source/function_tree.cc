@@ -377,6 +377,9 @@ std::variant<ConstructedFunction, FunctionTreeError> BuildFunctionTree(
     const EvaluationPlan& evaluation, FunctionSyntax syntax,
     ExpressionConstants constants, analysis::SemanticBudget budget) {
   try {
+    // Phi locations are now planned, but edge assignments are not yet emitted
+    // or independently checked here. Never publish declarations without them.
+    Require(!evaluation.phis, Error::kBinding);
     return TreeBuilder(graph, control, evaluation, std::move(syntax), constants, budget).Build();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

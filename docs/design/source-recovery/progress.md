@@ -1357,3 +1357,38 @@ source certificate: provisional symbols, edge-specific AST placement, default
 initialization ordering, loops and final tree correspondence remain to be wired.
 Existing evaluation/source admission still refuses live phis. Rules remain 13;
 T05 and the overall objective are not complete.
+
+### T05 Evaluation and Provisional Phi Bindings
+
+EvaluationPlan now owns optional PhiCopies whenever live phis are present.
+Planning constructs that plan with the same remaining grant; independent
+evaluation checking freshly verifies its revisions, occurrence coverage, flow
+availability and symbolic copy schedules. Missing or forged phi plans refuse.
+Phi uses read already assigned provisional locations rather than recursively
+expanding incoming expressions. An operation result used by a phi remains a
+root snapshot at its original evaluation point, with CrossRegionValue reason
+for a sole incoming-edge use; multiple uses still have MultipleUses reason.
+The verifier rejects forged inlining into a phi-owned UseId.
+
+BindingPlan now creates distinct typed PhiBinding entries and per-bundle
+CycleBinding entries, with optional dense temporary-symbol bases. Parameters
+remain first and unchanged, and normal result snapshots remain distinct from
+phi locations. Symbol-count arithmetic, retained storage and traversal work are
+bounded; no interference graph, source parameter reassignment or cell alias is
+introduced. Cyclic and entry-key plans are representable here without claiming
+that the current acyclic control/tree printer can emit them.
+
+BuildFunctionTree explicitly refuses evaluation plans containing phi bundles
+until edge-specific assignments and independent AST correspondence exist.
+This gate prevents a partial implementation from emitting mere declarations
+with missing incoming writes. No new phi-source coverage or rule version is
+claimed. The next integration step must implement those concrete placements,
+not weaken this guard in isolation.
+
+Production abc_semantic/abc_structure builds exited 0. ABC-only inspection of
+the existing G2 record slice still emits method 7559 with Printed/complete METHOD
+coverage and 286 bytes under rules 13. Unrun test sources extend entry/parallel
+edge and 200/201/4096-phi fixtures through evaluation and binding, and cover
+getter-result snapshots, missing/forged phi plans and independent cycle-temp
+symbols. Tests, generated-JS execution and RSS remain paused. T05 and T00-T12
+remain incomplete.

@@ -30,6 +30,22 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
     step(graph.uses.size()); step(graph.uses.size()); step(graph.uses.size());
     if (const auto error = analysis::VerifyValueUses(graph, graph.uses.size()))
       return *error == analysis::ValueGraphError::kResourceLimit ? Error::kResourceLimit : Error::kInvalidGraph;
+    bool has_phi = false;
+    for (const auto& value : graph.values) {
+      step();
+      has_phi |= value.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::PhiDefinition>(value.origin);
+    }
+    Require(has_phi == plan.phis.has_value(), Error::kLivePhi);
+    if (plan.phis) {
+      const auto checked = VerifyPhiCopies(graph, *plan.phis, {bytes, work});
+      if (const auto* error = std::get_if<PhiCopyError>(&checked)) {
+        if (*error == PhiCopyError::kResourceLimit) return Error::kResourceLimit;
+        if (*error == PhiCopyError::kWorkLimit) return Error::kWorkLimit;
+        return Error::kLivePhi;
+      }
+      step(std::get<std::uint64_t>(checked));
+    }
     admit(graph.ops.size(), sizeof(EvaluationFrame));
     admit(graph.ops.size(), sizeof(EvaluationVisit));
     step(graph.ops.size()); step(graph.ops.size());
@@ -64,9 +80,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
         if (used) {
           const auto& use = graph.uses[graph.values[op.result->value].first_use->value];
           const auto* owner = std::get_if<analysis::OpId>(&use.owner);
-          Require(owner != nullptr, Error::kLivePhi);
           const auto reason = use.next ? TemporaryReason::kMultipleUses
-              : graph.ops[owner->value].block != op.block ? TemporaryReason::kCrossRegionValue
+              : !owner || graph.ops[owner->value].block != op.block ? TemporaryReason::kCrossRegionValue
               : PredicateSnapshot(graph, graph.ops[owner->value], use.operand)
                   ? TemporaryReason::kPredicateSnapshot : TemporaryReason::kEffectSnapshot;
           Require(placement.temporary == reason, Error::kOwnership);
@@ -108,7 +123,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
             const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use_id.value].operand);
             if (!value) continue;
             const auto& definition = graph.values[value->value];
-            Require(!std::holds_alternative<analysis::PhiDefinition>(definition.origin), Error::kLivePhi);
+            // The independently checked phi plan establishes incoming values.
+            // A phi use reads its binding; it never expands an input subtree.
             const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
             if (!result) continue;
             const auto& producer = graph.ops[result->op.value];

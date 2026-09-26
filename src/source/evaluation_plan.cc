@@ -30,12 +30,25 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     step(graph.uses.size()); step(graph.uses.size()); step(graph.uses.size());
     if (const auto error = analysis::VerifyValueUses(graph, graph.uses.size()))
       return *error == analysis::ValueGraphError::kResourceLimit ? Error::kResourceLimit : Error::kInvalidGraph;
+    bool has_phi = false;
     for (const auto& value : graph.values) {
       step();
-      Require(value.life != analysis::ValueLife::kLive ||
-          !std::holds_alternative<analysis::PhiDefinition>(value.origin), Error::kLivePhi);
+      has_phi |= value.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::PhiDefinition>(value.origin);
     }
     EvaluationPlan plan{graph.revision, graph.cfg_revision, {}};
+    if (has_phi) {
+      auto copies = BuildPhiCopies(graph, {bytes, work});
+      auto* phis = std::get_if<PhiCopies>(&copies);
+      if (!phis) {
+        const auto error = std::get<PhiCopyError>(copies);
+        if (error == PhiCopyError::kResourceLimit) return Error::kResourceLimit;
+        if (error == PhiCopyError::kWorkLimit) return Error::kWorkLimit;
+        return Error::kLivePhi;
+      }
+      admit(phis->allocated_bytes, 1); step(phis->work);
+      plan.phis = std::move(*phis);
+    }
     admit(graph.ops.size(), sizeof(OpEvaluation));
     admit(graph.ops.size(), sizeof(EffectInterval));
     step(graph.ops.size()); step(graph.ops.size());
@@ -68,8 +81,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
           if (occurrence.next) placement.temporary = TemporaryReason::kMultipleUses;
           else {
             const auto* owner = std::get_if<analysis::OpId>(&occurrence.owner);
-            Require(owner != nullptr, Error::kLivePhi);
-            placement.temporary = graph.ops[owner->value].block != op.block
+            placement.temporary = !owner || graph.ops[owner->value].block != op.block
                 ? TemporaryReason::kCrossRegionValue
                 : PredicateSnapshot(graph, graph.ops[owner->value], occurrence.operand)
                     ? TemporaryReason::kPredicateSnapshot : TemporaryReason::kEffectSnapshot;
@@ -115,7 +127,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     const auto checked = VerifyEvaluationPlan(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<EvaluationError>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
-    plan.allocated_bytes = plan.operations.capacity() * sizeof(OpEvaluation);
+    plan.allocated_bytes = plan.operations.capacity() * sizeof(OpEvaluation) +
+        (plan.phis ? plan.phis->allocated_bytes : 0);
     plan.work = budget.work - work;
     return plan;
   } catch (Error error) { return error;

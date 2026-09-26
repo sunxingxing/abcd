@@ -14,14 +14,20 @@ struct SnapshotBinding {
   analysis::OpId producer;
   TemporaryReason reason;
 };
-using BindingSource = std::variant<ParameterBinding, SnapshotBinding>;
+struct PhiBinding { analysis::ValueId value; analysis::WorkBlockId block; };
+struct CycleBinding { std::uint32_t bundle; CopyTempId temporary; };
+using BindingSource = std::variant<ParameterBinding, SnapshotBinding, PhiBinding, CycleBinding>;
 struct BindingPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   std::vector<ValueBinding> values;
-  // Parameter symbols precede snapshots, including unused formal parameters.
+  // Parameters precede value snapshots/phis and then per-bundle cycle temps,
+  // including unused formal parameters.
   // Names and lexical declarations are assigned by tree construction, not SSA.
   std::vector<BindingSource> symbols;
+  // Optional first cycle-temp symbol per incoming bundle, followed by that
+  // bundle's dense CopyTempIds. No temporary is shared between edge bundles.
+  std::vector<std::optional<SymbolId>> cycle_bases;
   std::uint32_t parameter_count = 0;
   ParameterPlan parameters;
   std::size_t allocated_bytes = 0;

@@ -3,6 +3,7 @@
 
 #include <span>
 #include "abcd/source/source_tree.h"
+#include "phi_copies.h"
 
 namespace abcd::source {
 enum class EvaluationKind : std::uint8_t { kRemoved, kRoot, kInline };
@@ -15,6 +16,9 @@ struct EvaluationPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   std::vector<OpEvaluation> operations;
+  // Phi input copies execute at incoming boundaries, outside expression trees.
+  // This proves their values/schedules, not their eventual AST edge placement.
+  std::optional<PhiCopies> phis;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
