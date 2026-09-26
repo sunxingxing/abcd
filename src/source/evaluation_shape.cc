@@ -52,6 +52,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return EvaluationShape{kConstruct, true, op.arguments};
     else {
       static_assert(std::is_same_v<T, analysis::ValueGuard> ||
+                    std::is_same_v<T, analysis::ValueOwnWrite> ||
                     std::is_same_v<T, analysis::ValueNop>);
       return {};
     }
@@ -75,6 +76,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                     std::is_same_v<T, analysis::ValueGlobalRead> ||
                     std::is_same_v<T, analysis::ValuePropertyRead> ||
                     std::is_same_v<T, analysis::ValueNamedWrite> ||
+                    std::is_same_v<T, analysis::ValueOwnWrite> ||
                     std::is_same_v<T, analysis::ValueBranch> ||
                     std::is_same_v<T, analysis::ValueReturn> ||
                     std::is_same_v<T, analysis::ValueJump> ||

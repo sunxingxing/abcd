@@ -77,6 +77,12 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueObjectAllocation{};
     } else if constexpr (std::is_same_v<T, NamedWrite>) {
       return ValueNamedWrite{op.name};
+    } else if constexpr (std::is_same_v<T, OwnWrite>) {
+      switch (op.kind) {
+        case OwnWriteKind::kStore: case OwnWriteKind::kDefineField:
+          return ValueOwnWrite{op.kind, op.name, op.cache_slot};
+      }
+      throw ValueImportFailure{Error::kUnsupportedOperation, {}};
     } else if constexpr (std::is_same_v<T, BranchOperation>) {
       return ValueBranch{op.predicate.op};
     } else if constexpr (std::is_same_v<T, JumpOperation>) {

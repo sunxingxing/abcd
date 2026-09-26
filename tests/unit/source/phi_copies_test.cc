@@ -216,7 +216,7 @@ void EdgeSyntax() {
     std::vector<bool> owned(forest.expressions.size());
     for (std::uint32_t edge = 0; edge < 2; ++edge) {
       const auto& range = forest.edges[edge];
-      Check(range.incoming == IncomingKey{EdgeId{edge}} && range.count == count && range.first == edge * count);
+      Check(std::get<EdgeId>(range.incoming) == EdgeId{edge} && range.count == count && range.first == edge * count);
       const auto& schedule = evaluation.phis->bundles[edge].schedule;
       for (std::uint32_t i = 0; i < count; ++i) {
         const auto root = forest.edge_assignments[range.first + i];
@@ -327,8 +327,8 @@ void DiamondSyntax() {
   const auto tree = Tree(graph, evaluation, {constants, 2});
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, tree));
-  Check(flow.copies.size() == 2 && flow.copies[0].incoming == IncomingKey{EdgeId{2}} &&
-      flow.copies[1].incoming == IncomingKey{EdgeId{3}});
+  Check(flow.copies.size() == 2 && std::get<EdgeId>(flow.copies[0].incoming) == EdgeId{2} &&
+      std::get<EdgeId>(flow.copies[1].incoming) == EdgeId{3});
   Check(flow.snapshots[1] && flow.snapshots[3] && flow.phis[3]);
   for (std::size_t i = 0; i < flow.copies.size(); ++i) {
     const auto root = flow.copies[i].expressions[0];

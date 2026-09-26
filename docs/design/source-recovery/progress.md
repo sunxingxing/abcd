@@ -52,6 +52,24 @@ at ContextStage; its instructions include async/exception operations and it is
 not a successful ordinary-loop sample. T05 real-loop acceptance, T07 LiteralPlan,
 cells/captures and the overall T00-T12 goal remain incomplete.
 
+### T07 Own-Property Import
+
+Added ValueOwnWrite, preserving own-store versus DefineField, pool name and IC
+slot. Operand import retains receiver/accumulator read order and accumulator
+preservation; input correspondence covers metadata and normal/exception effects.
+Pure erasure explicitly excludes the new operation. Source evaluation/lowering
+still refuses it until descriptor-aware initialization can be independently
+proved. No Object.defineProperty global assumption or ordinary-assignment
+substitution is introduced. Rules remain 17: this does not expand source syntax.
+
+Production abc_semantic/abc_structure builds exited 0. Added unrun specifications
+cover all four named formats, wide cache metadata, accumulator preservation,
+kind/name/cache/assignment mutations and source-stage refusal. Also corrected
+uncompiled earlier phi tests to compare EdgeId alternatives rather than requiring
+equality on the entire IncomingKey variant. Tests remain uncompiled/unrun.
+ABC-only inspection of real P3 method 7366 still reports ContextStage refusal,
+not a new success; creation/capture and object initialization remain required.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

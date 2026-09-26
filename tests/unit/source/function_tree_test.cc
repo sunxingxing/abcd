@@ -457,6 +457,22 @@ void FreshAggregates() {
     Check(flow.snapshots[0].has_value());
   }
 }
+void OwnDefinitionRefusal() {
+  using namespace analysis;
+  for (const auto kind : {OwnWriteKind::kStore, OwnWriteKind::kDefineField}) {
+    Fixture fixture;
+    constexpr std::uint16_t kCacheSlot = 0;
+    fixture.Add(0, 0, 0, ValueOwnWrite{kind, {0}, kCacheSlot}, false,
+        {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue, ValueId{1}}}, kWrite);
+    fixture.Add(0, 1, 5, ValueReturn{}, false,
+        {{OperandRole::kReturnValue, SpecialValue::kUndefined}});
+    fixture.graph.blocks = {{{0}, 2, {0}, 0}};
+    // A typed imported definition cannot acquire assignment semantics through
+    // the ordinary property writer without a separate descriptor/identity proof.
+    Check(std::get<EvaluationError>(BuildEvaluationPlan(fixture.graph)) ==
+        EvaluationError::kUnsupportedOperation);
+  }
+}
 }  // namespace
 int main() {
   BranchTree();
@@ -467,6 +483,7 @@ int main() {
   GlobalTree();
   LoopTree();
   FreshAggregates();
+  OwnDefinitionRefusal();
   for (const auto kind : {CallCase::kValue, CallCase::kMember, CallCase::kConstruct})
     for (const std::uint32_t count : {0U, 1U, 3U, 200U, 201U, 4096U})
       for (const bool computed : {false, true}) CallTree(kind, count, computed);

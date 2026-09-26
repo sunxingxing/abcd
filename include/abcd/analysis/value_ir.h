@@ -95,6 +95,15 @@ struct ValueUnary { UnaryOperator op; bool operator==(const ValueUnary&) const =
 struct ValueBinary { BinaryOperator op; bool operator==(const ValueBinary&) const = default; };
 struct ValueNamedRead { abc::PoolIndex name; bool operator==(const ValueNamedRead&) const = default; };
 struct ValueNamedWrite { abc::PoolIndex name; bool operator==(const ValueNamedWrite&) const = default; };
+// Own definition is not [[Set]]. Keep the pinned operation family and IC slot
+// even when both forms target a named property; source equivalence needs an
+// allocation/descriptor proof, not just a syntactically valid assignment.
+struct ValueOwnWrite {
+  OwnWriteKind kind;
+  abc::PoolIndex name;
+  std::uint16_t cache_slot;
+  bool operator==(const ValueOwnWrite&) const = default;
+};
 struct ValuePropertyRead { bool operator==(const ValuePropertyRead&) const = default; };
 struct ValueBranch { UnaryOperator predicate; bool operator==(const ValueBranch&) const = default; };
 struct ValueJump { bool operator==(const ValueJump&) const = default; };
@@ -124,7 +133,7 @@ struct ValueConstruct {
   bool operator==(const ValueConstruct&) const = default;
 };
 using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
-    ValueNamedRead, ValueNamedWrite, ValuePropertyRead, ValueBranch, ValueJump,
+    ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValuePropertyRead, ValueBranch, ValueJump,
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation,
     ValueInvoke, ValueConstruct>;
 struct ValueOp {

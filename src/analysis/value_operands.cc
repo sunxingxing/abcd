@@ -48,7 +48,7 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
     } else if constexpr (std::is_same_v<T, NamedRead>) {
       Append(plan, OperandRole::kBase, Accumulator{});
       plan.write = Accumulator{};
-    } else if constexpr (std::is_same_v<T, NamedWrite>) {
+    } else if constexpr (std::is_same_v<T, NamedWrite> || std::is_same_v<T, OwnWrite>) {
       Append(plan, OperandRole::kBase, op.object);
       Append(plan, OperandRole::kStoredValue, Accumulator{});
     } else if constexpr (std::is_same_v<T, BranchOperation>) {

@@ -95,6 +95,7 @@ class OperandCheck {
           static_cast<void>(Node<EmptyObjectExpr>(expression));
         } else {
           static_assert(std::is_same_v<T, analysis::ValueGuard> ||
+                        std::is_same_v<T, analysis::ValueOwnWrite> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueJump>);
           throw Error::kUnsupportedOperation;
         }

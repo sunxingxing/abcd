@@ -114,4 +114,49 @@ int main() {
     changed.ops[0].operation = array ? ValueOperation{ValueObjectAllocation{}} : ValueOperation{ValueArrayAllocation{}};
     test::Check(VerifyImportedValues(changed, input, source, frame)->kind == ValueImportError::kInputMismatch);
   }
+  for (const auto opcode : {abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8,
+      abc::Opcode::kSTOWNBYNAME_IMM16_ID16_V8,
+      abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8,
+      abc::Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8}) {
+    constexpr std::uint8_t kReceiver = 0, kValue = 1;
+    constexpr std::uint8_t kCacheLow = 0x34, kCacheHigh = 0x12;
+    constexpr std::uint8_t kNameLow = 0x78, kNameHigh = 0x56;
+    constexpr std::uint16_t kName = 0x5678, kWideCache = 0x1234;
+    const bool wide = opcode == abc::Opcode::kSTOWNBYNAME_IMM16_ID16_V8;
+    const bool store = wide || opcode == abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8;
+    std::vector<std::uint8_t> bytes{static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), kValue,
+        static_cast<std::uint8_t>(opcode), kCacheLow};
+    if (wide) bytes.push_back(kCacheHigh);
+    bytes.insert(bytes.end(), {kNameLow, kNameHigh, kReceiver, returned});
+    const auto body = test::Body(bytes);
+    const auto built = BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, frame.registers);
+    const auto& input = std::get<SemanticMethod>(built);
+    const auto checked = VerifySemanticSource(body, input, frame.registers, frame.locals);
+    const auto& proof = std::get<SemanticProof>(checked);
+    const auto imported = ImportNormalValues(body, input, proof, frame);
+    const auto& graph = std::get<ValueProgram>(imported);
+    test::Check(!VerifyImportedValues(graph, input, proof, frame));
+    const auto& op = graph.ops[1];
+    const auto& write = std::get<ValueOwnWrite>(op.operation);
+    test::Check(write.kind == (store ? OwnWriteKind::kStore : OwnWriteKind::kDefineField));
+    test::Check(write.name.value == kName && write.cache_slot == (wide ? kWideCache : kCacheLow));
+    test::Check(!op.result && op.use_count == 2 && op.exceptional == ExceptionalCompletion::kMayThrow);
+    test::Check(graph.uses[op.first_use.value].role == OperandRole::kBase);
+    const auto& stored = graph.uses[op.first_use.value + 1];
+    test::Check(stored.role == OperandRole::kStoredValue &&
+        std::get<ValueId>(stored.operand) ==
+        std::get<ValueId>(graph.uses[graph.ops[2].first_use.value].operand));
+    auto changed = graph;
+    changed.ops[1].operation = ValueNamedWrite{write.name};
+    test::Check(VerifyImportedValues(changed, input, proof, frame)->kind == ValueImportError::kInputMismatch);
+    changed = graph;
+    std::get<ValueOwnWrite>(changed.ops[1].operation).cache_slot ^= 1;
+    test::Check(VerifyImportedValues(changed, input, proof, frame)->kind == ValueImportError::kInputMismatch);
+    changed = graph;
+    std::get<ValueOwnWrite>(changed.ops[1].operation).kind = store ? OwnWriteKind::kDefineField : OwnWriteKind::kStore;
+    test::Check(VerifyImportedValues(changed, input, proof, frame)->kind == ValueImportError::kInputMismatch);
+    changed = graph;
+    ++std::get<ValueOwnWrite>(changed.ops[1].operation).name.value;
+    test::Check(VerifyImportedValues(changed, input, proof, frame)->kind == ValueImportError::kInputMismatch);
+  }
 }

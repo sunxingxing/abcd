@@ -13,6 +13,7 @@ route still requires an identity envelope and correspondence verification.
 | Computed property read | Base, Key | assignment destination |
 | NamedRead | Base from accumulator; name retained as pool index | accumulator |
 | NamedWrite | Base from object register, StoredValue from accumulator | absent |
+| OwnWrite | Base, StoredValue; own-store/DefineField kind, name and IC slot retained | absent; accumulator preserved |
 | BranchOperation | Condition from predicate input; predicate enum retained | absent |
 | ReturnOperation | ReturnValue; literal undefined remains a literal | absent |
 | StringLoad | no value operand; string retained as pool index | accumulator |
@@ -62,6 +63,24 @@ No buffered entries or subsequent writes are folded into these empty nodes.
 T07 still requires LiteralPlan for own-property descriptors, computed key
 conversion, prototype behavior, array holes/length, escape and initialization
 order; named assignment must not stand in for own-define semantics.
+
+OwnWrite now imports as ValueOwnWrite, distinct from ValueNamedWrite. Both
+STOWNBYNAME widths retain their IC slot, name pool index and own-store kind;
+DEFINEFIELDBYNAME/DEFINEPROPERTYBYNAME retain the shared pinned DefineField kind.
+The original InputSite and profile still distinguish the two encoded instructions.
+Read occurrences preserve receiver then accumulator order, normal completion
+does not define a new accumulator value, and normal/pre-throw effects plus the
+exceptional exit remain attached to the original PC. Correspondence rejects
+replacement by ordinary named assignment or mutations of kind/name/cache slot.
+
+Pinned provenance: existing LiftOwnWrite and the locked v7 interpreter handlers
+in `ecmascript/interpreter/interpreter-inl.cpp` route own-store through UseOwn
+and StOwnByName, and field/property definition through SlowRuntimeStub::DefineField.
+Those distinctions are deliberately not flattened by source evaluation:
+ValueOwnWrite remains an explicit unsupported operation there pending LiteralPlan
+and independent descriptor/escape/identity/initialization proof. Import success
+is not source success. This adds no graph traversal, alias approximation or
+quadratic per-object scan; import and correspondence retain their existing bound.
 
 Inputs remain borrowed only during import. Output graph, correspondence and
 use links are owned. SSA values map once to work IDs; operation results are
