@@ -53,8 +53,8 @@ their remaining work grant; scratch is admitted alongside retained topology.
 
 This does not yet bind IncomingCell to an enclosing AST symbol, include
 child-only referenced cells in parent declarations, close transitive writes,
-or emit nested function expressions. CellEvaluation still refuses unresolved
-incoming cells. Independent child-tree and actual-scope checks remain required
+or emit nested function expressions. The default CellEvaluation route still
+refuses unresolved incoming cells. Independent child-tree and actual-scope checks remain required
 before either the parent or child can receive executable-source evidence.
 
 Conditional FunctionValues now retains file/method/record identity and a checked
@@ -92,6 +92,43 @@ retains O(K+U), not O(Cc): it never copies or scans unrelated child locals.
 Original and working queries plus the independent check share a call budget.
 Source scope visibility, per-iteration AST placement, child completion and SCC
 closure are still separate pending obligations; this is not closure output.
+
+## Conditional Capture Syntax
+
+IncomingCells::kConditional now allows leaf-child evaluation through the same
+BuildEvaluationPlan, BindingPlan, ExpressionForest and FunctionTree pipeline.
+Default admission remains kReject. Neither mode changes ClosureWrites::Unknown:
+this step does not accept unverified nested creations or assume their writes.
+Incoming reads retain IncomingInitialization; mutable storage is still distinct
+from scalar snapshots, with normal ordered read/write effects preserved.
+
+FunctionSyntax receives explicit CaptureSyntax entries in incoming CellId order.
+Each supplies a qualified enclosing CapturedSymbol and a resolved name-arena
+entry, not a lexical depth encoded in source text. The constructed FunctionTree
+owns TreeCapture aliases in a kCaptures scope outside parameter/body scopes.
+These aliases use kCapture symbols and ordinary SymbolExpr/SymbolTarget nodes.
+They generate no local DeclarationStmt and the capture scope is not an emitted
+block. Actual source target existence, name equality and creation-site visibility
+are still parent/family obligations, not facts certified by this child tree.
+
+TreeScopeCheck activates capture aliases before formals, checks their census,
+and rejects a parameter/local shadowing an actual captured reference. It forbids
+declaring an alias in the body or claiming the child's own owner as its target.
+TreeFlow derives incoming CellId-to-SymbolId correspondence from the actual
+capture table; TreeOperands checks read/write identities against that result.
+Local allocation declarations retain their original scopes and PCs. ABI census
+recognizes explicit capture symbols as free bindings, not invented parameters.
+
+Names that collide currently refuse through these checks; capture-aware renaming
+and enclosing-target validation remain required integration, not inferred from
+target numeric IDs. VerifyTreeSemantics remains a conditional body proof.
+VerifiedFunction's standalone route explicitly rejects conditional cell mode
+and capture-bearing trees; its current printer also rejects them. No conditional
+tree can obtain executable publication merely by passing syntax/operand checks.
+The added binding/flow passes are linear in symbols/cells/captures beyond the
+existing name sort and graph checks; storage accounting includes capture arenas.
+
+## Original Capture Evidence
 
 The caller must supply one unchanged, freshly verified SemanticMethod,
 EnvironmentFlow, LocalAccessPlan, DefinedCaptures and ClosureWrites premise.

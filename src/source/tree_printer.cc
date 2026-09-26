@@ -41,7 +41,7 @@ class TreePrinter {
         limit_(limit.bytes), initial_(scratch), remaining_(scratch) {}
   PrintedFunction Print() {
     if (!function_.ClassCreation() || tree_.callable != CallableKind::kMethod ||
-        tree_.strictness != Strictness::kStrict || tree_.self)
+        tree_.strictness != Strictness::kStrict || tree_.self || tree_.capture_scope || !tree_.captures.empty())
       throw Error::kUnsupportedContext;
     result_.identity = tree_.identity;
     result_.method = tree_.method;

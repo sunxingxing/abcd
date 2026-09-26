@@ -26,8 +26,8 @@ enum class CallableKind : std::uint8_t {
   kAsyncFunction, kAsyncMethod
 };
 enum class Strictness : std::uint8_t { kStrict, kSloppy };
-enum class ScopeKind : std::uint8_t { kParameters, kFunctionBody, kBlock };
-enum class BindingKind : std::uint8_t { kParameter, kLocal, kFunctionSelf, kCompilerTemporary };
+enum class ScopeKind : std::uint8_t { kParameters, kFunctionBody, kBlock, kCaptures };
+enum class BindingKind : std::uint8_t { kParameter, kLocal, kFunctionSelf, kCompilerTemporary, kCapture };
 enum class NameEvidence : std::uint8_t { kMetadata, kDebugRange, kSynthesized };
 enum class DeclarationKind : std::uint8_t { kParameter, kLet, kConst };
 enum class TemporaryReason : std::uint8_t {
@@ -51,6 +51,14 @@ struct TreeParameter {
   std::optional<ExprId> initializer;
   bool rest = false;
 };
+struct CapturedSymbol {
+  FunctionOwnerId owner;
+  SymbolId symbol;
+  bool operator==(const CapturedSymbol&) const = default;
+};
+// A local AST reference to an enclosing source binding, not a declaration or
+// copied scalar. A family/creation check must validate target and spelling.
+struct TreeCapture { SymbolId symbol; CapturedSymbol target; };
 struct UndefinedLiteral {};
 struct NullLiteral {};
 struct BooleanLiteral { bool value; };
@@ -166,8 +174,10 @@ struct FunctionTree {
   std::optional<SymbolId> self;
   ScopeId parameter_scope;
   ScopeId body_scope;
+  std::optional<ScopeId> capture_scope;
   StmtId body;
   std::vector<TreeParameter> parameters;
+  std::vector<TreeCapture> captures;
   std::vector<TreeScope> scopes;
   std::vector<TreeSymbol> symbols;
   std::vector<std::u16string> names;

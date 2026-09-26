@@ -409,6 +409,30 @@ and 200/201 distinct incoming cells alongside unrelated child locals. Tests
 are uncompiled/unrun; generated JS, benchmarks and RSS remain paused. T07 and
 the T00-T12 objective remain unfinished.
 
+### T07 Conditional Incoming Cells in the Shared AST
+
+IncomingCells::kConditional now uses the existing evaluation/expression/tree
+pipeline for leaf children. Incoming initialization remains an owner premise;
+closure-write assumptions remain Unknown and nested creations are not admitted.
+CaptureSyntax supplies typed enclosing symbol references. FunctionTree stores
+capture aliases in a separate enclosing scope, never as local declarations.
+TreeScope checks alias census and shadowing; TreeFlow derives actual incoming
+cell symbols and TreeOperands checks accesses. Scalar snapshots stay separate.
+ABI census treats explicit captures as free bindings, not extra parameters.
+
+Standalone VerifiedFunction and its current printer explicitly reject these
+conditional trees. CaptureCells-to-enclosing-symbol integration, capture-aware
+name selection, actual creation visibility, child expressions and transitive/SCC
+proofs are still pending. This is AST capability, not new executable coverage.
+
+Production abc_semantic and abc_structure builds succeeded. ABC-only G2 method
+7559 remains Printed/complete METHOD under rules 20, range [2638,2924), while
+its record is incomplete. New capture_tree_test sources specify ordinary/arrow
+leaf trees, local versus capture declarations, 200/201 distinct incoming cells,
+shadowing/owner/census mutations and retained snapshots across a captured write.
+They remain uncompiled/unrun under the testing pause. No JS execution, benchmark
+or RSS measurement was performed. T07 and T00-T12 remain unfinished.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

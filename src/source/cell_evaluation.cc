@@ -23,10 +23,15 @@ class Quota {
  private:
   analysis::SemanticBudget initial_, left_;
 };
-void Identities(const analysis::ValueProgram& graph, const CellPlan& cells, Quota& quota) {
+void Identities(const analysis::ValueProgram& graph, const CellPlan& cells, IncomingCells incoming, Quota& quota) {
+  switch (incoming) {
+    case IncomingCells::kReject: case IncomingCells::kConditional: break;
+    default: throw Error::kInitialization;
+  }
   for (const auto& cell : cells.cells) {
     quota.Step(1);
-    if (!std::holds_alternative<AllocatedCell>(cell.storage)) throw Error::kInitialization;
+    if (std::holds_alternative<IncomingCell>(cell.storage) && incoming == IncomingCells::kReject)
+      throw Error::kInitialization;
   }
   for (const auto& op : graph.ops) {
     quota.Step(1);
@@ -56,14 +61,14 @@ std::variant<std::uint64_t, CellEvaluationError> VerifyCellEvaluation(
     quota.Admit(environments.allocated_bytes); quota.Step(environments.work);
     quota.Step(Take(VerifyCellInitializations(graph, environments, plan.cells,
         analysis::ClosureWrites::kUnknown, plan.initialization, quota.Remaining()), Error::kInitialization));
-    Identities(graph, plan.cells, quota);
+    Identities(graph, plan.cells, plan.incoming, quota);
     return quota.Work();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
 std::variant<CellEvaluation, CellEvaluationError> BuildCellEvaluation(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget) {
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming) {
   try {
     Quota quota(budget); quota.Admit(sizeof(CellEvaluation));
     auto environments = Take(analysis::BuildValueEnvironments(graph, quota.Remaining()), Error::kEnvironment);
@@ -73,9 +78,9 @@ std::variant<CellEvaluation, CellEvaluationError> BuildCellEvaluation(
     auto initialization = Take(BuildCellInitializations(graph, environments, cells,
         analysis::ClosureWrites::kUnknown, quota.Remaining()), Error::kInitialization);
     quota.Admit(initialization.allocated_bytes); quota.Step(initialization.work);
-    Identities(graph, cells, quota);
+    Identities(graph, cells, incoming, quota);
     const auto retained = sizeof(CellEvaluation) + cells.allocated_bytes + initialization.allocated_bytes;
-    return CellEvaluation{std::move(cells), std::move(initialization), retained, quota.Work()};
+    return CellEvaluation{std::move(cells), std::move(initialization), incoming, retained, quota.Work()};
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

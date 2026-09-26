@@ -139,6 +139,7 @@ std::size_t SyntaxStorage(const FunctionSyntax& syntax) {
   // All components have already passed bounded admission in this invocation.
   // Recredit only storage subsequently moved into the syntax builder.
   std::size_t bytes = syntax.parameters.capacity() * sizeof(ParameterSyntax) +
+      syntax.captures.capacity() * sizeof(CaptureSyntax) +
       (syntax.names.capacity() + syntax.texts.capacity()) * sizeof(std::u16string);
   for (const auto& name : syntax.names) bytes += (name.capacity() + 1) * sizeof(char16_t);
   for (const auto& text : syntax.texts) bytes += (text.capacity() + 1) * sizeof(char16_t);
@@ -309,6 +310,10 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       if (error == EvaluationError::kWorkLimit) throw Error::kWorkLimit;
       throw Error::kEvaluation;
     }
+    // Standalone preparation has no enclosing capture-tree certificate.
+    // Conditional child evaluation must never be promoted through this route.
+    if (evaluation->cells && evaluation->cells->incoming != IncomingCells::kReject)
+      throw Error::kEvaluation;
     budget.Admit(evaluation->allocated_bytes, 1); budget.Step(evaluation->work);
     auto constants_result = ResolveTreeConstants(file, header, index, method.offset, graph, budget.Remaining());
     auto* constants = std::get_if<TreeConstants>(&constants_result);
@@ -344,7 +349,8 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       if (error == FunctionTreeError::kWorkLimit) throw Error::kWorkLimit;
       throw Error::kTree;
     }
-    if (function->tree.parameters.size() != context->Frame().parameters ||
+    if (function->tree.capture_scope || !function->tree.captures.empty() ||
+        function->tree.parameters.size() != context->Frame().parameters ||
         function->tree.callable != context->Callable() || function->tree.strictness != context->Mode() ||
         function->tree.method != context->Target() || function->tree.identity != context->Identity()) throw Error::kTree;
     if (function->allocated_bytes < transferred) throw Error::kTree;

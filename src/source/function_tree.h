@@ -9,6 +9,12 @@ struct ParameterSyntax {
   std::optional<NameId> name;
   NameEvidence evidence = NameEvidence::kSynthesized;
 };
+struct CaptureSyntax {
+  CellId cell;
+  CapturedSymbol target;
+  NameId name;
+  NameEvidence evidence = NameEvidence::kSynthesized;
+};
 struct FunctionSyntax {
   RouteInputIdentity identity;
   abc::EntityOffset method;
@@ -18,6 +24,9 @@ struct FunctionSyntax {
   std::vector<ParameterSyntax> parameters;
   std::vector<std::u16string> names;
   std::vector<std::u16string> texts;
+  // Sorted incoming CellIds only. Names refer to the supplied name arena;
+  // actual enclosing owner/scope and spelling need a separate creation check.
+  std::vector<CaptureSyntax> captures;
 };
 struct ConstructedFunction {
   FunctionTree tree;

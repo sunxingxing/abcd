@@ -38,6 +38,7 @@ class FlowCheck {
   TreeFlow Run() {
     IndexPlacements();
     CheckBodyOrigin();
+    CapturedCells();
     auto first_child = Declarations();
     edges_->Consume(analysis::MethodEntryKey{},
         std::get<BlockStmt>(tree_.statements[tree_.body.value].statement), first_child);
@@ -119,7 +120,7 @@ class FlowCheck {
       const auto& symbol = tree_.symbols[i];
       if (symbol.kind == BindingKind::kParameter) {
         Require(!declared_[i] && !assigned_[i], Error::kSnapshot);
-      } else if (symbol.kind == BindingKind::kLocal) {
+      } else if (symbol.kind == BindingKind::kLocal || symbol.kind == BindingKind::kCapture) {
         Require(declared_[i] && !assigned_[i], Error::kSnapshot);
       } else Require(declared_[i] && assigned_[i], Error::kSnapshot);
     }
@@ -132,6 +133,25 @@ class FlowCheck {
   }
 
  private:
+  void CapturedCells() {
+    std::size_t next = 0;
+    if (evaluation_.cells) {
+      const auto& cells = evaluation_.cells->cells.cells;
+      for (std::size_t i = 0; i < cells.size(); ++i) {
+        budget_.Step();
+        if (!std::holds_alternative<IncomingCell>(cells[i].storage)) continue;
+        Require(evaluation_.cells->incoming == IncomingCells::kConditional && next < tree_.captures.size(), Error::kPlacement);
+        const auto symbol = tree_.captures[next++].symbol;
+        Require(symbol.value < tree_.symbols.size(), Error::kPlacement);
+        const auto& binding = tree_.symbols[symbol.value];
+        Require(binding.kind == BindingKind::kCapture && tree_.capture_scope == binding.scope &&
+            binding.declaration == DeclarationKind::kLet && !binding.temporary && !declared_[symbol.value], Error::kPlacement);
+        declared_[symbol.value] = 1;
+        flow_.cells[i] = symbol;
+      }
+    }
+    Require(next == tree_.captures.size(), Error::kPlacement);
+  }
   void CellDeclarations(analysis::OpId allocation, const BlockStmt& block, std::uint32_t& child) {
     Require(evaluation_.cells.has_value(), Error::kEvaluation);
     if (!std::holds_alternative<analysis::ValueEnvironmentPush>(graph_.ops[allocation.value].operation)) return;
@@ -140,14 +160,12 @@ class FlowCheck {
         [&](const Cell& item, analysis::OpId site) {
           budget_.Step();
           const auto* local = std::get_if<AllocatedCell>(&item.storage);
-          Require(local != nullptr, Error::kEvaluation);
-          return local->allocation < site;
+          return local && local->allocation < site;
         });
     for (; cell != cells.end(); ++cell) {
       budget_.Step();
       const auto* local = std::get_if<AllocatedCell>(&cell->storage);
-      Require(local != nullptr, Error::kEvaluation);
-      if (local->allocation != allocation) break;
+      if (!local || local->allocation != allocation) break;
       Require(child < block.child_count, Error::kSequence);
       const auto& statement = tree_.statements[tree_.children[block.first_child + child++].value];
       const auto* declaration = std::get_if<DeclarationStmt>(&statement.statement);
@@ -307,7 +325,7 @@ class FlowCheck {
     for (const auto& symbol : tree_.symbols) {
       budget_.Step();
       Require(symbol.kind == BindingKind::kParameter || symbol.kind == BindingKind::kCompilerTemporary ||
-              symbol.kind == BindingKind::kLocal,
+              symbol.kind == BindingKind::kLocal || symbol.kind == BindingKind::kCapture,
               Error::kSnapshot);
     }
     return count;

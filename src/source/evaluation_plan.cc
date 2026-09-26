@@ -12,8 +12,9 @@ struct EffectInterval { std::uint32_t count = 0; std::uint32_t end = 0; };
 }  // namespace
 
 std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget) {
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming) {
   try {
+    Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
     auto work = budget.work;
     auto bytes = budget.bytes;
     const auto step = [&](std::size_t count = 1) {
@@ -69,7 +70,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
       }
     }
     if (has_cells) {
-      auto built = BuildCellEvaluation(graph, {bytes, work});
+      auto built = BuildCellEvaluation(graph, {bytes, work}, incoming);
       if (const auto* error = std::get_if<CellEvaluationError>(&built)) {
         if (*error == CellEvaluationError::kResourceLimit) return Error::kResourceLimit;
         if (*error == CellEvaluationError::kWorkLimit) return Error::kWorkLimit;

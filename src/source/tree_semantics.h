@@ -22,6 +22,9 @@ struct TreeSemantics {
 // For an initialized-formal residual graph, this proves only the body. Native
 // defaults and SignaturePlacement need VerifyDefaultSignature as well as ABI
 // validation; tree structure alone is not prologue-migration permission.
+// Conditional incoming-cell evaluation proves references to the child's
+// explicit capture symbols, not those symbols' enclosing targets or spelling.
+// A parent creation/family proof must close those obligations before printing.
 [[nodiscard]] std::variant<TreeSemantics, TreeSemanticError> VerifyTreeSemantics(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const FunctionTree& tree,

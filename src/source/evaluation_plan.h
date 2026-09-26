@@ -55,8 +55,11 @@ struct EvaluationShape {
     const analysis::ValueOp& consumer, const analysis::ValueOperand& operand);
 // Requires verified normal IR. Produces a single-parent expression forest;
 // a failed fusion keeps a snapshot, never duplicates or drops an effect.
+// kConditional incoming cells retain external-binding obligations. It does not
+// change closure-write assumptions or authorize standalone source publication.
 [[nodiscard]] std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {});
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
+    IncomingCells incoming = IncomingCells::kReject);
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and same-block availability. Call reference/source
 // order still needs its separate certificate. No plan replay.

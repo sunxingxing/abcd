@@ -25,6 +25,7 @@ struct BlockDraft {
 struct RegionTask { ControlId control; std::size_t draft; };
 constexpr ScopeId kParameterScope{0};
 constexpr ScopeId kBodyScope{1};
+constexpr ScopeId kCaptureScope{2};
 constexpr std::size_t kFunctionScopes = 2;
 constexpr std::size_t kBranchArms = 2;
 
@@ -47,6 +48,7 @@ class TreeBuilder {
     }
     Admit(1, sizeof(TreeBuilder));
     Admit(syntax_.parameters.capacity(), sizeof(ParameterSyntax));
+    Admit(syntax_.captures.capacity(), sizeof(CaptureSyntax));
     Admit(syntax_.names.capacity(), sizeof(std::u16string));
     Admit(syntax_.texts.capacity(), sizeof(std::u16string));
     for (const auto& name : syntax_.names) { Step(); AdmitText(name); }
@@ -91,7 +93,7 @@ class TreeBuilder {
     tree_.body = drafts_[root].statement;
     for (std::size_t i = syntax_.parameters.size(); i < tree_.symbols.size(); ++i) {
       Step();
-      if (tree_.symbols[i].kind == BindingKind::kLocal) continue;
+      if (tree_.symbols[i].kind == BindingKind::kLocal || tree_.symbols[i].kind == BindingKind::kCapture) continue;
       const SymbolId symbol{static_cast<std::uint32_t>(i)};
       const TreeOriginId origin{static_cast<std::uint32_t>(tree_.origins.size())};
       tree_.origins.emplace_back(BindingOrigin{symbol});
@@ -139,7 +141,8 @@ class TreeBuilder {
   }
   void Reserve() {
     constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
-    Require(control_.nodes.size() <= (kMaxId - kFunctionScopes) / kBranchArms,
+    const auto capture_scopes = syntax_.captures.empty() ? 0U : 1U;
+    Require(control_.nodes.size() <= (kMaxId - kFunctionScopes - capture_scopes) / kBranchArms,
             Error::kResourceLimit);
     const auto blocks = control_.nodes.size() * kBranchArms + 1;
     const auto synthetic = control_.nodes.size() - graph_.blocks.size();
@@ -159,7 +162,8 @@ class TreeBuilder {
     Grow(tree_.expressions, tree_.expressions.size() + symbols);
     Grow(tree_.symbols, symbols);
     Grow(tree_.parameters, syntax_.parameters.size());
-    Grow(tree_.scopes, blocks + 1);
+    Grow(tree_.captures, syntax_.captures.size());
+    Grow(tree_.scopes, blocks + 1 + capture_scopes);
     Grow(tree_.statements, statements);
     Grow(tree_.children, statements);
     Grow(tree_.anchors, graph_.ops.size());
@@ -211,8 +215,10 @@ class TreeBuilder {
   void Bindings() {
     tree_.parameter_scope = kParameterScope;
     tree_.body_scope = kBodyScope;
-    tree_.scopes.push_back({ScopeKind::kParameters, {}});
+    if (!syntax_.captures.empty()) tree_.capture_scope = kCaptureScope;
+    tree_.scopes.push_back({ScopeKind::kParameters, tree_.capture_scope});
     tree_.scopes.push_back({ScopeKind::kFunctionBody, kParameterScope});
+    if (tree_.capture_scope) tree_.scopes.push_back({ScopeKind::kCaptures, {}});
     for (std::size_t i = 0; i < syntax_.parameters.size(); ++i) {
       Step();
       const auto& input = syntax_.parameters[i];
@@ -242,10 +248,23 @@ class TreeBuilder {
     std::sort(name_order_.begin(), name_order_.end(), less);
     for (std::size_t i = 1; i < name_order_.size(); ++i)
       Require(less(name_order_[i - 1], name_order_[i]), Error::kName);
+    std::size_t next_capture = 0;
     for (std::size_t i = syntax_.parameters.size(); i < forest_.bindings.symbols.size(); ++i) {
       Step();
       const auto& binding = forest_.bindings.symbols[i];
-      if (std::holds_alternative<CellBinding>(binding)) {
+      if (const auto* cell = std::get_if<CellBinding>(&binding)) {
+        Require(evaluation_.cells && cell->cell.value < evaluation_.cells->cells.cells.size(), Error::kBinding);
+        if (std::holds_alternative<IncomingCell>(evaluation_.cells->cells.cells[cell->cell.value].storage)) {
+          Require(evaluation_.cells->incoming == IncomingCells::kConditional &&
+              next_capture < syntax_.captures.size(), Error::kBinding);
+          const auto& capture = syntax_.captures[next_capture++];
+          Require(capture.cell == cell->cell && capture.name.value < constants_.name_count &&
+              capture.target.owner != tree_.owner && tree_.capture_scope, Error::kBinding);
+          tree_.symbols.push_back({*tree_.capture_scope, capture.name, BindingKind::kCapture,
+              DeclarationKind::kLet, capture.evidence, {}});
+          tree_.captures.push_back({SymbolId{static_cast<std::uint32_t>(i)}, capture.target});
+          continue;
+        }
         // Final scope is the actual allocation container, never a hoisted
         // function-wide approximation of a possibly per-iteration cell.
         tree_.symbols.push_back({kBodyScope, SyntheticName(u"$local", i),
@@ -265,6 +284,7 @@ class TreeBuilder {
           BindingKind::kCompilerTemporary, DeclarationKind::kLet,
           NameEvidence::kSynthesized, reason});
     }
+    Require(next_capture == syntax_.captures.size(), Error::kBinding);
   }
   TreeOriginId BodyOrigin() {
     // Removed entry copies/default prologues do not own the body braces.
@@ -412,14 +432,12 @@ class TreeBuilder {
         [&](const Cell& item, analysis::OpId site) {
           Step();
           const auto* local = std::get_if<AllocatedCell>(&item.storage);
-          Require(local != nullptr, Error::kBinding);
-          return local->allocation < site;
+          return local && local->allocation < site;
         });
     for (; cell != cells.end(); ++cell) {
       Step();
       const auto* local = std::get_if<AllocatedCell>(&cell->storage);
-      Require(local != nullptr, Error::kBinding);
-      if (local->allocation != allocation) break;
+      if (!local || local->allocation != allocation) break;
       const auto symbol = forest_.bindings.cells[static_cast<std::size_t>(cell - cells.begin())];
       tree_.symbols[symbol.value].scope = drafts_[draft].scope;
       Append(draft, Statement(DeclarationStmt{symbol, {}}, origin));

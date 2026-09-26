@@ -19,6 +19,8 @@ struct ConstructedAbi {
 // Literal defaults are shape-checked and determine native .length. This
 // census does not prove default-prologue movement; the owner must separately
 // establish body correspondence and the parameter-environment contract.
+// Explicit capture symbols are free bindings, not ABI parameters. This census
+// does not discharge their enclosing-owner or creation-site obligations.
 [[nodiscard]] std::variant<ConstructedAbi, FunctionAbiError> BuildFunctionAbi(
     const analysis::ValueProgram& graph, const FunctionTree& tree,
     const abc::FrameLayout& frame, std::uint32_t length,

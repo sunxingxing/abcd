@@ -63,6 +63,10 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
             ? symbol.temporary && ValidTemporary(*symbol.temporary) : !symbol.temporary, Error::kBinding);
         break;
       case BindingKind::kFunctionSelf: throw Error::kUnsupportedSyntax;
+      case BindingKind::kCapture:
+        RequireTree(tree.capture_scope == symbol.scope && symbol.declaration == DeclarationKind::kLet &&
+                    !symbol.temporary, Error::kBinding);
+        break;
       default: throw Error::kBinding;
     }
   }
@@ -93,6 +97,13 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
                 tree.symbols[parameter.symbol.value].kind == BindingKind::kParameter &&
                 !declared_[parameter.symbol.value], Error::kBinding);
     declared_[parameter.symbol.value] = 1;
+  }
+  for (const auto& capture : tree.captures) {
+    budget.Step();
+    RequireTree(capture.symbol.value < count && capture.target.owner != tree.owner &&
+        tree.symbols[capture.symbol.value].kind == BindingKind::kCapture &&
+        !declared_[capture.symbol.value], Error::kBinding);
+    declared_[capture.symbol.value] = 1;
   }
 }
 
@@ -134,6 +145,7 @@ void TreeScopeCheck::Declare(SymbolId symbol, ScopeId scope, bool initializer) {
   Reference(symbol);
   RequireTree(tree_.symbols[symbol.value].scope == scope &&
               tree_.symbols[symbol.value].kind != BindingKind::kParameter &&
+              tree_.symbols[symbol.value].kind != BindingKind::kCapture &&
               !declared_[symbol.value], Error::kBinding);
   RequireTree(tree_.symbols[symbol.value].declaration != DeclarationKind::kConst || initializer, Error::kBinding);
   declared_[symbol.value] = 1;
