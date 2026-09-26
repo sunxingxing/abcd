@@ -1120,6 +1120,56 @@ MethodEntry refusal, work limits and 200/201/4096 scale remain uncompiled and
 unrun. Production abc_semantic/abc_structure builds exited 0; diff whitespace
 checking passed. No generated JS, tests, benchmarks or RSS measurements ran.
 
+### T05 Acyclic Phi Statement Integration
+
+FunctionTree now declares distinct PhiJoin/ParallelCopyCycle provisional symbols
+and consumes ExpressionForest edge assignments. A branch's copies precede that
+alternative's region, including an otherwise empty arm that directly reaches the
+join. A single-successor block's copies follow its operations/jump anchor, before
+the successor or enclosing join. Thus same-source/same-target alternatives stay
+distinct, and conditional critical edges use dedicated source arms without
+mutating the original CFG, block IDs or phi incoming keys.
+
+The blanket BuildFunctionTree phi rejection is removed in favor of fresh
+control/evaluation checks and actual syntax verification. TreeEdgeFlow consumes
+the AST statements at those exact edge boundaries. It derives phi/cycle symbols
+from actual assignment targets, prohibits aliasing with parameters/snapshots or
+other phi values, and requires complete bundle and live-phi coverage. TreeOperands
+checks every actual RHS against the independently symbolically verified schedule,
+including parameter/receiver/snapshot/phi identities and literal bits. No effectful
+operation can be inlined onto an edge. Origin correspondence admits EdgeOrigin
+only for the checked copy roots and leaves, retaining original PC ownership for
+real operations and jump anchors.
+
+Added indexes/visits are linear in graph values/edges, scheduled copies and tree
+nodes, with bounded storage charged to the existing grant. Existing phi grouping,
+control, dominance and structural name/origin checks retain their own documented
+costs. No coalescing or source-local/debug-name recovery is claimed for provisional
+phi locations. The printer uses its existing assignment/block implementation;
+no new text-rewrite route was added. Admission evidence rules advance to 14.
+
+Unrun regression sources cover full diamond statement construction, parallel
+same-target edges, retained getter snapshots, source-operand and edge-origin
+mutations, phi-symbol aliasing, switched alternatives, copies moved before their
+snapshot, and 200/201/4096-phi function trees. They remain uncompiled/unrun while
+testing is paused. No generated JS or RSS measurement was executed.
+
+ABC-only candidate inspection before the rules bump emitted Pasteboard method
+4357 (GetValue, record 4182) as a 309-byte complete class-member fragment; it is
+an early-return tree with no live phi and therefore is not phi coverage evidence.
+Immersive method 7559 remained refused at ControlFrozen/TreeStage; method 8404
+remained refused at input PC 0. Pasteboard 9332 lacked standalone creation
+context. No successful real phi-method slice is claimed by this integration.
+MethodEntry, natural loops, general cross-entry control, phi receiver call
+references and real-method/differential acceptance remain pending; T05 and the
+overall T00-T12 objective remain incomplete.
+
+Production abc_semantic/abc_structure builds exited 0 after the rules-14 bump;
+git diff whitespace checking passed. ABC-only reinspection of Pasteboard G2
+method 7559 still emits its 286-byte member at record offsets [2638, 2924), with
+Printed/complete METHOD coverage under rules 14. The enclosing record remains
+explicitly incomplete/nonexecutable and the CLI intentionally exits 1.
+
 ### T04 Call Reference Proof
 
 CallPlan now distinguishes function-value calls, member-reference calls and

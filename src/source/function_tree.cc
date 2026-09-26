@@ -139,7 +139,9 @@ class TreeBuilder {
     const auto symbols = forest_.bindings.symbols.size();
     Require(symbols < kMaxId && graph_.ops.size() <= kMaxId - blocks &&
             symbols <= kMaxId - blocks - graph_.ops.size(), Error::kResourceLimit);
-    const auto statements = graph_.ops.size() + blocks + symbols;
+    const auto original_statements = graph_.ops.size() + blocks + symbols;
+    Require(forest_.edge_assignments.size() <= kMaxId - original_statements, Error::kResourceLimit);
+    const auto statements = original_statements + forest_.edge_assignments.size();
     Require(tree_.names.size() <= kMaxId - symbols &&
             tree_.origins.size() <= kMaxId - symbols &&
             tree_.expressions.size() <= kMaxId - symbols, Error::kResourceLimit);
@@ -157,6 +159,17 @@ class TreeBuilder {
     Grow(links_, statements);
     Grow(tasks_, blocks);
     Grow(name_order_, syntax_.parameters.size());
+    if (!forest_.edges.empty()) {
+      Grow(edge_ranges_, graph_.edges.size());
+      Step(graph_.edges.size());
+      edge_ranges_.resize(graph_.edges.size());
+      for (std::size_t i = 0; i < forest_.edges.size(); ++i) {
+        Step();
+        const auto edge = forest_.edges[i].edge;
+        Require(edge.value < edge_ranges_.size() && !edge_ranges_[edge.value], Error::kControl);
+        edge_ranges_[edge.value] = i;
+      }
+    }
   }
   NameId SyntheticName(std::u16string_view prefix, std::size_t index) {
     // Debug names use the existing conservative ASCII boundary, which excludes
@@ -213,11 +226,19 @@ class TreeBuilder {
       Require(less(name_order_[i - 1], name_order_[i]), Error::kName);
     for (std::size_t i = syntax_.parameters.size(); i < forest_.bindings.symbols.size(); ++i) {
       Step();
-      const auto* snapshot = std::get_if<SnapshotBinding>(&forest_.bindings.symbols[i]);
-      Require(snapshot != nullptr, Error::kBinding);
-      tree_.symbols.push_back({kBodyScope, SyntheticName(u"$value", i),
+      const auto& binding = forest_.bindings.symbols[i];
+      TemporaryReason reason;
+      std::u16string_view prefix;
+      if (const auto* snapshot = std::get_if<SnapshotBinding>(&binding)) {
+        reason = snapshot->reason; prefix = u"$value";
+      } else if (std::holds_alternative<PhiBinding>(binding)) {
+        reason = TemporaryReason::kPhiJoin; prefix = u"$phi";
+      } else if (std::holds_alternative<CycleBinding>(binding)) {
+        reason = TemporaryReason::kParallelCopyCycle; prefix = u"$copy";
+      } else throw Error::kBinding;
+      tree_.symbols.push_back({kBodyScope, SyntheticName(prefix, i),
           BindingKind::kCompilerTemporary, DeclarationKind::kLet,
-          NameEvidence::kSynthesized, snapshot->reason});
+          NameEvidence::kSynthesized, reason});
     }
   }
   TreeOriginId BodyOrigin() {
@@ -255,12 +276,27 @@ class TreeBuilder {
     return drafts_.size() - 1;
   }
   std::size_t Arm(std::size_t parent, TreeOriginId origin,
-                  std::optional<ControlId> first) {
+                  std::optional<ControlId> first, analysis::EdgeId edge) {
     const ScopeId scope{static_cast<std::uint32_t>(tree_.scopes.size())};
     tree_.scopes.push_back({ScopeKind::kBlock, drafts_[parent].scope});
     const auto draft = Block(scope, origin);
+    EmitEdge(edge, draft);
     if (first) tasks_.push_back({*first, draft});
     return draft;
+  }
+  bool HasCopies(analysis::EdgeId edge) const {
+    return !edge_ranges_.empty() && edge_ranges_[edge.value] &&
+        forest_.edges[*edge_ranges_[edge.value]].count != 0;
+  }
+  void EmitEdge(analysis::EdgeId edge, std::size_t draft) {
+    Step();
+    if (edge_ranges_.empty() || !edge_ranges_[edge.value]) return;
+    const auto& range = forest_.edges[*edge_ranges_[edge.value]];
+    for (std::uint32_t i = 0; i < range.count; ++i) {
+      Step();
+      const auto expression = forest_.edge_assignments[range.first + i];
+      Append(draft, Statement(ExpressionStmt{expression}, tree_.expressions[expression.value].origin));
+    }
   }
   void Append(std::size_t draft, StmtId statement) {
     Require(links_.size() < links_.capacity(), Error::kResourceLimit);
@@ -291,10 +327,11 @@ class TreeBuilder {
       Require(expression.has_value(), Error::kOwnership);
       if (std::holds_alternative<analysis::ValueBranch>(op.operation)) {
         Require(region.arms.has_value(), Error::kControl);
-        const auto taken = Arm(draft, origin, region.arms->taken);
+        const auto taken = Arm(draft, origin, region.arms->taken, block.first_edge);
+        const analysis::EdgeId fallthrough{block.first_edge.value + 1};
         std::optional<StmtId> alternate;
-        if (region.arms->fallthrough)
-          alternate = drafts_[Arm(draft, origin, region.arms->fallthrough)].statement;
+        if (region.arms->fallthrough || HasCopies(fallthrough))
+          alternate = drafts_[Arm(draft, origin, region.arms->fallthrough, fallthrough)].statement;
         const auto statement = Statement(IfStmt{*expression, drafts_[taken].statement, alternate}, origin);
         Append(draft, statement);
         tree_.operations.push_back({id, statement});
@@ -316,6 +353,9 @@ class TreeBuilder {
         Append(draft, Statement(ExpressionStmt{evaluated}, origin));
       }
     }
+    // A straight edge executes after the source block's operations and before
+    // its successor. Branch copies belong inside their selected arm instead.
+    if (!region.arms && block.edge_count == 1) EmitEdge(block.first_edge, draft);
   }
   void Flatten() {
     for (const auto& draft : drafts_) {
@@ -369,6 +409,7 @@ class TreeBuilder {
   std::vector<ChildLink> links_;
   std::vector<RegionTask> tasks_;
   std::vector<NameId> name_order_;
+  std::vector<std::optional<std::size_t>> edge_ranges_;
 };
 }  // namespace
 
@@ -377,9 +418,6 @@ std::variant<ConstructedFunction, FunctionTreeError> BuildFunctionTree(
     const EvaluationPlan& evaluation, FunctionSyntax syntax,
     ExpressionConstants constants, analysis::SemanticBudget budget) {
   try {
-    // Phi locations are now planned, but edge assignments are not yet emitted
-    // or independently checked here. Never publish declarations without them.
-    Require(!evaluation.phis, Error::kBinding);
     return TreeBuilder(graph, control, evaluation, std::move(syntax), constants, budget).Build();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

@@ -1,6 +1,8 @@
 #include "../../../src/source/phi_copies.h"
 #include "../../../src/source/binding_plan.h"
 #include "../../../src/source/expression_forest.h"
+#include "../../../src/source/function_tree.h"
+#include "../../../src/source/tree_semantics.h"
 
 #include <bit>
 #include <cstdlib>
@@ -46,6 +48,26 @@ PhiCopies Plan(const ValueProgram& graph) {
   auto plan = std::get<PhiCopies>(std::move(built));
   Check(std::holds_alternative<std::uint64_t>(VerifyPhiCopies(graph, plan)));
   return plan;
+}
+FunctionSyntax Syntax() {
+  FunctionSyntax syntax{};
+  syntax.callable = CallableKind::kMethod;
+  syntax.strictness = Strictness::kStrict;
+  syntax.parameters.push_back({NameId{0}, NameEvidence::kDebugRange});
+  syntax.names = {u"input", u"field"};
+  return syntax;
+}
+FunctionTree Tree(const ValueProgram& graph, const EvaluationPlan& evaluation,
+    ExpressionConstants constants) {
+  const auto control = BuildControlPlan(graph);
+  Check(std::holds_alternative<ControlPlan>(control));
+  auto built = BuildFunctionTree(graph, std::get<ControlPlan>(control), evaluation,
+      Syntax(), constants);
+  Check(std::holds_alternative<ConstructedFunction>(built));
+  auto tree = std::get<ConstructedFunction>(std::move(built)).tree;
+  Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph,
+      std::get<ControlPlan>(control), evaluation, tree, constants)));
+  return tree;
 }
 void Mutations() {
   auto graph = Graph(2, false);
@@ -148,8 +170,8 @@ void PhiInputSnapshot() {
   const auto phi = std::get<SymbolId>(bindings.values[2]);
   Check(phi != snapshot && std::get<PhiBinding>(bindings.symbols[phi.value]).value == ValueId{2});
   graph.origins = {{{0}, {0}, {}}, {{1}, {1}, {}}, {{2}, {2}, {}}};
-  const std::vector<ExpressionConstant> constants{NameId{0}, std::monostate{}, std::monostate{}};
-  const auto syntax = BuildExpressionForest(graph, evaluation, 1, {0}, {constants, 1});
+  const std::vector<ExpressionConstant> constants{NameId{1}, std::monostate{}, std::monostate{}};
+  const auto syntax = BuildExpressionForest(graph, evaluation, 1, {0}, {constants, 2});
   Check(std::holds_alternative<ExpressionForest>(syntax));
   const auto& forest = std::get<ExpressionForest>(syntax);
   const auto& copied = std::get<AssignmentExpr>(
@@ -158,6 +180,20 @@ void PhiInputSnapshot() {
   Check(std::get<SymbolExpr>(forest.expressions[copied.value.value].expression).symbol == snapshot);
   // The getter remains at its operation root, not duplicated on either edge.
   Check(std::holds_alternative<MemberExpr>(forest.expressions[forest.operations[0]->value].expression));
+  const auto tree = Tree(graph, evaluation, {constants, 2});
+  const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+  const auto checked = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, tree));
+  Check(checked.copies.size() == 2 && checked.phis[2] == phi);
+  const auto root = checked.copies[0].expressions[0];
+  const auto rhs = std::get<AssignmentExpr>(tree.expressions[root.value].expression).value;
+  auto changed = tree;
+  changed.expressions[rhs.value].expression = SymbolExpr{SymbolId{0}};
+  Check(std::get<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation,
+      changed, {constants, 2})) == TreeSemanticError::kOperand);
+  changed = tree;
+  std::get<EdgeOrigin>(changed.origins[changed.expressions[root.value].origin.value]).edge = {1};
+  Check(std::get<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation,
+      changed, {constants, 2})) == TreeSemanticError::kFlow);
   auto forged = evaluation;
   forged.operations[0] = {EvaluationKind::kInline, UseId{3}, {}};
   Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kOwnership);
@@ -202,6 +238,28 @@ void EdgeSyntax() {
     Check(std::holds_alternative<ExpressionForest>(BuildExpressionForest(graph, evaluation, 1, {0}, {constants}, budget)));
     --budget.work;
     Check(std::get<ExpressionError>(BuildExpressionForest(graph, evaluation, 1, {0}, {constants}, budget)) == ExpressionError::kWorkLimit);
+    const auto tree = Tree(graph, evaluation, {constants, 2});
+    const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+    const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, tree));
+    Check(flow.copies.size() == 2 && flow.copies[0].expressions.size() == count);
+    for (std::uint32_t i = 1; i <= count; ++i) Check(flow.phis[i].has_value());
+    if (count == 2) {
+      auto changed = tree;
+      const auto root = flow.copies[0].expressions[0];
+      std::get<AssignmentExpr>(changed.expressions[root.value].expression).target = SymbolTarget{*flow.phis[2]};
+      Check(std::get<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation,
+          changed, {constants, 2})) == TreeSemanticError::kFlow);
+      changed = tree;
+      for (auto& statement : changed.statements) {
+        if (auto* branch = std::get_if<IfStmt>(&statement.statement)) {
+          Check(branch->alternate.has_value());
+          std::swap(branch->consequent, *branch->alternate);
+          break;
+        }
+      }
+      Check(std::get<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation,
+          changed, {constants, 2})) == TreeSemanticError::kFlow);
+    }
   }
   auto entry = Graph(2, true);
   entry.origins = {{{0}, {0}, {}}, {{1}, {1}, {}}};
@@ -211,5 +269,57 @@ void EdgeSyntax() {
   Check(std::get<ExpressionError>(BuildExpressionForest(entry,
       std::get<EvaluationPlan>(evaluated), 1, {0}, {constants})) == ExpressionError::kUnsupportedOperation);
 }
+void DiamondSyntax() {
+  ValueProgram graph;
+  graph.values = {{EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), {}},
+                  {OpResult{{1}}, ValueKinds::Language(), {}},
+                  {OpResult{{3}}, ValueKinds::Language(), {}},
+                  {PhiDefinition{{3}}, ValueKinds::Language(), {}}};
+  graph.blocks = {{{0}, 1, {0}, 2}, {{1}, 2, {2}, 1},
+                  {{3}, 2, {3}, 1}, {{5}, 1, {4}, 0}};
+  graph.edges = {{{0}, {1}, FlowEdgeKind::kTaken, 0},
+                 {{0}, {2}, FlowEdgeKind::kFallthrough, 1},
+                 {{1}, {3}, FlowEdgeKind::kTaken, 0},
+                 {{2}, {3}, FlowEdgeKind::kTaken, 0}};
+  const auto pure = LanguageEffect::kNone;
+  const auto normal = ExceptionalCompletion::kImpossible;
+  graph.ops = {
+      {ValueBranch{UnaryOperator::kToBoolean}, {0}, 0, {0}, 1, {}, pure, pure, normal, {0}},
+      {ValueCopy{}, {1}, 0, {1}, 1, ValueId{1}, pure, pure, normal, {1}},
+      {ValueJump{}, {1}, 1, {2}, 0, {}, pure, pure, normal, {2}},
+      {ValueCopy{}, {2}, 0, {2}, 1, ValueId{2}, pure, pure, normal, {3}},
+      {ValueJump{}, {2}, 1, {3}, 0, {}, pure, pure, normal, {4}},
+      {ValueReturn{}, {3}, 0, {3}, 1, {}, pure, pure, normal, {5}}};
+  for (std::uint32_t i = 0; i < graph.ops.size(); ++i) graph.origins.push_back({{i}, {i}, {}});
+  Append(graph, {OpId{0}, OperandRole::kCondition, ReadPurpose::kOperand, ValueId{0}, {}, {}, {}, {}});
+  graph.uses.push_back({OpId{1}, OperandRole::kInput, ReadPurpose::kOperand, abcd::analysis::IntegerLiteral{11}, {}, {}, {}, {}});
+  graph.uses.push_back({OpId{3}, OperandRole::kInput, ReadPurpose::kOperand, abcd::analysis::IntegerLiteral{22}, {}, {}, {}, {}});
+  Append(graph, {OpId{5}, OperandRole::kReturnValue, ReadPurpose::kOperand, ValueId{3}, {}, {}, {}, {}});
+  Append(graph, {ValueId{3}, OperandRole::kPhiInput, ReadPurpose::kOperand, ValueId{1}, EdgeId{2}, {}, {}, {}});
+  Append(graph, {ValueId{3}, OperandRole::kPhiInput, ReadPurpose::kOperand, ValueId{2}, EdgeId{3}, {}, {}, {}});
+  const auto evaluated = BuildEvaluationPlan(graph);
+  Check(std::holds_alternative<EvaluationPlan>(evaluated));
+  const auto& evaluation = std::get<EvaluationPlan>(evaluated);
+  const std::vector<ExpressionConstant> constants(graph.ops.size());
+  const auto tree = Tree(graph, evaluation, {constants, 2});
+  const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+  const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, tree));
+  Check(flow.copies.size() == 2 && flow.copies[0].edge == EdgeId{2} && flow.copies[1].edge == EdgeId{3});
+  Check(flow.snapshots[1] && flow.snapshots[3] && flow.phis[3]);
+  for (std::size_t i = 0; i < flow.copies.size(); ++i) {
+    const auto root = flow.copies[i].expressions[0];
+    const auto& assignment = std::get<AssignmentExpr>(tree.expressions[root.value].expression);
+    Check(std::get<SymbolTarget>(assignment.target).symbol == *flow.phis[3]);
+    const auto producer = i == 0 ? 1U : 3U;
+    Check(std::get<SymbolExpr>(tree.expressions[assignment.value.value].expression).symbol == *flow.snapshots[producer]);
+  }
+  auto changed = tree;
+  const auto& boundary = std::get<BlockBoundary>(changed.anchors[0].position);
+  const auto& arm = std::get<BlockStmt>(changed.statements[boundary.block.value].statement);
+  Check(arm.child_count == 2 && boundary.index == 1);
+  std::swap(changed.children[arm.first_child], changed.children[arm.first_child + 1]);
+  Check(std::get<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation,
+      changed, {constants, 2})) == TreeSemanticError::kFlow);
+}
 }  // namespace
-int main() { Mutations(); EntryAndScaling(); PhiInputSnapshot(); EdgeSyntax(); }
+int main() { Mutations(); EntryAndScaling(); PhiInputSnapshot(); EdgeSyntax(); DiamondSyntax(); }

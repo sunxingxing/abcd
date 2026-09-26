@@ -97,9 +97,35 @@ class OperandCheck {
         }
       }, op.operation);
     }
+    CopyInputs();
   }
 
  private:
+  void CopyInputs() {
+    if (!evaluation_.phis) return;
+    RequireMeaning(flow_.copies.size() == evaluation_.phis->bundles.size(), Error::kOperand);
+    edge_input_ = true;
+    for (std::size_t i = 0; i < flow_.copies.size(); ++i) {
+      budget_.Step();
+      const auto& copies = flow_.copies[i];
+      const auto& schedule = evaluation_.phis->bundles[i].schedule;
+      RequireMeaning(copies.expressions.size() == schedule.steps.size(), Error::kOperand);
+      for (std::size_t j = 0; j < copies.expressions.size(); ++j) {
+        budget_.Step();
+        const auto root = copies.expressions[j];
+        const auto& assignment = Node<AssignmentExpr>(root);
+        origin_ = tree_.expressions[root.value].origin;
+        const auto& source = schedule.steps[j].source;
+        if (const auto* temporary = std::get_if<CopyTempId>(&source)) {
+          RequireMeaning(temporary->value < copies.temporaries.size() &&
+              copies.temporaries[temporary->value].has_value(), Error::kOperand);
+          LeafOrigin(assignment.value);
+          RequireMeaning(Node<SymbolExpr>(assignment.value).symbol ==
+              *copies.temporaries[temporary->value], Error::kOperand);
+        } else Input(std::get<analysis::ValueOperand>(source), assignment.value);
+      }
+    }
+  }
   void Arguments(const analysis::ValueOp& op, ArgumentRange arguments,
       std::uint32_t prefix, std::uint32_t count) {
     RequireMeaning(arguments.count == count && arguments.first <= tree_.arguments.size() &&
@@ -154,7 +180,7 @@ class OperandCheck {
     // Identity lowering can combine provenance on its root leaf. The origin
     // pass independently proves membership of every such retained operation.
     RequireMeaning(origin == origin_ ||
-        (flow_.expressions[current_.value] == id &&
+        (!edge_input_ && flow_.expressions[current_.value] == id &&
          std::holds_alternative<CombinedOrigin>(tree_.origins[origin.value])), Error::kOrigin);
   }
   void Input(const analysis::ValueOperand& operand, ExprId expression) {
@@ -173,10 +199,16 @@ class OperandCheck {
           } else throw Error::kOperand;
           return;
         }
+        if (std::holds_alternative<analysis::PhiDefinition>(definition.origin)) {
+          LeafOrigin(expression);
+          RequireMeaning(value.value < flow_.phis.size() && flow_.phis[value.value] &&
+              Node<SymbolExpr>(expression).symbol == *flow_.phis[value.value], Error::kOperand);
+          return;
+        }
         const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
         RequireMeaning(result != nullptr, Error::kOperand);
         if (evaluation_.operations[result->op.value].kind == EvaluationKind::kInline) {
-          RequireMeaning(flow_.expressions[result->op.value] == expression, Error::kOperand);
+          RequireMeaning(!edge_input_ && flow_.expressions[result->op.value] == expression, Error::kOperand);
         } else {
           LeafOrigin(expression);
           RequireMeaning(flow_.snapshots[result->op.value].has_value() &&
@@ -287,6 +319,7 @@ class OperandCheck {
   TreeCheckBudget& budget_;
   analysis::OpId current_;
   TreeOriginId origin_;
+  bool edge_input_ = false;
 };
 }  // namespace
 

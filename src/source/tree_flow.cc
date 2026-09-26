@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include "tree_checks.h"
+#include "tree_edge_flow.h"
 
 namespace abcd::source {
 namespace {
@@ -27,6 +28,7 @@ class FlowCheck {
     budget.Array(assigned_, tree.symbols.size());
     budget.Array(declared_, tree.symbols.size());
     budget.Array(tasks_, graph.blocks.size());
+    edges_.emplace(graph, evaluation, tree, flow_, declared_, assigned_, budget);
   }
   TreeFlow Run() {
     IndexPlacements();
@@ -68,13 +70,16 @@ class FlowCheck {
             Require(branch && node.arms, Error::kControl);
             flow_.expressions[id.value] = branch->condition;
             const TreeOriginId origin{op.origin.value};
-            Arm(node.arms->taken, branch->consequent, origin, pending);
-            if (node.arms->fallthrough) {
+            Arm(node.arms->taken, branch->consequent, origin, source.first_edge, pending);
+            const analysis::EdgeId fallthrough{source.first_edge.value + 1};
+            if (node.arms->fallthrough || branch->alternate) {
               Require(branch->alternate.has_value(), Error::kControl);
-              Arm(node.arms->fallthrough, *branch->alternate, origin, pending);
-            } else if (branch->alternate) {
-              Require(tree_.statements[branch->alternate->value].origin == origin, Error::kPlacement);
-              EmptyBlock(*branch->alternate);
+              Arm(node.arms->fallthrough, *branch->alternate, origin, fallthrough, pending);
+            } else {
+              // An omitted alternate is only legal if this edge has no copy
+              // statements. Consume against an empty sequence to prove that.
+              std::uint32_t empty = 0;
+              edges_->Consume(fallthrough, BlockStmt{}, empty);
             }
           } else if (std::holds_alternative<analysis::ValueReturn>(op.operation)) {
             Require(std::get_if<StmtId>(&placement) && std::get<StmtId>(placement) == statement, Error::kPlacement);
@@ -87,10 +92,13 @@ class FlowCheck {
             RootExpression(id, expression->expression);
           }
         }
+        if (!node.arms && source.edge_count == 1)
+          edges_->Consume(source.first_edge, block, child);
         cursor = node.next;
       }
       Require(child == block.child_count, Error::kSequence);
     }
+    edges_->Finish();
     for (std::size_t i = 0; i < tree_.symbols.size(); ++i) {
       budget_.Step();
       const auto& symbol = tree_.symbols[i];
@@ -170,8 +178,8 @@ class FlowCheck {
       declared_[declaration->symbol.value] = 1;
       ++count;
     }
-    // This G1 check deliberately admits only simple parameters and private
-    // snapshots. User cells/locals require their own TDZ/initialization proof.
+    // Only parameters and private snapshots/phi locations are admitted here.
+    // User cells/locals require their own TDZ/initialization proof.
     for (const auto& symbol : tree_.symbols) {
       budget_.Step();
       Require(symbol.kind == BindingKind::kParameter || symbol.kind == BindingKind::kCompilerTemporary,
@@ -198,14 +206,15 @@ class FlowCheck {
     assigned_[target->symbol.value] = 1;
     flow_.snapshots[id.value] = target->symbol;
   }
-  void EmptyBlock(StmtId statement) const {
-    Require(std::get<BlockStmt>(tree_.statements[statement.value].statement).child_count == 0, Error::kControl);
-  }
-  void Arm(std::optional<ControlId> first, StmtId block, TreeOriginId origin, std::size_t& pending) {
+  void Arm(std::optional<ControlId> first, StmtId block, TreeOriginId origin,
+      analysis::EdgeId edge, std::size_t& pending) {
     Require(tree_.statements[block.value].origin == origin, Error::kPlacement);
-    if (!first) { EmptyBlock(block); return; }
+    const auto& syntax = std::get<BlockStmt>(tree_.statements[block.value].statement);
+    std::uint32_t child = 0;
+    edges_->Consume(edge, syntax, child);
+    if (!first) { Require(child == syntax.child_count, Error::kSequence); return; }
     Require(pending < tasks_.size(), Error::kResourceLimit);
-    tasks_[pending++] = {*first, block, 0};
+    tasks_[pending++] = {*first, block, child};
   }
 
   const analysis::ValueProgram& graph_;
@@ -218,6 +227,7 @@ class FlowCheck {
   std::vector<std::uint8_t> assigned_;
   std::vector<std::uint8_t> declared_;
   std::vector<TreeRegion> tasks_;
+  std::optional<TreeEdgeFlow> edges_;
 };
 }  // namespace
 
