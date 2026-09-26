@@ -131,6 +131,17 @@ existing name sort and graph checks; storage accounting includes capture arenas.
 
 ## Conditional Creation Expressions
 
+`BindCaptureEvaluation` is the input/work-proof adapter for an actual creation.
+It independently runs `VerifyCaptureCells` before constructing a FunctionBinding
+in child incoming-cell order. Each edge must resolve to ParentCell; OuterCell
+returns a typed outstanding-forwarding failure. Self-owner binding is refused,
+and only creation forms described by the shared evaluation model are accepted.
+The resulting binding can enter BuildEvaluationPlan without a caller inventing
+cell numbers. Additional work/storage is O(K) for K captured cells, beyond the
+existing capture verification cost. Caller-owned input/work/proof products stay
+unchanged and are admitted separately; result storage and verification work are
+reported. This is not a child AST, callable/name proof or source certificate.
+
 EvaluationPlan now owns sorted FunctionBindings for every live DEFINEFUNC
 creation admitted by this path. Each records a child FunctionOwnerId and parent
 CellIds in child incoming-cell order. A binding is a child-body/capture/write

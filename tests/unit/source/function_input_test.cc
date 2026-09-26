@@ -1,5 +1,6 @@
 #include "../../../src/source/function_input.h"
 #include "../../../src/source/capture_cells.h"
+#include "../../../src/source/capture_evaluation.h"
 #include "abcd/source/value_stage.h"
 #include "analysis/ssa_fixture.h"
 
@@ -71,6 +72,23 @@ void Occurrences(std::uint32_t count) {
   const CaptureFunction parent_work{parent, parent_values}, child_work{child, child_values};
   const auto first_cells = std::get<CaptureCells>(BindCaptureCells(index, parent_work, child_work, first_site, first));
   const auto second_cells = std::get<CaptureCells>(BindCaptureCells(index, parent_work, child_work, second_site, second));
+  const auto first_binding = std::get<CapturedFunctionBinding>(BindCaptureEvaluation(index,
+      parent_work, child_work, first_site, first, first_cells, {0}, {1}));
+  const auto second_binding = std::get<CapturedFunctionBinding>(BindCaptureEvaluation(index,
+      parent_work, child_work, second_site, second, second_cells, {0}, {2}));
+  const FunctionBinding functions[]{first_binding.binding, second_binding.binding};
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(parent_values.graph, {},
+      IncomingCells::kConditional, functions));
+  test::Check(evaluation.functions.size() == 2 && first_binding.binding.child != second_binding.binding.child);
+  test::Check(first_binding.binding.captures.size() == first_cells.targets.size());
+  test::Check(std::get<CaptureEvaluationError>(std::get<CaptureEvaluationFailure>(BindCaptureEvaluation(index,
+      parent_work, child_work, first_site, first, first_cells, {1}, {1}))) == CaptureEvaluationError::kOwner);
+  SemanticBudget binding_budget; binding_budget.work = first_binding.work;
+  test::Check(std::holds_alternative<CapturedFunctionBinding>(BindCaptureEvaluation(index,
+      parent_work, child_work, first_site, first, first_cells, {0}, {1}, binding_budget)));
+  --binding_budget.work;
+  test::Check(std::holds_alternative<CaptureEvaluationFailure>(BindCaptureEvaluation(index,
+      parent_work, child_work, first_site, first, first_cells, {0}, {1}, binding_budget)));
   test::Check(first_cells.creation != second_cells.creation && first_cells.targets.size() == (count == 0 ? 0 : 1));
   test::Check(std::holds_alternative<std::uint64_t>(VerifyCaptureCells(index, parent_work, child_work,
       first_site, first, first_cells)));
@@ -82,6 +100,8 @@ void Occurrences(std::uint32_t count) {
         std::get<AllocatedCell>(parent_values.cells->cells[second_cell.value].storage).allocation);
     auto forged = first_cells;
     forged.targets[0].target = ParentCell{second_cell};
+    test::Check(std::get<CaptureCellError>(std::get<CaptureEvaluationFailure>(BindCaptureEvaluation(index,
+        parent_work, child_work, first_site, first, forged, {0}, {1}))) == CaptureCellError::kBinding);
     test::Check(std::get<CaptureCellError>(VerifyCaptureCells(index, parent_work, child_work,
         first_site, first, forged)) == CaptureCellError::kBinding);
     forged = first_cells; forged.targets.clear();
@@ -148,6 +168,9 @@ void ForwardingAndChildren() {
   const auto cells = std::get<CaptureCells>(BindCaptureCells(Index(), {parent, parent_values},
       {child, child_values}, site, Creation(parent, site)));
   test::Check(cells.targets.size() == 1 && std::get<OuterCell>(cells.targets[0].target).cell.depth == CapturedDepth{0});
+  test::Check(std::get<CaptureEvaluationError>(std::get<CaptureEvaluationFailure>(BindCaptureEvaluation(Index(),
+      {parent, parent_values}, {child, child_values}, parent.Children()[0],
+      Creation(parent, parent.Children()[0]), cells, {0}, {1}))) == CaptureEvaluationError::kOuterCapture);
   // The parent now directly accesses that same outer cell. The child must use
   // the parent's incoming binding, without discharging the parent's obligation.
   const auto accessing = Input(kParent, child_body);
@@ -209,9 +232,13 @@ void DistinctCells(std::uint8_t count) {
   const auto cells = std::get<CaptureCells>(BindCaptureCells(Index(), {parent, parent_values},
       {child, child_values}, site, Creation(parent, site)));
   test::Check(cells.targets.size() == count && child_values.cells->cells.size() == 2 * count);
+  const auto binding = std::get<CapturedFunctionBinding>(BindCaptureEvaluation(Index(),
+      {parent, parent_values}, {child, child_values}, site, Creation(parent, site), cells, {0}, {1}));
+  test::Check(binding.binding.captures.size() == count);
   for (std::uint32_t i = 0; i < count; ++i) {
     test::Check(cells.targets[i].child == CellId{count + i});
     test::Check(std::get<ParentCell>(cells.targets[i].target).cell == CellId{i});
+    test::Check(binding.binding.captures[i] == CellId{i});
   }
 }
 }  // namespace

@@ -459,6 +459,21 @@ values, ownership/edge mutations, sibling-arm visibility and per-iteration
 declarations. Tests remain uncompiled/unrun; no JS execution, benchmarks or RSS
 measurement were performed. T07 and the T00-T12 objective remain unfinished.
 
+### T07 Capture Proof to Evaluation Binding
+
+BindCaptureEvaluation now checks the genuine input/work CaptureCells mapping
+and lowers it into a common FunctionBinding. Parent cells retain child incoming
+order; unresolved outward captures and identical parent/child owners are typed
+failures. The adapter does not discharge child-body, naming, callable or
+transitive-write obligations and does not widen standalone source publication.
+
+Production abc_semantic and abc_structure built successfully. Extended test
+sources cover two contexts of one method, malformed parent mappings, owner
+identity, outward forwarding, work limits and 1/2/200/201 distinct captures;
+they remain uncompiled/unrun under the testing pause. No JS execution or RSS
+measurement was performed. Complete immutable parent/child AST assembly and
+publication remain next; T07 is not complete.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,
