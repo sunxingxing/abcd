@@ -381,3 +381,41 @@ to be bound at the source adapter. No immutable publication/printer capability
 is minted from this report alone. The public CLI still ends at ValuesVerified;
 printer/position emission and real-method adapter integration remain pending.
 Production builds pass; all new tests and generated-JS/RSS runs remain paused.
+
+### T03 ABC Constants and Creation Context
+
+ResolveTreeConstants reads only same-file regional pool references and validated
+ABC string entities. It sorts/deduplicates pool slots, then resolved entity
+offsets, so aliased slots and repeated instructions do not reread the same
+payload. Name/literal namespaces retain typed IDs and exact UTF-16 text. Named
+element keys retain the existing explicit refusal; they are not silently
+reinterpreted as ordinary property access. The result records method/value/CFG
+revision, and method-owned storage/work is admitted before materialization.
+
+ClassMethodSites is a reusable immutable file-level creation-occurrence index.
+It scans ordinary DEFINECLASSWITHBUFFER sites and decodes each unique class
+buffer twice (count/admit, then populate). Every method occurrence retains the
+creator, PC, literal, property ordinal, key, placement, kind and encoded length.
+Queries are binary searches, not whole-file rescans for each method. With C
+class references, L unique-buffer entries, M methods and O output occurrences,
+the cost is decoded bytes + C log C + L log M + O log O, plus bounded reader
+work. Dense occurrence output is honestly counted/admitted, not discarded.
+Only one decoded method or literal/class-buffer pair is live as scan scratch.
+
+ClassTreeContext resolves one selected occurrence against MethodRoleIndex,
+local method membership, initial attributes, runtime name, class key, call-type
+annotation and ABI frame. Initial NONE is not used alone as evidence. The
+pinned v7 DefineFunctionTemplate refinement and absence of competing roles
+justify the ordinary method context; source class methods have strict syntax.
+It preserves the selected occurrence rather than claiming a unique owner for
+every invocation of a reused method. Unproved/unsupported profiles, conflicting
+roles, sendable/async/accessor kinds, reserved keys and signature-length mismatch
+remain typed refusals at this stage. Later callable/default/async work must
+close those obligations before expanding admission.
+
+Regression sources cover pool/entity aliases at 200/201/4096 references, named
+element refusal, a real encoded class site, context/name/ABI matching and
+signature/name mutation refusals. They are not run during the test pause.
+Production builds pass. The immutable function publication owner, pure printer
+and public route integration are still pending; these adapters alone do not
+advance the CLI beyond ValuesVerified or satisfy T03 acceptance.
