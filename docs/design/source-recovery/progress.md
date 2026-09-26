@@ -1271,3 +1271,51 @@ getter/global/callee/argument/call trace with arbitrary JS thrown values at each
 event. Tests and generated-JS execution remain paused; no behavior, RSS or full
 T04 acceptance claim is made. Next work includes independent application G2
 evidence, reference-aware snapshot reduction and remaining T06/T05 obligations.
+
+### Independent G2 Candidate Inspection and T05 Copy Scheduling
+
+ABC-derived metadata identified Immersive aboutToBeDeleted candidates 18852
+(record 18101/Categories) and 21055 (record 19072/CommonView). Fresh
+--record-value-slice inspection refused both in the existing enclosing record
+assembly, at PC94 and PC159 respectively (error variant 5/detail 6). These are
+not cross-application call successes; no missing source context was fabricated
+to force standalone publication. T04 cross-application evidence remains open.
+
+T05 now has an original implementation of the dependency-count/ready-queue
+parallel-copy algorithm required by source-tree.md section 3.2. Each destination
+has a distinct private provisional phi location. A sorted destination index
+avoids hash worst cases; sparse user links remove dependencies once. A cycle
+saves one old location into a typed CopyTempId, redirects its pending users and
+resumes the queue. The next-cycle cursor advances monotonically rather than
+rescanning all assignments per component. Self copies disappear without erasing
+other consumers of the old value. Constants and external values stay operands,
+not semantic strings. No external implementation/dependency was copied.
+
+For C assignments, planning is O(C log C) time and O(C) space; the queue/user
+traversal itself is O(C). At most C writes and C cycle saves are reserved with
+checked arithmetic. Owned storage and work are budgeted. Tradeoff: a sorted
+index adds logarithmic lookups but avoids a ValueId-sized dense allocation and
+unbounded hash behavior. Each cycle has its own temporary; no coalescing or
+minimal-local-count claim is made, and measurements remain paused.
+
+VerifyEdgeCopies independently symbolically executes the proposed sequential
+steps from distinct pre-edge tokens and checks every destination against its
+original parallel RHS. It rejects duplicate input destinations, writes outside
+the bundle, repeated destination writes, missing/uninitialized/reassigned/unused
+temporaries and wrong final values. It does not rerun the scheduler. Exact
+literal bits, including negative zero, are retained. The shared index/equality
+helpers contain no scheduling decisions.
+
+Production abc_semantic/abc_structure builds exited 0. Unrun regression sources
+cover swaps, fanout, chains, self copies, constants, exhaustive small three-node
+graphs, destructive sequential swaps, forged locations/temporaries, work/memory
+limits and 200/201/4096 geometric shapes including disjoint cycles. No test,
+generated JS, benchmark or RSS execution occurred.
+
+This is the bundle scheduling core, not completed phi lowering. Next connect
+verified phi inputs to EdgeId/MethodEntryKey bundles, provisional bindings and
+proved structured edge placements. Method entry must remain distinct from a
+CFG predecessor and default-parameter initialization; exceptional edges cannot
+use this ordinary copy path. Existing source admission still rejects live phis,
+so rules remain 13 and no new phi/loop source coverage is claimed. T05 and the
+T00-T12 goal remain incomplete.
