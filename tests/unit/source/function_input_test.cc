@@ -3,6 +3,7 @@
 #include "../../../src/source/capture_evaluation.h"
 #include "../../../src/source/capture_tree.h"
 #include "../../../src/source/function_tree.h"
+#include "../../../src/source/function_family.h"
 #include "../../../src/source/tree_semantics.h"
 #include "abcd/source/value_stage.h"
 #include "analysis/ssa_fixture.h"
@@ -84,6 +85,26 @@ void TreeBinding(const FunctionValues& parent, const FunctionValues& child,
     return VerifyCaptureTree(cells, {outer, parent_flow}, {candidate, child_flow});
   };
   const auto work = std::get<std::uint64_t>(verify(inner));
+  if (evaluation.functions.size() == 1) {
+    // Reverse storage order deliberately: owners are not vector indices, and
+    // family traversal must still place the real parent before its child.
+    std::vector<FamilyMember> members{{inner, child_flow, cells}, {outer, parent_flow, {}}};
+    const auto family = std::get<ConstructedFamily>(BuildFunctionFamily(members, outer.owner));
+    test::Check(family.root == FamilyId{1} && family.order == std::vector<FamilyId>{{1}, {0}});
+    test::Check(family.parents[0]->function == FamilyId{1} && !family.parents[1]);
+    auto missing = members; missing.erase(missing.begin());
+    test::Check(std::get<FamilyError>(BuildFunctionFamily(std::move(missing), outer.owner)) == FamilyError::kMissingChild);
+    auto duplicate = members; duplicate.push_back(members[0]);
+    test::Check(std::get<FamilyError>(BuildFunctionFamily(std::move(duplicate), outer.owner)) == FamilyError::kOwner);
+    auto unbound = members; unbound[0].incoming.reset();
+    test::Check(std::get<FamilyError>(BuildFunctionFamily(std::move(unbound), outer.owner)) == FamilyError::kCapture);
+    SemanticBudget family_budget; family_budget.work = family.work;
+    test::Check(std::holds_alternative<ConstructedFamily>(BuildFunctionFamily(members, outer.owner, family_budget)));
+    --family_budget.work;
+    test::Check(std::get<FamilyError>(BuildFunctionFamily(members, outer.owner, family_budget)) == FamilyError::kWorkLimit);
+    family_budget = {}; family_budget.bytes = 0;
+    test::Check(std::get<FamilyError>(BuildFunctionFamily(members, outer.owner, family_budget)) == FamilyError::kResourceLimit);
+  }
   SemanticBudget budget; budget.work = work;
   test::Check(std::holds_alternative<std::uint64_t>(VerifyCaptureTree(cells,
       {outer, parent_flow}, {inner, child_flow}, budget)));

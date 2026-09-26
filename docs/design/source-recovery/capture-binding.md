@@ -387,6 +387,31 @@ Neither this component nor its production build closes the T07 gate.
 
 ## Creation Owners
 
+### Owned Conditional Families
+
+BuildFunctionFamily moves common tree/flow and verified incoming CaptureCells
+products into one owned construction result. It indexes FunctionOwnerId values
+independently of storage order, derives parent edges from actual FunctionExpr
+nodes, requires every non-root member exactly once, and checks that each
+incoming proof's creation maps to that exact parent expression. Every edge
+passes VerifyCaptureTree. The root has no incoming creation proof; its possible
+external bindings remain an enclosure obligation, not implicitly closed cells.
+
+An iterative three-state parent walk rejects syntax ownership cycles and emits
+parent-before-child order. This is not runtime recursion analysis or dependency
+SCC discharge: recursive values stored in captured cells do not imply cyclic
+syntax ownership. Missing children and unreferenced extra members are errors.
+For F functions, E total expressions, K capture edges and L compared name units,
+work is O(F log F + E log(F+1) + K + L); additional layout/scratch is O(F).
+Caller admits all moved input storage alongside additional builder budget.
+The returned allocated_bytes counts retained layout only, not member storage.
+
+ConstructedFamily remains mutable internal construction state, not the frozen
+publication owner. It requires unchanged previously verified input products;
+it neither reparses ABC nor licenses arbitrary raw trees by checking revisions.
+Free globals, callable/name/strictness, transitive effects, root enclosure and
+publication remain required. No standalone printer admission was expanded.
+
 FunctionCreationSites supplies an immutable file-level index of modern
 DEFINEFUNC/DEFINEMETHOD occurrences, including both IC widths. It retains the
 full FunctionCreation and MethodTarget, caller entity and creation PC. Index

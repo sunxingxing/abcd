@@ -511,6 +511,25 @@ record remains incomplete (CLI exit 1). Generated JS was not executed and RSS
 was not measured. Distinct-cell parent/child test sources now also exercise
 1/2/200/201 captured cells alongside same-numbered child local declarations.
 
+### T07 Owned Conditional Function Families
+
+BuildFunctionFamily now owns the supplied common tree/flow/capture construction
+products together, derives exact parent edges from FunctionExpr nodes, rejects
+missing/duplicate/unreferenced owners, runs capture correspondence on each edge
+and computes parent-first order with an iterative cycle-detecting walk. Owner
+IDs need not equal vector positions. Additional layout/scratch is bounded and
+does not rescan ancestor chains per function. Syntax cycles and runtime closure
+recursion are explicitly different concerns.
+
+Production abc_semantic and abc_structure built successfully. Regression sources
+use the shared input-to-parent/child-tree fixture with reverse member order,
+1/2/200/201 captures, missing children/proofs, duplicate owners and resource/work
+limits. They remain uncompiled/unrun; no JS execution, benchmarks or RSS work
+was performed. The result is owned conditional construction state, not frozen
+publication evidence. File-driven family preparation, callable/name/strictness,
+root enclosure, transitive effects and printing remain outstanding. Rules stay
+21 because executable admission is unchanged. T07 is still in progress.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,
