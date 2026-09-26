@@ -84,7 +84,7 @@ class TreeBuilder {
     Reserve();
     Bindings();
     Require(control_.entry.value < control_.nodes.size(), Error::kControl);
-    const auto root_origin = BlockOrigin(control_.nodes[control_.entry.value].block);
+    const auto root_origin = BodyOrigin();
     const auto root = Block(kBodyScope, root_origin);
     tree_.body = drafts_[root].statement;
     for (std::size_t i = syntax_.parameters.size(); i < tree_.symbols.size(); ++i) {
@@ -219,12 +219,26 @@ class TreeBuilder {
           NameEvidence::kSynthesized, snapshot->reason});
     }
   }
-  TreeOriginId BlockOrigin(analysis::WorkBlockId block) const {
-    const auto& range = graph_.blocks[block.value];
-    Require(range.op_count != 0, Error::kOrigin);
-    const auto origin = graph_.ops[range.first_op.value].origin;
-    Require(origin.value < tree_.origins.size(), Error::kOrigin);
-    return {origin.value};
+  TreeOriginId BodyOrigin() {
+    // Removed entry copies/default prologues do not own the body braces.
+    // Follow only the straight entry prefix; a live branch is itself a body
+    // operation, so this never chooses one arm's source location for both.
+    std::optional<ControlId> cursor = control_.entry;
+    while (cursor) {
+      Step();
+      const auto& node = control_.nodes[cursor->value];
+      const auto& range = graph_.blocks[node.block.value];
+      for (std::uint32_t i = 0; i < range.op_count; ++i) {
+        Step();
+        const auto& op = graph_.ops[range.first_op.value + i];
+        if (op.life != analysis::ValueLife::kLive) continue;
+        Require(op.origin.value < tree_.origins.size(), Error::kOrigin);
+        return {op.origin.value};
+      }
+      Require(!node.arms, Error::kControl);
+      cursor = node.next;
+    }
+    throw Error::kOrigin;
   }
   StmtId Statement(TreeStatement statement, TreeOriginId origin) {
     Step();

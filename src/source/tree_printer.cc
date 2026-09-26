@@ -42,6 +42,7 @@ class TreePrinter {
     result_.method = tree_.method;
     result_.value_revision = tree_.value_revision;
     result_.cfg_revision = tree_.cfg_revision;
+    Array(result_.parameters, tree_.parameters.size());
     Array(result_.expressions, tree_.expressions.size());
     Array(result_.statements, tree_.statements.size());
     Array(result_.anchors, tree_.anchors.size());
@@ -53,10 +54,12 @@ class TreePrinter {
     }
     Key(function_.Name());
     Append("(");
-    for (const auto& parameter : tree_.parameters) {
+    for (std::size_t i = 0; i < tree_.parameters.size(); ++i) {
       Step();
+      const auto& parameter = tree_.parameters[i];
       if (parameter.rest) throw Error::kUnsupportedContext;
-      if (&parameter != tree_.parameters.data()) Append(", ");
+      if (i != 0) Append(", ");
+      result_.parameters[i].begin = result_.bytes;
       Name(parameter.symbol);
       if (parameter.initializer) {
         if (parameter.initializer->value >= tree_.expressions.size() ||
@@ -66,6 +69,7 @@ class TreePrinter {
         Push(*parameter.initializer);
         Drain();
       }
+      result_.parameters[i].end = result_.bytes;
     }
     Append(") ");
     Push(Statement{tree_.body, 0});

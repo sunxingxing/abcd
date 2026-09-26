@@ -841,3 +841,33 @@ connected to VerifiedFunction publication: typed signature PC placement and
 complete signature/body correspondence remain required. No real default-method
 output, JS behavior equivalence or T06 completion is claimed. Tests, generated-JS
 execution and RSS measurement remain paused.
+
+### T06 Signature Position Events and Body Origins
+
+PrintedFunction now owns a formal-ordinal range table. The printer records each
+complete parameter (name plus any initializer) directly during emission, without
+including comma separators. FunctionEmission capacity accounting includes the
+table; method and record inspection serialize it together with the symbol and
+optional initializer ExprId. It remains fragment-local UTF-8 byte evidence and
+travels with the existing immutable method envelope.
+
+The body root previously inherited the first entry operation's origin even when
+that operation was removed. This was unsuitable for moved default prologues and
+already attributed ordinary body braces to elided parameter copies. Construction
+now walks the straight entry prefix to the first retained operation; independent
+flow verification reconstructs that choice. Empty/tombstoned prefix blocks do
+not own the body, and a live branch stops the scan before either arm. Work is
+bounded and charged; the original CFG and scopes are not changed by this rule.
+
+Production abc_semantic/abc_structure builds passed. ABC-only inspection of
+Pasteboard method 7586 and Immersive method 21082 emitted the unchanged 157/160
+byte method fragments, respectively. Both locate params at [26,32), with no
+initializer. Their body-root origin now points to retained PC14, not elided
+PC0. The tools intentionally exit 1 because neither fragment is a complete
+record. This is not generated-JS execution or behavioral acceptance.
+
+Unrun regression sources cover formal spans, record transport, retained root
+origins and refusal of a tampered root that names the removed default prologue.
+SignaturePlacement construction and its independent default-to-source proof
+remain pending; adding output events does not authorize default publication.
+Tests and RSS measurement remain paused; T06 is still incomplete.

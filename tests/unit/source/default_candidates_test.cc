@@ -2,6 +2,7 @@
 #include "../../../src/source/default_value_proof.h"
 #include "../../../src/source/default_body.h"
 #include "../../../src/source/function_tree.h"
+#include "../../../src/source/tree_flow.h"
 #include "../../../src/analysis/value_flow.h"
 
 #include <cstdlib>
@@ -122,6 +123,11 @@ void BodyProjection() {
   auto tree = BuildFunctionTree(graph, control, evaluation, std::move(syntax), {constants, 0, 0, {}});
   Check(std::holds_alternative<ConstructedFunction>(tree));
   Check(std::get<ConstructedFunction>(tree).tree.symbols.size() == 1);
+  auto& syntax_tree = std::get<ConstructedFunction>(tree).tree;
+  Check(syntax_tree.statements[syntax_tree.body.value].origin == TreeOriginId{3});
+  syntax_tree.statements[syntax_tree.body.value].origin = TreeOriginId{0};
+  Check(std::get<TreeFlowError>(VerifyTreeFlow(graph, control, evaluation, syntax_tree)) ==
+        TreeFlowError::kPlacement);
   Check(std::get<DefaultBodyError>(DefaultBody::Build(original, parameters, candidates, 0, {0, 0})) == DefaultBodyError::kResourceLimit);
   Check(std::get<DefaultBodyError>(DefaultBody::Build(original, parameters, candidates, 0,
         {1024 * 1024, owner.Work() - 1})) == DefaultBodyError::kWorkLimit);

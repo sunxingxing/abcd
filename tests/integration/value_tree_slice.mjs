@@ -39,6 +39,13 @@ assert.equal(report.abi.arguments, 'unobserved');
 const positions = report.positions;
 const bytes = Buffer.from(report.source, 'utf8');
 assert.equal(positions.unit, 'utf8_byte');
+assert.equal(positions.parameters.length, 1);
+const formal = positions.parameters[0];
+assert.equal(formal.initializer, null);
+assert.equal(bytes.subarray(formal.begin, formal.end).toString('utf8'), 'params');
+const bodyOrigin = positions.origins[positions.statements[0].origin];
+assert.equal(bodyOrigin.kind, 'original');
+assert.equal(bodyOrigin.pc, 14); // Entry-copy tombstones do not own the body.
 for (const node of [...positions.expressions, ...positions.statements]) {
   assert.ok(Number.isSafeInteger(node.begin) && Number.isSafeInteger(node.end));
   assert.ok(node.begin >= 0 && node.begin < node.end && node.end <= bytes.length);

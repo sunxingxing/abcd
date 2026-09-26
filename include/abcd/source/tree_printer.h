@@ -24,6 +24,10 @@ struct PrintedFunction {
   analysis::CfgRevision cfg_revision;
   FunctionFragment fragment = FunctionFragment::kClassMember;
   std::size_t bytes = 0;
+  // Formal ordinal indexes complete parameter syntax (name and initializer),
+  // excluding separators. Signature migration maps to these events, not to a
+  // body-wide range or a search for matching generated text.
+  std::vector<GeneratedRange> parameters;
   // Indexed by the same immutable tree's ExprId/StmtId/AnchorId. Combine these
   // event ranges with its origin DAG, never reparse JS to recover provenance.
   // Ranges are half-open UTF-8 byte coordinates relative to this fragment.

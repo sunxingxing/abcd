@@ -33,7 +33,8 @@ const bytes = Buffer.from(record.source, 'utf8');
 const methodBytes = Buffer.from(member.source, 'utf8');
 assert.ok(segment.begin > 0 && segment.end < bytes.length);
 assert.deepEqual(bytes.subarray(segment.begin, segment.end), methodBytes);
-for (const range of [...segment.local_positions.expressions,
+for (const range of [...segment.local_positions.parameters,
+                     ...segment.local_positions.expressions,
                      ...segment.local_positions.statements]) {
   assert.ok(range.begin >= 0 && range.end <= methodBytes.length);
   assert.deepEqual(bytes.subarray(segment.begin + range.begin, segment.begin + range.end),

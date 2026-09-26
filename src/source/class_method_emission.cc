@@ -69,6 +69,7 @@ std::variant<FunctionEmission, TreePrintError> FunctionEmission::Write(
     return true;
   };
   if (!add(function.AllocatedBytes(), 1) ||
+      !add(positions->parameters.capacity(), sizeof(GeneratedRange)) ||
       !add(positions->expressions.capacity(), sizeof(GeneratedRange)) ||
       !add(positions->statements.capacity(), sizeof(GeneratedRange)) ||
       !add(positions->anchors.capacity(), sizeof(std::size_t)))

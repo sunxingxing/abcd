@@ -107,6 +107,10 @@ void Run() {
   Check(printed.fragment == FunctionFragment::kClassMember);
   Check(printed.bytes == output.view().size());
   Check(output.view().starts_with("run($arg0) {\n"));
+  Check(printed.parameters.size() == 1);
+  const auto parameter = printed.parameters[0];
+  Check(parameter.begin < parameter.end && parameter.end <= printed.bytes);
+  Check(output.view().substr(parameter.begin, parameter.end - parameter.begin) == "$arg0");
   Check(printed.expressions.size() == function.Tree().expressions.size());
   Check(printed.statements.size() == function.Tree().statements.size());
   for (const auto range : printed.expressions)
@@ -140,6 +144,7 @@ void Run() {
   Check(emission.Receipt().stage == SourceStage::kPrinted && emission.Receipt().coverage == Coverage::kComplete);
   Check(!emission.Receipt().legacy_writer_used && !ValidateRouteReceipt(emission.Receipt()));
   Check(emission.Function().Abi().parameters[0].reads.references == 1);
+  Check(emission.Positions().parameters == printed.parameters);
   for (const auto span : emission.Positions().expressions) {
     const auto begin = emission.Destination().begin + span.begin;
     const auto end = emission.Destination().begin + span.end;

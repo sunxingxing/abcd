@@ -144,6 +144,17 @@ void Positions(std::ostream& output, const FunctionTree& tree, const PrintedFunc
   Array(output, tree.origins, Origin);
   output << ",\"origin_parts\":";
   Array(output, tree.origin_parts, [](auto id) { return id.value; });
+  output << ",\"parameters\":[";
+  for (std::size_t i = 0; i < tree.parameters.size(); ++i) {
+    if (i != 0) output << ',';
+    const auto& parameter = tree.parameters[i];
+    nlohmann::json entry{{"symbol", parameter.symbol.value},
+        {"begin", printed.parameters[i].begin}, {"end", printed.parameters[i].end}};
+    entry["initializer"] = parameter.initializer
+        ? nlohmann::json(parameter.initializer->value) : nlohmann::json(nullptr);
+    output << entry;
+  }
+  output << ']';
   const auto nodes = [&](std::string_view label, const auto& syntax, const auto& spans) {
     output << ",\"" << label << "\":[";
     for (std::size_t i = 0; i < syntax.size(); ++i) {

@@ -30,9 +30,7 @@ class FlowCheck {
   }
   TreeFlow Run() {
     IndexPlacements();
-    const auto& entry = graph_.blocks[control_.nodes[control_.entry.value].block.value];
-    Require(entry.op_count != 0 && tree_.statements[tree_.body.value].origin.value ==
-            graph_.ops[entry.first_op.value].origin.value, Error::kPlacement);
+    CheckBodyOrigin();
     const auto first_child = Declarations();
     std::size_t pending = 1;
     tasks_[0] = {control_.entry, tree_.body, first_child};
@@ -108,6 +106,28 @@ class FlowCheck {
   }
 
  private:
+  void CheckBodyOrigin() {
+    // Independently reconstruct the retained entry operation. A tombstone
+    // prologue PC must not be presented as owning all remaining body syntax.
+    std::optional<ControlId> cursor = control_.entry;
+    while (cursor) {
+      budget_.Step();
+      const auto& node = control_.nodes[cursor->value];
+      const auto& block = graph_.blocks[node.block.value];
+      for (std::uint32_t i = 0; i < block.op_count; ++i) {
+        budget_.Step();
+        const auto& op = graph_.ops[block.first_op.value + i];
+        if (op.life == analysis::ValueLife::kLive) {
+          Require(tree_.statements[tree_.body.value].origin.value == op.origin.value,
+                  Error::kPlacement);
+          return;
+        }
+      }
+      Require(!node.arms, Error::kControl);
+      cursor = node.next;
+    }
+    throw Error::kPlacement;
+  }
   void IndexPlacements() {
     for (std::size_t i = 0; i < tree_.operations.size(); ++i) {
       budget_.Step();
