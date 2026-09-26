@@ -44,7 +44,8 @@ struct CfgRevision {
 };
 enum class OperandRole : std::uint8_t {
   kInput, kBase, kKey, kStoredValue, kLeft, kRight, kCondition,
-  kReturnValue, kGuardValue, kDiagnosticName, kPhiInput
+  kReturnValue, kGuardValue, kDiagnosticName, kPhiInput,
+  kCallee, kReceiver, kConstructor, kArgument
 };
 enum class ReadPurpose : std::uint8_t { kOperand, kProtocol };
 enum class ValueLife : std::uint8_t { kLive, kRemoved };

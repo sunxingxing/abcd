@@ -986,3 +986,35 @@ Production abc_semantic and abc_structure builds completed successfully. Real
 default-method acceptance is still outstanding, alongside the broader T06
 parameter-version/scope/callable cases. Tests, generated-JS execution and RSS
 measurement remain paused. T00-T12 remains the active, incomplete objective.
+
+## T04 Call Operand Occurrences
+
+Started the planned ordinary-call prerequisite while retaining T06's incomplete
+status. The fixed scalar operand array cannot represent variable call ranges.
+CallOperands is a separate, owned compact view over typed OrdinaryCall,
+ReceiverCall and ConstructorCall descriptors. It exposes indexed operands with
+explicit callee/receiver/constructor/argument roles and independent read
+ordinals. Repeated register identities remain distinct occurrences. No role is
+inferred from opcode spelling, a register's name or printed source.
+
+Construction checks the typed call against the normal-register effect contract,
+including fixed/range counts, each read slot and accumulator result destination.
+Malformed fixed counts, empty constructor ranges, register arithmetic overflow
+and SSA ordinal overflow refuse. The descriptor uses constant storage and O(1)
+indexed access; validation is O(argument occurrences), charging one work unit
+per checked occurrence. It creates no expanded temporary argument array.
+
+This is a contract adapter only, not a call evaluation-order proof or source
+reference certificate. The existing normal importer still rejects call
+operations; Invoke/Construct working nodes, adapter integration, variable-use
+capacity admission, evaluation ownership, source Call AST and direct-eval/member
+reference checks remain next. In particular, no mutable .call/.apply workaround
+or special-case record writer was introduced. Rules remain 9 because source
+admission is unchanged.
+
+Production abc_semantic/abc_structure compilation passed. The new separate
+call_operands_test source covers aliased receiver/arguments, wrong slots/result,
+constructor counts, 200/201 and geometric argument sizes, the 65535 argument
+boundary, ordinal overflow and byte/work refusal. It has not been compiled or
+run. Tests, generated-JS execution and RSS measurement remain paused. Neither
+T04 nor T06 is marked complete.
