@@ -71,13 +71,15 @@ ValueMethod BuildValueStage(RouteInputIdentity identity, abc::EntityOffset metho
     }
     return fail(kind, ValueRouteError::kImportStage, error.pc);
   }
-  // Import already admitted this one-byte/use verifier scratch alongside its
-  // graph. Correspondence uses no additional allocation beyond that scratch.
+  // Operand views and use-chain scratch have disjoint lifetimes. The import
+  // budget checked both; preserve the fixed view minimum for small methods.
   const auto verified = analysis::VerifyImportedValues(*graph, *input, *proof, frame,
-      {graph->uses.size(), budget.work});
+      {analysis::ImportedValueScratch(graph->uses.size()), budget.work});
   if (verified)
     return fail(verified->kind == analysis::ValueImportError::kWorkLimit
-                    ? RouteFailureClass::kWorkLimit : RouteFailureClass::kInvariantViolation,
+                    ? RouteFailureClass::kWorkLimit :
+                verified->kind == analysis::ValueImportError::kResourceLimit
+                    ? RouteFailureClass::kMemoryLimit : RouteFailureClass::kInvariantViolation,
                 ValueRouteError::kImportStage, verified->pc);
   receipt.stage = SourceStage::kValuesImported;
   receipt.work_revision = graph->revision.value;

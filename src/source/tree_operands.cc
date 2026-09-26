@@ -67,6 +67,7 @@ class OperandCheck {
           RequireMeaning(Literal<TextId>(expression) == *text, Error::kConstant);
         } else {
           static_assert(std::is_same_v<T, analysis::ValueGuard> ||
+                        std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
                         std::is_same_v<T, analysis::ValueArrayAllocation> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueJump>);
           throw Error::kUnsupportedOperation;

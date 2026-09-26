@@ -103,9 +103,21 @@ struct ValueNop { bool operator==(const ValueNop&) const = default; };
 struct ValueString { abc::PoolIndex string; bool operator==(const ValueString&) const = default; };
 struct ValueGuard { std::optional<abc::PoolIndex> name; bool operator==(const ValueGuard&) const = default; };
 struct ValueArrayAllocation { bool operator==(const ValueArrayAllocation&) const = default; };
+enum class InvokeReceiver : std::uint8_t { kUndefined, kExplicit };
+struct ValueInvoke {
+  InvokeReceiver receiver;
+  std::uint32_t arguments;
+  bool operator==(const ValueInvoke&) const = default;
+};
+// Constructor is also newTarget for these admitted NEWOBJRANGE operations.
+struct ValueConstruct {
+  std::uint32_t arguments;
+  bool operator==(const ValueConstruct&) const = default;
+};
 using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
     ValueNamedRead, ValueNamedWrite, ValuePropertyRead, ValueBranch, ValueJump,
-    ValueReturn, ValueNop, ValueString, ValueGuard, ValueArrayAllocation>;
+    ValueReturn, ValueNop, ValueString, ValueGuard, ValueArrayAllocation,
+    ValueInvoke, ValueConstruct>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

@@ -1018,3 +1018,44 @@ constructor counts, 200/201 and geometric argument sizes, the 65535 argument
 boundary, ordinal overflow and byte/work refusal. It has not been compiled or
 run. Tests, generated-JS execution and RSS measurement remain paused. Neither
 T04 nor T06 is marked complete.
+
+### T04 Typed Call Import (Rules 10)
+
+Normal import now creates ValueInvoke (implicit-undefined versus explicit raw
+receiver, argument count) and ValueConstruct (argument count, constructor also
+newTarget). OperandView unifies scalar and compact call occurrence descriptions
+without truncating ranges. Use capacity includes expanded SSA reads in addition
+to scalar literal capacity and phi inputs; overflow/resource admission happens
+before reserve. Both importer and independent correspondence checker charge
+call-contract validation work against their remaining allowance and compare
+every role/read identity. Effects, original PCs and exceptional exits remain
+unchanged. New call variants are explicitly non-erasable even if supplied effect
+fields are empty; unused results do not imply removable calls.
+
+The source evaluation/AST layers deliberately still reject invocation and
+construction until reference/argument ownership is proved. Evidence rules 10
+version the expanded IR admission, not completed source-call coverage. No
+direct-eval assumption, mutable .call shim, source-text matching or legacy
+fallback was added.
+
+An ABC-only PageA method 7613 inspection exposed a fixed-view scratch regression:
+the caller supplied only one byte per use to correspondence checking, smaller
+than OperandView for this method. ImportedValueScratch now exposes the required
+maximum of the disjoint use-chain/view scratch lifetimes; memory failures are
+reported as memory limits instead of invariant violations. Debugger evidence
+identified ValueImportError::kResourceLimit at correspondence line 136 before
+the fix. No process or debugger session remains running.
+
+After the fix, production abc_semantic/abc_structure builds passed. Method 7613
+reaches control_frozen/work revision 1 under rules 10, then refuses with
+FunctionPrepareError::kEvaluation (inspection detail 4), as expected for the
+pending call source planner. Its receiver call is at PC34, after property reads
+at PC14 and PC22. PageA method 7586 still emits its unchanged 157-byte fragment.
+Neither observation executes JS or proves behavioral equivalence.
+
+New unrun value_call_import_test specifications cover ordinary/receiver/
+constructor ranges at 0/1/3/200/201 arguments, exact occurrence roles, unused
+call effects, exception exits, tampered call counts/roles and the correspondence
+scratch boundary. Tests, JS execution and RSS measurement remain paused.
+Next is variable-arity evaluation planning and source reference ownership, then
+Call/Construct AST/printer integration; T04 and the full objective are unfinished.

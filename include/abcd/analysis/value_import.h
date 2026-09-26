@@ -24,6 +24,9 @@ struct ValueImportFailure {
     SemanticBudget budget = {});
 // Independent traversal of the unedited imported graph against its immutable
 // input. Does not reconstruct another graph or certify transformed revisions.
+// The use-chain scratch is released before operand-view checking; caller can
+// reserve their maximum rather than holding both scratch arenas concurrently.
+[[nodiscard]] std::size_t ImportedValueScratch(std::size_t uses);
 [[nodiscard]] std::optional<ValueImportFailure> VerifyImportedValues(
     const ValueProgram& graph, const SemanticMethod& method,
     const SemanticProof& proof, const abc::FrameLayout& frame,

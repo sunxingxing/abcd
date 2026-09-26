@@ -6,6 +6,7 @@
 #include <type_traits>
 
 #include "value_operands.h"
+#include "operand_view.h"
 #include "value_flow.h"
 
 namespace abcd::analysis {
@@ -87,10 +88,31 @@ ValueOperation Operation(const SemanticOperation& operation) {
     } else if constexpr (std::is_same_v<T, HoleGuard>) {
       const auto* name = std::get_if<HoleNameSlot>(&op.name);
       return ValueGuard{name ? std::optional{ name->slot } : std::nullopt};
+    } else if constexpr (std::is_same_v<T, OrdinaryCall>) {
+      return ValueInvoke{InvokeReceiver::kUndefined, op.Count()};
+    } else if constexpr (std::is_same_v<T, ReceiverCall>) {
+      return ValueInvoke{InvokeReceiver::kExplicit, op.Count()};
+    } else if constexpr (std::is_same_v<T, ConstructorCall>) {
+      return ValueConstruct{op.ArgumentCount()};
     } else {
       throw ValueImportFailure{Error::kUnsupportedOperation, {}};
     }
   }, operation);
+}
+OperandView Operands(const SemanticInstruction& instruction, ImportBudget& quota) {
+  auto result = OperandView::Build(instruction, quota.Remaining());
+  if (auto* view = std::get_if<OperandView>(&result)) {
+    quota.Work(view->Work());
+    return std::move(*view);
+  }
+  Error error = Error::kOperandMismatch;
+  switch (std::get<OperandViewError>(result)) {
+    case OperandViewError::kUnsupported: error = Error::kUnsupportedOperation; break;
+    case OperandViewError::kMismatch: break;
+    case OperandViewError::kResourceLimit: error = Error::kResourceLimit; break;
+    case OperandViewError::kWorkLimit: error = Error::kWorkLimit; break;
+  }
+  throw ValueImportFailure{error, instruction.pc};
 }
 void LinkUse(ValueProgram& graph, OperandUse use) {
   const UseId id{static_cast<std::uint32_t>(graph.uses.size())};
@@ -142,7 +164,12 @@ std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
     quota.Reserve(graph.edges, edge_count);
     Require(count <= std::numeric_limits<std::size_t>::max() / kScalarOperandCapacity,
             Error::kResourceLimit);
-    const auto operands = count * kScalarOperandCapacity;
+    // Scalar literals need bounded slots; variable calls need one slot per SSA
+    // read occurrence. Do not cap a range at the fixed scalar operand width.
+    const auto scalar_operands = count * kScalarOperandCapacity;
+    Require(method.ssa.AllReads().size() <= std::numeric_limits<std::size_t>::max() - scalar_operands,
+            Error::kResourceLimit);
+    const auto operands = scalar_operands + method.ssa.AllReads().size();
     Require(method.ssa.AllInputs().size() <=
             std::numeric_limits<std::size_t>::max() - operands, Error::kResourceLimit);
     const auto use_capacity = operands + method.ssa.AllInputs().size();
@@ -191,12 +218,7 @@ std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
         Require(instruction.pc == body.instructions[index].offset,
                 Error::kInputMismatch, instruction.pc);
         Require(!instruction.origin, Error::kResumeFlow, instruction.pc);
-        const auto operands = DescribeValueOperands(instruction);
-        if (const auto* error = std::get_if<OperandError>(&operands))
-          throw ValueImportFailure{
-              *error == OperandError::kUnsupportedOperation
-                  ? Error::kUnsupportedOperation : Error::kOperandMismatch,
-              instruction.pc};
+        const auto operands = Operands(instruction, quota);
         graph.origins.push_back({{index}, instruction.pc, {}});
         graph.input.sites[index] = OpId{index};
         graph.ops.push_back({Operation(instruction.operation),
@@ -220,16 +242,17 @@ std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
     for (std::size_t i = 0; i < count; ++i) {
       quota.Work();
       const auto& instruction = method.instructions[i];
-      const auto described = DescribeValueOperands(instruction);
-      const auto* plan = std::get_if<ValueOperands>(&described);
-      Require(plan != nullptr, Error::kOperandMismatch, instruction.pc);
+      const auto plan = Operands(instruction, quota);
       auto& op = graph.ops[i];
-      Require(plan->write.has_value() == op.result.has_value(), Error::kInputMismatch, instruction.pc);
+      Require(plan.Write().has_value() == op.result.has_value(), Error::kInputMismatch, instruction.pc);
       if (op.result)
-        Require(SameSlot(*plan->write, values[op.result->value].slot), Error::kInputMismatch, instruction.pc);
+        Require(SameSlot(*plan.Write(), values[op.result->value].slot), Error::kInputMismatch, instruction.pc);
       op.first_use = UseId{static_cast<std::uint32_t>(graph.uses.size())};
-      for (const auto& operand : std::span(plan->operands).first(plan->count)) {
+      for (std::uint32_t ordinal = 0; ordinal < plan.Count(); ++ordinal) {
         quota.Work();
+        const auto described = plan.At(ordinal);
+        Require(described.has_value(), Error::kOperandMismatch, instruction.pc);
+        const auto& operand = *described;
         if (std::holds_alternative<EmptyArray>(operand.value)) continue;
         ValueOperand input;
         std::optional<InputRead> occurrence;

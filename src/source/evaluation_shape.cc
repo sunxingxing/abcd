@@ -31,6 +31,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else if constexpr (std::is_same_v<T, analysis::ValueString>) return EvaluationShape{kNoOperands, true};
     else {
       static_assert(std::is_same_v<T, analysis::ValueGuard> ||
+                    std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
                     std::is_same_v<T, analysis::ValueArrayAllocation> ||
                     std::is_same_v<T, analysis::ValueNop>);
       return {};
@@ -58,6 +59,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                     std::is_same_v<T, analysis::ValueReturn> ||
                     std::is_same_v<T, analysis::ValueJump> ||
                     std::is_same_v<T, analysis::ValueGuard> ||
+                    std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
                     std::is_same_v<T, analysis::ValueArrayAllocation> ||
                     std::is_same_v<T, analysis::ValueNop>);
       return true;

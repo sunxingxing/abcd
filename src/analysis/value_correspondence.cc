@@ -1,6 +1,9 @@
 #include "abcd/analysis/value_import.h"
 
+#include <algorithm>
+
 #include "value_operands.h"
+#include "operand_view.h"
 
 namespace abcd::analysis {
 namespace {
@@ -37,6 +40,10 @@ bool LiteralMatches(const ScalarValue& expected, const ValueOperand& actual) {
 }
 }
 
+std::size_t ImportedValueScratch(std::size_t uses) {
+  return std::max(uses, sizeof(OperandView));
+}
+
 std::optional<ValueImportFailure> VerifyImportedValues(
     const ValueProgram& graph, const SemanticMethod& method,
     const SemanticProof& proof, const abc::FrameLayout& frame,
@@ -45,6 +52,7 @@ std::optional<ValueImportFailure> VerifyImportedValues(
   const auto fail = [](Error kind, std::optional<abc::CodeOffset> pc = {}) {
     return std::optional<ValueImportFailure>{{kind, pc}};
   };
+  if (budget.bytes < ImportedValueScratch(graph.uses.size())) return fail(Error::kResourceLimit);
   std::uint64_t work = budget.work;
   const auto take = [&](std::size_t count) {
     if (count > work) return false;
@@ -128,12 +136,20 @@ std::optional<ValueImportFailure> VerifyImportedValues(
       if (exit.op.value != i || exit.origin != op.origin || exit.before_throw != op.before_throw)
         return fail(Error::kInputMismatch, input.pc);
     }
-    const auto described = DescribeValueOperands(input);
-    const auto* plan = std::get_if<ValueOperands>(&described);
-    if (!plan) return fail(Error::kOperandMismatch, input.pc);
+    const auto described = OperandView::Build(input, {budget.bytes, work});
+    const auto* plan = std::get_if<OperandView>(&described);
+    if (!plan) {
+      const auto error = std::get<OperandViewError>(described);
+      return fail(error == OperandViewError::kResourceLimit ? Error::kResourceLimit :
+          error == OperandViewError::kWorkLimit ? Error::kWorkLimit : Error::kOperandMismatch, input.pc);
+    }
+    if (!take(plan->Work())) return fail(Error::kWorkLimit);
     std::size_t actual_count = 0;
-    for (const auto& expected : std::span(plan->operands).first(plan->count)) {
+    for (std::uint32_t ordinal = 0; ordinal < plan->Count(); ++ordinal) {
       if (!take(1)) return fail(Error::kWorkLimit);
+      const auto operand = plan->At(ordinal);
+      if (!operand) return fail(Error::kOperandMismatch, input.pc);
+      const auto& expected = *operand;
       if (std::holds_alternative<EmptyArray>(expected.value)) continue;
       ++actual_count;
       if (use_index >= graph.uses.size()) return fail(Error::kOperandMismatch, input.pc);

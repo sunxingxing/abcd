@@ -205,9 +205,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Engine/rules provenance of the admission and stage semantics above. Bump
 // with any change to them; receipts signed under other rules are rejected
 // rather than reinterpreted.
-// Rules 9 include retained integer producers in negative-default migration;
-// residual-body, signature-PC and ABI proofs stay mandatory.
-inline constexpr std::uint32_t kRouteEvidenceRules = 9;
+// Rules 10 admit typed invocation/construction IR with checked variable input
+// occurrences. Call source publication still needs evaluation/reference proof.
+inline constexpr std::uint32_t kRouteEvidenceRules = 10;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,
