@@ -49,6 +49,7 @@ class ForestBuilder {
             graph_.uses.size() <= kMaxId - graph_.ops.size() * kNodesPerOperation &&
             graph_.origins.size() <= kMaxId - graph_.ops.size(), Error::kResourceLimit);
     Reserve(forest_.expressions, graph_.uses.size() + graph_.ops.size() * kNodesPerOperation);
+    Reserve(forest_.arguments, graph_.uses.size());
     Reserve(forest_.origins, graph_.origins.size() + graph_.ops.size());
     Reserve(forest_.origin_parts, graph_.ops.size() * kOriginPartsPerOperation);
     Reserve(forest_.operations, graph_.ops.size());
@@ -69,6 +70,10 @@ class ForestBuilder {
               graph_.origins[op.origin.value].disposition == analysis::OriginDisposition::kRetained,
               Error::kOrigin);
       const TreeOriginId origin{op.origin.value};
+      if (!std::holds_alternative<NoCall>(forest_.calls.operations[i])) {
+        forest_.operations[i] = Call(op, forest_.calls.operations[i], origin);
+        continue;
+      }
       std::array<ExprId, 2> operands{};
       Require(op.use_count <= operands.size(), Error::kUnsupportedOperation);
       for (std::uint32_t j = 0; j < op.use_count; ++j) {
@@ -83,6 +88,24 @@ class ForestBuilder {
   }
 
  private:
+  ExprId Call(const analysis::ValueOp& op, const CallBinding& binding, TreeOriginId origin) {
+    const bool member = std::holds_alternative<MemberCall>(binding);
+    const auto callee = Operand(graph_.uses[op.first_use.value].operand, origin);
+    // The proved member reference owns its base. Do not create an orphan syntax
+    // node for the raw receiver occurrence or evaluate that base a second time.
+    constexpr std::uint32_t kValuePrefix = 1;
+    constexpr std::uint32_t kMemberPrefix = 2;
+    const auto prefix = member ? kMemberPrefix : kValuePrefix;
+    const ArgumentRange arguments{static_cast<std::uint32_t>(forest_.arguments.size()), op.use_count - prefix};
+    for (std::uint32_t ordinal = prefix; ordinal < op.use_count; ++ordinal) {
+      Step();
+      Require(forest_.arguments.size() < forest_.arguments.capacity(), Error::kResourceLimit);
+      forest_.arguments.push_back(Operand(graph_.uses[op.first_use.value + ordinal].operand, origin));
+    }
+    if (std::holds_alternative<ConstructCall>(binding))
+      return Add(ConstructExpr{callee, arguments}, origin);
+    return Add(CallExpr{callee, arguments, member ? CallReference::kMember : CallReference::kValue}, origin);
+  }
   void Step(std::uint64_t count = 1) {
     Require(count <= work_, Error::kWorkLimit);
     work_ -= count;

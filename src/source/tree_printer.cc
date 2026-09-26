@@ -24,8 +24,9 @@ struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; };
 struct Indent { std::size_t depth; };
 struct PropertyKey { NameId id; };
 struct SymbolName { SymbolId id; };
+struct ArgumentCursor { ArgumentRange range; std::uint32_t index; };
 using PrintAction = std::variant<std::string_view, ExprId, EndExpression,
-    Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName>;
+    Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor>;
 struct LocatedAnchor { BlockBoundary boundary; AnchorId id; };
 
 class TreePrinter {
@@ -234,6 +235,33 @@ class TreePrinter {
       const auto& member = std::get<MemberTarget>(node.target);
       Member(member.base, member.key);
     }
+  }
+  void Expression(const CallExpr& node) {
+    if (node.reference == CallReference::kValue) {
+      Append("(0, ");
+      Push(std::string_view(")"));
+      Push(ArgumentCursor{node.arguments, 0});
+      Push(std::string_view(")("));
+    } else {
+      Append("(");
+      Push(std::string_view("))"));
+      Push(ArgumentCursor{node.arguments, 0});
+      Push(std::string_view("("));
+    }
+    Push(node.callee);
+  }
+  void Expression(const ConstructExpr& node) {
+    Append("(new (");
+    Push(std::string_view("))"));
+    Push(ArgumentCursor{node.arguments, 0});
+    Push(std::string_view(")("));
+    Push(node.constructor);
+  }
+  void Run(ArgumentCursor cursor) {
+    if (cursor.index == cursor.range.count) return;
+    if (cursor.index != 0) Append(", ");
+    Push(ArgumentCursor{cursor.range, cursor.index + 1});
+    Push(tree_.arguments[cursor.range.first + cursor.index]);
   }
   void Run(std::string_view token) { Append(token); }
   void Run(SymbolName symbol) { Name(symbol.id); }

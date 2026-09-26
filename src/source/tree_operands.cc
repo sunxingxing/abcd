@@ -65,9 +65,27 @@ class OperandCheck {
           const auto* text = std::get_if<TextId>(&constants_.operations[i]);
           RequireMeaning(text && text->value < constants_.text_count, Error::kConstant);
           RequireMeaning(Literal<TextId>(expression) == *text, Error::kConstant);
+        } else if constexpr (std::is_same_v<T, analysis::ValueInvoke>) {
+          const auto& call = Node<CallExpr>(expression);
+          Input(input(0), call.callee);
+          constexpr std::uint32_t kValuePrefix = 1;
+          constexpr std::uint32_t kMemberPrefix = 2;
+          if (operation.receiver == analysis::InvokeReceiver::kExplicit) {
+            RequireMeaning(call.reference == CallReference::kMember, Error::kOperand);
+            Receiver(op, call, input(0), input(1));
+            Arguments(op, call.arguments, kMemberPrefix, operation.arguments);
+          } else {
+            RequireMeaning(operation.receiver == analysis::InvokeReceiver::kUndefined &&
+                call.reference == CallReference::kValue, Error::kOperand);
+            Arguments(op, call.arguments, kValuePrefix, operation.arguments);
+          }
+        } else if constexpr (std::is_same_v<T, analysis::ValueConstruct>) {
+          const auto& construct = Node<ConstructExpr>(expression);
+          Input(input(0), construct.constructor);
+          constexpr std::uint32_t kConstructorPrefix = 1;
+          Arguments(op, construct.arguments, kConstructorPrefix, operation.arguments);
         } else {
           static_assert(std::is_same_v<T, analysis::ValueGuard> ||
-                        std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
                         std::is_same_v<T, analysis::ValueArrayAllocation> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueJump>);
           throw Error::kUnsupportedOperation;
@@ -77,6 +95,44 @@ class OperandCheck {
   }
 
  private:
+  void Arguments(const analysis::ValueOp& op, ArgumentRange arguments,
+      std::uint32_t prefix, std::uint32_t count) {
+    RequireMeaning(arguments.count == count && arguments.first <= tree_.arguments.size() &&
+        count <= tree_.arguments.size() - arguments.first, Error::kOperand);
+    for (std::uint32_t i = 0; i < count; ++i)
+      Input(graph_.uses[op.first_use.value + prefix + i].operand, tree_.arguments[arguments.first + i]);
+  }
+  void Receiver(const analysis::ValueOp& op, const CallExpr& call,
+      const analysis::ValueOperand& callee, const analysis::ValueOperand& receiver) {
+    // Derive the actual reference from executable syntax, independently of the
+    // builder's CallPlan. Its base must represent the suppressed receiver use.
+    const auto* value = std::get_if<analysis::ValueId>(&callee);
+    RequireMeaning(value != nullptr, Error::kOperand);
+    const auto* result = std::get_if<analysis::OpResult>(&graph_.values[value->value].origin);
+    RequireMeaning(result != nullptr, Error::kOperand);
+    const auto& property = graph_.ops[result->op.value];
+    const auto& placement = evaluation_.operations[result->op.value];
+    RequireMeaning((std::holds_alternative<analysis::ValueNamedRead>(property.operation) ||
+        std::holds_alternative<analysis::ValuePropertyRead>(property.operation)) &&
+        property.life == analysis::ValueLife::kLive && property.block == op.block &&
+        property.order < op.order && placement.kind == EvaluationKind::kInline &&
+        placement.consumer == op.first_use, Error::kOperand);
+    const auto& member = Node<MemberExpr>(call.callee);
+    if (const auto* id = std::get_if<analysis::ValueId>(&receiver)) {
+      const auto& definition = graph_.values[id->value];
+      if (const auto* producer = std::get_if<analysis::OpResult>(&definition.origin))
+        RequireMeaning(evaluation_.operations[producer->op.value].kind == EvaluationKind::kRoot &&
+            flow_.snapshots[producer->op.value].has_value(), Error::kOperand);
+      else RequireMeaning(std::holds_alternative<analysis::EntryDefinition>(definition.origin), Error::kOperand);
+    }
+    const auto saved_origin = origin_;
+    const auto saved_current = current_;
+    origin_ = {property.origin.value};
+    current_ = result->op;
+    Input(receiver, member.base);
+    origin_ = saved_origin;
+    current_ = saved_current;
+  }
   template <class T> const T& Node(ExprId id) const {
     RequireMeaning(id.value < tree_.expressions.size(), Error::kOperand);
     const auto* value = std::get_if<T>(&tree_.expressions[id.value].expression);

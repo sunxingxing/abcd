@@ -71,8 +71,16 @@ struct SymbolTarget { SymbolId symbol; };
 struct MemberTarget { ExprId base; MemberKey key; };
 using AssignmentTarget = std::variant<SymbolTarget, MemberTarget>;
 struct AssignmentExpr { AssignmentTarget target; ExprId value; };
+// Each argument slot and expression occurrence has exactly one syntax owner.
+// Call references are explicit: value calls must not acquire member this or
+// direct-eval semantics merely because their callee prints as an identifier.
+struct ArgumentRange { std::uint32_t first; std::uint32_t count; };
+enum class CallReference : std::uint8_t { kValue, kMember };
+struct CallExpr { ExprId callee; ArgumentRange arguments; CallReference reference; };
+struct ConstructExpr { ExprId constructor; ArgumentRange arguments; };
 using TreeExpression = std::variant<TreeLiteral, SymbolExpr, ThisExpr, MemberExpr,
-                                    UnaryExpr, BinaryExpr, LogicalExpr, AssignmentExpr>;
+                                    UnaryExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
+                                    CallExpr, ConstructExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct BlockStmt { ScopeId scope; std::uint32_t first_child; std::uint32_t child_count; };
 struct DeclarationStmt { SymbolId symbol; std::optional<ExprId> initializer; };
@@ -138,6 +146,7 @@ struct FunctionTree {
   std::vector<std::u16string> names;
   std::vector<std::u16string> texts;
   std::vector<ExprNode> expressions;
+  std::vector<ExprId> arguments;
   std::vector<StmtNode> statements;
   std::vector<StmtId> children;
   std::vector<TreeOrigin> origins;

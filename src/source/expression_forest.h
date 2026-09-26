@@ -18,6 +18,7 @@ struct ExpressionForest {
   BindingPlan bindings;
   CallPlan calls;
   std::vector<ExprNode> expressions;
+  std::vector<ExprId> arguments;
   std::vector<TreeOrigin> origins;
   std::vector<TreeOriginId> origin_parts;
   // A branch maps to its condition; a return maps to its returned expression.

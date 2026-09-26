@@ -115,7 +115,8 @@ class AbiBuilder {
   template <class T> void Expression(const T&) {
     static_assert(std::is_same_v<T, TreeLiteral> || std::is_same_v<T, MemberExpr> ||
         std::is_same_v<T, UnaryExpr> || std::is_same_v<T, BinaryExpr> ||
-        std::is_same_v<T, LogicalExpr>);
+        std::is_same_v<T, LogicalExpr> || std::is_same_v<T, CallExpr> ||
+        std::is_same_v<T, ConstructExpr>);
     // Child expressions are counted once by their arena entries, not recursively.
   }
   const analysis::ValueProgram& graph_;

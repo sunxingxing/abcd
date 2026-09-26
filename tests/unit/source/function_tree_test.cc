@@ -4,6 +4,7 @@
 #include "../../../src/source/function_abi.h"
 
 #include <cstdlib>
+#include <type_traits>
 #include <utility>
 
 namespace {
@@ -21,6 +22,12 @@ class Fixture {
   analysis::OpId Add(std::uint32_t block, std::uint32_t order, std::uint32_t pc,
       analysis::ValueOperation operation, bool result,
       std::initializer_list<std::pair<analysis::OperandRole, analysis::ValueOperand>> operands,
+      analysis::LanguageEffect effects = analysis::LanguageEffect::kNone) {
+    return Add(block, order, pc, operation, result, std::span(operands.begin(), operands.size()), effects);
+  }
+  analysis::OpId Add(std::uint32_t block, std::uint32_t order, std::uint32_t pc,
+      analysis::ValueOperation operation, bool result,
+      std::span<const std::pair<analysis::OperandRole, analysis::ValueOperand>> operands,
       analysis::LanguageEffect effects = analysis::LanguageEffect::kNone) {
     const analysis::OpId id{static_cast<std::uint32_t>(graph.ops.size())};
     std::optional<analysis::ValueId> value;
@@ -300,6 +307,61 @@ void SemanticMutations() {
   ++budget.work;
   Check(std::holds_alternative<TreeSemantics>(fixture.Verify(original, budget)));
 }
+
+enum class CallCase { kValue, kMember, kConstruct };
+void CallTree(CallCase kind, std::uint32_t count, bool computed) {
+  using namespace analysis;
+  Fixture fixture;
+  if (computed)
+    fixture.Add(0, 0, 0, ValuePropertyRead{}, true,
+        {{OperandRole::kBase, ValueId{1}}, {OperandRole::kKey, ValueId{0}}}, kRead);
+  else fixture.Add(0, 0, 0, ValueNamedRead{{0}}, true, {{OperandRole::kBase, ValueId{1}}}, kRead);
+  std::vector<std::pair<OperandRole, ValueOperand>> inputs;
+  inputs.emplace_back(kind == CallCase::kConstruct ? OperandRole::kConstructor : OperandRole::kCallee, ValueId{2});
+  if (kind == CallCase::kMember) inputs.emplace_back(OperandRole::kReceiver, ValueId{1});
+  for (std::uint32_t i = 0; i < count; ++i)
+    inputs.emplace_back(OperandRole::kArgument, analysis::IntegerLiteral{static_cast<std::int32_t>(i)});
+  const ValueOperation operation = kind == CallCase::kConstruct ? ValueOperation{ValueConstruct{count}} :
+      ValueOperation{ValueInvoke{kind == CallCase::kMember ? InvokeReceiver::kExplicit : InvokeReceiver::kUndefined, count}};
+  fixture.Add(0, 1, 4, operation, true, inputs, LanguageEffect::kUserCode);
+  fixture.Add(0, 2, 8, ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{3}}});
+  fixture.graph.blocks = {{{0}, 3, {0}, 0}};
+  const auto built = fixture.Build();
+  Check(std::holds_alternative<ConstructedFunction>(built));
+  const auto& tree = std::get<ConstructedFunction>(built).tree;
+  Check(tree.arguments.size() == count);
+  Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+  std::optional<ExprId> call;
+  for (std::uint32_t i = 0; i < tree.expressions.size(); ++i)
+    if (std::holds_alternative<CallExpr>(tree.expressions[i].expression) ||
+        std::holds_alternative<ConstructExpr>(tree.expressions[i].expression)) call = ExprId{i};
+  Check(call.has_value());
+  if (kind != CallCase::kConstruct) {
+    auto forged = tree;
+    auto& node = std::get<CallExpr>(forged.expressions[call->value].expression);
+    node.reference = kind == CallCase::kMember ? CallReference::kValue : CallReference::kMember;
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(forged)));
+    Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(forged)));
+  }
+  if (count >= 2) {
+    auto forged = tree;
+    std::swap(forged.arguments[0], forged.arguments[1]);
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(forged)));
+    Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(forged)));
+    forged = tree;
+    forged.arguments[1] = forged.arguments[0];
+    Check(std::get<TreeStructureError>(VerifyTreeStructure(forged)) == TreeStructureError::kOwnership);
+  }
+  auto orphan = tree;
+  orphan.arguments.push_back(*call);
+  Check(std::get<TreeStructureError>(VerifyTreeStructure(orphan)) == TreeStructureError::kOwnership);
+  auto invalid = tree;
+  std::visit([&](auto& node) {
+    using T = std::decay_t<decltype(node)>;
+    if constexpr (std::is_same_v<T, CallExpr> || std::is_same_v<T, ConstructExpr>) ++node.arguments.count;
+  }, invalid.expressions[call->value].expression);
+  Check(std::get<TreeStructureError>(VerifyTreeStructure(invalid)) == TreeStructureError::kRange);
+}
 }  // namespace
 int main() {
   BranchTree();
@@ -307,4 +369,7 @@ int main() {
   NameAndConstantRefusals();
   PredicateSnapshot();
   SemanticMutations();
+  for (const auto kind : {CallCase::kValue, CallCase::kMember, CallCase::kConstruct})
+    for (const std::uint32_t count : {0U, 1U, 3U, 200U, 201U, 4096U})
+      for (const bool computed : {false, true}) CallTree(kind, count, computed);
 }

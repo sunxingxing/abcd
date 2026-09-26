@@ -59,6 +59,7 @@ class StructureCheck {
     budget.Array(expressions_, tree.expressions.size());
     budget.Array(statements_, tree.statements.size());
     budget.Array(children_, tree.children.size());
+    budget.Array(arguments_, tree.arguments.size());
     RequireTree(tree.expressions.size() <= std::numeric_limits<std::size_t>::max() - tree.statements.size(),
                 Error::kResourceLimit);
     budget.Array(stack_, tree.expressions.size() + tree.statements.size());
@@ -114,6 +115,7 @@ class StructureCheck {
     for (const auto seen : expressions_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
     for (const auto seen : statements_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
     for (const auto seen : children_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
+    for (const auto seen : arguments_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
     return maximum_depth;
   }
 
@@ -147,6 +149,16 @@ class StructureCheck {
       } else if constexpr (std::is_same_v<T, LogicalExpr>) {
         RequireTree(expression.operation == TreeLogical::kAnd || expression.operation == TreeLogical::kOr,
                     Error::kUnsupportedSyntax);
+      } else if constexpr (std::is_same_v<T, CallExpr> || std::is_same_v<T, ConstructExpr>) {
+        RequireTree(expression.arguments.first <= tree_.arguments.size() &&
+            expression.arguments.count <= tree_.arguments.size() - expression.arguments.first, Error::kRange);
+        if constexpr (std::is_same_v<T, CallExpr>) {
+          RequireTree(expression.reference == CallReference::kValue ||
+              expression.reference == CallReference::kMember, Error::kUnsupportedSyntax);
+          if (expression.reference == CallReference::kMember)
+            RequireTree(expression.callee.value < tree_.expressions.size() &&
+                std::holds_alternative<MemberExpr>(tree_.expressions[expression.callee.value].expression), Error::kUnsupportedSyntax);
+        }
       } else {
         static_assert(std::is_same_v<T, AssignmentExpr>);
         if (const auto* symbol = std::get_if<SymbolTarget>(&expression.target))
@@ -200,6 +212,11 @@ class StructureCheck {
       if (const auto* computed = std::get_if<ComputedKey>(&member)) add(computed->expression);
     };
     if (const auto* expression = std::get_if<ExprId>(&frame.node)) {
+      const auto& syntax = tree_.expressions[expression->value].expression;
+      if (const auto* call = std::get_if<CallExpr>(&syntax))
+        return NextCall(frame, call->callee, call->arguments);
+      if (const auto* construct = std::get_if<ConstructExpr>(&syntax))
+        return NextCall(frame, construct->constructor, construct->arguments);
       std::visit([&](const auto& node) {
         using T = std::decay_t<decltype(node)>;
         if constexpr (std::is_same_v<T, MemberExpr>) { add(node.base); key(node.key); }
@@ -211,7 +228,8 @@ class StructureCheck {
           add(node.value);
         } else {
           static_assert(std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
-                        std::is_same_v<T, ThisExpr>);
+                        std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
+                        std::is_same_v<T, ConstructExpr>);
         }
       }, tree_.expressions[expression->value].expression);
     } else {
@@ -237,12 +255,26 @@ class StructureCheck {
     return children[frame.next_child++];
   }
 
+  std::optional<SyntaxNode> NextCall(SyntaxFrame& frame, ExprId callee, ArgumentRange arguments) {
+    // Stream siblings just like block children; a wide call does not grow the
+    // traversal stack. Every argument arena slot must be uniquely owned.
+    if (frame.next_child == 0) { ++frame.next_child; return callee; }
+    const auto ordinal = frame.next_child - 1;
+    if (ordinal == arguments.count) return {};
+    const auto slot = arguments.first + ordinal;
+    RequireTree(!arguments_[slot], Error::kOwnership);
+    arguments_[slot] = 1;
+    ++frame.next_child;
+    return tree_.arguments[slot];
+  }
+
   const FunctionTree& tree_;
   TreeCheckBudget& budget_;
   TreeScopeCheck scopes_;
   std::vector<std::uint8_t> expressions_;
   std::vector<std::uint8_t> statements_;
   std::vector<std::uint8_t> children_;
+  std::vector<std::uint8_t> arguments_;
   std::vector<SyntaxFrame> stack_;
 };
 }  // namespace
@@ -262,7 +294,8 @@ std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
                 tree.scopes.size() <= kMaxId && tree.symbols.size() <= kMaxId &&
                 tree.names.size() <= kMaxId && tree.texts.size() <= kMaxId &&
                 tree.origins.size() <= kMaxId && tree.origin_parts.size() <= kMaxId &&
-                tree.anchors.size() <= kMaxId && tree.children.size() <= kMaxId, Error::kResourceLimit);
+                tree.anchors.size() <= kMaxId && tree.children.size() <= kMaxId &&
+                tree.arguments.size() <= kMaxId, Error::kResourceLimit);
     const auto maximum_depth = StructureCheck(tree, checked).Run();
     CheckTreeOrigins(tree, checked);
     return TreeStructure{tree.value_revision, tree.cfg_revision, maximum_depth, checked.Bytes(), checked.Work()};

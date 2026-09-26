@@ -1119,3 +1119,53 @@ identity, shared callee rejection, forged associations/revisions, indirect value
 calls, construction and resource/work boundaries. Tests, generated-JS execution
 and RSS measurement remain paused. Rules remain 10; call syntax and its source
 correspondence are still the next integration step.
+
+### T04 Call Syntax Through Printed Source (Rules 11)
+
+FunctionTree now owns CallExpr/ConstructExpr plus a flat ExprId argument arena.
+Executable nodes contain syntax IDs and typed reference modes, not working IR
+IDs. Structural verification streams callee then arguments, checks ranges and
+unique ownership of every arena slot/expression, and enters the existing lexical
+scope unchanged. Wide calls do not create recursive walks or wide action stacks.
+Storage accounting includes argument capacity.
+
+ExpressionForest consumes CallPlan and suppresses only the proved raw receiver
+occurrence. The independent operand checker derives the property association
+from the actual callee syntax and checks receiver identity, snapshot stability,
+inline ownership, each argument and each call kind against IR. It does not
+accept the builder's plan as its source certificate. Existing evaluation proof
+still establishes ordering of effects; origin/flow/scope/ABI checks still run.
+The printer emits function-value calls as `(0, callee)(args)` to prevent direct
+eval and implicit member binding, member calls as actual references, and
+construction with the target preserved as newTarget. No `.call` lookup or IIFE
+is introduced. All expression occurrences retain generated spans.
+
+Production abc_semantic and abc_structure builds exited 0. ABC-only inspection
+of Pasteboard method 7613 now reaches Printed/complete method coverage, rules 11,
+without a legacy writer. The method remains a non-executable class-member
+fragment, with the enclosing record incomplete. Exact 157-byte output:
+
+```js
+purgeVariableDependenciesOnElmtId(rmElmtId) {
+  let $value1;
+  ($value1 = this.__curBp);
+  ($value1.purgeDependencyOnElmtId(rmElmtId));
+  return (void 0);
+}
+```
+
+PC 14 maps to the base read [74,86), PC 22 to the callee property [92,123),
+PC 34 to the call [91,134), and PC 39 to return [138,154). The base snapshot is
+retained because the raw IR uses it in both the property and receiver roles;
+removing that snapshot needs a separate reference-aware use-count proof, not a
+printer substitution. Immersive method 21082 still emits its existing 160-byte
+G1 branch fragment under rules 11; this is not independent call coverage.
+
+Unrun specifications cover named/computed calls and construction with
+0/1/3/200/201/4096 arguments, argument swaps, duplicate/orphan argument slots,
+invalid ranges and forged call modes. A new ABC-only-input integration test
+specifies getter/callee/invoke trace, receiver identity, arbitrary thrown JS
+values and the PC spans above. Neither these tests nor generated JS, benchmarks
+or RSS measurement were run. T04 is not accepted as complete: broader call
+shapes, reference snapshots, super, exception integration and deferred execution
+evidence remain. T06 and the T00-T12 goal also remain incomplete.
