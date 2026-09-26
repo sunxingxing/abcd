@@ -255,6 +255,23 @@ AST lowering remains explicitly gated: declarations, actual scope/operand/origin
 checks and child trees still need integration. Source rules stay 18; neither
 new source coverage nor T07 completion is claimed. Tests and RSS remain paused.
 
+### T07 Cell Symbols and Expressions
+
+BindingPlan now allocates typed CellBindings and a direct CellId-to-SymbolId
+index after scalar snapshots/phis/copy temporaries. Loaded SSA values remain
+separate bindings, preventing an old read snapshot from becoming a later mutable
+cell read. ExpressionForest emits ordinary SymbolExpr reads and AssignmentExpr
+writes with exact cell targets and original operation origins; environment
+placements intentionally have no expression and remain statement obligations.
+
+Production `abc_semantic` and `abc_structure` builds exited 0; whitespace checks
+passed. Uncompiled/unrun regression additions specify common read/write symbols,
+distinct allocation symbols, original origins, environment-expression absence
+and read-before-mutation snapshot retention. Complete FunctionTree construction
+still refuses CellBinding until declarations and independent actual-tree checks
+are integrated. No new executable-source coverage, test result or RSS result is
+claimed; source rules remain 18 and T07 remains incomplete.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

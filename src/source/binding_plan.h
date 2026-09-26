@@ -16,18 +16,22 @@ struct SnapshotBinding {
 };
 struct PhiBinding { analysis::ValueId value; analysis::WorkBlockId block; };
 struct CycleBinding { std::uint32_t bundle; CopyTempId temporary; };
-using BindingSource = std::variant<ParameterBinding, SnapshotBinding, PhiBinding, CycleBinding>;
+struct CellBinding { CellId cell; };
+using BindingSource = std::variant<ParameterBinding, SnapshotBinding, PhiBinding, CycleBinding, CellBinding>;
 struct BindingPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   std::vector<ValueBinding> values;
-  // Parameters precede value snapshots/phis and then per-bundle cycle temps,
+  // Parameters precede value snapshots/phis, per-bundle cycle temps and cells,
   // including unused formal parameters.
   // Names and lexical declarations are assigned by tree construction, not SSA.
   std::vector<BindingSource> symbols;
   // Optional first cycle-temp symbol per incoming bundle, followed by that
   // bundle's dense CopyTempIds. No temporary is shared between edge bundles.
   std::vector<std::optional<SymbolId>> cycle_bases;
+  // CellId-indexed mutable storage, separate from every loaded SSA value and
+  // snapshot. Declaration scope/position belongs to tree construction.
+  std::vector<SymbolId> cells;
   std::uint32_t parameter_count = 0;
   ParameterPlan parameters;
   std::size_t allocated_bytes = 0;

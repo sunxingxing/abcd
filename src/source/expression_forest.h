@@ -29,7 +29,7 @@ struct ExpressionForest {
   std::vector<TreeOrigin> origins;
   std::vector<TreeOriginId> origin_parts;
   // A branch maps to its condition; a return maps to its returned expression.
-  // Jumps and removed operations have no expression. Statement assembly owns
+  // Jumps, environment placements and removed operations have no expression. Statement assembly owns
   // control-operation placements, not this expression-only construction step.
   std::vector<std::optional<ExprId>> operations;
   // Flat, exclusively owned assignment roots, in each verified copy schedule's

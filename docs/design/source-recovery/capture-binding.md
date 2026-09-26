@@ -147,7 +147,20 @@ and independently account for those operation placements before source success.
 All nested construction/check work shares the remaining invocation budget;
 no per-cell CFG walk is added. Retained evaluation storage includes both plans.
 
-These operations are still refused by AST lowering. Required next
+BindingPlan now appends one typed CellBinding per CellId, with a separate
+CellId-to-SymbolId table. Loaded SSA values still use ordinary ValueBindings and
+snapshots; they are never rebound to mutable storage. ExpressionForest lowers
+cell reads to SymbolExpr and stores to AssignmentExpr with SymbolTarget, retaining
+each original operation origin. Environment placements have no expression and
+remain statement-construction obligations. No source-text matching is involved.
+
+Expression lowering is connected, but complete tree construction/publication
+still refuses cells: actual declarations, scope IDs, environment placements and
+independent statement/operand/origin correspondence are not yet integrated.
+The read-snapshot regression specification retains an old loaded value across a
+later cell store and requires a distinct snapshot symbol; it is uncompiled/unrun.
+
+Required next
 integration remains: proving dynamic cell lifetimes in the work graph and
 capture-aware symbol binding and AST;
 complete child trees validated before parent publication; dependency/SCC handling

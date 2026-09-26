@@ -27,6 +27,7 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
   // locations. Never coalesce these into mutable source parameters/cells.
   constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
   std::size_t phi_count = 0, cycle_count = 0;
+  const auto cell_count = evaluation.cells ? evaluation.cells->cells.cells.size() : 0;
   for (const auto& value : graph.values) {
     if (work == 0) return Error::kWorkLimit;
     --work;
@@ -42,12 +43,14 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
     return Error::kResourceLimit;
   const auto fixed_symbols = parameter_count + phi_count + cycle_count;
   const auto bundles = evaluation.phis ? evaluation.phis->bundles.size() : 0;
-  if (bundles > kMaxId || graph.ops.size() > kMaxId - fixed_symbols ||
+  if (bundles > kMaxId || cell_count > kMaxId - fixed_symbols ||
+      graph.ops.size() > kMaxId - fixed_symbols - cell_count ||
       graph.values.size() > kMaxId ||
       !admit(1, sizeof(BindingPlan)) ||
       !admit(graph.values.size(), sizeof(ValueBinding)) ||
       !admit(bundles, sizeof(std::optional<SymbolId>)) ||
-      !admit(graph.ops.size() + fixed_symbols, sizeof(BindingSource)))
+      !admit(cell_count, sizeof(SymbolId)) ||
+      !admit(graph.ops.size() + fixed_symbols + cell_count, sizeof(BindingSource)))
     return Error::kResourceLimit;
   try {
     auto parameter_result = BuildParameterPlan(graph, parameter_count, {bytes, work});
@@ -69,11 +72,13 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
     plan.parameter_count = parameter_count;
     plan.parameters = std::move(*parameters);
     plan.values.resize(graph.values.size());
-    const auto symbol_limit = graph.ops.size() + fixed_symbols;
+    const auto symbol_limit = graph.ops.size() + fixed_symbols + cell_count;
     plan.symbols.reserve(symbol_limit);
     plan.cycle_bases.resize(bundles);
+    plan.cells.resize(cell_count);
     if (!admit(plan.values.capacity() - graph.values.size(), sizeof(ValueBinding)) ||
         !admit(plan.cycle_bases.capacity() - bundles, sizeof(std::optional<SymbolId>)) ||
+        !admit(plan.cells.capacity() - cell_count, sizeof(SymbolId)) ||
         !admit(plan.symbols.capacity() - symbol_limit, sizeof(BindingSource)))
       return Error::kResourceLimit;
     for (std::uint32_t i = 0; i < parameter_count; ++i) {
@@ -130,6 +135,12 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
         --work;
         plan.symbols.emplace_back(CycleBinding{static_cast<std::uint32_t>(i), CopyTempId{temporary}});
       }
+    }
+    for (std::size_t i = 0; i < cell_count; ++i) {
+      if (work == 0) return Error::kWorkLimit;
+      --work;
+      plan.cells[i] = SymbolId{static_cast<std::uint32_t>(plan.symbols.size())};
+      plan.symbols.emplace_back(CellBinding{CellId{static_cast<std::uint32_t>(i)}});
     }
     plan.allocated_bytes = budget.bytes - bytes;
     plan.work = budget.work - work;

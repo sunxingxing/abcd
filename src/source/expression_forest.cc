@@ -96,6 +96,7 @@ class ForestBuilder {
               Error::kOrigin);
       const TreeOriginId origin{op.origin.value};
       if (evaluation_.operations[i].kind == EvaluationKind::kInitializer) continue;
+      if (evaluation_.operations[i].kind == EvaluationKind::kEnvironment) continue;
       if (objects_[i]) {
         forest_.operations[i] = Object(evaluation_.literals->objects[*objects_[i]], origin);
         continue;
@@ -110,7 +111,7 @@ class ForestBuilder {
         Step();
         operands[j] = Operand(graph_.uses[op.first_use.value + j].operand, origin);
       }
-      forest_.operations[i] = Lower(op, operands, origin, constants_.operations[i]);
+      forest_.operations[i] = Lower({static_cast<std::uint32_t>(i)}, op, operands, origin, constants_.operations[i]);
     }
     EdgeAssignments();
     forest_.allocated_bytes = budget_.bytes - bytes_;
@@ -330,13 +331,23 @@ class ForestBuilder {
     }
     throw Error::kUnsupportedOperation;
   }
-  std::optional<ExprId> Lower(const analysis::ValueOp& op,
+  SymbolId CellSymbol(analysis::OpId op) {
+    Require(evaluation_.cells.has_value() && op.value < evaluation_.cells->cells.operations.size(), Error::kBinding);
+    const auto cell = evaluation_.cells->cells.operations[op.value];
+    Require(cell && cell->value < forest_.bindings.cells.size(), Error::kBinding);
+    return forest_.bindings.cells[cell->value];
+  }
+  std::optional<ExprId> Lower(analysis::OpId id, const analysis::ValueOp& op,
       const std::array<ExprId, 2>& operands, TreeOriginId origin,
       const ExpressionConstant& constant) {
     return std::visit([&](const auto& operation) -> std::optional<ExprId> {
       using T = std::decay_t<decltype(operation)>;
       if constexpr (std::is_same_v<T, analysis::ValueCopy>)
         return Combine(operands[0], origin);
+      else if constexpr (std::is_same_v<T, analysis::ValueLexicalLoad>)
+        return Add(SymbolExpr{CellSymbol(id)}, origin);
+      else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>)
+        return Add(AssignmentExpr{SymbolTarget{CellSymbol(id)}, operands[0]}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueUnary>)
         return Unary(operation.op, operands[0], graph_.uses[op.first_use.value].operand, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueBranch>)
@@ -374,7 +385,6 @@ class ForestBuilder {
         static_assert(std::is_same_v<T, analysis::ValueGuard> ||
                       std::is_same_v<T, analysis::ValueOwnWrite> ||
                       std::is_same_v<T, analysis::ValueFunctionCreation> ||
-                      std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
                       std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                       std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                       std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||

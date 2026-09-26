@@ -2,6 +2,8 @@
 #include "../../../src/source/cell_lifetime.h"
 #include "../../../src/source/cell_initialization.h"
 #include "../../../src/source/evaluation_plan.h"
+#include "../../../src/source/expression_forest.h"
+#include "abcd/analysis/value_simplify.h"
 #include "abcd/analysis/value_import.h"
 #include "analysis/ssa_fixture.h"
 
@@ -31,6 +33,24 @@ void Run(std::uint32_t count) {
     const auto evaluated = BuildEvaluationPlan(graph);
     const auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
     test::Check(evaluation && evaluation->cells);
+    std::vector<ExpressionConstant> constants(graph.ops.size());
+    const auto expressions = std::get<ExpressionForest>(BuildExpressionForest(
+        graph, *evaluation, frame.parameters, {0}, {constants, 0}));
+    test::Check(expressions.bindings.cells.size() == count && !expressions.operations[0]);
+    for (std::size_t c = 0; c < plan->cells.size(); ++c) {
+      const auto symbol = expressions.bindings.cells[c];
+      test::Check(std::get<CellBinding>(expressions.bindings.symbols[symbol.value]).cell == CellId{static_cast<std::uint32_t>(c)});
+      const auto& cell = plan->cells[c];
+      for (std::uint32_t i = 0; i < cell.count; ++i) {
+        const auto access = plan->accesses[cell.first + i];
+        const auto expression = *expressions.operations[access.operation.value];
+        const auto& node = expressions.expressions[expression.value];
+        test::Check(node.origin.value == graph.ops[access.operation.value].origin.value);
+        if (access.kind == CellAccessKind::kLoad)
+          test::Check(std::get<SymbolExpr>(node.expression).symbol == symbol);
+        else test::Check(std::get<SymbolTarget>(std::get<AssignmentExpr>(node.expression).target).symbol == symbol);
+      }
+    }
     test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, *evaluation)));
     test::Check(evaluation->operations[0].kind == EvaluationKind::kEnvironment);
     auto forged = *evaluation; forged.cells.reset();
@@ -160,5 +180,31 @@ void ClosurePremise() {
   test::Check(std::get<CellInitializationError>(VerifyCellInitializations(
       graph, environments, cells, ClosureWrites::kUnknown, initialized)) == CellInitializationError::kWitness);
 }
+void ReadSnapshot() {
+  // Read a cell, retain its value, mutate the cell, return the old value.
+  // A scalar SSA snapshot must never be rebound to the mutable cell symbol.
+  constexpr std::uint8_t kPush = 0x09, kLoad = 0x60, kSave = 0x61,
+      kStoreCell = 0x3d, kReadCell = 0x3c, kInteger = 0x62, kPop = 0x69, kReturn = 0x64;
+  const auto body = test::Body({kPush, 1, kLoad, 0, kStoreCell, 0, kReadCell, 0,
+      kSave, 1, kInteger, 2, 0, 0, 0, kStoreCell, 0, kPop, kLoad, 1, kReturn});
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 2, {false, false, false, false}));
+  const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, frame.registers));
+  const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, input, frame.registers, frame.locals));
+  auto graph = std::get<ValueProgram>(ImportNormalValues(body, input, proof, frame));
+  test::Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+  std::vector<ExpressionConstant> constants(graph.ops.size());
+  const auto expressions = std::get<ExpressionForest>(BuildExpressionForest(
+      graph, evaluation, frame.parameters, {0}, {constants, 0}));
+  constexpr std::size_t kCellReadOperation = 3;
+  const auto& load = graph.ops[kCellReadOperation];
+  test::Check(evaluation.operations[kCellReadOperation].kind == EvaluationKind::kRoot &&
+      evaluation.operations[kCellReadOperation].temporary.has_value());
+  const auto snapshot = std::get<SymbolId>(expressions.bindings.values[load.result->value]);
+  const auto cell = expressions.bindings.cells[0];
+  test::Check(snapshot != cell && std::holds_alternative<SnapshotBinding>(expressions.bindings.symbols[snapshot.value]));
+  const auto syntax = *expressions.operations[kCellReadOperation];
+  test::Check(std::get<SymbolExpr>(expressions.expressions[syntax.value].expression).symbol == cell);
+}
 }  // namespace
-int main() { for (const auto count : {0U, 1U, 2U, 200U, 201U}) Run(count); Incoming(); Iteration(); ClosurePremise(); }
+int main() { for (const auto count : {0U, 1U, 2U, 200U, 201U}) Run(count); Incoming(); Iteration(); ClosurePremise(); ReadSnapshot(); }
