@@ -1319,3 +1319,41 @@ CFG predecessor and default-parameter initialization; exceptional edges cannot
 use this ordinary copy path. Existing source admission still rejects live phis,
 so rules remain 13 and no new phi/loop source coverage is claimed. T05 and the
 T00-T12 goal remain incomplete.
+
+### T05 Phi Occurrence Bundles
+
+BuildPhiCopies now connects the parallel-copy scheduler to actual ValueProgram
+phi input occurrences. It first freshly verifies normal-flow availability and
+requires language-value domains. It gathers live phi inputs in two linear scans,
+sorts them once by IncomingKey and UseId, and builds flat ParallelCopy/UseId
+arenas plus disjoint bundle ranges. Each bundle retains the actual MethodEntryKey
+or EdgeId. Two branch alternatives with the same source and target do not merge;
+entry-header initialization is not assigned a fabricated predecessor. Each
+bundle owns the independently checked EdgeCopies schedule from the prior step.
+
+VerifyPhiCopies checks IR/CFG revisions, freshly verifies flow, then validates
+the supplied bundle ranges, strict key ordering, exact destination/RHS identity,
+matching incoming key and complete one-time coverage of live phi occurrences.
+It independently symbolically verifies every supplied schedule. Missing/duplicated
+inputs, changed edges, stale revisions, internal-value domains and destructive
+copy orders are typed refusals. The checker never regenerates the bundle plan.
+
+For U uses and P phi inputs, gathering is O(U), grouping/scheduling is
+O(P log P), and storage is O(P); independent coverage checking additionally uses
+O(U) scratch. Fresh value-flow verification has its existing dominance and sparse
+phi-key costs. All bundle scheduling and checks share the remaining work/byte
+grant, rather than obtaining a full allowance per edge. Per-bundle transient
+scratch is released before the next bundle while retained schedules stay charged.
+
+Production abc_semantic/abc_structure builds exited 0. Added unrun regression
+sources for parallel same-source/same-target edges, entry-header backedges,
+rotating phi values, domain/input/edge/revision/schedule mutations, missing
+coverage, resource/work boundaries and 1/2/200/201/4096-phi cases. Tests and RSS
+remain paused. No new ABC source inspection claim accompanies this internal
+planning step.
+
+The graph and its control/scope structures remain unchanged. This plan is not a
+source certificate: provisional symbols, edge-specific AST placement, default
+initialization ordering, loops and final tree correspondence remain to be wired.
+Existing evaluation/source admission still refuses live phis. Rules remain 13;
+T05 and the overall objective are not complete.
