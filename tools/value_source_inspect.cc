@@ -17,7 +17,7 @@ using namespace abcd;
 using namespace abcd::source;
 enum class InspectionError : std::uint8_t {
   kLookup, kRoles, kSites, kMissingSite, kAmbiguousSite, kPrepare, kPrint,
-  kChanged, kEmission
+  kChanged, kEmission, kFunctionSites
 };
 
 template <class T> RouteFailureClass IndexClass(const T& error) {
@@ -51,9 +51,20 @@ template <class T> RouteFailureClass IndexClass(const T& error) {
       case analysis::ClassSiteError::kMalformedCreation:
       case analysis::ClassSiteError::kTargetMissing: return Class::kInvalidInput;
     }
+  } else if constexpr (std::is_same_v<T, analysis::FunctionSiteError>) {
+    switch (error) {
+      case analysis::FunctionSiteError::kResourceLimit: return Class::kMemoryLimit;
+      case analysis::FunctionSiteError::kWorkLimit: return Class::kWorkLimit;
+      case analysis::FunctionSiteError::kMalformedCreation: return Class::kInvalidInput;
+    }
   } else if constexpr (std::is_same_v<T, abc::MetadataError>) {
     if (error == abc::MetadataError::kResourceLimit) return Class::kMemoryLimit;
     return error == abc::MetadataError::kUnsupportedProfile ? Class::kUnsupported : Class::kInvalidInput;
+  } else if constexpr (std::is_same_v<T, abc::MethodAttributeError>) {
+    switch (error) {
+      case abc::MethodAttributeError::kUnsupportedProfile: return Class::kUnsupported;
+      case abc::MethodAttributeError::kUnknownKind: return Class::kInvalidInput;
+    }
   } else if constexpr (std::is_same_v<T, abc::MethodLookupError> ||
                        std::is_same_v<T, abc::ClassBufferError>) {
     return error == T::kResourceLimit ? Class::kMemoryLimit : Class::kInvalidInput;
@@ -249,7 +260,9 @@ int RecordSlice(const corpus::AbcFile& file, const abc::Header& header,
     const auto serialized = SerializeRouteReceipt(emission.Receipt());
     const auto* receipt = std::get_if<std::string>(&serialized);
     if (!receipt) return EXIT_FAILURE;
-    const auto& creation = emission.Function().Creation();
+    const auto* site = emission.Function().ClassCreation();
+    if (!site) return EXIT_FAILURE;
+    const auto& creation = *site;
     output << "{\"begin\":" << segment.begin.byte << ",\"end\":" << segment.end.byte
            << ",\"creation\":" << nlohmann::json{{"creator", creation.creator.value},
                 {"pc", creation.pc.value}, {"literal", creation.literal.value},
@@ -261,6 +274,35 @@ int RecordSlice(const corpus::AbcFile& file, const abc::Header& header,
   output << "]}\n";
   // A migrated child does not certify the legacy entry or its other children.
   return EXIT_FAILURE;
+}
+int InspectCreated(const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles, const abc::MethodInfo& method,
+    MethodRouteReceipt receipt, std::ostream& output) {
+  auto indexed = analysis::FunctionCreationSites::Build(file, header, index, lookup);
+  const auto* sites = std::get_if<analysis::FunctionCreationSites>(&indexed);
+  if (!sites) {
+    const auto& failure = std::get<analysis::FunctionSiteFailure>(indexed);
+    return Refused(output, receipt, InspectionError::kFunctionSites,
+        std::visit([](const auto& error) { return IndexClass(error); }, failure.error));
+  }
+  const auto range = sites->Find(method.offset);
+  if (range.count == 0) return Refused(output, receipt, InspectionError::kMissingSite);
+  if (range.count != 1) return Refused(output, receipt, InspectionError::kAmbiguousSite);
+  auto prepared = VerifiedFunction::PrepareCreated(file, header, index, lookup,
+      roles, *sites, range.first, receipt.identity);
+  const auto* function = std::get_if<VerifiedFunction>(&prepared);
+  if (!function) {
+    const auto& failure = std::get<FunctionPrepareFailure>(prepared);
+    if (failure.values) receipt = *failure.values;
+    return Refused(output, receipt, InspectionError::kPrepare, PreparationClass(failure.kind),
+        failure.values ? ValueRouteError::kTreeStage : ValueRouteError::kContextStage,
+        static_cast<unsigned>(failure.kind), failure.pc);
+  }
+  // A verified ordinary/arrow body is not yet an emitted closure expression.
+  // Never disguise it as a class member to bypass name/strictness/owner checks.
+  return Refused(output, function->Receipt(), InspectionError::kPrint,
+      RouteFailureClass::kUnsupported, ValueRouteError::kPrintStage);
 }
 }  // namespace
 
@@ -286,7 +328,11 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
       std::visit([](const auto& error) { return IndexClass(error); },
           std::get<analysis::ClassSiteFailure>(indexed_sites).error));
   const auto range = sites->Find(method.offset);
-  if (range.count == 0) return Refused(output, receipt, InspectionError::kMissingSite);
+  if (range.count == 0) {
+    if (scope == ValueSourceScope::kRecordSlice)
+      return Refused(output, receipt, InspectionError::kMissingSite);
+    return InspectCreated(file, header, index, *lookup, *roles, method, receipt, output);
+  }
   if (range.count != 1) return Refused(output, receipt, InspectionError::kAmbiguousSite);
   if (scope == ValueSourceScope::kRecordSlice)
     return RecordSlice(file, header, index, *lookup, *roles, method,
@@ -308,7 +354,9 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
   const auto* flags = std::get_if<abc::MethodAttributes>(&attributes);
   if (!flags) return Refused(output, receipt, InspectionError::kEmission,
       RouteFailureClass::kInvalidInput, ValueRouteError::kPrintStage);
-  const auto site = function->Creation();
+  const auto* creation_site = function->ClassCreation();
+  if (!creation_site) return Refused(output, receipt, InspectionError::kMissingSite);
+  const auto site = *creation_site;
   const ClassMethod shape{{site.target, site.kind, site.length}, *flags, function->Frame(),
       site.placement, function->Name(), {}, EffectiveMethodKind::kOrdinary};
   auto printing = WriteClassMethod(shape, std::move(*function), source,
@@ -334,7 +382,7 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
   output << "{\"route_receipt\":" << *text
          << ",\"source_complete\":false,\"executable\":false,\"method_slice_complete\":true"
          << ",\"fragment\":\"class_member\",\"creation\":";
-  const auto& creation = emission->Function().Creation();
+  const auto& creation = *emission->Function().ClassCreation();
   output << nlohmann::json{{"creator", creation.creator.value}, {"pc", creation.pc.value},
       {"literal", creation.literal.value}, {"property", creation.property},
       {"placement", creation.placement == abc::ClassPlacement::kStatic ? "static" : "prototype"}};

@@ -16,7 +16,9 @@ bool SameFrame(const abc::FrameLayout& left, const abc::FrameLayout& right) {
 FunctionEmissionResult WriteClassMethod(const ClassMethod& method,
     VerifiedFunction function, std::ostream& output, GeneratedOffset destination,
     EmitBudget output_budget, analysis::SemanticBudget scratch, const GlobalScope* scope) {
-  const auto& site = function.Creation();
+  const auto* creation = function.ClassCreation();
+  if (!creation) return FunctionEmitError::kCreation;
+  const auto& site = *creation;
   if (method.member.target != site.target || method.member.kind != site.kind ||
       method.placement != site.placement) return FunctionEmitError::kCreation;
   if (method.attributes.sendable) return FunctionEmitError::kSendable;

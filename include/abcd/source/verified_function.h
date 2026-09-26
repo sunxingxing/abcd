@@ -7,6 +7,7 @@
 #include <variant>
 
 #include "abcd/analysis/class_method_sites.h"
+#include "abcd/analysis/function_creation_sites.h"
 #include "abcd/analysis/method_roles.h"
 #include "abcd/source/source_tree.h"
 #include "abcd/source/function_abi.h"
@@ -44,15 +45,29 @@ class VerifiedFunction {
       const analysis::MethodRoleIndex& roles, const analysis::ClassMethodSites& sites,
       analysis::ClassSiteId site, RouteInputIdentity identity,
       analysis::SemanticBudget budget = {}, const GlobalScope* scope = nullptr);
+  // Created owners currently require no incoming captures or live ABI-only
+  // operands; arrow dynamic-this observations refuse. Expression printing and
+  // parent/child capture certification are separate, still-gated obligations.
+  [[nodiscard]] static std::variant<VerifiedFunction, FunctionPrepareFailure> PrepareCreated(
+      const corpus::AbcFile& file, const abc::Header& header,
+      const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+      const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
+      analysis::FunctionSiteId site, RouteInputIdentity identity,
+      analysis::SemanticBudget budget = {}, const GlobalScope* scope = nullptr);
   [[nodiscard]] const FunctionTree& Tree() const;
   [[nodiscard]] std::u16string_view Name() const;
-  [[nodiscard]] const analysis::ClassMethodSite& Creation() const;
+  [[nodiscard]] const analysis::ClassMethodSite* ClassCreation() const;
+  [[nodiscard]] const analysis::FunctionCreationSite* FunctionCreation() const;
   [[nodiscard]] const MethodRouteReceipt& Receipt() const;
   [[nodiscard]] const abc::FrameLayout& Frame() const;
   [[nodiscard]] const FunctionAbi& Abi() const;
   [[nodiscard]] std::size_t AllocatedBytes() const;
  private:
   struct Storage;
+  [[nodiscard]] static std::variant<VerifiedFunction, FunctionPrepareFailure> Prepare(
+      const corpus::AbcFile& file, const abc::Header& header,
+      const abc::MetadataIndex& index, std::unique_ptr<Storage> storage,
+      analysis::SemanticBudget budget, const GlobalScope* scope);
   explicit VerifiedFunction(std::unique_ptr<const Storage> storage);
   std::unique_ptr<const Storage> storage_;
 };

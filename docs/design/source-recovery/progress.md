@@ -12,7 +12,8 @@ entry provenance is typed and does not invent PCs. T07's fresh empty object/arra
 allocation slice and proved fresh named object initialization are integrated;
 buffered literals, broader own-defines and captures are not yet admitted.
 Checked native lexical declarations and actual-tree correspondence are now
-integrated under source rules 19. Real cell-method source evidence, real
+integrated; occurrence-bound ordinary/arrow owners now share class-method body
+preparation under source rules 20. Real cell-method source evidence, real
 loop-method acceptance and behavioral verification remain outstanding. T03's G1
 method slices and T04's G2 slice have prior source evidence, not whole-record
 completion. Whole-record integration and test acceptance remain pending.
@@ -301,6 +302,43 @@ change; whitespace validation passed. ABC-only inspection of the existing G2
 slice (pasteboard method 7559, record 6897) still reports Printed/complete METHOD
 under rules 19, range [2638,2924), 286 bytes. CLI exit 1 correctly retains
 incomplete record coverage. This is not native-cell coverage or JS execution.
+
+### T07 Created Function Owners
+
+FunctionCreationSites now indexes modern DEFINEFUNC/DEFINEMETHOD occurrences
+with caller, PC, resolved target/attributes, full encoded length/cache metadata
+and home-object input. It does not deduplicate sites sharing a target. Two
+bounded body scans and one sort avoid per-target whole-file rescans; the shared
+method lookup resolves caller-regional pool references. This is an immutable
+occurrence index, not a reachability, environment or capture proof.
+
+CreationTreeContext admits occurrence-bound ordinary/arrow DEFINEFUNC owners
+with the existing same-file/profile/name/ABI and non-class-role contracts.
+VerifiedFunction now has a single body preparation implementation for both
+these owners and class members: fresh input/Value IR, defaults, CFG, cells,
+evaluation, AST verification, globals and ABI checks. Dynamic ABI receiver
+observations in arrows are explicitly refused. Incoming captures, child-write
+obligations, async and explicit-home method creation remain unclosed. Nullable
+typed creation accessors prevent class emitters from consuming a non-class
+owner. The printer still rejects created-function expressions before output;
+TreeVerified is not Printed or complete closure publication.
+
+The CLI uses this path when no class-member site exists, refusing ambiguous
+multiple creation occurrences instead of selecting one. ABC-only inspection of
+pasteboard 7366 now reaches InputStage and refuses at PC 92 (use of an unresolved
+outer capture), rather than MissingSite/ContextStage. Its PC 90 load, buffered
+objects at PC 24/180, own-defines at PC 34/190 and child creation at PC 219 ->
+7421 remain actual P3 obligations, not successful source coverage. Existing G2
+7559 remains Printed/complete METHOD under rules 20, [2638,2924), 286 bytes;
+the CLI still exits 1 for incomplete record coverage.
+
+Uncompiled/unrun specifications cover 0/1/2/200/201 sites, both cache widths,
+function/method distinction, repeated target sites, exact work limits, ordinary
+and arrow owner preparation, local cells, incoming-capture refusal, arrow
+receiver refusal and no output through the class printer. Testing, JS execution
+and RSS remain paused. T07 and T00-T12 acceptance remain incomplete.
+Production `abc_semantic` and `abc_structure` builds exited 0 after the final
+changes; whitespace validation passed. Test targets were not compiled or run.
 
 ## T00
 

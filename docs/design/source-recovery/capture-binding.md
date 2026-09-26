@@ -3,8 +3,8 @@
 T07 now shares a borrowed `ScopeFacts` view between the established semantic
 capture resolver and the new creation-specific `CapturePlan`. This is binding
 infrastructure, not permission to emit a child FunctionTree or scalarize cells.
-Source rules are 19 for checked native local declarations; no closure source
-domain is newly admitted.
+Source rules are 20 for checked native local declarations and occurrence-bound
+ordinary/arrow tree preparation; no closure-expression publication is admitted.
 
 ## Inputs and Ownership
 
@@ -188,3 +188,35 @@ complete child trees validated before parent publication; dependency/SCC handlin
 without assuming success for cycles. P3 method 7366, independent-app examples,
 per-iteration cells and child mutations still require end-to-end source evidence.
 Neither this component nor its production build closes the T07 gate.
+
+## Creation Owners
+
+FunctionCreationSites supplies an immutable file-level index of modern
+DEFINEFUNC/DEFINEMETHOD occurrences, including both IC widths. It retains the
+full FunctionCreation and MethodTarget, caller entity and creation PC. Index
+order is target/caller/PC; Find returns a range, never a guessed unique owner.
+Unreachable sites are retained because reachability belongs to the eventual
+parent analysis. Sendable/kind metadata is retained rather than relabeled as
+ordinary syntax. Historical forms outside LiftFunctionCreation's support do
+not become modern sites.
+
+For M methods, D decoded bytes, C creations and R pool regions, construction
+costs O(M+D+C(log(M+1)+log(R+1))+C log(C+1)). Storage is O(C) plus one decoded
+body; exact output capacity is admitted between two bounded scans. Lookup is
+O(log(C+1)). File/index/lookup lifetime and budget are owned by the caller.
+No source/sidecar input, method-per-target scan, or live reader is retained.
+
+CreationTreeContext establishes initial name/frame/kind for an actual site;
+FunctionContext is a typed class/created-owner boundary, not a second body
+pipeline. VerifiedFunction::PrepareClass and PrepareCreated use the same
+private preparation implementation. Initial admitted DEFINEFUNC kinds are
+BASE_CONSTRUCTOR (ordinary function) and ARROW, non-sendable and with kUnseen
+class/literal role. Arrow dynamic receiver reads refuse after ABI census.
+Incoming captures remain rejected by the fresh input proof. Closure writes and
+home-object uses are not licensed merely by obtaining an owner context.
+
+This stage enables parent/child preparation without fabricating class members.
+It deliberately does not print a created function, infer a lexical this binding,
+assume a capture summary, or resolve dependency cycles. The required next step
+is parent-site capture obligations plus owned child ASTs and proper function
+expression/name/strictness emission, followed by independent graph/tree checks.

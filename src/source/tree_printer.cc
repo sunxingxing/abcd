@@ -40,7 +40,7 @@ class TreePrinter {
       : function_(function), tree_(function.Tree()), output_(output),
         limit_(limit.bytes), initial_(scratch), remaining_(scratch) {}
   PrintedFunction Print() {
-    if (tree_.callable != CallableKind::kMethod ||
+    if (!function_.ClassCreation() || tree_.callable != CallableKind::kMethod ||
         tree_.strictness != Strictness::kStrict || tree_.self)
       throw Error::kUnsupportedContext;
     result_.identity = tree_.identity;
@@ -53,7 +53,7 @@ class TreePrinter {
     Array(result_.statements, tree_.statements.size());
     Array(result_.anchors, tree_.anchors.size());
     PrepareAnchors();
-    switch (function_.Creation().placement) {
+    switch (function_.ClassCreation()->placement) {
       case abc::ClassPlacement::kStatic: Append("static "); break;
       case abc::ClassPlacement::kPrototype: break;
       default: throw Error::kUnsupportedContext;

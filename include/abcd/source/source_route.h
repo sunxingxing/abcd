@@ -211,7 +211,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 18 additionally admit independently proved fresh object initializers.
 // Rules 19 additionally admit allocation-site native lexical declarations
 // with independent cell identity, scope, initialization and origin checks.
-inline constexpr std::uint32_t kRouteEvidenceRules = 19;
+// Rules 20 share tree preparation with occurrence-bound DEFINEFUNC owners.
+// Created-function expression publication remains independently gated.
+inline constexpr std::uint32_t kRouteEvidenceRules = 20;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

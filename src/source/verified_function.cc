@@ -3,9 +3,11 @@
 #include <limits>
 #include <new>
 #include <stdexcept>
+#include <type_traits>
 
 #include "abcd/source/value_stage.h"
 #include "class_tree_context.h"
+#include "function_context.h"
 #include "cell_plan.h"
 #include "cell_lifetime.h"
 #include "cell_initialization.h"
@@ -19,7 +21,7 @@
 
 namespace abcd::source {
 struct VerifiedFunction::Storage {
-  ClassTreeContext context;
+  FunctionContext context;
   FunctionTree tree;
   MethodRouteReceipt receipt;
   FunctionAbi abi;
@@ -31,7 +33,8 @@ VerifiedFunction& VerifiedFunction::operator=(VerifiedFunction&&) noexcept = def
 VerifiedFunction::~VerifiedFunction() = default;
 const FunctionTree& VerifiedFunction::Tree() const { return storage_->tree; }
 std::u16string_view VerifiedFunction::Name() const { return storage_->context.Name(); }
-const analysis::ClassMethodSite& VerifiedFunction::Creation() const { return storage_->context.Site(); }
+const analysis::ClassMethodSite* VerifiedFunction::ClassCreation() const { return storage_->context.ClassSite(); }
+const analysis::FunctionCreationSite* VerifiedFunction::FunctionCreation() const { return storage_->context.CreationSite(); }
 const MethodRouteReceipt& VerifiedFunction::Receipt() const { return storage_->receipt; }
 const abc::FrameLayout& VerifiedFunction::Frame() const { return storage_->context.Frame(); }
 const FunctionAbi& VerifiedFunction::Abi() const { return storage_->abi; }
@@ -141,6 +144,20 @@ std::size_t SyntaxStorage(const FunctionSyntax& syntax) {
   for (const auto& text : syntax.texts) bytes += (text.capacity() + 1) * sizeof(char16_t);
   return bytes;
 }
+template <class Failure> FunctionPrepareFailure ContextFailure(const Failure& failure) {
+  const auto kind = std::visit([](const auto& error) {
+    using T = std::decay_t<decltype(error)>;
+    if constexpr (std::is_same_v<T, ClassContextError> || std::is_same_v<T, CreationContextError>) {
+      if (error == T::kResourceLimit) return Error::kResourceLimit;
+      if (error == T::kWorkLimit) return Error::kWorkLimit;
+    } else if constexpr (std::is_same_v<T, abc::MetadataError>) {
+      if (error == T::kResourceLimit) return Error::kResourceLimit;
+      if (error == T::kFileChanged) return Error::kFileChanged;
+    }
+    return Error::kContext;
+  }, failure.error);
+  return {kind, {}, {}};
+}
 }  // namespace
 
 std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::PrepareClass(
@@ -149,24 +166,48 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     const analysis::MethodRoleIndex& roles, const analysis::ClassMethodSites& sites,
     analysis::ClassSiteId site, RouteInputIdentity identity,
     analysis::SemanticBudget allowance, const GlobalScope* scope) {
+  try {
+    if (sizeof(Storage) > allowance.bytes) throw Error::kResourceLimit;
+    auto context_budget = allowance; context_budget.bytes -= sizeof(Storage);
+    auto resolved = ClassTreeContext::Resolve(file, header, index, lookup, roles, sites, site, identity, context_budget);
+    auto* context = std::get_if<ClassTreeContext>(&resolved);
+    if (!context) return ContextFailure(std::get<ClassContextFailure>(resolved));
+    return Prepare(file, header, index, std::make_unique<Storage>(Storage{
+        FunctionContext(std::move(*context)), {}, {}, {}}), allowance, scope);
+  } catch (Error error) { return FunctionPrepareFailure{error, {}, {}};
+  } catch (const std::bad_alloc&) { return FunctionPrepareFailure{Error::kResourceLimit, {}, {}};
+  } catch (const std::length_error&) { return FunctionPrepareFailure{Error::kResourceLimit, {}, {}}; }
+}
+
+std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::PrepareCreated(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
+    analysis::FunctionSiteId site, RouteInputIdentity identity,
+    analysis::SemanticBudget allowance, const GlobalScope* scope) {
+  try {
+    if (sizeof(Storage) > allowance.bytes) throw Error::kResourceLimit;
+    auto context_budget = allowance; context_budget.bytes -= sizeof(Storage);
+    auto resolved = CreationTreeContext::Resolve(file, header, index, lookup, roles, sites, site, identity, context_budget);
+    auto* context = std::get_if<CreationTreeContext>(&resolved);
+    if (!context) return ContextFailure(std::get<CreationContextFailure>(resolved));
+    return Prepare(file, header, index, std::make_unique<Storage>(Storage{
+        FunctionContext(std::move(*context)), {}, {}, {}}), allowance, scope);
+  } catch (Error error) { return FunctionPrepareFailure{error, {}, {}};
+  } catch (const std::bad_alloc&) { return FunctionPrepareFailure{Error::kResourceLimit, {}, {}};
+  } catch (const std::length_error&) { return FunctionPrepareFailure{Error::kResourceLimit, {}, {}}; }
+}
+
+std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, std::unique_ptr<Storage> storage,
+    analysis::SemanticBudget allowance, const GlobalScope* scope) {
   std::optional<MethodRouteReceipt> receipt;
   try {
     PreparationBudget budget(allowance);
     budget.Admit(1, sizeof(Storage));
-    auto resolved = ClassTreeContext::Resolve(file, header, index, lookup, roles, sites, site, identity, budget.Remaining());
-    auto* context = std::get_if<ClassTreeContext>(&resolved);
-    if (!context) {
-      const auto& failure = std::get<ClassContextFailure>(resolved);
-      if (const auto* error = std::get_if<ClassContextError>(&failure.error)) {
-        if (*error == ClassContextError::kResourceLimit) throw Error::kResourceLimit;
-        if (*error == ClassContextError::kWorkLimit) throw Error::kWorkLimit;
-      }
-      if (const auto* error = std::get_if<abc::MetadataError>(&failure.error)) {
-        if (*error == abc::MetadataError::kResourceLimit) throw Error::kResourceLimit;
-        if (*error == abc::MetadataError::kFileChanged) throw Error::kFileChanged;
-      }
-      throw Error::kContext;
-    }
+    const auto* context = &storage->context;
+    const auto identity = context->Identity();
     budget.Admit(context->AllocatedBytes(), 1);
     budget.Step(context->Work());
     const auto& method = index.methods[context->Position().value];
@@ -191,9 +232,9 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     AdmitGraph(*values.graph, budget);
     if (values.environments) budget.Admit(values.environments->allocated_bytes, 1);
     std::optional<DefaultBody> defaults;
-    if (context->Frame().parameters != context->Site().length)
+    if (context->Frame().parameters != context->Length())
       defaults.emplace(DefaultParameters(*values.graph, context->Frame().parameters,
-                                         context->Site().length, budget));
+                                         context->Length(), budget));
     const auto& graph = defaults ? defaults->Graph() : *values.graph;
     receipt->work_revision = graph.revision.value;
     std::optional<CellPlan> cells;
@@ -305,7 +346,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     }
     if (function->tree.parameters.size() != context->Frame().parameters ||
         function->tree.callable != context->Callable() || function->tree.strictness != context->Mode() ||
-        function->tree.method != context->Site().target || function->tree.identity != context->Identity()) throw Error::kTree;
+        function->tree.method != context->Target() || function->tree.identity != context->Identity()) throw Error::kTree;
     if (function->allocated_bytes < transferred) throw Error::kTree;
     budget.Admit(function->allocated_bytes - transferred, 1);
     budget.Step(function->work);
@@ -343,7 +384,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     }
     budget.Step(checked_globals->work);
     auto census = BuildFunctionAbi(graph, function->tree, context->Frame(),
-                                  context->Site().length, budget.Remaining());
+                                  context->Length(), budget.Remaining());
     auto* abi = std::get_if<ConstructedAbi>(&census);
     if (!abi) {
       const auto error = std::get<FunctionAbiError>(census);
@@ -353,9 +394,13 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     }
     budget.Admit(abi->allocated_bytes, 1);
     budget.Step(abi->work);
+    // Arrow source cannot substitute lexical this for the VM's dynamic ABI
+    // receiver. Captured outer this requires a later explicit owner binding.
+    if (context->Callable() == CallableKind::kArrow &&
+        (abi->abi.receiver.operands != 0 || abi->abi.receiver.references != 0)) throw Error::kAbi;
     const auto measured = MeasureTreeStorage(function->tree, {allowance.bytes, budget.Remaining().work});
-    const auto* storage = std::get_if<TreeStorage>(&measured);
-    if (!storage) throw std::get<TreeStorageError>(measured) == TreeStorageError::kWorkLimit
+    const auto* tree_storage = std::get_if<TreeStorage>(&measured);
+    if (!tree_storage) throw std::get<TreeStorageError>(measured) == TreeStorageError::kWorkLimit
         ? Error::kWorkLimit : Error::kResourceLimit;
     // Persistent capacity estimate, not the peak preparation scratch charge.
     // Inline subobjects are conservatively counted again; allocator/RSS limits
@@ -363,14 +408,15 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     PreparationBudget retained(allowance);
     retained.Admit(1, sizeof(Storage));
     retained.Admit(context->AllocatedBytes(), 1);
-    retained.Admit(storage->bytes, 1);
+    retained.Admit(tree_storage->bytes, 1);
     retained.Arena(abi->abi.parameters);
     const auto retained_bytes = allowance.bytes - retained.Remaining().bytes;
     if (file.CheckUnchanged()) throw Error::kFileChanged;
     receipt->stage = SourceStage::kTreeVerified;
     receipt->coverage = Coverage::kIncomplete;  // No printer/publication ran.
-    return VerifiedFunction(std::make_unique<const Storage>(Storage{
-        std::move(*context), std::move(function->tree), *receipt, std::move(abi->abi), retained_bytes}));
+    storage->tree = std::move(function->tree); storage->receipt = *receipt;
+    storage->abi = std::move(abi->abi); storage->allocated_bytes = retained_bytes;
+    return VerifiedFunction(std::move(storage));
   } catch (Error error) { return FunctionPrepareFailure{error, receipt, {}};
   } catch (const std::bad_alloc&) { return FunctionPrepareFailure{Error::kResourceLimit, receipt, {}};
   } catch (const std::length_error&) { return FunctionPrepareFailure{Error::kResourceLimit, receipt, {}}; }

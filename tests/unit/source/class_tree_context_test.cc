@@ -151,7 +151,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   auto prepared = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity);
   Check(std::holds_alternative<VerifiedFunction>(prepared));
   const auto& function = std::get<VerifiedFunction>(prepared);
-  Check(function.Name() == u"run" && function.Creation().target == abc::EntityOffset{kMember});
+  Check(function.Name() == u"run" && function.ClassCreation() &&
+      function.ClassCreation()->target == abc::EntityOffset{kMember} && !function.FunctionCreation());
   Check(function.Tree().parameters.size() == 1);
   Check(function.Tree().callable == CallableKind::kMethod);
   Check(function.Tree().strictness == Strictness::kStrict);

@@ -143,9 +143,9 @@ RecordSourceResult BuildRecordSource(
         const bool retained = std::any_of(printed->function_segments.begin(),
             printed->function_segments.end(), [&](const FunctionSegment& segment) {
               if (!segment.function) return false;
-              const auto& creation = segment.function->Function().Creation();
-              return creation.creator == site->creator && creation.pc == site->pc &&
-                  creation.property == site->property && creation.target == site->target &&
+              const auto* creation = segment.function->Function().ClassCreation();
+              return creation && creation->creator == site->creator && creation->pc == site->pc &&
+                  creation->property == site->property && creation->target == site->target &&
                   segment.function->Receipt().identity == selection->identity;
             });
         if (!retained) return RouteRefusal{{RouteFailureClass::kUnproved,
