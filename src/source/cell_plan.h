@@ -27,9 +27,14 @@ struct CellPlan {
   std::vector<Cell> cells;
   std::vector<CellAccess> accesses;
   std::vector<std::optional<CellId>> operations;
+  // Working EnvironmentId -> allocation OpId, in this revision only.
+  // Capture rebasing must never compare these IDs to an input owner's index.
+  std::vector<analysis::OpId> allocations;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
+// Query an unchanged verified plan. O(log(cells + 1)); no allocation.
+[[nodiscard]] std::optional<CellId> FindCell(const CellPlan& plan, const CellStorage& storage);
 enum class CellError : std::uint8_t {
   kRevision, kEnvironment, kStorage, kAccess, kCoverage, kResourceLimit, kWorkLimit
 };

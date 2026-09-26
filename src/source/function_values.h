@@ -3,6 +3,7 @@
 
 #include "abcd/analysis/value_environment.h"
 #include "function_input.h"
+#include "cell_plan.h"
 
 namespace abcd::source {
 // Working state, not a source receipt. Conditional input assumptions travel
@@ -11,6 +12,12 @@ struct FunctionValues {
   analysis::ValueProgram graph;
   std::optional<analysis::ValueEnvironments> environments;
   InputCaptureMode capture_mode;
+  RouteInputIdentity identity;
+  abc::EntityOffset method;
+  abc::EntityOffset record;
+  // Conditional preparation retains the checked mutable-cell index once per
+  // function. Rebuild it after graph edits; never rescan a graph per capture.
+  std::optional<CellPlan> cells;
 };
 struct FunctionValueFailure {
   SourceStage stage;

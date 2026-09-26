@@ -57,6 +57,42 @@ or emit nested function expressions. CellEvaluation still refuses unresolved
 incoming cells. Independent child-tree and actual-scope checks remain required
 before either the parent or child can receive executable-source evidence.
 
+Conditional FunctionValues now retains file/method/record identity and a checked
+CellPlan once per method. CellPlan retains its working EnvironmentId-to-allocation
+OpId index and exposes indexed storage lookup. The independent cell checker
+checks that allocation index against fresh topology; capacity accounting includes
+it. Closed preparation does not eagerly construct this extra capture index.
+
+BindCaptureCells connects one original creation proof to the parent's and
+child's unchanged working graphs. Original parent LocalCell IDs are projected
+through their original allocation instruction and current input-site backlink,
+not equated with work EnvironmentIds. Working capture topology is independently
+rebased at the actual creation OpId. Both descriptions must select the same
+parent mutable cell for every original child read/write occurrence.
+
+The result is a sparse, sorted child CellId-to-CaptureTarget table. ParentCell
+refers to the parent's CellPlan; OuterCell retains an unresolved outward depth
+and slot only when no direct parent incoming cell exists. A parent incoming cell
+can be shared without discharging its own capture obligation. Child local cells
+have no entries, and original initialized capture occurrences remain attached
+as CapturePlan evidence. Two sites for the same target remain distinct plans.
+
+The borrowed CaptureFunction contract requires products of the shared verified
+preparation, with no graph, index or plan mutation. Revision/identity checks
+reject stale combinations but are not substitutes for that precondition.
+VerifyCaptureCells checks a supplied binding against original initialization
+evidence and working topology, not by replaying the binding planner. It does
+not revalidate whole graphs per creation; AST publication must still independently
+validate the final graph/tree and all owner assumptions.
+
+For K input capture occurrences, U unique incoming child cells, Cp parent cells
+and Cc child cells, added rebasing costs O(log(Cc+1) + (K+U)(log(Cp+1)+32)),
+in addition to the original CapturePlan queries documented below. Each context
+retains O(K+U), not O(Cc): it never copies or scans unrelated child locals.
+Original and working queries plus the independent check share a call budget.
+Source scope visibility, per-iteration AST placement, child completion and SCC
+closure are still separate pending obligations; this is not closure output.
+
 The caller must supply one unchanged, freshly verified SemanticMethod,
 EnvironmentFlow, LocalAccessPlan, DefinedCaptures and ClosureWrites premise.
 ScopeFacts borrows them; it must not outlive them or mix methods. Local cell,

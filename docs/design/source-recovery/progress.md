@@ -384,6 +384,31 @@ successfully; ABC-only G2 inspection remains Printed/complete METHOD under
 rules 20, range [2638,2924), with the record incomplete. No generated JS, tests,
 benchmarks or RSS measurement were executed. T07 and T00-T12 remain incomplete.
 
+### T07 Creation-Site Work-Cell Binding
+
+Conditional FunctionValues now retains identity and the checked CellPlan once
+per function. CellPlan owns a separately verified working allocation index.
+BindCaptureCells projects original initialized captures into working parent
+cells and independently checks them against actual work creation topology and
+each original child occurrence. It preserves unresolved outward captures and
+shares parent incoming cells without treating either as initialized locals.
+Plans are creation-specific and revision-bound, with sparse incoming-only
+targets; unrelated child locals are not scanned or copied per creation.
+
+The conditional preparation path builds the reusable cell indexes. The binding
+primitive connects it to existing BindFunctionInputs/CapturePlan, but parent
+AST-symbol binding, child expression construction and transitive/SCC closure
+are still not integrated into publication. No new executable coverage is claimed.
+
+Production abc_semantic and abc_structure builds passed. ABC-only G2 method
+7559 remains Printed/complete METHOD under rules 20, range [2638,2924); record
+publication remains incomplete. Expanded regression sources specify distinct
+creation environments, forwarded versus shared incoming cells, missing/wrong
+targets, stale revisions, identity and budget rejection, uninitialized parents,
+and 200/201 distinct incoming cells alongside unrelated child locals. Tests
+are uncompiled/unrun; generated JS, benchmarks and RSS remain paused. T07 and
+the T00-T12 objective remain unfinished.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

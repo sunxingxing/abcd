@@ -75,6 +75,7 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
         std::holds_alternative<analysis::ValueFunctionCreation>(op.operation);
   }
   std::optional<analysis::ValueEnvironments> environments;
+  std::optional<CellPlan> cells;
   if (needs_environments) {
     auto remaining = budget.bytes;
     const auto admit = [&](std::size_t count, std::size_t width) {
@@ -121,9 +122,20 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
       }
       return fail(kind, ValueRouteError::kTransformStage);
     }
+    if (owner.Mode() == InputCaptureMode::kConditional) {
+      auto planned = BuildCellPlan(*graph, *environments,
+          {remaining, work - environments->work - std::get<std::uint64_t>(captures)});
+      if (const auto* error = std::get_if<CellError>(&planned)) {
+        const auto kind = *error == CellError::kResourceLimit ? RouteFailureClass::kMemoryLimit :
+            *error == CellError::kWorkLimit ? RouteFailureClass::kWorkLimit : RouteFailureClass::kInvariantViolation;
+        return fail(kind, ValueRouteError::kTransformStage);
+      }
+      cells = std::get<CellPlan>(std::move(planned));
+    }
   } else if (!owner.Captures().empty()) {
     return fail(RouteFailureClass::kInvariantViolation, ValueRouteError::kTransformStage);
   }
-  return FunctionValues{std::move(*graph), std::move(environments), owner.Mode()};
+  return FunctionValues{std::move(*graph), std::move(environments), owner.Mode(),
+      owner.Identity(), owner.Method(), owner.Record(), std::move(cells)};
 }
 }  // namespace abcd::source

@@ -68,6 +68,13 @@ CellAccessKind Kind(const analysis::ValueOp& op) {
 struct Candidate { CellStorage storage; CellAccess access; };
 }  // namespace
 
+std::optional<CellId> FindCell(const CellPlan& plan, const CellStorage& storage) {
+  const auto found = std::lower_bound(plan.cells.begin(), plan.cells.end(), storage,
+      [](const Cell& cell, const CellStorage& key) { return Key(cell.storage) < Key(key); });
+  if (found == plan.cells.end() || Key(found->storage) != Key(storage)) return {};
+  return CellId{static_cast<std::uint32_t>(found - plan.cells.begin())};
+}
+
 std::variant<std::uint64_t, CellError> VerifyCellPlan(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
     const CellPlan& plan, analysis::SemanticBudget budget) {
@@ -77,6 +84,10 @@ std::variant<std::uint64_t, CellError> VerifyCellPlan(
     Environment(graph, environments, quota);
     Require(plan.operations.size() == graph.ops.size() && plan.accesses.size() == environments.flow.bindings.size(), Error::kCoverage);
     auto allocations = Allocations(environments, quota);
+    Require(plan.allocations.size() == allocations.size(), Error::kStorage);
+    for (std::size_t i = 0; i < allocations.size(); ++i) {
+      quota.Step(); Require(plan.allocations[i] == allocations[i], Error::kStorage);
+    }
     std::vector<std::uint8_t> seen;
     quota.Size(seen, graph.ops.size());
     std::size_t next = 0;
@@ -145,11 +156,13 @@ std::variant<CellPlan, CellError> BuildCellPlan(
       ++plan.cells[count - 1].count; plan.accesses[i] = candidate.access;
       plan.operations[candidate.access.operation.value] = CellId{static_cast<std::uint32_t>(count - 1)};
     }
+    plan.allocations = std::move(allocations);
     const auto checked = VerifyCellPlan(graph, environments, plan, quota.Remaining());
     if (const auto* error = std::get_if<Error>(&checked)) return *error;
     quota.Step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = sizeof(plan) + plan.cells.capacity() * sizeof(Cell) +
-        plan.accesses.capacity() * sizeof(CellAccess) + plan.operations.capacity() * sizeof(std::optional<CellId>);
+        plan.accesses.capacity() * sizeof(CellAccess) + plan.operations.capacity() * sizeof(std::optional<CellId>) +
+        plan.allocations.capacity() * sizeof(analysis::OpId);
     plan.work = quota.Work(); return plan;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

@@ -108,6 +108,10 @@ void Run(std::uint32_t count) {
   auto forged = *plan; ++forged.revision.value;
   test::Check(std::get<CellError>(VerifyCellPlan(graph, environments, forged)) == CellError::kRevision);
   if (count) {
+    test::Check(FindCell(*plan, plan->cells.front().storage) == CellId{0});
+    test::Check(!FindCell(*plan, IncomingCell{{0}, {0}}));
+    forged = *plan; ++forged.allocations[0].value;
+    test::Check(std::get<CellError>(VerifyCellPlan(graph, environments, forged)) == CellError::kStorage);
     forged = *plan; forged.accesses[0].kind = CellAccessKind::kLoad;
     test::Check(std::get<CellError>(VerifyCellPlan(graph, environments, forged)) == CellError::kAccess);
     forged = *plan; ++std::get<AllocatedCell>(forged.cells[0].storage).slot.value;
