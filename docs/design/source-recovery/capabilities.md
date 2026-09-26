@@ -43,7 +43,7 @@ Validated：测试、生成 JS 执行、基准与 RSS 测量仍被用户暂停�
 | CAP-VALUE-SIMPLIFY | 可维护 use 链、identity copy 传播、phi-only SCC、死纯值清理 | Designed | T02。禁止删未用 getter/call。 |
 | CAP-TREE-G1 | 直线/if 函数树：Literal/SymbolRef/This/Member/Compare/Assignment + Block/If/Return | Designed | T03。P1 首个纵向贯通。 |
 | CAP-BINDING | Symbol/Scope/NameEvidence/TemporaryReason、参数 entry 绑定、默认值签名迁移 | Designed | T06。 |
-| CAP-EVAL-CALL | EvaluationPlan、CallPlan、Call/Construct AST 与 printer | BuildChecked | T04 部分：函数值调用保持间接 eval；成员调用验证属性读取/receiver；参数独立校验。7613 独立片段与 G2 7559 record 内嵌已贯通。super、不可内联 callee 的显式 receiver、异常区域、跨应用调用证据及执行验收未完成。 |
+| CAP-EVAL-CALL | EvaluationPlan、CallPlan、Call/Construct AST 与 printer | BuildChecked | T04 部分：函数值调用保持间接 eval；成员调用验证属性读取/receiver，含同块属性读取与调用之间不发生边写入的私有 phi；参数独立校验。7613 独立片段与 G2 7559 record 内嵌已贯通。super、不可内联 callee 的显式 receiver、异常区域、跨应用调用证据及执行验收未完成。 |
 | CAP-PHI-LOOP | EdgePlacement、parallel copies、MethodEntry bundle、临界边批量拆分 | BuildChecked（部分） | T05：无环正常边复制已接入 AST 语句，按实际边位置、符号、右值和来源独立校验；原 CFG 不变，条件临界边在专属分支中落位。循环、MethodEntry 初始化、真实 phi 方法贯通及执行验收未完成。 |
 | CAP-SCOPE-CAPTURE | ScopeFacts、CaptureBinding 逐创建点 rebase、LiteralPlan | Designed | T07。 |
 | CAP-RECEIVER-CLASS | ReceiverOwner 状态机、ClassTree、构造器共用 callable | Designed | T08。 |

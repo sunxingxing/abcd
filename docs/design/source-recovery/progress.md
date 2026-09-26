@@ -1170,6 +1170,49 @@ method 7559 still emits its 286-byte member at record offsets [2638, 2924), with
 Printed/complete METHOD coverage under rules 14. The enclosing record remains
 explicitly incomplete/nonexecutable and the CLI intentionally exits 1.
 
+### T05 Phi Receiver References
+
+CallPlan now admits a private provisional phi as a member-call receiver after
+fresh evaluation/phi-flow verification. Existing exact base/receiver identity,
+same-block property-before-call and exclusive callee-inline ownership checks
+remain mandatory. Incoming-edge copies cannot execute between two operations
+in that block, and the admitted provisional symbol is neither coalesced nor a
+captured/source cell. This does not admit arbitrary mutable references or use
+observable `.call` lookups to reconstruct invocation.
+
+The independent tree operand checker requires the actual phi symbol recovered
+by TreeEdgeFlow from complete edge assignments. It checks that symbol against
+the actual member base, rather than trusting CallPlan alone. Named and computed
+member syntax use the existing owned argument arena and unified printer; raw
+receiver occurrences do not cause an extra evaluation. Evidence rules advance
+to 15.
+
+Added unrun phi_call_test fixtures pass two distinct incoming parameter values
+through a join, named/computed property lookup, explicit-receiver call and
+return. They include forged AST base/reference mode, mismatched raw receiver
+and internal-marker domain refusals. Test sources remain uncompiled/unrun.
+
+ABC-only candidate selection also inspected pre-existing generated metadata
+for MultiCommunityApplication (ABC 12.0.2.0/profile 3; SHA-256
+45ffdc7d5075b4de3f1c6860dcbc929bae048097af4478d09136afbec1b6c5a8).
+Method 24329 (getPadding, record 24096) and method 25469 (isShow, record 25350)
+were refused at Decoded/ContextStage with MissingSite, before value analysis;
+the latter was requested through record-value-slice. ClassMethodSites indexes
+ordinary DEFINECLASSWITHBUFFER occurrences, not legacy/sendable sites. No
+fallback site or callable evidence was invented. These observations are not
+successful phi-source evidence. Legacy creation-context coverage remains work
+for the shared creation adapters, not an exception for this application.
+
+Natural loops, MethodEntry initialization and real phi-method execution/source
+acceptance remain unfinished. No tests, generated JS, benchmarks or RSS runs
+were performed; T05 and the full T00-T12 goal remain active.
+
+Production abc_semantic/abc_structure builds exited 0 and git diff whitespace
+checking passed. ABC-only G2 reinspection under rules 15 still emits Pasteboard
+method 7559 with Printed/complete METHOD coverage and 286 bytes. The record is
+still incomplete/nonexecutable (intentional CLI exit 1); this is existing-path
+evidence, not a new phi-receiver real-method success claim.
+
 ### T04 Call Reference Proof
 
 CallPlan now distinguishes function-value calls, member-reference calls and

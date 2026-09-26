@@ -154,6 +154,11 @@ class OperandCheck {
       if (const auto* producer = std::get_if<analysis::OpResult>(&definition.origin))
         RequireMeaning(evaluation_.operations[producer->op.value].kind == EvaluationKind::kRoot &&
             flow_.snapshots[producer->op.value].has_value(), Error::kOperand);
+      else if (std::holds_alternative<analysis::PhiDefinition>(definition.origin))
+        // TreeFlow derives this symbol from the actual, exclusively owned edge
+        // assignments. Same-block property/call checks above exclude a write
+        // to the provisional phi location between reference creation and use.
+        RequireMeaning(id->value < flow_.phis.size() && flow_.phis[id->value], Error::kOperand);
       else RequireMeaning(std::holds_alternative<analysis::EntryDefinition>(definition.origin), Error::kOperand);
     }
     const auto saved_origin = origin_;

@@ -205,9 +205,9 @@ int main() {
   // 4294967297 must not narrow to 1 on this platform (R4).
   reject("\"schema\":3", "\"schema\":4294967297", RouteReceiptError::kSchema);
   reject("\"schema\":3", "\"schema\":2.5", RouteReceiptError::kSchema);
-  reject("\"evidence_rules\":14", "\"evidence_rules\":13",
+  reject("\"evidence_rules\":15", "\"evidence_rules\":14",
          RouteReceiptError::kEvidence);
-  reject("\"evidence_rules\":14", "\"evidence_rules\":4294967297",
+  reject("\"evidence_rules\":15", "\"evidence_rules\":4294967297",
          RouteReceiptError::kEvidence);
   reject("\"method\":7586", "\"method\":4294967297",
          RouteReceiptError::kIdentity);
@@ -289,7 +289,7 @@ int main() {
   // An identity-free receipt never parses (R6: compare the error alternative,
   // not the variant index).
   const auto identity_free =
-      ParseRouteReceipt("{\"schema\":3,\"evidence_rules\":14}");
+      ParseRouteReceipt("{\"schema\":3,\"evidence_rules\":15}");
   const auto* identity_error = std::get_if<RouteReceiptError>(&identity_free);
   Check(identity_error != nullptr &&
         *identity_error == RouteReceiptError::kIdentity);

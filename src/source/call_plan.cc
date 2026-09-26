@@ -47,6 +47,12 @@ bool StableReceiver(const ValueProgram& graph, const EvaluationPlan& evaluation,
   const auto& definition = graph.values[id->value];
   if (const auto* entry = std::get_if<EntryDefinition>(&definition.origin))
     return std::holds_alternative<ParameterEntry>(*entry) || std::holds_alternative<ReceiverEntry>(*entry);
+  // Fresh evaluation verification proves phi availability and edge copies.
+  // This is a private provisional location, not a captured/mutable source cell.
+  // The caller separately requires property and invocation in the same block,
+  // so no incoming-edge assignment can intervene between them.
+  if (std::holds_alternative<PhiDefinition>(definition.origin))
+    return evaluation.phis.has_value();
   const auto* result = std::get_if<OpResult>(&definition.origin);
   return result && evaluation.operations[result->op.value].kind == EvaluationKind::kRoot &&
       evaluation.operations[result->op.value].temporary.has_value();
