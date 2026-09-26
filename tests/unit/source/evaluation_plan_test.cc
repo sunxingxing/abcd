@@ -246,9 +246,10 @@ int main() {
   creation.graph.blocks = {{{0}, 1, {0}, 0}};
   Check(OrderedEvaluation(creation.graph.ops[0]));
   Check(std::get<EvaluationError>(BuildEvaluationPlan(creation.graph)) == EvaluationError::kOwnership);
-  // Importing a typed buffer reference never licenses printing an empty object.
+  // Both are allocation leaves. Buffer syntax additionally requires resolved
+  // properties and the independent tree operand/origin checks.
   Check(DescribeEvaluation(analysis::ValueObjectAllocation{}).has_value());
-  Check(!DescribeEvaluation(analysis::ValueObjectAllocation{abc::PoolIndex{0}}));
+  Check(DescribeEvaluation(analysis::ValueObjectAllocation{abc::PoolIndex{0}}).has_value());
   const analysis::ValueOperation cells[]{analysis::ValueLexicalLoad{{{0}, {0}}},
       analysis::ValueLexicalStore{{{0}, {0}}}, analysis::ValueEnvironmentPush{1, {}},
       analysis::ValueEnvironmentPop{}, analysis::ValueCurrentEnvironment{}};

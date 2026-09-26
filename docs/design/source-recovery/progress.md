@@ -598,6 +598,29 @@ shared budget default's header visibility. ABC-only G2 7559 remains Printed with
 complete method coverage, rules 21 and [2638,2924); its enclosing record is still
 incomplete. This does not validate buffered-object AST lowering, still pending.
 
+### T07 Primitive Buffer Properties Through Common AST
+
+Buffered allocations with resolved primitive properties now lower through the
+common evaluation/expression/tree path to ObjectExpr/DataProperty/TreeLiteral.
+Each creation owns distinct syntax nodes even when constants share a range.
+Output-size admission includes all instantiated fields, not just unique buffer
+size. TreeFlow independently checks property census and allocation origins;
+TreeOperands checks each ordered key and exact literal kind/value, including
+raw double bits and TextId. Existing computed-key object printing is reused.
+
+Unresolved buffers fail during constant/construction checks. Own-write merging
+onto buffered allocations remains refused, and methods/accessors/duplicate keys
+are outside the primitive constant adapter. Source rules advance to 22. New
+test sources build real imported buffered instructions through CFG/evaluation/
+AST, with value/origin mutations and 200/201/402 properties; they remain
+uncompiled/unrun. Complete P3/family output, exceptions/async and later T tasks
+remain open. This step is not whole-stage completion.
+
+Production abc_semantic and abc_structure built successfully. ABC-only G2
+7559 remains Printed/complete at [2638,2924) under rules 22; enclosing record
+remains incomplete. This unchanged non-buffer sample is only a route inspection,
+not behavioral evidence for new buffered syntax. No JS or RSS checks ran.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

@@ -45,6 +45,17 @@ class ForestBuilder {
     constexpr std::size_t kNodesPerOperation = 12;
     constexpr std::size_t kOriginPartsPerOperation = 2;
     constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
+    std::size_t buffered_properties = 0;
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      Step(); const auto& op = graph_.ops[i];
+      const auto* object = std::get_if<analysis::ValueObjectAllocation>(&op.operation);
+      if (op.life != analysis::ValueLife::kLive || !object || !object->literal) continue;
+      const auto* constant = std::get_if<ObjectConstant>(&constants_.operations[i]);
+      Require(constant && constant->first <= constants_.properties.size() &&
+          constant->count <= constants_.properties.size() - constant->first, Error::kConstant);
+      Require(constant->count <= kMaxId - buffered_properties, Error::kResourceLimit);
+      buffered_properties += constant->count;
+    }
     std::size_t captures = 0;
     for (const auto& function : evaluation_.functions) {
       Step(); Require(function.captures.size() <= kMaxId - captures, Error::kResourceLimit);
@@ -67,7 +78,9 @@ class ForestBuilder {
     const auto operation_nodes = graph_.uses.size() + graph_.ops.size() * kNodesPerOperation;
     Require(copies <= (kMaxId - operation_nodes) / kNodesPerCopy &&
             bundles <= kMaxId - graph_.origins.size() - graph_.ops.size(), Error::kResourceLimit);
-    Reserve(forest_.expressions, operation_nodes + copies * kNodesPerCopy);
+    const auto expression_nodes = operation_nodes + copies * kNodesPerCopy;
+    Require(buffered_properties <= kMaxId - expression_nodes, Error::kResourceLimit);
+    Reserve(forest_.expressions, expression_nodes + buffered_properties);
     Reserve(forest_.arguments, graph_.uses.size());
     Reserve(forest_.origins, graph_.origins.size() + graph_.ops.size() + bundles);
     Reserve(forest_.edge_assignments, copies);
@@ -79,8 +92,10 @@ class ForestBuilder {
     Reserve(objects_, graph_.ops.size());
     Step(graph_.ops.size()); Step(graph_.ops.size());
     forest_.initializers.resize(graph_.ops.size()); objects_.resize(graph_.ops.size());
+    const auto defined_properties = evaluation_.literals ? evaluation_.literals->definitions.size() : 0;
+    Require(defined_properties <= kMaxId - buffered_properties, Error::kResourceLimit);
+    Reserve(forest_.properties, defined_properties + buffered_properties);
     if (evaluation_.literals) {
-      Reserve(forest_.properties, evaluation_.literals->definitions.size());
       for (std::size_t i = 0; i < evaluation_.literals->objects.size(); ++i) {
         Step(); objects_[evaluation_.literals->objects[i].allocation.value] = i;
       }
@@ -387,7 +402,18 @@ class ForestBuilder {
       else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>)
         return Add(EmptyArrayExpr{}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
-        Require(!operation.literal, Error::kUnsupportedOperation);
+        if (operation.literal) {
+          const auto* object = std::get_if<ObjectConstant>(&constant);
+          Require(object != nullptr, Error::kConstant);
+          const PropertyRange properties{static_cast<std::uint32_t>(forest_.properties.size()), object->count};
+          for (std::uint32_t i = 0; i < object->count; ++i) {
+            Step(); const auto& property = constants_.properties[object->first + i];
+            Require(property.key.value < constants_.name_count, Error::kConstant);
+            const auto value = Add(property.value, origin);
+            forest_.properties.push_back({property.key, value, origin});
+          }
+          return Add(ObjectExpr{properties}, origin);
+        }
         return Add(EmptyObjectExpr{}, origin);
       }
       else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {

@@ -48,7 +48,6 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return {};
     }
     else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
-      if (op.literal) return {}; // Buffered properties still require resolution/proof.
       return EvaluationShape{kNoOperands, true};
     }
     else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>)

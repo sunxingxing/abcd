@@ -12,6 +12,9 @@
 #include "analysis/ssa_fixture.h"
 #include "fresh_object_fields.h"
 #include "../../../src/source/tree_constants.h"
+#include "../../../src/source/function_tree.h"
+#include "../../../src/source/tree_semantics.h"
+#include "abcd/analysis/value_import.h"
 
 int main(int argc, char** argv) {
   using namespace abcd;
@@ -158,6 +161,32 @@ int main(int argc, char** argv) {
     analysis::SemanticBudget work_limit; work_limit.work = resolved.work - 1;
     test::Check(std::get<source::TreeConstantError>(source::ResolveTreeConstants(
         file, header, index, {kMethod}, values, work_limit)) == source::TreeConstantError::kWorkLimit);
+    const auto encoded = test::Body({0x07, 0, static_cast<std::uint8_t>(slot), 0, 0x64});
+    const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 0, {}));
+    const auto input = std::get<analysis::SemanticMethod>(analysis::BuildSemanticMethod(encoded, header.profile, frame.registers));
+    const auto proof = std::get<analysis::SemanticProof>(analysis::VerifySemanticSource(encoded, input, frame.registers, frame.locals));
+    const auto graph = std::get<analysis::ValueProgram>(analysis::ImportNormalValues(encoded, input, proof, frame));
+    const auto resolved_tree = std::get<source::TreeConstants>(source::ResolveTreeConstants(file, header, index, {kMethod}, graph));
+    const auto control = std::get<source::ControlPlan>(source::BuildControlPlan(graph));
+    const auto evaluation = std::get<source::EvaluationPlan>(source::BuildEvaluationPlan(graph));
+    source::FunctionSyntax syntax{};
+    syntax.method = {kMethod}; syntax.callable = source::CallableKind::kFunction;
+    syntax.strictness = source::Strictness::kStrict;
+    syntax.names = resolved_tree.names; syntax.texts = resolved_tree.texts;
+    const auto tree = std::get<source::ConstructedFunction>(source::BuildFunctionTree(graph,
+        control, evaluation, syntax, resolved_tree.View())).tree;
+    test::Check(tree.properties.size() == first.count);
+    test::Check(std::holds_alternative<source::TreeSemantics>(source::VerifyTreeSemantics(
+        graph, control, evaluation, tree, resolved_tree.View())));
+    auto changed = tree;
+    changed.expressions[changed.properties[0].value.value].expression = source::TreeLiteral{source::UndefinedLiteral{}};
+    test::Check(std::holds_alternative<source::TreeSemanticError>(source::VerifyTreeSemantics(
+        graph, control, evaluation, changed, resolved_tree.View())));
+    changed = tree;
+    test::Check(changed.origins.size() > 1);
+    changed.properties[0].origin = source::TreeOriginId{1};
+    test::Check(std::holds_alternative<source::TreeSemanticError>(source::VerifyTreeSemantics(
+        graph, control, evaluation, changed, resolved_tree.View())));
   }
   const auto empty = test::Body({0x04, 0x64});
   std::ostringstream empty_source;

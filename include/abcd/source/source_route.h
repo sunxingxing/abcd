@@ -214,7 +214,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 20 share tree preparation with occurrence-bound DEFINEFUNC owners.
 // Created-function expression publication remains independently gated.
 // Rules 21 avoid supplied lexical/global names when allocating private names.
-inline constexpr std::uint32_t kRouteEvidenceRules = 21;
+// Rules 22 add checked primitive buffered-object properties in the common AST.
+inline constexpr std::uint32_t kRouteEvidenceRules = 22;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

@@ -110,7 +110,21 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>) {
           static_cast<void>(Node<EmptyArrayExpr>(expression));
         } else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
-          RequireMeaning(!operation.literal, Error::kUnsupportedOperation);
+          if (operation.literal) {
+            const auto& object = Node<ObjectExpr>(expression);
+            const auto* expected = std::get_if<ObjectConstant>(&constants_.operations[i]);
+            RequireMeaning(expected && expected->first <= constants_.properties.size() &&
+                expected->count <= constants_.properties.size() - expected->first &&
+                object.properties.count == expected->count, Error::kConstant);
+            for (std::uint32_t p = 0; p < expected->count; ++p) {
+              budget_.Step();
+              const auto& source = constants_.properties[expected->first + p];
+              const auto& actual = tree_.properties[object.properties.first + p];
+              RequireMeaning(source.key.value < constants_.name_count && actual.key == source.key, Error::kConstant);
+              BufferedLiteral(source.value, actual.value);
+            }
+            return;
+          }
           RequireMeaning(std::holds_alternative<EmptyObjectExpr>(tree_.expressions[expression.value].expression) ||
               std::holds_alternative<ObjectExpr>(tree_.expressions[expression.value].expression), Error::kOperator);
         } else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
@@ -286,6 +300,19 @@ class OperandCheck {
         }
       }
     }, operand);
+  }
+  void BufferedLiteral(const TreeLiteral& expected, ExprId expression) {
+    LeafOrigin(expression);
+    std::visit([&](const auto& value) {
+      using T = std::decay_t<decltype(value)>;
+      const auto& actual = Literal<T>(expression);
+      if constexpr (std::is_same_v<T, NullLiteral>) return;
+      else if constexpr (std::is_same_v<T, UndefinedLiteral>) throw Error::kConstant;
+      else if constexpr (std::is_same_v<T, NumberLiteral>) RequireMeaning(actual.bits == value.bits, Error::kConstant);
+      else if constexpr (std::is_same_v<T, TextId>)
+        RequireMeaning(value.value < constants_.text_count && actual == value, Error::kConstant);
+      else RequireMeaning(actual.value == value.value, Error::kConstant);
+    }, expected);
   }
   void Named(const MemberKey& key, const ExpressionConstant& constant) const {
     const auto* name = std::get_if<NameId>(&key);
