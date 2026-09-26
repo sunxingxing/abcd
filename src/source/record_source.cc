@@ -6,6 +6,9 @@
 
 #include "abcd/abc/call_type.h"
 #include "import_names.h"
+#include "creation_expansion.h"
+#include "abcd/source/class_method_selection.h"
+#include "abcd/source/function_emission.h"
 
 namespace abcd::source {
 RecordSourceResult BuildRecordSource(
@@ -13,7 +16,8 @@ RecordSourceResult BuildRecordSource(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const abc::RecordInfo& record, const RecordModuleContext& context,
     const analysis::MethodRoleIndex& roles, RecordProgramBudget budget,
-    const HostRealmBinding* realm_binding, RoutePolicy policy) {
+    const HostRealmBinding* realm_binding, RoutePolicy policy,
+    const ClassMethodSelection* selection) {
   using Error = RecordProgramError;
   const auto fail = [](Error kind) { return RecordProgramFailure{kind, {}}; };
   const auto metadata = [&](abc::MetadataError kind) {
@@ -61,6 +65,12 @@ RecordSourceResult BuildRecordSource(
       entry = &method;
     }
     if (!entry || !entry->code) return fail(Error::kEntry);
+    if (selection) {
+      const auto* site = selection->sites.At(selection->site);
+      const auto creator = site ? lookup.Find(site->creator) : std::nullopt;
+      if (!creator || index.methods[creator->value].owner_offset != record.offset)
+        return fail(Error::kEntry);
+    }
     const auto call = abc::ReadCallType(file, header, index, entry->annotations,
                                        {budget.bytes});
     const auto* call_type = std::get_if<abc::CallType>(&call);
@@ -113,6 +123,8 @@ RecordSourceResult BuildRecordSource(
     const auto* method = std::get_if<analysis::SemanticMethod>(&lifted);
     if (!method) return std::get<analysis::SemanticFailure>(lifted);
     MethodConstants constants{file, header, index, entry->offset, budget.strings};
+    CreationExpansion expansion(entry->offset, budget.bytes, kDefaultMethodWork, selection);
+    if (selection) constants.expansion = &expansion;
     constants.leaf_methods = &lookup;
     constants.roles = &roles;
     constants.module = module.get();
@@ -125,6 +137,21 @@ RecordSourceResult BuildRecordSource(
     auto result = BuildEntrySource(*body, *method, *frame, SourceForm::kRecord,
         entry->name, constants, exports, {budget.bytes}, budget.output.bytes,
         policy);
+    if (selection) {
+      if (const auto* printed = std::get_if<PrintedSource>(&result)) {
+        const auto* site = selection->sites.At(selection->site);
+        const bool retained = std::any_of(printed->function_segments.begin(),
+            printed->function_segments.end(), [&](const FunctionSegment& segment) {
+              if (!segment.function) return false;
+              const auto& creation = segment.function->Function().Creation();
+              return creation.creator == site->creator && creation.pc == site->pc &&
+                  creation.property == site->property && creation.target == site->target &&
+                  segment.function->Receipt().identity == selection->identity;
+            });
+        if (!retained) return RouteRefusal{{RouteFailureClass::kUnproved,
+                                          ValueRouteError::kContextStage, site->pc}};
+      }
+    }
     if (file.CheckUnchanged()) return fail(Error::kFileChanged);
     return std::visit([](auto&& value) -> RecordSourceResult {
       return std::move(value);

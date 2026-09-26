@@ -27,6 +27,7 @@
 #include "runtime_name.h"
 #include "spread_field_constructor.h"
 #include "member_key.h"
+#include "selected_class_method.h"
 
 namespace abcd::source {
 namespace {
@@ -205,7 +206,7 @@ class ClassWriter {
               std::span<const ClassAccessor> accessors,
               std::span<const ClassAttachedMethod> attached_methods,
               std::optional<ClassParent> parent,
-              CreationExpansion& expansion,
+              CreationExpansion& expansion, abc::EntityOffset creator, abc::CodeOffset creation_pc,
               std::ostream& output,
               LocalLexicalBudget budget, abc::StringBudget strings,
               analysis::CapturedValues captures)
@@ -223,6 +224,7 @@ class ClassWriter {
         parent_(parent),
         captures_(captures),
         expansion_(expansion),
+        creator_(creator), creation_pc_(creation_pc),
         output_(output),
         budget_(budget),
         strings_(strings) {}
@@ -259,7 +261,7 @@ class ClassWriter {
     Constructor(creation, target, name);
     for (std::size_t i = 0; i < members.properties.size(); ++i) {
       Text("\n");
-      Member(members.properties[i], SelfName(i, name), name, self_uses[i]);
+      Member(members.properties[i], i, SelfName(i, name), name, self_uses[i]);
     }
     for (const auto& accessor : accessors_) {
       Text("\n");
@@ -538,7 +540,7 @@ class ClassWriter {
                budget, &constants, &lookup_);
          });
   }
-  void Member(const abc::ClassProperty& property, std::string_view self,
+  void Member(const abc::ClassProperty& property, std::size_t ordinal, std::string_view self,
               std::string_view class_name, SelfBindingUse& self_use) {
     const auto target =
         ResolveClassMember(header_, index_, lookup_, property, roles_);
@@ -547,6 +549,19 @@ class ClassWriter {
     // Key survives body emission; body constant-string scratch uses a separate
     // admitted string allowance, so the retained key must also be accounted.
     AdmitClassBytes(key.capacity(), sizeof(char16_t), budget.bytes);
+    if (const auto* selection = expansion_.Selection()) {
+      const auto* site = selection->sites.At(selection->site);
+      if (!site) throw ClassFailure{CreatedClassError::kMembers};
+      if (site->creator == creator_ && site->pc == creation_pc_ && site->property == ordinal) {
+        if (!roles_) throw ClassFailure{CreatedClassError::kMembers};
+        if (module_ && index_.methods[target.position.value].owner_offset != owner_)
+          throw ClassFailure{CreatedClassError::kModuleOwner};
+        Account(WriteSelectedClassMethod(*selection, file_, header_, index_, lookup_,
+            *roles_, property, target, key, expansion_, output_, budget));
+        self_use = SelfBindingUse::kUnused;
+        return;
+      }
+    }
     Body(index_.methods[target.position.value], budget, class_name,
          [&](const abc::FrameLayout& frame, const abc::MethodBody& body,
              LocalLexicalBudget remaining, const MethodConstants& constants) {
@@ -618,6 +633,8 @@ class ClassWriter {
   std::optional<ClassParent> parent_;
   analysis::CapturedValues captures_;
   CreationExpansion& expansion_;
+  abc::EntityOffset creator_;
+  abc::CodeOffset creation_pc_;
   std::ostream& output_;
   LocalLexicalBudget budget_;
   abc::StringBudget strings_;
@@ -732,7 +749,7 @@ CreatedClassResult WriteCreatedClass(
     const auto written = ClassWriter(
         file, header, index, lookup, roles, module, caller_owner,
         enclosing_scope, static_fields, accessors, attached_methods, parent,
-        context, buffered, budget, strings, captures)
+        context, caller, origin, buffered, budget, strings, captures)
         .Write(creation, target, members, *name, needs_wrapper);
     if (needs_wrapper && kWrapper.size() > budget.output.bytes - written)
       return EmitError::kOutputLimit;

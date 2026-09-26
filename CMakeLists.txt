@@ -219,6 +219,7 @@ target_sources(abcd_source PRIVATE src/source/verified_function.cc)
 target_sources(abcd_source PRIVATE src/source/function_abi.cc)
 target_sources(abcd_source PRIVATE src/source/class_method_emission.cc)
 target_sources(abcd_source PRIVATE src/source/function_segments.cc)
+target_sources(abcd_source PRIVATE src/source/selected_class_method.cc)
 target_sources(abcd_source PRIVATE src/source/tree_printer.cc src/source/tree_print_tokens.cc)
 target_sources(abcd_source PRIVATE src/source/evaluation_boolean.cc)
 target_link_libraries(abcd_source PUBLIC abcd_analysis PRIVATE abcd_json)
@@ -607,6 +608,10 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_tree_slice.mjs
         $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
         7586 854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e pathStack)
+      add_test(NAME value_tree_record_slice_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_record_slice.mjs
+        $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
+        7586 854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
       add_test(NAME value_tree_immersive_slice_test COMMAND ${ABCD_NODE_EXECUTABLE}

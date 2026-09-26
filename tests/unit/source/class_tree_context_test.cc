@@ -18,7 +18,7 @@ using namespace abcd::source;
 static_assert(!std::is_copy_constructible_v<VerifiedFunction>);
 static_assert(!std::is_copy_constructible_v<FunctionEmission>);
 static_assert(!std::is_constructible_v<FunctionEmission, VerifiedFunction,
-                                     PrintedFunction, GeneratedRange, MethodRouteReceipt>);
+                                     PrintedFunction, GeneratedRange, MethodRouteReceipt, std::size_t>);
 static_assert(!std::is_constructible_v<VerifiedFunction, FunctionTree>);
 static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);

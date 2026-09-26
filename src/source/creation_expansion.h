@@ -8,6 +8,7 @@
 #include "abcd/source/local_lexical_body.h"
 
 namespace abcd::source {
+struct ClassMethodSelection;
 enum class ExpansionError { kCycle, kResourceLimit };
 
 // A synchronous emission tree, not a method scheduler. Depth bounds the host
@@ -17,8 +18,9 @@ class CreationExpansion {
  public:
   static constexpr std::size_t kMaxDepth = 32;
   CreationExpansion(abc::EntityOffset root, std::size_t bytes,
-                    std::uint64_t work)
-      : bytes_(bytes), work_(work) { active_[0] = root; }
+                    std::uint64_t work, const ClassMethodSelection* selection = nullptr)
+      : bytes_(bytes), work_(work), selection_(selection) { active_[0] = root; }
+  const ClassMethodSelection* Selection() const { return selection_; }
   CreationExpansion(const CreationExpansion&) = delete;
   CreationExpansion& operator=(const CreationExpansion&) = delete;
 
@@ -47,6 +49,7 @@ class CreationExpansion {
   std::size_t depth_ = 1;
   std::size_t bytes_;
   std::uint64_t work_;
+  const ClassMethodSelection* selection_;
 };
 
 class ExpansionFrame {

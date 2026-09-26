@@ -6,8 +6,9 @@
 #include "abcd/source/semantic_entry.h"
 
 namespace abcd::source {
-// RouteRefusal is appended (stable indices); it can only appear when a caller
-// threads RoutePolicy::kRequireValueTree into the entry pipeline.
+struct ClassMethodSelection;
+// RouteRefusal is appended (stable indices). Also reports an explicit member
+// migration obligation that could not be retained by record assembly.
 using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure,
     analysis::SemanticFailure, analysis::SemanticProofFailure,
     analysis::RegionFailure, SourceFailure, RouteRefusal>;
@@ -20,11 +21,15 @@ using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure,
 // policy has no default (invocation-context rule in source_route.h): the
 // record entry refuses before any stage when the legacy writer is not
 // permitted, so callers never receive a legacy fallback here.
+// Optional selection requires that exact class occurrence to use the verified
+// value-tree member route. Other code remains legacy; this mixed artifact is
+// not a complete value-tree record. A missing selected segment refuses output.
 [[nodiscard]] RecordSourceResult BuildRecordSource(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const abc::RecordInfo& record, const RecordModuleContext& context,
     const analysis::MethodRoleIndex& roles, RecordProgramBudget budget,
-    const HostRealmBinding* realm_binding, RoutePolicy policy);
+    const HostRealmBinding* realm_binding, RoutePolicy policy,
+    const ClassMethodSelection* selection = nullptr);
 }  // namespace abcd::source
 #endif

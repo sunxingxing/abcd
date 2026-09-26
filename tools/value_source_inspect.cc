@@ -1,5 +1,6 @@
 #include "value_source_inspect.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <nlohmann/json.hpp>
 #include <ostream>
@@ -8,6 +9,8 @@
 
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
+#include "abcd/source/class_method_selection.h"
+#include "abcd/source/record_source.h"
 
 namespace {
 using namespace abcd;
@@ -174,12 +177,76 @@ void Positions(std::ostream& output, const FunctionTree& tree, const PrintedFunc
   });
   output << '}';
 }
+
+int RecordSlice(const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles, const abc::MethodInfo& method,
+    const ClassMethodSelection& selection, std::ostream& output) {
+  const auto refuse = [&](std::string_view stage) {
+    output << nlohmann::json{{"fragment", "record_slice"}, {"source_complete", false},
+        {"executable", false}, {"record_emitted", false}, {"refused_at", stage}} << '\n';
+    return EXIT_FAILURE;
+  };
+  const auto owner = std::find_if(index.records.begin(), index.records.end(),
+      [&](const abc::RecordInfo& record) { return record.offset == method.owner_offset; });
+  if (owner == index.records.end()) return refuse("record_owner");
+  const auto packaging = abc::DetectFilePackaging(file, header, index);
+  const auto* packed = std::get_if<abc::FilePackaging>(&packaging);
+  if (!packed) return refuse("packaging");
+  const auto context = ReadRecordModuleContext(file, header, index, *owner, *packed);
+  const auto* ready = std::get_if<RecordModuleContext>(&context);
+  if (!ready) return refuse("module_context");
+  auto built = BuildRecordSource(file, header, index, lookup, *owner, *ready, roles,
+      {}, nullptr, RoutePolicy::kLegacyAllowed, &selection);
+  const auto* source = std::get_if<PrintedSource>(&built);
+  if (!source) {
+    nlohmann::json failure{{"fragment", "record_slice"}, {"source_complete", false},
+        {"executable", false}, {"record_emitted", false}, {"refused_at", "record_assembly"},
+        {"error_variant", built.index()}};
+    std::visit([&](const auto& error) {
+      using T = std::decay_t<decltype(error)>;
+      if constexpr (std::is_same_v<T, RouteRefusal>) {
+        failure["failure_class"] = RouteFailureClassName(error.failure.failure_class);
+        failure["reason"] = ValueRouteErrorName(error.failure.reason);
+      } else if constexpr (requires { error.kind; }) {
+        failure["error"] = static_cast<unsigned>(error.kind);
+      }
+      if constexpr (requires { error.pc.value; }) failure["pc"] = error.pc.value;
+    }, built);
+    output << failure << '\n';
+    return EXIT_FAILURE;
+  }
+  if (file.CheckUnchanged()) return refuse("file_changed");
+  output << "{\"fragment\":\"record_slice\",\"source_complete\":false,\"executable\":false"
+            ",\"record_emitted\":true,\"enclosing_route\":\"legacy\",\"source\":"
+         << nlohmann::json(source->text) << ",\"function_segments\":[";
+  bool first = true;
+  for (const auto& segment : source->function_segments) {
+    if (!first) output << ',';
+    first = false;
+    const auto& emission = *segment.function;
+    const auto serialized = SerializeRouteReceipt(emission.Receipt());
+    const auto* receipt = std::get_if<std::string>(&serialized);
+    if (!receipt) return EXIT_FAILURE;
+    const auto& creation = emission.Function().Creation();
+    output << "{\"begin\":" << segment.begin.byte << ",\"end\":" << segment.end.byte
+           << ",\"creation\":" << nlohmann::json{{"creator", creation.creator.value},
+                {"pc", creation.pc.value}, {"literal", creation.literal.value},
+                {"property", creation.property}}
+           << ",\"route_receipt\":" << *receipt << ",\"local_positions\":";
+    Positions(output, emission.Function().Tree(), emission.Positions());
+    output << '}';
+  }
+  output << "]}\n";
+  // A migrated child does not certify the legacy entry or its other children.
+  return EXIT_FAILURE;
+}
 }  // namespace
 
 int InspectValueSource(const abcd::corpus::AbcFile& file,
     const abcd::abc::Header& header, const abcd::abc::MetadataIndex& index,
     const abcd::abc::MethodInfo& method, abcd::source::RouteInputIdentity identity,
-    std::ostream& output) {
+    std::ostream& output, ValueSourceScope scope) {
   MethodRouteReceipt receipt;
   receipt.identity = identity; receipt.method = method.offset; receipt.record = method.owner_offset;
   receipt.route = SourceRoute::kValueTree; receipt.stage = SourceStage::kDecoded;
@@ -200,6 +267,9 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
   const auto range = sites->Find(method.offset);
   if (range.count == 0) return Refused(output, receipt, InspectionError::kMissingSite);
   if (range.count != 1) return Refused(output, receipt, InspectionError::kAmbiguousSite);
+  if (scope == ValueSourceScope::kRecordSlice)
+    return RecordSlice(file, header, index, *lookup, *roles, method,
+                       {*sites, range.first, identity}, output);
   auto prepared = VerifiedFunction::PrepareClass(file, header, index, *lookup, *roles, *sites, range.first, identity);
   auto* function = std::get_if<VerifiedFunction>(&prepared);
   if (!function) {

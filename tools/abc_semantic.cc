@@ -149,7 +149,8 @@ int FailStage(InspectError kind, unsigned stage_error,
 }
 int Inspect(const std::filesystem::path& path, std::uint32_t entity,
             std::optional<source::SourceForm> form, bool all_records,
-            InspectDetail detail, source::RoutePolicy policy) {
+            InspectDetail detail, source::RoutePolicy policy,
+            ValueSourceScope scope = ValueSourceScope::kMember) {
   auto opened = corpus::AbcFile::Open(path);
   const auto* owned = std::get_if<std::unique_ptr<corpus::AbcFile>>(&opened);
   if (!owned) return Fail(InspectError::kOpen);
@@ -186,6 +187,9 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
   }
   // Dispatch before legacy analysis/header/VM declarations. Failure never
   // falls back to the old AST or writer.
+  if (scope == ValueSourceScope::kRecordSlice)
+    return InspectValueSource(file, *header, *index, *method,
+        source::MakeRouteInputIdentity(*hash, *header), std::cout, scope);
   if (policy == source::RoutePolicy::kRequireValueTree) {
     if (form && *form != source::SourceForm::kFunction) {
       return ReportRouteReceipt(ValueRouteReceipt(
@@ -565,6 +569,7 @@ int main(int argc, char** argv) {
     std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source|--record-source] [--value-source]\n"
                  "       abc_semantic INPUT.abc METHOD_ENTITY --instructions|--exception-flow|--exception-template\n"
                  "       abc_semantic INPUT.abc --all-records\n"
+                 "       abc_semantic INPUT.abc METHOD_ENTITY --record-value-slice\n"
                  "  exactly one source form per invocation; duplicates, conflicting forms\n"
                  "  and any combination of a detail mode with --value-source are rejected\n"
                  "  regardless of option order\n"
@@ -591,9 +596,12 @@ int main(int argc, char** argv) {
   unsigned forms = 0;
   unsigned details = 0;
   unsigned value_routes = 0;
+  unsigned record_slices = 0;
   for (int i = 3; i < argc; ++i) {
     const std::string_view option{argv[i]};
-    if (option == "--value-source") {
+    if (option == "--record-value-slice") {
+      ++record_slices;
+    } else if (option == "--value-source") {
       ++value_routes;
     } else if (option == "--instructions" ||
                option == "--exception-flow" ||
@@ -618,6 +626,11 @@ int main(int argc, char** argv) {
   // Duplicate or conflicting selectors are rejected in every order.
   if (forms > 1 || details > 1 || value_routes > 1 || (forms && details))
     return Fail(InspectError::kArguments);
+  if (record_slices > 1 || (record_slices && (forms || details || value_routes)))
+    return Fail(InspectError::kArguments);
+  if (record_slices)
+    return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kSummary,
+                   source::RoutePolicy::kLegacyAllowed, ValueSourceScope::kRecordSlice);
   // Raw inspection modes predate route receipts; do not mix them with a
   // route policy until those views carry receipts too.
   if (details && value_routes) return Fail(InspectError::kArguments);

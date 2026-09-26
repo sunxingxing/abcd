@@ -607,3 +607,45 @@ No JS or RSS run occurred. The transport is not yet activated by record method
 selection: the next integration step must select actual creation occurrences,
 invoke the explicit class-member route and serialize child segment evidence.
 Until then no real record-level migration is claimed.
+
+### T03 Explicit Record Member Migration
+
+The record API now accepts an optional ClassMethodSelection: one immutable
+file-level ClassMethodSites occurrence and its input identity. CreationExpansion
+borrows this selection for the synchronous invocation. ClassWriter matches the
+actual creator, creation PC and property ordinal before invoking any legacy
+Body/parameter/register setup for that member. Matching is O(1) per property,
+not a whole-file lookup or per-member scan. The selected route verifies the
+member afresh, emits the complete signature/body through the new writer, and
+retains its FunctionSegment in the private class template. Selected failures
+never retry a legacy body. Unselected code remains explicitly legacy.
+
+Preparation and printing have disjoint byte/work grants; the retained tree is
+charged in the parent's segment budget. Existing process-level memory and
+BuildValueStage work-accounting limitations remain open. The record API refuses
+an otherwise emitted result if the exact selected occurrence/identity did not
+survive transport. RequireValueTree still refuses the legacy record shell.
+
+`abc_semantic INPUT METHOD --record-value-slice` is the explicit mixed-record
+inspection entry, mutually exclusive with all other mode flags. It serializes
+the record text, each child's complete receipt and local origin/position tables
+with the relocated enclosing byte range. It never infers positions from text
+and never labels the entire mixed record value_tree or complete. Exit remains 1.
+
+Fresh ABC-only inspection of Pasteboard method 7586 now emits its real PageA
+record shell with one value-tree segment at [2307,2464). The 157-byte member
+retains its verified signature, two distinct pathStack reads and write, with
+no legacy register declarations inside that member. All other record methods
+remain legacy. This is the first actual record-path migration, not a fabricated
+class wrapper around a method-only inspection.
+
+Independent Immersive method 21082 still emits as a standalone verified member,
+but its containing record refuses at creation PC 159 (SourceError::kCreation).
+No partial record or invented child receipt is published. That enclosing-class
+blocker must be traced before claiming cross-application record integration.
+
+Production abc_semantic and abc_structure builds succeeded. Added an unrun
+ABC-only integration specification comparing the embedded member and all local
+position/origin tables with standalone emission, plus option-conflict refusals.
+Tests, generated-JS execution and RSS measurement remain paused. T03 remains
+in progress; this does not satisfy its behavioral-validation acceptance gate.
