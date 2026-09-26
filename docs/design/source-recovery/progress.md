@@ -70,6 +70,25 @@ equality on the entire IncomingKey variant. Tests remain uncompiled/unrun.
 ABC-only inspection of real P3 method 7366 still reports ContextStage refusal,
 not a new success; creation/capture and object initialization remain required.
 
+### T07 Literal Initialization Proof
+
+Added LiteralPlan and independent verification for exact empty-object allocation
+identity, ordered named definitions, pre-allocation RHS availability and absence
+of early observation. The verifier checks supplied groups against fresh flow and
+disjoint allocation use chains, not a regenerated plan. Grouping is O(D log D),
+with linear operation/use checking and bounded storage; no repeated whole-graph
+walk per object. See `literal-initialization.md` for the complete domain, pinned
+descriptor provenance and mandatory source integration contract.
+
+This proof component is linked into production but not yet consumed by the
+source route. Own-write lowering remains gated; source rules stay 17. Added
+unrun tests cover reordered/missing/duplicate definitions, wrong receiver kind,
+domain, observation, late RHS, revisions and 0/1/2/200/201/4096-field budgets.
+No source/behavior/corpus completion follows from this internal proof alone.
+Production `abc_semantic` and `abc_structure` builds exited 0 after this change;
+whitespace validation passed. Test sources remain uncompiled/unrun and RSS
+measurements remain paused.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,
