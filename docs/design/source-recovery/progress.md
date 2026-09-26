@@ -238,6 +238,23 @@ closure-premise mismatch. Tests/RSS stay paused. Initialization-phi joins,
 actual AST declarations/accesses and closed child trees remain pending. Source
 rules remain 18 and no new executable-source coverage is claimed.
 
+### T07 Cell Evaluation Integration
+
+Shared EvaluationPlan now owns CellEvaluation evidence and an explicit
+environment-operation placement. Cell reads/writes use normal ordered operand
+evaluation; environment operations are omitted from expression order only after
+fresh topology, cell and initialization checks plus rejection of all observed
+internal environment identities. Incoming capture obligations are not silently
+turned into locals. No child-write success is assumed. Evaluation checking
+validates supplied plans under the shared remaining work/byte allowance.
+
+Production `abc_semantic` and `abc_structure` builds exited 0; whitespace checks
+passed. Added uncompiled/unrun regression sources specify missing cell proof,
+forged environment placement and mislabeled internal environment results.
+AST lowering remains explicitly gated: declarations, actual scope/operand/origin
+checks and child trees still need integration. Source rules stay 18; neither
+new source coverage nor T07 completion is claimed. Tests and RSS remain paused.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

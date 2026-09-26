@@ -250,7 +250,7 @@ int main() {
       analysis::ValueLexicalStore{{{0}, {0}}}, analysis::ValueEnvironmentPush{1, {}},
       analysis::ValueEnvironmentPop{}, analysis::ValueCurrentEnvironment{}};
   for (const auto& operation : cells) {
-    Check(!DescribeEvaluation(operation));
+    Check(DescribeEvaluation(operation).has_value() != IsEnvironmentState(operation));
     auto op = creation.graph.ops[0]; op.operation = operation;
     Check(OrderedEvaluation(op));
   }

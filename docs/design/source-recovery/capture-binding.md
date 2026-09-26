@@ -131,7 +131,23 @@ construction and linear O(B+E+O+C) scans with O(B+E+O+C) bounded storage. Joins
 requiring initialization phis remain refused pending that extension; this is
 not claimed as general definite-assignment completion. Testing remains paused.
 
-These operations are still refused by source evaluation. Required next
+CellEvaluation now carries the copyable cell/initialization evidence into the
+shared EvaluationPlan. Its independent check recomputes environment topology
+from the current graph and checks the supplied cell/witness plans, not a new
+cell grouping. Incoming captures and observed internal environment identities
+remain refused. Push/current results must be unused Environment values; pop
+must preserve acc. Unknown child writes remain refused by initialization proof.
+
+EvaluationKind::kEnvironment explicitly owns those environment operations;
+they cannot silently disappear as pure operations. Cell loads/stores retain
+ordered evaluation and normal operand validation. This uses the established
+contract excluding VM resource-exhaustion differences, not a new host premise.
+The AST must still place native declarations at each proved allocation scope
+and independently account for those operation placements before source success.
+All nested construction/check work shares the remaining invocation budget;
+no per-cell CFG walk is added. Retained evaluation storage includes both plans.
+
+These operations are still refused by AST lowering. Required next
 integration remains: proving dynamic cell lifetimes in the work graph and
 capture-aware symbol binding and AST;
 complete child trees validated before parent publication; dependency/SCC handling

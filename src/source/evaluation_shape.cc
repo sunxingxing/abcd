@@ -17,6 +17,7 @@ constexpr std::array kReturn{Role::kReturnValue};
 constexpr std::array kCall{Role::kCallee};
 constexpr std::array kReceiverCall{Role::kCallee, Role::kReceiver};
 constexpr std::array kConstruct{Role::kConstructor};
+constexpr std::array kCellStore{Role::kStoredValue};
 }  // namespace
 
 std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation& operation) {
@@ -26,6 +27,8 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return EvaluationShape{kInput, true};
     else if constexpr (std::is_same_v<T, analysis::ValueBinary>) return EvaluationShape{kBinary, true};
     else if constexpr (std::is_same_v<T, analysis::ValueNamedRead>) return EvaluationShape{kNamedRead, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueLexicalLoad>) return EvaluationShape{kNoOperands, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>) return EvaluationShape{kCellStore, false};
     else if constexpr (std::is_same_v<T, analysis::ValuePropertyRead>) return EvaluationShape{kPropertyRead, true};
     else if constexpr (std::is_same_v<T, analysis::ValueNamedWrite>) return EvaluationShape{kNamedWrite, false};
     else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {

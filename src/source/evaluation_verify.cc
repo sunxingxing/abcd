@@ -34,11 +34,23 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
     std::vector<std::uint8_t> pinned(graph.ops.size());
     admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
     bool has_definitions = false;
+    bool has_cells = false;
     for (const auto& op : graph.ops) {
       step(); has_definitions |= op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueOwnWrite>(op.operation);
+      has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
     }
     Require(has_definitions == plan.literals.has_value(), Error::kOwnership);
+    Require(has_cells == plan.cells.has_value(), Error::kOwnership);
+    if (plan.cells) {
+      const auto checked = VerifyCellEvaluation(graph, *plan.cells, {bytes, work});
+      if (const auto* error = std::get_if<CellEvaluationError>(&checked)) {
+        if (*error == CellEvaluationError::kResourceLimit) return Error::kResourceLimit;
+        if (*error == CellEvaluationError::kWorkLimit) return Error::kWorkLimit;
+        return Error::kUnsupportedOperation;
+      }
+      step(std::get<std::uint64_t>(checked));
+    }
     if (plan.literals) {
       const auto checked = VerifyLiteralPlan(graph, *plan.literals, {bytes, work});
       if (const auto* error = std::get_if<LiteralError>(&checked)) {
@@ -87,6 +99,12 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
       if (op.life != analysis::ValueLife::kLive) {
         Require(placement.kind == EvaluationKind::kRemoved && !placement.consumer && !placement.temporary,
                 Error::kOwnership);
+        continue;
+      }
+      if (IsEnvironmentState(op.operation)) {
+        Require(plan.cells && placement.kind == EvaluationKind::kEnvironment &&
+            !placement.consumer && !placement.temporary, Error::kOwnership);
+        visits[i] = EvaluationVisit::kDone;
         continue;
       }
       const auto shape = DescribeEvaluation(op.operation);
@@ -141,6 +159,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
       const auto skip_pure = [&] {
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
                                   plan.operations[expected].kind == EvaluationKind::kInitializer ||
+                                  plan.operations[expected].kind == EvaluationKind::kEnvironment ||
                                   !OrderedEvaluation(graph.ops[expected]))) { step(); ++expected; }
       };
       for (auto i = next_op; i < end; ++i) {

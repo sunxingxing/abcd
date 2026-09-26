@@ -226,6 +226,7 @@ target_sources(abcd_source PRIVATE src/source/scope_facts.cc src/source/capture_
 target_sources(abcd_source PRIVATE src/source/cell_plan.cc)
 target_sources(abcd_source PRIVATE src/source/cell_lifetime.cc)
 target_sources(abcd_source PRIVATE src/source/cell_initialization.cc)
+target_sources(abcd_source PRIVATE src/source/cell_evaluation.cc)
 target_sources(abcd_source PRIVATE src/source/tree_constants.cc)
 target_sources(abcd_source PRIVATE src/source/class_tree_context.cc)
 target_sources(abcd_source PRIVATE src/source/verified_function.cc)

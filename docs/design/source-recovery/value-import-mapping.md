@@ -111,8 +111,10 @@ The normal input proof's existing profile/flow restrictions still apply.
 All five operations are explicitly non-erasable and ordered even with empty
 effect fields. Original environment state is bound to the operation origin:
 no pass may hoist a lexical access across environment changes or reinterpret a
-relative depth against a different scope. Source evaluation still refuses them
-until cell binding, dynamic lifetime, capture and AST proofs are connected.
+relative depth against a different scope. Evaluation now requires explicit
+CellEvaluation evidence for native local loads/stores and environment ownership;
+incoming captures or observed environment identities refuse. AST lowering stays
+gated until declarations, dynamic lifetime and actual tree correspondence connect.
 The importer does not promote cell values to register SSA or merge allocations.
 
 Inputs remain borrowed only during import. Output graph, correspondence and

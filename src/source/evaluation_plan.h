@@ -5,9 +5,10 @@
 #include "abcd/source/source_tree.h"
 #include "phi_copies.h"
 #include "literal_plan.h"
+#include "cell_evaluation.h"
 
 namespace abcd::source {
-enum class EvaluationKind : std::uint8_t { kRemoved, kRoot, kInline, kInitializer };
+enum class EvaluationKind : std::uint8_t { kRemoved, kRoot, kInline, kInitializer, kEnvironment };
 struct OpEvaluation {
   EvaluationKind kind = EvaluationKind::kRemoved;
   std::optional<analysis::UseId> consumer;
@@ -21,6 +22,7 @@ struct EvaluationPlan {
   // This proves their values/schedules, not their eventual AST edge placement.
   std::optional<PhiCopies> phis;
   std::optional<LiteralPlan> literals;
+  std::optional<CellEvaluation> cells;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

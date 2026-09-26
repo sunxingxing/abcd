@@ -1,6 +1,7 @@
 #include "../../../src/source/cell_plan.h"
 #include "../../../src/source/cell_lifetime.h"
 #include "../../../src/source/cell_initialization.h"
+#include "../../../src/source/evaluation_plan.h"
 #include "abcd/analysis/value_import.h"
 #include "analysis/ssa_fixture.h"
 
@@ -26,6 +27,22 @@ void Run(std::uint32_t count) {
   const auto planned = BuildCellPlan(graph, environments);
   const auto* plan = std::get_if<CellPlan>(&planned);
   test::Check(plan && plan->cells.size() == count && plan->operations.size() == graph.ops.size());
+  if (count != 0 && count <= 2) {
+    const auto evaluated = BuildEvaluationPlan(graph);
+    const auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
+    test::Check(evaluation && evaluation->cells);
+    test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, *evaluation)));
+    test::Check(evaluation->operations[0].kind == EvaluationKind::kEnvironment);
+    auto forged = *evaluation; forged.cells.reset();
+    test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kOwnership);
+    forged = *evaluation; forged.operations[0].kind = EvaluationKind::kRoot;
+    test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kOwnership);
+    auto observed = graph;
+    // A fabricated Language tag on the otherwise unused environment result
+    // must not allow it to become a printable source value.
+    observed.values[observed.ops[0].result->value].domain = ValueKinds::Language();
+    test::Check(std::get<CellEvaluationError>(BuildCellEvaluation(observed)) == CellEvaluationError::kInternalIdentity);
+  }
   test::Check(std::holds_alternative<std::uint64_t>(VerifyCellPlan(graph, environments, *plan)));
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto initialized = std::get<CellInitializations>(BuildCellInitializations(graph, environments, *plan));

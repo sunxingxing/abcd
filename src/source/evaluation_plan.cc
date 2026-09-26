@@ -41,9 +41,11 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     std::vector<std::uint8_t> pinned(graph.ops.size());
     admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
     bool has_definitions = false;
+    bool has_cells = false;
     for (const auto& op : graph.ops) {
       step(); has_definitions |= op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueOwnWrite>(op.operation);
+      has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
     }
     if (has_definitions) {
       auto built = BuildLiteralPlan(graph, {bytes, work});
@@ -65,6 +67,16 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
           if (const auto* result = std::get_if<analysis::OpResult>(&graph.values[value->value].origin))
             pinned[result->op.value] = 1;
       }
+    }
+    if (has_cells) {
+      auto built = BuildCellEvaluation(graph, {bytes, work});
+      if (const auto* error = std::get_if<CellEvaluationError>(&built)) {
+        if (*error == CellEvaluationError::kResourceLimit) return Error::kResourceLimit;
+        if (*error == CellEvaluationError::kWorkLimit) return Error::kWorkLimit;
+        return Error::kUnsupportedOperation;
+      }
+      plan.cells = std::get<CellEvaluation>(std::move(built));
+      admit(plan.cells->allocated_bytes, 1); step(plan.cells->work);
     }
     if (has_phi) {
       auto copies = BuildPhiCopies(graph, {bytes, work});
@@ -98,6 +110,11 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
         const auto& op = graph.ops[index];
         Require(op.block.value == b && op.order == order, Error::kInvalidGraph);
         if (op.life != analysis::ValueLife::kLive) continue;
+        if (IsEnvironmentState(op.operation)) {
+          Require(plan.cells.has_value(), Error::kUnsupportedOperation);
+          plan.operations[index].kind = EvaluationKind::kEnvironment;
+          continue;
+        }
         const auto shape = DescribeEvaluation(op.operation);
         Require(shape.has_value(), Error::kUnsupportedOperation);
         Require(op.use_count == shape->Count() && shape->expression == op.result.has_value(),
@@ -165,6 +182,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     plan.allocated_bytes = plan.operations.capacity() * sizeof(OpEvaluation) +
         (plan.phis ? plan.phis->allocated_bytes : 0) +
         (plan.literals ? plan.literals->allocated_bytes : 0);
+    if (plan.cells) plan.allocated_bytes += plan.cells->allocated_bytes;
     plan.work = budget.work - work;
     return plan;
   } catch (Error error) { return error;
