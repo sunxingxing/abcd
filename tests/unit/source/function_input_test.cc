@@ -1,6 +1,9 @@
 #include "../../../src/source/function_input.h"
 #include "../../../src/source/capture_cells.h"
 #include "../../../src/source/capture_evaluation.h"
+#include "../../../src/source/capture_tree.h"
+#include "../../../src/source/function_tree.h"
+#include "../../../src/source/tree_semantics.h"
 #include "abcd/source/value_stage.h"
 #include "analysis/ssa_fixture.h"
 
@@ -45,6 +48,61 @@ CreationBinding Creation(const FunctionInput& parent, InstructionId site) {
       OrdinaryCapture{*parent.Proof().environments.before[site.value]}};
 }
 
+void TreeBinding(const FunctionValues& parent, const FunctionValues& child,
+    const EvaluationPlan& evaluation, const CaptureCells& cells) {
+  const auto parent_control = std::get<ControlPlan>(BuildControlPlan(parent.graph));
+  std::vector<ExpressionConstant> parent_constants(parent.graph.ops.size());
+  FunctionSyntax parent_syntax;
+  parent_syntax.identity = parent.identity; parent_syntax.method = parent.method;
+  parent_syntax.owner = {0}; parent_syntax.callable = CallableKind::kFunction;
+  parent_syntax.strictness = Strictness::kStrict; parent_syntax.parameters.resize(Frame().parameters);
+  auto outer = std::get<ConstructedFunction>(BuildFunctionTree(parent.graph, parent_control,
+      evaluation, parent_syntax, {parent_constants, 0, 0})).tree;
+  const auto parent_flow = std::get<TreeFlow>(VerifyTreeFlow(parent.graph, parent_control, evaluation, outer));
+  test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(parent.graph,
+      parent_control, evaluation, outer, {parent_constants, 0, 0})));
+  FunctionSyntax child_syntax;
+  child_syntax.identity = child.identity; child_syntax.method = child.method;
+  child_syntax.owner = {1}; child_syntax.callable = CallableKind::kFunction;
+  child_syntax.strictness = Strictness::kStrict; child_syntax.parameters.resize(Frame().parameters);
+  for (const auto& binding : cells.targets) {
+    const auto symbol = *parent_flow.cells[std::get<ParentCell>(binding.target).cell.value];
+    const auto name = NameId{static_cast<std::uint32_t>(child_syntax.names.size())};
+    child_syntax.names.push_back(outer.names[outer.symbols[symbol.value].name.value]);
+    child_syntax.captures.push_back({binding.child, {outer.owner, symbol}, name});
+  }
+  const auto child_control = std::get<ControlPlan>(BuildControlPlan(child.graph));
+  const auto child_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(child.graph, {}, IncomingCells::kConditional));
+  std::vector<ExpressionConstant> child_constants(child.graph.ops.size());
+  const ExpressionConstants constants{child_constants, child_syntax.names.size(), 0};
+  auto inner = std::get<ConstructedFunction>(BuildFunctionTree(child.graph, child_control,
+      child_evaluation, child_syntax, constants)).tree;
+  const auto child_flow = std::get<TreeFlow>(VerifyTreeFlow(child.graph, child_control, child_evaluation, inner));
+  test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(child.graph,
+      child_control, child_evaluation, inner, constants)));
+  const auto verify = [&](const FunctionTree& candidate) {
+    return VerifyCaptureTree(cells, {outer, parent_flow}, {candidate, child_flow});
+  };
+  const auto work = std::get<std::uint64_t>(verify(inner));
+  SemanticBudget budget; budget.work = work;
+  test::Check(std::holds_alternative<std::uint64_t>(VerifyCaptureTree(cells,
+      {outer, parent_flow}, {inner, child_flow}, budget)));
+  --budget.work;
+  test::Check(std::get<CaptureTreeError>(VerifyCaptureTree(cells,
+      {outer, parent_flow}, {inner, child_flow}, budget)) == CaptureTreeError::kWorkLimit);
+  auto changed = inner; ++changed.value_revision.value;
+  test::Check(std::get<CaptureTreeError>(verify(changed)) == CaptureTreeError::kRevision);
+  changed = inner; changed.owner = outer.owner;
+  test::Check(std::get<CaptureTreeError>(verify(changed)) == CaptureTreeError::kOwner);
+  if (inner.captures.empty()) return;
+  changed = inner; changed.captures[0].target.owner = {2};
+  test::Check(std::get<CaptureTreeError>(verify(changed)) == CaptureTreeError::kTarget);
+  changed = inner; changed.names[changed.symbols[changed.captures[0].symbol.value].name.value] += u"other";
+  test::Check(std::get<CaptureTreeError>(verify(changed)) == CaptureTreeError::kName);
+  changed = inner; changed.captures.pop_back();
+  test::Check(std::get<CaptureTreeError>(verify(changed)) == CaptureTreeError::kCoverage);
+}
+
 void Occurrences(std::uint32_t count) {
   const auto parent_body = test::Body({kPush, 1, kLoad, 0, kStoreCell, 0,
       kFunction, 0, 0, 0, 1, kPop, kPush, 1, kLoad, 0, kStoreCell, 0,
@@ -79,6 +137,7 @@ void Occurrences(std::uint32_t count) {
   const FunctionBinding functions[]{first_binding.binding, second_binding.binding};
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(parent_values.graph, {},
       IncomingCells::kConditional, functions));
+  TreeBinding(parent_values, child_values, evaluation, first_cells);
   test::Check(evaluation.functions.size() == 2 && first_binding.binding.child != second_binding.binding.child);
   test::Check(first_binding.binding.captures.size() == first_cells.targets.size());
   test::Check(std::get<CaptureEvaluationError>(std::get<CaptureEvaluationFailure>(BindCaptureEvaluation(index,

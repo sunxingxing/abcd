@@ -131,6 +131,19 @@ existing name sort and graph checks; storage accounting includes capture arenas.
 
 ## Conditional Creation Expressions
 
+`VerifyCaptureTree` connects a verified CaptureCells mapping to actual parent
+and child syntax. Its borrowed trees/flows must be unchanged common
+structure/flow/operand-check products; a matching revision alone is not proof.
+It locates the actual FunctionExpr using the parent flow, checks the child
+owner and exact capture census, resolves each parent and child CellId through
+their own flow maps, and compares outgoing edges with incoming alias targets.
+Captured bindings must have identical UTF-16 spelling across name arenas.
+Parent lexical visibility and child shadowing are established by their common
+structure checks, not reimplemented here. Work is O(K + compared name units),
+with constant scratch and caller-admitted trees/proof. Outward captures remain
+explicit failures. This is one relationship check, not complete family
+ownership, global-name resolution, callable/strictness or publication proof.
+
 `BindCaptureEvaluation` is the input/work-proof adapter for an actual creation.
 It independently runs `VerifyCaptureCells` before constructing a FunctionBinding
 in child incoming-cell order. Each edge must resolve to ParentCell; OuterCell

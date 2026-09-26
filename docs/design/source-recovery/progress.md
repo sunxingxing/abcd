@@ -474,6 +474,23 @@ they remain uncompiled/unrun under the testing pause. No JS execution or RSS
 measurement was performed. Complete immutable parent/child AST assembly and
 publication remain next; T07 is not complete.
 
+### T07 Actual Parent/Child Capture Correspondence
+
+VerifyCaptureTree now links a checked CaptureCells map with actual parent and
+child FunctionTrees and their common TreeFlow results. It independently checks
+creation owner, capture census, each side's cell/symbol mapping, alias target
+and cross-arena spelling. It does not compare unrelated symbol IDs or rebuild
+scope analysis. Its unchanged verified-product precondition is explicit;
+revision checks alone are not treated as validation certificates.
+
+The existing input/capture regression source now constructs both trees through
+BuildFunctionTree and specifies correspondence and owner/revision/target/name/
+census/work-limit mutations. Tests remain uncompiled/unrun. Production
+abc_semantic and abc_structure built successfully; no generated JS or RSS work
+was run. Full immutable family assembly, name allocation, free-global context,
+callable/strictness checks and publication are still outstanding. T07 remains
+in progress; this relationship checker alone is not an executable source gate.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,
