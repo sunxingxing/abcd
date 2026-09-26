@@ -1169,3 +1169,39 @@ values and the PC spans above. Neither these tests nor generated JS, benchmarks
 or RSS measurement were run. T04 is not accepted as complete: broader call
 shapes, reference snapshots, super, exception integration and deferred execution
 evidence remain. T06 and the T00-T12 goal also remain incomplete.
+
+### T04 G2 Global Read Import (Rules 12)
+
+The planned G2 method is Pasteboard 7559/aboutToBeDeleted, not the smaller
+member-call method 7613. Fresh ABC-only inspection before this change refused
+7559 at PC31, InputVerified/import_stage. TRYLDGLOBALBYNAME is now imported as
+ValueGlobalRead with a typed GlobalLookup::kName discriminator and its pool
+identity. LDGLOBALVAR is separately retained as GlobalLookup::kVar: its
+IC-dependent domain must not be silently equated with a free JS identifier.
+Both cache widths of TRYLDGLOBALBYNAME use the existing typed lifting contract.
+Global writes and record initialization remain unsupported by this import path.
+
+Global reads consume no explicit value operands, produce the normal accumulator
+value and retain input effects/exceptional exits. Independent correspondence
+checks both name identity and lookup domain. Dead-value cleanup cannot erase
+them, even when presented with corrupt empty effect flags. Evaluation treats
+them as ordered events and materializes results across intervening effects.
+No global declaration, stable value, or source binding is inferred.
+
+Production abc_semantic/abc_structure builds exited 0. Fresh inspection now
+reaches ControlFrozen/work_revision 1 and refuses at tree_stage/detail 7 under
+rules 12. This is progress through import, simplification, control and evaluation,
+not G2 source completion. No source or legacy fallback was produced. Unrun test
+sources cover both name-cache widths, var lookup, pool/domain tampering, unused
+observable results and forged motion across a write. Tests/JS/RSS remain paused.
+
+Next integration boundary: reuse GlobalScope/AllowsGlobalReference through an
+owned source-context proof. Validate exact resolved name against the actual
+record imports/module bindings, class/self binding and all generated formals/
+locals. Avoid per-reference scans by indexed/sorted binding facts. A detached
+ClassTreeContext currently proves callable identity, not the absence of enclosing
+bindings. Neither an empty GlobalScope nor the spelling SubscriberManager is
+evidence. Preserve the independent source-tree shadowing check and exact global
+read origin, and bind any embedding obligations to FunctionEmission so record
+assembly cannot place the method under a new shadow. Name lookup is not LDGLOBAL:
+do not substitute globalThis property syntax or introduce a new host assumption.

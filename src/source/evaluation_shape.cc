@@ -32,6 +32,13 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else if constexpr (std::is_same_v<T, analysis::ValueReturn>) return EvaluationShape{kReturn, false};
     else if constexpr (std::is_same_v<T, analysis::ValueJump>) return EvaluationShape{kNoOperands, false};
     else if constexpr (std::is_same_v<T, analysis::ValueString>) return EvaluationShape{kNoOperands, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueGlobalRead>) {
+      switch (op.lookup) {
+        case analysis::GlobalLookup::kName: case analysis::GlobalLookup::kVar:
+          return EvaluationShape{kNoOperands, true};
+      }
+      return {};
+    }
     else if constexpr (std::is_same_v<T, analysis::ValueInvoke>) {
       switch (op.receiver) {
         case analysis::InvokeReceiver::kUndefined: return EvaluationShape{kCall, true, op.arguments};
@@ -63,6 +70,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                   std::is_same_v<T, analysis::ValueString>) return false;
     else {
       static_assert(std::is_same_v<T, analysis::ValueNamedRead> ||
+                    std::is_same_v<T, analysis::ValueGlobalRead> ||
                     std::is_same_v<T, analysis::ValuePropertyRead> ||
                     std::is_same_v<T, analysis::ValueNamedWrite> ||
                     std::is_same_v<T, analysis::ValueBranch> ||

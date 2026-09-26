@@ -57,6 +57,16 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       Append(plan, OperandRole::kReturnValue, op.value);
     } else if constexpr (std::is_same_v<T, StringLoad>) {
       plan.write = Accumulator{};
+    } else if constexpr (std::is_same_v<T, GlobalAccess>) {
+      switch (op.operation) {
+        case GlobalOp::kReadName: case GlobalOp::kReadVar:
+          plan.write = Accumulator{};
+          break;
+        case GlobalOp::kWriteName: case GlobalOp::kWriteVar:
+        case GlobalOp::kInitConst: case GlobalOp::kInitMutable:
+          return false;
+        default: return false;
+      }
     } else if constexpr (std::is_same_v<T, HoleGuard>) {
       Append(plan, OperandRole::kGuardValue, SlotValue(op.value));
       // The diagnostic register is read only on the failing guard path.

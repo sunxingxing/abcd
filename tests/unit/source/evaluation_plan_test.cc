@@ -208,6 +208,26 @@ void CallRanges() {
     Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kInvalidGraph);
   }
 }
+void GlobalReads() {
+  for (const auto lookup : {analysis::GlobalLookup::kName, analysis::GlobalLookup::kVar}) {
+    Fixture fixture;
+    fixture.Add(analysis::ValueGlobalRead{lookup, {0}}, true, {});
+    fixture.Write();
+    fixture.Return({1});
+    const auto plan = fixture.Plan();
+    Check(OrderedEvaluation(fixture.graph.ops[0]));
+    Check(plan.operations[0].kind == EvaluationKind::kRoot);
+    Check(plan.operations[0].temporary == TemporaryReason::kEffectSnapshot);
+    auto forged = plan;
+    forged.operations[0] = {EvaluationKind::kInline, fixture.graph.ops.back().first_use, {}};
+    Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, forged)) == EvaluationError::kOrder);
+    Fixture unused;
+    unused.Add(analysis::ValueGlobalRead{lookup, {0}}, true, {});
+    unused.Return({0});
+    const auto kept = unused.Plan();
+    Check(kept.operations[0].kind == EvaluationKind::kRoot && !kept.operations[0].temporary);
+  }
+}
 }  // namespace
 
 int main() {
@@ -219,4 +239,5 @@ int main() {
   CallOrder(false, false); CallOrder(true, false);
   CallOrder(false, true); CallOrder(true, true);
   SharedAndUnusedCalls(); CallRanges();
+  GlobalReads();
 }

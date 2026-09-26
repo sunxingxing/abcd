@@ -205,9 +205,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Engine/rules provenance of the admission and stage semantics above. Bump
 // with any change to them; receipts signed under other rules are rejected
 // rather than reinterpreted.
-// Rules 11 admit Call/Construct syntax with owned argument occurrences and
-// independent callee/receiver/argument correspondence after evaluation proof.
-inline constexpr std::uint32_t kRouteEvidenceRules = 11;
+// Rules 12 retain name/var global reads in typed IR and ordered evaluation.
+// Their source admission still requires realm and lexical-shadowing proof.
+inline constexpr std::uint32_t kRouteEvidenceRules = 12;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

@@ -26,7 +26,7 @@ Validated：测试、生成 JS 执行、基准与 RSS 测量仍被用户暂停�
 |---|---|---|---|---|
 | CAP-LIFT-SCALAR | 常量/搬运：LDUNDEFINED、LDA_V8、STA_V8、MOV_V4_V4、LDAI_IMM32、LDA_STR_ID16 | 12.0.6 | BuildChecked | 旧路已用；新路 T01 导入合同 Designed。 |
 | CAP-LIFT-MEMBER | 命名属性读写：LDOBJBYNAME、STOBJBYNAME、DEFINEPROPERTYBYNAME、THROW_UNDEFINEDIFHOLEWITHNAME | 12.0.6 | BuildChecked | getter/Proxy 可观察语义保留是硬合同（S03）。 |
-| CAP-LIFT-GLOBAL | 全局/模块读取：TRYLDGLOBALBYNAME、LDEXTERNALMODULEVAR | 12.0.6 | BuildChecked | 新路 G2 复用 GlobalAccess 证明；完整模块组合在 T11。 |
+| CAP-LIFT-GLOBAL | 全局读取：TRYLDGLOBALBYNAME、LDGLOBALVAR | 12.0.6 | BuildChecked | 新路保留 name/var lookup 的 typed IR、异常和有序效果；G2 7559 已越过 PC31 导入，停在 AST。源码仍缺绑定/遮蔽证明；LDEXTERNALMODULEVAR 新路及完整模块组合待 T11。 |
 | CAP-LIFT-CALL | 普通/显式 receiver 调用、NEWOBJRANGE（固定与 range 操作数） | 12.0.6 | BuildChecked | 新路 typed Invoke/Construct、变长操作数与独立输入对应已接通；PageA 7613 的 CALLTHIS1 达 Printed。其他形式真实泛化及行为验证未完成。 |
 | CAP-LIFT-BRANCH | 分支：JEQZ、JMP、STRICTEQ/STRICTNOTEQ | 12.0.6 | BuildChecked | 新路 T03 最小直线/if 控制计划 Designed。 |
 | CAP-LIFT-CREATE | 创建：CREATEEMPTYARRAY、CREATEOBJECTWITHBUFFER、DEFINEFUNC | 12.0.6 | BuildChecked（旧路部分） | 新路对象/闭包合同在 T07；hole/descriptor 反例 V11 待测。 |

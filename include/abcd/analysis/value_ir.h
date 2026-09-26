@@ -101,6 +101,14 @@ struct ValueJump { bool operator==(const ValueJump&) const = default; };
 struct ValueReturn { bool operator==(const ValueReturn&) const = default; };
 struct ValueNop { bool operator==(const ValueNop&) const = default; };
 struct ValueString { abc::PoolIndex string; bool operator==(const ValueString&) const = default; };
+// Name lookup and IC-dependent var lookup have different domains. Retain the
+// opcode contract; neither denotes a source lexical declaration or pure read.
+enum class GlobalLookup : std::uint8_t { kName, kVar };
+struct ValueGlobalRead {
+  GlobalLookup lookup;
+  abc::PoolIndex name;
+  bool operator==(const ValueGlobalRead&) const = default;
+};
 struct ValueGuard { std::optional<abc::PoolIndex> name; bool operator==(const ValueGuard&) const = default; };
 struct ValueArrayAllocation { bool operator==(const ValueArrayAllocation&) const = default; };
 enum class InvokeReceiver : std::uint8_t { kUndefined, kExplicit };
@@ -116,7 +124,7 @@ struct ValueConstruct {
 };
 using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
     ValueNamedRead, ValueNamedWrite, ValuePropertyRead, ValueBranch, ValueJump,
-    ValueReturn, ValueNop, ValueString, ValueGuard, ValueArrayAllocation,
+    ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation,
     ValueInvoke, ValueConstruct>;
 struct ValueOp {
   ValueOperation operation;

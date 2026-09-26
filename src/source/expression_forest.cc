@@ -261,6 +261,7 @@ class ForestBuilder {
         return {};
       else {
         static_assert(std::is_same_v<T, analysis::ValueGuard> ||
+                      std::is_same_v<T, analysis::ValueGlobalRead> ||
                       std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
                       std::is_same_v<T, analysis::ValueArrayAllocation> ||
                       std::is_same_v<T, analysis::ValueNop>);
