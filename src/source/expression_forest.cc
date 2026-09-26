@@ -334,10 +334,13 @@ class ForestBuilder {
         return operands[0];
       else if constexpr (std::is_same_v<T, analysis::ValueJump>)
         return {};
+      else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>)
+        return Add(EmptyArrayExpr{}, origin);
+      else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>)
+        return Add(EmptyObjectExpr{}, origin);
       else {
         static_assert(std::is_same_v<T, analysis::ValueGuard> ||
                       std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
-                      std::is_same_v<T, analysis::ValueArrayAllocation> ||
                       std::is_same_v<T, analysis::ValueNop>);
         throw Error::kUnsupportedOperation;
       }

@@ -167,6 +167,9 @@ class StructureCheck {
             RequireTree(expression.callee.value < tree_.expressions.size() &&
                 std::holds_alternative<MemberExpr>(tree_.expressions[expression.callee.value].expression), Error::kUnsupportedSyntax);
         }
+      } else if constexpr (std::is_same_v<T, EmptyArrayExpr> || std::is_same_v<T, EmptyObjectExpr>) {
+        // Each allocation occurrence has unique syntax ownership. Identity and
+        // execution order are proved separately against its Value IR operation.
       } else {
         static_assert(std::is_same_v<T, AssignmentExpr>);
         if (const auto* symbol = std::get_if<SymbolTarget>(&expression.target))
@@ -245,7 +248,8 @@ class StructureCheck {
           static_assert(std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
                         std::is_same_v<T, GlobalNameExpr> ||
                         std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
-                        std::is_same_v<T, ConstructExpr>);
+                        std::is_same_v<T, ConstructExpr> || std::is_same_v<T, EmptyArrayExpr> ||
+                        std::is_same_v<T, EmptyObjectExpr>);
         }
       }, tree_.expressions[expression->value].expression);
     } else {

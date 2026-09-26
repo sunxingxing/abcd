@@ -111,6 +111,7 @@ struct ValueGlobalRead {
 };
 struct ValueGuard { std::optional<abc::PoolIndex> name; bool operator==(const ValueGuard&) const = default; };
 struct ValueArrayAllocation { bool operator==(const ValueArrayAllocation&) const = default; };
+struct ValueObjectAllocation { bool operator==(const ValueObjectAllocation&) const = default; };
 enum class InvokeReceiver : std::uint8_t { kUndefined, kExplicit };
 struct ValueInvoke {
   InvokeReceiver receiver;
@@ -124,7 +125,7 @@ struct ValueConstruct {
 };
 using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
     ValueNamedRead, ValueNamedWrite, ValuePropertyRead, ValueBranch, ValueJump,
-    ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation,
+    ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation,
     ValueInvoke, ValueConstruct>;
 struct ValueOp {
   ValueOperation operation;

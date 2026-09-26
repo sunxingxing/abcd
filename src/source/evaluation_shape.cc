@@ -32,6 +32,9 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else if constexpr (std::is_same_v<T, analysis::ValueReturn>) return EvaluationShape{kReturn, false};
     else if constexpr (std::is_same_v<T, analysis::ValueJump>) return EvaluationShape{kNoOperands, false};
     else if constexpr (std::is_same_v<T, analysis::ValueString>) return EvaluationShape{kNoOperands, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation> ||
+                       std::is_same_v<T, analysis::ValueObjectAllocation>)
+      return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueGlobalRead>) {
       switch (op.lookup) {
         case analysis::GlobalLookup::kName: case analysis::GlobalLookup::kVar:
@@ -49,7 +52,6 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return EvaluationShape{kConstruct, true, op.arguments};
     else {
       static_assert(std::is_same_v<T, analysis::ValueGuard> ||
-                    std::is_same_v<T, analysis::ValueArrayAllocation> ||
                     std::is_same_v<T, analysis::ValueNop>);
       return {};
     }
@@ -79,6 +81,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                     std::is_same_v<T, analysis::ValueGuard> ||
                     std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
                     std::is_same_v<T, analysis::ValueArrayAllocation> ||
+                    std::is_same_v<T, analysis::ValueObjectAllocation> ||
                     std::is_same_v<T, analysis::ValueNop>);
       return true;
     }

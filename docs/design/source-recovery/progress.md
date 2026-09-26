@@ -8,7 +8,9 @@ plan. No task scheduler, additional host assumptions or sidecar source inputs.
 Latest state: T05 now integrates compact natural loops into checked control
 regions, owned loop AST/printer syntax, independent target/scope/sequence checks,
 edge-copy placement and once-only MethodEntry phi initialization. New loop and
-entry provenance is typed and does not invent PCs. Source rules are 16. Real
+entry provenance is typed and does not invent PCs. T07's fresh empty object/array
+allocation slice is integrated; buffered literals, own-defines and captures are
+not yet admitted. Source rules are 17. Real
 loop-method acceptance and behavioral verification remain outstanding. T03's G1
 method slices and T04's G2 slice have prior source evidence, not whole-record
 completion. Whole-record integration and test acceptance remain pending.
@@ -28,6 +30,27 @@ only after adding actual generation and independent sequence/origin checks.
 ABC-only G2 inspection (pasteboard 7559, record 6897) still reports rules 16,
 Printed/complete METHOD, range [2638,2924), 286 bytes; CLI exits 1 because the
 record remains incomplete. This is not loop coverage or generated-JS execution.
+
+### T07 Fresh Empty Allocations
+
+ValueObjectAllocation now imports EmptyObjectCreation with its exact accumulator
+definition, original allocation effects and exceptional exit. Existing
+ValueArrayAllocation also reaches source evaluation. Both have dedicated fresh
+expression nodes, ordered evaluation and explicit exclusion from pure erasure;
+neither is a freely duplicated constant. Shared uses retain one allocation via
+the existing snapshot proof. Independent AST correspondence checks aggregate
+kind, actual operands/ownership and effect order. No own-define or buffered
+initializer folding is admitted by this step.
+
+Added unrun sources cover bytecode import/correspondence, object/array kind
+mutation, fresh allocation sharing and actual snapshot identity. Tests and RSS
+remain paused. Production `abc_semantic` and `abc_structure` builds exited 0
+after the rules-17 update; whitespace validation passed. No real aggregate-method
+source success is claimed from these build results.
+A candidate inspection of pasteboard method 9468 still refuses
+at ContextStage; its instructions include async/exception operations and it is
+not a successful ordinary-loop sample. T05 real-loop acceptance, T07 LiteralPlan,
+cells/captures and the overall T00-T12 goal remain incomplete.
 
 ## T00
 

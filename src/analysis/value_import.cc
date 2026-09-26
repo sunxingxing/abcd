@@ -73,6 +73,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       }, op.expression);
     } else if constexpr (std::is_same_v<T, NamedRead>) {
       return ValueNamedRead{op.name};
+    } else if constexpr (std::is_same_v<T, EmptyObjectCreation>) {
+      return ValueObjectAllocation{};
     } else if constexpr (std::is_same_v<T, NamedWrite>) {
       return ValueNamedWrite{op.name};
     } else if constexpr (std::is_same_v<T, BranchOperation>) {

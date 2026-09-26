@@ -16,6 +16,8 @@ route still requires an identity envelope and correspondence verification.
 | BranchOperation | Condition from predicate input; predicate enum retained | absent |
 | ReturnOperation | ReturnValue; literal undefined remains a literal | absent |
 | StringLoad | no value operand; string retained as pool index | accumulator |
+| EmptyObjectCreation | no operands; fresh object allocation | accumulator |
+| Scalar EmptyArray | no operands; fresh array allocation, not a constant | accumulator |
 | HoleGuard | GuardValue, conditional diagnostic-name protocol dependency | absent |
 | JumpOperation / NoOperation | none | absent |
 | OrdinaryCall | Callee from accumulator, Argument occurrences | accumulator |
@@ -27,8 +29,8 @@ slot. Constants do not consume SSA reads. A repeated slot produces repeated
 uses. Diagnostic name registers are protocol dependencies, not permission to
 evaluate them unconditionally. Heap reads/writes and guards retain the supplied
 normal and pre-throw effects; each throwing operation has its own exceptional
-exit. Array allocation has no fake constant operand and retains allocation
-effects. Unsupported variants never become NoOperation.
+exit. Empty object/array allocation has no fake constant operand and retains
+allocation effects. Unsupported variants never become NoOperation.
 
 InvokeReceiver distinguishes an explicit raw receiver from implicit undefined;
 ValueInvoke/ValueConstruct retain argument counts independently of operand-use
@@ -42,8 +44,24 @@ Calls are observable even with unused results; CanErasePureOp rejects them even
 if their effect fields are incorrectly empty. Original normal/pre-throw effects,
 PCs and exceptional exits remain attached. Import does not authorize direct
 eval, member reference reconstruction, argument reordering or .call/.apply
-substitution. The source evaluation layer currently refuses these new variants
-until its call ownership/reference proof and AST lowering are implemented.
+substitution. The source evaluation layer admits calls only with its separate
+checked ownership/reference plan and AST correspondence.
+
+Fresh empty aggregates now lower to EmptyObjectExpr/EmptyArrayExpr, not literal
+values. Each expression occurrence allocates once. The evaluation planner treats
+allocation as ordered even if a malformed effects field is empty, and pure-op
+erasure explicitly excludes both allocation variants. Multiple consumers require
+a shared snapshot; a sole consumer may inline only under the existing exact
+effect-order and ownership proof. The independent operand checker rejects an
+array/object substitution even though either is syntactically valid JS.
+The printer uses `[]` and parenthesized `({})`, so an unused object expression
+cannot accidentally become an empty statement block. This admission depends on
+the existing source contract excluding VM resource-exhaustion differences.
+
+No buffered entries or subsequent writes are folded into these empty nodes.
+T07 still requires LiteralPlan for own-property descriptors, computed key
+conversion, prototype behavior, array holes/length, escape and initialization
+order; named assignment must not stand in for own-define semantics.
 
 Inputs remain borrowed only during import. Output graph, correspondence and
 use links are owned. SSA values map once to work IDs; operation results are

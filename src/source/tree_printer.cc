@@ -265,6 +265,8 @@ class TreePrinter {
     Push(std::string_view(")("));
     Push(node.constructor);
   }
+  void Expression(EmptyArrayExpr) { Append("[]"); }
+  void Expression(EmptyObjectExpr) { Append("({})"); }
   void Run(ArgumentCursor cursor) {
     if (cursor.index == cursor.range.count) return;
     if (cursor.index != 0) Append(", ");

@@ -83,9 +83,14 @@ struct ArgumentRange { std::uint32_t first; std::uint32_t count; };
 enum class CallReference : std::uint8_t { kValue, kMember };
 struct CallExpr { ExprId callee; ArgumentRange arguments; CallReference reference; };
 struct ConstructExpr { ExprId constructor; ArgumentRange arguments; };
+// Fresh empty aggregates are expression occurrences, never TreeLiteral values.
+// Buffered elements, descriptors and own-defines need a separate initializer
+// proof before being folded into either node.
+struct EmptyArrayExpr {};
+struct EmptyObjectExpr {};
 using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
-                                    CallExpr, ConstructExpr>;
+                                    CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct BlockStmt { ScopeId scope; std::uint32_t first_child; std::uint32_t child_count; };
 struct DeclarationStmt { SymbolId symbol; std::optional<ExprId> initializer; };

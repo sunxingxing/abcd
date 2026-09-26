@@ -55,7 +55,7 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       Append(plan, OperandRole::kCondition, op.predicate.input);
     } else if constexpr (std::is_same_v<T, ReturnOperation>) {
       Append(plan, OperandRole::kReturnValue, op.value);
-    } else if constexpr (std::is_same_v<T, StringLoad>) {
+    } else if constexpr (std::is_same_v<T, StringLoad> || std::is_same_v<T, EmptyObjectCreation>) {
       plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, GlobalAccess>) {
       switch (op.operation) {

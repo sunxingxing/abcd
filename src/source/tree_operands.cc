@@ -89,9 +89,12 @@ class OperandCheck {
           Input(input(0), construct.constructor);
           constexpr std::uint32_t kConstructorPrefix = 1;
           Arguments(op, construct.arguments, kConstructorPrefix, operation.arguments);
+        } else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>) {
+          static_cast<void>(Node<EmptyArrayExpr>(expression));
+        } else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
+          static_cast<void>(Node<EmptyObjectExpr>(expression));
         } else {
           static_assert(std::is_same_v<T, analysis::ValueGuard> ||
-                        std::is_same_v<T, analysis::ValueArrayAllocation> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueJump>);
           throw Error::kUnsupportedOperation;
         }

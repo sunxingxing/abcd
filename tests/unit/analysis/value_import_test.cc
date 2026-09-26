@@ -92,4 +92,26 @@ int main() {
     has_backedge |= std::holds_alternative<EdgeId>(*use.incoming);
   }
   test::Check(has_entry && has_backedge);
+  // Pinned ISA forms: empty object has no operands; empty array has an IC slot.
+  constexpr std::uint8_t kFirstCacheSlot = 0;
+  const auto returned = static_cast<std::uint8_t>(abc::Opcode::kRETURN);
+  for (const bool array : {false, true}) {
+    const auto allocation = array ? test::Body({
+        static_cast<std::uint8_t>(abc::Opcode::kCREATEEMPTYARRAY_IMM8), kFirstCacheSlot, returned}) :
+        test::Body({static_cast<std::uint8_t>(abc::Opcode::kCREATEEMPTYOBJECT), returned});
+    const auto semantics = BuildSemanticMethod(allocation, abc::ProfileId::kDynamic1206, frame.registers);
+    const auto& input = std::get<SemanticMethod>(semantics);
+    const auto verified = VerifySemanticSource(allocation, input, frame.registers, frame.locals);
+    const auto& source = std::get<SemanticProof>(verified);
+    const auto lowered = ImportNormalValues(allocation, input, source, frame);
+    const auto& value = std::get<ValueProgram>(lowered);
+    test::Check(!VerifyImportedValues(value, input, source, frame));
+    test::Check(value.ops[0].use_count == 0 && value.ops[0].result.has_value());
+    test::Check(array ? std::holds_alternative<ValueArrayAllocation>(value.ops[0].operation) :
+        std::holds_alternative<ValueObjectAllocation>(value.ops[0].operation));
+    test::Check(value.ops[0].normal == LanguageEffect::kAllocation);
+    auto changed = value;
+    changed.ops[0].operation = array ? ValueOperation{ValueObjectAllocation{}} : ValueOperation{ValueArrayAllocation{}};
+    test::Check(VerifyImportedValues(changed, input, source, frame)->kind == ValueImportError::kInputMismatch);
+  }
 }

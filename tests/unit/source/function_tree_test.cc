@@ -421,6 +421,42 @@ void LoopTree() {
     if (auto* loop = std::get_if<LoopOrigin>(&origin)) loop->header = {1};
   Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(changed)));
 }
+void FreshAggregates() {
+  using namespace analysis;
+  for (const bool array : {false, true}) {
+    Fixture fixture;
+    fixture.Add(0, 0, 0, array ? ValueOperation{ValueArrayAllocation{}} :
+        ValueOperation{ValueObjectAllocation{}}, true, {}, LanguageEffect::kAllocation);
+    if (array) {
+      fixture.graph.ops[0].before_throw = LanguageEffect::kNone;
+      fixture.graph.ops[0].exceptional = ExceptionalCompletion::kImpossible;
+    }
+    // Two references must observe the very same allocation, not two literals.
+    fixture.Add(0, 1, 2, ValueNamedWrite{{0}}, false,
+        {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue, ValueId{2}}}, kWrite);
+    fixture.Add(0, 2, 5, ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{2}}});
+    fixture.graph.blocks = {{{0}, 3, {0}, 0}};
+    const auto built = fixture.Build();
+    const auto* result = std::get_if<ConstructedFunction>(&built);
+    Check(result && std::holds_alternative<TreeSemantics>(fixture.Verify(result->tree)));
+    std::size_t allocations = 0;
+    for (std::size_t i = 0; i < result->tree.expressions.size(); ++i) {
+      const auto& expression = result->tree.expressions[i].expression;
+      if (!std::holds_alternative<EmptyArrayExpr>(expression) &&
+          !std::holds_alternative<EmptyObjectExpr>(expression)) continue;
+      ++allocations;
+      auto changed = result->tree;
+      changed.expressions[i].expression = array ? TreeExpression{EmptyObjectExpr{}} : TreeExpression{EmptyArrayExpr{}};
+      Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(changed)));
+      Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(changed)));
+    }
+    Check(allocations == 1);
+    const auto control = std::get<ControlPlan>(BuildControlPlan(fixture.graph));
+    const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(fixture.graph));
+    const auto flow = std::get<TreeFlow>(VerifyTreeFlow(fixture.graph, control, evaluation, result->tree));
+    Check(flow.snapshots[0].has_value());
+  }
+}
 }  // namespace
 int main() {
   BranchTree();
@@ -430,6 +466,7 @@ int main() {
   SemanticMutations();
   GlobalTree();
   LoopTree();
+  FreshAggregates();
   for (const auto kind : {CallCase::kValue, CallCase::kMember, CallCase::kConstruct})
     for (const std::uint32_t count : {0U, 1U, 3U, 200U, 201U, 4096U})
       for (const bool computed : {false, true}) CallTree(kind, count, computed);
