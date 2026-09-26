@@ -64,6 +64,9 @@ enum class ValueRouteError : std::uint8_t {
   kInputStage,
   kImportStage,
   kTransformStage,
+  kContextStage,
+  kTreeStage,
+  kPrintStage,
 };
 struct RouteFailure {
   RouteFailureClass failure_class;
@@ -162,6 +165,9 @@ constexpr std::string_view ValueRouteErrorName(ValueRouteError reason) {
     case ValueRouteError::kInputStage: return "input_stage";
     case ValueRouteError::kImportStage: return "import_stage";
     case ValueRouteError::kTransformStage: return "transform_stage";
+    case ValueRouteError::kContextStage: return "context_stage";
+    case ValueRouteError::kTreeStage: return "tree_stage";
+    case ValueRouteError::kPrintStage: return "print_stage";
   }
   return {};
 }
@@ -199,8 +205,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Engine/rules provenance of the admission and stage semantics above. Bump
 // with any change to them; receipts signed under other rules are rejected
 // rather than reinterpreted.
-// Rules 5 add verified copy/phi/dead-value batches at ValuesVerified.
-inline constexpr std::uint32_t kRouteEvidenceRules = 5;
+// Rules 6 add sealed class-method trees, pure printing and stage refusals.
+inline constexpr std::uint32_t kRouteEvidenceRules = 6;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

@@ -5,6 +5,11 @@ was stopped at the user's request; it must not be restarted for this plan.
 Scope remains T00 through T12 in the dependency order from the implementation
 plan. No task scheduler, additional host assumptions or sidecar source inputs.
 
+Latest state: T03's two real G1 method slices reach Printed through the new
+immutable tree/printer route (schema 3, evidence rules 6). Whole-record integration
+and test acceptance remain pending. Sections below retain chronological evidence;
+earlier rule versions/stages are observations of those earlier implementations.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,
@@ -445,3 +450,67 @@ Regression sources cover immutable access, successful encoded-method preparation
 identity/signature preservation, context rejection and a zero-byte budget.
 Production compilation is the only verification performed; tests, JS execution
 and RSS measurement remain paused.
+
+### T03 Pure Printer and Real Method Slices
+
+PrintFunctionTree consumes only VerifiedFunction, an output stream and budgets.
+Its explicit action stack emits the supported literals, symbol/receiver reads,
+properties, unary/binary/logical expressions, assignments, blocks, declarations,
+if and return. It performs syntax/escaping/parenthesization only: no bytecode
+reader, SSA access, source-fragment rewrite or legacy writer. Numeric emission
+preserves negative zero and uses arithmetic for NaN/infinities without referring
+to mutable global names; string emission preserves UTF-16 code units.
+
+Node begin/end events produce half-open UTF-8 byte ranges. Structural anchors
+are looked up by sorted block/child boundary, not rescanned for every statement.
+With N nodes, A anchors and O output bytes, traversal is O(N log(A+1) +
+A log(A+1) + O), plus bounded literal/name scans. Arena ranges and the origin
+DAG stay shared; printing/inspection does not copy transitive PC sets into
+every ancestor. Operations identify their actual execution placements. Container
+node provenance is not evidence that an elided copy executes over its range.
+Output and scratch/work have explicit limits; failed partial output cannot be
+published. These bounds are not whole-process RSS evidence.
+
+The method CLI now builds same-file lookup/roles/class sites and prepares the
+unique selected occurrence before the legacy path. It explicitly refuses
+ambiguous sites and unsupported class/record source requests rather than serving
+a method fragment as a larger artifact. Context/tree/print failures have typed
+receipt reasons and central stage validation. Evidence rules advanced to 6.
+File-level resource failures are not mislabeled as ordinary unsupported syntax.
+
+ABC-only inspection exposed and fixed a real adapter mismatch: recovered formal
+names append to the constant name arena, so the borrowed constant view must
+describe that final namespace. Existing member NameIds retain prefix positions;
+no verifier was weakened to admit the old mismatched counts.
+
+Production build: `cmake --build build --target abc_semantic -j 2`, exit 0.
+The following production inspections ran without paired-source/sidecar input:
+
+```text
+build/abc_semantic /home/rabbit/sample/abc_with_code/pasteboard/modules.abc 7586 --value-source
+build/abc_semantic /home/rabbit/sample/abc_with_code/Immersive/modules.abc 21082 --value-source
+Both: stage=printed, coverage=incomplete, failure=null, work_revision=1,
+legacy_writer_used=false, fragment=class_member, method_slice_complete=true,
+source_complete=false, executable=false, exit=1.
+```
+
+Pasteboard emits `setInitiallyProvidedValue(params)` with two `pathStack` reads
+and a `this.pathStack` assignment, with no accumulator/register declarations or
+parameter copies. Actual byte ranges are read PC14 [45,61), read PC36 [113,129),
+write PC40 [95,130). Immersive follows the same route for `buttonText`: read PC14
+[45,62), read PC36 [115,132), write PC40 [96,133). Input identities remain those
+recorded above. Empty taken branches and explicit return-undefined remain;
+the printer does not invert branches or erase statements for appearance.
+
+Added unrun specifications: immutable-owner printer ranges/limits/stream errors;
+receipt-stage negatives; updated source_route_cli_test; shared independent
+getter/Proxy-write/exception trace oracle in value_tree_slice.mjs, registered as
+value_tree_pasteboard_slice_test and value_tree_immersive_slice_test. The latter
+also checks class-method name/length/nonconstructibility and PC placements.
+These replace the plan's provisional per-PageA harness filename, not its scope.
+Tests are not compiled/run; generated JS and RSS are not executed/measured.
+
+Remaining T03: FunctionEmission ABI/signature/position transport at the old
+record/base_function boundary before VM declarations; broader printer/adversarial
+cases and authorized acceptance runs. A class-member inspection is not proof of
+record integration, all-function migration or full T03 completion.

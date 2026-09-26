@@ -39,7 +39,7 @@ constexpr std::string_view kCoverageNames[]{"complete", "incomplete",
 constexpr std::string_view kFailureClassNames[]{
     "unsupported", "unproved", "invalid_input", "invariant_violation",
     "work_limit", "memory_limit", "output_failure"};
-constexpr std::string_view kFailureReasonNames[]{"route_unavailable", "input_stage", "import_stage", "transform_stage"};
+constexpr std::string_view kFailureReasonNames[]{"route_unavailable", "input_stage", "import_stage", "transform_stage", "context_stage", "tree_stage", "print_stage"};
 constexpr std::size_t kSha256TextBytes = 64;
 
 // Exact-range unsigned access (T00 correction R4): every integer field is
@@ -182,6 +182,18 @@ std::optional<RouteReceiptError> ValidateRouteReceipt(
             break;
           case ValueRouteError::kTransformStage:
             if (receipt.stage != SourceStage::kValuesImported) return RouteReceiptError::kStage;
+            break;
+          case ValueRouteError::kContextStage:
+            if (receipt.stage != SourceStage::kDecoded) return RouteReceiptError::kStage;
+            break;
+          case ValueRouteError::kTreeStage:
+            if (receipt.stage != SourceStage::kValuesVerified &&
+                receipt.stage != SourceStage::kControlFrozen &&
+                receipt.stage != SourceStage::kBindingsFrozen)
+              return RouteReceiptError::kStage;
+            break;
+          case ValueRouteError::kPrintStage:
+            if (receipt.stage != SourceStage::kTreeVerified) return RouteReceiptError::kStage;
             break;
           default: return RouteReceiptError::kFailure;
         }

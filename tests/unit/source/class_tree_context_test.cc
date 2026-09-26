@@ -1,10 +1,12 @@
 #include "../../../src/source/class_tree_context.h"
 #include "abcd/source/verified_function.h"
+#include "abcd/source/tree_printer.h"
 
 #include <unistd.h>
 
 #include <algorithm>
 #include <cstdlib>
+#include <sstream>
 #include <type_traits>
 
 namespace {
@@ -86,6 +88,27 @@ void Run() {
   Check(function.Receipt().stage == SourceStage::kTreeVerified);
   Check(function.Receipt().coverage == Coverage::kIncomplete);
   Check(!function.Receipt().failure);
+  std::ostringstream output;
+  const auto printing = PrintFunctionTree(function, output);
+  Check(std::holds_alternative<PrintedFunction>(printing));
+  const auto& printed = std::get<PrintedFunction>(printing);
+  Check(printed.fragment == FunctionFragment::kClassMember);
+  Check(printed.bytes == output.view().size());
+  Check(output.view().starts_with("run($arg0) {\n"));
+  Check(printed.expressions.size() == function.Tree().expressions.size());
+  Check(printed.statements.size() == function.Tree().statements.size());
+  for (const auto range : printed.expressions)
+    Check(range.begin < range.end && range.end <= printed.bytes);
+  for (const auto range : printed.statements)
+    Check(range.begin < range.end && range.end <= printed.bytes);
+  for (const auto offset : printed.anchors) Check(offset <= printed.bytes);
+  std::ostringstream denied;
+  Check(std::get<TreePrintError>(PrintFunctionTree(function, denied, {0})) == TreePrintError::kOutputLimit);
+  Check(denied.view().empty());
+  Check(std::get<TreePrintError>(PrintFunctionTree(function, denied, {}, {0, 0})) == TreePrintError::kResourceLimit);
+  std::ostringstream broken;
+  broken.setstate(std::ios::badbit);
+  Check(std::get<TreePrintError>(PrintFunctionTree(function, broken)) == TreePrintError::kWrite);
   auto limited = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity, {0, 0});
   Check(std::get<FunctionPrepareFailure>(limited).kind == FunctionPrepareError::kResourceLimit);
   index.methods[2].code->arguments = 5;

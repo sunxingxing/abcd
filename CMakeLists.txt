@@ -216,6 +216,7 @@ target_sources(abcd_source PRIVATE src/source/tree_operands.cc src/source/tree_c
 target_sources(abcd_source PRIVATE src/source/tree_constants.cc)
 target_sources(abcd_source PRIVATE src/source/class_tree_context.cc)
 target_sources(abcd_source PRIVATE src/source/verified_function.cc)
+target_sources(abcd_source PRIVATE src/source/tree_printer.cc src/source/tree_print_tokens.cc)
 target_sources(abcd_source PRIVATE src/source/evaluation_boolean.cc)
 target_link_libraries(abcd_source PUBLIC abcd_analysis PRIVATE abcd_json)
 target_compile_features(abcd_source PUBLIC cxx_std_20)
@@ -242,7 +243,8 @@ target_link_libraries(abcd_corpus PUBLIC abcd_abc
 option(ABCD_BUILD_TOOLS "Build standalone ABC command-line tools" ON)
 if(ABCD_BUILD_TOOLS)
   add_executable(abc_semantic tools/abc_semantic.cc tools/semantic_survey.cc
-    tools/exception_inspect.cc tools/exception_source_inspect.cc tools/record_module.cc)
+    tools/exception_inspect.cc tools/exception_source_inspect.cc tools/record_module.cc
+    tools/value_source_inspect.cc)
   target_link_libraries(abc_semantic PRIVATE abcd_source abcd_json)
   add_executable(abc_structure tools/abc_structure.cc)
   target_link_libraries(abc_structure PRIVATE abcd_structure abcd_corpus abcd_json)
@@ -596,6 +598,20 @@ if(BUILD_TESTING)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   set(ABCD_PAIRED_CORPUS_ROOT "" CACHE PATH "Paired ABC sample root")
   find_program(ABCD_NODE_EXECUTABLE node)
+  if(ABCD_NODE_EXECUTABLE AND ABCD_BUILD_TOOLS)
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+      add_test(NAME value_tree_pasteboard_slice_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_tree_slice.mjs
+        $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
+        7586 854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e pathStack)
+    endif()
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+      add_test(NAME value_tree_immersive_slice_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_tree_slice.mjs
+        $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        21082 8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a buttonText)
+    endif()
+  endif()
   if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
     add_executable(define_static_sample_test
       tests/integration/define_static_sample.cc)

@@ -34,6 +34,7 @@
 #include "semantic_survey.h"
 #include "exception_inspect.h"
 #include "record_module.h"
+#include "value_source_inspect.h"
 
 namespace {
 using namespace abcd;
@@ -183,20 +184,18 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     const auto& failure = std::get<abc::BodyFailure>(decoded);
     return Fail(InspectError::kBody, failure.offset.value);
   }
-  // The required route consumes input analysis but never enters the legacy
-  // region/AST/printer path. T01 publishes intermediate evidence, not source.
+  // Dispatch before legacy analysis/header/VM declarations. Failure never
+  // falls back to the old AST or writer.
   if (policy == source::RoutePolicy::kRequireValueTree) {
-    const auto call = abc::ReadCallType(file, *header, *index, method->annotations);
-    const auto* call_type = std::get_if<abc::CallType>(&call);
-    if (!call_type) return Fail(InspectError::kFrame);
-    const auto layout = abc::BuildFrameLayout(code.registers, code.arguments,
-                                              abc::DecodeCallFlags(call_type->value));
-    const auto* frame = std::get_if<abc::FrameLayout>(&layout);
-    if (!frame) return Fail(InspectError::kFrame);
-    auto stage = source::BuildValueStage(source::MakeRouteInputIdentity(*hash, *header),
-        method->offset, method->owner_offset, *body, *frame);
-    if (file.CheckUnchanged()) return Fail(InspectError::kBody);
-    return ReportRouteReceipt(stage.receipt, stage.graph ? &*stage.graph : nullptr);
+    if (form && *form != source::SourceForm::kFunction) {
+      return ReportRouteReceipt(ValueRouteReceipt(
+          source::MakeRouteInputIdentity(*hash, *header),
+          {source::RouteFailureClass::kUnsupported,
+           source::ValueRouteError::kRouteUnavailable, {}},
+          method->offset.value, method->owner_offset.value));
+    }
+    return InspectValueSource(file, *header, *index, *method,
+        source::MakeRouteInputIdentity(*hash, *header), std::cout);
   }
   if (detail == InspectDetail::kExceptionFlow || detail == InspectDetail::kExceptionTemplate) {
     // Child templates need the same-file membership and role owners used by

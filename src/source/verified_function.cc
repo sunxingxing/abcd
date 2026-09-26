@@ -155,6 +155,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       throw Error::kControl;
     }
     budget.Admit(control->allocated_bytes, 1); budget.Step(control->work);
+    receipt->stage = SourceStage::kControlFrozen;
     auto evaluated = BuildEvaluationPlan(*values.graph, budget.Remaining());
     const auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
     if (!evaluation) {
@@ -178,11 +179,14 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       throw Error::kConstants;
     }
     budget.Admit(constants->allocated_bytes, 1); budget.Step(constants->work);
-    const auto constant_view = constants->View();
+    auto constant_view = constants->View();
     FunctionSyntax syntax{identity, method.offset, {context->Position().value},
                           context->Callable(), context->Mode(), {},
                           std::move(constants->names), std::move(constants->texts)};
     Names(file, header, method, *body, context->Frame(), syntax, budget);
+    // Pool NameIds keep their prefix positions; recovered formal names append
+    // to that same arena. The view must describe the final syntax namespace.
+    constant_view.name_count = syntax.names.size();
     const auto transferred = SyntaxStorage(syntax);
     auto tree_budget = budget.Remaining();
     if (transferred > allowance.bytes - tree_budget.bytes) throw Error::kResourceLimit;

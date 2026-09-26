@@ -3,8 +3,8 @@
 # runnable specification for later verification. It requires:
 #   - prohibited detail/value and duplicate/conflicting option combinations
 #     are rejected in both orders before any file access, without receipts;
-#   - --value-source yields one typed refusal receipt bound to the frozen
-#     pasteboard identity, with no source text and no legacy summary fields;
+#   - --value-source yields a printed class-member slice bound to the frozen
+#     pasteboard identity, with incomplete record coverage and no legacy fields;
 #   - abc_structure --value-source publishes per-record refusal receipts and
 #     no source files, while the legacy shared writer succeeds on the same
 #     input (A01 contrast: new route fails honestly, old writer can succeed).
@@ -45,8 +45,8 @@ foreach(arguments IN ITEMS
   endif()
 endforeach()
 
-# T02 verifies this method in either option order, without emitting source or
-# entering the legacy writer. The method is still incomplete until T03.
+# T03 prints this method in either option order without entering the legacy
+# writer. A class-member fragment is still not a complete executable record.
 foreach(arguments IN ITEMS "--function-source;--value-source"
                             "--value-source;--function-source")
   execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}" "7586" ${arguments}
@@ -59,7 +59,7 @@ foreach(arguments IN ITEMS "--function-source;--value-source"
     message(FATAL_ERROR "refusal lost its route: ${report}")
   endif()
   string(JSON stage GET "${report}" route_receipt stage)
-  if(NOT stage STREQUAL "values_verified")
+  if(NOT stage STREQUAL "printed")
     message(FATAL_ERROR "unexpected import stage: ${report}")
   endif()
   string(JSON coverage GET "${report}" route_receipt coverage)
@@ -85,9 +85,24 @@ foreach(arguments IN ITEMS "--function-source;--value-source"
   if(NOT method EQUAL 7586 OR NOT record EQUAL 6897)
     message(FATAL_ERROR "receipt identity lost its entities: ${report}")
   endif()
+  string(JSON fragment GET "${report}" fragment)
+  string(JSON complete GET "${report}" method_slice_complete)
+  string(JSON standalone GET "${report}" executable)
+  string(JSON text GET "${report}" source)
+  string(JSON unit GET "${report}" positions unit)
+  if(NOT fragment STREQUAL "class_member" OR NOT complete OR standalone
+      OR text STREQUAL "" OR NOT unit STREQUAL "utf8_byte")
+    message(FATAL_ERROR "invalid class-member slice: ${report}")
+  endif()
+endforeach()
+
+foreach(form IN ITEMS --class-source --record-source)
+  execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}" "7586"
+    "${form}" --value-source RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
+  string(JSON coverage GET "${report}" route_receipt coverage)
   string(FIND "${report}" "\"source\":" source_at)
-  if(NOT source_at EQUAL -1)
-    message(FATAL_ERROR "refusal must not emit source text: ${report}")
+  if(status EQUAL 0 OR NOT coverage STREQUAL "unsupported" OR NOT source_at EQUAL -1)
+    message(FATAL_ERROR "method fragment must not masquerade as ${form}: ${report}")
   endif()
 endforeach()
 
