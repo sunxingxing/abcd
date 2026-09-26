@@ -1,5 +1,6 @@
 #include "../../../src/source/cell_plan.h"
 #include "../../../src/source/cell_lifetime.h"
+#include "../../../src/source/cell_initialization.h"
 #include "abcd/analysis/value_import.h"
 #include "analysis/ssa_fixture.h"
 
@@ -27,6 +28,30 @@ void Run(std::uint32_t count) {
   test::Check(plan && plan->cells.size() == count && plan->operations.size() == graph.ops.size());
   test::Check(std::holds_alternative<std::uint64_t>(VerifyCellPlan(graph, environments, *plan)));
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+  const auto initialized = std::get<CellInitializations>(BuildCellInitializations(graph, environments, *plan));
+  test::Check(std::holds_alternative<std::uint64_t>(VerifyCellInitializations(
+      graph, environments, *plan, ClosureWrites::kUnknown, initialized)));
+  SemanticBudget initialization_budget; initialization_budget.work = initialized.work;
+  test::Check(std::holds_alternative<CellInitializations>(BuildCellInitializations(
+      graph, environments, *plan, ClosureWrites::kUnknown, initialization_budget)));
+  --initialization_budget.work;
+  test::Check(std::get<CellInitializationError>(BuildCellInitializations(
+      graph, environments, *plan, ClosureWrites::kUnknown, initialization_budget)) == CellInitializationError::kWorkLimit);
+  for (const auto& cell : plan->cells) {
+    const auto& last_store = plan->accesses[cell.first + 1];
+    const auto& load = plan->accesses[cell.first + 2];
+    test::Check(std::get<StoredInitialization>(initialized.reads[load.operation.value]).store == last_store.operation);
+    auto forged = initialized;
+    forged.reads[load.operation.value] = StoredInitialization{load.operation};
+    test::Check(std::get<CellInitializationError>(VerifyCellInitializations(
+        graph, environments, *plan, ClosureWrites::kUnknown, forged)) == CellInitializationError::kWitness);
+    // Another dominating store is a valid initialization witness, even though
+    // it is NOT the reaching value. The independent verifier must allow this.
+    forged.reads[load.operation.value] = StoredInitialization{plan->accesses[cell.first].operation};
+    test::Check(std::holds_alternative<std::uint64_t>(VerifyCellInitializations(
+        graph, environments, *plan, ClosureWrites::kUnknown, forged)));
+    break;
+  }
   const auto lifetime = std::get<CellLifetimes>(BuildCellLifetimes(graph, environments, *plan, control));
   test::Check(lifetime.scopes.size() == 1 && std::holds_alternative<CellBodyScope>(lifetime.scopes[0].origin));
   for (const auto& cell : lifetime.cells) test::Check(std::get<CellScopeId>(cell) == CellScopeId{0});
@@ -71,6 +96,8 @@ void Incoming() {
   const auto graph = std::get<ValueProgram>(ImportNormalValues(body, input, proof, frame));
   const auto environments = std::get<ValueEnvironments>(BuildValueEnvironments(graph));
   const auto plan = std::get<CellPlan>(BuildCellPlan(graph, environments));
+  const auto initialized = std::get<CellInitializations>(BuildCellInitializations(graph, environments, plan));
+  test::Check(std::holds_alternative<IncomingInitialization>(initialized.reads[0]));
   test::Check(plan.cells.size() == 1 && std::get<IncomingCell>(plan.cells[0].storage).depth.value == 0);
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto lifetime = std::get<CellLifetimes>(BuildCellLifetimes(graph, environments, plan, control));
@@ -90,10 +117,31 @@ void Iteration() {
   const auto graph = std::get<ValueProgram>(ImportNormalValues(body, input, proof, frame));
   const auto environments = std::get<ValueEnvironments>(BuildValueEnvironments(graph));
   const auto cells = std::get<CellPlan>(BuildCellPlan(graph, environments));
+  const auto initialized = std::get<CellInitializations>(BuildCellInitializations(graph, environments, cells));
+  test::Check(std::holds_alternative<std::uint64_t>(VerifyCellInitializations(
+      graph, environments, cells, ClosureWrites::kUnknown, initialized)));
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto lifetime = std::get<CellLifetimes>(BuildCellLifetimes(graph, environments, cells, control));
   const auto scope = std::get<CellScopeId>(lifetime.cells[0]);
   test::Check(scope != CellScopeId{0} && std::holds_alternative<CellLoopScope>(lifetime.scopes[scope.value].origin));
 }
+void ClosurePremise() {
+  constexpr std::uint8_t kPush = 0x09, kLoad = 0x60, kStore = 0x3d,
+      kRead = 0x3c, kPop = 0x69, kFunction = 0x33, kReturn = 0x64;
+  const auto body = test::Body({kPush, 1, kLoad, 0, kStore, 0,
+      kFunction, 0, 0, 0, 0, kRead, 0, kPop, kReturn});
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {false, false, false, false}));
+  const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, frame.registers));
+  // Conditional input proof is not a validated child or publication permission.
+  const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, input, frame.registers,
+      frame.locals, {}, CapturedValues::kReject, {}, ClosureWrites::kLanguage));
+  const auto graph = std::get<ValueProgram>(ImportNormalValues(body, input, proof, frame));
+  const auto environments = std::get<ValueEnvironments>(BuildValueEnvironments(graph));
+  const auto cells = std::get<CellPlan>(BuildCellPlan(graph, environments));
+  test::Check(std::get<CellInitializationError>(BuildCellInitializations(graph, environments, cells)) == CellInitializationError::kClosure);
+  const auto initialized = std::get<CellInitializations>(BuildCellInitializations(graph, environments, cells, ClosureWrites::kLanguage));
+  test::Check(std::get<CellInitializationError>(VerifyCellInitializations(
+      graph, environments, cells, ClosureWrites::kUnknown, initialized)) == CellInitializationError::kWitness);
+}
 }  // namespace
-int main() { for (const auto count : {0U, 1U, 2U, 200U, 201U}) Run(count); Incoming(); Iteration(); }
+int main() { for (const auto count : {0U, 1U, 2U, 200U, 201U}) Run(count); Incoming(); Iteration(); ClosurePremise(); }

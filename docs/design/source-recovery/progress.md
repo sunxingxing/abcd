@@ -220,6 +220,24 @@ remain paused. Source rules remain 18; cell expressions/statements and closed
 child ASTs are still required before any new closure source success or T07
 completion can be claimed.
 
+### T07 Cell Initialization Witnesses
+
+Added CellInitializations and connected it to VerifiedFunction preparation.
+Sparse dominator preorder plus per-cell undo state derives dominating language
+store witnesses, resets at allocation and preserves incoming owner obligations.
+The independent checker validates witnesses by cell identity, order and
+dominance instead of replaying candidate selection. A witness is initialization
+only, never the reaching value. Unknown creations refuse; no dominance-local
+barrier can incorrectly ignore writes on another predecessor branch. Explicit
+Language closure writes remain a conditional owner premise, not child success.
+
+Production `abc_semantic` and `abc_structure` builds exited 0; whitespace checks
+passed. Uncompiled/unrun specifications cover repeated-store witness alternatives,
+invalid witness kind, exact work limits, incoming reads, loop allocation and
+closure-premise mismatch. Tests/RSS stay paused. Initialization-phi joins,
+actual AST declarations/accesses and closed child trees remain pending. Source
+rules remain 18 and no new executable-source coverage is claimed.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

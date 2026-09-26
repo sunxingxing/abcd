@@ -8,6 +8,7 @@
 #include "class_tree_context.h"
 #include "cell_plan.h"
 #include "cell_lifetime.h"
+#include "cell_initialization.h"
 #include "default_signature.h"
 #include "function_tree.h"
 #include "function_abi.h"
@@ -196,6 +197,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     const auto& graph = defaults ? defaults->Graph() : *values.graph;
     receipt->work_revision = graph.revision.value;
     std::optional<CellPlan> cells;
+    std::optional<CellInitializations> initialization;
     if (values.environments) {
       // A projected default body has a new identity. Never reuse a topology or
       // cell plan across that boundary merely because the PCs look unchanged.
@@ -221,6 +223,17 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       }
       budget.Admit(plan->allocated_bytes, 1); budget.Step(plan->work);
       cells = std::move(*plan);
+      auto initialized = BuildCellInitializations(graph, *values.environments, *cells,
+          analysis::ClosureWrites::kUnknown, budget.Remaining());
+      auto* initializations = std::get_if<CellInitializations>(&initialized);
+      if (!initializations) {
+        const auto error = std::get<CellInitializationError>(initialized);
+        if (error == CellInitializationError::kResourceLimit) throw Error::kResourceLimit;
+        if (error == CellInitializationError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kValues;
+      }
+      budget.Admit(initializations->allocated_bytes, 1); budget.Step(initializations->work);
+      initialization = std::move(*initializations);
       // Binding topology alone does not authorize source cell reads/stores.
       // Evaluation remains gated until lifetime and AST correspondence close.
     }

@@ -108,6 +108,29 @@ declaration positions and child-capture lifetime still require AST-side checks.
 The per-iteration test specification requires loop-body residence rather than
 function-body residence; that source is not yet compiled or run.
 
+CellInitializations now supplies an initial native-cell initialization proof.
+It uses the existing Lengauer-Tarjan dominator tree, traversed in preorder with
+per-cell state and a bounded undo stack. Allocation resets only its indexed
+cells; stores update initialization witnesses; leaving a dominator subtree
+restores prior state. Each update/restore occurs once, not once per cell/CFG
+pair. Every stored scalar and loaded result must have a Language domain.
+
+The independent checker verifies supplied witnesses: exact cell, a real live
+store, allocation preceding/dominating that store and store preceding/dominating
+the load. It does not rebuild the candidate or require the planner's particular
+store choice. An earlier dominating store can prove initialization even when
+later writes change the value; this proof NEVER licenses value substitution.
+Incoming reads preserve parent initialization obligations. Unknown creation
+writes conservatively refuse across the whole method, including non-dominating
+branches; a dominance-local barrier alone would be unsound at joins. The explicit
+ClosureWrites::Language premise requires complete transitive child verification.
+VerifiedFunction currently supplies Unknown, not a fabricated child summary.
+
+After the shared cell/environment checks, planning/checking adds one dominator
+construction and linear O(B+E+O+C) scans with O(B+E+O+C) bounded storage. Joins
+requiring initialization phis remain refused pending that extension; this is
+not claimed as general definite-assignment completion. Testing remains paused.
+
 These operations are still refused by source evaluation. Required next
 integration remains: proving dynamic cell lifetimes in the work graph and
 capture-aware symbol binding and AST;
