@@ -142,8 +142,25 @@ class ForestBuilder {
   }
 
  private:
+  PropertyRange BufferedProperties(const ExpressionConstant& constant, TreeOriginId origin) {
+    const auto* object = std::get_if<ObjectConstant>(&constant);
+    Require(object != nullptr, Error::kConstant);
+    const PropertyRange properties{static_cast<std::uint32_t>(forest_.properties.size()), object->count};
+    for (std::uint32_t i = 0; i < object->count; ++i) {
+      Step(); const auto& property = constants_.properties[object->first + i];
+      Require(property.key.value < constants_.name_count, Error::kConstant);
+      const auto value = Add(property.value, origin);
+      forest_.properties.push_back({property.key, value, origin});
+    }
+    return properties;
+  }
   ExprId Object(const ObjectInit& object, TreeOriginId origin) {
-    const PropertyRange range{static_cast<std::uint32_t>(forest_.properties.size()), object.count};
+    PropertyRange range{static_cast<std::uint32_t>(forest_.properties.size()), object.count};
+    const auto& allocation = std::get<analysis::ValueObjectAllocation>(graph_.ops[object.allocation.value].operation);
+    if (allocation.literal) {
+      const auto prefix = BufferedProperties(constants_.operations[object.allocation.value], origin);
+      range.count += prefix.count; // Combined capacity was admitted before construction.
+    }
     for (std::uint32_t i = 0; i < object.count; ++i) {
       Step();
       const auto id = evaluation_.literals->definitions[object.first + i];
@@ -403,16 +420,7 @@ class ForestBuilder {
         return Add(EmptyArrayExpr{}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
         if (operation.literal) {
-          const auto* object = std::get_if<ObjectConstant>(&constant);
-          Require(object != nullptr, Error::kConstant);
-          const PropertyRange properties{static_cast<std::uint32_t>(forest_.properties.size()), object->count};
-          for (std::uint32_t i = 0; i < object->count; ++i) {
-            Step(); const auto& property = constants_.properties[object->first + i];
-            Require(property.key.value < constants_.name_count, Error::kConstant);
-            const auto value = Add(property.value, origin);
-            forest_.properties.push_back({property.key, value, origin});
-          }
-          return Add(ObjectExpr{properties}, origin);
+          return Add(ObjectExpr{BufferedProperties(constant, origin)}, origin);
         }
         return Add(EmptyObjectExpr{}, origin);
       }

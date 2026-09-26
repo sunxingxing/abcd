@@ -215,7 +215,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Created-function expression publication remains independently gated.
 // Rules 21 avoid supplied lexical/global names when allocating private names.
 // Rules 22 add checked primitive buffered-object properties in the common AST.
-inline constexpr std::uint32_t kRouteEvidenceRules = 22;
+// Rules 23 compose primitive buffer prefixes with proved own-write suffixes.
+inline constexpr std::uint32_t kRouteEvidenceRules = 23;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

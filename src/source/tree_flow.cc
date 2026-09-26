@@ -26,6 +26,7 @@ class FlowCheck {
     budget.Array(flow_.expressions, graph.ops.size());
     budget.Array(flow_.statements, graph.ops.size());
     budget.Array(flow_.initializers, graph.ops.size());
+    budget.Array(flow_.buffered_properties, graph.ops.size());
     budget.Array(flow_.snapshots, graph.ops.size());
     if (evaluation.cells) budget.Array(flow_.cells, evaluation.cells->cells.cells.size());
     budget.Array(assigned_, tree.symbols.size());
@@ -184,17 +185,23 @@ class FlowCheck {
   }
   void Objects() {
     std::size_t count = 0;
+    std::vector<std::uint32_t> definitions;
+    budget_.Array(definitions, graph_.ops.size());
     if (evaluation_.literals) for (const auto& object : evaluation_.literals->objects) {
       budget_.Step();
       const auto expression = flow_.expressions[object.allocation.value];
       Require(expression.has_value(), Error::kPlacement);
       const auto* syntax = std::get_if<ObjectExpr>(&tree_.expressions[expression->value].expression);
-      Require(syntax && syntax->properties.count == object.count, Error::kPlacement);
+      Require(syntax && syntax->properties.count >= object.count, Error::kPlacement);
+      const auto prefix = syntax->properties.count - object.count;
+      const auto& allocation = std::get<analysis::ValueObjectAllocation>(graph_.ops[object.allocation.value].operation);
+      Require(allocation.literal || prefix == 0, Error::kPlacement);
+      definitions[object.allocation.value] = object.count;
       for (std::uint32_t i = 0; i < object.count; ++i) {
         budget_.Step(); ++count;
         const auto id = evaluation_.literals->definitions[object.first + i];
-        Require(flow_.initializers[id.value] == PropertyId{syntax->properties.first + i}, Error::kPlacement);
-        const auto& property = tree_.properties[syntax->properties.first + i];
+        Require(flow_.initializers[id.value] == PropertyId{syntax->properties.first + prefix + i}, Error::kPlacement);
+        const auto& property = tree_.properties[syntax->properties.first + prefix + i];
         Require(property.origin.value == graph_.ops[id.value].origin.value, Error::kPlacement);
       }
     }
@@ -205,7 +212,10 @@ class FlowCheck {
       Require(flow_.expressions[i].has_value(), Error::kPlacement);
       const auto* object = std::get_if<ObjectExpr>(&tree_.expressions[flow_.expressions[i]->value].expression);
       Require(object != nullptr, Error::kPlacement);
-      for (std::uint32_t p = 0; p < object->properties.count; ++p) {
+      Require(definitions[i] <= object->properties.count, Error::kPlacement);
+      const auto prefix = object->properties.count - definitions[i];
+      flow_.buffered_properties[i] = prefix;
+      for (std::uint32_t p = 0; p < prefix; ++p) {
         budget_.Step(); ++count;
         const auto& property = tree_.properties[object->properties.first + p];
         Require(property.origin.value == op.origin.value &&

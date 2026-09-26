@@ -103,8 +103,8 @@ MethodEntryKey，不能丢掉它或伪造 predecessor block。该输入由独立
 当前 `ValueObjectAllocation::literal` 用类型化可选 pool slot 区分空对象与
 `CREATEOBJECTWITHBUFFER`。缓冲创建仍为每次执行的新分配，保留输入 PC、效果和
 结果，不能变成可共享常量或被纯值删除。导入不等于缓冲内容已证明：属性、方法、
-捕获和定义顺序仍需解析。空对象 own-write 合并继续拒绝 buffered 分配；纯数据
-缓冲经常量解析后直接下降到统一 ObjectExpr，禁止把未解析缓冲输出成 `{}`。
+捕获和定义顺序仍需解析。纯数据缓冲经常量解析后下降到统一 ObjectExpr；后续
+own-write 只有通过同一新对象初始化证明才能追加，禁止把未解析缓冲输出成 `{}`。
 
 `ResolveTreeConstants` 已接入纯数据缓冲解析，输出 `ObjectConstant` 属性范围及
 `ConstantProperty`（NameId + TreeLiteral），不通过 JS 文本表达属性语义。同一
@@ -115,7 +115,10 @@ double；double 保留原始位模式，字符串保持 UTF-16。每次创建独
 字面量表达式，使用原始 allocation PC 作为来源，不共享 AST 节点。TreeFlow
 校验属性归属和 PC，TreeOperands 独立校验数量、顺序、key 与精确类型/值。
 统一 printer 输出 computed 数据属性，__proto__ 不会变成原型设置器。方法、
-访问器、重复 key、缓冲后的 own-write 合并及闭包义务仍需各自证明。
+访问器、缓冲内部重复 key 及闭包义务仍需各自证明。已证明的 own-write 可以作为
+有序后缀追加（允许覆盖缓冲 key），不复制对象、不去重、不改变属性顺序。只有
+对象尚未被观察且 RHS 在原分配点已可用时才允许该合并；缓冲前缀长度由 TreeFlow
+从真实 AST 与已证明的后缀独立计算，再由 TreeOperands 对照常量表核验。
 | super/receiver init | owner、初始化前后状态、range 协议证书 | G3，共用操作管线 |
 | exception/suspend/resume | phase、completion、owner、可见状态 | G4，禁止普通 SSA 适配器接收 |
 

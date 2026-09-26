@@ -621,6 +621,30 @@ Production abc_semantic and abc_structure built successfully. ABC-only G2
 remains incomplete. This unchanged non-buffer sample is only a route inspection,
 not behavioral evidence for new buffered syntax. No JS or RSS checks ran.
 
+### T07 Buffered Prefix and Own-Write Composition
+
+The existing fresh-object LiteralPlan now admits buffered allocations as
+receivers without weakening same-block order, early RHS availability or
+unobserved-object checks. Common ObjectExpr construction emits the resolved
+primitive buffer prefix followed by the verified ordered own-write suffix.
+Repeated computed keys remain ordered; no spread clone, deduplication or new
+object identity is introduced. Unsupported buffer contents still fail constant
+resolution before source admission.
+
+TreeFlow independently derives actual prefix counts and verifies each suffix's
+PropertyId/origin. TreeOperands compares the prefix against typed constants and
+each own-write against its original RHS/key. Output/scratch admission includes
+the extra indexed prefix counts. Rules advance to 23. Regression sources cover
+empty/buffered origins, repeated __proto__ keys, 1/2/200/201 writes, malformed
+placements and retained observed/late-RHS refusals; they remain uncompiled/unrun.
+P3 is still blocked by further import/family/async requirements, not declared
+complete by this local feature.
+
+Both production targets built successfully. ABC-only G2 7559 still reports
+Printed/complete method coverage at [2638,2924), now rules 23; enclosing record
+remains incomplete. This unchanged method is not behavioral validation of the
+new composition. No tests, generated JS, benchmarks or RSS measurements ran.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

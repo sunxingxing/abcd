@@ -115,7 +115,9 @@ class OperandCheck {
             const auto* expected = std::get_if<ObjectConstant>(&constants_.operations[i]);
             RequireMeaning(expected && expected->first <= constants_.properties.size() &&
                 expected->count <= constants_.properties.size() - expected->first &&
-                object.properties.count == expected->count, Error::kConstant);
+                i < flow_.buffered_properties.size() &&
+                flow_.buffered_properties[i] == expected->count &&
+                object.properties.count >= expected->count, Error::kConstant);
             for (std::uint32_t p = 0; p < expected->count; ++p) {
               budget_.Step();
               const auto& source = constants_.properties[expected->first + p];

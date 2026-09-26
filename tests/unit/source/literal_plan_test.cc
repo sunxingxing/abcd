@@ -44,11 +44,11 @@ ValueProgram Graph(std::uint32_t fields, Prefix prefix = Prefix::kNone) {
   fixture.graph.ops[0].exceptional = ExceptionalCompletion::kMayThrow;
   if (prefix != Prefix::kNone)
     fixture.Add(ValueCopy{}, true, {{OperandRole::kInput, prefix == Prefix::kObserve ?
-        ValueOperand{ValueId{0}} : ValueOperand{IntegerLiteral{1}}}});
+        ValueOperand{ValueId{0}} : ValueOperand{abcd::analysis::IntegerLiteral{1}}}});
   for (std::uint32_t i = 0; i < fields; ++i) {
     fixture.Add(ValueOwnWrite{OwnWriteKind::kDefineField, {i}, 0}, false,
         {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue,
-          prefix == Prefix::kLateValue ? ValueOperand{ValueId{1}} : ValueOperand{IntegerLiteral{1}}}});
+          prefix == Prefix::kLateValue ? ValueOperand{ValueId{1}} : ValueOperand{abcd::analysis::IntegerLiteral{1}}}});
     auto& op = fixture.graph.ops.back();
     op.normal = op.before_throw = LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
     op.exceptional = ExceptionalCompletion::kMayThrow;
@@ -78,6 +78,12 @@ void Mutations() {
   Check(std::get<LiteralError>(BuildLiteralPlan(graph)) == LiteralError::kDomain);
   Check(std::get<LiteralError>(BuildLiteralPlan(Graph(2, Prefix::kObserve))) == LiteralError::kObserved);
   Check(std::get<LiteralError>(BuildLiteralPlan(Graph(2, Prefix::kLateValue))) == LiteralError::kLateValue);
+  auto buffered_observed = Graph(2, Prefix::kObserve);
+  std::get<ValueObjectAllocation>(buffered_observed.ops[0].operation).literal = abcd::abc::PoolIndex{0};
+  Check(std::get<LiteralError>(BuildLiteralPlan(buffered_observed)) == LiteralError::kObserved);
+  auto buffered_late = Graph(2, Prefix::kLateValue);
+  std::get<ValueObjectAllocation>(buffered_late.ops[0].operation).literal = abcd::abc::PoolIndex{0};
+  Check(std::get<LiteralError>(BuildLiteralPlan(buffered_late)) == LiteralError::kLateValue);
 }
 void Budgets() {
   for (const std::uint32_t count : {0U, 1U, 2U, 200U, 201U, 4096U}) {
@@ -94,9 +100,10 @@ void Budgets() {
     Check(std::get<LiteralError>(BuildLiteralPlan(graph, budget)) == LiteralError::kResourceLimit);
   }
 }
-void SourceTree() {
+void SourceTree(bool buffered) {
   for (const std::uint32_t count : {1U, 2U, 200U, 201U}) {
-    const auto graph = Graph(count);
+    auto graph = Graph(count);
+    if (buffered) std::get<ValueObjectAllocation>(graph.ops[0].operation).literal = abcd::abc::PoolIndex{0};
     const auto evaluated = BuildEvaluationPlan(graph);
     const auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
     Check(evaluation && evaluation->literals);
@@ -107,12 +114,16 @@ void SourceTree() {
     // spelling must never acquire object-literal prototype-setter semantics.
     syntax.names = {u"__proto__"};
     std::vector<ExpressionConstant> constants(graph.ops.size());
+    const std::vector<ConstantProperty> properties{{NameId{0}, NullLiteral{}}};
+    const std::uint32_t prefix = buffered ? 1 : 0;
+    if (buffered) constants[0] = ObjectConstant{0, prefix};
     for (std::size_t i = 1; i <= count; ++i) constants[i] = NameId{0};
-    const auto built = BuildFunctionTree(graph, control, *evaluation, syntax, {constants, 1});
+    const ExpressionConstants resolved{constants, 1, 0, {}, properties};
+    const auto built = BuildFunctionTree(graph, control, *evaluation, syntax, resolved);
     const auto* result = std::get_if<ConstructedFunction>(&built);
-    Check(result && result->tree.properties.size() == count);
+    Check(result && result->tree.properties.size() == count + prefix);
     Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(
-        graph, control, *evaluation, result->tree, {constants, 1})));
+        graph, control, *evaluation, result->tree, resolved)));
     for (const auto& placement : result->tree.operations) {
       if (placement.operation.value == 0 || placement.operation.value > count) continue;
       Check(std::holds_alternative<PropertyId>(placement.node));
@@ -126,14 +137,14 @@ void SourceTree() {
     invalid_plan.operations[1].kind = EvaluationKind::kRoot;
     Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, invalid_plan)));
     auto changed = result->tree;
-    changed.properties[0].origin = {0};
+    changed.properties[prefix].origin = {0};
     Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(
-        graph, control, *evaluation, changed, {constants, 1})));
+        graph, control, *evaluation, changed, resolved)));
     if (count > 1) {
       changed = result->tree;
       std::swap(changed.properties[0], changed.properties[1]);
       Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(
-          graph, control, *evaluation, changed, {constants, 1})));
+          graph, control, *evaluation, changed, resolved)));
       changed = result->tree;
       changed.properties[1].value = changed.properties[0].value;
       Check(std::get<TreeStructureError>(VerifyTreeStructure(changed)) == TreeStructureError::kOwnership);
@@ -142,7 +153,7 @@ void SourceTree() {
 }
 void RhsSnapshot() {
   Fixture fixture;
-  fixture.Add(ValueCopy{}, true, {{OperandRole::kInput, IntegerLiteral{1}}});
+  fixture.Add(ValueCopy{}, true, {{OperandRole::kInput, abcd::analysis::IntegerLiteral{1}}});
   fixture.Add(ValueObjectAllocation{}, true, {});
   fixture.graph.ops[1].normal = fixture.graph.ops[1].before_throw = LanguageEffect::kAllocation;
   fixture.graph.ops[1].exceptional = ExceptionalCompletion::kMayThrow;
@@ -176,4 +187,4 @@ void RhsSnapshot() {
   Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
 }
 }  // namespace
-int main() { Mutations(); Budgets(); SourceTree(); RhsSnapshot(); }
+int main() { Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }

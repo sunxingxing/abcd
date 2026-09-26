@@ -60,7 +60,6 @@ analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id
   const auto& allocation = graph.ops[result->op.value];
   Require(allocation.life == analysis::ValueLife::kLive &&
       std::holds_alternative<analysis::ValueObjectAllocation>(allocation.operation) &&
-      !std::get<analysis::ValueObjectAllocation>(allocation.operation).literal &&
       allocation.result == *value && allocation.use_count == 0 &&
       allocation.block == op.block && allocation.order < op.order, Error::kReceiver);
   return result->op;
