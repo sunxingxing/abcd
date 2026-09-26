@@ -272,5 +272,45 @@ void NegatedLiteral() {
   Relink(graph);
   Check(Find(graph).values.empty()); // No speculative coercion of a parameter.
 }
+void MaterializedNumber() {
+  auto graph = DefaultDiamond();
+  for (auto& value : graph.values)
+    if (auto* result = std::get_if<OpResult>(&value.origin); result && result->op.value >= 2) ++result->op.value;
+  for (auto& use : graph.uses)
+    if (auto* owner = std::get_if<OpId>(&use.owner); owner && owner->value >= 2) ++owner->value;
+  graph.ops[2].operation = ValueUnary{UnaryOperator::kNegate};
+  graph.ops[2].order = 1;
+  graph.ops[2].normal = graph.ops[2].before_throw = LanguageEffect::kUserCode;
+  graph.ops[2].exceptional = ExceptionalCompletion::kMayThrow;
+  graph.exceptional_exits.push_back({{3}, {2}, LanguageEffect::kUserCode});
+  const ValueId number{static_cast<std::uint32_t>(graph.values.size())};
+  const UseId input{static_cast<std::uint32_t>(graph.uses.size())};
+  const OriginId origin{static_cast<std::uint32_t>(graph.origins.size())};
+  graph.values.push_back({OpResult{{2}}, ValueKinds::Language(), {}});
+  graph.uses.push_back({OpId{2}, OperandRole::kInput, ReadPurpose::kOperand, IntegerLiteral{1}});
+  graph.uses[6].operand = number;
+  graph.origins.push_back({{origin.value}, {origin.value}, {}});
+  graph.ops.insert(graph.ops.begin() + 2, {ValueCopy{}, {1}, 0, input, 1, number,
+      LanguageEffect::kNone, LanguageEffect::kNone, ExceptionalCompletion::kImpossible, origin});
+  ++graph.blocks[1].op_count;
+  ++graph.blocks[2].first_op.value;
+  Relink(graph);
+  const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(graph, 1));
+  auto candidates = Find(graph);
+  Check(candidates.values.size() == 1 && candidates.values[0].number == OpId{2});
+  Check(std::get<Float64Bits>(candidates.values[0].fallback).value == std::bit_cast<std::uint64_t>(-1.0));
+  auto body = DefaultBody::Build(graph, parameters, candidates, 0);
+  Check(std::holds_alternative<DefaultBody>(body));
+  Check(std::get<DefaultBody>(body).Signature().Operations().size() == 4);
+  Check(std::get<DefaultBody>(body).Graph().exceptional_exits.empty());
+  graph.uses[input.value].operand = IntegerLiteral{0};
+  candidates = Find(graph);
+  Check(std::get<Float64Bits>(candidates.values[0].fallback).value == std::bit_cast<std::uint64_t>(-0.0));
+  Check(std::holds_alternative<DefaultBody>(DefaultBody::Build(graph, parameters, candidates, 0)));
+  graph.uses[5].operand = number;
+  Relink(graph);
+  Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0)) ==
+        DefaultProofError::kEscapedValue);
+}
 }  // namespace
-int main() { MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); UndefinedProducer(); }
+int main() { MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); UndefinedProducer(); MaterializedNumber(); }

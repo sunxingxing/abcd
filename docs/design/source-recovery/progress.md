@@ -958,3 +958,31 @@ An IR fixture covers the retained undefined producer and its escaped-use refusal
 The tests remain uncompiled/unexecuted. Factory wiring is implemented, but a real
 default-method end-to-end acceptance result is still missing; T06 and T00-T12
 remain incomplete. Tests, JS execution and RSS measurement remain paused.
+
+### T06 Materialized Negative Defaults (Rules 9)
+
+Default discovery now follows a retained integer ValueCopy feeding numeric
+negation in the missing-parameter arm. This is the normal loaded-constant form,
+not just a unary operation with an immediate literal operand. The candidate
+records the producer's typed operation identity. Independent proof checks its
+block, order, pure effects, exact integer operand and exclusive consumption by
+the initializer; its result cannot escape into the body or another default.
+Both operations migrate through the existing DefaultBody/SignaturePlacement
+route, so both PCs remain attributable to the formal rather than being dropped.
+
+Number negation still uses double conversion before negation, retaining -0 and
+avoiding signed int32 overflow. No arbitrary user coercion, floating producer
+chain, general constant folding or closure-environment admission was added.
+The extra work is bounded producer lookup plus existing indexed use scans, not
+a new per-variable graph traversal. Admission provenance is evidence rules 9.
+
+Regression sources now cover a materialized 1/-1 pair, materialized zero/-0,
+refined exceptional-exit removal and escaped producer refusal. The class-method
+factory fixture additionally encodes ldai/neg with adjusted jump/body lengths,
+using v7 ISA opcode provenance, and expects the existing immutable printer path
+to render the native default. These are unrun specifications, not passing tests.
+
+Production abc_semantic and abc_structure builds completed successfully. Real
+default-method acceptance is still outstanding, alongside the broader T06
+parameter-version/scope/callable cases. Tests, generated-JS execution and RSS
+measurement remain paused. T00-T12 remains the active, incomplete objective.

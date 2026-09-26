@@ -23,7 +23,9 @@ static_assert(!std::is_constructible_v<VerifiedFunction, FunctionTree>);
 static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);
 void Check(bool condition) { if (!condition) std::abort(); }
-void Run(bool defaults = false) {
+enum class DefaultEncoding { kNone, kInteger, kNegation };
+void Run(DefaultEncoding encoding = DefaultEncoding::kNone) {
+  const bool defaults = encoding != DefaultEncoding::kNone;
   constexpr std::uint32_t kPool = 64, kOwner = 80, kLiteral = 128, kCaller = 256,
       kConstructor = 300, kMember = 350, kCallerCode = 400, kMemberCode = 430, kName = 500;
   std::vector<std::uint8_t> bytes(640);
@@ -49,14 +51,25 @@ void Run(bool defaults = false) {
   // relative conditional jump and return. Header encodes locals/args/bytes/tries.
   constexpr std::uint8_t kUndefined = 0x00, kStrictNotEqual = 0x27,
       kJumpNonzero = 0x51, kLoad = 0x60, kStore = 0x61,
-      kInteger = 0x62, kReturn = 0x64, kParameter = 3;
+      kInteger = 0x62, kReturn = 0x64, kParameter = 3, kNegate = 0x1f;
   constexpr std::uint8_t kDefaultBodyBytes = 16, kJoinDelta = 9, kMinusOneByte = 0xff;
-  const std::vector<std::uint8_t> member = defaults
+  std::vector<std::uint8_t> member = defaults
       ? std::vector<std::uint8_t>{0, 4, kDefaultBodyBytes, 0,
           kUndefined, kStrictNotEqual, 0, kParameter, kJumpNonzero, kJoinDelta,
           kInteger, kMinusOneByte, kMinusOneByte, kMinusOneByte, kMinusOneByte,
           kStore, kParameter, kLoad, kParameter, kReturn}
       : std::vector<std::uint8_t>{0, 4, 3, 0, kLoad, kParameter, kReturn};
+  constexpr std::size_t kHeaderBytes = 4, kIntegerPc = 6, kStorePc = 11,
+      kBranchPc = 4, kCodeSizeOffset = 2;
+  constexpr std::uint8_t kNegateBytes = 2;
+  if (encoding == DefaultEncoding::kNegation) {
+    member[kHeaderBytes + kIntegerPc + 1] = 1;
+    for (std::size_t i = 2; i <= sizeof(std::int32_t); ++i)
+      member[kHeaderBytes + kIntegerPc + i] = 0;
+    member.insert(member.begin() + kHeaderBytes + kStorePc, {kNegate, 0});
+    member[kHeaderBytes + kBranchPc + 1] += kNegateBytes;
+    member[kCodeSizeOffset] += kNegateBytes;
+  }
   std::copy(caller.begin(), caller.end(), bytes.begin() + kCallerCode);
   std::copy(member.begin(), member.end(), bytes.begin() + kMemberCode);
   char path[] = "/tmp/abcd-class-tree-context-XXXXXX";
@@ -81,7 +94,7 @@ void Run(bool defaults = false) {
   index.methods[1].offset = {kConstructor};
   index.methods[2].offset = {kMember};
   index.methods[2].code = abc::CodeInfo{{kMemberCode}, {kMemberCode + 4}, 0, 4,
-                                      defaults ? kDefaultBodyBytes : 3U, 0};
+                                      member[kCodeSizeOffset], 0};
   index.methods[2].name = "run";
   index.methods[2].name_utf16_length = 3;
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
@@ -131,7 +144,9 @@ void Run(bool defaults = false) {
   for (const auto placement : function.Tree().signature) {
     Check(placement.parameter == ParameterId{0});
     const auto* origin = std::get_if<OriginalSite>(&function.Tree().origins[placement.origin.value]);
-    Check(origin && origin->pc.value < 13); // Initialization joins the body at PC13.
+    constexpr std::uint32_t kDirectJoinPc = 13;
+    const auto join = kDirectJoinPc + (encoding == DefaultEncoding::kNegation ? kNegateBytes : 0);
+    Check(origin && origin->pc.value < join);
   }
   Check(printed.expressions.size() == function.Tree().expressions.size());
   Check(printed.statements.size() == function.Tree().statements.size());
@@ -201,4 +216,4 @@ void Run(bool defaults = false) {
   Check(unlink(path) == 0);
 }
 }  // namespace
-int main() { Run(); Run(true); }
+int main() { Run(); Run(DefaultEncoding::kInteger); Run(DefaultEncoding::kNegation); }

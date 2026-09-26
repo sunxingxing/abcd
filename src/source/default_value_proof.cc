@@ -21,7 +21,7 @@ bool SameLiteral(const ValueOperand& left, const ValueOperand& right) {
 }
 enum class BlockRole : std::uint8_t { kHeader, kArm };
 struct BlockOwner { std::uint32_t candidate; BlockRole role; };
-enum class ValueRole : std::uint8_t { kEntry, kComparison, kInitializer, kMerged, kUndefined };
+enum class ValueRole : std::uint8_t { kEntry, kComparison, kInitializer, kMerged, kUndefined, kNumber };
 struct RestrictedValue { std::uint32_t candidate; ValueRole role; };
 struct PhiCount { bool present = false; bool missing = false; };
 class Checker {
@@ -69,7 +69,7 @@ class Checker {
       const auto& candidate = candidates_.values[owner.candidate];
       const OpId id{static_cast<std::uint32_t>(i)};
       if (id != candidate.comparison && id != candidate.branch && id != candidate.initializer &&
-          candidate.undefined != id) {
+          candidate.undefined != id && candidate.number != id) {
         Require(std::holds_alternative<ValueNop>(op.operation) ||
             (owner.role == BlockRole::kArm && std::holds_alternative<ValueJump>(op.operation)), Error::kEffect);
         Require(op.normal == LanguageEffect::kNone && op.before_throw == LanguageEffect::kNone &&
@@ -176,10 +176,20 @@ class Checker {
       Require(initializer.use_count == 1 && initializer.result, Error::kLiteral);
       const auto& input = Operand(initializer, 0, OperandRole::kInput);
       if (std::holds_alternative<ValueCopy>(initializer.operation)) {
-        Require(!std::holds_alternative<ValueId>(input) && SameLiteral(c.fallback, input), Error::kLiteral);
+        Require(!c.number && !std::holds_alternative<ValueId>(input) && SameLiteral(c.fallback, input), Error::kLiteral);
         Pure(initializer);
       } else {
-        const auto* integer = std::get_if<IntegerLiteral>(&input);
+        const ValueOperand* numeric = &input;
+        if (c.number) {
+          const auto& constant = Op(*c.number, c.arm);
+          Require(std::holds_alternative<ValueCopy>(constant.operation) && constant.result &&
+              constant.use_count == 1 && constant.order < initializer.order &&
+              SameLiteral(input, *constant.result), Error::kLiteral);
+          Pure(constant);
+          Restrict(*constant.result, i, ValueRole::kNumber);
+          numeric = &Operand(constant, 0, OperandRole::kInput);
+        }
+        const auto* integer = std::get_if<IntegerLiteral>(numeric);
         Require(unary && unary->op == UnaryOperator::kNegate && integer, Error::kLiteral);
         Require(SameLiteral(c.fallback, Float64Bits{std::bit_cast<std::uint64_t>(-static_cast<double>(integer->value))}), Error::kLiteral);
         // Generic negation over-approximates user coercion. A Number literal
@@ -238,6 +248,7 @@ class Checker {
       case ValueRole::kComparison: allowed = op && *op == c.branch; break;
       case ValueRole::kInitializer: allowed = phi && *phi == c.merged; break;
       case ValueRole::kUndefined: allowed = op && *op == c.comparison; break;
+      case ValueRole::kNumber: allowed = op && *op == c.initializer; break;
       case ValueRole::kMerged:
         allowed = op ? !blocks_[graph_.ops[op->value].block.value] : !values_[phi->value]; break;
     }

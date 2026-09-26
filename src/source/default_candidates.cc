@@ -200,9 +200,11 @@ class Finder {
     const auto& arm_block = graph_.blocks[arm.value];
     if (arm_block.edge_count != 1 || Edge(arm_block, 0).target != join) return {};
     // Register copies were removed, but literal-producing copies stay live.
-    // Admit one literal initializer and at most one terminating jump.
+    // Admit a literal producer, optional numeric negation and one jump.
     const auto& arm_facts = blocks_[arm.value];
-    if (arm_facts.value_operations > 1 || arm_facts.operations > arm_facts.value_operations + 1) return {};
+    constexpr std::uint32_t kLiteralAndNegation = 2;
+    if (arm_facts.value_operations > kLiteralAndNegation ||
+        arm_facts.operations > arm_facts.value_operations + 1) return {};
     const auto merged = *blocks_[join.value].phi;
     const auto& phi = phis_[merged.value];
     if (phi.count != 2) return {};
@@ -223,6 +225,7 @@ class Finder {
     }
     if (!incoming || !fallback || !arm_facts.value_op) return {};
     auto literal = fallback->operand;
+    std::optional<OpId> number_op;
     {
       const auto& initializer = graph_.ops[arm_facts.value_op->value];
       const auto* unary = std::get_if<ValueUnary>(&initializer.operation);
@@ -235,18 +238,33 @@ class Finder {
         if (std::holds_alternative<ValueId>(input)) return {};
         literal = input;
       } else {
-        const auto* integer = std::get_if<IntegerLiteral>(&input);
-        if (!unary || unary->op != UnaryOperator::kNegate || !integer) return {};
+        if (!unary || unary->op != UnaryOperator::kNegate) return {};
+        const ValueOperand* numeric = &input;
+        if (const auto* id = std::get_if<ValueId>(&input)) {
+          if (id->value >= graph_.values.size()) return {};
+          const auto* result = std::get_if<OpResult>(&graph_.values[id->value].origin);
+          if (!result || result->op.value >= graph_.ops.size()) return {};
+          const auto& constant = graph_.ops[result->op.value];
+          if (constant.life != ValueLife::kLive || constant.block != arm ||
+              constant.order >= initializer.order || constant.result != *id ||
+              !std::holds_alternative<ValueCopy>(constant.operation) || constant.use_count != 1) return {};
+          number_op = result->op;
+          numeric = &Use(constant, 0).operand;
+        }
+        const auto* integer = std::get_if<IntegerLiteral>(numeric);
+        if (!integer) return {};
         // JS Number negation preserves -0 and can exceed int32. Keep the
         // original operation for independent effect/exception refinement.
         literal = Float64Bits{std::bit_cast<std::uint64_t>(-static_cast<double>(integer->value))};
       }
     }
+    if (arm_facts.value_operations != 1U + (number_op ? 1U : 0U)) return {};
     if (const auto* special = std::get_if<SpecialValue>(&literal);
         special && *special != SpecialValue::kUndefined && *special != SpecialValue::kNull &&
         *special != SpecialValue::kTrue && *special != SpecialValue::kFalse) return {};
     return DefaultCandidate{parameter->index, *entry, merged, literal, *arm_facts.value_op,
-        producer->op, *facts.last, header, arm, join, present, missing, arm_block.first_edge, undefined_op};
+        producer->op, *facts.last, header, arm, join, present, missing, arm_block.first_edge,
+        undefined_op, number_op};
   }
   const ValueProgram& graph_;
   const ParameterPlan& parameters_;

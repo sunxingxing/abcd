@@ -19,6 +19,7 @@ struct DefaultCandidate {
   analysis::EdgeId missing;
   analysis::EdgeId merge;
   std::optional<analysis::OpId> undefined;
+  std::optional<analysis::OpId> number;
 };
 struct DefaultCandidates {
   analysis::IrRevision revision;

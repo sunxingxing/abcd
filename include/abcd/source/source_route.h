@@ -205,9 +205,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Engine/rules provenance of the admission and stage semantics above. Bump
 // with any change to them; receipts signed under other rules are rejected
 // rather than reinterpreted.
-// Rules 8 add proved literal-default prologue migration, residual-body
-// correspondence and signature-PC placements. Record coverage stays separate.
-inline constexpr std::uint32_t kRouteEvidenceRules = 8;
+// Rules 9 include retained integer producers in negative-default migration;
+// residual-body, signature-PC and ABI proofs stay mandatory.
+inline constexpr std::uint32_t kRouteEvidenceRules = 9;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,
