@@ -246,4 +246,12 @@ int main() {
   creation.graph.blocks = {{{0}, 1, {0}, 0}};
   Check(OrderedEvaluation(creation.graph.ops[0]));
   Check(std::get<EvaluationError>(BuildEvaluationPlan(creation.graph)) == EvaluationError::kUnsupportedOperation);
+  const analysis::ValueOperation cells[]{analysis::ValueLexicalLoad{{{0}, {0}}},
+      analysis::ValueLexicalStore{{{0}, {0}}}, analysis::ValueEnvironmentPush{1, {}},
+      analysis::ValueEnvironmentPop{}, analysis::ValueCurrentEnvironment{}};
+  for (const auto& operation : cells) {
+    Check(!DescribeEvaluation(operation));
+    auto op = creation.graph.ops[0]; op.operation = operation;
+    Check(OrderedEvaluation(op));
+  }
 }

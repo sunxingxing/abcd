@@ -148,6 +148,22 @@ retention and source-gate refusal. They are uncompiled/unrun under the ongoing
 test pause. Cell/environment Value IR, child trees and corpus acceptance remain
 pending; this import is not a closure source-publication result.
 
+### T07 Lexical and Environment Value Import
+
+Added distinct Value IR operations for lexical load/store, environment push/pop
+and current-environment reads. Original relative addresses, slot counts, optional
+scope pool indices, actual stored scalar sources and internal result domains
+are preserved. Shared correspondence checks effects, exception timing, register
+reads/writes and metadata. None is pure-erasable or source-admitted merely
+because it now has an IR representation. Source rules remain 18.
+
+Production `abc_semantic` and `abc_structure` builds exited 0. New uncompiled,
+unrun regression sources cover 4/8/16-bit cell formats, wide slot metadata,
+internal environment result domains, pop/acc preservation, original effects,
+metadata mutations, historical register-store input and source refusal. Cell
+identity/lifetime binding into the source tree and closed child verification
+remain pending. No new closure/source, test or RSS acceptance is claimed.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

@@ -60,6 +60,9 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else {
       static_assert(std::is_same_v<T, analysis::ValueGuard> ||
                     std::is_same_v<T, analysis::ValueFunctionCreation> ||
+                    std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
+                    std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
+                    std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                     std::is_same_v<T, analysis::ValueNop>);
       return {};
     }
@@ -81,6 +84,9 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
     else {
       static_assert(std::is_same_v<T, analysis::ValueNamedRead> ||
                     std::is_same_v<T, analysis::ValueFunctionCreation> ||
+                    std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
+                    std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
+                    std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                     std::is_same_v<T, analysis::ValueGlobalRead> ||
                     std::is_same_v<T, analysis::ValuePropertyRead> ||
                     std::is_same_v<T, analysis::ValueNamedWrite> ||

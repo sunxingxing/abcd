@@ -80,6 +80,16 @@ ValueOperation Operation(const SemanticOperation& operation) {
           (op.kind != CreationKind::kMethod || op.home_object != HomeObjectInput::kAccumulator))
         throw ValueImportFailure{Error::kUnsupportedOperation, {}};
       return ValueFunctionCreation{op.kind, op.method, op.length.value, op.home_object, op.cache_slot};
+    } else if constexpr (std::is_same_v<T, LexicalLoad>) {
+      return ValueLexicalLoad{op.address};
+    } else if constexpr (std::is_same_v<T, LexicalStore>) {
+      return ValueLexicalStore{op.address};
+    } else if constexpr (std::is_same_v<T, PushEnvironment>) {
+      return ValueEnvironmentPush{op.slots, op.scope};
+    } else if constexpr (std::is_same_v<T, PopEnvironment>) {
+      return ValueEnvironmentPop{};
+    } else if constexpr (std::is_same_v<T, CurrentEnvironment>) {
+      return ValueCurrentEnvironment{};
     } else if constexpr (std::is_same_v<T, NamedWrite>) {
       return ValueNamedWrite{op.name};
     } else if constexpr (std::is_same_v<T, OwnWrite>) {

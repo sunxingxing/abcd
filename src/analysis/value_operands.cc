@@ -57,6 +57,13 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       Append(plan, OperandRole::kReturnValue, op.value);
     } else if constexpr (std::is_same_v<T, StringLoad> || std::is_same_v<T, EmptyObjectCreation>) {
       plan.write = Accumulator{};
+    } else if constexpr (std::is_same_v<T, LexicalLoad> || std::is_same_v<T, PushEnvironment> ||
+                         std::is_same_v<T, CurrentEnvironment>) {
+      plan.write = Accumulator{};
+    } else if constexpr (std::is_same_v<T, LexicalStore>) {
+      Append(plan, OperandRole::kStoredValue, SlotValue(op.value));
+    } else if constexpr (std::is_same_v<T, PopEnvironment>) {
+      // The implicit environment changes; the accumulator does not.
     } else if constexpr (std::is_same_v<T, FunctionCreation>) {
       // DEFINEFUNC obtains its home object from the current function implicitly;
       // DEFINEMETHOD reads acc as a VM creation input, not a JS call argument.

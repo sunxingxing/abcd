@@ -132,6 +132,27 @@ struct ValueFunctionCreation {
   std::uint16_t cache_slot;
   bool operator==(const ValueFunctionCreation&) const = default;
 };
+// Depth/slot stay relative to the ORIGINAL environment state at this origin.
+// They are not register aliases, source variable names or dynamic cell IDs.
+struct ValueLexicalLoad {
+  LexicalAddress address;
+  bool operator==(const ValueLexicalLoad& other) const {
+    return address.depth.value == other.address.depth.value && address.slot.value == other.address.slot.value;
+  }
+};
+struct ValueLexicalStore {
+  LexicalAddress address;
+  bool operator==(const ValueLexicalStore& other) const {
+    return address.depth.value == other.address.depth.value && address.slot.value == other.address.slot.value;
+  }
+};
+struct ValueEnvironmentPush {
+  std::uint16_t slots;
+  std::optional<abc::PoolIndex> scope;
+  bool operator==(const ValueEnvironmentPush&) const = default;
+};
+struct ValueEnvironmentPop { bool operator==(const ValueEnvironmentPop&) const = default; };
+struct ValueCurrentEnvironment { bool operator==(const ValueCurrentEnvironment&) const = default; };
 enum class InvokeReceiver : std::uint8_t { kUndefined, kExplicit };
 struct ValueInvoke {
   InvokeReceiver receiver;
@@ -146,7 +167,8 @@ struct ValueConstruct {
 using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
     ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValuePropertyRead, ValueBranch, ValueJump,
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation,
-    ValueInvoke, ValueConstruct, ValueFunctionCreation>;
+    ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueLexicalLoad, ValueLexicalStore,
+    ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

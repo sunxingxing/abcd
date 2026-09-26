@@ -58,8 +58,10 @@ for the same target, outer Defined obligations, changed domain/cell/site,
 sendable rejection, uninitialized locals, unknown write barriers and exact work
 limits. They remain uncompiled/unrun during the user's testing pause.
 
-Required next integration remains: typed environment/cell/creation operations in
-Value IR with input/effect correspondence; capture-aware symbol binding and AST;
+Typed environment/cell/creation operations now enter Value IR with input/effect
+correspondence, but are still refused by source evaluation. Required next
+integration remains: binding their original environment identities and lifetimes
+into the working graph; capture-aware symbol binding and AST;
 complete child trees validated before parent publication; dependency/SCC handling
 without assuming success for cycles. P3 method 7366, independent-app examples,
 per-iteration cells and child mutations still require end-to-end source evidence.

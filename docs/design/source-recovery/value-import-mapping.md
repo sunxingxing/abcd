@@ -15,6 +15,11 @@ route still requires an identity envelope and correspondence verification.
 | NamedWrite | Base from object register, StoredValue from accumulator | absent |
 | OwnWrite | Base, StoredValue; own-store/DefineField kind, name and IC slot retained | absent; accumulator preserved |
 | FunctionCreation | protocol HomeObject only for accumulator-home creation; kind, method pool index, length, home input and IC slot retained | fresh accumulator result |
+| LexicalLoad | original environment-relative depth/slot retained; no scalar input | accumulator cell value, not an alias |
+| LexicalStore | StoredValue from the actual accumulator/register source; depth/slot retained | absent; accumulator preserved |
+| PushEnvironment | slot count and optional scope pool index retained | internal environment identity in accumulator |
+| PopEnvironment | implicit environment state transition | absent; accumulator preserved |
+| CurrentEnvironment | implicit environment read | internal environment identity in accumulator |
 | BranchOperation | Condition from predicate input; predicate enum retained | absent |
 | ReturnOperation | ReturnValue; literal undefined remains a literal | absent |
 | StringLoad | no value operand; string retained as pool index | accumulator |
@@ -93,6 +98,22 @@ fields authorize pure erasure. Input correspondence checks every metadata field
 and read occurrence. Source evaluation deliberately refuses until creation
 binding, capture obligations and complete child-tree verification are connected.
 Import does not imply an ordinary/sendable target classification or source success.
+
+Lexical/environment operations now retain their typed metadata and original
+effect sites in Value IR. Raw lexical load is not a TDZ check, environment push
+does not initialize cells to undefined, and pop is not an accumulator overwrite.
+The semantic proof's value domains are copied unchanged, including Environment;
+ordinary use/domain verification still rejects leaking internal values. Named
+scope metadata alone does not establish local variable names or initialization.
+Historical register stores retain their actual scalar source, not an acc alias.
+The normal input proof's existing profile/flow restrictions still apply.
+
+All five operations are explicitly non-erasable and ordered even with empty
+effect fields. Original environment state is bound to the operation origin:
+no pass may hoist a lexical access across environment changes or reinterpret a
+relative depth against a different scope. Source evaluation still refuses them
+until cell binding, dynamic lifetime, capture and AST proofs are connected.
+The importer does not promote cell values to register SSA or merge allocations.
 
 Inputs remain borrowed only during import. Output graph, correspondence and
 use links are owned. SSA values map once to work IDs; operation results are
