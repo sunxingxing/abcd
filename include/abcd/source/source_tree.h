@@ -11,6 +11,7 @@
 
 namespace abcd::source {
 struct ExprId { std::uint32_t value = 0; auto operator<=>(const ExprId&) const = default; };
+struct PropertyId { std::uint32_t value = 0; auto operator<=>(const PropertyId&) const = default; };
 struct StmtId { std::uint32_t value = 0; auto operator<=>(const StmtId&) const = default; };
 struct SymbolId { std::uint32_t value = 0; auto operator<=>(const SymbolId&) const = default; };
 struct ParameterId { std::uint32_t value = 0; auto operator<=>(const ParameterId&) const = default; };
@@ -88,9 +89,13 @@ struct ConstructExpr { ExprId constructor; ArgumentRange arguments; };
 // proof before being folded into either node.
 struct EmptyArrayExpr {};
 struct EmptyObjectExpr {};
+struct PropertyRange { std::uint32_t first; std::uint32_t count; };
+struct ObjectExpr { PropertyRange properties; };
+// Computed string data property, never a colon-style __proto__ setter or method.
+struct DataProperty { NameId key; ExprId value; TreeOriginId origin; };
 using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
-                                    CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr>;
+                                    CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct BlockStmt { ScopeId scope; std::uint32_t first_child; std::uint32_t child_count; };
 struct DeclarationStmt { SymbolId symbol; std::optional<ExprId> initializer; };
@@ -141,7 +146,7 @@ using AnchorPosition = std::variant<BlockBoundary, FunctionExit>;
 struct TreeAnchor { AnchorPosition position; TreeOriginId origin; };
 struct OpPlacement {
   analysis::OpId operation;
-  std::variant<ExprId, StmtId, AnchorId> node;
+  std::variant<ExprId, StmtId, AnchorId, PropertyId> node;
 };
 // Prologue operations moved to complete formal syntax, not body instructions.
 // This side table requires a default-signature proof before publication.
@@ -168,6 +173,7 @@ struct FunctionTree {
   std::vector<std::u16string> names;
   std::vector<std::u16string> texts;
   std::vector<ExprNode> expressions;
+  std::vector<DataProperty> properties;
   std::vector<ExprId> arguments;
   std::vector<StmtNode> statements;
   std::vector<StmtId> children;

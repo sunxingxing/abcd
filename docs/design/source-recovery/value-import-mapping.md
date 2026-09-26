@@ -59,10 +59,10 @@ The printer uses `[]` and parenthesized `({})`, so an unused object expression
 cannot accidentally become an empty statement block. This admission depends on
 the existing source contract excluding VM resource-exhaustion differences.
 
-No buffered entries or subsequent writes are folded into these empty nodes.
-T07 still requires LiteralPlan for own-property descriptors, computed key
-conversion, prototype behavior, array holes/length, escape and initialization
-order; named assignment must not stand in for own-define semantics.
+Buffered entries are not folded into these empty nodes. The initial LiteralPlan
+domain can instead emit an ObjectExpr with ordered computed string data keys.
+Computed operand conversion, array holes/length and broader initialization remain
+pending; named assignment must not stand in for own-define semantics.
 
 OwnWrite now imports as ValueOwnWrite, distinct from ValueNamedWrite. Both
 STOWNBYNAME widths retain their IC slot, name pool index and own-store kind;
@@ -77,9 +77,9 @@ Pinned provenance: existing LiftOwnWrite and the locked v7 interpreter handlers
 in `ecmascript/interpreter/interpreter-inl.cpp` route own-store through UseOwn
 and StOwnByName, and field/property definition through SlowRuntimeStub::DefineField.
 Those distinctions are deliberately not flattened by source evaluation:
-ValueOwnWrite remains an explicit unsupported operation there pending LiteralPlan
-and independent descriptor/escape/identity/initialization proof. Import success
-is not source success. This adds no graph traversal, alias approximation or
+ValueOwnWrite is admitted only through the freshly checked LiteralPlan domain
+described in `literal-initialization.md`; all other receivers/initializers refuse.
+Import success is not source success. Import adds no graph traversal, alias approximation or
 quadratic per-object scan; import and correspondence retain their existing bound.
 
 Inputs remain borrowed only during import. Output graph, correspondence and

@@ -23,6 +23,8 @@ struct ExpressionForest {
   BindingPlan bindings;
   CallPlan calls;
   std::vector<ExprNode> expressions;
+  std::vector<DataProperty> properties;
+  std::vector<std::optional<PropertyId>> initializers;
   std::vector<ExprId> arguments;
   std::vector<TreeOrigin> origins;
   std::vector<TreeOriginId> origin_parts;

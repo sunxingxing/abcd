@@ -79,6 +79,7 @@ class TreeBuilder {
     tree_.names = std::move(syntax_.names);
     tree_.texts = std::move(syntax_.texts);
     tree_.expressions = std::move(forest_.expressions);
+    tree_.properties = std::move(forest_.properties);
     tree_.arguments = std::move(forest_.arguments);
     tree_.origins = std::move(forest_.origins);
     tree_.origin_parts = std::move(forest_.origin_parts);
@@ -342,6 +343,11 @@ class TreeBuilder {
       if (op.life != analysis::ValueLife::kLive) continue;
       const TreeOriginId origin{op.origin.value};
       const auto expression = forest_.operations[id.value];
+      if (evaluation.kind == EvaluationKind::kInitializer) {
+        Require(forest_.initializers[id.value].has_value(), Error::kOwnership);
+        tree_.operations.push_back({id, *forest_.initializers[id.value]});
+        continue;
+      }
       if (std::holds_alternative<analysis::ValueJump>(op.operation)) {
         const AnchorId anchor{static_cast<std::uint32_t>(tree_.anchors.size())};
         tree_.anchors.push_back({BlockBoundary{drafts_[draft].statement, drafts_[draft].count}, origin});

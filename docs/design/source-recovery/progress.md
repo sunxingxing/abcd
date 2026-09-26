@@ -9,8 +9,9 @@ Latest state: T05 now integrates compact natural loops into checked control
 regions, owned loop AST/printer syntax, independent target/scope/sequence checks,
 edge-copy placement and once-only MethodEntry phi initialization. New loop and
 entry provenance is typed and does not invent PCs. T07's fresh empty object/array
-allocation slice is integrated; buffered literals, own-defines and captures are
-not yet admitted. Source rules are 17. Real
+allocation slice and proved fresh named object initialization are integrated;
+buffered literals, broader own-defines and captures are not yet admitted.
+Source rules are 18. Real
 loop-method acceptance and behavioral verification remain outstanding. T03's G1
 method slices and T04's G2 slice have prior source evidence, not whole-record
 completion. Whole-record integration and test acceptance remain pending.
@@ -88,6 +89,31 @@ No source/behavior/corpus completion follows from this internal proof alone.
 Production `abc_semantic` and `abc_structure` builds exited 0 after this change;
 whitespace validation passed. Test sources remain uncompiled/unrun and RSS
 measurements remain paused.
+
+### T07 Object AST Integration
+
+Evaluation now consumes and independently checks LiteralPlan, with a distinct
+initializer placement. Allocation and pre-allocation RHS producers are pinned;
+getter/call results cannot silently move into initializers. A typed property
+arena preserves every ordered data definition, including duplicate names and
+computed `__proto__` keys. Independent AST checks cover actual ownership, order,
+origins, keys and snapshot identities. Printer events map each PropertyId to its
+own byte range; inspection output includes those events. No CFG, SSA or scope
+rewrite is introduced by this source representation. Rules advance to 18.
+
+Added regression sources cover 1/2/200/201 properties, missing proof, incorrect
+placement/origin, shared syntax and pinned RHS producer mutations. They remain
+uncompiled/unrun; no behavioral, full-corpus or RSS acceptance is claimed.
+Buffered/late-RHS/cross-block/escaped initialization and capture recovery remain
+pending, as does overall T07 acceptance.
+
+Production `abc_semantic` and `abc_structure` builds exited 0; whitespace
+validation passed. ABC-only G2 inspection (pasteboard 7559, record 6897) reports
+rules 18, Printed/complete METHOD, range [2638,2924), 286 bytes. CLI exits 1
+because the record remains incomplete. This existing scalar method is not new
+object-initializer coverage. Added class-context fixture source describes the
+ABC-to-property printer range/PC and segment transport checks but remains
+uncompiled/unrun with the other regression specifications.
 
 ## T00
 

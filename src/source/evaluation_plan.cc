@@ -37,6 +37,35 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
           std::holds_alternative<analysis::PhiDefinition>(value.origin);
     }
     EvaluationPlan plan{graph.revision, graph.cfg_revision, {}};
+    admit(graph.ops.size(), sizeof(std::uint8_t)); step(graph.ops.size());
+    std::vector<std::uint8_t> pinned(graph.ops.size());
+    admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
+    bool has_definitions = false;
+    for (const auto& op : graph.ops) {
+      step(); has_definitions |= op.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::ValueOwnWrite>(op.operation);
+    }
+    if (has_definitions) {
+      auto built = BuildLiteralPlan(graph, {bytes, work});
+      const auto* error = std::get_if<LiteralError>(&built);
+      if (error) {
+        if (*error == LiteralError::kResourceLimit) return Error::kResourceLimit;
+        if (*error == LiteralError::kWorkLimit) return Error::kWorkLimit;
+        return Error::kUnsupportedOperation;
+      }
+      plan.literals = std::get<LiteralPlan>(std::move(built));
+      admit(plan.literals->allocated_bytes, 1); step(plan.literals->work);
+      for (const auto& object : plan.literals->objects) {
+        step(); pinned[object.allocation.value] = 1;
+      }
+      for (const auto id : plan.literals->definitions) {
+        step();
+        const auto& rhs = graph.uses[graph.ops[id.value].first_use.value + 1].operand;
+        if (const auto* value = std::get_if<analysis::ValueId>(&rhs))
+          if (const auto* result = std::get_if<analysis::OpResult>(&graph.values[value->value].origin))
+            pinned[result->op.value] = 1;
+      }
+    }
     if (has_phi) {
       auto copies = BuildPhiCopies(graph, {bytes, work});
       auto* phis = std::get_if<PhiCopies>(&copies);
@@ -74,6 +103,11 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
         Require(op.use_count == shape->Count() && shape->expression == op.result.has_value(),
                 Error::kInvalidGraph);
         auto& placement = plan.operations[index];
+        if (std::holds_alternative<analysis::ValueOwnWrite>(op.operation)) {
+          Require(plan.literals.has_value(), Error::kUnsupportedOperation);
+          placement.kind = EvaluationKind::kInitializer;
+          continue;
+        }
         placement.kind = EvaluationKind::kRoot;
         if (op.result && graph.values[op.result->value].first_use) {
           const auto use = *graph.values[op.result->value].first_use;
@@ -105,6 +139,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
           const auto& definition = graph.values[value->value];
           const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
           if (!result || definition.first_use != use || occurrence.next) continue;
+          if (pinned[result->op.value]) continue;
           if (PredicateSnapshot(graph, op, occurrence.operand)) continue;
           const auto& producer = graph.ops[result->op.value];
           if (producer.block != op.block) continue;
@@ -128,7 +163,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     if (const auto* error = std::get_if<EvaluationError>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = plan.operations.capacity() * sizeof(OpEvaluation) +
-        (plan.phis ? plan.phis->allocated_bytes : 0);
+        (plan.phis ? plan.phis->allocated_bytes : 0) +
+        (plan.literals ? plan.literals->allocated_bytes : 0);
     plan.work = budget.work - work;
     return plan;
   } catch (Error error) { return error;

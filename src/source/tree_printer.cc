@@ -26,8 +26,11 @@ struct Indent { std::size_t depth; };
 struct PropertyKey { NameId id; };
 struct SymbolName { SymbolId id; };
 struct ArgumentCursor { ArgumentRange range; std::uint32_t index; };
+struct ObjectCursor { PropertyRange range; std::uint32_t index; };
+struct EndProperty { PropertyId id; };
 using PrintAction = std::variant<std::string_view, ExprId, EndExpression,
-    Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor>;
+    Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
+    ObjectCursor, EndProperty>;
 struct LocatedAnchor { BlockBoundary boundary; AnchorId id; };
 
 class TreePrinter {
@@ -46,6 +49,7 @@ class TreePrinter {
     result_.cfg_revision = tree_.cfg_revision;
     Array(result_.parameters, tree_.parameters.size());
     Array(result_.expressions, tree_.expressions.size());
+    Array(result_.properties, tree_.properties.size());
     Array(result_.statements, tree_.statements.size());
     Array(result_.anchors, tree_.anchors.size());
     PrepareAnchors();
@@ -267,6 +271,20 @@ class TreePrinter {
   }
   void Expression(EmptyArrayExpr) { Append("[]"); }
   void Expression(EmptyObjectExpr) { Append("({})"); }
+  void Expression(ObjectExpr node) {
+    Append("({"); Push(std::string_view("})")); Push(ObjectCursor{node.properties, 0});
+  }
+  void Run(ObjectCursor cursor) {
+    if (cursor.index == cursor.range.count) return;
+    if (cursor.index != 0) Append(", ");
+    const PropertyId id{cursor.range.first + cursor.index};
+    const auto& property = tree_.properties[id.value];
+    result_.properties[id.value].begin = result_.bytes;
+    Append("["); Quoted(tree_.names[property.key.value]); Append("]: ");
+    Push(ObjectCursor{cursor.range, cursor.index + 1});
+    Push(EndProperty{id}); Push(property.value);
+  }
+  void Run(EndProperty property) { result_.properties[property.id.value].end = result_.bytes; }
   void Run(ArgumentCursor cursor) {
     if (cursor.index == cursor.range.count) return;
     if (cursor.index != 0) Append(", ");

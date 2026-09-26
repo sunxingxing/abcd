@@ -25,7 +25,8 @@ static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);
 void Check(bool condition) { if (!condition) std::abort(); }
 enum class DefaultEncoding { kNone, kInteger, kNegation };
-void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false) {
+void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
+         bool object_initializer = false) {
   const bool defaults = encoding != DefaultEncoding::kNone;
   constexpr std::uint32_t kPool = 64, kOwner = 80, kLiteral = 128, kCaller = 256,
       kConstructor = 300, kMember = 350, kCallerCode = 400, kMemberCode = 430, kName = 500;
@@ -76,6 +77,15 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     constexpr std::uint8_t kReadGlobal = 0x3f, kTypeof = 0x1c, kGlobalBodyBytes = 7;
     member = {0, 4, kGlobalBodyBytes, 0, kReadGlobal, 0, 2, 0, kTypeof, 0, kReturn};
   }
+  if (object_initializer) {
+    // Pinned v7 ISA: createemptyobject; sta; lda; definefieldbyname; lda; return.
+    constexpr std::uint8_t kEmptyObject = 0x04, kDefineField = 0xdb,
+        kObjectBodyBytes = 13, kObjectRegister = 0, kObjectParameter = 4,
+        kNamePoolIndex = 2;
+    member = {1, 4, kObjectBodyBytes, 0, kEmptyObject, kStore, kObjectRegister,
+        kLoad, kObjectParameter, kDefineField, 0, kNamePoolIndex, 0,
+        kObjectRegister, kLoad, kObjectRegister, kReturn};
+  }
   std::copy(caller.begin(), caller.end(), bytes.begin() + kCallerCode);
   std::copy(member.begin(), member.end(), bytes.begin() + kMemberCode);
   char path[] = "/tmp/abcd-class-tree-context-XXXXXX";
@@ -99,7 +109,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   index.methods[0].code = abc::CodeInfo{{kCallerCode}, {kCallerCode + 4}, 1, 0, 10, 0};
   index.methods[1].offset = {kConstructor};
   index.methods[2].offset = {kMember};
-  index.methods[2].code = abc::CodeInfo{{kMemberCode}, {kMemberCode + 4}, 0, 4,
+  index.methods[2].code = abc::CodeInfo{{kMemberCode}, {kMemberCode + 4}, member[0], 4,
                                       member[kCodeSizeOffset], 0};
   index.methods[2].name = "run";
   index.methods[2].name_utf16_length = 3;
@@ -176,6 +186,17 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     Check(origin && origin->pc.value < join);
   }
   Check(printed.expressions.size() == function.Tree().expressions.size());
+  Check(printed.properties.size() == function.Tree().properties.size());
+  if (object_initializer) {
+    Check(printed.properties.size() == 1);
+    const auto property = printed.properties[0];
+    Check(property.begin < property.end && property.end <= printed.bytes);
+    Check(output.view().substr(property.begin, property.end - property.begin) == "[\"run\"]: $arg0");
+    const auto origin = function.Tree().properties[0].origin;
+    const auto* site = std::get_if<OriginalSite>(&function.Tree().origins[origin.value]);
+    constexpr std::uint32_t kDefinitionPc = 5;
+    Check(site && site->pc.value == kDefinitionPc);
+  }
   Check(printed.statements.size() == function.Tree().statements.size());
   for (const auto range : printed.expressions)
     Check(range.begin < range.end && range.end <= printed.bytes);
@@ -209,6 +230,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   Check(!emission.Receipt().legacy_writer_used && !ValidateRouteReceipt(emission.Receipt()));
   Check(emission.Function().Abi().parameters[0].reads.references == 1);
   Check(emission.Positions().parameters == printed.parameters);
+  Check(emission.Positions().properties == printed.properties);
   for (const auto span : emission.Positions().expressions) {
     const auto begin = emission.Destination().begin + span.begin;
     const auto end = emission.Destination().begin + span.end;
@@ -246,4 +268,5 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 int main() {
   Run(); Run(DefaultEncoding::kInteger); Run(DefaultEncoding::kNegation);
   Run(DefaultEncoding::kNone, true);
+  Run(DefaultEncoding::kNone, false, true);
 }

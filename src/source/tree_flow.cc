@@ -24,6 +24,7 @@ class FlowCheck {
     budget.Array(placements_, graph.ops.size());
     budget.Array(flow_.expressions, graph.ops.size());
     budget.Array(flow_.statements, graph.ops.size());
+    budget.Array(flow_.initializers, graph.ops.size());
     budget.Array(flow_.snapshots, graph.ops.size());
     budget.Array(assigned_, tree.symbols.size());
     budget.Array(declared_, tree.symbols.size());
@@ -60,7 +61,8 @@ class FlowCheck {
           const analysis::OpId id{source.first_op.value + i};
           const auto& op = graph_.ops[id.value];
           if (op.life != analysis::ValueLife::kLive ||
-              evaluation_.operations[id.value].kind == EvaluationKind::kInline) continue;
+              evaluation_.operations[id.value].kind == EvaluationKind::kInline ||
+              evaluation_.operations[id.value].kind == EvaluationKind::kInitializer) continue;
           const auto& placement = tree_.operations[*placements_[id.value]].node;
           if (std::holds_alternative<analysis::ValueJump>(op.operation)) {
             const auto* anchor = std::get_if<AnchorId>(&placement);
@@ -108,6 +110,7 @@ class FlowCheck {
       Require(child == block.child_count, Error::kSequence);
     }
     edges_->Finish();
+    Objects();
     for (std::size_t i = 0; i < tree_.symbols.size(); ++i) {
       budget_.Step();
       const auto& symbol = tree_.symbols[i];
@@ -123,6 +126,25 @@ class FlowCheck {
   }
 
  private:
+  void Objects() {
+    if (!evaluation_.literals) { Require(tree_.properties.empty(), Error::kPlacement); return; }
+    std::size_t count = 0;
+    for (const auto& object : evaluation_.literals->objects) {
+      budget_.Step();
+      const auto expression = flow_.expressions[object.allocation.value];
+      Require(expression.has_value(), Error::kPlacement);
+      const auto* syntax = std::get_if<ObjectExpr>(&tree_.expressions[expression->value].expression);
+      Require(syntax && syntax->properties.count == object.count, Error::kPlacement);
+      for (std::uint32_t i = 0; i < object.count; ++i) {
+        budget_.Step(); ++count;
+        const auto id = evaluation_.literals->definitions[object.first + i];
+        Require(flow_.initializers[id.value] == PropertyId{syntax->properties.first + i}, Error::kPlacement);
+        const auto& property = tree_.properties[syntax->properties.first + i];
+        Require(property.origin.value == graph_.ops[id.value].origin.value, Error::kPlacement);
+      }
+    }
+    Require(count == tree_.properties.size(), Error::kPlacement);
+  }
   void Loop(ControlId id, const BlockStmt& block, std::uint32_t& child,
       std::size_t& pending) {
     Require(child < block.child_count, Error::kSequence);
@@ -210,7 +232,12 @@ class FlowCheck {
       if (op.life != analysis::ValueLife::kLive) continue;
       Require(placements_[i].has_value(), Error::kPlacement);
       const auto& placement = tree_.operations[*placements_[i]].node;
-      if (std::holds_alternative<analysis::ValueBranch>(op.operation) ||
+      if (std::holds_alternative<analysis::ValueOwnWrite>(op.operation)) {
+        const auto* property = std::get_if<PropertyId>(&placement);
+        Require(property != nullptr, Error::kPlacement);
+        flow_.initializers[i] = *property;
+        flow_.expressions[i] = tree_.properties[property->value].value;
+      } else if (std::holds_alternative<analysis::ValueBranch>(op.operation) ||
           std::holds_alternative<analysis::ValueReturn>(op.operation)) {
         Require(std::holds_alternative<StmtId>(placement), Error::kPlacement);
       } else if (std::holds_alternative<analysis::ValueJump>(op.operation)) {

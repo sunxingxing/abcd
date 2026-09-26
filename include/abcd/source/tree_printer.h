@@ -28,10 +28,11 @@ struct PrintedFunction {
   // excluding separators. Signature migration maps to these events, not to a
   // body-wide range or a search for matching generated text.
   std::vector<GeneratedRange> parameters;
-  // Indexed by the same immutable tree's ExprId/StmtId/AnchorId. Combine these
+  // Indexed by the same immutable tree's ExprId/PropertyId/StmtId/AnchorId. Combine these
   // event ranges with its origin DAG, never reparse JS to recover provenance.
   // Ranges are half-open UTF-8 byte coordinates relative to this fragment.
   std::vector<GeneratedRange> expressions;
+  std::vector<GeneratedRange> properties;
   std::vector<GeneratedRange> statements;
   std::vector<std::size_t> anchors;
   std::size_t allocated_bytes = 0;

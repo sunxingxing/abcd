@@ -59,6 +59,8 @@ void CheckTreeOrigins(const FunctionTree& tree, TreeCheckBudget& budget) {
         RequireTree(node.value < tree.expressions.size(), Error::kRange);
       else if constexpr (std::is_same_v<T, StmtId>)
         RequireTree(node.value < tree.statements.size(), Error::kRange);
+      else if constexpr (std::is_same_v<T, PropertyId>)
+        RequireTree(node.value < tree.properties.size(), Error::kRange);
       else {
         static_assert(std::is_same_v<T, AnchorId>);
         RequireTree(node.value < anchors.size() && !anchors[node.value], Error::kOwnership);

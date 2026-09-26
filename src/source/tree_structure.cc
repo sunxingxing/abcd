@@ -62,6 +62,7 @@ class StructureCheck {
     budget.Array(statements_, tree.statements.size());
     budget.Array(children_, tree.children.size());
     budget.Array(arguments_, tree.arguments.size());
+    budget.Array(properties_, tree.properties.size());
     RequireTree(tree.expressions.size() <= std::numeric_limits<std::size_t>::max() - tree.statements.size(),
                 Error::kResourceLimit);
     budget.Array(stack_, tree.expressions.size() + tree.statements.size());
@@ -118,6 +119,7 @@ class StructureCheck {
     for (const auto seen : statements_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
     for (const auto seen : children_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
     for (const auto seen : arguments_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
+    for (const auto seen : properties_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
     return maximum_depth;
   }
 
@@ -167,6 +169,9 @@ class StructureCheck {
             RequireTree(expression.callee.value < tree_.expressions.size() &&
                 std::holds_alternative<MemberExpr>(tree_.expressions[expression.callee.value].expression), Error::kUnsupportedSyntax);
         }
+      } else if constexpr (std::is_same_v<T, ObjectExpr>) {
+        RequireTree(expression.properties.first <= tree_.properties.size() &&
+            expression.properties.count <= tree_.properties.size() - expression.properties.first, Error::kRange);
       } else if constexpr (std::is_same_v<T, EmptyArrayExpr> || std::is_same_v<T, EmptyObjectExpr>) {
         // Each allocation occurrence has unique syntax ownership. Identity and
         // execution order are proved separately against its Value IR operation.
@@ -231,6 +236,14 @@ class StructureCheck {
     };
     if (const auto* expression = std::get_if<ExprId>(&frame.node)) {
       const auto& syntax = tree_.expressions[expression->value].expression;
+      if (const auto* object = std::get_if<ObjectExpr>(&syntax)) {
+        if (frame.next_child == object->properties.count) return {};
+        const auto slot = object->properties.first + frame.next_child++;
+        const auto& property = tree_.properties[slot];
+        RequireTree(!properties_[slot], Error::kOwnership); properties_[slot] = 1;
+        RequireTree(property.key.value < tree_.names.size() && property.origin.value < tree_.origins.size(), Error::kRange);
+        return property.value;
+      }
       if (const auto* call = std::get_if<CallExpr>(&syntax))
         return NextCall(frame, call->callee, call->arguments);
       if (const auto* construct = std::get_if<ConstructExpr>(&syntax))
@@ -249,7 +262,7 @@ class StructureCheck {
                         std::is_same_v<T, GlobalNameExpr> ||
                         std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
                         std::is_same_v<T, ConstructExpr> || std::is_same_v<T, EmptyArrayExpr> ||
-                        std::is_same_v<T, EmptyObjectExpr>);
+                        std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr>);
         }
       }, tree_.expressions[expression->value].expression);
     } else {
@@ -297,6 +310,7 @@ class StructureCheck {
   std::vector<std::uint8_t> statements_;
   std::vector<std::uint8_t> children_;
   std::vector<std::uint8_t> arguments_;
+  std::vector<std::uint8_t> properties_;
   std::vector<SyntaxFrame> stack_;
 };
 }  // namespace
@@ -317,7 +331,7 @@ std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
                 tree.names.size() <= kMaxId && tree.texts.size() <= kMaxId &&
                 tree.origins.size() <= kMaxId && tree.origin_parts.size() <= kMaxId &&
                 tree.anchors.size() <= kMaxId && tree.children.size() <= kMaxId &&
-                tree.arguments.size() <= kMaxId, Error::kResourceLimit);
+                tree.arguments.size() <= kMaxId && tree.properties.size() <= kMaxId, Error::kResourceLimit);
     const auto maximum_depth = StructureCheck(tree, checked).Run();
     CheckTreeOrigins(tree, checked);
     return TreeStructure{tree.value_revision, tree.cfg_revision, maximum_depth, checked.Bytes(), checked.Work()};

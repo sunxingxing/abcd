@@ -69,6 +69,16 @@ class ForestBuilder {
     Reserve(forest_.origin_parts, graph_.ops.size() * kOriginPartsPerOperation);
     Reserve(forest_.operations, graph_.ops.size());
     forest_.operations.resize(graph_.ops.size());
+    Reserve(forest_.initializers, graph_.ops.size());
+    Reserve(objects_, graph_.ops.size());
+    Step(graph_.ops.size()); Step(graph_.ops.size());
+    forest_.initializers.resize(graph_.ops.size()); objects_.resize(graph_.ops.size());
+    if (evaluation_.literals) {
+      Reserve(forest_.properties, evaluation_.literals->definitions.size());
+      for (std::size_t i = 0; i < evaluation_.literals->objects.size(); ++i) {
+        Step(); objects_[evaluation_.literals->objects[i].allocation.value] = i;
+      }
+    }
     for (const auto& origin : graph_.origins) {
       Step();
       Require(origin.disposition != analysis::OriginDisposition::kCombined, Error::kOrigin);
@@ -85,6 +95,11 @@ class ForestBuilder {
               graph_.origins[op.origin.value].disposition == analysis::OriginDisposition::kRetained,
               Error::kOrigin);
       const TreeOriginId origin{op.origin.value};
+      if (evaluation_.operations[i].kind == EvaluationKind::kInitializer) continue;
+      if (objects_[i]) {
+        forest_.operations[i] = Object(evaluation_.literals->objects[*objects_[i]], origin);
+        continue;
+      }
       if (!std::holds_alternative<NoCall>(forest_.calls.operations[i])) {
         forest_.operations[i] = Call(op, forest_.calls.operations[i], origin);
         continue;
@@ -104,6 +119,23 @@ class ForestBuilder {
   }
 
  private:
+  ExprId Object(const ObjectInit& object, TreeOriginId origin) {
+    const PropertyRange range{static_cast<std::uint32_t>(forest_.properties.size()), object.count};
+    for (std::uint32_t i = 0; i < object.count; ++i) {
+      Step();
+      const auto id = evaluation_.literals->definitions[object.first + i];
+      const auto& op = graph_.ops[id.value];
+      const auto* name = std::get_if<NameId>(&constants_.operations[id.value]);
+      Require(name && name->value < constants_.name_count, Error::kConstant);
+      const TreeOriginId field_origin{op.origin.value};
+      const auto value = Operand(graph_.uses[op.first_use.value + 1].operand, field_origin);
+      Require(forest_.properties.size() < forest_.properties.capacity(), Error::kResourceLimit);
+      const PropertyId property{static_cast<std::uint32_t>(forest_.properties.size())};
+      forest_.properties.push_back({*name, value, field_origin});
+      forest_.initializers[id.value] = property; forest_.operations[id.value] = value;
+    }
+    return Add(ObjectExpr{range}, origin);
+  }
   SymbolId CycleSymbol(std::uint32_t bundle, CopyTempId temporary) {
     Require(bundle < forest_.bindings.cycle_bases.size(), Error::kBinding);
     const auto base = forest_.bindings.cycle_bases[bundle];
@@ -356,6 +388,7 @@ class ForestBuilder {
   std::size_t bytes_;
   std::uint64_t work_;
   ExpressionForest forest_;
+  std::vector<std::optional<std::size_t>> objects_;
 };
 }  // namespace
 

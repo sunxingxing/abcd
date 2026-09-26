@@ -30,6 +30,34 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
     step(graph.uses.size()); step(graph.uses.size()); step(graph.uses.size());
     if (const auto error = analysis::VerifyValueUses(graph, graph.uses.size()))
       return *error == analysis::ValueGraphError::kResourceLimit ? Error::kResourceLimit : Error::kInvalidGraph;
+    admit(graph.ops.size(), sizeof(std::uint8_t)); step(graph.ops.size());
+    std::vector<std::uint8_t> pinned(graph.ops.size());
+    admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
+    bool has_definitions = false;
+    for (const auto& op : graph.ops) {
+      step(); has_definitions |= op.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::ValueOwnWrite>(op.operation);
+    }
+    Require(has_definitions == plan.literals.has_value(), Error::kOwnership);
+    if (plan.literals) {
+      const auto checked = VerifyLiteralPlan(graph, *plan.literals, {bytes, work});
+      if (const auto* error = std::get_if<LiteralError>(&checked)) {
+        if (*error == LiteralError::kResourceLimit) return Error::kResourceLimit;
+        if (*error == LiteralError::kWorkLimit) return Error::kWorkLimit;
+        return Error::kUnsupportedOperation;
+      }
+      step(std::get<std::uint64_t>(checked));
+      for (const auto& object : plan.literals->objects) {
+        step(); pinned[object.allocation.value] = 1;
+      }
+      for (const auto id : plan.literals->definitions) {
+        step();
+        const auto& rhs = graph.uses[graph.ops[id.value].first_use.value + 1].operand;
+        if (const auto* value = std::get_if<analysis::ValueId>(&rhs))
+          if (const auto* result = std::get_if<analysis::OpResult>(&graph.values[value->value].origin))
+            pinned[result->op.value] = 1;
+      }
+    }
     bool has_phi = false;
     for (const auto& value : graph.values) {
       step();
@@ -64,7 +92,15 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
       const auto shape = DescribeEvaluation(op.operation);
       Require(shape.has_value(), Error::kUnsupportedOperation);
       Require(shape->Count() == op.use_count && shape->expression == op.result.has_value(), Error::kInvalidGraph);
-      if (placement.kind == EvaluationKind::kInline) {
+      if (std::holds_alternative<analysis::ValueOwnWrite>(op.operation)) {
+        // Fresh LiteralPlan proved these definitions unobservable until complete.
+        // They execute in object syntax, not as ordinary ordered heap writes;
+        // producer snapshots remain pinned before allocation, never duplicated.
+        Require(plan.literals && placement.kind == EvaluationKind::kInitializer &&
+            !placement.consumer && !placement.temporary, Error::kOwnership);
+        visits[i] = EvaluationVisit::kDone;
+      } else if (placement.kind == EvaluationKind::kInline) {
+        Require(!pinned[i], Error::kOwnership);
         Require(op.result && placement.consumer && !placement.temporary, Error::kOwnership);
         const auto& value = graph.values[op.result->value];
         Require(value.first_use == placement.consumer && placement.consumer->value < graph.uses.size(), Error::kOwnership);
@@ -104,6 +140,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
       auto expected = next_op;
       const auto skip_pure = [&] {
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
+                                  plan.operations[expected].kind == EvaluationKind::kInitializer ||
                                   !OrderedEvaluation(graph.ops[expected]))) { step(); ++expected; }
       };
       for (auto i = next_op; i < end; ++i) {

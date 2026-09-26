@@ -22,6 +22,7 @@ struct TreeFlow {
   // from actual assignment targets, never from regenerated binding decisions.
   std::vector<std::optional<ExprId>> expressions;
   std::vector<std::optional<StmtId>> statements;
+  std::vector<std::optional<PropertyId>> initializers;
   std::vector<std::optional<SymbolId>> snapshots;
   // Actual assignment targets, not regenerated BindingPlan identities.
   std::vector<std::optional<SymbolId>> phis;

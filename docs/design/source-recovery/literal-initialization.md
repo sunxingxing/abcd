@@ -52,23 +52,31 @@ grant; checker invocation does not reset the allowance. Reported retained bytes
 are not whole-process peak RSS. Tests for 200/201/geometric growth and exact work
 limits are written but uncompiled/unrun during the testing pause.
 
-## Mandatory Source Integration
+## Source Integration
 
-LiteralPlan currently has no source-publication caller. ValueOwnWrite remains
-refused by source evaluation until all of the following are connected:
+Source rules 18 connect this proof to evaluation, the owned AST and printing:
 
-1. Build a typed property arena and object expression. Use computed string keys
+1. A typed property arena and object expression use computed string keys
    for data definitions, including `__proto__`; never colon-style prototype
    setters, ambient Object.defineProperty, or normal [[Set]] as a substitute.
-2. Preserve RHS snapshots that dominate allocation. Do not inline/move a getter,
+2. Evaluation pins RHS snapshots that dominate allocation. Do not inline/move a getter,
    call, closure creation, or function-name inference into a property initializer
    merely because the property's raw ValueId is available.
-3. Extend evaluation/effect verification with explicit ownership of the proved
-   definitions; ordinary effect-order checking must not silently skip operations.
-4. Have independent TreeFlow/operand checks verify actual property order, keys,
+3. Evaluation/effect verification uses an explicit initializer placement and
+   freshly verifies the supplied LiteralPlan before relocating definitions.
+4. Independent TreeFlow/operand checks verify actual property order, keys,
    RHS identity and one allocation, consuming the same freshly checked plan.
-5. Carry allocation and each definition's original site to emitted positions.
-   No success receipt until the frozen tree and output range checks close.
+5. Allocation expressions and individual property nodes carry original sites
+   to separate printer position events. No generated-text provenance inference.
+   Success still requires the frozen tree and publication checks to close.
+
+The property arena has unique syntax ownership; missing, repeated or orphaned
+properties refuse. Definition OpIds map to PropertyIds, not fabricated statement
+positions. The CFG, SSA values, block ownership and scope identities are unchanged.
+Source regression specifications cover duplicate `__proto__` keys, 200/201
+properties, reordered origins, shared syntax and forbidden RHS inlining. They
+remain uncompiled/unrun under the testing pause; integration is not behavioral
+or real-corpus acceptance.
 
 Buffered objects, arrays with holes/length, computed keys, later-produced RHS,
 cross-block initialization, escaped receivers, prototype/descriptor mutation,

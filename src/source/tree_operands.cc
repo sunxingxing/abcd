@@ -61,6 +61,16 @@ class OperandCheck {
           const auto* key = std::get_if<ComputedKey>(&member.key);
           RequireMeaning(key != nullptr, Error::kOperator);
           Input(input(0), member.base); Input(input(1), key->expression);
+        } else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
+          RequireMeaning(flow_.initializers[i].has_value(), Error::kOperand);
+          const auto& property = tree_.properties[flow_.initializers[i]->value];
+          const auto* name = std::get_if<NameId>(&constants_.operations[i]);
+          RequireMeaning(name && name->value < constants_.name_count && property.key == *name, Error::kConstant);
+          // LiteralPlan proved the receiver's allocation; only its stored value
+          // appears in syntax, always as a pre-allocation snapshot or leaf.
+          const auto previous = edge_input_; edge_input_ = true;
+          Input(input(1), property.value);
+          edge_input_ = previous;
         } else if constexpr (std::is_same_v<T, analysis::ValueString>) {
           const auto* text = std::get_if<TextId>(&constants_.operations[i]);
           RequireMeaning(text && text->value < constants_.text_count, Error::kConstant);
@@ -92,10 +102,10 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>) {
           static_cast<void>(Node<EmptyArrayExpr>(expression));
         } else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
-          static_cast<void>(Node<EmptyObjectExpr>(expression));
+          RequireMeaning(std::holds_alternative<EmptyObjectExpr>(tree_.expressions[expression.value].expression) ||
+              std::holds_alternative<ObjectExpr>(tree_.expressions[expression.value].expression), Error::kOperator);
         } else {
           static_assert(std::is_same_v<T, analysis::ValueGuard> ||
-                        std::is_same_v<T, analysis::ValueOwnWrite> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueJump>);
           throw Error::kUnsupportedOperation;
         }

@@ -169,6 +169,7 @@ void Positions(std::ostream& output, const FunctionTree& tree, const PrintedFunc
     output << ']';
   };
   nodes("expressions", tree.expressions, printed.expressions);
+  nodes("properties", tree.properties, printed.properties);
   nodes("statements", tree.statements, printed.statements);
   output << ",\"anchors\":[";
   for (std::size_t i = 0; i < tree.anchors.size(); ++i) {
@@ -186,7 +187,7 @@ void Positions(std::ostream& output, const FunctionTree& tree, const PrintedFunc
     return std::visit([&](auto node) {
       using T = decltype(node);
       constexpr std::string_view kind = std::is_same_v<T, ExprId> ? "expression" :
-          std::is_same_v<T, StmtId> ? "statement" : "anchor";
+          std::is_same_v<T, StmtId> ? "statement" : std::is_same_v<T, PropertyId> ? "property" : "anchor";
       return nlohmann::json{{"operation", operation.operation.value}, {"kind", kind}, {"node", node.value}};
     }, operation.node);
   });
