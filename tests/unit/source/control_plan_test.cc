@@ -63,9 +63,70 @@ void Shapes() {
   const std::array<Targets, 4> cross_entry{{{1, 2}, {2, 3}, {3, {}}, {}}};
   Check(std::get<ControlError>(BuildControlPlan(Graph(cross_entry))) == ControlError::kCrossEntry);
   const std::array<Targets, 2> cycle{{{1, {}}, {0, {}}}};
-  Check(std::get<ControlError>(BuildControlPlan(Graph(cycle))) == ControlError::kCycle);
+  built = BuildControlPlan(Graph(cycle));
+  plan = std::get_if<ControlPlan>(&built);
+  Check(plan && plan->loops.size() == 1 && !plan->loops[0].exit);
   const std::array<Targets, 2> unreachable{{{}, {}}};
   Check(std::get<ControlError>(BuildControlPlan(Graph(unreachable))) == ControlError::kUncoveredBlock);
+}
+void Loops() {
+  const std::array<Targets, 3> targets{{{1, 2}, {0, {}}, {}}};
+  const auto graph = Graph(targets);
+  const auto built = BuildControlPlan(graph);
+  const auto* plan = std::get_if<ControlPlan>(&built);
+  Check(plan && plan->loops.size() == 1 && plan->edges.size() == graph.edges.size());
+  Check(plan->loops[0].exit == analysis::WorkBlockId{2});
+  Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(graph, *plan)));
+  for (std::size_t i = 0; i < plan->nodes.size(); ++i) {
+    if (!std::holds_alternative<LoopTransfer>(plan->nodes[i].synthetic)) continue;
+    auto changed = *plan;
+    auto& transfer = std::get<LoopTransfer>(changed.nodes[i].synthetic);
+    transfer.kind = transfer.kind == LoopTransferKind::kBreak ?
+        LoopTransferKind::kContinue : LoopTransferKind::kBreak;
+    Check(std::holds_alternative<ControlError>(VerifyControlPlan(graph, changed)));
+    changed = *plan;
+    std::get<LoopTransfer>(changed.nodes[i].synthetic).source = LoopId{0};
+    Check(std::holds_alternative<ControlError>(VerifyControlPlan(graph, changed)));
+  }
+  auto changed = *plan;
+  changed.loops[0].body = {1};
+  Check(std::holds_alternative<ControlError>(VerifyControlPlan(graph, changed)));
+  changed = *plan;
+  changed.loops[0].exit = analysis::WorkBlockId{0};
+  Check(std::holds_alternative<ControlError>(VerifyControlPlan(graph, changed)));
+  // Two backedges to the same header must retain separate incoming identities.
+  const std::array<Targets, 1> parallel{{{0, 0}}};
+  const auto parallel_built = BuildControlPlan(Graph(parallel));
+  const auto* parallel_plan = std::get_if<ControlPlan>(&parallel_built);
+  Check(parallel_plan && parallel_plan->nodes[0].arms->taken !=
+      parallel_plan->nodes[0].arms->fallthrough);
+  // Inner-loop exit becomes an outer continue, without duplicating its body.
+  const std::array<Targets, 4> nested{{{1, 3}, {2, 0}, {1, {}}, {}}};
+  const auto nested_graph = Graph(nested);
+  const auto nested_built = BuildControlPlan(nested_graph);
+  const auto* nested_plan = std::get_if<ControlPlan>(&nested_built);
+  Check(nested_plan && nested_plan->loops.size() == 2);
+  Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(nested_graph, *nested_plan)));
+  const std::array<Targets, 4> multi_exit{{{1, 2}, {0, 3}, {}, {}}};
+  Check(std::get<ControlError>(BuildControlPlan(Graph(multi_exit))) == ControlError::kLoopExits);
+  for (const std::uint32_t depth : {1U, 2U, 200U, 201U, 4096U}) {
+    // Each child exits to its parent's latch/header; only the outer loop exits
+    // the function region. Compact ownership must not expand ancestor bodies.
+    std::vector<Targets> nesting(depth + 1);
+    for (std::uint32_t i = 0; i < depth; ++i)
+      nesting[i] = {i + 1 < depth ? i + 1 : i, i == 0 ? depth : i - 1};
+    const auto deep_graph = Graph(nesting);
+    const auto deep_built = BuildControlPlan(deep_graph);
+    const auto* deep = std::get_if<ControlPlan>(&deep_built);
+    Check(deep && deep->loops.size() == depth);
+    Check(deep->nodes.size() <= deep_graph.blocks.size() +
+        deep_graph.edges.size() + 2 * deep->loops.size());
+    analysis::SemanticBudget budget;
+    budget.work = deep->work;
+    Check(std::holds_alternative<ControlPlan>(BuildControlPlan(deep_graph, budget)));
+    --budget.work;
+    Check(std::get<ControlError>(BuildControlPlan(deep_graph, budget)) == ControlError::kWorkLimit);
+  }
 }
 void Scaling() {
   for (const std::uint32_t size : {200U, 201U, 4096U}) {
@@ -100,5 +161,6 @@ int main() {
         TreeStorageError::kWorkLimit);
   Diamond();
   Shapes();
+  Loops();
   Scaling();
 }

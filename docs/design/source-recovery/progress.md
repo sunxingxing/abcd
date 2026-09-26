@@ -5,11 +5,20 @@ was stopped at the user's request; it must not be restarted for this plan.
 Scope remains T00 through T12 in the dependency order from the implementation
 plan. No task scheduler, additional host assumptions or sidecar source inputs.
 
-Latest state: T03's two real G1 method slices reach Printed through the new
-immutable tree/printer/emission route (schema 3, evidence rules 7), with complete
-method receipts and separate incomplete record coverage. Whole-record integration
-and test acceptance remain pending. Sections below retain chronological evidence;
+Latest state: T05 now integrates compact natural loops into checked control
+regions, preserving original edge identities and nested ownership. Loop AST,
+edge-copy placement and once-only MethodEntry initialization remain gated;
+this is not loop source completion. Existing source rules remain 15. T03's G1
+method slices and T04's G2 slice have prior source evidence, not whole-record
+completion. Whole-record integration and test acceptance remain pending.
+Sections below retain chronological evidence;
 earlier rule versions/stages are observations of those earlier implementations.
+
+Current T05 control-layer verification: production targets `abc_semantic` and
+`abc_structure` built successfully after loop-control integration; whitespace
+validation passed. Added control regression sources are neither compiled nor run
+under the test pause. No new ABC source, behavior or RSS evidence is claimed.
+See `loop-discovery.md` for the exact admitted subset and remaining source gate.
 
 ## T00
 

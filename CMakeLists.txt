@@ -219,6 +219,7 @@ target_sources(abcd_source PRIVATE src/source/edge_copies.cc src/source/edge_cop
 target_sources(abcd_source PRIVATE src/source/phi_copies.cc src/source/phi_copy_verify.cc)
 target_sources(abcd_source PRIVATE src/source/tree_edge_flow.cc)
 target_sources(abcd_source PRIVATE src/source/loop_forest.cc)
+target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/tree_constants.cc)
 target_sources(abcd_source PRIVATE src/source/class_tree_context.cc)
 target_sources(abcd_source PRIVATE src/source/verified_function.cc)

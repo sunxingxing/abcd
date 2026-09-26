@@ -6,7 +6,7 @@
 #include <new>
 #include <stdexcept>
 
-#include "loop_forest.h"
+#include "control_skeleton.h"
 
 namespace abcd::source {
 namespace {
@@ -14,32 +14,11 @@ using Error = ControlError;
 void Require(bool condition, Error error) {
   if (!condition) throw error;
 }
-class ControlQuota {
- public:
-  explicit ControlQuota(analysis::SemanticBudget budget) : remaining_(budget) {}
-  void Work(std::size_t count = 1) {
-    Require(count <= remaining_.work, Error::kWorkLimit);
-    remaining_.work -= count;
-  }
-  template <typename T> void Size(std::vector<T>& items, std::size_t count) {
-    Require(count <= remaining_.bytes / sizeof(T), Error::kResourceLimit);
-    remaining_.bytes -= count * sizeof(T);
-    Work(count);
-    items.resize(count);
-    const auto extra = items.capacity() - count;
-    Require(extra <= remaining_.bytes / sizeof(T), Error::kResourceLimit);
-    remaining_.bytes -= extra * sizeof(T);
-  }
-  std::uint64_t RemainingWork() const { return remaining_.work; }
-  analysis::SemanticBudget Remaining() const { return remaining_; }
- private:
-  analysis::SemanticBudget remaining_;
-};
 struct RegionTask { std::uint32_t first; std::uint32_t stop; };
 class ControlBuilder {
  public:
-  ControlBuilder(const analysis::ValueProgram& graph, ControlQuota& quota)
-      : graph_(graph), quota_(quota), exit_(graph.blocks.size()),
+  ControlBuilder(const analysis::ValueProgram& graph, std::span<const ControlId> entries, ControlQuota& quota)
+      : graph_(graph), entries_(entries), quota_(quota), exit_(graph.blocks.size()),
         levels_(std::bit_width(exit_)) {}
   ControlPlan Build() {
     Require(exit_ != 0 && exit_ < std::numeric_limits<std::uint32_t>::max(), Error::kInvalidGraph);
@@ -54,6 +33,8 @@ class ControlBuilder {
     quota_.Size(tasks_, exit_);
     plan_.revision = graph_.revision;
     plan_.cfg_revision = graph_.cfg_revision;
+    Require(!entries_.empty() && entries_.size() <= exit_, Error::kInvalidGraph);
+    plan_.entry = entries_.front();
     quota_.Size(plan_.nodes, exit_);
     quota_.Size(plan_.edges, graph_.edges.size());
     Order();
@@ -95,23 +76,7 @@ class ControlBuilder {
         if (--indegree_[target] == 0) order_[count++] = target;
       }
     }
-    if (count != exit_) {
-      // Discover compact natural-loop ownership before source loop lowering is
-      // enabled. Irreducible SCCs are a different refusal from a supported CFG
-      // whose loop syntax/edge placement is not connected yet. No graph edits.
-      const auto loops = BuildLoopForest(graph_, quota_.Remaining());
-      if (const auto* forest = std::get_if<LoopForest>(&loops)) {
-        quota_.Work(forest->work);
-        throw Error::kCycle;
-      }
-      switch (std::get<LoopError>(loops)) {
-        case LoopError::kInvalidGraph: throw Error::kInvalidGraph;
-        case LoopError::kUnreachable: throw Error::kUncoveredBlock;
-        case LoopError::kIrreducible: throw Error::kIrreducible;
-        case LoopError::kResourceLimit: throw Error::kResourceLimit;
-        case LoopError::kWorkLimit: throw Error::kWorkLimit;
-      }
-    }
+    Require(count == exit_, Error::kCycle);
   }
   std::uint32_t Ancestor(std::uint32_t node, std::size_t level) const {
     return up_[static_cast<std::size_t>(node) * levels_ + level];
@@ -162,8 +127,12 @@ class ControlBuilder {
     }
   }
   void Regions() {
-    std::size_t pending = 1;
-    tasks_[0] = {0, static_cast<std::uint32_t>(exit_)};
+    std::size_t pending = 0;
+    for (const auto entry : entries_) {
+      quota_.Work();
+      Require(entry.value < exit_, Error::kInvalidGraph);
+      tasks_[pending++] = {entry.value, static_cast<std::uint32_t>(exit_)};
+    }
     std::size_t covered = 0;
     while (pending != 0) {
       quota_.Work();
@@ -208,6 +177,7 @@ class ControlBuilder {
     Require(covered == exit_, Error::kUncoveredBlock);
   }
   const analysis::ValueProgram& graph_;
+  std::span<const ControlId> entries_;
   ControlQuota& quota_;
   std::size_t exit_;
   std::size_t levels_;
@@ -218,11 +188,23 @@ class ControlBuilder {
 };
 }  // namespace
 
+ControlPlan BuildControlSkeleton(const analysis::ValueProgram& graph,
+    std::span<const ControlId> entries, ControlQuota& quota) {
+  return ControlBuilder(graph, entries, quota).Build();
+}
+
 std::variant<ControlPlan, ControlError> BuildControlPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget) {
   try {
     ControlQuota quota{budget};
-    auto plan = ControlBuilder(graph, quota).Build();
+    const ControlId entry{0};
+    auto plan = [&] {
+      try { return BuildControlSkeleton(graph, {&entry, 1}, quota); }
+      catch (Error error) {
+        if (error != Error::kCycle) throw;
+        return BuildLoopControl(graph, quota);
+      }
+    }();
     const auto checked = VerifyControlPlan(graph, plan, quota.Remaining());
     if (const auto* error = std::get_if<ControlError>(&checked)) return *error;
     quota.Work(std::get<std::uint64_t>(checked));

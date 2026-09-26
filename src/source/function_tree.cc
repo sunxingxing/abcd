@@ -418,6 +418,10 @@ std::variant<ConstructedFunction, FunctionTreeError> BuildFunctionTree(
     const EvaluationPlan& evaluation, FunctionSyntax syntax,
     ExpressionConstants constants, analysis::SemanticBudget budget) {
   try {
+    // Loop regions have checked CFG ownership, but executable loop statements
+    // and MethodEntry initialization are not connected yet. Do not traverse a
+    // synthetic control unit as though it were another original basic block.
+    Require(control.loops.empty(), Error::kControl);
     return TreeBuilder(graph, control, evaluation, std::move(syntax), constants, budget).Build();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

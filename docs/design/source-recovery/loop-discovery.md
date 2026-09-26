@@ -76,19 +76,37 @@ claim of measured scaling or process-wide 1G compliance.
 
 ## Integration and Remaining Gate
 
-The current acyclic ControlPlan path invokes this discovery when topological
-ordering encounters a cycle. It now distinguishes natural-loop syntax pending
-(`kCycle`) from irreducible CFG (`kIrreducible`). It does **not** yet emit loops or
-declare the candidate forest to be an independently verified source certificate.
+ControlPlan invokes discovery when the acyclic attempt encounters a cycle. It
+now consumes natural loops with at most one normal exit target per loop;
+multiple targets return `kLoopExits`, irreducible flow returns `kIrreducible`.
+Function returns remain terminal blocks, not normal loop exits.
 
-Next, control regions must consume this compact forest, assign every normal edge
-to a unique continuation/loop-back/exit, and receive independent checks against
-the unchanged CFG. Source Loop/Break/Continue ownership, backedge copy placement,
-and MethodEntry's separate once-only initialization phase remain mandatory.
-No blanket relaxation of the existing control rejection is permitted.
+Each original block keeps its canonical control ID. Child loops are represented
+by wrapper units in the parent region, with a separate body entry. Every backedge
+or exit gets a terminal typed continue/break unit that retains its exact original
+EdgeId (or the identity of a child wrapper's exit). Nested exits cascade through
+wrappers without duplicating blocks or inventing original edge identities.
+Euler intervals answer containment in O(1); child-first exit propagation visits
+each loop once. All body entries share one acyclic region-planning invocation,
+not a full graph scan per loop. Adapter size is O(B+E+L); the binary-lifted
+postdominator skeleton takes O((B+E+L) log(B+E+L)) work and storage.
+
+The independent checker follows supplied region structure and checks every arc
+against the unchanged original CFG, context ownership, wrapper/body entry,
+exact transfer origin, and complete one-time coverage. It does not rerun loop
+discovery or postdominator planning. Shared budgets include the failed acyclic
+attempt conservatively. This certifies control structure, not executable source.
+
+BuildFunctionTree and independent TreeFlow both explicitly refuse plans with
+loops until source Loop/Break/Continue ownership, backedge copy placement and
+MethodEntry's separate once-only initialization phase are integrated. No source
+loop admission or completion claim is made by this control-layer change.
 
 Unrun regression sources include self-loops, multiple/parallel backedges, nested
 headers, non-layout-order blocks, unreachable and irreducible graphs, exact work
 limits, and 1/2/200/201/4096 nesting depths. A slow oracle enumerates all 4096
 three-block graphs with up to two successors and derives dominance by vertex
 removal, independent of production discovery. Tests are not yet compiled/run.
+Control-plan regression sources additionally cover loop transfer kind/origin
+mutations, header/body/exit corruption, parallel backedge identity, nested wrapper
+exits, multiple-exit refusal and 1/2/200/201/4096-depth budget boundaries.

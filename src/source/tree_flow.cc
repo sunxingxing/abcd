@@ -255,6 +255,7 @@ std::variant<TreeFlow, TreeFlowError> VerifyTreeFlow(
       return Error::kControl;
     }
     checked.Step(std::get<std::uint64_t>(regions));
+    Require(control.loops.empty(), Error::kControl);
     const auto effects = VerifyEvaluationPlan(graph, evaluation, checked.Remaining());
     if (const auto* error = std::get_if<EvaluationError>(&effects)) {
       if (*error == EvaluationError::kResourceLimit) return Error::kResourceLimit;
