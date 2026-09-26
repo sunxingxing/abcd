@@ -110,3 +110,27 @@ removal, independent of production discovery. Tests are not yet compiled/run.
 Control-plan regression sources additionally cover loop transfer kind/origin
 mutations, header/body/exit corruption, parallel backedge identity, nested wrapper
 exits, multiple-exit refusal and 1/2/200/201/4096-depth budget boundaries.
+
+## Executable Syntax Contract
+
+The source arena now represents `LoopStmt` with a uniquely owned block body,
+and distinct `BreakStmt`/`ContinueStmt` carrying a target StmtId. Executable
+syntax does not contain LoopId, ControlId or WorkBlockId. Canonical printing is
+`while (true) { ... }`: header operations and the original condition stay inside
+the repeated body, rather than being hoisted into an invented pure predicate.
+Transfer printing is unlabelled only after structural verification proves its
+target is the nearest enclosing LoopStmt. Outer-loop jumps cannot be silently
+retargeted; the checked control plan instead cascades nested wrapper exits.
+
+The existing iterative syntax ownership traversal carries the current loop
+owner in each frame. Entering a child loop replaces that frame's owner, while
+returning restores the parent's context without a backward ancestor scan.
+Block scopes retain their existing distinct ownership and parent checks.
+Transfers outside loops, transfers to sibling/outer/nonloop statements, shared
+bodies and invalid scope parents are rejected. No recursion or additional
+per-transfer graph walk is used. Structure tests include 200/201/4096 nesting
+and exact budget boundaries; they remain uncompiled and unrun.
+
+Printer syntax support is not publication admission. FunctionTree generation
+and TreeFlow still explicitly gate loop plans until synthetic-node provenance,
+loop body sequencing and incoming phi initialization are integrated together.

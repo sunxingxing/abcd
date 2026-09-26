@@ -92,7 +92,15 @@ struct DeclarationStmt { SymbolId symbol; std::optional<ExprId> initializer; };
 struct ExpressionStmt { ExprId expression; };
 struct IfStmt { ExprId condition; StmtId consequent; std::optional<StmtId> alternate; };
 struct ReturnStmt { std::optional<ExprId> value; };
-using TreeStatement = std::variant<BlockStmt, DeclarationStmt, ExpressionStmt, IfStmt, ReturnStmt>;
+// Canonical loop syntax: while (true), with the original header predicate in
+// the body. This keeps header effects and edge copies at their actual sites.
+struct LoopStmt { StmtId body; };
+// Targets are syntax owners, never CFG/region IDs. The current syntax contract
+// permits only the nearest enclosing loop; outer transfers need explicit labels.
+struct BreakStmt { StmtId target; };
+struct ContinueStmt { StmtId target; };
+using TreeStatement = std::variant<BlockStmt, DeclarationStmt, ExpressionStmt, IfStmt, ReturnStmt,
+                                   LoopStmt, BreakStmt, ContinueStmt>;
 struct StmtNode { TreeStatement statement; TreeOriginId origin; };
 
 // Origins/validation side tables may refer to working IDs. Executable node

@@ -6,8 +6,9 @@ Scope remains T00 through T12 in the dependency order from the implementation
 plan. No task scheduler, additional host assumptions or sidecar source inputs.
 
 Latest state: T05 now integrates compact natural loops into checked control
-regions, preserving original edge identities and nested ownership. Loop AST,
-edge-copy placement and once-only MethodEntry initialization remain gated;
+regions, preserving original edge identities and nested ownership. Typed loop
+AST nodes, nearest-loop target/scope validation and printer syntax are present.
+Loop body generation, edge-copy placement and once-only MethodEntry initialization remain gated;
 this is not loop source completion. Existing source rules remain 15. T03's G1
 method slices and T04's G2 slice have prior source evidence, not whole-record
 completion. Whole-record integration and test acceptance remain pending.
@@ -19,6 +20,9 @@ Current T05 control-layer verification: production targets `abc_semantic` and
 validation passed. Added control regression sources are neither compiled nor run
 under the test pause. No new ABC source, behavior or RSS evidence is claimed.
 See `loop-discovery.md` for the exact admitted subset and remaining source gate.
+The same production targets subsequently built successfully with typed loop
+syntax and target checking. Syntax regression sources also remain uncompiled
+and unrun; printer support alone is not loop source-publication evidence.
 
 ## T00
 

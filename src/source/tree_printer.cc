@@ -316,6 +316,12 @@ class TreePrinter {
     Append("return"); Push(std::string_view(";"));
     if (node.value) { Append(" "); Push(*node.value); }
   }
+  void StatementNode(LoopStmt node, Statement at) {
+    Append("while (true) ");
+    Push(Statement{node.body, at.depth});
+  }
+  void StatementNode(BreakStmt, Statement) { Append("break;"); }
+  void StatementNode(ContinueStmt, Statement) { Append("continue;"); }
   void Run(Statement at) {
     result_.statements[at.id.value].begin = result_.bytes;
     Push(EndStatement{at.id});

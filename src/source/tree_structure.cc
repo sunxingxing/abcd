@@ -21,6 +21,7 @@ struct SyntaxFrame {
   ScopeId scope;
   std::size_t next_child = 0;
   bool entered = false;
+  std::optional<StmtId> loop;
 };
 bool ValidUnary(TreeUnary operation) {
   switch (operation) {
@@ -102,7 +103,7 @@ class StructureCheck {
       const auto child = Next(frame);
       if (child) {
         RequireTree(depth < stack_.size(), Error::kOwnership);
-        stack_[depth++] = {*child, frame.scope, 0, false};
+        stack_[depth++] = {*child, frame.scope, 0, false, frame.loop};
         maximum_depth = std::max(depth, maximum_depth);
       } else {
         if (const auto* statement = std::get_if<StmtId>(&frame.node))
@@ -206,6 +207,13 @@ class StructureCheck {
     } else if (const auto* branch = std::get_if<IfStmt>(&node.statement)) {
       RequireBlock(branch->consequent);
       if (branch->alternate) RequireBlock(*branch->alternate);
+    } else if (const auto* loop = std::get_if<LoopStmt>(&node.statement)) {
+      RequireBlock(loop->body);
+      frame.loop = id;
+    } else if (const auto* transfer = std::get_if<BreakStmt>(&node.statement)) {
+      RequireTree(frame.loop == transfer->target, Error::kTarget);
+    } else if (const auto* transfer = std::get_if<ContinueStmt>(&node.statement)) {
+      RequireTree(frame.loop == transfer->target, Error::kTarget);
     }
   }
   std::optional<SyntaxNode> Next(SyntaxFrame& frame) {
@@ -256,7 +264,9 @@ class StructureCheck {
         else if constexpr (std::is_same_v<T, IfStmt>) {
           add(node.condition); add(node.consequent); if (node.alternate) add(*node.alternate);
         } else if constexpr (std::is_same_v<T, ReturnStmt>) { if (node.value) add(*node.value); }
-        else { static_assert(std::is_same_v<T, BlockStmt>); }
+        else if constexpr (std::is_same_v<T, LoopStmt>) add(node.body);
+        else { static_assert(std::is_same_v<T, BlockStmt> || std::is_same_v<T, BreakStmt> ||
+                             std::is_same_v<T, ContinueStmt>); }
       }, statement);
     }
     if (frame.next_child == count) return {};

@@ -161,6 +161,66 @@ void DeepTrees() {
     Check(std::get<TreeStructureError>(VerifyTreeStructure(tree, budget)) == TreeStructureError::kResourceLimit);
   }
 }
+void LoopTargets() {
+  auto tree = Minimal();
+  tree.expressions.clear();
+  tree.scopes.push_back({ScopeKind::kBlock, ScopeId{1}});
+  tree.statements[1].statement = LoopStmt{{2}};
+  tree.statements.push_back({BlockStmt{{2}, 1, 1}, {0}});
+  tree.statements.push_back({ContinueStmt{{1}}, {0}});
+  tree.children.push_back({3});
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  tree.statements[3].statement = BreakStmt{{1}};
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  tree.statements[3].statement = BreakStmt{{2}};
+  Expect(tree, TreeStructureError::kTarget);
+  tree.statements[3].statement = ContinueStmt{{99}};
+  Expect(tree, TreeStructureError::kTarget);
+  // A nested loop cannot silently turn an outer transfer into an unlabelled
+  // transfer to the inner loop merely because both are syntactically valid.
+  tree.scopes.push_back({ScopeKind::kBlock, ScopeId{2}});
+  tree.statements[3].statement = LoopStmt{{4}};
+  tree.statements.push_back({BlockStmt{{3}, 2, 1}, {0}});
+  tree.statements.push_back({ContinueStmt{{1}}, {0}});
+  tree.children.push_back({5});
+  Expect(tree, TreeStructureError::kTarget);
+  tree.statements[5].statement = ContinueStmt{{3}};
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  tree = Minimal();
+  tree.expressions.clear();
+  tree.statements[1].statement = BreakStmt{{0}};
+  Expect(tree, TreeStructureError::kTarget);
+}
+void DeepLoops() {
+  for (const std::uint32_t depth : {200U, 201U, 4096U}) {
+    auto tree = Minimal();
+    tree.expressions.clear();
+    tree.statements.resize(1);
+    tree.children.clear();
+    for (std::uint32_t i = 0; i < depth; ++i) {
+      const auto loop = static_cast<std::uint32_t>(tree.statements.size());
+      const auto scope = static_cast<std::uint32_t>(tree.scopes.size());
+      tree.scopes.push_back({ScopeKind::kBlock, ScopeId{scope - 1}});
+      tree.statements.push_back({LoopStmt{{loop + 1}}, {0}});
+      tree.statements.push_back({BlockStmt{{scope}, i + 1, 1}, {0}});
+      tree.children.push_back({loop});
+    }
+    const auto leaf = static_cast<std::uint32_t>(tree.statements.size());
+    tree.statements.push_back({ContinueStmt{{leaf - 2}}, {0}});
+    tree.children.push_back({leaf});
+    const auto result = VerifyTreeStructure(tree);
+    const auto* checked = std::get_if<TreeStructure>(&result);
+    Check(checked && checked->maximum_depth == 2 * depth + 2);
+    analysis::SemanticBudget budget;
+    budget.work = checked->work;
+    budget.bytes = checked->allocated_bytes;
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree, budget)));
+    --budget.work;
+    Check(std::get<TreeStructureError>(VerifyTreeStructure(tree, budget)) == TreeStructureError::kWorkLimit);
+    tree.statements.back().statement = ContinueStmt{{1}};
+    Expect(tree, TreeStructureError::kTarget);
+  }
+}
 }  // namespace
 int main() {
   Ownership();
@@ -168,4 +228,6 @@ int main() {
   OriginsAndAnchors();
   LiteralDefaults();
   DeepTrees();
+  LoopTargets();
+  DeepLoops();
 }
