@@ -1,7 +1,9 @@
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/tree_structure.h"
+#include "../../../src/source/tree_semantics.h"
 
 #include <cstdlib>
+#include <utility>
 
 namespace {
 using namespace abcd;
@@ -65,6 +67,15 @@ class Fixture {
     Check(std::holds_alternative<EvaluationPlan>(evaluation));
     return BuildFunctionTree(graph, std::get<ControlPlan>(control),
         std::get<EvaluationPlan>(evaluation), Syntax(), {constants, 2, 0, {}}, budget);
+  }
+  std::variant<TreeSemantics, TreeSemanticError> Verify(
+      const FunctionTree& tree, analysis::SemanticBudget budget = {}) const {
+    auto control = BuildControlPlan(graph);
+    auto evaluation = BuildEvaluationPlan(graph);
+    Check(std::holds_alternative<ControlPlan>(control));
+    Check(std::holds_alternative<EvaluationPlan>(evaluation));
+    return VerifyTreeSemantics(graph, std::get<ControlPlan>(control),
+        std::get<EvaluationPlan>(evaluation), tree, {constants, 2, 0, {}}, budget);
   }
   analysis::ValueProgram graph;
   std::vector<ExpressionConstant> constants;
@@ -190,10 +201,69 @@ void PredicateSnapshot() {
     Check(std::get<OriginalSite>(tree.origins[0]).original == abc::CodeOffset{91});
   }
 }
+void SemanticMutations() {
+  auto fixture = BranchFixture();
+  const auto built = fixture.Build();
+  Check(std::holds_alternative<ConstructedFunction>(built));
+  const auto original = std::get<ConstructedFunction>(built).tree;
+  const auto checked = fixture.Verify(original);
+  Check(std::holds_alternative<TreeSemantics>(checked));
+  const auto& root = std::get<BlockStmt>(original.statements[original.body.value].statement);
+  const auto branch_id = original.children[root.first_child];
+  const auto& branch = std::get<IfStmt>(original.statements[branch_id.value].statement);
+  const auto& alternative = std::get<BlockStmt>(original.statements[branch.alternate->value].statement);
+  const auto write_id = original.children[alternative.first_child];
+  const auto assignment_id = std::get<ExpressionStmt>(original.statements[write_id.value].statement).expression;
+  const auto return_id = original.children[root.first_child + 1];
+  const auto return_value = *std::get<ReturnStmt>(original.statements[return_id.value].statement).value;
+
+  auto tree = original;
+  auto& reversed = std::get<IfStmt>(tree.statements[branch_id.value].statement);
+  const auto former = reversed.consequent;
+  reversed.consequent = *reversed.alternate;
+  reversed.alternate = former;
+  Check(std::get<TreeSemanticError>(fixture.Verify(tree)) == TreeSemanticError::kFlow);
+
+  tree = original;
+  std::get<BinaryExpr>(tree.expressions[branch.condition.value].expression).operation = analysis::BinaryOperator::kStrictNotEqual;
+  Check(std::get<TreeSemanticError>(fixture.Verify(tree)) == TreeSemanticError::kOperator);
+
+  tree = original;
+  auto& assigned = std::get<AssignmentExpr>(tree.expressions[assignment_id.value].expression);
+  std::swap(std::get<MemberTarget>(assigned.target).base, assigned.value);
+  Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
+
+  tree = original;
+  std::get<MemberTarget>(std::get<AssignmentExpr>(tree.expressions[assignment_id.value].expression).target).key = NameId{0};
+  Check(std::get<TreeSemanticError>(fixture.Verify(tree)) == TreeSemanticError::kConstant);
+
+  tree = original;
+  tree.expressions[return_value.value].expression = TreeLiteral{BooleanLiteral{false}};
+  Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
+
+  tree = original;
+  std::get<OriginalSite>(tree.origins[4]).pc.value = 41;
+  Check(std::get<TreeSemanticError>(fixture.Verify(tree)) == TreeSemanticError::kOrigin);
+
+  tree = original;
+  tree.origin_parts.back() = {4};
+  Check(std::get<TreeSemanticError>(fixture.Verify(tree)) == TreeSemanticError::kOrigin);
+
+  tree = original;
+  ++tree.value_revision.value;
+  Check(std::get<TreeSemanticError>(fixture.Verify(tree)) == TreeSemanticError::kFlow);
+
+  analysis::SemanticBudget budget;
+  budget.work = std::get<TreeSemantics>(checked).work - 1;
+  Check(std::get<TreeSemanticError>(fixture.Verify(original, budget)) == TreeSemanticError::kWorkLimit);
+  ++budget.work;
+  Check(std::holds_alternative<TreeSemantics>(fixture.Verify(original, budget)));
+}
 }  // namespace
 int main() {
   BranchTree();
   SnapshotTree();
   NameAndConstantRefusals();
   PredicateSnapshot();
+  SemanticMutations();
 }

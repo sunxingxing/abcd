@@ -42,6 +42,7 @@ void CheckTreeOrigins(const FunctionTree& tree, TreeCheckBudget& budget) {
   }
   std::vector<std::uint8_t> anchors;
   std::vector<analysis::OpId> operations;
+  budget.Admit(1, sizeof(anchors) + sizeof(operations));
   budget.Array(anchors, tree.anchors.size());
   budget.Array(operations, tree.operations.size());
   for (std::size_t i = 0; i < tree.operations.size(); ++i) {

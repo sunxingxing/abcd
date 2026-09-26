@@ -8,7 +8,7 @@
 #include <stdexcept>
 
 #include "abcd/source/global_reference.h"
-#include "tree_structure.h"
+#include "tree_semantics.h"
 
 namespace abcd::source {
 namespace {
@@ -108,7 +108,7 @@ class TreeBuilder {
       }
     }
     Flatten();
-    CheckStructure();
+    CheckSemantics();
     return {std::move(tree_), budget_.bytes - bytes_, budget_.work - work_};
   }
 
@@ -316,7 +316,7 @@ class TreeBuilder {
       }
     }
   }
-  void CheckStructure() {
+  void CheckSemantics() {
     // The checker admits tree storage too. Recredit only that already-admitted
     // output, not builder scratch; both remain live throughout verification.
     const auto measured = MeasureTreeStorage(tree_, {budget_.bytes, work_});
@@ -326,17 +326,18 @@ class TreeBuilder {
           ? Error::kWorkLimit : Error::kResourceLimit;
     Step(storage->work);
     Require(storage->bytes <= budget_.bytes - bytes_, Error::kResourceLimit);
-    const auto checked = VerifyTreeStructure(tree_, {bytes_ + storage->bytes, work_});
-    const auto* structure = std::get_if<TreeStructure>(&checked);
-    if (!structure) {
-      const auto error = std::get<TreeStructureError>(checked);
-      if (error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
-      if (error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
-      throw Error::kStructure;
+    const auto checked = VerifyTreeSemantics(graph_, control_, evaluation_, tree_, constants_,
+                                             {bytes_ + storage->bytes, work_});
+    const auto* semantics = std::get_if<TreeSemantics>(&checked);
+    if (!semantics) {
+      const auto error = std::get<TreeSemanticError>(checked);
+      if (error == TreeSemanticError::kWorkLimit) throw Error::kWorkLimit;
+      if (error == TreeSemanticError::kResourceLimit) throw Error::kResourceLimit;
+      throw Error::kSemantics;
     }
-    Require(structure->allocated_bytes >= storage->bytes, Error::kStructure);
-    Admit(structure->allocated_bytes - storage->bytes, 1);
-    Step(structure->work);
+    Require(semantics->allocated_bytes >= storage->bytes, Error::kSemantics);
+    Admit(semantics->allocated_bytes - storage->bytes, 1);
+    Step(semantics->work);
   }
 
   const analysis::ValueProgram& graph_;

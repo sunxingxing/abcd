@@ -338,3 +338,46 @@ shadowing, cycles/shared nodes, declaration/name errors, invalid origins and
 anchors, and 200/201/4096-deep trees; existing function-construction fixtures also
 invoke the independent checker. Production builds pass. Tests and RSS execution
 remain paused; no T03 completion or executable-source claim is made.
+
+### T03 IR-to-Tree Correspondence
+
+VerifyTreeFlow now consumes the independently checked tree and walks its real
+statement sequences against ControlPlan and EvaluationPlan. It checks every
+retained operation placement, branch arm, return, jump boundary and root
+expression. Snapshot declarations are private function-body let bindings;
+their unique assignments remain at the original evaluation root, with the exact
+typed TemporaryReason. Swapped arms, extra statements, moved snapshots and
+incorrect jump boundaries are refusals. This is a linear indexed walk, not
+BuildFunctionTree replay or textual comparison.
+
+VerifyTreeSemantics adds operand/operator checks to that flow result. Parameter
+reads refer to the ABI-indexed formal symbol; receivers retain their owner;
+inline inputs refer to the exact producer node; snapshot reads refer to the
+actual assignment target recorded by the flow walk. It checks named/computed
+property access and writes, literal values/float bits, binary operators, supported
+unary conversions and both VM predicate expansions. Every repeated predicate
+operand must still resolve to its original input; changing a comparator, key,
+receiver, returned value or snapshot symbol cannot pass as equivalent syntax.
+
+The origin pass compares the full imported origin prefix (site, PC, optional
+original PC and retained/elided disposition), then verifies operation-to-node
+membership through combined origins. Combined chains have unique expression
+ownership, and each part edge is visited once; there is no per-operation search
+through an arbitrary provenance DAG. Snapshot declarations use matching binding
+origins; root statements, snapshot assignments and jump anchors retain their
+actual operation origin. Unused or invented combined/binding origins are refused.
+
+BuildFunctionTree now runs the complete structural/flow/operand/origin check
+before returning ConstructedFunction. Verification shares its remaining work
+and memory allowance; only already-admitted tree storage is recredited while
+builder scratch remains live. Regression sources mutate branch arms, operators,
+assignment operands, member names, return literals, original PCs, combined
+origins and revisions, and cover bounded-work refusal.
+
+This remains a conditional correspondence proof: the input IR must have passed
+import/rewrite checks, constants must be resolved from the same ABC, and callable
+identity/strictness, complete ABI parameter census and name evidence still need
+to be bound at the source adapter. No immutable publication/printer capability
+is minted from this report alone. The public CLI still ends at ValuesVerified;
+printer/position emission and real-method adapter integration remain pending.
+Production builds pass; all new tests and generated-JS/RSS runs remain paused.

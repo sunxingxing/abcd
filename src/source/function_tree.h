@@ -26,10 +26,11 @@ struct ConstructedFunction {
 };
 enum class FunctionTreeError : std::uint8_t {
   kControl, kExpression, kBinding, kName, kOrigin, kOwnership,
-  kResourceLimit, kWorkLimit, kStructure
+  kResourceLimit, kWorkLimit, kStructure, kSemantics
 };
-// Builds structurally checked syntax only. Caller establishes callable/strictness from creation
-// evidence; construction does not certify those facts or authorize publishing.
+// Builds syntax checked against IR/control/evaluation and resolved constants.
+// Caller establishes callable/strictness from creation evidence; construction
+// does not certify those facts or authorize publishing.
 // Existing graph/plans/constants are caller-owned budget; syntax and all
 // construction-owned output/scratch share this call's byte/work allowance.
 [[nodiscard]] std::variant<ConstructedFunction, FunctionTreeError>

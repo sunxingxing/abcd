@@ -26,6 +26,7 @@ class TreeCheckBudget {
   }
   [[nodiscard]] std::size_t Bytes() const { return initial_.bytes - remaining_.bytes; }
   [[nodiscard]] std::uint64_t Work() const { return initial_.work - remaining_.work; }
+  [[nodiscard]] analysis::SemanticBudget Remaining() const { return remaining_; }
  private:
   analysis::SemanticBudget initial_;
   analysis::SemanticBudget remaining_;
