@@ -115,6 +115,22 @@ object-initializer coverage. Added class-context fixture source describes the
 ABC-to-property printer range/PC and segment transport checks but remains
 uncompiled/unrun with the other regression specifications.
 
+### T07 Creation-Specific Capture Binding
+
+Added a shared ScopeFacts view over verified environment/local initialization,
+capture barriers and defined-domain facts. The existing semantic capture
+resolver now consumes it. Added CapturePlan with per-creation PC/target context,
+ordered rebased cells and preserved outer-domain obligations; its checker
+rechecks actual binding identities, not source names. This preserves shared cell
+semantics and does not infer immutability or merge dynamic allocation instances.
+See `capture-binding.md` for proof ownership, complexity and integration limits.
+
+Production `abc_semantic` and `abc_structure` builds exited 0. Capture regression
+sources are written but uncompiled/unrun; tests and RSS remain paused. Source
+rules stay 18: the new batch plan is not yet consumed by the universal tree
+publisher. Value IR cell/creation import, child AST publication and dependency
+cycle handling remain required; T07 and the overall T00-T12 goal are incomplete.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,
