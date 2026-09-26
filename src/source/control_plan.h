@@ -30,7 +30,8 @@ struct ControlPlan {
   std::uint64_t work = 0;
 };
 enum class ControlError : std::uint8_t {
-  kInvalidGraph, kRevision, kCycle, kCrossEntry, kUncoveredBlock, kWorkLimit, kResourceLimit
+  kInvalidGraph, kRevision, kCycle, kCrossEntry, kUncoveredBlock, kWorkLimit, kResourceLimit,
+  kIrreducible
 };
 // Requires the verified normal ValueProgram, not old SemanticRegionTree/AST.
 // Acyclic single-entry regions only. Early-return arms are allowed; cycles and

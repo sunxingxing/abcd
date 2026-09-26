@@ -1213,6 +1213,46 @@ method 7559 with Printed/complete METHOD coverage and 286 bytes. The record is
 still incomplete/nonexecutable (intentional CLI exit 1); this is existing-path
 evidence, not a new phi-receiver real-method success claim.
 
+### T05 Compact Natural-Loop Discovery
+
+Added LoopForest candidate discovery for the original normal working CFG.
+Existing Lengauer-Tarjan dominance identifies headers/backedges; reverse
+dominator order and contracted subloops discover innermost block ownership and
+immediate loop parents. Union by rank/path compression keeps representative
+lookup bounded without repeated walks through deep loop-parent chains. The
+result stores no inclusive member lists. Exact original EdgeIds remain separate,
+including parallel backedges, and a residual topological pass rejects cycles
+not removed by dominance backedges as irreducible.
+
+ControlPlan's cycle path now invokes this analysis with its remaining grant;
+natural-loop syntax pending remains kCycle, while irreducible CFG returns the
+new typed kIrreducible. This is runtime integration, not source loop admission:
+no Loop/Break/Continue syntax is emitted, no CFG or phi input is rewritten, and
+the candidate forest is not a source certificate. Evidence rules remain 15
+because source admission/output has not expanded in this step.
+
+The algorithm choice, LLVM 18.1.3 primary-reference hash/licensing, prerequisites,
+original implementation boundaries and cost are documented in
+[loop-discovery.md](loop-discovery.md), with the algorithm catalogue updated.
+Production storage is O(B+E); discovery uses O((B+E) alpha(B)) set operations
+plus existing O((B+E) log B) dominance. Budget checks include array capacity,
+dominance peak scratch, worklist entries and set-parent visits. No measurement
+or process-wide memory compliance is inferred from those bounds.
+
+Added unrun loop_forest_test sources for self/nested/non-layout-order loops,
+parallel backedges, irreducible/unreachable/malformed CFGs, work/memory limits,
+and 1/2/200/201/4096 nesting depths. A separately bounded slow oracle enumerates
+all 4096 three-block graphs and computes dominance by vertex removal; it does
+not reuse production union-find or dominator discovery. Tests remain uncompiled
+and unrun. Next work must consume the forest in loop regions and independent
+edge checks, then connect loop statements and MethodEntry initialization.
+T05 and the T00-T12 objective remain incomplete.
+
+Production abc_semantic/abc_structure builds exited 0 after integration;
+git diff whitespace checking passed. No new real-method source claim accompanies
+this loop-analysis step. Tests, generated-JS execution, benchmarks and RSS
+measurement remain paused.
+
 ### T04 Call Reference Proof
 
 CallPlan now distinguishes function-value calls, member-reference calls and

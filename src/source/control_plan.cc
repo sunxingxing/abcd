@@ -6,6 +6,8 @@
 #include <new>
 #include <stdexcept>
 
+#include "loop_forest.h"
+
 namespace abcd::source {
 namespace {
 using Error = ControlError;
@@ -93,7 +95,23 @@ class ControlBuilder {
         if (--indegree_[target] == 0) order_[count++] = target;
       }
     }
-    Require(count == exit_, Error::kCycle);
+    if (count != exit_) {
+      // Discover compact natural-loop ownership before source loop lowering is
+      // enabled. Irreducible SCCs are a different refusal from a supported CFG
+      // whose loop syntax/edge placement is not connected yet. No graph edits.
+      const auto loops = BuildLoopForest(graph_, quota_.Remaining());
+      if (const auto* forest = std::get_if<LoopForest>(&loops)) {
+        quota_.Work(forest->work);
+        throw Error::kCycle;
+      }
+      switch (std::get<LoopError>(loops)) {
+        case LoopError::kInvalidGraph: throw Error::kInvalidGraph;
+        case LoopError::kUnreachable: throw Error::kUncoveredBlock;
+        case LoopError::kIrreducible: throw Error::kIrreducible;
+        case LoopError::kResourceLimit: throw Error::kResourceLimit;
+        case LoopError::kWorkLimit: throw Error::kWorkLimit;
+      }
+    }
   }
   std::uint32_t Ancestor(std::uint32_t node, std::size_t level) const {
     return up_[static_cast<std::size_t>(node) * levels_ + level];
