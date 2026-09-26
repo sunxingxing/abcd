@@ -1,0 +1,28 @@
+#ifndef ABCD_SOURCE_FUNCTION_VALUES_H_
+#define ABCD_SOURCE_FUNCTION_VALUES_H_
+
+#include "abcd/analysis/value_environment.h"
+#include "function_input.h"
+
+namespace abcd::source {
+// Working state, not a source receipt. Conditional input assumptions travel
+// with the result; no consumer may turn them into closed publication evidence.
+struct FunctionValues {
+  analysis::ValueProgram graph;
+  std::optional<analysis::ValueEnvironments> environments;
+  InputCaptureMode capture_mode;
+};
+struct FunctionValueFailure {
+  SourceStage stage;
+  RouteFailure cause;
+  std::optional<std::uint64_t> revision;
+};
+// Shared by closed source preparation and conditional child preparation.
+// Input/body/frame are one unchanged method. Caller keeps FunctionInput for
+// parent-site binding and admits it and body alongside this additional budget.
+// Does not discharge incoming cells or transitive closure writes.
+[[nodiscard]] std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
+    const FunctionInput& input, const abc::MethodBody& body,
+    const abc::FrameLayout& frame, analysis::SemanticBudget budget = {});
+}  // namespace abcd::source
+#endif

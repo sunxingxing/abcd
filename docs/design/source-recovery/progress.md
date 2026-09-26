@@ -361,6 +361,29 @@ rejection and exact binding work limits. They are uncompiled and unrun under
 the test pause. No generated JS, benchmarks or RSS checks were run. T07 and
 the complete T00-T12 goal remain unfinished.
 
+### T07 Shared Conditional Work-Graph Preparation
+
+The normal import/correspondence/simplification/environment stages now have one
+BuildFunctionValues implementation used by the existing closed source route
+and available to conditional child preparation. Internal FunctionValues carries
+the capture mode without a publishable route receipt. Closed BuildValueStage
+explicitly rejects a conditional result. No source admission is relaxed.
+
+VerifyFunctionCaptures checks fresh working topology and exact incoming
+read/write occurrence correspondence against immutable FunctionInput, using
+original sites, backlinks, PC/provenance, kind, depth and slot. It is connected
+after environment rebuilding, not just an unused verifier. Work is indexed,
+with no per-capture graph traversal. CellEvaluation still refuses unresolved
+IncomingCell; enclosing AST symbols and owned child expressions remain pending.
+
+Regression sources specify 0/1/2/200/201 occurrences, shared incoming cell
+identity, exact checker work limits, changed origin/backlink/binding/revision,
+conditional graph preparation, closed-route refusal and budget failures. They
+remain uncompiled/unrun. Production abc_semantic and abc_structure built
+successfully; ABC-only G2 inspection remains Printed/complete METHOD under
+rules 20, range [2638,2924), with the record incomplete. No generated JS, tests,
+benchmarks or RSS measurement were executed. T07 and T00-T12 remain incomplete.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

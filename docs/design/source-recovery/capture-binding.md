@@ -32,6 +32,31 @@ occurrences beyond the existing semantic build/proof. Capture rebasing retains
 the indexed bounds below. Existing upstream pass work grants are not yet a
 single cumulative method-wide work account; no such guarantee is claimed here.
 
+BuildFunctionValues is now the shared normal import, independent input
+correspondence, pure simplification and working-environment implementation.
+BuildValueStage calls it with Closed FunctionInput only. Conditional callers
+can prepare a child working graph through the same implementation, but receive
+FunctionValues, NOT a MethodRouteReceipt. Its typed capture_mode remains an
+undischarged premise. The original FunctionInput must remain available for
+parent-site capture binding; the mutable work graph is not an input certificate.
+Body and input storage are admitted by the caller alongside this grant.
+
+VerifyFunctionCaptures freshly checks working environments, then matches every
+incoming read/write to the immutable input ledger using retained origin sites
+and exact input-site-to-OpId backlinks. It checks PC/provenance, access kind,
+captured depth and slot. Exact occurrence count plus unique backlinks prevents
+missing/duplicated obligations. No cross-index EnvironmentId comparison, value
+substitution or source-name matching occurs. Beyond environment verification,
+the pass costs O(L + K log(K+1)) for L lexical accesses and K incoming accesses,
+with constant additional scratch. Environment construction and this check share
+their remaining work grant; scratch is admitted alongside retained topology.
+
+This does not yet bind IncomingCell to an enclosing AST symbol, include
+child-only referenced cells in parent declarations, close transitive writes,
+or emit nested function expressions. CellEvaluation still refuses unresolved
+incoming cells. Independent child-tree and actual-scope checks remain required
+before either the parent or child can receive executable-source evidence.
+
 The caller must supply one unchanged, freshly verified SemanticMethod,
 EnvironmentFlow, LocalAccessPlan, DefinedCaptures and ClosureWrites premise.
 ScopeFacts borrows them; it must not outlive them or mix methods. Local cell,
