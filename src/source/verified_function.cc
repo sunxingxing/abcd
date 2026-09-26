@@ -186,6 +186,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       throw Error::kValues;
     budget.Arena(body->instructions); budget.Arena(body->tries); budget.Arena(body->handlers);
     AdmitGraph(*values.graph, budget);
+    if (values.environments) budget.Admit(values.environments->allocated_bytes, 1);
     std::optional<DefaultBody> defaults;
     if (context->Frame().parameters != context->Site().length)
       defaults.emplace(DefaultParameters(*values.graph, context->Frame().parameters,

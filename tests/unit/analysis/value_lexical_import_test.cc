@@ -1,5 +1,6 @@
 #include "abcd/analysis/value_import.h"
 #include "abcd/analysis/value_simplify.h"
+#include "abcd/analysis/value_environment.h"
 
 #include "analysis/ssa_fixture.h"
 #include "value_edits.h"
@@ -65,6 +66,26 @@ void Import(Width width) {
     stripped.exceptional = ExceptionalCompletion::kImpossible;
     test::Check(!CanErasePureOp(stripped));
   }
+  auto environments = std::get<ValueEnvironments>(BuildValueEnvironments(changed));
+  test::Check(environments.revision == changed.revision && environments.flow.allocations.size() == 1 &&
+      environments.flow.bindings.size() == 2);
+  test::Check(std::holds_alternative<std::uint64_t>(VerifyValueEnvironments(changed, environments)));
+  const auto original_slot = environments.flow.bindings[0].binding.slot;
+  ++environments.flow.bindings[0].binding.slot.value;
+  test::Check(std::get<ValueEnvironmentError>(VerifyValueEnvironments(changed, environments)) == ValueEnvironmentError::kBinding);
+  environments.flow.bindings[0].binding.slot = original_slot;
+  environments.flow.before[4] = CapturedDepth{0};
+  test::Check(std::get<ValueEnvironmentError>(VerifyValueEnvironments(changed, environments)) == ValueEnvironmentError::kState);
+  environments.flow.before[4] = EnvironmentId{0};
+  ++environments.revision.value;
+  test::Check(std::get<ValueEnvironmentError>(VerifyValueEnvironments(changed, environments)) == ValueEnvironmentError::kRevision);
+  --environments.revision.value;
+  SemanticBudget budget; budget.work = environments.work;
+  test::Check(std::holds_alternative<ValueEnvironments>(BuildValueEnvironments(changed, budget)));
+  --budget.work;
+  test::Check(std::get<ValueEnvironmentError>(BuildValueEnvironments(changed, budget)) == ValueEnvironmentError::kWorkLimit);
+  budget = {}; budget.bytes = 0;
+  test::Check(std::get<ValueEnvironmentError>(BuildValueEnvironments(changed, budget)) == ValueEnvironmentError::kResourceLimit);
 }
 void Metadata() {
   const auto push = std::get<ValueEnvironmentPush>(ImportValueOperation(PushEnvironment{257, abc::PoolIndex{513}}));

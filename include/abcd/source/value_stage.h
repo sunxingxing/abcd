@@ -2,12 +2,14 @@
 #define ABCD_SOURCE_VALUE_STAGE_H_
 
 #include "abcd/analysis/value_import.h"
+#include "abcd/analysis/value_environment.h"
 #include "abcd/source/source_route.h"
 
 namespace abcd::source {
 struct ValueMethod {
   MethodRouteReceipt receipt;
   std::optional<analysis::ValueProgram> graph;
+  std::optional<analysis::ValueEnvironments> environments;
 };
 // Owns no file readers. Identity/frame/body must originate from one validated
 // method selection. Builds fresh input analysis/proof, never a legacy AST.

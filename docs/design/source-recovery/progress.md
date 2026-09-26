@@ -164,6 +164,25 @@ metadata mutations, historical register-store input and source refusal. Cell
 identity/lifetime binding into the source tree and closed child verification
 remain pending. No new closure/source, test or RSS acceptance is claimed.
 
+### T07 Working Environment Topology
+
+BuildValueStage now retains ValueEnvironments for methods containing lexical or
+function-creation operations. The adapter reuses the existing environment-flow
+algorithm on OpId-indexed working operations after simplification. Results bind
+IR/CFG revisions, allocation sites, per-operation environment states and cell
+addresses. Independent checking walks actual block transitions and edge joins,
+checks allocation metadata and resolves each supplied lexical binding, without
+rerunning the planner. Removed effectful operations are rejected. Dynamic cell
+lifetime, initialization and source scopes are deliberately not inferred from
+this topology. Input, working graph and environment storage share byte admission.
+
+Regression sources now include revision/state/binding mutation checks and exact
+work/resource limits on simplified imported lexical graphs. They remain
+uncompiled/unrun, with RSS still paused. No new source domain is opened; rules
+stay 18. Cell lifetime and capture-aware AST publication remain pending.
+Production `abc_semantic` and `abc_structure` builds exited 0 after integration;
+whitespace validation passed. No new real-method source success is claimed.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

@@ -59,9 +59,25 @@ sendable rejection, uninitialized locals, unknown write barriers and exact work
 limits. They remain uncompiled/unrun during the user's testing pause.
 
 Typed environment/cell/creation operations now enter Value IR with input/effect
-correspondence, but are still refused by source evaluation. Required next
-integration remains: binding their original environment identities and lifetimes
-into the working graph; capture-aware symbol binding and AST;
+correspondence. ValueEnvironments also binds topology on the current work graph:
+BuildValueStage retains it for lexical/creation operations, with IR/CFG revisions.
+It reuses AnalyzeEnvironmentSites, preserving OpId-indexed states, allocation
+sites and relative cell bindings. An independent checker walks each block and
+edge, verifies allocation metadata and lexical bindings, and rejects inconsistent
+joins or removed effectful operations. No environment planner replay is used.
+Normal-flow/reachability proof is fresh. Working environment IDs belong to this
+new index, not to SemanticProof; origin sites connect the contexts explicitly.
+
+The adapter/check is O(O+B+E+32L) beyond fresh normal-flow checking, with O(O+B)
+scratch, for O operations, B blocks, E edges and L lexical/allocation operations.
+The planner conservatively debits the upstream four-visits/site contract and
+two fixed-depth ancestry passes before running it. Input/proof and working graph
+storage are admitted together with topology scratch; returned charges retain
+the upstream scratch estimate conservatively, not a claimed peak RSS result.
+
+These operations are still refused by source evaluation. Required next
+integration remains: proving dynamic cell lifetimes in the work graph and
+capture-aware symbol binding and AST;
 complete child trees validated before parent publication; dependency/SCC handling
 without assuming success for cycles. P3 method 7366, independent-app examples,
 per-iteration cells and child mutations still require end-to-end source evidence.

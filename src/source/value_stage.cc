@@ -97,9 +97,43 @@ ValueMethod BuildValueStage(RouteInputIdentity identity, abc::EntityOffset metho
     }
     return fail(kind, ValueRouteError::kTransformStage);
   }
+  receipt.work_revision = graph->revision.value;
+  bool needs_environments = false;
+  if (graph->ops.size() > budget.work)
+    return fail(RouteFailureClass::kWorkLimit, ValueRouteError::kTransformStage);
+  for (const auto& op : graph->ops) {
+    if (op.life != analysis::ValueLife::kLive) continue;
+    needs_environments |= std::holds_alternative<analysis::ValueLexicalLoad>(op.operation) ||
+        std::holds_alternative<analysis::ValueLexicalStore>(op.operation) ||
+        std::holds_alternative<analysis::ValueEnvironmentPush>(op.operation) ||
+        std::holds_alternative<analysis::ValueEnvironmentPop>(op.operation) ||
+        std::holds_alternative<analysis::ValueCurrentEnvironment>(op.operation) ||
+        std::holds_alternative<analysis::ValueFunctionCreation>(op.operation);
+  }
+  if (needs_environments) {
+    // Input/proof remain alive. Admit the retained working graph before adding
+    // topology scratch/result; no borrowed input environment survives this stage.
+    if (!admit(1, sizeof(*graph)) ||
+        !admit(graph->blocks.capacity(), sizeof(analysis::WorkBlock)) ||
+        !admit(graph->edges.capacity(), sizeof(analysis::WorkEdge)) ||
+        !admit(graph->ops.capacity(), sizeof(analysis::ValueOp)) ||
+        !admit(graph->values.capacity(), sizeof(analysis::ValueDefinition)) ||
+        !admit(graph->uses.capacity(), sizeof(analysis::OperandUse)) ||
+        !admit(graph->origins.capacity(), sizeof(analysis::ValueOrigin)) ||
+        !admit(graph->exceptional_exits.capacity(), sizeof(analysis::ValueExceptionalExit)) ||
+        !admit(graph->input.sites.capacity(), sizeof(std::optional<analysis::OpId>)) ||
+        !admit(graph->input.values.capacity(), sizeof(analysis::ValueId)))
+      return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kTransformStage);
+    auto environments = analysis::BuildValueEnvironments(*graph, {remaining, budget.work - graph->ops.size()});
+    if (const auto* error = std::get_if<analysis::ValueEnvironmentError>(&environments)) {
+      const auto kind = *error == analysis::ValueEnvironmentError::kResourceLimit ? RouteFailureClass::kMemoryLimit :
+          *error == analysis::ValueEnvironmentError::kWorkLimit ? RouteFailureClass::kWorkLimit : RouteFailureClass::kUnproved;
+      return fail(kind, ValueRouteError::kTransformStage);
+    }
+    result.environments = std::get<analysis::ValueEnvironments>(std::move(environments));
+  }
   receipt.stage = SourceStage::kValuesVerified;
   receipt.coverage = Coverage::kIncomplete;
-  receipt.work_revision = graph->revision.value;
   result.graph = std::move(*graph);
   return result;
 }
