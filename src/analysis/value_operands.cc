@@ -57,6 +57,17 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       Append(plan, OperandRole::kReturnValue, op.value);
     } else if constexpr (std::is_same_v<T, StringLoad> || std::is_same_v<T, EmptyObjectCreation>) {
       plan.write = Accumulator{};
+    } else if constexpr (std::is_same_v<T, FunctionCreation>) {
+      // DEFINEFUNC obtains its home object from the current function implicitly;
+      // DEFINEMETHOD reads acc as a VM creation input, not a JS call argument.
+      switch (op.home_object) {
+        case HomeObjectInput::kCurrentFunction: break;
+        case HomeObjectInput::kAccumulator:
+          Append(plan, OperandRole::kHomeObject, Accumulator{}, ReadPurpose::kProtocol);
+          break;
+        default: return false;
+      }
+      plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, GlobalAccess>) {
       switch (op.operation) {
         case GlobalOp::kReadName: case GlobalOp::kReadVar:

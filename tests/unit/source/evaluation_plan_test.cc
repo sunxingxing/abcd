@@ -240,4 +240,10 @@ int main() {
   CallOrder(false, true); CallOrder(true, true);
   SharedAndUnusedCalls(); CallRanges();
   GlobalReads();
+  Fixture creation;
+  creation.Add(analysis::ValueFunctionCreation{analysis::CreationKind::kFunction,
+      {0}, 0, analysis::HomeObjectInput::kCurrentFunction, 0}, true, {});
+  creation.graph.blocks = {{{0}, 1, {0}, 0}};
+  Check(OrderedEvaluation(creation.graph.ops[0]));
+  Check(std::get<EvaluationError>(BuildEvaluationPlan(creation.graph)) == EvaluationError::kUnsupportedOperation);
 }

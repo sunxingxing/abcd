@@ -373,6 +373,7 @@ class ForestBuilder {
       else {
         static_assert(std::is_same_v<T, analysis::ValueGuard> ||
                       std::is_same_v<T, analysis::ValueOwnWrite> ||
+                      std::is_same_v<T, analysis::ValueFunctionCreation> ||
                       std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
                       std::is_same_v<T, analysis::ValueNop>);
         throw Error::kUnsupportedOperation;

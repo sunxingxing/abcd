@@ -75,6 +75,11 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueNamedRead{op.name};
     } else if constexpr (std::is_same_v<T, EmptyObjectCreation>) {
       return ValueObjectAllocation{};
+    } else if constexpr (std::is_same_v<T, FunctionCreation>) {
+      if ((op.kind != CreationKind::kFunction || op.home_object != HomeObjectInput::kCurrentFunction) &&
+          (op.kind != CreationKind::kMethod || op.home_object != HomeObjectInput::kAccumulator))
+        throw ValueImportFailure{Error::kUnsupportedOperation, {}};
+      return ValueFunctionCreation{op.kind, op.method, op.length.value, op.home_object, op.cache_slot};
     } else if constexpr (std::is_same_v<T, NamedWrite>) {
       return ValueNamedWrite{op.name};
     } else if constexpr (std::is_same_v<T, OwnWrite>) {

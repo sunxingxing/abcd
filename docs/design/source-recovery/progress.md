@@ -131,6 +131,23 @@ rules stay 18: the new batch plan is not yet consumed by the universal tree
 publisher. Value IR cell/creation import, child AST publication and dependency
 cycle handling remain required; T07 and the overall T00-T12 goal are incomplete.
 
+### T07 Function Creation Value Import
+
+ValueFunctionCreation now carries DEFINEFUNC/DEFINEMETHOD kind, target pool
+index, length, home-object input and IC slot for both pinned cache widths.
+Accumulator home objects retain their typed protocol SSA read; implicit current
+function context remains metadata, not an invented JS argument. Normal and
+pre-throw effects, fresh allocation identity and original sites use the shared
+import/correspondence pipeline. Pure erasure explicitly excludes creation even
+with empty effects. Source evaluation still refuses until child/capture proofs
+are integrated; source rules remain 18.
+
+Production `abc_semantic` and `abc_structure` builds exited 0. New regression
+sources describe four formats, metadata/protocol mutations, unused creation
+retention and source-gate refusal. They are uncompiled/unrun under the ongoing
+test pause. Cell/environment Value IR, child trees and corpus acceptance remain
+pending; this import is not a closure source-publication result.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

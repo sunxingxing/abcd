@@ -45,7 +45,7 @@ struct CfgRevision {
 enum class OperandRole : std::uint8_t {
   kInput, kBase, kKey, kStoredValue, kLeft, kRight, kCondition,
   kReturnValue, kGuardValue, kDiagnosticName, kPhiInput,
-  kCallee, kReceiver, kConstructor, kArgument
+  kCallee, kReceiver, kConstructor, kArgument, kHomeObject
 };
 enum class ReadPurpose : std::uint8_t { kOperand, kProtocol };
 enum class ValueLife : std::uint8_t { kLive, kRemoved };
@@ -121,6 +121,17 @@ struct ValueGlobalRead {
 struct ValueGuard { std::optional<abc::PoolIndex> name; bool operator==(const ValueGuard&) const = default; };
 struct ValueArrayAllocation { bool operator==(const ValueArrayAllocation&) const = default; };
 struct ValueObjectAllocation { bool operator==(const ValueObjectAllocation&) const = default; };
+// Unresolved creation template, not a reusable function value. The origin site
+// binds its environment/module and target profile; source publication still
+// requires CreationBinding, CapturePlan and complete child-tree verification.
+struct ValueFunctionCreation {
+  CreationKind kind;
+  abc::PoolIndex method;
+  std::uint8_t length;
+  HomeObjectInput home_object;
+  std::uint16_t cache_slot;
+  bool operator==(const ValueFunctionCreation&) const = default;
+};
 enum class InvokeReceiver : std::uint8_t { kUndefined, kExplicit };
 struct ValueInvoke {
   InvokeReceiver receiver;
@@ -135,7 +146,7 @@ struct ValueConstruct {
 using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
     ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValuePropertyRead, ValueBranch, ValueJump,
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation,
-    ValueInvoke, ValueConstruct>;
+    ValueInvoke, ValueConstruct, ValueFunctionCreation>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

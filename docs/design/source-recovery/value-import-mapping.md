@@ -14,6 +14,7 @@ route still requires an identity envelope and correspondence verification.
 | NamedRead | Base from accumulator; name retained as pool index | accumulator |
 | NamedWrite | Base from object register, StoredValue from accumulator | absent |
 | OwnWrite | Base, StoredValue; own-store/DefineField kind, name and IC slot retained | absent; accumulator preserved |
+| FunctionCreation | protocol HomeObject only for accumulator-home creation; kind, method pool index, length, home input and IC slot retained | fresh accumulator result |
 | BranchOperation | Condition from predicate input; predicate enum retained | absent |
 | ReturnOperation | ReturnValue; literal undefined remains a literal | absent |
 | StringLoad | no value operand; string retained as pool index | accumulator |
@@ -81,6 +82,17 @@ ValueOwnWrite is admitted only through the freshly checked LiteralPlan domain
 described in `literal-initialization.md`; all other receivers/initializers refuse.
 Import success is not source success. Import adds no graph traversal, alias approximation or
 quadratic per-object scan; import and correspondence retain their existing bound.
+
+FunctionCreation imports both cache widths of DEFINEFUNC/DEFINEMETHOD. The
+target is still a caller-regional pool index, not a resolved child or guessed
+source function name. Current-function home input is implicit; accumulator home
+input is an explicit protocol occurrence with its original SSA read ordinal.
+Environment/module/heap reads, fresh allocation and pre-throw effects remain on
+the original operation/site. Neither unused results nor empty forged effect
+fields authorize pure erasure. Input correspondence checks every metadata field
+and read occurrence. Source evaluation deliberately refuses until creation
+binding, capture obligations and complete child-tree verification are connected.
+Import does not imply an ordinary/sendable target classification or source success.
 
 Inputs remain borrowed only during import. Output graph, correspondence and
 use links are owned. SSA values map once to work IDs; operation results are

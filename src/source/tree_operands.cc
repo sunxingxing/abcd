@@ -106,6 +106,7 @@ class OperandCheck {
               std::holds_alternative<ObjectExpr>(tree_.expressions[expression.value].expression), Error::kOperator);
         } else {
           static_assert(std::is_same_v<T, analysis::ValueGuard> ||
+                        std::is_same_v<T, analysis::ValueFunctionCreation> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueJump>);
           throw Error::kUnsupportedOperation;
         }
