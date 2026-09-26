@@ -1,0 +1,87 @@
+#include "default_signature.h"
+
+#include <limits>
+#include <new>
+#include <stdexcept>
+
+#include "tree_checks.h"
+
+namespace abcd::source {
+namespace {
+using Error = DefaultSignatureError;
+void Require(bool condition, Error error) { if (!condition) throw error; }
+TreeLiteral Literal(const analysis::ValueOperand& operand) {
+  if (const auto* integer = std::get_if<analysis::IntegerLiteral>(&operand))
+    return IntegerLiteral{integer->value};
+  if (const auto* number = std::get_if<analysis::Float64Bits>(&operand))
+    return NumberLiteral{number->value};
+  const auto* special = std::get_if<analysis::SpecialValue>(&operand);
+  Require(special != nullptr, Error::kLiteral);
+  switch (*special) {
+    case analysis::SpecialValue::kUndefined: return UndefinedLiteral{};
+    case analysis::SpecialValue::kNull: return NullLiteral{};
+    case analysis::SpecialValue::kTrue: return BooleanLiteral{true};
+    case analysis::SpecialValue::kFalse: return BooleanLiteral{false};
+    case analysis::SpecialValue::kNaN:
+    case analysis::SpecialValue::kInfinity: throw Error::kLiteral;
+  }
+  throw Error::kLiteral;
+}
+template <class T>
+void Grow(std::vector<T>& items, std::size_t extra, TreeCheckBudget& budget) {
+  constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
+  Require(items.size() <= kMaxId && extra <= kMaxId - items.size(), Error::kResourceLimit);
+  const auto count = items.size() + extra;
+  if (count <= items.capacity()) return;
+  // Retain old storage in the peak charge while reserve replaces the arena.
+  budget.Admit(count, sizeof(T));
+  items.reserve(count);
+  budget.Admit(items.capacity() - count, sizeof(T));
+}
+}  // namespace
+
+std::variant<DefaultSignatureProof, DefaultSignatureError> BuildDefaultSignature(
+    const DefaultBody& body, FunctionTree& tree, analysis::SemanticBudget budget) {
+  try {
+    const auto& graph = body.Graph();
+    Require(tree.value_revision == graph.revision && tree.cfg_revision == graph.cfg_revision, Error::kRevision);
+    Require(tree.signature.empty(), Error::kPlacement);
+    const auto storage = MeasureTreeStorage(tree, budget);
+    const auto* measured = std::get_if<TreeStorage>(&storage);
+    if (!measured) return std::get<TreeStorageError>(storage) == TreeStorageError::kWorkLimit
+        ? Error::kWorkLimit : Error::kResourceLimit;
+    TreeCheckBudget checked(budget);
+    checked.Admit(measured->bytes, 1); checked.Step(measured->work);
+    for (const auto& parameter : tree.parameters) {
+      checked.Step(); Require(!parameter.initializer && !parameter.rest, Error::kParameter);
+    }
+    Grow(tree.expressions, body.Signature().Defaults().size(), checked);
+    Grow(tree.signature, body.Signature().Operations().size(), checked);
+    for (const auto& candidate : body.Signature().Defaults()) {
+      checked.Step();
+      Require(candidate.parameter < tree.parameters.size() && candidate.initializer.value < graph.ops.size(),
+              Error::kParameter);
+      const auto origin = graph.ops[candidate.initializer.value].origin;
+      const ExprId expression{static_cast<std::uint32_t>(tree.expressions.size())};
+      tree.expressions.push_back({Literal(candidate.fallback), {origin.value}});
+      tree.parameters[candidate.parameter].initializer = expression;
+    }
+    for (const auto placement : body.Signature().Operations()) {
+      checked.Step(); Require(placement.operation.value < graph.ops.size(), Error::kPlacement);
+      tree.signature.push_back({placement.operation, {placement.parameter},
+                                {graph.ops[placement.operation.value].origin.value}});
+    }
+    // Conservatively keep construction allocations charged during independent
+    // validation. No default becomes publishable solely by this constructor.
+    const auto verified = VerifyDefaultSignature(body, tree, checked.Remaining());
+    const auto* proof = std::get_if<DefaultSignatureProof>(&verified);
+    if (!proof) return std::get<Error>(verified);
+    checked.Admit(proof->allocated_bytes, 1); checked.Step(proof->work);
+    return DefaultSignatureProof{graph.revision, graph.cfg_revision, checked.Bytes(), checked.Work()};
+  } catch (Error error) { return error;
+  } catch (TreeStructureError error) {
+    return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+}  // namespace abcd::source

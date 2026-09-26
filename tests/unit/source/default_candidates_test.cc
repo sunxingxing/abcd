@@ -1,8 +1,10 @@
 #include "../../../src/source/default_candidates.h"
 #include "../../../src/source/default_value_proof.h"
 #include "../../../src/source/default_body.h"
+#include "../../../src/source/default_signature.h"
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/tree_flow.h"
+#include "../../../src/source/tree_semantics.h"
 #include "../../../src/analysis/value_flow.h"
 
 #include <cstdlib>
@@ -13,6 +15,7 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
+using abcd::analysis::IntegerLiteral;
 static_assert(!std::is_default_constructible_v<DefaultValueProof>);
 static_assert(!std::is_copy_constructible_v<DefaultValueProof>);
 static_assert(!std::is_default_constructible_v<DefaultBody>);
@@ -128,6 +131,39 @@ void BodyProjection() {
   syntax_tree.statements[syntax_tree.body.value].origin = TreeOriginId{0};
   Check(std::get<TreeFlowError>(VerifyTreeFlow(graph, control, evaluation, syntax_tree)) ==
         TreeFlowError::kPlacement);
+  syntax_tree.statements[syntax_tree.body.value].origin = TreeOriginId{3};
+  auto signed_tree = syntax_tree;
+  const auto signature = BuildDefaultSignature(owner, signed_tree);
+  Check(std::holds_alternative<DefaultSignatureProof>(signature));
+  Check(signed_tree.signature.size() == 3 && signed_tree.parameters[0].initializer.has_value());
+  const auto initializer = *signed_tree.parameters[0].initializer;
+  Check(std::get<source::IntegerLiteral>(std::get<TreeLiteral>(
+      signed_tree.expressions[initializer.value].expression)).value == -1);
+  Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(
+      graph, control, evaluation, signed_tree, {constants, 0, 0, {}})));
+  const auto verified = std::get<DefaultSignatureProof>(VerifyDefaultSignature(owner, signed_tree));
+  Check(std::get<DefaultSignatureError>(VerifyDefaultSignature(owner, signed_tree,
+      {1024 * 1024, verified.work - 1})) == DefaultSignatureError::kWorkLimit);
+  Check(std::get<DefaultSignatureError>(VerifyDefaultSignature(owner, signed_tree, {0, 0})) ==
+        DefaultSignatureError::kResourceLimit);
+  auto invalid = signed_tree;
+  invalid.expressions[initializer.value].expression = TreeLiteral{source::IntegerLiteral{0}};
+  Check(std::get<DefaultSignatureError>(VerifyDefaultSignature(owner, invalid)) == DefaultSignatureError::kLiteral);
+  invalid = signed_tree;
+  invalid.signature.pop_back();
+  Check(std::get<DefaultSignatureError>(VerifyDefaultSignature(owner, invalid)) == DefaultSignatureError::kPlacement);
+  invalid = signed_tree;
+  invalid.signature[0].origin = TreeOriginId{2};
+  Check(std::get<DefaultSignatureError>(VerifyDefaultSignature(owner, invalid)) == DefaultSignatureError::kOrigin);
+  invalid = signed_tree;
+  invalid.statements[invalid.body.value].origin = TreeOriginId{0};
+  Check(std::get<DefaultSignatureError>(VerifyDefaultSignature(owner, invalid)) == DefaultSignatureError::kOrigin);
+  invalid = signed_tree;
+  invalid.signature[1].operation = invalid.signature[0].operation;
+  Check(std::get<DefaultSignatureError>(VerifyDefaultSignature(owner, invalid)) == DefaultSignatureError::kStructure);
+  invalid = signed_tree;
+  ++invalid.cfg_revision.value;
+  Check(std::get<DefaultSignatureError>(VerifyDefaultSignature(owner, invalid)) == DefaultSignatureError::kRevision);
   Check(std::get<DefaultBodyError>(DefaultBody::Build(original, parameters, candidates, 0, {0, 0})) == DefaultBodyError::kResourceLimit);
   Check(std::get<DefaultBodyError>(DefaultBody::Build(original, parameters, candidates, 0,
         {1024 * 1024, owner.Work() - 1})) == DefaultBodyError::kWorkLimit);

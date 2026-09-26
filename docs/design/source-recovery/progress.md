@@ -871,3 +871,48 @@ origins and refusal of a tampered root that names the removed default prologue.
 SignaturePlacement construction and its independent default-to-source proof
 remain pending; adding output events does not authorize default publication.
 Tests and RSS measurement remain paused; T06 is still incomplete.
+
+### T06 Default Signature Construction and Independent Check
+
+FunctionTree now has typed SignaturePlacement records (operation, ParameterId,
+origin). Structural verification checks their parameter/default association and
+OriginalSite shape and rejects operation ownership duplicated within signatures
+or between signature and body tables. Capacity accounting includes the table;
+inspection serializes it separately from body operation placements. Its formal
+ordinal refers directly to the printer's existing parameter range events.
+
+BuildDefaultSignature adds dedicated literal initializer expression occurrences
+and complete prologue placements from the sealed DefaultBody. It does not move
+body syntax or infer defaults from generated text. On failure its construction
+tree must be discarded. VerifyDefaultSignature independently checks the actual
+nodes, exact literal values (including numeric bits), parameter ordinals, removed
+operation identities and original site/PC evidence against that owner. It also
+requires a strict ordinary class-method context; broader callable/environment
+admission remains a separate task.
+
+Moved-origin membership propagates once through the backward origin DAG, then
+checks every body expression, statement and anchor. This rejects migrated PCs
+leaking into body origins without expanding transitive PC sets per expression.
+All signature placements must be present exactly once. Independent verification
+includes full structural/scope/ownership checks. Its correspondence is limited
+to the signature: residual body semantics, original input identity, parameter
+census and callable ABI are still mandatory, separate publication obligations.
+
+The signature-specific scans are linear in parameters, operations, syntax and
+origin adjacency size; structural verification retains its existing sorting
+cost. Constructor and verifier charge storage/work conservatively under one
+allowance, including the tree and reserve replacement peaks. This is not a
+whole-process RSS claim.
+
+Production abc_semantic/abc_structure compilation passed with both new modules.
+Unrun regression sources cover complete literal attachment plus residual
+semantic checking, modified literals, missing/duplicate placements, wrong PCs,
+body-origin leakage, stale revisions and resource/work refusal. Static review
+also fixed an ambiguous IntegerLiteral name in the uncompiled fixture after
+both source and analysis literal types became visible.
+
+VerifiedFunction still does not admit default signatures from ABC. Next is
+factory integration of ParameterPlan/discovery, DefaultBody, syntax attachment,
+fresh body/signature/ABI checks and matching route revisions. No T06 completion,
+real default-source output or test success is claimed. Tests, generated-JS
+execution and RSS measurement remain paused.

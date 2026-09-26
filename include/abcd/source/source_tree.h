@@ -13,6 +13,7 @@ namespace abcd::source {
 struct ExprId { std::uint32_t value = 0; auto operator<=>(const ExprId&) const = default; };
 struct StmtId { std::uint32_t value = 0; auto operator<=>(const StmtId&) const = default; };
 struct SymbolId { std::uint32_t value = 0; auto operator<=>(const SymbolId&) const = default; };
+struct ParameterId { std::uint32_t value = 0; auto operator<=>(const ParameterId&) const = default; };
 struct ScopeId { std::uint32_t value = 0; auto operator<=>(const ScopeId&) const = default; };
 struct NameId { std::uint32_t value = 0; auto operator<=>(const NameId&) const = default; };
 struct TextId { std::uint32_t value = 0; auto operator<=>(const TextId&) const = default; };
@@ -112,6 +113,13 @@ struct OpPlacement {
   analysis::OpId operation;
   std::variant<ExprId, StmtId, AnchorId> node;
 };
+// Prologue operations moved to complete formal syntax, not body instructions.
+// This side table requires a default-signature proof before publication.
+struct SignaturePlacement {
+  analysis::OpId operation;
+  ParameterId parameter;
+  TreeOriginId origin;
+};
 struct FunctionTree {
   RouteInputIdentity identity;
   abc::EntityOffset method;
@@ -136,6 +144,7 @@ struct FunctionTree {
   std::vector<TreeOriginId> origin_parts;
   std::vector<TreeAnchor> anchors;
   std::vector<OpPlacement> operations;
+  std::vector<SignaturePlacement> signature;
 };
 // This is a construction product, not a source-publication certificate. The
 // printer will accept only a frozen verified owner, never raw ValueProgram.

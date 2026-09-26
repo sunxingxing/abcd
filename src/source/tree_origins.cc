@@ -1,6 +1,7 @@
 #include "tree_checks.h"
 
 #include <algorithm>
+#include <limits>
 #include <type_traits>
 
 namespace abcd::source {
@@ -44,7 +45,9 @@ void CheckTreeOrigins(const FunctionTree& tree, TreeCheckBudget& budget) {
   std::vector<analysis::OpId> operations;
   budget.Admit(1, sizeof(anchors) + sizeof(operations));
   budget.Array(anchors, tree.anchors.size());
-  budget.Array(operations, tree.operations.size());
+  RequireTree(tree.signature.size() <= std::numeric_limits<std::size_t>::max() - tree.operations.size(),
+              Error::kResourceLimit);
+  budget.Array(operations, tree.operations.size() + tree.signature.size());
   for (std::size_t i = 0; i < tree.operations.size(); ++i) {
     budget.Step();
     const auto& placement = tree.operations[i];
@@ -61,6 +64,15 @@ void CheckTreeOrigins(const FunctionTree& tree, TreeCheckBudget& budget) {
         anchors[node.value] = 1;
       }
     }, placement.node);
+  }
+  for (std::size_t i = 0; i < tree.signature.size(); ++i) {
+    budget.Step();
+    const auto& placement = tree.signature[i];
+    RequireTree(placement.parameter.value < tree.parameters.size(), Error::kRange);
+    RequireTree(tree.parameters[placement.parameter.value].initializer.has_value(), Error::kOrigin);
+    RequireTree(placement.origin.value < tree.origins.size() &&
+                std::holds_alternative<OriginalSite>(tree.origins[placement.origin.value]), Error::kOrigin);
+    operations[tree.operations.size() + i] = placement.operation;
   }
   std::sort(operations.begin(), operations.end(), [&](auto left, auto right) {
     budget.Step(); return left < right;

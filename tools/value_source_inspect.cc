@@ -186,6 +186,11 @@ void Positions(std::ostream& output, const FunctionTree& tree, const PrintedFunc
       return nlohmann::json{{"operation", operation.operation.value}, {"kind", kind}, {"node", node.value}};
     }, operation.node);
   });
+  output << ",\"signature\":";
+  Array(output, tree.signature, [](const SignaturePlacement& placement) {
+    return nlohmann::json{{"operation", placement.operation.value},
+        {"parameter", placement.parameter.value}, {"origin", placement.origin.value}};
+  });
   output << '}';
 }
 

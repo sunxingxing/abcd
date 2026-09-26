@@ -19,6 +19,9 @@ struct TreeSemantics {
 // adapter's same-file resolved constants. Does not certify the supplied callable
 // context or ABC identity/parameter census. Publication must bind those facts,
 // this proof and an immutable tree together; this report alone cannot print.
+// For an initialized-formal residual graph, this proves only the body. Native
+// defaults and SignaturePlacement need VerifyDefaultSignature as well as ABI
+// validation; tree structure alone is not prologue-migration permission.
 [[nodiscard]] std::variant<TreeSemantics, TreeSemanticError> VerifyTreeSemantics(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
