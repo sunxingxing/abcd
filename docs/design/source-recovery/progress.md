@@ -700,7 +700,7 @@ It records the original parameter entry, exact comparison/branch, both header
 edges, sole default-arm edge, and the phi's two incoming edge identities.
 The first ordinal must agree with encoded length; subsequent ordinals increase.
 Foreign arm/join predecessors, entry backedges, wrong comparison polarity,
-non-parameter tests, internal-value defaults and extra arm operations do not
+non-parameter tests, non-admitted fallback literals and extra arm operations do not
 match. It does not search arbitrary body conditionals for defaults.
 
 Literal fallback operands are typed IR values. The numeric-negation case
@@ -725,6 +725,45 @@ walks. Returned capacity/work are separate from the admitted scratch peak.
 Unrun regression sources cover exact join edges, polarity, foreign entries,
 entry backedges, -1/-0, coercion rejection and resource/revision bounds. Tests,
 generated JS execution and RSS measurement remain paused.
+
+### T06 Independent Default Value Proof
+
+DefaultValueProof independently checks the proposed default candidates; it
+does not call FindDefaultCandidates again or trust its inferred polarity or
+fallback literal. The proof is move-only and has no public raw constructor.
+Its inputs must have passed normal-IR import/rewrite, use-link and dominance
+verification. It validates the candidate proposal rather than replacing those
+whole-graph contracts.
+
+Dense block/value/formal indexes bind each candidate to its entry, comparison,
+initializer and merged phi. The checker verifies exact source/target edge IDs,
+incoming predecessor counts, consecutive prologue ownership, comparison
+operands, branch polarity, literal bits, phi incoming keys and all live use
+occurrences. Old entry uses outside the comparison/merge, comparison-result
+escapes and initializer-result escapes refuse migration. A merged value can
+be used by the remaining body but not fed back into the removed prologue.
+Unexpected operations/effects or additional affected-block phis refuse.
+
+Integer Number negation is independently evaluated, including negative zero;
+only the imported scalar-negation effect envelope is admitted. This operand
+proof refines conservative user-coercion/throw flags without dropping an
+arbitrary user's conversion. Every affected live operation retains a typed
+DefaultOpPlacement naming its parameter, ready for signature-origin mapping.
+No PC is inferred from source text and no CFG edit runs in this checker.
+
+Complexity is O(B+E+O+V+U+P+D) time and bounded dense indexes plus retained
+candidate/placement arrays. All arrays share one allowance; work is charged
+for construction and scans. D is the number of proposed defaults. The result
+is an IR-value proof only: source scope/TDZ, native parameter-environment and
+callable ABI proofs and publication integration are still pending. No new
+default source signature is emitted yet, and T06 remains incomplete.
+
+Production abc_semantic/abc_structure compilation passed. Unrun regression
+sources now include tampered literals/operation IDs, escaped original values,
+escaped comparisons/initializers, negative-zero refinement, stale revisions
+and work refusal. Static inspection also corrected two earlier uncompiled
+fixture references (Float64Bits.value and the actual SpecialValue enum).
+Tests, JS execution and RSS measurement remain paused.
 
 Production `abc_semantic` and `abc_structure` compilation completed successfully
 with the discovery module included. No default-parameter output success is

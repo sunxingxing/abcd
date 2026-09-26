@@ -1,12 +1,16 @@
 #include "../../../src/source/default_candidates.h"
+#include "../../../src/source/default_value_proof.h"
 
 #include <cstdlib>
 #include <bit>
+#include <type_traits>
 
 namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
+static_assert(!std::is_default_constructible_v<DefaultValueProof>);
+static_assert(!std::is_copy_constructible_v<DefaultValueProof>);
 void Check(bool condition) { if (!condition) std::abort(); }
 ValueProgram DefaultDiamond() {
   ValueProgram graph;
@@ -39,6 +43,49 @@ DefaultCandidates Find(const ValueProgram& graph) {
   const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(graph, 1));
   return std::get<DefaultCandidates>(FindDefaultCandidates(graph, parameters, 0));
 }
+void Relink(ValueProgram& graph) {
+  for (auto& value : graph.values) value.first_use.reset();
+  std::vector<std::optional<UseId>> last(graph.values.size());
+  for (std::size_t i = 0; i < graph.uses.size(); ++i) {
+    auto& use = graph.uses[i];
+    use.previous.reset(); use.next.reset();
+    const auto* value = std::get_if<ValueId>(&use.operand);
+    if (!value || use.life != ValueLife::kLive) continue;
+    const UseId id{static_cast<std::uint32_t>(i)};
+    use.previous = last[value->value];
+    if (use.previous) graph.uses[use.previous->value].next = id;
+    else graph.values[value->value].first_use = id;
+    last[value->value] = id;
+  }
+  Check(!VerifyValueUses(graph, 1024 * 1024));
+}
+void ProofAndEscapes() {
+  auto graph = DefaultDiamond();
+  const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(graph, 1));
+  auto candidates = Find(graph);
+  auto proved = DefaultValueProof::Build(graph, parameters, candidates, 0);
+  Check(std::holds_alternative<DefaultValueProof>(proved));
+  const auto& proof = std::get<DefaultValueProof>(proved);
+  Check(proof.BodyEntry() == WorkBlockId{2} && proof.Defaults().size() == 1);
+  Check(proof.Operations().size() == 2);
+  Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0,
+        {1024 * 1024, proof.Work() - 1})) == DefaultProofError::kWorkLimit);
+  candidates.values[0].fallback = IntegerLiteral{0};
+  Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0)) == DefaultProofError::kLiteral);
+  candidates = Find(graph);
+  graph.uses[5].operand = ValueId{0};
+  Relink(graph);
+  Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0)) == DefaultProofError::kEscapedValue);
+  graph.uses[5].operand = ValueId{1};
+  Relink(graph);
+  Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0)) == DefaultProofError::kEscapedValue);
+  graph = DefaultDiamond();
+  candidates.values[0].comparison = OpId{1};
+  Check(std::holds_alternative<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0)));
+  candidates = Find(graph);
+  ++graph.cfg_revision.value;
+  Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0)) == DefaultProofError::kRevision);
+}
 void MatchAndBoundaries() {
   auto graph = DefaultDiamond();
   Check(!VerifyValueUses(graph, 1024 * 1024));
@@ -67,7 +114,7 @@ void RejectCoincidences() {
   graph.uses[4].incoming = IncomingKey{EdgeId{1}};
   Check(Find(graph).values.empty()); // Missing path must arrive on the arm's edge.
   graph = DefaultDiamond();
-  graph.uses[4].operand = SpecialValue::kHole;
+  graph.uses[4].operand = SpecialValue::kNaN;
   Check(Find(graph).values.empty());
   graph = DefaultDiamond();
   graph.edges.push_back({{2}, {1}, FlowEdgeKind::kTaken, 0});
@@ -93,12 +140,20 @@ void NegatedLiteral() {
   Check(!VerifyValueUses(graph, 1024 * 1024));
   auto found = Find(graph);
   Check(found.values.size() == 1 && found.values[0].initializer == OpId{2});
-  Check(std::get<Float64Bits>(found.values[0].fallback).bits == std::bit_cast<std::uint64_t>(-1.0));
+  const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(graph, 1));
+  Check(std::holds_alternative<DefaultValueProof>(DefaultValueProof::Build(graph, parameters, found, 0)));
+  Check(std::get<Float64Bits>(found.values[0].fallback).value == std::bit_cast<std::uint64_t>(-1.0));
   graph.uses[6].operand = IntegerLiteral{0};
   found = Find(graph);
-  Check(std::get<Float64Bits>(found.values[0].fallback).bits == std::bit_cast<std::uint64_t>(-0.0));
+  Check(std::get<Float64Bits>(found.values[0].fallback).value == std::bit_cast<std::uint64_t>(-0.0));
+  Check(std::holds_alternative<DefaultValueProof>(DefaultValueProof::Build(graph, parameters, found, 0)));
+  graph.uses[5].operand = ValueId{3};
+  Relink(graph);
+  Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, found, 0)) == DefaultProofError::kEscapedValue);
+  graph.uses[5].operand = ValueId{2};
   graph.uses[6].operand = ValueId{0};
+  Relink(graph);
   Check(Find(graph).values.empty()); // No speculative coercion of a parameter.
 }
 }  // namespace
-int main() { MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); }
+int main() { MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); }
