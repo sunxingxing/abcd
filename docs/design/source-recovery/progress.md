@@ -649,3 +649,43 @@ ABC-only integration specification comparing the embedded member and all local
 position/origin tables with standalone emission, plus option-conflict refusals.
 Tests, generated-JS execution and RSS measurement remain paused. T03 remains
 in progress; this does not satisfy its behavioral-validation acceptance gate.
+
+### T03 Independent Record Refusal Investigation
+
+ABC-only debugger inspection localized Immersive's outer creation-PC159 refusal.
+The inner failure is LinearLexicalError::kInstruction at PC24 of method 20505,
+`ProductTitle.initialRender`, an attached prototype method. That instruction
+creates child method 19292. It is not the selected method 21082 and not a failed
+FunctionSegment rebase. The selected method's complete standalone emission must
+not be used to certify this unrelated closure's body. No rejection predicate
+was relaxed, no fabricated method body was inserted, and no legacy fallback was
+added to the selected route. Nested creation/capture support belongs to T07;
+the whole independent record remains incomplete until that capability exists.
+
+### T06 Parameter Entry Identity
+
+Started the scheduled T06 parameter work after T03's first real embedded slice;
+this is implementation progress, not closure of T03's paused validation gate.
+BuildParameterPlan now records each ABI ordinal's original live SSA ValueId,
+with typed absence for unused/unrepresented entries. It rejects duplicate live
+entries and out-of-range ordinals instead of silently merging parameter
+identities. Later OpResult/phi definitions cannot replace an invocation entry.
+BindingPlan consumes this explicit mapping before assigning parameter symbols.
+The module is callable-kind independent and never consults register spelling.
+
+Complexity is O(V+P) time and O(P) storage with prepaid work and vector-capacity
+admission. BindingPlan retains and charges the plan; its existing downstream
+forest budget includes the added storage/work. Missing formals remain present
+in source signatures, not fabricated undefined SSA entries. This step does not
+move default prologues, mutate CFG/scopes, recover rest, or authorize mutable
+parameter aliasing. Those remain subsequent T06 work with signature-placement,
+initializer scope, length/arguments and old-value snapshot proofs.
+
+Unrun regression sources cover 0/1/200/201/4096 formals, absent unused entries,
+later definitions versus invocation entries, duplicate/out-of-range entries,
+and byte/work refusal. Tests, JS execution and RSS measurement remain paused.
+
+Production abc_semantic/abc_structure compilation passed after integration.
+Fresh ABC-only inspections still emit Pasteboard's selected segment at
+[2307,2464) and Immersive's complete standalone method 21082. Both retain the
+existing rules-7 method receipts and incomplete enclosing coverage.

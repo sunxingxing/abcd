@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_BINDING_PLAN_H_
 
 #include "evaluation_plan.h"
+#include "parameter_plan.h"
 
 namespace abcd::source {
 struct UnboundValue {};
@@ -22,6 +23,7 @@ struct BindingPlan {
   // Names and lexical declarations are assigned by tree construction, not SSA.
   std::vector<BindingSource> symbols;
   std::uint32_t parameter_count = 0;
+  ParameterPlan parameters;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

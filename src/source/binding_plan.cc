@@ -32,10 +32,24 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
       !admit(graph.ops.size() + parameter_count, sizeof(BindingSource)))
     return Error::kResourceLimit;
   try {
+    auto parameter_result = BuildParameterPlan(graph, parameter_count, {bytes, work});
+    auto* parameters = std::get_if<ParameterPlan>(&parameter_result);
+    if (!parameters) {
+      switch (std::get<ParameterPlanError>(parameter_result)) {
+        case ParameterPlanError::kResourceLimit: return Error::kResourceLimit;
+        case ParameterPlanError::kWorkLimit: return Error::kWorkLimit;
+        case ParameterPlanError::kOrdinal:
+        case ParameterPlanError::kDuplicateEntry: return Error::kParameter;
+      }
+      return Error::kParameter;
+    }
+    bytes -= parameters->allocated_bytes;
+    work -= parameters->work;
     BindingPlan plan;
     plan.revision = graph.revision;
     plan.cfg_revision = graph.cfg_revision;
     plan.parameter_count = parameter_count;
+    plan.parameters = std::move(*parameters);
     plan.values.resize(graph.values.size());
     const auto symbol_limit = graph.ops.size() + parameter_count;
     plan.symbols.reserve(symbol_limit);
@@ -46,6 +60,8 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
       if (work == 0) return Error::kWorkLimit;
       --work;
       plan.symbols.emplace_back(ParameterBinding{i});
+      if (const auto entry = plan.parameters.formals[i].entry)
+        plan.values[entry->value] = SymbolId{i};
     }
     for (std::size_t i = 0; i < graph.values.size(); ++i) {
       if (work == 0) return Error::kWorkLimit;
@@ -54,8 +70,9 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
       if (value.life == ValueLife::kRemoved) continue;
       if (const auto* entry = std::get_if<EntryDefinition>(&value.origin)) {
         if (const auto* parameter = std::get_if<ParameterEntry>(entry)) {
-          if (parameter->index >= parameter_count) return Error::kParameter;
-          plan.values[i] = SymbolId{parameter->index};
+          if (parameter->index >= parameter_count ||
+              plan.parameters.formals[parameter->index].entry !=
+                  ValueId{static_cast<std::uint32_t>(i)}) return Error::kParameter;
         } else if (std::holds_alternative<ReceiverEntry>(*entry)) {
           plan.values[i] = ReceiverBinding{};
         } else if (value.first_use) {

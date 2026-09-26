@@ -29,6 +29,9 @@ void ParameterAndUnusedFormals() {
     Check(plan.symbols.size() == count);
     Check(std::get<SymbolId>(plan.values[0]).value == 0);
     Check(std::get<ParameterBinding>(plan.symbols.back()).index == count - 1);
+    Check(plan.parameters.formals.size() == count);
+    Check(plan.parameters.formals[0].entry == analysis::ValueId{0});
+    if (count > 1) Check(!plan.parameters.formals.back().entry);
   }
   auto missing = BuildBindingPlan(graph, std::get<EvaluationPlan>(evaluation), 0);
   Check(std::get<BindingError>(missing) == BindingError::kParameter);
