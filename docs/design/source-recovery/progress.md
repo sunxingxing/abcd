@@ -304,3 +304,37 @@ cover a branch with two distinct reads and PC40 write, a shared getter snapshot,
 both repeated-read VM predicates, retained original PC, names/constants refusal
 and work-budget failure. Production abc_semantic builds; tests, generated-JS
 execution and RSS measurements remain paused.
+
+### T03 Independent Syntax Validation
+
+VerifyTreeStructure checks the actual constructed arenas, without replaying
+BuildFunctionTree. It requires one executable parent per node, rejects cycles,
+unreachable nodes and overlapping/orphan child slices, and walks deep trees
+with an admitted explicit stack. Function/body/block scope ownership is checked
+against actual nesting, not PC order or basic-block numbers.
+
+TreeScopeCheck sorts symbol spellings once, then uses active binding slots on
+scope entry/exit. Each SymbolExpr and assignment target must resolve to that
+exact symbol, including shadowing: a reference to an outer SymbolId beneath a
+same-name inner binding is rejected. Parameter/body redeclarations, duplicate
+bindings, missing/duplicate declarations, const assignments and invalid names
+are refused. Name validation now reuses the existing ASCII identifier/reserved
+word boundary directly on UTF-16 views without allocating a conversion buffer.
+Scope queries are constant time; construction is O(S log S) name comparisons,
+plus linear syntax/adjacency traversal and spelling work.
+
+Origin verification checks canonical backward-only origin DAG links, complete
+part-list ownership, anchor positions, unique operation placements and anchor
+ownership. PC/instruction/edge correspondence still requires IR verification;
+the syntax checker does not infer it from arena sizes. Builder output passes
+this independent structural check before it is returned, sharing the builder's
+remaining budget while both construction scratch and output are still live.
+
+TreeStructure is deliberately not a frozen source certificate. It does not
+prove TDZ/initialization, original effect occurrence/order, edge correspondence,
+callable/receiver semantics, or constant-pool fidelity. These remain required
+before the printer/publication boundary. New regression sources exercise
+shadowing, cycles/shared nodes, declaration/name errors, invalid origins and
+anchors, and 200/201/4096-deep trees; existing function-construction fixtures also
+invoke the independent checker. Production builds pass. Tests and RSS execution
+remain paused; no T03 completion or executable-source claim is made.

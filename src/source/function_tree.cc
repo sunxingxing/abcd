@@ -8,6 +8,7 @@
 #include <stdexcept>
 
 #include "abcd/source/global_reference.h"
+#include "tree_structure.h"
 
 namespace abcd::source {
 namespace {
@@ -107,6 +108,7 @@ class TreeBuilder {
       }
     }
     Flatten();
+    CheckStructure();
     return {std::move(tree_), budget_.bytes - bytes_, budget_.work - work_};
   }
 
@@ -313,6 +315,28 @@ class TreeBuilder {
         child = links_[*child].next;
       }
     }
+  }
+  void CheckStructure() {
+    // The checker admits tree storage too. Recredit only that already-admitted
+    // output, not builder scratch; both remain live throughout verification.
+    const auto measured = MeasureTreeStorage(tree_, {budget_.bytes, work_});
+    const auto* storage = std::get_if<TreeStorage>(&measured);
+    if (!storage)
+      throw std::get<TreeStorageError>(measured) == TreeStorageError::kWorkLimit
+          ? Error::kWorkLimit : Error::kResourceLimit;
+    Step(storage->work);
+    Require(storage->bytes <= budget_.bytes - bytes_, Error::kResourceLimit);
+    const auto checked = VerifyTreeStructure(tree_, {bytes_ + storage->bytes, work_});
+    const auto* structure = std::get_if<TreeStructure>(&checked);
+    if (!structure) {
+      const auto error = std::get<TreeStructureError>(checked);
+      if (error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
+      if (error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
+      throw Error::kStructure;
+    }
+    Require(structure->allocated_bytes >= storage->bytes, Error::kStructure);
+    Admit(structure->allocated_bytes - storage->bytes, 1);
+    Step(structure->work);
   }
 
   const analysis::ValueProgram& graph_;

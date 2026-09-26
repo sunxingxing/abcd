@@ -1,0 +1,259 @@
+#include "tree_structure.h"
+
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <cmath>
+#include <limits>
+#include <new>
+#include <stdexcept>
+#include <type_traits>
+
+#include "tree_checks.h"
+
+namespace abcd::source {
+namespace {
+using Error = TreeStructureError;
+using SyntaxNode = std::variant<ExprId, StmtId>;
+struct SyntaxFrame {
+  SyntaxNode node;
+  ScopeId scope;
+  std::size_t next_child = 0;
+  bool entered = false;
+};
+bool ValidUnary(TreeUnary operation) {
+  switch (operation) {
+    case TreeUnary::kNot: case TreeUnary::kNegate: case TreeUnary::kBitNot:
+    case TreeUnary::kPlus: case TreeUnary::kTypeof: return true;
+  }
+  return false;
+}
+bool ValidBinary(analysis::BinaryOperator operation) {
+  using B = analysis::BinaryOperator;
+  switch (operation) {
+    case B::kAdd: case B::kSubtract: case B::kMultiply: case B::kDivide:
+    case B::kRemainder: case B::kExponent: case B::kEqual: case B::kNotEqual:
+    case B::kLess: case B::kLessEqual: case B::kGreater: case B::kGreaterEqual:
+    case B::kShiftLeft: case B::kShiftRightUnsigned: case B::kShiftRightSigned:
+    case B::kBitAnd: case B::kBitOr: case B::kBitXor: case B::kStrictEqual:
+    case B::kStrictNotEqual: case B::kIn: return true;
+  }
+  return false;
+}
+void CheckCallable(const FunctionTree& tree) {
+  RequireTree(tree.strictness == Strictness::kStrict || tree.strictness == Strictness::kSloppy,
+              Error::kUnsupportedSyntax);
+  switch (tree.callable) {
+    case CallableKind::kFunction: case CallableKind::kMethod:
+    case CallableKind::kArrow: case CallableKind::kBaseConstructor:
+    case CallableKind::kDerivedConstructor: case CallableKind::kAsyncFunction:
+    case CallableKind::kAsyncMethod: return;
+  }
+  throw Error::kUnsupportedSyntax;
+}
+
+class StructureCheck {
+ public:
+  StructureCheck(const FunctionTree& tree, TreeCheckBudget& budget)
+      : tree_(tree), budget_(budget), scopes_(tree, budget) {
+    budget.Array(expressions_, tree.expressions.size());
+    budget.Array(statements_, tree.statements.size());
+    budget.Array(children_, tree.children.size());
+    RequireTree(tree.expressions.size() <= std::numeric_limits<std::size_t>::max() - tree.statements.size(),
+                Error::kResourceLimit);
+    budget.Array(stack_, tree.expressions.size() + tree.statements.size());
+  }
+  std::size_t Run() {
+    CheckCallable(tree_);
+    RequireTree(tree_.parameter_scope.value < tree_.scopes.size() &&
+                tree_.body_scope.value < tree_.scopes.size() &&
+                tree_.parameter_scope != tree_.body_scope, Error::kScope);
+    const auto& parameters = tree_.scopes[tree_.parameter_scope.value];
+    const auto& body = tree_.scopes[tree_.body_scope.value];
+    RequireTree(parameters.kind == ScopeKind::kParameters && !parameters.parent &&
+                body.kind == ScopeKind::kFunctionBody && body.parent == tree_.parameter_scope, Error::kScope);
+    RequireTree(tree_.body.value < tree_.statements.size(), Error::kRange);
+    const auto* root = std::get_if<BlockStmt>(&tree_.statements[tree_.body.value].statement);
+    RequireTree(root && root->scope == tree_.body_scope, Error::kScope);
+    scopes_.Enter(tree_.parameter_scope);
+    std::size_t depth = 1;
+    std::size_t maximum_depth = depth;
+    stack_[0] = {tree_.body, tree_.parameter_scope, 0, false};
+    while (depth != 0) {
+      budget_.Step();
+      auto& frame = stack_[depth - 1];
+      if (!frame.entered) { Enter(frame); frame.entered = true; }
+      const auto child = Next(frame);
+      if (child) {
+        RequireTree(depth < stack_.size(), Error::kOwnership);
+        stack_[depth++] = {*child, frame.scope, 0, false};
+        maximum_depth = std::max(depth, maximum_depth);
+      } else {
+        if (const auto* statement = std::get_if<StmtId>(&frame.node))
+          if (const auto* block = std::get_if<BlockStmt>(&tree_.statements[statement->value].statement))
+            scopes_.Leave(block->scope);
+        --depth;
+      }
+    }
+    scopes_.Leave(tree_.parameter_scope);
+    scopes_.Finish();
+    for (const auto seen : expressions_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
+    for (const auto seen : statements_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
+    for (const auto seen : children_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
+    return maximum_depth;
+  }
+
+ private:
+  void Key(const MemberKey& key) const {
+    if (const auto* name = std::get_if<NameId>(&key))
+      RequireTree(name->value < tree_.names.size(), Error::kRange);
+  }
+  void Expression(const ExprNode& node) {
+    RequireTree(node.origin.value < tree_.origins.size(), Error::kOrigin);
+    std::visit([&](const auto& expression) {
+      using T = std::decay_t<decltype(expression)>;
+      if constexpr (std::is_same_v<T, TreeLiteral>) {
+        if (const auto* text = std::get_if<TextId>(&expression))
+          RequireTree(text->value < tree_.texts.size(), Error::kRange);
+        if (const auto* number = std::get_if<NumberLiteral>(&expression)) {
+          const auto value = std::bit_cast<double>(number->bits);
+          const auto canonical = std::bit_cast<std::uint64_t>(std::numeric_limits<double>::quiet_NaN());
+          RequireTree(!std::isnan(value) || number->bits == canonical, Error::kUnsupportedSyntax);
+        }
+      } else if constexpr (std::is_same_v<T, SymbolExpr>) {
+        scopes_.Reference(expression.symbol);
+      } else if constexpr (std::is_same_v<T, ThisExpr>) {
+        RequireTree(expression.owner == tree_.owner, Error::kBinding);
+      } else if constexpr (std::is_same_v<T, MemberExpr>) {
+        Key(expression.key);
+      } else if constexpr (std::is_same_v<T, UnaryExpr>) {
+        RequireTree(ValidUnary(expression.operation), Error::kUnsupportedSyntax);
+      } else if constexpr (std::is_same_v<T, BinaryExpr>) {
+        RequireTree(ValidBinary(expression.operation), Error::kUnsupportedSyntax);
+      } else if constexpr (std::is_same_v<T, LogicalExpr>) {
+        RequireTree(expression.operation == TreeLogical::kAnd || expression.operation == TreeLogical::kOr,
+                    Error::kUnsupportedSyntax);
+      } else {
+        static_assert(std::is_same_v<T, AssignmentExpr>);
+        if (const auto* symbol = std::get_if<SymbolTarget>(&expression.target))
+          scopes_.Reference(symbol->symbol, true);
+        else Key(std::get<MemberTarget>(expression.target).key);
+      }
+    }, node.expression);
+  }
+  void RequireBlock(StmtId id) const {
+    RequireTree(id.value < tree_.statements.size() &&
+                std::holds_alternative<BlockStmt>(tree_.statements[id.value].statement), Error::kScope);
+  }
+  void Enter(SyntaxFrame& frame) {
+    if (const auto* expression = std::get_if<ExprId>(&frame.node)) {
+      RequireTree(expression->value < expressions_.size(), Error::kRange);
+      RequireTree(!expressions_[expression->value], Error::kOwnership);
+      expressions_[expression->value] = 1;
+      Expression(tree_.expressions[expression->value]);
+      return;
+    }
+    const auto id = std::get<StmtId>(frame.node);
+    RequireTree(id.value < statements_.size(), Error::kRange);
+    RequireTree(!statements_[id.value], Error::kOwnership);
+    statements_[id.value] = 1;
+    const auto& node = tree_.statements[id.value];
+    RequireTree(node.origin.value < tree_.origins.size(), Error::kOrigin);
+    if (const auto* block = std::get_if<BlockStmt>(&node.statement)) {
+      RequireTree(block->scope.value < tree_.scopes.size(), Error::kScope);
+      const auto& scope = tree_.scopes[block->scope.value];
+      RequireTree(scope.parent == frame.scope &&
+                  scope.kind == (id == tree_.body ? ScopeKind::kFunctionBody : ScopeKind::kBlock), Error::kScope);
+      RequireTree(block->first_child <= tree_.children.size() &&
+                  block->child_count <= tree_.children.size() - block->first_child, Error::kRange);
+      scopes_.Enter(block->scope);
+      frame.scope = block->scope;
+    } else if (const auto* declaration = std::get_if<DeclarationStmt>(&node.statement)) {
+      scopes_.Declare(declaration->symbol, frame.scope, declaration->initializer.has_value());
+    } else if (const auto* branch = std::get_if<IfStmt>(&node.statement)) {
+      RequireBlock(branch->consequent);
+      if (branch->alternate) RequireBlock(*branch->alternate);
+    }
+  }
+  std::optional<SyntaxNode> Next(SyntaxFrame& frame) {
+    // At most three fixed children (computed assignment base/key/value). Blocks
+    // stream their child slice instead of pushing an unbounded sibling list.
+    constexpr std::size_t kMaximumFixedChildren = 3;
+    std::array<SyntaxNode, kMaximumFixedChildren> children;
+    std::size_t count = 0;
+    const auto add = [&](auto id) { children[count++] = id; };
+    const auto key = [&](const MemberKey& member) {
+      if (const auto* computed = std::get_if<ComputedKey>(&member)) add(computed->expression);
+    };
+    if (const auto* expression = std::get_if<ExprId>(&frame.node)) {
+      std::visit([&](const auto& node) {
+        using T = std::decay_t<decltype(node)>;
+        if constexpr (std::is_same_v<T, MemberExpr>) { add(node.base); key(node.key); }
+        else if constexpr (std::is_same_v<T, UnaryExpr>) add(node.operand);
+        else if constexpr (std::is_same_v<T, BinaryExpr> || std::is_same_v<T, LogicalExpr>) {
+          add(node.left); add(node.right);
+        } else if constexpr (std::is_same_v<T, AssignmentExpr>) {
+          if (const auto* member = std::get_if<MemberTarget>(&node.target)) { add(member->base); key(member->key); }
+          add(node.value);
+        } else {
+          static_assert(std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
+                        std::is_same_v<T, ThisExpr>);
+        }
+      }, tree_.expressions[expression->value].expression);
+    } else {
+      const auto& statement = tree_.statements[std::get<StmtId>(frame.node).value].statement;
+      if (const auto* block = std::get_if<BlockStmt>(&statement)) {
+        if (frame.next_child == block->child_count) return {};
+        const auto child = block->first_child + frame.next_child++;
+        RequireTree(!children_[child], Error::kOwnership);
+        children_[child] = 1;
+        return tree_.children[child];
+      }
+      std::visit([&](const auto& node) {
+        using T = std::decay_t<decltype(node)>;
+        if constexpr (std::is_same_v<T, DeclarationStmt>) { if (node.initializer) add(*node.initializer); }
+        else if constexpr (std::is_same_v<T, ExpressionStmt>) add(node.expression);
+        else if constexpr (std::is_same_v<T, IfStmt>) {
+          add(node.condition); add(node.consequent); if (node.alternate) add(*node.alternate);
+        } else if constexpr (std::is_same_v<T, ReturnStmt>) { if (node.value) add(*node.value); }
+        else { static_assert(std::is_same_v<T, BlockStmt>); }
+      }, statement);
+    }
+    if (frame.next_child == count) return {};
+    return children[frame.next_child++];
+  }
+
+  const FunctionTree& tree_;
+  TreeCheckBudget& budget_;
+  TreeScopeCheck scopes_;
+  std::vector<std::uint8_t> expressions_;
+  std::vector<std::uint8_t> statements_;
+  std::vector<std::uint8_t> children_;
+  std::vector<SyntaxFrame> stack_;
+};
+}  // namespace
+
+std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
+    const FunctionTree& tree, analysis::SemanticBudget budget) {
+  try {
+    const auto measured = MeasureTreeStorage(tree, budget);
+    if (const auto* error = std::get_if<TreeStorageError>(&measured))
+      return *error == TreeStorageError::kResourceLimit ? Error::kResourceLimit : Error::kWorkLimit;
+    TreeCheckBudget checked(budget);
+    checked.Admit(std::get<TreeStorage>(measured).bytes, 1);
+    checked.Step(std::get<TreeStorage>(measured).work);
+    checked.Admit(1, sizeof(StructureCheck));
+    constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
+    RequireTree(tree.expressions.size() <= kMaxId && tree.statements.size() <= kMaxId &&
+                tree.scopes.size() <= kMaxId && tree.symbols.size() <= kMaxId &&
+                tree.names.size() <= kMaxId && tree.texts.size() <= kMaxId &&
+                tree.origins.size() <= kMaxId && tree.origin_parts.size() <= kMaxId &&
+                tree.anchors.size() <= kMaxId && tree.children.size() <= kMaxId, Error::kResourceLimit);
+    const auto maximum_depth = StructureCheck(tree, checked).Run();
+    CheckTreeOrigins(tree, checked);
+    return TreeStructure{tree.value_revision, tree.cfg_revision, maximum_depth, checked.Bytes(), checked.Work()};
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+}  // namespace abcd::source

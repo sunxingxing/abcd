@@ -88,6 +88,8 @@ struct OriginalSite {
   abc::CodeOffset pc;
   std::optional<abc::CodeOffset> original = {};
 };
+// Part ranges partition origin_parts in origin order. Parts reference earlier
+// origins; sharing is through IDs, not overlapping adjacency-list ranges.
 struct CombinedOrigin { std::uint32_t first_part; std::uint32_t part_count; };
 struct ElidedOrigin {
   analysis::InputSiteId site;

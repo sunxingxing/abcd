@@ -1,4 +1,5 @@
 #include "../../../src/source/function_tree.h"
+#include "../../../src/source/tree_structure.h"
 
 #include <cstdlib>
 
@@ -95,6 +96,7 @@ void BranchTree() {
   auto built = f.Build();
   Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   Check(tree.symbols.size() == 1 && tree.parameters.size() == 1);
   Check(tree.names[tree.symbols[0].name.value] == u"params");
   std::size_t reads = 0;
@@ -133,6 +135,7 @@ void SnapshotTree() {
   const auto built = f.Build();
   Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   Check(tree.symbols.size() == 2);
   Check(tree.symbols[1].temporary == TemporaryReason::kMultipleUses);
   const auto& root = std::get<BlockStmt>(tree.statements[tree.body.value].statement);
@@ -173,6 +176,7 @@ void PredicateSnapshot() {
         std::get<EvaluationPlan>(evaluation), std::move(syntax), {f.constants, 2, 1, TextId{0}});
     Check(std::holds_alternative<ConstructedFunction>(built));
     const auto& tree = std::get<ConstructedFunction>(built).tree;
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
     Check(tree.symbols.size() == 2 && tree.symbols[1].temporary == TemporaryReason::kPredicateSnapshot);
     std::size_t reads = 0;
     std::size_t references = 0;

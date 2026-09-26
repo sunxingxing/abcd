@@ -12,13 +12,14 @@ namespace abcd::source {
 namespace {
 using namespace analysis;
 
-bool Identifier(std::string_view name) {
-  const auto start = [](char c) {
+template <class Char>
+bool Identifier(std::basic_string_view<Char> name) {
+  const auto start = [](Char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' ||
            c == '$';
   };
   if (name.empty() || !start(name.front())) return false;
-  for (const char c : name)
+  for (const Char c : name)
     if (!start(c) && !(c >= '0' && c <= '9')) return false;
   // Lexical output boundary, not semantic dispatch. Conservatively exclude
   // strict/module reserved words and restricted binding identifiers.
@@ -32,7 +33,11 @@ bool Identifier(std::string_view name) {
       "super",     "switch",     "this",      "throw",   "true",       "try",
       "typeof",    "var",        "void",      "while",   "with",       "yield"};
   static_assert(std::is_sorted(std::begin(reserved), std::end(reserved)));
-  return !std::binary_search(std::begin(reserved), std::end(reserved), name);
+  return !std::binary_search(std::begin(reserved), std::end(reserved), name,
+      [](auto left, auto right) {
+        return std::lexicographical_compare(left.begin(), left.end(),
+                                            right.begin(), right.end());
+      });
 }
 
 std::optional<std::string_view> BinaryToken(BinaryOperator op) {
@@ -305,6 +310,7 @@ class ExpressionWriter {
 };
 }  // namespace
 bool IsSourceIdentifier(std::string_view name) { return Identifier(name); }
+bool IsSourceIdentifier(std::u16string_view name) { return Identifier(name); }
 
 std::variant<std::size_t, EmitError> WriteScalarExpression(
     const ScalarExpression& expression, ScalarNames names, std::ostream& output,

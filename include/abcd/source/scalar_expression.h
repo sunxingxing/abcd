@@ -12,6 +12,7 @@
 
 namespace abcd::source {
 [[nodiscard]] bool IsSourceIdentifier(std::string_view name);
+[[nodiscard]] bool IsSourceIdentifier(std::u16string_view name);
 struct ScalarNames {
   struct RestBinding {
     std::uint16_t first_argument;
