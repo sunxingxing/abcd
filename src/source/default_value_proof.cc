@@ -21,7 +21,7 @@ bool SameLiteral(const ValueOperand& left, const ValueOperand& right) {
 }
 enum class BlockRole : std::uint8_t { kHeader, kArm };
 struct BlockOwner { std::uint32_t candidate; BlockRole role; };
-enum class ValueRole : std::uint8_t { kEntry, kComparison, kInitializer, kMerged };
+enum class ValueRole : std::uint8_t { kEntry, kComparison, kInitializer, kMerged, kUndefined };
 struct RestrictedValue { std::uint32_t candidate; ValueRole role; };
 struct PhiCount { bool present = false; bool missing = false; };
 class Checker {
@@ -68,7 +68,8 @@ class Checker {
       const auto owner = *blocks_[op.block.value];
       const auto& candidate = candidates_.values[owner.candidate];
       const OpId id{static_cast<std::uint32_t>(i)};
-      if (id != candidate.comparison && id != candidate.branch && id != candidate.initializer) {
+      if (id != candidate.comparison && id != candidate.branch && id != candidate.initializer &&
+          candidate.undefined != id) {
         Require(std::holds_alternative<ValueNop>(op.operation) ||
             (owner.role == BlockRole::kArm && std::holds_alternative<ValueJump>(op.operation)), Error::kEffect);
         Require(op.normal == LanguageEffect::kNone && op.before_throw == LanguageEffect::kNone &&
@@ -144,8 +145,18 @@ class Checker {
     Pure(comparison); Restrict(*comparison.result, i, ValueRole::kComparison);
     const auto& left = Operand(comparison, 0, OperandRole::kLeft);
     const auto& right = Operand(comparison, 1, OperandRole::kRight);
-    Require((SameLiteral(left, c.entry) && SameLiteral(right, SpecialValue::kUndefined)) ||
-        (SameLiteral(right, c.entry) && SameLiteral(left, SpecialValue::kUndefined)));
+    ValueOperand undefined = SpecialValue::kUndefined;
+    if (c.undefined) {
+      const auto& constant = Op(*c.undefined, c.header);
+      Require(std::holds_alternative<ValueCopy>(constant.operation) && constant.result &&
+          constant.use_count == 1 && constant.order < comparison.order, Error::kLiteral);
+      Pure(constant);
+      Require(SameLiteral(Operand(constant, 0, OperandRole::kInput), SpecialValue::kUndefined), Error::kLiteral);
+      Restrict(*constant.result, i, ValueRole::kUndefined);
+      undefined = *constant.result;
+    }
+    Require((SameLiteral(left, c.entry) && SameLiteral(right, undefined)) ||
+        (SameLiteral(right, c.entry) && SameLiteral(left, undefined)));
     const auto& branch = Op(c.branch, c.header);
     const auto* test = std::get_if<ValueBranch>(&branch.operation);
     Require(test && (test->predicate == UnaryOperator::kTrueOrNonzeroNumber || test->predicate == UnaryOperator::kFalseOrZero) &&
@@ -226,6 +237,7 @@ class Checker {
       case ValueRole::kEntry: allowed = (op && *op == c.comparison) || (phi && *phi == c.merged); break;
       case ValueRole::kComparison: allowed = op && *op == c.branch; break;
       case ValueRole::kInitializer: allowed = phi && *phi == c.merged; break;
+      case ValueRole::kUndefined: allowed = op && *op == c.comparison; break;
       case ValueRole::kMerged:
         allowed = op ? !blocks_[graph_.ops[op->value].block.value] : !values_[phi->value]; break;
     }

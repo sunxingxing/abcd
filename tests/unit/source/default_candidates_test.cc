@@ -175,6 +175,38 @@ void BodyProjection() {
   Relink(changed);
   Check(std::get<DefaultBodyError>(DefaultBody::Build(changed, parameters, candidates, 0)) == DefaultBodyError::kProof);
 }
+void UndefinedProducer() {
+  auto graph = DefaultDiamond();
+  for (auto& value : graph.values)
+    if (auto* result = std::get_if<OpResult>(&value.origin)) ++result->op.value;
+  for (auto& use : graph.uses)
+    if (auto* owner = std::get_if<OpId>(&use.owner)) ++owner->value;
+  ++graph.ops[0].order;
+  ++graph.ops[1].order;
+  const ValueId undefined{static_cast<std::uint32_t>(graph.values.size())};
+  const UseId input{static_cast<std::uint32_t>(graph.uses.size())};
+  const OriginId origin{static_cast<std::uint32_t>(graph.origins.size())};
+  graph.values.push_back({OpResult{{0}}, ValueKinds::Language(), {}});
+  graph.uses.push_back({OpId{0}, OperandRole::kInput, ReadPurpose::kOperand, SpecialValue::kUndefined});
+  graph.uses[1].operand = undefined;
+  graph.origins.push_back({{origin.value}, {origin.value}, {}});
+  graph.ops.insert(graph.ops.begin(), {ValueCopy{}, {0}, 0, input, 1, undefined,
+      LanguageEffect::kNone, LanguageEffect::kNone, ExceptionalCompletion::kImpossible, origin});
+  ++graph.blocks[0].op_count;
+  ++graph.blocks[1].first_op.value;
+  ++graph.blocks[2].first_op.value;
+  Relink(graph);
+  const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(graph, 1));
+  const auto candidates = Find(graph);
+  Check(candidates.values.size() == 1 && candidates.values[0].undefined == OpId{0});
+  auto projected = DefaultBody::Build(graph, parameters, candidates, 0);
+  Check(std::holds_alternative<DefaultBody>(projected));
+  Check(std::get<DefaultBody>(projected).Signature().Operations().size() == 4);
+  graph.uses[5].operand = undefined;
+  Relink(graph);
+  Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0)) ==
+        DefaultProofError::kEscapedValue);
+}
 void MatchAndBoundaries() {
   auto graph = DefaultDiamond();
   Check(!VerifyValueUses(graph, 1024 * 1024));
@@ -241,4 +273,4 @@ void NegatedLiteral() {
   Check(Find(graph).values.empty()); // No speculative coercion of a parameter.
 }
 }  // namespace
-int main() { MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); }
+int main() { MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); UndefinedProducer(); }

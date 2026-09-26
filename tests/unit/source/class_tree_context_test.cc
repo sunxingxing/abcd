@@ -23,7 +23,7 @@ static_assert(!std::is_constructible_v<VerifiedFunction, FunctionTree>);
 static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);
 void Check(bool condition) { if (!condition) std::abort(); }
-void Run() {
+void Run(bool defaults = false) {
   constexpr std::uint32_t kPool = 64, kOwner = 80, kLiteral = 128, kCaller = 256,
       kConstructor = 300, kMember = 350, kCallerCode = 400, kMemberCode = 430, kName = 500;
   std::vector<std::uint8_t> bytes(640);
@@ -38,13 +38,25 @@ void Run() {
   bytes[kLiteral + 9] = static_cast<std::uint8_t>(abc::LiteralTag::kMethod);
   word(kLiteral + 10, kMember);
   bytes[kLiteral + 14] = static_cast<std::uint8_t>(abc::LiteralTag::kMethodAffiliate);
-  bytes[kLiteral + 15] = 1;
+  const std::uint8_t encoded_length = defaults ? 0 : 1;
+  bytes[kLiteral + 15] = encoded_length;
   bytes[kLiteral + 17] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
   word(kLiteral + 18, 1);
   bytes[kName] = 7;
   std::copy_n("run", 3, bytes.begin() + kName + 1);
   const std::vector<std::uint8_t> caller{1, 0, 10, 0, 0x35, 0, 0, 0, 1, 0, 0, 0, 0, 0x65};
-  const std::vector<std::uint8_t> member{0, 4, 3, 0, 0x60, 3, 0x64};
+  // OpenHarmony-v7.0-Release isa.yaml: dynamic loads, strict comparison,
+  // relative conditional jump and return. Header encodes locals/args/bytes/tries.
+  constexpr std::uint8_t kUndefined = 0x00, kStrictNotEqual = 0x27,
+      kJumpNonzero = 0x51, kLoad = 0x60, kStore = 0x61,
+      kInteger = 0x62, kReturn = 0x64, kParameter = 3;
+  constexpr std::uint8_t kDefaultBodyBytes = 16, kJoinDelta = 9, kMinusOneByte = 0xff;
+  const std::vector<std::uint8_t> member = defaults
+      ? std::vector<std::uint8_t>{0, 4, kDefaultBodyBytes, 0,
+          kUndefined, kStrictNotEqual, 0, kParameter, kJumpNonzero, kJoinDelta,
+          kInteger, kMinusOneByte, kMinusOneByte, kMinusOneByte, kMinusOneByte,
+          kStore, kParameter, kLoad, kParameter, kReturn}
+      : std::vector<std::uint8_t>{0, 4, 3, 0, kLoad, kParameter, kReturn};
   std::copy(caller.begin(), caller.end(), bytes.begin() + kCallerCode);
   std::copy(member.begin(), member.end(), bytes.begin() + kMemberCode);
   char path[] = "/tmp/abcd-class-tree-context-XXXXXX";
@@ -68,7 +80,8 @@ void Run() {
   index.methods[0].code = abc::CodeInfo{{kCallerCode}, {kCallerCode + 4}, 1, 0, 10, 0};
   index.methods[1].offset = {kConstructor};
   index.methods[2].offset = {kMember};
-  index.methods[2].code = abc::CodeInfo{{kMemberCode}, {kMemberCode + 4}, 0, 4, 3, 0};
+  index.methods[2].code = abc::CodeInfo{{kMemberCode}, {kMemberCode + 4}, 0, 4,
+                                      defaults ? kDefaultBodyBytes : 3U, 0};
   index.methods[2].name = "run";
   index.methods[2].name_utf16_length = 3;
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
@@ -77,7 +90,7 @@ void Run() {
   const auto range = sites.Find({kMember});
   Check(range.count == 1 && sites.Find({kConstructor}).count == 0);
   const auto* site = sites.At(range.first);
-  Check(site && site->creator == abc::EntityOffset{kCaller} && site->pc.value == 0 && site->length == 1);
+  Check(site && site->creator == abc::EntityOffset{kCaller} && site->pc.value == 0 && site->length == encoded_length);
   auto fingerprint = std::get<corpus::FileFingerprint>(file.Fingerprint());
   const auto identity = MakeRouteInputIdentity(fingerprint, header);
   auto context = ClassTreeContext::Resolve(file, header, index, lookup, roles, sites, range.first, identity);
@@ -96,7 +109,10 @@ void Run() {
   Check(function.Receipt().stage == SourceStage::kTreeVerified);
   Check(function.Receipt().coverage == Coverage::kIncomplete);
   Check(!function.Receipt().failure);
-  Check(function.Abi().length == 1 && function.Abi().parameters.size() == 1);
+  Check(function.Abi().length == encoded_length && function.Abi().parameters.size() == 1);
+  Check(function.Abi().layout == (defaults ? ParameterLayout::kLiteralDefaults : ParameterLayout::kSimple));
+  Check(function.Receipt().work_revision == function.Tree().value_revision.value);
+  Check(function.Tree().signature.empty() != defaults);
   Check(function.Abi().parameters[0].reads.operands == 1);
   Check(function.Abi().parameters[0].reads.references == 1);
   Check(function.Abi().receiver.operands == 0 && function.Abi().receiver.references == 0);
@@ -106,11 +122,17 @@ void Run() {
   const auto& printed = std::get<PrintedFunction>(printing);
   Check(printed.fragment == FunctionFragment::kClassMember);
   Check(printed.bytes == output.view().size());
-  Check(output.view().starts_with("run($arg0) {\n"));
+  Check(output.view().starts_with(defaults ? "run($arg0 = (-1)) {\n" : "run($arg0) {\n"));
   Check(printed.parameters.size() == 1);
   const auto parameter = printed.parameters[0];
   Check(parameter.begin < parameter.end && parameter.end <= printed.bytes);
-  Check(output.view().substr(parameter.begin, parameter.end - parameter.begin) == "$arg0");
+  Check(output.view().substr(parameter.begin, parameter.end - parameter.begin) ==
+        (defaults ? "$arg0 = (-1)" : "$arg0"));
+  for (const auto placement : function.Tree().signature) {
+    Check(placement.parameter == ParameterId{0});
+    const auto* origin = std::get_if<OriginalSite>(&function.Tree().origins[placement.origin.value]);
+    Check(origin && origin->pc.value < 13); // Initialization joins the body at PC13.
+  }
   Check(printed.expressions.size() == function.Tree().expressions.size());
   Check(printed.statements.size() == function.Tree().statements.size());
   for (const auto range : printed.expressions)
@@ -129,7 +151,7 @@ void Run() {
     return std::get<VerifiedFunction>(VerifiedFunction::PrepareClass(
         file, header, index, lookup, roles, sites, range.first, identity));
   };
-  ClassMethod shape{{{kMember}, abc::ClassMethodKind::kOrdinary, 1},
+  ClassMethod shape{{{kMember}, abc::ClassMethodKind::kOrdinary, encoded_length},
       {abc::FunctionKind::kNone}, function.Frame(), abc::ClassPlacement::kPrototype,
       u"run", {}, EffectiveMethodKind::kOrdinary};
   constexpr std::string_view prefix = "class Fixture {\n";
@@ -166,11 +188,12 @@ void Run() {
   Check(denied.view().empty());
   auto limited = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity, {0, 0});
   Check(std::get<FunctionPrepareFailure>(limited).kind == FunctionPrepareError::kResourceLimit);
+  if (defaults) { Check(unlink(path) == 0); return; }
   index.methods[2].code->arguments = 5;
   context = ClassTreeContext::Resolve(file, header, index, lookup, roles, sites, range.first, identity);
-  Check(std::get<ClassContextError>(std::get<ClassContextFailure>(context).error) == ClassContextError::kSignature);
+  Check(std::holds_alternative<ClassTreeContext>(context));
   auto rejected = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity);
-  Check(std::get<FunctionPrepareFailure>(rejected).kind == FunctionPrepareError::kContext);
+  Check(std::get<FunctionPrepareFailure>(rejected).kind == FunctionPrepareError::kParameters);
   index.methods[2].code->arguments = 4;
   index.methods[2].name = "bad";
   context = ClassTreeContext::Resolve(file, header, index, lookup, roles, sites, range.first, identity);
@@ -178,4 +201,4 @@ void Run() {
   Check(unlink(path) == 0);
 }
 }  // namespace
-int main() { Run(); }
+int main() { Run(); Run(true); }

@@ -916,3 +916,45 @@ factory integration of ParameterPlan/discovery, DefaultBody, syntax attachment,
 fresh body/signature/ABI checks and matching route revisions. No T06 completion,
 real default-source output or test success is claimed. Tests, generated-JS
 execution and RSS measurement remain paused.
+
+### T06 Verified Factory Integration (Rules 8)
+
+VerifiedFunction now conditionally runs parameter-entry planning, candidate
+discovery and DefaultBody construction when encoded native length is less than
+the formal count. Class context accepts that metadata shape but does not certify
+defaults. Failure to prove the prologue refuses preparation; it never falls back
+to a legacy writer. The original graph remains alive while the residual graph
+passes control/evaluation/tree construction. Signature attachment independently
+checks actual default nodes and placements, then fresh tree semantic verification
+checks the completed tree against the residual body before the callable ABI
+census. Only that joint result can construct the immutable published owner.
+
+Receipts use the residual graph revision and evidence rules 8. The tree and ABI
+retain full formal count, while length is checked against the first initializer.
+All stages use the preparation allowance with conservative retained charges.
+The previously documented constituent work accounting inside BuildValueStage
+and whole-process RSS verification remain unresolved; no process-cap claim is
+made by this integration.
+
+Review of the actual simplifier found that undefined constants used by the
+comparison remain ValueCopy producers. Discovery and independent proof now
+accept that producer in the header, check pure effects and dominance order, and
+restrict its result to the comparison. The producer itself receives signature
+placement. Direct literal comparison operands remain supported. Arbitrary
+constant expressions and multi-operation initializer chains are not admitted.
+
+Production abc_semantic/abc_structure builds passed. ABC-only PageA method 7586
+still emits the same 157-byte simple method with rules 8 and an empty signature
+migration table. Metadata-driven inspection identified Pasteboard Logger 4658
+and Push CustomButton 8705 as short-length candidates. They refuse at IR import
+PC8 and PC0 respectively, before parameter migration. CustomButton begins with
+lexical-environment creation and later creates a closure; no closure capability
+was bypassed to manufacture a default-method success.
+
+Unrun regression sources now include an ABC-only class-method fixture whose
+default diamond should traverse PrepareClass through immutable emission, assert
+the literal-default ABI, and map prologue PCs to the complete formal span.
+An IR fixture covers the retained undefined producer and its escaped-use refusal.
+The tests remain uncompiled/unexecuted. Factory wiring is implemented, but a real
+default-method end-to-end acceptance result is still missing; T06 and T00-T12
+remain incomplete. Tests, JS execution and RSS measurement remain paused.

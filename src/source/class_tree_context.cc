@@ -76,7 +76,9 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::Resolve(
     const auto call = Take<abc::CallType>(abc::ReadCallType(file, header, index, method.annotations, {bytes}));
     const auto frame = Take<abc::FrameLayout>(abc::BuildFrameLayout(
         method.code->registers, method.code->arguments, abc::DecodeCallFlags(call.value)));
-    Require(frame.parameters == occurrence->length, Error::kSignature);
+    // A shorter encoded length requires independently proved native defaults
+    // in VerifiedFunction; metadata alone does not authorize their emission.
+    Require(frame.parameters >= occurrence->length, Error::kSignature);
     if (file.CheckUnchanged()) return ClassContextFailure{abc::MetadataError::kFileChanged};
     ClassTreeContext result;
     result.identity_ = identity;

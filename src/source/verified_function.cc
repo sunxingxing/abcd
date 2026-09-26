@@ -6,10 +6,12 @@
 
 #include "abcd/source/value_stage.h"
 #include "class_tree_context.h"
+#include "default_signature.h"
 #include "function_tree.h"
 #include "function_abi.h"
 #include "parameter_names.h"
 #include "tree_constants.h"
+#include "tree_semantics.h"
 
 namespace abcd::source {
 struct VerifiedFunction::Storage {
@@ -59,6 +61,37 @@ void AdmitGraph(const analysis::ValueProgram& graph, PreparationBudget& budget) 
   budget.Arena(graph.blocks); budget.Arena(graph.edges); budget.Arena(graph.ops);
   budget.Arena(graph.values); budget.Arena(graph.uses); budget.Arena(graph.origins);
   budget.Arena(graph.exceptional_exits); budget.Arena(graph.input.sites); budget.Arena(graph.input.values);
+}
+DefaultBody DefaultParameters(const analysis::ValueProgram& graph,
+    std::uint32_t count, std::uint32_t length, PreparationBudget& budget) {
+  auto planned = BuildParameterPlan(graph, count, budget.Remaining());
+  const auto* parameters = std::get_if<ParameterPlan>(&planned);
+  if (!parameters) {
+    const auto error = std::get<ParameterPlanError>(planned);
+    if (error == ParameterPlanError::kResourceLimit) throw Error::kResourceLimit;
+    if (error == ParameterPlanError::kWorkLimit) throw Error::kWorkLimit;
+    throw Error::kParameters;
+  }
+  budget.Admit(parameters->allocated_bytes, 1); budget.Step(parameters->work);
+  auto found = FindDefaultCandidates(graph, *parameters, length, budget.Remaining());
+  const auto* candidates = std::get_if<DefaultCandidates>(&found);
+  if (!candidates) {
+    const auto error = std::get<DefaultCandidateError>(found);
+    if (error == DefaultCandidateError::kResourceLimit) throw Error::kResourceLimit;
+    if (error == DefaultCandidateError::kWorkLimit) throw Error::kWorkLimit;
+    throw Error::kParameters;
+  }
+  budget.Admit(candidates->allocated_bytes, 1); budget.Step(candidates->work);
+  auto projected = DefaultBody::Build(graph, *parameters, *candidates, length, budget.Remaining());
+  auto* result = std::get_if<DefaultBody>(&projected);
+  if (!result) {
+    const auto error = std::get<DefaultBodyError>(projected);
+    if (error == DefaultBodyError::kResourceLimit) throw Error::kResourceLimit;
+    if (error == DefaultBodyError::kWorkLimit) throw Error::kWorkLimit;
+    throw Error::kParameters;
+  }
+  budget.Admit(result->AllocatedBytes(), 1); budget.Step(result->Work());
+  return std::move(*result);
 }
 void Names(const corpus::AbcFile& file, const abc::Header& header,
     const abc::MethodInfo& method, const abc::MethodBody& body,
@@ -152,7 +185,13 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       throw Error::kValues;
     budget.Arena(body->instructions); budget.Arena(body->tries); budget.Arena(body->handlers);
     AdmitGraph(*values.graph, budget);
-    auto regions = BuildControlPlan(*values.graph, budget.Remaining());
+    std::optional<DefaultBody> defaults;
+    if (context->Frame().parameters != context->Site().length)
+      defaults.emplace(DefaultParameters(*values.graph, context->Frame().parameters,
+                                         context->Site().length, budget));
+    const auto& graph = defaults ? defaults->Graph() : *values.graph;
+    receipt->work_revision = graph.revision.value;
+    auto regions = BuildControlPlan(graph, budget.Remaining());
     const auto* control = std::get_if<ControlPlan>(&regions);
     if (!control) {
       const auto error = std::get<ControlError>(regions);
@@ -162,7 +201,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     }
     budget.Admit(control->allocated_bytes, 1); budget.Step(control->work);
     receipt->stage = SourceStage::kControlFrozen;
-    auto evaluated = BuildEvaluationPlan(*values.graph, budget.Remaining());
+    auto evaluated = BuildEvaluationPlan(graph, budget.Remaining());
     const auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
     if (!evaluation) {
       const auto error = std::get<EvaluationError>(evaluated);
@@ -171,7 +210,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       throw Error::kEvaluation;
     }
     budget.Admit(evaluation->allocated_bytes, 1); budget.Step(evaluation->work);
-    auto constants_result = ResolveTreeConstants(file, header, index, method.offset, *values.graph, budget.Remaining());
+    auto constants_result = ResolveTreeConstants(file, header, index, method.offset, graph, budget.Remaining());
     auto* constants = std::get_if<TreeConstants>(&constants_result);
     if (!constants) {
       if (const auto* error = std::get_if<TreeConstantError>(&constants_result)) {
@@ -197,7 +236,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     auto tree_budget = budget.Remaining();
     if (transferred > allowance.bytes - tree_budget.bytes) throw Error::kResourceLimit;
     tree_budget.bytes += transferred;
-    auto constructed = BuildFunctionTree(*values.graph, *control, *evaluation, std::move(syntax), constant_view, tree_budget);
+    auto constructed = BuildFunctionTree(graph, *control, *evaluation, std::move(syntax), constant_view, tree_budget);
     auto* function = std::get_if<ConstructedFunction>(&constructed);
     if (!function) {
       const auto error = std::get<FunctionTreeError>(constructed);
@@ -211,7 +250,31 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     if (function->allocated_bytes < transferred) throw Error::kTree;
     budget.Admit(function->allocated_bytes - transferred, 1);
     budget.Step(function->work);
-    auto census = BuildFunctionAbi(*values.graph, function->tree, context->Frame(),
+    if (defaults) {
+      // Keep original and residual IR alive until BOTH signature migration and
+      // residual body correspondence succeed. No caller-supplied certificate
+      // or legacy writer can fill a gap in this publication boundary.
+      const auto signature = BuildDefaultSignature(*defaults, function->tree, budget.Remaining());
+      const auto* proof = std::get_if<DefaultSignatureProof>(&signature);
+      if (!proof) {
+        const auto error = std::get<DefaultSignatureError>(signature);
+        if (error == DefaultSignatureError::kResourceLimit) throw Error::kResourceLimit;
+        if (error == DefaultSignatureError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kParameters;
+      }
+      budget.Admit(proof->allocated_bytes, 1); budget.Step(proof->work);
+      const auto semantics = VerifyTreeSemantics(graph, *control, *evaluation,
+          function->tree, constant_view, budget.Remaining());
+      const auto* verified = std::get_if<TreeSemantics>(&semantics);
+      if (!verified) {
+        const auto error = std::get<TreeSemanticError>(semantics);
+        if (error == TreeSemanticError::kResourceLimit) throw Error::kResourceLimit;
+        if (error == TreeSemanticError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kTree;
+      }
+      budget.Admit(verified->allocated_bytes, 1); budget.Step(verified->work);
+    }
+    auto census = BuildFunctionAbi(graph, function->tree, context->Frame(),
                                   context->Site().length, budget.Remaining());
     auto* abi = std::get_if<ConstructedAbi>(&census);
     if (!abi) {

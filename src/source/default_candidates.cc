@@ -139,7 +139,9 @@ class Finder {
     const auto& facts = blocks_[header.value];
     const auto& block = graph_.blocks[header.value];
     if (header.value == 0 && facts.predecessors != 0) return {};
-    if (facts.operations != 2 || !facts.last || block.edge_count != 2) return {};
+    constexpr std::uint32_t kCompareAndBranch = 2;
+    if (facts.operations < kCompareAndBranch || facts.operations > kCompareAndBranch + 1 ||
+        !facts.last || block.edge_count != 2) return {};
     const auto& branch = graph_.ops[facts.last->value];
     const auto* condition = std::get_if<ValueBranch>(&branch.operation);
     if (!condition || branch.use_count != 1) return {};
@@ -157,12 +159,24 @@ class Finder {
         !binary || (binary->op != BinaryOperator::kStrictEqual && binary->op != BinaryOperator::kStrictNotEqual)) return {};
     const auto& left = Use(comparison, 0).operand;
     const auto& right = Use(comparison, 1).operand;
-    const auto undefined = [](const ValueOperand& operand) {
-      const auto* special = std::get_if<SpecialValue>(&operand);
-      return special && *special == SpecialValue::kUndefined;
+    std::optional<OpId> undefined_op;
+    const auto undefined = [&](const ValueOperand& operand) {
+      if (const auto* special = std::get_if<SpecialValue>(&operand))
+        return *special == SpecialValue::kUndefined;
+      const auto* value = std::get_if<ValueId>(&operand);
+      if (!value || value->value >= graph_.values.size()) return false;
+      const auto* result = std::get_if<OpResult>(&graph_.values[value->value].origin);
+      if (!result || result->op.value >= graph_.ops.size()) return false;
+      const auto& op = graph_.ops[result->op.value];
+      if (op.life != ValueLife::kLive || op.block != header || op.order >= comparison.order ||
+          !std::holds_alternative<ValueCopy>(op.operation) || op.use_count != 1 || op.result != *value) return false;
+      const auto* special = std::get_if<SpecialValue>(&Use(op, 0).operand);
+      if (!special || *special != SpecialValue::kUndefined) return false;
+      undefined_op = result->op;
+      return true;
     };
     const auto* entry = std::get_if<ValueId>(undefined(left) ? &right : undefined(right) ? &left : nullptr);
-    if (!entry) return {};
+    if (!entry || facts.operations != kCompareAndBranch + (undefined_op ? 1U : 0U)) return {};
     Require(entry->value < graph_.values.size());
     const auto* definition = std::get_if<EntryDefinition>(&graph_.values[entry->value].origin);
     const auto* parameter = definition ? std::get_if<ParameterEntry>(definition) : nullptr;
@@ -185,9 +199,8 @@ class Finder {
         blocks_[join.value].phis != 1) return {};
     const auto& arm_block = graph_.blocks[arm.value];
     if (arm_block.edge_count != 1 || Edge(arm_block, 0).target != join) return {};
-    // Copy/literal transport was removed by the verified simplifier. Allow at
-    // most one value operation and one jump; actual value semantics below are
-    // restricted to numeric literal negation, not arbitrary unary coercion.
+    // Register copies were removed, but literal-producing copies stay live.
+    // Admit one literal initializer and at most one terminating jump.
     const auto& arm_facts = blocks_[arm.value];
     if (arm_facts.value_operations > 1 || arm_facts.operations > arm_facts.value_operations + 1) return {};
     const auto merged = *blocks_[join.value].phi;
@@ -233,7 +246,7 @@ class Finder {
         special && *special != SpecialValue::kUndefined && *special != SpecialValue::kNull &&
         *special != SpecialValue::kTrue && *special != SpecialValue::kFalse) return {};
     return DefaultCandidate{parameter->index, *entry, merged, literal, *arm_facts.value_op,
-        producer->op, *facts.last, header, arm, join, present, missing, arm_block.first_edge};
+        producer->op, *facts.last, header, arm, join, present, missing, arm_block.first_edge, undefined_op};
   }
   const ValueProgram& graph_;
   const ParameterPlan& parameters_;
