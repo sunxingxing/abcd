@@ -77,7 +77,23 @@ cover mapping, handler, exit, inactive commits, revision, edges, and node order.
 Work-limit boundaries and zero-byte admission are exercised. Multiple normal
 exits and region-local loops have explicit refusal tests.
 
-Still required before executable source publication:
+## Shared Tree Draft
+
+`BuildExceptionFunctionDraft` drives the existing function-tree builder and
+printer with the original phased graph and typed projection. Catch parameters
+are handler-scoped. Snapshot assignments precede throwing operations; catch
+copies commit at handler entry; normal copies retain original edge identities.
+Predicates move to Commit only across a checked empty Before-to-Commit boundary
+without copies. `TryOrigin` identifies structural regions without invented PCs.
+
+This is deliberately a draft, not a publication receipt. Decoded instruction
+fixtures for three profiles execute generated JS and compare getter/call
+effects, old-local snapshots, protected branches and nested catch/rethrow.
+Expression origins include the original operation PC and printed ranges are
+nonempty. This does not certify complete PC mapping or file-backed methods.
+
+Still required before executable source publication (items 1-3 now have draft
+construction, not independent semantic certification):
 
 1. Let the common function-tree builder consume this typed projection, creating
    TryStmt and handler-only catch bindings, not function-body catch locals.

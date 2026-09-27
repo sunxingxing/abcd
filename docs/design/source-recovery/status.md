@@ -1,6 +1,6 @@
 # 项目进展与设计审查
 
-更新时间：2026-09-27。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
+更新时间：2026-09-28。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
 本页是当前状态入口；[progress.md](progress.md) 保留历史证据，不覆盖本页结论。
 
 ## 更新规则
@@ -41,6 +41,13 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 | T12 | 语料与分类基础已有历史记录 | 全样本新路线审计、跨版本/留出集、进程 1G 实测 |
 
 ## 本次证据
+
+- 共享 FunctionTree 已接入异常投影、handler 作用域 catch 参数、抛出前暂存与
+  Catch 入口提交，复用共享 printer。三种 profile 的解码指令用例已执行生成 JS，
+  验证分支、getter/调用效果顺序、旧局部值与嵌套 catch；相关 6 项测试通过。
+  输出类型仍为 `ExceptionFunctionDraft`，尚缺独立异常树语义证明及真实文件方法
+  发布验收，不计作第 1 步完成。后续依次为循环跨区、typed completion/finally、
+  await/yield 协议与组合验收；规则版本仍为 44。
 
 - T09 异常控制层已复用共享 postdominator/区域发现算法，详见
   [异常控制投影](exception-control.md)。ControlTopology 只借用拓扑，不复制或清空

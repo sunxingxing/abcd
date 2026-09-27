@@ -26,7 +26,8 @@ void CheckTreeOrigins(const FunctionTree& tree, TreeCheckBudget& budget) {
       } else {
         static_assert(std::is_same_v<T, OriginalSite> ||
                       std::is_same_v<T, ElidedOrigin> || std::is_same_v<T, EdgeOrigin> ||
-                      std::is_same_v<T, LoopOrigin> || std::is_same_v<T, EntryOrigin>);
+                      std::is_same_v<T, LoopOrigin> || std::is_same_v<T, EntryOrigin> ||
+                      std::is_same_v<T, TryOrigin>);
         // Input instruction/edge identities are checked against the admitted IR
         // by semantic verification, not guessed from the syntax arena size.
       }

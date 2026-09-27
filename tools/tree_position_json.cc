@@ -25,6 +25,8 @@ nlohmann::json Origin(const TreeOrigin& origin) {
       return {{"kind", "edge"}, {"edge", node.edge.value}};
     } else if constexpr (std::is_same_v<T, LoopOrigin>) {
       return {{"kind", "loop"}, {"header", node.header.value}};
+    } else if constexpr (std::is_same_v<T, TryOrigin>) {
+      return {{"kind", "try_region"}, {"region", node.region.value}};
     } else if constexpr (std::is_same_v<T, EntryOrigin>) {
       return {{"kind", "method_entry"}};
     } else {

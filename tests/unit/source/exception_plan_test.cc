@@ -1,6 +1,11 @@
 #include "../../../src/source/exception_plan.h"
 #include "../../../src/source/exception_control.h"
+#include "../../../src/source/exception_tree.h"
+#include "../../../src/source/family_print.h"
 #include "analysis/ssa_fixture.h"
+
+#include <sstream>
+#include <string_view>
 
 namespace {
 using namespace abcd;
@@ -259,7 +264,7 @@ void OldLocal(abc::ProfileId profile, bool normal_handler_entry) {
   test::Check(std::holds_alternative<std::uint64_t>(VerifyExceptionPlan(body, graph, input, plan)));
 }
 void DecodedControl(const abc::MethodBody& body, abc::ProfileId profile,
-                    std::optional<ExceptionControlError> expected = {}) {
+                    std::optional<ExceptionControlError> expected = {}, std::ostream* output = nullptr) {
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers, {}, {}, &frame));
   IdfQuota quota{kDefaultSemanticWork};
@@ -279,9 +284,30 @@ void DecodedControl(const abc::MethodBody& body, abc::ProfileId profile,
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   if (expected) {
     test::Check(std::get<ExceptionControlError>(BuildExceptionControl(body, graph, input, regions)) == *expected);
-  } else Control(body, graph, input, regions);
+  } else {
+    Control(body, graph, input, regions);
+    const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
+    const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
+    std::vector<ExpressionConstant> constants(graph.ops.size());
+    for (std::size_t op = 0; op < graph.ops.size(); ++op)
+      if (std::holds_alternative<ValueNamedRead>(graph.ops[op].operation)) constants[op] = NameId{0};
+    FunctionSyntax syntax{};
+    syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+    syntax.names = {u"field"}; syntax.parameters.resize(frame.parameters);
+    const ExceptionTreeInput context{body, input, regions, control};
+    const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, {constants, 1});
+    if (const auto* error = std::get_if<FunctionTreeError>(&built))
+      std::cerr << "control draft error " << static_cast<unsigned>(*error) << '\n';
+    test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
+    const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
+    test::Check(tree.operations.size() == graph.ops.size());
+    const auto family = std::get<ConstructedFamily>(BuildFunctionFamily({{tree, {}, {}}}, tree.owner));
+    std::ostringstream text;
+    test::Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family, text)));
+    if (output) *output << text.str() << ",\n";
+  }
 }
-void BranchJoin(abc::ProfileId profile) {
+void BranchJoin(abc::ProfileId profile, std::ostream* output = nullptr) {
   // Protected diamond rejoins at PC14, then body and handler both continue at
   // PC19. The getter has a raising edge, not a third source-level branch arm.
   std::vector<std::uint8_t> bytes = {
@@ -303,7 +329,7 @@ void BranchJoin(abc::ProfileId profile) {
   abc::CatchHandler handler;
   handler.offset = {16}; handler.length = 3;
   body.handlers.push_back(handler);
-  DecodedControl(body, profile);
+  DecodedControl(body, profile, {}, output);
   body.tries[0].length = 14; // Gap jump at PC14 is not yet folded across a try exit.
   DecodedControl(body, profile, ExceptionControlError::kMultipleExits);
   body.tries[0].length = 16;
@@ -313,7 +339,7 @@ void BranchJoin(abc::ProfileId profile) {
   body.instructions = test::Body(bytes).instructions;
   DecodedControl(body, profile, ExceptionControlError::kCycle);
 }
-void HandlerNestedTry(abc::ProfileId profile) {
+void HandlerNestedTry(abc::ProfileId profile, std::ostream* output = nullptr) {
   const std::vector<std::uint8_t> bytes = {
       static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0, kThrowPrefix, kThrowCode,
       static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0, kThrowPrefix, kThrowCode,
@@ -325,18 +351,21 @@ void HandlerNestedTry(abc::ProfileId profile) {
   abc::CatchHandler first; first.offset = {4}; first.length = 5;
   abc::CatchHandler second; second.offset = {8}; second.length = 1;
   body.handlers = {first, second};
-  DecodedControl(body, profile);
+  DecodedControl(body, profile, {}, output);
 }
 }  // namespace
-int main() {
+int main(int argc, char** argv) {
+  const bool emit = argc == 2 && std::string_view(argv[1]) == "--emit";
+  if (emit) std::cout << "export const regions = [\n";
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                             abc::ProfileId::kDynamic1301}) {
     for (const std::uint32_t size : {0U, 1U, 200U, 201U, 402U}) Nested(profile, size);
     OldLocal(profile, false);
     OldLocal(profile, true);
-    BranchJoin(profile);
-    HandlerNestedTry(profile);
+    BranchJoin(profile, emit ? &std::cout : nullptr);
+    HandlerNestedTry(profile, emit ? &std::cout : nullptr);
   }
   for (const std::uint32_t depth : {200U, 201U, 402U})
     Nested(abc::ProfileId::kDynamic1301, 1, depth);
+  if (emit) std::cout << "];\n";
 }

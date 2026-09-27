@@ -6,7 +6,13 @@
 #include "../../../src/source/evaluation_plan.h"
 #include "../../../src/source/binding_plan.h"
 #include "../../../src/source/expression_forest.h"
+#include "../../../src/source/exception_tree.h"
+#include "../../../src/source/family_print.h"
+#include "../../../src/source/tree_structure.h"
 #include "analysis/ssa_fixture.h"
+
+#include <sstream>
+#include <string_view>
 
 namespace {
 using namespace abcd;
@@ -224,7 +230,7 @@ void Staging(std::uint32_t count) {
   }
 }
 enum class ThrowingSite : std::uint8_t { kGetter, kCall };
-void Decoded(abc::ProfileId profile, ThrowingSite site) {
+void Decoded(abc::ProfileId profile, ThrowingSite site, std::ostream* output = nullptr) {
   // The first getter/call can throw with old r0. The second can throw after r0
   // was updated. Both exceptions enter the same catch, but carry different r0.
   auto body_bytes = std::vector<std::uint8_t>{
@@ -329,6 +335,53 @@ void Decoded(abc::ProfileId profile, ThrowingSite site) {
     test::Check(std::holds_alternative<MemberExpr>(first.expression));
     test::Check(std::holds_alternative<MemberExpr>(second.expression));
   }
+  FunctionSyntax syntax{};
+  syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  syntax.names = {u"field"}; syntax.parameters.resize(frame.parameters);
+  const ExceptionTreeInput context{body, input, regions, control};
+  const auto drafted = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, {constants, 1});
+  if (const auto* error = std::get_if<FunctionTreeError>(&drafted))
+    std::cerr << "exception tree error " << static_cast<unsigned>(*error) << '\n';
+  test::Check(std::holds_alternative<ExceptionFunctionDraft>(drafted));
+  const auto& draft = std::get<ExceptionFunctionDraft>(drafted);
+  test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(draft.tree)));
+  std::size_t handlers = 0;
+  for (const auto& symbol : draft.tree.symbols)
+    if (symbol.kind == BindingKind::kCatchParameter) {
+      ++handlers; test::Check(draft.tree.scopes[symbol.scope.value].kind == ScopeKind::kCatch);
+    }
+  test::Check(handlers == 1 && draft.tree.operations.size() == graph.ops.size());
+  const auto family = std::get<ConstructedFamily>(BuildFunctionFamily({{draft.tree, {}, {}}}, draft.tree.owner));
+  std::ostringstream text;
+  const auto printed = std::get<PrintedFamilyDraft>(PrintFamilyDraft(family, text));
+  for (const auto& placement : draft.tree.operations) {
+    const auto* expression = std::get_if<ExprId>(&placement.node);
+    if (!expression) continue;
+    const auto& node = draft.tree.expressions[expression->value];
+    const auto pc = graph.origins[graph.ops[placement.operation.value].origin.value].pc;
+    std::vector<TreeOriginId> pending{node.origin};
+    std::vector<bool> visited(draft.tree.origins.size());
+    bool found = false;
+    while (!pending.empty()) {
+      const auto id = pending.back(); pending.pop_back();
+      if (visited[id.value]) continue;
+      visited[id.value] = true;
+      const auto& origin = draft.tree.origins[id.value];
+      if (const auto* site = std::get_if<OriginalSite>(&origin)) found |= site->pc == pc;
+      if (const auto* combined = std::get_if<CombinedOrigin>(&origin))
+        for (std::uint32_t i = 0; i < combined->part_count; ++i)
+          pending.push_back(draft.tree.origin_parts[combined->first_part + i]);
+    }
+    test::Check(found);
+    const auto range = printed.members[0].expressions[expression->value];
+    test::Check(range.begin < range.end && range.end <= text.str().size());
+  }
+  if (output) *output << text.str() << ",\n";
+  test::Check(std::holds_alternative<ExceptionFunctionDraft>(BuildExceptionFunctionDraft(
+      graph, context, evaluation, syntax, {constants, 1}, {SemanticBudget{}.bytes, draft.work})));
+  test::Check(std::get<FunctionTreeError>(BuildExceptionFunctionDraft(
+      graph, context, evaluation, syntax, {constants, 1}, {SemanticBudget{}.bytes, draft.work - 1})) ==
+      FunctionTreeError::kWorkLimit);
 }
 void MixedPlacements() {
   auto graph = ReadAndCatch(1);
@@ -363,12 +416,15 @@ void MixedPlacements() {
   test::Check(std::get<PhiCopyError>(VerifyPhasedPhiCopies(graph, wrong)) == PhiCopyError::kFlow);
 }
 }  // namespace
-int main() {
+int main(int argc, char** argv) {
+  const bool emit = argc == 2 && std::string_view(argv[1]) == "--emit";
+  if (emit) std::cout << "export const functions = [\n";
   for (const std::uint32_t count : {0U, 1U, 2U, 200U, 201U, 402U}) Staging(count);
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                             abc::ProfileId::kDynamic1301}) {
-    Decoded(profile, ThrowingSite::kGetter);
-    Decoded(profile, ThrowingSite::kCall);
+    Decoded(profile, ThrowingSite::kGetter, emit ? &std::cout : nullptr);
+    Decoded(profile, ThrowingSite::kCall, emit ? &std::cout : nullptr);
   }
   MixedPlacements();
+  if (emit) std::cout << "];\n";
 }

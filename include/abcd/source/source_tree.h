@@ -37,7 +37,8 @@ enum class NameEvidence : std::uint8_t { kMetadata, kDebugRange, kSynthesized };
 enum class DeclarationKind : std::uint8_t { kParameter, kLet, kConst, kCatchParameter };
 enum class TemporaryReason : std::uint8_t {
   kMultipleUses, kEffectSnapshot, kPhiJoin, kParallelCopyCycle,
-  kCrossRegionValue, kReferenceSnapshot, kUnprovedInline, kPredicateSnapshot
+  kCrossRegionValue, kReferenceSnapshot, kUnprovedInline, kPredicateSnapshot,
+  kExceptionSnapshot
 };
 struct TreeScope {
   ScopeKind kind;
@@ -183,8 +184,9 @@ struct EntryOrigin {};
 // Structural loop syntax has no additional instruction PC. Header identity is
 // provenance only; executable loop and transfer operands remain syntax IDs.
 struct LoopOrigin { analysis::WorkBlockId header; };
+struct TryOrigin { analysis::TryId region; };
 struct BindingOrigin { SymbolId symbol; };
-using TreeOrigin = std::variant<OriginalSite, CombinedOrigin, ElidedOrigin, EdgeOrigin, BindingOrigin, LoopOrigin, EntryOrigin>;
+using TreeOrigin = std::variant<OriginalSite, CombinedOrigin, ElidedOrigin, EdgeOrigin, BindingOrigin, LoopOrigin, EntryOrigin, TryOrigin>;
 struct BlockBoundary {
   StmtId block;
   // A zero-width position before child[index], or after all children at count.

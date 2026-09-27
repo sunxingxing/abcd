@@ -825,6 +825,9 @@ if(BUILD_TESTING)
     add_test(NAME try_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/try_tree.mjs
       $<TARGET_FILE:try_tree_test>)
+    add_test(NAME exception_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/exception_tree.mjs
+      $<TARGET_FILE:exception_copies_test> $<TARGET_FILE:exception_plan_test>)
     add_test(NAME argument_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/argument_snapshot.mjs
       $<TARGET_FILE:creation_tree_context_test> $<TARGET_FILE:class_tree_context_test>)

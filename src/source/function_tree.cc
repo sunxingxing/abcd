@@ -1,4 +1,6 @@
 #include "function_tree.h"
+#include "exception_tree.h"
+#include "tree_structure.h"
 
 #include <algorithm>
 #include <array>
@@ -36,10 +38,10 @@ class TreeBuilder {
   TreeBuilder(const analysis::ValueProgram& graph, const ControlPlan& control,
       const EvaluationPlan& evaluation, FunctionSyntax syntax,
       ExpressionConstants constants, analysis::SemanticBudget budget,
-      const IncomingCaptureTree* incoming)
+      const IncomingCaptureTree* incoming, const ExceptionTreeInput* exceptions = nullptr)
       : graph_(graph), control_(control), evaluation_(evaluation),
         syntax_(std::move(syntax)), constants_(constants), budget_(budget),
-        bytes_(budget.bytes), work_(budget.work), incoming_(incoming) {}
+        bytes_(budget.bytes), work_(budget.work), incoming_(incoming), exceptions_(exceptions) {}
 
   ConstructedFunction Build() {
     Require(syntax_.parameters.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
@@ -58,17 +60,29 @@ class TreeBuilder {
     for (const auto& name : syntax_.names) { Step(); AdmitText(name); }
     for (const auto& text : syntax_.texts) { Step(); AdmitText(text); }
     CaptureNames();
-    const auto control = VerifyControlPlan(graph_, control_, {bytes_, work_});
-    if (const auto* error = std::get_if<ControlError>(&control)) {
-      if (*error == ControlError::kResourceLimit) throw Error::kResourceLimit;
-      if (*error == ControlError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kControl;
+    if (exceptions_) {
+      const auto checked = VerifyExceptionControl(exceptions_->body, graph_, exceptions_->input,
+          exceptions_->regions, exceptions_->control, {bytes_, work_});
+      if (const auto* error = std::get_if<ExceptionControlError>(&checked)) {
+        if (*error == ExceptionControlError::kResourceLimit) throw Error::kResourceLimit;
+        if (*error == ExceptionControlError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kControl;
+      }
+      Step(std::get<std::uint64_t>(checked));
+    } else {
+      const auto control = VerifyControlPlan(graph_, control_, {bytes_, work_});
+      if (const auto* error = std::get_if<ControlError>(&control)) {
+        if (*error == ControlError::kResourceLimit) throw Error::kResourceLimit;
+        if (*error == ControlError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kControl;
+      }
+      Step(std::get<std::uint64_t>(control));
     }
-    Step(std::get<std::uint64_t>(control));
     std::vector<ModuleSymbol> modules;
     Grow(modules, syntax_.modules.size());
     for (const auto& alias : syntax_.modules) { Step(); modules.push_back(alias.target); }
-    auto expressions = BuildExpressionForest(graph_, evaluation_,
+    const auto build_forest = exceptions_ ? BuildPhasedExpressionForest : BuildExpressionForest;
+    auto expressions = build_forest(graph_, evaluation_,
         static_cast<std::uint32_t>(syntax_.parameters.size()), syntax_.owner,
         constants_, {bytes_, work_}, modules);
     if (const auto* error = std::get_if<ExpressionError>(&expressions)) {
@@ -112,7 +126,8 @@ class TreeBuilder {
     for (std::size_t i = syntax_.parameters.size(); i < tree_.symbols.size(); ++i) {
       Step();
       if (tree_.symbols[i].kind == BindingKind::kLocal || tree_.symbols[i].kind == BindingKind::kCapture ||
-          tree_.symbols[i].kind == BindingKind::kModule || tree_.symbols[i].kind == BindingKind::kFunctionSelf) continue;
+          tree_.symbols[i].kind == BindingKind::kModule || tree_.symbols[i].kind == BindingKind::kFunctionSelf ||
+          tree_.symbols[i].kind == BindingKind::kCatchParameter) continue;
       const SymbolId symbol{static_cast<std::uint32_t>(i)};
       const TreeOriginId origin{static_cast<std::uint32_t>(tree_.origins.size())};
       tree_.origins.emplace_back(BindingOrigin{symbol});
@@ -130,7 +145,8 @@ class TreeBuilder {
       while (next) {
         Step();
         const auto& region = control_.nodes[next->value];
-        if (std::holds_alternative<std::monostate>(region.synthetic)) EmitBlock(region, task.draft);
+        if (exceptions_) EmitExceptionUnit(*next, task.draft);
+        else if (std::holds_alternative<std::monostate>(region.synthetic)) EmitBlock(region, task.draft);
         else EmitLoop(region, task.draft);
         next = region.next;
       }
@@ -175,7 +191,11 @@ class TreeBuilder {
     const auto original_statements = graph_.ops.size() + blocks + symbols;
     Require(synthetic <= kMaxId - original_statements &&
         forest_.edge_assignments.size() <= kMaxId - original_statements - synthetic, Error::kResourceLimit);
-    const auto statements = original_statements + synthetic + forest_.edge_assignments.size();
+    auto statements = original_statements + synthetic + forest_.edge_assignments.size();
+    Require(forest_.throw_assignments.size() <= kMaxId - statements, Error::kResourceLimit);
+    statements += forest_.throw_assignments.size();
+    Require(forest_.catch_assignments.size() <= kMaxId - statements, Error::kResourceLimit);
+    statements += forest_.catch_assignments.size();
     Require(tree_.names.size() <= kMaxId - symbols &&
             tree_.origins.size() <= kMaxId - symbols &&
             synthetic <= kMaxId - symbols - tree_.origins.size() &&
@@ -200,6 +220,22 @@ class TreeBuilder {
     Grow(loops_, control_.loops.size());
     Step(control_.loops.size());
     loops_.resize(control_.loops.size());
+    if (exceptions_) {
+      Grow(catch_symbols_, graph_.blocks.size()); catch_symbols_.resize(graph_.blocks.size());
+      Grow(catch_ranges_, graph_.blocks.size()); catch_ranges_.resize(graph_.blocks.size());
+      Grow(throw_ranges_, graph_.ops.size()); throw_ranges_.resize(graph_.ops.size());
+      Step(2 * graph_.blocks.size() + graph_.ops.size());
+      for (std::size_t i = 0; i < forest_.catches.size(); ++i) {
+        Step(); const auto block = forest_.catches[i].block.value;
+        Require(block < catch_ranges_.size() && !catch_ranges_[block], Error::kControl);
+        catch_ranges_[block] = i;
+      }
+      for (std::size_t i = 0; i < forest_.throws.size(); ++i) {
+        Step(); const auto op = forest_.throws[i].placement.operation.value;
+        Require(op < throw_ranges_.size() && !throw_ranges_[op], Error::kControl);
+        throw_ranges_[op] = i;
+      }
+    }
     if (!forest_.edges.empty()) {
       Grow(edge_ranges_, graph_.edges.size());
       Step(graph_.edges.size());
@@ -356,6 +392,15 @@ class TreeBuilder {
     for (std::size_t i = syntax_.parameters.size(); i < forest_.bindings.symbols.size(); ++i) {
       Step();
       const auto& binding = forest_.bindings.symbols[i];
+      if (const auto* caught = std::get_if<CatchParameterBinding>(&binding)) {
+        Require(exceptions_ && caught->block.value < catch_symbols_.size() &&
+            !catch_symbols_[caught->block.value], Error::kBinding);
+        catch_symbols_[caught->block.value] = SymbolId{static_cast<std::uint32_t>(i)};
+        // EmitTry assigns the actual handler scope before syntax verification.
+        tree_.symbols.push_back({kBodyScope, SyntheticName(u"$caught", i), BindingKind::kCatchParameter,
+            DeclarationKind::kCatchParameter, NameEvidence::kSynthesized, {}});
+        continue;
+      }
       if (std::holds_alternative<FunctionSelfBinding>(binding)) {
         Require(self_scope && tree_.self == SymbolId{static_cast<std::uint32_t>(i)}, Error::kBinding);
         const bool named = tree_.self_form == SelfForm::kNamedFunction;
@@ -391,6 +436,9 @@ class TreeBuilder {
         reason = TemporaryReason::kPhiJoin; prefix = u"$phi";
       } else if (std::holds_alternative<CycleBinding>(binding)) {
         reason = TemporaryReason::kParallelCopyCycle; prefix = u"$copy";
+      } else if (std::holds_alternative<CatchSlotBinding>(binding)) {
+        Require(exceptions_ != nullptr, Error::kBinding);
+        reason = TemporaryReason::kExceptionSnapshot; prefix = u"$exception";
       } else throw Error::kBinding;
       tree_.symbols.push_back({kBodyScope, SyntheticName(prefix, i),
           BindingKind::kCompilerTemporary, DeclarationKind::kLet,
@@ -419,6 +467,14 @@ class TreeBuilder {
     while (cursor) {
       Step();
       const auto& node = control_.nodes[cursor->value];
+      if (exceptions_) {
+        const auto& unit = exceptions_->control.units[cursor->value];
+        if (const auto* region = std::get_if<TryControlUnit>(&unit)) {
+          cursor = exceptions_->control.regions[region->region.value].body;
+          continue;
+        }
+        Require(std::holds_alternative<PhaseControlUnit>(unit), Error::kOrigin);
+      }
       if (const auto* loop = std::get_if<LoopControl>(&node.synthetic)) {
         cursor = control_.loops[loop->loop.value].body;
         continue;
@@ -494,6 +550,17 @@ class TreeBuilder {
       const auto& op = graph_.ops[id.value];
       const auto& evaluation = evaluation_.operations[id.value];
       if (op.life != analysis::ValueLife::kLive) continue;
+      if (exceptions_ && std::holds_alternative<analysis::ValueBranch>(op.operation)) {
+        // Branch successors belong to Commit. Its condition may be emitted
+        // there only across an empty Before->Commit boundary, never phi writes.
+        Require(evaluation.kind == EvaluationKind::kRoot && block.edge_count == 1 &&
+            !HasCopies(block.first_edge), Error::kControl);
+        continue;
+      }
+      if (exceptions_ && throw_ranges_[id.value]) {
+        const auto& range = forest_.throws[*throw_ranges_[id.value]];
+        EmitAssignments(forest_.throw_assignments, range.first, range.count, draft);
+      }
       const TreeOriginId origin{op.origin.value};
       const auto expression = forest_.operations[id.value];
       if (evaluation.kind == EvaluationKind::kEnvironment) {
@@ -528,15 +595,7 @@ class TreeBuilder {
       }
       Require(expression.has_value(), Error::kOwnership);
       if (std::holds_alternative<analysis::ValueBranch>(op.operation)) {
-        Require(region.arms.has_value(), Error::kControl);
-        const auto taken = Arm(draft, origin, region.arms->taken, block.first_edge);
-        const analysis::EdgeId fallthrough{block.first_edge.value + 1};
-        std::optional<StmtId> alternate;
-        if (region.arms->fallthrough || HasCopies(fallthrough))
-          alternate = drafts_[Arm(draft, origin, region.arms->fallthrough, fallthrough)].statement;
-        const auto statement = Statement(IfStmt{*expression, drafts_[taken].statement, alternate}, origin);
-        Append(draft, statement);
-        tree_.operations.push_back({id, statement});
+        EmitBranch(id, region, block.first_edge, draft);
       } else if (std::holds_alternative<analysis::ValueReturn>(op.operation)) {
         const auto statement = Statement(ReturnStmt{expression}, origin);
         Append(draft, statement);
@@ -561,7 +620,77 @@ class TreeBuilder {
     }
     // A straight edge executes after the source block's operations and before
     // its successor. Branch copies belong inside their selected arm instead.
-    if (!region.arms && block.edge_count == 1) EmitEdge(block.first_edge, draft);
+    if (!region.arms) {
+      std::uint8_t normal = 0;
+      for (std::uint8_t e = 0; e < block.edge_count; ++e) {
+        Step(); const analysis::EdgeId edge{block.first_edge.value + e};
+        if (exceptions_ && graph_.edges[edge.value].kind == analysis::FlowEdgeKind::kException) continue;
+        Require(++normal == 1, Error::kControl);
+        EmitEdge(edge, draft);
+      }
+    }
+  }
+  void EmitAssignments(const std::vector<ExprId>& roots, std::uint32_t first,
+                       std::uint32_t count, std::size_t draft) {
+    for (std::uint32_t i = 0; i < count; ++i) {
+      Step(); const auto expression = roots[first + i];
+      Append(draft, Statement(ExpressionStmt{expression}, tree_.expressions[expression.value].origin));
+    }
+  }
+  void EmitBranch(analysis::OpId op, const ControlNode& node,
+                  analysis::EdgeId first_edge, std::size_t draft) {
+    Require(node.arms.has_value(), Error::kControl);
+    const TreeOriginId origin{graph_.ops[op.value].origin.value};
+    const auto expression = forest_.operations[op.value];
+    Require(expression.has_value(), Error::kOwnership);
+    const auto taken = Arm(draft, origin, node.arms->taken, first_edge);
+    const analysis::EdgeId fallthrough{first_edge.value + 1};
+    std::optional<StmtId> alternate;
+    if (node.arms->fallthrough || HasCopies(fallthrough))
+      alternate = drafts_[Arm(draft, origin, node.arms->fallthrough, fallthrough)].statement;
+    const auto statement = Statement(IfStmt{*expression, drafts_[taken].statement, alternate}, origin);
+    Append(draft, statement); tree_.operations.push_back({op, statement});
+  }
+  void EmitExceptionUnit(ControlId id, std::size_t draft) {
+    const auto& unit = exceptions_->control.units[id.value];
+    if (const auto* region = std::get_if<TryControlUnit>(&unit)) {
+      EmitTry(region->region, draft);
+      return;
+    }
+    if (std::holds_alternative<TryExitUnit>(unit)) return; // Normal end of this try arm, not JS break.
+    const auto block = std::get<PhaseControlUnit>(unit).block;
+    const auto& phase = graph_.phases[block.value];
+    const auto& node = control_.nodes[id.value];
+    if (phase.phase == analysis::ExceptionPhase::kCatch && catch_ranges_[block.value]) {
+      const auto& range = forest_.catches[*catch_ranges_[block.value]];
+      EmitAssignments(forest_.catch_assignments, range.first, range.count, draft);
+    }
+    if (phase.phase == analysis::ExceptionPhase::kCommit && phase.operation &&
+        std::holds_alternative<analysis::ValueBranch>(graph_.ops[phase.operation->value].operation)) {
+      EmitBranch(*phase.operation, node, graph_.blocks[block.value].first_edge, draft);
+      return;
+    }
+    EmitBlock(node, draft);
+  }
+  void EmitTry(analysis::TryId region, std::size_t parent) {
+    const auto& planned = exceptions_->control.regions[region.value];
+    const auto& source = exceptions_->regions.regions[region.value];
+    Require(source.binding && catch_symbols_[source.binding->block.value], Error::kBinding);
+    const auto parameter = *catch_symbols_[source.binding->block.value];
+    const TreeOriginId origin{static_cast<std::uint32_t>(tree_.origins.size())};
+    Require(tree_.origins.size() < tree_.origins.capacity(), Error::kResourceLimit);
+    tree_.origins.emplace_back(TryOrigin{region});
+    const ScopeId body_scope{static_cast<std::uint32_t>(tree_.scopes.size())};
+    tree_.scopes.push_back({ScopeKind::kBlock, drafts_[parent].scope});
+    const ScopeId handler_scope{static_cast<std::uint32_t>(tree_.scopes.size())};
+    tree_.scopes.push_back({ScopeKind::kCatch, drafts_[parent].scope});
+    const auto body = Block(body_scope, origin), handler = Block(handler_scope, origin);
+    Require(tree_.symbols[parameter.value].scope == kBodyScope, Error::kBinding);
+    tree_.symbols[parameter.value].scope = handler_scope;
+    Append(parent, Statement(TryStmt{drafts_[body].statement,
+        CatchClause{parameter, drafts_[handler].statement}, {}}, origin));
+    tasks_.push_back({planned.handler, handler});
+    tasks_.push_back({planned.body, body});
   }
   void EmitCells(analysis::OpId allocation, std::size_t draft, TreeOriginId origin) {
     Require(evaluation_.cells.has_value(), Error::kBinding);
@@ -635,6 +764,18 @@ class TreeBuilder {
           ? Error::kWorkLimit : Error::kResourceLimit;
     Step(storage->work);
     Require(storage->bytes <= budget_.bytes - bytes_, Error::kResourceLimit);
+    if (exceptions_) {
+      const auto checked = VerifyTreeStructure(tree_, {bytes_ + storage->bytes, work_});
+      if (const auto* error = std::get_if<TreeStructureError>(&checked)) {
+        if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
+        if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
+        throw Error::kStructure;
+      }
+      const auto& syntax = std::get<TreeStructure>(checked);
+      Require(syntax.allocated_bytes >= storage->bytes, Error::kStructure);
+      Admit(syntax.allocated_bytes - storage->bytes, 1); Step(syntax.work);
+      return; // Draft only; never substitute syntax success for the missing phased tree proof.
+    }
     const auto checked = VerifyTreeSemantics(graph_, control_, evaluation_, tree_, constants_,
                                              {bytes_ + storage->bytes, work_});
     const auto* semantics = std::get_if<TreeSemantics>(&checked);
@@ -715,6 +856,9 @@ class TreeBuilder {
   std::vector<std::optional<StmtId>> loops_;
   std::optional<std::size_t> entry_range_;
   const IncomingCaptureTree* incoming_;
+  const ExceptionTreeInput* exceptions_;
+  std::vector<std::optional<SymbolId>> catch_symbols_;
+  std::vector<std::optional<std::size_t>> catch_ranges_, throw_ranges_;
 };
 }  // namespace
 
@@ -725,6 +869,18 @@ std::variant<ConstructedFunction, FunctionTreeError> BuildFunctionTree(
     const IncomingCaptureTree* incoming) {
   try {
     return TreeBuilder(graph, control, evaluation, std::move(syntax), constants, budget, incoming).Build();
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+std::variant<ExceptionFunctionDraft, FunctionTreeError> BuildExceptionFunctionDraft(
+    const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
+    const EvaluationPlan& evaluation, FunctionSyntax syntax,
+    ExpressionConstants constants, analysis::SemanticBudget budget) {
+  try {
+    auto built = TreeBuilder(graph, exceptions.control.skeleton, evaluation,
+        std::move(syntax), constants, budget, nullptr, &exceptions).Build();
+    return ExceptionFunctionDraft{std::move(built.tree), built.allocated_bytes, built.work};
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
