@@ -22,6 +22,8 @@ struct ConstructedAbi {
 // establish body correspondence and the parameter-environment contract.
 // Explicit capture symbols are free bindings, not ABI parameters. This census
 // does not discharge their enclosing-owner or creation-site obligations.
+// An arrow cannot observe a dynamic receiver entry or an owner-local ThisExpr;
+// lexical receiver recovery requires a separate explicit capture binding.
 [[nodiscard]] std::variant<ConstructedAbi, FunctionAbiError> BuildFunctionAbi(
     const analysis::ValueProgram& graph, const FunctionTree& tree,
     const abc::FrameLayout& frame, std::uint32_t length,

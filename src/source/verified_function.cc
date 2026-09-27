@@ -367,10 +367,6 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     }
     budget.Admit(abi->allocated_bytes, 1);
     budget.Step(abi->work);
-    // Arrow source cannot substitute lexical this for the VM's dynamic ABI
-    // receiver. Captured outer this requires a later explicit owner binding.
-    if (context->Callable() == CallableKind::kArrow &&
-        (abi->abi.receiver.operands != 0 || abi->abi.receiver.references != 0)) throw Error::kAbi;
     const auto measured = MeasureTreeStorage(function->tree, {allowance.bytes, budget.Remaining().work});
     const auto* tree_storage = std::get_if<TreeStorage>(&measured);
     if (!tree_storage) throw std::get<TreeStorageError>(measured) == TreeStorageError::kWorkLimit

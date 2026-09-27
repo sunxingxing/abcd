@@ -148,6 +148,11 @@ void BranchTree() {
   Check(abi.abi.parameters[0].reads.references == 2);
   Check(abi.abi.parameters[0].writes == 0);
   Check(abi.abi.receiver.operands == 1 && abi.abi.receiver.references == 1);
+  auto callable_tree = tree;
+  callable_tree.callable = CallableKind::kFunction;
+  Check(std::holds_alternative<ConstructedAbi>(BuildFunctionAbi(f.graph, callable_tree, frame, 1)));
+  callable_tree.callable = CallableKind::kArrow;
+  Check(std::get<FunctionAbiError>(BuildFunctionAbi(f.graph, callable_tree, frame, 1)) == FunctionAbiError::kReceiver);
   Check(std::get<FunctionAbiError>(BuildFunctionAbi(f.graph, tree, frame, 2)) == FunctionAbiError::kLength);
   // Census is not a source-publication proof: these mutations exercise only
   // signature shape/length. Default body correspondence is verified separately.

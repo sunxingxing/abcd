@@ -206,12 +206,27 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
     auto created = std::get<CreationTreeContext>(CreationTreeContext::Resolve(
         file, header, index, lookup, roles, sites, range.first, identity));
     const FunctionContext context{std::move(created)};
+    if (child == ChildBody::kReceiver && !all_formats) {
+      auto receiver_family = std::get<FileFamily>(ReadFunctionFamily(file, header, index,
+          lookup, roles, sites, {1}, identity));
+      const auto result = BuildFileFamilyTrees(file, header, index, std::move(receiver_family), context);
+      if (kind == abc::FunctionKind::kArrow) {
+        test::Check(std::get<FunctionAbiError>(std::get<FamilyTreeFailure>(result).cause) ==
+            FunctionAbiError::kReceiver);
+      } else {
+        const auto& member = std::get<ConstructedFamily>(result).members[0];
+        test::Check(member.abi && member.abi->receiver.operands == 1 &&
+            member.abi->receiver.references == 1);
+      }
+    }
     if ((child == ChildBody::kEmpty || child == ChildBody::kCell || child == ChildBody::kNestedWriter) && !all_formats) {
       auto root_family = std::get<FileFamily>(ReadFunctionFamily(file, header, index,
           lookup, roles, sites, {1}, identity));
       const auto tree_family = BuildFileFamilyTrees(file, header, index, std::move(root_family), context);
       test::Check(std::holds_alternative<ConstructedFamily>(tree_family));
       const auto& built = std::get<ConstructedFamily>(tree_family);
+      for (const auto& member : built.members)
+        test::Check(member.abi && member.abi->parameters.size() == member.tree.parameters.size());
       test::Check(built.members.size() == (writer_code ? 2U : 1U) && built.root == FileFamily::kRoot &&
           built.members[0].tree.method == abc::EntityOffset{kTarget} &&
           built.members[0].tree.parameters.size() == parameters);

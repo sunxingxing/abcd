@@ -29,6 +29,13 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 单函数与文件函数族现共享箭头函数 receiver ABI 拒绝规则：动态 receiver entry
+  或 owner-local `ThisExpr` 不能直接生成词法 `this`；外层 this 仍须显式捕获绑定。
+  文件函数族保留各成员实际 `FunctionAbi`，不再检查后丢弃；它仍是可变构建产品，
+  不是可转移的发布证据。新增普通/箭头 receiver 与 ABI 保留规格未编译、未运行。
+  生产 `abc_semantic`/`abc_structure` 构建退出 0；ABC-only 的 pasteboard 7449
+  四成员草稿、Immersive 21082 单成员条件树均仍可构建，退出 1，
+  `source_complete=false`、`executable=false`。未执行生成 JS 或 RSS 测量。
 - 整族写入域检查已接入：逐个原始 lexical store 核对 SSA Language 值域及残余
   AST cell 写入位置；仅允许已有默认参数证明迁移的 store 不再出现在函数体。
   所有创建屏障都必须由实际子函数或原始值对象证据覆盖，并重新核对捕获边。

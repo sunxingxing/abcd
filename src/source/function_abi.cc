@@ -63,6 +63,10 @@ class AbiBuilder {
           parameter.writes == 0, Error::kParameter);
     }
     Require((result_.receiver.operands != 0) == (result_.receiver.references != 0), Error::kReceiver);
+    // A JS arrow inherits this; a VM receiver entry is dynamic. Captured outer
+    // receivers must instead retain their explicit enclosing-owner binding.
+    Require(tree_.callable != CallableKind::kArrow ||
+        (result_.receiver.operands == 0 && result_.receiver.references == 0), Error::kReceiver);
     return {std::move(result_), initial_.bytes - remaining_.bytes,
             initial_.work - remaining_.work};
   }

@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_FUNCTION_FAMILY_H_
 
 #include "capture_tree.h"
+#include "abcd/source/function_abi.h"
 
 namespace abcd::source {
 struct FamilyId { std::uint32_t value; auto operator<=>(const FamilyId&) const = default; };
@@ -11,6 +12,9 @@ struct FamilyMember {
   // Verified input/work proof for this member's incoming creation; absent for
   // the root. The graph/input products used to check it must remain unchanged.
   std::optional<CaptureCells> incoming;
+  // Same-input census retained by file-backed construction. Synthetic layout
+  // fixtures may omit it; a mutable census is not publication evidence.
+  std::optional<FunctionAbi> abi;
 };
 struct FamilyParent { FamilyId function; ExprId expression; };
 // Construction diagnostics only, not transferable publication evidence.

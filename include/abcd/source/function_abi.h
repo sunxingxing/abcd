@@ -39,9 +39,9 @@ struct FunctionAbi {
   ParameterLayout layout = ParameterLayout::kSimple;
   // Number of formals before the first initializer, not the ABI slot count.
   std::uint32_t length = 0;
-  // G1 admission excludes observing these inputs, argument-list operations,
-  // dynamic scope and child/capture operations. Later stages must extend the
-  // typed census/proof, not silently retain these absence facts.
+  // Admission excludes observing these inputs, argument-list operations and
+  // dynamic scope. Child/capture obligations require separate family proofs;
+  // they are not established by these per-function absence facts.
   AbiObservation callable = AbiObservation::kUnobserved;
   AbiObservation new_target = AbiObservation::kUnobserved;
   AbiObservation arguments = AbiObservation::kUnobserved;
