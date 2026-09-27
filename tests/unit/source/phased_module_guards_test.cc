@@ -15,7 +15,7 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 void Run(std::uint32_t count, bool caught, bool wide, bool external, abc::ProfileId profile,
-         std::ostream* output = nullptr) {
+         std::ostream* output = nullptr, bool property = false, bool split_handler = false) {
   constexpr unsigned kByteBits = 8;
   constexpr std::uint8_t kModuleSlot = 7, kNameSlot = 3;
   std::vector<std::uint8_t> bytes;
@@ -33,6 +33,11 @@ void Run(std::uint32_t count, bool caught, bool wide, bool external, abc::Profil
     opcode(abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16);
     bytes.insert(bytes.end(), {kNameSlot, 0});
   }
+  const auto pair_end = static_cast<std::uint32_t>(bytes.size());
+  if (property) {
+    opcode(abc::Opcode::kLDOBJBYNAME_IMM8_ID16);
+    bytes.insert(bytes.end(), {0, kNameSlot, 0});
+  }
   const auto end = static_cast<std::uint32_t>(bytes.size());
   opcode(abc::Opcode::kRETURN);
   if (caught) {
@@ -43,7 +48,7 @@ void Run(std::uint32_t count, bool caught, bool wide, bool external, abc::Profil
   auto body = test::Body(bytes);
   if (caught) {
     abc::TryRegion region;
-    region.length = end; region.handler_count = 1;
+    region.length = split_handler ? pair_end : end; region.handler_count = 1;
     body.tries.push_back(region);
     abc::CatchHandler handler;
     handler.offset = {end + 1}; handler.length = static_cast<std::uint32_t>(bytes.size()) - handler.offset.value;
@@ -72,7 +77,17 @@ void Run(std::uint32_t count, bool caught, bool wide, bool external, abc::Profil
   const auto evaluated = BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kReject, {}, bindings);
   test::Check(std::holds_alternative<EvaluationPlan>(evaluated));
   const auto& evaluation = std::get<EvaluationPlan>(evaluated);
+  if (property) test::Check(evaluation.operations[plan.pairs.back().read.value].kind ==
+      (split_handler ? EvaluationKind::kRoot : EvaluationKind::kInline));
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation)));
+  if (split_handler) {
+    auto forged = evaluation;
+    const auto read = plan.pairs.back().read;
+    const auto consumer = plan.pairs.back().guard.value + 1;
+    forged.operations[read.value] = {EvaluationKind::kInline, graph.ops[consumer].first_use, {}};
+    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    return;
+  }
   if (count == 1) {
     if (caught) {
       const auto stored = graph.ops.size() - 3, loaded = stored + 1;
@@ -108,6 +123,7 @@ void Run(std::uint32_t count, bool caught, bool wide, bool external, abc::Profil
     syntax.names = {u"moduleValue"};
     syntax.modules.push_back({{{1}, {0}}, {0}, ModuleAccess::kReadOnly, NameEvidence::kSynthesized});
     std::vector<ExpressionConstant> constants(graph.ops.size());
+    if (property) constants[plan.pairs.back().guard.value + 1] = NameId{0};
     const auto draft = BuildExceptionFunctionDraft(graph, {body, input, regions, control},
         evaluation, syntax, {constants, 1});
     test::Check(std::holds_alternative<ExceptionFunctionDraft>(draft));
@@ -286,4 +302,14 @@ int main(int argc, char** argv) {
   for (auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                        abc::ProfileId::kDynamic1301}) Snapshots(profile, emit ? &std::cout : nullptr);
   if (emit) std::cout << "];\n";
+  if (emit) std::cout << "export const properties = [\n";
+  for (auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                       abc::ProfileId::kDynamic1301})
+    for (bool caught : {false, true}) Run(1, caught, false, true, profile, emit ? &std::cout : nullptr, true);
+  if (emit) std::cout << "];\n";
+  for (auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                       abc::ProfileId::kDynamic1301}) {
+    Run(1, true, false, true, profile, nullptr, true, true);
+    for (auto count : {200U, 201U, 402U}) Run(count, true, false, true, profile, nullptr, true);
+  }
 }

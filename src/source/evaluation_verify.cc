@@ -219,7 +219,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
             !placement.consumer && !placement.temporary, Error::kOwnership);
         visits[i] = EvaluationVisit::kDone;
       } else if (placement.kind == EvaluationKind::kInline) {
-        Require(!pinned[i], Error::kOwnership);
+        Require(!pinned[i] || (cross(i) &&
+            std::holds_alternative<analysis::ValueModuleRead>(op.operation)), Error::kOwnership);
         Require(op.result && placement.consumer && !placement.temporary, Error::kOwnership);
         const auto& value = graph.values[op.result->value];
         Require(placement.consumer->value < graph.uses.size(), Error::kOwnership);
@@ -273,6 +274,9 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
                                   plan.operations[expected].kind == EvaluationKind::kAlias ||
                                   plan.operations[expected].kind == EvaluationKind::kInitializer ||
                                   plan.operations[expected].kind == EvaluationKind::kEnvironment ||
+                                  (plan.operations[expected].kind == EvaluationKind::kModuleGuard &&
+                                   !module_index.peers.empty() && module_index.peers[expected] &&
+                                   cross(module_index.peers[expected]->value)) ||
                                   cross(expected) ||
                                   !OrderedEvaluation(graph.ops[expected]))) { step(); ++expected; }
       };

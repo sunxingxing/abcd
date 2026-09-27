@@ -5,6 +5,7 @@
 namespace abcd::source {
 namespace {
 using namespace analysis;
+constexpr std::size_t kGuardedReadEffects = 2;  // Original module load and TDZ guard.
 bool SameOperand(const ValueOperand& a, const ValueOperand& b) {
   if (a.index() != b.index()) return false;
   return std::visit([&](const auto& value) {
@@ -19,12 +20,13 @@ void PhaseBudget::Step(std::size_t count) {
   remaining_.work -= count;
 }
 bool PhaseCorridors::Expression(const ValueOperation& operation) {
-  // Explicit scalar/reference/call operands only. Environment, creation, module
-  // guards, argument snapshots and initializer protocols retain their own fences.
+  // Guarded modules are paired by the caller's independently checked module
+  // index; their two original effects form one subtree, never a pure name read.
   return std::holds_alternative<ValueCopy>(operation) ||
       std::holds_alternative<ValueString>(operation) ||
       std::holds_alternative<ValueUnary>(operation) ||
       std::holds_alternative<ValueBinary>(operation) ||
+      std::holds_alternative<ValueModuleRead>(operation) ||
       std::holds_alternative<ValueNamedRead>(operation) ||
       std::holds_alternative<ValuePropertyRead>(operation) ||
       std::holds_alternative<ValueInvoke>(operation) ||
@@ -44,6 +46,14 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
   budget.Array(copied, graph.edges.size()); budget.Array(uses_, graph.values.size());
   budget.Array(exits_, graph.ops.size()); budget.Array(throws_, graph.ops.size());
   budget.Array(staged_, plan.exceptions ? plan.exceptions->slots.size() : 0);
+  if (!plan.modules.empty()) {
+    budget.Array(module_peers_, graph.ops.size());
+    for (const auto& module : plan.modules) {
+      budget.Step();
+      module_peers_[module.pair.read.value] = module.pair.guard;
+      module_peers_[module.pair.guard.value] = module.pair.read;
+    }
+  }
   for (const auto& edge : graph.edges) { budget.Step(); ++incoming[edge.target.value]; }
   for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
     budget.Step(); const auto& block = graph.blocks[b];
@@ -94,6 +104,10 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
       const auto kind = plan.operations[owner->value].kind;
       if (graph.ops[owner->value].life != ValueLife::kLive ||
           kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure) continue;
+      // Only the independently paired guard dependency is absorbed. Catch
+      // snapshots and every other canonical use still prevent duplication.
+      if (kind == EvaluationKind::kModuleGuard && !module_peers_.empty() &&
+          module_peers_[owner->value]) continue;
     }
     const auto operand = ResolveEvaluationOperand(plan, use.operand);
     const auto* value = std::get_if<ValueId>(&operand);
@@ -105,6 +119,18 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
 }
 std::size_t PhaseCorridors::EffectsBefore(OpId op) const {
   return positions_[graph_.ops[op.value].block.value].effects;
+}
+std::size_t PhaseCorridors::EffectCount(OpId op) const {
+  const bool event = Event(graph_.ops[op.value], plan_.operations[op.value]);
+  if (!event) return 0;
+  if (std::holds_alternative<ValueModuleRead>(graph_.ops[op.value].operation)) {
+    // IndexModuleEvaluations proved adjacency through the read's empty Commit
+    // phase; VerifyModuleCatchCopies also preserves both exception snapshots.
+    if (module_peers_.empty() || !module_peers_[op.value])
+      throw EvaluationError::kOrder;
+    return kGuardedReadEffects;
+  }
+  return 1;
 }
 bool PhaseCorridors::SameCatch(OpId producer, OpId consumer) {
   if (!exits_[producer.value] || !exits_[consumer.value] ||

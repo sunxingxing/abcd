@@ -63,8 +63,8 @@ std::variant<PhaseEvaluationCost, EvaluationError> BuildPhaseExpressions(
       budget.Step(); const OpId id{static_cast<std::uint32_t>(i)};
       const auto& op = graph.ops[i];
       auto expected = corridors.EffectsBefore(id);
-      const bool event = PhaseCorridors::Event(op, plan.operations[i]);
-      intervals[i] = {event ? 1U : 0U, expected + event};
+      const auto effects = corridors.EffectCount(id);
+      intervals[i] = {effects, expected + effects};
       if (!Inputs(op, plan.operations[i])) continue;
       const auto shape = DescribeEvaluation(op.operation);
       Require(shape && shape->Count() == op.use_count, Error::kInvalidGraph);
@@ -119,8 +119,8 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
       budget.Step(); const OpId id{static_cast<std::uint32_t>(i)};
       const auto& op = graph.ops[i];
       const auto end = corridors.EffectsBefore(id);
-      const bool event = PhaseCorridors::Event(op, plan.operations[i]);
-      intervals[i] = {event ? 1U : 0U, end + event};
+      const auto effects = corridors.EffectCount(id);
+      intervals[i] = {effects, end + effects};
       if (!Inputs(op, plan.operations[i])) continue;
       const auto shape = DescribeEvaluation(op.operation);
       Require(shape && shape->Count() == op.use_count, Error::kInvalidGraph);

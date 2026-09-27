@@ -242,7 +242,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // ESM enclosure, rechecking owner, slot, spelling and destination shadows.
 // Rules 52 recover fresh own-data initialization across unique normal phase
 // corridors, retaining canonical RHS snapshots and rejecting early observers.
-inline constexpr std::uint32_t kRouteEvidenceRules = 52;
+// Rules 53 compose verified module load/guard pairs as ordered phased subtrees,
+// preserving both original effects, catch snapshots and source placements.
+inline constexpr std::uint32_t kRouteEvidenceRules = 53;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

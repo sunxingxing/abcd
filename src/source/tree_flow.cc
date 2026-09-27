@@ -245,7 +245,7 @@ class FlowCheck {
       budget_.Step();
       const auto read = module.pair.read.value;
       const auto guard = module.pair.guard.value;
-      // The evaluation checker proved exact guarded adjacency and pinned order.
+      // The evaluation checker proved exact guarded adjacency and effect order.
       // Two PC placements own ONE expression occurrence, not two executions.
       Require(flow_.expressions[read] && flow_.expressions[guard] == flow_.expressions[read], Error::kPlacement);
     }

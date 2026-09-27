@@ -480,3 +480,40 @@ the original two-operation correspondence, TDZ and throw-owner checks. Do not
 replace the saved callee with a fresh getter or untrusted `.call`/`Reflect.apply`.
 Immersive 8257/8404 instead require child-family ownership; they fail the existing
 `ValueFunctionCreation`/`FunctionBinding` coverage check, not exception parsing.
+
+## Guarded Module Effect Subtrees
+
+Rules 53 extend the same phase-expression forest, not the decoder or exception
+CFG, to verified `ModuleEvaluation` pairs. `IndexModuleEvaluations` remains the
+prerequisite: exact read/guard identities and effects, original read-result guard
+operand, adjacent operation census and unique read/Commit/guard order. The
+immutable publication boundary still proves original ABC, record and native ESM
+binding correspondence. A language-valued result alone never authorizes a read.
+
+The corridor indexes pair peers once. Only the guard's internal dependency is
+removed from the effective-use census; other uses, including catch snapshots,
+retain their ownership. The read subtree spans two consecutive original effect
+events. Independent forward interval equations verify any proposed composition;
+the backward builder cannot move the pair across another unconsumed effect.
+Both original operations remain in the graph and map to the same expression's
+combined origin. Guard placement remains `kModuleGuard`, not an arbitrary elision.
+
+Normal flow keeps its prior pinned-read policy. Phased fusion requires the same
+unique corridor/no-edge-copy/single-use and final-owner catch checks as other
+effectful expressions. `VerifyModuleCatchCopies` independently checks read/guard
+dispatch snapshots; this and read/final-owner equality preserve the guard's
+exception state transitively. Closed cycles stay unindexed and cannot fuse.
+Index construction adds O(I+M) time/storage, where M is the number of module pairs;
+it does not add per-read graph walks or alter the existing proof budgets.
+
+Decoded unit/integration coverage includes three profiles, getter success and
+arbitrary thrown values, lexical TDZ, live bindings, cross-handler rejection,
+forged inline ownership, paired-guard mutations and 200/201/402 pairs. Real
+Immersive 8566 now publishes `updateWindowInfo` through `VerifiedFunction` and
+`FunctionEmission`; `tests/integration/immersive_window.mjs` checks every normal-path
+observable failure point, live rebinding during callee lookup, writes, receiver identity,
+logs and all 330 operation placements. This selected-method test uses explicit
+`--work 4000000`; default preparation still reports `kWorkLimit` due to repeated
+independent graph/tree proofs. Production budgets and memory caps are unchanged.
+This is not a record-completion or all-ISA claim. No finally, coroutine, scheduler,
+full-corpus or RSS acceptance follows from this test.

@@ -18,7 +18,7 @@ namespace {
 int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
     const abcd::abc::MetadataIndex& index, const abcd::abc::MethodLookup& lookup,
     const abcd::analysis::ClassMethodSites& sites, const abcd::corpus::FileFingerprint& hash,
-    abcd::abc::EntityOffset entity, bool emit) {
+    abcd::abc::EntityOffset entity, bool emit, abcd::analysis::SemanticBudget budget) {
   using namespace abcd;
   using namespace abcd::source;
   const auto position = lookup.Find(entity);
@@ -54,24 +54,25 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
     if (!enclosure) { std::cerr << "module enclosure error " << static_cast<unsigned>(std::get<ModuleEnclosureError>(planned)) << '\n'; return 1; }
     GlobalScope scope{}; scope.module_enclosure = enclosure;
     auto prepared = VerifiedFunction::PrepareClass(file, header, index, lookup, *indexed_roles,
-        sites, sites.Find(entity).first, identity, {}, &scope);
+        sites, sites.Find(entity).first, identity, budget, &scope);
     if (const auto* error = std::get_if<FunctionPrepareFailure>(&prepared)) {
       std::cerr << "preparation error " << static_cast<unsigned>(error->kind) << '\n'; return 1;
     }
     std::ostringstream output, imports, mapping;
     if (!std::holds_alternative<std::size_t>(enclosure->WriteImports(file, header, imports))) return 1;
-    auto printed = FunctionEmission::Write(std::get<VerifiedFunction>(std::move(prepared)), output, {}, {}, {}, &scope);
+    auto printed = FunctionEmission::Write(std::get<VerifiedFunction>(std::move(prepared)), output, {}, {}, budget, &scope);
     const auto* emission = std::get_if<FunctionEmission>(&printed);
     if (!emission) { std::cerr << "print error " << static_cast<unsigned>(std::get<TreePrintError>(printed)) << '\n'; return 1; }
     tools::WriteTreePositions(mapping, emission->Function().Tree(), emission->Positions());
     std::cout << nlohmann::json{{"method", entity.value}, {"record_complete", false},
         {"fragment_complete", emission->Receipt().coverage == Coverage::kComplete},
+        {"work_limit", budget.work},
         {"source", output.str()}, {"imports", imports.str()},
         {"positions", nlohmann::json::parse(mapping.str())}} << '\n';
     return file.CheckUnchanged() ? 1 : 0;
   }
   const PhasedModuleBinding binding{file, header, index, *record, kSelectedRecord};
-  const auto built = PhasedMethod::Build(context, *body, {}, &binding);
+  const auto built = PhasedMethod::Build(context, *body, budget, &binding);
   nlohmann::json report{{"method", entity.value}, {"source_complete", false}, {"executable", false}};
   if (const auto* error = std::get_if<PhasedMethodError>(&built)) {
     report["phase_error"] = static_cast<unsigned>(*error);
@@ -89,7 +90,7 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       }
       const auto constants = syntax->View();
       const auto tree = BuildExceptionFunctionDraft(phased.Graph(), phased.TreeInput(*body),
-          phased.Evaluation(), std::move(syntax->syntax), constants);
+          phased.Evaluation(), std::move(syntax->syntax), constants, budget);
       if (const auto* error = std::get_if<FunctionTreeError>(&tree)) report["tree_error"] = static_cast<unsigned>(*error);
       else {
         const auto& draft = std::get<ExceptionFunctionDraft>(tree);
@@ -111,7 +112,15 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
 // decompilation/support census. No source/sidecar inputs are read.
 int main(int argc, char** argv) {
   using namespace abcd;
-  if (argc < 2 || argc > 4 || (argc == 4 && std::string_view(argv[3]) != "--emit")) return 1;
+  if (argc < 2 || argc > 6 || argc == 5 ||
+      (argc >= 4 && std::string_view(argv[3]) != "--emit")) return 1;
+  analysis::SemanticBudget budget;
+  if (argc == 6) {
+    if (std::string_view(argv[4]) != "--work") return 1;
+    const std::string_view text{argv[5]};
+    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), budget.work);
+    if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size() || !budget.work) return 1;
+  }
   const auto opened = corpus::AbcFile::Open(argv[1]);
   const auto* owner = std::get_if<std::unique_ptr<corpus::AbcFile>>(&opened);
   if (!owner) return 1;
@@ -137,7 +146,7 @@ int main(int argc, char** argv) {
     abc::EntityOffset entity;
     const auto parsed_id = std::from_chars(text.data(), text.data() + text.size(), entity.value);
     if (parsed_id.ec != std::errc{} || parsed_id.ptr != text.data() + text.size()) return 1;
-    return Inspect(file, *header, *index, *methods, *sites, *hash, entity, argc == 4);
+    return Inspect(file, *header, *index, *methods, *sites, *hash, entity, argc >= 4, budget);
   }
   std::vector<const abc::MethodInfo*> candidates;
   for (const auto& method : index->methods)

@@ -12,7 +12,8 @@ struct ModuleEvaluationIndex {
 };
 // Validate exact live-read census and normal adjacency or phased pair order.
 // This checks conditional evaluation structure, NOT original proof/record identity.
-// Guards retain their exceptional effects, and reads stay pinned at the pair.
+// Guards retain their exceptional effects. Normal-flow reads stay pinned;
+// phased expression composition may move the proven pair as one effect subtree.
 [[nodiscard]] std::variant<ModuleEvaluationIndex, EvaluationError>
 IndexModuleEvaluations(const analysis::ValueProgram& graph,
     std::span<const ModuleEvaluation> modules, analysis::SemanticBudget budget = {});

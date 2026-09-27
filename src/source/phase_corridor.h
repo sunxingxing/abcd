@@ -33,6 +33,7 @@ class PhaseCorridors {
   bool CanFuse(analysis::OpId producer, analysis::OpId consumer, analysis::UseId use) const;
   bool SameCatch(analysis::OpId producer, analysis::OpId root);
   std::size_t EffectsBefore(analysis::OpId op) const;
+  std::size_t EffectCount(analysis::OpId op) const;
   static bool Expression(const analysis::ValueOperation& operation);
   static bool Event(const analysis::ValueOp& op, const OpEvaluation& placement);
  private:
@@ -42,6 +43,7 @@ class PhaseCorridors {
   std::vector<PhasePosition> positions_;
   std::vector<PhaseUse> uses_;
   std::vector<std::optional<std::size_t>> exits_, throws_, staged_;
+  std::vector<std::optional<analysis::OpId>> module_peers_;
 };
 }  // namespace abcd::source
 #endif
