@@ -27,6 +27,11 @@ void Failure(nlohmann::json& report, const FamilyFileFailure& failure) {
     } else if constexpr (std::is_same_v<T, CaptureEvaluationFailure>) {
       report["capture_failure"] = error.index();
       std::visit([&](const auto& reason) { report["capture_error"] = Code(reason); }, error);
+    } else if constexpr (std::is_same_v<T, BodyEmitFailure>) {
+      report["object_failure"] = Code(error.kind);
+      if (error.object_error) report["object_error"] = Code(*error.object_error);
+      if (error.metadata_error) report["metadata_error"] = Code(*error.metadata_error);
+      if (error.literal_error) report["literal_error"] = Code(*error.literal_error);
     } else {
       static_assert(std::is_same_v<T, FunctionFileFailure>);
       report["method_failure"] = error.index();
@@ -93,6 +98,7 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
         {"operations", member.function.values.graph.ops.size()},
         {"capture_occurrences", member.function.input.Captures().size()},
         {"child_obligations", member.function.input.Children().size()}};
+    entry["primitive_objects"] = member.objects.size();
     if (member.context) entry["callable"] = static_cast<unsigned>(member.context->Callable());
     if (member.incoming) {
       entry["parent"] = member.incoming->parent.value;

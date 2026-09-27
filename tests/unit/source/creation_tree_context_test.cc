@@ -17,6 +17,7 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 enum class ChildBody { kEmpty, kReceiver, kCapture, kCell, kRecursive };
+enum class CallerObject { kAbsent, kPrimitive, kMethod };
 constexpr std::uint32_t kPool = 64, kCaller = 256, kTarget = 300,
     kRecord = 128, kCallerCode = 400, kCodePadding = 16;
 constexpr unsigned kFunctionKindShift = 8;  // Pinned dynamic method access flags.
@@ -45,12 +46,34 @@ abc::CodeInfo AppendCode(std::vector<std::uint8_t>& file,
 }
 
 void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
-         bool all_formats = false, std::uint8_t parameters = 0) {
+         bool all_formats = false, std::uint8_t parameters = 0,
+         CallerObject object = CallerObject::kAbsent) {
   std::vector<std::uint8_t> bytes(kCallerCode);
   constexpr unsigned kByteBits = 8;
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kTarget >> (kByteBits * i));
   std::vector<std::uint8_t> caller;
+  if (object != CallerObject::kAbsent) {
+    constexpr std::uint32_t kLiteral = 80, kKey = 112, kTaggedPairEntries = 4;
+    const auto word = [&](std::size_t at, std::uint32_t value) {
+      for (unsigned i = 0; i < sizeof(value); ++i)
+        bytes[at + i] = static_cast<std::uint8_t>(value >> (kByteBits * i));
+    };
+    word(kPool + sizeof(std::uint32_t), kLiteral);
+    word(kLiteral, kTaggedPairEntries);
+    auto at = kLiteral + sizeof(std::uint32_t);
+    bytes[at++] = static_cast<std::uint8_t>(abc::LiteralTag::kString);
+    word(at, kKey); at += sizeof(std::uint32_t);
+    bytes[at++] = static_cast<std::uint8_t>(object == CallerObject::kMethod
+        ? abc::LiteralTag::kMethod : abc::LiteralTag::kInteger);
+    word(at, object == CallerObject::kMethod ? kTarget : 42);
+    constexpr std::uint8_t kOneAsciiUnit = 3;
+    bytes[kKey] = kOneAsciiUnit; bytes[kKey + 1] = 'x';
+    constexpr std::uint8_t kObjectWithBuffer = 0x07;
+    // Repeat the same primitive pool entry to exercise occurrence accounting.
+    for (std::uint32_t i = 0; i < count; ++i)
+      caller.insert(caller.end(), {kObjectWithBuffer, 0, 1, 0});
+  }
   std::vector<std::uint32_t> pcs;
   for (std::uint32_t i = 0; i < count; ++i) {
     pcs.push_back(static_cast<std::uint32_t>(caller.size()));
@@ -90,7 +113,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
   header.kind = abc::AbcKind::kDynamic; header.layout = abc::DynamicLayout{};
   header.profile = abc::ProfileId::kDynamic1206; header.version = {12, 0, 6, 0}; header.file_size = bytes.size();
   abc::MetadataIndex index;
-  index.regions.push_back({kCaller, kCallerCode, {}, {1, kPool}, {}, {}});
+  index.regions.push_back({kCaller, kCallerCode, {}, {object == CallerObject::kAbsent ? 1U : 2U, kPool}, {}, {}});
   index.methods.resize(2);
   index.methods[0].offset = {kCaller}; index.methods[0].code = caller_code;
   index.methods[1].offset = {kTarget}; index.methods[1].code = target_code;
@@ -120,8 +143,14 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
     const auto roles = std::get<MethodRoleIndex>(MethodRoleIndex::Build(file, header, index, lookup));
     const auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
     const auto family_result = ReadFunctionFamily(file, header, index, lookup, roles, sites, {0}, identity);
-    const bool family_refuses = all_formats || child == ChildBody::kCapture || child == ChildBody::kRecursive;
+    const bool family_refuses = all_formats || child == ChildBody::kCapture || child == ChildBody::kRecursive ||
+        (object == CallerObject::kMethod && count != 0);
     test::Check(std::holds_alternative<FamilyFileFailure>(family_result) == family_refuses);
+    if (object == CallerObject::kMethod && count != 0) {
+      const auto& failure = std::get<FamilyFileFailure>(family_result);
+      test::Check(std::get<BodyEmitFailure>(failure.cause).object_error == ObjectBufferError::kValue &&
+          failure.creation_pc == abc::CodeOffset{0});
+    }
     if (child == ChildBody::kRecursive) {
       const auto& failure = std::get<FamilyFileFailure>(family_result);
       test::Check(std::get<FamilyFileError>(failure.cause) == FamilyFileError::kRecursiveCreation &&
@@ -131,6 +160,9 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       const auto& family = std::get<FileFamily>(family_result);
       test::Check(family.members.size() == count + 1 && family.members[0].children.size() == count);
       test::Check(!family.members[0].incoming && !family.members[0].context);
+      test::Check(family.members[0].objects.size() == (object == CallerObject::kPrimitive ? count : 0));
+      test::Check(family.members[0].function.input.Children().size() ==
+          family.members[0].children.size() + family.members[0].objects.size());
       for (std::uint32_t i = 0; i < count; ++i) {
         const auto& member = family.members[i + 1];
         test::Check(member.function.input.Method() == abc::EntityOffset{kTarget} && member.context && member.incoming);
@@ -223,4 +255,7 @@ int main() {
   for (const auto count : {1U, 2U, 200U, 201U})
     Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, false, static_cast<std::uint8_t>(count));
   Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kRecursive);
+  for (const auto count : {0U, 1U, 2U, 200U, 201U})
+    Run(count, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, false, 0, CallerObject::kPrimitive);
+  Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, false, 0, CallerObject::kMethod);
 }

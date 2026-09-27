@@ -11,6 +11,18 @@ observations, not an up-to-date capability summary.
 
 ### File-Backed Conditional Function Families
 
+Follow-up: real P3 instruction inspection identified PC 24 and 180 as primitive
+buffered objects, not function edges. The family reader now handles those typed
+barriers using the existing ReadObjectBuffer parser and retains per-occurrence
+literal evidence without altering the original input proof. Methods/accessors,
+malformed data and parser budget failures remain explicit failures. Allocation,
+effects and source-tree correspondence are not discharged by this family read.
+Production targets built (exit 0). P3 now reaches creation PC 219 / child 7421
+and refuses its exception-region input at PC 0; no child is omitted. Immersive
+21082 remains one conditional input member, no source. Added 0/1/2/200/201
+repeated-pool objects and method-valued rejection specifications are uncompiled
+and unrun. This corrects the earlier PC 24 diagnostic below, not the T07 gate.
+
 Added ReadFunctionFamily and diagnostic-only `--conditional-family`. Explicit
 DFS tracks creation occurrences and active templates; repeated method entities
 retain separate owners and mutable state. Exact occurrence lookup is logarithmic.

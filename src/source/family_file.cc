@@ -40,6 +40,22 @@ class FamilyReader {
       ++stack_.back().next;
       Require(site.value < parent.body.instructions.size(), Error::kCreation);
       parent_ = parent.input.Method(); pc_ = parent.body.instructions[site.value].offset;
+      Require(site.value < parent.input.Input().instructions.size(), Error::kCreation);
+      const auto& operation = parent.input.Input().instructions[site.value].operation;
+      if (const auto* object = std::get_if<analysis::BufferedObjectCreation>(&operation)) {
+        // Capture barriers are not all function edges. The shared literal
+        // reader refuses methods/accessors and validates every key/value.
+        // Keep the original barrier intact and retain its discharge evidence.
+        const MethodConstants constants(file_, header_, index_, *parent_, {bytes_});
+        auto parsed = ReadObjectBuffer(*object, *pc_, constants, {bytes_, work_});
+        if (const auto* error = std::get_if<BodyEmitFailure>(&parsed)) Fail(*error);
+        auto buffer = std::get<ObjectBuffer>(std::move(parsed));
+        Admit(buffer.allocated_bytes, 1); Step(buffer.work);
+        auto& objects = result_.members[cursor.member.value].objects;
+        AppendRoom(objects);
+        objects.push_back({site, *object, std::move(buffer)});
+        continue;
+      }
       constexpr std::size_t kMethodLookups = 2;
       Step(std::bit_width(index_.regions.size()) + kMethodLookups * std::bit_width(index_.methods.size()) + 1);
       auto resolved = analysis::BindCreation(file_, header_, index_, lookup_, parent.input.Method(),

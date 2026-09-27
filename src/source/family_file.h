@@ -5,6 +5,7 @@
 #include "creation_tree_context.h"
 #include "function_family.h"
 #include "function_file.h"
+#include "object_buffer.h"
 
 namespace abcd::source {
 struct FamilyCreation {
@@ -13,6 +14,13 @@ struct FamilyCreation {
   analysis::CreationBinding creation;
   CaptureCells cells;
 };
+struct FamilyObject {
+  analysis::InstructionId site;
+  analysis::BufferedObjectCreation creation;
+  // Primitive-only literal evidence, not permission to erase allocation or
+  // its input barrier. AST construction must still account for this operation.
+  ObjectBuffer buffer;
+};
 struct FileFamilyMember {
   FileFunction function;
   // Root enclosure/callable context is deliberately absent. Every child has
@@ -20,6 +28,7 @@ struct FileFamilyMember {
   std::optional<CreationTreeContext> context;
   std::optional<FamilyCreation> incoming;
   std::vector<FunctionBinding> children;
+  std::vector<FamilyObject> objects;
 };
 struct FileFamily {
   // Preorder, root at kRoot. Occurrence owners equal these stable member IDs;
@@ -36,7 +45,7 @@ enum class FamilyFileError : std::uint8_t {
 };
 struct FamilyFileFailure {
   std::variant<FamilyFileError, FunctionFileFailure, CreationContextFailure,
-      CaptureCellError, CaptureEvaluationFailure> cause;
+      CaptureCellError, CaptureEvaluationFailure, BodyEmitFailure> cause;
   std::optional<abc::EntityOffset> method;
   std::optional<abc::EntityOffset> parent;
   std::optional<abc::CodeOffset> creation_pc;
