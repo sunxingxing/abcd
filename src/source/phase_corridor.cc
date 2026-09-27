@@ -29,6 +29,10 @@ bool PhaseCorridors::Expression(const ValueOperation& operation) {
       std::holds_alternative<ValueModuleRead>(operation) ||
       std::holds_alternative<ValueNamedRead>(operation) ||
       std::holds_alternative<ValuePropertyRead>(operation) ||
+      // Creation remains an ordered event. Fuse only a single-use callback
+      // inside the same no-copy corridor, effect suffix and catch snapshot;
+      // environment barriers and the final-root epoch check remain binding.
+      std::holds_alternative<ValueFunctionCreation>(operation) ||
       std::holds_alternative<ValueInvoke>(operation) ||
       std::holds_alternative<ValueConstruct>(operation);
 }

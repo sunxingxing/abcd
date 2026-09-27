@@ -18,6 +18,7 @@
 #include "../../src/source/phased_capture_evaluation.h"
 #include "../../src/source/module_aliases.h"
 #include "../../src/source/syntax_resolution.h"
+#include "exception_family_probe.h"
 
 namespace {
 int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
@@ -110,22 +111,23 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       budget, {}, analysis::ClosureWrites::kLanguage);
   const auto* local_scopes = std::get_if<analysis::ExceptionLocals>(&capture_locals);
   std::vector<FunctionBinding> function_bindings;
+  std::vector<test::ExceptionChild> tree_children;
   function_bindings.reserve(children->sites.size());
   for (auto& child : children->sites) {
     report["creations"].push_back({{"operation", child.operation.value}, {"pc", child.binding.offset.value},
         {"instruction", child.instruction.value},
         {"target", child.context.Site().target.value}});
     if (!local_scopes) continue;
-    const FunctionContext child_owner{std::move(child.context)};
+    FunctionContext child_owner{std::move(child.context)};
     const auto& child_method = index.methods[child_owner.Position().value];
     if (!child_method.code) continue;
-    const auto decoded_child = abc::DecodeMethodBody(file, header.profile, *child_method.code);
-    const auto* child_body = std::get_if<abc::MethodBody>(&decoded_child);
+    auto decoded_child = abc::DecodeMethodBody(file, header.profile, *child_method.code);
+    auto* child_body = std::get_if<abc::MethodBody>(&decoded_child);
     if (!child_body) continue;
-    const auto child_input = FunctionInput::Build(context.Identity(), child_owner.Target(),
+    auto child_input = FunctionInput::Build(context.Identity(), child_owner.Target(),
         child_method.owner_offset, *child_body, child_owner.Frame(), InputCaptureMode::kConditional,
         budget, &child_owner);
-    const auto* ready_child = std::get_if<FunctionInput>(&child_input);
+    auto* ready_child = std::get_if<FunctionInput>(&child_input);
     if (!ready_child) continue;
     const auto captures = BindPhasedFunctionInputs(index, lookup, std::get<PhasedBody>(staged), *body,
         *local_scopes, child, *ready_child, child_owner, budget);
@@ -161,7 +163,7 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       report["creations"].back()["capture_occurrences"] = plan->bindings.size();
       report["creations"].back()["conditional_writes"] = plan->writes == analysis::ClosureWrites::kLanguage;
       auto child_values = BuildFunctionValues(*ready_child, *child_body, child_owner.Frame(), budget);
-      const auto* values = std::get_if<FunctionValues>(&child_values);
+      auto* values = std::get_if<FunctionValues>(&child_values);
       if (!values) continue;
       auto cells = BindPhasedCaptureCells(index, lookup, std::get<PhasedBody>(staged), *body,
           *local_scopes, child, {*ready_child, *values}, child_owner, budget);
@@ -213,11 +215,13 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
             std::get<CaptureEvaluationError>(*failure) != CaptureEvaluationError::kOwner) return 1;
         report["creations"].back()["capture_evaluation_ready"] = true;
         function_bindings.push_back(std::move(ready_binding->binding));
+        tree_children.push_back({std::move(child_owner), std::move(*child_body),
+            std::move(*ready_child), std::move(*values), std::move(*mapped)});
       }
     }
   }
-  // Conditional common evaluation, never a family/source receipt. Child ASTs,
-  // enclosure and transitive write proofs are intentionally still outstanding.
+  // Conditional common evaluation, never a family/source receipt. The probe
+  // below checks actual trees/enclosure; transitive writes still gate publication.
   const auto& parent_body = std::get<PhasedBody>(staged);
   if (!function_bindings.empty() && function_bindings.size() == children->sites.size() &&
       parent_body.AllocatedBytes() <= budget.bytes && parent_body.Work() <= budget.work) {
@@ -226,9 +230,19 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
         {budget.bytes - parent_body.AllocatedBytes(), budget.work - parent_body.Work()},
         IncomingCells::kReject, function_bindings,
         aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{});
-    if (const auto* ready = std::get_if<EvaluationPlan>(&evaluation))
+    if (const auto* ready = std::get_if<EvaluationPlan>(&evaluation)) {
       report["conditional_evaluation_ready"] = std::holds_alternative<std::uint64_t>(
           VerifyPhasedEvaluationPlan(parent_body.Graph(), *ready, budget));
+      const auto probe = test::ProbeExceptionFamily(file, header, index, *record, kSelectedRecord,
+          context, *body, parent_body, *ready, std::move(tree_children), budget);
+      report["conditional_parent_tree_ready"] = probe.parent_tree;
+      report["conditional_child_trees"] = probe.child_trees;
+      report["conditional_family_layout_ready"] = probe.layout;
+      report["conditional_family_enclosure_ready"] = probe.enclosure;
+      report["rejected_capture_forgery"] = probe.rejected_capture_forgery;
+      report["family_probe_stage"] = static_cast<unsigned>(probe.stage);
+      if (probe.tree_error) report["family_probe_tree_error"] = static_cast<unsigned>(*probe.tree_error);
+    }
   }
   const auto built = PhasedMethod::Evaluate(std::get<PhasedBody>(std::move(staged)), budget);
   if (const auto* error = std::get_if<PhasedMethodError>(&built)) {

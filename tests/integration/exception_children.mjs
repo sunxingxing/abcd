@@ -18,6 +18,14 @@ for (const { method, sites, targets, allocations, bindings, captures } of sample
   assert.equal(result.phase_environments_ready, true);
   assert.equal(result.phase_cells_ready, true);
   assert.equal(result.conditional_evaluation_ready, true);
+  // recover still rejects a property/call subtree carried into a pure final
+  // root without catch-dispatch evidence. Do not weaken this to publish it.
+  const treeReady = method === 8404;
+  assert.equal(result.conditional_parent_tree_ready, treeReady);
+  assert.equal(result.conditional_child_trees, treeReady ? targets.length : 0);
+  assert.equal(result.conditional_family_layout_ready, treeReady);
+  assert.equal(result.conditional_family_enclosure_ready, treeReady);
+  assert.equal(result.rejected_capture_forgery, treeReady);
   assert.equal(result.cells, bindings);
   assert.equal(result.environment_allocations, allocations);
   assert.equal(result.lexical_bindings, bindings);

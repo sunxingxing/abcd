@@ -752,3 +752,29 @@ actual child ASTs, connect incoming symbols to the actual parent declarations,
 verify family enclosure and transitive writes, then execute the resulting real
 parent/child family and verify its PC map. Loop/finally/suspension stages are not
 completed by these capture facts. Source rules remain 55.
+
+### Callback Expressions and Actual Child Trees
+
+Function creation now participates in the existing phased expression corridor,
+as an ordered event, not a pure allocation or a snapshot of captured values.
+Its binding must already pass evaluation validation. Single effective use,
+ordered effect suffix, unchanged catch target/staged values and final-root
+environment epoch checks remain mandatory. A push/pop is an unconsumable event;
+moving a callback across it or across handler changes is rejected. No new graph
+walk or complexity term is introduced.
+
+The real `8404 queryDegree -> 7978` combination now passes shared parent and
+child tree builders, actual incoming capture aliasing, independent tree flow,
+family layout and lexical enclosure. The test diagnostic retains real decoded
+child inputs; it does not fabricate an AST or introduce a body writer. A forged
+child capture target fails independently. This is not executable publication:
+unified file-family ownership, transitive write proof, complete ABI/PC evidence
+and execution verification still remain.
+
+`8257 recover` remains refused. Its property Op 9 / member call Op 12 subtree
+is carried to pure final root Op 22 without exception dispatch evidence. The
+current fallback restores the entire proposed tree, leaving a member reference
+that cannot be emitted faithfully. Improve general tree partition/fallback
+while retaining exception/effect proofs; do not admit the pure root by assumption,
+read the getter twice, or synthesize a mutable `.call` lookup. Source rules stay
+55 until an actual publication path is admitted.

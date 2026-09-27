@@ -387,7 +387,7 @@ if(BUILD_TESTING)
     tests/tools/iterator_candidates.cc)
   target_link_libraries(iterator_candidates PRIVATE abcd_analysis abcd_corpus
     abcd_json)
-  add_executable(exception_candidates EXCLUDE_FROM_ALL tests/tools/exception_candidates.cc tools/tree_position_json.cc)
+  add_executable(exception_candidates EXCLUDE_FROM_ALL tests/tools/exception_candidates.cc tests/tools/exception_family_probe.cc tools/tree_position_json.cc)
   target_link_libraries(exception_candidates PRIVATE abcd_source abcd_corpus abcd_json)
   add_executable(record_path_test tests/unit/structure/record_path_test.cc)
   target_link_libraries(record_path_test PRIVATE abcd_structure)
