@@ -110,6 +110,7 @@ RecordSourceResult BuildRecordSource(
     // Export planning has a bounded retained allocation plus string scratch.
     // Reserve both alongside the live body before building IR and proof state.
     retain(budget.export_bytes, 1);
+    retain(1, sizeof(ModuleExports));
     retain(budget.strings.bytes, 1);
     retain(budget.export_bytes, 1);
     auto named = RecoverImportNames(file, header, *module,
@@ -180,6 +181,10 @@ RecordSourceResult BuildRecordSource(
       }
     }
     if (file.CheckUnchanged()) return fail(Error::kFileChanged);
+    if (auto* source = std::get_if<PrintedSource>(&result)) {
+      source->module_initialization = RecordModuleInitialization{record.offset, entry->offset,
+          std::make_shared<const ModuleExports>(std::move(*exports))};
+    }
     return std::visit([](auto&& value) -> RecordSourceResult {
       return std::move(value);
     }, std::move(result));

@@ -204,7 +204,12 @@ int RecordSlice(const corpus::AbcFile& file, const abc::Header& header,
     }
     output << '}';
   }
-  output << "]}\n";
+  output << ']';
+  if (source->module_initialization) {
+    output << ",\"module_initialization\":";
+    if (!abcd::tools::WriteModuleInitialization(output, *source->module_initialization)) return EXIT_FAILURE;
+  }
+  output << "}\n";
   // A migrated child does not certify the legacy entry or its other children.
   return EXIT_FAILURE;
 }

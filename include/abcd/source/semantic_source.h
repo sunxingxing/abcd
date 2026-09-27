@@ -23,6 +23,7 @@
 
 namespace abcd::analysis { struct ExceptionLocals; }
 namespace abcd::source {
+class ModuleExports;
 struct StringExpression {
   abc::PoolIndex value;
 };
@@ -365,6 +366,11 @@ struct HostRealmRequirement {
 };
 enum class VmSlotUse : std::uint8_t { kUnknown, kNone, kRequired };
 enum class RegisterUse : std::uint8_t { kUnused, kUsed };
+struct RecordModuleInitialization {
+  abc::EntityOffset record;
+  abc::EntityOffset entry;
+  std::shared_ptr<const ModuleExports> bindings;
+};
 struct PrintedSource {
   std::string text;
   std::vector<GeneratedSpan> spans;
@@ -377,6 +383,9 @@ struct PrintedSource {
   std::vector<RegisterUse> register_uses;
   std::vector<ParameterDefault> parameter_defaults;
   std::vector<FunctionSegment> function_segments;
+  // Record-only, immutable emitted declaration state. This does not grant
+  // module read/TDZ equivalence or upgrade the enclosing source route.
+  std::optional<RecordModuleInitialization> module_initialization;
 };
 struct SourceCapture {
   GeneratedPosition position;

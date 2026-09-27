@@ -45,6 +45,13 @@ for (const method of [7117, 7477]) {
   assert.equal(record.source_complete, false);
   assert.equal(record.executable, false);
   assert.equal(record.enclosing_route, 'legacy');
+  assert.deepEqual(record.module_initialization, {
+    record: 6897, entry: 7283,
+    slots: [
+      { slot: 0, initialization: 'store', pc: 194 },
+      { slot: 1, initialization: 'store', pc: 11 },
+    ],
+  });
   assert.equal(record.function_segments.length, 1);
   const segment = record.function_segments[0];
   assert.deepEqual(segment.creation, result.creation);
@@ -68,5 +75,6 @@ assert.ok(refused.family_failure);
 const recordRefusal = inspect(7449, '--record-value-slice');
 assert.equal(recordRefusal.record_emitted, false);
 assert.equal(recordRefusal.source, undefined);
+assert.equal(recordRefusal.module_initialization, undefined);
 assert.equal(recordRefusal.failure_class, 'unproved');
 assert.equal(recordRefusal.reason, 'tree_stage');

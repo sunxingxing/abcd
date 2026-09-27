@@ -1,6 +1,8 @@
 #include "tree_position_json.h"
 #include "../src/source/instruction_sources.h"
 #include "../src/source/family_emission.h"
+#include "abcd/source/module_exports.h"
+#include "abcd/source/semantic_source.h"
 
 #include <nlohmann/json.hpp>
 #include <ostream>
@@ -151,6 +153,30 @@ bool WriteFamilyMembers(std::ostream& output, const FamilyEmission& emission) {
     output << '}';
   }
   output << ']';
+  return static_cast<bool>(output);
+}
+bool WriteModuleInitialization(std::ostream& output, const RecordModuleInitialization& initialization) {
+  if (!initialization.bindings) return false;
+  output << "{\"record\":" << initialization.record.value << ",\"entry\":" << initialization.entry.value
+         << ",\"slots\":[";
+  for (std::size_t i = 0; i < initialization.bindings->slot_count(); ++i) {
+    if (i) output << ',';
+    const auto* state = initialization.bindings->State({static_cast<std::uint16_t>(i)});
+    if (!state) return false;
+    nlohmann::json row{{"slot", i}, {"pc", nullptr}};
+    std::visit([&](const auto& value) {
+      using T = std::decay_t<decltype(value)>;
+      if constexpr (std::is_same_v<T, ModuleInitialization>) {
+        row["initialization"] = "store"; row["pc"] = value.pc.value;
+      } else if constexpr (std::is_same_v<T, ModuleTdz>) row["initialization"] = "tdz";
+      else {
+        static_assert(std::is_same_v<T, UnlocatedModuleInitialization>);
+        row["initialization"] = "unlocated";
+      }
+    }, *state);
+    output << row;
+  }
+  output << "]}";
   return static_cast<bool>(output);
 }
 }  // namespace abcd::tools

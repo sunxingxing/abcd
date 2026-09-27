@@ -57,11 +57,11 @@ ModuleExportResult BuildModuleExports(const corpus::AbcFile& file,
                              sizeof(ModuleExports::Alias);
     if (alias_bytes > budget.bytes) return ModuleExportError::kResourceLimit;
     budget.bytes -= alias_bytes;
-    if (count > budget.bytes) return ModuleExportError::kResourceLimit;
+    if (count > budget.bytes / sizeof(ModuleSlotState)) return ModuleExportError::kResourceLimit;
     result.initialized_.resize(count);
-    if (result.initialized_.capacity() > budget.bytes)
+    if (result.initialized_.capacity() > budget.bytes / sizeof(ModuleSlotState))
       return ModuleExportError::kResourceLimit;
-    budget.bytes -= result.initialized_.capacity();
+    budget.bytes -= result.initialized_.capacity() * sizeof(ModuleSlotState);
     if (count > budget.bytes / sizeof(std::size_t))
       return ModuleExportError::kResourceLimit;
     std::vector<std::size_t> order(count);
@@ -118,11 +118,15 @@ ModuleExportResult BuildModuleExports(const corpus::AbcFile& file,
 bool ModuleExports::Complete() const {
   return std::all_of(initialized_.begin(),
                      initialized_.begin() + slot_count_,
-                     [](std::uint8_t state) { return state != 0; });
+                     [](const ModuleSlotState& state) { return !std::holds_alternative<ModuleTdz>(state); });
 }
 
 bool ModuleExports::IsInitialized(analysis::ModuleSlot slot) const {
-  return slot.value < slot_count_ && initialized_[slot.value] != 0;
+  const auto* state = State(slot);
+  return state && !std::holds_alternative<ModuleTdz>(*state);
+}
+const ModuleSlotState* ModuleExports::State(analysis::ModuleSlot slot) const {
+  return slot.value < slot_count_ ? &initialized_[slot.value] : nullptr;
 }
 
 std::variant<std::size_t, ModuleExportError> ModuleExports::WriteAliases(
@@ -192,7 +196,8 @@ std::variant<std::size_t, ModuleExportError> ModuleExports::WriteAliasesPass(
 }
 
 std::variant<std::size_t, ModuleExportError> ModuleExports::WriteStore(
-    analysis::ModuleStore store, std::ostream& output, EmitBudget budget) {
+    analysis::ModuleStore store, std::ostream& output, EmitBudget budget,
+    std::optional<abc::CodeOffset> pc) {
   if (store.slot.value >= slot_count_) return ModuleExportError::kSlot;
   std::array<char, std::numeric_limits<std::uint16_t>::digits10 + 2> digits{};
   const auto encoded = std::to_chars(digits.data(), digits.data() + digits.size(),
@@ -202,7 +207,7 @@ std::variant<std::size_t, ModuleExportError> ModuleExports::WriteStore(
       digits.data(), static_cast<std::size_t>(encoded.ptr - digits.data())};
   constexpr std::string_view kName = kLocalModulePrefix;
   constexpr std::string_view kValue = " = $acc;\n";
-  const bool first = !initialized_[store.slot.value];
+  const bool first = !IsInitialized(store.slot);
   constexpr std::string_view kDeclaration = "let ";
   const auto bytes = (first ? kDeclaration.size() : 0) + kName.size() +
                      ordinal.size() + kValue.size();
@@ -211,7 +216,12 @@ std::variant<std::size_t, ModuleExportError> ModuleExports::WriteStore(
     if (first) output << kDeclaration;
     output << kName << ordinal << kValue;
     if (!output) return ModuleExportError::kWrite;
-    initialized_[store.slot.value] = 1;
+    // Commit the declaration origin only after successful source output.
+    // Later stores update the live value, never its lexical initialization PC.
+    if (first) {
+      if (pc) initialized_[store.slot.value] = ModuleInitialization{*pc};
+      else initialized_[store.slot.value] = UnlocatedModuleInitialization{};
+    }
     return bytes;
   } catch (const std::ios_base::failure&) {
     return ModuleExportError::kWrite;

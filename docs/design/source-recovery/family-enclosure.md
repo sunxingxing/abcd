@@ -131,3 +131,32 @@ new check; Immersive 21082 remains a 160-byte draft. The 7089 child uses local
 export `PageA`, while current record assembly emits `$local0` and places its
 `let` at the store. Actual alias rebinding and initialization evidence must be
 connected before publishing this family. No new executable coverage is claimed.
+
+## Retained Record Initialization
+
+`ModuleExports` now retains typed slot states: TDZ, initialized without an
+original location, or initialized at an original module-store PC. A failed
+write does not change state. Only the first successful store supplies the
+initialization PC; later live updates cannot overwrite it or upgrade an
+unlocated declaration. PC zero is a valid origin, not an absence sentinel.
+The larger per-slot storage is charged before allocation.
+
+Both current record writers pass their actual STMODULEVAR PC. On successful
+`BuildRecordSource`, the initialized module table is moved into an immutable
+owner carried by `PrintedSource`, together with the record and entry identities.
+No file pointers or caller-owned name views are retained by that table. Failure
+does not publish the table. `--record-value-slice` streams the slot states under
+`module_initialization`; it still reports the record as incomplete/legacy.
+
+This is emitted declaration provenance, NOT a transfer capability or a module
+read equivalence certificate. Future binding admission must still match file
+identity, slot inventory, actual generated names, live-write behavior and the
+input guard semantics. In particular, a source spelling different from the ABC
+guard name must not silently change observable error behavior.
+
+ABC-only record 6897/entry 7283 now retains slot 0's first store at PC 194 and
+slot 1's at PC 11. Reading entry instructions independently confirms opcode
+0x7c (pinned ISA `stmodulevar`) at both PCs. Existing 7477 and 7586 source segment
+ranges are unchanged. Source text still declares each lexical binding at that
+store, not at function creation or record entry. Production targets built
+successfully; added state-transition and record-artifact specs are unrun.

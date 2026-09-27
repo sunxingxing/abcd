@@ -1470,7 +1470,7 @@ class ProgramWriter {
       Text("void 0");
     }
     Text(";\n");
-    const auto result = exports_.WriteStore(*store, output_, {Remaining()});
+    const auto result = exports_.WriteStore(*store, output_, {Remaining()}, instruction.offset);
     if (const auto* error = std::get_if<ModuleExportError>(&result))
       throw Fail(*error == ModuleExportError::kOutputLimit
                      ? Error::kOutputLimit

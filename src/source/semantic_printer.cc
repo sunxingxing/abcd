@@ -1311,7 +1311,7 @@ class SourcePrinter {
               stream.exceptions(std::ios::badbit | std::ios::failbit);
               const auto stored = record_exports_->WriteStore(
                   analysis::ModuleStore{operation.slot}, stream,
-                  {limit_ - result_.text.size()});
+                  {limit_ - result_.text.size()}, current_pc_);
               if (const auto* failure = std::get_if<ModuleExportError>(&stored))
                 throw SourceFailure{
                     *failure == ModuleExportError::kResourceLimit ||
