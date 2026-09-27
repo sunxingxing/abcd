@@ -50,12 +50,20 @@ enum class EvaluationError : std::uint8_t {
   kRevision, kInvalidGraph, kUnsupportedOperation, kProtocolOperand, kLivePhi,
   kOwnership, kOrder, kUnavailableValue, kWorkLimit, kResourceLimit
 };
+enum class ReferenceBoundary : std::uint8_t { kNone, kBeforeStoredValue };
 struct EvaluationShape {
   // Fixed prefix followed by argument occurrences. No array proportional to
   // range-call arity is allocated merely to describe their roles.
   std::span<const analysis::OperandRole> roles;
   bool expression;
   std::uint32_t arguments = 0;
+  // An internal source-language evaluation boundary, not another CFG edge.
+  // Precomputed RHS values cannot be fused across reference/key conversion.
+  ReferenceBoundary reference = ReferenceBoundary::kNone;
+  [[nodiscard]] bool NeedsSnapshot(analysis::OperandRole role) const {
+    return reference == ReferenceBoundary::kBeforeStoredValue &&
+        role == analysis::OperandRole::kStoredValue;
+  }
   [[nodiscard]] std::uint64_t Count() const { return roles.size() + static_cast<std::uint64_t>(arguments); }
   [[nodiscard]] std::optional<analysis::OperandRole> Role(std::uint32_t index) const {
     if (index < roles.size()) return roles[index];

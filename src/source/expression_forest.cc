@@ -11,6 +11,9 @@
 namespace abcd::source {
 namespace {
 using Error = ExpressionError;
+// Largest fixed non-call shape: base, computed key, stored value. Calls keep
+// their separately budgeted variable-arity argument storage.
+constexpr std::size_t kFixedExpressionOperands = 3;
 void Require(bool condition, Error error) { if (!condition) throw error; }
 
 class ForestBuilder {
@@ -152,7 +155,7 @@ class ForestBuilder {
         forest_.operations[i] = Call(op, forest_.calls.operations[i], origin);
         continue;
       }
-      std::array<ExprId, 2> operands{};
+      std::array<ExprId, kFixedExpressionOperands> operands{};
       Require(op.use_count <= operands.size(), Error::kUnsupportedOperation);
       for (std::uint32_t j = 0; j < op.use_count; ++j) {
         Step();
@@ -404,7 +407,7 @@ class ForestBuilder {
     return forest_.bindings.cells[cell->value];
   }
   std::optional<ExprId> Lower(analysis::OpId id, const analysis::ValueOp& op,
-      const std::array<ExprId, 2>& operands, TreeOriginId origin,
+      const std::array<ExprId, kFixedExpressionOperands>& operands, TreeOriginId origin,
       const ExpressionConstant& constant) {
     return std::visit([&](const auto& operation) -> std::optional<ExprId> {
       using T = std::decay_t<decltype(operation)>;
@@ -430,6 +433,8 @@ class ForestBuilder {
           return Add(AssignmentExpr{MemberTarget{operands[0], *name}, operands[1]}, origin);
       } else if constexpr (std::is_same_v<T, analysis::ValuePropertyRead>)
         return Add(MemberExpr{operands[0], ComputedKey{operands[1]}}, origin);
+      else if constexpr (std::is_same_v<T, analysis::ValuePropertyWrite>)
+        return Add(AssignmentExpr{MemberTarget{operands[0], ComputedKey{operands[1]}}, operands[2]}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueString>) {
         const auto* text = std::get_if<TextId>(&constant);
         Require(text && text->value < constants_.text_count, Error::kConstant);

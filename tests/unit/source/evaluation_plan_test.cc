@@ -208,6 +208,30 @@ void CallRanges() {
     Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kInvalidGraph);
   }
 }
+void ComputedStore(bool pure_parent) {
+  using namespace analysis;
+  Fixture fixture;
+  fixture.Read();
+  ValueId rhs{1};
+  if (pure_parent) {
+    fixture.Add(ValueUnary{UnaryOperator::kTypeOf}, true,
+        {{OperandRole::kInput, rhs}});
+    rhs = {2};
+  }
+  const auto write = fixture.Add(ValuePropertyWrite{}, false,
+      {{OperandRole::kBase, ValueId{0}}, {OperandRole::kKey, ValueId{0}},
+       {OperandRole::kStoredValue, rhs}}, LanguageEffect::kHeapWrite | LanguageEffect::kUserCode);
+  fixture.Return({0});
+  auto plan = fixture.Plan();
+  const auto producer = pure_parent ? 1U : 0U;
+  Check(plan.operations[producer].kind == EvaluationKind::kRoot);
+  Check(plan.operations[producer].temporary == TemporaryReason::kEffectSnapshot);
+  Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(fixture.graph, plan)));
+  constexpr std::uint32_t kStoredOperand = 2;
+  plan.operations[producer] = {EvaluationKind::kInline,
+      UseId{fixture.graph.ops[write.value].first_use.value + kStoredOperand}, {}};
+  Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kOrder);
+}
 void GlobalReads() {
   for (const auto lookup : {analysis::GlobalLookup::kName, analysis::GlobalLookup::kVar}) {
     Fixture fixture;
@@ -240,6 +264,7 @@ int main() {
   CallOrder(false, true); CallOrder(true, true);
   SharedAndUnusedCalls(); CallRanges();
   GlobalReads();
+  ComputedStore(false); ComputedStore(true);
   Fixture creation;
   creation.Add(analysis::ValueFunctionCreation{analysis::CreationKind::kFunction,
       {0}, 0, analysis::HomeObjectInput::kCurrentFunction, 0}, true, {});

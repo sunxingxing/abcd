@@ -758,6 +758,14 @@ if(BUILD_TESTING)
   add_test(NAME scalar_expression_test COMMAND scalar_expression_test)
   set(ABCD_PAIRED_CORPUS_ROOT "" CACHE PATH "Paired ABC sample root")
   find_program(ABCD_NODE_EXECUTABLE node)
+  add_executable(computed_store_fixture tests/integration/computed_store_fixture.cc)
+  target_include_directories(computed_store_fixture PRIVATE tests/support)
+  target_link_libraries(computed_store_fixture PRIVATE abcd_source)
+  if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME computed_store_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/computed_store.mjs
+      $<TARGET_FILE:computed_store_fixture>)
+  endif()
   if(ABCD_NODE_EXECUTABLE AND ABCD_BUILD_TOOLS)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
       add_test(NAME value_tree_pasteboard_slice_test COMMAND ${ABCD_NODE_EXECUTABLE}

@@ -12,6 +12,7 @@ constexpr std::array kBinary{Role::kLeft, Role::kRight};
 constexpr std::array kNamedRead{Role::kBase};
 constexpr std::array kPropertyRead{Role::kBase, Role::kKey};
 constexpr std::array kNamedWrite{Role::kBase, Role::kStoredValue};
+constexpr std::array kPropertyWrite{Role::kBase, Role::kKey, Role::kStoredValue};
 constexpr std::array kBranch{Role::kCondition};
 constexpr std::array kReturn{Role::kReturnValue};
 constexpr std::array kCall{Role::kCallee};
@@ -32,6 +33,11 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else if constexpr (std::is_same_v<T, analysis::ValueModuleWrite>) return EvaluationShape{kCellStore, false};
     else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>) return EvaluationShape{kCellStore, false};
     else if constexpr (std::is_same_v<T, analysis::ValuePropertyRead>) return EvaluationShape{kPropertyRead, true};
+    else if constexpr (std::is_same_v<T, analysis::ValuePropertyWrite>) {
+      EvaluationShape shape{kPropertyWrite, false};
+      shape.reference = ReferenceBoundary::kBeforeStoredValue;
+      return shape;
+    }
     else if constexpr (std::is_same_v<T, analysis::ValueNamedWrite>) return EvaluationShape{kNamedWrite, false};
     else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
       switch (op.kind) {
@@ -102,6 +108,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                     std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                     std::is_same_v<T, analysis::ValueGlobalRead> ||
                     std::is_same_v<T, analysis::ValuePropertyRead> ||
+                    std::is_same_v<T, analysis::ValuePropertyWrite> ||
                     std::is_same_v<T, analysis::ValueNamedWrite> ||
                     std::is_same_v<T, analysis::ValueOwnWrite> ||
                     std::is_same_v<T, analysis::ValueBranch> ||

@@ -132,6 +132,11 @@ struct ValueModuleWrite {
   ModuleSlot slot;
   bool operator==(const ValueModuleWrite&) const = default;
 };
+// Strict [[Set]] with base/key/stored-value operands, no accumulator result.
+// Own definition, fixed-index runtime operations and initialization are distinct.
+struct ValuePropertyWrite {
+  bool operator==(const ValuePropertyWrite&) const = default;
+};
 struct ValueArrayAllocation { bool operator==(const ValueArrayAllocation&) const = default; };
 struct ValueObjectAllocation {
   // Absent means CREATEEMPTYOBJECT, present is the original regional literal
@@ -188,7 +193,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation,
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
-    ValueModuleWrite>;
+    ValueModuleWrite, ValuePropertyWrite>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

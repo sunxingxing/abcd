@@ -161,6 +161,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
         Require(!use.next && owner && graph.ops[owner->value].block == op.block &&
                 graph.ops[owner->value].order > op.order, Error::kOwnership);
         Require(!PredicateSnapshot(graph, graph.ops[owner->value], use.operand), Error::kOwnership);
+        const auto consumer_shape = DescribeEvaluation(graph.ops[owner->value].operation);
+        Require(consumer_shape && !consumer_shape->NeedsSnapshot(use.role), Error::kOrder);
       } else {
         Require(placement.kind == EvaluationKind::kRoot && !placement.consumer, Error::kOwnership);
         const auto visible_uses = ProjectEvaluationUses(graph, {static_cast<std::uint32_t>(i)}, module_index);

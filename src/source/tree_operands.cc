@@ -91,6 +91,15 @@ class OperandCheck {
           const auto* key = std::get_if<ComputedKey>(&member.key);
           RequireMeaning(key != nullptr, Error::kOperator);
           Input(input(0), member.base); Input(input(1), key->expression);
+        } else if constexpr (std::is_same_v<T, analysis::ValuePropertyWrite>) {
+          RequireMeaning(tree_.strictness == Strictness::kStrict, Error::kUnsupportedOperation);
+          const auto& assignment = Node<AssignmentExpr>(expression);
+          const auto* member = std::get_if<MemberTarget>(&assignment.target);
+          RequireMeaning(member != nullptr, Error::kOperator);
+          const auto* key = std::get_if<ComputedKey>(&member->key);
+          RequireMeaning(key != nullptr, Error::kOperator);
+          Input(input(0), member->base); Input(input(1), key->expression);
+          Input(input(2), assignment.value);
         } else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
           RequireMeaning(flow_.initializers[i].has_value(), Error::kOperand);
           const auto& property = tree_.properties[flow_.initializers[i]->value];

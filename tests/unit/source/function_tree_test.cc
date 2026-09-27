@@ -394,6 +394,40 @@ void CallTree(CallCase kind, std::uint32_t count, bool computed) {
   }, invalid.expressions[call->value].expression);
   Check(std::get<TreeStructureError>(VerifyTreeStructure(invalid)) == TreeStructureError::kRange);
 }
+void ComputedStoreTree() {
+  using namespace analysis;
+  Fixture fixture;
+  fixture.Add(0, 0, 0, ValueNamedRead{{0}}, true,
+      {{OperandRole::kBase, ValueId{0}}}, kRead);
+  fixture.Add(0, 1, 4, ValuePropertyWrite{}, false,
+      {{OperandRole::kBase, ValueId{1}}, {OperandRole::kKey, ValueId{0}},
+       {OperandRole::kStoredValue, ValueId{2}}}, kWrite);
+  fixture.Add(0, 2, 8, ValueReturn{}, false,
+      {{OperandRole::kReturnValue, ValueId{1}}});
+  fixture.graph.blocks = {{{0}, 3, {0}, 0}};
+  const auto built = fixture.Build();
+  Check(std::holds_alternative<ConstructedFunction>(built));
+  const auto& tree = std::get<ConstructedFunction>(built).tree;
+  Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+  bool checked = false;
+  auto sloppy = tree;
+  sloppy.strictness = Strictness::kSloppy;
+  Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(sloppy)));
+  for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
+    const auto* assignment = std::get_if<AssignmentExpr>(&tree.expressions[i].expression);
+    if (!assignment) continue;
+    const auto* member = std::get_if<MemberTarget>(&assignment->target);
+    if (!member) continue;
+    Check(std::holds_alternative<ComputedKey>(member->key));
+    auto forged = tree;
+    auto& target = std::get<MemberTarget>(std::get<AssignmentExpr>(forged.expressions[i].expression).target);
+    std::swap(target.base, std::get<ComputedKey>(target.key).expression);
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(forged)));
+    Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(forged)));
+    checked = true;
+  }
+  Check(checked);
+}
 void LoopTree() {
   auto fixture = BranchFixture();
   // The body retains the two effectful property operations, then takes the
@@ -480,6 +514,7 @@ void OwnDefinitionRefusal() {
 }
 }  // namespace
 int main() {
+  ComputedStoreTree();
   BranchTree();
   SnapshotTree();
   NameAndConstantRefusals();

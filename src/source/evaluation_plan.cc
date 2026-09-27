@@ -203,6 +203,10 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
           const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
           if (!result || definition.first_use != use || occurrence.next) continue;
           if (pinned[result->op.value]) continue;
+          // STOBJBYVALUE receives an already evaluated RHS. JS computes its
+          // Reference (including key coercion) before evaluating RHS syntax.
+          // Retain the producer snapshot, even for a pure parent of a getter.
+          if (shape->NeedsSnapshot(occurrence.role)) continue;
           if (PredicateSnapshot(graph, op, occurrence.operand)) continue;
           const auto& producer = graph.ops[result->op.value];
           if (producer.block != op.block) continue;

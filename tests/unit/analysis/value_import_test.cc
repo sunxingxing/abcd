@@ -159,7 +159,8 @@ int main() {
         store.exceptional == ExceptionalCompletion::kMayThrow);
     const auto& stored = value.uses[store.first_use.value];
     test::Check(stored.role == OperandRole::kStoredValue);
-    test::Check(stored.operand == value.uses[value.ops[kReturnIndex].first_use.value].operand);
+    test::Check(std::get<ValueId>(stored.operand) ==
+        std::get<ValueId>(value.uses[value.ops[kReturnIndex].first_use.value].operand));
     auto stripped = store;
     stripped.normal = stripped.before_throw = LanguageEffect::kNone;
     stripped.exceptional = ExceptionalCompletion::kImpossible;
@@ -182,9 +183,48 @@ int main() {
     test::Check(retained.life == ValueLife::kLive && retained.operation == store.operation);
     test::Check(retained.origin == store.origin && retained.normal == store.normal &&
         retained.before_throw == store.before_throw && retained.exceptional == store.exceptional);
-    test::Check(changed.uses[retained.first_use.value].operand ==
-        changed.uses[changed.ops[kReturnIndex].first_use.value].operand);
+    test::Check(std::get<ValueId>(changed.uses[retained.first_use.value].operand) ==
+        std::get<ValueId>(changed.uses[changed.ops[kReturnIndex].first_use.value].operand));
     test::Check(!VerifyValueUses(changed, changed.uses.size()));
+  }
+  for (const bool wide : {false, true}) {
+    const auto opcode = wide ? abc::Opcode::kSTOBJBYVALUE_IMM16_V8_V8 :
+        abc::Opcode::kSTOBJBYVALUE_IMM8_V8_V8;
+    constexpr std::uint8_t kObject = 0, kKey = 1, kCache = 0;
+    std::vector<std::uint8_t> bytes{
+        static_cast<std::uint8_t>(abc::Opcode::kLDUNDEFINED),
+        static_cast<std::uint8_t>(opcode), kCache};
+    if (wide) bytes.push_back(kCache);
+    bytes.insert(bytes.end(), {kObject, kKey, returned});
+    const auto body = test::Body(bytes);
+    const auto input = std::get<SemanticMethod>(BuildSemanticMethod(
+        body, abc::ProfileId::kDynamic1206, frame.registers));
+    const auto proof = std::get<SemanticProof>(VerifySemanticSource(
+        body, input, frame.registers, frame.locals));
+    const auto imported = ImportNormalValues(body, input, proof, frame);
+    test::Check(std::holds_alternative<ValueProgram>(imported));
+    const auto& value = std::get<ValueProgram>(imported);
+    test::Check(!VerifyImportedValues(value, input, proof, frame));
+    const auto& store = value.ops[1];
+    test::Check(!store.result && store.use_count == 3);
+    test::Check(value.uses[store.first_use.value].role == OperandRole::kBase);
+    test::Check(value.uses[store.first_use.value + 1].role == OperandRole::kKey);
+    test::Check(value.uses[store.first_use.value + 2].role == OperandRole::kStoredValue);
+    test::Check(store.exceptional == ExceptionalCompletion::kMayThrow);
+    test::Check(!CanErasePureOp(store));
+    test::Check(std::holds_alternative<ValuePropertyWrite>(store.operation));
+    test::Check(value.origins[store.origin.value].pc == abc::CodeOffset{1});
+    test::Check(store.normal == input.instructions[1].effects.normal &&
+        store.before_throw == input.instructions[1].effects.before_throw);
+    test::Check(std::get<ValueId>(value.uses[store.first_use.value + 2].operand) ==
+        std::get<ValueId>(value.uses[value.ops[2].first_use.value].operand));
+    auto changed = value;
+    changed.uses[store.first_use.value + 1].role = OperandRole::kStoredValue;
+    test::Check(VerifyImportedValues(changed, input, proof, frame).has_value());
+    auto stripped = store;
+    stripped.normal = stripped.before_throw = LanguageEffect::kNone;
+    stripped.exceptional = ExceptionalCompletion::kImpossible;
+    test::Check(!CanErasePureOp(stripped));
   }
   for (const bool array : {false, true}) {
     const auto allocation = array ? test::Body({

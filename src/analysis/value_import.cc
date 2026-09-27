@@ -98,6 +98,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueCurrentEnvironment{};
     } else if constexpr (std::is_same_v<T, NamedWrite>) {
       return ValueNamedWrite{op.name};
+    } else if constexpr (std::is_same_v<T, ValueWrite>) {
+      return ValuePropertyWrite{};
     } else if constexpr (std::is_same_v<T, OwnWrite>) {
       switch (op.kind) {
         case OwnWriteKind::kStore: case OwnWriteKind::kDefineField:

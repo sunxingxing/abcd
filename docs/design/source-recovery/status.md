@@ -14,7 +14,8 @@
 
 当前重点为 **T07：对象初始化、词法 cell 与创建点捕获**。源码证据规则版本为 24。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
-测试、生成 JS 执行、基准及 RSS 仍暂停；下表均不代表阶段验收通过。
+用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
+全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
 
 | 任务 | 实际状态 | 主要未完成项 |
 |---|---|---|
@@ -29,6 +30,21 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 已开始执行 [访问恢复方案](access-recovery.md)，本次为 L1 computed Set，不是整个
+  LD/ST 家族完成。`STOBJBYVALUE` 窄/宽格式进入同一 `ValuePropertyWrite`，保留三个
+  输入、原始 PC、效果和 acc 不变语义；共用 AssignmentExpr/ComputedKey 与 printer。
+  求值 shape 增加 typed ReferenceBoundary，限制 RHS 跨引用/key 转换的内联；独立
+  verifier 复核边界、三个操作数及 strict 语义。未改 CFG、未增加专用 writer。
+  受控字节码 fixture 经 PreparedFamily/FamilyEmission 生成可执行 JS，检查原 PC 4
+  的源码区间；Node oracle 覆盖 RHS/key/setter 顺序、Symbol、null、三类抛出、只读
+  Proxy 和 setter 同步重入。它不是 pinned Ark VM 差分证据，不验证 VM 错误消息一致性。
+  恢复测试时修正了此前模块存储规格中的 variant 比较编译错误及错误的常量传播假定。
+  L0 全量 typed 覆盖目录、模块发布、环境/捕获组合、generator/async 仍未完成；
+  RHS 保留的快照是当前语义约束，不以删尽临时变量作为完成标准。
+  `value_import_test`、`value_operands_test`、`value_simplify_test`、
+  `evaluation_plan_test`、`function_tree_test`、`computed_store_test`：6/6 通过。
+  生产 `abc_semantic` 构建退出 0；既有 pasteboard 7449/Immersive 21082 草稿仍为
+  1434/160 字节且 incomplete。未做 Ark VM 差分、全量回归或 RSS 验证。
 - 通用值 IR 新增 `ValueModuleWrite`，窄/宽 STMODULEVAR 共用 typed 模型，
   保留模块槽、单个 stored-value 操作数、原始 PC、正常/抛出前模块写效果及异常出口。
   不产生虚假的 accumulator 结果；复制/死值简化禁止删除模块存储，求值计划保持顺序。
