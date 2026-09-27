@@ -5,6 +5,8 @@
 #include <limits>
 #include <new>
 #include <stdexcept>
+#include <functional>
+#include <type_traits>
 
 #include "abcd/abc/string_entity.h"
 #include "abcd/corpus/abc_file.h"
@@ -12,35 +14,44 @@
 namespace abcd::source {
 namespace {
 using Error = ModuleAliasError;
+struct AliasSource {
+  const RouteInputIdentity& identity;
+  abc::EntityOffset method, record;
+  const analysis::ValueProgram& graph;
+  const ModuleGuards& guards;
+  std::variant<std::reference_wrapper<const FunctionInput>,
+      std::reference_wrapper<const analysis::PhasedValueInput>> input;
+};
 class AliasBinder {
  public:
   AliasBinder(const corpus::AbcFile& file, const abc::Header& header,
-      const abc::MetadataIndex& index, const FunctionInput& input,
-      const FunctionValues& values, const RecordModuleContext& context,
+      const abc::MetadataIndex& index, AliasSource input, const RecordModuleContext& context,
       ModuleOwnerId owner, NameId first_name, analysis::SemanticBudget budget)
-      : file_(file), header_(header), index_(index), input_(input), values_(values),
+      : file_(file), header_(header), index_(index), input_(input),
         context_(context), budget_(budget), bytes_(budget.bytes), work_(budget.work),
-        result_{input.Identity(), input.Method(), input.Record(), owner, values.graph.revision,
-            values.graph.cfg_revision, {}, {}, first_name} {}
+        result_{input.identity, input.method, input.record, owner, input.graph.revision,
+            input.graph.cfg_revision, {}, {}, first_name} {}
 
   ModuleAliases Bind() {
-    const auto& graph = values_.graph;
-    const auto& identity = input_.Identity();
-    Require(values_.identity == identity && values_.record == input_.Record() &&
-        values_.method == input_.Method() && values_.capture_mode == input_.Mode() &&
-        context_.record() == input_.Record() && identity.profile == header_.profile &&
+    const auto& graph = input_.graph;
+    const auto& identity = input_.identity;
+    Require(context_.record() == input_.record && identity.profile == header_.profile &&
         identity.abc_version == header_.version && identity.file_size == header_.file_size,
         Error::kIdentity);
-    const auto guards = VerifyModuleGuards(input_, graph, values_.modules, {bytes_, work_});
+    const auto guards = std::visit([&](const auto& source) {
+      if constexpr (std::is_same_v<std::decay_t<decltype(source.get())>, FunctionInput>)
+        return VerifyModuleGuards(source.get(), graph, input_.guards, {bytes_, work_});
+      else return VerifyPhasedModuleGuards(source.get(), graph, input_.guards, {bytes_, work_});
+    }, input_.input);
     if (const auto* error = std::get_if<ModuleGuardError>(&guards)) throw *error;
     Step(std::get<std::uint64_t>(guards));
-    const auto module = context_.ForOwner(file_, input_.Record());
+    const auto module = context_.ForOwner(file_, input_.record);
     auto resolved = ResolveModuleReads(file_, header_, module.get(), graph, {bytes_, work_});
     if (const auto* error = std::get_if<ModuleReadFailure>(&resolved)) throw *error;
     const auto& reads = std::get<ModuleReads>(resolved);
     Admit(reads.allocated_bytes, 1); Step(reads.work);
     Admit(1, sizeof(AliasBinder));
-    Require(reads.bindings.size() == values_.modules.pairs.size(), Error::kCoverage);
+    Require(reads.bindings.size() == input_.guards.pairs.size(), Error::kCoverage);
     const auto count = reads.bindings.size();
     Reserve(result_.evaluations, count);
     Reserve(guard_names_, count);
@@ -55,7 +66,7 @@ class AliasBinder {
     for (std::size_t i = 0; i < count; ++i) {
       Step();
       const auto& read = reads.bindings[i];
-      const auto pair = values_.modules.pairs[i];
+      const auto pair = input_.guards.pairs[i];
       Require(read.operation == pair.read, Error::kCoverage);
       const auto local = std::visit([](const auto& binding) { return binding.local; }, read.target);
       local_names_.push_back(local);
@@ -132,7 +143,7 @@ class AliasBinder {
       auto end = first + 1;
       while (end < order_.size() && std::get<abc::PoolIndex>(guard_names_[order_[end]]) == slot) { Step(); ++end; }
       Step(std::bit_width(index_.regions.size()) + 1);
-      const auto resolved = abc::ResolvePoolReference(file_, header_, index_, input_.Method(), slot,
+      const auto resolved = abc::ResolvePoolReference(file_, header_, index_, input_.method, slot,
           abc::PoolEntityKind::kString);
       if (const auto* error = std::get_if<abc::MetadataError>(&resolved)) throw *error;
       const auto entity = std::get<abc::PoolReference>(resolved).offset;
@@ -192,8 +203,7 @@ class AliasBinder {
   const corpus::AbcFile& file_;
   const abc::Header& header_;
   const abc::MetadataIndex& index_;
-  const FunctionInput& input_;
-  const FunctionValues& values_;
+  AliasSource input_;
   const RecordModuleContext& context_;
   analysis::SemanticBudget budget_;
   std::size_t bytes_;
@@ -204,13 +214,11 @@ class AliasBinder {
   std::vector<std::size_t> order_, classes_;
   std::vector<std::u16string> decoded_;
 };
-}  // namespace
-std::variant<ModuleAliases, ModuleAliasFailure> BindModuleAliases(
+std::variant<ModuleAliases, ModuleAliasFailure> BindAliases(
     const corpus::AbcFile& file, const abc::Header& header,
-    const abc::MetadataIndex& index, const FunctionInput& input,
-    const FunctionValues& values, const RecordModuleContext& context,
+    const abc::MetadataIndex& index, AliasSource input, const RecordModuleContext& context,
     ModuleOwnerId owner, NameId first_name, analysis::SemanticBudget budget) {
-  try { return AliasBinder(file, header, index, input, values, context, owner, first_name, budget).Bind();
+  try { return AliasBinder(file, header, index, input, context, owner, first_name, budget).Bind();
   } catch (const ModuleAliasFailure& error) { return error;
   } catch (Error error) { return ModuleAliasFailure{error};
   } catch (ModuleGuardError error) { return ModuleAliasFailure{error};
@@ -218,5 +226,25 @@ std::variant<ModuleAliases, ModuleAliasFailure> BindModuleAliases(
   } catch (abc::MetadataError error) { return ModuleAliasFailure{error};
   } catch (const std::bad_alloc&) { return ModuleAliasFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return ModuleAliasFailure{Error::kResourceLimit}; }
+}
+}  // namespace
+std::variant<ModuleAliases, ModuleAliasFailure> BindModuleAliases(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const FunctionInput& input,
+    const FunctionValues& values, const RecordModuleContext& context,
+    ModuleOwnerId owner, NameId first_name, analysis::SemanticBudget budget) {
+  if (values.identity != input.Identity() || values.method != input.Method() ||
+      values.record != input.Record() || values.capture_mode != input.Mode())
+    return ModuleAliasFailure{Error::kIdentity};
+  return BindAliases(file, header, index, {input.Identity(), input.Method(), input.Record(),
+      values.graph, values.modules, std::cref(input)}, context, owner, first_name, budget);
+}
+std::variant<ModuleAliases, ModuleAliasFailure> BindPhasedModuleAliases(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const PhasedModuleInput& input,
+    const RecordModuleContext& context, ModuleOwnerId owner, NameId first_name,
+    analysis::SemanticBudget budget) {
+  return BindAliases(file, header, index, {input.identity, input.method, input.record,
+      input.graph, input.guards, std::cref(input.phases)}, context, owner, first_name, budget);
 }
 }  // namespace abcd::source

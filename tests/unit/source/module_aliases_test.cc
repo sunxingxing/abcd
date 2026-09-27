@@ -3,6 +3,9 @@
 #include "../../../src/source/tree_semantics.h"
 #include "analysis/ssa_fixture.h"
 #include "abcd/corpus/abc_file.h"
+#include "../../../src/analysis/phased_value_import.h"
+#include "abcd/analysis/exception_modules.h"
+#include "../../../src/source/exception_tree.h"
 
 #include <unistd.h>
 
@@ -21,6 +24,15 @@ constexpr ModuleOwnerId kOwner{7};
 constexpr NameId kFirstName{1};
 constexpr unsigned kByteBits = 8;
 struct Access { ModuleSpace space; std::uint8_t slot; std::uint16_t guard; };
+bool WorkLimit(const ModuleAliasFailure& failure) {
+  if (const auto* error = std::get_if<ModuleAliasError>(&failure.cause)) return *error == ModuleAliasError::kWorkLimit;
+  if (const auto* error = std::get_if<ModuleGuardError>(&failure.cause)) return *error == ModuleGuardError::kWorkLimit;
+  if (const auto* read = std::get_if<ModuleReadFailure>(&failure.cause)) {
+    const auto* error = std::get_if<ModuleReadError>(&read->reason);
+    return error && *error == ModuleReadError::kWorkLimit;
+  }
+  return false;
+}
 
 class Fixture {
  public:
@@ -82,8 +94,7 @@ struct Function {
   FunctionInput input;
   FunctionValues values;
 };
-Function Make(const Fixture& fixture, std::span<const Access> accesses,
-              abc::EntityOffset method = kMethod) {
+abc::MethodBody Body(std::span<const Access> accesses) {
   constexpr auto kGuard = abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16;
   std::vector<std::uint8_t> bytes;
   for (const auto& access : accesses) {
@@ -94,7 +105,11 @@ Function Make(const Fixture& fixture, std::span<const Access> accesses,
         static_cast<std::uint8_t>(access.guard), static_cast<std::uint8_t>(access.guard >> kByteBits)});
   }
   bytes.push_back(static_cast<std::uint8_t>(accesses.empty() ? abc::Opcode::kRETURNUNDEFINED : abc::Opcode::kRETURN));
-  const auto body = test::Body(bytes);
+  return test::Body(bytes);
+}
+Function Make(const Fixture& fixture, std::span<const Access> accesses,
+              abc::EntityOffset method = kMethod) {
+  const auto body = Body(accesses);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 0, {false, false, false, false}));
   RouteInputIdentity identity;
   identity.profile = fixture.header.profile; identity.abc_version = fixture.header.version;
@@ -153,15 +168,79 @@ void Run(const Fixture& fixture, std::uint32_t count, bool local) {
   SemanticBudget budget; budget.work = bound.work;
   test::Check(std::holds_alternative<ModuleAliases>(Bind(fixture, function, budget)));
   --budget.work;
-  test::Check(std::get<ModuleAliasError>(std::get<ModuleAliasFailure>(Bind(fixture, function, budget)).cause) == ModuleAliasError::kWorkLimit);
+  test::Check(WorkLimit(std::get<ModuleAliasFailure>(Bind(fixture, function, budget))));
   budget = {}; budget.bytes = 0;
   test::Check(std::holds_alternative<ModuleAliasFailure>(Bind(fixture, function, budget)));
   ++function.values.record.value;
   test::Check(std::get<ModuleAliasError>(std::get<ModuleAliasFailure>(Bind(fixture, function)).cause) == ModuleAliasError::kIdentity);
 }
+void Phased(const Fixture& fixture, std::uint32_t count, bool local, bool bad_name = false) {
+  const Access access{local ? ModuleSpace::kLocal : ModuleSpace::kExternal, 0,
+      static_cast<std::uint16_t>(bad_name ? 1 : local ? 2 : 0)};
+  const std::vector<Access> accesses(count, access);
+  auto body = Body(accesses);
+  const auto end = body.instructions.back().offset.value + body.instructions.back().decoded.size;
+  auto caught = body.instructions.back(); caught.offset = {end}; body.instructions.push_back(caught);
+  abc::TryRegion region; region.length = end; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {end}; handler.length = caught.decoded.size;
+  body.tries.push_back(region); body.handlers.push_back(handler);
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 0, {}));
+  const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, fixture.header.profile, frame.registers));
+  IdfQuota work{kDefaultSemanticWork};
+  const auto ssa = std::get<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers, work));
+  const auto modules = std::get<ExceptionModules>(ProveExceptionModules(flow, ssa));
+  const auto env = std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
+  IdfQuota value_work{kDefaultSemanticWork};
+  const auto values = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, {},
+      value_work, {}, PendingExceptionValues::kLanguage, modules.loads));
+  const auto proof = std::get<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, env, values));
+  const PhasedValueInput phases{flow, ssa, env, values, proof, frame};
+  const auto graph = std::get<ValueProgram>(ImportPhasedValues(phases));
+  const auto guards = std::get<ModuleGuards>(BuildPhasedModuleGuards(phases, graph));
+  RouteInputIdentity identity;
+  identity.profile = fixture.header.profile; identity.abc_version = fixture.header.version;
+  identity.file_size = fixture.header.file_size;
+  const PhasedModuleInput input{identity, kMethod, kRecord, phases, graph, guards};
+  const auto built = BindPhasedModuleAliases(*fixture.file, fixture.header, fixture.index,
+      input, *fixture.context, kOwner, kFirstName);
+  if (bad_name) {
+    const auto& error = std::get<ModuleAliasFailure>(built);
+    test::Check(std::get<ModuleAliasError>(error.cause) == ModuleAliasError::kGuardName && error.pc == abc::CodeOffset{2});
+    return;
+  }
+  const auto& aliases = std::get<ModuleAliases>(built);
+  test::Check(aliases.evaluations.size() == count && aliases.aliases.size() == 1);
+  test::Check(aliases.names.front() == (local ? u"localValue" : u"first"));
+  const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(
+      graph, {}, IncomingCells::kReject, {}, aliases.evaluations));
+  const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, phases));
+  const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, phases, regions));
+  FunctionSyntax syntax{};
+  syntax.identity = identity; syntax.method = kMethod; syntax.owner = {1};
+  syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  syntax.names = {u"existing"};
+  syntax.names.insert(syntax.names.end(), aliases.names.begin(), aliases.names.end());
+  syntax.modules = aliases.aliases;
+  std::vector<ExpressionConstant> constants(graph.ops.size());
+  const auto draft = std::get<ExceptionFunctionDraft>(BuildExceptionFunctionDraft(
+      graph, {body, phases, regions, control}, evaluation, syntax, {constants, syntax.names.size()}));
+  test::Check(std::holds_alternative<std::uint64_t>(VerifyModuleAliasTree(aliases, evaluation, draft.tree)));
+  const auto bind = [&](const PhasedModuleInput& candidate, SemanticBudget budget) {
+    return BindPhasedModuleAliases(*fixture.file, fixture.header, fixture.index, candidate,
+        *fixture.context, kOwner, kFirstName, budget);
+  };
+  test::Check(std::holds_alternative<ModuleAliases>(bind(input, {SemanticBudget{}.bytes, aliases.work})));
+  test::Check(WorkLimit(std::get<ModuleAliasFailure>(bind(input, {SemanticBudget{}.bytes, aliases.work - 1}))));
+  test::Check(std::holds_alternative<ModuleAliasFailure>(bind(input, {0})));
+  auto wrong = input; ++wrong.record.value;
+  test::Check(std::get<ModuleAliasError>(std::get<ModuleAliasFailure>(bind(wrong, {})).cause) == ModuleAliasError::kIdentity);
+}
 }  // namespace
 int main() {
   const Fixture fixture;
+  for (auto count : {1U, 2U, 200U, 201U})
+    for (bool local : {false, true}) Phased(fixture, count, local);
+  Phased(fixture, 1, false, true);
   for (auto count : {0U, 1U, 2U, 200U, 201U, 4096U})
     for (bool local : {false, true}) Run(fixture, count, local);
   constexpr Access accesses[] = {{ModuleSpace::kLocal, 0, 2}, {ModuleSpace::kExternal, 1, 1}, {ModuleSpace::kExternal, 0, 0}};

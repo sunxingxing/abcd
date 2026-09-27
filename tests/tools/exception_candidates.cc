@@ -1,17 +1,90 @@
 #include <algorithm>
+#include <charconv>
 #include <iostream>
 #include <nlohmann/json.hpp>
 
 #include "abcd/abc/metadata_index.h"
 #include "abcd/analysis/class_method_sites.h"
 #include "abcd/corpus/abc_file.h"
-#include "abcd/corpus/detect.h"
+#include "../../src/source/phased_method.h"
+#include "../../src/source/module_aliases.h"
+#include "../../src/source/syntax_resolution.h"
 
-// Candidate discovery only: inspect one selected ABC's method metadata, not
-// a corpus decompilation or support census. No source/sidecar inputs are read.
+namespace {
+int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
+    const abcd::abc::MetadataIndex& index, const abcd::abc::MethodLookup& lookup,
+    const abcd::analysis::ClassMethodSites& sites, const abcd::corpus::FileFingerprint& hash,
+    abcd::abc::EntityOffset entity) {
+  using namespace abcd;
+  using namespace abcd::source;
+  const auto position = lookup.Find(entity);
+  if (!position || sites.Find(entity).count != 1) return 1;
+  const auto& method = index.methods[position->value];
+  const auto owner = std::find_if(index.records.begin(), index.records.end(),
+      [&](const auto& record) { return record.offset == method.owner_offset; });
+  if (owner == index.records.end() || !method.code) return 1;
+  const auto packaging = abc::DetectFilePackaging(file, header, index);
+  const auto* packed = std::get_if<abc::FilePackaging>(&packaging);
+  if (!packed) return 1;
+  const auto modules = ReadRecordModuleContext(file, header, index, *owner, *packed);
+  const auto* record = std::get_if<RecordModuleContext>(&modules);
+  if (!record) return 1;
+  const auto roles = analysis::MethodRoleIndex::Build(file, header, index, lookup);
+  const auto* indexed_roles = std::get_if<analysis::MethodRoleIndex>(&roles);
+  if (!indexed_roles) return 1;
+  auto selected = ClassTreeContext::Resolve(file, header, index, lookup, *indexed_roles,
+      sites, sites.Find(entity).first, MakeRouteInputIdentity(hash, header));
+  const auto* ready = std::get_if<ClassTreeContext>(&selected);
+  if (!ready) return 1;
+  const FunctionContext context{std::move(std::get<ClassTreeContext>(selected))};
+  const auto decoded = abc::DecodeMethodBody(file, header.profile, *method.code);
+  const auto* body = std::get_if<abc::MethodBody>(&decoded);
+  if (!body) return 1;
+  // A single explicitly selected method, not record publication or a corpus
+  // scan. Its module owner is local to this diagnostic invocation.
+  constexpr ModuleOwnerId kSelectedRecord{0};
+  const PhasedModuleBinding binding{file, header, index, *record, kSelectedRecord};
+  const auto built = PhasedMethod::Build(context, *body, {}, &binding);
+  nlohmann::json report{{"method", entity.value}, {"source_complete", false}, {"executable", false}};
+  if (const auto* error = std::get_if<PhasedMethodError>(&built)) {
+    report["phase_error"] = static_cast<unsigned>(*error);
+  } else {
+    const auto& phased = std::get<PhasedMethod>(built);
+    report["phased_ready"] = true;
+    report["module_aliases"] = phased.Modules() ? phased.Modules()->aliases.size() : 0;
+    auto resolved = ResolveFunctionSyntax(file, header, index, context, *body, phased.Graph(), {0});
+    if (auto* syntax = std::get_if<ResolvedSyntax>(&resolved)) {
+      if (phased.Modules()) {
+        const auto first = static_cast<std::uint32_t>(syntax->syntax.names.size());
+        syntax->syntax.names.insert(syntax->syntax.names.end(), phased.Modules()->names.begin(), phased.Modules()->names.end());
+        syntax->syntax.modules = phased.Modules()->aliases;
+        for (auto& alias : syntax->syntax.modules) alias.name.value += first;
+      }
+      const auto constants = syntax->View();
+      const auto tree = BuildExceptionFunctionDraft(phased.Graph(), phased.TreeInput(*body),
+          phased.Evaluation(), std::move(syntax->syntax), constants);
+      if (const auto* error = std::get_if<FunctionTreeError>(&tree)) report["tree_error"] = static_cast<unsigned>(*error);
+      else {
+        const auto& draft = std::get<ExceptionFunctionDraft>(tree);
+        if (phased.Modules()) {
+          const auto verified = VerifyModuleAliasTree(*phased.Modules(), phased.Evaluation(), draft.tree);
+          if (const auto* error = std::get_if<ModuleAliasTreeError>(&verified))
+            report["module_tree_error"] = static_cast<unsigned>(*error);
+          else report["tree_ready"] = true;
+        } else report["tree_ready"] = true;
+      }
+    } else report["syntax_error"] = std::get<SyntaxResolutionFailure>(resolved).index();
+  }
+  std::cout << report << '\n';
+  return file.CheckUnchanged() ? 1 : 0;
+}
+}  // namespace
+
+// Candidate discovery or one explicit method's phase diagnostic. Not a corpus
+// decompilation/support census. No source/sidecar inputs are read.
 int main(int argc, char** argv) {
   using namespace abcd;
-  if (argc != 2) return 1;
+  if (argc != 2 && argc != 3) return 1;
   const auto opened = corpus::AbcFile::Open(argv[1]);
   const auto* owner = std::get_if<std::unique_ptr<corpus::AbcFile>>(&opened);
   if (!owner) return 1;
@@ -32,6 +105,13 @@ int main(int argc, char** argv) {
   const auto bound = analysis::ClassMethodSites::Build(file, *header, *index, *methods);
   const auto* sites = std::get_if<analysis::ClassMethodSites>(&bound);
   if (!sites) return 1;
+  if (argc == 3) {
+    const std::string_view text{argv[2]};
+    abc::EntityOffset entity;
+    const auto parsed_id = std::from_chars(text.data(), text.data() + text.size(), entity.value);
+    if (parsed_id.ec != std::errc{} || parsed_id.ptr != text.data() + text.size()) return 1;
+    return Inspect(file, *header, *index, *methods, *sites, *hash, entity);
+  }
   std::vector<const abc::MethodInfo*> candidates;
   for (const auto& method : index->methods)
     if (method.code && method.code->try_count && sites->Find(method.offset).count == 1)

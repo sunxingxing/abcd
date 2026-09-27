@@ -42,6 +42,22 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 同文件模块别名绑定器已同时接受正常与异常相位输入，复用 slot、名称、guard
+  和 record 身份校验。PhasedMethod 可借用调用方的 record 上下文，持有已核验的
+  别名并交给共享求值；文件化类方法夹具贯通模块表、语法解析、FunctionTree，
+  再独立核对树中的模块身份。覆盖 local/external、1/2/200/201、错误名称/身份、
+  精确 work 和资源拒绝；原正常路径仍覆盖 4096 组。预算反例按实际 typed
+  ModuleRead/ModuleGuard/ModuleAlias work-limit 判定，不把任意失败当通过。
+  选定 Immersive 8284 在显式提供同文件绑定时已通过 phase/evaluation/syntax，
+  现于共享绑定层 `kUnsupportedEntry` 拒绝：ABI 入口值仍有寄存器复制引用。
+  此处尚未抵达 receiver 调用检查；下一步是共享相位复制/活跃性处理，不跳过
+  入口值验证。Pasteboard 5165 仍在 values 拒绝。独立发布默认路径未接入 record
+  上下文，模块初始化/外层环境发布 gate 保持关闭，规则仍为 46；并非整方法或
+  record 可执行发布。诊断工具始终标记 source_complete/executable 为 false。
+  CLI、诊断及相关单元目标构建通过，9/9 定向回归通过：module_aliases、
+  class_tree_context、phased_module_guards/source、module_evaluation、
+  exception_plan/copies/tree_source、phased_method_source。未运行全量、RSS 或基准。
+
 - 模块读取/TDZ 配对已接入共享相位求值、FunctionTree 和 printer 的条件性路径。
   原始 load 与 guard 保留，验证唯一 Before/Commit/Before 通路和相同异常去向；
   效果校验以确切 guard OpId 消费第二个事件，不泛化跳过 guard。合并还要求

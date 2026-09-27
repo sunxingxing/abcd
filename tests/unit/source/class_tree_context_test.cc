@@ -2,6 +2,8 @@
 #include "../../../src/source/prepared_family.h"
 #include "../../../src/source/family_emission.h"
 #include "../../../src/source/phased_method.h"
+#include "../../../src/source/module_aliases.h"
+#include "../../../src/source/syntax_resolution.h"
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
@@ -58,6 +60,21 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   word(kLiteral + 18, 1);
   bytes[kName] = 7;
   std::copy_n("run", 3, bytes.begin() + kName + 1);
+  constexpr std::uint32_t kModuleType = 520, kModuleField = 530, kRequest = 548, kModule = 560;
+  if (exception == ExceptionShape::kModule) {
+    constexpr std::uint8_t kI32 = 5, kAscii = 1;
+    bytes[kModuleType] = kI32;
+    constexpr std::string_view kModuleFieldName = "moduleRecordIdx", kRequestName = "dep";
+    bytes[kModuleField] = (kModuleFieldName.size() << 1) | kAscii;
+    std::copy(kModuleFieldName.begin(), kModuleFieldName.end(), bytes.begin() + kModuleField + 1);
+    bytes[kRequest] = (kRequestName.size() << 1) | kAscii;
+    std::copy(kRequestName.begin(), kRequestName.end(), bytes.begin() + kRequest + 1);
+    auto cursor = kModule;
+    const auto emit = [&](std::uint32_t value) { word(cursor, value); cursor += sizeof(value); };
+    emit(0); emit(1); emit(kRequest);
+    emit(1); emit(kName); emit(kName); cursor += sizeof(std::uint16_t);
+    emit(0); emit(0); emit(0); emit(0);
+  }
   const std::vector<std::uint8_t> caller{1, 0, 10, 0, 0x35, 0, 0, 0, 1, 0, 0, 0, 0, 0x65};
   // OpenHarmony-v7.0-Release isa.yaml: dynamic loads, strict comparison,
   // relative conditional jump and return. Header encodes locals/args/bytes/tries.
@@ -186,6 +203,41 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       auto refused = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites,
           range.first, identity, {});
       Check(std::get<FunctionPrepareFailure>(refused).kind == FunctionPrepareError::kEvaluation);
+      auto module_index = index;
+      module_index.regions[0].classes = {1, kModuleType};
+      abc::RecordInfo record; record.offset = {kOwner}; record.field_count = 1;
+      constexpr abc::EntityOffset kField{320};
+      module_index.fields.push_back({kField, record.offset, {kModuleField}, {}, 0,
+          abc::FieldValue{abc::FieldValueEncoding::kSignedLeb, kModule}});
+      const auto module_context = std::get<RecordModuleContext>(ReadRecordModuleContext(
+          file, header, module_index, record, abc::FilePackaging::kMerged));
+      const PhasedModuleBinding binding{file, header, module_index, module_context, {1}};
+      const auto bound = PhasedMethod::Build(owner, decoded, {}, &binding);
+      Check(std::holds_alternative<PhasedMethod>(bound));
+      const auto& method = std::get<PhasedMethod>(bound);
+      Check(method.Modules() && method.Modules()->names == std::vector<std::u16string>{u"run"});
+      Check(method.Evaluation().modules.size() == 1 &&
+          method.Evaluation().modules[0].target == ModuleSymbol{ModuleOwnerId{1}, SymbolId{0}});
+      Check(std::holds_alternative<PhasedMethod>(PhasedMethod::Build(owner, decoded,
+          {analysis::SemanticBudget{}.bytes, method.Work()}, &binding)));
+      Check(std::get<PhasedMethodError>(PhasedMethod::Build(owner, decoded,
+          {analysis::SemanticBudget{}.bytes, method.Work() - 1}, &binding)) == PhasedMethodError::kWorkLimit);
+      auto syntax = std::get<ResolvedSyntax>(ResolveFunctionSyntax(
+          file, header, module_index, owner, decoded, method.Graph(), {1}));
+      const auto first_name = static_cast<std::uint32_t>(syntax.syntax.names.size());
+      syntax.syntax.names.insert(syntax.syntax.names.end(), method.Modules()->names.begin(), method.Modules()->names.end());
+      syntax.syntax.modules = method.Modules()->aliases;
+      for (auto& alias : syntax.syntax.modules) alias.name.value += first_name;
+      const auto constants = syntax.View();
+      const auto tree = std::get<ExceptionFunctionDraft>(BuildExceptionFunctionDraft(method.Graph(),
+          method.TreeInput(decoded), method.Evaluation(), std::move(syntax.syntax), constants));
+      Check(std::holds_alternative<std::uint64_t>(VerifyModuleAliasTree(
+          *method.Modules(), method.Evaluation(), tree.tree)));
+      auto wrong_index = module_index;
+      ++wrong_index.methods[owner.Position().value].owner_offset.value;
+      const PhasedModuleBinding wrong_binding{file, header, wrong_index, module_context, {1}};
+      Check(std::get<PhasedMethodError>(PhasedMethod::Build(owner, decoded, {}, &wrong_binding)) ==
+          PhasedMethodError::kModules);
       Check(unlink(path) == 0);
       return;
     }

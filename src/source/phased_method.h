@@ -5,9 +5,11 @@
 #include "function_context.h"
 
 namespace abcd::source {
+struct PhasedModuleBinding;
+struct ModuleAliases;
 enum class PhasedMethodError : std::uint8_t {
   kInput, kSsa, kEnvironment, kValues, kImport, kRegion, kControl, kEvaluation,
-  kResourceLimit, kWorkLimit, kContract
+  kResourceLimit, kWorkLimit, kContract, kModules
 };
 // Immutable owner for original phase analyses and their working control/value
 // products. Views are assembled on demand: moving this owner never leaves
@@ -20,10 +22,11 @@ class PhasedMethod {
   ~PhasedMethod();
   [[nodiscard]] static std::variant<PhasedMethod, PhasedMethodError> Build(
       const FunctionContext& context, const abc::MethodBody& body,
-      analysis::SemanticBudget budget = {});
+      analysis::SemanticBudget budget = {}, const PhasedModuleBinding* modules = nullptr);
   const analysis::ValueProgram& Graph() const;
   const EvaluationPlan& Evaluation() const;
   const ControlPlan& Control() const;
+  const ModuleAliases* Modules() const;
   ExceptionTreeInput TreeInput(const abc::MethodBody& body) const;
   std::size_t AllocatedBytes() const;
   std::uint64_t Work() const;

@@ -4,6 +4,23 @@ This is the T09 control step of the common source pipeline. It is not an
 alternative body writer, a source publication receipt, or completion of group 1.
 The original phased `ValueProgram` and `ExceptionPlan` remain authoritative.
 
+## Same-File Module Context
+
+`PhasedMethod::Build` optionally borrows a `PhasedModuleBinding` during construction.
+The existing alias binder verifies phased guards, record ownership, metadata slots
+and exact decoded guard names before evaluation receives module symbols. The owner
+retains immutable aliases, not borrowed metadata. Syntax names may be rebased when
+appended to the shared arena; `VerifyModuleAliasTree` independently checks identity
+and spelling after tree construction. This does not prove record initialization or
+authorize standalone module publication; the existing publication gates remain.
+
+The selected Immersive method 8284 now passes this bound phase/evaluation path but
+fails shared bindings with `kUnsupportedEntry` (an ABI entry still has a copy use).
+Do not bypass this check or infer receiver-call support from that result. The next
+dependency is phase-aware copy/liveness handling with original exception snapshots
+and source origins preserved. Loops, typed finally and resumable protocols remain
+separate unfinished steps of the approved common pipeline.
+
 ## Inputs And Output
 
 `BuildExceptionControl` first verifies the original body, phase import, and

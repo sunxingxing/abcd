@@ -47,6 +47,32 @@ struct ModuleAliasFailure {
     const FunctionValues& values, const RecordModuleContext& context,
     ModuleOwnerId owner, NameId first_name = {}, analysis::SemanticBudget budget = {});
 
+struct PhasedModuleInput {
+  const RouteInputIdentity& identity;
+  abc::EntityOffset method;
+  abc::EntityOffset record;
+  const analysis::PhasedValueInput& phases;
+  const analysis::ValueProgram& graph;
+  const ModuleGuards& guards;
+};
+// Caller-owned record table and file/index, reused across sibling methods.
+// Do not rediscover packaging or scan every record for every method.
+struct PhasedModuleBinding {
+  const corpus::AbcFile& file;
+  const abc::Header& header;
+  const abc::MetadataIndex& index;
+  const RecordModuleContext& record;
+  ModuleOwnerId owner;
+};
+// Same metadata binder, but original pair correspondence is phase-aware.
+// Input identity/body/callable ownership and record publication remain owner
+// obligations; this adapter neither fabricates a FunctionInput nor drops phases.
+[[nodiscard]] std::variant<ModuleAliases, ModuleAliasFailure> BindPhasedModuleAliases(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const PhasedModuleInput& input,
+    const RecordModuleContext& context, ModuleOwnerId owner, NameId first_name = {},
+    analysis::SemanticBudget budget = {});
+
 enum class ModuleAliasTreeError : std::uint8_t {
   kIdentity, kRevision, kCoverage, kTarget, kName, kAccess,
   kResourceLimit, kWorkLimit
