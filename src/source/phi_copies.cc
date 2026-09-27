@@ -4,15 +4,17 @@
 #include <stdexcept>
 
 namespace abcd::source {
-std::variant<PhiCopies, PhiCopyError> BuildPhiCopies(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget allowance) {
+namespace {
+std::variant<PhiCopies, PhiCopyError> BuildCopies(
+    const analysis::ValueProgram& graph, analysis::SemanticBudget allowance, PhiFlow flow) {
   try {
     CopyBudget budget(allowance);
-    CheckPhiFlow(graph, budget);
+    CheckPhiFlow(graph, budget, flow);
     RequirePhiCopy(graph.uses.size() <= std::numeric_limits<std::uint32_t>::max(), PhiCopyError::kResourceLimit);
     std::size_t count = 0;
     for (const auto& use : graph.uses) { budget.Step(); count += PhiInput(use); }
     PhiCopies result{graph.revision, graph.cfg_revision, {}, {}, {}};
+    result.flow = flow;
     budget.Admit(1, sizeof(result));
     budget.Reserve(result.inputs, count);
     budget.Reserve(result.copies, count);
@@ -51,7 +53,7 @@ std::variant<PhiCopies, PhiCopyError> BuildPhiCopies(
       result.bundles.push_back({key, static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(end - first), std::move(*schedule)});
       first = end;
     }
-    const auto checked = VerifyPhiCopies(graph, result, budget.Remaining());
+    const auto checked = VerifyPhiCopiesForFlow(graph, result, budget.Remaining(), flow);
     if (const auto* error = std::get_if<PhiCopyError>(&checked)) return *error;
     budget.Step(std::get<std::uint64_t>(checked));
     result.allocated_bytes = sizeof(result) + schedule_bytes +
@@ -63,5 +65,14 @@ std::variant<PhiCopies, PhiCopyError> BuildPhiCopies(
   } catch (CopyError error) { return PhiScheduleError(error);
   } catch (const std::bad_alloc&) { return PhiCopyError::kResourceLimit;
   } catch (const std::length_error&) { return PhiCopyError::kResourceLimit; }
+}
+}  // namespace
+std::variant<PhiCopies, PhiCopyError> BuildPhiCopies(
+    const analysis::ValueProgram& graph, analysis::SemanticBudget allowance) {
+  return BuildCopies(graph, allowance, PhiFlow::kNormal);
+}
+std::variant<PhiCopies, PhiCopyError> BuildPhasedPhiCopies(
+    const analysis::ValueProgram& graph, analysis::SemanticBudget allowance) {
+  return BuildCopies(graph, allowance, PhiFlow::kPhased);
 }
 }  // namespace abcd::source

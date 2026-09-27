@@ -4,12 +4,14 @@
 #include <span>
 #include "abcd/source/source_tree.h"
 #include "phi_copies.h"
+#include "exception_copies.h"
 #include "literal_plan.h"
 #include "cell_evaluation.h"
 #include "module_guards.h"
 
 namespace abcd::source {
 enum class EvaluationKind : std::uint8_t { kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard };
+enum class EvaluationFlow : std::uint8_t { kNormal, kPhased };
 struct OpEvaluation {
   EvaluationKind kind = EvaluationKind::kRemoved;
   std::optional<analysis::UseId> consumer;
@@ -47,6 +49,8 @@ struct EvaluationPlan {
   std::uint64_t work = 0;
   // Invocation count/tail obligation, not a native JS arguments binding.
   std::optional<analysis::ArgumentFrameFact> arguments;
+  EvaluationFlow flow = EvaluationFlow::kNormal;
+  std::optional<ExceptionCopies> exceptions;
 };
 enum class EvaluationError : std::uint8_t {
   kRevision, kInvalidGraph, kUnsupportedOperation, kProtocolOperand, kLivePhi,
@@ -110,6 +114,17 @@ struct EvaluationShape {
 // exact ordered occurrences and same-block availability. Call reference/source
 // order still needs its separate certificate. No plan replay.
 [[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
+    const analysis::ValueProgram& graph, const EvaluationPlan& plan,
+    analysis::SemanticBudget budget = {});
+// Same expression planner with phase availability and staged exceptional phi
+// writes. No cross-phase fusion. Normal binding/control/tree entry points still
+// refuse these plans until catch scope and exceptional placement are verified.
+[[nodiscard]] std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
+    IncomingCells incoming = IncomingCells::kReject,
+    std::span<const FunctionBinding> functions = {},
+    std::span<const ModuleEvaluation> modules = {});
+[[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget = {});
 }  // namespace abcd::source

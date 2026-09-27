@@ -42,6 +42,27 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- T09 异常 phi 已接入同一套并行复制与求值算法：新增显式 phased 入口，保留
+  Before/Commit/Catch 可用性检查，不把异常图降格为普通图。EvaluationPlan 持有
+  ExceptionCopies，独立验证缺失/伪造计划；normal 入口及普通 BindingPlan 仍拒绝它。
+  抛出前仅写调用私有 CatchSlot，只有进入 Catch 才更新正式 phi 位置；正常返回
+  不修改这些 phi。各抛出边为同一 catch 复用按 phi 身份分配的槽，后一次暂存覆盖
+  前一次的槽值；绑定契约禁止与参数、cell、phi 或 cycle temporary 共用位置。普通边和方法
+  入口仍使用既有复制调度。共享算法不跨相位融合 getter/调用等求值。
+  三个 profile 的解码测试贯通异常 SSA→值 IR→区域计划→复制→求值；同一 catch
+  从两个 getter 进入时，分别携带旧局部值与更新后的局部值。另覆盖 0/1/2/200/201/402
+  catch phi、入口/普通/Catch 出边混合、正常返回前不写 phi、暂存更新、错误槽/落点/
+  提交/修订、正常结果泄漏到 catch，以及构建和校验的精确 work 与资源边界。
+  21/21 定向回归通过：exception_copies/plan、phi_copies、evaluation_plan、
+  function_tree、control_plan、phased_value_flow/import、throw_value、constant_group、
+  三个既有应用源码切片、creation/class_tree_context、source_route、function_input、
+  async_semantics、exception_arguments/dispatch 和 argument_snapshot_source。
+  abc_semantic 构建通过；新增阶段分别先运行失败再通过。未运行全量、RSS 或基准。
+  **没有新增异常 JS 输出覆盖**：当前新证据到求值计划为止，生成 JS 测试是既有路径
+  回归。下一步必须把 CatchBinding/CatchSlot 绑定和两阶段赋值接入共享 AST/控制树，
+  验证实际 try/catch 执行和 PC 位置；不得直接把抽象 exceptional EdgeCopies 放在
+  抛出前执行。规则仍为 44，group 1、finally、async owner 及全 ISA 目标均未完成。
+
 - T09 新增通用值 IR 的 ExceptionPlan 与独立对照验证：重新核对原始相位导入、
   保护区/handler 范围及优先级，按原 TryId 关联 Before 入口和 CatchDefinition。
   普通边、抛出边、Catch→handler 边采用不同类型；catch 载荷不能冒充函数体局部值。
@@ -56,7 +77,7 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   exception_dispatch、constant_group 及 pasteboard/Immersive/call 三个现有源码切片；
   abc_semantic 构建通过。未运行全量测试、RSS 或基准。
   **尚未增加 try/catch 源码输出覆盖**，规则仍为 44；下一步将本计划接入共同的
-  求值/绑定/控制树：异常边复制必须在抛出操作前落位，catch 参数进入真实 handler
+  求值/绑定/控制树：异常边输入在抛出前暂存，正式 phi 写入在 Catch 提交，catch 参数进入真实 handler
   scope，再接共享 TryCatch AST、printer 与位置验证。finally/async owner 仍未完成，
   不以区域计划测试替代 group 1 或全 ISA 的端到端验收。
 

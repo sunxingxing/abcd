@@ -1,4 +1,5 @@
 #include "evaluation_plan.h"
+#include "evaluation_flow.h"
 #include "module_evaluation.h"
 
 #include <new>
@@ -12,11 +13,11 @@ struct EvaluationFrame { analysis::OpId op; std::uint32_t next_operand = 0; };
 enum class EvaluationVisit : std::uint8_t { kUnseen, kActive, kDone };
 }  // namespace
 
-std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
+std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
-    analysis::SemanticBudget budget) {
+    analysis::SemanticBudget budget, EvaluationFlow flow) {
   try {
-    Require(graph.phases.empty(), Error::kUnsupportedOperation);
+    Require(plan.flow == flow, Error::kUnsupportedOperation);
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
     Require(plan.operations.size() == graph.ops.size(), Error::kInvalidGraph);
     Require(plan.arguments == graph.arguments, Error::kOwnership);
@@ -28,6 +29,9 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
     const auto admit = [&](std::size_t count, std::size_t width) {
       Require(count <= bytes / width, Error::kResourceLimit); bytes -= count * width;
     };
+    const auto availability = CheckEvaluationFlow(graph, flow, {bytes, work});
+    if (const auto* error = std::get_if<Error>(&availability)) return *error;
+    step(std::get<std::uint64_t>(availability));
     admit(graph.uses.size(), sizeof(std::uint8_t));
     step(graph.values.size()); step(graph.ops.size());
     step(graph.uses.size()); step(graph.uses.size()); step(graph.uses.size());
@@ -110,11 +114,22 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
           std::holds_alternative<analysis::PhiDefinition>(value.origin);
     }
     Require(has_phi == plan.phis.has_value(), Error::kLivePhi);
+    Require(plan.exceptions.has_value() == (flow == EvaluationFlow::kPhased && has_phi), Error::kLivePhi);
     if (plan.phis) {
-      const auto checked = VerifyPhiCopies(graph, *plan.phis, {bytes, work});
+      const auto checked = flow == EvaluationFlow::kNormal ? VerifyPhiCopies(graph, *plan.phis, {bytes, work})
+          : VerifyPhasedPhiCopies(graph, *plan.phis, {bytes, work});
       if (const auto* error = std::get_if<PhiCopyError>(&checked)) {
         if (*error == PhiCopyError::kResourceLimit) return Error::kResourceLimit;
         if (*error == PhiCopyError::kWorkLimit) return Error::kWorkLimit;
+        return Error::kLivePhi;
+      }
+      step(std::get<std::uint64_t>(checked));
+    }
+    if (plan.exceptions) {
+      const auto checked = VerifyExceptionCopies(graph, *plan.phis, *plan.exceptions, {bytes, work});
+      if (const auto* error = std::get_if<ExceptionCopyError>(&checked)) {
+        if (*error == ExceptionCopyError::kResourceLimit) return Error::kResourceLimit;
+        if (*error == ExceptionCopyError::kWorkLimit) return Error::kWorkLimit;
         return Error::kLivePhi;
       }
       step(std::get<std::uint64_t>(checked));
@@ -276,5 +291,13 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
+    const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget) {
+  return VerifyEvaluationForFlow(graph, plan, budget, EvaluationFlow::kNormal);
+}
+std::variant<std::uint64_t, EvaluationError> VerifyPhasedEvaluationPlan(
+    const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget) {
+  return VerifyEvaluationForFlow(graph, plan, budget, EvaluationFlow::kPhased);
 }
 }  // namespace abcd::source

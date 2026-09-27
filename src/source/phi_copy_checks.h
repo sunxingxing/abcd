@@ -20,14 +20,35 @@ inline bool IncomingLess(const analysis::IncomingKey& a, const analysis::Incomin
 inline bool SameIncoming(const analysis::IncomingKey& a, const analysis::IncomingKey& b) {
   return !IncomingLess(a, b) && !IncomingLess(b, a);
 }
-inline void CheckPhiFlow(const analysis::ValueProgram& graph, CopyBudget& budget) {
-  const auto flow = analysis::VerifyValueFlow(graph, budget.Remaining());
-  if (const auto* proof = std::get_if<analysis::ValueFlowProof>(&flow)) { budget.Step(proof->work); return; }
-  const auto error = std::get<analysis::ValueAvailabilityError>(flow);
+inline void CheckPhiFlow(const analysis::ValueProgram& graph, CopyBudget& budget, PhiFlow kind) {
+  std::optional<analysis::ValueAvailabilityError> failure;
+  switch (kind) {
+    case PhiFlow::kNormal: {
+      const auto flow = analysis::VerifyValueFlow(graph, budget.Remaining());
+      if (const auto* proof = std::get_if<analysis::ValueFlowProof>(&flow)) {
+        budget.Step(proof->work); return;
+      }
+      failure = std::get<analysis::ValueAvailabilityError>(flow); break;
+    }
+    case PhiFlow::kPhased: {
+      const auto flow = analysis::VerifyPhasedValueFlow(graph, budget.Remaining());
+      if (const auto* proof = std::get_if<analysis::PhasedValueFlowProof>(&flow)) {
+        budget.Step(proof->work); return;
+      }
+      failure = std::get<analysis::ValueAvailabilityError>(flow); break;
+    }
+  }
+  RequirePhiCopy(failure.has_value(), PhiCopyError::kFlow);
+  const auto error = *failure;
   if (error == analysis::ValueAvailabilityError::kResourceLimit) throw PhiCopyError::kResourceLimit;
   if (error == analysis::ValueAvailabilityError::kWorkLimit) throw PhiCopyError::kWorkLimit;
   throw PhiCopyError::kFlow;
 }
+// Shared implementation behind explicit normal/phased entry points. The mode
+// is checked against both the graph proof and retained plan, not caller text.
+std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopiesForFlow(
+    const analysis::ValueProgram& graph, const PhiCopies& plan,
+    analysis::SemanticBudget allowance, PhiFlow flow);
 inline bool PhiInput(const analysis::OperandUse& use) {
   return use.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueId>(use.owner);
 }

@@ -1,4 +1,5 @@
 #include "evaluation_plan.h"
+#include "evaluation_flow.h"
 #include "module_evaluation.h"
 
 #include <limits>
@@ -10,13 +11,11 @@ namespace {
 using Error = EvaluationError;
 void Require(bool condition, Error error) { if (!condition) throw error; }
 struct EffectInterval { std::uint32_t count = 0; std::uint32_t end = 0; };
-}  // namespace
-
-std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
+std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
-    std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules) {
+    std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
+    EvaluationFlow flow) {
   try {
-    Require(graph.phases.empty(), Error::kUnsupportedOperation);
     Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
     auto work = budget.work;
     auto bytes = budget.bytes;
@@ -28,6 +27,9 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
       Require(count <= bytes / width, Error::kResourceLimit);
       bytes -= count * width;
     };
+    const auto availability = CheckEvaluationFlow(graph, flow, {bytes, work});
+    if (const auto* error = std::get_if<Error>(&availability)) return *error;
+    step(std::get<std::uint64_t>(availability));
     Require(graph.ops.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
     admit(graph.uses.size(), sizeof(std::uint8_t));
     step(graph.values.size()); step(graph.ops.size());
@@ -41,6 +43,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
           std::holds_alternative<analysis::PhiDefinition>(value.origin);
     }
     EvaluationPlan plan{graph.revision, graph.cfg_revision, {}};
+    plan.flow = flow;
     plan.arguments = graph.arguments;
     Require(functions.size() <= graph.ops.size(), Error::kOwnership);
     admit(functions.size(), sizeof(FunctionBinding));
@@ -121,7 +124,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
       admit(plan.cells->allocated_bytes, 1); step(plan.cells->work);
     }
     if (has_phi) {
-      auto copies = BuildPhiCopies(graph, {bytes, work});
+      auto copies = flow == EvaluationFlow::kNormal ? BuildPhiCopies(graph, {bytes, work})
+          : BuildPhasedPhiCopies(graph, {bytes, work});
       auto* phis = std::get_if<PhiCopies>(&copies);
       if (!phis) {
         const auto error = std::get<PhiCopyError>(copies);
@@ -131,6 +135,16 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
       }
       admit(phis->allocated_bytes, 1); step(phis->work);
       plan.phis = std::move(*phis);
+      if (flow == EvaluationFlow::kPhased) {
+        auto staged = BuildExceptionCopies(graph, *plan.phis, {bytes, work});
+        if (const auto* error = std::get_if<ExceptionCopyError>(&staged)) {
+          if (*error == ExceptionCopyError::kResourceLimit) return Error::kResourceLimit;
+          if (*error == ExceptionCopyError::kWorkLimit) return Error::kWorkLimit;
+          return Error::kLivePhi;
+        }
+        plan.exceptions = std::get<ExceptionCopies>(std::move(staged));
+        admit(plan.exceptions->allocated_bytes, 1); step(plan.exceptions->work);
+      }
     }
     admit(graph.ops.size(), sizeof(OpEvaluation));
     admit(graph.ops.size(), sizeof(EffectInterval));
@@ -237,7 +251,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
       next_op += block.op_count;
     }
     Require(next_op == graph.ops.size(), Error::kInvalidGraph);
-    const auto checked = VerifyEvaluationPlan(graph, plan, {bytes, work});
+    const auto checked = VerifyEvaluationForFlow(graph, plan, {bytes, work}, flow);
     if (const auto* error = std::get_if<EvaluationError>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = plan.operations.capacity() * sizeof(OpEvaluation) +
@@ -246,6 +260,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
         (plan.phis ? plan.phis->allocated_bytes : 0) +
         (plan.literals ? plan.literals->allocated_bytes : 0);
     if (plan.cells) plan.allocated_bytes += plan.cells->allocated_bytes;
+    if (plan.exceptions) plan.allocated_bytes += plan.exceptions->allocated_bytes;
     for (const auto& function : plan.functions) {
       step(); plan.allocated_bytes += function.captures.capacity() * sizeof(CellId);
     }
@@ -254,5 +269,16 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+}  // namespace
+std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
+    std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules) {
+  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal);
+}
+std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
+    std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules) {
+  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kPhased);
 }
 }  // namespace abcd::source

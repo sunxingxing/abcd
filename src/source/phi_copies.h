@@ -4,6 +4,7 @@
 #include "edge_copies.h"
 
 namespace abcd::source {
+enum class PhiFlow : std::uint8_t { kNormal, kPhased };
 struct PhiBundle {
   analysis::IncomingKey incoming;
   std::uint32_t first;
@@ -18,6 +19,7 @@ struct PhiCopies {
   std::vector<PhiBundle> bundles;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  PhiFlow flow = PhiFlow::kNormal;
 };
 enum class PhiCopyError : std::uint8_t {
   kRevision, kFlow, kDomain, kInput, kBundle, kSchedule, kResourceLimit, kWorkLimit
@@ -31,6 +33,14 @@ enum class PhiCopyError : std::uint8_t {
 // a regenerated plan. Source publication additionally needs EdgePlacement and
 // provisional Symbol ownership; a successful report alone cannot admit phis.
 [[nodiscard]] std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopies(
+    const analysis::ValueProgram& graph, const PhiCopies& plan,
+    analysis::SemanticBudget budget = {});
+// Same parallel-copy algorithm, but availability is Before/Commit/Catch aware.
+// Abstract edge schedules are NOT permission to execute writes before a throw.
+// Exceptional edges require separate staging and catch-entry commit placement.
+[[nodiscard]] std::variant<PhiCopies, PhiCopyError> BuildPhasedPhiCopies(
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {});
+[[nodiscard]] std::variant<std::uint64_t, PhiCopyError> VerifyPhasedPhiCopies(
     const analysis::ValueProgram& graph, const PhiCopies& plan,
     analysis::SemanticBudget budget = {});
 }  // namespace abcd::source

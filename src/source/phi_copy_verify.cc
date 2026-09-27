@@ -4,12 +4,14 @@
 #include <stdexcept>
 
 namespace abcd::source {
-std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopies(
-    const analysis::ValueProgram& graph, const PhiCopies& plan, analysis::SemanticBudget allowance) {
+std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopiesForFlow(
+    const analysis::ValueProgram& graph, const PhiCopies& plan, analysis::SemanticBudget allowance,
+    PhiFlow flow) {
   try {
     RequirePhiCopy(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, PhiCopyError::kRevision);
     CopyBudget budget(allowance);
-    CheckPhiFlow(graph, budget);
+    RequirePhiCopy(plan.flow == flow, PhiCopyError::kFlow);
+    CheckPhiFlow(graph, budget, flow);
     RequirePhiCopy(plan.inputs.size() == plan.copies.size(), PhiCopyError::kInput);
     std::vector<std::uint8_t> seen;
     budget.Array(seen, graph.uses.size());
@@ -47,5 +49,13 @@ std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopies(
   } catch (CopyError error) { return PhiScheduleError(error);
   } catch (const std::bad_alloc&) { return PhiCopyError::kResourceLimit;
   } catch (const std::length_error&) { return PhiCopyError::kResourceLimit; }
+}
+std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopies(
+    const analysis::ValueProgram& graph, const PhiCopies& plan, analysis::SemanticBudget allowance) {
+  return VerifyPhiCopiesForFlow(graph, plan, allowance, PhiFlow::kNormal);
+}
+std::variant<std::uint64_t, PhiCopyError> VerifyPhasedPhiCopies(
+    const analysis::ValueProgram& graph, const PhiCopies& plan, analysis::SemanticBudget allowance) {
+  return VerifyPhiCopiesForFlow(graph, plan, allowance, PhiFlow::kPhased);
 }
 }  // namespace abcd::source
