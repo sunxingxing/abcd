@@ -92,12 +92,23 @@ class StructureCheck {
     if (tree_.self) {
       const auto& self = tree_.symbols[tree_.self->value];
       self_scope = self.scope;
-      RequireTree(tree_.inferred_name == self.name && self.scope != tree_.parameter_scope &&
+      RequireTree(tree_.inferred_name && self.scope != tree_.parameter_scope &&
           self.scope != tree_.body_scope && tree_.scopes[self.scope.value].parent == outer &&
           tree_.scopes[self.scope.value].kind == ScopeKind::kFunctionSelf, Error::kScope);
+      switch (tree_.self_form) {
+        case SelfForm::kNamedFunction:
+          RequireTree(tree_.callable == CallableKind::kFunction && tree_.inferred_name == self.name &&
+              self.evidence == NameEvidence::kMetadata, Error::kBinding);
+          break;
+        case SelfForm::kCreationBinding:
+          RequireTree(self.evidence == NameEvidence::kSynthesized &&
+              ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kBinding);
+          break;
+        default: throw Error::kBinding;
+      }
       budget_.Step(tree_.names[self.name.value].size());
       RequireTree(IsSourceIdentifier(std::u16string_view{tree_.names[self.name.value]}), Error::kName);
-    }
+    } else RequireTree(tree_.self_form == SelfForm::kNamedFunction, Error::kBinding);
     const auto enclosing = self_scope ? self_scope : outer;
     RequireTree(parameters.kind == ScopeKind::kParameters && parameters.parent == enclosing &&
                 body.kind == ScopeKind::kFunctionBody && body.parent == tree_.parameter_scope, Error::kScope);

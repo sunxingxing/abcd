@@ -3,6 +3,7 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <iostream>
 #include <sstream>
 #include <string_view>
@@ -41,10 +42,18 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
     ExpectedSource expected = ExpectedSource::kPrinted, bool debug = false,
     bool overwrite_abi = false,
     abc::FunctionKind kind = abc::FunctionKind::kBaseConstructor,
-    std::string_view name = "constant") {
+    std::string_view name = "constant", bool global_lookup = false) {
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kTarget >> (kByteBits * i));
+  if (global_lookup) {
+    constexpr std::uint32_t kGlobalName = 80;
+    constexpr std::uint8_t kAsciiFlag = 1, kLengthShift = 1;
+    for (unsigned i = 0; i < sizeof(kGlobalName); ++i)
+      bytes[kPool + sizeof(kTarget) + i] = static_cast<std::uint8_t>(kGlobalName >> (kByteBits * i));
+    bytes[kGlobalName] = static_cast<std::uint8_t>((name.size() << kLengthShift) | kAsciiFlag);
+    std::copy(name.begin(), name.end(), bytes.begin() + kGlobalName + 1);
+  }
   const std::uint8_t parameters = callback ? 1 : 0;
   const auto caller = Append(bytes,
       {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), kCache, 0, 0, parameters,
@@ -58,6 +67,8 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
     const auto slot = static_cast<std::uint8_t>((callback ? kLocals : 0) + argument);
     code = {Op(abc::Opcode::kLDNULL), Op(abc::Opcode::kSTA_V8), slot, Op(constant)};
   }
+  if (global_lookup)
+    code.insert(code.begin(), {Op(abc::Opcode::kTRYLDGLOBALBYNAME_IMM8_ID16), kCache, 1, 0});
   if (debug) code.push_back(Op(abc::Opcode::kDEBUGGER));
   if (callback) {
     // Keep the loaded value live across a potentially throwing call. The
@@ -84,12 +95,15 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   header.profile = profile.profile; header.version = profile.version;
   header.file_size = bytes.size();
   abc::MetadataIndex index;
-  index.regions.push_back({kCaller, kCodeStart, {}, {1, kPool}, {}, {}});
+  index.regions.push_back({kCaller, kCodeStart, {}, {global_lookup ? 2U : 1U, kPool}, {}, {}});
   index.methods.resize(2);
   index.methods[0].offset = {kCaller}; index.methods[0].code = caller;
   index.methods[1].offset = {kTarget}; index.methods[1].code = target;
   for (auto& method : index.methods) method.owner_offset = {kRecord};
-  index.methods[1].name = name; index.methods[1].name_utf16_length = name.size();
+  // The pinned name parser maps a present mangled "#" to an empty runtime
+  // name. An absent metadata name remains unproven and is not this case.
+  index.methods[1].name = name.empty() ? "#" : name;
+  index.methods[1].name_utf16_length = index.methods[1].name.size();
   index.methods[1].access_flags =
       static_cast<std::uint32_t>(kind) << kFunctionKindShift;
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
@@ -99,7 +113,8 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
       analysis::FunctionCreationSites::Build(file, header, index, lookup));
   const auto identity = MakeRouteInputIdentity(
       std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
-  const FamilyDestination destination{Strictness::kStrict, nullptr};
+  const GlobalScope globals{};
+  const FamilyDestination destination{Strictness::kStrict, global_lookup ? &globals : nullptr};
   if (expected == ExpectedSource::kPrinted) {
     const auto range = sites.Find({kTarget});
     test::Check(range.count == 2);
@@ -140,7 +155,6 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   if (expected == ExpectedSource::kRejected) {
     // Internal markers cannot escape to JS. A raw arrow LDTHIS also lacks the
     // distinct lexical-owner proof needed to replace it by a source this.
-    // LDFUNCTION still needs legal named-function syntax and a verified self binding.
     test::Check(std::holds_alternative<FamilyPrepareFailure>(prepared));
     test::Check(unlink(path) == 0);
     return;
@@ -156,16 +170,18 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   test::Check(receipt.stage == SourceStage::kPrinted && receipt.coverage == Coverage::kComplete);
   const auto& member = emission.Family().Family().members.front();
   test::Check(member.sources && !member.sources->sites.empty());
-  const auto& mapping = member.sources->sites[overwrite_abi ? 2 : 0];
+  const auto& mapping = member.sources->sites[(overwrite_abi ? 2 : 0) + (global_lookup ? 1 : 0)];
   const auto& origin = std::get<OriginalSite>(member.tree.origins[mapping.origin.value]);
-  test::Check(origin.pc == abc::CodeOffset{overwrite_abi ? 3U : 0U});
+  test::Check(origin.pc == abc::CodeOffset{(overwrite_abi ? 3U : 0U) + (global_lookup ? 4U : 0U)});
   const auto expression = std::get<ExprId>(mapping.target);
   const auto span = emission.Positions().members.front().expressions[expression.value];
   test::Check(span.begin < span.end && span.end <= output.view().size());
   if (constant == abc::Opcode::kLDFUNCTION) {
     test::Check(member.tree.self.has_value());
     test::Check(std::get<SymbolExpr>(member.tree.expressions[expression.value].expression).symbol == member.tree.self);
-    test::Check(output.view().substr(span.begin, span.end - span.begin) == name);
+    const auto& self_name = member.tree.names[member.tree.symbols[member.tree.self->value].name.value];
+    test::Check(output.view().substr(span.begin, span.end - span.begin) ==
+        std::string(self_name.begin(), self_name.end()));
     test::Check(member.abi && member.abi->callable == AbiObservation::kFrameIdentity &&
         member.abi->frame_function_reads == 1);
   }
@@ -225,10 +241,19 @@ int main() {
     Emit(kProfiles.front(), abc::Opcode::kLDFUNCTION, true, ExpectedSource::kPrinted,
         false, false, abc::FunctionKind::kBaseConstructor, name);
   std::cout << "];\n";
-  for (const std::string_view name : {"", "eval", "with space"})
-    Emit(kProfiles.front(), abc::Opcode::kLDFUNCTION, false, ExpectedSource::kRejected,
-        false, false, abc::FunctionKind::kBaseConstructor, name);
+  std::cout << "export const createdFunctions = [\n";
   for (const auto profile : kProfiles)
-    Emit(profile, abc::Opcode::kLDFUNCTION, false, ExpectedSource::kRejected,
-        false, false, abc::FunctionKind::kArrow);
+    for (const std::string_view name : {"", "eval", "with space", "$self0", "__proto__"})
+      for (const auto kind : {abc::FunctionKind::kBaseConstructor, abc::FunctionKind::kArrow})
+        for (const bool callback : {false, true})
+          Emit(profile, abc::Opcode::kLDFUNCTION, callback, ExpectedSource::kPrinted,
+              false, true, kind, name);
+  std::cout << "];\n";
+  std::cout << "export const globalFunctions = [\n";
+  for (const auto profile : kProfiles)
+    for (const auto kind : {abc::FunctionKind::kBaseConstructor, abc::FunctionKind::kArrow})
+      for (const bool callback : {false, true})
+        Emit(profile, abc::Opcode::kLDFUNCTION, callback, ExpectedSource::kPrinted,
+            false, true, kind, "constant", true);
+  std::cout << "];\n";
 }

@@ -223,7 +223,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 26 admit independent frame-function reads through value import, while
 // source publication remains closed pending an immutable self-binding proof.
 // Rules 27 verify immutable named-function self scope for frame-function reads.
-inline constexpr std::uint32_t kRouteEvidenceRules = 27;
+// Rules 28 distinguish named-function self from private creation-time binding.
+inline constexpr std::uint32_t kRouteEvidenceRules = 28;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

@@ -266,6 +266,32 @@ class TreeBuilder {
     tree_.names.push_back(std::move(text));
     return name;
   }
+  bool CanNameSelf(NameId candidate) {
+    const auto& name = tree_.names[candidate.value];
+    Step(name.size());
+    if (tree_.callable != CallableKind::kFunction ||
+        !IsSourceIdentifier(std::u16string_view{name})) return false;
+    const auto conflicts = [&](NameId other) {
+      Require(other.value < tree_.names.size(), Error::kName);
+      const auto& text = tree_.names[other.value];
+      Step(std::min(name.size(), text.size()) + 1);
+      return name == text;
+    };
+    for (const auto& parameter : syntax_.parameters) {
+      Step(); if (parameter.name && conflicts(*parameter.name)) return false;
+    }
+    for (const auto& capture : syntax_.captures) { Step(); if (conflicts(capture.name)) return false; }
+    for (const auto& module : syntax_.modules) { Step(); if (conflicts(module.name)) return false; }
+    // Check once per owner, not once per frame read. A private binding also
+    // avoids introducing a source-name environment around descendant functions.
+    for (const auto& node : tree_.expressions) {
+      Step();
+      if (std::holds_alternative<FunctionExpr>(node.expression)) return false;
+      const auto* global = std::get_if<GlobalNameExpr>(&node.expression);
+      if (global && conflicts(global->name)) return false;
+    }
+    return true;
+  }
   void Bindings() {
     tree_.parameter_scope = kParameterScope;
     tree_.body_scope = kBodyScope;
@@ -278,11 +304,11 @@ class TreeBuilder {
     if (tree_.module_scope) tree_.scopes.push_back({ScopeKind::kModule, {}});
     std::optional<ScopeId> self_scope;
     if (forest_.bindings.self) {
-      Require(tree_.callable == CallableKind::kFunction && tree_.inferred_name &&
+      Require((tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kArrow) && tree_.inferred_name &&
           tree_.inferred_name->value < tree_.names.size(), Error::kBinding);
-      const auto& name = tree_.names[tree_.inferred_name->value];
-      Step(name.size());
-      Require(IsSourceIdentifier(std::u16string_view{name}), Error::kName);
+      if (!CanNameSelf(*tree_.inferred_name)) tree_.self_form = SelfForm::kCreationBinding;
+      if (tree_.self_form == SelfForm::kCreationBinding)
+        Require(ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kBinding);
       tree_.self = forest_.bindings.self;
       self_scope = ScopeId{static_cast<std::uint32_t>(tree_.scopes.size())};
       tree_.scopes.push_back({ScopeKind::kFunctionSelf, tree_.scopes[kParameterScope.value].parent});
@@ -323,8 +349,10 @@ class TreeBuilder {
       const auto& binding = forest_.bindings.symbols[i];
       if (std::holds_alternative<FunctionSelfBinding>(binding)) {
         Require(self_scope && tree_.self == SymbolId{static_cast<std::uint32_t>(i)}, Error::kBinding);
-        tree_.symbols.push_back({*self_scope, *tree_.inferred_name, BindingKind::kFunctionSelf,
-            DeclarationKind::kConst, NameEvidence::kMetadata, {}});
+        const bool named = tree_.self_form == SelfForm::kNamedFunction;
+        const auto name = named ? *tree_.inferred_name : SyntheticName(u"$self", i);
+        tree_.symbols.push_back({*self_scope, name, BindingKind::kFunctionSelf,
+            DeclarationKind::kConst, named ? NameEvidence::kMetadata : NameEvidence::kSynthesized, {}});
         continue;
       }
       if (const auto* cell = std::get_if<CellBinding>(&binding)) {

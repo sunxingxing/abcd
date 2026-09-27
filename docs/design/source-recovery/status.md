@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 27。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 28。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,6 +42,22 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- LDFUNCTION 扩展到普通函数/arrow 的创建期私有不可变绑定：类型化 SelfForm
+  区分命名函数表达式与 CreationBinding，共用现有 IR、作用域验证和 printer。
+  空/非法 runtime name、参数/全局名字冲突、含子函数的 owner 使用私有 const；
+  创建后才允许调用，不读取可变 function.name，不改变 CFG/SSA/cell 归属。
+  选择器每个 owner 扫描一次参数、捕获、模块和表达式，计入字符比较与预算；
+  新增分配沿用既有资源耗尽排除契约，未增加宿主假设。规则版本 28。
+  三个 profile 的 60 个名称/callable/直接或回调变体生成并执行 JS；另有 12 个
+  同名全局 getter 变体、2 个子函数全局名字与父函数同名的窄/宽编码函数族，
+  验证异常顺序、身份、重入、name 描述符、length、可构造性及 PC 映射。
+  参数同名与非法 form/evidence/const/contract 由 AST 单测覆盖，不冒充文件级证据。
+  `function_tree_test`、`binding_plan_test`、`tree_structure_test`、`tree_globals_test`、
+  `family_enclosure_test`、`evaluation_plan_test`、`constant_group_test`、
+  `computed_store_test`、`source_route_test`、`value_created_family_test` 共 10/10 通过；
+  对应目标及 `abc_semantic` 构建成功。未运行 RSS/基准/全语料或 Ark VM 差分。
+  缺失名字元数据、上游边界外 Unicode、method/async/derived 身份恢复仍未完成；
+  本项取代下方规则 27 时空/非法名字、普通 arrow 与命名冲突仍拒绝的历史状态。
 - LDFUNCTION 普通命名函数已端到端贯通：BindingPlan 为实际 owner 分配一个
   FunctionSelfBinding，位于参数作用域之外、捕获/模块作用域之内；表达式森林
   降为 SymbolExpr，结构/flow/operand/ABI 独立核验，统一 printer 输出命名函数

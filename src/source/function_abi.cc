@@ -18,7 +18,9 @@ class AbiBuilder {
     Require(graph_.revision == tree_.value_revision && graph_.cfg_revision == tree_.cfg_revision, Error::kRevision);
     Require(tree_.parameters.size() == frame_.parameters, Error::kParameter);
     if (tree_.self)
-      Require(tree_.callable == CallableKind::kFunction && tree_.self->value < tree_.symbols.size() &&
+      Require((tree_.callable == CallableKind::kFunction ||
+          (tree_.callable == CallableKind::kArrow && tree_.self_form == SelfForm::kCreationBinding)) &&
+          tree_.self->value < tree_.symbols.size() &&
           tree_.symbols[tree_.self->value].kind == BindingKind::kFunctionSelf, Error::kSyntax);
     Array(result_.parameters, frame_.parameters);
     Array(formals_, tree_.symbols.size());

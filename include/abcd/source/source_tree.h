@@ -29,6 +29,7 @@ enum class CallableKind : std::uint8_t {
 enum class Strictness : std::uint8_t { kStrict, kSloppy };
 enum class ScopeKind : std::uint8_t { kParameters, kFunctionBody, kBlock, kCaptures, kModule, kFunctionSelf };
 enum class BindingKind : std::uint8_t { kParameter, kLocal, kFunctionSelf, kCompilerTemporary, kCapture, kModule };
+enum class SelfForm : std::uint8_t { kNamedFunction, kCreationBinding };
 enum class NameEvidence : std::uint8_t { kMetadata, kDebugRange, kSynthesized };
 enum class DeclarationKind : std::uint8_t { kParameter, kLet, kConst };
 enum class TemporaryReason : std::uint8_t {
@@ -218,9 +219,13 @@ struct FunctionTree {
   std::vector<TreeModuleAlias> modules;
   // Creation-proven runtime name. Without self, computed data-property
   // NamedEvaluation preserves it without depending on a mutable intrinsic.
-  // With self, it must equal the immutable named-function binding spelling.
+  // NamedFunction self uses this spelling; CreationBinding keeps it distinct
+  // from the private const and uses the same computed naming boundary.
   // Empty strings are names too; absence is missing evidence, not an empty name.
   std::optional<NameId> inferred_name;
+  // Both forms bind this exact owner immutably. CreationBinding uses a private
+  // creation-time const, separate from the target's runtime name and body.
+  SelfForm self_form = SelfForm::kNamedFunction;
 };
 // This is a construction product, not a source-publication certificate. The
 // printer will accept only a frozen verified owner, never raw ValueProgram.

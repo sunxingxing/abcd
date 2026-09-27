@@ -3,6 +3,7 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <iostream>
 #include <sstream>
 
@@ -26,13 +27,24 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes,
   return {{offset}, {start}, locals, args, static_cast<std::uint32_t>(code.size()), 0};
 }
 enum class CapturedBase { kArgument, kReceiver, kFunction };
-void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kArgument) {
+void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kArgument,
+    bool child_global = false) {
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kTarget >> (kByteBits * i));
   if (captured)
     for (unsigned i = 0; i < sizeof(kChild); ++i)
       bytes[kPool + sizeof(kTarget) + i] = static_cast<std::uint8_t>(kChild >> (kByteBits * i));
+  if (child_global) {
+    constexpr std::uint32_t kGlobalName = 80, kGlobalSlot = 2;
+    constexpr std::string_view kName = "store";
+    constexpr unsigned kLengthShift = 1, kAsciiFlag = 1;
+    for (unsigned i = 0; i < sizeof(kGlobalName); ++i)
+      bytes[kPool + sizeof(kGlobalName) * kGlobalSlot + i] =
+          static_cast<std::uint8_t>(kGlobalName >> (kByteBits * i));
+    bytes[kGlobalName] = static_cast<std::uint8_t>((kName.size() << kLengthShift) | kAsciiFlag);
+    std::copy(kName.begin(), kName.end(), bytes.begin() + kGlobalName + 1);
+  }
   const auto caller = Append(bytes,
       {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 0, 0, kParameters,
        Op(abc::Opcode::kRETURNUNDEFINED)}, 0);
@@ -74,6 +86,8 @@ void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kA
         Op(wide ? abc::Opcode::kSTOBJBYVALUE_IMM16_V8_V8 : abc::Opcode::kSTOBJBYVALUE_IMM8_V8_V8), kCache};
     if (wide) body.push_back(kCache);
     body.insert(body.end(), {kLocalObject, kLocalKey, Op(abc::Opcode::kRETURNUNDEFINED)});
+    if (child_global)
+      body.insert(body.begin(), {Op(abc::Opcode::kTRYLDGLOBALBYNAME_IMM8_ID16), kCache, 2, 0});
     child = Append(bytes, body, kImplicitArguments, kLocals);
   }
   char path[] = "/tmp/abcd-computed-store-XXXXXX";
@@ -88,7 +102,7 @@ void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kA
   header.profile = abc::ProfileId::kDynamic1206;
   header.version = {12, 0, 6, 0}; header.file_size = bytes.size();
   abc::MetadataIndex index;
-  index.regions.push_back({kCaller, kCodeStart, {}, {captured ? 2U : 1U, kPool}, {}, {}});
+  index.regions.push_back({kCaller, kCodeStart, {}, {child_global ? 3U : captured ? 2U : 1U, kPool}, {}, {}});
   index.methods.resize(captured ? 3 : 2);
   index.methods[0].offset = {kCaller}; index.methods[0].code = caller;
   index.methods[1].offset = {kTarget}; index.methods[1].code = target;
@@ -109,7 +123,8 @@ void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kA
       analysis::FunctionCreationSites::Build(file, header, index, lookup));
   const auto identity = MakeRouteInputIdentity(
       std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
-  const FamilyDestination destination{Strictness::kStrict, nullptr};
+  const GlobalScope globals{};
+  const FamilyDestination destination{Strictness::kStrict, child_global ? &globals : nullptr};
   if (captured) {
     FunctionContext owner{std::get<CreationTreeContext>(CreationTreeContext::Resolve(
         file, header, index, lookup, roles, sites, sites.Find({kTarget}).first, identity))};
@@ -137,8 +152,9 @@ void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kA
   test::Check(emission.Positions().members.size() == members);
   const auto store_member = captured ? 1U : 0U;
   const auto& member = emission.Family().Family().members[store_member];
-  const std::size_t kInstructionCount = captured ? 9 : 4, kStoreSite = captured ? 7 : 2;
-  const abc::CodeOffset kStorePc{captured ? 14U : 4U};
+  const std::size_t kInstructionCount = (captured ? 9 : 4) + (child_global ? 1 : 0);
+  const std::size_t kStoreSite = (captured ? 7 : 2) + (child_global ? 1 : 0);
+  const abc::CodeOffset kStorePc{(captured ? 14U : 4U) + (child_global ? 4U : 0U)};
   test::Check(member.sources && member.sources->sites.size() == kInstructionCount);
   const auto& mapping = member.sources->sites[kStoreSite];
   const auto expression = std::get<ExprId>(mapping.target);
@@ -146,7 +162,8 @@ void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kA
   test::Check(origin.pc == kStorePc);
   const auto span = emission.Positions().members[store_member].expressions[expression.value];
   test::Check(span.begin < span.end && span.end <= output.view().size());
-  const auto name = base == CapturedBase::kFunction ? (wide ? "selfWide" : "selfNarrow") :
+  const auto name = child_global ? (wide ? "selfGlobalWide" : "selfGlobalNarrow") :
+      base == CapturedBase::kFunction ? (wide ? "selfWide" : "selfNarrow") :
       base == CapturedBase::kReceiver ? (wide ? "receiverWide" : "receiverNarrow") :
       captured ? (wide ? "closureWide" : "closureNarrow") : (wide ? "wide" : "narrow");
   std::cout << "export const " << name << " = " << output.str() << ";\n";
@@ -159,4 +176,5 @@ int main() {
   Emit(false); Emit(true); Emit(false, true); Emit(true, true);
   Emit(false, true, CapturedBase::kReceiver); Emit(true, true, CapturedBase::kReceiver);
   Emit(false, true, CapturedBase::kFunction); Emit(true, true, CapturedBase::kFunction);
+  Emit(false, true, CapturedBase::kFunction, true); Emit(true, true, CapturedBase::kFunction, true);
 }

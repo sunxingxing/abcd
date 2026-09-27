@@ -528,6 +528,45 @@ void DebuggerTree() {
   tree.statements[statement.value].statement = ReturnStmt{};
   Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
 }
+void CreationSelfTree() {
+  using namespace analysis;
+  for (const auto kind : {CallableKind::kFunction, CallableKind::kArrow}) {
+    Fixture fixture;
+    fixture.Add(0, 0, 0, ValueFrameFunction{}, true, {});
+    fixture.Add(0, 1, 1, ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{2}}});
+    fixture.graph.blocks = {{{0}, 2, {0}, 0}};
+    auto syntax = fixture.Syntax();
+    syntax.callable = kind;
+    syntax.inferred_name = NameId{0}; // Runtime name equals the recovered parameter name.
+    const auto control = std::get<ControlPlan>(BuildControlPlan(fixture.graph));
+    const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(fixture.graph));
+    const auto build = [&] {
+      return BuildFunctionTree(fixture.graph, control, evaluation, syntax, {fixture.constants, 2, 0, {}});
+    };
+    const auto built = build();
+    Check(std::holds_alternative<ConstructedFunction>(built));
+    const auto& tree = std::get<ConstructedFunction>(built).tree;
+    Check(tree.self && tree.self_form == SelfForm::kCreationBinding);
+    const auto& self = tree.symbols[tree.self->value];
+    Check(self.evidence == NameEvidence::kSynthesized && self.name != tree.inferred_name);
+    Check(tree.symbols[tree.parameters[0].symbol.value].name == tree.inferred_name);
+    Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+    const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {}));
+    Check(std::get<ConstructedAbi>(BuildFunctionAbi(fixture.graph, tree, frame, 1)).abi.frame_function_reads == 1);
+    const auto reject = [&](auto change) {
+      auto copy = tree; change(copy);
+      Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(copy)));
+    };
+    reject([](auto& copy) { copy.self_form = SelfForm::kNamedFunction; });
+    reject([](auto& copy) { copy.symbols[copy.self->value].name = *copy.inferred_name; });
+    reject([](auto& copy) { copy.symbols[copy.self->value].evidence = NameEvidence::kMetadata; });
+    reject([](auto& copy) { copy.symbols[copy.self->value].declaration = DeclarationKind::kLet; });
+    reject([](auto& copy) { copy.identity.contract = SourceContract::kLanguageAndHostV1; });
+    reject([](auto& copy) { copy.inferred_name.reset(); });
+    syntax.identity.contract = SourceContract::kLanguageAndHostV1;
+    Check(std::holds_alternative<FunctionTreeError>(build()));
+  }
+}
 void FrameFunctionTree() {
   using namespace analysis;
   Fixture fixture;
@@ -608,6 +647,7 @@ void FrameReceiverTree() {
 }
 }  // namespace
 int main() {
+  CreationSelfTree();
   FrameFunctionTree();
   FrameReceiverTree();
   DebuggerTree();

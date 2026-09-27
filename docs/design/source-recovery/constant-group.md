@@ -92,11 +92,20 @@ reentry. Incorrect explicit object parameters and call receivers cannot replace
 the captured function. AST mutations test parameter substitution/shadowing,
 missing/mutable self, wrong scope, illegal name and unsupported callable kinds.
 
-This is ordinary named-function coverage, not all LDFUNCTION or group coverage.
-Empty/illegal names and direct arrow reads still reject in file-backed tests;
-Unicode names outside the existing identifier boundary, parameter/global name
-conflicts, methods and async/derived owner forms still require representation
-work. Node tests are not Ark VM differential evidence. Remaining requirements
+The creation-owned extension below now also covers empty/illegal runtime names,
+direct arrow reads and name conflicts. Sixty file-backed variants cross three
+profiles, five names, ordinary/arrow callables and direct/callback bodies, all
+with overwritten ABI copies. An empty runtime name comes from present mangled
+metadata `#`, never absent metadata. Execution checks name descriptors, length,
+constructibility, identity, exceptions and reentry. Twelve additional variants
+preserve same-name global getters and their thrown values; two narrow/wide
+families preserve descendant global reads matching the parent's runtime name.
+Parameter-name conflicts and invalid form/evidence/contract mutations have
+AST-level tests, not file-backed debug-parameter execution evidence.
+
+This is not all LDFUNCTION or group coverage. Missing name metadata, Unicode
+names outside the upstream name boundary, methods and async/derived owner forms
+remain unsupported. Node tests are not Ark VM differential evidence. Requirements
 and the invariants of the implemented steps are:
 
 1. Retain the explicit self-binding scope outside the parameter scope and
@@ -112,9 +121,9 @@ and the invariants of the implemented steps are:
    its identifier is legal, preserves the proven runtime function name and
    does not capture a global lookup or get shadowed by parameters/locals.
    Never simply print the metadata name for LDFUNCTION. Invalid/empty names,
-   shadowing, arrows and methods require a separately verified creation-owned
-   binding representation preserving callable kind, name and identity. These
-   remain required cases, not permission to narrow the overall ISA goal.
+   shadowing and arrows use the verified creation-owned binding representation
+   preserving callable kind, name and identity. Methods still require their own
+   owner/home-object proof; this is not permission to narrow the overall ISA goal.
 4. Extend the unified printer and provenance tables only from the verified AST.
    Do not use arguments.callee, mutable object-property lookup, a global name,
    source-text rewriting, or an extra ad hoc body writer as a substitute.
@@ -129,6 +138,33 @@ and the invariants of the implemented steps are:
 Scope/name indexes and owner lookup must remain bounded O(N log N) or better;
 do not scan all symbols for every self read. Charge new scope, binding and
 provenance storage to the existing method/family budgets.
+
+#### Creation-Owned Binding Extension
+
+Keep named-function self as the direct representation when its name is legal
+and cannot shadow parameters, captures, modules or global references. Otherwise
+use a typed creation-binding form, not a text rewrite: an unexposed arrow
+creation envelope initializes one private const to the existing NamedEvaluation
+function expression, then returns that exact function. The target body only
+executes after const initialization. Literal computed naming cannot invoke user
+code or expose the half-initialized function. The envelope inherits lexical
+this/arguments/new.target and introduces no ordinary call receiver or arguments
+binding. Target function kind, signature, name descriptors and constructibility
+remain unchanged. This extends to ordinary functions and arrows, not methods
+whose home-object or async/derived protocols still need their own proof.
+
+The AST must distinguish named-expression and creation-binding forms, with
+the existing immutable self scope representing the relevant name environment.
+Only the unified printer may lower that verified form. Creation-owned bindings
+use collision-checked synthetic names, never the runtime name as an identifier.
+For owners with child function expressions use the private form so adding a
+named-expression environment cannot capture descendant free names. Family
+enclosure validation still checks actual descendant references. Admission uses
+the existing resource-failure exclusion, not a new host assumption; mutating
+the form, name, declaration, owner or scope must fail independent validation.
+The implemented tests execute empty/illegal names and arrows across profiles, prove exact
+self identity after ABI-copy overwrite, preserve name/length/prototype behavior,
+and exercise parameter/global name collisions and nested captures.
 
 ### Frame Receiver Dependency
 

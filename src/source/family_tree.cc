@@ -84,8 +84,8 @@ class FamilyTrees {
           evaluation, std::move(syntax.syntax), constants, left_, incoming ? &*incoming : nullptr));
       Account(constructed);
       // Naming evidence is creation-specific and must survive arena growth and
-      // capture/module alias insertion. A self binding, when present, must have
-      // this same creation-proven name; tree structure checks the lexical link.
+      // capture/module alias insertion. The runtime name stays creation-proven
+      // even when a private self binding has a distinct synthetic spelling.
       if (context.CreationSite()) {
         const auto name = constructed.tree.inferred_name;
         Require(name && name->value < constructed.tree.names.size(), FamilyTreeError::kContext);

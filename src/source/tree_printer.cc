@@ -142,7 +142,8 @@ class TreePrinter {
       if (Tree().callable == CallableKind::kMethod && !ClassRoot()) throw Error::kUnsupportedContext;
       // Naming adds a fresh, unobservable wrapper object. Its allocation-failure
       // timing is admitted only by the already-versioned resource-failure scope.
-      if (Tree().inferred_name && ResourceFailures(Tree().identity.contract) != ResourceFailureScope::kExcluded)
+      if (Tree().inferred_name && (!Tree().self || Tree().self_form == SelfForm::kCreationBinding) &&
+          ResourceFailures(Tree().identity.contract) != ResourceFailureScope::kExcluded)
         throw Error::kUnsupportedContext;
       owners_[i] = {Tree().owner, i};
       Result().identity = Tree().identity; Result().method = Tree().method;
@@ -364,9 +365,14 @@ class TreePrinter {
     if (ClassRoot()) {
       if (class_root_->Site().placement == abc::ClassPlacement::kStatic) Append("static ");
       Key(class_root_->Name()); Append("(");
-    } else if (Tree().self) {
+    } else if (Tree().self && Tree().self_form == SelfForm::kNamedFunction) {
       Append("(function "); Name(*Tree().self); Append("(");
     } else if (Tree().inferred_name) {
+      if (Tree().self) {
+        // The private const is initialized before the target can be invoked.
+        // An arrow envelope preserves enclosing lexical this/arguments/target.
+        Append("(() => { const "); Name(*Tree().self); Append(" = ");
+      }
       // NamedEvaluation, not a new lexical self scope. Computed keys preserve
       // even an empty name or __proto__, without Object.defineProperty calls.
       Append("({["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]: ");
@@ -382,8 +388,9 @@ class TreePrinter {
     }
     // Class-body syntax closes with the block itself, not an expression wrap.
     if (!ClassRoot()) {
-      if (Tree().inferred_name && !Tree().self) {
+      if (Tree().inferred_name && (!Tree().self || Tree().self_form == SelfForm::kCreationBinding)) {
         Append("})["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]");
+        if (Tree().self) { Append("; return "); Name(*Tree().self); Append("; })()"); }
       } else Append(")");
     }
     draft_.functions[current_].end = written_;

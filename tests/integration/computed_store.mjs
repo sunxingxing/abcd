@@ -129,32 +129,54 @@ for (const factory of [generated.receiverNarrow, generated.receiverWide]) {
       assert.deepEqual(observeCaptures(bindReceiver, failKey, reenterSetter),
         observeCaptures(captureReference, failKey, reenterSetter));
 }
-for (const factory of [generated.selfNarrow, generated.selfWide]) {
+for (const factory of [generated.selfNarrow, generated.selfWide, generated.selfGlobalNarrow, generated.selfGlobalWide]) {
   assert.equal(factory.name, 'store');
-  for (const failKey of [false, true]) {
-    for (const reenterSetter of [false, true]) {
-      const properties = [];
-      const bindSelf = (object, key, next) => {
-        // Give each activation a distinct property on the actual function.
-        // The forwarding setter proves the captured base is that function,
-        // while reusing the independent key/cell/reentry event oracle.
-        const property = Symbol();
-        properties.push(property);
-        Object.defineProperty(factory, property, {configurable: true, set(value) {
-          assert.equal(this, factory);
-          object.field = value;
-        }});
-        const ownedKey = {[Symbol.toPrimitive](hint) {
-          key[Symbol.toPrimitive](hint);
-          return property;
-        }};
-        const closure = Reflect.apply(factory, {wrong: true}, [null, ownedKey, next]);
-        assert.equal(Object.hasOwn(closure, 'prototype'), false);
-        return () => Reflect.apply(closure, {alsoWrong: true}, []);
-      };
-      assert.deepEqual(observeCaptures(bindSelf, failKey, reenterSetter),
-        observeCaptures(captureReference, failKey, reenterSetter));
-      for (const property of properties) delete factory[property];
+  const globalRead = factory === generated.selfGlobalNarrow || factory === generated.selfGlobalWide;
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'store');
+  let reads = 0;
+  if (globalRead) Object.defineProperty(globalThis, 'store', {configurable: true, get() {
+    ++reads;
+    return {notTheFactory: true};
+  }});
+  try {
+    for (const failKey of [false, true]) {
+      for (const reenterSetter of [false, true]) {
+        const properties = [];
+        const bindSelf = (object, key, next) => {
+          // Give each activation a distinct property on the actual function.
+          // The forwarding setter proves the captured base is that function,
+          // while reusing the independent key/cell/reentry event oracle.
+          const property = Symbol();
+          properties.push(property);
+          Object.defineProperty(factory, property, {configurable: true, set(value) {
+            assert.equal(this, factory);
+            object.field = value;
+          }});
+          const ownedKey = {[Symbol.toPrimitive](hint) {
+            key[Symbol.toPrimitive](hint);
+            return property;
+          }};
+          const closure = Reflect.apply(factory, {wrong: true}, [null, ownedKey, next]);
+          assert.equal(Object.hasOwn(closure, 'prototype'), false);
+          return () => Reflect.apply(closure, {alsoWrong: true}, []);
+        };
+        reads = 0;
+        const result = observeCaptures(bindSelf, failKey, reenterSetter);
+        assert.deepEqual(result, observeCaptures(captureReference, failKey, reenterSetter));
+        if (globalRead) assert.equal(reads, result.events.filter(event => event[0] === 'rhs').length);
+        for (const property of properties) delete factory[property];
+      }
+    }
+    if (globalRead) {
+      const marker = {};
+      Object.defineProperty(globalThis, 'store', {configurable: true, get() {throw marker;}});
+      const closure = factory(null, 'field', () => assert.fail('RHS after failed global read'));
+      assert.throws(() => closure(), error => error === marker);
+    }
+  } finally {
+    if (globalRead) {
+      if (previous) Object.defineProperty(globalThis, 'store', previous);
+      else delete globalThis.store;
     }
   }
 }

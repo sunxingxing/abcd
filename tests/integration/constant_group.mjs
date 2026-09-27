@@ -3,10 +3,56 @@ import {execFileSync} from 'node:child_process';
 import {Session} from 'node:inspector';
 
 const source = execFileSync(process.argv[2], {encoding: 'utf8'});
-const {cases, debugCases, receivers, functions, namedFunctions} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {cases, debugCases, receivers, functions, namedFunctions, createdFunctions, globalFunctions} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const expected = [NaN, Infinity, undefined, null, true, false];
 const profileCount = 3;
 const forms = 2;
+assert.equal(globalFunctions.length, profileCount * 2 * forms);
+const previousConstant = Object.getOwnPropertyDescriptor(globalThis, 'constant');
+try {
+  for (const fn of globalFunctions) {
+    let reads = 0;
+    Object.defineProperty(globalThis, 'constant', {configurable: true, get() {
+      ++reads;
+      return {notSelf: true};
+    }});
+    assert.equal(fn(value => assert.equal(value, fn)), fn);
+    assert.equal(reads, 1);
+    const marker = {};
+    Object.defineProperty(globalThis, 'constant', {configurable: true, get() {throw marker;}});
+    assert.throws(() => fn(() => assert.fail('callback after failed global read')), error => error === marker);
+  }
+} finally {
+  if (previousConstant) Object.defineProperty(globalThis, 'constant', previousConstant);
+  else delete globalThis.constant;
+}
+const creationNames = ['', 'eval', 'with space', '$self0', '__proto__'];
+assert.equal(createdFunctions.length, profileCount * creationNames.length * 2 * forms);
+for (let i = 0; i < createdFunctions.length; ++i) {
+  const fn = createdFunctions[i];
+  const callback = i % forms === 1;
+  const arrow = Math.floor(i / forms) % 2 === 1;
+  assert.equal(fn.name, creationNames[Math.floor(i / (forms * 2)) % creationNames.length]);
+  assert.equal(fn.length, callback ? 1 : 0);
+  const descriptor = Object.getOwnPropertyDescriptor(fn, 'name');
+  assert.equal(descriptor.writable, false);
+  assert.equal(descriptor.enumerable, false);
+  assert.equal(descriptor.configurable, true);
+  let calls = 0;
+  const observe = value => { ++calls; assert.equal(value, fn); return 'ignored'; };
+  assert.equal(Reflect.apply(fn, {wrong: true}, [observe]), fn);
+  assert.equal(calls, callback ? 1 : 0);
+  assert.equal(Object.hasOwn(fn, 'prototype'), !arrow);
+  if (arrow) assert.throws(() => Reflect.construct(fn, [observe]), TypeError);
+  else assert.equal(Reflect.construct(fn, [observe]), fn);
+  Object.defineProperty(fn, 'name', {value: 'changed'});
+  assert.equal(fn(observe), fn);
+  if (callback) {
+    const marker = {};
+    assert.throws(() => fn(() => {throw marker;}), error => error === marker);
+    assert.equal(fn(value => assert.equal(value(observe), fn)), fn);
+  }
+}
 assert.equal(functions.length, profileCount * forms * 2);
 assert.deepEqual(namedFunctions.map(fn => fn.name), ['$arg0', '__proto__', 'MethodSelf1', 'ClassValue']);
 for (const fn of namedFunctions) assert.equal(fn(value => assert.equal(value, fn)), fn);

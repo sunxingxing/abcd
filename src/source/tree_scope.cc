@@ -38,7 +38,8 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
   budget.Array(declared_, count);
   budget.Array(entered_, tree.scopes.size());
   if (tree.self) {
-    RequireTree(tree.self->value < count && tree.callable == CallableKind::kFunction &&
+    RequireTree(tree.self->value < count &&
+        (tree.callable == CallableKind::kFunction || tree.callable == CallableKind::kArrow) &&
         tree.symbols[tree.self->value].kind == BindingKind::kFunctionSelf, Error::kBinding);
     declared_[tree.self->value] = 1;
   }
@@ -67,7 +68,7 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
             ? symbol.temporary && ValidTemporary(*symbol.temporary) : !symbol.temporary, Error::kBinding);
         break;
       case BindingKind::kFunctionSelf:
-        // Named function-expression binding is initialized at creation, outside
+        // Self binding is initialized at creation, outside
         // parameters/body. Never turn it into a writable body declaration.
         RequireTree(tree.self == id && tree.scopes[symbol.scope.value].kind == ScopeKind::kFunctionSelf &&
             symbol.declaration == DeclarationKind::kConst && !symbol.temporary, Error::kBinding);
