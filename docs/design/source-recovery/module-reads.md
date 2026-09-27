@@ -14,8 +14,8 @@ record-owned ModuleInfo -----------------> ResolveModuleReads
 ```
 
 The first two arrows and metadata binding are implemented. Conditional module
-scope aliases now exist in SourceTree, but read lowering, TDZ correspondence and
-record binding remain open. Default `ReadFunctionValues` leaves binding
+scope aliases and guarded-read lowering now exist in SourceTree, but TDZ
+correspondence and record binding remain open. Default `ReadFunctionValues` leaves binding
 obligations open; an explicit `RecordModuleContext` enables resolution and
 retains the typed result alongside the working graph. Family/record callers
 must reuse the same immutable record context, not rescan all records per child.
@@ -97,9 +97,25 @@ after a call that may update the live binding, still retain a snapshot. The
 table is a source-binding obligation, not proof that its `ModuleSymbol` matches
 record metadata; original `ModuleGuards` and record correspondence must be
 checked independently before publication. The source wrapper explicitly rejects
-nonempty conditional module evaluation tables. Shared expression/statement
-construction and combined PC origins are the next integration step, not yet
-implemented by conditional evaluation alone.
+nonempty conditional module evaluation tables.
+
+The shared expression builder now resolves each conditional module target to
+the supplied source alias by indexed lookup, emitting one `SymbolExpr` per
+read occurrence. Distinct reads never share an expression or snapshot, even
+when they read the same binding. The expression has a `CombinedOrigin` retaining
+the original load and guard sites; both operation placements reference that one
+expression. Statement construction emits it only at the pinned load position,
+with a snapshot assignment only when there are real source value uses.
+
+TreeFlow independently requires paired expression identity and checks original
+statement order. Operand correspondence recovers the actual module alias from
+the AST symbol and compares its source target to the evaluation obligation; a
+free global name or unrelated parameter symbol is not equivalent. The existing
+origin checker requires both original PCs to belong to the same actual root,
+without reconstructing provenance from printed text. This completes conditional
+IR/evaluation/AST correspondence for these pairs, not record/TDZ/name proof or
+executable source publication. Printer-generated spans for module expressions
+remain gated on the enclosing record certificate.
 
 `FunctionSyntax.modules` constructs aliases to typed source module symbols in
 an outer module scope. Captures, parameters and block declarations use the same
@@ -112,8 +128,8 @@ targets, mutable/read-only writes, source-operand mismatch and 200/201 sizes.
 
 Before source emission, bind these aliases to actual record module symbols, prove unshadowed uses
 and live-binding behavior, preserve cyclic module initialization/TDZ and thrown
-values, and discharge record dependencies. Only then may shared expression
-construction/verification accept module reads. Source evidence rules remain 23.
+values, and discharge record dependencies. Only then may conditional module
+expressions be published as executable source. Source evidence rules remain 23.
 
 Regression source `module_reads_test.cc` covers slot/table separation, adjacent
 aliases across different string entities, nonadjacent identical names,
@@ -127,4 +143,7 @@ budget boundaries and 200/201/geometric counts. It also remains uncompiled/unrun
 `module_evaluation_test.cc` specifies repeated local/external pairs with calls
 between snapshot and use, guard-only reads without unused snapshots, census,
 slot/guard/effect mutation and resource/work boundaries at 200/201/geometric
-sizes. This regression source is also uncompiled/unrun.
+sizes. It now also constructs/checks the shared AST, paired placements, distinct
+module reads, retained snapshots and dual-PC origins, with negative mutations
+for global-name substitution, target changes and dropped/duplicated provenance.
+This regression source is also uncompiled/unrun.

@@ -38,6 +38,7 @@ class FlowCheck {
   }
   TreeFlow Run() {
     IndexPlacements();
+    ModulePairs();
     CheckBodyOrigin();
     CapturedCells();
     ModuleAliases();
@@ -67,7 +68,8 @@ class FlowCheck {
           const auto& op = graph_.ops[id.value];
           if (op.life != analysis::ValueLife::kLive ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInline ||
-              evaluation_.operations[id.value].kind == EvaluationKind::kInitializer) continue;
+              evaluation_.operations[id.value].kind == EvaluationKind::kInitializer ||
+              evaluation_.operations[id.value].kind == EvaluationKind::kModuleGuard) continue;
           const auto& placement = tree_.operations[*placements_[id.value]].node;
           if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation)) {
             const auto* anchor = std::get_if<AnchorId>(&placement);
@@ -136,6 +138,16 @@ class FlowCheck {
   }
 
  private:
+  void ModulePairs() {
+    for (const auto& module : evaluation_.modules) {
+      budget_.Step();
+      const auto read = module.pair.read.value;
+      const auto guard = module.pair.guard.value;
+      // The evaluation checker proved exact guarded adjacency and pinned order.
+      // Two PC placements own ONE expression occurrence, not two executions.
+      Require(flow_.expressions[read] && flow_.expressions[guard] == flow_.expressions[read], Error::kPlacement);
+    }
+  }
   void CapturedCells() {
     std::size_t next = 0;
     if (evaluation_.cells) {

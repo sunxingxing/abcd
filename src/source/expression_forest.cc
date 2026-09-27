@@ -1,6 +1,7 @@
 #include "expression_forest.h"
 
 #include <array>
+#include <algorithm>
 #include <bit>
 #include <limits>
 #include <new>
@@ -17,9 +18,9 @@ class ForestBuilder {
   ForestBuilder(const analysis::ValueProgram& graph,
                 const EvaluationPlan& evaluation, FunctionOwnerId owner,
                 ExpressionConstants constants, analysis::SemanticBudget budget,
-                BindingPlan bindings)
+                BindingPlan bindings, std::span<const ModuleSymbol> modules)
       : graph_(graph), evaluation_(evaluation), owner_(owner), constants_(constants),
-        budget_(budget), bytes_(budget.bytes), work_(budget.work) {
+        budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules) {
     Require(bindings.allocated_bytes <= bytes_, Error::kResourceLimit);
     bytes_ -= bindings.allocated_bytes;
     Step(bindings.work);
@@ -39,6 +40,14 @@ class ForestBuilder {
     }
     Admit(call_plan->allocated_bytes, 1); Step(call_plan->work);
     forest_.calls = std::move(*call_plan);
+    Require(forest_.bindings.symbols.size() <= std::numeric_limits<std::uint32_t>::max() &&
+        modules_.size() <= std::numeric_limits<std::uint32_t>::max() - forest_.bindings.symbols.size(), Error::kResourceLimit);
+    Reserve(module_order_, modules_.size());
+    for (std::size_t i = 0; i < modules_.size(); ++i) { Step(); module_order_.push_back(i); }
+    std::sort(module_order_.begin(), module_order_.end(), [&](auto a, auto b) { Step(); return modules_[a] < modules_[b]; });
+    for (std::size_t i = 1; i < module_order_.size(); ++i) {
+      Step(); Require(modules_[module_order_[i - 1]] != modules_[module_order_[i]], Error::kBinding);
+    }
     // Largest admitted lowering is TrueOrNonzeroNumber: three leaf reads,
     // three comparisons/type tests and two logical nodes. Reserve a generous
     // fixed per-op bound; each input use additionally needs at most one leaf.
@@ -118,6 +127,23 @@ class ForestBuilder {
       const TreeOriginId origin{op.origin.value};
       if (evaluation_.operations[i].kind == EvaluationKind::kInitializer) continue;
       if (evaluation_.operations[i].kind == EvaluationKind::kEnvironment) continue;
+      if (evaluation_.operations[i].kind == EvaluationKind::kModuleGuard) continue;
+      if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) {
+        Require(next_module_ < evaluation_.modules.size(), Error::kBinding);
+        const auto& module = evaluation_.modules[next_module_++];
+        Require(module.pair.read.value == i, Error::kBinding);
+        const auto found = std::lower_bound(module_order_.begin(), module_order_.end(), module.target,
+            [&](auto index, auto target) { Step(); return modules_[index] < target; });
+        Require(found != module_order_.end() && modules_[*found] == module.target, Error::kBinding);
+        // FunctionTree appends module aliases in this supplied order after the
+        // shared IR bindings. This is a source SymbolId, never an ABC slot.
+        const SymbolId symbol{static_cast<std::uint32_t>(forest_.bindings.symbols.size() + *found)};
+        const auto expression = Combine(Add(SymbolExpr{symbol}, origin),
+            {graph_.ops[module.pair.guard.value].origin.value});
+        forest_.operations[i] = expression;
+        forest_.operations[module.pair.guard.value] = expression;
+        continue;
+      }
       if (objects_[i]) {
         forest_.operations[i] = Object(evaluation_.literals->objects[*objects_[i]], origin);
         continue;
@@ -135,6 +161,7 @@ class ForestBuilder {
       forest_.operations[i] = Lower({static_cast<std::uint32_t>(i)}, op, operands, origin, constants_.operations[i]);
     }
     Require(next_function_ == evaluation_.functions.size(), Error::kOwnership);
+    Require(next_module_ == evaluation_.modules.size(), Error::kOwnership);
     EdgeAssignments();
     forest_.allocated_bytes = budget_.bytes - bytes_;
     forest_.work = budget_.work - work_;
@@ -459,13 +486,16 @@ class ForestBuilder {
   ExpressionForest forest_;
   std::vector<std::optional<std::size_t>> objects_;
   std::size_t next_function_ = 0;
+  std::span<const ModuleSymbol> modules_;
+  std::vector<std::size_t> module_order_;
+  std::size_t next_module_ = 0;
 };
 }  // namespace
 
 std::variant<ExpressionForest, ExpressionError> BuildExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner,
-    ExpressionConstants constants, analysis::SemanticBudget budget) {
+    ExpressionConstants constants, analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules) {
   auto bindings = BuildBindingPlan(graph, evaluation, parameter_count, budget);
   if (const auto* error = std::get_if<BindingError>(&bindings)) {
     if (*error == BindingError::kResourceLimit) return Error::kResourceLimit;
@@ -474,7 +504,7 @@ std::variant<ExpressionForest, ExpressionError> BuildExpressionForest(
   }
   try {
     return ForestBuilder(graph, evaluation, owner, constants, budget,
-                         std::get<BindingPlan>(std::move(bindings))).Build();
+                         std::get<BindingPlan>(std::move(bindings)), modules).Build();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

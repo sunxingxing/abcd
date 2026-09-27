@@ -61,9 +61,12 @@ class TreeBuilder {
       throw Error::kControl;
     }
     Step(std::get<std::uint64_t>(control));
+    std::vector<ModuleSymbol> modules;
+    Grow(modules, syntax_.modules.size());
+    for (const auto& alias : syntax_.modules) { Step(); modules.push_back(alias.target); }
     auto expressions = BuildExpressionForest(graph_, evaluation_,
         static_cast<std::uint32_t>(syntax_.parameters.size()), syntax_.owner,
-        constants_, {bytes_, work_});
+        constants_, {bytes_, work_}, modules);
     if (const auto* error = std::get_if<ExpressionError>(&expressions)) {
       if (*error == ExpressionError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == ExpressionError::kWorkLimit) throw Error::kWorkLimit;
@@ -442,6 +445,11 @@ class TreeBuilder {
       if (evaluation.kind == EvaluationKind::kInitializer) {
         Require(forest_.initializers[id.value].has_value(), Error::kOwnership);
         tree_.operations.push_back({id, *forest_.initializers[id.value]});
+        continue;
+      }
+      if (evaluation.kind == EvaluationKind::kModuleGuard) {
+        Require(expression.has_value(), Error::kOwnership);
+        tree_.operations.push_back({id, *expression});
         continue;
       }
       if (std::holds_alternative<analysis::ValueJump>(op.operation)) {

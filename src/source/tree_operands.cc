@@ -22,6 +22,17 @@ class OperandCheck {
       RequireMeaning(constants_.number_type_text->value < constants_.text_count &&
                      tree_.texts[constants_.number_type_text->value] == u"number", Error::kConstant);
     std::size_t next_function = 0;
+    std::size_t next_module = 0;
+    std::vector<std::optional<std::size_t>> module_aliases;
+    if (!evaluation_.modules.empty()) {
+      budget_.Array(module_aliases, tree_.symbols.size());
+      for (std::size_t i = 0; i < tree_.modules.size(); ++i) {
+        budget_.Step();
+        const auto symbol = tree_.modules[i].symbol;
+        RequireMeaning(symbol.value < module_aliases.size() && !module_aliases[symbol.value], Error::kOperand);
+        module_aliases[symbol.value] = i;
+      }
+    }
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto& op = graph_.ops[i];
@@ -47,6 +58,17 @@ class OperandCheck {
           const auto& binary = Node<BinaryExpr>(expression);
           RequireMeaning(binary.operation == operation.op, Error::kOperator);
           Input(input(0), binary.left); Input(input(1), binary.right);
+        } else if constexpr (std::is_same_v<T, analysis::ValueModuleRead>) {
+          RequireMeaning(next_module < evaluation_.modules.size(), Error::kOperand);
+          const auto& module = evaluation_.modules[next_module++];
+          const auto symbol = Node<SymbolExpr>(expression).symbol;
+          RequireMeaning(module.pair.read == current_ && module.read == operation &&
+              symbol.value < module_aliases.size() && module_aliases[symbol.value] &&
+              tree_.modules[*module_aliases[symbol.value]].target == module.target, Error::kOperand);
+        } else if constexpr (std::is_same_v<T, analysis::ValueGuard>) {
+          // Flow independently proved this placement is the checked read's
+          // same expression; combined-origin checking covers both original PCs.
+          RequireMeaning(evaluation_.operations[i].kind == EvaluationKind::kModuleGuard, Error::kUnsupportedOperation);
         } else if constexpr (std::is_same_v<T, analysis::ValueLexicalLoad>) {
           RequireMeaning(Node<SymbolExpr>(expression).symbol == CellSymbol(), Error::kOperand);
         } else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>) {
@@ -141,9 +163,7 @@ class OperandCheck {
                 tree_.closure_captures[created.captures.first + c] == *flow_.cells[cell.value], Error::kOperand);
           }
         } else {
-          static_assert(std::is_same_v<T, analysis::ValueGuard> ||
-                        std::is_same_v<T, analysis::ValueModuleRead> ||
-                        std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
+          static_assert(std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueJump>);
           throw Error::kUnsupportedOperation;
@@ -151,6 +171,7 @@ class OperandCheck {
       }, op.operation);
     }
     RequireMeaning(next_function == evaluation_.functions.size(), Error::kOperand);
+    RequireMeaning(next_module == evaluation_.modules.size(), Error::kOperand);
     CopyInputs();
   }
 

@@ -53,10 +53,12 @@ enum class ExpressionError : std::uint8_t {
 // once, in operation order, without recursion or sharing effectful expressions.
 // Output is NOT a frozen/publication-ready tree; scope/control/source proofs
 // still have to be checked after statement assembly.
+// Module symbols are the caller's conditional alias order. Their local SymbolIds
+// append after bindings.symbols; FunctionTree must retain that exact order.
 [[nodiscard]] std::variant<ExpressionForest, ExpressionError>
 BuildExpressionForest(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, std::uint32_t parameter_count,
     FunctionOwnerId owner, ExpressionConstants constants,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {}, std::span<const ModuleSymbol> modules = {});
 }  // namespace abcd::source
 #endif

@@ -1,7 +1,11 @@
 #include "../../../src/source/function_values.h"
 #include "../../../src/source/evaluation_plan.h"
 #include "../../../src/source/module_evaluation.h"
+#include "../../../src/source/function_tree.h"
+#include "../../../src/source/tree_semantics.h"
 #include "analysis/ssa_fixture.h"
+
+#include <algorithm>
 
 namespace {
 using namespace abcd;
@@ -49,12 +53,53 @@ void Run(std::uint32_t count, bool external) {
     test::Check(plan.operations[module.pair.guard.value].kind == EvaluationKind::kModuleGuard);
     test::Check(!plan.operations[module.pair.guard.value].temporary);
   }
+  FunctionSyntax syntax{};
+  syntax.identity = identity; syntax.method = {300}; syntax.owner = {1};
+  syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  syntax.parameters.resize(frame.parameters);
+  if (count) {
+    syntax.names.push_back(u"moduleValue");
+    syntax.modules.push_back({{{7}, {0}}, {0}, ModuleAccess::kReadOnly, NameEvidence::kSynthesized});
+  }
+  const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+  std::vector<ExpressionConstant> operations(graph.ops.size());
+  const ExpressionConstants constants{operations, syntax.names.size(), 0};
+  const auto tree = std::get<ConstructedFunction>(BuildFunctionTree(graph, control, plan, syntax, constants)).tree;
+  test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, plan, tree, constants)));
+  const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, plan, tree));
+  for (const auto& module : modules) {
+    const auto read = module.pair.read.value, guard = module.pair.guard.value;
+    test::Check(flow.expressions[read] && flow.expressions[read] == flow.expressions[guard] && !flow.statements[guard]);
+    const auto expression = *flow.expressions[read];
+    test::Check(std::get<SymbolExpr>(tree.expressions[expression.value].expression).symbol == tree.modules[0].symbol);
+    const auto combined = std::get<CombinedOrigin>(tree.origins[tree.expressions[expression.value].origin.value]);
+    test::Check(combined.part_count == 2 && tree.origin_parts[combined.first_part].value == graph.ops[read].origin.value &&
+        tree.origin_parts[combined.first_part + 1].value == graph.ops[guard].origin.value);
+    test::Check(flow.snapshots[read].has_value() == (read == modules.back().pair.read.value));
+  }
   SemanticBudget budget;
   budget.work = std::get<std::uint64_t>(checked);
   test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, plan, budget)));
   --budget.work;
   test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, plan, budget)) == EvaluationError::kWorkLimit);
   if (!count) return;
+  const auto reject_tree = [&](const FunctionTree& candidate) {
+    test::Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, plan, candidate, constants)));
+  };
+  auto changed_tree = tree;
+  ++changed_tree.modules[0].target.symbol.value; reject_tree(changed_tree);
+  changed_tree = tree;
+  const auto expression = *flow.expressions[modules[0].pair.read.value];
+  changed_tree.expressions[expression.value].expression = GlobalNameExpr{{0}}; reject_tree(changed_tree);
+  changed_tree = tree;
+  const auto combined = std::get<CombinedOrigin>(tree.origins[tree.expressions[expression.value].origin.value]);
+  changed_tree.origin_parts[combined.first_part + 1] = changed_tree.origin_parts[combined.first_part];
+  reject_tree(changed_tree);
+  changed_tree = tree;
+  // Dropping the guard's placement loses its PC even if the read stays valid.
+  changed_tree.operations.erase(std::remove_if(changed_tree.operations.begin(), changed_tree.operations.end(),
+      [&](const auto& placement) { return placement.operation == modules[0].pair.guard; }), changed_tree.operations.end());
+  reject_tree(changed_tree);
   auto changed = plan;
   changed.modules.clear();
   test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, changed)));

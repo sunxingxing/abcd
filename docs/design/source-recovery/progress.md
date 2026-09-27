@@ -759,6 +759,36 @@ regression sources are uncompiled/unrun, and no generated JS or RSS ran.
 Module expressions, statement placement, combined origins and record binding
 remain open; neither P3 nor T07/T11 is declared complete.
 
+### T07/P3 Module Pairs Through Shared AST
+
+Conditional guarded module reads now construct ordinary SymbolExpr nodes
+referencing typed module aliases. Indexed source-target lookup preserves alias
+identity without runtime slots or textual semantic tags in executable nodes.
+Each read occurrence owns its own expression. Its load/guard operation placements
+share that expression and retain both PCs through the existing CombinedOrigin
+model; the guard produces no second statement or evaluation. Real uses keep
+the previously planned snapshot, including across intervening calls.
+
+TreeFlow checks actual paired expression identity and statement ordering. Tree
+operand verification recovers the actual module alias from the AST symbol and
+matches its target; origin verification covers both original instruction sites.
+No new printer or PC reconstruction pass was added. Regression source now
+constructs the whole conditional evaluation/AST chain and mutates target,
+global-name substitution, guard placement and origin coverage. Tests remain
+uncompiled/unrun; no generated JS or RSS work ran.
+
+Production-only `abc_semantic` and `abc_structure` builds exited 0. ABC-only
+inspection of P3 method 7366 still reports 85 operations, one guarded pair and
+one metadata-resolved read, with executable/source_complete false (exit 1).
+G2 method 7559 retains its printed complete method segment [2638,2924), rules
+23, inside an incomplete record (exit 1). These inspections do not exercise
+the new conditional AST path and are not regression-test acceptance.
+
+This is conditional IR-to-AST support, not executable module publication: actual
+record symbol/name/TDZ binding and enclosing ownership proofs remain open, and
+the publication wrapper/printer continue to refuse module contexts. Rules stay
+23. P3 and the wider T00-T12 goal are not complete.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,
