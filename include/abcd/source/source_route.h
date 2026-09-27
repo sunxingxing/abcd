@@ -220,7 +220,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // receipts, fresh destination checks and all-instruction source dispositions.
 // Rules 25 retain callable-occurrence input ownership and explicit initialized
 // frame-receiver premises, with debugger statements in the common source tree.
-inline constexpr std::uint32_t kRouteEvidenceRules = 25;
+// Rules 26 admit independent frame-function reads through value import, while
+// source publication remains closed pending an immutable self-binding proof.
+inline constexpr std::uint32_t kRouteEvidenceRules = 26;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

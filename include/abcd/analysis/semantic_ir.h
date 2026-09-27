@@ -89,6 +89,9 @@ struct GlobalObjectLoad {};
 // Reads VM frame.thisObj, not the writable optional ABI register copy. Derived
 // construction can expose Hole here; source use needs callable-owner evidence.
 struct FrameThisLoad {};
+// Pinned LDFUNCTION/GetFunction reads InterpretedFrame::function, not its
+// writable optional ABI register copy. Source use needs a self-binding proof.
+struct FrameFunctionLoad {};
 struct AwaitValue {
   ScalarValue input;
   AwaitRegion origin;
@@ -108,7 +111,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        BufferedArrayCreation, AwaitValue,
                                        ThrowOperation, SuperRange, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
-                                       FrameThisLoad>;
+                                       FrameThisLoad, FrameFunctionLoad>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

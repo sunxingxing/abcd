@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 25。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 26。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,6 +42,17 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- LDFUNCTION 已接入公共 FrameFunctionLoad -> ValueFrameFunction：按 pinned
+  GetFunction 读取独立 frame.function，无寄存器输入，只写 acc，正常结果为
+  Defined 语言值；不把可写 ABI function 副本或函数名称当作运行时身份。
+  三个 profile 验证无 ABI slot、覆盖副本、malformed 操作数及 IR 身份篡改；
+  先观察到缺少语义提升的失败，再实现并通过。self scope 尚未接线，源码求值
+  与 AST 仍明确拒绝该操作，六个文件级直接/回调变体验证不误发 Complete。
+  `value_import_test`、`constant_group_test`、`evaluation_plan_test`、
+  `source_route_test` 共 4/4 通过；对应目标及 `abc_semantic` 构建成功。
+  规则版本 26；未运行 RSS/基准/全语料或 Ark VM 差分。本项不计为 LDFUNCTION
+  源码完成；后续 self scope、创建点身份、名称/遮蔽、统一 printer 和端到端执行
+  验收顺序已写入 [第一组设计](constant-group.md#current-function-identity)。
 - LDTHIS 已对初始化的普通 callable owner 贯通 FrameThisLoad、值域证明、
   ValueFrameThis、ThisExpr、独立语义/ABI 检查与统一 printer；不依赖可写 ABI
   receiver 副本。FrameReceiver 前提随输入证明保存，发布时复核 owner；无 owner、

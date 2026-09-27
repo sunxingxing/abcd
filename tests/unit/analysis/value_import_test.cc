@@ -8,6 +8,62 @@ int main() {
   using namespace abcd;
   using namespace abcd::analysis;
   {
+    const auto code = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDFUNCTION),
+        static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
+    for (const auto profile : {abc::ProfileId::kDynamic1202,
+        abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+      const auto built = BuildSemanticMethod(code, profile, 0);
+      test::Check(std::holds_alternative<SemanticMethod>(built));
+      const auto& method = std::get<SemanticMethod>(built);
+      const auto& load = method.instructions.front();
+      test::Check(std::holds_alternative<FrameFunctionLoad>(load.operation));
+      test::Check(load.effects.normal_registers.read_count == 0 &&
+          load.effects.normal_registers.write &&
+          std::holds_alternative<Accumulator>(*load.effects.normal_registers.write));
+      test::Check(load.effects.normal == LanguageEffect::kNone &&
+          load.effects.exceptional == ExceptionalCompletion::kImpossible);
+      const auto checked = VerifySemanticSource(code, method, 0, 0);
+      test::Check(std::holds_alternative<SemanticProof>(checked));
+      const auto frame = std::get<abc::FrameLayout>(
+          abc::BuildFrameLayout(0, 0, {false, false, false, false}));
+      const auto imported = ImportNormalValues(code, method, std::get<SemanticProof>(checked), frame);
+      test::Check(std::holds_alternative<ValueProgram>(imported));
+      auto graph = std::get<ValueProgram>(imported);
+      test::Check(std::holds_alternative<ValueFrameFunction>(graph.ops.front().operation));
+      test::Check(graph.ops.front().use_count == 0 && graph.ops.front().result);
+      test::Check(graph.values[graph.ops.front().result->value].domain == ValueKinds::Defined());
+      test::Check(!VerifyImportedValues(graph, method, std::get<SemanticProof>(checked), frame));
+      test::Check(!CanErasePureOp(graph.ops.front()));
+      graph.ops.front().operation = ValueFrameThis{};
+      test::Check(VerifyImportedValues(graph, method, std::get<SemanticProof>(checked), frame)->kind ==
+          ValueImportError::kInputMismatch);
+      auto malformed = code.instructions.front();
+      malformed.decoded.operand_count = 1;
+      test::Check(std::get<SemanticFailure>(LiftSemanticInstruction(malformed, profile, 0)).kind ==
+          SemanticError::kMalformedInstruction);
+
+      // Mutating the ABI function copy must not change the independent frame
+      // function or make it depend on an undefined register in the SSA graph.
+      const auto abi = std::get<abc::FrameLayout>(
+          abc::BuildFrameLayout(0, 1, {.function_slot = true}));
+      test::Check(abi.function.has_value());
+      const auto overwritten = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDNULL),
+          static_cast<std::uint8_t>(abc::Opcode::kSTA_V8),
+          static_cast<std::uint8_t>(abi.function->value),
+          static_cast<std::uint8_t>(abc::Opcode::kLDFUNCTION),
+          static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
+      const auto lifted = BuildSemanticMethod(overwritten, profile, abi.registers);
+      const auto& input = std::get<SemanticMethod>(lifted);
+      const auto validated = VerifySemanticSource(overwritten, input, abi.registers, abi.locals);
+      const auto values = ImportNormalValues(overwritten, input, std::get<SemanticProof>(validated), abi);
+      const auto& independent = std::get<ValueProgram>(values);
+      test::Check(std::holds_alternative<ValueFrameFunction>(independent.ops[2].operation));
+      test::Check(independent.ops[2].use_count == 0 && independent.ops[2].result);
+      test::Check(independent.values[independent.ops[2].result->value].domain == ValueKinds::Defined());
+      test::Check(!VerifyImportedValues(independent, input, std::get<SemanticProof>(validated), abi));
+    }
+  }
+  {
     const auto code = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDTHIS),
         static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
     const auto built = BuildSemanticMethod(code, abc::ProfileId::kDynamic1206, 0);

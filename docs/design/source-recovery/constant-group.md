@@ -58,6 +58,50 @@ inspection UI or bytecode-register reconstruction has been implemented.
 
 ## Remaining Group Work
 
+### Current Function Identity
+
+LDFUNCTION now lifts to FrameFunctionLoad and imports as ValueFrameFunction.
+The pinned interpreter handler at interpreter-inl.cpp:3267 invokes GetFunction;
+the implementation at :7982 reads InterpretedFrame::function. It neither reads
+the optional ABI function register nor resolves a source name. The result is a
+defined language value, writes only acc and has no ordinary JS abrupt effect.
+Three-profile tests cover absent ABI slots, overwritten ABI copies, malformed
+operands and mutated IR correspondence. This is an IR prerequisite, not source
+completion: evaluation and source publication still reject the operation.
+
+The remaining implementation must use the shared callable pipeline:
+
+1. Introduce an explicit self-binding scope outside the parameter scope and
+   inside enclosing capture/module scopes. A self binding is initialized by
+   function creation, is immutable, and is not a body let declaration. Preserve
+   this distinction in TreeScopeCheck, TreeFlow and ABI census. Parameter and
+   body shadowing must not silently change a frame-function reference.
+2. Resolve each self reference against the actual FunctionOwnerId and creation
+   occurrence, not a method name or offset alone. Verify the value-to-symbol
+   correspondence independently; track frame reads separately from ABI copies.
+   Captured self references use the existing family capture ownership checks.
+3. Named-function expression syntax can provide an immutable binding only when
+   its identifier is legal, preserves the proven runtime function name and
+   does not capture a global lookup or get shadowed by parameters/locals.
+   Never simply print the metadata name for LDFUNCTION. Invalid/empty names,
+   shadowing, arrows and methods require a separately verified creation-owned
+   binding representation preserving callable kind, name and identity. These
+   remain required cases, not permission to narrow the overall ISA goal.
+4. Extend the unified printer and provenance tables from the verified AST.
+   Do not use arguments.callee, mutable object-property lookup, a global name,
+   source-text rewriting, or an extra ad hoc body writer as a substitute.
+5. End-to-end acceptance: the same encoded function traverses import, SSA,
+   evaluation, scoped AST, verification and printing; Node checks self-return,
+   recursive/reentrant calls, normal and throwing callbacks, overwritten ABI
+   slots, renamed/rebound outer variables, changed function.name, distinct
+   creation activations, nested captures and PC-to-expression positions.
+   Include shadowing and mismatched-owner mutation failures. Retain profile
+   separation and distinguish Node source checks from Ark VM differential tests.
+
+Scope/name indexes and owner lookup must remain bounded O(N log N) or better;
+do not scan all symbols for every self read. Charge new scope, binding and
+provenance storage to the existing method/family budgets.
+
 ### Frame Receiver Dependency
 
 LDTHIS lifts to FrameThisLoad with an accumulator definition and no

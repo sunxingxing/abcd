@@ -136,6 +136,7 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   if (expected == ExpectedSource::kRejected) {
     // Internal markers cannot escape to JS. A raw arrow LDTHIS also lacks the
     // distinct lexical-owner proof needed to replace it by a source this.
+    // LDFUNCTION has a value IR read but still needs a verified self binding.
     test::Check(std::holds_alternative<FamilyPrepareFailure>(prepared));
     test::Check(unlink(path) == 0);
     return;
@@ -202,4 +203,7 @@ int main() {
   for (const auto profile : kProfiles)
     Emit(profile, abc::Opcode::kLDTHIS, false, ExpectedSource::kRejected,
         false, false, abc::FunctionKind::kArrow);
+  for (const auto profile : kProfiles)
+    for (const bool callback : {false, true})
+      Emit(profile, abc::Opcode::kLDFUNCTION, callback, ExpectedSource::kRejected);
 }
