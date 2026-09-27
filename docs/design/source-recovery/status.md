@@ -29,6 +29,15 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 函数族作用域检查新增模块引用：模块 scope 中的 alias 不再能掩盖父函数局部变量
+  或其 TDZ；仍按实际创建位置区分祖先与兄弟 block。跨成员核对 typed 模块目标与
+  名字的一致性，使用排序索引和 Euler 区间，无逐引用祖先扫描，不改变 CFG。
+  这只是作用域证明；destination 对缺失模块执行上下文显式拒绝，发布 guard 保留。
+  生产双目标构建退出 0；ABC-only 7449 四成员草稿仍为 1434 字节，Immersive
+  21082 草稿仍为 160 字节，7477 record 片段仍能生成。新增规格未编译、未运行。
+  已核对干净的 pinned v7 runtime 模块读取路径。7089 的本地导出 `PageA` 与
+  record 实际 `$local0` 绑定、原存储点处的 `let` 初始化需要连接，不能照抄 metadata
+  名字。具体下一步见 [模块别名作用域与发布边界](family-enclosure.md)。
 - 普通函数创建点已接入真实 record 装配：`FunctionCreationSelection` 按 caller/PC
   选择，同一调用不能同时选择类方法；输出必须保留对应函数族片段，否则整次拒绝。
   适配层复核实际创建操作数、借用 record 的完整绑定上下文，不新增 body writer，

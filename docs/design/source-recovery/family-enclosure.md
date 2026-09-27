@@ -65,8 +65,8 @@ This destination check must be repeated when embedding under a different
 enclosure. It does not retain borrowed scope pointers or grant a transferable
 publication certificate. The diagnostic family builder still deliberately calls
 the internal-only check: there is no inferred record scope or silent promotion
-of its draft. Wiring the destination check into an immutable publication owner
-and proving strict/module execution remain required next steps.
+of its draft. `PreparedFamily` now uses destination checks at preparation and
+printing; proving module execution remains a separate unfinished obligation.
 
 Tests are isolated in `tests/unit/source/family_enclosure_test.cc`, including
 same-function/ancestor shadowing, sibling block exclusion, creation inside a
@@ -76,3 +76,58 @@ the user's testing pause is in force.
 Destination specifications additionally cover missing context, all external
 binding categories, reserved names, destination changes, no-global families,
 sibling-block exclusion and exact work limits. These are also uncompiled/unrun.
+
+## Module Alias Scope
+
+Module-scope symbols inside each function tree are aliases to a record binding,
+not new declarations at the child creation site. Treating the synthetic scope
+as a real inner declaration would incorrectly hide a same-named parent local.
+The checker now validates module `SymbolExpr` reads against actual non-module
+lexical intervals, including parent TDZ and creation inside blocks. A sibling
+block remains irrelevant. It does not rename symbols or alter the CFG.
+
+All module aliases in the family must agree on the mapping between spelling and
+`ModuleSymbol` (module owner plus canonical slot symbol). Equal spelling cannot
+stand for distinct targets; one target cannot silently change spelling across
+members. Two sorted indexes check these conditions without pairwise comparisons.
+An additional interval index excludes only module aliases. Global reads retain
+their original all-binding shadow check. Families without module aliases do not
+allocate or sort the additional local-binding index.
+
+For M aliases and R module reads the added work is O(M log M + B log B + R log B),
+with compared name lengths charged explicitly; storage remains linear. Scratch
+and sorting share the existing decreasing memory/work budget. Deep nesting does
+not introduce per-read ancestor walks. New specifications cover parent and TDZ
+collisions, siblings, consistent repeated aliases, both target/name mismatches,
+200/201/geometric sizes and exact work exhaustion. They have not been run.
+
+`module_reads` counts checked reads only. `VerifyFamilyDestination` currently
+refuses them with `kMissingModuleContext` even if a `GlobalScope` is supplied.
+The existing production factory also retains its module-publication guard.
+Neither a lexical check nor metadata alias rows establish live binding, original
+Hole-guard/TDZ equivalence, cyclic initialization or generated declaration timing.
+
+## Next Publication Boundary
+
+1. Bind every canonical module target to the actual record declaration/import,
+   generated spelling and record identity, not an assumed metadata identifier.
+2. Preserve read/guard pairing and evaluation order. Prove the generated lexical
+   binding has the same initialization boundary; no `let` hoisting to initialized
+   undefined or closure-time snapshots. Track writes and module cycles explicitly.
+3. Check aliases against real declaration names and enclosing scope, then carry
+   owned binding evidence through preparation and recheck it on embedding.
+4. Admit only proved binding kinds. External native/CJS/lazy/shared/hot-reload
+   resolution must not inherit a local-export proof or an invented loader contract.
+
+Pinned runtime reference was inspected at clean commit
+`f04900cf951c66c2ea18b2bab5b591d5336c34b9` (release lock):
+`ecmascript/module/module_value_accessor.cpp`, `GetModuleValueInner`,
+`GetModuleValueOuterInternal`, `GetModuleValueFromIndexBinding` and
+`GetModuleValueFromBinding`. These distinguish local slots from several external
+resolution modes; metadata alone does not classify the latter's execution.
+
+ABC-only 7449 still yields the 1434-byte four-member diagnostic draft after the
+new check; Immersive 21082 remains a 160-byte draft. The 7089 child uses local
+export `PageA`, while current record assembly emits `$local0` and places its
+`let` at the store. Actual alias rebinding and initialization evidence must be
+connected before publishing this family. No new executable coverage is claimed.

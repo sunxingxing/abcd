@@ -13,6 +13,7 @@ namespace {
 using Error = FamilyEnclosureError;
 struct ScopeInterval { std::optional<std::size_t> begin; std::size_t end = 0; };
 struct BindingInterval { std::u16string_view name; std::size_t begin; std::size_t end; };
+struct ModuleName { std::u16string_view name; ModuleSymbol target; FamilyId member; NameId id; };
 struct ScopeCursor { std::size_t scope; std::size_t next; };
 enum class EnclosureExtent : std::uint8_t { kFamily, kDestination };
 class EnclosureCheck {
@@ -26,7 +27,7 @@ class EnclosureCheck {
     Require(count && family_.root.value < count && family_.parents.size() == count, Error::kLayout);
     Require(count <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
     Array(structures_, count); Array(offsets_, count);
-    std::size_t scopes = 0, bindings = 0;
+    std::size_t scopes = 0, bindings = 0, modules = 0;
     for (std::size_t i = 0; i < count; ++i) {
       member_ = FamilyId{static_cast<std::uint32_t>(i)}; Step();
       const auto& tree = family_.members[i].tree;
@@ -43,6 +44,7 @@ class EnclosureCheck {
       structures_[i] = std::move(structure);
       offsets_[i] = scopes;
       Add(scopes, tree.scopes.size()); Add(bindings, tree.symbols.size());
+      Add(modules, tree.modules.size());
     }
     Array(parents_, scopes); Array(intervals_, scopes);
     std::optional<std::size_t> root;
@@ -72,57 +74,99 @@ class EnclosureCheck {
     }
     Require(root.has_value(), Error::kLayout);
     WalkScopes(*root);
-    Array(bindings_, bindings);
-    std::size_t next = 0;
+    Require(modules <= bindings, Error::kStructure);
+    Array(bindings_, bindings); Array(locals_, modules ? bindings - modules : 0); Array(modules_, modules);
+    std::size_t next = 0, local = 0, module = 0;
     for (std::size_t i = 0; i < count; ++i) {
       member_ = FamilyId{static_cast<std::uint32_t>(i)};
       const auto& tree = family_.members[i].tree;
       for (const auto& symbol : tree.symbols) {
         Step(); const auto& interval = intervals_[offsets_[i] + symbol.scope.value];
         bindings_[next++] = {tree.names[symbol.name.value], *interval.begin, interval.end};
+        if (modules && symbol.kind != BindingKind::kModule) locals_[local++] = bindings_[next - 1];
+      }
+      for (const auto& alias : tree.modules) {
+        Step(); const auto& symbol = tree.symbols[alias.symbol.value];
+        modules_[module++] = {tree.names[symbol.name.value], alias.target, member_, symbol.name};
       }
     }
-    std::sort(bindings_.begin(), bindings_.end(), [&](const auto& a, const auto& b) {
-      const auto order = Compare(a.name, b.name);
-      return order < 0 || (order == 0 && a.begin < b.begin);
-    });
-    // In-place union of same-name lexical intervals. Only ancestor overlaps
-    // merge; disjoint sibling blocks remain disjoint. No ancestry per query.
-    next = 0;
-    for (const auto binding : bindings_) {
-      Step();
-      if (next && Compare(bindings_[next - 1].name, binding.name) == 0 &&
-          binding.begin <= bindings_[next - 1].end)
-        bindings_[next - 1].end = std::max(bindings_[next - 1].end, binding.end);
-      else bindings_[next++] = binding;
-    }
-    bindings_.resize(next);
-    std::size_t globals = 0;
+    locals_.resize(local);
+    Merge(bindings_); Merge(locals_); CheckModuleNames();
+    std::size_t globals = 0, module_reads = 0;
     for (std::size_t i = 0; i < count; ++i) {
       member_ = FamilyId{static_cast<std::uint32_t>(i)};
       const auto& tree = family_.members[i].tree;
       for (std::size_t e = 0; e < tree.expressions.size(); ++e) {
-        Step(); const auto* global = std::get_if<GlobalNameExpr>(&tree.expressions[e].expression);
-        if (!global) continue;
-        name_ = global->name; ++globals;
+        Step(); const auto& expression = tree.expressions[e].expression;
+        const auto* global = std::get_if<GlobalNameExpr>(&expression);
+        const auto* reference = std::get_if<SymbolExpr>(&expression);
+        const bool module_read = reference && tree.symbols[reference->symbol.value].kind == BindingKind::kModule;
+        if (!global && !module_read) continue;
+        name_ = global ? global->name : tree.symbols[reference->symbol.value].name;
         const auto point = *intervals_[offsets_[i] + structures_[i].expression_scopes[e].value].begin;
-        const auto name = std::u16string_view{tree.names[global->name.value]};
-        if (extent_ == EnclosureExtent::kDestination) Destination(name);
-        const auto found = std::upper_bound(bindings_.begin(), bindings_.end(), point,
-            [&](std::size_t at, const BindingInterval& binding) {
-              const auto order = Compare(name, binding.name);
-              return order < 0 || (order == 0 && at < binding.begin);
-            });
-        if (found != bindings_.begin()) {
-          const auto& before = *(found - 1);
-          Require(Compare(name, before.name) != 0 || point >= before.end, Error::kShadowedGlobal);
+        const auto name = std::u16string_view{tree.names[name_->value]};
+        if (global) {
+          ++globals;
+          if (extent_ == EnclosureExtent::kDestination) Destination(name);
+          Require(!Shadows(bindings_, name, point), Error::kShadowedGlobal);
+        } else {
+          ++module_reads;
+          // Module-scope symbols are aliases to the record, not declarations
+          // inside this child that could hide a parent local or its TDZ.
+          Require(!Shadows(locals_, name, point), Error::kShadowedModule);
+          if (extent_ == EnclosureExtent::kDestination) Fail(Error::kMissingModuleContext);
         }
         name_.reset();
       }
     }
-    return {globals, initial_.bytes - left_.bytes, initial_.work - left_.work};
+    return {globals, initial_.bytes - left_.bytes, initial_.work - left_.work, module_reads};
   }
  private:
+  void Merge(std::vector<BindingInterval>& bindings) {
+    std::sort(bindings.begin(), bindings.end(), [&](const auto& a, const auto& b) {
+      const auto order = Compare(a.name, b.name);
+      return order < 0 || (order == 0 && a.begin < b.begin);
+    });
+    // In-place union preserves disjoint sibling scopes. Both indexes reuse the
+    // same Euler intervals; no per-reference ancestor walk or scope copying.
+    std::size_t next = 0;
+    for (const auto binding : bindings) {
+      Step();
+      if (next && Compare(bindings[next - 1].name, binding.name) == 0 && binding.begin <= bindings[next - 1].end)
+        bindings[next - 1].end = std::max(bindings[next - 1].end, binding.end);
+      else bindings[next++] = binding;
+    }
+    bindings.resize(next);
+  }
+  bool Shadows(const std::vector<BindingInterval>& bindings, std::u16string_view name, std::size_t point) {
+    const auto found = std::upper_bound(bindings.begin(), bindings.end(), point,
+        [&](std::size_t at, const BindingInterval& binding) {
+          const auto order = Compare(name, binding.name);
+          return order < 0 || (order == 0 && at < binding.begin);
+        });
+    if (found == bindings.begin()) return false;
+    const auto& before = *(found - 1);
+    return Compare(name, before.name) == 0 && point < before.end;
+  }
+  void CheckModuleNames() {
+    std::sort(modules_.begin(), modules_.end(), [&](const auto& a, const auto& b) {
+      Step(); return a.target < b.target;
+    });
+    for (std::size_t i = 1; i < modules_.size(); ++i) {
+      Step(); const auto& a = modules_[i - 1]; const auto& b = modules_[i];
+      member_ = b.member; name_ = b.id;
+      Require(a.target != b.target || Compare(a.name, b.name) == 0, Error::kModuleBinding);
+    }
+    std::sort(modules_.begin(), modules_.end(), [&](const auto& a, const auto& b) {
+      return Compare(a.name, b.name) < 0;
+    });
+    for (std::size_t i = 1; i < modules_.size(); ++i) {
+      Step(); const auto& a = modules_[i - 1]; const auto& b = modules_[i];
+      member_ = b.member; name_ = b.id;
+      Require(Compare(a.name, b.name) != 0 || a.target == b.target, Error::kModuleBinding);
+    }
+    name_.reset();
+  }
   template<class A, class B> bool Less(A a, B b) {
     Step(std::min(a.size(), b.size()) + 1);
     return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), [](auto left, auto right) {
@@ -201,6 +245,8 @@ class EnclosureCheck {
   std::vector<std::optional<std::size_t>> parents_;
   std::vector<ScopeInterval> intervals_;
   std::vector<BindingInterval> bindings_;
+  std::vector<BindingInterval> locals_;
+  std::vector<ModuleName> modules_;
 };
 }  // namespace
 std::variant<FamilyEnclosure, FamilyEnclosureFailure> VerifyFamilyEnclosure(

@@ -139,5 +139,61 @@ void DestinationCases() {
   --budget.work;
   Check(std::get<FamilyEnclosureFailure>(VerifyFamilyDestination(family, &empty, budget)).kind == FamilyEnclosureError::kWorkLimit);
 }
+void ModuleAlias(FunctionTree& tree, bool read) {
+  const auto scope = ScopeId{static_cast<std::uint32_t>(tree.scopes.size())};
+  const auto name = NameId{static_cast<std::uint32_t>(tree.names.size())};
+  const auto symbol = SymbolId{static_cast<std::uint32_t>(tree.symbols.size())};
+  tree.scopes.push_back({ScopeKind::kModule, {}});
+  tree.module_scope = scope; tree.scopes[tree.parameter_scope.value].parent = scope;
+  tree.names.emplace_back(u"target");
+  tree.symbols.push_back({scope, name, BindingKind::kModule, DeclarationKind::kConst, NameEvidence::kMetadata, {}});
+  tree.modules.push_back({symbol, {{0}, {0}}, ModuleAccess::kReadOnly});
+  if (read) tree.expressions[0].expression = SymbolExpr{symbol};
+}
+void ModuleScopes() {
+  auto family = Chain(2);
+  ModuleAlias(family.members[1].tree, true);
+  auto checked = std::get<FamilyEnclosure>(VerifyFamilyEnclosure(family));
+  Check(checked.module_reads == 1 && checked.global_reads == 0);
+  const GlobalScope empty{};
+  // A lexical check is not a record binding or TDZ execution certificate.
+  Check(std::get<FamilyEnclosureFailure>(VerifyFamilyDestination(family, &empty)).kind ==
+      FamilyEnclosureError::kMissingModuleContext);
+  auto& root = family.members[0].tree;
+  Local(root, {1});
+  root.statements[0].statement = BlockStmt{{1}, 0, 2}; root.children = {{2}, {1}};
+  Expect(family, FamilyEnclosureError::kShadowedModule);
+  root.children = {{1}, {2}};
+  Expect(family, FamilyEnclosureError::kShadowedModule); // Parent TDZ before declaration.
+  root.scopes.push_back({ScopeKind::kBlock, ScopeId{1}}); root.symbols[0].scope = {2};
+  root.statements.push_back({BlockStmt{{2}, 2, 1}, {0}}); root.children = {{3}, {1}, {2}};
+  Check(std::get<FamilyEnclosure>(VerifyFamilyEnclosure(family)).module_reads == 1);
+  root.statements[0].statement = BlockStmt{{1}, 0, 1};
+  root.statements[3].statement = BlockStmt{{2}, 1, 2}; root.children = {{3}, {2}, {1}};
+  Expect(family, FamilyEnclosureError::kShadowedModule);
+  family = Chain(3);
+  for (std::size_t i = 0; i < family.members.size(); ++i)
+    ModuleAlias(family.members[i].tree, i + 1 == family.members.size());
+  Check(std::get<FamilyEnclosure>(VerifyFamilyEnclosure(family)).module_reads == 1);
+  auto changed = family;
+  changed.members[0].tree.modules[0].target.symbol = {1};
+  Expect(changed, FamilyEnclosureError::kModuleBinding); // Same name, different slot.
+  changed = family;
+  changed.members[0].tree.names.back() = u"other";
+  Expect(changed, FamilyEnclosureError::kModuleBinding); // Same slot, different name.
+  std::uint64_t previous = 0;
+  for (const auto count : {200U, 201U, 402U, 804U}) {
+    auto nested = Chain(count);
+    for (std::size_t i = 0; i < nested.members.size(); ++i)
+      ModuleAlias(nested.members[i].tree, i + 1 == nested.members.size());
+    checked = std::get<FamilyEnclosure>(VerifyFamilyEnclosure(nested));
+    Check(checked.module_reads == 1 && (!previous || checked.work < previous * 3));
+    previous = checked.work;
+    analysis::SemanticBudget budget; budget.work = checked.work;
+    Check(std::holds_alternative<FamilyEnclosure>(VerifyFamilyEnclosure(nested, budget)));
+    --budget.work;
+    Check(std::get<FamilyEnclosureFailure>(VerifyFamilyEnclosure(nested, budget)).kind == FamilyEnclosureError::kWorkLimit);
+  }
+}
 }  // namespace
-int main() { ScopeCases(); Bounds(); DestinationCases(); }
+int main() { ScopeCases(); Bounds(); DestinationCases(); ModuleScopes(); }
