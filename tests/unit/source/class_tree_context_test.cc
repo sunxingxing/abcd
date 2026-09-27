@@ -34,7 +34,7 @@ static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);
 void Check(bool condition) { if (!condition) std::abort(); }
 enum class DefaultEncoding { kNone, kInteger, kNegation };
-enum class ExceptionShape { kNone, kBranch, kModule, kForwarder };
+enum class ExceptionShape { kNone, kBranch, kModule, kForwarder, kDeadCopies };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
          ExceptionShape exception = ExceptionShape::kNone) {
@@ -127,6 +127,22 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
         op(abc::Opcode::kCALLARG0_IMM8), 0, op(abc::Opcode::kJEQZ_IMM8), kBranchDelta,
         op(abc::Opcode::kLDTRUE), kReturn, op(abc::Opcode::kLDFALSE), kReturn, kReturn,
         0, kProtectedBytes, kSingleTry, kCatchAll, kProtectedBytes, 1};
+    if (exception == ExceptionShape::kDeadCopies) {
+      // Unused callable/new-target copies precede the real branch/call/catch.
+      // Keep ABI entries real: these cannot be printed as undefined locals.
+      constexpr std::uint8_t kLocals = 2, kCallable = 2, kNewTarget = 3,
+          kFirstLocal = 0, kSecondLocal = 1, kPrologueBytes = 9;
+      member[0] = kLocals;
+      member[kHeaderBytes + 1] = kParameter + kLocals;
+      member.insert(member.begin() + kHeaderBytes, {
+          op(abc::Opcode::kMOV_V8_V8), kFirstLocal, kCallable,
+          op(abc::Opcode::kMOV_V8_V8), kSecondLocal, kNewTarget,
+          op(abc::Opcode::kMOV_V8_V8), kFirstLocal, kFirstLocal});
+      member[kCodeSizeOffset] += kPrologueBytes;
+      const auto table = kHeaderBytes + member[kCodeSizeOffset];
+      member[table + 1] += kPrologueBytes;
+      member[table + 4] += kPrologueBytes;
+    }
     if (exception == ExceptionShape::kModule) {
       constexpr std::uint8_t kModuleBodyBytes = 8, kModuleProtectedBytes = 7, kModuleSlot = 0;
       constexpr auto kGuard = abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16;
@@ -506,6 +522,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--dead-copies-json") {
+    Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kDeadCopies);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--forwarder-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kForwarder);
     return 0;
@@ -520,6 +540,7 @@ int main(int argc, char** argv) {
     return 0;
   }
   Check(argc == 1);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kDeadCopies);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kModule);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kForwarder);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kBranch);

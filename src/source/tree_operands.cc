@@ -36,7 +36,8 @@ class OperandCheck {
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto& op = graph_.ops[i];
-      if (op.life != analysis::ValueLife::kLive) continue;
+      if (op.life != analysis::ValueLife::kLive ||
+          evaluation_.operations[i].kind == EvaluationKind::kElidedPure) continue;
       current_ = {static_cast<std::uint32_t>(i)};
       origin_ = {op.origin.value};
       if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation)) continue;

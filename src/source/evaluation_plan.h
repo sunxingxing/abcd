@@ -10,7 +10,9 @@
 #include "module_guards.h"
 
 namespace abcd::source {
-enum class EvaluationKind : std::uint8_t { kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard };
+enum class EvaluationKind : std::uint8_t {
+  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure
+};
 enum class EvaluationFlow : std::uint8_t { kNormal, kPhased };
 struct OpEvaluation {
   EvaluationKind kind = EvaluationKind::kRemoved;

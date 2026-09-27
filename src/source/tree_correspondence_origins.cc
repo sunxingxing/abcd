@@ -10,7 +10,7 @@ bool SameSite(const Origin& tree, const analysis::ValueOrigin& input) {
 }  // namespace
 
 void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
-    const FunctionTree& tree, const TreeFlow& flow, TreeCheckBudget& budget) {
+    const EvaluationPlan& evaluation, const FunctionTree& tree, const TreeFlow& flow, TreeCheckBudget& budget) {
   RequireMeaning(tree.origins.size() >= graph.origins.size(), Error::kOrigin);
   for (std::size_t i = 0; i < graph.origins.size(); ++i) {
     budget.Step();
@@ -85,7 +85,8 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step();
     const auto& op = graph.ops[i];
-    if (op.life != analysis::ValueLife::kLive) continue;
+    if (op.life != analysis::ValueLife::kLive ||
+        evaluation.operations[i].kind == EvaluationKind::kElidedPure) continue;
     RequireMeaning(op.origin.value < graph.origins.size(), Error::kOrigin);
     const TreeOriginId origin{op.origin.value};
     if (flow.statements[i])

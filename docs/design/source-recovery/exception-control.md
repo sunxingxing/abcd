@@ -14,12 +14,44 @@ appended to the shared arena; `VerifyModuleAliasTree` independently checks ident
 and spelling after tree construction. This does not prove record initialization or
 authorize standalone module publication; the existing publication gates remain.
 
-The selected Immersive method 8284 now passes this bound phase/evaluation path but
-fails shared bindings with `kUnsupportedEntry` (an ABI entry still has a copy use).
-Do not bypass this check or infer receiver-call support from that result. The next
-dependency is phase-aware copy/liveness handling with original exception snapshots
-and source origins preserved. Loops, typed finally and resumable protocols remain
-separate unfinished steps of the approved common pipeline.
+The selected Immersive method 8284 now passes this bound phase/evaluation path and
+shared bindings. It fails `CallPlanError::kReference`: the callee still reaches its
+property read through copies. Do not infer receiver-call support from this result.
+The next dependency is verified copy/reference projection with original exception
+snapshots and source origins preserved. Loops, typed finally and resumable protocols
+remain separate unfinished steps of the approved common pipeline.
+
+## Pure Evaluation Elision
+
+Rules 47 add a source projection without editing the imported phase graph. The
+normal pipeline retains its existing verified IR simplification. For phased input,
+`ElidePureEvaluations` marks dependencies backwards from all non-erasable operations
+and all phi inputs. It reuses `CanErasePureOp` from the normal simplifier: only the
+explicit pure-operation allowlist with no normal/pre-throw effects or exceptional
+completion qualifies. Getter/coercion/call/environment/control events are retained.
+
+`kElidedPure` differs from a removed IR operation. Independent evaluation checking
+requires each elision to be pure and every result use to belong to another elision;
+a phi consumer is forbidden. This checks closure locally instead of replaying the
+builder. All phi inputs are conservative roots because existing normal and catch
+copy plans still execute them. Dead phi elimination is not claimed. No CFG edge,
+scope, Before/Commit/Catch node, pending exception or SSA identity is changed.
+
+The shared binding and ABI census ignore only operand reads owned by these freshly
+verified elisions. Actual ABI reads still refuse unsupported callable/new-target
+entries. The source tree emits no expression or declaration for the omitted work,
+but retains one checked original-PC anchor at its lexical statement boundary.
+Flow checking verifies that boundary; the body origin skips the omitted prologue.
+This is not a replacement source writer or a text cleanup pass.
+
+The mark queue visits each operation at most once and each operand a bounded
+number of times: O(I+U) work and O(I) scratch, where I is operation count and U is
+operand occurrences. Independent closure checking is O(I+U) via result-use links.
+The implementation adapts the repo's `value_simplify.cc::MarkLive` strategy without
+copying external code or adding dependencies. Existing phase/tree verification has
+its own separately charged cost; these bounds do not claim the entire pipeline is
+linear. Tests cover 200/201 and geometric chains, precise work exhaustion, retained
+getters/returns, live ABI reads, catch snapshot dependencies and misplaced anchors.
 
 ## Inputs And Output
 

@@ -1,5 +1,6 @@
 #include "evaluation_plan.h"
 #include "evaluation_flow.h"
+#include "evaluation_liveness.h"
 #include "module_evaluation.h"
 
 #include <limits>
@@ -153,6 +154,14 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     std::vector<EffectInterval> groups(graph.ops.size());
     Require(plan.operations.capacity() <= graph.ops.size() && groups.capacity() <= graph.ops.size(),
             Error::kResourceLimit);
+    if (flow == EvaluationFlow::kPhased) {
+      // Normal inputs already use verified IR simplification. Phase inputs
+      // keep exact import correspondence; elide only in the source projection.
+      const auto live = ElidePureEvaluations(graph, plan, {bytes, work});
+      if (const auto* error = std::get_if<Error>(&live)) return *error;
+      const auto cost = std::get<EvaluationLivenessCost>(live);
+      admit(cost.bytes, 1); step(cost.work);
+    }
     std::size_t next_op = 0;
     for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
       step();
@@ -165,7 +174,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         const auto index = next_op + order;
         const auto& op = graph.ops[index];
         Require(op.block.value == b && op.order == order, Error::kInvalidGraph);
-        if (op.life != analysis::ValueLife::kLive) continue;
+        if (op.life != analysis::ValueLife::kLive ||
+            plan.operations[index].kind == EvaluationKind::kElidedPure) continue;
         if (IsEnvironmentState(op.operation)) {
           Require(plan.cells.has_value(), Error::kUnsupportedOperation);
           plan.operations[index].kind = EvaluationKind::kEnvironment;

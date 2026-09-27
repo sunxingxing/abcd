@@ -29,7 +29,7 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     checked.Admit(flow->allocated_bytes, 1);
     checked.Step(flow->work);
     CheckTreeOperands(graph, evaluation, tree, *flow, constants, checked);
-    CheckTreeCorrespondenceOrigins(graph, tree, *flow, checked);
+    CheckTreeCorrespondenceOrigins(graph, evaluation, tree, *flow, checked);
     return TreeSemantics{graph.revision, graph.cfg_revision, checked.Bytes(), checked.Work()};
   } catch (Error error) { return error;
   } catch (TreeStructureError error) {

@@ -1,6 +1,7 @@
 #include "evaluation_plan.h"
 #include "evaluation_flow.h"
 #include "module_evaluation.h"
+#include "../analysis/value_edits.h"
 
 #include <new>
 #include <stdexcept>
@@ -152,6 +153,23 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
                 Error::kOwnership);
         continue;
       }
+      if (placement.kind == EvaluationKind::kElidedPure) {
+        Require(flow == EvaluationFlow::kPhased && analysis::CanErasePureOp(op) &&
+            !placement.consumer && !placement.temporary, Error::kOwnership);
+        // Independent local closure check, not a rerun of the mark algorithm.
+        // Retained consumers and every phi/snapshot must keep their producer.
+        if (op.result) {
+          for (auto use = graph.values[op.result->value].first_use; use;
+               use = graph.uses[use->value].next) {
+            step();
+            const auto* owner = std::get_if<analysis::OpId>(&graph.uses[use->value].owner);
+            Require(owner && plan.operations[owner->value].kind == EvaluationKind::kElidedPure,
+                Error::kOwnership);
+          }
+        }
+        visits[i] = EvaluationVisit::kDone;
+        continue;
+      }
       if (IsEnvironmentState(op.operation)) {
         Require(plan.cells && placement.kind == EvaluationKind::kEnvironment &&
             !placement.consumer && !placement.temporary, Error::kOwnership);
@@ -224,6 +242,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
           step(); ++expected; fused_guard.reset();
         }
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
+                                  plan.operations[expected].kind == EvaluationKind::kElidedPure ||
                                   plan.operations[expected].kind == EvaluationKind::kInitializer ||
                                   plan.operations[expected].kind == EvaluationKind::kEnvironment ||
                                   !OrderedEvaluation(graph.ops[expected]))) { step(); ++expected; }

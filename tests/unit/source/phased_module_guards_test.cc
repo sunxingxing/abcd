@@ -207,6 +207,13 @@ void Snapshots(abc::ProfileId profile, std::ostream* output) {
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(
       graph, {}, IncomingCells::kReject, {}, bindings));
   test::Check(evaluation.exceptions && !evaluation.exceptions->slots.empty());
+  // A producer used by catch staging cannot be elided even if its normal
+  // consumers disappear. Preserve the old value when the next module read throws.
+  auto discarded_snapshot = evaluation;
+  constexpr std::size_t kInitialStore = 1;
+  discarded_snapshot.operations[kInitialStore] = {EvaluationKind::kElidedPure};
+  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, discarded_snapshot)) ==
+      EvaluationError::kOwnership);
   auto changed = graph;
   bool mutated = false;
   for (std::size_t b = 0; b < evaluation.phis->bundles.size(); ++b) {

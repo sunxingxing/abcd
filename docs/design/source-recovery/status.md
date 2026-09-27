@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 46，默认源码契约为 V3。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 47，默认源码契约为 V3。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -41,6 +41,24 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 | T12 | 语料与分类基础已有历史记录 | 全样本新路线审计、跨版本/留出集、进程 1G 实测 |
 
 ## 本次证据
+
+- 异常相位求值新增纯操作活跃性投影，沿用正常简化的纯操作白名单，不改原始
+  IR/CFG/Before/Commit/Catch。反向标记所有不可省略事件与全部 phi 输入，独立
+  校验省略集合的纯性与使用闭包；catch 暂存输入仍保留。共享绑定、表达式树、
+  Flow/Operands/Origins 与 ABI census 消费同一核验结果，省略 PC 在原词法位置
+  保留边界 anchor，不伪造表达式或临时声明。文件化分支/调用/catch 夹具加入
+  callable/new-target 无用复制后，输出与原基准源码一致，仍校验任意 JS 抛值、
+  效果顺序、参数长度及 PC 映射。真正返回隐藏 ABI 值仍拒绝，篡改 getter、
+  return、被使用的复制或 catch 快照为省略也拒绝。三个 profile 覆盖
+  1/200/201/402/1608 链及精确 work 边界；大树采用显式测试预算，不改生产默认值。
+  真实 Immersive 8284 越过 `kUnsupportedEntry`，现确切于 `CallPlanError::kReference`
+  拒绝：callee 的复制链尚未归并到属性读取。下一步处理共享复制/receiver 证明，
+  不跳过调用语义校验。规则升至 47；死 phi、跨相位表达式归并和五步计划仍未完成。
+  CLI、诊断与相关目标构建通过，15/15 定向回归通过：phased_liveness、
+  class/creation_tree_context、function_tree、binding/evaluation/call_plan、
+  phased_module_guards/source、module_evaluation/aliases、exception_plan/copies/
+  tree_source、phased_method_source。NOP 已经由失败用例验证并补齐其省略顺序处理。
+  未运行全量、RSS、基准或调度器任务；1G 峰值约束仍未实测。
 
 - 同文件模块别名绑定器已同时接受正常与异常相位输入，复用 slot、名称、guard
   和 record 身份校验。PhasedMethod 可借用调用方的 record 上下文，持有已核验的

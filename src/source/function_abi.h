@@ -4,9 +4,10 @@
 #include "abcd/source/function_abi.h"
 
 namespace abcd::source {
+struct EvaluationPlan;
 enum class FunctionAbiError : std::uint8_t {
   kRevision, kParameter, kEntry, kReceiver, kSyntax, kResourceLimit, kWorkLimit,
-  kLength
+  kLength, kEvaluation
 };
 struct ConstructedAbi {
   FunctionAbi abi;
@@ -27,6 +28,12 @@ struct ConstructedAbi {
 // lexical receiver recovery requires a separate explicit capture binding.
 [[nodiscard]] std::variant<ConstructedAbi, FunctionAbiError> BuildFunctionAbi(
     const analysis::ValueProgram& graph, const FunctionTree& tree,
+    const abc::FrameLayout& frame, std::uint32_t length,
+    analysis::SemanticBudget budget = {});
+// Same census with a freshly checked phased source projection. Pure elisions
+// suppress only their own operand reads; phi/catch and retained uses still count.
+[[nodiscard]] std::variant<ConstructedAbi, FunctionAbiError> BuildPhasedFunctionAbi(
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, const FunctionTree& tree,
     const abc::FrameLayout& frame, std::uint32_t length,
     analysis::SemanticBudget budget = {});
 }  // namespace abcd::source

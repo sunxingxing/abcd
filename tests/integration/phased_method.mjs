@@ -4,6 +4,9 @@ import { execFileSync } from 'node:child_process';
 // Encoded Code header, try table, creation context and name pool are read from
 // the fixture file. No hand-built source tree or draft printer participates.
 const result = JSON.parse(execFileSync(process.argv[2], ['--exception-json'], { encoding: 'utf8' }));
+const copied = JSON.parse(execFileSync(process.argv[2], ['--dead-copies-json'], { encoding: 'utf8' }));
+// ABI bookkeeping must add neither declarations nor reads to emitted source.
+assert.equal(copied.source, result.source);
 const Recovered = Function(`"use strict"; return class { ${result.source} };`)();
 const instance = new Recovered();
 assert.equal(instance.run.length, 1);
@@ -45,6 +48,19 @@ for (const placement of map.operations) {
   assert(pcs(range.origin).includes(expectedPcs[placement.operation]));
   if (placement.kind === 'statement')
     assert.match(bytes.subarray(range.begin, range.end).toString('utf8'), /^(if|return)\b/);
+}
+const copiedMap = copied.positions;
+assert.equal(copiedMap.operations.length, expectedPcs.length + 3);
+for (const placement of copiedMap.operations) {
+  const prologue = placement.operation < 3;
+  const range = placement.kind === 'anchor' ? copiedMap.anchors[placement.node] :
+    placement.kind === 'statement' ? copiedMap.statements[placement.node] : copiedMap.expressions[placement.node];
+  const pc = prologue ? placement.operation * 3 : expectedPcs[placement.operation - 3] + 9;
+  assert(pcs(range.origin, copiedMap).includes(pc));
+  if (prologue) {
+    assert.equal(placement.kind, 'anchor');
+    assert(range.byte <= Buffer.byteLength(copied.source));
+  } else assert(range.begin < range.end && range.end <= Buffer.byteLength(copied.source));
 }
 
 const forwarded = JSON.parse(execFileSync(process.argv[2], ['--forwarder-json'], { encoding: 'utf8' }));

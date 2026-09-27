@@ -1,4 +1,5 @@
 #include "function_abi.h"
+#include "evaluation_plan.h"
 
 #include <limits>
 #include <new>
@@ -12,10 +13,20 @@ void Require(bool condition, Error error) { if (!condition) throw error; }
 class AbiBuilder {
  public:
   AbiBuilder(const analysis::ValueProgram& graph, const FunctionTree& tree,
-             const abc::FrameLayout& frame, analysis::SemanticBudget budget)
-      : graph_(graph), tree_(tree), frame_(frame), initial_(budget), remaining_(budget) {}
+             const abc::FrameLayout& frame, analysis::SemanticBudget budget,
+             const EvaluationPlan* evaluation = nullptr)
+      : graph_(graph), tree_(tree), frame_(frame), initial_(budget), remaining_(budget), evaluation_(evaluation) {}
   ConstructedAbi Build(std::uint32_t length) {
     Require(graph_.revision == tree_.value_revision && graph_.cfg_revision == tree_.cfg_revision, Error::kRevision);
+    if (evaluation_) {
+      const auto verified = VerifyPhasedEvaluationPlan(graph_, *evaluation_, remaining_);
+      if (const auto* error = std::get_if<EvaluationError>(&verified)) {
+        if (*error == EvaluationError::kWorkLimit) throw Error::kWorkLimit;
+        if (*error == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
+        throw Error::kEvaluation;
+      }
+      Step(std::get<std::uint64_t>(verified));
+    }
     switch (tree_.invocation) {
       case InvocationForm::kDeclared: break;
       case InvocationForm::kArrowMethod:
@@ -55,6 +66,9 @@ class AbiBuilder {
     for (const auto& use : graph_.uses) {
       Step();
       if (use.life != analysis::ValueLife::kLive) continue;
+      if (evaluation_)
+        if (const auto* owner = std::get_if<analysis::OpId>(&use.owner);
+            owner && evaluation_->operations[owner->value].kind == EvaluationKind::kElidedPure) continue;
       const auto* id = std::get_if<analysis::ValueId>(&use.operand);
       if (!id) continue;
       Require(id->value < graph_.values.size(), Error::kEntry);
@@ -187,6 +201,7 @@ class AbiBuilder {
   const abc::FrameLayout& frame_;
   analysis::SemanticBudget initial_;
   analysis::SemanticBudget remaining_;
+  const EvaluationPlan* evaluation_;
   FunctionAbi result_;
   bool snapshot_ = false;
   std::vector<std::optional<std::uint32_t>> formals_;
@@ -198,6 +213,14 @@ std::variant<ConstructedAbi, FunctionAbiError> BuildFunctionAbi(
     const abc::FrameLayout& frame, std::uint32_t length,
     analysis::SemanticBudget budget) {
   try { return AbiBuilder(graph, tree, frame, budget).Build(length);
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+std::variant<ConstructedAbi, FunctionAbiError> BuildPhasedFunctionAbi(
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, const FunctionTree& tree,
+    const abc::FrameLayout& frame, std::uint32_t length, analysis::SemanticBudget budget) {
+  try { return AbiBuilder(graph, tree, frame, budget, &evaluation).Build(length);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

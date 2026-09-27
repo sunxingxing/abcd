@@ -146,6 +146,7 @@ class ForestBuilder {
               graph_.origins[op.origin.value].disposition == analysis::OriginDisposition::kRetained,
               Error::kOrigin);
       const TreeOriginId origin{op.origin.value};
+      if (evaluation_.operations[i].kind == EvaluationKind::kElidedPure) continue;
       if (evaluation_.operations[i].kind == EvaluationKind::kInitializer) continue;
       if (evaluation_.operations[i].kind == EvaluationKind::kEnvironment) continue;
       if (evaluation_.operations[i].kind == EvaluationKind::kModuleGuard) continue;

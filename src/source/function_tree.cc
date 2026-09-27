@@ -483,7 +483,8 @@ class TreeBuilder {
       for (std::uint32_t i = 0; i < range.op_count; ++i) {
         Step();
         const auto& op = graph_.ops[range.first_op.value + i];
-        if (op.life != analysis::ValueLife::kLive) continue;
+        if (op.life != analysis::ValueLife::kLive ||
+            evaluation_.operations[range.first_op.value + i].kind == EvaluationKind::kElidedPure) continue;
         Require(op.origin.value < tree_.origins.size(), Error::kOrigin);
         return {op.origin.value};
       }
@@ -562,11 +563,13 @@ class TreeBuilder {
       }
       const TreeOriginId origin{op.origin.value};
       const auto expression = forest_.operations[id.value];
-      if (evaluation.kind == EvaluationKind::kEnvironment) {
+      if (evaluation.kind == EvaluationKind::kEnvironment || evaluation.kind == EvaluationKind::kElidedPure) {
+        // A projected pure elision keeps its PC at this lexical boundary, not
+        // on an unrelated expression or a fabricated executable statement.
         const AnchorId anchor{static_cast<std::uint32_t>(tree_.anchors.size())};
         tree_.anchors.push_back({BlockBoundary{drafts_[draft].statement, drafts_[draft].count}, origin});
         tree_.operations.push_back({id, anchor});
-        EmitCells(id, draft, origin);
+        if (evaluation.kind == EvaluationKind::kEnvironment) EmitCells(id, draft, origin);
         continue;
       }
       if (evaluation.kind == EvaluationKind::kInitializer) {

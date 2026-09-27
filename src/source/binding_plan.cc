@@ -129,10 +129,17 @@ std::variant<BindingPlan, BindingError> BuildBindings(
                   ValueId{static_cast<std::uint32_t>(i)}) return Error::kParameter;
         } else if (std::holds_alternative<ReceiverEntry>(*entry)) {
           plan.values[i] = ReceiverEntryBinding{};
-        } else if (value.first_use) {
+        } else {
           // Unused callable/new-target ABI entries need no source declaration.
-          // A live read cannot be relabeled as an ordinary undefined local.
-          return Error::kUnsupportedEntry;
+          // Checked pure elisions do not read the entry in generated source.
+          // A retained read cannot be relabeled as an undefined local.
+          for (auto use = value.first_use; use; use = graph.uses[use->value].next) {
+            if (!work) return Error::kWorkLimit;
+            --work;
+            const auto* owner = std::get_if<OpId>(&graph.uses[use->value].owner);
+            if (!owner || evaluation.operations[owner->value].kind != EvaluationKind::kElidedPure)
+              return Error::kUnsupportedEntry;
+          }
         }
         continue;
       }
