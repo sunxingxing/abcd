@@ -15,6 +15,7 @@
 #include "tree_print_tokens.h"
 #include "tree_globals.h"
 #include "family_print.h"
+#include "family_enclosure.h"
 #include "class_tree_context.h"
 #include "tree_checks.h"
 
@@ -45,12 +46,13 @@ struct OwnerTree { FunctionOwnerId owner; std::size_t member; };
 class TreePrinter {
  public:
   TreePrinter(const VerifiedFunction& function, std::ostream& output,
-              EmitBudget limit, analysis::SemanticBudget scratch)
+              EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope)
       : function_(&function), tree_(&function.Tree()), output_(output),
-        limit_(limit.bytes), initial_(scratch), remaining_(scratch) {}
+        limit_(limit.bytes), initial_(scratch), remaining_(scratch), scope_(scope) {}
   TreePrinter(const ConstructedFamily& family, std::ostream& output,
-              EmitBudget limit, analysis::SemanticBudget scratch, const ClassTreeContext* member = nullptr)
-      : family_(&family), class_root_(member), output_(output), limit_(limit.bytes), initial_(scratch), remaining_(scratch) {}
+              EmitBudget limit, analysis::SemanticBudget scratch, const ClassTreeContext* member,
+              const GlobalScope* scope)
+      : family_(&family), class_root_(member), output_(output), limit_(limit.bytes), initial_(scratch), remaining_(scratch), scope_(scope) {}
   PrintedFunction Print() {
     if (!function_->ClassCreation() || Tree().callable != CallableKind::kMethod ||
         Tree().strictness != Strictness::kStrict || Tree().self || Tree().capture_scope || !Tree().captures.empty() ||
@@ -61,6 +63,7 @@ class TreePrinter {
     for (const auto& expression : Tree().expressions) {
       Step();
       if (std::holds_alternative<FunctionExpr>(expression.expression)) throw Error::kUnsupportedContext;
+      if (std::holds_alternative<RealmObjectExpr>(expression.expression)) RecordRealm();
     }
     Result().identity = Tree().identity;
     Result().method = Tree().method;
@@ -152,6 +155,22 @@ class TreePrinter {
       Array(Result().parameters, Tree().parameters.size()); Array(Result().expressions, Tree().expressions.size());
       Array(Result().properties, Tree().properties.size()); Array(Result().statements, Tree().statements.size());
       Array(Result().anchors, Tree().anchors.size()); PrepareAnchors();
+      for (const auto& node : Tree().expressions) {
+        Step();
+        if (std::holds_alternative<RealmObjectExpr>(node.expression)) RecordRealm();
+      }
+    }
+    if (has_realm_) {
+      const auto check = VerifyFamilyDestination(*family_, scope_, remaining_);
+      const auto* enclosure = std::get_if<FamilyEnclosure>(&check);
+      if (!enclosure) {
+        switch (std::get<FamilyEnclosureFailure>(check).kind) {
+          case FamilyEnclosureError::kResourceLimit: throw Error::kResourceLimit;
+          case FamilyEnclosureError::kWorkLimit: throw Error::kWorkLimit;
+          default: throw Error::kUnsupportedContext;
+        }
+      }
+      Admit(enclosure->allocated_bytes, 1); Step(enclosure->work);
     }
     std::sort(owners_.begin(), owners_.end(), [&](const auto& a, const auto& b) { Step(); return a.owner < b.owner; });
     for (std::size_t i = 1; i < owners_.size(); ++i) {
@@ -165,6 +184,16 @@ class TreePrinter {
     return std::move(draft_);
   }
  private:
+  void RecordRealm() {
+    has_realm_ = true;
+    if (Result().realm_binding) return;
+    if (scope_ && scope_->realm_binding) Step(scope_->realm_binding->name.size());
+    const auto binding = ResolveRealmBinding(Tree().identity.contract, scope_);
+    if (!binding) throw Error::kUnsupportedContext;
+    Step(binding->name.size()); Admit(binding->name.size(), sizeof(char16_t));
+    Result().realm_binding = PrintedFunction::RealmBinding{binding->policy, std::u16string{binding->name}};
+    Admit(Result().realm_binding->name.capacity() - binding->name.size(), sizeof(char16_t));
+  }
   bool ClassRoot() const { return class_root_ && current_ == family_->root.value; }
   const FunctionTree& Tree() const { return family_ ? family_->members[current_].tree : *tree_; }
   PrintedFunction& Result() { return family_ ? draft_.members[current_] : result_; }
@@ -280,6 +309,10 @@ class TreePrinter {
   }
   void Expression(SymbolExpr node) { Name(node.symbol); }
   void Expression(GlobalNameExpr node) { Identifier(Tree().names[node.name.value]); }
+  void Expression(RealmObjectExpr) {
+    if (!Result().realm_binding) throw Error::kUnsupportedContext;
+    Identifier(Result().realm_binding->name);
+  }
   void Expression(ThisExpr) { Append("this"); }
   void Member(ExprId base, const MemberKey& key) {
     if (const auto* name = std::get_if<NameId>(&key)) Push(PropertyKey{*name});
@@ -530,6 +563,8 @@ class TreePrinter {
   std::size_t limit_;
   analysis::SemanticBudget initial_;
   analysis::SemanticBudget remaining_;
+  const GlobalScope* scope_;
+  bool has_realm_ = false;
   PrintedFunction result_;
   PrintedFamilyDraft draft_;
   std::size_t current_ = 0;
@@ -544,16 +579,16 @@ class TreePrinter {
 }  // namespace
 
 std::variant<PrintedFamilyDraft, TreePrintError> PrintFamilyDraft(const ConstructedFamily& family,
-    std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch) {
-  try { return TreePrinter(family, output, limit, scratch).Draft();
+    std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope) {
+  try { return TreePrinter(family, output, limit, scratch, nullptr, scope).Draft();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit;
   } catch (const std::ios_base::failure&) { return Error::kWrite; }
 }
 std::variant<PrintedFamilyDraft, TreePrintError> PrintClassFamilyDraft(const ConstructedFamily& family,
-    const ClassTreeContext& context, std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch) {
-  try { return TreePrinter(family, output, limit, scratch, &context).Draft();
+    const ClassTreeContext& context, std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope) {
+  try { return TreePrinter(family, output, limit, scratch, &context, scope).Draft();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit;
@@ -573,7 +608,7 @@ std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
       return Error::kUnsupportedContext;
     }
     scratch.work -= checked->work;
-    auto result = TreePrinter(function, output, output_budget, scratch).Print();
+    auto result = TreePrinter(function, output, output_budget, scratch, scope).Print();
     result.work += checked->work;
     result.allocated_bytes = std::max(result.allocated_bytes, checked->allocated_bytes);
     return result;

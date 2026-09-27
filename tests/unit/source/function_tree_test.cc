@@ -647,6 +647,21 @@ void FrameReceiverTree() {
 }
 }  // namespace
 int main() {
+  {
+    Fixture fixture;
+    fixture.Add(0, 0, 0, analysis::ValueGlobalObject{}, true, {});
+    fixture.Add(0, 1, 1, analysis::ValueReturn{}, false,
+        {{analysis::OperandRole::kReturnValue, analysis::ValueId{2}}});
+    fixture.graph.blocks = {{{0}, 2, {0}, 0}};
+    auto tree = std::get<ConstructedFunction>(fixture.Build()).tree;
+    Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+    const auto expression = std::get<ExprId>(tree.operations.front().node);
+    Check(std::holds_alternative<RealmObjectExpr>(tree.expressions[expression.value].expression));
+    tree.expressions[expression.value].expression = GlobalNameExpr{{1}};
+    Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
+    tree.expressions[expression.value].expression = ThisExpr{tree.owner};
+    Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
+  }
   CreationSelfTree();
   FrameFunctionTree();
   FrameReceiverTree();

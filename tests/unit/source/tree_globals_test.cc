@@ -69,9 +69,40 @@ void IndexedBindings() {
     // Loose n log n bound including compared characters, not elapsed-time data.
     constexpr std::uint64_t kWorkPerBindingLogBound = 256;
     Check(std::get<TreeGlobals>(checked).work <= kWorkPerBindingLogBound * count * std::bit_width(count));
+    auto realm_tree = tree;
+    realm_tree.identity.contract = SourceContract::kLanguageAndHostV2;
+    for (auto& node : realm_tree.expressions) node.expression = RealmObjectExpr{};
+    const auto realm_checked = VerifyTreeGlobals(realm_tree, &scope);
+    Check(std::holds_alternative<TreeGlobals>(realm_checked));
+    Check(std::get<TreeGlobals>(realm_checked).work <=
+        kWorkPerBindingLogBound * count * std::bit_width(count));
     names.back() = "SubscriberManager";
     Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kShadowed);
   }
 }
+void RealmContexts() {
+  auto tree = Tree();
+  tree.expressions[0].expression = RealmObjectExpr{};
+  tree.identity.contract = SourceContract::kLanguageAndHostV2;
+  GlobalScope scope{};
+  Check(std::holds_alternative<TreeGlobals>(VerifyTreeGlobals(tree, &scope)));
+  Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, nullptr)) == TreeGlobalError::kMissingContext);
+  tree.names[1] = u"globalThis";
+  Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kShadowed);
+  const HostRealmBinding host{u"$realm"}; scope.realm_binding = &host;
+  Check(std::holds_alternative<TreeGlobals>(VerifyTreeGlobals(tree, &scope)));
+  tree.identity.contract = SourceContract::kLanguageAndHostV1;
+  Check(std::holds_alternative<TreeGlobals>(VerifyTreeGlobals(tree, &scope)));
+  scope.realm_binding = nullptr;
+  Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kMissingContext);
+  for (const auto name : {u"", u"with space", u"eval", u"arguments"}) {
+    const HostRealmBinding invalid{name}; scope.realm_binding = &invalid;
+    Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kMissingContext);
+  }
+  scope.realm_binding = &host;
+  const std::array<std::string_view, 1> names{"$realm"};
+  scope.enclosing_bindings = names;
+  Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kShadowed);
+}
 }  // namespace
-int main() { Contexts(); IndexedBindings(); }
+int main() { Contexts(); IndexedBindings(); RealmContexts(); }

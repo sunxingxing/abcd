@@ -457,6 +457,8 @@ class ForestBuilder {
         return Add(EmptyArrayExpr{}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>)
         return Add(ThisExpr{owner_}, origin);
+      else if constexpr (std::is_same_v<T, analysis::ValueGlobalObject>)
+        return Add(RealmObjectExpr{}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
         if (operation.literal) {
           return Add(ObjectExpr{BufferedProperties(constant, origin)}, origin);
@@ -477,7 +479,6 @@ class ForestBuilder {
       }
       else {
         static_assert(std::is_same_v<T, analysis::ValueGuard> ||
-                      std::is_same_v<T, analysis::ValueGlobalObject> ||
                       std::is_same_v<T, analysis::ValueModuleRead> ||
                       std::is_same_v<T, analysis::ValueModuleWrite> ||
                       std::is_same_v<T, analysis::ValueOwnWrite> ||

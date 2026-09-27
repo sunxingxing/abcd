@@ -18,6 +18,10 @@ enum class TreePrintError : std::uint8_t {
   kInvalidLiteral
 };
 struct PrintedFunction {
+  struct RealmBinding {
+    RealmBindingPolicy policy;
+    std::u16string name;
+  };
   RouteInputIdentity identity;
   abc::EntityOffset method;
   analysis::IrRevision value_revision;
@@ -38,6 +42,9 @@ struct PrintedFunction {
   std::vector<std::size_t> anchors;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  // Owned publication requirement; neither an ABC-derived fact nor transferable
+  // permission to print the same tree inside a different lexical enclosure.
+  std::optional<RealmBinding> realm_binding;
 };
 // Emits a member fragment for a CLASS body, not an object literal or ordinary
 // function. The containing class/record still needs its own creation proof.

@@ -1,9 +1,11 @@
 #include "../../src/source/family_emission.h"
+#include "../../tools/tree_position_json.h"
 #include "analysis/ssa_fixture.h"
 
 #include <unistd.h>
 
 #include <algorithm>
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <sstream>
 #include <string_view>
@@ -42,7 +44,8 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
     ExpectedSource expected = ExpectedSource::kPrinted, bool debug = false,
     bool overwrite_abi = false,
     abc::FunctionKind kind = abc::FunctionKind::kBaseConstructor,
-    std::string_view name = "constant", bool global_lookup = false) {
+    std::string_view name = "constant", bool global_lookup = false,
+    const HostRealmBinding* realm_binding = nullptr) {
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kTarget >> (kByteBits * i));
@@ -113,8 +116,10 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
       analysis::FunctionCreationSites::Build(file, header, index, lookup));
   const auto identity = MakeRouteInputIdentity(
       std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
-  const GlobalScope globals{};
-  const FamilyDestination destination{Strictness::kStrict, global_lookup ? &globals : nullptr};
+  GlobalScope globals{};
+  globals.realm_binding = realm_binding;
+  const FamilyDestination destination{Strictness::kStrict,
+      global_lookup || constant == abc::Opcode::kLDGLOBAL ? &globals : nullptr};
   if (expected == ExpectedSource::kPrinted) {
     const auto range = sites.Find({kTarget});
     test::Check(range.count == 2);
@@ -160,6 +165,22 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
     return;
   }
   test::Check(std::holds_alternative<PreparedFamily>(prepared));
+  if (constant == abc::Opcode::kLDGLOBAL) {
+    const auto& family = std::get<PreparedFamily>(prepared);
+    test::Check(std::holds_alternative<FamilyPrepareFailure>(
+        family.CheckDestination({Strictness::kStrict, nullptr})));
+    auto shadowed = globals;
+    const std::array<std::string_view, 1> names{realm_binding ? "hostRealm" : "globalThis"};
+    shadowed.parameter_bindings = names;
+    test::Check(std::holds_alternative<FamilyPrepareFailure>(
+        family.CheckDestination({Strictness::kStrict, &shadowed})));
+    std::ostringstream rejected;
+    test::Check(std::holds_alternative<FamilyPrepareFailure>(
+        family.PrintDraft({Strictness::kStrict, &shadowed}, rejected)));
+    test::Check(rejected.str().empty());
+    test::Check(std::holds_alternative<TreePrintError>(PrintFamilyDraft(family.Family(), rejected)));
+    test::Check(rejected.str().empty());
+  }
   std::ostringstream output;
   auto emitted = FamilyEmission::Write(std::get<PreparedFamily>(std::move(prepared)),
       destination, output, {});
@@ -176,6 +197,21 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   const auto expression = std::get<ExprId>(mapping.target);
   const auto span = emission.Positions().members.front().expressions[expression.value];
   test::Check(span.begin < span.end && span.end <= output.view().size());
+  if (constant == abc::Opcode::kLDGLOBAL) {
+    test::Check(std::holds_alternative<RealmObjectExpr>(member.tree.expressions[expression.value].expression));
+    const auto& binding = emission.Positions().members.front().realm_binding;
+    test::Check(binding && binding->policy == (realm_binding ?
+        RealmBindingPolicy::kExplicitHost : RealmBindingPolicy::kStableGlobalThis));
+    test::Check(binding->name == (realm_binding ? realm_binding->name : u"globalThis"));
+    test::Check(output.view().substr(span.begin, span.end - span.begin) ==
+        std::string(binding->name.begin(), binding->name.end()));
+    std::ostringstream serialized;
+    tools::WriteTreePositions(serialized, member.tree, emission.Positions().members.front(), &*member.sources);
+    const auto json = nlohmann::json::parse(serialized.str());
+    test::Check(json.at("realm_binding").at("name") == (realm_binding ? "hostRealm" : "globalThis"));
+    test::Check(json.at("realm_binding").at("policy") == (realm_binding ? "explicit_host" : "stable_global_this"));
+    test::Check(json.at("realm_binding").at("contract") == SourceContractName(member.tree.identity.contract));
+  }
   if (constant == abc::Opcode::kLDFUNCTION) {
     test::Check(member.tree.self.has_value());
     test::Check(std::get<SymbolExpr>(member.tree.expressions[expression.value].expression).symbol == member.tree.self);
@@ -207,16 +243,27 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
 }
 }  // namespace
 int main() {
+  std::cout << "const hostRealm = globalThis;\n";
+  std::cout << "export const realms = [\n";
+  for (const auto profile : kProfiles)
+    for (const auto kind : {abc::FunctionKind::kBaseConstructor, abc::FunctionKind::kArrow})
+      for (const bool callback : {false, true})
+        Emit(profile, abc::Opcode::kLDGLOBAL, callback, ExpectedSource::kPrinted, false, false, kind);
+  std::cout << "];\n";
+  std::cout << "export const hostRealms = [\n";
+  const HostRealmBinding host{u"hostRealm"};
+  for (const auto profile : kProfiles)
+    for (const auto kind : {abc::FunctionKind::kBaseConstructor, abc::FunctionKind::kArrow})
+      for (const bool callback : {false, true})
+        Emit(profile, abc::Opcode::kLDGLOBAL, callback, ExpectedSource::kPrinted,
+            false, false, kind, "constant", false, &host);
+  std::cout << "];\n";
   std::cout << "export const cases = [\n";
   for (const auto profile : kProfiles) {
     for (const auto constant : kConstants)
       for (const bool callback : {false, true}) Emit(profile, constant, callback);
     for (const bool callback : {false, true})
       Emit(profile, abc::Opcode::kLDHOLE, callback, ExpectedSource::kRejected);
-    // Value import alone cannot authorize a realm lookup in generated source.
-    // Keep publication closed until the typed realm AST and binding proof exist.
-    for (const bool callback : {false, true})
-      Emit(profile, abc::Opcode::kLDGLOBAL, callback, ExpectedSource::kRejected);
   }
   std::cout << "];\n";
   std::cout << "export const debugCases = [\n";

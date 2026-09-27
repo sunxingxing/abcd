@@ -19,6 +19,7 @@ struct FamilyEnclosure {
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
   std::size_t module_reads = 0;
+  std::size_t realm_reads = 0;
 };
 // Checks actual creation-point lexical ancestry, including block scopes and
 // TDZ bindings, not a union of all parent locals. Original trees remain intact.
@@ -31,7 +32,7 @@ struct FamilyEnclosure {
 [[nodiscard]] std::variant<FamilyEnclosure, FamilyEnclosureFailure> VerifyFamilyEnclosure(
     const ConstructedFamily& family, analysis::SemanticBudget budget = {});
 // Additionally checks the caller-proven complete destination enclosure. Null
-// admits only a family without global reads, never an assumed empty enclosure.
+// admits only a family without global/realm reads, never an assumed empty enclosure.
 // Borrowed sorted indexes follow GlobalScope's contract; recheck on embedding.
 // This does not establish module initialization, strictness or publication.
 // Module reads currently refuse kMissingModuleContext after lexical checks;

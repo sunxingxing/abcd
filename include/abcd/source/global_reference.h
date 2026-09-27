@@ -2,9 +2,11 @@
 #define ABCD_SOURCE_GLOBAL_REFERENCE_H_
 
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include "abcd/source/source_contract.h"
 
 namespace abcd::source {
 class ModuleExports;
@@ -38,6 +40,15 @@ struct GlobalScope {
   std::span<const std::string> import_bindings{};
   std::span<const std::string_view> import_names{};
 };
+
+struct RealmBindingView {
+  RealmBindingPolicy policy;
+  std::u16string_view name;
+};
+// Syntax/contract selection only. Callers must separately check actual lexical
+// ancestry and the complete destination; this does not prove non-shadowing.
+[[nodiscard]] std::optional<RealmBindingView> ResolveRealmBinding(
+    SourceContract contract, const GlobalScope* scope);
 
 [[nodiscard]] std::string_view ImportBinding(const GlobalScope* scope,
                                              std::size_t slot);

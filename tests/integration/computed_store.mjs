@@ -129,6 +129,33 @@ for (const factory of [generated.receiverNarrow, generated.receiverWide]) {
       assert.deepEqual(observeCaptures(bindReceiver, failKey, reenterSetter),
         observeCaptures(captureReference, failKey, reenterSetter));
 }
+for (const factory of [generated.realmNarrow, generated.realmWide]) {
+  const property = Symbol('realm capture test');
+  const events = [];
+  const thrown = {};
+  let failKey = false, reenter = true, closure;
+  const callbacks = [0, 1, 2].map(i => () => {
+    events.push(['rhs', i]); return callbacks[(i + 1) % callbacks.length];
+  });
+  const key = {[Symbol.toPrimitive]() {
+    events.push(['key']);
+    if (failKey) { failKey = false; throw thrown; }
+    return property;
+  }};
+  Object.defineProperty(globalThis, property, {configurable: true, set(value) {
+    events.push(['set', callbacks.indexOf(value)]);
+    if (reenter) { reenter = false; closure(); }
+  }});
+  try {
+    closure = Reflect.apply(factory, {wrongReceiver: true}, [null, key, callbacks[0]]);
+    assert.equal(Reflect.apply(closure, null, []), undefined);
+    assert.deepEqual(events, [['rhs', 0], ['key'], ['set', 1], ['rhs', 1], ['key'], ['set', 2]]);
+    events.length = 0; failKey = true;
+    assert.throws(() => closure(), error => error === thrown);
+    closure();
+    assert.deepEqual(events, [['rhs', 2], ['key'], ['rhs', 0], ['key'], ['set', 1]]);
+  } finally { delete globalThis[property]; }
+}
 for (const factory of [generated.selfNarrow, generated.selfWide, generated.selfGlobalNarrow, generated.selfGlobalWide]) {
   assert.equal(factory.name, 'store');
   const globalRead = factory === generated.selfGlobalNarrow || factory === generated.selfGlobalWide;

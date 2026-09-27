@@ -175,11 +175,11 @@ ValueGlobalObject with no operands, a Defined result and no ordinary abrupt or
 observable effect. It is not ValueGlobalRead and carries no source spelling.
 Independent import correspondence rejects substituting frame-function identity.
 Three-profile tests cover import, result domain, operand shape and malformed
-encodings. Retention is conservative until realm binding validation is wired;
-source evaluation still refuses this operation. Six file-backed direct/callback
-fixtures assert that value-import success alone cannot publish source.
+encodings. Retention and evaluation ordering remain conservative. The shared
+source route now lowers this value to RealmObjectExpr, not GlobalNameExpr;
+independent correspondence rejects substituting a name read or ThisExpr.
 
-The remaining end-to-end steps are required, not optional fallback behavior:
+The implemented publication path follows these steps:
 
 1. Add a dedicated realm expression to the shared AST and independently match
    it to ValueGlobalObject. Do not represent it as GlobalNameExpr: global name
@@ -195,7 +195,27 @@ The remaining end-to-end steps are required, not optional fallback behavior:
 4. Execute three-profile direct/callback and nested-capture fixtures, checking
    exact realm identity, ignored callback results, reentry and thrown values.
    Add V1 missing-host, malformed binding, shadowing and AST-substitution
-   negatives. These positive source tests are still pending.
+   negatives.
+
+The file-backed fixture now executes 24 variants: three profiles, ordinary and
+arrow callables, direct/callback bodies, and V2 stable-globalThis/explicit-host
+bindings. It checks exact object identity, wrong call receivers, ignored callback
+results, reentry, thrown identity, PC-to-identifier spans and parsed JSON binding
+evidence. A changed destination and a realm draft without context both reject
+before writing bytes. Two narrow/wide lexical-cell families capture LDGLOBAL
+into child arrows, then exercise property-key exceptions and setter reentry.
+Scope tests distinguish ancestor/TDZ bindings from sibling blocks, validate V1
+host requirements and malformed names, and reject AST substitutions.
+
+PrintedFunction owns the selected policy/name; the position artifact serializes
+that requirement and source-contract version. Every publication rechecks the
+actual destination using the existing sorted Euler-interval binding index;
+there is no per-read ancestor scan and no CFG/SSA/cell ownership change. Name
+selection and character comparison are charged to the existing work budget.
+These are method/family source results, not whole-record or all-context coverage.
+V1 explicit-host resolution has scope-level evidence, not an executable named
+creation fixture: V1 separately refuses the naming wrapper's allocation premise.
+Generator/async/derived owners still require their existing protocol proofs.
 
 ### Frame Receiver Dependency
 

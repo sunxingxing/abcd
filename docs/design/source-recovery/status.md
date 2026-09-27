@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 29。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 30。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,6 +42,21 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- LDGLOBAL 已接通 ValueGlobalObject -> RealmObjectExpr -> 统一 printer：
+  在实际函数族目的地解析稳定 globalThis 或显式宿主绑定，复核祖先作用域与
+  外部绑定后才发布。每次换目的地重查，缺上下文或遮蔽在写入前拒绝。
+  PrintedFunction 保存实际 policy/name，位置 JSON 序列化该前提与契约版本；
+  独立语义检查拒绝替换为普通全局名称或 this。规则版本 30，未改变 CFG/SSA/cell。
+  三个 profile、普通/arrow、直接/回调、稳定/宿主绑定共 24 个文件级变体
+  生成并执行 JS，检查身份、异常、重入、PC 区间及 JSON 前提；两个窄/宽
+  闭包样本验证 realm 捕获、错误 receiver、key 异常及 setter 重入。
+  V1 缺宿主/显式宿主、非法名字、局部/外部遮蔽与祖先/兄弟 scope 由单测覆盖；
+  V1 完整命名创建仍受原资源异常契约限制，不冒充执行正例。以下规则 29 的
+  源码拒绝状态为历史前置。本项不代表整个第一组或 record 发布完成。
+  `tree_structure_test`、`family_enclosure_test`、`function_tree_test`、
+  `evaluation_plan_test`、`tree_globals_test`、`value_import_test`、`source_route_test`、
+  `constant_group_test`、`computed_store_test`、`value_created_family_test` 共 10/10 通过；
+  对应目标和 `abc_semantic` 构建成功。未运行 RSS/基准/全语料或 Ark VM 差分。
 - LDGLOBAL 的新主干入口已补齐：既有 GlobalObjectLoad 导入独立
   ValueGlobalObject，无寄存器输入、只定义 acc、结果 Defined；不复用普通
   ValueGlobalRead 或 globalThis 字符串语义。依据 pinned interpreter 的

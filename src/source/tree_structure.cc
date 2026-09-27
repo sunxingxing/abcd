@@ -211,6 +211,8 @@ class StructureCheck {
         // local and enclosing bindings; an empty scope is not that proof.
         budget_.Step(tree_.names[expression.name.value].size());
         RequireTree(AllowsGlobalReference(tree_.names[expression.name.value], {}), Error::kBinding);
+      } else if constexpr (std::is_same_v<T, RealmObjectExpr>) {
+        // Binding selection belongs to the actual publication destination.
       } else if constexpr (std::is_same_v<T, ThisExpr>) {
         RequireTree(expression.owner == tree_.owner, Error::kBinding);
       } else if constexpr (std::is_same_v<T, FunctionExpr>) {
@@ -338,6 +340,7 @@ class StructureCheck {
         } else {
           static_assert(std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
                         std::is_same_v<T, GlobalNameExpr> ||
+                        std::is_same_v<T, RealmObjectExpr> ||
                         std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
                         std::is_same_v<T, ConstructExpr> || std::is_same_v<T, EmptyArrayExpr> ||
                         std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, FunctionExpr>);

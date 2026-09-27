@@ -1,8 +1,23 @@
 #include "abcd/source/global_reference.h"
 
 #include <algorithm>
+#include "abcd/source/scalar_expression.h"
 
 namespace abcd::source {
+std::optional<RealmBindingView> ResolveRealmBinding(SourceContract contract, const GlobalScope* scope) {
+  if (!scope) return {};
+  if (scope->realm_binding) {
+    const auto name = scope->realm_binding->name;
+    if (!IsSourceIdentifier(name) || name == u"arguments") return {};
+    return RealmBindingView{RealmBindingPolicy::kExplicitHost, name};
+  }
+  switch (RealmBinding(contract)) {
+    case RealmBindingPolicy::kExplicitHost: return {};
+    case RealmBindingPolicy::kStableGlobalThis:
+      return RealmBindingView{RealmBindingPolicy::kStableGlobalThis, u"globalThis"};
+  }
+  return {};
+}
 namespace {
 bool EqualsAscii(std::u16string_view name, std::string_view ascii) {
   return name.size() == ascii.size() &&

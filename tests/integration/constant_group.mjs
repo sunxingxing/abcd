@@ -3,10 +3,26 @@ import {execFileSync} from 'node:child_process';
 import {Session} from 'node:inspector';
 
 const source = execFileSync(process.argv[2], {encoding: 'utf8'});
-const {cases, debugCases, receivers, functions, namedFunctions, createdFunctions, globalFunctions} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {cases, debugCases, receivers, functions, namedFunctions, createdFunctions, globalFunctions, realms, hostRealms} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const expected = [NaN, Infinity, undefined, null, true, false];
 const profileCount = 3;
 const forms = 2;
+for (const functions of [realms, hostRealms]) {
+  assert.equal(functions.length, profileCount * 2 * forms);
+  for (let i = 0; i < functions.length; ++i) {
+    const fn = functions[i];
+    let calls = 0;
+    assert.equal(Reflect.apply(fn, {notRealm: true}, [value => {
+      ++calls; assert.equal(value, globalThis); return {ignored: true};
+    }]), globalThis);
+    assert.equal(calls, i % forms);
+    if (i % forms) {
+      const thrown = {};
+      assert.throws(() => fn(() => {throw thrown;}), error => error === thrown);
+      assert.equal(fn(() => assert.equal(fn(() => 0), globalThis)), globalThis);
+    }
+  }
+}
 assert.equal(globalFunctions.length, profileCount * 2 * forms);
 const previousConstant = Object.getOwnPropertyDescriptor(globalThis, 'constant');
 try {

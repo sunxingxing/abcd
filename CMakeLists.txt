@@ -780,9 +780,10 @@ if(BUILD_TESTING)
   set(ABCD_PAIRED_CORPUS_ROOT "" CACHE PATH "Paired ABC sample root")
   find_program(ABCD_NODE_EXECUTABLE node)
   add_executable(computed_store_fixture tests/integration/computed_store_fixture.cc)
-  add_executable(constant_group_fixture tests/integration/constant_group_fixture.cc)
+  add_executable(constant_group_fixture tests/integration/constant_group_fixture.cc
+    tools/tree_position_json.cc)
   target_include_directories(constant_group_fixture PRIVATE tests/support)
-  target_link_libraries(constant_group_fixture PRIVATE abcd_source)
+  target_link_libraries(constant_group_fixture PRIVATE abcd_source abcd_json)
   if(ABCD_NODE_EXECUTABLE)
     add_test(NAME constant_group_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/constant_group.mjs

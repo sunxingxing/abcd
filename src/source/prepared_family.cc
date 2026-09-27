@@ -163,8 +163,8 @@ std::variant<PrintedFamilyDraft, FamilyPrepareFailure, TreePrintError> PreparedF
   const auto& enclosure = std::get<FamilyEnclosure>(checked);
   scratch.bytes -= enclosure.allocated_bytes; scratch.work -= enclosure.work;
   const auto* member = storage_->context.ClassContext();
-  auto printed = member ? PrintClassFamilyDraft(storage_->family, *member, output, output_budget, scratch)
-                        : PrintFamilyDraft(storage_->family, output, output_budget, scratch);
+  auto printed = member ? PrintClassFamilyDraft(storage_->family, *member, output, output_budget, scratch, destination.globals)
+                        : PrintFamilyDraft(storage_->family, output, output_budget, scratch, destination.globals);
   if (const auto* failure = std::get_if<TreePrintError>(&printed)) return *failure;
   auto result = std::get<PrintedFamilyDraft>(std::move(printed));
   result.allocated_bytes += enclosure.allocated_bytes; result.work += enclosure.work;

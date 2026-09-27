@@ -52,6 +52,18 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
   output << "{\"unit\":\"utf8_byte\",\"value_revision\":" << printed.value_revision.value
          << ",\"cfg_revision\":" << printed.cfg_revision.value << ",\"origins\":";
   Array(output, tree.origins, Origin);
+  if (printed.realm_binding) {
+    const auto& binding = *printed.realm_binding;
+    std::string_view policy;
+    switch (binding.policy) {
+      case RealmBindingPolicy::kExplicitHost: policy = "explicit_host"; break;
+      case RealmBindingPolicy::kStableGlobalThis: policy = "stable_global_this"; break;
+    }
+    // Resolver admits ASCII identifiers only; this is a serialization boundary.
+    output << ",\"realm_binding\":" << nlohmann::json{
+        {"policy", policy}, {"name", std::string(binding.name.begin(), binding.name.end())},
+        {"contract", SourceContractName(printed.identity.contract)}};
+  }
   output << ",\"origin_parts\":";
   Array(output, tree.origin_parts, [](auto id) { return id.value; });
   output << ",\"parameters\":[";

@@ -20,13 +20,17 @@ struct PrintedFamilyDraft {
 // Trees lacking name evidence remain anonymous diagnostic syntax. Uses
 // the SAME iterative printer as verified members, with per-owner event ranges.
 // Every range uses absolute UTF-8 byte offsets within this entire draft.
+// Realm expressions additionally require an actual destination scope even for
+// drafts: there is no diagnostic placeholder spelling for a VM realm identity.
 [[nodiscard]] std::variant<PrintedFamilyDraft, TreePrintError> PrintFamilyDraft(
     const ConstructedFamily& family, std::ostream& output,
-    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {});
+    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
+    const GlobalScope* scope = nullptr);
 // Root is an actual class-body member; descendants remain ordinary/arrow
 // expressions. This is not an object-literal method or standalone function.
 [[nodiscard]] std::variant<PrintedFamilyDraft, TreePrintError> PrintClassFamilyDraft(
     const ConstructedFamily& family, const ClassTreeContext& context, std::ostream& output,
-    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {});
+    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
+    const GlobalScope* scope = nullptr);
 }  // namespace abcd::source
 #endif
