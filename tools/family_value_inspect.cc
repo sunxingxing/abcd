@@ -151,6 +151,7 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
     report["family_tree_failure"] = failure.cause.index();
     if (failure.cell_default_candidates)
       report["cell_default_candidates"] = *failure.cell_default_candidates;
+    report["cell_defaults_proved"] = failure.cell_defaults_proved;
     std::visit([&](const auto& error) {
       using T = std::decay_t<decltype(error)>;
       if constexpr (std::is_same_v<T, SyntaxResolutionFailure>) {

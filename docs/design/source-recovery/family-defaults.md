@@ -18,7 +18,9 @@ GDB 确认当前失败是 `BuildFunctionAbi` 的 length 一致性检查：期望
 
 当前实现：`FindCellDefaults` 使用已验证 CellPlan 和 ParameterPlan，沿入口默认
 分支链发现类型化候选；已接入 `BuildFileFamilyTrees`。真实 7449 报告一个候选。
-这只完成发现阶段；独立外泄/效果证明、residual 投影、全族重绑定与签名生成仍未实现。
+`CellDefaultProof` 已独立检查控制边、比较极性、入口值使用范围、初始化 cell 身份和
+前缀操作白名单，并保留需要迁移的原始操作清单。7449 的候选通过该 IR 检查。
+residual 投影、全族重绑定与签名生成仍未实现；回归规格尚未执行。
 
 ## 实施顺序
 

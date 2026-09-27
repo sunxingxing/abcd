@@ -6,6 +6,7 @@
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/function_family.h"
 #include "../../../src/source/cell_defaults.h"
+#include "../../../src/source/cell_default_proof.h"
 #include "../../../src/source/tree_semantics.h"
 #include "abcd/source/value_stage.h"
 #include "analysis/ssa_fixture.h"
@@ -18,6 +19,8 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 static_assert(!std::is_copy_constructible_v<FunctionInput>);
+static_assert(!std::is_default_constructible_v<CellDefaultProof>);
+static_assert(!std::is_copy_constructible_v<CellDefaultProof>);
 static_assert(!std::is_constructible_v<FunctionInput, SemanticMethod, SemanticProof>);
 static_assert(std::is_same_v<decltype(std::declval<FunctionInput&>().Proof()), const SemanticProof&>);
 constexpr abc::EntityOffset kParent{200}, kChild{300}, kRecord{100};
@@ -380,6 +383,25 @@ void CellDefaultDiscovery() {
       std::get<SpecialValue>(candidate.fallback) == SpecialValue::kNull);
   test::Check(values.cells->operations[candidate.initial_store.value] == candidate.cell &&
       values.cells->operations[candidate.fallback_store.value] == candidate.cell);
+  const auto prove = [&](const CellDefaults& proposed, SemanticBudget budget = {}) {
+    return CellDefaultProof::Build(values.graph, *values.environments, *values.cells,
+        parameters, proposed, 0, budget);
+  };
+  const auto proved = std::get<CellDefaultProof>(prove(found));
+  test::Check(proved.Defaults().size() == 1 && proved.Revision() == values.graph.revision &&
+      proved.ControlRevision() == values.graph.cfg_revision && proved.BodyEntry() == candidate.join);
+  test::Check(std::none_of(proved.Operations().begin(), proved.Operations().end(),
+      [&](const auto& moved) { return moved.operation == candidate.initial_store; }));
+  auto forged = found; forged.candidates[0].fallback = analysis::IntegerLiteral{7};
+  test::Check(std::get<CellDefaultProofError>(prove(forged)) == CellDefaultProofError::kLiteral);
+  forged = found; std::swap(forged.candidates[0].missing, forged.candidates[0].present);
+  test::Check(std::get<CellDefaultProofError>(prove(forged)) == CellDefaultProofError::kControl);
+  forged = found; ++forged.revision.value;
+  test::Check(std::get<CellDefaultProofError>(prove(forged)) == CellDefaultProofError::kRevision);
+  SemanticBudget proof_budget; proof_budget.work = proved.Work();
+  test::Check(std::holds_alternative<CellDefaultProof>(prove(found, proof_budget)));
+  --proof_budget.work;
+  test::Check(std::get<CellDefaultProofError>(prove(found, proof_budget)) == CellDefaultProofError::kWorkLimit);
   test::Check(std::get<CellDefaults>(FindCellDefaults(values.graph, *values.cells, parameters, 1)).candidates.empty());
   auto stale = parameters; ++stale.revision.value;
   test::Check(std::get<CellDefaultError>(FindCellDefaults(values.graph, *values.cells, stale, 0)) == CellDefaultError::kRevision);

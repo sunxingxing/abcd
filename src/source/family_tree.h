@@ -3,6 +3,7 @@
 
 #include "family_file.h"
 #include "cell_defaults.h"
+#include "cell_default_proof.h"
 #include "function_abi.h"
 #include "function_tree.h"
 #include "module_aliases.h"
@@ -17,9 +18,10 @@ struct FamilyTreeFailure {
   std::variant<FamilyTreeError, SyntaxResolutionFailure, ControlError,
       EvaluationError, FunctionTreeError, TreeFlowError, FunctionAbiError,
       ModuleAliasFailure, ModuleAliasTreeError, FamilyError,
-      ParameterPlanError, CellDefaultError> cause;
+      ParameterPlanError, CellDefaultError, CellDefaultProofError> cause;
   // Discovery evidence only; no source initializer or erasure is authorized.
   std::optional<std::size_t> cell_default_candidates;
+  bool cell_defaults_proved = false;
 };
 // Consumes a fresh, unchanged ReadFunctionFamily result and actual root context.
 // Parent-first shared construction checks each incoming capture against the

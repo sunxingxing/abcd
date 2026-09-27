@@ -11,6 +11,20 @@ observations, not an up-to-date capability summary.
 
 ### File-Backed Conditional Function Families
 
+CellDefaultProof now independently checks supplied candidates without rerunning
+discovery: actual CFG arms/joins, branch polarity, entry parameter identity,
+allocated-cell first stores, original load/store operands and literal producers.
+One indexed prefix pass rejects calls, capture creation, unrelated reads and
+environment pops; a use pass rejects escaping pre-default values. Actual
+environment allocation and entry/receiver cell initialization are retained,
+not put in the signature-operation list. The sealed move-only result still
+requires residual projection, capture/module rebinding and signature checking.
+ABC-only 7449 reports one candidate and cell_defaults_proved=true while retaining
+kLength refusal and nonexecutable output. Added literal/edge/revision mutations,
+retained initialization and work-budget specifications remain uncompiled/unrun.
+Final production abc_semantic/abc_structure builds exited 0 after state-storage
+admission was included. No tests, generated JS, benchmark or RSS run was made.
+
 Added typed CellDefault discovery using shared CellPlan and ParameterPlan. It
 indexes block predecessors/terminal operations once, follows only the entry
 default chain, binds the initial parameter store/test load/fallback store to

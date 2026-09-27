@@ -21,6 +21,7 @@ class FamilyTrees {
     for (std::size_t i = 0; i < family.members.size(); ++i) {
       member_ = {static_cast<std::uint32_t>(i)};
       default_candidates_.reset();
+      defaults_proved_ = false;
       Step(1);
       auto& member = family.members[i];
       std::optional<FunctionContext> child_context;
@@ -41,6 +42,13 @@ class FamilyTrees {
             graph, *function.values.cells, parameters, context.Length(), left_));
         Account(defaults);
         default_candidates_ = defaults.candidates.size();
+        if (!defaults.candidates.empty()) {
+          Require(function.values.environments.has_value(), FamilyTreeError::kContext);
+          auto proof = Take<CellDefaultProof, CellDefaultProofError>(CellDefaultProof::Build(graph,
+              *function.values.environments, *function.values.cells, parameters, defaults, context.Length(), left_));
+          Admit(proof.AllocatedBytes(), 1); Step(proof.Work());
+          defaults_proved_ = true;
+        }
         // Keep the ordinary tree/ABI gate intact until independent cell escape
         // proof, residual projection and whole-family rebinding are connected.
       }
@@ -102,7 +110,7 @@ class FamilyTrees {
   }
  private:
   template<class T> [[noreturn]] void Fail(T error) const {
-    throw FamilyTreeFailure{member_, std::move(error), default_candidates_};
+    throw FamilyTreeFailure{member_, std::move(error), default_candidates_, defaults_proved_};
   }
   void Require(bool ok, FamilyTreeError error) const { if (!ok) Fail(error); }
   void Step(std::uint64_t work) {
@@ -127,6 +135,7 @@ class FamilyTrees {
   ModuleOwnerId module_owner_;
   FamilyId member_{0};
   std::optional<std::size_t> default_candidates_;
+  bool defaults_proved_ = false;
 };
 }  // namespace
 std::variant<ConstructedFamily, FamilyTreeFailure> BuildFileFamilyTrees(
