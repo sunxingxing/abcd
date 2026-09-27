@@ -12,6 +12,11 @@ finish the remaining original T00–T12 objective. Implement necessary
 T07–T11 dependencies during access recovery, not in a separate later pipeline.
 This changes execution order, not the original scope or acceptance criteria.
 
+Superseding user update: prioritize every group in the pinned ISA, in YAML
+order, then finish remaining prior objectives. This access plan is a component
+of that broader first stage, not an exclusive LD/ST queue. See
+[ISA priority](../../design/source-recovery/isa-priority.md).
+
 ## First Delivery: Computed Set (L1)
 
 - [x] Add a failing narrow/wide STOBJBYVALUE import fixture in

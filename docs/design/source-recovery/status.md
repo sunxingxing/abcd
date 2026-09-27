@@ -14,16 +14,17 @@
 
 执行目标已按用户要求调整为两阶段：
 
-1. **优先完成 LD/ST 通用反编译**：按 [访问恢复方案](access-recovery.md) 的 L0–L9
-   推进格式解析、语义 IR、AST、源码输出和测试，包括跨作用域、词法环境、lambda、
-   generator、async/async generator 等复杂场景；覆盖多应用和历史 profile。
+1. **优先覆盖 pinned `isa.yaml` 全部 groups 的通用反编译**：按文件中的 19 个 group
+   顺序推进全部 332 个编码格式的解析、语义 IR、AST、源码输出和测试。LD/ST 方案
+   纳入其中，跨作用域、词法环境、lambda、generator、async/async generator、多应用
+   和历史 profile 要求不变。完整顺序见 [全 ISA 优先级](isa-priority.md)。
 2. **随后完成原 T00–T12 剩余目标**：保留全部原验收要求，不缩减范围、不以第一阶段
    的局部成功替代原结构 gate 或整体完成。
 
-LD/ST 必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
+各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 24。原 T07 仍未完成，但不再作为独立于 LD/ST 的首要执行目标。
+源码证据规则版本为 24。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -41,6 +42,13 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- computed Set 集成测试增加窄/宽格式的捕获箭头函数：父函数创建词法环境、
+  子函数读取并更新捕获 cell 后写计算属性，共用 PreparedFamily/FamilyEmission。
+  独立源码 oracle 比较多次调用、独立激活、key 抛出和 setter 重入的事件顺序、
+  异常身份及最终值；检查子函数原 PC 14 的生成区间、箭头 prototype 和 arity。
+  修正 fixture 提前 unlink 导致 ctime 改变的问题，保留生产文件身份检查。
+  `computed_store_fixture` 构建成功，`computed_store_test` 1/1 通过；
+  不代表循环环境、兄弟闭包、generator/async 或完整异常路径已覆盖。
 - L0 新增 pinned ISA 访问清单：146 个编码格式、21 个 typed family，包含 wide、
   deprecated、runtime 前缀；同时纳入 MOV/FLDAI、环境建立及 named definition 依赖。
   生成阶段校验显式边界映射的遗漏、重复和失效项，运行时不按指令名称字符串分派。
