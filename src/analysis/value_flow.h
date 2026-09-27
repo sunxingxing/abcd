@@ -19,7 +19,8 @@ struct PhasedValueFlowProof {
   std::uint64_t work;
 };
 // Availability across Before/Commit/Catch, not input/handler correspondence or
-// permission to publish source. Unreachable phases currently reject.
+// permission to publish source. Only explicit throw's unreachable, valueless
+// Commit is admitted; other unreachable phases still reject.
 [[nodiscard]] std::variant<PhasedValueFlowProof, ValueAvailabilityError> VerifyPhasedValueFlow(
     const ValueProgram& graph, SemanticBudget budget = {});
 // Normal-flow availability only, not an effects/input-identity certificate.

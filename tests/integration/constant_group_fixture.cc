@@ -46,7 +46,7 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
     abc::FunctionKind kind = abc::FunctionKind::kBaseConstructor,
     std::string_view name = "constant", bool global_lookup = false,
     const HostRealmBinding* realm_binding = nullptr,
-    const HostSymbolBinding* symbol_binding = nullptr) {
+    const HostSymbolBinding* symbol_binding = nullptr, bool throws_value = false) {
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kTarget >> (kByteBits * i));
@@ -84,7 +84,11 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
         Op(abc::Opcode::kLDA_V8), kValue});
   }
   if (debug) code.push_back(Op(abc::Opcode::kDEBUGGER));
-  code.push_back(Op(abc::Opcode::kRETURN));
+  if (throws_value) {
+    // Pinned THROW_PREF_NONE is the throw prefix followed by subopcode zero.
+    constexpr std::uint8_t kThrowPrefix = 0xfe, kThrowValue = 0x00;
+    code.insert(code.end(), {kThrowPrefix, kThrowValue});
+  } else code.push_back(Op(abc::Opcode::kRETURN));
   const auto target = Append(bytes, code, callback ? kLocals : 0,
       kImplicitArguments + parameters);
   char path[] = "/tmp/abcd-constant-group-XXXXXX";
@@ -131,6 +135,7 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
         file, header, index, lookup, roles, sites, {range.first.value + 1}, identity))};
     auto read = ReadFunctionValues(file, header, index, first.Position(), identity,
         InputCaptureMode::kConditional, {}, nullptr, &first);
+    test::Check(std::holds_alternative<FileFunction>(read));
     const auto& input = std::get<FileFunction>(read);
     test::Check(input.input.HasOwner() && input.input.MatchesOwner(first));
     test::Check(!input.input.MatchesOwner(second));
@@ -258,11 +263,38 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
     }
     test::Check(count == expected_pc.size());
   }
+  if (throws_value) {
+    const abc::CodeOffset throw_pc{static_cast<std::uint32_t>(code.size() - 2)};
+    std::size_t throws = 0;
+    for (const auto& site : member.sources->sites) {
+      const auto* statement = std::get_if<StmtId>(&site.target);
+      if (!statement || !std::holds_alternative<ThrowStmt>(member.tree.statements[statement->value].statement))
+        continue;
+      ++throws;
+      test::Check(std::get<OriginalSite>(member.tree.origins[site.origin.value]).pc == throw_pc);
+      const auto range = emission.Positions().members.front().statements[statement->value];
+      test::Check(range.begin < range.end && range.end <= output.view().size());
+      const auto text = output.view().substr(range.begin, range.end - range.begin);
+      test::Check(text.starts_with("throw ") && text.ends_with(";"));
+    }
+    test::Check(throws == 1);
+  }
   std::cout << output.str() << ",\n";
   test::Check(unlink(path) == 0);
 }
 }  // namespace
 int main() {
+  std::cout << "export const thrownValues = [\n";
+  for (const auto profile : kProfiles)
+    for (const auto constant : kConstants)
+      for (const bool callback : {false, true})
+        Emit(profile, constant, callback, ExpectedSource::kPrinted, false, false,
+            abc::FunctionKind::kBaseConstructor, "throwValue", false, nullptr, nullptr, true);
+  std::cout << "];\nexport const thrownReceivers = [\n";
+  for (const auto profile : kProfiles)
+    Emit(profile, abc::Opcode::kLDTHIS, false, ExpectedSource::kPrinted, false, false,
+        abc::FunctionKind::kBaseConstructor, "throwReceiver", false, nullptr, nullptr, true);
+  std::cout << "];\n";
   std::cout << "const hostSymbol = Symbol;\nexport const symbols = [\n";
   const HostSymbolBinding symbol{u"hostSymbol"};
   for (const auto profile : kProfiles)

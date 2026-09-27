@@ -398,6 +398,7 @@ class StructureCheck {
         else if constexpr (std::is_same_v<T, IfStmt>) {
           add(node.condition); add(node.consequent); if (node.alternate) add(*node.alternate);
         } else if constexpr (std::is_same_v<T, ReturnStmt>) { if (node.value) add(*node.value); }
+        else if constexpr (std::is_same_v<T, ThrowStmt>) { add(node.value); }
         else if constexpr (std::is_same_v<T, LoopStmt>) add(node.body);
         else { static_assert(std::is_same_v<T, BlockStmt> || std::is_same_v<T, BreakStmt> ||
                              std::is_same_v<T, DebuggerStmt> ||

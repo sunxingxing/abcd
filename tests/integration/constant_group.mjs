@@ -3,10 +3,38 @@ import {execFileSync} from 'node:child_process';
 import {Session} from 'node:inspector';
 
 const source = execFileSync(process.argv[2], {encoding: 'utf8'});
-const {cases, debugCases, receivers, functions, namedFunctions, createdFunctions, globalFunctions, realms, hostRealms, symbols} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {cases, debugCases, receivers, functions, namedFunctions, createdFunctions, globalFunctions, realms, hostRealms, symbols, thrownValues, thrownReceivers} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const expected = [NaN, Infinity, undefined, null, true, false];
 const profileCount = 3;
 const forms = 2;
+const observeThrow = (fn, receiver, args) => {
+  let threw = false, result;
+  try { Reflect.apply(fn, receiver, args); }
+  catch (value) { threw = true; result = value; }
+  assert.equal(threw, true);
+  return result;
+};
+assert.equal(thrownValues.length, profileCount * expected.length * forms);
+for (let i = 0; i < thrownValues.length; ++i) {
+  const value = expected[Math.floor(i / forms) % expected.length];
+  const fn = thrownValues[i];
+  let calls = 0;
+  assert.ok(Object.is(observeThrow(fn, null, [input => {
+    ++calls; assert.ok(Object.is(input, value)); return {ignored: true};
+  }]), value));
+  assert.equal(calls, i % forms);
+  if (i % forms) {
+    const earlier = {};
+    assert.equal(observeThrow(fn, null, [() => { throw earlier; }]), earlier);
+  }
+}
+assert.equal(thrownReceivers.length, profileCount);
+let coerced = 0;
+const opaque = new Proxy({}, {get() { ++coerced; throw new Error('unexpected coercion'); }});
+for (const fn of thrownReceivers)
+  for (const receiver of [undefined, null, -0, NaN, 7n, 'text', Symbol('payload'), opaque])
+    assert.ok(Object.is(observeThrow(fn, receiver, []), receiver));
+assert.equal(coerced, 0);
 assert.equal(symbols.length, profileCount * 2 * forms);
 const intrinsicSymbol = Symbol;
 const symbolProperty = Object.getOwnPropertyDescriptor(globalThis, 'Symbol');

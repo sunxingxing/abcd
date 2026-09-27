@@ -53,6 +53,7 @@ bool CanErasePureOp(const ValueOp& op) {
                     std::is_same_v<T, ValueBranch> ||
                     std::is_same_v<T, ValueJump> ||
                     std::is_same_v<T, ValueReturn> ||
+                    std::is_same_v<T, ValueThrow> ||
                     std::is_same_v<T, ValueGuard> ||
                     std::is_same_v<T, ValueInvoke> || std::is_same_v<T, ValueConstruct> ||
                     std::is_same_v<T, ValueArrayAllocation> || std::is_same_v<T, ValueObjectAllocation>);

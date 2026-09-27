@@ -44,9 +44,15 @@ void CheckPhaseInput(const PhasedValueInput& input, PhaseQuota& quota) {
   quota.Work(proof.work_units);
   RequirePhase(proof.arguments == input.proof.arguments && proof.reads == input.proof.reads &&
       proof.work_units == input.proof.work_units, PhaseError::kInputMismatch);
-  for (const auto& environment : input.environments.before) {
+  for (std::size_t i = 0; i < input.environments.before.size(); ++i) {
     quota.Work();
-    RequirePhase(environment.has_value(), PhaseError::kUnreachableFlow);
+    if (input.environments.before[i]) continue;
+    const auto& node = input.flow.nodes[i];
+    const auto& instruction = input.flow.instructions[node.instruction.value];
+    RequirePhase(node.phase == ExceptionPhase::kCommit &&
+        std::holds_alternative<ThrowOperation>(instruction.operation) &&
+        instruction.effects.exceptional == ExceptionalCompletion::kAlwaysThrow,
+        PhaseError::kUnreachableFlow);
   }
 }
 ValueOperand PhaseLiteral(const ScalarValue& value) {

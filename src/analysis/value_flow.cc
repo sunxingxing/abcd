@@ -96,6 +96,9 @@ NormalFlow ReadFlow(const ValueProgram& graph, FlowQuota& quota,
       const auto& op = graph.ops[index];
       Require(op.block.value == b && op.order == order, Error::kInvalidGraph);
       if (op.life != ValueLife::kLive) continue;
+      if (std::holds_alternative<ValueThrow>(op.operation))
+        Require(op.exceptional == ExceptionalCompletion::kAlwaysThrow && !op.result &&
+            op.use_count == 1, Error::kInvalidTerminator);
       if (last) {
         const auto& prior = graph.ops[last->value];
         Require(!std::holds_alternative<ValueReturn>(prior.operation) &&
@@ -124,8 +127,18 @@ NormalFlow ReadFlow(const ValueProgram& graph, FlowQuota& quota,
     }
     if (phase && phase->phase == ExceptionPhase::kBefore) {
       const auto& op = graph.ops[phase->operation->value];
-      Require(block.edge_count >= 1 &&
-          op.exceptional != ExceptionalCompletion::kAlwaysThrow, Error::kInvalidTerminator);
+      if (op.exceptional == ExceptionalCompletion::kAlwaysThrow) {
+        Require(std::holds_alternative<ValueThrow>(op.operation) && block.edge_count <= 1,
+            Error::kInvalidTerminator);
+        if (block.edge_count != 0) {
+          const auto& edge = graph.edges[block.first_edge.value];
+          Require(edge.kind == FlowEdgeKind::kException &&
+              graph.phases[edge.target.value].phase == ExceptionPhase::kCatch, Error::kInvalidGraph);
+        }
+        flow.blocks.push_back(adapted);
+        continue;
+      }
+      Require(block.edge_count >= 1, Error::kInvalidTerminator);
       const auto& normal = graph.edges[block.first_edge.value];
       const auto& commit = graph.phases[normal.target.value];
       Require(normal.kind == FlowEdgeKind::kFallthrough &&
@@ -227,9 +240,19 @@ static std::variant<ValueFlowProof, ValueAvailabilityError> VerifyAvailability(
     // Conservatively retain the builder's peak allocation charge, although its
     // temporary arrays have already been released. No independent full budget.
     quota.Admit(dominators->work.allocated_bytes, 1);
-    for (const auto& node : dominators->nodes) {
+    for (std::size_t b = 0; b < dominators->nodes.size(); ++b) {
       quota.Work();
-      Require(node.begin != 0, Error::kUnreachableBlock);
+      if (dominators->nodes[b].begin != 0) continue;
+      // An explicit throw has no normal Commit. Retain its provenance-only
+      // phase, but never admit an arbitrary unreachable operation or value.
+      Require(!graph.phases.empty(), Error::kUnreachableBlock);
+      const auto& phase = graph.phases[b];
+      Require(phase.phase == ExceptionPhase::kCommit && phase.operation,
+          Error::kUnreachableBlock);
+      const auto& op = graph.ops[phase.operation->value];
+      Require(std::holds_alternative<ValueThrow>(op.operation) &&
+          op.exceptional == ExceptionalCompletion::kAlwaysThrow &&
+          dominators->nodes[op.block.value].begin != 0, Error::kUnreachableBlock);
     }
     std::vector<PhiKey> keys;
     std::vector<std::size_t> counts;

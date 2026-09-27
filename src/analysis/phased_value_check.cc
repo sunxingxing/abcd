@@ -9,6 +9,15 @@ namespace abcd::analysis {
 namespace {
 using namespace detail;
 using Error = ValueImportError;
+bool SameThrownValue(const ScalarValue& expected, const ScalarValue& actual) {
+  if (const auto* reg = std::get_if<abc::RegisterId>(&expected)) {
+    const auto* other = std::get_if<abc::RegisterId>(&actual);
+    return other && *reg == *other;
+  }
+  if (std::holds_alternative<Accumulator>(expected))
+    return std::holds_alternative<Accumulator>(actual);
+  return MatchesValueLiteral(expected, PhaseLiteral(actual));
+}
 void CheckAvailability(const ValueProgram& graph, PhaseQuota& quota) {
   const auto checked = VerifyPhasedValueFlow(graph, quota.Remaining());
   if (const auto* proof = std::get_if<PhasedValueFlowProof>(&checked)) {
@@ -64,8 +73,11 @@ void CheckPhases(const ValueProgram& graph, const ExceptionFlow& flow, PhaseQuot
     if (node.exception) {
       const auto& exception = *node.exception;
       RequirePhase(exits < graph.exceptional_exits.size() && exception.before == instruction.pc &&
-          exception.completion == instruction.effects.exceptional &&
-          std::holds_alternative<PendingException>(exception.exception), Error::kInputMismatch);
+          exception.completion == instruction.effects.exceptional, Error::kInputMismatch);
+      if (const auto* thrown = std::get_if<ThrowOperation>(&instruction.operation)) {
+        const auto* payload = std::get_if<ThrownValue>(&exception.exception);
+        RequirePhase(payload && SameThrownValue(thrown->value, payload->value), Error::kInputMismatch);
+      } else RequirePhase(std::holds_alternative<PendingException>(exception.exception), Error::kInputMismatch);
       const auto& exit = graph.exceptional_exits[exits++];
       RequirePhase(exit.op.value == operations && exit.origin == op.origin &&
           exit.before_throw == op.before_throw &&

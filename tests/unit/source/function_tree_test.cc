@@ -93,6 +93,29 @@ class Fixture {
 constexpr auto kRead = analysis::LanguageEffect::kHeapRead | analysis::LanguageEffect::kUserCode;
 constexpr auto kWrite = analysis::LanguageEffect::kHeapWrite | analysis::LanguageEffect::kUserCode;
 
+void ThrowTree() {
+  using namespace analysis;
+  Fixture fixture;
+  fixture.Add(0, 0, 2, ValueThrow{}, false, {{OperandRole::kThrownValue, ValueId{0}}});
+  fixture.graph.ops[0].exceptional = ExceptionalCompletion::kAlwaysThrow;
+  fixture.graph.blocks = {{{0}, 1, {0}, 0}};
+  auto built = fixture.Build();
+  Check(std::holds_alternative<ConstructedFunction>(built));
+  auto tree = std::get<ConstructedFunction>(built).tree;
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+  const auto statement = std::get<StmtId>(tree.operations.front().node);
+  const auto expression = std::get<ThrowStmt>(tree.statements[statement.value].statement).value;
+  Check(std::get<OriginalSite>(tree.origins[tree.statements[statement.value].origin.value]).pc ==
+      abc::CodeOffset{2});
+  tree.statements[statement.value].statement = ReturnStmt{expression};
+  Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
+  tree.statements[statement.value].statement = ExpressionStmt{expression};
+  Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
+  tree.statements[statement.value].statement = ThrowStmt{ExprId{UINT32_MAX}};
+  Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(tree)));
+}
+
 Fixture BranchFixture() {
   using namespace analysis;
   Fixture f;
@@ -672,6 +695,7 @@ int main() {
   FrameFunctionTree();
   FrameReceiverTree();
   DebuggerTree();
+  ThrowTree();
   ComputedStoreTree();
   BranchTree();
   SnapshotTree();

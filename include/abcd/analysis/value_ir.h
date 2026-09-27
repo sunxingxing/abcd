@@ -47,7 +47,7 @@ struct CfgRevision {
 enum class OperandRole : std::uint8_t {
   kInput, kBase, kKey, kStoredValue, kLeft, kRight, kCondition,
   kReturnValue, kGuardValue, kDiagnosticName, kPhiInput,
-  kCallee, kReceiver, kConstructor, kArgument, kHomeObject
+  kCallee, kReceiver, kConstructor, kArgument, kHomeObject, kThrownValue
 };
 enum class ReadPurpose : std::uint8_t { kOperand, kProtocol };
 enum class ValueLife : std::uint8_t { kLive, kRemoved };
@@ -112,6 +112,7 @@ struct ValuePropertyRead { bool operator==(const ValuePropertyRead&) const = def
 struct ValueBranch { UnaryOperator predicate; bool operator==(const ValueBranch&) const = default; };
 struct ValueJump { bool operator==(const ValueJump&) const = default; };
 struct ValueReturn { bool operator==(const ValueReturn&) const = default; };
+struct ValueThrow { bool operator==(const ValueThrow&) const = default; };
 struct ValueNop { bool operator==(const ValueNop&) const = default; };
 struct ValueDebugger { bool operator==(const ValueDebugger&) const = default; };
 struct ValueFrameThis { bool operator==(const ValueFrameThis&) const = default; };
@@ -210,7 +211,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValueDebugger, ValueFrameThis, ValueFrameFunction,
-    ValueGlobalObject, ValueSymbolConstructor, ValueArgumentSnapshot>;
+    ValueGlobalObject, ValueSymbolConstructor, ValueArgumentSnapshot, ValueThrow>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

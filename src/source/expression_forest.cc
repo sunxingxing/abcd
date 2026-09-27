@@ -458,7 +458,8 @@ class ForestBuilder {
         const auto* name = std::get_if<NameId>(&constant);
         Require(name && name->value < constants_.name_count, Error::kConstant);
         return Add(GlobalNameExpr{*name}, origin);
-      } else if constexpr (std::is_same_v<T, analysis::ValueReturn>)
+      } else if constexpr (std::is_same_v<T, analysis::ValueReturn> ||
+                           std::is_same_v<T, analysis::ValueThrow>)
         return operands[0];
       else if constexpr (std::is_same_v<T, analysis::ValueJump> ||
                          std::is_same_v<T, analysis::ValueDebugger>)

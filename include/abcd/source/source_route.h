@@ -234,8 +234,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 36 retain argument snapshot slot dependencies and require owner proof.
 // Rules 37 retain checked invocation argument facts from exact callable owners.
 // Rules 42 preserve arrow ABI through explicit own-invocation method carriers.
-// Rules 43 honor the versioned recovered-text contract without weakening ABI.
-inline constexpr std::uint32_t kRouteEvidenceRules = 43;
+// Rules 44 admit explicit throw through common value IR, AST and printer.
+inline constexpr std::uint32_t kRouteEvidenceRules = 44;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

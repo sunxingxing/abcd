@@ -74,6 +74,7 @@ class OperandCheck {
               graph_.values[op.result->value].domain.IsLanguage(), Error::kOperand);
           RequireMeaning(Node<ThisExpr>(expression).owner == tree_.owner, Error::kOperand);
         } else if constexpr (std::is_same_v<T, analysis::ValueCopy> ||
+                      std::is_same_v<T, analysis::ValueThrow> ||
                       std::is_same_v<T, analysis::ValueReturn>) {
           Input(input(0), expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueUnary>) {

@@ -15,6 +15,7 @@ constexpr std::array kNamedWrite{Role::kBase, Role::kStoredValue};
 constexpr std::array kPropertyWrite{Role::kBase, Role::kKey, Role::kStoredValue};
 constexpr std::array kBranch{Role::kCondition};
 constexpr std::array kReturn{Role::kReturnValue};
+constexpr std::array kThrow{Role::kThrownValue};
 constexpr std::array kCall{Role::kCallee};
 constexpr std::array kReceiverCall{Role::kCallee, Role::kReceiver};
 constexpr std::array kConstruct{Role::kConstructor};
@@ -48,6 +49,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     }
     else if constexpr (std::is_same_v<T, analysis::ValueBranch>) return EvaluationShape{kBranch, false};
     else if constexpr (std::is_same_v<T, analysis::ValueReturn>) return EvaluationShape{kReturn, false};
+    else if constexpr (std::is_same_v<T, analysis::ValueThrow>) return EvaluationShape{kThrow, false};
     else if constexpr (std::is_same_v<T, analysis::ValueJump>) return EvaluationShape{kNoOperands, false};
     else if constexpr (std::is_same_v<T, analysis::ValueDebugger>) return EvaluationShape{kNoOperands, false};
     else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>) return EvaluationShape{kNoOperands, true};
@@ -162,6 +164,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                     std::is_same_v<T, analysis::ValueOwnWrite> ||
                     std::is_same_v<T, analysis::ValueBranch> ||
                     std::is_same_v<T, analysis::ValueReturn> ||
+                    std::is_same_v<T, analysis::ValueThrow> ||
                     std::is_same_v<T, analysis::ValueJump> ||
                     std::is_same_v<T, analysis::ValueGuard> ||
                     std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||

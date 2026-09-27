@@ -56,8 +56,9 @@ Typed register-value rules explicitly refuse these raw protocol operations.
 The normal value importer likewise has no async operand/operation lowering.
 Thus successful semantic lifting/phase SSA is not Language-value permission,
 an executable receipt or permission to output `Promise.resolve`/native async.
-This slice does not advance source rules or enable source publication (current
-rules are 43 following the separately approved V3 source-text contract).
+Raw async lifting does not itself enable source publication. Current source
+rules are 44 after the separately integrated explicit-throw source path;
+the V3 source-text contract is unchanged.
 Existing legacy normalized async paths are not replaced or broadened.
 
 Historical three-register settlement and raw suspend/resume remain outside
@@ -93,8 +94,16 @@ input proof and frame. Import rechecks the input proof under its shared budget;
 this does not discharge its host/module/capture premises or turn an environment
 coordinate into a lexical binding/source-scope proof.
 
-Explicit always-throw and unreachable phases currently reject; they must be
-addressed before claiming the full T09 importer. Normalized resume origins
+Explicit ThrowOperation now imports as ValueThrow with a kThrownValue operand.
+Its Before has only an exceptional successor (or propagation to caller), never
+a normal result. The provenance-only, unreachable Commit remains in the graph
+with no operations or edges. Availability permits precisely this phase when
+its throw producer is reachable; it does not admit arbitrary unreachable
+instructions, definitions or handlers. Input correspondence checks ThrownValue
+against the original operand rather than treating it as an unknown pending
+runtime exception. Internal VM values still fail the independent input proof.
+
+Other unreachable phases still reject before source publication. Normalized resume origins
 also reject until an owner-certified lowering is integrated. Ordinary import
 correspondence, simplification, rewrite, evaluation and control planning reject
 phased graphs until their exception-aware integration exists. Removing the
@@ -121,6 +130,29 @@ O(N+U+V+E+S log V), plus the shared availability verifier's dominator/phi bounds
 storage is O(N+U+V+E) plus that verifier's scratch. Inputs remain caller-admitted.
 These synthetic inputs do not prove full source or corpus completion.
 
+## Explicit Throw Source Slice
+
+As a T09/group-1 dependency (not completion of group 8), THROW_PREF_NONE now
+also traverses the normal no-handler pipeline: decode, typed semantics/SSA,
+value import, simplification, control/evaluation, ThrowStmt, independent AST
+checks and the shared printer. ThrowStmt owns a required expression; it is not
+ReturnStmt or an expression statement. No coercion, synthetic Error allocation,
+normal result or fallthrough is introduced. Throw remains ordered and cannot
+be erased, even if its effect flags are malformed. Rule 44 invalidates earlier
+source evidence while preserving the existing V3 premises.
+
+The file-backed constant-group fixture adds 39 functions across the three
+profiles: six constants with/without a preceding callback and strict receiver
+throws. Generated JS checks undefined/null/NaN/infinity/boolean payloads,
+receiver identity including -0/bigint/symbol/Proxy, absence of coercion, callback
+effects and earlier exceptions taking precedence. Original throw PC maps to
+the generated statement span through the AST, never text reconstruction.
+Tree tests reject throw-to-return/expression mutations and invalid operands.
+Phase tests cover propagation, catch entry, invalid completion/payload, internal
+Hole rejection, 200/201/402 prelude instructions and refusal of ordinary dead
+code after throw. Both import and file-backed source tests failed before this
+implementation. This does not yet emit try/catch/finally or native async.
+
 Argument snapshots now compose with this phase graph: BuildExceptionFlow takes
 the same optional FrameLayout as normal lifting and retains a value copy.
 VerifyExceptionInputs requires an explicit ArgumentFrameFact matching it, even
@@ -140,7 +172,7 @@ boundaries. A lexical-prelude fixture checks that successful pop restores the
 outer environment while snapshot failure reaches Catch in the inner one.
 No exception AST or executable async receipt follows from these input proofs.
 
-1. Complete T09 beyond the initial phase importer: explicit throw/unreachable
+1. Complete T09 beyond the initial phase importer: general unreachable
    phases, completion, exception-aware region AST and environment/capture/module
    ownership. Do not index catch definitions as normal instruction results or
    reuse normal environment coordinates for phased capture/module proofs.

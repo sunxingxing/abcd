@@ -541,6 +541,10 @@ class TreeBuilder {
         const auto statement = Statement(ReturnStmt{expression}, origin);
         Append(draft, statement);
         tree_.operations.push_back({id, statement});
+      } else if (std::holds_alternative<analysis::ValueThrow>(op.operation)) {
+        const auto statement = Statement(ThrowStmt{*expression}, origin);
+        Append(draft, statement);
+        tree_.operations.push_back({id, statement});
       } else {
         tree_.operations.push_back({id, *expression});
         if (evaluation.kind == EvaluationKind::kInline) continue;

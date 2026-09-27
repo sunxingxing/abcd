@@ -113,6 +113,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueJump{};
     } else if constexpr (std::is_same_v<T, ReturnOperation>) {
       return ValueReturn{};
+    } else if constexpr (std::is_same_v<T, ThrowOperation>) {
+      return ValueThrow{};
     } else if constexpr (std::is_same_v<T, NoOperation>) {
       return ValueNop{};
     } else if constexpr (std::is_same_v<T, DebuggerOperation>) {

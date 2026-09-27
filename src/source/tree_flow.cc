@@ -108,6 +108,11 @@ class FlowCheck {
             const auto* returned = std::get_if<ReturnStmt>(&syntax);
             Require(returned && returned->value, Error::kPlacement);
             flow_.expressions[id.value] = *returned->value;
+          } else if (std::holds_alternative<analysis::ValueThrow>(op.operation)) {
+            Require(std::get_if<StmtId>(&placement) && std::get<StmtId>(placement) == statement, Error::kPlacement);
+            const auto* thrown = std::get_if<ThrowStmt>(&syntax);
+            Require(thrown != nullptr, Error::kPlacement);
+            flow_.expressions[id.value] = thrown->value;
           } else {
             const auto* expression = std::get_if<ExpressionStmt>(&syntax);
             Require(expression != nullptr, Error::kSequence);
@@ -344,6 +349,7 @@ class FlowCheck {
         flow_.expressions[i] = tree_.properties[property->value].value;
       } else if (std::holds_alternative<analysis::ValueBranch>(op.operation) ||
           std::holds_alternative<analysis::ValueDebugger>(op.operation) ||
+          std::holds_alternative<analysis::ValueThrow>(op.operation) ||
           std::holds_alternative<analysis::ValueReturn>(op.operation)) {
         Require(std::holds_alternative<StmtId>(placement), Error::kPlacement);
       } else if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation)) {

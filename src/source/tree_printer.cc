@@ -558,6 +558,9 @@ class TreePrinter {
     Append("return"); Push(std::string_view(";"));
     if (node.value) { Append(" "); Push(*node.value); }
   }
+  void StatementNode(ThrowStmt node, Statement) {
+    Append("throw "); Push(std::string_view(";")); Push(node.value);
+  }
   void StatementNode(LoopStmt node, Statement at) {
     Append("while (true) ");
     Push(Statement{node.body, at.depth});

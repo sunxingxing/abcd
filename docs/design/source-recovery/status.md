@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 43，默认源码契约为 V3。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 44，默认源码契约为 V3。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,6 +42,23 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 显式 THROW_PREF_NONE 已端到端接入普通无 handler 主干：ValueThrow/kThrownValue
+  保留原值，ThrowStmt 进入通用 AST、独立结构/语义验证、printer 和 PC→语句位置映射。
+  文件来源的三个 profile 新增 39 个生成函数，覆盖常量/严格 this 抛出、回调副作用、
+  较早异常优先、undefined/NaN/-0/bigint/symbol/Proxy 等原值身份与无隐式转换。
+  源码规则升到 44，V3 契约不变；未新增专用 writer。
+  异常主干同步接入显式 throw，保留其结构性不可达、无值/无效果 Commit；不制造
+  正常落空边，Catch/向调用方传播及异常 payload 仍独立核验。200/201/402 前导指令、
+  内部 Hole、错误完成/载荷、AST 被换成 return/表达式、非法表达式 ID 均有测试。
+  20/20 定向回归通过：throw_value、phased_value_import、phased_value_flow、
+  value_flow/value_import/value_simplify、function_tree、evaluation_plan、control_plan、
+  source_route、constant_group、async_semantics、exception_arguments、function_input、
+  creation_tree_context、class_tree_context、argument_snapshot_source 及三个应用源码切片。
+  abc_semantic 构建通过；新增导入与文件源码正例均先运行失败，再通过。
+  未恢复全量测试、RSS 或基准，1G 上限未在本轮实测。
+  **尚未完成 try/catch/finally、通用不可达指令保留、async owner 与 group 1**；
+  本项是依赖提前实现，也不代表 group 8 全部格式已覆盖。
+
 - 已新增真实异常 SSA 到通用值 IR 的 ImportPhasedValues 和独立 VerifyImportedPhases。
   对照原始 PC、相位身份、输入 ABI、操作/效果、Commit/Catch 定义、SSA 每次读取及
   phi 入边；异常出口保留选中的 TryId/HandlerId/handler PC/Catch 块，区别向调用方
@@ -55,7 +72,7 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   执行测试；abc_semantic 构建通过。新增用例含三个 profile 的 0/1/200/201/402 参数、
   handler 汇合 phi、词法环境前导、catch 读取旧局部值、元数据反例及精确 work 边界。
   未运行全量、RSS 或基准；未声称 1G 上限已实测。
-  **仍不算异常源码贯通**：always-throw/不可达相位、归一化恢复 owner、环境/捕获与
+  **仍不算异常源码贯通**：通用不可达相位、归一化恢复 owner、环境/捕获与
   源码作用域对照、异常区域 AST/completion 和源文件发布仍待完成，group 1 未完成。
 
 - T09 相位可用性已纳入同一个 ValueProgram：Before 保存操作与效果，正常结果
@@ -68,7 +85,7 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   exception_arguments、async_semantics、control_plan、evaluation_plan、function_tree，
   以及 pasteboard/Immersive/call 三个既有生成源码切片执行测试；abc_semantic 构建通过。
   初始新测试在缺失相位 API 处编译失败，并非运行期红测；未运行全量/RSS 验证。
-  **这不是 T09 或 group 1 完成**：初始独立导入与对照见上；always-throw/不可达相位、
+  **这不是 T09 或 group 1 完成**：初始独立导入与对照见上；通用不可达相位、
   环境/捕获衔接、异常区域 AST 和 async owner 仍未接通，不另建源码 writer。
 
 - 已补齐异常图中的 GETUNMAPPEDARGS 帧衔接：BuildExceptionFlow 接收并保留布局，
