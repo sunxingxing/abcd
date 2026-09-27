@@ -5,7 +5,33 @@ was stopped at the user's request; it must not be restarted for this plan.
 Scope remains T00 through T12 in the dependency order from the implementation
 plan. No task scheduler, additional host assumptions or sidecar source inputs.
 
-Latest state: T05 now integrates compact natural loops into checked control
+Current status and recurring design audit: [status.md](status.md). T07 remains
+incomplete; current source rules are 23. The entries below are chronological
+observations, not an up-to-date capability summary.
+
+### File-Backed Conditional Function Families
+
+Added ReadFunctionFamily and diagnostic-only `--conditional-family`. Explicit
+DFS tracks creation occurrences and active templates; repeated method entities
+retain separate owners and mutable state. Exact occurrence lookup is logarithmic.
+Each admitted edge uses the original environment proof, shared child input,
+creation context, capture cells and capture evaluation. No failed child is omitted.
+Budget accounting includes retained members; reported work covers discovery and
+binding, not cumulative upstream per-pass analysis. Root enclosure and complete
+AST/source publication remain absent by design.
+
+Production abc_semantic/abc_structure build exited 0. ABC-only diagnostics:
+pasteboard 7366 refuses creation PC 24 (FamilyFileError::kCreation); Immersive
+21082 prepares one member with 21 operations and no children. Both explicitly
+report source_complete=false/executable=false and exit 1. Regression sources
+for occurrence identity, repeated targets, template cycles, 200/201 boundaries,
+budgets and conflicting CLI selectors are uncompiled/unrun. Tests/RSS stay paused.
+The current design audit identifies integration lag; the next deliverable must
+advance real whole-family trees, not substitute another isolated component gate.
+
+### Historical T05 / Early T07 Snapshot
+
+At this point T05 integrated compact natural loops into checked control
 regions, owned loop AST/printer syntax, independent target/scope/sequence checks,
 edge-copy placement and once-only MethodEntry phi initialization. New loop and
 entry provenance is typed and does not invent PCs. T07's fresh empty object/array

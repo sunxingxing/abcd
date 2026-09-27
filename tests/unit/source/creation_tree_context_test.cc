@@ -1,6 +1,7 @@
 #include "../../../src/source/creation_tree_context.h"
 #include "../../../src/source/function_file.h"
 #include "../../../src/source/syntax_resolution.h"
+#include "../../../src/source/family_file.h"
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
@@ -15,7 +16,7 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
-enum class ChildBody { kEmpty, kReceiver, kCapture, kCell };
+enum class ChildBody { kEmpty, kReceiver, kCapture, kCell, kRecursive };
 constexpr std::uint32_t kPool = 64, kCaller = 256, kTarget = 300,
     kRecord = 128, kCallerCode = 400, kCodePadding = 16;
 constexpr unsigned kFunctionKindShift = 8;  // Pinned dynamic method access flags.
@@ -63,7 +64,8 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
     else caller.insert(caller.end(), {kDefineFunction, 1, 0, 0, parameters});
   }
   caller.push_back(kReturnUndefined);
-  const auto caller_code = AppendCode(bytes, caller, 0);
+  constexpr std::uint32_t kImplicitArguments = 3;
+  const auto caller_code = AppendCode(bytes, caller, kImplicitArguments);
   bytes.resize(bytes.size() + kCodePadding);
   constexpr std::uint8_t kLoad = 0x60, kReturn = 0x64, kReceiver = 2,
       kReadCell = 0x3c, kStoreCell = 0x3d, kPush = 0x09, kUndefined = 0x00, kPop = 0x69;
@@ -74,8 +76,9 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
     case ChildBody::kCapture: target = {kReadCell, 0, kReturn}; break;
     case ChildBody::kCell:
       target = {kPush, 1, kUndefined, kStoreCell, 0, kReadCell, 0, kPop, kReturn}; break;
+    case ChildBody::kRecursive:
+      target = {kDefineFunction, 0, 0, 0, parameters, kReturnUndefined}; break;
   }
-  constexpr std::uint32_t kImplicitArguments = 3;
   const auto target_code = AppendCode(bytes, target, kImplicitArguments + parameters);
   char path[] = "/tmp/abcd-creation-tree-XXXXXX";
   const int fd = mkstemp(path);
@@ -97,22 +100,52 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto sites = std::get<FunctionCreationSites>(FunctionCreationSites::Build(file, header, index, lookup));
   const auto range = sites.Find({kTarget});
-  test::Check(range.count == count && sites.Find({kCaller}).count == 0);
+  test::Check(range.count == count + (child == ChildBody::kRecursive ? 1 : 0) && sites.Find({kCaller}).count == 0);
   for (std::uint32_t i = 0; i < count; ++i) {
     const auto* site = sites.At({range.first.value + i});
     test::Check(site && site->target == abc::EntityOffset{kTarget} && site->creator == abc::EntityOffset{kCaller} &&
         site->pc.value == pcs[i] && site->resolved.position == abc::MethodPosition{1});
     if (all_formats && (i == 1 || i == 3)) test::Check(site->creation.cache_slot == kWideCache);
     test::Check(site->creation.kind == (all_formats && i >= 2 ? CreationKind::kMethod : CreationKind::kFunction));
+    test::Check(sites.FindOccurrence({kTarget}, {kCaller}, {pcs[i]}) == FunctionSiteId{range.first.value + i});
+    test::Check(!sites.FindOccurrence({kTarget}, {kCaller}, {pcs[i] + 1}));
   }
+  test::Check(!sites.FindOccurrence({kCaller}, {kCaller}, {}));
   SemanticBudget limited; limited.work = sites.Work();
   test::Check(std::holds_alternative<FunctionCreationSites>(FunctionCreationSites::Build(file, header, index, lookup, limited)));
   --limited.work;
   test::Check(std::get<FunctionSiteError>(std::get<FunctionSiteFailure>(
       FunctionCreationSites::Build(file, header, index, lookup, limited)).error) == FunctionSiteError::kWorkLimit);
-  if (count == 1 || all_formats) {
+  {
     const auto roles = std::get<MethodRoleIndex>(MethodRoleIndex::Build(file, header, index, lookup));
     const auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
+    const auto family_result = ReadFunctionFamily(file, header, index, lookup, roles, sites, {0}, identity);
+    const bool family_refuses = all_formats || child == ChildBody::kCapture || child == ChildBody::kRecursive;
+    test::Check(std::holds_alternative<FamilyFileFailure>(family_result) == family_refuses);
+    if (child == ChildBody::kRecursive) {
+      const auto& failure = std::get<FamilyFileFailure>(family_result);
+      test::Check(std::get<FamilyFileError>(failure.cause) == FamilyFileError::kRecursiveCreation &&
+          failure.method == abc::EntityOffset{kTarget} && failure.parent == abc::EntityOffset{kTarget} && failure.creation_pc == abc::CodeOffset{0});
+    }
+    if (!family_refuses) {
+      const auto& family = std::get<FileFamily>(family_result);
+      test::Check(family.members.size() == count + 1 && family.members[0].children.size() == count);
+      test::Check(!family.members[0].incoming && !family.members[0].context);
+      for (std::uint32_t i = 0; i < count; ++i) {
+        const auto& member = family.members[i + 1];
+        test::Check(member.function.input.Method() == abc::EntityOffset{kTarget} && member.context && member.incoming);
+        test::Check(member.incoming->parent == FileFamily::kRoot && member.incoming->creation.offset.value == pcs[i]);
+        test::Check(family.members[0].children[i].child == FunctionOwnerId{i + 1});
+        test::Check(member.children.empty());
+      }
+      SemanticBudget family_budget; family_budget.bytes = 0;
+      test::Check(std::get<FamilyFileError>(std::get<FamilyFileFailure>(ReadFunctionFamily(
+          file, header, index, lookup, roles, sites, {0}, identity, family_budget)).cause) == FamilyFileError::kResourceLimit);
+      family_budget = {}; family_budget.work = 0;
+      test::Check(std::get<FamilyFileError>(std::get<FamilyFileFailure>(ReadFunctionFamily(
+          file, header, index, lookup, roles, sites, {0}, identity, family_budget)).cause) == FamilyFileError::kWorkLimit);
+    }
+    if (count != 1 && !all_formats) { test::Check(unlink(path) == 0); return; }
     const auto conditional = ReadFunctionValues(file, header, index, {1}, identity, InputCaptureMode::kConditional);
     test::Check(std::holds_alternative<FileFunction>(conditional));
     const auto& opened_child = std::get<FileFunction>(conditional);
@@ -158,7 +191,8 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
     test::Check(std::get<FunctionFileError>(std::get<FunctionFileFailure>(ReadFunctionValues(file,
         header, index, {1}, identity, InputCaptureMode::kConditional, empty))) == FunctionFileError::kResourceLimit);
     auto prepared = VerifiedFunction::PrepareCreated(file, header, index, lookup, roles, sites, range.first, identity);
-    const bool refuses = child == ChildBody::kCapture || (kind == abc::FunctionKind::kArrow && child == ChildBody::kReceiver);
+    const bool refuses = child == ChildBody::kCapture || child == ChildBody::kRecursive ||
+        (kind == abc::FunctionKind::kArrow && child == ChildBody::kReceiver);
     test::Check(std::holds_alternative<FunctionPrepareFailure>(prepared) == refuses);
     if (!refuses) {
       const auto& function = std::get<VerifiedFunction>(prepared);
@@ -188,4 +222,5 @@ int main() {
     for (const auto child : {ChildBody::kEmpty, ChildBody::kReceiver, ChildBody::kCapture, ChildBody::kCell}) Run(1, kind, child);
   for (const auto count : {1U, 2U, 200U, 201U})
     Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, false, static_cast<std::uint8_t>(count));
+  Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kRecursive);
 }

@@ -1,4 +1,5 @@
 #include "value_source_inspect.h"
+#include "family_value_inspect.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -319,7 +320,7 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
   const auto* lookup = std::get_if<abc::MethodLookup>(&looked_up);
   if (!lookup) return Refused(output, receipt, InspectionError::kLookup,
       IndexClass(std::get<abc::MethodLookupError>(looked_up)));
-  if (scope == ValueSourceScope::kConditionalValues) {
+  if (scope == ValueSourceScope::kConditionalValues || scope == ValueSourceScope::kConditionalFamily) {
     const auto position = lookup->Find(method.offset);
     if (!position) return Refused(output, receipt, InspectionError::kLookup);
     nlohmann::json report{{"source_complete", false}, {"executable", false},
@@ -347,6 +348,12 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
       } else report["module_packaging_error"] = static_cast<unsigned>(std::get<abc::AttributeFailure>(packaging).kind);
     }
     report["module_context_ready"] = modules.has_value();
+    if (scope == ValueSourceScope::kConditionalFamily) {
+      report.update(InspectFamilyValues(file, header, index, *lookup, *position, identity,
+          modules ? &*modules : nullptr));
+      output << report << '\n';
+      return EXIT_FAILURE; // File-driven family inputs are not source publication.
+    }
     const auto prepared = ReadFunctionValues(file, header, index, *position, identity,
         InputCaptureMode::kConditional, {}, modules ? &*modules : nullptr);
     if (const auto* function = std::get_if<FileFunction>(&prepared)) {

@@ -72,6 +72,16 @@ FunctionSiteRange FunctionCreationSites::Find(abc::EntityOffset method) const {
   return {{static_cast<std::uint32_t>(first - sites_.begin())},
           static_cast<std::uint32_t>(end - first)};
 }
+std::optional<FunctionSiteId> FunctionCreationSites::FindOccurrence(
+    abc::EntityOffset target, abc::EntityOffset creator, abc::CodeOffset pc) const {
+  const auto key = std::tuple{target, creator, pc};
+  const auto found = std::lower_bound(sites_.begin(), sites_.end(), key,
+      [](const auto& site, const auto& wanted) {
+        return std::tuple{site.target, site.creator, site.pc} < wanted;
+      });
+  if (found == sites_.end() || std::tuple{found->target, found->creator, found->pc} != key) return {};
+  return FunctionSiteId{static_cast<std::uint32_t>(found - sites_.begin())};
+}
 std::variant<FunctionCreationSites, FunctionSiteFailure> FunctionCreationSites::Build(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,

@@ -41,6 +41,11 @@ class FunctionCreationSites {
       const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
       SemanticBudget budget = {});
   [[nodiscard]] FunctionSiteRange Find(abc::EntityOffset method) const;
+  // Exact occurrence lookup in the same target/caller/PC index. Family readers
+  // must not scan all uses of a shared target for every creation.
+  [[nodiscard]] std::optional<FunctionSiteId> FindOccurrence(abc::EntityOffset target,
+      abc::EntityOffset creator, abc::CodeOffset pc) const;
+  [[nodiscard]] std::size_t Size() const { return sites_.size(); }
   [[nodiscard]] const FunctionCreationSite* At(FunctionSiteId site) const {
     return site.value < sites_.size() ? &sites_[site.value] : nullptr;
   }
