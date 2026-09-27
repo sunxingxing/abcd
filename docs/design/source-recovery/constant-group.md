@@ -226,11 +226,11 @@ global-name lookup or read the mutable realm object's Symbol property.
 SymbolConstructorLoad now preserves that distinction through
 ValueSymbolConstructor: no operands, acc result, Defined language domain, no
 ordinary exception or observable effect. Three-profile import tests reject
-malformed encodings and substitution with realm-object identity. Source
-evaluation currently refuses the value; six file-backed direct/callback cases
-check that no Complete receipt is published without a binding implementation.
+malformed encodings and substitution with realm-object identity. The shared
+source path now lowers it to SymbolConstructorExpr and independently verifies
+that it was not replaced by RealmObjectExpr, GlobalNameExpr or ThisExpr.
 
-Required next steps on the same source pipeline:
+The implemented source path retains these requirements:
 
 1. Provide an explicit embedding capability for an initialized immutable lexical
    binding to this ABC realm's original Symbol constructor. V2 stable globalThis
@@ -248,6 +248,29 @@ Required next steps on the same source pipeline:
    callback exceptions and reentry. Check naming collisions, nested scopes,
    missing/invalid bindings and AST substitution. Node behavior is not Ark VM
    differential proof; report that evidence boundary explicitly.
+
+HostSymbolBinding explicitly declares an initialized immutable lexical binding
+to the ABC realm's original constructor. No default is synthesized under V1 or
+V2, and the CLI does not manufacture this capability from a string. The existing
+local/family/destination indexes check its name; ordinary global references must
+also not be captured by the new binding. Same-name realm/Symbol capabilities
+reject as conflicting requirements. Prepared publication and diagnostic drafts
+recheck the actual destination before any output. PrintedFunction owns the
+selected name; position JSON records the explicit-host requirement and source
+contract. Original PC spans cover the emitted identifier itself.
+
+Twelve file-backed variants cross three profiles, ordinary/arrow callables and
+direct/callback bodies. They execute with the public Symbol replaced by both a
+different value and a throwing getter; the getter is never invoked. Assertions
+cover original identity, symbol creation, non-constructibility, ignored callback
+results, exceptions and reentry. Six missing-capability variants still reject.
+Two narrow/wide lexical-cell families capture the intrinsic into child arrows
+and exercise computed writes, key exceptions and setter reentry. Scope-level
+tests cover V1/V2, malformed names, parameter/outer/module-index conflicts,
+ancestor versus sibling blocks, conflicting capabilities, budgets and 200/201/
+4096-reference work bounds. These are functional scope/work-count checks, not
+RSS or performance measurements. V1 named creation and coroutine/derived owners
+retain their independent source-contract/protocol limitations.
 
 ### Frame Receiver Dependency
 

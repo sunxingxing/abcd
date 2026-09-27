@@ -16,7 +16,8 @@ class GlobalCheck {
     bool globals = false;
     for (const auto& node : tree.expressions) {
       Step(); globals |= std::holds_alternative<GlobalNameExpr>(node.expression) ||
-          std::holds_alternative<RealmObjectExpr>(node.expression);
+          std::holds_alternative<RealmObjectExpr>(node.expression) ||
+          std::holds_alternative<SymbolConstructorExpr>(node.expression);
     }
     if (!globals) return Result();
     Require(scope != nullptr, Error::kMissingContext);
@@ -33,24 +34,31 @@ class GlobalCheck {
       Step();
       const auto* global = std::get_if<GlobalNameExpr>(&node.expression);
       const bool realm = std::holds_alternative<RealmObjectExpr>(node.expression);
-      if (!global && !realm) continue;
+      const bool symbol = std::holds_alternative<SymbolConstructorExpr>(node.expression);
+      if (!global && !realm && !symbol) continue;
       std::u16string_view name;
       if (realm) {
         if (scope->realm_binding) Step(scope->realm_binding->name.size());
         const auto binding = ResolveRealmBinding(tree.identity.contract, scope);
         Require(binding.has_value(), Error::kMissingContext);
         name = binding->name;
+      } else if (symbol) {
+        if (scope->symbol_binding) Step(scope->symbol_binding->name.size());
+        const auto binding = ResolveSymbolBinding(scope);
+        Require(binding.has_value(), Error::kMissingContext);
+        name = *binding;
       } else {
         Require(global->name.value < tree.names.size(), Error::kName);
         name = tree.names[global->name.value];
       }
       Step(name.size());
-      Require(realm || AllowsGlobalReference(name, {}), Error::kName);
+      Require(realm || symbol || AllowsGlobalReference(name, {}), Error::kName);
       Require(!Contains(std::span<const std::u16string_view>{locals}, name) &&
           !Contains(scope->enclosing_bindings, name) && !Contains(scope->import_names, name) &&
           !Contains(scope->parameter_bindings, name) &&
           !Equal(name, scope->class_binding) && !Equal(name, scope->self_binding) &&
-          (realm || !scope->realm_binding || !Equal(name, scope->realm_binding->name)), Error::kShadowed);
+          (realm || !scope->realm_binding || !Equal(name, scope->realm_binding->name)) &&
+          (symbol || !scope->symbol_binding || !Equal(name, scope->symbol_binding->name)), Error::kShadowed);
     }
     return Result();
   }

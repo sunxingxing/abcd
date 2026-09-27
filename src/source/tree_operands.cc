@@ -59,6 +59,10 @@ class OperandCheck {
           RequireMeaning(op.use_count == 0 && op.result && op.result->value < graph_.values.size() &&
               graph_.values[op.result->value].domain.IsLanguage(), Error::kOperand);
           (void)Node<RealmObjectExpr>(expression);
+        } else if constexpr (std::is_same_v<T, analysis::ValueSymbolConstructor>) {
+          RequireMeaning(op.use_count == 0 && op.result && op.result->value < graph_.values.size() &&
+              graph_.values[op.result->value].domain.IsLanguage(), Error::kOperand);
+          (void)Node<SymbolConstructorExpr>(expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>) {
           RequireMeaning(op.result && op.result->value < graph_.values.size() &&
               graph_.values[op.result->value].domain.IsLanguage(), Error::kOperand);
@@ -189,7 +193,6 @@ class OperandCheck {
           }
         } else {
           static_assert(std::is_same_v<T, analysis::ValueModuleWrite> ||
-                        std::is_same_v<T, analysis::ValueSymbolConstructor> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueDebugger> ||

@@ -4,6 +4,10 @@
 #include "abcd/source/scalar_expression.h"
 
 namespace abcd::source {
+std::optional<std::u16string_view> ResolveSymbolBinding(const GlobalScope* scope) {
+  if (!scope || !scope->symbol_binding || !IsSourceIdentifier(scope->symbol_binding->name)) return {};
+  return scope->symbol_binding->name;
+}
 std::optional<RealmBindingView> ResolveRealmBinding(SourceContract contract, const GlobalScope* scope) {
   if (!scope) return {};
   if (scope->realm_binding) {
@@ -60,7 +64,8 @@ bool AllowsGlobalReference(std::u16string_view name, GlobalScope scope) {
       EqualsAscii(name, scope.class_binding) ||
       EqualsAscii(name, scope.self_binding) || name == u"ClassValue" ||
       name.starts_with(u"MethodSelf") ||
-      (scope.realm_binding && name == scope.realm_binding->name))
+      (scope.realm_binding && name == scope.realm_binding->name) ||
+      (scope.symbol_binding && name == scope.symbol_binding->name))
     return false;
   if (ContainsAscii(scope.enclosing_bindings, name) ||
       ContainsAscii(scope.import_names, name) ||

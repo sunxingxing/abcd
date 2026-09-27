@@ -17,6 +17,11 @@ class ModuleExports;
 struct HostRealmBinding {
   std::u16string_view name;
 };
+// Host-proven immutable lexical binding to this ABC realm's original Symbol
+// constructor. The public Symbol property is not this capability, even under V2.
+struct HostSymbolBinding {
+  std::u16string_view name;
+};
 struct GlobalScope {
   // Caller-proven complete ASCII outer source bindings, sorted by byte name;
   // non-ASCII names cannot collide with admitted ASCII global references.
@@ -39,6 +44,7 @@ struct GlobalScope {
   // Empty slot names retain the generated $importN spelling.
   std::span<const std::string> import_bindings{};
   std::span<const std::string_view> import_names{};
+  const HostSymbolBinding* symbol_binding = nullptr;
 };
 
 struct RealmBindingView {
@@ -49,6 +55,7 @@ struct RealmBindingView {
 // ancestry and the complete destination; this does not prove non-shadowing.
 [[nodiscard]] std::optional<RealmBindingView> ResolveRealmBinding(
     SourceContract contract, const GlobalScope* scope);
+[[nodiscard]] std::optional<std::u16string_view> ResolveSymbolBinding(const GlobalScope* scope);
 
 [[nodiscard]] std::string_view ImportBinding(const GlobalScope* scope,
                                              std::size_t slot);

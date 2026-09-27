@@ -3,10 +3,38 @@ import {execFileSync} from 'node:child_process';
 import {Session} from 'node:inspector';
 
 const source = execFileSync(process.argv[2], {encoding: 'utf8'});
-const {cases, debugCases, receivers, functions, namedFunctions, createdFunctions, globalFunctions, realms, hostRealms} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {cases, debugCases, receivers, functions, namedFunctions, createdFunctions, globalFunctions, realms, hostRealms, symbols} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const expected = [NaN, Infinity, undefined, null, true, false];
 const profileCount = 3;
 const forms = 2;
+assert.equal(symbols.length, profileCount * 2 * forms);
+const intrinsicSymbol = Symbol;
+const symbolProperty = Object.getOwnPropertyDescriptor(globalThis, 'Symbol');
+let symbolReads = 0;
+try {
+  for (const accessor of [false, true]) {
+    Object.defineProperty(globalThis, 'Symbol', accessor ? {
+      configurable: true, get() { ++symbolReads; throw new Error('public Symbol lookup'); },
+    } : {configurable: true, writable: true, value: {notIntrinsic: true}});
+    for (let i = 0; i < symbols.length; ++i) {
+      const fn = symbols[i];
+      let calls = 0;
+      const value = Reflect.apply(fn, {notIntrinsic: true}, [input => {
+        ++calls; assert.equal(input, intrinsicSymbol); return {ignored: true};
+      }]);
+      assert.equal(value, intrinsicSymbol);
+      assert.equal(typeof value('description'), 'symbol');
+      assert.throws(() => Reflect.construct(value, []), TypeError);
+      assert.equal(calls, i % forms);
+      if (i % forms) {
+        const thrown = {};
+        assert.throws(() => fn(() => {throw thrown;}), error => error === thrown);
+        assert.equal(fn(() => assert.equal(fn(() => 0), intrinsicSymbol)), intrinsicSymbol);
+      }
+    }
+  }
+  assert.equal(symbolReads, 0);
+} finally { Object.defineProperty(globalThis, 'Symbol', symbolProperty); }
 for (const functions of [realms, hostRealms]) {
   assert.equal(functions.length, profileCount * 2 * forms);
   for (let i = 0; i < functions.length; ++i) {

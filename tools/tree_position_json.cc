@@ -52,6 +52,13 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
   output << "{\"unit\":\"utf8_byte\",\"value_revision\":" << printed.value_revision.value
          << ",\"cfg_revision\":" << printed.cfg_revision.value << ",\"origins\":";
   Array(output, tree.origins, Origin);
+  if (printed.symbol_binding) {
+    const auto& name = printed.symbol_binding->name;
+    // Trusted binding names have passed the shared ASCII identifier boundary.
+    output << ",\"symbol_binding\":" << nlohmann::json{
+        {"policy", "explicit_host"}, {"name", std::string(name.begin(), name.end())},
+        {"contract", SourceContractName(printed.identity.contract)}};
+  }
   if (printed.realm_binding) {
     const auto& binding = *printed.realm_binding;
     std::string_view policy;

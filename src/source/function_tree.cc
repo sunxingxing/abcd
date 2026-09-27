@@ -288,6 +288,7 @@ class TreeBuilder {
       Step();
       if (std::holds_alternative<FunctionExpr>(node.expression)) return false;
       if (std::holds_alternative<RealmObjectExpr>(node.expression)) return false;
+      if (std::holds_alternative<SymbolConstructorExpr>(node.expression)) return false;
       const auto* global = std::get_if<GlobalNameExpr>(&node.expression);
       if (global && conflicts(global->name)) return false;
     }

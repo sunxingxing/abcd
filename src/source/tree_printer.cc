@@ -64,6 +64,7 @@ class TreePrinter {
       Step();
       if (std::holds_alternative<FunctionExpr>(expression.expression)) throw Error::kUnsupportedContext;
       if (std::holds_alternative<RealmObjectExpr>(expression.expression)) RecordRealm();
+      if (std::holds_alternative<SymbolConstructorExpr>(expression.expression)) RecordSymbol();
     }
     Result().identity = Tree().identity;
     Result().method = Tree().method;
@@ -158,9 +159,10 @@ class TreePrinter {
       for (const auto& node : Tree().expressions) {
         Step();
         if (std::holds_alternative<RealmObjectExpr>(node.expression)) RecordRealm();
+        if (std::holds_alternative<SymbolConstructorExpr>(node.expression)) RecordSymbol();
       }
     }
-    if (has_realm_) {
+    if (has_external_binding_) {
       const auto check = VerifyFamilyDestination(*family_, scope_, remaining_);
       const auto* enclosure = std::get_if<FamilyEnclosure>(&check);
       if (!enclosure) {
@@ -185,7 +187,7 @@ class TreePrinter {
   }
  private:
   void RecordRealm() {
-    has_realm_ = true;
+    has_external_binding_ = true;
     if (Result().realm_binding) return;
     if (scope_ && scope_->realm_binding) Step(scope_->realm_binding->name.size());
     const auto binding = ResolveRealmBinding(Tree().identity.contract, scope_);
@@ -193,6 +195,16 @@ class TreePrinter {
     Step(binding->name.size()); Admit(binding->name.size(), sizeof(char16_t));
     Result().realm_binding = PrintedFunction::RealmBinding{binding->policy, std::u16string{binding->name}};
     Admit(Result().realm_binding->name.capacity() - binding->name.size(), sizeof(char16_t));
+  }
+  void RecordSymbol() {
+    has_external_binding_ = true;
+    if (Result().symbol_binding) return;
+    if (scope_ && scope_->symbol_binding) Step(scope_->symbol_binding->name.size());
+    const auto binding = ResolveSymbolBinding(scope_);
+    if (!binding) throw Error::kUnsupportedContext;
+    Step(binding->size()); Admit(binding->size(), sizeof(char16_t));
+    Result().symbol_binding = PrintedFunction::SymbolBinding{std::u16string{*binding}};
+    Admit(Result().symbol_binding->name.capacity() - binding->size(), sizeof(char16_t));
   }
   bool ClassRoot() const { return class_root_ && current_ == family_->root.value; }
   const FunctionTree& Tree() const { return family_ ? family_->members[current_].tree : *tree_; }
@@ -312,6 +324,10 @@ class TreePrinter {
   void Expression(RealmObjectExpr) {
     if (!Result().realm_binding) throw Error::kUnsupportedContext;
     Identifier(Result().realm_binding->name);
+  }
+  void Expression(SymbolConstructorExpr) {
+    if (!Result().symbol_binding) throw Error::kUnsupportedContext;
+    Identifier(Result().symbol_binding->name);
   }
   void Expression(ThisExpr) { Append("this"); }
   void Member(ExprId base, const MemberKey& key) {
@@ -564,7 +580,7 @@ class TreePrinter {
   analysis::SemanticBudget initial_;
   analysis::SemanticBudget remaining_;
   const GlobalScope* scope_;
-  bool has_realm_ = false;
+  bool has_external_binding_ = false;
   PrintedFunction result_;
   PrintedFamilyDraft draft_;
   std::size_t current_ = 0;

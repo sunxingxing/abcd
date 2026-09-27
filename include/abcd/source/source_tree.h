@@ -84,6 +84,7 @@ struct SymbolExpr { SymbolId symbol; };
 struct GlobalNameExpr { NameId name; };
 // Original realm identity; the publication destination supplies its binding.
 struct RealmObjectExpr {};
+struct SymbolConstructorExpr {};
 struct ThisExpr { FunctionOwnerId owner; };
 struct ComputedKey { ExprId expression; };
 using MemberKey = std::variant<NameId, ComputedKey>;
@@ -122,7 +123,8 @@ struct PropertyRange { std::uint32_t first; std::uint32_t count; };
 struct ObjectExpr { PropertyRange properties; };
 // Computed string data property, never a colon-style __proto__ setter or method.
 struct DataProperty { NameId key; ExprId value; TreeOriginId origin; };
-using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, RealmObjectExpr, ThisExpr, MemberExpr,
+using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, RealmObjectExpr,
+    SymbolConstructorExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };

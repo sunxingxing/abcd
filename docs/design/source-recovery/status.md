@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 31。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 32。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,6 +42,22 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- LDSYMBOL 已贯通 ValueSymbolConstructor -> SymbolConstructorExpr -> 统一
+  printer，并通过显式 HostSymbolBinding 记录原始构造器的不可变宿主绑定。
+  V1/V2 均不自动假定公开 Symbol 属性稳定；缺能力、名字遮蔽或与 realm
+  绑定同名时拒绝。普通全局读取也不能被新绑定捕获；换目的地重新验证。
+  PrintedFunction 和位置 JSON 保存绑定要求及契约，PC 映射到真实标识符区间。
+  三个 profile 的普通/arrow、直接/回调共 12 个文件级变体，在公开 Symbol
+  被替换和抛异常 getter 两种环境下执行；保留身份、Symbol 调用、不可构造性、
+  回调异常与重入。两个窄/宽闭包变体验证词法捕获、key 异常和 setter 重入；
+  六个缺能力反例继续拒绝。作用域单测覆盖 V1/V2、非法名、外部/参数/模块名
+  冲突、祖先/兄弟块、能力冲突和 200/201/4096 work 上界；没有测量 RSS/延迟。
+  规则版本 32；下面规则 31 的源码拒绝状态是历史前置。本项不代表整个第一组
+  或 record 发布完成，V1 命名创建及协程/derived owner 仍受独立前提限制。
+  `tree_structure_test`、`family_enclosure_test`、`function_tree_test`、
+  `evaluation_plan_test`、`tree_globals_test`、`value_import_test`、`source_route_test`、
+  `constant_group_test`、`computed_store_test`、`value_created_family_test` 共 10/10 通过；
+  对应目标及 `abc_semantic` 构建成功。未运行 RSS/基准/全语料或 Ark VM 差分。
 - LDSYMBOL 新增 SymbolConstructorLoad -> ValueSymbolConstructor，保留 pinned
   GlobalEnv::SymbolFunction 身份，不将其误写成 Symbol/globalThis.Symbol 查找。
   无寄存器输入，只定义 acc，结果 Defined、无普通异常或可观察效果。

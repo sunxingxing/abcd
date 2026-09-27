@@ -26,7 +26,7 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes,
   bytes.insert(bytes.end(), code.begin(), code.end());
   return {{offset}, {start}, locals, args, static_cast<std::uint32_t>(code.size()), 0};
 }
-enum class CapturedBase { kArgument, kReceiver, kFunction, kRealm };
+enum class CapturedBase { kArgument, kReceiver, kFunction, kRealm, kSymbolConstructor };
 void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kArgument,
     bool child_global = false) {
   std::vector<std::uint8_t> bytes(kCodeStart);
@@ -68,6 +68,7 @@ void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kA
       case CapturedBase::kReceiver: code.push_back(Op(abc::Opcode::kLDTHIS)); break;
       case CapturedBase::kFunction: code.push_back(Op(abc::Opcode::kLDFUNCTION)); break;
       case CapturedBase::kRealm: code.push_back(Op(abc::Opcode::kLDGLOBAL)); break;
+      case CapturedBase::kSymbolConstructor: code.push_back(Op(abc::Opcode::kLDSYMBOL)); break;
     }
     code.insert(code.end(), {Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kObjectCell,
         Op(abc::Opcode::kLDA_V8), kKey, Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kKeyCell,
@@ -124,9 +125,11 @@ void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kA
       analysis::FunctionCreationSites::Build(file, header, index, lookup));
   const auto identity = MakeRouteInputIdentity(
       std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
-  const GlobalScope globals{};
+  const HostSymbolBinding symbol{u"hostSymbol"};
+  GlobalScope globals{};
+  if (base == CapturedBase::kSymbolConstructor) globals.symbol_binding = &symbol;
   const FamilyDestination destination{Strictness::kStrict,
-      child_global || base == CapturedBase::kRealm ? &globals : nullptr};
+      child_global || base == CapturedBase::kRealm || base == CapturedBase::kSymbolConstructor ? &globals : nullptr};
   if (captured) {
     FunctionContext owner{std::get<CreationTreeContext>(CreationTreeContext::Resolve(
         file, header, index, lookup, roles, sites, sites.Find({kTarget}).first, identity))};
@@ -165,6 +168,7 @@ void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kA
   const auto span = emission.Positions().members[store_member].expressions[expression.value];
   test::Check(span.begin < span.end && span.end <= output.view().size());
   const auto name = child_global ? (wide ? "selfGlobalWide" : "selfGlobalNarrow") :
+      base == CapturedBase::kSymbolConstructor ? (wide ? "symbolWide" : "symbolNarrow") :
       base == CapturedBase::kRealm ? (wide ? "realmWide" : "realmNarrow") :
       base == CapturedBase::kFunction ? (wide ? "selfWide" : "selfNarrow") :
       base == CapturedBase::kReceiver ? (wide ? "receiverWide" : "receiverNarrow") :
@@ -176,9 +180,11 @@ void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kA
 }
 }  // namespace
 int main() {
+  std::cout << "const hostSymbol = Symbol;\n";
   Emit(false); Emit(true); Emit(false, true); Emit(true, true);
   Emit(false, true, CapturedBase::kReceiver); Emit(true, true, CapturedBase::kReceiver);
   Emit(false, true, CapturedBase::kFunction); Emit(true, true, CapturedBase::kFunction);
   Emit(false, true, CapturedBase::kFunction, true); Emit(true, true, CapturedBase::kFunction, true);
   Emit(false, true, CapturedBase::kRealm); Emit(true, true, CapturedBase::kRealm);
+  Emit(false, true, CapturedBase::kSymbolConstructor); Emit(true, true, CapturedBase::kSymbolConstructor);
 }

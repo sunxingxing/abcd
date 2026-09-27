@@ -16,6 +16,7 @@ struct BindingInterval { std::u16string_view name; std::size_t begin; std::size_
 struct ModuleName { std::u16string_view name; ModuleSymbol target; FamilyId member; NameId id; };
 struct ScopeCursor { std::size_t scope; std::size_t next; };
 enum class EnclosureExtent : std::uint8_t { kFamily, kDestination };
+enum class BindingTarget : std::uint8_t { kGlobal, kRealm, kSymbolConstructor };
 class EnclosureCheck {
  public:
   EnclosureCheck(const ConstructedFamily& family, analysis::SemanticBudget budget,
@@ -92,7 +93,7 @@ class EnclosureCheck {
     }
     locals_.resize(local);
     Merge(bindings_); Merge(locals_); CheckModuleNames();
-    std::size_t globals = 0, module_reads = 0, realm_reads = 0;
+    std::size_t globals = 0, module_reads = 0, realm_reads = 0, symbol_reads = 0;
     for (std::size_t i = 0; i < count; ++i) {
       member_ = FamilyId{static_cast<std::uint32_t>(i)};
       const auto& tree = family_.members[i].tree;
@@ -109,8 +110,19 @@ class EnclosureCheck {
             if (scope_ && scope_->realm_binding) Step(scope_->realm_binding->name.size());
             const auto binding = ResolveRealmBinding(tree.identity.contract, scope_);
             Require(binding.has_value(), Error::kMissingContext);
-            Destination(binding->name, true);
+            Destination(binding->name, BindingTarget::kRealm);
             Require(!Shadows(bindings_, binding->name, point), Error::kShadowedGlobal);
+          }
+          continue;
+        }
+        if (std::holds_alternative<SymbolConstructorExpr>(expression)) {
+          ++symbol_reads;
+          if (extent_ == EnclosureExtent::kDestination) {
+            if (scope_ && scope_->symbol_binding) Step(scope_->symbol_binding->name.size());
+            const auto binding = ResolveSymbolBinding(scope_);
+            Require(binding.has_value(), Error::kMissingContext);
+            Destination(*binding, BindingTarget::kSymbolConstructor);
+            Require(!Shadows(bindings_, *binding, point), Error::kShadowedGlobal);
           }
           continue;
         }
@@ -132,7 +144,7 @@ class EnclosureCheck {
         name_.reset();
       }
     }
-    return {globals, initial_.bytes - left_.bytes, initial_.work - left_.work, module_reads, realm_reads};
+    return {globals, initial_.bytes - left_.bytes, initial_.work - left_.work, module_reads, realm_reads, symbol_reads};
   }
  private:
   void Merge(std::vector<BindingInterval>& bindings) {
@@ -193,7 +205,7 @@ class EnclosureCheck {
         [&](auto a, auto b) { return Less(a, b); });
     return found != names.end() && Equal(*found, name);
   }
-  void Destination(std::u16string_view name, bool realm = false) {
+  void Destination(std::u16string_view name, BindingTarget target = BindingTarget::kGlobal) {
     Require(scope_ != nullptr, Error::kMissingContext);
     // VerifyTreeStructure already enforced the shared global-name policy.
     // Borrow record-owned sorted indexes, not a copied union per descendant.
@@ -201,7 +213,9 @@ class EnclosureCheck {
     Require(!Contains(scope_->enclosing_bindings, name) && !Contains(scope_->import_names, name) &&
         !Contains(scope_->parameter_bindings, name) && !Equal(name, scope_->class_binding) &&
         !Equal(name, scope_->self_binding) &&
-        (realm || !scope_->realm_binding || !Equal(name, scope_->realm_binding->name)), Error::kShadowedGlobal);
+        (target == BindingTarget::kRealm || !scope_->realm_binding || !Equal(name, scope_->realm_binding->name)) &&
+        (target == BindingTarget::kSymbolConstructor || !scope_->symbol_binding || !Equal(name, scope_->symbol_binding->name)),
+        Error::kShadowedGlobal);
   }
   void WalkScopes(std::size_t root) {
     const auto count = parents_.size();

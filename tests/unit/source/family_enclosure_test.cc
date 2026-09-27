@@ -101,12 +101,20 @@ void Bounds() {
   }
 }
 void DestinationCases() {
-  {
+  for (const TreeExpression expression : {TreeExpression{RealmObjectExpr{}}, TreeExpression{SymbolConstructorExpr{}}}) {
     auto realm_family = Chain(2);
-    realm_family.members.back().tree.expressions[0].expression = RealmObjectExpr{};
+    realm_family.members.back().tree.expressions[0].expression = expression;
+    const bool realm = std::holds_alternative<RealmObjectExpr>(expression);
     const HostRealmBinding host{u"target"};
-    GlobalScope scope{}; scope.realm_binding = &host;
-    Check(std::get<FamilyEnclosure>(VerifyFamilyDestination(realm_family, &scope)).realm_reads == 1);
+    const HostSymbolBinding symbol{u"target"};
+    GlobalScope scope{};
+    scope.realm_binding = realm ? &host : nullptr; scope.symbol_binding = realm ? nullptr : &symbol;
+    const auto count = [&](const FamilyEnclosure& result) { return realm ? result.realm_reads : result.symbol_reads; };
+    Check(count(std::get<FamilyEnclosure>(VerifyFamilyDestination(realm_family, &scope))) == 1);
+    scope.realm_binding = &host; scope.symbol_binding = &symbol;
+    Check(std::get<FamilyEnclosureFailure>(VerifyFamilyDestination(realm_family, &scope)).kind ==
+        FamilyEnclosureError::kShadowedGlobal);
+    scope.realm_binding = realm ? &host : nullptr; scope.symbol_binding = realm ? nullptr : &symbol;
     auto& root = realm_family.members[0].tree;
     Local(root, {1});
     root.statements[0].statement = BlockStmt{{1}, 0, 2}; root.children = {{2}, {1}};
@@ -115,7 +123,7 @@ void DestinationCases() {
     // A sibling's binding is not an ancestor of the child creation occurrence.
     root.scopes.push_back({ScopeKind::kBlock, ScopeId{1}}); root.symbols[0].scope = {2};
     root.statements.push_back({BlockStmt{{2}, 2, 1}, {0}}); root.children = {{3}, {1}, {2}};
-    Check(std::get<FamilyEnclosure>(VerifyFamilyDestination(realm_family, &scope)).realm_reads == 1);
+    Check(count(std::get<FamilyEnclosure>(VerifyFamilyDestination(realm_family, &scope))) == 1);
   }
   auto family = Chain(2);
   const auto missing = std::get<FamilyEnclosureFailure>(VerifyFamilyDestination(family, nullptr));

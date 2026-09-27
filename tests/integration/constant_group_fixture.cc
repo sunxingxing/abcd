@@ -45,7 +45,8 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
     bool overwrite_abi = false,
     abc::FunctionKind kind = abc::FunctionKind::kBaseConstructor,
     std::string_view name = "constant", bool global_lookup = false,
-    const HostRealmBinding* realm_binding = nullptr) {
+    const HostRealmBinding* realm_binding = nullptr,
+    const HostSymbolBinding* symbol_binding = nullptr) {
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kTarget >> (kByteBits * i));
@@ -118,8 +119,9 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
       std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
   GlobalScope globals{};
   globals.realm_binding = realm_binding;
+  globals.symbol_binding = symbol_binding;
   const FamilyDestination destination{Strictness::kStrict,
-      global_lookup || constant == abc::Opcode::kLDGLOBAL ? &globals : nullptr};
+      global_lookup || constant == abc::Opcode::kLDGLOBAL || constant == abc::Opcode::kLDSYMBOL ? &globals : nullptr};
   if (expected == ExpectedSource::kPrinted) {
     const auto range = sites.Find({kTarget});
     test::Check(range.count == 2);
@@ -165,12 +167,12 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
     return;
   }
   test::Check(std::holds_alternative<PreparedFamily>(prepared));
-  if (constant == abc::Opcode::kLDGLOBAL) {
+  if (constant == abc::Opcode::kLDGLOBAL || constant == abc::Opcode::kLDSYMBOL) {
     const auto& family = std::get<PreparedFamily>(prepared);
     test::Check(std::holds_alternative<FamilyPrepareFailure>(
         family.CheckDestination({Strictness::kStrict, nullptr})));
     auto shadowed = globals;
-    const std::array<std::string_view, 1> names{realm_binding ? "hostRealm" : "globalThis"};
+    const std::array<std::string_view, 1> names{symbol_binding ? "hostSymbol" : realm_binding ? "hostRealm" : "globalThis"};
     shadowed.parameter_bindings = names;
     test::Check(std::holds_alternative<FamilyPrepareFailure>(
         family.CheckDestination({Strictness::kStrict, &shadowed})));
@@ -178,6 +180,12 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
     test::Check(std::holds_alternative<FamilyPrepareFailure>(
         family.PrintDraft({Strictness::kStrict, &shadowed}, rejected)));
     test::Check(rejected.str().empty());
+    if (constant == abc::Opcode::kLDSYMBOL) {
+      const GlobalScope no_intrinsic{};
+      test::Check(std::holds_alternative<FamilyPrepareFailure>(
+          family.PrintDraft({Strictness::kStrict, &no_intrinsic}, rejected)));
+      test::Check(rejected.str().empty());
+    }
     test::Check(std::holds_alternative<TreePrintError>(PrintFamilyDraft(family.Family(), rejected)));
     test::Check(rejected.str().empty());
   }
@@ -197,6 +205,18 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   const auto expression = std::get<ExprId>(mapping.target);
   const auto span = emission.Positions().members.front().expressions[expression.value];
   test::Check(span.begin < span.end && span.end <= output.view().size());
+  if (constant == abc::Opcode::kLDSYMBOL) {
+    test::Check(std::holds_alternative<SymbolConstructorExpr>(member.tree.expressions[expression.value].expression));
+    const auto& binding = emission.Positions().members.front().symbol_binding;
+    test::Check(symbol_binding && binding && binding->name == symbol_binding->name);
+    test::Check(output.view().substr(span.begin, span.end - span.begin) == "hostSymbol");
+    std::ostringstream serialized;
+    tools::WriteTreePositions(serialized, member.tree, emission.Positions().members.front(), &*member.sources);
+    const auto json = nlohmann::json::parse(serialized.str());
+    test::Check(json.at("symbol_binding").at("name") == "hostSymbol");
+    test::Check(json.at("symbol_binding").at("policy") == "explicit_host");
+    test::Check(json.at("symbol_binding").at("contract") == SourceContractName(member.tree.identity.contract));
+  }
   if (constant == abc::Opcode::kLDGLOBAL) {
     test::Check(std::holds_alternative<RealmObjectExpr>(member.tree.expressions[expression.value].expression));
     const auto& binding = emission.Positions().members.front().realm_binding;
@@ -243,6 +263,14 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
 }
 }  // namespace
 int main() {
+  std::cout << "const hostSymbol = Symbol;\nexport const symbols = [\n";
+  const HostSymbolBinding symbol{u"hostSymbol"};
+  for (const auto profile : kProfiles)
+    for (const auto kind : {abc::FunctionKind::kBaseConstructor, abc::FunctionKind::kArrow})
+      for (const bool callback : {false, true})
+        Emit(profile, abc::Opcode::kLDSYMBOL, callback, ExpectedSource::kPrinted,
+            false, false, kind, "constant", false, nullptr, &symbol);
+  std::cout << "];\n";
   std::cout << "const hostRealm = globalThis;\n";
   std::cout << "export const realms = [\n";
   for (const auto profile : kProfiles)

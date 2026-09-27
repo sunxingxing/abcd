@@ -647,16 +647,22 @@ void FrameReceiverTree() {
 }
 }  // namespace
 int main() {
-  {
+  for (const analysis::ValueOperation operation : {
+      analysis::ValueOperation{analysis::ValueGlobalObject{}},
+      analysis::ValueOperation{analysis::ValueSymbolConstructor{}}}) {
     Fixture fixture;
-    fixture.Add(0, 0, 0, analysis::ValueGlobalObject{}, true, {});
+    fixture.Add(0, 0, 0, operation, true, {});
     fixture.Add(0, 1, 1, analysis::ValueReturn{}, false,
         {{analysis::OperandRole::kReturnValue, analysis::ValueId{2}}});
     fixture.graph.blocks = {{{0}, 2, {0}, 0}};
     auto tree = std::get<ConstructedFunction>(fixture.Build()).tree;
     Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
     const auto expression = std::get<ExprId>(tree.operations.front().node);
-    Check(std::holds_alternative<RealmObjectExpr>(tree.expressions[expression.value].expression));
+    const bool realm = std::holds_alternative<analysis::ValueGlobalObject>(operation);
+    Check(realm ? std::holds_alternative<RealmObjectExpr>(tree.expressions[expression.value].expression) :
+        std::holds_alternative<SymbolConstructorExpr>(tree.expressions[expression.value].expression));
+    tree.expressions[expression.value].expression = realm ? TreeExpression{SymbolConstructorExpr{}} : TreeExpression{RealmObjectExpr{}};
+    Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
     tree.expressions[expression.value].expression = GlobalNameExpr{{1}};
     Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
     tree.expressions[expression.value].expression = ThisExpr{tree.owner};

@@ -22,6 +22,7 @@ struct PrintedFunction {
     RealmBindingPolicy policy;
     std::u16string name;
   };
+  struct SymbolBinding { std::u16string name; };
   RouteInputIdentity identity;
   abc::EntityOffset method;
   analysis::IrRevision value_revision;
@@ -45,6 +46,7 @@ struct PrintedFunction {
   // Owned publication requirement; neither an ABC-derived fact nor transferable
   // permission to print the same tree inside a different lexical enclosure.
   std::optional<RealmBinding> realm_binding;
+  std::optional<SymbolBinding> symbol_binding;
 };
 // Emits a member fragment for a CLASS body, not an object literal or ordinary
 // function. The containing class/record still needs its own creation proof.
