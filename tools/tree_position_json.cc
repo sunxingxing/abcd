@@ -1,4 +1,5 @@
 #include "tree_position_json.h"
+#include "../src/source/instruction_sources.h"
 
 #include <nlohmann/json.hpp>
 #include <ostream>
@@ -41,7 +42,8 @@ void Array(std::ostream& output, const Items& items, Encode encode) {
   output << ']';
 }
 }  // namespace
-void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const PrintedFunction& printed) {
+void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const PrintedFunction& printed,
+    const InstructionSources* sources) {
   // Stream tables independently: do not expand each node's transitive PC set,
   // or hold an unbounded JSON DOM duplicating the complete source tree.
   output << "{\"unit\":\"utf8_byte\",\"value_revision\":" << printed.value_revision.value
@@ -99,6 +101,35 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
     return nlohmann::json{{"operation", placement.operation.value},
         {"parameter", placement.parameter.value}, {"origin", placement.origin.value}};
   });
+  if (sources) {
+    output << ",\"instruction_sources\":";
+    Array(output, sources->sites, [&](const InstructionSource& source) {
+      nlohmann::json entry{{"origin", source.origin.value}};
+      std::visit([&](auto node) {
+        using T = decltype(node);
+        if constexpr (std::is_same_v<T, ElidedInstruction>) {
+          entry["kind"] = "elided_pure"; entry["range"] = nullptr;
+        } else {
+          GeneratedRange range;
+          if constexpr (std::is_same_v<T, ExprId>) {
+            entry["kind"] = "expression"; range = printed.expressions[node.value];
+          } else if constexpr (std::is_same_v<T, StmtId>) {
+            entry["kind"] = "statement"; range = printed.statements[node.value];
+          } else if constexpr (std::is_same_v<T, PropertyId>) {
+            entry["kind"] = "property"; range = printed.properties[node.value];
+          } else if constexpr (std::is_same_v<T, ParameterId>) {
+            entry["kind"] = "parameter"; range = printed.parameters[node.value];
+          } else {
+            static_assert(std::is_same_v<T, AnchorId>);
+            entry["kind"] = "anchor"; range = {printed.anchors[node.value], printed.anchors[node.value]};
+          }
+          entry["node"] = node.value;
+          entry["range"] = {{"begin", range.begin}, {"end", range.end}};
+        }
+      }, source.target);
+      return entry;
+    });
+  }
   output << '}';
 }
 }  // namespace abcd::tools

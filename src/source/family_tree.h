@@ -25,7 +25,7 @@ struct FamilyTreeFailure {
       ParameterPlanError, CellDefaultError, CellDefaultProofError, DefaultBodyError,
       analysis::ValueEnvironmentError, CellError, ModuleGuardError, CaptureCellError,
       CaptureEvaluationFailure, DefaultSignatureError, TreeSemanticError,
-      FamilyEnclosureFailure, FamilyWriteFailure> cause;
+      FamilyEnclosureFailure, FamilyWriteFailure, InstructionSourceError> cause;
   // Discovery evidence only; no source initializer or erasure is authorized.
   std::optional<std::size_t> cell_default_candidates;
   bool cell_defaults_proved = false;

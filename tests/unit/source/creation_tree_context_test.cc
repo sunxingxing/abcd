@@ -229,7 +229,23 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       test::Check(std::holds_alternative<ConstructedFamily>(tree_family));
       const auto& built = std::get<ConstructedFamily>(tree_family);
       for (const auto& member : built.members)
-        test::Check(member.abi && member.abi->parameters.size() == member.tree.parameters.size());
+        test::Check(member.abi && member.sources && member.abi->parameters.size() == member.tree.parameters.size());
+      const auto& root_sources = *built.members[0].sources;
+      test::Check(root_sources.sites.size() == opened_child.input.Input().instructions.size());
+      auto missing_source = built.members[0].tree;
+      test::Check(!missing_source.operations.empty()); missing_source.operations.pop_back();
+      test::Check(std::get<InstructionSourceError>(BuildInstructionSources(opened_child.input,
+          opened_child.values.graph, missing_source)) == InstructionSourceError::kCoverage);
+      auto duplicate_source = built.members[0].tree;
+      duplicate_source.operations.push_back(duplicate_source.operations.front());
+      test::Check(std::get<InstructionSourceError>(BuildInstructionSources(opened_child.input,
+          opened_child.values.graph, duplicate_source)) == InstructionSourceError::kPlacement);
+      SemanticBudget source_budget; source_budget.work = root_sources.work;
+      test::Check(std::holds_alternative<InstructionSources>(BuildInstructionSources(opened_child.input,
+          opened_child.values.graph, built.members[0].tree, source_budget)));
+      --source_budget.work;
+      test::Check(std::get<InstructionSourceError>(BuildInstructionSources(opened_child.input,
+          opened_child.values.graph, built.members[0].tree, source_budget)) == InstructionSourceError::kWorkLimit);
       test::Check(built.members.size() == (writer_code ? 2U : 1U) && built.root == FileFamily::kRoot &&
           built.members[0].tree.method == abc::EntityOffset{kTarget} &&
           built.members[0].tree.parameters.size() == parameters);

@@ -3,6 +3,7 @@
 
 #include "capture_tree.h"
 #include "abcd/source/function_abi.h"
+#include "instruction_sources.h"
 
 namespace abcd::source {
 struct FamilyId { std::uint32_t value; auto operator<=>(const FamilyId&) const = default; };
@@ -15,6 +16,7 @@ struct FamilyMember {
   // Same-input census retained by file-backed construction. Synthetic layout
   // fixtures may omit it; a mutable census is not publication evidence.
   std::optional<FunctionAbi> abi;
+  std::optional<InstructionSources> sources;
 };
 struct FamilyParent { FamilyId function; ExprId expression; };
 // Construction diagnostics only, not transferable publication evidence.

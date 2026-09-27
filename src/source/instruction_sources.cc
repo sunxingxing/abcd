@@ -1,0 +1,103 @@
+#include "instruction_sources.h"
+
+#include <new>
+#include <stdexcept>
+
+namespace abcd::source {
+namespace {
+using Error = InstructionSourceError;
+void Require(bool ok, Error error) { if (!ok) throw error; }
+class SourceIndex {
+ public:
+  explicit SourceIndex(analysis::SemanticBudget budget) : initial_(budget), left_(budget) {}
+  InstructionSources Build(const FunctionInput& input, const analysis::ValueProgram& graph,
+      const FunctionTree& tree) {
+    Require(input.Identity() == tree.identity && input.Method() == tree.method, Error::kIdentity);
+    Require(graph.revision == tree.value_revision && graph.cfg_revision == tree.cfg_revision, Error::kRevision);
+    const auto& instructions = input.Input().instructions;
+    Require(graph.origins.size() == instructions.size() && tree.origins.size() >= graph.origins.size(), Error::kOrigin);
+    InstructionSources result;
+    Array(result.sites, instructions.size());
+    std::vector<std::uint8_t> seen;
+    std::vector<std::optional<InstructionTarget>> targets;
+    Array(seen, instructions.size()); Array(targets, graph.ops.size());
+    for (const auto& placement : tree.operations) {
+      Step();
+      Require(placement.operation.value < graph.ops.size(), Error::kPlacement);
+      Require(graph.ops[placement.operation.value].life == analysis::ValueLife::kLive, Error::kPlacement);
+      std::visit([&](auto node) {
+        Check(node, tree);
+        Set(targets[placement.operation.value], node);
+      }, placement.node);
+    }
+    for (const auto& placement : tree.signature) {
+      Step();
+      Require(placement.operation.value < graph.ops.size(), Error::kPlacement);
+      const auto& op = graph.ops[placement.operation.value];
+      Require(op.life == analysis::ValueLife::kRemoved && placement.origin.value == op.origin.value, Error::kPlacement);
+      Check(placement.parameter, tree);
+      Set(targets[placement.operation.value], placement.parameter);
+    }
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      Step(); const auto& op = graph.ops[i];
+      Require(op.origin.value < graph.origins.size(), Error::kOrigin);
+      const auto& origin = graph.origins[op.origin.value];
+      Require(origin.site.value < instructions.size() && !seen[origin.site.value], Error::kCoverage);
+      seen[origin.site.value] = 1;
+      const auto& instruction = instructions[origin.site.value];
+      Require(origin.pc == instruction.pc && origin.original == instruction.origin, Error::kOrigin);
+      auto& target = targets[i];
+      const auto& tree_origin = tree.origins[op.origin.value];
+      if (origin.disposition == analysis::OriginDisposition::kElidedPure) {
+        Require(op.life == analysis::ValueLife::kRemoved && !target, Error::kPlacement);
+        const auto* source = std::get_if<ElidedOrigin>(&tree_origin);
+        Require(source && Same(*source, origin), Error::kOrigin);
+        target = ElidedInstruction{};
+      } else {
+        Require(origin.disposition == analysis::OriginDisposition::kRetained, Error::kOrigin);
+        const auto* source = std::get_if<OriginalSite>(&tree_origin);
+        Require(source && Same(*source, origin), Error::kOrigin);
+        Require(target.has_value(), Error::kCoverage);
+        Require((op.life == analysis::ValueLife::kRemoved) ==
+            std::holds_alternative<ParameterId>(*target), Error::kPlacement);
+      }
+      result.sites[origin.site.value] = {{op.origin.value}, *target};
+    }
+    for (const auto present : seen) { Step(); Require(present != 0, Error::kCoverage); }
+    result.allocated_bytes = initial_.bytes - left_.bytes;
+    result.work = initial_.work - left_.work;
+    return result;
+  }
+ private:
+  template<class T> static bool Same(const T& source, const analysis::ValueOrigin& origin) {
+    return source.site == origin.site && source.pc == origin.pc && source.original == origin.original;
+  }
+  static void Set(std::optional<InstructionTarget>& target, InstructionTarget value) {
+    Require(!target, Error::kPlacement); target = value;
+  }
+  static void Check(ExprId node, const FunctionTree& tree) { Require(node.value < tree.expressions.size(), Error::kPlacement); }
+  static void Check(StmtId node, const FunctionTree& tree) { Require(node.value < tree.statements.size(), Error::kPlacement); }
+  static void Check(AnchorId node, const FunctionTree& tree) { Require(node.value < tree.anchors.size(), Error::kPlacement); }
+  static void Check(PropertyId node, const FunctionTree& tree) { Require(node.value < tree.properties.size(), Error::kPlacement); }
+  static void Check(ParameterId node, const FunctionTree& tree) {
+    Require(node.value < tree.parameters.size() && tree.parameters[node.value].initializer, Error::kPlacement);
+  }
+  void Step(std::uint64_t count = 1) { Require(count <= left_.work, Error::kWorkLimit); left_.work -= count; }
+  template<class T> void Array(std::vector<T>& values, std::size_t count) {
+    Require(count <= left_.bytes / sizeof(T), Error::kResourceLimit);
+    left_.bytes -= count * sizeof(T); Step(count); values.resize(count);
+    const auto extra = values.capacity() - count;
+    Require(extra <= left_.bytes / sizeof(T), Error::kResourceLimit); left_.bytes -= extra * sizeof(T);
+  }
+  analysis::SemanticBudget initial_, left_;
+};
+}  // namespace
+std::variant<InstructionSources, InstructionSourceError> BuildInstructionSources(
+    const FunctionInput& input, const analysis::ValueProgram& graph,
+    const FunctionTree& tree, analysis::SemanticBudget budget) {
+  try { return SourceIndex(budget).Build(input, graph, tree);
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+}  // namespace abcd::source

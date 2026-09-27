@@ -29,6 +29,12 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 新增[原始指令源码归属表](instruction-sources.md)：整族构建逐条原始指令核对
+  AST 节点、锚点、默认参数签名或已证明纯消除的归属；拒绝缺失、重复及 PC/版本错配。
+  线性索引随不可变准备结果保留，草稿 JSON 流式输出 `instruction_sources`。
+  纯消除使用 `range:null`，不伪造生成位置。ABC-only 的 7449 四成员覆盖表长度
+  为 36/66/5/5，根签名 6 项，草稿仍 1434 字节；Immersive 21082 仍可构建。
+  两者仍不完整、不可执行、退出 1。生产构建退出 0；新增规格未编译、未运行。
 - 新增 [不可变函数族准备](prepared-family.md)：`PreparedFamily::PrepareCreated`
   从实际 ABC 创建点重新贯通完整 family 输入、默认值、AST、ABI、捕获/写入与
   外部作用域检查，再保存 `unique_ptr<const Storage>`；不接受任意树或统计作为证明。

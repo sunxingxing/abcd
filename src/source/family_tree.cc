@@ -104,10 +104,13 @@ class FamilyTrees {
       auto abi = Take<ConstructedAbi, FunctionAbiError>(BuildFunctionAbi(graph, constructed.tree,
           context.Frame(), context.Length(), left_));
       Account(abi);
+      auto sources = Take<InstructionSources, InstructionSourceError>(BuildInstructionSources(
+          function.input, graph, constructed.tree, left_));
+      Account(sources);
       std::optional<CaptureCells> cells;
       if (member.incoming) cells.emplace(std::move(member.incoming->cells));
       trees.push_back({std::move(constructed.tree), std::move(flow), std::move(cells),
-                       std::move(abi.abi)});
+                       std::move(abi.abi), std::move(sources)});
     }
     auto result = Take<ConstructedFamily, FamilyError>(BuildFunctionFamily(std::move(trees), {FileFamily::kRoot.value}, left_));
     Account(result);

@@ -57,7 +57,9 @@ void Draft(nlohmann::json& report, const ConstructedFamily& family,
               << ",\"method\":" << member.method.value
               << ",\"begin\":" << draft->functions[i].begin
               << ",\"end\":" << draft->functions[i].end << ",\"positions\":";
-    abcd::tools::WriteTreePositions(positions, family.members[i].tree, member);
+    const auto& sources = family.members[i].sources;
+    abcd::tools::WriteTreePositions(positions, family.members[i].tree, member,
+        sources ? &*sources : nullptr);
     positions << '}';
   }
   positions << "],";

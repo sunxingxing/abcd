@@ -66,6 +66,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareCreate
           member.tree.callable == CallableKind::kArrow, Error::kCallable);
       Require(member.tree.modules.empty(), Error::kModules);
       Require(member.abi.has_value(), Error::kAbi);
+      Require(member.sources.has_value(), Error::kSources);
     }
     const auto enclosure = Take<FamilyEnclosure, FamilyEnclosureFailure>(
         VerifyFamilyDestination(family, destination.globals, budget.Left()));

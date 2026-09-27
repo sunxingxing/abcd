@@ -15,7 +15,8 @@ struct FamilyDestination {
   const GlobalScope* globals;
 };
 enum class FamilyPrepareError : std::uint8_t {
-  kStrictness, kCallable, kModules, kAbi, kFileChanged, kResourceLimit, kWorkLimit
+  kStrictness, kCallable, kModules, kAbi, kFileChanged, kResourceLimit, kWorkLimit,
+  kSources
 };
 struct FamilyPrepareFailure {
   std::variant<FamilyPrepareError, CreationContextFailure, FamilyFileFailure,
