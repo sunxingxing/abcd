@@ -35,3 +35,18 @@ source publication. Actual stages must remain tied to engine route evidence.
 `access_catalog_test` checks all inventory encodings and truncations;
 `access_catalog_guard_test` changes only a build-directory copy of the ISA and
 requires a missing classification to fail. Pinned upstream inputs are untouched.
+
+# Full Group Inventory
+
+`isa_catalog.inc.erb` maps all 19 upstream group titles explicitly to `IsaGroup`,
+preserving YAML order and all 332 encoded formats. Unknown, missing, reordered
+or duplicated groups fail generation. The generated table is sorted by Opcode;
+immutable lookup uses O(log N) time and no allocation. Generation uses O(N log N)
+time and O(N) storage. The separate generation command avoids rebuilding shared
+opcode headers when only the catalog template changes.
+
+`isa_catalog_test` checks independent group counts, unique sorted opcodes,
+decoder size/accumulator flags and every truncated prefix. The guard test
+mutates only a build-directory YAML copy. The constant-object semantic test
+also checks that its cases cover exactly the first catalog group. These are
+inventory/decoding/lifter checks, not full source or historical-profile proofs.

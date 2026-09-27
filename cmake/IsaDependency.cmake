@@ -83,3 +83,21 @@ add_custom_target(abcd_isa_generated
   DEPENDS "${ABCD_ISA_OPCODE_HEADER}" "${ABCD_ISA_TABLE}"
           "${ABCD_ISA_CASES}" "${ABCD_ISA_FLOW}" "${ABCD_ACCESS_CATALOG}")
 add_dependencies(abcd_isa_generated abcd_isa_pin_check)
+
+# Keep inventory-only changes from regenerating the shared Opcode header.
+set(ABCD_ISA_CATALOG
+    "${ABCD_ISA_GENERATED_DIR}/abcd/abc/generated_isa_catalog.inc")
+add_custom_command(
+  OUTPUT "${ABCD_ISA_CATALOG}"
+  COMMAND ${CMAKE_COMMAND} -E make_directory
+          "${ABCD_ISA_GENERATED_DIR}/abcd/abc"
+  COMMAND ${Ruby_EXECUTABLE} "${ABCD_ISA_GEN}"
+          -d "${ABCD_ISA_YAML}" -r "${ABCD_ISA_API}"
+          -t "${CMAKE_CURRENT_SOURCE_DIR}/tools/templates/isa_catalog.inc.erb"
+          -o "${ABCD_ISA_CATALOG}"
+  DEPENDS abcd_isa_pin_check "${ABCD_ISA_GEN}" "${ABCD_ISA_API}"
+          "${ABCD_ISA_YAML}"
+          "${CMAKE_CURRENT_SOURCE_DIR}/tools/templates/isa_catalog.inc.erb"
+  VERBATIM)
+add_custom_target(abcd_isa_catalog_generated DEPENDS "${ABCD_ISA_CATALOG}")
+add_dependencies(abcd_isa_generated abcd_isa_catalog_generated)

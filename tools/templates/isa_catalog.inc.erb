@@ -1,0 +1,37 @@
+<%# Explicit YAML boundary mapping, not runtime semantic dispatch. Fail closed
+    when upstream groups change; group membership is not source support. %>
+<%
+groups = {
+  'constant object loaders' => :kConstant,
+  'iterator instructions' => :kIterator,
+  'object creaters' => :kCreation,
+  'binary operations' => :kBinary,
+  'unary operations' => :kUnary,
+  'comparation instructions' => :kComparison,
+  'call runtime functions' => :kRuntimeCall,
+  'throw instructions' => :kThrow,
+  'call instructions' => :kCall,
+  'definition instuctions' => :kDefinition,
+  'object visitors' => :kObjectAccess,
+  'Load accumulator from string constant pool' => :kString,
+  'jump operations' => :kJump,
+  'Dynamic move register-to-register' => :kMove,
+  'Dynamic load accumulator from register' => :kRegisterLoad,
+  'Dynamic store accumulator' => :kRegisterStore,
+  'Dynamic load accumulator from immediate' => :kImmediate,
+  'dynamic return' => :kReturn,
+  'no operation' => :kNop
+}
+titles = Panda.groups.map(&:title)
+unknown = titles - groups.keys
+raise "unclassified ISA groups: #{unknown.join(', ')}" unless unknown.empty?
+raise 'ISA group order changed' unless titles == groups.keys
+entries = Panda.instructions.sort_by(&:opcode_idx)
+raise 'duplicate ISA opcode' unless entries.map(&:opcode_idx).uniq.size == entries.size
+%>
+inline constexpr std::array<IsaSpec, <%= entries.size %>> kIsaSpecs = {{
+<% entries.each do |instruction| %>
+  {abc::Opcode::k<%= instruction.opcode.upcase %>, IsaGroup::<%= groups.fetch(instruction.title) %>,
+   <%= instruction.format.size %>, <%= instruction.acc_read? %>, <%= instruction.acc_write? %>},
+<% end %>
+}};

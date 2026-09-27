@@ -42,6 +42,15 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 全 ISA 计划已启动：新增类型化 `IsaGroup`/`IsaSpec`，固定 YAML 的 19 groups、
+  332 格式均进入不可变清单；显式生成边界拒绝未知/缺失/顺序变化的 group，
+  运行时 Opcode 二分查找、不按字符串分派、不分配内存。清单不授予源码发布能力。
+  新增全格式解码、acc 标志、全部截断长度、归组数量和未知 opcode 测试；
+  独立 YAML 副本的未知 group 生成反例通过。第一组原有 18 条专项语义测试
+  现与清单交叉检查，防止漏项或重复项冒充覆盖。
+  `isa_catalog_test`、`constant_object_test` 构建成功；两项新 catalog 测试、
+  两项 access catalog 测试、`constant_object_test`、`instruction_test` 共 6/6 通过。
+  下一步是第一组逐指令的通用 IR/AST/源码证据与缺口，不是宣布 332 格式已反编译。
 - computed Set 集成测试增加窄/宽格式的捕获箭头函数：父函数创建词法环境、
   子函数读取并更新捕获 cell 后写计算属性，共用 PreparedFamily/FamilyEmission。
   独立源码 oracle 比较多次调用、独立激活、key 抛出和 setter 重入的事件顺序、

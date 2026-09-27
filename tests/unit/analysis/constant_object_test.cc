@@ -1,4 +1,5 @@
 #include "abcd/analysis/constant_object.h"
+#include "abcd/analysis/isa_catalog.h"
 
 #include <array>
 #include <cstdlib>
@@ -41,11 +42,21 @@ int main() {
       {{0xaf, 0}, 1, ConstantObjectKind::kCurrentFunction, AccumulatorEffect::kValue, ContextEffect::kNone, false},
       {{0xb0, 0}, 1, ConstantObjectKind::kDebugger, AccumulatorEffect::kPreserve, ContextEffect::kDebugger, false},
   }};
+  std::size_t group_count = 0;
+  for (const auto& entry : PinnedIsaCatalog())
+    if (entry.group == IsaGroup::kConstant) ++group_count;
+  Check(group_count == cases.size());
+  std::array<abc::Opcode, cases.size()> seen{};
+  std::size_t seen_count = 0;
   for (const auto& test : cases) {
     const auto decoded = std::get<abc::DecodedInstruction>(
         abc::DecodeInstruction(std::span(test.bytes).first(test.size),
                                abc::ProfileId::kDynamic1301));
     Check(decoded.size == test.size);
+    const auto* spec = FindPinnedInstruction(decoded.opcode);
+    Check(spec && spec->group == IsaGroup::kConstant);
+    for (std::size_t i = 0; i < seen_count; ++i) Check(seen[i] != decoded.opcode);
+    seen[seen_count++] = decoded.opcode;
     const auto lifted = LiftConstantObjectInstruction(decoded);
     const auto& operation = std::get<ConstantObjectInstruction>(lifted);
     Check(operation.kind == test.kind);
