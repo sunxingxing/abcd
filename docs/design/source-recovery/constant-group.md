@@ -342,7 +342,10 @@ arrow phase/capture extensions remain unfinished.
 - Deprecated LDLEXENV and both POPLEXENV encodings: track environment ownership
   and actual runtime accumulator behavior, not merely YAML accumulator flags.
 - GETUNMAPPEDARGS: preserve arguments identity, descriptors and frame ownership;
-  do not substitute an ordinary rest array.
+  do not substitute an ordinary rest array. The runtime reads current physical
+  argument slots and allocates on every execution; see
+  [frame argument snapshots](argument-snapshots.md). Rest-signature recovery now
+  rejects a later implicit snapshot read of the original ABI rest slot.
 - ASYNCFUNCTIONENTER: integrate the complete async owner and exception phases,
   not a standalone Promise expression.
 

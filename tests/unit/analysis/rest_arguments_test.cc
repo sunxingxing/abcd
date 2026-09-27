@@ -34,6 +34,13 @@ int main() {
   auto body = test::Body({0x44, 0x40, 0x44, 0x51, 0x44, 0x62,
                           0x44, 0x73, 0xcf, 0, 0x61, 3, 0x60, 3, 0x64});
   test::Check(analysis::ProveRestPrologue(body, frame, 0).has_value());
+  const auto snapshot = test::Body({0x44, 0x40, 0x44, 0x51, 0x44, 0x62,
+      0x44, 0x73, 0xcf, 0, 0x61, 3,
+      static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS),
+      static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
+  // The runtime snapshot may read the original rest argument slot even though
+  // its encoding has no explicit register operand. It is not a rest-array read.
+  test::Check(!analysis::ProveRestPrologue(snapshot, frame, 0));
   body.tries.push_back({{0}, 1, 0, 0});
   test::Check(!analysis::ProveRestPrologue(body, frame, 0));
   body.tries.clear();

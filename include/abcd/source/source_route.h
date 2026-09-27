@@ -228,7 +228,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 30 publish realm AST only after destination binding validation.
 // Rules 31 preserve the intrinsic Symbol constructor through semantic/value IR.
 // Rules 32 require an explicit host binding when publishing Symbol intrinsic reads.
-inline constexpr std::uint32_t kRouteEvidenceRules = 32;
+// Rules 33 forbid rest-signature recovery across implicit argument snapshots.
+inline constexpr std::uint32_t kRouteEvidenceRules = 33;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

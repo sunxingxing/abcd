@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 32。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 33。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,6 +42,16 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- GETUNMAPPEDARGS 的运行时核对发现 rest 签名证明边界缺口：该指令没有显式
+  寄存器操作数，但按实际实参数量复制当前物理实参槽，会隐式读取原 rest 槽。
+  ProveRestPrologue 原本会错误放行这种后续读取，新增反例先失败，现已拒绝。
+  未把指令错误提升为零输入常量，也未直接输出 native arguments/rest 数组。
+  [实参快照设计](argument-snapshots.md) 记录新对象身份、caller/callee 描述符、
+  帧数量/尾部输入、SSA 当前槽依赖、16-bit occurrence 边界和 callable 约束。
+  规则版本 33；本项是接通该指令的前置修正，不计为 GETUNMAPPEDARGS 源码完成。
+  `rest_arguments_test`、`source_route_test`、`constant_group_test`、
+  `value_created_family_test` 共 4/4 通过；相关目标及 `abc_semantic` 构建成功。
+  未运行 RSS/基准/全语料或 Ark VM 差分。
 - LDSYMBOL 已贯通 ValueSymbolConstructor -> SymbolConstructorExpr -> 统一
   printer，并通过显式 HostSymbolBinding 记录原始构造器的不可变宿主绑定。
   V1/V2 均不自动假定公开 Symbol 属性稳定；缺能力、名字遮蔽或与 realm

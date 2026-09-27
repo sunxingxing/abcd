@@ -80,6 +80,12 @@ std::optional<RestPrologue> ProveRestPrologue(
       frame.first_parameter.value + source_length};
   const auto prologue_end = body.instructions[copied + 1].offset.value;
   for (std::size_t i = copied + 2; i < body.instructions.size(); ++i) {
+    // GETUNMAPPEDARGS copies current physical argument slots, including the
+    // original rest slot when supplied (v7 RuntimeGetUnmapedArgs/GetNumArgs).
+    // Its operand-free encoding hides that read from GetRegisterAccesses.
+    // A source ...rest binding cannot substitute for this independent snapshot.
+    if (body.instructions[i].decoded.opcode == abc::Opcode::kGETUNMAPPEDARGS)
+      return std::nullopt;
     // A second runtime copy allocates a distinct array; the source rest
     // binding can only stand for the single prologue copy.
     if (body.instructions[i].decoded.opcode == abc::Opcode::kCOPYRESTARGS_IMM8 ||
