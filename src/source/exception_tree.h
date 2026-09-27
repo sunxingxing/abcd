@@ -7,7 +7,8 @@
 namespace abcd::source {
 struct ExceptionTreeInput {
   const abc::MethodBody& body;
-  const analysis::PhasedValueInput& input;
+  // Copy the small borrowed-view descriptor; its referents remain owner-held.
+  analysis::PhasedValueInput input;
   const ExceptionPlan& regions;
   const ExceptionControl& control;
 };

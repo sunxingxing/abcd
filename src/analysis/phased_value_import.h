@@ -17,6 +17,15 @@ struct PhasedValueInput {
   const abc::FrameLayout& frame;
 };
 struct PhasedImportProof { std::uint64_t work; };
+struct ImportedPhases {
+  ValueProgram graph;
+  std::size_t allocated_bytes = 0;
+  std::uint64_t work = 0;
+};
+// Includes importer and independent correspondence work; byte charge retains
+// scratch conservatively so an owning method can share one stage allowance.
+[[nodiscard]] std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
+    const PhasedValueInput& input, SemanticBudget budget = {});
 // Low-level import, not a source receipt. Additional owned graph and scratch
 // share the budget; caller separately admits retained input analyses.
 [[nodiscard]] std::variant<ValueProgram, ValueImportFailure> ImportPhasedValues(

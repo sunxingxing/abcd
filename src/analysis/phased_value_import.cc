@@ -20,7 +20,7 @@ void LinkUse(ValueProgram& graph, OperandUse use) {
   graph.uses.push_back(use);
 }
 }
-std::variant<ValueProgram, ValueImportFailure> ImportPhasedValues(
+std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
     const PhasedValueInput& input, SemanticBudget budget) {
   try {
     PhaseQuota quota{budget};
@@ -168,9 +168,16 @@ std::variant<ValueProgram, ValueImportFailure> ImportPhasedValues(
     const auto verified = VerifyImportedPhases(graph, input, quota.Remaining());
     if (const auto* error = std::get_if<ValueImportFailure>(&verified)) return *error;
     quota.Work(std::get<PhasedImportProof>(verified).work);
-    return graph;
+    return ImportedPhases{std::move(graph), budget.bytes - quota.Remaining().bytes,
+        budget.work - quota.Remaining().work};
   } catch (const ValueImportFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return ValueImportFailure{Error::kResourceLimit, {}};
   } catch (const std::length_error&) { return ValueImportFailure{Error::kResourceLimit, {}}; }
+}
+std::variant<ValueProgram, ValueImportFailure> ImportPhasedValues(
+    const PhasedValueInput& input, SemanticBudget budget) {
+  auto built = BuildPhasedValues(input, budget);
+  if (auto* result = std::get_if<ImportedPhases>(&built)) return std::move(result->graph);
+  return std::get<ValueImportFailure>(built);
 }
 }  // namespace abcd::analysis

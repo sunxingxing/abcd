@@ -14,6 +14,7 @@
 #include "function_tree.h"
 #include "function_abi.h"
 #include "syntax_resolution.h"
+#include "phased_method.h"
 #include "tree_semantics.h"
 #include "tree_globals.h"
 
@@ -184,18 +185,47 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     // No caller-supplied graph/certificate can bypass this fresh input proof.
     // BuildValueStage currently bounds its constituent work passes separately;
     // whole-method work accounting remains distinct from this shared byte cap.
-    auto values = BuildValueStage(identity, method.offset, method.owner_offset, *body, context->Frame(), budget.Remaining());
-    receipt = values.receipt;
-    if (!values.graph || values.receipt.stage != SourceStage::kValuesVerified || values.receipt.failure)
-      throw Error::kValues;
     budget.Arena(body->instructions); budget.Arena(body->tries); budget.Arena(body->handlers);
-    AdmitGraph(*values.graph, budget);
+    ValueMethod values;
+    std::optional<PhasedMethod> phased;
+    if (!body->tries.empty()) {
+      receipt = MethodRouteReceipt{};
+      receipt->identity = identity; receipt->method = method.offset; receipt->record = method.owner_offset;
+      receipt->route = SourceRoute::kValueTree; receipt->stage = SourceStage::kDecoded;
+      receipt->coverage = Coverage::kUnsupported;
+      auto built = PhasedMethod::Build(*context, *body, budget.Remaining());
+      auto* result = std::get_if<PhasedMethod>(&built);
+      if (!result) {
+        const auto error = std::get<PhasedMethodError>(built);
+        const auto category = error == PhasedMethodError::kResourceLimit ? RouteFailureClass::kMemoryLimit
+            : error == PhasedMethodError::kWorkLimit ? RouteFailureClass::kWorkLimit : RouteFailureClass::kUnproved;
+        // The owner publishes no intermediate mutable product on failure.
+        // Keep the last retained stage at decoded, with a matching refusal.
+        receipt->failure = RouteFailure{category, ValueRouteError::kInputStage, {}};
+        if (error == PhasedMethodError::kResourceLimit) throw Error::kResourceLimit;
+        if (error == PhasedMethodError::kWorkLimit) throw Error::kWorkLimit;
+        if (error == PhasedMethodError::kControl || error == PhasedMethodError::kRegion) throw Error::kControl;
+        if (error == PhasedMethodError::kEvaluation) throw Error::kEvaluation;
+        throw Error::kValues;
+      }
+      budget.Admit(result->AllocatedBytes(), 1); budget.Step(result->Work());
+      phased.emplace(std::move(*result));
+      receipt->stage = SourceStage::kValuesVerified;
+      receipt->coverage = Coverage::kIncomplete;
+    } else {
+      values = BuildValueStage(identity, method.offset, method.owner_offset, *body, context->Frame(), budget.Remaining());
+      receipt = values.receipt;
+      if (!values.graph || values.receipt.stage != SourceStage::kValuesVerified || values.receipt.failure)
+        throw Error::kValues;
+      AdmitGraph(*values.graph, budget);
+    }
     if (values.environments) budget.Admit(values.environments->allocated_bytes, 1);
     std::optional<DefaultBody> defaults;
-    if (context->Frame().parameters != context->Length())
+    if (phased && context->Frame().parameters != context->Length()) throw Error::kParameters;
+    if (!phased && context->Frame().parameters != context->Length())
       defaults.emplace(DefaultParameters(*values.graph, context->Frame().parameters,
                                          context->Length(), budget));
-    const auto& graph = defaults ? defaults->Graph() : *values.graph;
+    const auto& graph = phased ? phased->Graph() : defaults ? defaults->Graph() : *values.graph;
     receipt->work_revision = graph.revision.value;
     std::optional<CellPlan> cells;
     std::optional<CellInitializations> initialization;
@@ -238,15 +268,16 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       // Binding topology alone does not authorize source cell reads/stores.
       // Evaluation remains gated until lifetime and AST correspondence close.
     }
-    auto regions = BuildControlPlan(graph, budget.Remaining());
-    const auto* control = std::get_if<ControlPlan>(&regions);
+    std::optional<std::variant<ControlPlan, ControlError>> regions;
+    if (!phased) regions = BuildControlPlan(graph, budget.Remaining());
+    const auto* control = phased ? &phased->Control() : std::get_if<ControlPlan>(&*regions);
     if (!control) {
-      const auto error = std::get<ControlError>(regions);
+      const auto error = std::get<ControlError>(*regions);
       if (error == ControlError::kResourceLimit) throw Error::kResourceLimit;
       if (error == ControlError::kWorkLimit) throw Error::kWorkLimit;
       throw Error::kControl;
     }
-    budget.Admit(control->allocated_bytes, 1); budget.Step(control->work);
+    if (!phased) { budget.Admit(control->allocated_bytes, 1); budget.Step(control->work); }
     std::optional<CellLifetimes> lifetimes;
     if (cells) {
       auto placed = BuildCellLifetimes(graph, *values.environments, *cells, *control, budget.Remaining());
@@ -261,10 +292,11 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       lifetimes = std::move(*scopes);
     }
     receipt->stage = SourceStage::kControlFrozen;
-    auto evaluated = BuildEvaluationPlan(graph, budget.Remaining());
-    const auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
+    std::optional<std::variant<EvaluationPlan, EvaluationError>> evaluated;
+    if (!phased) evaluated = BuildEvaluationPlan(graph, budget.Remaining());
+    const auto* evaluation = phased ? &phased->Evaluation() : std::get_if<EvaluationPlan>(&*evaluated);
     if (!evaluation) {
-      const auto error = std::get<EvaluationError>(evaluated);
+      const auto error = std::get<EvaluationError>(*evaluated);
       if (error == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
       if (error == EvaluationError::kWorkLimit) throw Error::kWorkLimit;
       throw Error::kEvaluation;
@@ -274,7 +306,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     if (!evaluation->functions.empty() || !evaluation->modules.empty() ||
         (evaluation->cells && evaluation->cells->incoming != IncomingCells::kReject))
       throw Error::kEvaluation;
-    budget.Admit(evaluation->allocated_bytes, 1); budget.Step(evaluation->work);
+    if (!phased) { budget.Admit(evaluation->allocated_bytes, 1); budget.Step(evaluation->work); }
     auto syntax_result = ResolveFunctionSyntax(file, header, index, *context, *body,
         graph, {context->Position().value}, budget.Remaining());
     auto* resolved_syntax = std::get_if<ResolvedSyntax>(&syntax_result);
@@ -307,7 +339,15 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     auto tree_budget = budget.Remaining();
     if (transferred > allowance.bytes - tree_budget.bytes) throw Error::kResourceLimit;
     tree_budget.bytes += transferred;
-    auto constructed = BuildFunctionTree(graph, *control, *evaluation, std::move(syntax), constant_view, tree_budget);
+    auto constructed = [&]() -> std::variant<ConstructedFunction, FunctionTreeError> {
+      if (!phased) return BuildFunctionTree(graph, *control, *evaluation,
+          std::move(syntax), constant_view, tree_budget);
+      auto drafted = BuildExceptionFunctionDraft(graph, phased->TreeInput(*body), *evaluation,
+          std::move(syntax), constant_view, tree_budget);
+      if (auto* result = std::get_if<ExceptionFunctionDraft>(&drafted))
+        return ConstructedFunction{std::move(result->tree), result->allocated_bytes, result->work};
+      return std::get<FunctionTreeError>(drafted);
+    }();
     auto* function = std::get_if<ConstructedFunction>(&constructed);
     if (!function) {
       const auto error = std::get<FunctionTreeError>(constructed);

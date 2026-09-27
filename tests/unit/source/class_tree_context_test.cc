@@ -1,6 +1,7 @@
 #include "../../../src/source/class_tree_context.h"
 #include "../../../src/source/prepared_family.h"
 #include "../../../src/source/family_emission.h"
+#include "../../../src/source/phased_method.h"
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
@@ -32,7 +33,8 @@ static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
 void Check(bool condition) { if (!condition) std::abort(); }
 enum class DefaultEncoding { kNone, kInteger, kNegation };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
-         bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr) {
+         bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
+         bool exception = false) {
   const bool defaults = encoding != DefaultEncoding::kNone;
   constexpr std::uint32_t kPool = 64, kOwner = 80, kLiteral = 128, kCaller = 256,
       kConstructor = 300, kMember = 350, kCallerCode = 400, kMemberCode = 430, kName = 500;
@@ -98,6 +100,16 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     member.insert(member.end() - 1, static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS));
     --member[kCodeSizeOffset];
   }
+  if (exception) {
+    const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+    constexpr std::uint8_t kBodyBytes = 15, kProtectedBytes = 14,
+        kBranchDelta = 4, kNamePool = 2, kSingleTry = 1, kCatchAll = 0;
+    member = {0, 4, kBodyBytes, kSingleTry, kLoad, kParameter,
+        op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0,
+        op(abc::Opcode::kCALLARG0_IMM8), 0, op(abc::Opcode::kJEQZ_IMM8), kBranchDelta,
+        op(abc::Opcode::kLDTRUE), kReturn, op(abc::Opcode::kLDFALSE), kReturn, kReturn,
+        0, kProtectedBytes, kSingleTry, kCatchAll, kProtectedBytes, 1};
+  }
   std::copy(caller.begin(), caller.end(), bytes.begin() + kCallerCode);
   std::copy(member.begin(), member.end(), bytes.begin() + kMemberCode);
   char path[] = "/tmp/abcd-class-tree-context-XXXXXX";
@@ -122,7 +134,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   index.methods[1].offset = {kConstructor};
   index.methods[2].offset = {kMember};
   index.methods[2].code = abc::CodeInfo{{kMemberCode}, {kMemberCode + 4}, member[0], 4,
-                                      member[kCodeSizeOffset], 0};
+                                      member[kCodeSizeOffset], member[3]};
   index.methods[2].name = "run";
   index.methods[2].name_utf16_length = 3;
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
@@ -141,6 +153,54 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   const auto& value = std::get<ClassTreeContext>(context);
   Check(value.Name() == u"run" && value.Frame().parameters == 1);
   Check(value.Callable() == CallableKind::kMethod && value.Mode() == Strictness::kStrict);
+  if (exception) {
+    const FunctionContext owner{std::get<ClassTreeContext>(ClassTreeContext::Resolve(
+        file, header, index, lookup, roles, sites, range.first, identity))};
+    const auto decoded = std::get<abc::MethodBody>(abc::DecodeMethodBody(file, header.profile, *index.methods[2].code));
+    auto analyzed = PhasedMethod::Build(owner, decoded);
+    Check(std::holds_alternative<PhasedMethod>(analyzed));
+    const auto moved = std::get<PhasedMethod>(std::move(analyzed));
+    const auto view = moved.TreeInput(decoded);
+    Check(std::holds_alternative<std::uint64_t>(VerifyExceptionControl(decoded, moved.Graph(),
+        view.input, view.regions, view.control)));
+    Check(std::get<PhasedMethodError>(PhasedMethod::Build(owner, decoded, {0})) ==
+        PhasedMethodError::kResourceLimit);
+    Check(std::holds_alternative<PhasedMethod>(PhasedMethod::Build(owner, decoded,
+        {analysis::SemanticBudget{}.bytes, moved.Work()})));
+    Check(std::get<PhasedMethodError>(PhasedMethod::Build(owner, decoded,
+        {analysis::SemanticBudget{}.bytes, moved.Work() - 1})) == PhasedMethodError::kWorkLimit);
+    auto old_contract = identity; old_contract.contract = SourceContract::kLanguageAndHostV1;
+    const FunctionContext old_owner{std::get<ClassTreeContext>(ClassTreeContext::Resolve(
+        file, header, index, lookup, roles, sites, range.first, old_contract))};
+    Check(std::get<PhasedMethodError>(PhasedMethod::Build(old_owner, decoded)) == PhasedMethodError::kContract);
+    const auto contract_refusal = VerifiedFunction::PrepareClass(
+        file, header, index, lookup, roles, sites, range.first, old_contract);
+    const auto& rejected_contract = std::get<FunctionPrepareFailure>(contract_refusal);
+    Check(rejected_contract.values && rejected_contract.values->failure &&
+        !ValidateRouteReceipt(*rejected_contract.values));
+    auto prepared = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity);
+    if (const auto* error = std::get_if<FunctionPrepareFailure>(&prepared))
+      std::cerr << "exception preparation error " << static_cast<unsigned>(error->kind) << '\n';
+    Check(std::holds_alternative<VerifiedFunction>(prepared));
+    std::ostringstream output;
+    auto written = FunctionEmission::Write(std::get<VerifiedFunction>(std::move(prepared)), output, {});
+    Check(std::holds_alternative<FunctionEmission>(written));
+    const auto& emission = std::get<FunctionEmission>(written);
+    Check(emission.Function().Abi().parameters.size() == 1 && emission.Function().Abi().length == 1);
+    auto mismatched = index;
+    mismatched.methods[2].code->try_count = 0;
+    Check(std::get<FunctionPrepareFailure>(VerifiedFunction::PrepareClass(
+        file, header, mismatched, lookup, roles, sites, range.first, identity)).kind == FunctionPrepareError::kBody);
+    Check(emission.Receipt().coverage == Coverage::kComplete &&
+        emission.Receipt().stage == SourceStage::kPrinted && !ValidateRouteReceipt(emission.Receipt()));
+    if (evidence) {
+      std::ostringstream mapping;
+      tools::WriteTreePositions(mapping, emission.Function().Tree(), emission.Positions());
+      *evidence << nlohmann::json{{"source", output.str()}, {"positions", nlohmann::json::parse(mapping.str())}}.dump() << '\n';
+    }
+    Check(unlink(path) == 0);
+    return;
+  }
   if (snapshot) {
     const HostArgumentSnapshotBinding factory{u"snapshotArguments", ArgumentSnapshotAbi::kV7CurrentSlots};
     GlobalScope globals{}; globals.argument_snapshot_binding = &factory;
@@ -363,12 +423,17 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--exception-json") {
+    Run(DefaultEncoding::kNone, false, false, false, &std::cout, true);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--snapshot-json") {
     for (const auto encoding : {DefaultEncoding::kNone, DefaultEncoding::kInteger, DefaultEncoding::kNegation})
       Run(encoding, false, false, true, &std::cout);
     return 0;
   }
   Check(argc == 1);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, true);
   Run(); Run(DefaultEncoding::kInteger); Run(DefaultEncoding::kNegation);
   Run(DefaultEncoding::kNone, true);
   Run(DefaultEncoding::kNone, false, true);

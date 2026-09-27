@@ -148,7 +148,8 @@ class AbiBuilder {
         return;
       }
       Require(kind == BindingKind::kCompilerTemporary || kind == BindingKind::kLocal ||
-          kind == BindingKind::kCapture || kind == BindingKind::kModule, Error::kSyntax);
+          kind == BindingKind::kCapture || kind == BindingKind::kModule ||
+          kind == BindingKind::kCatchParameter, Error::kSyntax);
     }
   }
   void Expression(SymbolExpr node) { Symbol(node.symbol, false); }

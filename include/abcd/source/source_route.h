@@ -235,7 +235,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 37 retain checked invocation argument facts from exact callable owners.
 // Rules 42 preserve arrow ABI through explicit own-invocation method carriers.
 // Rules 44 admit explicit throw through common value IR, AST and printer.
-inline constexpr std::uint32_t kRouteEvidenceRules = 44;
+// Rules 45 admit occurrence-bound standalone try/catch through original phased
+// input, shared tree correspondence, same-file constants and callable ABI.
+inline constexpr std::uint32_t kRouteEvidenceRules = 45;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

@@ -219,6 +219,7 @@ target_sources(abcd_source PRIVATE src/source/value_stage.cc)
 target_sources(abcd_source PRIVATE src/source/control_plan.cc src/source/control_verify.cc)
 target_sources(abcd_source PRIVATE src/source/control_skeleton_verify.cc)
 target_sources(abcd_source PRIVATE src/source/exception_plan.cc)
+target_sources(abcd_source PRIVATE src/source/phased_method.cc)
 target_sources(abcd_source PRIVATE src/source/exception_control.cc src/source/exception_topology.cc)
 target_sources(abcd_source PRIVATE src/source/exception_copies.cc)
 target_sources(abcd_source PRIVATE src/source/source_tree.cc)
@@ -380,6 +381,8 @@ if(BUILD_TESTING)
     tests/tools/iterator_candidates.cc)
   target_link_libraries(iterator_candidates PRIVATE abcd_analysis abcd_corpus
     abcd_json)
+  add_executable(exception_candidates EXCLUDE_FROM_ALL tests/tools/exception_candidates.cc)
+  target_link_libraries(exception_candidates PRIVATE abcd_analysis abcd_corpus abcd_json)
   add_executable(record_path_test tests/unit/structure/record_path_test.cc)
   target_link_libraries(record_path_test PRIVATE abcd_structure)
   add_test(NAME record_path_test COMMAND record_path_test)
@@ -828,6 +831,9 @@ if(BUILD_TESTING)
     add_test(NAME exception_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/exception_tree.mjs
       $<TARGET_FILE:exception_copies_test> $<TARGET_FILE:exception_plan_test>)
+    add_test(NAME phased_method_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_method.mjs
+      $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME argument_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/argument_snapshot.mjs
       $<TARGET_FILE:creation_tree_context_test> $<TARGET_FILE:class_tree_context_test>)

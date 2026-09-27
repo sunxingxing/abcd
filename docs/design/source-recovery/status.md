@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 44，默认源码契约为 V3。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 45，默认源码契约为 V3。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -41,6 +41,23 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 | T12 | 语料与分类基础已有历史记录 | 全样本新路线审计、跨版本/留出集、进程 1G 实测 |
 
 ## 本次证据
+
+- 文件方法入口新增 `PhasedMethod`，持有异常 CFG/SSA、环境、值域、输入证明、
+  区域投影及求值计划；借用视图随所有者移动仍有效。含 try 的方法进入现有
+  `VerifiedFunction` 后半段，共用同文件常量解析、FunctionTree 独立语义检查、
+  callable ABI、全局绑定验证和不可变发布，不新增 writer。源码规则升至 45。
+  文件化解码夹具已实际生成并执行包含 getter、普通调用、分支和 catch 的类方法；
+  比较任意 JS 返回/抛出值、效果顺序、普通调用 receiver，验证 9 条指令的 PC 映射。
+  ABI 不把 catch 绑定计作形参；验证 owner 移动、精确 work/零 bytes、错误 try 元数据，
+  并拒绝未排除 VM 资源耗尽差异的 V1 契约。默认参数与异常相位尚未整合。
+  `abc_semantic` 及相关目标构建通过，16/16 定向回归通过，包含新
+  `phased_method_source_test`、phased_value_import、source_route 及上轮 13 项。
+  元数据候选工具检查了 pasteboard、Immersive、MultiCommunityApplication 三个 ABC；
+  实际尝试 pasteboard 5165 与 Immersive 8284 仍为 unsupported，无 legacy fallback。
+  调试确认 Immersive 8284 在 PC 47 的模块 TDZ 检查缺值域证明；随后还需闭合
+  跨相位显式 receiver 调用。不能用夹具通过替代真实应用验收，第 1 步仍未完成。
+  下一步先整合这些输入证明及调用，再按序完成循环跨区、completion/finally、
+  await/yield。函数族/record 异常发布亦未完成。未运行全量、RSS 或基准。
 
 - 共享 FunctionTree 已接入异常投影、handler 作用域 catch 参数、抛出前暂存与
   Catch 入口提交，复用共享 printer。三种 profile 的解码指令用例已执行生成 JS，

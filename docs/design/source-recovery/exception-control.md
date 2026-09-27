@@ -130,11 +130,36 @@ Exact work and exhausted-work/byte boundaries are checked. Decoded branch,
 return and throw placements also have generated statement ranges; jumps have
 generated anchors, without reverse-parsing source text.
 
+## File-Backed Admission
+
+`PhasedMethod` owns the flow, SSA, environments, value proof, imported graph,
+region projection and evaluation plan. `ExceptionTreeInput` copies its small
+reference descriptor, not the referenced analyses; moving the heap-backed owner
+preserves those references. The owner exposes no partial product on failure.
+Imported phases report their byte/work accounting to the enclosing budget.
+Environment analysis remains byte-bounded with instruction-visit work accounting;
+these counters are not a process RSS measurement or a complete work bound for
+every upstream pass.
+
+`VerifiedFunction` now admits this owner for decoded methods with try tables,
+then reuses same-file syntax/constants, the shared tree correspondence checker,
+callable ABI, global binding checks and immutable publication. Catch parameters
+are not formal parameters. V1 resource-failure equivalence is not proved and is
+rejected; V2/V3 retain their explicit resource-exhaustion exclusion. Phased
+default-parameter recovery and family/capture publication are still unsupported.
+
+The file-backed integration fixture executes getter/call/branch/catch behavior
+and checks all nine original PC placements through this publication path. It is
+not a real application acceptance result. Actual Immersive method 8284 currently
+fails input verification at PC 47 (module TDZ guard); module pairing and explicit
+receiver calls must carry their proofs through exception phases, not receive
+invented Language facts. Source evidence rules are now 45.
+
 Still required before phase completion:
 
-1. Bind this conditional correspondence to actual file-backed constants,
-   callable ABI and immutable publication identity; verify the complete emitted
-   PC map on the same real method. Current diagnostic trees are not receipts.
+1. Complete a real application method through the file-backed publication path
+   and verify its emitted PC map and behavior. File-backed fixture publication
+   does not satisfy this gate; standalone diagnostic drafts remain non-receipts.
 2. Close capture/family obligations where present; do not treat a legal catch
    parameter read as proof that a created closure captures the correct cell.
 3. Integrate loop/try nesting in both directions and cross-region exits, then
