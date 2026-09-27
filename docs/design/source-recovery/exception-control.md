@@ -717,10 +717,38 @@ bind zero/zero/one capture occurrences respectively. These are conditional
 original-input bindings only, not executable parent families. Parent evaluation
 still refuses missing child completion. Rules 55 remain unchanged.
 
-Next connect these plans to shared `CaptureCells`: original local environment
-IDs map through their allocation instruction provenance to working allocation
-OpIds; independently resolve child incoming depth/slot in the parent's working
-environment at creation. Never equate the two environment index namespaces.
-Then reuse capture evaluation/tree binding, retain complete child owners and
-close transitive writes before family publication. No read-only sample shortcut
-or new specialized body writer substitutes for that bridge.
+The working-cell/evaluation bridge below connects these plans. Complete child
+trees, enclosure and transitive writes still precede family publication. No
+read-only sample shortcut or specialized body writer substitutes for that gate.
+
+### Shared Capture Targets and Evaluation
+
+Normal and phased owners now feed the same `BindCaptureTargets` and independent
+`VerifyCaptureTargets`. The internal borrowed `CaptureParent` view carries
+original instructions/allocation provenance, the working graph/environment/cell
+plans and typed scope facts. It neither owns another graph nor equates original
+and working environment index namespaces. Existing normal public APIs remain;
+the phased wrapper checks the real same-file/record child owner and occurrence.
+
+Planning groups child incoming cells and resolves each depth/slot in the working
+parent environment at creation. Verification checks that map independently and
+walks every original capture occurrence: original local environment → allocation
+instruction → retained working OpId → parent CellId. Child accesses are connected
+through their retained original origins. Missing stores/cells are never invented;
+outward captures remain explicit obligations, not snapshots or declarations.
+Revisions, identity, coverage, original initialization and write premises are
+checked again. The original-input verifier does not rerun its builder.
+
+`BindPhasedCaptureEvaluation` reuses the normal verified binding conversion.
+Distinct syntax owners and supported creation semantics remain mandatory; an
+unresolved outward capture still rejects. The selected 8257 and 8404 parents now
+reach the common phased evaluation planner/verifier using their real child
+bindings (0/0/1 parent-cell targets). This is explicitly conditional evaluation,
+not a complete family or source receipt. The standalone `PhasedMethod::Evaluate`
+still receives no unproved child trees and refuses publication as before.
+
+Remaining work: retain phase/normal family members under one owner, build the
+actual child ASTs, connect incoming symbols to the actual parent declarations,
+verify family enclosure and transitive writes, then execute the resulting real
+parent/child family and verify its PC map. Loop/finally/suspension stages are not
+completed by these capture facts. Source rules remain 55.

@@ -17,6 +17,7 @@ for (const { method, sites, targets, allocations, bindings, captures } of sample
   assert.equal(result.phase_body_ready, true);
   assert.equal(result.phase_environments_ready, true);
   assert.equal(result.phase_cells_ready, true);
+  assert.equal(result.conditional_evaluation_ready, true);
   assert.equal(result.cells, bindings);
   assert.equal(result.environment_allocations, allocations);
   assert.equal(result.lexical_bindings, bindings);
@@ -28,6 +29,9 @@ for (const { method, sites, targets, allocations, bindings, captures } of sample
   assert.equal(result.phase_error, PhaseError.Evaluation);
   for (const site of result.creations) {
     assert.equal(site.capture_inputs_ready, true);
+    assert.equal(site.capture_cells_ready, true);
+    assert.equal(site.capture_evaluation_ready, true);
+    assert.equal(site.parent_cell_targets, method === 8404 ? 1 : 0);
     assert.equal(site.conditional_writes, true);
     assert(Number.isInteger(site.target));
     assert(Number.isInteger(site.operation));

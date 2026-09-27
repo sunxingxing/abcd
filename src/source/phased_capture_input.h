@@ -14,5 +14,11 @@ namespace abcd::source {
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreation& creation,
     const FunctionInput& child, const FunctionContext& owner, analysis::SemanticBudget budget = {});
+[[nodiscard]] std::variant<std::uint64_t, CaptureError, InputBindingError> VerifyPhasedFunctionInputs(
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const PhasedBody& parent, const abc::MethodBody& body,
+    const analysis::ExceptionLocals& locals, const PhasedCreation& creation,
+    const FunctionInput& child, const FunctionContext& owner, const CapturePlan& plan,
+    analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

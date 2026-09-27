@@ -14,6 +14,8 @@
 #include "../../src/source/phased_method.h"
 #include "../../src/source/phased_creations.h"
 #include "../../src/source/phased_capture_input.h"
+#include "../../src/source/phased_capture_cells.h"
+#include "../../src/source/phased_capture_evaluation.h"
 #include "../../src/source/module_aliases.h"
 #include "../../src/source/syntax_resolution.h"
 
@@ -107,6 +109,8 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
   auto capture_locals = analysis::ProveExceptionLocals(original.flow, original.environments,
       budget, {}, analysis::ClosureWrites::kLanguage);
   const auto* local_scopes = std::get_if<analysis::ExceptionLocals>(&capture_locals);
+  std::vector<FunctionBinding> function_bindings;
+  function_bindings.reserve(children->sites.size());
   for (auto& child : children->sites) {
     report["creations"].push_back({{"operation", child.operation.value}, {"pc", child.binding.offset.value},
         {"instruction", child.instruction.value},
@@ -156,7 +160,75 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       report["creations"].back()["capture_inputs_ready"] = true;
       report["creations"].back()["capture_occurrences"] = plan->bindings.size();
       report["creations"].back()["conditional_writes"] = plan->writes == analysis::ClosureWrites::kLanguage;
+      auto child_values = BuildFunctionValues(*ready_child, *child_body, child_owner.Frame(), budget);
+      const auto* values = std::get_if<FunctionValues>(&child_values);
+      if (!values) continue;
+      auto cells = BindPhasedCaptureCells(index, lookup, std::get<PhasedBody>(staged), *body,
+          *local_scopes, child, {*ready_child, *values}, child_owner, budget);
+      auto* mapped = std::get_if<CaptureCells>(&cells);
+      if (!mapped) continue;
+      exact = budget; exact.work = mapped->work;
+      if (!std::holds_alternative<CaptureCells>(BindPhasedCaptureCells(index, lookup, std::get<PhasedBody>(staged),
+          *body, *local_scopes, child, {*ready_child, *values}, child_owner, exact))) return 1;
+      --exact.work;
+      const auto cells_limited = BindPhasedCaptureCells(index, lookup, std::get<PhasedBody>(staged),
+          *body, *local_scopes, child, {*ready_child, *values}, child_owner, exact);
+      if (!std::holds_alternative<CaptureCellError>(cells_limited) ||
+          std::get<CaptureCellError>(cells_limited) != CaptureCellError::kWorkLimit) return 1;
+      const auto verify = [&] { return VerifyPhasedCaptureCells(index, lookup, std::get<PhasedBody>(staged),
+          *body, *local_scopes, child, {*ready_child, *values}, child_owner, *mapped, budget); };
+      if (!std::holds_alternative<std::uint64_t>(verify())) return 1;
+      const auto revision = mapped->parent_revision; ++mapped->parent_revision.value;
+      if (std::get<CaptureCellError>(verify()) != CaptureCellError::kRevision) return 1;
+      mapped->parent_revision = revision;
+      for (auto& target : mapped->targets) {
+        const auto saved_target = target.target;
+        target.target = OuterCell{{analysis::CapturedDepth{0}, analysis::LexicalSlot{0}}};
+        if (std::get<CaptureCellError>(verify()) != CaptureCellError::kBinding) return 1;
+        target.target = saved_target;
+      }
+      if (!std::holds_alternative<std::uint64_t>(verify())) return 1;
+      report["creations"].back()["capture_cells_ready"] = true;
+      report["creations"].back()["parent_cell_targets"] = std::count_if(mapped->targets.begin(), mapped->targets.end(),
+          [](const auto& target) { return std::holds_alternative<ParentCell>(target.target); });
+      constexpr FunctionOwnerId kParentOwner{0};
+      const FunctionOwnerId child_id{static_cast<std::uint32_t>(report["creations"].size())};
+      auto evaluated = BindPhasedCaptureEvaluation(index, lookup, std::get<PhasedBody>(staged), *body,
+          *local_scopes, child, {*ready_child, *values}, child_owner, *mapped, kParentOwner, child_id, budget);
+      if (auto* ready_binding = std::get_if<CapturedFunctionBinding>(&evaluated)) {
+        if (ready_binding->binding.creation != child.operation || ready_binding->binding.captures.size() != mapped->targets.size()) return 1;
+        exact = budget; exact.work = ready_binding->work;
+        if (!std::holds_alternative<CapturedFunctionBinding>(BindPhasedCaptureEvaluation(index, lookup,
+            std::get<PhasedBody>(staged), *body, *local_scopes, child, {*ready_child, *values}, child_owner,
+            *mapped, kParentOwner, child_id, exact))) return 1;
+        --exact.work;
+        const auto evaluation_limited = BindPhasedCaptureEvaluation(index, lookup, std::get<PhasedBody>(staged),
+            *body, *local_scopes, child, {*ready_child, *values}, child_owner, *mapped, kParentOwner, child_id, exact);
+        const auto* work_failure = std::get_if<CaptureEvaluationFailure>(&evaluation_limited);
+        if (!work_failure || !std::visit([](auto error) { return error == decltype(error)::kWorkLimit; }, *work_failure)) return 1;
+        const auto same_owner = BindPhasedCaptureEvaluation(index, lookup, std::get<PhasedBody>(staged), *body,
+            *local_scopes, child, {*ready_child, *values}, child_owner, *mapped, kParentOwner, kParentOwner, budget);
+        const auto* failure = std::get_if<CaptureEvaluationFailure>(&same_owner);
+        if (!failure || !std::holds_alternative<CaptureEvaluationError>(*failure) ||
+            std::get<CaptureEvaluationError>(*failure) != CaptureEvaluationError::kOwner) return 1;
+        report["creations"].back()["capture_evaluation_ready"] = true;
+        function_bindings.push_back(std::move(ready_binding->binding));
+      }
     }
+  }
+  // Conditional common evaluation, never a family/source receipt. Child ASTs,
+  // enclosure and transitive write proofs are intentionally still outstanding.
+  const auto& parent_body = std::get<PhasedBody>(staged);
+  if (!function_bindings.empty() && function_bindings.size() == children->sites.size() &&
+      parent_body.AllocatedBytes() <= budget.bytes && parent_body.Work() <= budget.work) {
+    const auto* aliases = parent_body.Modules();
+    const auto evaluation = BuildPhasedEvaluationPlan(parent_body.Graph(),
+        {budget.bytes - parent_body.AllocatedBytes(), budget.work - parent_body.Work()},
+        IncomingCells::kReject, function_bindings,
+        aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{});
+    if (const auto* ready = std::get_if<EvaluationPlan>(&evaluation))
+      report["conditional_evaluation_ready"] = std::holds_alternative<std::uint64_t>(
+          VerifyPhasedEvaluationPlan(parent_body.Graph(), *ready, budget));
   }
   const auto built = PhasedMethod::Evaluate(std::get<PhasedBody>(std::move(staged)), budget);
   if (const auto* error = std::get_if<PhasedMethodError>(&built)) {
