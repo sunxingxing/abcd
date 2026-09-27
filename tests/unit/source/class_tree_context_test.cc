@@ -34,7 +34,7 @@ static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);
 void Check(bool condition) { if (!condition) std::abort(); }
 enum class DefaultEncoding { kNone, kInteger, kNegation };
-enum class ExceptionShape { kNone, kBranch, kModule, kForwarder, kDeadCopies };
+enum class ExceptionShape { kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
          ExceptionShape exception = ExceptionShape::kNone) {
@@ -138,6 +138,18 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           op(abc::Opcode::kMOV_V8_V8), kFirstLocal, kCallable,
           op(abc::Opcode::kMOV_V8_V8), kSecondLocal, kNewTarget,
           op(abc::Opcode::kMOV_V8_V8), kFirstLocal, kFirstLocal});
+      member[kCodeSizeOffset] += kPrologueBytes;
+      const auto table = kHeaderBytes + member[kCodeSizeOffset];
+      member[table + 1] += kPrologueBytes;
+      member[table + 4] += kPrologueBytes;
+    }
+    if (exception == ExceptionShape::kLiveCopies) {
+      constexpr std::uint8_t kLocals = 2, kFirstLocal = 0, kSecondLocal = 1, kPrologueBytes = 6;
+      member[0] = kLocals;
+      member[kHeaderBytes + 1] = kSecondLocal;
+      member.insert(member.begin() + kHeaderBytes, {
+          op(abc::Opcode::kMOV_V8_V8), kFirstLocal, kParameter + kLocals,
+          op(abc::Opcode::kMOV_V8_V8), kSecondLocal, kFirstLocal});
       member[kCodeSizeOffset] += kPrologueBytes;
       const auto table = kHeaderBytes + member[kCodeSizeOffset];
       member[table + 1] += kPrologueBytes;
@@ -259,6 +271,11 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     }
     Check(std::holds_alternative<PhasedMethod>(analyzed));
     const auto moved = std::get<PhasedMethod>(std::move(analyzed));
+    if (exception == ExceptionShape::kLiveCopies) {
+      constexpr std::size_t kParameterCopies = 3;
+      for (std::size_t i = 0; i < kParameterCopies; ++i)
+        Check(!moved.Evaluation().operations[i].temporary);
+    }
     const auto view = moved.TreeInput(decoded);
     Check(std::holds_alternative<std::uint64_t>(VerifyExceptionControl(decoded, moved.Graph(),
         view.input, view.regions, view.control)));
@@ -522,6 +539,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--live-copies-json") {
+    Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kLiveCopies);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--dead-copies-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kDeadCopies);
     return 0;
@@ -540,6 +561,7 @@ int main(int argc, char** argv) {
     return 0;
   }
   Check(argc == 1);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLiveCopies);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kDeadCopies);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kModule);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kForwarder);

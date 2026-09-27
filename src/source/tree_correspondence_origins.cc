@@ -86,7 +86,8 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
     budget.Step();
     const auto& op = graph.ops[i];
     if (op.life != analysis::ValueLife::kLive ||
-        evaluation.operations[i].kind == EvaluationKind::kElidedPure) continue;
+        evaluation.operations[i].kind == EvaluationKind::kElidedPure ||
+        evaluation.operations[i].kind == EvaluationKind::kAlias) continue;
     RequireMeaning(op.origin.value < graph.origins.size(), Error::kOrigin);
     const TreeOriginId origin{op.origin.value};
     if (flow.statements[i])

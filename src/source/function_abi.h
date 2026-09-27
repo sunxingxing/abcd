@@ -30,8 +30,9 @@ struct ConstructedAbi {
     const analysis::ValueProgram& graph, const FunctionTree& tree,
     const abc::FrameLayout& frame, std::uint32_t length,
     analysis::SemanticBudget budget = {});
-// Same census with a freshly checked phased source projection. Pure elisions
-// suppress only their own operand reads; phi/catch and retained uses still count.
+// Same census with a freshly checked phased source projection. Elisions/aliases
+// suppress their own reads; retained uses count their canonical entry identity.
+// Phi/catch inputs are retained, not inferred from generated names or text.
 [[nodiscard]] std::variant<ConstructedAbi, FunctionAbiError> BuildPhasedFunctionAbi(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, const FunctionTree& tree,
     const abc::FrameLayout& frame, std::uint32_t length,

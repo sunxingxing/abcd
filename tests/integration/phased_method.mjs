@@ -5,8 +5,10 @@ import { execFileSync } from 'node:child_process';
 // the fixture file. No hand-built source tree or draft printer participates.
 const result = JSON.parse(execFileSync(process.argv[2], ['--exception-json'], { encoding: 'utf8' }));
 const copied = JSON.parse(execFileSync(process.argv[2], ['--dead-copies-json'], { encoding: 'utf8' }));
+const aliases = JSON.parse(execFileSync(process.argv[2], ['--live-copies-json'], { encoding: 'utf8' }));
 // ABI bookkeeping must add neither declarations nor reads to emitted source.
 assert.equal(copied.source, result.source);
+assert.equal(aliases.source, result.source);
 const Recovered = Function(`"use strict"; return class { ${result.source} };`)();
 const instance = new Recovered();
 assert.equal(instance.run.length, 1);
@@ -43,8 +45,10 @@ const pcs = (origin, mapping = map) => {
     .flatMap(part => pcs(part, mapping));
 };
 for (const placement of map.operations) {
-  const range = placement.kind === 'statement' ? map.statements[placement.node] : map.expressions[placement.node];
-  assert(range.begin < range.end && range.end <= bytes.length);
+  const range = placement.kind === 'anchor' ? map.anchors[placement.node] :
+    placement.kind === 'statement' ? map.statements[placement.node] : map.expressions[placement.node];
+  if (placement.kind === 'anchor') assert(range.byte <= bytes.length);
+  else assert(range.begin < range.end && range.end <= bytes.length);
   assert(pcs(range.origin).includes(expectedPcs[placement.operation]));
   if (placement.kind === 'statement')
     assert.match(bytes.subarray(range.begin, range.end).toString('utf8'), /^(if|return)\b/);
@@ -60,7 +64,19 @@ for (const placement of copiedMap.operations) {
   if (prologue) {
     assert.equal(placement.kind, 'anchor');
     assert(range.byte <= Buffer.byteLength(copied.source));
-  } else assert(range.begin < range.end && range.end <= Buffer.byteLength(copied.source));
+  } else if (placement.kind === 'anchor') assert(range.byte <= Buffer.byteLength(copied.source));
+  else assert(range.begin < range.end && range.end <= Buffer.byteLength(copied.source));
+}
+const aliasMap = aliases.positions;
+assert.equal(aliasMap.operations.length, expectedPcs.length + 2);
+for (const placement of aliasMap.operations) {
+  const pc = placement.operation < 2 ? placement.operation * 3 : expectedPcs[placement.operation - 2] + 6;
+  const range = placement.kind === 'anchor' ? aliasMap.anchors[placement.node] :
+    placement.kind === 'statement' ? aliasMap.statements[placement.node] : aliasMap.expressions[placement.node];
+  assert(pcs(range.origin, aliasMap).includes(pc));
+  if (placement.operation < 3) assert.equal(placement.kind, 'anchor');
+  if (placement.kind === 'anchor') assert(range.byte <= Buffer.byteLength(aliases.source));
+  else assert(range.begin < range.end && range.end <= Buffer.byteLength(aliases.source));
 }
 
 const forwarded = JSON.parse(execFileSync(process.argv[2], ['--forwarder-json'], { encoding: 'utf8' }));

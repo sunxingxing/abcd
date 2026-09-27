@@ -87,7 +87,8 @@ std::variant<CallPlan, CallPlanError> BuildCalls(const analysis::ValueProgram& g
         continue;
       }
       const auto& callee = graph.uses[op.first_use.value];
-      const auto* value = std::get_if<ValueId>(&callee.operand);
+      const auto resolved = ResolveEvaluationOperand(evaluation, callee.operand);
+      const auto* value = std::get_if<ValueId>(&resolved);
       Require(value != nullptr, Error::kCallee);
       const auto* result = std::get_if<OpResult>(&graph.values[value->value].origin);
       Require(result && Property(graph.ops[result->op.value].operation), Error::kReference);

@@ -68,11 +68,12 @@ class AbiBuilder {
       if (use.life != analysis::ValueLife::kLive) continue;
       if (evaluation_)
         if (const auto* owner = std::get_if<analysis::OpId>(&use.owner);
-            owner && evaluation_->operations[owner->value].kind == EvaluationKind::kElidedPure) continue;
+            owner && (evaluation_->operations[owner->value].kind == EvaluationKind::kElidedPure ||
+                      evaluation_->operations[owner->value].kind == EvaluationKind::kAlias)) continue;
       const auto* id = std::get_if<analysis::ValueId>(&use.operand);
       if (!id) continue;
       Require(id->value < graph_.values.size(), Error::kEntry);
-      const auto& definition = graph_.values[id->value];
+      const auto& definition = graph_.values[evaluation_ ? ResolveEvaluationValue(*evaluation_, *id).value : id->value];
       Require(definition.life == analysis::ValueLife::kLive, Error::kEntry);
       if (const auto* entry = std::get_if<analysis::EntryDefinition>(&definition.origin)) {
         const auto* owner = std::get_if<analysis::OpId>(&use.owner);

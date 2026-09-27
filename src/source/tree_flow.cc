@@ -111,7 +111,8 @@ class FlowCheck {
               evaluation_.operations[id.value].kind == EvaluationKind::kModuleGuard) continue;
           const auto& placement = tree_.operations[*placements_[id.value]].node;
           if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
-              evaluation_.operations[id.value].kind == EvaluationKind::kElidedPure) {
+              evaluation_.operations[id.value].kind == EvaluationKind::kElidedPure ||
+              evaluation_.operations[id.value].kind == EvaluationKind::kAlias) {
             const auto* anchor = std::get_if<AnchorId>(&placement);
             Require(anchor != nullptr, Error::kPlacement);
             const auto* boundary = std::get_if<BlockBoundary>(&tree_.anchors[anchor->value].position);
@@ -418,7 +419,8 @@ class FlowCheck {
         budget_.Step();
         const auto& op = graph_.ops[block.first_op.value + i];
         if (op.life == analysis::ValueLife::kLive &&
-            evaluation_.operations[block.first_op.value + i].kind != EvaluationKind::kElidedPure) {
+            evaluation_.operations[block.first_op.value + i].kind != EvaluationKind::kElidedPure &&
+            evaluation_.operations[block.first_op.value + i].kind != EvaluationKind::kAlias) {
           Require(tree_.statements[tree_.body.value].origin.value == op.origin.value,
                   Error::kPlacement);
           return;
@@ -455,7 +457,8 @@ class FlowCheck {
           std::holds_alternative<analysis::ValueReturn>(op.operation)) {
         Require(std::holds_alternative<StmtId>(placement), Error::kPlacement);
       } else if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
-          evaluation_.operations[i].kind == EvaluationKind::kElidedPure) {
+          evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
+          evaluation_.operations[i].kind == EvaluationKind::kAlias) {
         Require(std::holds_alternative<AnchorId>(placement), Error::kPlacement);
       } else {
         const auto* expression = std::get_if<ExprId>(&placement);

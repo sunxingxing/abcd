@@ -35,17 +35,21 @@ void Run(std::uint32_t count, bool caught, bool wide, bool external, abc::Profil
   }
   const auto end = static_cast<std::uint32_t>(bytes.size());
   opcode(abc::Opcode::kRETURN);
-  if (caught) opcode(abc::Opcode::kRETURN);
+  if (caught) {
+    opcode(abc::Opcode::kSTA_V8); bytes.push_back(0);
+    opcode(abc::Opcode::kLDA_V8); bytes.push_back(0);
+    opcode(abc::Opcode::kRETURN);
+  }
   auto body = test::Body(bytes);
   if (caught) {
     abc::TryRegion region;
     region.length = end; region.handler_count = 1;
     body.tries.push_back(region);
     abc::CatchHandler handler;
-    handler.offset = {end + 1}; handler.length = 1;
+    handler.offset = {end + 1}; handler.length = static_cast<std::uint32_t>(bytes.size()) - handler.offset.value;
     body.handlers.push_back(handler);
   }
-  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 0, {}));
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(caught ? 1 : 0, 0, {}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
   IdfQuota quota{kDefaultSemanticWork};
   const auto ssa = std::get<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers, quota));
@@ -70,6 +74,18 @@ void Run(std::uint32_t count, bool caught, bool wide, bool external, abc::Profil
   const auto& evaluation = std::get<EvaluationPlan>(evaluated);
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation)));
   if (count == 1) {
+    if (caught) {
+      const auto stored = graph.ops.size() - 3, loaded = stored + 1;
+      test::Check(evaluation.operations[stored].kind == EvaluationKind::kRoot);
+      test::Check(evaluation.operations[loaded].kind == EvaluationKind::kAlias);
+      test::Check(evaluation.aliases[graph.ops[loaded].result->value] == *graph.ops[stored].result);
+      auto escaped = evaluation;
+      escaped.operations[stored] = {EvaluationKind::kAlias};
+      escaped.aliases[graph.ops[stored].result->value] =
+          std::get<ValueId>(graph.uses[graph.ops[stored].first_use.value].operand);
+      escaped.aliases[graph.ops[loaded].result->value] = escaped.aliases[graph.ops[stored].result->value];
+      test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, escaped)) == EvaluationError::kOwnership);
+    }
     const auto verified = std::get<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation));
     test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(
         graph, evaluation, {SemanticBudget{}.bytes, verified})));
@@ -207,11 +223,20 @@ void Snapshots(abc::ProfileId profile, std::ostream* output) {
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(
       graph, {}, IncomingCells::kReject, {}, bindings));
   test::Check(evaluation.exceptions && !evaluation.exceptions->slots.empty());
+  const auto phi_read = graph.ops.size() - 2;
+  test::Check(evaluation.operations[phi_read].kind == EvaluationKind::kRoot);
+  const auto phi = std::get<ValueId>(graph.uses[graph.ops[phi_read].first_use.value].operand);
+  test::Check(std::holds_alternative<PhiDefinition>(graph.values[phi.value].origin));
+  auto mutable_alias = evaluation;
+  mutable_alias.operations[phi_read] = {EvaluationKind::kAlias};
+  mutable_alias.aliases[graph.ops[phi_read].result->value] = phi;
+  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, mutable_alias)) == EvaluationError::kOwnership);
   // A producer used by catch staging cannot be elided even if its normal
   // consumers disappear. Preserve the old value when the next module read throws.
   auto discarded_snapshot = evaluation;
   constexpr std::size_t kInitialStore = 1;
   discarded_snapshot.operations[kInitialStore] = {EvaluationKind::kElidedPure};
+  discarded_snapshot.aliases[graph.ops[kInitialStore].result->value] = *graph.ops[kInitialStore].result;
   test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, discarded_snapshot)) ==
       EvaluationError::kOwnership);
   auto changed = graph;

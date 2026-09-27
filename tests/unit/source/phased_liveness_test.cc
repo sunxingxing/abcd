@@ -9,23 +9,25 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
-enum class ReturnedEntry { kParameter, kCallable, kNewTarget };
+enum class ReturnedEntry { kParameter, kCallable, kNewTarget, kCopiedParameter };
 void Run(std::uint32_t count, abc::ProfileId profile,
          ReturnedEntry returned = ReturnedEntry::kParameter, bool nop = false) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr std::uint8_t kLocal = 0, kOther = 1, kFunction = 2, kNewTarget = 3, kParameter = 5;
-  std::vector<std::uint8_t> bytes{op(abc::Opcode::kMOV_V8_V8), kLocal, kFunction};
+  const auto initial = returned == ReturnedEntry::kCopiedParameter ? kParameter : kFunction;
+  std::vector<std::uint8_t> bytes{op(abc::Opcode::kMOV_V8_V8), kLocal, initial};
   for (std::uint32_t i = 0; i < count; ++i)
     bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), kLocal, kLocal});
   bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), kOther, kNewTarget});
   if (nop) bytes.push_back(op(abc::Opcode::kNOP));
-  const auto elided = count + 2 + (nop ? 1 : 0);
+  const auto prologue = count + 2 + (nop ? 1 : 0);
   const auto protected_pc = static_cast<std::uint32_t>(bytes.size());
   std::uint8_t returned_register = kParameter;
   switch (returned) {
     case ReturnedEntry::kParameter: break;
     case ReturnedEntry::kCallable: returned_register = kLocal; break;
     case ReturnedEntry::kNewTarget: returned_register = kOther; break;
+    case ReturnedEntry::kCopiedParameter: returned_register = kLocal; break;
   }
   // The getter is observable even though its result is discarded. Returning a
   // hidden ABI entry is the counterexample to treating all ABI copies as dead.
@@ -59,15 +61,17 @@ void Run(std::uint32_t count, abc::ProfileId profile,
   const auto graph = std::get<ValueProgram>(ImportPhasedValues(input));
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
   const auto binding = BuildPhasedBindingPlan(graph, evaluation, 1);
-  if (returned != ReturnedEntry::kParameter) {
+  if (returned == ReturnedEntry::kCallable || returned == ReturnedEntry::kNewTarget) {
     const auto observed = returned == ReturnedEntry::kCallable ? 0 : count + 1;
     test::Check(evaluation.operations[observed].kind == EvaluationKind::kRoot);
     test::Check(std::get<BindingError>(binding) == BindingError::kUnsupportedEntry);
     return;
   }
   test::Check(std::holds_alternative<BindingPlan>(binding));
-  for (std::size_t i = 0; i < elided; ++i) {
-    test::Check(evaluation.operations[i].kind == EvaluationKind::kElidedPure);
+  for (std::size_t i = 0; i < prologue; ++i) {
+    const auto expected = returned == ReturnedEntry::kCopiedParameter && i <= count
+        ? EvaluationKind::kAlias : EvaluationKind::kElidedPure;
+    test::Check(evaluation.operations[i].kind == expected);
     test::Check(!evaluation.operations[i].temporary && !evaluation.operations[i].consumer);
   }
   test::Check(std::holds_alternative<PhasedImportProof>(VerifyImportedPhases(graph, input)));
@@ -82,7 +86,21 @@ void Run(std::uint32_t count, abc::ProfileId profile,
       graph, {SemanticBudget{}.bytes, evaluation.work - 1})) == EvaluationError::kWorkLimit);
   test::Check(std::get<EvaluationError>(BuildPhasedEvaluationPlan(graph, {0})) == EvaluationError::kResourceLimit);
   auto changed = evaluation;
-  const auto load = elided, getter = load + 1;
+  const auto load = prologue, getter = load + 1;
+  test::Check(evaluation.operations[load].kind == EvaluationKind::kAlias);
+  const auto load_result = *graph.ops[load].result;
+  const auto root = evaluation.aliases[load_result.value];
+  test::Check(std::holds_alternative<EntryDefinition>(graph.values[root.value].origin));
+  changed.aliases[load_result.value] = *graph.ops[getter].result;
+  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
+  changed = evaluation; changed.aliases[load_result.value] = load_result;
+  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
+  changed = evaluation; changed.aliases.pop_back();
+  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
+  auto narrowed = graph;
+  narrowed.values[load_result.value].domain = ValueKinds::String();
+  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(narrowed, evaluation)) == EvaluationError::kOwnership);
+  changed = evaluation;
   test::Check(changed.operations[getter].kind == EvaluationKind::kRoot);
   changed.operations[getter] = {EvaluationKind::kElidedPure};
   test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
@@ -113,7 +131,7 @@ void Run(std::uint32_t count, abc::ProfileId profile,
       FunctionAbiError::kEvaluation);
   test::Check(tree.operations.size() == graph.ops.size());
   for (const auto& placement : tree.operations) {
-    if (placement.operation.value >= elided) continue;
+    if (placement.operation.value >= prologue) continue;
     test::Check(std::holds_alternative<AnchorId>(placement.node));
     const auto& anchor = tree.anchors[std::get<AnchorId>(placement.node).value];
     test::Check(std::get<OriginalSite>(tree.origins[anchor.origin.value]).pc ==
@@ -128,7 +146,10 @@ void Run(std::uint32_t count, abc::ProfileId profile,
 int main() {
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                             abc::ProfileId::kDynamic1301}) {
-    for (const auto count : {1U, 200U, 201U, 402U, 1608U}) Run(count, profile);
+    for (const auto count : {1U, 200U, 201U, 402U, 1608U}) {
+      Run(count, profile);
+      Run(count, profile, ReturnedEntry::kCopiedParameter);
+    }
     Run(2, profile, ReturnedEntry::kCallable);
     Run(2, profile, ReturnedEntry::kNewTarget);
     Run(2, profile, ReturnedEntry::kParameter, true);

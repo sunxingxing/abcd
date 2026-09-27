@@ -484,7 +484,8 @@ class TreeBuilder {
         Step();
         const auto& op = graph_.ops[range.first_op.value + i];
         if (op.life != analysis::ValueLife::kLive ||
-            evaluation_.operations[range.first_op.value + i].kind == EvaluationKind::kElidedPure) continue;
+            evaluation_.operations[range.first_op.value + i].kind == EvaluationKind::kElidedPure ||
+            evaluation_.operations[range.first_op.value + i].kind == EvaluationKind::kAlias) continue;
         Require(op.origin.value < tree_.origins.size(), Error::kOrigin);
         return {op.origin.value};
       }
@@ -563,7 +564,8 @@ class TreeBuilder {
       }
       const TreeOriginId origin{op.origin.value};
       const auto expression = forest_.operations[id.value];
-      if (evaluation.kind == EvaluationKind::kEnvironment || evaluation.kind == EvaluationKind::kElidedPure) {
+      if (evaluation.kind == EvaluationKind::kEnvironment || evaluation.kind == EvaluationKind::kElidedPure ||
+          evaluation.kind == EvaluationKind::kAlias) {
         // A projected pure elision keeps its PC at this lexical boundary, not
         // on an unrelated expression or a fabricated executable statement.
         const AnchorId anchor{static_cast<std::uint32_t>(tree_.anchors.size())};

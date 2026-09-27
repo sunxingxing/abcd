@@ -11,7 +11,7 @@
 
 namespace abcd::source {
 enum class EvaluationKind : std::uint8_t {
-  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure
+  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias
 };
 enum class EvaluationFlow : std::uint8_t { kNormal, kPhased };
 struct OpEvaluation {
@@ -53,7 +53,18 @@ struct EvaluationPlan {
   std::optional<analysis::ArgumentFrameFact> arguments;
   EvaluationFlow flow = EvaluationFlow::kNormal;
   std::optional<ExceptionCopies> exceptions;
+  // Flat, independently checked copy identities. Empty in the normal route,
+  // whose IR is already simplified. Never aliases a phi or catch binding.
+  std::vector<analysis::ValueId> aliases;
 };
+inline analysis::ValueId ResolveEvaluationValue(const EvaluationPlan& plan, analysis::ValueId value) {
+  return plan.aliases.empty() ? value : plan.aliases[value.value];
+}
+inline analysis::ValueOperand ResolveEvaluationOperand(
+    const EvaluationPlan& plan, const analysis::ValueOperand& operand) {
+  if (const auto* value = std::get_if<analysis::ValueId>(&operand)) return ResolveEvaluationValue(plan, *value);
+  return operand;
+}
 enum class EvaluationError : std::uint8_t {
   kRevision, kInvalidGraph, kUnsupportedOperation, kProtocolOperand, kLivePhi,
   kOwnership, kOrder, kUnavailableValue, kWorkLimit, kResourceLimit

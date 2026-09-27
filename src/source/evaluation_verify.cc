@@ -1,5 +1,6 @@
 #include "evaluation_plan.h"
 #include "evaluation_flow.h"
+#include "evaluation_aliases.h"
 #include "module_evaluation.h"
 #include "../analysis/value_edits.h"
 
@@ -38,6 +39,9 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     step(graph.uses.size()); step(graph.uses.size()); step(graph.uses.size());
     if (const auto error = analysis::VerifyValueUses(graph, graph.uses.size()))
       return *error == analysis::ValueGraphError::kResourceLimit ? Error::kResourceLimit : Error::kInvalidGraph;
+    const auto aliases = VerifyEvaluationAliases(graph, plan, {bytes, work});
+    if (const auto* error = std::get_if<Error>(&aliases)) return *error;
+    step(std::get<std::uint64_t>(aliases));
     auto indexed_modules = IndexModuleEvaluations(graph, plan.modules, {bytes, work});
     if (const auto* error = std::get_if<EvaluationError>(&indexed_modules)) return *error;
     auto module_index = std::get<ModuleEvaluationIndex>(std::move(indexed_modules));
@@ -170,6 +174,13 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         visits[i] = EvaluationVisit::kDone;
         continue;
       }
+      if (placement.kind == EvaluationKind::kAlias) {
+        Require(flow == EvaluationFlow::kPhased && op.result &&
+            ResolveEvaluationValue(plan, *op.result) != *op.result &&
+            !placement.consumer && !placement.temporary, Error::kOwnership);
+        visits[i] = EvaluationVisit::kDone;
+        continue;
+      }
       if (IsEnvironmentState(op.operation)) {
         Require(plan.cells && placement.kind == EvaluationKind::kEnvironment &&
             !placement.consumer && !placement.temporary, Error::kOwnership);
@@ -243,6 +254,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         }
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
                                   plan.operations[expected].kind == EvaluationKind::kElidedPure ||
+                                  plan.operations[expected].kind == EvaluationKind::kAlias ||
                                   plan.operations[expected].kind == EvaluationKind::kInitializer ||
                                   plan.operations[expected].kind == EvaluationKind::kEnvironment ||
                                   !OrderedEvaluation(graph.ops[expected]))) { step(); ++expected; }
@@ -263,7 +275,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
             const analysis::UseId use_id{op.first_use.value + frame.next_operand++};
             const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use_id.value].operand);
             if (!value) continue;
-            const auto& definition = graph.values[value->value];
+            const auto& definition = graph.values[ResolveEvaluationValue(plan, *value).value];
             // The independently checked phi plan establishes incoming values.
             // A phi use reads its binding; it never expands an input subtree.
             const auto* result = std::get_if<analysis::OpResult>(&definition.origin);

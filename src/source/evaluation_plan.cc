@@ -1,6 +1,7 @@
 #include "evaluation_plan.h"
 #include "evaluation_flow.h"
 #include "evaluation_liveness.h"
+#include "evaluation_aliases.h"
 #include "module_evaluation.h"
 
 #include <limits>
@@ -161,6 +162,10 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       if (const auto* error = std::get_if<Error>(&live)) return *error;
       const auto cost = std::get<EvaluationLivenessCost>(live);
       admit(cost.bytes, 1); step(cost.work);
+      const auto aliases = BuildEvaluationAliases(graph, plan, {bytes, work});
+      if (const auto* error = std::get_if<Error>(&aliases)) return *error;
+      const auto alias_cost = std::get<EvaluationAliasCost>(aliases);
+      admit(alias_cost.bytes, 1); step(alias_cost.work);
     }
     std::size_t next_op = 0;
     for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
@@ -175,7 +180,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         const auto& op = graph.ops[index];
         Require(op.block.value == b && op.order == order, Error::kInvalidGraph);
         if (op.life != analysis::ValueLife::kLive ||
-            plan.operations[index].kind == EvaluationKind::kElidedPure) continue;
+            plan.operations[index].kind == EvaluationKind::kElidedPure ||
+            plan.operations[index].kind == EvaluationKind::kAlias) continue;
         if (IsEnvironmentState(op.operation)) {
           Require(plan.cells.has_value(), Error::kUnsupportedOperation);
           plan.operations[index].kind = EvaluationKind::kEnvironment;
@@ -265,6 +271,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     if (const auto* error = std::get_if<EvaluationError>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = plan.operations.capacity() * sizeof(OpEvaluation) +
+        plan.aliases.capacity() * sizeof(analysis::ValueId) +
         plan.functions.capacity() * sizeof(FunctionBinding) +
         plan.modules.capacity() * sizeof(ModuleEvaluation) +
         (plan.phis ? plan.phis->allocated_bytes : 0) +

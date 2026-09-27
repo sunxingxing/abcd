@@ -146,7 +146,8 @@ class ForestBuilder {
               graph_.origins[op.origin.value].disposition == analysis::OriginDisposition::kRetained,
               Error::kOrigin);
       const TreeOriginId origin{op.origin.value};
-      if (evaluation_.operations[i].kind == EvaluationKind::kElidedPure) continue;
+      if (evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
+          evaluation_.operations[i].kind == EvaluationKind::kAlias) continue;
       if (evaluation_.operations[i].kind == EvaluationKind::kInitializer) continue;
       if (evaluation_.operations[i].kind == EvaluationKind::kEnvironment) continue;
       if (evaluation_.operations[i].kind == EvaluationKind::kModuleGuard) continue;
@@ -333,7 +334,7 @@ class ForestBuilder {
                 forest_.operations[result->op.value].has_value(), Error::kUnavailableValue);
         return *forest_.operations[result->op.value];
       }
-    }, operand);
+    }, ResolveEvaluationOperand(evaluation_, operand));
   }
   ExprId Unary(analysis::UnaryOperator operation, ExprId input,
                const analysis::ValueOperand& original, TreeOriginId origin) {

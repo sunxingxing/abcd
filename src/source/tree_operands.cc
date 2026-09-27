@@ -37,7 +37,8 @@ class OperandCheck {
       budget_.Step();
       const auto& op = graph_.ops[i];
       if (op.life != analysis::ValueLife::kLive ||
-          evaluation_.operations[i].kind == EvaluationKind::kElidedPure) continue;
+          evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
+          evaluation_.operations[i].kind == EvaluationKind::kAlias) continue;
       current_ = {static_cast<std::uint32_t>(i)};
       origin_ = {op.origin.value};
       if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation)) continue;
@@ -382,7 +383,7 @@ class OperandCheck {
                 std::bit_cast<std::uint64_t>(std::numeric_limits<double>::infinity()), Error::kOperand); break;
         }
       }
-    }, operand);
+    }, ResolveEvaluationOperand(evaluation_, operand));
   }
   void BufferedLiteral(const TreeLiteral& expected, ExprId expression) {
     LeafOrigin(expression);

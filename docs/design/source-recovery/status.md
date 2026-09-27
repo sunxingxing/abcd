@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 47，默认源码契约为 V3。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 48，默认源码契约为 V3。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -41,6 +41,25 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 | T12 | 语料与分类基础已有历史记录 | 全样本新路线审计、跨版本/留出集、进程 1G 实测 |
 
 ## 本次证据
+
+- 共享异常求值新增复制身份表，原 IR/CFG/相位、模块 guard 和边复制计划不变。
+  参数/receiver 与已求值结果的无效果复制采用路径压缩，逐节点独立校验身份等式，
+  绑定、表达式、catch/并行复制 RHS、ABI census 与树语义检查消费同一投影。
+  phi/catch 的首个快照仍保留，不能直接别名到可变 phi 或 handler 局部符号；
+  域更窄的副本也不能被更宽的来源替换。复制 PC 保留原词法边界锚点。
+  文件化分支/调用/catch 夹具加入实际使用的参数 MOV 链后，源码与无该链的
+  基准一致，不再新增复制临时量。真实 Immersive 8284 已能解析 callee 的属性
+  来源，但属性仍是 block 18 的 root、调用在 block 28，明确卡在跨相位
+  reference/order 证明；没有移动 getter、使用 `.call` 或放宽 module 发布 gate。
+  下一步闭合跨相位调用引用、求值顺序及异常快照的共同证明。规则升至 48，
+  第 1 步、五步计划和全 ISA 覆盖仍未完成。
+  三个 profile 验证 1/200/201/402/1608 的死链与活跃参数复制链，覆盖域细化、
+  错误根/非扁平身份、catch/phi 边界和精确 work 拒绝；组合执行核对任意抛值、
+  模块 TDZ、效果顺序和 PC 锚点。CLI/诊断及相关目标构建通过，16/16 定向回归
+  通过：phased_liveness、class/creation_tree_context、function_tree、binding/
+  evaluation/call_plan、phased_module_guards/source、module_evaluation/aliases、
+  exception_plan/copies/tree_source、phased_method_source、source_route。
+  未运行全量、RSS、基准或调度器任务；1G 峰值约束仍未实测。
 
 - 异常相位求值新增纯操作活跃性投影，沿用正常简化的纯操作白名单，不改原始
   IR/CFG/Before/Commit/Catch。反向标记所有不可省略事件与全部 phi 输入，独立

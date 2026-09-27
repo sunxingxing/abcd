@@ -15,10 +15,11 @@ and spelling after tree construction. This does not prove record initialization 
 authorize standalone module publication; the existing publication gates remain.
 
 The selected Immersive method 8284 now passes this bound phase/evaluation path and
-shared bindings. It fails `CallPlanError::kReference`: the callee still reaches its
-property read through copies. Do not infer receiver-call support from this result.
-The next dependency is verified copy/reference projection with original exception
-snapshots and source origins preserved. Loops, typed finally and resumable protocols
+shared bindings. Copy identity projection now resolves its callee to the property
+read. It still fails `CallPlanError::kReference`: that read is a materialized root
+at phase block 18, while the call is at block 28. Do not infer receiver-call support
+from copy resolution alone. The next dependency is verified cross-phase reference
+evaluation with original exception snapshots and source origins preserved. Loops, typed finally and resumable protocols
 remain separate unfinished steps of the approved common pipeline.
 
 ## Pure Evaluation Elision
@@ -52,6 +53,35 @@ copying external code or adding dependencies. Existing phase/tree verification h
 its own separately charged cost; these bounds do not claim the entire pipeline is
 linear. Tests cover 200/201 and geometric chains, precise work exhaustion, retained
 getters/returns, live ABI reads, catch snapshot dependencies and misplaced anchors.
+
+## Copy Identity Projection
+
+Rules 48 add flat `EvaluationPlan::aliases` and `kAlias`, distinct from dead pure
+elision. The original graph, input correspondence and phi/catch copy schedules stay
+unchanged. Only effect-free, nonthrowing one-input `ValueCopy` operations with a
+ValueId input qualify. Literal producers remain operations. The source domain must
+be a subset of the copy's certified domain; projection cannot weaken a refinement.
+
+The first copy from a phi or catch definition remains materialized. A phi is a
+mutable edge-copy destination, and a catch parameter is scoped to its handler;
+rewriting their consumers to the raw binding would require different scheduling or
+scope proofs. Subsequent copies may alias that retained snapshot. Unsupported ABI
+entries cannot become source parameters or undefined literals through this table.
+Parameters/receivers and retained operation results are the admitted root kinds.
+
+The builder uses functional-graph path compression adapted from the existing
+`value_simplify.cc` implementation: O(V+I) work/storage, no per-use chain traversal.
+An independent verifier checks each local copy equation, identity for non-alias
+values, flat roots and operation ownership after original availability/use checks.
+The latter establish acyclic copy dependencies; no phi is traversed. The table is
+owned by the immutable method evaluation plan and its capacity is budgeted.
+
+Bindings, expression operands, parallel/catch copy RHS leaves, ABI observation and
+source operand correspondence all resolve the same checked identity. Effects stay
+at their original operations, and each alias PC remains a checked boundary anchor.
+Call discovery can now identify a property behind copies; it still cannot emit a
+member call unless the independent reference/order conditions pass. This change
+does not authorize `.call`, re-reading a getter or moving a getter past arguments.
 
 ## Inputs And Output
 

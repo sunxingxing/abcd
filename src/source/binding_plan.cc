@@ -131,13 +131,15 @@ std::variant<BindingPlan, BindingError> BuildBindings(
           plan.values[i] = ReceiverEntryBinding{};
         } else {
           // Unused callable/new-target ABI entries need no source declaration.
-          // Checked pure elisions do not read the entry in generated source.
+          // Checked projections do not read the entry in generated source.
+          // Alias verification never roots an alias at an unsupported entry.
           // A retained read cannot be relabeled as an undefined local.
           for (auto use = value.first_use; use; use = graph.uses[use->value].next) {
             if (!work) return Error::kWorkLimit;
             --work;
             const auto* owner = std::get_if<OpId>(&graph.uses[use->value].owner);
-            if (!owner || evaluation.operations[owner->value].kind != EvaluationKind::kElidedPure)
+            if (!owner || (evaluation.operations[owner->value].kind != EvaluationKind::kElidedPure &&
+                           evaluation.operations[owner->value].kind != EvaluationKind::kAlias))
               return Error::kUnsupportedEntry;
           }
         }
@@ -169,6 +171,12 @@ std::variant<BindingPlan, BindingError> BuildBindings(
       plan.symbols.emplace_back(SnapshotBinding{
           ValueId{static_cast<std::uint32_t>(i)}, producer, *placement.temporary});
       plan.values[i] = symbol;
+    }
+    // Roots already own the binding; aliases add neither storage nor writes.
+    for (std::size_t i = 0; i < evaluation.aliases.size(); ++i) {
+      if (!work) return Error::kWorkLimit;
+      --work;
+      plan.values[i] = plan.values[evaluation.aliases[i].value];
     }
     for (std::size_t i = 0; i < bundles; ++i) {
       if (work == 0) return Error::kWorkLimit;

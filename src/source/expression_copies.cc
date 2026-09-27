@@ -119,7 +119,7 @@ class CopyExpressions {
         }
         throw Error::kUnsupportedOperation;
       }
-    }, operand);
+    }, ResolveEvaluationOperand(evaluation_, operand));
   }
   void Stage(const PhiBundle& bundle, ThrowCopies placement, TreeOriginId origin) {
     const auto first = static_cast<std::uint32_t>(forest_.throw_assignments.size());

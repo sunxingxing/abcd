@@ -237,8 +237,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 44 admit explicit throw through common value IR, AST and printer.
 // Rules 45 admit occurrence-bound standalone try/catch through original phased
 // input, shared tree correspondence, same-file constants and callable ABI.
-// Rules 47 preserve phased pure-elision PC anchors and projected ABI reads.
-inline constexpr std::uint32_t kRouteEvidenceRules = 47;
+// Rules 48 retain scoped snapshots while projecting phased copy identities.
+inline constexpr std::uint32_t kRouteEvidenceRules = 48;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,
