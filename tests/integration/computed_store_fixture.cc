@@ -25,7 +25,7 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes,
   bytes.insert(bytes.end(), code.begin(), code.end());
   return {{offset}, {start}, locals, args, static_cast<std::uint32_t>(code.size()), 0};
 }
-void Emit(bool wide, bool captured = false) {
+void Emit(bool wide, bool captured = false, bool frame_receiver = false) {
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kTarget >> (kByteBits * i));
@@ -49,12 +49,14 @@ void Emit(bool wide, bool captured = false) {
   if (captured) {
     // Compact lexical addresses put depth in the low nibble and slot above it.
     constexpr std::uint8_t kObjectCell = 0, kKeyCell = 0x10, kRhsCell = 0x20;
-    code = {Op(abc::Opcode::kNEWLEXENV_IMM8), kParameters,
-        Op(abc::Opcode::kLDA_V8), kObject, Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kObjectCell,
+    code = {Op(abc::Opcode::kNEWLEXENV_IMM8), kParameters};
+    if (frame_receiver) code.push_back(Op(abc::Opcode::kLDTHIS));
+    else code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), kObject});
+    code.insert(code.end(), {Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kObjectCell,
         Op(abc::Opcode::kLDA_V8), kKey, Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kKeyCell,
         Op(abc::Opcode::kLDA_V8), kRhs, Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kRhsCell,
         Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), kCache, 1, 0, 0,
-        Op(abc::Opcode::kPOPLEXENV), Op(abc::Opcode::kRETURN)};
+        Op(abc::Opcode::kPOPLEXENV), Op(abc::Opcode::kRETURN)});
   }
   const auto target = Append(bytes, code, kImplicitArguments + kParameters);
   if (captured) {
@@ -140,11 +142,15 @@ void Emit(bool wide, bool captured = false) {
   test::Check(origin.pc == kStorePc);
   const auto span = emission.Positions().members[store_member].expressions[expression.value];
   test::Check(span.begin < span.end && span.end <= output.view().size());
-  const auto name = captured ? (wide ? "closureWide" : "closureNarrow") : (wide ? "wide" : "narrow");
+  const auto name = frame_receiver ? (wide ? "receiverWide" : "receiverNarrow") :
+      captured ? (wide ? "closureWide" : "closureNarrow") : (wide ? "wide" : "narrow");
   std::cout << "export const " << name << " = " << output.str() << ";\n";
   // Unlink changes ctime: keep the input unchanged until all file-backed
   // preparation and fingerprint checks have finished.
   test::Check(unlink(path) == 0);
 }
 }  // namespace
-int main() { Emit(false); Emit(true); Emit(false, true); Emit(true, true); }
+int main() {
+  Emit(false); Emit(true); Emit(false, true); Emit(true, true);
+  Emit(false, true, true); Emit(true, true, true);
+}

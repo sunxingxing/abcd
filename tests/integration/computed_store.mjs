@@ -116,3 +116,16 @@ for (const factory of [generated.closureNarrow, generated.closureWide]) {
       assert.deepEqual(observeCaptures(factory, failKey, reenterSetter),
         observeCaptures(captureReference, failKey, reenterSetter));
 }
+for (const factory of [generated.receiverNarrow, generated.receiverWide]) {
+  const bindReceiver = (object, key, next) => {
+    // The explicit object argument is deliberately wrong. Only frame.thisObj
+    // may seed the captured cell; later child-call receivers must not replace it.
+    const closure = Reflect.apply(factory, object, [null, key, next]);
+    assert.equal(Object.hasOwn(closure, 'prototype'), false);
+    return () => Reflect.apply(closure, {unrelated: true}, []);
+  };
+  for (const failKey of [false, true])
+    for (const reenterSetter of [false, true])
+      assert.deepEqual(observeCaptures(bindReceiver, failKey, reenterSetter),
+        observeCaptures(captureReference, failKey, reenterSetter));
+}

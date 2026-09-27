@@ -3,6 +3,7 @@
 
 #include "abcd/analysis/register_effect.h"
 #include "abcd/analysis/call_result.h"
+#include "abcd/analysis/frame_receiver.h"
 #include "abcd/analysis/value_kinds.h"
 
 namespace abcd::analysis {
@@ -38,6 +39,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
 ValueRule DescribeScalarValue(const ScalarAssignment& assignment);
 std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     const SemanticInstruction& instruction,
-    CallResultValues calls = CallResultValues::kUnknown);
+    CallResultValues calls = CallResultValues::kUnknown,
+    FrameReceiver receiver = FrameReceiver::kUnknown);
 }  // namespace abcd::analysis::detail
 #endif  // ABCD_ANALYSIS_REGISTER_VALUE_RULE_H_

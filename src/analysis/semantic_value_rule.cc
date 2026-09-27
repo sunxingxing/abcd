@@ -6,13 +6,13 @@
 
 namespace abcd::analysis::detail {
 std::variant<ValueRule, ScalarError> DescribeRegisterValue(
-    const SemanticInstruction& instruction, CallResultValues calls) {
+    const SemanticInstruction& instruction, CallResultValues calls, FrameReceiver receiver) {
   if (!instruction.effects.normal_registers.write)
     return ScalarError::kMalformedInstruction;
   // This is the typed counterpart of the decoded rule boundary. Preserve its
   // conservative facts; adding a new IR alternative must require review here,
   // not default to Language or silently re-read its original opcode.
-  return std::visit([calls](const auto& operation)
+  return std::visit([calls, receiver](const auto& operation)
       -> std::variant<ValueRule, ScalarError> {
     using T = std::decay_t<decltype(operation)>;
     if constexpr (std::is_same_v<T, ScalarAssignment>) {
@@ -31,7 +31,13 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     } else if constexpr (std::is_same_v<T, FrameThisLoad>) {
       // Neither the existence nor the entry domain of an ABI receiver slot
       // proves frame.thisObj is initialized at this instruction.
-      return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
+      switch (receiver) {
+        case FrameReceiver::kInitialized:
+          return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
+        case FrameReceiver::kUnknown:
+          return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
+      }
+      return ScalarError::kMalformedInstruction;
     } else if constexpr (std::is_same_v<T, ConstructorCall> ||
                          std::is_same_v<T, SuperRange> ||
                          std::is_same_v<T, ReceiverCall> ||

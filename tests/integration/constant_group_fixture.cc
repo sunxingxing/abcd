@@ -37,7 +37,9 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes,
   return {{offset}, {start}, locals, args, static_cast<std::uint32_t>(code.size()), 0};
 }
 void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
-    ExpectedSource expected = ExpectedSource::kPrinted, bool debug = false) {
+    ExpectedSource expected = ExpectedSource::kPrinted, bool debug = false,
+    bool overwrite_receiver = false,
+    abc::FunctionKind kind = abc::FunctionKind::kBaseConstructor) {
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kTarget >> (kByteBits * i));
@@ -47,6 +49,11 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
        Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), kCache, 0, 0, parameters,
        Op(abc::Opcode::kRETURNUNDEFINED)}, 0, 0);
   std::vector<std::uint8_t> code{Op(constant)};
+  if (overwrite_receiver) {
+    constexpr std::uint8_t kReceiverArgument = kImplicitArguments - 1;
+    const auto slot = static_cast<std::uint8_t>((callback ? kLocals : 0) + kReceiverArgument);
+    code = {Op(abc::Opcode::kLDNULL), Op(abc::Opcode::kSTA_V8), slot, Op(constant)};
+  }
   if (debug) code.push_back(Op(abc::Opcode::kDEBUGGER));
   if (callback) {
     // Keep the loaded value live across a potentially throwing call. The
@@ -80,7 +87,7 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   for (auto& method : index.methods) method.owner_offset = {kRecord};
   index.methods[1].name = "constant"; index.methods[1].name_utf16_length = 8;
   index.methods[1].access_flags =
-      static_cast<std::uint32_t>(abc::FunctionKind::kBaseConstructor) << kFunctionKindShift;
+      static_cast<std::uint32_t>(kind) << kFunctionKindShift;
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<analysis::MethodRoleIndex>(
       analysis::MethodRoleIndex::Build(file, header, index, lookup));
@@ -127,8 +134,8 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   auto prepared = PreparedFamily::PrepareCreated(file, header, index, lookup, roles,
       sites, sites.Find({kTarget}).first, identity, destination);
   if (expected == ExpectedSource::kRejected) {
-    // A VM marker may be consumed internally, but neither a JS return nor a
-    // host call argument may expose it under the current execution contract.
+    // Internal markers cannot escape to JS. A raw arrow LDTHIS also lacks the
+    // distinct lexical-owner proof needed to replace it by a source this.
     test::Check(std::holds_alternative<FamilyPrepareFailure>(prepared));
     test::Check(unlink(path) == 0);
     return;
@@ -144,9 +151,9 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   test::Check(receipt.stage == SourceStage::kPrinted && receipt.coverage == Coverage::kComplete);
   const auto& member = emission.Family().Family().members.front();
   test::Check(member.sources && !member.sources->sites.empty());
-  const auto& mapping = member.sources->sites.front();
+  const auto& mapping = member.sources->sites[overwrite_receiver ? 2 : 0];
   const auto& origin = std::get<OriginalSite>(member.tree.origins[mapping.origin.value]);
-  test::Check(origin.pc == abc::CodeOffset{0});
+  test::Check(origin.pc == abc::CodeOffset{overwrite_receiver ? 3U : 0U});
   const auto expression = std::get<ExprId>(mapping.target);
   const auto span = emission.Positions().members.front().expressions[expression.value];
   test::Check(span.begin < span.end && span.end <= output.view().size());
@@ -186,4 +193,13 @@ int main() {
       for (const bool callback : {false, true})
         Emit(profile, constant, callback, ExpectedSource::kPrinted, true);
   std::cout << "];\n";
+  std::cout << "export const receivers = [\n";
+  for (const auto profile : kProfiles)
+    for (const bool callback : {false, true})
+      for (const bool overwritten : {false, true})
+        Emit(profile, abc::Opcode::kLDTHIS, callback, ExpectedSource::kPrinted, false, overwritten);
+  std::cout << "];\n";
+  for (const auto profile : kProfiles)
+    Emit(profile, abc::Opcode::kLDTHIS, false, ExpectedSource::kRejected,
+        false, false, abc::FunctionKind::kArrow);
 }

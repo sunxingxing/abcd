@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 24。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 25。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,11 +42,25 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- LDTHIS 已对初始化的普通 callable owner 贯通 FrameThisLoad、值域证明、
+  ValueFrameThis、ThisExpr、独立语义/ABI 检查与统一 printer；不依赖可写 ABI
+  receiver 副本。FrameReceiver 前提随输入证明保存，发布时复核 owner；无 owner、
+  raw arrow、derived、async 或存在 SuperRange 的方法不自动获取该前提。
+  三个历史 profile 共 12 个直接/回调/覆盖 ABI 副本变体实际生成并执行 JS，
+  检查 call/construct、primitive/null/undefined/Proxy receiver、异常身份及 PC 映射。
+  另有 3 个 raw arrow 拒绝反例和 narrow/wide 父 receiver 词法捕获用例，覆盖
+  多次 activation、错误显式参数、不同子调用 receiver、抛异常 key 和 setter 重入。
+  ABI 单独记录 frame_receiver_reads；源码证据规则升至 25，旧 receipt 失效。
+  `source_route_test`、`constant_group_test`、`computed_store_test`、
+  `value_import_test`、`function_tree_test`、`function_input_test`、
+  `value_operands_test`、`value_simplify_test`、`evaluation_plan_test` 共 9/9 通过；
+  对应目标与 `abc_semantic` 构建成功。未运行 RSS/基准/全语料，未作 Ark VM 差分；
+  第一组整体未完成，derived/arrow/async receiver 相位证明仍待实现。
 - receiver owner 前置接线完成：PreparedFamily 在根函数输入验证前传入真实
   FunctionContext；子函数在读取前先解析实际 creation occurrence，随后走相同入口。
   FunctionInput 保存不可变 creator/PC/class property/callable/strictness/frame
   标识，输入前拒绝错误 identity/target/frame，构建源码树时再次核对实际 owner。
-  保留 ownerless 诊断入口，不自动增强 receiver 值域，LDTHIS 源码仍待后续接线。
+  此前置提交保留 ownerless 诊断入口，不自动增强 receiver 值域；源码接线见上项。
   同目标两个创建点不能串用的正反例、父子 owner 对应及现有闭包输出均通过；
   `function_input_test`、`constant_group_test`、`computed_store_test` 共 3/3 通过。
   fixture、输入测试及 `abc_semantic` 构建成功；补齐旧输入测试缺少的 algorithm 包含。
@@ -55,8 +69,8 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   三个历史 profile 验证 ABI 副本覆盖不能证明 frame receiver 初始化，缺少 owner
   证明时返回它仍以 InternalValue 拒绝；malformed 操作数也有反例。
   `value_import_test`、`constant_group_test` 2/2 通过，`abc_semantic` 和 fixture
-  构建成功。仅完成语义前置，不计入 LDTHIS 源码完成量；下一步需要把已验证的
-  根/子 callable occurrence 上下文提前送入 FunctionInput，再接值 IR/ThisExpr。
+  构建成功。该提交仅完成语义前置，不计入 LDTHIS 源码完成量；后续 owner 输入
+  与值 IR/ThisExpr 接线见上两项。
   具体集成顺序已写入 [第一组证据](constant-group.md)，不新增构造器专项 writer。
 - DEBUGGER 已贯穿公共 SemanticOperation、ValueOperation、求值计划、独立
   DebuggerStmt、语义/来源校验与统一 printer。它保留 acc、无结果，有独立有序

@@ -39,6 +39,8 @@ class FamilyTrees {
       const auto& context = child_context ? *child_context : root;
       const auto& function = member.function;
       Require(!function.input.HasOwner() || function.input.MatchesOwner(context), FamilyTreeError::kContext);
+      Require(function.input.Proof().receiver == analysis::FrameReceiver::kUnknown ||
+          function.input.MatchesOwner(context), FamilyTreeError::kContext);
       const auto& graph = function.values.graph;
       Require(context.Identity() == function.input.Identity() &&
           context.Target() == function.input.Method(), FamilyTreeError::kContext);

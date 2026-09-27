@@ -14,9 +14,10 @@ struct ConstructedAbi {
   std::uint64_t work = 0;
 };
 // Requires verified value/tree correspondence and a same-input frame. Binds
-// that result to wrapper-facing usage/signature facts in one O(S+U+X+P) scan;
+// that result to wrapper-facing usage/signature facts in one O(S+U+X+P+I) scan;
 // no per-parameter graph walk or source-text analysis. S is symbol count,
-// U is operand-use count, X is expression count and P is formal count.
+// U is operand-use count, X is expression count, P is formal count and I is
+// operation count. Frame-receiver reads are counted separately from ABI uses.
 // Literal defaults are shape-checked and determine native .length. This
 // census does not prove default-prologue movement; the owner must separately
 // establish body correspondence and the parameter-environment contract.

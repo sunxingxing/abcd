@@ -451,6 +451,8 @@ class ForestBuilder {
         return {};
       else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>)
         return Add(EmptyArrayExpr{}, origin);
+      else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>)
+        return Add(ThisExpr{owner_}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
         if (operation.literal) {
           return Add(ObjectExpr{BufferedProperties(constant, origin)}, origin);

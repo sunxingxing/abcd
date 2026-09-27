@@ -110,6 +110,7 @@ struct ValueJump { bool operator==(const ValueJump&) const = default; };
 struct ValueReturn { bool operator==(const ValueReturn&) const = default; };
 struct ValueNop { bool operator==(const ValueNop&) const = default; };
 struct ValueDebugger { bool operator==(const ValueDebugger&) const = default; };
+struct ValueFrameThis { bool operator==(const ValueFrameThis&) const = default; };
 struct ValueString { abc::PoolIndex string; bool operator==(const ValueString&) const = default; };
 // Name lookup and IC-dependent var lookup have different domains. Retain the
 // opcode contract; neither denotes a source lexical declaration or pure read.
@@ -194,7 +195,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation,
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
-    ValueModuleWrite, ValuePropertyWrite, ValueDebugger>;
+    ValueModuleWrite, ValuePropertyWrite, ValueDebugger, ValueFrameThis>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

@@ -23,6 +23,18 @@ int main() {
     const auto proof = VerifySemanticSource(code, method, 0, 0);
     test::Check(std::get<SemanticProofFailure>(proof).kind == SemanticProofError::kInternalValue);
     test::Check(std::get<SemanticProofFailure>(proof).pc == abc::CodeOffset{1});
+    const auto initialized = VerifySemanticSource(code, method, 0, 0, {},
+        CapturedValues::kReject, {}, ClosureWrites::kUnknown, {},
+        CallResultValues::kUnknown, FrameReceiver::kInitialized);
+    const auto& known = std::get<SemanticProof>(initialized);
+    test::Check(known.receiver == FrameReceiver::kInitialized);
+    const auto frame = std::get<abc::FrameLayout>(
+        abc::BuildFrameLayout(0, 0, {false, false, false, false}));
+    const auto imported = ImportNormalValues(code, method, known, frame);
+    const auto& graph = std::get<ValueProgram>(imported);
+    test::Check(std::holds_alternative<ValueFrameThis>(graph.ops[0].operation));
+    test::Check(graph.ops[0].use_count == 0 && graph.ops[0].result.has_value());
+    test::Check(!VerifyImportedValues(graph, method, known, frame));
     auto malformed = code.instructions.front();
     malformed.decoded.operand_count = 1;
     test::Check(std::get<SemanticFailure>(LiftSemanticInstruction(

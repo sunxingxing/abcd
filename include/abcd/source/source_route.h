@@ -218,7 +218,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 23 compose primitive buffer prefixes with proved own-write suffixes.
 // Rules 24 add closed, immutable function-family emission with per-occurrence
 // receipts, fresh destination checks and all-instruction source dispositions.
-inline constexpr std::uint32_t kRouteEvidenceRules = 24;
+// Rules 25 retain callable-occurrence input ownership and explicit initialized
+// frame-receiver premises, with debugger statements in the common source tree.
+inline constexpr std::uint32_t kRouteEvidenceRules = 25;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

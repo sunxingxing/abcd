@@ -103,6 +103,7 @@ struct SemanticProof {
   LocalAccessPlan locals;
   ClosureWrites closure_writes = ClosureWrites::kUnknown;
   DefinedCaptures defined_captures;
+  FrameReceiver receiver = FrameReceiver::kUnknown;
 };
 enum class SemanticProofError : std::uint8_t {
   kAccumulator,  // Retained serialized value; generic proof now uses SSA.
@@ -144,6 +145,9 @@ using SemanticProofResult = std::variant<SemanticProof,
 // initialization or store-domain checks. The owning file/profile is unchanged.
 // calls constrains normal call results under an execution contract; every
 // read (including callees, arguments and explicit returns) is still checked.
+// receiver is a caller-proven callable-owner premise, retained in the proof.
+// It constrains frame.thisObj only, never the writable ABI register copy;
+// derived initialization and arrow capture ownership require distinct proofs.
 [[nodiscard]] SemanticProofResult VerifySemanticSource(
     const abc::MethodBody& body, const SemanticMethod& method,
     std::uint64_t frame_size, std::uint32_t first_abi_register,
@@ -152,6 +156,7 @@ using SemanticProofResult = std::variant<SemanticProof,
     std::span<const LanguageLoadFact> initialized_modules = {},
     ClosureWrites closure_writes = ClosureWrites::kUnknown,
     std::span<const CapturePreservation> preserved = {},
-    CallResultValues calls = CallResultValues::kUnknown);
+    CallResultValues calls = CallResultValues::kUnknown,
+    FrameReceiver receiver = FrameReceiver::kUnknown);
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_SEMANTIC_VALIDATION_H_

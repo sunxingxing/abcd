@@ -57,16 +57,27 @@ class AbiBuilder {
       Step();
       std::visit([&](const auto& value) { Expression(value); }, expression.expression);
     }
+    for (const auto& op : graph_.ops) {
+      Step();
+      if (op.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::ValueFrameThis>(op.operation)) {
+        Require(tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kMethod ||
+            tree_.callable == CallableKind::kBaseConstructor, Error::kReceiver);
+        Increment(result_.frame_receiver_reads);
+      }
+    }
     for (const auto& parameter : result_.parameters) {
       Step();
       Require((parameter.reads.operands != 0) == (parameter.reads.references != 0) &&
           parameter.writes == 0, Error::kParameter);
     }
-    Require((result_.receiver.operands != 0) == (result_.receiver.references != 0), Error::kReceiver);
+    Require((result_.receiver.operands != 0 || result_.frame_receiver_reads != 0) ==
+        (result_.receiver.references != 0), Error::kReceiver);
     // A JS arrow inherits this; a VM receiver entry is dynamic. Captured outer
     // receivers must instead retain their explicit enclosing-owner binding.
     Require(tree_.callable != CallableKind::kArrow ||
-        (result_.receiver.operands == 0 && result_.receiver.references == 0), Error::kReceiver);
+        (result_.receiver.operands == 0 && result_.frame_receiver_reads == 0 &&
+         result_.receiver.references == 0), Error::kReceiver);
     return {std::move(result_), initial_.bytes - remaining_.bytes,
             initial_.work - remaining_.work};
   }
@@ -111,7 +122,9 @@ class AbiBuilder {
   }
   void Expression(SymbolExpr node) { Symbol(node.symbol, false); }
   void Expression(ThisExpr node) {
-    Require(node.owner == tree_.owner && frame_.this_value.has_value(), Error::kReceiver);
+    // LDTHIS does not need an ABI register copy. ReceiverEntry still checks
+    // its optional slot separately; tree correspondence proves each origin.
+    Require(node.owner == tree_.owner, Error::kReceiver);
     Increment(result_.receiver.references);
   }
   void Expression(const AssignmentExpr& node) {

@@ -3,6 +3,7 @@
 
 #include "abcd/analysis/register_ssa.h"
 #include "abcd/analysis/call_result.h"
+#include "abcd/analysis/frame_receiver.h"
 #include "abcd/analysis/value_kinds.h"
 
 namespace abcd::analysis {
@@ -77,7 +78,8 @@ class RegisterValueFlow {
                          std::span<const LanguageLoadFact> loads,
                          IdfQuota& quota, IdfBudget budget = {},
                          std::span<const SemanticInstruction> semantics = {},
-                         CallResultValues calls = CallResultValues::kUnknown);
+                         CallResultValues calls = CallResultValues::kUnknown,
+                         FrameReceiver receiver = FrameReceiver::kUnknown);
   // Same unchanged inputs as the escape proof. Nonescaping local cells join
   // Hole and ALL stores, not reaching stores. Captured/escaped cells stay top.
   [[nodiscard]] static std::variant<RegisterValueFlow, ValueFlowFailure>
@@ -106,7 +108,8 @@ class RegisterValueFlow {
       const LexicalValueContext* lexicals,
       std::span<const LanguageLoadFact> loads, IdfQuota& quota,
       IdfBudget budget, std::span<const SemanticInstruction> semantics = {},
-      CallResultValues calls = CallResultValues::kUnknown);
+      CallResultValues calls = CallResultValues::kUnknown,
+      FrameReceiver receiver = FrameReceiver::kUnknown);
   RegisterValueFlow() = default;
   std::unique_ptr<ValueKinds[]> facts_;
   std::size_t count_ = 0;

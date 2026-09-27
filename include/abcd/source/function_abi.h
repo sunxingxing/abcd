@@ -36,6 +36,8 @@ struct FunctionAbi {
   // symbols, never local-register aliases requiring a second set of lets.
   std::vector<ParameterAbiUse> parameters;
   AbiReads receiver;
+  // Implicit frame.thisObj observations have no IR operand occurrence.
+  std::uint64_t frame_receiver_reads = 0;
   ParameterLayout layout = ParameterLayout::kSimple;
   // Number of formals before the first initializer, not the ABI slot count.
   std::uint32_t length = 0;

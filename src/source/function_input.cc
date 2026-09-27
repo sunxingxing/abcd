@@ -61,6 +61,21 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     if (owner && (owner->Identity() != identity || owner->Target() != method ||
         owner->Frame() != frame)) return FunctionInputFailure{Error::kOwner};
     const auto context = owner ? std::optional{DescribeOwner(*owner)} : std::nullopt;
+    auto receiver = analysis::FrameReceiver::kUnknown;
+    if (owner) {
+      switch (owner->Callable()) {
+        case CallableKind::kFunction:
+        case CallableKind::kMethod:
+        case CallableKind::kBaseConstructor:
+          receiver = analysis::FrameReceiver::kInitialized;
+          break;
+        case CallableKind::kArrow:
+        case CallableKind::kDerivedConstructor:
+        case CallableKind::kAsyncFunction:
+        case CallableKind::kAsyncMethod:
+          break;
+      }
+    }
     analysis::CapturedValues captures;
     analysis::ClosureWrites writes;
     switch (mode) {
@@ -74,10 +89,17 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     auto lifted = analysis::BuildSemanticMethod(body, identity.profile, frame.registers, quota.Remaining());
     auto* input = std::get_if<analysis::SemanticMethod>(&lifted);
     if (!input) return FunctionInputFailure{std::get<analysis::SemanticFailure>(lifted)};
+    // An initialized entry premise is not a proof across receiver-changing
+    // protocols. Super/resume ownership must supply a phase-specific proof.
+    for (const auto& instruction : input->instructions) {
+      quota.Step();
+      if (std::holds_alternative<analysis::SuperRange>(instruction.operation))
+        receiver = analysis::FrameReceiver::kUnknown;
+    }
     // The upstream proof budget includes its input method. Do not subtract it
     // twice; retain that full charge after construction before allocating uses.
     auto verified = analysis::VerifySemanticSource(body, *input, frame.registers, frame.locals,
-        quota.Remaining(), captures, {}, writes, {}, NormalCallResults(identity.contract));
+        quota.Remaining(), captures, {}, writes, {}, NormalCallResults(identity.contract), receiver);
     auto* proof = std::get_if<analysis::SemanticProof>(&verified);
     if (!proof) return FunctionInputFailure{std::get<analysis::SemanticProofFailure>(verified)};
     quota.Admit(proof->allocated_bytes, 1);

@@ -3,10 +3,34 @@ import {execFileSync} from 'node:child_process';
 import {Session} from 'node:inspector';
 
 const source = execFileSync(process.argv[2], {encoding: 'utf8'});
-const {cases, debugCases} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {cases, debugCases, receivers} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const expected = [NaN, Infinity, undefined, null, true, false];
 const profileCount = 3;
 const forms = 2;
+assert.equal(receivers.length, profileCount * forms * 2);
+for (let i = 0; i < receivers.length; ++i) {
+  const recovered = receivers[i];
+  const callback = Math.floor(i / 2) % forms === 1;
+  for (const receiver of [undefined, null, false, -0, NaN, 2n, Symbol(), 'text', {}, new Proxy({}, {})]) {
+    let calls = 0;
+    const result = Reflect.apply(recovered, receiver, [value => {
+      ++calls;
+      assert.ok(Object.is(value, receiver));
+      return 'ignored';
+    }]);
+    assert.ok(Object.is(result, receiver));
+    assert.equal(calls, callback ? 1 : 0);
+    if (callback) {
+      const marker = {};
+      assert.throws(() => Reflect.apply(recovered, receiver, [() => {throw marker;}]),
+        error => error === marker);
+    }
+  }
+  let observed;
+  const constructed = Reflect.construct(recovered, [value => {observed = value;}]);
+  assert.equal(Object.getPrototypeOf(constructed), recovered.prototype);
+  if (callback) assert.equal(constructed, observed);
+}
 assert.equal(cases.length, profileCount * expected.length * forms);
 for (let profile = 0; profile < profileCount; ++profile) {
   for (let value = 0; value < expected.length; ++value) {

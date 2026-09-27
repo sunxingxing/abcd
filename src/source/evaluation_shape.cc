@@ -50,6 +50,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else if constexpr (std::is_same_v<T, analysis::ValueReturn>) return EvaluationShape{kReturn, false};
     else if constexpr (std::is_same_v<T, analysis::ValueJump>) return EvaluationShape{kNoOperands, false};
     else if constexpr (std::is_same_v<T, analysis::ValueDebugger>) return EvaluationShape{kNoOperands, false};
+    else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueString>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
       if (op.kind == analysis::CreationKind::kFunction && op.home_object == analysis::HomeObjectInput::kCurrentFunction)
@@ -102,6 +103,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
     else {
       static_assert(std::is_same_v<T, analysis::ValueNamedRead> ||
                     std::is_same_v<T, analysis::ValueDebugger> ||
+                    std::is_same_v<T, analysis::ValueFrameThis> ||
                     std::is_same_v<T, analysis::ValueModuleRead> ||
                     std::is_same_v<T, analysis::ValueModuleWrite> ||
                     std::is_same_v<T, analysis::ValueFunctionCreation> ||

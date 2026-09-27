@@ -505,7 +505,8 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
       {"placement", creation.placement == abc::ClassPlacement::kStatic ? "static" : "prototype"}};
   const auto& abi = emission->Function().Abi();
   output << ",\"abi\":{\"layout\":" << nlohmann::json(ParameterLayoutName(abi.layout)) << ",\"length\":" << abi.length
-         << ",\"receiver\":" << nlohmann::json{{"operands", abi.receiver.operands}, {"references", abi.receiver.references}}
+         << ",\"receiver\":" << nlohmann::json{{"operands", abi.receiver.operands},
+              {"frame_reads", abi.frame_receiver_reads}, {"references", abi.receiver.references}}
          << ",\"callable\":" << nlohmann::json(AbiObservationName(abi.callable))
          << ",\"new_target\":" << nlohmann::json(AbiObservationName(abi.new_target))
          << ",\"arguments\":" << nlohmann::json(AbiObservationName(abi.arguments)) << ",\"parameters\":";

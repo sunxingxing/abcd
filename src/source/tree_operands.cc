@@ -51,7 +51,11 @@ class OperandCheck {
       };
       std::visit([&](const auto& operation) {
         using T = std::decay_t<decltype(operation)>;
-        if constexpr (std::is_same_v<T, analysis::ValueCopy> ||
+        if constexpr (std::is_same_v<T, analysis::ValueFrameThis>) {
+          RequireMeaning(op.result && op.result->value < graph_.values.size() &&
+              graph_.values[op.result->value].domain.IsLanguage(), Error::kOperand);
+          RequireMeaning(Node<ThisExpr>(expression).owner == tree_.owner, Error::kOperand);
+        } else if constexpr (std::is_same_v<T, analysis::ValueCopy> ||
                       std::is_same_v<T, analysis::ValueReturn>) {
           Input(input(0), expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueUnary>) {

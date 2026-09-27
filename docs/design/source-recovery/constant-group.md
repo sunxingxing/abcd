@@ -60,35 +60,46 @@ inspection UI or bytecode-register reconstruction has been implemented.
 
 ### Frame Receiver Dependency
 
-LDTHIS now lifts to FrameThisLoad with an accumulator definition and no
+LDTHIS lifts to FrameThisLoad with an accumulator definition and no
 register read. The pinned interpreter handler calls GetThis, which returns
 InterpretedFrame::thisObj (interpreter-inl.cpp, GetThis implementation), not the
-optional writable ABI receiver slot. Its value rule remains Unknown: an
+optional writable ABI receiver slot. Its default value rule remains Unknown: an
 uninitialized derived receiver cannot be promoted to a JS value just because
 an ABI slot contains one. Tests retain that distinction for 12.0.2.0,
 12.0.6.0 and 13.0.1.0 and reject exposing the unconstrained result.
 
-This is a semantic admission prerequisite, NOT LDTHIS source completion.
-FunctionInput::Build currently verifies domains before the actual callable
-context is bound. The next implementation must carry occurrence-bound receiver
-evidence into that verification, retain it in the input owner, and revalidate
-it at family publication. Ordinary/base initialized receivers, derived
+Initialized ordinary callable owners now carry an explicit FrameReceiver
+premise through SemanticProof and the value solver. Ownerless diagnostics stay
+Unknown. ValueFrameThis has no ABI operand and lowers to owner-qualified
+ThisExpr; operand verification requires a language result and the right owner.
+FunctionAbi counts frame reads independently of ReceiverEntry, including when
+no ABI this slot exists. The immutable family owner is rechecked at publication.
+Methods containing SuperRange do not receive a whole-body initialized premise.
+Ordinary/base initialized receivers, derived
 pre-/post-super states and arrow lexical receivers must remain distinct.
 Do not infer this evidence from frame slot existence or method-name spelling.
-After that, a typed value read can map to an owner-qualified ThisExpr, with
-independent ABI checks and tests for changed ABI copies, call/apply receiver
-identity, capture ownership and derived initialization failures. The current
-proof rejection is not counted as supported decompilation.
+Twelve file-backed variants across three profiles now emit and execute this:
+direct/callback forms, with and without overwriting the ABI receiver copy.
+Node tests cover call receivers (including primitives, undefined, null and
+Proxy identity), constructor invocation, callback arguments and thrown identity.
+Three raw arrow-LDTHIS fixtures still reject; owner/domain AST mutations and
+arrow/derived ABI misuse also reject. Separate narrow/wide computed-store
+fixtures capture a parent's LDTHIS into an arrow's lexical cell, interleave
+factory activations and exercise throwing keys and reentrant setters. They
+pass the wrong explicit object parameter and a different child-call receiver
+to distinguish the identities. This does not implement raw arrow LDTHIS,
+derived pre-/post-super phases, or async receiver ownership.
 
 Concrete integration order:
 
-Steps 1-2 are now wired. FunctionInput stores an immutable creation stamp
+Steps 1-4 are now wired for initialized ordinary owners. FunctionInput stores an immutable creation stamp
 (creator, PC, optional class property, callable, strictness and complete frame)
 only from an already resolved FunctionContext. It rejects mismatched file
 identity, target and frame before analysis. Family tree construction checks
 the stamp against its actual owner again. The ownerless diagnostic path stays
-available and does not acquire an owner after verification. No receiver-domain
-premise is granted by this wiring alone; steps 3-5 remain unfinished.
+available and does not acquire an owner after verification. Only supported
+initialized callable kinds grant the explicit premise; step 5's derived and
+arrow phase/capture extensions remain unfinished.
 
 1. PreparedFamily::Prepare already owns a validated FunctionContext before
    calling ReadFunctionFamily. Pass that owner into root input construction;

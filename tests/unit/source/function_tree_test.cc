@@ -528,8 +528,38 @@ void DebuggerTree() {
   tree.statements[statement.value].statement = ReturnStmt{};
   Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
 }
+void FrameReceiverTree() {
+  using namespace analysis;
+  Fixture fixture;
+  fixture.Add(0, 0, 0, ValueFrameThis{}, true, {});
+  fixture.Add(0, 1, 1, ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{2}}});
+  fixture.graph.blocks = {{{0}, 2, {0}, 0}};
+  auto built = fixture.Build();
+  auto& tree = std::get<ConstructedFunction>(built).tree;
+  Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+  const auto frame = std::get<abc::FrameLayout>(
+      abc::BuildFrameLayout(0, 1, {false, false, false, false}));
+  Check(!frame.this_value);
+  const auto abi = std::get<ConstructedAbi>(BuildFunctionAbi(fixture.graph, tree, frame, 1));
+  Check(abi.abi.receiver.operands == 0 && abi.abi.frame_receiver_reads == 1 &&
+      abi.abi.receiver.references == 1);
+  const auto expression = std::get<ExprId>(tree.operations[0].node);
+  auto& receiver = std::get<ThisExpr>(tree.expressions[expression.value].expression);
+  ++receiver.owner.value;
+  Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
+  --receiver.owner.value;
+  fixture.graph.values[2].domain = ValueKinds::Unknown();
+  Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
+  fixture.graph.values[2].domain = ValueKinds::Language();
+  for (const auto kind : {CallableKind::kArrow, CallableKind::kDerivedConstructor}) {
+    tree.callable = kind;
+    Check(std::get<FunctionAbiError>(BuildFunctionAbi(fixture.graph, tree, frame, 1)) ==
+        FunctionAbiError::kReceiver);
+  }
+}
 }  // namespace
 int main() {
+  FrameReceiverTree();
   DebuggerTree();
   ComputedStoreTree();
   BranchTree();

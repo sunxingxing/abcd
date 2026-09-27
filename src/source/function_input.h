@@ -23,8 +23,9 @@ struct InputCaptureAccess {
 // occurrences. A write-only capture also requires a valid initialized source
 // binding at its parent creation; it is not an invented declaration in child.
 // Optional owner must already be resolved from the exact creation occurrence.
-// It is checked before analysis and retained as an immutable stamp, not used
-// to silently strengthen receiver domains. Source publication rechecks it.
+// It is checked before analysis and retained as an immutable stamp. Supported
+// initialized callable owners grant an explicit frame-receiver premise, never
+// an ABI-slot inference. Source publication rechecks the original owner.
 class FunctionInput {
  public:
   FunctionInput(FunctionInput&&) noexcept = default;
