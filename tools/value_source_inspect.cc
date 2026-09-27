@@ -12,6 +12,7 @@
 #include "abcd/source/class_method_selection.h"
 #include "abcd/source/record_source.h"
 #include "../src/source/function_file.h"
+#include "../src/source/module_aliases.h"
 
 namespace {
 using namespace abcd;
@@ -357,6 +358,39 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
       report["work_revision"] = function->values.graph.revision.value;
       report["guarded_module_pairs"] = function->values.modules.pairs.size();
       report["module_reads_resolved"] = function->module_reads.has_value();
+      if (modules) {
+        analysis::SemanticBudget budget;
+        if (function->allocated_bytes > budget.bytes) {
+          report["module_alias_error"] = static_cast<unsigned>(ModuleAliasError::kResourceLimit);
+        } else {
+          budget.bytes -= function->allocated_bytes;
+          const ModuleOwnerId module_owner{static_cast<std::uint32_t>(owner - index.records.begin())};
+          const auto bound = BindModuleAliases(file, header, index, function->input,
+              function->values, *modules, module_owner, {}, budget);
+          const auto* aliases = std::get_if<ModuleAliases>(&bound);
+          report["module_aliases_bound"] = aliases != nullptr;
+          if (aliases) {
+            report["module_evaluations"] = aliases->evaluations.size();
+            report["module_aliases"] = nlohmann::json::array();
+            for (const auto& alias : aliases->aliases) {
+              const auto& name = aliases->names[alias.name.value - aliases->first_name.value];
+              report["module_aliases"].push_back({{"symbol", alias.target.symbol.value},
+                  {"owner", alias.target.owner.value}, {"access", static_cast<unsigned>(alias.access)},
+                  {"name_utf16", std::vector<std::uint16_t>(name.begin(), name.end())}});
+            }
+          } else {
+            const auto& failure = std::get<ModuleAliasFailure>(bound);
+            report["module_alias_failure"] = failure.cause.index();
+            std::visit([&](const auto& error) {
+              using T = std::decay_t<decltype(error)>;
+              if constexpr (std::is_same_v<T, ModuleReadFailure>)
+                std::visit([&](const auto& reason) { report["module_alias_error"] = static_cast<unsigned>(reason); }, error.reason);
+              else report["module_alias_error"] = static_cast<unsigned>(error);
+            }, failure.cause);
+            if (failure.pc) report["module_alias_pc"] = failure.pc->value;
+          }
+        }
+      }
       if (function->module_reads) {
         report["module_reads"] = nlohmann::json::array();
         for (const auto& binding : function->module_reads->bindings) {

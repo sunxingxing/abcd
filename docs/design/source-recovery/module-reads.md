@@ -9,13 +9,16 @@ second body writer or a module source-publication certificate.
 ABC module loads -> original semantic IR -> verified working ValueModuleRead
 record-owned ModuleInfo -----------------> ResolveModuleReads
                                           -> ModuleReads in FileFunction
-                                          -> future module scope/TDZ proof
-                                          -> shared SourceTree and printer
+original guarded pairs + same record ----> BindModuleAliases
+                                          -> evaluation + shared SourceTree
+                                          -> VerifyModuleAliasTree
+                                          -> future record/TDZ proof + printer
 ```
 
 The first two arrows and metadata binding are implemented. Conditional module
-scope aliases and guarded-read lowering now exist in SourceTree, but TDZ
-correspondence and record binding remain open. Default `ReadFunctionValues` leaves binding
+scope aliases and guarded-read lowering now exist in SourceTree. Metadata-name
+binding is implemented below; TDZ correspondence and complete enclosing record
+ownership remain open. Default `ReadFunctionValues` leaves binding
 obligations open; an explicit `RecordModuleContext` enables resolution and
 retains the typed result alongside the working graph. Family/record callers
 must reuse the same immutable record context, not rescan all records per child.
@@ -80,6 +83,46 @@ does not claim a shared cumulative family-work budget or whole-process RSS proof
 
 ## Remaining Gates
 
+`BindModuleAliases` connects the immutable input, original guarded-pair ledger,
+verified working values and same-file `RecordModuleContext`. It rechecks the
+original pair proof and resolves the record table afresh instead of trusting a
+mutable `FileFunction.module_reads` cache. It requires an exact live-read/pair
+census, then derives both `ModuleEvaluation` and `ModuleSyntax` rows. Source
+symbol identity is canonical record binding order: all regular/namespace import
+slots followed by local binding slots, never raw local-export row ordinals.
+Sibling methods therefore agree even if their read subsets/order differ. The
+caller still owns the record-to-`ModuleOwnerId` mapping; this numeric assignment
+alone is not an enclosing-record certificate.
+
+Pool slots and string entities are sorted/deduplicated before decoding. The
+guard diagnostic and metadata local name must have equal decoded UTF-16 content;
+distinct string entities with the same content are allowed. Content classes are
+computed once so repeated long names are not compared per instruction. Names
+retain exact metadata spelling. Invalid/shadowed/duplicate binding spellings
+remain the shared scope check's responsibility, not a reason to invent aliases.
+Memory includes transient resolution/name tables, decoded strings and returned
+name copies. Work includes comparisons, decoding and copying. Beyond the existing
+metadata resolver cost, index work is O(M log(M+1) + U log(R+1)), for M reads,
+U distinct pool slots and R index regions; decoded payload and metered text-sort
+comparison work are additional dimensions. Retained storage is O(M + S_out),
+including copied name payload S_out; this does not admit or claim an unbounded
+record/family cache.
+
+All aliases from this read-only adapter have `ModuleAccess::kReadOnly`, including
+locals. This limits operations through the alias; it does not freeze a live
+binding or infer a `const` source declaration. A local-export row alone does
+not prove declaration kind or legal writes. Store/record proof must establish
+those facts before widening permission.
+
+`VerifyModuleAliasTree` checks fresh unchanged binding evidence against the
+actual evaluation targets and AST aliases, including input/method/revisions,
+coverage, spelling, evidence, module scope and access. Alias lookup is indexed
+by sorted source targets rather than depending on function-local SymbolIds.
+It complements, not replaces, shared structure/flow/operand/origin checks. Like
+capture-tree correspondence it requires those checks on the same unchanged tree.
+It does not claim engine-specific thrown-error/message equality merely because
+diagnostic names match, nor resolve TDZ/cyclic initialization or module requests.
+
 `BuildEvaluationPlan` accepts explicit conditional `ModuleEvaluation` entries.
 Its indexed checker requires an exact census of live module reads, matching
 space/slot and an adjacent same-block static-name guard consuming the read's
@@ -126,8 +169,8 @@ still rejects all module aliases. `module_scope_test.cc` contains unrun source
 specifications for ordinary/captured functions, scope nesting/shadowing, duplicate
 targets, mutable/read-only writes, source-operand mismatch and 200/201 sizes.
 
-Before source emission, bind these aliases to actual record module symbols, prove unshadowed uses
-and live-binding behavior, preserve cyclic module initialization/TDZ and thrown
+Before source emission, certify the enclosing record symbol inventory, prove
+unshadowed uses and live-binding behavior, preserve cyclic module initialization/TDZ and thrown
 values, and discharge record dependencies. Only then may conditional module
 expressions be published as executable source. Source evidence rules remain 23.
 
@@ -147,3 +190,9 @@ sizes. It now also constructs/checks the shared AST, paired placements, distinct
 module reads, retained snapshots and dual-PC origins, with negative mutations
 for global-name substitution, target changes and dropped/duplicated provenance.
 This regression source is also uncompiled/unrun.
+`module_aliases_test.cc` adds serialized module/name fixtures and original
+bytecode through metadata binding, shared evaluation/AST and alias-tree checking.
+It specifies external/local/namespace bindings, adjacent export aliases, stable
+sibling identity, nonzero name-arena bases, guard-name mismatch, changed AST
+spelling/target/access, altered evaluation targets, revisions, resource/work
+limits and 200/201/geometric sizes. It remains uncompiled/unrun.

@@ -789,6 +789,40 @@ record symbol/name/TDZ binding and enclosing ownership proofs remain open, and
 the publication wrapper/printer continue to refuse module contexts. Rules stay
 23. P3 and the wider T00-T12 goal are not complete.
 
+### T07/P3 Record Metadata to Module Aliases
+
+Added BindModuleAliases to derive common evaluation targets and module syntax
+from same-record metadata and freshly checked original guarded pairs. It does
+not consume caller-invented target rows or trust mutable cached ModuleReads.
+Source targets use canonical record binding order, stable across sibling read
+subsets. Pool/entity deduplication and decoded-content classes retain exact
+metadata names and compare them to guard diagnostic names without repeated
+per-instruction string decoding. All returned aliases are read-only permissions;
+local exports do not establish let/const declarations or allow writes.
+
+VerifyModuleAliasTree connects that fresh evidence to actual AST names, targets,
+access, scope and common evaluation rows after shared semantic checks. Function
+syntax descriptions moved unchanged into a lightweight header so metadata
+binding does not import expression-forest internals into CLI translation units.
+Regression source covers serialized metadata through the common AST, sibling
+identity and negative mutations, with 200/201/geometric inputs. It is not
+compiled or run under the testing pause.
+
+Production-only abc_semantic/abc_structure builds exited 0. ABC-only P3 method
+7366 reports one bound CommonConstants alias (record owner 7, source symbol 1),
+one module evaluation, and the unchanged 85-operation conditional graph. The
+Immersive 21082 slice reports an empty successful binding set with 21 operations.
+Both correctly remain executable/source_complete false and exit 1. G2 method
+7559 retains its existing printed method segment [2638,2924), rules 23, inside
+an incomplete record. These observations exercise real metadata binding, not
+the new alias-tree verifier, generated JS behavior or RSS acceptance.
+
+The conditional ABC CLI now invokes this adapter and reports binding failures
+separately from input/value preparation. Source publication remains disabled;
+record ownership, declaration/store semantics, TDZ/cycles/dependencies and
+complete child bodies remain obligations. Rules remain 23; T07/T11 and the
+full T00-T12 objective are not complete.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

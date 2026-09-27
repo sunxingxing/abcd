@@ -3,40 +3,9 @@
 
 #include "control_plan.h"
 #include "expression_forest.h"
+#include "function_syntax.h"
 
 namespace abcd::source {
-struct ParameterSyntax {
-  std::optional<NameId> name;
-  NameEvidence evidence = NameEvidence::kSynthesized;
-};
-struct CaptureSyntax {
-  CellId cell;
-  CapturedSymbol target;
-  NameId name;
-  NameEvidence evidence = NameEvidence::kSynthesized;
-};
-struct ModuleSyntax {
-  ModuleSymbol target;
-  NameId name;
-  ModuleAccess access;
-  NameEvidence evidence = NameEvidence::kSynthesized;
-};
-struct FunctionSyntax {
-  RouteInputIdentity identity;
-  abc::EntityOffset method;
-  FunctionOwnerId owner;
-  CallableKind callable;
-  Strictness strictness;
-  std::vector<ParameterSyntax> parameters;
-  std::vector<std::u16string> names;
-  std::vector<std::u16string> texts;
-  // Sorted incoming CellIds only. Names refer to the supplied name arena;
-  // actual enclosing owner/scope and spelling need a separate creation check.
-  std::vector<CaptureSyntax> captures;
-  // Source module aliases, not runtime ABC slots. The record owner must verify
-  // their spelling/access/target; this only constructs conditional lexical scope.
-  std::vector<ModuleSyntax> modules;
-};
 struct ConstructedFunction {
   FunctionTree tree;
   std::size_t allocated_bytes = 0;
