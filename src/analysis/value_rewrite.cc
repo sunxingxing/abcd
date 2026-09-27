@@ -110,6 +110,7 @@ std::variant<ValueRewriteProof, ValueRewriteError> VerifyValueRewrite(
     const ValueProgram& before, const ValueProgram& after,
     std::span<const ValueId> representatives, SemanticBudget budget) {
   try {
+    Require(before.arguments == after.arguments, Error::kEffect);
     Require(before.revision == after.revision && before.cfg_revision == after.cfg_revision,
             Error::kRevision);
     Require(before.blocks.size() == after.blocks.size() && before.edges.size() == after.edges.size() &&

@@ -41,6 +41,7 @@ template<class Proof> class Projection {
       paths_[parameter.arm.value] = parameter.merge;
     }
     ValueProgram body;
+    body.arguments = original_.arguments;
     Clone(body.blocks, original_.blocks); Clone(body.ops, original_.ops);
     Clone(body.values, original_.values); Clone(body.uses, original_.uses);
     Clone(body.origins, original_.origins);

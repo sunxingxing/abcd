@@ -66,7 +66,7 @@ range, normal/exception effects and SSA read/write correspondence. The later
 value-domain check remains mandatory, including potentially absent slots that
 contain Hole. The checked argument fact is retained in SemanticProof. No owner
 still produces `kArgumentOwner`, including zero-declared-parameter functions.
-This is not source publication: ValueOperation, runtime count/tail binding,
+This is not source publication: runtime count/tail binding,
 snapshot factory/AST and callable-specific source lowering are still missing.
 The explicit entry premise does not exempt any decoded caller from argument
 value checks or certify arbitrary VM-internal invocations.
@@ -87,6 +87,18 @@ read occurrences, S is snapshots and V bounds indexed SSA write lookup. Every
 step shares the verification work budget; it never performs a graph walk for
 each argument. File-backed ordinary/arrow fixtures check owner binding, absent
 owners, wrong identities/targets/frames and distinct same-target creation PCs.
+
+Rules 38 import snapshots as `ValueArgumentSnapshot`, retaining the checked
+`ArgumentFrameFact` in `ValueProgram`. Import rechecks the original instruction,
+effects and SSA inputs under its work budget; independent correspondence checks
+the fact, declared slot count, protocol read ordinals, origins and exceptional
+exits. Rewrite verification requires the frame fact to remain unchanged, and
+snapshot allocation is explicitly non-erasable even if effect fields are cleared.
+Simplification retains separate snapshot occurrences and their conditional uses.
+The file-backed ordinary/arrow fixtures now reach value IR, but evaluation/AST
+construction still explicitly rejects snapshots: count/tail source bindings and
+the exact object factory have not been implemented. This is intermediate-layer
+evidence, not executable source coverage.
 
 1. **Frame inputs.** Build a compact, validated argument-window plan from the
    actual FrameLayout and callable creation occurrence. Keep actual invocation

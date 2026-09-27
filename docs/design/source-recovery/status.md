@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 37。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 38。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,6 +42,20 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 实参快照进入共享值 IR：ValueArgumentSnapshot 保留声明槽数量及条件协议读取，
+  ValueProgram 保留已核对的当前调用 ArgumentFrameFact；不是将声明数量当实际数量。
+  导入重新核对原指令/效果/SSA；对应检查验证槽数量、归属、PC、读序号和异常出口。
+  简化器复制并保留归属，改写检查拒绝丢失/变更该事实；快照即使效果字段被清空也
+  不可作为纯操作删除。文件级普通/arrow 输入已到达值 IR，求值计划仍显式拒绝，
+  运行时 count/tail、精确对象工厂、AST 和源码绑定仍未完成，不计指令源码覆盖。
+  新测试覆盖三 profile、0/1/200/201/65536 参数、重复分配与参数槽改写，
+  错归属/槽数量/读取目的/序号/异常效果、预算耗尽及简化保留。
+  文件级正例先在旧值导入处失败；新增改写检查又捕获 Clone 遗漏归属，补齐后
+  `argument_snapshot_test`、`creation_tree_context_test`、`function_input_test`、
+  `snapshot_operands_test`、`value_import_test`、`source_route_test`、
+  `constant_group_test`、`value_created_family_test`、`value_simplify_test`、
+  `default_candidates_test` 共 10/10 通过；相关目标及 `abc_semantic` 构建成功。
+  未运行 RSS、基准、全语料或 Ark VM 差分。
 - 实参输入已绑定精确 callable owner：FunctionInput 在核对文件身份、目标和帧后
   提供 ArgumentFrameFact，并保留原创建点 stamp；同目标不同创建点不可互换。
   独立检查原 opcode/PC、规范帧、范围、正常/异常效果及 SSA 读写对应关系，

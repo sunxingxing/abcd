@@ -115,6 +115,12 @@ struct ValueFrameFunction { bool operator==(const ValueFrameFunction&) const = d
 // Realm identity, never a property/name lookup of mutable globalThis.
 struct ValueGlobalObject { bool operator==(const ValueGlobalObject&) const = default; };
 struct ValueSymbolConstructor { bool operator==(const ValueSymbolConstructor&) const = default; };
+// slots counts declared conditional inputs, NOT actual invocation arguments.
+// Actual count/tail come from ValueProgram::arguments; every execution allocates.
+struct ValueArgumentSnapshot {
+  std::uint32_t slots;
+  bool operator==(const ValueArgumentSnapshot&) const = default;
+};
 struct ValueString { abc::PoolIndex string; bool operator==(const ValueString&) const = default; };
 // Name lookup and IC-dependent var lookup have different domains. Retain the
 // opcode contract; neither denotes a source lexical declaration or pure read.
@@ -200,7 +206,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValueDebugger, ValueFrameThis, ValueFrameFunction,
-    ValueGlobalObject, ValueSymbolConstructor>;
+    ValueGlobalObject, ValueSymbolConstructor, ValueArgumentSnapshot>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;
@@ -251,6 +257,7 @@ struct ValueProgram {
   std::vector<ValueOrigin> origins;
   std::vector<ValueExceptionalExit> exceptional_exits;
   InputCorrespondence input;
+  std::optional<ArgumentFrameFact> arguments;
 };
 enum class ValueGraphError : std::uint8_t {
   kUseLink, kUseOwner, kUseRange, kDefinition, kResourceLimit

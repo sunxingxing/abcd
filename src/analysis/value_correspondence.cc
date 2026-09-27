@@ -61,6 +61,10 @@ std::optional<ValueImportFailure> VerifyImportedValues(
   };
   if (!take(graph.values.size()) || !take(graph.ops.size()) ||
       !take(graph.uses.size())) return fail(Error::kWorkLimit);
+  if (graph.arguments != proof.arguments ||
+      (graph.arguments && (graph.arguments->frame != frame ||
+       !std::holds_alternative<ArgumentWindow>(ArgumentWindow::Build(frame)))))
+    return fail(Error::kInputMismatch);
   if (const auto invalid = VerifyValueUses(graph, budget.bytes))
     return fail(*invalid == ValueGraphError::kResourceLimit
                     ? Error::kResourceLimit : Error::kInvalidGraph);
@@ -111,10 +115,17 @@ std::optional<ValueImportFailure> VerifyImportedValues(
   std::size_t use_index = 0;
   std::size_t exit_index = 0;
   const auto reads = method.ssa.AllReads();
+  bool needs_arguments = false;
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     if (!take(1)) return fail(Error::kWorkLimit);
     const auto& op = graph.ops[i];
     const auto& input = method.instructions[i];
+    if (const auto* snapshot = std::get_if<ArgumentSnapshot>(&input.operation)) {
+      needs_arguments = true;
+      if (!graph.arguments || snapshot->window.First() != frame.first_parameter ||
+          snapshot->window.Count() != frame.parameters)
+        return fail(Error::kInputMismatch, input.pc);
+    }
     if (graph.input.sites[i] != OpId{static_cast<std::uint32_t>(i)} ||
         op.origin.value != i || graph.origins[i].site.value != i ||
         graph.origins[i].pc != input.pc || graph.origins[i].original != input.origin ||
@@ -169,7 +180,8 @@ std::optional<ValueImportFailure> VerifyImportedValues(
     }
     if (actual_count != op.use_count) return fail(Error::kOperandMismatch, input.pc);
   }
-  if (exit_index != graph.exceptional_exits.size() || read_index != reads.size())
+  if (needs_arguments != graph.arguments.has_value() ||
+      exit_index != graph.exceptional_exits.size() || read_index != reads.size())
     return fail(Error::kInputMismatch);
   for (const auto& incoming : method.ssa.AllInputs()) {
     if (!take(1)) return fail(Error::kWorkLimit);

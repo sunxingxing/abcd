@@ -192,7 +192,8 @@ class OperandCheck {
                 tree_.closure_captures[created.captures.first + c] == *flow_.cells[cell.value], Error::kOperand);
           }
         } else {
-          static_assert(std::is_same_v<T, analysis::ValueModuleWrite> ||
+          static_assert(std::is_same_v<T, analysis::ValueArgumentSnapshot> ||
+                        std::is_same_v<T, analysis::ValueModuleWrite> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueDebugger> ||

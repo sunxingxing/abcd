@@ -38,6 +38,7 @@ bool CanErasePureOp(const ValueOp& op) {
                     std::is_same_v<T, ValueFrameFunction> ||
                     std::is_same_v<T, ValueGlobalObject> ||
                     std::is_same_v<T, ValueSymbolConstructor> ||
+                    std::is_same_v<T, ValueArgumentSnapshot> ||
                     std::is_same_v<T, ValueModuleRead> ||
                     std::is_same_v<T, ValueModuleWrite> ||
                     std::is_same_v<T, ValueFunctionCreation> ||

@@ -1,5 +1,6 @@
 #include "../../../src/source/creation_tree_context.h"
 #include "../../../src/source/function_file.h"
+#include "../../../src/source/evaluation_plan.h"
 #include "../../../src/source/syntax_resolution.h"
 #include "../../../src/source/family_file.h"
 #include "../../../src/source/family_tree.h"
@@ -185,8 +186,11 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       // A checked input is not yet an executable body or an AST certificate.
       const auto values = ReadFunctionValues(file, header, index, {1}, identity,
           InputCaptureMode::kClosed, {}, nullptr, &context);
-      test::Check(std::holds_alternative<FunctionValueFailure>(
-          std::get<FunctionFileFailure>(values)));
+      test::Check(std::holds_alternative<FileFunction>(values));
+      const auto& graph = std::get<FileFunction>(values).values.graph;
+      test::Check(graph.arguments && graph.arguments->frame == context.Frame());
+      test::Check(std::get<EvaluationError>(BuildEvaluationPlan(graph)) ==
+          EvaluationError::kUnsupportedOperation);
       auto changed = identity;
       ++changed.file_size;
       test::Check(std::get<FunctionInputError>(std::get<FunctionInputFailure>(

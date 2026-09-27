@@ -84,6 +84,7 @@ ValueProgram Clone(const ValueProgram& input, BatchBudget& quota) {
   ValueProgram candidate;
   candidate.revision = input.revision;
   candidate.cfg_revision = input.cfg_revision;
+  candidate.arguments = input.arguments;
   const auto copy = [&](const auto& from, auto& to) {
     quota.Reserve(to, from.size());
     quota.Work(from.size());

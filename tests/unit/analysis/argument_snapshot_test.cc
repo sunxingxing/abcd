@@ -1,7 +1,93 @@
 #include "abcd/analysis/semantic_ir.h"
 #include "abcd/analysis/semantic_validation.h"
+#include "abcd/analysis/value_import.h"
+#include "abcd/analysis/value_simplify.h"
+#include "../../../src/analysis/value_edits.h"
+#include "../../../src/analysis/value_rewrite.h"
 
 #include "analysis/ssa_fixture.h"
+
+namespace {
+void CheckValues(const abcd::abc::MethodBody& body,
+    const abcd::analysis::SemanticMethod& method,
+    const abcd::analysis::SemanticProof& proof,
+    const abcd::abc::FrameLayout& frame,
+    abcd::analysis::SemanticBudget budget) {
+  using namespace abcd;
+  using namespace abcd::analysis;
+  const auto imported = ImportNormalValues(body, method, proof, frame, budget);
+  test::Check(std::holds_alternative<ValueProgram>(imported));
+  const auto& graph = std::get<ValueProgram>(imported);
+  test::Check(graph.arguments == proof.arguments);
+  test::Check(!VerifyImportedValues(graph, method, proof, frame, budget));
+  std::vector<ValueId> representatives;
+  for (std::uint32_t i = 0; i < graph.values.size(); ++i) representatives.push_back({i});
+  auto changed = graph;
+  changed.arguments.reset();
+  test::Check(VerifyImportedValues(changed, method, proof, frame, budget).has_value());
+  test::Check(std::get<ValueRewriteError>(VerifyValueRewrite(
+      graph, changed, representatives, budget)) == ValueRewriteError::kEffect);
+  auto unowned = std::get<SemanticProof>(VerifySemanticSource(body, method,
+      frame.registers, frame.locals, budget, CapturedValues::kReject, {},
+      ClosureWrites::kUnknown, {}, CallResultValues::kUnknown,
+      FrameReceiver::kUnknown, &*proof.arguments));
+  unowned.arguments.reset();
+  test::Check(std::holds_alternative<ValueImportFailure>(
+      ImportNormalValues(body, method, unowned, frame, budget)));
+  changed = graph;
+  changed.arguments->frame.extra_arguments = false;
+  test::Check(VerifyImportedValues(changed, method, proof, frame, budget).has_value());
+  auto exhausted = budget;
+  exhausted.work = 0;
+  test::Check(std::get<ValueImportFailure>(ImportNormalValues(
+      body, method, proof, frame, exhausted)).kind == ValueImportError::kWorkLimit);
+  std::size_t snapshots = 0;
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    const auto& op = graph.ops[i];
+    if (!std::holds_alternative<ValueArgumentSnapshot>(op.operation)) continue;
+    ++snapshots;
+    test::Check(std::get<ValueArgumentSnapshot>(op.operation).slots == frame.parameters);
+    test::Check(op.use_count == frame.parameters);
+    test::Check(graph.origins[op.origin.value].pc == body.instructions[i].offset);
+    test::Check(!CanErasePureOp(op));
+    auto cleared = op;
+    cleared.normal = cleared.before_throw = LanguageEffect::kNone;
+    cleared.exceptional = ExceptionalCompletion::kImpossible;
+    test::Check(!CanErasePureOp(cleared));
+    changed = graph;
+    ++std::get<ValueArgumentSnapshot>(changed.ops[i].operation).slots;
+    test::Check(VerifyImportedValues(changed, method, proof, frame, budget).has_value());
+    changed = graph;
+    changed.ops[i].before_throw = LanguageEffect::kNone;
+    test::Check(VerifyImportedValues(changed, method, proof, frame, budget).has_value());
+    for (std::uint32_t j = 0; j < op.use_count; ++j) {
+      const auto& use = graph.uses[op.first_use.value + j];
+      test::Check(use.purpose == ReadPurpose::kProtocol && use.input->ordinal == j);
+    }
+    if (op.use_count != 0) {
+      changed = graph;
+      changed.uses[op.first_use.value].purpose = ReadPurpose::kOperand;
+      test::Check(VerifyImportedValues(changed, method, proof, frame, budget).has_value());
+      changed = graph;
+      ++changed.uses[op.first_use.value].input->ordinal;
+      test::Check(VerifyImportedValues(changed, method, proof, frame, budget).has_value());
+    }
+  }
+  test::Check(snapshots != 0);
+  changed = graph;
+  test::Check(std::holds_alternative<ValueSimplifyStats>(
+      SimplifyValues(changed, changed.revision, budget)));
+  test::Check(changed.arguments == graph.arguments);
+  std::size_t retained = 0;
+  for (const auto& op : changed.ops) {
+    if (std::holds_alternative<ValueArgumentSnapshot>(op.operation)) {
+      test::Check(op.life == ValueLife::kLive);
+      ++retained;
+    }
+  }
+  test::Check(retained == snapshots);
+}
+}  // namespace
 
 int main() {
   using namespace abcd;
@@ -49,6 +135,7 @@ int main() {
       const auto proven = prove();
       test::Check(std::holds_alternative<SemanticProof>(proven));
       test::Check(std::get<SemanticProof>(proven).arguments->frame == frame);
+      CheckValues(body, method, std::get<SemanticProof>(proven), frame, budget);
       invocation.frame.extra_arguments = false;
       test::Check(std::get<SemanticProofFailure>(prove()).kind == SemanticProofError::kArgumentOwner);
       invocation.frame = frame;
@@ -96,6 +183,8 @@ int main() {
     test::Check(method.ssa.Reads({4})[0].value == *method.ssa.Write({3}));
     test::Check(method.ssa.Write({2}) != method.ssa.Write({4}));
     test::Check(std::holds_alternative<SemanticProof>(prove_invocation(overwritten, method, frame)));
+    CheckValues(overwritten, method, std::get<SemanticProof>(
+        prove_invocation(overwritten, method, frame)), frame, {});
     const auto loop = test::Body({
         static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS),
         0x61, 0, 0x4d, 0xfd});

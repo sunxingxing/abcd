@@ -15,6 +15,16 @@ struct ArgumentPartition {
 };
 enum class ArgumentWindowError { kInvalidFrame, kMissingExtraArguments };
 
+// Caller-certified invocation, not merely a layout. Under the existing legal
+// JS entry contract its actual count and extra tail belong to this callable;
+// the tail contains language values and cannot be addressed by declared vregs.
+// Source owners must retain/recheck their creation identity. This fact does not
+// authorize native JS arguments, arrow capture, or any source signature rewrite.
+struct ArgumentFrameFact {
+  abc::FrameLayout frame;
+  bool operator==(const ArgumentFrameFact&) const = default;
+};
+
 // Pinned interpreter GetNumArgs(restIdx=0): current declared slots are a
 // conditional prefix; extra arguments live outside the declared SSA frame.
 // This validates layout, NOT invocation ownership, value domains or a profile.

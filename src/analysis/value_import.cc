@@ -8,6 +8,7 @@
 #include "value_operands.h"
 #include "operand_view.h"
 #include "value_flow.h"
+#include "argument_inputs.h"
 
 namespace abcd::analysis {
 namespace {
@@ -124,6 +125,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueGlobalObject{};
     } else if constexpr (std::is_same_v<T, SymbolConstructorLoad>) {
       return ValueSymbolConstructor{};
+    } else if constexpr (std::is_same_v<T, ArgumentSnapshot>) {
+      return ValueArgumentSnapshot{op.window.Count()};
     } else if constexpr (std::is_same_v<T, StringLoad>) {
       return ValueString{op.value};
     } else if constexpr (std::is_same_v<T, GlobalAccess>) {
@@ -196,7 +199,16 @@ std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
             frame.parameters <= frame.registers - frame.first_parameter.value,
             Error::kInputMismatch);
     ImportBudget quota{budget};
+    const auto checked = VerifyArgumentInputs(body, method, frame.registers,
+        frame.locals, proof.arguments ? &*proof.arguments : nullptr, quota.Remaining());
+    if (const auto* failure = std::get_if<SemanticProofFailure>(&checked))
+      throw ValueImportFailure{failure->kind == SemanticProofError::kResourceLimit
+          ? Error::kWorkLimit : Error::kInputMismatch, failure->pc};
+    const auto& argument_inputs = std::get<ArgumentInputCheck>(checked);
+    quota.Work(argument_inputs.work);
+    Require(argument_inputs.fact == proof.arguments, Error::kInputMismatch);
     ValueProgram graph;
+    graph.arguments = argument_inputs.fact;
     quota.Reserve(graph.ops, count);
     quota.Reserve(graph.origins, count);
     quota.Reserve(graph.exceptional_exits, count);
