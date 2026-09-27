@@ -87,9 +87,9 @@ authorized. Linked specialist contracts remain binding.
 
 ## 6. Agents and Git
 - After each coherent task commit, refresh `docs/design/source-recovery/status.md`
-  with implementation, build, verification and remaining-gate evidence. Every
-  three implementation commits, before stage transitions, or on architecture
-  risk, audit against the approved design and record deviations and next actions.
+  with implementation, build, verification and remaining-gate evidence.
+  Periodic design audits are cancelled at the user's request. Report concrete
+  architecture risks when encountered; do not schedule audits by commit count.
   Component completion never substitutes for end-to-end acceptance. Respect
   paused tests/RSS; reporting does not authorize resuming them.
 - Choose agent models by difficulty: economical for bounded mechanical work,
