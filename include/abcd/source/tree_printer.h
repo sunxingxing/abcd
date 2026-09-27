@@ -12,7 +12,7 @@ struct GeneratedRange {
   std::size_t end = 0;
   auto operator<=>(const GeneratedRange&) const = default;
 };
-enum class FunctionFragment : std::uint8_t { kClassMember, kConditionalExpression };
+enum class FunctionFragment : std::uint8_t { kClassMember, kConditionalExpression, kFunctionExpression };
 enum class TreePrintError : std::uint8_t {
   kUnsupportedContext, kOutputLimit, kWrite, kResourceLimit, kWorkLimit,
   kInvalidLiteral

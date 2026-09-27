@@ -5,6 +5,7 @@
 #include "../../../src/source/family_tree.h"
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/prepared_family.h"
+#include "../../../src/source/family_emission.h"
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
@@ -13,6 +14,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <limits>
 #include <sstream>
 
 namespace {
@@ -282,6 +284,10 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       test::Check(std::holds_alternative<PreparedFamily>(prepared_result));
       auto prepared = std::get<PreparedFamily>(std::move(prepared_result));
       test::Check(prepared.Family().members.size() == built.members.size() && prepared.Identity() == identity);
+      test::Check(prepared.Receipts().size() == built.members.size());
+      for (const auto& receipt : prepared.Receipts())
+        test::Check(!ValidateRouteReceipt(receipt) && receipt.stage == SourceStage::kTreeVerified &&
+            receipt.coverage == Coverage::kIncomplete && !receipt.legacy_writer_used);
       std::ostringstream prepared_output;
       test::Check(std::holds_alternative<PrintedFamilyDraft>(prepared.PrintDraft(
           {Strictness::kStrict, nullptr}, prepared_output)));
@@ -295,6 +301,23 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
           roles, sites, range.first, identity, {Strictness::kStrict, nullptr}, no_preparation);
       test::Check(std::get<FamilyPrepareError>(std::get<FamilyPrepareFailure>(not_prepared).cause) ==
           FamilyPrepareError::kResourceLimit);
+      if (child == ChildBody::kEmpty && parameters == 0) {
+        const auto fresh = [&] {
+          return std::get<PreparedFamily>(PreparedFamily::PrepareCreated(file, header, index,
+              lookup, roles, sites, range.first, identity, {Strictness::kStrict, nullptr}));
+        };
+        std::ostringstream failed_output;
+        const auto limited = FamilyEmission::Write(fresh(), {Strictness::kStrict, nullptr},
+            failed_output, {}, {0});
+        test::Check(std::get<TreePrintError>(std::get<FamilyEmitFailure>(limited)) == TreePrintError::kOutputLimit);
+        const auto overflow = FamilyEmission::Write(fresh(), {Strictness::kStrict, nullptr},
+            failed_output, {std::numeric_limits<std::size_t>::max()});
+        test::Check(std::get<TreePrintError>(std::get<FamilyEmitFailure>(overflow)) == TreePrintError::kOutputLimit);
+        const auto exhausted = FamilyEmission::Write(fresh(), {Strictness::kStrict, nullptr},
+            failed_output, {}, {}, {0, 0});
+        test::Check(std::get<FamilyEmitError>(std::get<FamilyEmitFailure>(exhausted)) == FamilyEmitError::kResourceLimit);
+        test::Check(failed_output.str().empty());
+      }
       retained_source = prepared_output.str();
       retained_family.emplace(std::move(prepared));
       const auto mismatch = BuildFunctionAbi(opened_child.values.graph, built.members[0].tree,
@@ -371,6 +394,21 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
     test::Check(std::holds_alternative<PrintedFamilyDraft>(retained_family->PrintDraft(
         {Strictness::kStrict, nullptr}, detached_output)));
     test::Check(detached_output.str() == retained_source);
+    std::ostringstream published;
+    constexpr GeneratedOffset kDestination{37};
+    auto emitted = FamilyEmission::Write(std::move(*retained_family),
+        {Strictness::kStrict, nullptr}, published, kDestination);
+    test::Check(std::holds_alternative<FamilyEmission>(emitted));
+    const auto& emission = std::get<FamilyEmission>(emitted);
+    test::Check(published.str() == retained_source && emission.Destination().begin == kDestination.byte &&
+        emission.Destination().end == kDestination.byte + retained_source.size());
+    test::Check(emission.Receipts().size() == emission.Family().Family().members.size());
+    for (std::size_t i = 0; i < emission.Receipts().size(); ++i) {
+      const auto& receipt = emission.Receipts()[i];
+      test::Check(!ValidateRouteReceipt(receipt) && receipt.stage == SourceStage::kPrinted &&
+          receipt.coverage == Coverage::kComplete && !receipt.legacy_writer_used);
+      test::Check(emission.Positions().members[i].fragment == FunctionFragment::kFunctionExpression);
+    }
   }
   test::Check(unlink(path) == 0);
 }

@@ -7,6 +7,7 @@ namespace abcd::source {
 struct PreparedFamily::Storage {
   FunctionContext context;
   ConstructedFamily family;
+  std::vector<MethodRouteReceipt> receipts;
   std::size_t allocated_bytes;
   std::uint64_t work;
 };
@@ -16,11 +17,16 @@ PreparedFamily& PreparedFamily::operator=(PreparedFamily&&) noexcept = default;
 PreparedFamily::~PreparedFamily() = default;
 const ConstructedFamily& PreparedFamily::Family() const { return storage_->family; }
 const RouteInputIdentity& PreparedFamily::Identity() const { return storage_->context.Identity(); }
+std::span<const MethodRouteReceipt> PreparedFamily::Receipts() const { return storage_->receipts; }
 std::size_t PreparedFamily::AllocatedBytes() const { return storage_->allocated_bytes; }
 std::uint64_t PreparedFamily::Work() const { return storage_->work; }
 namespace {
 using Error = FamilyPrepareError;
 void Require(bool ok, Error error) { if (!ok) throw FamilyPrepareFailure{error}; }
+void CheckPlacement(const FunctionContext& root, FamilyDestination destination) {
+  const auto expected = root.ClassSite() ? FunctionFragment::kClassMember : FunctionFragment::kFunctionExpression;
+  Require(destination.fragment == expected, Error::kPlacement);
+}
 template<class T, class E> T Take(std::variant<T, E> result) {
   if (auto* value = std::get_if<T>(&result)) return std::move(*value);
   throw FamilyPrepareFailure{std::get<E>(std::move(result))};
@@ -81,6 +87,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     FunctionContext root, FamilyDestination destination, analysis::SemanticBudget allowance) {
   try {
     Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
+    CheckPlacement(root, destination);
     Require(!file.CheckUnchanged(), Error::kFileChanged);
     Budget budget(allowance);
     budget.Account(sizeof(Storage), 0);
@@ -105,10 +112,23 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     const auto enclosure = Take<FamilyEnclosure, FamilyEnclosureFailure>(
         VerifyFamilyDestination(family, destination.globals, budget.Left()));
     budget.Account(enclosure.allocated_bytes, enclosure.work);
+    Require(family.members.size() <= budget.Left().bytes / sizeof(MethodRouteReceipt), Error::kResourceLimit);
+    std::vector<MethodRouteReceipt> receipts;
+    budget.Account(family.members.size() * sizeof(MethodRouteReceipt), family.members.size());
+    receipts.reserve(family.members.size());
+    budget.Account((receipts.capacity() - family.members.size()) * sizeof(MethodRouteReceipt), 0);
+    for (const auto& member : family.members) {
+      MethodRouteReceipt receipt;
+      receipt.identity = member.tree.identity; receipt.method = member.tree.method;
+      receipt.route = SourceRoute::kValueTree; receipt.stage = SourceStage::kTreeVerified;
+      receipt.coverage = Coverage::kIncomplete; receipt.work_revision = member.tree.value_revision.value;
+      Require(!ValidateRouteReceipt(receipt), Error::kReceipt);
+      receipts.push_back(receipt);
+    }
     Require(!file.CheckUnchanged(), Error::kFileChanged);
     // No external pointers or mutable input/SSA products survive this boundary.
     // The factory's actual passes, not FamilyWriteFacts counters, authorize it.
-    return PreparedFamily(std::make_unique<const Storage>(Storage{std::move(root), std::move(family),
+    return PreparedFamily(std::make_unique<const Storage>(Storage{std::move(root), std::move(family), std::move(receipts),
         allowance.bytes - budget.Left().bytes, allowance.work - budget.Left().work}));
   } catch (const FamilyPrepareFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit};
@@ -118,6 +138,8 @@ std::variant<FamilyEnclosure, FamilyPrepareFailure> PreparedFamily::CheckDestina
     FamilyDestination destination, analysis::SemanticBudget budget) const {
   if (destination.strictness != Strictness::kStrict)
     return FamilyPrepareFailure{Error::kStrictness};
+  const auto expected = storage_->context.ClassSite() ? FunctionFragment::kClassMember : FunctionFragment::kFunctionExpression;
+  if (destination.fragment != expected) return FamilyPrepareFailure{Error::kPlacement};
   auto result = VerifyFamilyDestination(storage_->family, destination.globals, budget);
   if (const auto* failure = std::get_if<FamilyEnclosureFailure>(&result))
     return FamilyPrepareFailure{*failure};

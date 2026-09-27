@@ -39,10 +39,12 @@ It retains that printer's original-PC origin DAG and per-owner generated ranges.
 A changed enclosure cannot reuse the earlier destination permission. Failed
 output must be discarded; partial output is not a completed artifact.
 
-This interface still returns a draft product, not `Printed/complete` coverage.
-All-PC publication receipts, record/module initialization, broader callable
-contexts and full execution acceptance remain unfinished. Existing CLI drafts
-are not silently upgraded, and no new capability is marked Validated.
+`PrintDraft` still returns a draft product, not `Printed/complete` coverage.
+The separate [owned emission boundary](family-emission.md) consumes preparation,
+rechecks typed destination grammar and source positions, and owns per-member
+Printed/Complete receipts. Record/module initialization, broader callable
+contexts and execution acceptance remain unfinished. Existing CLI drafts are
+not silently upgraded, and no new capability is marked Validated.
 
 ## Bounds and Evidence
 

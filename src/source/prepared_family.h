@@ -13,10 +13,11 @@ namespace abcd::source {
 struct FamilyDestination {
   Strictness strictness;
   const GlobalScope* globals;
+  FunctionFragment fragment = FunctionFragment::kFunctionExpression;
 };
 enum class FamilyPrepareError : std::uint8_t {
   kStrictness, kCallable, kModules, kAbi, kFileChanged, kResourceLimit, kWorkLimit,
-  kSources
+  kSources, kReceipt, kPlacement
 };
 struct FamilyPrepareFailure {
   std::variant<FamilyPrepareError, CreationContextFailure, FamilyFileFailure,
@@ -47,6 +48,9 @@ class PreparedFamily {
       analysis::SemanticBudget budget = {});
   [[nodiscard]] const ConstructedFamily& Family() const;
   [[nodiscard]] const RouteInputIdentity& Identity() const;
+  // Occurrence/member order, not deduplicated by method entity. TreeVerified
+  // remains Incomplete until the owning emission succeeds in its destination.
+  [[nodiscard]] std::span<const MethodRouteReceipt> Receipts() const;
   // Conservative preparation charge, including released scratch, not RSS.
   [[nodiscard]] std::size_t AllocatedBytes() const;
   [[nodiscard]] std::uint64_t Work() const;

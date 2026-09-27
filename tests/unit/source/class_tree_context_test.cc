@@ -1,5 +1,6 @@
 #include "../../../src/source/class_tree_context.h"
 #include "../../../src/source/prepared_family.h"
+#include "../../../src/source/family_emission.h"
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
@@ -19,6 +20,7 @@ using namespace abcd;
 using namespace abcd::source;
 static_assert(!std::is_copy_constructible_v<VerifiedFunction>);
 static_assert(!std::is_copy_constructible_v<FunctionEmission>);
+static_assert(!std::is_copy_constructible_v<FamilyEmission>);
 static_assert(!std::is_constructible_v<FunctionEmission, VerifiedFunction,
                                      PrintedFunction, GeneratedRange, MethodRouteReceipt, std::size_t>);
 static_assert(!std::is_constructible_v<VerifiedFunction, FunctionTree>);
@@ -149,11 +151,11 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     auto rejected = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity, {}, &shadow);
     Check(std::get<FunctionPrepareFailure>(rejected).kind == FunctionPrepareError::kContext);
     auto family = PreparedFamily::PrepareClass(file, header, index, lookup, roles, functions,
-        sites, range.first, identity, {Strictness::kStrict, &scope});
+        sites, range.first, identity, {Strictness::kStrict, &scope, FunctionFragment::kClassMember});
     Check(std::holds_alternative<PreparedFamily>(family));
     std::ostringstream changed_destination;
     const auto family_refused = std::get<PreparedFamily>(family).PrintDraft(
-        {Strictness::kStrict, &shadow}, changed_destination);
+        {Strictness::kStrict, &shadow, FunctionFragment::kClassMember}, changed_destination);
     Check(std::get<FamilyEnclosureFailure>(std::get<FamilyPrepareFailure>(family_refused).cause).kind ==
         FamilyEnclosureError::kShadowedGlobal && changed_destination.str().empty());
     Check(unlink(path) == 0);
@@ -183,11 +185,11 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   Check(std::holds_alternative<PrintedFunction>(printing));
   const auto& printed = std::get<PrintedFunction>(printing);
   auto family_result = PreparedFamily::PrepareClass(file, header, index, lookup, roles,
-      functions, sites, range.first, identity, {Strictness::kStrict, nullptr});
+      functions, sites, range.first, identity, {Strictness::kStrict, nullptr, FunctionFragment::kClassMember});
   Check(std::holds_alternative<PreparedFamily>(family_result));
   const auto& family = std::get<PreparedFamily>(family_result);
   std::ostringstream family_output;
-  const auto family_print = family.PrintDraft({Strictness::kStrict, nullptr}, family_output);
+  const auto family_print = family.PrintDraft({Strictness::kStrict, nullptr, FunctionFragment::kClassMember}, family_output);
   Check(std::holds_alternative<PrintedFamilyDraft>(family_print));
   const auto& family_positions = std::get<PrintedFamilyDraft>(family_print);
   Check(family_positions.members.size() == 1 &&
@@ -200,6 +202,18 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   auto wrong_owner = family.Family(); wrong_owner.members[0].tree.method.value += 1;
   Check(std::get<TreePrintError>(PrintClassFamilyDraft(wrong_owner, value, wrong_context)) ==
       TreePrintError::kUnsupportedContext && wrong_context.str().empty());
+  const auto placement_refusal = family.PrintDraft({Strictness::kStrict, nullptr}, wrong_context);
+  Check(std::get<FamilyPrepareError>(std::get<FamilyPrepareFailure>(placement_refusal).cause) ==
+      FamilyPrepareError::kPlacement && wrong_context.str().empty());
+  std::ostringstream emitted_output;
+  auto family_emission = FamilyEmission::Write(std::get<PreparedFamily>(std::move(family_result)),
+      {Strictness::kStrict, nullptr, FunctionFragment::kClassMember}, emitted_output, {});
+  Check(std::holds_alternative<FamilyEmission>(family_emission));
+  const auto& published_family = std::get<FamilyEmission>(family_emission);
+  Check(published_family.Receipts().size() == 1 && emitted_output.str() == output.str());
+  Check(published_family.Receipts()[0].stage == SourceStage::kPrinted &&
+      published_family.Receipts()[0].coverage == Coverage::kComplete &&
+      !ValidateRouteReceipt(published_family.Receipts()[0]));
   Check(printed.fragment == FunctionFragment::kClassMember);
   Check(printed.bytes == output.view().size());
   Check(output.view().starts_with(defaults ? "run($arg0 = (-1)) {\n" : "run($arg0) {\n"));

@@ -1,0 +1,67 @@
+# Owned Function-Family Emission
+
+`PreparedFamily` now retains one `TreeVerified/Incomplete` route receipt per
+occurrence, only after its actual input, IR, tree, capture/write, ABI, source-site
+coverage and destination checks succeed. Same-method occurrences remain distinct
+members; receipt arrays are indexed by family member, not by method entity.
+
+`FamilyEmission::Write` consumes this immutable owner. It has no constructor
+accepting raw trees, diagnostic counters, serialized receipts or supplied spans.
+
+## Publication Sequence
+
+1. Admit the emission object and receipt array in the caller's scratch allowance.
+2. Validate every prepared receipt and match its identity, method and revision
+   against its immutable member tree. Require ValueTree/TreeVerified/Incomplete.
+3. Bound output by both its byte budget and remaining destination-offset range.
+4. Recheck the actual destination, including typed grammar (`kClassMember` or
+   `kFunctionExpression`), strictness and complete global binding context.
+5. Run the common iterative printer. No source reader, legacy writer or source
+   reparsing is involved.
+6. Check every member's printed identity, revisions, node-array dimensions,
+   owner range and original instruction disposition. Emitted nodes require
+   nonempty ranges inside the owner; real anchors may be zero width; proved
+   pure-elided instructions have no generated range.
+7. Only after the entire family succeeds, produce per-member Printed/Complete
+   receipts and own them together with the original prepared family and printer
+   positions. Original prepared receipts remain TreeVerified/Incomplete.
+
+Evidence rules are bumped from 23 to 24 for this new publication boundary.
+Ordinary emitted expressions use `kFunctionExpression`; the unchanged diagnostic
+entry still uses `kConditionalExpression` and cannot grant these receipts.
+
+Complete here is METHOD coverage, not a whole class/record, independent test
+acceptance, or arbitrary execution-environment permission. Root creation context
+and destination obligations remain attached to the owning artifact. Record
+assembly must preserve the actual embedding; copying receipt JSON alone is not
+authorization to move the code under different bindings. No module initializer,
+unsupported child, constructor, exception or async body is silently substituted.
+
+## Positions and Failure
+
+Generated positions stay relative to the full family output; `Destination()` is
+the one enclosing offset. Child functions retain their nested absolute positions
+within that output, without rewriting every span or duplicating ancestor PCs.
+Caller stream storage and the already-owned prepared input are caller-admitted.
+Added receipt arrays, printer scratch and checks share one decreasing allowance.
+`AllocatedBytes` conservatively includes earlier preparation scratch charges;
+it is not process RSS. Per-instruction checks are linear and allocate no PC map.
+
+Any write, resource, position, context or receipt failure returns no emission
+owner and no completed receipts. A failure after writing can leave partial bytes,
+which the caller must discard. Offset overflow reduces output admission before
+addition and cannot produce wrapped source ranges.
+
+## Validation Status
+
+Added specifications cover ordinary/nested families after input-file release,
+class/default/object methods, prepared-versus-printed receipt states, root
+grammar mismatch, output exhaustion, zero memory and destination overflow.
+Receipt parsing rejects prior rules 23 and uses the current rule constant for
+identity-free/overflow tests. Tests, generated-JS execution and RSS remain paused.
+CLI family drafts are deliberately not promoted by this implementation; record
+assembly integration and end-to-end execution acceptance remain outstanding.
+Production builds exited 0. ABC-only inspection retains the existing 7559 method
+segment [2638,2924), now serialized under rules 24, and the unchanged 1434-byte
+four-member 7449 incomplete/nonexecutable draft. Those observations do not
+exercise the new emission entry and are not its execution acceptance.
