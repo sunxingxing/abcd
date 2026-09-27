@@ -42,6 +42,22 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- group 1 的 async 前置切片：AsyncEnter / AsyncSettle 已进入共享语义 IR，
+  复用 coroutine 操作数解析、正常 SSA 与 Before/Commit/Catch 异常 SSA。
+  保留原 PC、状态与结算值、正常结果提交以及抛出前的分配/堆/用户代码效果；
+  不移除原字节码，不新增 writer。验证 enter 失败逃逸、resolve 异常保留状态
+  寄存器、Catch 定义异常 acc，普通跳转进入 handler 则绕过 Catch 并产生正确 phi。
+  新增现代编码、畸形操作数、历史编码拒绝、预算边界及 200/201/402 分配点测试。
+  原始 async 操作仍被 typed value/source 门禁拒绝，尚无 owner 证明、async AST
+  或可执行源码交付；规则维持 42，group 1 未完成。后续依赖与验收见
+  [async phases](async-phases.md)，继续 T09 相位值导入、T10 owner 和共享 AST。
+  新正例先在旧语义提升处失败；7/7 定向回归通过（async_semantics、constant_object、
+  value_operands、value_import、source_route、function_input、constant_group），
+  对应构建与 abc_semantic 成功。扩展测试中修正了零预算在 CFG 层先拒绝的预期，
+  以及旧 value_operands 测试仍将已支持 LDGLOBAL 视为 unsupported 的过期断言；
+  未放宽生产门禁。未运行完整 async 源码、Ark VM 差分、全语料、RSS 或基准。
+  用户对源码文本反射问题表示未理解，已用变量改名导致 toString 文本变化解释；
+  仍未取得接受前提的确认，相关默认发布策略不变。
 - 规则 42 新增箭头自身调用载体：保留 kArrow 身份，以类型化 InvocationForm
   选择带原名、不可构造的简洁方法表达式；共享 AST/结构/ABI/printer 接入，不新增
   body writer。动态 receiver、LDTHIS、new.target 的既有拒绝不放宽，捕获仍使用

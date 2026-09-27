@@ -73,6 +73,27 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
       break;
   }
   if (decoded.opcode == Opcode::kNOP) return NoOperation{};
+  if (decoded.opcode == Opcode::kASYNCFUNCTIONENTER) {
+    if (decoded.operand_count != 0)
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    return AsyncEnter{};
+  }
+  if (decoded.opcode == Opcode::kASYNCFUNCTIONRESOLVE_V8 ||
+      decoded.opcode == Opcode::kASYNCFUNCTIONREJECT_V8) {
+    const auto lifted = LiftCoroutineInstruction(decoded, frame_size);
+    const auto* settle = std::get_if<CoroutineTransfer>(&lifted);
+    if (!settle)
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    switch (settle->kind) {
+      case CoroutineTransferKind::kResolve:
+        return AsyncSettle{AsyncSettlement::kResolve, settle->state, settle->value};
+      case CoroutineTransferKind::kReject:
+        return AsyncSettle{AsyncSettlement::kReject, settle->state, settle->value};
+      case CoroutineTransferKind::kAwait:
+      case CoroutineTransferKind::kSuspend:
+        return Fail(SemanticError::kUnsupportedInstruction, site.offset);
+    }
+  }
   if (decoded.opcode == Opcode::kDEBUGGER) {
     if (decoded.operand_count != 0)
       return Fail(SemanticError::kMalformedInstruction, site.offset);
@@ -247,6 +268,22 @@ SemanticEffects Effects(const SemanticOperation& operation,
             effects.before_throw = effects.normal;
             effects.exceptional = ExceptionalCompletion::kMayThrow;
           }
+        } else if constexpr (std::is_same_v<T, AsyncEnter>) {
+          // Pinned RuntimeAsyncFunctionEnter uses the retained intrinsic,
+          // not a lookup or call of the application-visible Promise binding.
+          effects.normal = LanguageEffect::kAllocation;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, AsyncSettle>) {
+          // RuntimeAsyncFunctionResolveOrReject creates resolving functions
+          // on EVERY invocation and returns the retained promise. Resolving
+          // can synchronously read then; rejection can notify the host. Keep
+          // both ordered and fallible, including effects before a throw.
+          effects.normal = LanguageEffect::kAllocation |
+                           LanguageEffect::kHeapRead |
+                           LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, LexicalLoad>) {
           // Pinned interpreter-inl.cpp LDLEXVAR: raw cell read, no user
           // getter and no TDZ check. Bounds and Hole proof are separate.

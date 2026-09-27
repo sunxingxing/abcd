@@ -102,6 +102,16 @@ struct FrameFunctionLoad {};
 struct ArgumentSnapshot {
   ArgumentWindow window;
 };
+// RuntimeAsyncFunctionEnter returns a fresh JSAsyncFuncObject retaining a
+// distinct promise and generator context, not the promise itself. Neither
+// this operation nor a matching register number proves a source async owner.
+struct AsyncEnter {};
+enum class AsyncSettlement : std::uint8_t { kResolve, kReject };
+struct AsyncSettle {
+  AsyncSettlement kind;
+  ScalarSlot state;
+  ScalarSlot value;
+};
 struct AwaitValue {
   ScalarValue input;
   AwaitRegion origin;
@@ -122,7 +132,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        ThrowOperation, SuperRange, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
                                        FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad,
-                                       ArgumentSnapshot>;
+                                       ArgumentSnapshot, AsyncEnter, AsyncSettle>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

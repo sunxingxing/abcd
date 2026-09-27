@@ -49,7 +49,9 @@ struct ExceptionFlowBudget {
 // CFG lifting. Exception arcs bypass their result Commit. This models the
 // supplied normalized body, not equivalence to the original resume protocol:
 // the owner must separately prove handler routing and observable register
-// snapshots on rejected awaits. Raw coroutine instructions still reject.
+// snapshots on rejected awaits. Raw suspension/resume still rejects. Async
+// enter/settle can be represented without certifying their protocol owner;
+// value/source admission must reject them until that separate proof exists.
 // Total O((I+R+H) log(I+1) + R log(R+1) + I log(R+1) + E) time;
 // O(I+H+R) memory. bytes includes simultaneous scratch, excludes input body.
 // graph_work bounds lifting/connection passes and lookup comparisons, not the

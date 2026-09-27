@@ -20,6 +20,12 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     } else if constexpr (std::is_same_v<T, NamedRead> ||
                          std::is_same_v<T, AwaitValue>) {
       return ValueRule{ValueRuleKind::kLanguageOperation, {}};
+    } else if constexpr (std::is_same_v<T, AsyncEnter> ||
+                         std::is_same_v<T, AsyncSettle>) {
+      // Raw protocol lifting is not an owner/state proof. Do not let a
+      // generic Language fact admit an escaping state or an unowned settle
+      // into source recovery before the phased async owner is certified.
+      return ScalarError::kUnsupportedOpcode;
     } else if constexpr (std::is_same_v<T, LoadHole>) {
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::Hole()};
     } else if constexpr (std::is_same_v<T, PushEnvironment>) {

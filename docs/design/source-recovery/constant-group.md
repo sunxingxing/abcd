@@ -347,7 +347,9 @@ arrow phase/capture extensions remain unfinished.
   [frame argument snapshots](argument-snapshots.md). Rest-signature recovery now
   rejects a later implicit snapshot read of the original ABI rest slot.
 - ASYNCFUNCTIONENTER: integrate the complete async owner and exception phases,
-  not a standalone Promise expression.
+  not a standalone Promise expression. Raw enter and modern resolve/reject now
+  enter shared semantic IR and phased SSA; owner/value/source admission remains
+  closed. See [async phases and remaining integration](async-phases.md).
 
 These are obligations, not assertions that no supporting implementation exists.
 Each needs common-path positive/negative evidence and context validation before

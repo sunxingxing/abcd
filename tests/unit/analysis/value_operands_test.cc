@@ -52,7 +52,14 @@ int main() {
   guard.effects.normal_registers.reads[1] = abc::RegisterId{3};
   const auto guarded = std::get<ValueOperands>(DescribeValueOperands(guard));
   Check(guarded.operands[1].purpose == ReadPurpose::kProtocol);
-  SemanticInstruction unsupported{{0}, GlobalObjectLoad{}, {}};
+  SemanticInstruction global{{0}, GlobalObjectLoad{}, {}};
+  Check(std::get<OperandError>(DescribeValueOperands(global)) ==
+        OperandError::kWriteSlot);
+  global.effects.normal_registers.write = Accumulator{};
+  const auto global_plan = std::get<ValueOperands>(DescribeValueOperands(global));
+  Check(global_plan.count == 0 && global_plan.write);
+  Check(std::holds_alternative<Accumulator>(*global_plan.write));
+  SemanticInstruction unsupported{{0}, AsyncEnter{}, {}};
   Check(std::get<OperandError>(DescribeValueOperands(unsupported)) ==
         OperandError::kUnsupportedOperation);
 }
