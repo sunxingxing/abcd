@@ -63,6 +63,12 @@ class OperandCheck {
           RequireMeaning(op.use_count == 0 && op.result && op.result->value < graph_.values.size() &&
               graph_.values[op.result->value].domain.IsLanguage(), Error::kOperand);
           (void)Node<SymbolConstructorExpr>(expression);
+        } else if constexpr (std::is_same_v<T, analysis::ValueArgumentSnapshot>) {
+          const auto& snapshot = Node<ArgumentSnapshotExpr>(expression);
+          RequireMeaning(graph_.arguments && evaluation_.arguments == graph_.arguments &&
+              snapshot.owner == tree_.owner && operation.slots == graph_.arguments->frame.parameters,
+              Error::kOperand);
+          Arguments(op, snapshot.slots, 0, operation.slots);
         } else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>) {
           RequireMeaning(op.result && op.result->value < graph_.values.size() &&
               graph_.values[op.result->value].domain.IsLanguage(), Error::kOperand);
@@ -192,8 +198,7 @@ class OperandCheck {
                 tree_.closure_captures[created.captures.first + c] == *flow_.cells[cell.value], Error::kOperand);
           }
         } else {
-          static_assert(std::is_same_v<T, analysis::ValueArgumentSnapshot> ||
-                        std::is_same_v<T, analysis::ValueModuleWrite> ||
+          static_assert(std::is_same_v<T, analysis::ValueModuleWrite> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueDebugger> ||

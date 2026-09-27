@@ -1,6 +1,7 @@
 #include "../../../src/source/creation_tree_context.h"
 #include "../../../src/source/function_file.h"
 #include "../../../src/source/evaluation_plan.h"
+#include "../../../src/source/tree_structure.h"
 #include "../../../src/source/syntax_resolution.h"
 #include "../../../src/source/family_file.h"
 #include "../../../src/source/family_tree.h"
@@ -13,6 +14,8 @@
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
 #include "analysis/ssa_fixture.h"
+#include "../../../tools/tree_position_json.h"
+#include <nlohmann/json.hpp>
 
 #include <unistd.h>
 
@@ -26,6 +29,7 @@ using namespace abcd::analysis;
 using namespace abcd::source;
 enum class ChildBody { kEmpty, kReceiver, kCapture, kCell, kRecursive, kNestedWriter, kSnapshot };
 enum class CallerObject { kAbsent, kPrimitive, kMethod };
+enum class SnapshotCase { kRead, kWrite, kPair, kBranch };
 constexpr std::uint32_t kPool = 64, kCaller = 256, kTarget = 300, kWriter = 320,
     kRecord = 128, kCallerCode = 400, kCodePadding = 16;
 constexpr unsigned kFunctionKindShift = 8;  // Pinned dynamic method access flags.
@@ -55,7 +59,8 @@ abc::CodeInfo AppendCode(std::vector<std::uint8_t>& file,
 
 void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
          bool all_formats = false, std::uint8_t parameters = 0,
-         CallerObject object = CallerObject::kAbsent) {
+         CallerObject object = CallerObject::kAbsent,
+         SnapshotCase snapshot_case = SnapshotCase::kRead, std::ostream* evidence = nullptr) {
   std::vector<std::uint8_t> bytes(kCallerCode);
   constexpr unsigned kByteBits = 8;
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
@@ -106,7 +111,24 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
   std::vector<std::uint8_t> target;
   switch (child) {
     case ChildBody::kSnapshot:
-      target = {static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS), kReturn}; break;
+      if (snapshot_case == SnapshotCase::kBranch) {
+        test::Check(parameters != 0);
+        constexpr std::uint8_t kElseDelta = 11, kJoinDelta = 9, kThenValue = 37, kElseValue = 42;
+        const auto op = [](abc::Opcode value) { return static_cast<std::uint8_t>(value); };
+        target = {kLoad, kImplicitArguments, op(abc::Opcode::kJEQZ_IMM8), kElseDelta,
+            op(abc::Opcode::kLDAI_IMM32), kThenValue, 0, 0, 0,
+            op(abc::Opcode::kSTA_V8), kImplicitArguments, op(abc::Opcode::kJMP_IMM8), kJoinDelta,
+            op(abc::Opcode::kLDAI_IMM32), kElseValue, 0, 0, 0,
+            op(abc::Opcode::kSTA_V8), kImplicitArguments};
+      } else if (snapshot_case != SnapshotCase::kRead) {
+        test::Check(parameters != 0);
+        if (snapshot_case == SnapshotCase::kWrite) {
+          constexpr std::uint8_t kUpdatedValue = 37;
+          target = {static_cast<std::uint8_t>(abc::Opcode::kLDAI_IMM32), kUpdatedValue, 0, 0, 0};
+        } else target = {static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS)};
+        target.insert(target.end(), {static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), kImplicitArguments});
+      }
+      target.insert(target.end(), {static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS), kReturn}); break;
     case ChildBody::kEmpty: target = {kReturnUndefined}; break;
     case ChildBody::kReceiver: target = {kLoad, kReceiver, kReturn}; break;
     case ChildBody::kCapture: target = {kReadCell, 0, kReturn}; break;
@@ -195,8 +217,90 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       const auto prepared = PreparedFamily::PrepareCreated(file, header, index, lookup,
           roles, sites, range.first, identity, {Strictness::kStrict, nullptr});
       test::Check(std::holds_alternative<FamilyPrepareFailure>(prepared));
-      test::Check(std::get<FunctionTreeError>(std::get<FamilyTreeFailure>(
-          std::get<FamilyPrepareFailure>(prepared).cause).cause) == FunctionTreeError::kExpression);
+      if (context.Callable() == CallableKind::kArrow) {
+        test::Check(std::holds_alternative<FamilyTreeFailure>(
+            std::get<FamilyPrepareFailure>(prepared).cause));
+      } else {
+        test::Check(std::holds_alternative<FamilyEnclosureFailure>(
+            std::get<FamilyPrepareFailure>(prepared).cause));
+        const HostArgumentSnapshotBinding factory{u"snapshotArguments", ArgumentSnapshotAbi::kV7CurrentSlots};
+        GlobalScope globals{}; globals.argument_snapshot_binding = &factory;
+        const FamilyDestination destination{Strictness::kStrict, &globals};
+        auto complete = PreparedFamily::PrepareCreated(file, header, index, lookup,
+            roles, sites, range.first, identity, destination);
+        test::Check(std::holds_alternative<PreparedFamily>(complete));
+        const auto& ready = std::get<PreparedFamily>(complete);
+        const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+        const std::vector<ExpressionConstant> constants(graph.ops.size());
+        const auto& plan = std::get<EvaluationPlan>(evaluation);
+        test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(
+            graph, control, plan, ready.Family().members[0].tree, {constants})));
+        auto malformed = ready.Family().members[0].tree;
+        malformed.identity.contract = SourceContract::kLanguageAndHostV1;
+        test::Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(malformed)));
+        if (parameters > 1) {
+          malformed = ready.Family().members[0].tree;
+          for (const auto& node : malformed.expressions)
+            if (const auto* snapshot = std::get_if<ArgumentSnapshotExpr>(&node.expression)) {
+              std::swap(malformed.arguments[snapshot->slots.first], malformed.arguments[snapshot->slots.first + 1]);
+              break;
+            }
+          test::Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(
+              graph, control, plan, malformed, {constants})));
+        }
+        malformed = ready.Family().members[0].tree;
+        for (auto& node : malformed.expressions)
+          if (auto* snapshot = std::get_if<ArgumentSnapshotExpr>(&node.expression)) {
+            ++snapshot->owner.value;
+            break;
+          }
+        test::Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(malformed)));
+        std::ostringstream output;
+        const auto printed = ready.PrintDraft(destination, output);
+        test::Check(std::holds_alternative<PrintedFamilyDraft>(printed));
+        const auto& draft = std::get<PrintedFamilyDraft>(printed);
+        test::Check(draft.members.size() == 1 && draft.members[0].argument_snapshot_binding &&
+            draft.members[0].argument_snapshot_binding->name == factory.name);
+        std::ostringstream positions;
+        test::Check(ready.Family().members[0].sources.has_value());
+        tools::WriteTreePositions(positions, ready.Family().members[0].tree, draft.members[0],
+            &*ready.Family().members[0].sources);
+        if (evidence) {
+          auto sites = nlohmann::json::array();
+          for (std::size_t i = 0; i < decoded.instructions.size(); ++i)
+            if (decoded.instructions[i].decoded.opcode == abc::Opcode::kGETUNMAPPEDARGS)
+              sites.push_back({{"instruction", i}, {"pc", decoded.instructions[i].offset.value}});
+          *evidence << nlohmann::json{{"source", output.str()}, {"parameters", parameters},
+              {"writes_parameter", snapshot_case == SnapshotCase::kWrite},
+              {"branch_parameter", snapshot_case == SnapshotCase::kBranch},
+              {"nested_snapshot", snapshot_case == SnapshotCase::kPair}, {"snapshots", sites},
+              {"positions", nlohmann::json::parse(positions.str())}} << '\n';
+        }
+        std::ostringstream rejected;
+        test::Check(std::holds_alternative<FamilyPrepareFailure>(ready.PrintDraft(
+            {Strictness::kStrict, nullptr}, rejected)) && rejected.str().empty());
+        const std::string_view shadow[]{"snapshotArguments"};
+        globals.enclosing_bindings = shadow;
+        test::Check(std::holds_alternative<FamilyPrepareFailure>(ready.CheckDestination(destination)));
+        globals.enclosing_bindings = {};
+        if (parameters != 0) {
+          const auto& tree = ready.Family().members[0].tree;
+          const HostArgumentSnapshotBinding collision{
+              tree.names[tree.symbols[tree.parameters[0].symbol.value].name.value], ArgumentSnapshotAbi::kV7CurrentSlots};
+          globals.argument_snapshot_binding = &collision;
+          test::Check(std::holds_alternative<FamilyPrepareFailure>(ready.CheckDestination(destination)));
+        }
+        const HostArgumentSnapshotBinding invalid{u"arguments", ArgumentSnapshotAbi::kV7CurrentSlots};
+        globals.argument_snapshot_binding = &invalid;
+        test::Check(std::holds_alternative<FamilyPrepareFailure>(ready.CheckDestination(destination)));
+        globals.argument_snapshot_binding = &factory;
+        std::ostringstream sealed_output;
+        const auto emission = FamilyEmission::Write(std::get<PreparedFamily>(std::move(complete)),
+            destination, sealed_output, {});
+        test::Check(std::holds_alternative<FamilyEmission>(emission) && sealed_output.str() == output.str());
+        for (const auto& receipt : std::get<FamilyEmission>(emission).Receipts())
+          test::Check(receipt.coverage == Coverage::kComplete && !ValidateRouteReceipt(receipt));
+      }
       auto changed = identity;
       ++changed.file_size;
       test::Check(std::get<FunctionInputError>(std::get<FunctionInputFailure>(
@@ -512,7 +616,18 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
   test::Check(unlink(path) == 0);
 }
 }  // namespace
-int main() {
+int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--snapshot-json") {
+    for (const auto parameters : {0U, 1U, 2U, 200U, 201U}) {
+      for (const auto variant : {SnapshotCase::kRead, SnapshotCase::kWrite, SnapshotCase::kPair, SnapshotCase::kBranch}) {
+        if (parameters == 0 && variant != SnapshotCase::kRead) continue;
+        Run(2, abc::FunctionKind::kBaseConstructor, ChildBody::kSnapshot, false,
+            static_cast<std::uint8_t>(parameters), CallerObject::kAbsent, variant, &std::cout);
+      }
+    }
+    return 0;
+  }
+  test::Check(argc == 1);
   for (const auto kind : {abc::FunctionKind::kBaseConstructor, abc::FunctionKind::kArrow})
     for (const auto parameters : {0U, 1U, 200U, 201U})
       Run(2, kind, ChildBody::kSnapshot, false, static_cast<std::uint8_t>(parameters));

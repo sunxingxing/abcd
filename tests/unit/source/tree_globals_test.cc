@@ -145,5 +145,30 @@ void SymbolContexts() {
     }
   }
 }
+void SnapshotContexts() {
+  auto tree = Tree(); tree.expressions[0].expression = ArgumentSnapshotExpr{{0}, {0, 0}};
+  GlobalScope scope{};
+  Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kMissingContext);
+  const HostArgumentSnapshotBinding host{u"$snapshot", ArgumentSnapshotAbi::kV7CurrentSlots};
+  scope.argument_snapshot_binding = &host;
+  Check(std::holds_alternative<TreeGlobals>(VerifyTreeGlobals(tree, &scope)));
+  const HostSymbolBinding collision{host.name}; scope.symbol_binding = &collision;
+  Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kShadowed);
+  scope.symbol_binding = nullptr;
+  tree.names[1] = host.name;
+  Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kShadowed);
+  tree.names[1] = u"params";
+  const std::array<std::string_view, 1> names{"$snapshot"};
+  for (const auto field : {&GlobalScope::enclosing_bindings, &GlobalScope::import_names,
+      &GlobalScope::parameter_bindings}) {
+    auto shadowed = scope; shadowed.*field = names;
+    Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &shadowed)) == TreeGlobalError::kShadowed);
+  }
+  for (const auto name : {u"", u"arguments", u"eval", u"with space"}) {
+    const HostArgumentSnapshotBinding invalid{name, ArgumentSnapshotAbi::kV7CurrentSlots};
+    scope.argument_snapshot_binding = &invalid;
+    Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kMissingContext);
+  }
+}
 }  // namespace
-int main() { Contexts(); IndexedBindings(); RealmContexts(); SymbolContexts(); }
+int main() { Contexts(); IndexedBindings(); RealmContexts(); SymbolContexts(); SnapshotContexts(); }

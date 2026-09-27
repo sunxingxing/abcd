@@ -1,0 +1,126 @@
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+
+const cases = execFileSync(process.argv[2], ['--snapshot-json'], {encoding: 'utf8'})
+  .trim().split('\n').map(line => JSON.parse(line));
+assert.equal(cases.length, 17);
+
+// Test-only embedding capability for the pinned runtime contract. Retained
+// intrinsics avoid public prototype lookups; no input carrier escapes.
+const apply = Reflect.apply;
+const define = Object.defineProperty;
+const descriptor = Object.getOwnPropertyDescriptor;
+const strictArguments = function () { return arguments; };
+const poison = descriptor(strictArguments(), 'callee');
+// Zero formals means an empty parameter map. Its configurable initial callee
+// lets the fixture install caller before callee, matching v7 ObjectFactory's
+// layout and observable key order; strict native arguments cannot be reordered.
+const makeArguments = Function('return arguments');
+const iterator = Array.prototype.values;
+const iteratorKey = Symbol.iterator;
+const objectPrototype = Object.prototype;
+const factory = (carrier, slots) => {
+  const values = [];
+  for (let i = 0; i < carrier.length; ++i) {
+    define(values, i, {value: i < slots.length ? slots[i] : carrier[i],
+      enumerable: true, writable: true, configurable: true});
+  }
+  const result = apply(makeArguments, undefined, values);
+  delete result.callee;
+  define(result, 'caller', poison);
+  define(result, 'callee', poison);
+  return result;
+};
+
+function checkObject(actual, expected) {
+  assert.equal(Object.getPrototypeOf(actual), objectPrototype);
+  assert.equal(Object.prototype.toString.call(actual), '[object Arguments]');
+  assert.equal(Array.isArray(actual), false);
+  assert.deepEqual(descriptor(actual, 'length'), {
+    value: expected.length, writable: true, enumerable: false, configurable: true,
+  });
+  assert.deepEqual(descriptor(actual, iteratorKey), {
+    value: iterator, writable: true, enumerable: false, configurable: true,
+  });
+  for (const name of ['caller', 'callee']) {
+    assert.deepEqual(descriptor(actual, name), poison);
+    assert.throws(() => actual[name], TypeError);
+    assert.throws(() => { actual[name] = null; }, TypeError);
+  }
+  for (let i = 0; i < expected.length; ++i) {
+    assert.equal(actual[i], expected[i]);
+    assert.deepEqual(descriptor(actual, i), {
+      value: expected[i], writable: true, enumerable: true, configurable: true,
+    });
+  }
+  assert.equal(Object.hasOwn(actual, expected.length), false);
+  assert.deepEqual(Reflect.ownKeys(actual), [
+    ...expected.map((_, i) => String(i)), 'length', 'caller', 'callee', iteratorKey,
+  ]);
+}
+
+for (const item of cases) {
+  assert.equal(typeof item.source, 'string');
+  assert.equal(typeof item.writes_parameter, 'boolean');
+  assert.equal(typeof item.nested_snapshot, 'boolean');
+  assert.equal(typeof item.branch_parameter, 'boolean');
+  const fn = Function('factory', `"use strict"; const snapshotArguments = factory; return (${item.source});`)(factory);
+  assert.equal(fn.length, item.parameters);
+  assert.equal(Object.hasOwn(fn, 'prototype'), true);
+  const counts = new Set([0, 1, Math.max(0, item.parameters - 1), item.parameters, item.parameters + 2]);
+  for (const count of counts) {
+    const values = Array.from({length: count}, (_, i) => i === 0 ? undefined : {ordinal: i});
+    const result = apply(fn, {unrelated: true}, values);
+    const second = apply(fn, null, values);
+    const expected = values.slice();
+    if (count && (item.writes_parameter || item.branch_parameter)) expected[0] = 37;
+    if (count && item.nested_snapshot) {
+      checkObject(result[0], values);
+      checkObject(second[0], values);
+      assert.notEqual(result[0], result);
+      assert.notEqual(result[0], second[0]);
+      expected[0] = result[0];
+    }
+    checkObject(result, expected);
+    assert.notEqual(result, second);
+    if (count) {
+      result[0] = 'changed';
+      assert.notEqual(second[0], 'changed');
+      assert.equal(values[0], undefined);
+    }
+    const constructed = Reflect.construct(fn, values);
+    assert.equal(Object.prototype.toString.call(constructed), '[object Arguments]');
+    if (count && item.branch_parameter) {
+      for (const predicate of [false, 0, -0, true, 1, undefined, null, 0n]) {
+        const branchValues = values.slice(); branchValues[0] = predicate;
+        const branchExpected = branchValues.slice();
+        branchExpected[0] = predicate === false || predicate === 0 ? 42 : 37;
+        checkObject(apply(fn, undefined, branchValues), branchExpected);
+      }
+    }
+  }
+  const savedValues = descriptor(Array.prototype, 'values');
+  const savedIterator = descriptor(Array.prototype, iteratorKey);
+  let afterMutation;
+  try {
+    define(Array.prototype, 'values', {value() { throw Error('public values'); }, configurable: true});
+    define(Array.prototype, iteratorKey, {value() { throw Error('public iterator'); }, configurable: true});
+    afterMutation = apply(fn, undefined, [undefined, 2, 3]);
+  } finally {
+    define(Array.prototype, 'values', savedValues);
+    define(Array.prototype, iteratorKey, savedIterator);
+  }
+  assert.equal(afterMutation[iteratorKey], iterator);
+  const binding = item.positions.argument_snapshot_binding;
+  assert.equal(binding.name, 'snapshotArguments');
+  assert.equal(binding.policy, 'explicit_host');
+  assert.equal(binding.abi, 'v7_current_slots');
+  assert.equal(item.snapshots.length, item.nested_snapshot ? 2 : 1);
+  for (const site of item.snapshots) {
+    const source = item.positions.instruction_sources[site.instruction];
+    assert.equal(item.positions.origins[source.origin].pc, site.pc);
+    const range = source.range;
+    assert.ok(range.begin < range.end && range.end <= Buffer.byteLength(item.source));
+    assert.match(Buffer.from(item.source).subarray(range.begin, range.end).toString(), /snapshotArguments/);
+  }
+}

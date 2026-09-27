@@ -579,9 +579,10 @@ if(BUILD_TESTING)
   target_include_directories(cell_tree_test PRIVATE tests/support)
   target_link_libraries(cell_tree_test PRIVATE abcd_source)
   add_test(NAME cell_tree_test COMMAND cell_tree_test)
-  add_executable(creation_tree_context_test tests/unit/source/creation_tree_context_test.cc)
+  add_executable(creation_tree_context_test tests/unit/source/creation_tree_context_test.cc
+    tools/tree_position_json.cc)
   target_include_directories(creation_tree_context_test PRIVATE tests/support)
-  target_link_libraries(creation_tree_context_test PRIVATE abcd_source)
+  target_link_libraries(creation_tree_context_test PRIVATE abcd_source abcd_json)
   add_test(NAME creation_tree_context_test COMMAND creation_tree_context_test)
   add_executable(function_input_test tests/unit/source/function_input_test.cc)
   target_include_directories(function_input_test PRIVATE tests/support)
@@ -803,6 +804,9 @@ if(BUILD_TESTING)
   target_include_directories(constant_group_fixture PRIVATE tests/support)
   target_link_libraries(constant_group_fixture PRIVATE abcd_source abcd_json)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME argument_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/argument_snapshot.mjs
+      $<TARGET_FILE:creation_tree_context_test>)
     add_test(NAME constant_group_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/constant_group.mjs
       $<TARGET_FILE:constant_group_fixture>)

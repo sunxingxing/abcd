@@ -30,6 +30,7 @@ struct Indent { std::size_t depth; };
 struct PropertyKey { NameId id; };
 struct SymbolName { SymbolId id; };
 struct ArgumentCursor { ArgumentRange range; std::uint32_t index; };
+struct SnapshotCursor { ArgumentRange range; std::uint32_t index; };
 struct ObjectCursor { PropertyRange range; std::uint32_t index; };
 struct EndProperty { PropertyId id; };
 struct BeginFunction {};
@@ -38,7 +39,7 @@ struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
 using PrintAction = std::variant<std::string_view, ExprId, EndExpression,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
-    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter>;
+    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
 struct LocatedAnchor { BlockBoundary boundary; AnchorId id; };
 struct OwnerTree { FunctionOwnerId owner; std::size_t member; };
@@ -65,6 +66,7 @@ class TreePrinter {
       if (std::holds_alternative<FunctionExpr>(expression.expression)) throw Error::kUnsupportedContext;
       if (std::holds_alternative<RealmObjectExpr>(expression.expression)) RecordRealm();
       if (std::holds_alternative<SymbolConstructorExpr>(expression.expression)) RecordSymbol();
+      if (std::holds_alternative<ArgumentSnapshotExpr>(expression.expression)) RecordArgumentSnapshot();
     }
     Result().identity = Tree().identity;
     Result().method = Tree().method;
@@ -160,6 +162,7 @@ class TreePrinter {
         Step();
         if (std::holds_alternative<RealmObjectExpr>(node.expression)) RecordRealm();
         if (std::holds_alternative<SymbolConstructorExpr>(node.expression)) RecordSymbol();
+        if (std::holds_alternative<ArgumentSnapshotExpr>(node.expression)) RecordArgumentSnapshot();
       }
     }
     if (has_external_binding_) {
@@ -207,6 +210,17 @@ class TreePrinter {
     Admit(Result().symbol_binding->name.capacity() - binding->size(), sizeof(char16_t));
   }
   bool ClassRoot() const { return class_root_ && current_ == family_->root.value; }
+  void RecordArgumentSnapshot() {
+    has_external_binding_ = true;
+    if (Result().argument_snapshot_binding) return;
+    if (scope_ && scope_->argument_snapshot_binding) Step(scope_->argument_snapshot_binding->name.size());
+    const auto binding = ResolveArgumentSnapshotBinding(scope_);
+    if (!binding) throw Error::kUnsupportedContext;
+    Step(binding->size()); Admit(binding->size(), sizeof(char16_t));
+    Result().argument_snapshot_binding = PrintedFunction::ArgumentSnapshotBinding{
+        std::u16string{*binding}, scope_->argument_snapshot_binding->abi};
+    Admit(Result().argument_snapshot_binding->name.capacity() - binding->size(), sizeof(char16_t));
+  }
   const FunctionTree& Tree() const { return family_ ? family_->members[current_].tree : *tree_; }
   PrintedFunction& Result() { return family_ ? draft_.members[current_] : result_; }
   std::vector<LocatedAnchor>& Located() { return family_ ? locations_[current_] : located_; }
@@ -330,6 +344,13 @@ class TreePrinter {
     Identifier(Result().symbol_binding->name);
   }
   void Expression(ThisExpr) { Append("this"); }
+  void Expression(ArgumentSnapshotExpr node) {
+    if (!Result().argument_snapshot_binding) throw Error::kUnsupportedContext;
+    Append("(0, "); Identifier(Result().argument_snapshot_binding->name);
+    Append(")(arguments, [");
+    Push(std::string_view("])"));
+    Push(SnapshotCursor{node.slots, 0});
+  }
   void Member(ExprId base, const MemberKey& key) {
     if (const auto* name = std::get_if<NameId>(&key)) Push(PropertyKey{*name});
     else {
@@ -477,6 +498,14 @@ class TreePrinter {
     if (cursor.index == cursor.range.count) return;
     if (cursor.index != 0) Append(", ");
     Push(ArgumentCursor{cursor.range, cursor.index + 1});
+    Push(Tree().arguments[cursor.range.first + cursor.index]);
+  }
+  void Run(SnapshotCursor cursor) {
+    if (cursor.index == cursor.range.count) return;
+    if (cursor.index != 0) Append(", ");
+    Append("(arguments.length > "); Numeric(cursor.index); Append(" ? ");
+    Push(SnapshotCursor{cursor.range, cursor.index + 1});
+    Push(std::string_view(" : void 0)"));
     Push(Tree().arguments[cursor.range.first + cursor.index]);
   }
   void Run(std::string_view token) { Append(token); }

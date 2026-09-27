@@ -52,6 +52,16 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
   output << "{\"unit\":\"utf8_byte\",\"value_revision\":" << printed.value_revision.value
          << ",\"cfg_revision\":" << printed.cfg_revision.value << ",\"origins\":";
   Array(output, tree.origins, Origin);
+  if (printed.argument_snapshot_binding) {
+    const auto& binding = *printed.argument_snapshot_binding;
+    std::string_view abi;
+    switch (binding.abi) {
+      case ArgumentSnapshotAbi::kV7CurrentSlots: abi = "v7_current_slots"; break;
+    }
+    output << ",\"argument_snapshot_binding\":" << nlohmann::json{
+        {"policy", "explicit_host"}, {"name", std::string(binding.name.begin(), binding.name.end())},
+        {"abi", abi}, {"contract", SourceContractName(printed.identity.contract)}};
+  }
   if (printed.symbol_binding) {
     const auto& name = printed.symbol_binding->name;
     // Trusted binding names have passed the shared ASCII identifier boundary.

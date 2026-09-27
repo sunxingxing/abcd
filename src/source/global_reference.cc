@@ -4,6 +4,14 @@
 #include "abcd/source/scalar_expression.h"
 
 namespace abcd::source {
+std::optional<std::u16string_view> ResolveArgumentSnapshotBinding(const GlobalScope* scope) {
+  if (!scope || !scope->argument_snapshot_binding ||
+      !IsSourceIdentifier(scope->argument_snapshot_binding->name)) return {};
+  switch (scope->argument_snapshot_binding->abi) {
+    case ArgumentSnapshotAbi::kV7CurrentSlots: return scope->argument_snapshot_binding->name;
+  }
+  return {};
+}
 std::optional<std::u16string_view> ResolveSymbolBinding(const GlobalScope* scope) {
   if (!scope || !scope->symbol_binding || !IsSourceIdentifier(scope->symbol_binding->name)) return {};
   return scope->symbol_binding->name;
@@ -65,7 +73,8 @@ bool AllowsGlobalReference(std::u16string_view name, GlobalScope scope) {
       EqualsAscii(name, scope.self_binding) || name == u"ClassValue" ||
       name.starts_with(u"MethodSelf") ||
       (scope.realm_binding && name == scope.realm_binding->name) ||
-      (scope.symbol_binding && name == scope.symbol_binding->name))
+      (scope.symbol_binding && name == scope.symbol_binding->name) ||
+      (scope.argument_snapshot_binding && name == scope.argument_snapshot_binding->name))
     return false;
   if (ContainsAscii(scope.enclosing_bindings, name) ||
       ContainsAscii(scope.import_names, name) ||

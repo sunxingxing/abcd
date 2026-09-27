@@ -16,7 +16,7 @@ struct BindingInterval { std::u16string_view name; std::size_t begin; std::size_
 struct ModuleName { std::u16string_view name; ModuleSymbol target; FamilyId member; NameId id; };
 struct ScopeCursor { std::size_t scope; std::size_t next; };
 enum class EnclosureExtent : std::uint8_t { kFamily, kDestination };
-enum class BindingTarget : std::uint8_t { kGlobal, kRealm, kSymbolConstructor };
+enum class BindingTarget : std::uint8_t { kGlobal, kRealm, kSymbolConstructor, kArgumentSnapshot };
 class EnclosureCheck {
  public:
   EnclosureCheck(const ConstructedFamily& family, analysis::SemanticBudget budget,
@@ -94,6 +94,7 @@ class EnclosureCheck {
     locals_.resize(local);
     Merge(bindings_); Merge(locals_); CheckModuleNames();
     std::size_t globals = 0, module_reads = 0, realm_reads = 0, symbol_reads = 0;
+    std::size_t argument_snapshots = 0;
     for (std::size_t i = 0; i < count; ++i) {
       member_ = FamilyId{static_cast<std::uint32_t>(i)};
       const auto& tree = family_.members[i].tree;
@@ -126,6 +127,17 @@ class EnclosureCheck {
           }
           continue;
         }
+        if (std::holds_alternative<ArgumentSnapshotExpr>(expression)) {
+          ++argument_snapshots;
+          if (extent_ == EnclosureExtent::kDestination) {
+            if (scope_ && scope_->argument_snapshot_binding) Step(scope_->argument_snapshot_binding->name.size());
+            const auto binding = ResolveArgumentSnapshotBinding(scope_);
+            Require(binding.has_value(), Error::kMissingContext);
+            Destination(*binding, BindingTarget::kArgumentSnapshot);
+            Require(!Shadows(bindings_, *binding, point), Error::kShadowedGlobal);
+          }
+          continue;
+        }
         const bool module_read = reference && tree.symbols[reference->symbol.value].kind == BindingKind::kModule;
         if (!global && !module_read) continue;
         name_ = global ? global->name : tree.symbols[reference->symbol.value].name;
@@ -144,7 +156,7 @@ class EnclosureCheck {
         name_.reset();
       }
     }
-    return {globals, initial_.bytes - left_.bytes, initial_.work - left_.work, module_reads, realm_reads, symbol_reads};
+    return {globals, initial_.bytes - left_.bytes, initial_.work - left_.work, module_reads, realm_reads, symbol_reads, argument_snapshots};
   }
  private:
   void Merge(std::vector<BindingInterval>& bindings) {
@@ -214,7 +226,9 @@ class EnclosureCheck {
         !Contains(scope_->parameter_bindings, name) && !Equal(name, scope_->class_binding) &&
         !Equal(name, scope_->self_binding) &&
         (target == BindingTarget::kRealm || !scope_->realm_binding || !Equal(name, scope_->realm_binding->name)) &&
-        (target == BindingTarget::kSymbolConstructor || !scope_->symbol_binding || !Equal(name, scope_->symbol_binding->name)),
+        (target == BindingTarget::kSymbolConstructor || !scope_->symbol_binding || !Equal(name, scope_->symbol_binding->name)) &&
+        (target == BindingTarget::kArgumentSnapshot || !scope_->argument_snapshot_binding ||
+            !Equal(name, scope_->argument_snapshot_binding->name)),
         Error::kShadowedGlobal);
   }
   void WalkScopes(std::size_t root) {

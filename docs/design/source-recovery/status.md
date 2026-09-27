@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 39。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 40。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,6 +42,26 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 实参快照首个宿主契约源码切片贯通：ArgumentSnapshotExpr 经共享 forest、结构/
+  流/操作数检查、ABI 及 printer 输出。严格普通函数的原生 arguments 只作为
+  未暴露的实际数量/额外尾部载体，声明槽仍按实际数量条件读取；返回值必须由
+  显式 HostArgumentSnapshotBinding 工厂按 v7 契约新建，不能直接返回 arguments
+  或数组。绑定名称、类型化 ABI 与契约版本写入位置产物；缺绑定、遮蔽、V1
+  资源契约、错 owner、错槽对应均拒绝。箭头仍拒绝，未虚构其自身调用载体。
+  文件级普通函数包含读、改写参数、重复快照和分支汇合；源码执行与 PC 映射
+  测试使用独立测试工厂。实际应用宿主适配、多应用与更多 callable/默认值/rest
+  组合仍待验证，未将 GETUNMAPPEDARGS 或 group 1 标为整体完成。
+  源码运行覆盖 17 个文件级变体（0/1/2/200/201 声明参数），每个再测试不同实际
+  实参数量；包含分支 false/0 与 undefined/null/BigInt 的区别、构造调用、对象身份、
+  属性描述符/顺序、公共数组迭代器改写及原始 PC→生成范围。封存后方法 receipt
+  为 Complete，但明确依赖输出中的宿主工厂契约，不等于整份 record 或全组完成。
+  新正例先在旧 AST 门禁失败；`argument_snapshot_source_test`、
+  `creation_tree_context_test`、`argument_snapshot_test`、`argument_evaluation_test`、
+  `tree_structure_test`、`family_enclosure_test`、`function_tree_test`、
+  `tree_globals_test`、`call_plan_test`、`evaluation_plan_test`、
+  `default_candidates_test`、`function_input_test`、`source_route_test`、
+  `constant_group_test`、`value_created_family_test` 共 15/15 通过；相关目标和
+  `abc_semantic` 构建成功。未运行 RSS、基准、全语料或 Ark VM 差分。
 - 实参快照进入共享表达式规划：新增类型化 ConditionalArgument 输入模式，保留
   协议读取/原序号/语言值域及当前调用前提，不将条件读取改成必定求值。
   槽值的生产表达式禁止内联到快照里，包括携带 getter 的纯复制节点；独立调度

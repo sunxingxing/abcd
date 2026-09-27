@@ -101,20 +101,28 @@ void Bounds() {
   }
 }
 void DestinationCases() {
-  for (const TreeExpression expression : {TreeExpression{RealmObjectExpr{}}, TreeExpression{SymbolConstructorExpr{}}}) {
+  for (const TreeExpression expression : {TreeExpression{RealmObjectExpr{}}, TreeExpression{SymbolConstructorExpr{}},
+      TreeExpression{ArgumentSnapshotExpr{{1}, {0, 0}}}}) {
     auto realm_family = Chain(2);
     realm_family.members.back().tree.expressions[0].expression = expression;
     const bool realm = std::holds_alternative<RealmObjectExpr>(expression);
+    const bool snapshot = std::holds_alternative<ArgumentSnapshotExpr>(expression);
     const HostRealmBinding host{u"target"};
     const HostSymbolBinding symbol{u"target"};
+    const HostArgumentSnapshotBinding factory{u"target", ArgumentSnapshotAbi::kV7CurrentSlots};
     GlobalScope scope{};
-    scope.realm_binding = realm ? &host : nullptr; scope.symbol_binding = realm ? nullptr : &symbol;
-    const auto count = [&](const FamilyEnclosure& result) { return realm ? result.realm_reads : result.symbol_reads; };
+    scope.realm_binding = realm ? &host : nullptr;
+    scope.symbol_binding = !realm && !snapshot ? &symbol : nullptr;
+    scope.argument_snapshot_binding = snapshot ? &factory : nullptr;
+    const auto count = [&](const FamilyEnclosure& result) {
+      return realm ? result.realm_reads : snapshot ? result.argument_snapshots : result.symbol_reads;
+    };
     Check(count(std::get<FamilyEnclosure>(VerifyFamilyDestination(realm_family, &scope))) == 1);
     scope.realm_binding = &host; scope.symbol_binding = &symbol;
     Check(std::get<FamilyEnclosureFailure>(VerifyFamilyDestination(realm_family, &scope)).kind ==
         FamilyEnclosureError::kShadowedGlobal);
-    scope.realm_binding = realm ? &host : nullptr; scope.symbol_binding = realm ? nullptr : &symbol;
+    scope.realm_binding = realm ? &host : nullptr;
+    scope.symbol_binding = !realm && !snapshot ? &symbol : nullptr;
     auto& root = realm_family.members[0].tree;
     Local(root, {1});
     root.statements[0].statement = BlockStmt{{1}, 0, 2}; root.children = {{2}, {1}};

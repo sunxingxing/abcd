@@ -4,6 +4,7 @@
 #include <iosfwd>
 
 #include "abcd/source/emission.h"
+#include "abcd/source/global_reference.h"
 #include "abcd/source/verified_function.h"
 
 namespace abcd::source {
@@ -23,6 +24,7 @@ struct PrintedFunction {
     std::u16string name;
   };
   struct SymbolBinding { std::u16string name; };
+  struct ArgumentSnapshotBinding { std::u16string name; ArgumentSnapshotAbi abi; };
   RouteInputIdentity identity;
   abc::EntityOffset method;
   analysis::IrRevision value_revision;
@@ -47,6 +49,7 @@ struct PrintedFunction {
   // permission to print the same tree inside a different lexical enclosure.
   std::optional<RealmBinding> realm_binding;
   std::optional<SymbolBinding> symbol_binding;
+  std::optional<ArgumentSnapshotBinding> argument_snapshot_binding;
 };
 // Emits a member fragment for a CLASS body, not an object literal or ordinary
 // function. The containing class/record still needs its own creation proof.

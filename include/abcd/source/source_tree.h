@@ -107,6 +107,10 @@ struct ArgumentRange { std::uint32_t first; std::uint32_t count; };
 enum class CallReference : std::uint8_t { kValue, kMember };
 struct CallExpr { ExprId callee; ArgumentRange arguments; CallReference reference; };
 struct ConstructExpr { ExprId constructor; ArgumentRange arguments; };
+// Fresh pinned arguments object. Slots are conditional current-value leaves;
+// count and extra tail belong to this owner's unexposed native invocation.
+// Publication requires an explicit exact factory, not a mutable global helper.
+struct ArgumentSnapshotExpr { FunctionOwnerId owner; ArgumentRange slots; };
 // Fresh creation of an owned child function, not a function value constant.
 // The family must contain and verify that child before publication. No raw
 // method/pool/register ID is an executable operand in this node.
@@ -126,7 +130,8 @@ struct DataProperty { NameId key; ExprId value; TreeOriginId origin; };
 using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, RealmObjectExpr,
     SymbolConstructorExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
-                                    CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr>;
+                                    CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
+                                    ArgumentSnapshotExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct BlockStmt { ScopeId scope; std::uint32_t first_child; std::uint32_t child_count; };
 struct DeclarationStmt { SymbolId symbol; std::optional<ExprId> initializer; };

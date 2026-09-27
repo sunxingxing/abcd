@@ -53,7 +53,11 @@ class AbiBuilder {
       const auto& definition = graph_.values[id->value];
       Require(definition.life == analysis::ValueLife::kLive, Error::kEntry);
       if (const auto* entry = std::get_if<analysis::EntryDefinition>(&definition.origin)) {
-        Require(use.purpose == analysis::ReadPurpose::kOperand, Error::kEntry);
+        const auto* owner = std::get_if<analysis::OpId>(&use.owner);
+        const bool snapshot = use.purpose == analysis::ReadPurpose::kProtocol && owner &&
+            owner->value < graph_.ops.size() && use.role == analysis::OperandRole::kArgument &&
+            std::holds_alternative<analysis::ValueArgumentSnapshot>(graph_.ops[owner->value].operation);
+        Require(use.purpose == analysis::ReadPurpose::kOperand || snapshot, Error::kEntry);
         std::visit([&](const auto& value) { Entry(value); }, *entry);
       }
     }
@@ -144,6 +148,13 @@ class AbiBuilder {
     // its optional slot separately; tree correspondence proves each origin.
     Require(node.owner == tree_.owner, Error::kReceiver);
     Increment(result_.receiver.references);
+  }
+  void Expression(ArgumentSnapshotExpr node) {
+    Require(graph_.arguments && graph_.arguments->frame == frame_ &&
+        node.owner == tree_.owner && tree_.strictness == Strictness::kStrict &&
+        tree_.callable != CallableKind::kArrow && node.slots.count == frame_.parameters &&
+        ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded,
+        Error::kEntry);
   }
   void Expression(const AssignmentExpr& node) {
     if (const auto* target = std::get_if<SymbolTarget>(&node.target)) Symbol(target->symbol, true);

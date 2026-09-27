@@ -114,6 +114,53 @@ fixtures reach this schedule and still fail AST construction explicitly.
 Additional checks remain O(operations + input occurrences), use constant-size
 per-shape/fact storage and share existing pass budgets.
 
+## Owned Source Snapshot Route (Rules 40)
+
+`ArgumentSnapshotExpr` now owns a streamed range of conditional current-slot
+leaves and a `FunctionOwnerId`. The ordinary expression forest, structure/flow/
+operand verifiers, ABI census and printer consume this node. The node requires
+strict source, an owner with its own native `arguments` binding (not an arrow),
+unchanged declared arity, and the V2 resource-exhaustion exclusion. It does not
+introduce a new CFG, source scope, constructor writer or register-text fallback.
+Pure/effectful slot producers remain at their verified schedule positions.
+
+The native arguments object is an unexposed invocation carrier, NOT the returned
+snapshot. Strict source bindings cannot shadow `arguments`; direct eval is not
+introduced. For each declared slot the printer emits the original current-value
+leaf only under `arguments.length > ordinal`. Extra tail values are taken from
+that invocation carrier by the factory, never invented from declared arity.
+This preserves missing arguments versus explicitly supplied undefined, including
+when a parameter slot has since been overwritten. A returned snapshot never
+aliases the carrier or a previous snapshot.
+
+Publication requires caller-supplied `HostArgumentSnapshotBinding` with typed
+`ArgumentSnapshotAbi::kV7CurrentSlots`. This is an embedding-host contract, not an
+ABC-derived fact or a CLI helper-name switch. The immutable lexical factory takes
+the carrier and a dense declared-slot array, returns a fresh pinned-realm arguments
+object with exact indexed/length/iterator/caller/callee descriptors and key order,
+and never mutates, retains or exposes its inputs, invokes user code, or throws
+other than excluded resource exhaustion. Missing/colliding bindings refuse before
+publication; family ancestry checks use the existing scope indexes. Printed
+positions retain the binding name, ABI and source-contract version. Ordinary
+global, realm and Symbol references cannot accidentally resolve to this binding.
+
+File-backed read, slot-write, repeated-snapshot and branch fixtures pass the same
+decode -> semantic/SSA -> value -> evaluation -> AST -> printer pipeline and
+seal method receipts only after emission. Tests execute emitted JS with an
+explicit test-only factory, check actual counts below/equal/above declared arity,
+identity, descriptors, property order and retained iterator identity, and verify
+original snapshot PCs against generated ranges. The fixture uses a zero-formal
+native arguments object with an empty parameter map, removes its configurable
+callee, and installs caller then callee; using a strict native arguments object
+would retain the wrong string-key order. This fixture is not an Ark VM differential
+run or a production host adapter.
+
+Still open: arrow-owned invocation carriers and their ABI/name/constructibility
+proofs; broader method/constructor/async/generator and default/rest combinations;
+host integration in actual applications and multi-application runtime evidence.
+Without the explicit factory the normal CLI continues to refuse snapshots.
+The opcode family and group 1 are not globally complete.
+
 1. **Frame inputs.** Build a compact, validated argument-window plan from the
    actual FrameLayout and callable creation occurrence. Keep actual invocation
    count and extra-argument tail as typed frame inputs, distinct from declared

@@ -238,6 +238,13 @@ class StructureCheck {
       } else if constexpr (std::is_same_v<T, LogicalExpr>) {
         RequireTree(expression.operation == TreeLogical::kAnd || expression.operation == TreeLogical::kOr,
                     Error::kUnsupportedSyntax);
+      } else if constexpr (std::is_same_v<T, ArgumentSnapshotExpr>) {
+        RequireTree(expression.owner == tree_.owner && tree_.strictness == Strictness::kStrict &&
+            tree_.callable != CallableKind::kArrow &&
+            ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kBinding);
+        RequireTree(expression.slots.first <= tree_.arguments.size() &&
+            expression.slots.count <= tree_.arguments.size() - expression.slots.first &&
+            expression.slots.count == tree_.parameters.size(), Error::kRange);
       } else if constexpr (std::is_same_v<T, CallExpr> || std::is_same_v<T, ConstructExpr>) {
         RequireTree(expression.arguments.first <= tree_.arguments.size() &&
             expression.arguments.count <= tree_.arguments.size() - expression.arguments.first, Error::kRange);
@@ -328,6 +335,17 @@ class StructureCheck {
         return NextCall(frame, call->callee, call->arguments);
       if (const auto* construct = std::get_if<ConstructExpr>(&syntax))
         return NextCall(frame, construct->constructor, construct->arguments);
+      if (const auto* snapshot = std::get_if<ArgumentSnapshotExpr>(&syntax)) {
+        if (frame.next_child == snapshot->slots.count) return {};
+        const auto slot = snapshot->slots.first + frame.next_child++;
+        RequireTree(!arguments_[slot], Error::kOwnership); arguments_[slot] = 1;
+        const auto id = tree_.arguments[slot];
+        RequireTree(id.value < tree_.expressions.size(), Error::kRange);
+        const auto& input = tree_.expressions[id.value].expression;
+        RequireTree(std::holds_alternative<SymbolExpr>(input) ||
+            std::holds_alternative<ThisExpr>(input), Error::kUnsupportedSyntax);
+        return id;
+      }
       std::visit([&](const auto& node) {
         using T = std::decay_t<decltype(node)>;
         if constexpr (std::is_same_v<T, MemberExpr>) { add(node.base); key(node.key); }
@@ -342,6 +360,7 @@ class StructureCheck {
                         std::is_same_v<T, GlobalNameExpr> ||
                         std::is_same_v<T, RealmObjectExpr> ||
                         std::is_same_v<T, SymbolConstructorExpr> ||
+                        std::is_same_v<T, ArgumentSnapshotExpr> ||
                         std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
                         std::is_same_v<T, ConstructExpr> || std::is_same_v<T, EmptyArrayExpr> ||
                         std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, FunctionExpr>);

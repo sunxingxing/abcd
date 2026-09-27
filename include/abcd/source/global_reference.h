@@ -22,6 +22,18 @@ struct HostRealmBinding {
 struct HostSymbolBinding {
   std::u16string_view name;
 };
+enum class ArgumentSnapshotAbi : std::uint8_t { kV7CurrentSlots };
+// Immutable lexical factory binding. Called with (unexposed native arguments,
+// dense declared-slot array). For each actual argument it copies the current
+// slot if declared, otherwise the original tail. It returns a fresh v7
+// JSArguments object with exact realm prototype/iterator/thrower descriptors.
+// It must not mutate, retain or expose either input, invoke user code, or throw
+// except resource exhaustion excluded by the source contract. No ABC inference
+// or arbitrary CLI name can certify this embedding-host capability.
+struct HostArgumentSnapshotBinding {
+  std::u16string_view name;
+  ArgumentSnapshotAbi abi;
+};
 struct GlobalScope {
   // Caller-proven complete ASCII outer source bindings, sorted by byte name;
   // non-ASCII names cannot collide with admitted ASCII global references.
@@ -45,6 +57,7 @@ struct GlobalScope {
   std::span<const std::string> import_bindings{};
   std::span<const std::string_view> import_names{};
   const HostSymbolBinding* symbol_binding = nullptr;
+  const HostArgumentSnapshotBinding* argument_snapshot_binding = nullptr;
 };
 
 struct RealmBindingView {
@@ -56,6 +69,7 @@ struct RealmBindingView {
 [[nodiscard]] std::optional<RealmBindingView> ResolveRealmBinding(
     SourceContract contract, const GlobalScope* scope);
 [[nodiscard]] std::optional<std::u16string_view> ResolveSymbolBinding(const GlobalScope* scope);
+[[nodiscard]] std::optional<std::u16string_view> ResolveArgumentSnapshotBinding(const GlobalScope* scope);
 
 [[nodiscard]] std::string_view ImportBinding(const GlobalScope* scope,
                                              std::size_t slot);

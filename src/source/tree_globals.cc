@@ -17,7 +17,8 @@ class GlobalCheck {
     for (const auto& node : tree.expressions) {
       Step(); globals |= std::holds_alternative<GlobalNameExpr>(node.expression) ||
           std::holds_alternative<RealmObjectExpr>(node.expression) ||
-          std::holds_alternative<SymbolConstructorExpr>(node.expression);
+          std::holds_alternative<SymbolConstructorExpr>(node.expression) ||
+          std::holds_alternative<ArgumentSnapshotExpr>(node.expression);
     }
     if (!globals) return Result();
     Require(scope != nullptr, Error::kMissingContext);
@@ -35,7 +36,8 @@ class GlobalCheck {
       const auto* global = std::get_if<GlobalNameExpr>(&node.expression);
       const bool realm = std::holds_alternative<RealmObjectExpr>(node.expression);
       const bool symbol = std::holds_alternative<SymbolConstructorExpr>(node.expression);
-      if (!global && !realm && !symbol) continue;
+      const bool snapshot = std::holds_alternative<ArgumentSnapshotExpr>(node.expression);
+      if (!global && !realm && !symbol && !snapshot) continue;
       std::u16string_view name;
       if (realm) {
         if (scope->realm_binding) Step(scope->realm_binding->name.size());
@@ -47,18 +49,24 @@ class GlobalCheck {
         const auto binding = ResolveSymbolBinding(scope);
         Require(binding.has_value(), Error::kMissingContext);
         name = *binding;
+      } else if (snapshot) {
+        if (scope->argument_snapshot_binding) Step(scope->argument_snapshot_binding->name.size());
+        const auto binding = ResolveArgumentSnapshotBinding(scope);
+        Require(binding.has_value(), Error::kMissingContext);
+        name = *binding;
       } else {
         Require(global->name.value < tree.names.size(), Error::kName);
         name = tree.names[global->name.value];
       }
       Step(name.size());
-      Require(realm || symbol || AllowsGlobalReference(name, {}), Error::kName);
+      Require(realm || symbol || snapshot || AllowsGlobalReference(name, {}), Error::kName);
       Require(!Contains(std::span<const std::u16string_view>{locals}, name) &&
           !Contains(scope->enclosing_bindings, name) && !Contains(scope->import_names, name) &&
           !Contains(scope->parameter_bindings, name) &&
           !Equal(name, scope->class_binding) && !Equal(name, scope->self_binding) &&
           (realm || !scope->realm_binding || !Equal(name, scope->realm_binding->name)) &&
-          (symbol || !scope->symbol_binding || !Equal(name, scope->symbol_binding->name)), Error::kShadowed);
+          (symbol || !scope->symbol_binding || !Equal(name, scope->symbol_binding->name)) &&
+          (snapshot || !scope->argument_snapshot_binding || !Equal(name, scope->argument_snapshot_binding->name)), Error::kShadowed);
     }
     return Result();
   }

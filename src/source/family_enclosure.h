@@ -21,6 +21,7 @@ struct FamilyEnclosure {
   std::size_t module_reads = 0;
   std::size_t realm_reads = 0;
   std::size_t symbol_reads = 0;
+  std::size_t argument_snapshots = 0;
 };
 // Checks actual creation-point lexical ancestry, including block scopes and
 // TDZ bindings, not a union of all parent locals. Original trees remain intact.
