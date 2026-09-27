@@ -126,6 +126,12 @@ struct ValueModuleRead {
   ModuleSlot slot;
   bool operator==(const ValueModuleRead&) const = default;
 };
+// Store to this record's live local module cell. The stored-value operand is
+// explicit; no accumulator result or permission to emit a declaration follows.
+struct ValueModuleWrite {
+  ModuleSlot slot;
+  bool operator==(const ValueModuleWrite&) const = default;
+};
 struct ValueArrayAllocation { bool operator==(const ValueArrayAllocation&) const = default; };
 struct ValueObjectAllocation {
   // Absent means CREATEEMPTYOBJECT, present is the original regional literal
@@ -181,7 +187,8 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
     ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValuePropertyRead, ValueBranch, ValueJump,
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation,
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueLexicalLoad, ValueLexicalStore,
-    ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead>;
+    ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
+    ValueModuleWrite>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

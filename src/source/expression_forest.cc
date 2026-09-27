@@ -466,6 +466,7 @@ class ForestBuilder {
       else {
         static_assert(std::is_same_v<T, analysis::ValueGuard> ||
                       std::is_same_v<T, analysis::ValueModuleRead> ||
+                      std::is_same_v<T, analysis::ValueModuleWrite> ||
                       std::is_same_v<T, analysis::ValueOwnWrite> ||
                       std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                       std::is_same_v<T, analysis::ValueCurrentEnvironment> ||

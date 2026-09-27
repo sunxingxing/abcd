@@ -1,4 +1,5 @@
 #include "abcd/analysis/value_import.h"
+#include "abcd/analysis/value_simplify.h"
 #include "../../../src/analysis/value_edits.h"
 
 #include "analysis/ssa_fixture.h"
@@ -125,6 +126,65 @@ int main() {
     test::Check(VerifyImportedValues(changed, input, proof, frame)->kind == ValueImportError::kInputMismatch);
     changed = value; --std::get<ValueModuleRead>(changed.ops[0].operation).slot.value;
     test::Check(VerifyImportedValues(changed, input, proof, frame)->kind == ValueImportError::kInputMismatch);
+  }
+  for (const bool wide : {false, true}) {
+    // STMODULEVAR preserves the accumulator; even an unused stored value is
+    // an observable live-cell update, not a removable register assignment.
+    constexpr std::uint8_t kWidePrefix = 0xfd, kSlotByte = 0xff;
+    constexpr std::uint32_t kStoreIndex = 1, kReturnIndex = 2;
+    constexpr abc::CodeOffset kStorePc{1};
+    const auto opcode = wide ? abc::Opcode::kWIDE_STMODULEVAR_PREF_IMM16 :
+        abc::Opcode::kSTMODULEVAR_IMM8;
+    std::vector<std::uint8_t> bytes{
+        static_cast<std::uint8_t>(abc::Opcode::kLDUNDEFINED)};
+    if (wide) bytes.insert(bytes.end(), {kWidePrefix,
+        static_cast<std::uint8_t>(static_cast<std::uint16_t>(opcode) >> 8),
+        kSlotByte, kSlotByte});
+    else bytes.insert(bytes.end(), {static_cast<std::uint8_t>(opcode), kSlotByte});
+    bytes.push_back(returned);
+    const auto body = test::Body(bytes);
+    const auto input = std::get<SemanticMethod>(BuildSemanticMethod(
+        body, abc::ProfileId::kDynamic1206, frame.registers));
+    const auto proof = std::get<SemanticProof>(VerifySemanticSource(
+        body, input, frame.registers, frame.locals));
+    const auto value = std::get<ValueProgram>(ImportNormalValues(body, input, proof, frame));
+    test::Check(!VerifyImportedValues(value, input, proof, frame));
+    const auto& store = value.ops[kStoreIndex];
+    const auto slot = std::get<ValueModuleWrite>(store.operation).slot;
+    test::Check(slot.value == (wide ? UINT16_MAX : UINT8_MAX));
+    test::Check(!store.result && store.use_count == 1);
+    test::Check(value.origins[store.origin.value].pc == kStorePc);
+    test::Check(store.normal == LanguageEffect::kModuleWrite &&
+        store.before_throw == LanguageEffect::kModuleWrite &&
+        store.exceptional == ExceptionalCompletion::kMayThrow);
+    const auto& stored = value.uses[store.first_use.value];
+    test::Check(stored.role == OperandRole::kStoredValue);
+    test::Check(stored.operand == value.uses[value.ops[kReturnIndex].first_use.value].operand);
+    auto stripped = store;
+    stripped.normal = stripped.before_throw = LanguageEffect::kNone;
+    stripped.exceptional = ExceptionalCompletion::kImpossible;
+    test::Check(!CanErasePureOp(stripped));
+    auto changed = value;
+    --std::get<ValueModuleWrite>(changed.ops[kStoreIndex].operation).slot.value;
+    test::Check(VerifyImportedValues(changed, input, proof, frame)->kind ==
+        ValueImportError::kInputMismatch);
+    changed = value;
+    changed.uses[store.first_use.value].role = OperandRole::kInput;
+    test::Check(VerifyImportedValues(changed, input, proof, frame)->kind ==
+        ValueImportError::kOperandMismatch);
+    changed = value;
+    changed.ops[kStoreIndex].before_throw = LanguageEffect::kNone;
+    test::Check(VerifyImportedValues(changed, input, proof, frame).has_value());
+    changed = value;
+    test::Check(std::holds_alternative<ValueSimplifyStats>(
+        SimplifyValues(changed, changed.revision)));
+    const auto& retained = changed.ops[kStoreIndex];
+    test::Check(retained.life == ValueLife::kLive && retained.operation == store.operation);
+    test::Check(retained.origin == store.origin && retained.normal == store.normal &&
+        retained.before_throw == store.before_throw && retained.exceptional == store.exceptional);
+    test::Check(changed.uses[retained.first_use.value].operand ==
+        changed.uses[changed.ops[kReturnIndex].first_use.value].operand);
+    test::Check(!VerifyValueUses(changed, changed.uses.size()));
   }
   for (const bool array : {false, true}) {
     const auto allocation = array ? test::Body({

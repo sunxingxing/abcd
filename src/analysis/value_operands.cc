@@ -63,6 +63,8 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, LexicalStore>) {
       Append(plan, OperandRole::kStoredValue, SlotValue(op.value));
+    } else if constexpr (std::is_same_v<T, ModuleStore>) {
+      Append(plan, OperandRole::kStoredValue, Accumulator{});
     } else if constexpr (std::is_same_v<T, PopEnvironment>) {
       // The implicit environment changes; the accumulator does not.
     } else if constexpr (std::is_same_v<T, FunctionCreation>) {
