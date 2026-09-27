@@ -6,6 +6,7 @@
 
 #include "abcd/abc/metadata_index.h"
 #include "abcd/analysis/class_method_sites.h"
+#include "abcd/analysis/value_environment.h"
 #include "abcd/corpus/abc_file.h"
 #include "abcd/source/module_enclosure.h"
 #include "abcd/source/function_emission.h"
@@ -81,6 +82,18 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
     return file.CheckUnchanged() ? 1 : 0;
   }
   report["phase_body_ready"] = true;
+  // Independent topology probe on the actual parent IR. This is not an
+  // initialization/capture certificate or permission for child publication.
+  {
+    const auto environments = analysis::BuildPhasedValueEnvironments(
+        std::get<PhasedBody>(staged).Graph(), budget);
+    if (const auto* ready = std::get_if<analysis::ValueEnvironments>(&environments)) {
+      report["phase_environments_ready"] = true;
+      report["environment_allocations"] = ready->flow.allocations.size();
+      report["lexical_bindings"] = ready->flow.bindings.size();
+    } else report["environment_error"] = static_cast<unsigned>(
+        std::get<analysis::ValueEnvironmentError>(environments));
+  }
   report["creations"] = nlohmann::json::array();
   auto creation_sites = analysis::FunctionCreationSites::Build(file, header, index, lookup);
   const auto* occurrences = std::get_if<analysis::FunctionCreationSites>(&creation_sites);

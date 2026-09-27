@@ -14,6 +14,9 @@ struct ValueEnvironments {
   EnvironmentFlow flow;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  // Present only for phased graphs: entry state of every work block, including
+  // empty Commit/Catch blocks. Operation views above retain OpId coordinates.
+  std::vector<std::optional<EnvironmentRef>> phase_entries;
 };
 enum class ValueEnvironmentError : std::uint8_t {
   kRevision, kFlow, kOrigin, kState, kAllocation, kBinding, kResourceLimit, kWorkLimit
@@ -26,6 +29,14 @@ enum class ValueEnvironmentError : std::uint8_t {
 // Checks the supplied state transitions, edge joins, allocation sites and exact
 // lexical bindings against fresh flow. Does not rerun the environment planner.
 [[nodiscard]] std::variant<std::uint64_t, ValueEnvironmentError> VerifyValueEnvironments(
+    const ValueProgram& graph, const ValueEnvironments& environments, SemanticBudget budget = {});
+// Phased counterpart: successful Commit changes the environment chain; Before
+// binds lexical accesses and propagates the old chain on exceptional exits.
+// Requires independently proved input/effect correspondence. Like the normal
+// planner, this proves topology only, never initialization or capture permission.
+[[nodiscard]] std::variant<ValueEnvironments, ValueEnvironmentError> BuildPhasedValueEnvironments(
+    const ValueProgram& graph, SemanticBudget budget = {});
+[[nodiscard]] std::variant<std::uint64_t, ValueEnvironmentError> VerifyPhasedValueEnvironments(
     const ValueProgram& graph, const ValueEnvironments& environments, SemanticBudget budget = {});
 }  // namespace abcd::analysis
 #endif

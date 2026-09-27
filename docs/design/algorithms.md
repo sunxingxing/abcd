@@ -48,6 +48,13 @@
 
 ## 数据布局与测量
 
+工作 IR 的异常环境分析复用 `AnalyzeEnvironmentSites` 有界工作队列及固定
+32 位深度祖先索引。额外相位适配、OpId 投影与独立状态检查为
+O(B+E+I+L*d)，空间 O(B+I+A*d)，其中 L 为词法访问/出栈数、A 为分配点数、
+d 为 uint32 深度域位数；另计既有 fresh flow/支配验证成本。不为每个变量或
+创建点重新遍历图，不丢弃异常边。复用本项目实现，无新增依赖/许可负担；
+200/201/402 用例只验证正确性及工作预算，不声称延迟/RSS 测量通过。
+
 异常创建归属沿用原 `BindCreation` 区域池查询与 `CreationTreeContext` 解析，
 只增加 O(I) 的 typed creation census 和 O(C log S) 的创建位置索引查询；
 C 为活跃创建数、S 为已建创建位置索引大小。结果空间为 O(C+N)，N 为 context

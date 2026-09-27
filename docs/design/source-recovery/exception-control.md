@@ -576,3 +576,28 @@ adapter also tests identity and exact/insufficient work and memory allowances.
 Pinned real edges are 8257@95 -> 7810, 8257@118 -> 8118 and 8404@52 -> 7978.
 Their parent evaluations remain refused until the capture/family bridge closes
 the actual child obligations; target resolution alone is not decompilation.
+
+### Working Environment Topology
+
+`BuildPhasedValueEnvironments` and its independent verifier share the normal
+environment representation and ancestry solver. The operation-indexed views
+remain indexed by `OpId`; a separate `phase_entries` table includes empty
+Commit/Catch blocks. Lexical accesses bind at Before. NEWLEXENV/POPLEXENV change
+the chain at successful Commit only, so allocation failure propagates the old
+environment to catch. Explicit throw's unreachable Commit has no entry state.
+
+The temporary ancestry adapter preserves every edge and treats exception edges
+as ordinary connectivity only for that solver. It never changes the value CFG,
+handler identity, effects, SSA or source control. Fresh phased-flow validation
+precedes both construction and verification. The verifier checks entry states,
+all joins, allocation identities, operation views and exact lexical bindings;
+it does not rerun the environment planner. Ordinary APIs still reject phased
+graphs. No normal-flow initialization or capture certificate is reused here.
+
+This is a prerequisite for the parent-cell/child-capture bridge, not yet connected
+to its publication gate. `CellPlan` still requires its normal proof. No new
+function family becomes executable from topology alone. Tests cover profiles
+1202/1206/1301, allocation failure versus successful commit, explicit throw,
+forged states/bindings/allocations, exact and insufficient budgets, and
+200/201/402 independent environment groups. These are correctness cases, not
+RSS or timing measurements; loop/finally/coroutine composition remains pending.
