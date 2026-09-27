@@ -48,6 +48,8 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   `FunctionAbiError::kLength`（原先统称 kParameter）：实际创建 length=0，当前源码
   length=1。参数先存入词法 cell 再执行 null 默认分支，现有纯 SSA 默认值迁移不能
   直接套用。实施约束见 [函数族默认参数迁移](family-defaults.md)，四成员 AST 尚未成功。
+- 已接入入口 cell 默认值候选发现，7449 报告 `cell_default_candidates=1`。
+  候选不是证明，原 `kLength` gate 保留；尚未执行默认分支删除或源码签名迁移。
 
 ## 设计对照审查
 

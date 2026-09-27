@@ -16,6 +16,10 @@ GDB 确认当前失败是 `BuildFunctionAbi` 的 length 一致性检查：期望
 它现被分类为 `FunctionAbiError::kLength`，不再混同参数写入、身份或数量错误。
 不通过合成 `= undefined`、rest 包装、修改 length 或跳过 ABI 检查掩盖此缺口。
 
+当前实现：`FindCellDefaults` 使用已验证 CellPlan 和 ParameterPlan，沿入口默认
+分支链发现类型化候选；已接入 `BuildFileFamilyTrees`。真实 7449 报告一个候选。
+这只完成发现阶段；独立外泄/效果证明、residual 投影、全族重绑定与签名生成仍未实现。
+
 ## 实施顺序
 
 1. 在默认值证据中区分 SSA 合流与词法 cell 初始化目标，使用 variant 与强 ID。

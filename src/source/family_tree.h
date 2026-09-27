@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_FAMILY_TREE_H_
 
 #include "family_file.h"
+#include "cell_defaults.h"
 #include "function_abi.h"
 #include "function_tree.h"
 #include "module_aliases.h"
@@ -15,7 +16,10 @@ struct FamilyTreeFailure {
   FamilyId member;
   std::variant<FamilyTreeError, SyntaxResolutionFailure, ControlError,
       EvaluationError, FunctionTreeError, TreeFlowError, FunctionAbiError,
-      ModuleAliasFailure, ModuleAliasTreeError, FamilyError> cause;
+      ModuleAliasFailure, ModuleAliasTreeError, FamilyError,
+      ParameterPlanError, CellDefaultError> cause;
+  // Discovery evidence only; no source initializer or erasure is authorized.
+  std::optional<std::size_t> cell_default_candidates;
 };
 // Consumes a fresh, unchanged ReadFunctionFamily result and actual root context.
 // Parent-first shared construction checks each incoming capture against the

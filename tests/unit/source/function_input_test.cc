@@ -5,6 +5,7 @@
 #include "../../../src/source/capture_aliases.h"
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/function_family.h"
+#include "../../../src/source/cell_defaults.h"
 #include "../../../src/source/tree_semantics.h"
 #include "abcd/source/value_stage.h"
 #include "analysis/ssa_fixture.h"
@@ -361,6 +362,35 @@ void DistinctCells(std::uint8_t count) {
     test::Check(binding.binding.captures[i] == CellId{i});
   }
 }
+void CellDefaultDiscovery() {
+  constexpr std::uint8_t kSave = 0x61, kUndefined = 0x00, kNull = 0x01,
+      kStrictEqual = 0x28, kJumpIfFalse = 0x4f, kJoinDistance = 5;
+  const auto body = test::Body({kPush, 1, kLoad, 1, kStoreCell, 0,
+      kReadCell, 0, kSave, 0, kUndefined, kStrictEqual, 0, 0,
+      kJumpIfFalse, kJoinDistance, kNull, kStoreCell, 0, kReadCell, 0, kReturn});
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 1, {false, false, false, false}));
+  const auto input = std::get<FunctionInput>(FunctionInput::Build(Identity(), kParent, kRecord,
+      body, frame, InputCaptureMode::kConditional));
+  const auto values = std::get<FunctionValues>(BuildFunctionValues(input, body, frame));
+  const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(values.graph, 1));
+  const auto found = std::get<CellDefaults>(FindCellDefaults(values.graph, *values.cells, parameters, 0));
+  test::Check(found.candidates.size() == 1);
+  const auto& candidate = found.candidates[0];
+  test::Check(candidate.parameter == 0 && candidate.entry == parameters.formals[0].entry &&
+      std::get<SpecialValue>(candidate.fallback) == SpecialValue::kNull);
+  test::Check(values.cells->operations[candidate.initial_store.value] == candidate.cell &&
+      values.cells->operations[candidate.fallback_store.value] == candidate.cell);
+  test::Check(std::get<CellDefaults>(FindCellDefaults(values.graph, *values.cells, parameters, 1)).candidates.empty());
+  auto stale = parameters; ++stale.revision.value;
+  test::Check(std::get<CellDefaultError>(FindCellDefaults(values.graph, *values.cells, stale, 0)) == CellDefaultError::kRevision);
+  SemanticBudget budget; budget.bytes = 0;
+  test::Check(std::get<CellDefaultError>(FindCellDefaults(values.graph, *values.cells, parameters, 0, budget)) == CellDefaultError::kResourceLimit);
+  budget = {}; budget.work = found.work - 1;
+  test::Check(std::get<CellDefaultError>(FindCellDefaults(values.graph, *values.cells, parameters, 0, budget)) == CellDefaultError::kWorkLimit);
+  auto changed = values.graph;
+  std::get<ValueBinary>(changed.ops[candidate.comparison.value].operation).op = BinaryOperator::kStrictNotEqual;
+  test::Check(std::get<CellDefaults>(FindCellDefaults(changed, *values.cells, parameters, 0)).candidates.empty());
+}
 void CreationEvaluation(bool pop) {
   std::vector<std::uint8_t> code{kPush, 1, kFunction, 0, 0, 0, 0};
   if (pop) code.push_back(kPop);
@@ -398,4 +428,5 @@ int main() {
   ForwardingAndChildren();
   ClosedAdmission();
   CreationEvaluation(false); CreationEvaluation(true);
+  CellDefaultDiscovery();
 }

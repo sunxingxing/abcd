@@ -20,6 +20,7 @@ class FamilyTrees {
     Reserve(trees, family.members.size());
     for (std::size_t i = 0; i < family.members.size(); ++i) {
       member_ = {static_cast<std::uint32_t>(i)};
+      default_candidates_.reset();
       Step(1);
       auto& member = family.members[i];
       std::optional<FunctionContext> child_context;
@@ -32,6 +33,17 @@ class FamilyTrees {
       const auto& graph = function.values.graph;
       Require(context.Identity() == function.input.Identity() &&
           context.Target() == function.input.Method(), FamilyTreeError::kContext);
+      if (context.Length() < context.Frame().parameters && function.values.cells) {
+        auto parameters = Take<ParameterPlan, ParameterPlanError>(BuildParameterPlan(
+            graph, context.Frame().parameters, left_));
+        Account(parameters);
+        auto defaults = Take<CellDefaults, CellDefaultError>(FindCellDefaults(
+            graph, *function.values.cells, parameters, context.Length(), left_));
+        Account(defaults);
+        default_candidates_ = defaults.candidates.size();
+        // Keep the ordinary tree/ABI gate intact until independent cell escape
+        // proof, residual projection and whole-family rebinding are connected.
+      }
       auto syntax = Take<ResolvedSyntax, SyntaxResolutionFailure>(ResolveFunctionSyntax(
           file_, header_, index_, context, function.body, graph, {member_.value}, left_));
       Account(syntax);
@@ -89,7 +101,9 @@ class FamilyTrees {
     return result;
   }
  private:
-  template<class T> [[noreturn]] void Fail(T error) const { throw FamilyTreeFailure{member_, std::move(error)}; }
+  template<class T> [[noreturn]] void Fail(T error) const {
+    throw FamilyTreeFailure{member_, std::move(error), default_candidates_};
+  }
   void Require(bool ok, FamilyTreeError error) const { if (!ok) Fail(error); }
   void Step(std::uint64_t work) {
     Require(work <= left_.work, FamilyTreeError::kWorkLimit); left_.work -= work;
@@ -112,6 +126,7 @@ class FamilyTrees {
   const RecordModuleContext* modules_;
   ModuleOwnerId module_owner_;
   FamilyId member_{0};
+  std::optional<std::size_t> default_candidates_;
 };
 }  // namespace
 std::variant<ConstructedFamily, FamilyTreeFailure> BuildFileFamilyTrees(

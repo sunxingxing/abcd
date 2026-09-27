@@ -11,6 +11,19 @@ observations, not an up-to-date capability summary.
 
 ### File-Backed Conditional Function Families
 
+Added typed CellDefault discovery using shared CellPlan and ParameterPlan. It
+indexes block predecessors/terminal operations once, follows only the entry
+default chain, binds the initial parameter store/test load/fallback store to
+one allocated cell, and stops on the first nonmatch. Work is linear in indexed
+operations/edges/formals; no repeated graph walk per parameter. Incoming cells
+and arbitrary body conditionals are not treated as formal defaults. Discovery
+does NOT certify header effects/escapes or authorize graph/signature changes.
+BuildFileFamilyTrees now invokes this stage for cell-bearing length mismatches.
+Production abc_semantic/abc_structure builds exited 0. Actual 7449 reports one
+candidate while still refusing kLength, source_complete=false/executable=false.
+Added decoded-bytecode candidate, opposite-polarity, stale-revision and budget
+test specifications are uncompiled/unrun. Tests and RSS remain paused.
+
 The 7449 ABI refusal is now precisely classified as FunctionAbiError::kLength.
 ABC-only/GDB evidence gives encoded length 0 versus current source length 1;
 the actual prologue stores its parameter into a lexical cell before the null
