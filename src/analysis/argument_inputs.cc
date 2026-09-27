@@ -3,6 +3,21 @@
 #include <bit>
 
 namespace abcd::analysis {
+bool MatchesArgumentSnapshot(const SemanticInstruction& instruction,
+                             const ArgumentWindow& window) {
+  const auto* snapshot = std::get_if<ArgumentSnapshot>(&instruction.operation);
+  const auto& effect = instruction.effects;
+  const auto& registers = effect.normal_registers;
+  constexpr auto kEffects = LanguageEffect::kArgumentsRead | LanguageEffect::kAllocation;
+  return snapshot && snapshot->window.First() == window.First() &&
+      snapshot->window.Count() == window.Count() && registers.read_count == 0 &&
+      registers.range && registers.range->first == window.First() &&
+      registers.range->count == window.Count() && registers.write &&
+      std::holds_alternative<Accumulator>(*registers.write) &&
+      effect.normal == kEffects && effect.before_throw == kEffects &&
+      effect.exceptional == ExceptionalCompletion::kMayThrow;
+}
+
 std::variant<ArgumentInputCheck, SemanticProofFailure> VerifyArgumentInputs(
     const abc::MethodBody& body, const SemanticMethod& method,
     std::uint64_t frame_size, std::uint32_t first_abi_register,
@@ -40,17 +55,8 @@ std::variant<ArgumentInputCheck, SemanticProofFailure> VerifyArgumentInputs(
       window = *valid;
       checked.fact = *arguments;
     }
-    const auto& effect = instruction.effects;
-    const auto& registers = effect.normal_registers;
-    constexpr auto kEffects = LanguageEffect::kArgumentsRead | LanguageEffect::kAllocation;
     if (site.decoded.operand_count != 0 || instruction.pc != site.offset ||
-        snapshot->window.First() != window->First() ||
-        snapshot->window.Count() != window->Count() || registers.read_count != 0 ||
-        !registers.range || registers.range->first != window->First() ||
-        registers.range->count != window->Count() || !registers.write ||
-        !std::holds_alternative<Accumulator>(*registers.write) ||
-        effect.normal != kEffects || effect.before_throw != kEffects ||
-        effect.exceptional != ExceptionalCompletion::kMayThrow)
+        !MatchesArgumentSnapshot(instruction, *window))
       return fail(Error::kSsaMismatch);
     const InstructionId id{static_cast<std::uint32_t>(i)};
     while (cursor < reads.size() && reads[cursor].instruction < id) {

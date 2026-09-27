@@ -55,7 +55,7 @@ auto BuildException(
       work_left -= units;
     };
     auto built = BuildExceptionFlow(body, constants.header.profile, frame.registers,
-        {remaining, budget.work}, constants.awaits);
+        {remaining, budget.work}, constants.awaits, &frame);
     auto* flow = std::get_if<ExceptionFlow>(&built);
     if (!flow) {
       if (const auto* error = std::get_if<SemanticFailure>(&built)) return *error;

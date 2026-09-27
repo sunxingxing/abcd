@@ -30,6 +30,9 @@ struct ExceptionFlow {
   std::size_t allocated_bytes = 0;
   // Charged lifting/connection work; upstream byte-bounded validation excluded.
   std::uint64_t work_units = 0;
+  // Layout supplied for implicit reads; snapshot lifting validates it.
+  // Retaining it does not establish invocation ownership.
+  std::optional<abc::FrameLayout> frame;
 };
 using ExceptionFlowResult = std::variant<ExceptionFlow, SemanticFailure,
                                          FlowFailure, DispatchFailure>;
@@ -56,9 +59,13 @@ struct ExceptionFlowBudget {
 // O(I+H+R) memory. bytes includes simultaneous scratch, excludes input body.
 // graph_work bounds lifting/connection passes and lookup comparisons, not the
 // byte-bounded upstream normal-flow/dispatch construction listed above.
+// Optional frame is borrowed during construction and copied into the result.
+// It enables the same implicit argument reads as normal lifting, but supplies
+// no count/tail ownership premise to subsequent source-input verification.
 [[nodiscard]] ExceptionFlowResult BuildExceptionFlow(
     const abc::MethodBody& body, abc::ProfileId profile,
     std::uint64_t frame_size, ExceptionFlowBudget budget = {},
-    std::span<const AwaitSite> awaits = {});
+    std::span<const AwaitSite> awaits = {},
+    const abc::FrameLayout* frame = nullptr);
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_EXCEPTION_FLOW_H_

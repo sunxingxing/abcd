@@ -65,6 +65,25 @@ modern encoding assumptions. The typed decoder is not a protocol owner proof.
 
 ## Remaining Integration
 
+Argument snapshots now compose with this phase graph: BuildExceptionFlow takes
+the same optional FrameLayout as normal lifting and retains a value copy.
+VerifyExceptionInputs requires an explicit ArgumentFrameFact matching it, even
+for zero formals, and retains the accepted fact in its result. It checks the
+same typed snapshot effects/window as the normal path, the Before SSA read
+ordinals/slots, the matching normal Commit definition and Language categories.
+The lower-level fact is a caller-certified premise, not permission inferred
+from layout equality. A future file/source owner must supply and recheck the
+actual creation identity before publication. Existing source callers do not
+invent that premise; they continue to refuse snapshots in exception bodies.
+
+This adds O(N+U+S log V) checked work and O(1) extra verification storage (phase
+nodes, reads, snapshots, SSA values). Tests include 0/1/200/201/402 formals,
+normal snapshot versus Catch accumulator definitions, phase-coordinate facade
+behavior, missing/wrong frame owners, internal slot values and exact work
+boundaries. A lexical-prelude fixture checks that successful pop restores the
+outer environment while snapshot failure reaches Catch in the inner one.
+No exception AST or executable async receipt follows from these input proofs.
+
 1. Follow T09 with a phase-indexed value import: preserve Before, Commit, Catch,
    exceptional edges, original instruction identities and handler priority.
    Do not index catch definitions as normal instruction results or reuse normal

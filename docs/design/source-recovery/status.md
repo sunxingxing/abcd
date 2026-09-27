@@ -42,6 +42,21 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 已补齐异常图中的 GETUNMAPPEDARGS 帧衔接：BuildExceptionFlow 接收并保留布局，
+  复用普通语义提升的隐式参数窗口；异常源码调用方传入真实 FrameLayout，但不
+  自动伪造调用归属。VerifyExceptionInputs 可接收显式 ArgumentFrameFact 并在
+  成功结果中保留，验证窗口/效果、Before 读取顺序与槽、对应 Commit 的正常结果；
+  缺失事实（包括零参数）或事实与布局不符拒绝，内部值不能借事实变成 JS 值。
+  正常与异常路径复用同一快照效果检查，O(N+U+S log V) 工作、O(1) 额外验证存储。
+  新增 0/1/200/201/402 参数、正常结果与 Catch 异常值分离、InstructionSsa 不把
+  Catch 映射为普通指令定义、词法环境成功 pop／异常保留、畸形布局与效果、错误
+  Commit、内部槽值和精确 work 边界测试。新正例先在原异常提升处失败。
+  8/8 定向回归通过：exception_arguments、argument_snapshot、async_semantics、
+  function_input、creation_tree_context、class_tree_context、source_route、
+  argument_snapshot_source（原 51 组源码执行）；相关构建与 abc_semantic 成功。
+  未运行全语料、RSS、基准或 Ark VM 差分。源码规则仍为 43；这不是异常 AST、
+  完整 async 或 group 1 完成。下一步仍为 T09 相位化值 IR 导入，再接统一异常 AST；
+  真实创建 owner 必须在源码边界独立闭合，不能把布局匹配当作 owner 身份证明。
 - 用户已明确同意恢复后的源码文字不同，同时要求执行行为、作用域、参数、返回值
   和副作用保持正确。本轮落实 [源码契约 V3](../source-contract-v3.md)，只增加文字
   差异许可，不改变 V2 的其他前提，不豁免 ABI、捕获、异常、宿主快照工厂或求值

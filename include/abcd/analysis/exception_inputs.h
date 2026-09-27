@@ -6,7 +6,7 @@
 
 namespace abcd::analysis {
 enum class ExceptionInputError : std::uint8_t {
-  kMismatchedAnalysis, kInternalValue, kResourceLimit
+  kMismatchedAnalysis, kInternalValue, kResourceLimit, kArgumentOwner
 };
 struct ExceptionInputFailure {
   ExceptionInputError kind;
@@ -17,6 +17,7 @@ struct ExceptionInputFailure {
 struct ExceptionInputProof {
   std::uint64_t reads = 0;
   std::uint64_t work_units = 0;
+  std::optional<ArgumentFrameFact> arguments;
 };
 
 // Requires analyses of the same unchanged phased flow. Checks every reachable
@@ -26,11 +27,15 @@ struct ExceptionInputProof {
 // This is conditional on the value solver's owner premises. It does not
 // discharge capture/module bindings, prove host semantics or permit code motion.
 // Source publication still needs typed regions, AST validation and owner proof.
-// O(N+U) time for phase nodes and actual SSA reads, O(1) additional storage.
+// Snapshot inputs additionally need an owner-certified invocation fact matching
+// the retained layout, including zero declared slots. The fact is a premise,
+// not inferred from that layout; callers must retain their callable identity.
+// O(N+U+S log V) for nodes, reads, snapshots and SSA values; O(1) storage.
 [[nodiscard]] std::variant<ExceptionInputProof, ExceptionInputFailure>
 VerifyExceptionInputs(const ExceptionFlow& flow, const ExceptionSsa& ssa,
                       const EnvironmentFlow& environments,
                       const ExceptionValueFlow& values,
-                      std::uint64_t work = kDefaultSemanticWork);
+                      std::uint64_t work = kDefaultSemanticWork,
+                      const ArgumentFrameFact* arguments = nullptr);
 }  // namespace abcd::analysis
 #endif

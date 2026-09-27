@@ -8,6 +8,10 @@ struct ArgumentInputCheck {
   std::optional<ArgumentFrameFact> fact;
   std::uint64_t work = 0;
 };
+// Shared normal/phased typed contract. Does not establish frame provenance,
+// original encoding, SSA occurrence correspondence or Language input domains.
+[[nodiscard]] bool MatchesArgumentSnapshot(
+    const SemanticInstruction& instruction, const ArgumentWindow& window);
 // Immutable same-body SSA required. Rechecks original opcode, frame, effects
 // and read/write correspondence; value domains remain the verifier's job.
 // No allocation. O(I + R + S log V), with one monotone read cursor; S snapshots

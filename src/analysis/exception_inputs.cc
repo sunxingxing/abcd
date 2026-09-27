@@ -1,10 +1,14 @@
 #include "abcd/analysis/exception_inputs.h"
 
+#include <bit>
+
+#include "argument_inputs.h"
+
 namespace abcd::analysis {
 std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
     const ExceptionFlow& flow, const ExceptionSsa& ssa,
     const EnvironmentFlow& environments, const ExceptionValueFlow& values,
-    std::uint64_t work) {
+    std::uint64_t work, const ArgumentFrameFact* arguments) {
   using Error = ExceptionInputError;
   const auto fail = [](Error kind, abc::CodeOffset pc = {},
                        std::optional<ExceptionNodeId> node = {},
@@ -17,10 +21,11 @@ std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
     return fail(Error::kMismatchedAnalysis);
   ExceptionInputProof proof;
   const auto reads = ssa.AllReads();
+  std::optional<ArgumentWindow> window;
   std::size_t cursor = 0;
-  const auto charge = [&] {
-    if (proof.work_units == work) return false;
-    ++proof.work_units;
+  const auto charge = [&](std::uint64_t units = 1) {
+    if (units > work - proof.work_units) return false;
+    proof.work_units += units;
     return true;
   };
   for (std::size_t i = 0; i < flow.nodes.size(); ++i) {
@@ -29,9 +34,51 @@ std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
     const auto& node = flow.nodes[i];
     if (node.instruction.value >= flow.instructions.size())
       return fail(Error::kMismatchedAnalysis, {}, id);
-    const auto pc = flow.instructions[node.instruction.value].pc;
+    const auto& instruction = flow.instructions[node.instruction.value];
+    const auto pc = instruction.pc;
+    const bool snapshot = node.phase == ExceptionPhase::kBefore &&
+        environments.before[i] &&
+        std::holds_alternative<ArgumentSnapshot>(instruction.operation);
+    if (snapshot) {
+      // The count/tail are implicit invocation inputs even when no declared
+      // register is read. Never infer ownership from an empty SSA read list.
+      if (!arguments || !flow.frame || arguments->frame != *flow.frame)
+        return fail(Error::kArgumentOwner, pc, id);
+      if (!window) {
+        const auto built = ArgumentWindow::Build(arguments->frame);
+        const auto* valid = std::get_if<ArgumentWindow>(&built);
+        if (!valid) return fail(Error::kArgumentOwner, pc, id);
+        window = *valid;
+        proof.arguments = *arguments;
+      }
+      if (!MatchesArgumentSnapshot(instruction, *window) ||
+          node.successor_count > node.successors.size())
+        return fail(Error::kMismatchedAnalysis, pc, id);
+      std::optional<ExceptionNodeId> commit;
+      for (const auto& edge : std::span(node.successors).first(node.successor_count)) {
+        if (!charge()) return fail(Error::kResourceLimit, pc, id);
+        if (edge.kind != ExceptionArcKind::kNormal) continue;
+        if (commit || edge.target.value >= flow.nodes.size())
+          return fail(Error::kMismatchedAnalysis, pc, id);
+        commit = edge.target;
+      }
+      if (!commit || flow.nodes[commit->value].phase != ExceptionPhase::kCommit ||
+          flow.nodes[commit->value].instruction != node.instruction)
+        return fail(Error::kMismatchedAnalysis, pc, id);
+      if (!charge(std::bit_width(ssa.Values().size()) + 1))
+        return fail(Error::kResourceLimit, pc, id);
+      const auto result = ssa.Write(*commit);
+      if (!result || result->value >= ssa.Values().size())
+        return fail(Error::kMismatchedAnalysis, pc, id);
+      const auto& value = ssa.Values()[result->value];
+      const auto* origin = std::get_if<InstructionValue>(&value.origin);
+      if (!std::holds_alternative<Accumulator>(value.slot) || !origin ||
+          origin->instruction.value != commit->value)
+        return fail(Error::kMismatchedAnalysis, pc, id);
+    }
     if (cursor < reads.size() && reads[cursor].instruction.value < i)
       return fail(Error::kMismatchedAnalysis, pc, id);
+    std::uint32_t ordinal = 0;
     while (cursor < reads.size() && reads[cursor].instruction.value == i) {
       if (!charge()) return fail(Error::kResourceLimit, pc, id);
       const auto& read = reads[cursor++];
@@ -39,10 +86,19 @@ std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
         return fail(Error::kMismatchedAnalysis, pc, id, read.value);
       if (read.value.value >= values.Facts().size())
         return fail(Error::kMismatchedAnalysis, pc, id, read.value);
+      if (snapshot) {
+        const auto slot = window->At(ordinal);
+        const auto* reg = std::get_if<abc::RegisterId>(&ssa.Values()[read.value.value].slot);
+        if (!slot || read.ordinal != ordinal || !reg || *reg != *slot)
+          return fail(Error::kMismatchedAnalysis, pc, id, read.value);
+        ++ordinal;
+      }
       if (!values.Facts()[read.value.value].IsLanguage())
         return fail(Error::kInternalValue, pc, id, read.value);
       ++proof.reads;
     }
+    if (snapshot && ordinal != window->Count())
+      return fail(Error::kMismatchedAnalysis, pc, id);
   }
   if (cursor != reads.size()) return fail(Error::kMismatchedAnalysis);
   return proof;
