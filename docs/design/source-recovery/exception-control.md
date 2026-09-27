@@ -517,3 +517,31 @@ logs and all 330 operation placements. This selected-method test uses explicit
 independent graph/tree proofs. Production budgets and memory caps are unchanged.
 This is not a record-completion or all-ISA claim. No finally, coroutine, scheduler,
 full-corpus or RSS acceptance follows from this test.
+
+## Staged Family Preparation
+
+`PhasedBody` owns the original flow/SSA/environment/value proofs, imported graph,
+module obligations and checked exception control independently of evaluation.
+`PhasedMethod::Build` composes its construction with `PhasedMethod::Evaluate`;
+existing publication still uses that complete route. The staged API does not
+take guessed child bindings or expose mutable analyses. Moving into evaluation
+retains the original graph allocation and views, while total admission includes
+the body's retained storage and work already consumed. A fresh stage is not a
+fresh budget. The caller still owns the unchanged decoded body, file and context.
+
+This removes a construction-order obstacle: child creation discovery can inspect
+the parent before evaluation demands complete child bindings. The diagnostic
+tool proves this for Immersive 8257 (PCs 95/118) and 8404 (PC 52), while evaluation
+still refuses and reports no executable source. `exception_children.mjs` pins
+the input and exact creation census. Unit tests check move/view stability, exact
+body work, one-less work, exhausted evaluation budgets and unchanged missing
+module-binding rejection.
+
+The remaining family bridge is substantive, not a matter of supplying IDs:
+resolve each actual creation through its caller's pool and occurrence context;
+retain original exception environment state for capture binding; prove incoming
+child cells and transitive writes; construct and verify all child trees; then
+compose the complete family and certify the destination enclosure. Existing
+normal-only `FunctionInput`/`FunctionValues`/capture APIs cannot be passed a
+phase graph under a normal-flow proof. Do not bypass their checks or label this
+preparation split as completion of the exception-family or all-ISA goal.

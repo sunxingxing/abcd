@@ -42,6 +42,20 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 异常函数族前置阶段现拆为不可变 `PhasedBody` 与消费它的
+  `PhasedMethod::Evaluate`。原 `Build` 入口仍组合两步；CFG/SSA/环境/值证明、
+  模块配对和异常控制只构建一次，移动时不复制图。总预算包含保留的 body 存储和
+  已消耗工作量，不因分阶段而重置。此结构改动不放宽源码语义，Rules 53 不变。
+  真实 8257 的 PC 95/118、8404 的 PC 52 创建点现可在求值之前取得；求值仍因
+  缺少真实子函数绑定拒绝，诊断坚持 `source_complete=false`、`executable=false`。
+  这是解除父体发现与子函数绑定之间的构建顺序问题，不是函数族源码完成。
+  下一步将这些原始创建点经区域池和 occurrence context 解析到真实 child，
+  对接捕获证明、完整 child AST 与 family 验证；不得填空 `FunctionBinding`、
+  忽略失败子函数或将异常图伪装成 normal CFG。循环/异常、finally/协程仍待推进。
+  验证：三个 CLI 及相关测试目标重建，24 项定向 CTest 全部通过；真实创建点
+  回归 `exception_children.mjs` 与两份既有 Immersive 行为脚本通过。未运行全量
+  语料/RSS/基准；当前两份含创建点的方法仍未产生源码，不增加成功覆盖计数。
+
 - Rules 53 将已证明的模块 load/TDZ guard 配对纳入共享相位效果子树。两条原始
   指令仍保留各自效果、异常边、输入来源与 PC，只有内部 guard 依赖不再算作
   第二个源码值使用。效果区间覆盖 load 与 guard 两个事件；单次使用、唯一正常

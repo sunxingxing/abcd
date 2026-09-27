@@ -72,8 +72,24 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
     return file.CheckUnchanged() ? 1 : 0;
   }
   const PhasedModuleBinding binding{file, header, index, *record, kSelectedRecord};
-  const auto built = PhasedMethod::Build(context, *body, budget, &binding);
   nlohmann::json report{{"method", entity.value}, {"source_complete", false}, {"executable", false}};
+  auto staged = PhasedBody::Build(context, *body, budget, &binding);
+  if (const auto* error = std::get_if<PhasedMethodError>(&staged)) {
+    report["phase_error"] = static_cast<unsigned>(*error);
+    std::cout << report << '\n';
+    return file.CheckUnchanged() ? 1 : 0;
+  }
+  const auto& graph = std::get<PhasedBody>(staged).Graph();
+  report["phase_body_ready"] = true;
+  report["creations"] = nlohmann::json::array();
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    const auto& op = graph.ops[i];
+    if (op.life != analysis::ValueLife::kLive ||
+        !std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) continue;
+    const auto& origin = graph.origins[op.origin.value];
+    report["creations"].push_back({{"operation", i}, {"pc", origin.pc.value}, {"instruction", origin.site.value}});
+  }
+  const auto built = PhasedMethod::Evaluate(std::get<PhasedBody>(std::move(staged)), budget);
   if (const auto* error = std::get_if<PhasedMethodError>(&built)) {
     report["phase_error"] = static_cast<unsigned>(*error);
   } else {

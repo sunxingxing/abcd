@@ -316,6 +316,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     if (exception == ExceptionShape::kModule) {
       // No import enclosure means no executable module read, even when the
       // guarded pair is valid. Names alone must not open publication.
+      auto staged = PhasedBody::Build(owner, decoded);
+      Check(std::holds_alternative<PhasedBody>(staged));
+      Check(std::get<PhasedMethodError>(PhasedMethod::Evaluate(
+          std::get<PhasedBody>(std::move(staged)))) == PhasedMethodError::kEvaluation);
       Check(std::get<PhasedMethodError>(analyzed) == PhasedMethodError::kEvaluation);
       auto refused = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites,
           range.first, identity, {});
@@ -401,6 +405,26 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       return;
     }
     Check(std::holds_alternative<PhasedMethod>(analyzed));
+    auto staged = std::get<PhasedBody>(PhasedBody::Build(owner, decoded));
+    const auto staged_work = staged.Work();
+    const auto* graph_address = &staged.Graph();
+    auto relocated = std::move(staged);
+    Check(&relocated.Graph() == graph_address);
+    const auto staged_view = relocated.TreeInput(decoded);
+    Check(std::holds_alternative<std::uint64_t>(VerifyExceptionControl(decoded, relocated.Graph(),
+        staged_view.input, staged_view.regions, staged_view.control)));
+    auto evaluated = std::get<PhasedMethod>(PhasedMethod::Evaluate(std::move(relocated)));
+    Check(&evaluated.Graph() == graph_address);
+    Check(evaluated.Work() > staged_work);
+    Check(std::holds_alternative<PhasedBody>(PhasedBody::Build(owner, decoded,
+        {analysis::SemanticBudget{}.bytes, staged_work})));
+    Check(std::get<PhasedMethodError>(PhasedBody::Build(owner, decoded,
+        {analysis::SemanticBudget{}.bytes, staged_work - 1})) == PhasedMethodError::kWorkLimit);
+    Check(std::get<PhasedMethodError>(PhasedMethod::Evaluate(
+        std::get<PhasedBody>(PhasedBody::Build(owner, decoded)), {0})) == PhasedMethodError::kResourceLimit);
+    Check(std::get<PhasedMethodError>(PhasedMethod::Evaluate(
+        std::get<PhasedBody>(PhasedBody::Build(owner, decoded)),
+        {analysis::SemanticBudget{}.bytes, staged_work})) == PhasedMethodError::kWorkLimit);
     const auto moved = std::get<PhasedMethod>(std::move(analyzed));
     if (exception == ExceptionShape::kLiveCopies) {
       constexpr std::size_t kParameterCopies = 3;

@@ -7,7 +7,7 @@
 #include "module_aliases.h"
 
 namespace abcd::source {
-struct PhasedMethod::Storage {
+struct PhasedBody::Storage {
   abc::FrameLayout frame;
   analysis::ExceptionFlow flow;
   analysis::ExceptionSsa ssa;
@@ -19,12 +19,17 @@ struct PhasedMethod::Storage {
   std::optional<ModuleAliases> aliases;
   ExceptionPlan regions;
   ExceptionControl control;
-  EvaluationPlan evaluation;
   std::size_t bytes;
   std::uint64_t work;
   analysis::PhasedValueInput Input() const {
     return {flow, ssa, environments, values, proof, frame};
   }
+};
+struct PhasedMethod::Storage {
+  PhasedBody body;
+  EvaluationPlan evaluation;
+  std::size_t bytes;
+  std::uint64_t work;
 };
 namespace {
 using Error = PhasedMethodError;
@@ -70,17 +75,30 @@ PhasedMethod::PhasedMethod(std::unique_ptr<const Storage> storage) : storage_(st
 PhasedMethod::PhasedMethod(PhasedMethod&&) noexcept = default;
 PhasedMethod& PhasedMethod::operator=(PhasedMethod&&) noexcept = default;
 PhasedMethod::~PhasedMethod() = default;
-const analysis::ValueProgram& PhasedMethod::Graph() const { return storage_->graph; }
+const analysis::ValueProgram& PhasedMethod::Graph() const { return storage_->body.Graph(); }
 const EvaluationPlan& PhasedMethod::Evaluation() const { return storage_->evaluation; }
-const ControlPlan& PhasedMethod::Control() const { return storage_->control.skeleton; }
-const ModuleAliases* PhasedMethod::Modules() const { return storage_->aliases ? &*storage_->aliases : nullptr; }
+const ControlPlan& PhasedMethod::Control() const { return storage_->body.Control(); }
+const ModuleAliases* PhasedMethod::Modules() const { return storage_->body.Modules(); }
 ExceptionTreeInput PhasedMethod::TreeInput(const abc::MethodBody& body) const {
-  return {body, storage_->Input(), storage_->regions, storage_->control};
+  return storage_->body.TreeInput(body);
 }
 std::size_t PhasedMethod::AllocatedBytes() const { return storage_->bytes; }
 std::uint64_t PhasedMethod::Work() const { return storage_->work; }
 
-std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Build(
+PhasedBody::PhasedBody(std::unique_ptr<const Storage> storage) : storage_(std::move(storage)) {}
+PhasedBody::PhasedBody(PhasedBody&&) noexcept = default;
+PhasedBody& PhasedBody::operator=(PhasedBody&&) noexcept = default;
+PhasedBody::~PhasedBody() = default;
+const analysis::ValueProgram& PhasedBody::Graph() const { return storage_->graph; }
+const ControlPlan& PhasedBody::Control() const { return storage_->control.skeleton; }
+const ModuleAliases* PhasedBody::Modules() const { return storage_->aliases ? &*storage_->aliases : nullptr; }
+ExceptionTreeInput PhasedBody::TreeInput(const abc::MethodBody& body) const {
+  return {body, storage_->Input(), storage_->regions, storage_->control};
+}
+std::size_t PhasedBody::AllocatedBytes() const { return storage_->bytes; }
+std::uint64_t PhasedBody::Work() const { return storage_->work; }
+
+std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     const FunctionContext& context, const abc::MethodBody& body, analysis::SemanticBudget budget,
     const PhasedModuleBinding* binding) {
   using namespace analysis;
@@ -160,15 +178,34 @@ std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Build(
     auto control = PhaseResult<ExceptionControl>(BuildExceptionControl(body, imported.graph, input,
         regions, quota.Remaining()), Error::kControl);
     quota.Admit(control.allocated_bytes); quota.Step(control.work);
-    auto evaluation = PhaseResult<EvaluationPlan>(BuildPhasedEvaluationPlan(imported.graph,
+    return PhasedBody(std::make_unique<Storage>(Storage{frame, std::move(flow), std::move(ssa),
+        std::move(environments), std::move(values), std::move(proof), std::move(imported.graph),
+        std::move(guards), std::move(aliases), std::move(regions), std::move(control),
+        quota.Bytes(), quota.Work()}));
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Build(
+    const FunctionContext& context, const abc::MethodBody& body, analysis::SemanticBudget budget,
+    const PhasedModuleBinding* binding) {
+  auto built = PhasedBody::Build(context, body, budget, binding);
+  if (const auto* error = std::get_if<PhasedMethodError>(&built)) return *error;
+  return Evaluate(std::get<PhasedBody>(std::move(built)), budget);
+}
+std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Evaluate(
+    PhasedBody body, analysis::SemanticBudget budget) {
+  try {
+    PhaseBudget quota(budget);
+    quota.Admit(sizeof(Storage)); quota.Admit(body.AllocatedBytes()); quota.Step(body.Work());
+    const auto* aliases = body.Modules();
+    auto evaluation = PhaseResult<EvaluationPlan>(BuildPhasedEvaluationPlan(body.Graph(),
         quota.Remaining(), IncomingCells::kReject, {},
         aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{}),
         Error::kEvaluation);
     quota.Admit(evaluation.allocated_bytes); quota.Step(evaluation.work);
-    return PhasedMethod(std::make_unique<Storage>(Storage{frame, std::move(flow), std::move(ssa),
-        std::move(environments), std::move(values), std::move(proof), std::move(imported.graph),
-        std::move(guards), std::move(aliases), std::move(regions), std::move(control),
-        std::move(evaluation), quota.Bytes(), quota.Work()}));
+    return PhasedMethod(std::make_unique<Storage>(Storage{std::move(body), std::move(evaluation),
+        quota.Bytes(), quota.Work()}));
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
