@@ -1,0 +1,104 @@
+#include "../../../src/source/family_enclosure.h"
+
+#include <cstdlib>
+
+namespace {
+using namespace abcd;
+using namespace abcd::source;
+void Check(bool condition) { if (!condition) std::abort(); }
+FunctionTree Tree(std::uint32_t owner) {
+  FunctionTree tree{};
+  tree.owner = {owner}; tree.callable = CallableKind::kFunction;
+  tree.strictness = Strictness::kStrict;
+  tree.parameter_scope = {0}; tree.body_scope = {1}; tree.body = {0};
+  tree.scopes = {{ScopeKind::kParameters, {}}, {ScopeKind::kFunctionBody, ScopeId{0}}};
+  tree.origins.emplace_back(OriginalSite{{0}, {0}});
+  tree.expressions.push_back({TreeLiteral{UndefinedLiteral{}}, {0}});
+  tree.statements = {{BlockStmt{{1}, 0, 1}, {0}}, {ReturnStmt{ExprId{0}}, {0}}};
+  tree.children = {{1}};
+  return tree;
+}
+ConstructedFamily Chain(std::uint32_t count) {
+  // Scope-only fixtures, not executable/capture evidence. The separate family
+  // and capture suites cover IR ownership; this check consumes lexical layout.
+  ConstructedFamily family; family.root = {0};
+  for (std::uint32_t i = 0; i < count; ++i) {
+    auto tree = Tree(i);
+    if (i + 1 < count) tree.expressions[0].expression = FunctionExpr{{i + 1}, {0, 0}};
+    else { tree.names = {u"target"}; tree.expressions[0].expression = GlobalNameExpr{{0}}; }
+    family.members.push_back({std::move(tree), {}, {}});
+    family.parents.push_back(i ? std::optional{FamilyParent{{i - 1}, {0}}} : std::nullopt);
+    family.order.push_back({i});
+  }
+  return family;
+}
+void Local(FunctionTree& tree, ScopeId scope) {
+  const auto name = NameId{static_cast<std::uint32_t>(tree.names.size())};
+  tree.names.emplace_back(u"target");
+  tree.symbols.push_back({scope, name, BindingKind::kLocal, DeclarationKind::kLet, NameEvidence::kDebugRange, {}});
+  tree.statements.push_back({DeclarationStmt{{0}, {}}, {0}});
+}
+void Expect(const ConstructedFamily& family, FamilyEnclosureError error) {
+  const auto checked = VerifyFamilyEnclosure(family);
+  Check(std::holds_alternative<FamilyEnclosureFailure>(checked));
+  Check(std::get<FamilyEnclosureFailure>(checked).kind == error);
+}
+void ScopeCases() {
+  auto own = Chain(1);
+  Local(own.members[0].tree, {1});
+  own.members[0].tree.statements[0].statement = BlockStmt{{1}, 0, 2};
+  own.members[0].tree.children = {{2}, {1}};
+  Expect(own, FamilyEnclosureError::kShadowedGlobal);
+  auto family = Chain(2);
+  Check(std::get<FamilyEnclosure>(VerifyFamilyEnclosure(family)).global_reads == 1);
+  auto& root = family.members[0].tree;
+  Local(root, {1});
+  root.statements[0].statement = BlockStmt{{1}, 0, 2}; root.children = {{2}, {1}};
+  const auto failure = std::get<FamilyEnclosureFailure>(VerifyFamilyEnclosure(family));
+  Check(failure.kind == FamilyEnclosureError::kShadowedGlobal && failure.member == FamilyId{1} && failure.name == NameId{0});
+  // TDZ bindings count before their declaration executes too.
+  root.children = {{1}, {2}};
+  Expect(family, FamilyEnclosureError::kShadowedGlobal);
+  // A sibling block is not an enclosing scope of the actual creation expression.
+  root.scopes.push_back({ScopeKind::kBlock, ScopeId{1}});
+  root.symbols[0].scope = {2};
+  root.statements.push_back({BlockStmt{{2}, 2, 1}, {0}});
+  root.children = {{3}, {1}, {2}};
+  Check(std::get<FamilyEnclosure>(VerifyFamilyEnclosure(family)).global_reads == 1);
+  // Moving the creation into that block changes enclosure, not merely owner.
+  root.statements[0].statement = BlockStmt{{1}, 0, 1};
+  root.statements[3].statement = BlockStmt{{2}, 1, 2}; root.children = {{3}, {2}, {1}};
+  Expect(family, FamilyEnclosureError::kShadowedGlobal);
+  family = Chain(2);
+  // Runtime function names do not introduce a lexical self binding.
+  family.members[0].tree.names = {u"target"}; family.members[0].tree.inferred_name = NameId{0};
+  Check(std::holds_alternative<FamilyEnclosure>(VerifyFamilyEnclosure(family)));
+  family.parents[1]->expression = {99}; Expect(family, FamilyEnclosureError::kLayout);
+  family = Chain(2); family.parents[0] = FamilyParent{{1}, {0}};
+  Expect(family, FamilyEnclosureError::kLayout);
+}
+void Bounds() {
+  std::uint64_t previous = 0;
+  for (const auto count : {200U, 201U, 402U, 804U}) {
+    auto family = Chain(count);
+    for (auto& member : family.members) {
+      Local(member.tree, {1}); member.tree.names.back() = u"other";
+      member.tree.statements[0].statement = BlockStmt{{1}, 0, 2};
+      member.tree.children = {{2}, {1}};
+    }
+    const auto checked = std::get<FamilyEnclosure>(VerifyFamilyEnclosure(family));
+    Check(checked.global_reads == 1);
+    if (previous) Check(checked.work < previous * 3);
+    previous = checked.work;
+    analysis::SemanticBudget budget; budget.work = checked.work;
+    Check(std::holds_alternative<FamilyEnclosure>(VerifyFamilyEnclosure(family, budget)));
+    --budget.work;
+    Check(std::get<FamilyEnclosureFailure>(VerifyFamilyEnclosure(family, budget)).kind == FamilyEnclosureError::kWorkLimit);
+    budget = {}; budget.bytes = 0;
+    Check(std::get<FamilyEnclosureFailure>(VerifyFamilyEnclosure(family, budget)).kind == FamilyEnclosureError::kResourceLimit);
+    family.members[0].tree.names.back() = u"target";
+    Expect(family, FamilyEnclosureError::kShadowedGlobal);
+  }
+}
+}  // namespace
+int main() { ScopeCases(); Bounds(); }

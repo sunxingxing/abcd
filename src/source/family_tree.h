@@ -10,6 +10,7 @@
 #include "syntax_resolution.h"
 #include "default_signature.h"
 #include "tree_semantics.h"
+#include "family_enclosure.h"
 
 namespace abcd::source {
 enum class FamilyTreeError : std::uint8_t {
@@ -22,7 +23,8 @@ struct FamilyTreeFailure {
       ModuleAliasFailure, ModuleAliasTreeError, FamilyError,
       ParameterPlanError, CellDefaultError, CellDefaultProofError, DefaultBodyError,
       analysis::ValueEnvironmentError, CellError, ModuleGuardError, CaptureCellError,
-      CaptureEvaluationFailure, DefaultSignatureError, TreeSemanticError> cause;
+      CaptureEvaluationFailure, DefaultSignatureError, TreeSemanticError,
+      FamilyEnclosureFailure> cause;
   // Discovery evidence only; no source initializer or erasure is authorized.
   std::optional<std::size_t> cell_default_candidates;
   bool cell_defaults_proved = false;

@@ -56,8 +56,9 @@ void CheckCallable(const FunctionTree& tree) {
 
 class StructureCheck {
  public:
-  StructureCheck(const FunctionTree& tree, TreeCheckBudget& budget)
-      : tree_(tree), budget_(budget), scopes_(tree, budget) {
+  StructureCheck(const FunctionTree& tree, TreeCheckBudget& budget, std::vector<ScopeId>& expression_scopes)
+      : tree_(tree), budget_(budget), scopes_(tree, budget), expression_scopes_(expression_scopes) {
+    budget.Array(expression_scopes_, tree.expressions.size());
     budget.Array(expressions_, tree.expressions.size());
     budget.Array(statements_, tree.statements.size());
     budget.Array(children_, tree.children.size());
@@ -243,6 +244,7 @@ class StructureCheck {
       RequireTree(expression->value < expressions_.size(), Error::kRange);
       RequireTree(!expressions_[expression->value], Error::kOwnership);
       expressions_[expression->value] = 1;
+      expression_scopes_[expression->value] = frame.scope;
       Expression(tree_.expressions[expression->value]);
       return;
     }
@@ -357,6 +359,7 @@ class StructureCheck {
   const FunctionTree& tree_;
   TreeCheckBudget& budget_;
   TreeScopeCheck scopes_;
+  std::vector<ScopeId>& expression_scopes_;
   std::vector<std::uint8_t> expressions_;
   std::vector<std::uint8_t> statements_;
   std::vector<std::uint8_t> children_;
@@ -388,9 +391,12 @@ std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
                 tree.arguments.size() <= kMaxId && tree.properties.size() <= kMaxId &&
                 tree.captures.size() <= kMaxId && tree.closure_captures.size() <= kMaxId &&
                 tree.modules.size() <= kMaxId, Error::kResourceLimit);
-    const auto maximum_depth = StructureCheck(tree, checked).Run();
+    checked.Admit(1, sizeof(TreeStructure));
+    TreeStructure result{tree.value_revision, tree.cfg_revision};
+    result.maximum_depth = StructureCheck(tree, checked, result.expression_scopes).Run();
     CheckTreeOrigins(tree, checked);
-    return TreeStructure{tree.value_revision, tree.cfg_revision, maximum_depth, checked.Bytes(), checked.Work()};
+    result.allocated_bytes = checked.Bytes(); result.work = checked.Work();
+    return result;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

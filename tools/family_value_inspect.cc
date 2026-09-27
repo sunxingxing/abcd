@@ -235,6 +235,9 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
         std::visit([&](const auto& reason) { report["syntax_error"] = Code(reason); }, error);
       } else if constexpr (std::is_same_v<T, ModuleAliasFailure>) {
         report["module_alias_failure"] = error.cause.index();
+      } else if constexpr (std::is_same_v<T, FamilyEnclosureFailure>) {
+        report["family_tree_error"] = Code(error);
+        if (error.name) report["enclosure_name"] = error.name->value;
       } else report["family_tree_error"] = Code(error);
     }, failure.cause);
   }

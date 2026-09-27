@@ -29,6 +29,12 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 文件函数族构建现新增内部 scope 遮蔽检查。结构遍历记录每个表达式的 scope，
+  子树在真实 FunctionExpr 创建点接入父 scope，而不是把父函数全部局部变量
+  都视为可见。Euler 区间与名字区间合并保留兄弟 block 边界，并计入 TDZ 绑定。
+  它不改变 CFG/basic block，不补造外部 record/module 环境，也不证明捕获写入。
+  本次 ABC-only 检查：7449 四成员草稿仍为 1434 字节；Immersive 21082 的
+  单成员条件 AST 仍可构建。scope/深层祖先/200/201/预算规格未编译、未运行。
 - 新增 `--family-source-draft`，保留 `--conditional-family` 不输出源码的契约。
   7449 的四成员 AST 已通过同一个迭代 printer 输出嵌套函数草稿；事件栈携带
   owner 和缩进深度，各成员保留表达式/语句/参数/属性/锚点的整份草稿绝对 UTF-8 区间。

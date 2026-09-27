@@ -110,6 +110,11 @@ class FamilyTrees {
     }
     auto result = Take<ConstructedFamily, FamilyError>(BuildFunctionFamily(std::move(trees), {FileFamily::kRoot.value}, left_));
     Account(result);
+    const auto enclosure = VerifyFamilyEnclosure(result, left_);
+    if (const auto* failure = std::get_if<FamilyEnclosureFailure>(&enclosure)) {
+      member_ = failure->member; Fail(*failure);
+    }
+    Account(std::get<FamilyEnclosure>(enclosure));
     result.allocated_bytes = initial_.bytes - left_.bytes;
     result.work = initial_.work - left_.work;
     return result;

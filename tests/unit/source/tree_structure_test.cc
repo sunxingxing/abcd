@@ -97,7 +97,8 @@ FunctionTree Shadowed() {
 }
 void ScopesAndBindings() {
   auto tree = Shadowed();
-  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto structure = std::get<TreeStructure>(VerifyTreeStructure(tree));
+  Check(structure.expression_scopes == std::vector<ScopeId>{{2}});
   tree.expressions[0].expression = SymbolExpr{{0}};
   Expect(tree, TreeStructureError::kScope);
   tree = Shadowed();

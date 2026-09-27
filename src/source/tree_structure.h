@@ -14,6 +14,10 @@ struct TreeStructure {
   std::size_t maximum_depth = 0;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  // Indexed by ExprId, recorded during the same ownership/scope traversal.
+  // Required for creation-point enclosure checks across function boundaries;
+  // a function-wide union of bindings incorrectly includes sibling blocks.
+  std::vector<ScopeId> expression_scopes;
 };
 // Independently checks syntax ownership, lexical name resolution, declaration
 // census and provenance shape. Includes tree-owned capacity and scratch in the

@@ -11,6 +11,22 @@ observations, not an up-to-date capability summary.
 
 ### File-Backed Conditional Function Families
 
+File-family construction now checks lexical global-name enclosure across owners.
+The existing structural traversal records an ExprId-to-ScopeId table; child
+parameter/capture/module roots attach to the parent's actual FunctionExpr scope.
+A flattened scope graph is traversed iteratively to obtain Euler intervals.
+Sorted declaration-name intervals are merged in place and global queries use
+binary search, avoiding per-use ancestor walks and preserving sibling-block
+separation. This accounts for lexical TDZ shadowing before declarations execute.
+Inferred runtime function names remain nonbindings. Invalid tree/layout, internal
+global shadowing and memory/work exhaustion have typed failures, with member/name
+IDs retained. External destination globals/modules and capture-write equivalence
+remain separate obligations; neither CFG nor the source trees are rewritten.
+Production targets built successfully. ABC-only 7449 still emits the four-member
+1434-byte draft; Immersive 21082 still builds its single conditional tree.
+New scope-placement, TDZ, sibling-block, deep ancestor, 200/201/geometric and
+budget-boundary specifications are uncompiled/unrun under the user's pause.
+
 Creation-context runtime names now survive shared syntax resolution into the
 FunctionTree as an optional typed NameId for NamedEvaluation, distinct from self
 symbols. File-family construction cross-checks the retained name against the
