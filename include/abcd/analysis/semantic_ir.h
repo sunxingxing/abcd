@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "abcd/analysis/branch_condition.h"
+#include "abcd/analysis/argument_window.h"
 #include "abcd/analysis/array_creation.h"
 #include "abcd/analysis/await_region.h"
 #include "abcd/analysis/constructor_call.h"
@@ -95,6 +96,12 @@ struct FrameThisLoad {};
 // Pinned LDFUNCTION/GetFunction reads InterpretedFrame::function, not its
 // writable optional ABI register copy. Source use needs a self-binding proof.
 struct FrameFunctionLoad {};
+// Each execution copies current slots plus invocation-owned extra arguments
+// into a fresh object. Window slots are conditional may-reads; the runtime
+// actual count and tail are implicit frame inputs, not fabricated registers.
+struct ArgumentSnapshot {
+  ArgumentWindow window;
+};
 struct AwaitValue {
   ScalarValue input;
   AwaitRegion origin;
@@ -114,7 +121,8 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        BufferedArrayCreation, AwaitValue,
                                        ThrowOperation, SuperRange, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
-                                       FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad>;
+                                       FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad,
+                                       ArgumentSnapshot>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;
@@ -154,9 +162,11 @@ using InstructionLift = std::variant<SemanticInstruction, SemanticFailure>;
 
 // Same raw-instruction lifting used by BuildSemanticMethod, without normal
 // CFG/SSA admission. Does not remove handlers or infer async ownership.
+// frame is borrowed for this call and enables implicit argument-slot reads;
+// it must describe frame_size exactly. It is not a callable-owner certificate.
 [[nodiscard]] InstructionLift LiftSemanticInstruction(
     const abc::BodyInstruction& site, abc::ProfileId profile,
-    std::uint64_t frame_size);
+    std::uint64_t frame_size, const abc::FrameLayout* frame = nullptr);
 
 // One shared admission boundary for typed lifting, normal CFG and register
 // SSA. It does not claim source equivalence, exception-flow SSA, or that a
@@ -165,9 +175,12 @@ using InstructionLift = std::variant<SemanticInstruction, SemanticFailure>;
 // AwaitSite entries are sorted, owner-proven async normalization certificates,
 // not permissions inferred from raw await opcodes. They change only the source
 // operation and its normal register effects, preserving original region PCs.
+// Optional frame is borrowed only during construction. Argument snapshots own
+// a validated compact window, not a pointer to caller state or captured values.
 [[nodiscard]] SemanticResult BuildSemanticMethod(
     const abc::MethodBody& body, abc::ProfileId profile,
     std::uint64_t frame_size, SemanticBudget budget = {},
-    std::span<const AwaitSite> awaits = {});
+    std::span<const AwaitSite> awaits = {},
+    const abc::FrameLayout* frame = nullptr);
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_SEMANTIC_IR_H_

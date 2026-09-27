@@ -28,7 +28,8 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::String()};
     } else if constexpr (std::is_same_v<T, GlobalObjectLoad> ||
                          std::is_same_v<T, SymbolConstructorLoad> ||
-                         std::is_same_v<T, FrameFunctionLoad>) {
+                         std::is_same_v<T, FrameFunctionLoad> ||
+                         std::is_same_v<T, ArgumentSnapshot>) {
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::Defined()};
     } else if constexpr (std::is_same_v<T, FrameThisLoad>) {
       // Neither the existence nor the entry domain of an ABI receiver slot

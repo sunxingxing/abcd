@@ -42,6 +42,11 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
       method.allocated_bytes > budget.bytes)
     return Fail(SemanticProofError::kResourceLimit);
   for (std::size_t i = 0; i < body.instructions.size(); ++i) {
+    // Layout and current-slot SSA alone do not certify actual count/tail or
+    // the invocation owner. Never publish source until that proof is supplied.
+    if (body.instructions[i].decoded.opcode == abc::Opcode::kGETUNMAPPEDARGS ||
+        std::holds_alternative<ArgumentSnapshot>(method.instructions[i].operation))
+      return Fail(SemanticProofError::kArgumentOwner, body.instructions[i].offset);
     if (method.instructions[i].pc != body.instructions[i].offset ||
         method.ssa.Write(InstructionId{static_cast<std::uint32_t>(i)})
             .has_value() !=

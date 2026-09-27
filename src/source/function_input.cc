@@ -86,7 +86,8 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
       default: throw Error::kMode;
     }
     InputBudget quota(budget); quota.Admit(1, sizeof(FunctionInput));
-    auto lifted = analysis::BuildSemanticMethod(body, identity.profile, frame.registers, quota.Remaining());
+    auto lifted = analysis::BuildSemanticMethod(body, identity.profile,
+        frame.registers, quota.Remaining(), {}, &frame);
     auto* input = std::get_if<analysis::SemanticMethod>(&lifted);
     if (!input) return FunctionInputFailure{std::get<analysis::SemanticFailure>(lifted)};
     // An initialized entry premise is not a proof across receiver-changing

@@ -45,6 +45,19 @@ validation; a displaced parameter prefix previously passed its pattern proof.
 This component does not yet certify a callable owner or produce count/tail
 bindings in semantic IR. It does not convert declared count into actual count.
 
+`GETUNMAPPEDARGS` now lifts to `ArgumentSnapshot` when the shared lift receives
+the actual `FrameLayout`. The ordinary function input supplies that context.
+Its normal effects contain the declared-slot `RegisterRange`, accumulator write,
+ArgumentsRead and Allocation; exceptional effects retain may-throw without an
+accumulator commit. SSA consumes these effects before renaming. The semantic
+range has a 32-bit count independent of the still-16-bit encoded CallRange.
+Missing frame context remains unsupported; malformed layouts are rejected.
+
+This is not yet source admission: `VerifySemanticSource` rejects both original
+snapshot opcodes and typed snapshot operations with `kArgumentOwner`, including
+zero-declared-parameter functions. No count/tail ownership certificate, value-IR
+operand adapter or snapshot AST is fabricated. Those are the next obligations.
+
 1. **Frame inputs.** Build a compact, validated argument-window plan from the
    actual FrameLayout and callable creation occurrence. Keep actual invocation
    count and extra-argument tail as typed frame inputs, distinct from declared
@@ -62,8 +75,9 @@ bindings in semantic IR. It does not convert declared count into actual count.
    parameter counts follow 28-bit runtime fields. Shared SsaRead/InputRead,
    operand correspondence and guarded-read lookup now use 32-bit occurrences;
    the largest encoded receiver call no longer exceeds their representation.
-   A separate wider frame-window range is still required before expanding
-   argument snapshots; do not widen the bytecode call-count contract implicitly.
+   The separate 32-bit RegisterRange now represents frame-window may-reads;
+   encoded calls convert their smaller ranges explicitly without widening
+   their bytecode count contract.
    Budget O(number of admitted read occurrences).
    Actual count controls which declared slots are present. Until that condition
    is proved, may-reads cannot be discarded to make Hole-bearing cases pass.

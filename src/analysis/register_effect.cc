@@ -103,7 +103,7 @@ RegisterEffect EffectOf(const OrdinaryCall& value) {
   effect.reads[effect.read_count++] = Accumulator{};
   effect.write = Accumulator{};
   if (const auto* range = std::get_if<CallRange>(&value.arguments)) {
-    effect.range = *range;
+    effect.range = RegisterRange{range->first, range->count};
   } else {
     const auto& fixed = std::get<CallRegisters>(value.arguments);
     for (std::size_t i = 0; i < fixed.count; ++i)
@@ -117,7 +117,7 @@ RegisterEffect EffectOf(const ReceiverCall& value) {
   effect.reads[effect.read_count++] = value.receiver;
   effect.write = Accumulator{};
   if (const auto* range = std::get_if<CallRange>(&value.arguments)) {
-    effect.range = *range;
+    effect.range = RegisterRange{range->first, range->count};
   } else {
     const auto& fixed = std::get<CallRegisters>(value.arguments);
     for (std::size_t i = 0; i < fixed.count; ++i)
@@ -128,13 +128,13 @@ RegisterEffect EffectOf(const ReceiverCall& value) {
 RegisterEffect EffectOf(const ConstructorCall& value) {
   RegisterEffect effect;
   effect.write = Accumulator{};
-  effect.range = value.inputs;
+  effect.range = RegisterRange{value.inputs.first, value.inputs.count};
   return effect;
 }
 RegisterEffect EffectOf(const SuperRange& value) {
   RegisterEffect effect;
   effect.write = Accumulator{};
-  effect.range = CallRange{value.first, value.count};
+  effect.range = RegisterRange{value.first, value.count};
   return effect;
 }
 RegisterEffect EffectOf(const SuperCheck&) {

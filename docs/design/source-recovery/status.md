@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 35。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 36。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,6 +42,19 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- GETUNMAPPEDARGS 已接入共同语义提升和正常 CFG/SSA：ArgumentSnapshot 保留
+  当前声明槽的隐式 may-read、每次执行的 allocation 及异常前效果，acc 仅在
+  正常返回定义。FunctionInput 传入真实 FrameLayout；无帧信息、错位/不匹配
+  布局继续拒绝。32-bit RegisterRange 与 16-bit CallRange 分离，保留资源预算。
+  源码验证以 kArgumentOwner 显式拒绝，尚未提供实际数量/尾部所有者证明、
+  值 IR adapter 和 AST；零声明参数也不能越过该边界。规则版本 36。
+  新测试覆盖三个 profile、0/1/200/201/65536 槽、当前槽覆写、连续快照、
+  分支合流和循环回边，以及巨大窗口的预算拒绝；不是生成源码完成证据。
+  `argument_snapshot_test`、`argument_window_test`、`call_operands_test`、
+  `register_ssa_test`、`register_uses_test`、`register_effect_test`、
+  `constructor_call_test`、`value_import_test`、`source_route_test`、
+  `constant_group_test`、`value_created_family_test` 共 11/11 通过；对应目标及
+  `abc_semantic` 构建成功。未运行 RSS/基准/全语料或 Ark VM 差分。
 - 实参窗口新增 ArgumentWindow：复用 BuildFrameLayout 验证隐藏 ABI 槽顺序、
   28-bit 计数和参数边界，以 ActualArgumentCount 区分当前槽前缀与额外实参尾部。
   计算 O(1)，不按声明或实际实参数量分配；声明数量不作为实际数量的默认值。

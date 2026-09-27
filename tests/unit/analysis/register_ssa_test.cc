@@ -91,7 +91,7 @@ int main() {
     site.effect.read_count = 2;
     site.effect.reads[0] = Accumulator{};
     site.effect.reads[1] = abc::RegisterId{0};
-    site.effect.range = CallRange{{0}, kLargestEncodedRange};
+    site.effect.range = RegisterRange{{0}, kLargestEncodedRange};
     IdfQuota work{UINT64_MAX};
     const auto large = std::get<RegisterSsa>(RegisterSsa::BuildSites(
         std::span(&site, 1), flow, kLargestEncodedRange, work));

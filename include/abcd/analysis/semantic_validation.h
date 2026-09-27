@@ -113,6 +113,7 @@ enum class SemanticProofError : std::uint8_t {
   kSsaMismatch,
   kResourceLimit,
   kModulePremise,
+  kArgumentOwner,
 };
 struct SemanticProofFailure {
   SemanticProofError kind;

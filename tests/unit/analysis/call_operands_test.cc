@@ -36,7 +36,7 @@ void Ranges() {
     auto& effects = instruction.effects.normal_registers;
     effects.read_count = 1;
     effects.reads[0] = Accumulator{};
-    effects.range = CallRange{{0}, count};
+    effects.range = RegisterRange{{0}, count};
     effects.write = Accumulator{};
     const auto plan = std::get<CallOperands>(CallOperands::Build(instruction));
     Check(plan.Count() == count + 1U && plan.Work() == count + 1U);
@@ -57,7 +57,7 @@ void Ranges() {
   effect.read_count = 2;
   effect.reads[0] = Accumulator{};
   effect.reads[1] = abc::RegisterId{0};
-  effect.range = CallRange{{1}, kLargestEncodedRange};
+  effect.range = RegisterRange{{1}, kLargestEncodedRange};
   effect.write = Accumulator{};
   const auto wide = std::get<CallOperands>(CallOperands::Build(receiver));
   constexpr std::uint32_t kLastRead = std::uint32_t(kLargestEncodedRange) + 1;
@@ -69,11 +69,16 @@ void Ranges() {
   Check(std::get<CallOperandError>(CallOperands::Build(
             receiver, {sizeof(CallOperands), wide.Count() - 1})) ==
         CallOperandError::kWorkLimit);
+  // Wide semantic effects must not wrap their total down to a valid call.
+  receiver.operation = OrdinaryCall{CallRange{{0}, 0}};
+  effect.range = RegisterRange{{0}, UINT32_MAX};
+  Check(std::get<CallOperandError>(CallOperands::Build(receiver)) ==
+        CallOperandError::kCount);
 }
 void Construction() {
   SemanticInstruction instruction{{0}, ConstructorCall{CallRange{{10}, 3}, {}}, {}};
   auto& effects = instruction.effects.normal_registers;
-  effects.range = CallRange{{10}, 3};
+  effects.range = RegisterRange{{10}, 3};
   effects.write = Accumulator{};
   const auto plan = std::get<CallOperands>(CallOperands::Build(instruction));
   Check(plan.Count() == 3 && plan.At(0)->role == OperandRole::kConstructor);

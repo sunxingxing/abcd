@@ -76,8 +76,11 @@ std::variant<CallOperands, CallOperandError> CallOperands::Build(
   // The shared SSA/value occurrence index must not inherit the encoding width.
   const auto& effect = instruction.effects.normal_registers;
   if (effect.read_count > effect.reads.size() ||
-      count != effect.read_count + (effect.range ? effect.range->count : 0U)) return Error::kCount;
-  if (effect.range && !ValidArguments(*effect.range)) return Error::kCount;
+      count != std::uint64_t(effect.read_count) +
+          (effect.range ? effect.range->count : 0U)) return Error::kCount;
+  if (effect.range && effect.range->count != 0 &&
+      effect.range->count - 1U > UINT32_MAX - effect.range->first.value)
+    return Error::kCount;
   if (!effect.write || !std::holds_alternative<Accumulator>(*effect.write)) return Error::kWrite;
   if (count > budget.work) return Error::kWorkLimit;
   for (std::uint32_t i = 0; i < count; ++i) {

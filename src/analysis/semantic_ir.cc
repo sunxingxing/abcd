@@ -360,7 +360,8 @@ SemanticEffects Effects(const SemanticOperation& operation,
           effects.normal = LanguageEffect::kModuleWrite;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
-        } else if constexpr (std::is_same_v<T, RestCopy>) {
+        } else if constexpr (std::is_same_v<T, RestCopy> ||
+                             std::is_same_v<T, ArgumentSnapshot>) {
           effects.normal = LanguageEffect::kArgumentsRead |
                            LanguageEffect::kAllocation;
           effects.before_throw = effects.normal;
@@ -407,9 +408,25 @@ SemanticEffects Effects(const SemanticOperation& operation,
 
 InstructionLift LiftSemanticInstruction(const abc::BodyInstruction& site,
                                         abc::ProfileId profile,
-                                        std::uint64_t frame_size) {
+                                        std::uint64_t frame_size,
+                                        const abc::FrameLayout* frame) {
   if (!SupportsSemantics(profile))
     return Fail(SemanticError::kUnsupportedProfile, site.offset);
+  if (site.decoded.opcode == Opcode::kGETUNMAPPEDARGS) {
+    if (site.decoded.operand_count != 0)
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    if (!frame) return Fail(SemanticError::kUnsupportedInstruction, site.offset);
+    if (frame->registers != frame_size)
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    const auto built = ArgumentWindow::Build(*frame);
+    const auto* window = std::get_if<ArgumentWindow>(&built);
+    if (!window) return Fail(SemanticError::kMalformedInstruction, site.offset);
+    RegisterEffect registers;
+    registers.range = RegisterRange{window->First(), window->Count()};
+    registers.write = Accumulator{};
+    SemanticOperation snapshot = ArgumentSnapshot{*window};
+    return SemanticInstruction{site.offset, snapshot, Effects(snapshot, registers)};
+  }
   auto operation = LiftOperation(site, frame_size);
   if (const auto* failure = std::get_if<SemanticFailure>(&operation)) return *failure;
   const auto registers = LiftRegisterEffect(site.decoded, frame_size);
@@ -475,14 +492,15 @@ InstructionLift detail::SemanticLifter::Lift(const abc::BodyInstruction& site) {
     const auto effects = Effects(operation, registers);
     return SemanticInstruction{site.offset, std::move(operation), effects};
   }
-  return LiftSemanticInstruction(site, profile_, frame_size_);
+  return LiftSemanticInstruction(site, profile_, frame_size_, frame_);
 }
 
 SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
                                    abc::ProfileId profile,
                                    std::uint64_t frame_size,
                                    SemanticBudget budget,
-                                   std::span<const AwaitSite> awaits) {
+                                   std::span<const AwaitSite> awaits,
+                                   const abc::FrameLayout* frame) {
   if (!SupportsSemantics(profile))
     return Fail(SemanticError::kUnsupportedProfile);
   if (!body.tries.empty() || !body.handlers.empty())
@@ -511,7 +529,7 @@ SemanticResult BuildSemanticMethod(const abc::MethodBody& body,
   // Lift once before SSA. The exact same typed normal effects drive def/use,
   // renaming and subsequent source validation; future recovered operations
   // must not silently revert to the original VM operand effects in SSA.
-  detail::SemanticLifter lifter{profile, frame_size, awaits};
+  detail::SemanticLifter lifter{profile, frame_size, awaits, frame};
   for (const auto& site : body.instructions) {
     auto lifted = lifter.Lift(site);
     if (const auto* failure = std::get_if<SemanticFailure>(&lifted))

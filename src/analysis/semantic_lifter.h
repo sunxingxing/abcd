@@ -10,8 +10,9 @@ namespace abcd::analysis::detail {
 class SemanticLifter {
  public:
   SemanticLifter(abc::ProfileId profile, std::uint64_t frame_size,
-                 std::span<const AwaitSite> awaits)
-      : profile_(profile), frame_size_(frame_size), awaits_(awaits) {}
+                 std::span<const AwaitSite> awaits,
+                 const abc::FrameLayout* frame = nullptr)
+      : profile_(profile), frame_size_(frame_size), awaits_(awaits), frame_(frame) {}
   InstructionLift Lift(const abc::BodyInstruction& site);
   bool Complete() const {
     return next_await_ == awaits_.size() && next_mode_ == awaits_.size();
@@ -21,6 +22,7 @@ class SemanticLifter {
   abc::ProfileId profile_;
   std::uint64_t frame_size_;
   std::span<const AwaitSite> awaits_;
+  const abc::FrameLayout* frame_;
   std::size_t next_await_ = 0;
   std::size_t next_mode_ = 0;
 };
