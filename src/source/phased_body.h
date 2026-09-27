@@ -26,6 +26,8 @@ class PhasedBody {
       const FunctionContext& context, const abc::MethodBody& body,
       analysis::SemanticBudget budget = {}, const PhasedModuleBinding* modules = nullptr);
   const analysis::ValueProgram& Graph() const;
+  const RouteInputIdentity& Identity() const;
+  abc::EntityOffset Target() const;
   const ControlPlan& Control() const;
   const ModuleAliases* Modules() const;
   ExceptionTreeInput TreeInput(const abc::MethodBody& body) const;

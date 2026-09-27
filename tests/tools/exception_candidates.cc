@@ -11,6 +11,7 @@
 #include "abcd/source/function_emission.h"
 #include "../../tools/tree_position_json.h"
 #include "../../src/source/phased_method.h"
+#include "../../src/source/phased_creations.h"
 #include "../../src/source/module_aliases.h"
 #include "../../src/source/syntax_resolution.h"
 
@@ -79,15 +80,22 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
     std::cout << report << '\n';
     return file.CheckUnchanged() ? 1 : 0;
   }
-  const auto& graph = std::get<PhasedBody>(staged).Graph();
   report["phase_body_ready"] = true;
   report["creations"] = nlohmann::json::array();
-  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-    const auto& op = graph.ops[i];
-    if (op.life != analysis::ValueLife::kLive ||
-        !std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) continue;
-    const auto& origin = graph.origins[op.origin.value];
-    report["creations"].push_back({{"operation", i}, {"pc", origin.pc.value}, {"instruction", origin.site.value}});
+  auto creation_sites = analysis::FunctionCreationSites::Build(file, header, index, lookup);
+  const auto* occurrences = std::get_if<analysis::FunctionCreationSites>(&creation_sites);
+  if (!occurrences) return 1;
+  auto bound_creations = BindPhasedCreations(file, header, index, lookup, *indexed_roles,
+      *occurrences, std::get<PhasedBody>(staged), *body);
+  const auto* children = std::get_if<PhasedCreations>(&bound_creations);
+  if (!children) {
+    report["creation_error"] = std::get<PhasedCreationFailure>(bound_creations).cause.index();
+    std::cout << report << '\n'; return file.CheckUnchanged() ? 1 : 0;
+  }
+  for (const auto& child : children->sites) {
+    report["creations"].push_back({{"operation", child.operation.value}, {"pc", child.binding.offset.value},
+        {"instruction", child.instruction.value},
+        {"target", child.context.Site().target.value}});
   }
   const auto built = PhasedMethod::Evaluate(std::get<PhasedBody>(std::move(staged)), budget);
   if (const auto* error = std::get_if<PhasedMethodError>(&built)) {

@@ -1,4 +1,5 @@
 #include "abcd/analysis/creation_binding.h"
+#include "abcd/analysis/exception_flow.h"
 
 namespace abcd::analysis {
 std::variant<LexicalBinding, EnvironmentError, CaptureRebaseError>
@@ -13,22 +14,22 @@ RebaseCapture(const EnvironmentIndex& caller, const CreationCapture& creation,
   return std::get<LexicalBinding>(resolved);
 }
 
-CreationBindingResult BindCreation(
+namespace {
+CreationBindingResult BindAtEnvironment(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     abc::EntityOffset caller, const abc::MethodBody& body,
-    const EnvironmentFlow& flow, std::size_t instruction) {
+    const EnvironmentIndex& environments, const std::optional<EnvironmentRef>& captured,
+    std::size_t instruction) {
   if (instruction >= body.instructions.size())
     return CreationBindingError::kInstructionRange;
-  if (flow.before.size() != body.instructions.size())
-    return CreationBindingError::kInvalidFlow;
   const auto& site = body.instructions[instruction];
   const auto lifted = LiftFunctionCreation(site.decoded);
   if (const auto* error = std::get_if<CreationError>(&lifted)) return *error;
-  if (!flow.before[instruction]) return CreationBindingError::kUnreachable;
-  const auto environment = *flow.before[instruction];
+  if (!captured) return CreationBindingError::kUnreachable;
+  const auto environment = *captured;
   if (const auto* local = std::get_if<EnvironmentId>(&environment))
-    if (!flow.environments.Find(*local))
+    if (!environments.Find(*local))
       return CreationBindingError::kInvalidEnvironment;
   const auto creation = std::get<FunctionCreation>(lifted);
   const auto resolved = abc::ResolveMethodTarget(file, header, index, lookup,
@@ -47,5 +48,31 @@ CreationBindingResult BindCreation(
   if (creation.kind == CreationKind::kFunction && target.attributes.sendable)
     capture = SendableCapture{};
   return CreationBinding{site.offset, creation, target, capture};
+}
+}  // namespace
+CreationBindingResult BindCreation(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    abc::EntityOffset caller, const abc::MethodBody& body,
+    const EnvironmentFlow& flow, std::size_t instruction) {
+  if (instruction >= body.instructions.size()) return CreationBindingError::kInstructionRange;
+  if (flow.before.size() != body.instructions.size()) return CreationBindingError::kInvalidFlow;
+  return BindAtEnvironment(file, header, index, lookup, caller, body, flow.environments,
+      flow.before[instruction], instruction);
+}
+CreationBindingResult BindExceptionCreation(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    abc::EntityOffset caller, const abc::MethodBody& body, const ExceptionFlow& flow,
+    const EnvironmentFlow& environments, ExceptionNodeId before) {
+  if (before.value >= flow.nodes.size()) return CreationBindingError::kInstructionRange;
+  if (environments.before.size() != flow.nodes.size() || flow.instructions.size() != body.instructions.size())
+    return CreationBindingError::kInvalidFlow;
+  const auto& node = flow.nodes[before.value];
+  if (node.phase != ExceptionPhase::kBefore || node.instruction.value >= body.instructions.size() ||
+      flow.instructions[node.instruction.value].pc != body.instructions[node.instruction.value].offset)
+    return CreationBindingError::kInvalidFlow;
+  return BindAtEnvironment(file, header, index, lookup, caller, body, environments.environments,
+      environments.before[before.value], node.instruction.value);
 }
 }  // namespace abcd::analysis

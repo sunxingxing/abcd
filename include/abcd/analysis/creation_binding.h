@@ -4,8 +4,10 @@
 #include "abcd/abc/method_target.h"
 #include "abcd/analysis/environment_flow.h"
 #include "abcd/analysis/function_creation.h"
+#include "abcd/analysis/exception_phase.h"
 
 namespace abcd::analysis {
+struct ExceptionFlow;
 struct OrdinaryCapture {
   EnvironmentRef environment;
 };
@@ -59,5 +61,14 @@ using CreationBindingResult =
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     abc::EntityOffset caller, const abc::MethodBody& body,
     const EnvironmentFlow& flow, std::size_t instruction);
+// Same target/capture rules, but environments are indexed by exception nodes.
+// Only the original creation's Before node is valid; Commit/Catch cannot stand
+// in for the capture point. Unchanged successful phase/environment analyses are
+// caller prerequisites. No normal-flow projection or per-call node scan.
+[[nodiscard]] CreationBindingResult BindExceptionCreation(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    abc::EntityOffset caller, const abc::MethodBody& body, const ExceptionFlow& flow,
+    const EnvironmentFlow& environments, ExceptionNodeId before);
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_CREATION_BINDING_H_

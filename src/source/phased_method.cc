@@ -8,6 +8,8 @@
 
 namespace abcd::source {
 struct PhasedBody::Storage {
+  RouteInputIdentity identity;
+  abc::EntityOffset target;
   abc::FrameLayout frame;
   analysis::ExceptionFlow flow;
   analysis::ExceptionSsa ssa;
@@ -90,6 +92,8 @@ PhasedBody::PhasedBody(PhasedBody&&) noexcept = default;
 PhasedBody& PhasedBody::operator=(PhasedBody&&) noexcept = default;
 PhasedBody::~PhasedBody() = default;
 const analysis::ValueProgram& PhasedBody::Graph() const { return storage_->graph; }
+const RouteInputIdentity& PhasedBody::Identity() const { return storage_->identity; }
+abc::EntityOffset PhasedBody::Target() const { return storage_->target; }
 const ControlPlan& PhasedBody::Control() const { return storage_->control.skeleton; }
 const ModuleAliases* PhasedBody::Modules() const { return storage_->aliases ? &*storage_->aliases : nullptr; }
 ExceptionTreeInput PhasedBody::TreeInput(const abc::MethodBody& body) const {
@@ -178,7 +182,7 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     auto control = PhaseResult<ExceptionControl>(BuildExceptionControl(body, imported.graph, input,
         regions, quota.Remaining()), Error::kControl);
     quota.Admit(control.allocated_bytes); quota.Step(control.work);
-    return PhasedBody(std::make_unique<Storage>(Storage{frame, std::move(flow), std::move(ssa),
+    return PhasedBody(std::make_unique<Storage>(Storage{context.Identity(), context.Target(), frame, std::move(flow), std::move(ssa),
         std::move(environments), std::move(values), std::move(proof), std::move(imported.graph),
         std::move(guards), std::move(aliases), std::move(regions), std::move(control),
         quota.Bytes(), quota.Work()}));

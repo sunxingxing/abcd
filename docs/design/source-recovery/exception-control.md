@@ -545,3 +545,34 @@ compose the complete family and certify the destination enclosure. Existing
 normal-only `FunctionInput`/`FunctionValues`/capture APIs cannot be passed a
 phase graph under a normal-flow proof. Do not bypass their checks or label this
 preparation split as completion of the exception-family or all-ISA goal.
+
+### Original Creation Bindings
+
+`BindExceptionCreation` accepts an explicit original `ExceptionNodeId`, not a
+decoded instruction index. It rejects Commit/Catch nodes, malformed phase table
+shape and unavailable/invalid environments, then shares the existing target and
+ordinary/sendable capture rules with `BindCreation`. Exception environments are
+indexed by nodes; using the ordinary binder with that table is invalid. A catch
+creation captures the throw-time environment, not the later normal POPLEXENV
+state. No graph is copied or relabeled to work around that distinction.
+
+`BindPhasedCreations` walks live typed creation operations once, checks original
+operation/site/PC correspondence and all creation operands, binds with the exact
+Before environment, resolves the caller-regional pool, and finds the precise
+target/caller/PC occurrence. Each entry owns a resolved `CreationTreeContext`;
+shared method templates are not deduplicated into a single runtime function.
+The parent retains immutable route identity and method stamps. As with the normal
+family reader, supplied file/index/body/role/site analyses must be unchanged and
+from that parent. Captured environment IDs remain borrowed from its retained
+original environment index. There is no source receipt or capture initialization
+permission, and unsupported callable contexts are typed failures.
+
+Additional work is two operation censuses plus indexed metadata/occurrence/name
+resolution per creation, not per-creation scans of the CFG or all target uses.
+The result and each name/context are budget-admitted. The shared binding test
+covers three profiles, creations before/after POPLEXENV and in a catch handler,
+invalid phase/environment inputs and 200/201/4096 repeated targets. The source
+adapter also tests identity and exact/insufficient work and memory allowances.
+Pinned real edges are 8257@95 -> 7810, 8257@118 -> 8118 and 8404@52 -> 7978.
+Their parent evaluations remain refused until the capture/family bridge closes
+the actual child obligations; target resolution alone is not decompilation.

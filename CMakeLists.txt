@@ -221,6 +221,7 @@ target_sources(abcd_source PRIVATE src/source/control_plan.cc src/source/control
 target_sources(abcd_source PRIVATE src/source/control_skeleton_verify.cc)
 target_sources(abcd_source PRIVATE src/source/exception_plan.cc)
 target_sources(abcd_source PRIVATE src/source/phased_method.cc)
+target_sources(abcd_source PRIVATE src/source/phased_creations.cc)
 target_sources(abcd_source PRIVATE src/source/exception_control.cc src/source/exception_topology.cc)
 target_sources(abcd_source PRIVATE src/source/exception_copies.cc)
 target_sources(abcd_source PRIVATE src/source/source_tree.cc)

@@ -5,6 +5,7 @@
 #include <cstdlib>
 
 #include "abcd/analysis/method_captures.h"
+#include "abcd/analysis/exception_environment.h"
 #include "abcd/corpus/abc_file.h"
 
 namespace {
@@ -67,6 +68,59 @@ int main() {
         EnvironmentRef{EnvironmentId{0}});
   Check(std::get<OrdinaryCapture>(captured.capture).environment ==
         EnvironmentRef{CapturedDepth{0}});
+  // A creation in catch inherits the throwing Before environment, not the
+  // later normal POPLEXENV state. Phase node indices are not instruction IDs.
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                            abc::ProfileId::kDynamic1301}) {
+    auto phase_header = header; phase_header.profile = profile;
+    auto protected_body = body;
+    const auto handler_pc = body.instructions.back().offset.value + body.instructions.back().decoded.size;
+    auto handler_creation = body.instructions[1]; handler_creation.offset = {handler_pc};
+    protected_body.instructions.push_back(handler_creation);
+    auto handler_return = body.instructions.back(); handler_return.offset = {handler_pc + handler_creation.decoded.size};
+    protected_body.instructions.push_back(handler_return);
+    abc::TryRegion region;
+    region.offset = body.instructions[1].offset; region.length = body.instructions[1].decoded.size;
+    region.handler_count = 1; protected_body.tries.push_back(region);
+    abc::CatchHandler handler;
+    handler.offset = {handler_pc}; handler.length = handler_creation.decoded.size + handler_return.decoded.size;
+    protected_body.handlers.push_back(handler);
+    const auto phases = std::get<ExceptionFlow>(BuildExceptionFlow(protected_body, profile, 1));
+    auto environments = std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(phases));
+    Check(environments.before.size() != protected_body.instructions.size());
+    std::size_t found = 0;
+    for (std::size_t n = 0; n < phases.nodes.size(); ++n) {
+      const ExceptionNodeId node{static_cast<std::uint32_t>(n)};
+      const auto& phase = phases.nodes[n];
+      const auto bind_phase = [&] {
+        return BindExceptionCreation(file, phase_header, metadata, lookup, {200}, protected_body,
+            phases, environments, node);
+      };
+      if (phase.phase != ExceptionPhase::kBefore) {
+        Check(std::get<CreationBindingError>(bind_phase()) == CreationBindingError::kInvalidFlow);
+        continue;
+      }
+      if (!std::holds_alternative<FunctionCreation>(phases.instructions[phase.instruction.value].operation)) continue;
+      ++found;
+      const auto bound = std::get<CreationBinding>(bind_phase());
+      const bool local_env = phase.instruction.value == 1 || bound.offset.value == handler_pc;
+      const EnvironmentRef expected = local_env ? EnvironmentRef{EnvironmentId{0}} : EnvironmentRef{CapturedDepth{0}};
+      Check(std::get<OrdinaryCapture>(bound.capture).environment == expected);
+      const auto saved = environments.before[n]; environments.before[n].reset();
+      Check(std::get<CreationBindingError>(bind_phase()) == CreationBindingError::kUnreachable);
+      environments.before[n] = EnvironmentId{99};
+      Check(std::get<CreationBindingError>(bind_phase()) == CreationBindingError::kInvalidEnvironment);
+      environments.before[n] = saved;
+    }
+    constexpr std::size_t kCreationCount = 4;
+    Check(found == kCreationCount);
+    Check(std::get<CreationBindingError>(BindExceptionCreation(file, phase_header, metadata, lookup,
+        {200}, protected_body, phases, environments, {static_cast<std::uint32_t>(phases.nodes.size())})) ==
+        CreationBindingError::kInstructionRange);
+    environments.before.pop_back();
+    Check(std::get<CreationBindingError>(BindExceptionCreation(file, phase_header, metadata, lookup,
+        {200}, protected_body, phases, environments, {0})) == CreationBindingError::kInvalidFlow);
+  }
   // The same callee entry-chain read maps through each actual creation site.
   // Its local environment IDs must never be reused as caller-local IDs.
   const std::uint8_t target_code[]{0x3c, 0, 0x65};
@@ -173,6 +227,20 @@ int main() {
     end.offset = {pc};
     many.instructions.push_back(end);
     const auto many_graph = std::get<NormalFlow>(BuildNormalFlow(many));
+    const auto many_phases = std::get<ExceptionFlow>(BuildExceptionFlow(many, header.profile, 1));
+    const auto many_environments = std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(many_phases));
+    std::size_t phase_count = 0;
+    for (std::size_t n = 0; n < many_phases.nodes.size(); ++n) {
+      const auto& node = many_phases.nodes[n];
+      if (node.phase != ExceptionPhase::kBefore ||
+          !std::holds_alternative<FunctionCreation>(many_phases.instructions[node.instruction.value].operation)) continue;
+      const auto bound = std::get<CreationBinding>(BindExceptionCreation(file, header, metadata, lookup,
+          {200}, many, many_phases, many_environments, {static_cast<std::uint32_t>(n)}));
+      Check(bound.target.position.value == 1);
+      Check(std::get<OrdinaryCapture>(bound.capture).environment == EnvironmentRef{EnvironmentId{0}});
+      ++phase_count;
+    }
+    Check(phase_count == count);
     auto many_flow =
         std::get<EnvironmentFlow>(AnalyzeEnvironments(many, many_graph, 1));
     const auto ancestry_bytes = many_flow.environments.AllocatedBytes();

@@ -2,6 +2,7 @@
 #include "../../../src/source/prepared_family.h"
 #include "../../../src/source/family_emission.h"
 #include "../../../src/source/phased_method.h"
+#include "../../../src/source/phased_creations.h"
 #include "../../../src/source/module_aliases.h"
 #include "../../../src/source/syntax_resolution.h"
 #include "abcd/source/verified_function.h"
@@ -407,6 +408,22 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     Check(std::holds_alternative<PhasedMethod>(analyzed));
     auto staged = std::get<PhasedBody>(PhasedBody::Build(owner, decoded));
     const auto staged_work = staged.Work();
+    const auto child_sites = std::get<analysis::FunctionCreationSites>(
+        analysis::FunctionCreationSites::Build(file, header, index, lookup));
+    const auto children = std::get<PhasedCreations>(BindPhasedCreations(file, header, index,
+        lookup, roles, child_sites, staged, decoded));
+    Check(children.sites.empty());
+    Check(staged.Identity() == identity && staged.Target() == owner.Target());
+    Check(std::holds_alternative<PhasedCreations>(BindPhasedCreations(file, header, index,
+        lookup, roles, child_sites, staged, decoded, {analysis::SemanticBudget{}.bytes, children.work})));
+    Check(std::get<PhasedCreationError>(std::get<PhasedCreationFailure>(BindPhasedCreations(file,
+        header, index, lookup, roles, child_sites, staged, decoded,
+        {analysis::SemanticBudget{}.bytes, children.work - 1})).cause) == PhasedCreationError::kWorkLimit);
+    Check(std::get<PhasedCreationError>(std::get<PhasedCreationFailure>(BindPhasedCreations(file,
+        header, index, lookup, roles, child_sites, staged, decoded, {0})).cause) == PhasedCreationError::kResourceLimit);
+    auto wrong_header = header; ++wrong_header.file_size;
+    Check(std::get<PhasedCreationError>(std::get<PhasedCreationFailure>(BindPhasedCreations(file,
+        wrong_header, index, lookup, roles, child_sites, staged, decoded)).cause) == PhasedCreationError::kIdentity);
     const auto* graph_address = &staged.Graph();
     auto relocated = std::move(staged);
     Check(&relocated.Graph() == graph_address);
