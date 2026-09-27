@@ -56,7 +56,17 @@ Missing frame context remains unsupported; malformed layouts are rejected.
 This is not yet source admission: `VerifySemanticSource` rejects both original
 snapshot opcodes and typed snapshot operations with `kArgumentOwner`, including
 zero-declared-parameter functions. No count/tail ownership certificate, value-IR
-operand adapter or snapshot AST is fabricated. Those are the next obligations.
+snapshot operation or snapshot AST is fabricated. Those are the next obligations.
+
+The shared `OperandView` now accepts snapshots and owns only their compact
+window. It independently checks fixed/range inputs, the accumulator write and
+the allocation/exception effects. Each slot is an `Argument` protocol use with
+its original 32-bit SSA read ordinal, not an eager JS call operand. Actual count
+and tail remain frame inputs, not invented scalar uses. Build/index access are
+O(1); use expansion stays under the importing pass's existing work/memory budget.
+This adapter does not authorize dropping potentially absent slots or admitting
+Hole-bearing inputs. The same decoded method is tested through semantic lifting,
+SSA and operand/slot correspondence before malformed-effect mutation checks.
 
 1. **Frame inputs.** Build a compact, validated argument-window plan from the
    actual FrameLayout and callable creation occurrence. Keep actual invocation

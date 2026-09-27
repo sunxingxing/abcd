@@ -42,6 +42,17 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 实参快照的共享 OperandView 已接通：常量大小的窗口视图按 32-bit 序号
+  描述每个当前参数槽，标记为 Argument 协议依赖，不授权无条件 JS 求值。
+  独立校验读范围、acc 写入、allocation 和异常前效果；错槽、错数量、
+  缺范围、额外固定读、错写入及删改效果均拒绝。相同 ABC 经 IR/SSA 后再核对
+  操作数对应关系；覆盖 0/1/200/201/65536，以及 28-bit 最大窗口的 O(1) 访问。
+  实际数量/尾部所有者、ValueOperation、AST 尚未接通，源码仍以 kArgumentOwner
+  拒绝。未改变源码发布范围，规则版本仍为 36，不计为该指令端到端完成。
+  `snapshot_operands_test` 先因不支持快照失败，实现后与 `argument_snapshot_test`、
+  `call_operands_test`、`value_import_test`、`source_route_test`、
+  `constant_group_test`、`value_created_family_test` 共 7/7 通过；对应目标及
+  `abc_semantic` 构建成功。未运行 RSS/基准/全语料或 Ark VM 差分。
 - GETUNMAPPEDARGS 已接入共同语义提升和正常 CFG/SSA：ArgumentSnapshot 保留
   当前声明槽的隐式 may-read、每次执行的 allocation 及异常前效果，acc 仅在
   正常返回定义。FunctionInput 传入真实 FrameLayout；无帧信息、错位/不匹配

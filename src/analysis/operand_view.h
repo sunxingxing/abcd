@@ -7,7 +7,7 @@ namespace abcd::analysis {
 enum class OperandViewError : std::uint8_t {
   kUnsupported, kMismatch, kResourceLimit, kWorkLimit
 };
-// One indexed interface for scalar and variable-sized call inputs. This view
+// One indexed interface for scalar, call and argument-snapshot inputs. This view
 // owns compact descriptions only; expanded use storage belongs to ValueProgram.
 class OperandView {
  public:
@@ -20,7 +20,8 @@ class OperandView {
  private:
   explicit OperandView(ValueOperands scalar) : operands_(std::move(scalar)) {}
   explicit OperandView(CallOperands call) : operands_(std::move(call)) {}
-  std::variant<ValueOperands, CallOperands> operands_;
+  explicit OperandView(ArgumentWindow window) : operands_(window) {}
+  std::variant<ValueOperands, CallOperands, ArgumentWindow> operands_;
 };
 }  // namespace abcd::analysis
 #endif
