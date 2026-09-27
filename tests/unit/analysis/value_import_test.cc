@@ -8,6 +8,44 @@ int main() {
   using namespace abcd;
   using namespace abcd::analysis;
   {
+    const auto code = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDTHIS),
+        static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
+    const auto built = BuildSemanticMethod(code, abc::ProfileId::kDynamic1206, 0);
+    test::Check(std::holds_alternative<SemanticMethod>(built));
+    const auto& method = std::get<SemanticMethod>(built);
+    const auto& load = method.instructions.front();
+    test::Check(std::holds_alternative<FrameThisLoad>(load.operation));
+    test::Check(load.effects.normal_registers.read_count == 0 &&
+        load.effects.normal_registers.write &&
+        std::holds_alternative<Accumulator>(*load.effects.normal_registers.write));
+    test::Check(load.effects.normal == LanguageEffect::kNone &&
+        load.effects.exceptional == ExceptionalCompletion::kImpossible);
+    const auto proof = VerifySemanticSource(code, method, 0, 0);
+    test::Check(std::get<SemanticProofFailure>(proof).kind == SemanticProofError::kInternalValue);
+    test::Check(std::get<SemanticProofFailure>(proof).pc == abc::CodeOffset{1});
+    auto malformed = code.instructions.front();
+    malformed.decoded.operand_count = 1;
+    test::Check(std::get<SemanticFailure>(LiftSemanticInstruction(
+        malformed, abc::ProfileId::kDynamic1206, 0)).kind == SemanticError::kMalformedInstruction);
+    // Overwriting the ABI receiver copy with a legal JS value does not prove
+    // that the independent VM frame receiver has been initialized by super.
+    const auto overwritten = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDNULL),
+        static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), 2,
+        static_cast<std::uint8_t>(abc::Opcode::kLDTHIS),
+        static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
+    constexpr std::uint32_t kImplicitSlots = 3;
+    for (const auto profile : {abc::ProfileId::kDynamic1202,
+        abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+      const auto lifted = BuildSemanticMethod(overwritten, profile, kImplicitSlots);
+      const auto& input = std::get<SemanticMethod>(lifted);
+      test::Check(std::holds_alternative<FrameThisLoad>(input.instructions[2].operation));
+      test::Check(input.instructions[2].effects.normal_registers.read_count == 0);
+      const auto checked = VerifySemanticSource(overwritten, input, kImplicitSlots, 0);
+      test::Check(std::get<SemanticProofFailure>(checked).kind == SemanticProofError::kInternalValue);
+      test::Check(std::get<SemanticProofFailure>(checked).pc == abc::CodeOffset{4});
+    }
+  }
+  {
     const auto code = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDTRUE),
         static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER),
         static_cast<std::uint8_t>(abc::Opcode::kRETURN)});

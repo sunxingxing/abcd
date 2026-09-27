@@ -78,6 +78,11 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
       return Fail(SemanticError::kMalformedInstruction, site.offset);
     return DebuggerOperation{};
   }
+  if (decoded.opcode == Opcode::kLDTHIS) {
+    if (decoded.operand_count != 0)
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    return FrameThisLoad{};
+  }
   if (decoded.opcode == Opcode::kLDGLOBAL) {
     const auto constant = LiftConstantObjectInstruction(decoded);
     const auto* load = std::get_if<ConstantObjectInstruction>(&constant);
@@ -377,6 +382,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
                         std::is_same_v<T, LoadHole> ||
                         std::is_same_v<T, StringLoad> ||
                         std::is_same_v<T, GlobalObjectLoad> ||
+                        std::is_same_v<T, FrameThisLoad> ||
                         std::is_same_v<T, BranchOperation> ||
                         std::is_same_v<T, JumpOperation> ||
                         std::is_same_v<T, ReturnOperation>);

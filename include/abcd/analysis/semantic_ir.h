@@ -86,6 +86,9 @@ struct StringLoad {
 };
 // Realm-owned object identity, not a mutable globalThis identifier lookup.
 struct GlobalObjectLoad {};
+// Reads VM frame.thisObj, not the writable optional ABI register copy. Derived
+// construction can expose Hole here; source use needs callable-owner evidence.
+struct FrameThisLoad {};
 struct AwaitValue {
   ScalarValue input;
   AwaitRegion origin;
@@ -104,7 +107,8 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        LoadHole, SuperCheck, RestCopy,
                                        BufferedArrayCreation, AwaitValue,
                                        ThrowOperation, SuperRange, ClassCreation,
-                                       DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation>;
+                                       DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
+                                       FrameThisLoad>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

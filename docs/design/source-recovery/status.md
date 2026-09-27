@@ -42,6 +42,14 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- LDTHIS 新增独立 FrameThisLoad 语义操作：读取 frame.thisObj，不读取/别名化
+  可写 ABI receiver 寄存器；保留 acc 写入、无普通语言效果和 Unknown 值域。
+  三个历史 profile 验证 ABI 副本覆盖不能证明 frame receiver 初始化，缺少 owner
+  证明时返回它仍以 InternalValue 拒绝；malformed 操作数也有反例。
+  `value_import_test`、`constant_group_test` 2/2 通过，`abc_semantic` 和 fixture
+  构建成功。仅完成语义前置，不计入 LDTHIS 源码完成量；下一步需要把已验证的
+  根/子 callable occurrence 上下文提前送入 FunctionInput，再接值 IR/ThisExpr。
+  具体集成顺序已写入 [第一组证据](constant-group.md)，不新增构造器专项 writer。
 - DEBUGGER 已贯穿公共 SemanticOperation、ValueOperation、求值计划、独立
   DebuggerStmt、语义/来源校验与统一 printer。它保留 acc、无结果，有独立有序
   观察效果，不允许按 NOP 或纯操作删除；没有增加专项 body writer。

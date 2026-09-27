@@ -28,6 +28,10 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::String()};
     } else if constexpr (std::is_same_v<T, GlobalObjectLoad>) {
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::Defined()};
+    } else if constexpr (std::is_same_v<T, FrameThisLoad>) {
+      // Neither the existence nor the entry domain of an ABI receiver slot
+      // proves frame.thisObj is initialized at this instruction.
+      return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
     } else if constexpr (std::is_same_v<T, ConstructorCall> ||
                          std::is_same_v<T, SuperRange> ||
                          std::is_same_v<T, ReceiverCall> ||

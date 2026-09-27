@@ -58,6 +58,47 @@ inspection UI or bytecode-register reconstruction has been implemented.
 
 ## Remaining Group Work
 
+### Frame Receiver Dependency
+
+LDTHIS now lifts to FrameThisLoad with an accumulator definition and no
+register read. The pinned interpreter handler calls GetThis, which returns
+InterpretedFrame::thisObj (interpreter-inl.cpp, GetThis implementation), not the
+optional writable ABI receiver slot. Its value rule remains Unknown: an
+uninitialized derived receiver cannot be promoted to a JS value just because
+an ABI slot contains one. Tests retain that distinction for 12.0.2.0,
+12.0.6.0 and 13.0.1.0 and reject exposing the unconstrained result.
+
+This is a semantic admission prerequisite, NOT LDTHIS source completion.
+FunctionInput::Build currently verifies domains before the actual callable
+context is bound. The next implementation must carry occurrence-bound receiver
+evidence into that verification, retain it in the input owner, and revalidate
+it at family publication. Ordinary/base initialized receivers, derived
+pre-/post-super states and arrow lexical receivers must remain distinct.
+Do not infer this evidence from frame slot existence or method-name spelling.
+After that, a typed value read can map to an owner-qualified ThisExpr, with
+independent ABI checks and tests for changed ABI copies, call/apply receiver
+identity, capture ownership and derived initialization failures. The current
+proof rejection is not counted as supported decompilation.
+
+Concrete integration order:
+
+1. PreparedFamily::Prepare already owns a validated FunctionContext before
+   calling ReadFunctionFamily. Pass that owner into root input construction;
+   retain the current ownerless diagnostic overload as conservative.
+2. FamilyReader currently calls ReadMethod(target) before resolving the child's
+   CreationTreeContext. Resolve the actual occurrence first, then build the
+   child input with that context. Preserve all capture rebasing and immutable
+   file identity checks, and charge the context within the same budget.
+3. Carry a typed receiver premise through FunctionInput, SemanticProof and
+   register-value analysis. A default/absent premise remains Unknown. Reject
+   mismatched identity, target, occurrence or receiver phase at publication.
+4. Add the value-IR receiver read and owner-qualified ThisExpr correspondence.
+   Extend FunctionAbi's receiver census to count these reads separately from
+   ReceiverEntry operands; absence of an ABI copy must not forbid LDTHIS.
+5. Prove initialized ordinary/base owners first without inventing a derived
+   initialization or arrow capture premise. Then implement those owner phases
+   using the same pipeline; keep them explicit unfinished group obligations.
+
 - LDGLOBAL and LDSYMBOL: bind realm identity without replacing intrinsic
   identity by a mutable or shadowed global identifier.
 - LDTHIS and LDFUNCTION: preserve callable ownership, constructor initialization
