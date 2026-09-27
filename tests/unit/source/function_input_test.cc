@@ -13,6 +13,7 @@
 #include "abcd/source/value_stage.h"
 #include "analysis/ssa_fixture.h"
 
+#include <algorithm>
 #include <type_traits>
 #include <limits>
 #include <sstream>

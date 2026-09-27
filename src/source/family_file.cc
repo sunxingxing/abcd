@@ -20,13 +20,13 @@ class FamilyReader {
       : file_(file), header_(header), index_(index), lookup_(lookup), roles_(roles), sites_(sites),
         identity_(identity), budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules) {}
 
-  FileFamily Read(abc::MethodPosition root) {
+  FileFamily Read(abc::MethodPosition root, const FunctionContext* owner) {
     Require(root.value < index_.methods.size(), Error::kMethod);
     method_ = index_.methods[root.value].offset;
     Admit(1, sizeof(FamilyReader));
     Grow(active_, index_.methods.size()); Step(index_.methods.size());
     active_.resize(index_.methods.size());
-    auto function = ReadMethod(root);
+    auto function = ReadMethod(root, owner);
     Add(std::move(function), {}, {}, root);
     while (!stack_.empty()) {
       Step();
@@ -69,12 +69,12 @@ class FamilyReader {
       Step(std::bit_width(sites_.Size()) + 1);
       const auto occurrence = sites_.FindOccurrence(*method_, *parent_, *pc_);
       Require(occurrence.has_value(), Error::kOccurrence);
-      auto child = ReadMethod(target);
       auto context_result = CreationTreeContext::Resolve(file_, header_, index_, lookup_, roles_,
           sites_, *occurrence, identity_, Remaining());
       if (const auto* error = std::get_if<CreationContextFailure>(&context_result)) Fail(*error);
-      auto context = std::get<CreationTreeContext>(std::move(context_result));
+      FunctionContext context{std::get<CreationTreeContext>(std::move(context_result))};
       Admit(context.AllocatedBytes(), 1); Step(context.Work());
+      auto child = ReadMethod(target, &context);
       const CaptureFunction parent_work{parent.input, parent.values};
       const CaptureFunction child_work{child.input, child.values};
       auto captured = BindCaptureCells(index_, parent_work, child_work, site, *binding, Remaining());
@@ -123,15 +123,15 @@ class FamilyReader {
     Grow(values, values.empty() ? 1 : values.size() * kGrowth);
   }
   analysis::SemanticBudget Remaining() const { return {bytes_, work_}; }
-  FileFunction ReadMethod(abc::MethodPosition position) {
+  FileFunction ReadMethod(abc::MethodPosition position, const FunctionContext* owner) {
     auto read = ReadFunctionValues(file_, header_, index_, position, identity_,
-        InputCaptureMode::kConditional, Remaining(), modules_);
+        InputCaptureMode::kConditional, Remaining(), modules_, owner);
     if (const auto* error = std::get_if<FunctionFileFailure>(&read)) Fail(*error);
     auto function = std::get<FileFunction>(std::move(read));
     Admit(function.allocated_bytes, 1);
     return function;
   }
-  void Add(FileFunction function, std::optional<CreationTreeContext> context,
+  void Add(FileFunction function, std::optional<FunctionContext> context,
       std::optional<FamilyCreation> incoming, abc::MethodPosition method) {
     AppendRoom(result_.members); AppendRoom(stack_);
     const FamilyId id{static_cast<std::uint32_t>(result_.members.size())};
@@ -164,8 +164,8 @@ std::variant<FileFamily, FamilyFileFailure> ReadFunctionFamily(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
     abc::MethodPosition root, RouteInputIdentity identity,
-    analysis::SemanticBudget budget, const RecordModuleContext* modules) {
-  try { return FamilyReader(file, header, index, lookup, roles, sites, identity, budget, modules).Read(root);
+    analysis::SemanticBudget budget, const RecordModuleContext* modules, const FunctionContext* owner) {
+  try { return FamilyReader(file, header, index, lookup, roles, sites, identity, budget, modules).Read(root, owner);
   } catch (const FamilyFileFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyFileFailure{FamilyFileError::kResourceLimit, {}, {}, {}};
   } catch (const std::length_error&) { return FamilyFileFailure{FamilyFileError::kResourceLimit, {}, {}, {}}; }

@@ -104,6 +104,18 @@ void Emit(bool wide, bool captured = false) {
   const auto identity = MakeRouteInputIdentity(
       std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
   const FamilyDestination destination{Strictness::kStrict, nullptr};
+  if (captured) {
+    FunctionContext owner{std::get<CreationTreeContext>(CreationTreeContext::Resolve(
+        file, header, index, lookup, roles, sites, sites.Find({kTarget}).first, identity))};
+    auto family = ReadFunctionFamily(file, header, index, lookup, roles, sites,
+        owner.Position(), identity, {}, nullptr, &owner);
+    const auto& read = std::get<FileFamily>(family);
+    test::Check(read.members.size() == 2);
+    test::Check(read.members[0].function.input.MatchesOwner(owner));
+    test::Check(read.members[1].context.has_value());
+    test::Check(read.members[1].function.input.MatchesOwner(*read.members[1].context));
+    test::Check(!read.members[1].function.input.MatchesOwner(owner));
+  }
   auto prepared = PreparedFamily::PrepareCreated(file, header, index, lookup, roles,
       sites, sites.Find({kTarget}).first, identity, destination);
   test::Check(std::holds_alternative<PreparedFamily>(prepared));

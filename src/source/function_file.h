@@ -30,6 +30,7 @@ using FunctionFileFailure = std::variant<FunctionFileError, abc::BodyFailure,
 [[nodiscard]] std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     abc::MethodPosition method, RouteInputIdentity identity, InputCaptureMode mode,
-    analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr);
+    analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
+    const FunctionContext* owner = nullptr);
 }  // namespace abcd::source
 #endif

@@ -24,6 +24,7 @@ struct FrameLayout {
   std::uint32_t parameters = 0;
   std::uint32_t registers = 0;
   bool extra_arguments = false;
+  bool operator==(const FrameLayout&) const = default;
 };
 
 enum class FrameError { kArgumentUnderflow, kRuntimeCountRange };

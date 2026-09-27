@@ -37,16 +37,30 @@ FunctionInput::FunctionInput(RouteInputIdentity identity, abc::EntityOffset meth
     abc::EntityOffset record, InputCaptureMode mode,
     analysis::SemanticMethod&& input, analysis::SemanticProof&& proof,
     std::vector<CaptureUse>&& captures, std::vector<InputCaptureAccess>&& accesses,
-    std::size_t allocated_bytes)
+    std::size_t allocated_bytes, std::optional<Owner> owner)
     : identity_(identity), method_(method), record_(record), mode_(mode),
       input_(std::move(input)), proof_(std::move(proof)), captures_(std::move(captures)),
-      accesses_(std::move(accesses)), allocated_bytes_(allocated_bytes) {}
+      accesses_(std::move(accesses)), allocated_bytes_(allocated_bytes), owner_(owner) {}
+
+FunctionInput::Owner FunctionInput::DescribeOwner(const FunctionContext& owner) {
+  if (const auto* site = owner.ClassSite())
+    return {site->creator, site->pc, site->property, owner.Callable(), owner.Mode(), owner.Frame()};
+  const auto* site = owner.CreationSite();
+  return {site->creator, site->pc, {}, owner.Callable(), owner.Mode(), owner.Frame()};
+}
+bool FunctionInput::MatchesOwner(const FunctionContext& owner) const {
+  return owner_ && identity_ == owner.Identity() && method_ == owner.Target() &&
+      *owner_ == DescribeOwner(owner);
+}
 
 std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     RouteInputIdentity identity, abc::EntityOffset method, abc::EntityOffset record,
     const abc::MethodBody& body, const abc::FrameLayout& frame,
-    InputCaptureMode mode, analysis::SemanticBudget budget) {
+    InputCaptureMode mode, analysis::SemanticBudget budget, const FunctionContext* owner) {
   try {
+    if (owner && (owner->Identity() != identity || owner->Target() != method ||
+        owner->Frame() != frame)) return FunctionInputFailure{Error::kOwner};
+    const auto context = owner ? std::optional{DescribeOwner(*owner)} : std::nullopt;
     analysis::CapturedValues captures;
     analysis::ClosureWrites writes;
     switch (mode) {
@@ -103,7 +117,7 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     const auto retained = sizeof(FunctionInput) + proof->allocated_bytes +
         uses.capacity() * sizeof(CaptureUse) + accesses.capacity() * sizeof(InputCaptureAccess);
     return FunctionInput(identity, method, record, mode, std::move(*input),
-        std::move(*proof), std::move(uses), std::move(accesses), retained);
+        std::move(*proof), std::move(uses), std::move(accesses), retained, context);
   } catch (Error error) { return FunctionInputFailure{error};
   } catch (const std::bad_alloc&) { return FunctionInputFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return FunctionInputFailure{Error::kResourceLimit}; }

@@ -42,6 +42,14 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- receiver owner 前置接线完成：PreparedFamily 在根函数输入验证前传入真实
+  FunctionContext；子函数在读取前先解析实际 creation occurrence，随后走相同入口。
+  FunctionInput 保存不可变 creator/PC/class property/callable/strictness/frame
+  标识，输入前拒绝错误 identity/target/frame，构建源码树时再次核对实际 owner。
+  保留 ownerless 诊断入口，不自动增强 receiver 值域，LDTHIS 源码仍待后续接线。
+  同目标两个创建点不能串用的正反例、父子 owner 对应及现有闭包输出均通过；
+  `function_input_test`、`constant_group_test`、`computed_store_test` 共 3/3 通过。
+  fixture、输入测试及 `abc_semantic` 构建成功；补齐旧输入测试缺少的 algorithm 包含。
 - LDTHIS 新增独立 FrameThisLoad 语义操作：读取 frame.thisObj，不读取/别名化
   可写 ABI receiver 寄存器；保留 acc 写入、无普通语言效果和 Unknown 值域。
   三个历史 profile 验证 ABI 副本覆盖不能证明 frame receiver 初始化，缺少 owner

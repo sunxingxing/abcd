@@ -23,9 +23,9 @@ struct FamilyObject {
 };
 struct FileFamilyMember {
   FileFunction function;
-  // Root enclosure/callable context is deliberately absent. Every child has
-  // an actual occurrence-bound context, not a target-method guess.
-  std::optional<CreationTreeContext> context;
+  // The root context is owned by PreparedFamily; input retains its occurrence
+  // stamp when supplied. Children own their actual occurrence context here.
+  std::optional<FunctionContext> context;
   std::optional<FamilyCreation> incoming;
   std::vector<FunctionBinding> children;
   std::vector<FamilyObject> objects;
@@ -57,6 +57,9 @@ struct FamilyFileFailure {
 // runtime recursion through captured values is not such a cycle.
 // Same unchanged file/header/index/lookup/roles/sites/context are caller-owned
 // and admitted. Every retained member and the next pass's scratch share budget.
+// Optional root owner is checked and stamped before input verification. Each
+// child's context is resolved before its input. Ownerless diagnostic callers
+// do not gain initialized receiver or publication permissions.
 // Result remains conditional: no root enclosure, transitive-write certificate,
 // complete AST, source text or executable receipt is produced here.
 [[nodiscard]] std::variant<FileFamily, FamilyFileFailure> ReadFunctionFamily(
@@ -64,6 +67,7 @@ struct FamilyFileFailure {
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
     abc::MethodPosition root, RouteInputIdentity identity,
-    analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr);
+    analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
+    const FunctionContext* owner = nullptr);
 }  // namespace abcd::source
 #endif

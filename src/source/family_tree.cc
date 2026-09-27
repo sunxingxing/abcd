@@ -38,6 +38,7 @@ class FamilyTrees {
       } else Require(!member.incoming && !member.context, FamilyTreeError::kContext);
       const auto& context = child_context ? *child_context : root;
       const auto& function = member.function;
+      Require(!function.input.HasOwner() || function.input.MatchesOwner(context), FamilyTreeError::kContext);
       const auto& graph = function.values.graph;
       Require(context.Identity() == function.input.Identity() &&
           context.Target() == function.input.Method(), FamilyTreeError::kContext);
@@ -137,7 +138,7 @@ class FamilyTrees {
       default_candidates_.reset(); defaults_proved_ = false;
       auto& member = family.members[i];
       Require(i == 0 || member.context.has_value(), FamilyTreeError::kContext);
-      const auto length = i == 0 ? root.Length() : member.context->Site().creation.length.value;
+      const auto length = i == 0 ? root.Length() : member.context->Length();
       const auto& frame = i == 0 ? root.Frame() : member.context->Frame();
       auto& values = member.function.values;
       if (length >= frame.parameters || !values.cells) continue;

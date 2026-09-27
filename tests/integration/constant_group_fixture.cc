@@ -44,6 +44,7 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   const std::uint8_t parameters = callback ? 1 : 0;
   const auto caller = Append(bytes,
       {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), kCache, 0, 0, parameters,
+       Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), kCache, 0, 0, parameters,
        Op(abc::Opcode::kRETURNUNDEFINED)}, 0, 0);
   std::vector<std::uint8_t> code{Op(constant)};
   if (debug) code.push_back(Op(abc::Opcode::kDEBUGGER));
@@ -88,6 +89,41 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   const auto identity = MakeRouteInputIdentity(
       std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
   const FamilyDestination destination{Strictness::kStrict, nullptr};
+  if (expected == ExpectedSource::kPrinted) {
+    const auto range = sites.Find({kTarget});
+    test::Check(range.count == 2);
+    FunctionContext first{std::get<CreationTreeContext>(CreationTreeContext::Resolve(
+        file, header, index, lookup, roles, sites, range.first, identity))};
+    FunctionContext second{std::get<CreationTreeContext>(CreationTreeContext::Resolve(
+        file, header, index, lookup, roles, sites, {range.first.value + 1}, identity))};
+    auto read = ReadFunctionValues(file, header, index, first.Position(), identity,
+        InputCaptureMode::kConditional, {}, nullptr, &first);
+    const auto& input = std::get<FileFunction>(read);
+    test::Check(input.input.HasOwner() && input.input.MatchesOwner(first));
+    test::Check(!input.input.MatchesOwner(second));
+    const auto wrong_target = FunctionInput::Build(identity, {kCaller}, {kRecord},
+        input.body, input.frame, InputCaptureMode::kConditional, {}, &first);
+    test::Check(std::get<FunctionInputError>(
+        std::get<FunctionInputFailure>(wrong_target).cause) == FunctionInputError::kOwner);
+    auto wrong_frame = input.frame;
+    ++wrong_frame.locals;
+    const auto wrong_layout = FunctionInput::Build(identity, {kTarget}, {kRecord},
+        input.body, wrong_frame, InputCaptureMode::kConditional, {}, &first);
+    test::Check(std::get<FunctionInputError>(
+        std::get<FunctionInputFailure>(wrong_layout).cause) == FunctionInputError::kOwner);
+    auto wrong_identity = identity;
+    ++wrong_identity.file_size;
+    const auto wrong_file = FunctionInput::Build(wrong_identity, {kTarget}, {kRecord},
+        input.body, input.frame, InputCaptureMode::kConditional, {}, &first);
+    test::Check(std::get<FunctionInputError>(
+        std::get<FunctionInputFailure>(wrong_file).cause) == FunctionInputError::kOwner);
+    auto family = ReadFunctionFamily(file, header, index, lookup, roles, sites,
+        first.Position(), identity, {}, nullptr, &first);
+    auto wrong_occurrence = BuildFileFamilyTrees(file, header, index,
+        std::get<FileFamily>(std::move(family)), second);
+    test::Check(std::get<FamilyTreeError>(
+        std::get<FamilyTreeFailure>(wrong_occurrence).cause) == FamilyTreeError::kContext);
+  }
   auto prepared = PreparedFamily::PrepareCreated(file, header, index, lookup, roles,
       sites, sites.Find({kTarget}).first, identity, destination);
   if (expected == ExpectedSource::kRejected) {

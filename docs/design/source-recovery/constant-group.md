@@ -82,6 +82,14 @@ proof rejection is not counted as supported decompilation.
 
 Concrete integration order:
 
+Steps 1-2 are now wired. FunctionInput stores an immutable creation stamp
+(creator, PC, optional class property, callable, strictness and complete frame)
+only from an already resolved FunctionContext. It rejects mismatched file
+identity, target and frame before analysis. Family tree construction checks
+the stamp against its actual owner again. The ownerless diagnostic path stays
+available and does not acquire an owner after verification. No receiver-domain
+premise is granted by this wiring alone; steps 3-5 remain unfinished.
+
 1. PreparedFamily::Prepare already owns a validated FunctionContext before
    calling ReadFunctionFamily. Pass that owner into root input construction;
    retain the current ownerless diagnostic overload as conservative.
