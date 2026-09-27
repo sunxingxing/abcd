@@ -528,6 +528,55 @@ void DebuggerTree() {
   tree.statements[statement.value].statement = ReturnStmt{};
   Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
 }
+void FrameFunctionTree() {
+  using namespace analysis;
+  Fixture fixture;
+  fixture.Add(0, 0, 0, ValueFrameFunction{}, true, {});
+  fixture.Add(0, 1, 1, ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{2}}});
+  fixture.graph.blocks = {{{0}, 2, {0}, 0}};
+  auto syntax = fixture.Syntax();
+  syntax.callable = CallableKind::kFunction;
+  syntax.inferred_name = NameId{1};
+  const auto control = std::get<ControlPlan>(BuildControlPlan(fixture.graph));
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(fixture.graph));
+  auto built = BuildFunctionTree(fixture.graph, control, evaluation, syntax, {fixture.constants, 2, 0, {}});
+  Check(std::holds_alternative<ConstructedFunction>(built));
+  const auto tree = std::get<ConstructedFunction>(std::move(built)).tree;
+  Check(tree.self.has_value());
+  const auto& self = tree.symbols[tree.self->value];
+  Check(self.kind == BindingKind::kFunctionSelf && self.declaration == DeclarationKind::kConst);
+  Check(tree.scopes[tree.parameter_scope.value].parent == self.scope);
+  Check(tree.scopes[self.scope.value].kind == ScopeKind::kFunctionSelf);
+  Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {}));
+  Check(!frame.function);
+  const auto abi = std::get<ConstructedAbi>(BuildFunctionAbi(fixture.graph, tree, frame, 1)).abi;
+  Check(abi.frame_function_reads == 1 && abi.self_references == 1 &&
+      abi.callable == AbiObservation::kFrameIdentity);
+  const auto expression = std::get<ExprId>(tree.operations.front().node);
+  Check(std::get<SymbolExpr>(tree.expressions[expression.value].expression).symbol == tree.self);
+  const auto reject = [&](auto change) {
+    auto copy = tree;
+    change(copy);
+    Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(copy)));
+  };
+  reject([](auto& copy) { copy.self.reset(); });
+  reject([](auto& copy) { copy.symbols[copy.self->value].declaration = DeclarationKind::kLet; });
+  reject([](auto& copy) { copy.scopes[copy.symbols[copy.self->value].scope.value].parent = copy.body_scope; });
+  reject([](auto& copy) { copy.symbols[copy.parameters[0].symbol.value].name = *copy.inferred_name; });
+  reject([](auto& copy) { copy.names[copy.inferred_name->value] = u"eval"; });
+  reject([&](auto& copy) { copy.expressions[expression.value].expression = SymbolExpr{copy.parameters[0].symbol}; });
+  for (const auto kind : {CallableKind::kArrow, CallableKind::kMethod, CallableKind::kDerivedConstructor,
+                         CallableKind::kAsyncFunction})
+    reject([&](auto& copy) { copy.callable = kind; });
+  auto global = tree;
+  global.expressions[expression.value].expression = GlobalNameExpr{*tree.inferred_name};
+  const GlobalScope scope{};
+  Check(std::get<TreeGlobalError>(VerifyTreeGlobals(global, &scope)) == TreeGlobalError::kShadowed);
+  syntax.inferred_name.reset();
+  Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(fixture.graph, control, evaluation,
+      syntax, {fixture.constants, 2, 0, {}})));
+}
 void FrameReceiverTree() {
   using namespace analysis;
   Fixture fixture;
@@ -559,6 +608,7 @@ void FrameReceiverTree() {
 }
 }  // namespace
 int main() {
+  FrameFunctionTree();
   FrameReceiverTree();
   DebuggerTree();
   ComputedStoreTree();

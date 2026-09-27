@@ -508,6 +508,8 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
          << ",\"receiver\":" << nlohmann::json{{"operands", abi.receiver.operands},
               {"frame_reads", abi.frame_receiver_reads}, {"references", abi.receiver.references}}
          << ",\"callable\":" << nlohmann::json(AbiObservationName(abi.callable))
+         << ",\"frame_function_reads\":" << abi.frame_function_reads
+         << ",\"self_references\":" << abi.self_references
          << ",\"new_target\":" << nlohmann::json(AbiObservationName(abi.new_target))
          << ",\"arguments\":" << nlohmann::json(AbiObservationName(abi.arguments)) << ",\"parameters\":";
   output << '[';

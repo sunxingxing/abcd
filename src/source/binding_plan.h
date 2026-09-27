@@ -17,12 +17,14 @@ struct SnapshotBinding {
 struct PhiBinding { analysis::ValueId value; analysis::WorkBlockId block; };
 struct CycleBinding { std::uint32_t bundle; CopyTempId temporary; };
 struct CellBinding { CellId cell; };
-using BindingSource = std::variant<ParameterBinding, SnapshotBinding, PhiBinding, CycleBinding, CellBinding>;
+struct FunctionSelfBinding {};
+using BindingSource = std::variant<ParameterBinding, SnapshotBinding, PhiBinding, CycleBinding, CellBinding,
+                                   FunctionSelfBinding>;
 struct BindingPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   std::vector<ValueBinding> values;
-  // Parameters precede value snapshots/phis, per-bundle cycle temps and cells,
+  // Parameters precede optional self, value snapshots/phis, cycle temps and cells,
   // including unused formal parameters.
   // Names and lexical declarations are assigned by tree construction, not SSA.
   std::vector<BindingSource> symbols;
@@ -34,6 +36,7 @@ struct BindingPlan {
   std::vector<SymbolId> cells;
   std::uint32_t parameter_count = 0;
   ParameterPlan parameters;
+  std::optional<SymbolId> self;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

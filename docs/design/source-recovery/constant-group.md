@@ -65,13 +65,41 @@ The pinned interpreter handler at interpreter-inl.cpp:3267 invokes GetFunction;
 the implementation at :7982 reads InterpretedFrame::function. It neither reads
 the optional ABI function register nor resolves a source name. The result is a
 defined language value, writes only acc and has no ordinary JS abrupt effect.
-Three-profile tests cover absent ABI slots, overwritten ABI copies, malformed
-operands and mutated IR correspondence. This is an IR prerequisite, not source
-completion: evaluation and source publication still reject the operation.
+Three-profile analysis tests cover absent ABI slots, overwritten ABI copies,
+malformed operands and mutated IR correspondence.
 
-The remaining implementation must use the shared callable pipeline:
+Named ordinary functions now traverse the shared source pipeline. BindingPlan
+allocates one immutable FunctionSelfBinding per owner with live frame-function
+reads; the expression forest emits SymbolExpr references. The function-name
+scope is outside parameter/body scopes and inside capture/module scopes.
+Tree structure, flow, operands and ABI independently check its identity,
+immutability and correspondence. ABI distinguishes frame reads from source
+references and reports FrameIdentity rather than Unobserved. Family assembly
+rechecks the creation-proven runtime name. The existing printer emits a named
+function expression, not a body declaration or a lookup of the mutable name
+property. CFG blocks, edge copies and lexical-cell allocation ownership do not
+change. Added binding admission is O(I); existing name indexes remain bounded.
 
-1. Introduce an explicit self-binding scope outside the parameter scope and
+Twelve file-backed variants across three profiles cover direct/callback reads
+with and without overwriting the ABI function copy. Generated JS checks self
+return, constructor return, ignored callback results, thrown identity, reentry,
+outer-variable rebinding and changing the function's name property. Four more
+cases cover $arg0 (must not capture a synthesized parameter), __proto__,
+MethodSelf1 and ClassValue. Each load PC maps to the exact self identifier span.
+Two narrow/wide store families capture the parent's function identity into a
+child arrow's cell, interleave activations and exercise key exceptions/setter
+reentry. Incorrect explicit object parameters and call receivers cannot replace
+the captured function. AST mutations test parameter substitution/shadowing,
+missing/mutable self, wrong scope, illegal name and unsupported callable kinds.
+
+This is ordinary named-function coverage, not all LDFUNCTION or group coverage.
+Empty/illegal names and direct arrow reads still reject in file-backed tests;
+Unicode names outside the existing identifier boundary, parameter/global name
+conflicts, methods and async/derived owner forms still require representation
+work. Node tests are not Ark VM differential evidence. Remaining requirements
+and the invariants of the implemented steps are:
+
+1. Retain the explicit self-binding scope outside the parameter scope and
    inside enclosing capture/module scopes. A self binding is initialized by
    function creation, is immutable, and is not a body let declaration. Preserve
    this distinction in TreeScopeCheck, TreeFlow and ABI census. Parameter and
@@ -87,7 +115,7 @@ The remaining implementation must use the shared callable pipeline:
    shadowing, arrows and methods require a separately verified creation-owned
    binding representation preserving callable kind, name and identity. These
    remain required cases, not permission to narrow the overall ISA goal.
-4. Extend the unified printer and provenance tables from the verified AST.
+4. Extend the unified printer and provenance tables only from the verified AST.
    Do not use arguments.callee, mutable object-property lookup, a global name,
    source-text rewriting, or an extra ad hoc body writer as a substitute.
 5. End-to-end acceptance: the same encoded function traverses import, SSA,

@@ -51,7 +51,11 @@ class OperandCheck {
       };
       std::visit([&](const auto& operation) {
         using T = std::decay_t<decltype(operation)>;
-        if constexpr (std::is_same_v<T, analysis::ValueFrameThis>) {
+        if constexpr (std::is_same_v<T, analysis::ValueFrameFunction>) {
+          RequireMeaning(op.result && op.result->value < graph_.values.size() &&
+              graph_.values[op.result->value].domain.IsLanguage() && tree_.self &&
+              Node<SymbolExpr>(expression).symbol == tree_.self, Error::kOperand);
+        } else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>) {
           RequireMeaning(op.result && op.result->value < graph_.values.size() &&
               graph_.values[op.result->value].domain.IsLanguage(), Error::kOperand);
           RequireMeaning(Node<ThisExpr>(expression).owner == tree_.owner, Error::kOperand);
@@ -181,7 +185,6 @@ class OperandCheck {
           }
         } else {
           static_assert(std::is_same_v<T, analysis::ValueModuleWrite> ||
-                        std::is_same_v<T, analysis::ValueFrameFunction> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueDebugger> ||

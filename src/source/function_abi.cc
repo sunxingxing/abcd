@@ -17,7 +17,9 @@ class AbiBuilder {
   ConstructedAbi Build(std::uint32_t length) {
     Require(graph_.revision == tree_.value_revision && graph_.cfg_revision == tree_.cfg_revision, Error::kRevision);
     Require(tree_.parameters.size() == frame_.parameters, Error::kParameter);
-    Require(!tree_.self, Error::kSyntax);
+    if (tree_.self)
+      Require(tree_.callable == CallableKind::kFunction && tree_.self->value < tree_.symbols.size() &&
+          tree_.symbols[tree_.self->value].kind == BindingKind::kFunctionSelf, Error::kSyntax);
     Array(result_.parameters, frame_.parameters);
     Array(formals_, tree_.symbols.size());
     result_.length = length;
@@ -65,6 +67,12 @@ class AbiBuilder {
             tree_.callable == CallableKind::kBaseConstructor, Error::kReceiver);
         Increment(result_.frame_receiver_reads);
       }
+      if (op.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::ValueFrameFunction>(op.operation)) {
+        Require(tree_.self.has_value(), Error::kEntry);
+        Increment(result_.frame_function_reads);
+        result_.callable = AbiObservation::kFrameIdentity;
+      }
     }
     for (const auto& parameter : result_.parameters) {
       Step();
@@ -73,6 +81,8 @@ class AbiBuilder {
     }
     Require((result_.receiver.operands != 0 || result_.frame_receiver_reads != 0) ==
         (result_.receiver.references != 0), Error::kReceiver);
+    Require((result_.frame_function_reads != 0) == (result_.self_references != 0) &&
+        tree_.self.has_value() == (result_.frame_function_reads != 0), Error::kEntry);
     // A JS arrow inherits this; a VM receiver entry is dynamic. Captured outer
     // receivers must instead retain their explicit enclosing-owner binding.
     Require(tree_.callable != CallableKind::kArrow ||
@@ -114,8 +124,14 @@ class AbiBuilder {
       auto& parameter = result_.parameters[*ordinal];
       Increment(write ? parameter.writes : parameter.reads.references);
     } else {
-      // No implicit self/arguments binding may appear under a local spelling.
+      // Self needs an explicit immutable-binding census. No implicit arguments
+      // binding may appear under an ordinary local spelling.
       const auto kind = tree_.symbols[id.value].kind;
+      if (kind == BindingKind::kFunctionSelf) {
+        Require(tree_.self == id && !write, Error::kSyntax);
+        Increment(result_.self_references);
+        return;
+      }
       Require(kind == BindingKind::kCompilerTemporary || kind == BindingKind::kLocal ||
           kind == BindingKind::kCapture || kind == BindingKind::kModule, Error::kSyntax);
     }

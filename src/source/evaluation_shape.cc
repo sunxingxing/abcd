@@ -51,6 +51,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else if constexpr (std::is_same_v<T, analysis::ValueJump>) return EvaluationShape{kNoOperands, false};
     else if constexpr (std::is_same_v<T, analysis::ValueDebugger>) return EvaluationShape{kNoOperands, false};
     else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>) return EvaluationShape{kNoOperands, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueFrameFunction>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueString>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
       if (op.kind == analysis::CreationKind::kFunction && op.home_object == analysis::HomeObjectInput::kCurrentFunction)
@@ -79,7 +80,6 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return EvaluationShape{kConstruct, true, op.arguments};
     else {
       static_assert(std::is_same_v<T, analysis::ValueGuard> ||
-                    std::is_same_v<T, analysis::ValueFrameFunction> ||
                     std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
                     std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                     std::is_same_v<T, analysis::ValueCurrentEnvironment> ||

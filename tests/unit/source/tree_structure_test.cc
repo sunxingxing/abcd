@@ -59,7 +59,7 @@ void InferredNames() {
   tree.names.emplace_back(u"run"); tree.callable = CallableKind::kMethod;
   Expect(tree, TreeStructureError::kUnsupportedSyntax);
   tree.callable = CallableKind::kFunction; tree.self = SymbolId{0};
-  Expect(tree, TreeStructureError::kUnsupportedSyntax);
+  Expect(tree, TreeStructureError::kBinding); // Self still requires an actual immutable symbol/scope.
 }
 void Ownership() {
   auto tree = Minimal();

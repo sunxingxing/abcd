@@ -134,7 +134,7 @@ class TreePrinter {
         }
       }
       Admit(structure->allocated_bytes, 1); Step(structure->work);
-      if (Tree().self || Tree().strictness != Strictness::kStrict ||
+      if (Tree().strictness != Strictness::kStrict ||
           (Tree().callable != CallableKind::kFunction && Tree().callable != CallableKind::kArrow &&
            Tree().callable != CallableKind::kMethod)) throw Error::kUnsupportedContext;
       // Only the actual class root has member syntax; child creation nodes do
@@ -364,6 +364,8 @@ class TreePrinter {
     if (ClassRoot()) {
       if (class_root_->Site().placement == abc::ClassPlacement::kStatic) Append("static ");
       Key(class_root_->Name()); Append("(");
+    } else if (Tree().self) {
+      Append("(function "); Name(*Tree().self); Append("(");
     } else if (Tree().inferred_name) {
       // NamedEvaluation, not a new lexical self scope. Computed keys preserve
       // even an empty name or __proto__, without Object.defineProperty calls.
@@ -380,7 +382,7 @@ class TreePrinter {
     }
     // Class-body syntax closes with the block itself, not an expression wrap.
     if (!ClassRoot()) {
-      if (Tree().inferred_name) {
+      if (Tree().inferred_name && !Tree().self) {
         Append("})["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]");
       } else Append(")");
     }

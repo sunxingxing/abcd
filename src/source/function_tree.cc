@@ -8,6 +8,7 @@
 #include <stdexcept>
 
 #include "abcd/source/global_reference.h"
+#include "abcd/source/scalar_expression.h"
 #include "tree_semantics.h"
 #include "capture_aliases.h"
 
@@ -104,7 +105,7 @@ class TreeBuilder {
     for (std::size_t i = syntax_.parameters.size(); i < tree_.symbols.size(); ++i) {
       Step();
       if (tree_.symbols[i].kind == BindingKind::kLocal || tree_.symbols[i].kind == BindingKind::kCapture ||
-          tree_.symbols[i].kind == BindingKind::kModule) continue;
+          tree_.symbols[i].kind == BindingKind::kModule || tree_.symbols[i].kind == BindingKind::kFunctionSelf) continue;
       const SymbolId symbol{static_cast<std::uint32_t>(i)};
       const TreeOriginId origin{static_cast<std::uint32_t>(tree_.origins.size())};
       tree_.origins.emplace_back(BindingOrigin{symbol});
@@ -154,7 +155,8 @@ class TreeBuilder {
     constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
     const auto capture_scopes = syntax_.captures.empty() ? 0U : 1U;
     const auto module_scopes = syntax_.modules.empty() ? 0U : 1U;
-    Require(control_.nodes.size() <= (kMaxId - kFunctionScopes - capture_scopes - module_scopes) / kBranchArms,
+    const auto self_scopes = forest_.bindings.self ? 1U : 0U;
+    Require(control_.nodes.size() <= (kMaxId - kFunctionScopes - capture_scopes - module_scopes - self_scopes) / kBranchArms,
             Error::kResourceLimit);
     const auto blocks = control_.nodes.size() * kBranchArms + 1;
     const auto synthetic = control_.nodes.size() - graph_.blocks.size();
@@ -178,7 +180,7 @@ class TreeBuilder {
     Grow(tree_.parameters, syntax_.parameters.size());
     Grow(tree_.captures, syntax_.captures.size());
     Grow(tree_.modules, syntax_.modules.size());
-    Grow(tree_.scopes, blocks + 1 + capture_scopes + module_scopes);
+    Grow(tree_.scopes, blocks + 1 + capture_scopes + module_scopes + self_scopes);
     Grow(tree_.statements, statements);
     Grow(tree_.children, statements);
     Grow(tree_.anchors, graph_.ops.size());
@@ -274,6 +276,18 @@ class TreeBuilder {
     tree_.scopes.push_back({ScopeKind::kFunctionBody, kParameterScope});
     if (tree_.capture_scope) tree_.scopes.push_back({ScopeKind::kCaptures, tree_.module_scope});
     if (tree_.module_scope) tree_.scopes.push_back({ScopeKind::kModule, {}});
+    std::optional<ScopeId> self_scope;
+    if (forest_.bindings.self) {
+      Require(tree_.callable == CallableKind::kFunction && tree_.inferred_name &&
+          tree_.inferred_name->value < tree_.names.size(), Error::kBinding);
+      const auto& name = tree_.names[tree_.inferred_name->value];
+      Step(name.size());
+      Require(IsSourceIdentifier(std::u16string_view{name}), Error::kName);
+      tree_.self = forest_.bindings.self;
+      self_scope = ScopeId{static_cast<std::uint32_t>(tree_.scopes.size())};
+      tree_.scopes.push_back({ScopeKind::kFunctionSelf, tree_.scopes[kParameterScope.value].parent});
+      tree_.scopes[kParameterScope.value].parent = self_scope;
+    }
     for (std::size_t i = 0; i < syntax_.parameters.size(); ++i) {
       Step();
       const auto& input = syntax_.parameters[i];
@@ -307,6 +321,12 @@ class TreeBuilder {
     for (std::size_t i = syntax_.parameters.size(); i < forest_.bindings.symbols.size(); ++i) {
       Step();
       const auto& binding = forest_.bindings.symbols[i];
+      if (std::holds_alternative<FunctionSelfBinding>(binding)) {
+        Require(self_scope && tree_.self == SymbolId{static_cast<std::uint32_t>(i)}, Error::kBinding);
+        tree_.symbols.push_back({*self_scope, *tree_.inferred_name, BindingKind::kFunctionSelf,
+            DeclarationKind::kConst, NameEvidence::kMetadata, {}});
+        continue;
+      }
       if (const auto* cell = std::get_if<CellBinding>(&binding)) {
         Require(evaluation_.cells && cell->cell.value < evaluation_.cells->cells.cells.size(), Error::kBinding);
         if (std::holds_alternative<IncomingCell>(evaluation_.cells->cells.cells[cell->cell.value].storage)) {

@@ -25,7 +25,8 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes,
   bytes.insert(bytes.end(), code.begin(), code.end());
   return {{offset}, {start}, locals, args, static_cast<std::uint32_t>(code.size()), 0};
 }
-void Emit(bool wide, bool captured = false, bool frame_receiver = false) {
+enum class CapturedBase { kArgument, kReceiver, kFunction };
+void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kArgument) {
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kTarget >> (kByteBits * i));
@@ -50,8 +51,11 @@ void Emit(bool wide, bool captured = false, bool frame_receiver = false) {
     // Compact lexical addresses put depth in the low nibble and slot above it.
     constexpr std::uint8_t kObjectCell = 0, kKeyCell = 0x10, kRhsCell = 0x20;
     code = {Op(abc::Opcode::kNEWLEXENV_IMM8), kParameters};
-    if (frame_receiver) code.push_back(Op(abc::Opcode::kLDTHIS));
-    else code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), kObject});
+    switch (base) {
+      case CapturedBase::kArgument: code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), kObject}); break;
+      case CapturedBase::kReceiver: code.push_back(Op(abc::Opcode::kLDTHIS)); break;
+      case CapturedBase::kFunction: code.push_back(Op(abc::Opcode::kLDFUNCTION)); break;
+    }
     code.insert(code.end(), {Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kObjectCell,
         Op(abc::Opcode::kLDA_V8), kKey, Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kKeyCell,
         Op(abc::Opcode::kLDA_V8), kRhs, Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kRhsCell,
@@ -142,7 +146,8 @@ void Emit(bool wide, bool captured = false, bool frame_receiver = false) {
   test::Check(origin.pc == kStorePc);
   const auto span = emission.Positions().members[store_member].expressions[expression.value];
   test::Check(span.begin < span.end && span.end <= output.view().size());
-  const auto name = frame_receiver ? (wide ? "receiverWide" : "receiverNarrow") :
+  const auto name = base == CapturedBase::kFunction ? (wide ? "selfWide" : "selfNarrow") :
+      base == CapturedBase::kReceiver ? (wide ? "receiverWide" : "receiverNarrow") :
       captured ? (wide ? "closureWide" : "closureNarrow") : (wide ? "wide" : "narrow");
   std::cout << "export const " << name << " = " << output.str() << ";\n";
   // Unlink changes ctime: keep the input unchanged until all file-backed
@@ -152,5 +157,6 @@ void Emit(bool wide, bool captured = false, bool frame_receiver = false) {
 }  // namespace
 int main() {
   Emit(false); Emit(true); Emit(false, true); Emit(true, true);
-  Emit(false, true, true); Emit(true, true, true);
+  Emit(false, true, CapturedBase::kReceiver); Emit(true, true, CapturedBase::kReceiver);
+  Emit(false, true, CapturedBase::kFunction); Emit(true, true, CapturedBase::kFunction);
 }

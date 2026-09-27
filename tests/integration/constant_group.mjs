@@ -3,10 +3,38 @@ import {execFileSync} from 'node:child_process';
 import {Session} from 'node:inspector';
 
 const source = execFileSync(process.argv[2], {encoding: 'utf8'});
-const {cases, debugCases, receivers} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {cases, debugCases, receivers, functions, namedFunctions} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const expected = [NaN, Infinity, undefined, null, true, false];
 const profileCount = 3;
 const forms = 2;
+assert.equal(functions.length, profileCount * forms * 2);
+assert.deepEqual(namedFunctions.map(fn => fn.name), ['$arg0', '__proto__', 'MethodSelf1', 'ClassValue']);
+for (const fn of namedFunctions) assert.equal(fn(value => assert.equal(value, fn)), fn);
+for (let i = 0; i < functions.length; ++i) {
+  const recovered = functions[i];
+  const callback = Math.floor(i / 2) % forms === 1;
+  assert.equal(recovered.name, 'constant');
+  assert.equal(recovered.length, callback ? 1 : 0);
+  let calls = 0;
+  const observe = value => {++calls; assert.equal(value, recovered);};
+  assert.equal(Reflect.apply(recovered, {unrelated: true}, [observe]), recovered);
+  assert.equal(calls, callback ? 1 : 0);
+  assert.equal(Reflect.construct(recovered, [observe]), recovered);
+  let constant = recovered;
+  const alias = constant;
+  constant = () => 'replacement';
+  Object.defineProperty(recovered, 'name', {value: 'renamed'});
+  assert.equal(alias(observe), recovered);
+  assert.notEqual(alias(observe), constant);
+  if (callback) {
+    const marker = {};
+    assert.throws(() => recovered(() => {throw marker;}), error => error === marker);
+    assert.equal(recovered(value => {
+      assert.equal(value, recovered);
+      assert.equal(value(observe), recovered);
+    }), recovered);
+  }
+}
 assert.equal(receivers.length, profileCount * forms * 2);
 for (let i = 0; i < receivers.length; ++i) {
   const recovered = receivers[i];

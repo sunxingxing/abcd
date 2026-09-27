@@ -19,7 +19,7 @@ struct ParameterAbiUse {
   std::uint64_t writes = 0;
 };
 enum class ParameterLayout : std::uint8_t { kSimple, kLiteralDefaults };
-enum class AbiObservation : std::uint8_t { kUnobserved };
+enum class AbiObservation : std::uint8_t { kUnobserved, kFrameIdentity };
 constexpr std::string_view ParameterLayoutName(ParameterLayout layout) {
   switch (layout) {
     case ParameterLayout::kSimple: return "simple";
@@ -28,7 +28,10 @@ constexpr std::string_view ParameterLayoutName(ParameterLayout layout) {
   return {};
 }
 constexpr std::string_view AbiObservationName(AbiObservation observation) {
-  switch (observation) { case AbiObservation::kUnobserved: return "unobserved"; }
+  switch (observation) {
+    case AbiObservation::kUnobserved: return "unobserved";
+    case AbiObservation::kFrameIdentity: return "frame_identity";
+  }
   return {};
 }
 struct FunctionAbi {
@@ -38,10 +41,13 @@ struct FunctionAbi {
   AbiReads receiver;
   // Implicit frame.thisObj observations have no IR operand occurrence.
   std::uint64_t frame_receiver_reads = 0;
+  std::uint64_t frame_function_reads = 0;
+  std::uint64_t self_references = 0;
   ParameterLayout layout = ParameterLayout::kSimple;
   // Number of formals before the first initializer, not the ABI slot count.
   std::uint32_t length = 0;
-  // Admission excludes observing these inputs, argument-list operations and
+  // Frame identity may be observed through a verified immutable self binding.
+  // Admission still excludes other callable ABI inputs, argument-list operations and
   // dynamic scope. Child/capture obligations require separate family proofs;
   // they are not established by these per-function absence facts.
   AbiObservation callable = AbiObservation::kUnobserved;

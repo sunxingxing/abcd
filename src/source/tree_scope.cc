@@ -37,7 +37,11 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
   budget.Array(previous_, count);
   budget.Array(declared_, count);
   budget.Array(entered_, tree.scopes.size());
-  RequireTree(!tree.self, Error::kUnsupportedSyntax);
+  if (tree.self) {
+    RequireTree(tree.self->value < count && tree.callable == CallableKind::kFunction &&
+        tree.symbols[tree.self->value].kind == BindingKind::kFunctionSelf, Error::kBinding);
+    declared_[tree.self->value] = 1;
+  }
   for (std::size_t i = 0; i < count; ++i) {
     budget.Step();
     const SymbolId id{static_cast<std::uint32_t>(i)};
@@ -62,7 +66,12 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
         RequireTree(symbol.kind == BindingKind::kCompilerTemporary
             ? symbol.temporary && ValidTemporary(*symbol.temporary) : !symbol.temporary, Error::kBinding);
         break;
-      case BindingKind::kFunctionSelf: throw Error::kUnsupportedSyntax;
+      case BindingKind::kFunctionSelf:
+        // Named function-expression binding is initialized at creation, outside
+        // parameters/body. Never turn it into a writable body declaration.
+        RequireTree(tree.self == id && tree.scopes[symbol.scope.value].kind == ScopeKind::kFunctionSelf &&
+            symbol.declaration == DeclarationKind::kConst && !symbol.temporary, Error::kBinding);
+        break;
       case BindingKind::kCapture:
         RequireTree(tree.capture_scope == symbol.scope && symbol.declaration == DeclarationKind::kLet &&
                     !symbol.temporary, Error::kBinding);
@@ -173,6 +182,7 @@ void TreeScopeCheck::Declare(SymbolId symbol, ScopeId scope, bool initializer) {
               tree_.symbols[symbol.value].kind != BindingKind::kParameter &&
               tree_.symbols[symbol.value].kind != BindingKind::kCapture &&
               tree_.symbols[symbol.value].kind != BindingKind::kModule &&
+              tree_.symbols[symbol.value].kind != BindingKind::kFunctionSelf &&
               !declared_[symbol.value], Error::kBinding);
   RequireTree(tree_.symbols[symbol.value].declaration != DeclarationKind::kConst || initializer, Error::kBinding);
   declared_[symbol.value] = 1;

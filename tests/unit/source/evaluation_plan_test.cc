@@ -268,14 +268,13 @@ int main() {
     Check(plan.operations[1].kind == EvaluationKind::kRoot);
   }
   OrderedOperands(false); OrderedOperands(true);
-  // A frame function value is not a writable ABI copy or a free identifier.
-  // Keep publication closed until a verified self scope represents its owner.
-  Check(!DescribeEvaluation(analysis::ValueFrameFunction{}));
+  // Shape admission is not a callable-owner/self-scope publication proof.
+  Check(DescribeEvaluation(analysis::ValueFrameFunction{}).has_value());
   Fixture self;
   self.Add(analysis::ValueFrameFunction{}, true, {});
   self.graph.blocks = {{{0}, 1, {0}, 0}};
   Check(OrderedEvaluation(self.graph.ops.front()));
-  Check(std::get<EvaluationError>(BuildEvaluationPlan(self.graph)) == EvaluationError::kUnsupportedOperation);
+  Check(std::holds_alternative<EvaluationPlan>(BuildEvaluationPlan(self.graph)));
   Barrier(false); Barrier(true);
   SharedValue(); CrossBlock();
   LongExpression();

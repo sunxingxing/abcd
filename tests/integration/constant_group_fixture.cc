@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <string_view>
 
 namespace {
 using namespace abcd;
@@ -38,8 +39,9 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes,
 }
 void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
     ExpectedSource expected = ExpectedSource::kPrinted, bool debug = false,
-    bool overwrite_receiver = false,
-    abc::FunctionKind kind = abc::FunctionKind::kBaseConstructor) {
+    bool overwrite_abi = false,
+    abc::FunctionKind kind = abc::FunctionKind::kBaseConstructor,
+    std::string_view name = "constant") {
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kTarget >> (kByteBits * i));
@@ -49,9 +51,11 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
        Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), kCache, 0, 0, parameters,
        Op(abc::Opcode::kRETURNUNDEFINED)}, 0, 0);
   std::vector<std::uint8_t> code{Op(constant)};
-  if (overwrite_receiver) {
+  if (overwrite_abi) {
     constexpr std::uint8_t kReceiverArgument = kImplicitArguments - 1;
-    const auto slot = static_cast<std::uint8_t>((callback ? kLocals : 0) + kReceiverArgument);
+    constexpr std::uint8_t kFunctionArgument = 0;
+    const auto argument = constant == abc::Opcode::kLDFUNCTION ? kFunctionArgument : kReceiverArgument;
+    const auto slot = static_cast<std::uint8_t>((callback ? kLocals : 0) + argument);
     code = {Op(abc::Opcode::kLDNULL), Op(abc::Opcode::kSTA_V8), slot, Op(constant)};
   }
   if (debug) code.push_back(Op(abc::Opcode::kDEBUGGER));
@@ -85,7 +89,7 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   index.methods[0].offset = {kCaller}; index.methods[0].code = caller;
   index.methods[1].offset = {kTarget}; index.methods[1].code = target;
   for (auto& method : index.methods) method.owner_offset = {kRecord};
-  index.methods[1].name = "constant"; index.methods[1].name_utf16_length = 8;
+  index.methods[1].name = name; index.methods[1].name_utf16_length = name.size();
   index.methods[1].access_flags =
       static_cast<std::uint32_t>(kind) << kFunctionKindShift;
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
@@ -136,7 +140,7 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   if (expected == ExpectedSource::kRejected) {
     // Internal markers cannot escape to JS. A raw arrow LDTHIS also lacks the
     // distinct lexical-owner proof needed to replace it by a source this.
-    // LDFUNCTION has a value IR read but still needs a verified self binding.
+    // LDFUNCTION still needs legal named-function syntax and a verified self binding.
     test::Check(std::holds_alternative<FamilyPrepareFailure>(prepared));
     test::Check(unlink(path) == 0);
     return;
@@ -152,12 +156,19 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   test::Check(receipt.stage == SourceStage::kPrinted && receipt.coverage == Coverage::kComplete);
   const auto& member = emission.Family().Family().members.front();
   test::Check(member.sources && !member.sources->sites.empty());
-  const auto& mapping = member.sources->sites[overwrite_receiver ? 2 : 0];
+  const auto& mapping = member.sources->sites[overwrite_abi ? 2 : 0];
   const auto& origin = std::get<OriginalSite>(member.tree.origins[mapping.origin.value]);
-  test::Check(origin.pc == abc::CodeOffset{overwrite_receiver ? 3U : 0U});
+  test::Check(origin.pc == abc::CodeOffset{overwrite_abi ? 3U : 0U});
   const auto expression = std::get<ExprId>(mapping.target);
   const auto span = emission.Positions().members.front().expressions[expression.value];
   test::Check(span.begin < span.end && span.end <= output.view().size());
+  if (constant == abc::Opcode::kLDFUNCTION) {
+    test::Check(member.tree.self.has_value());
+    test::Check(std::get<SymbolExpr>(member.tree.expressions[expression.value].expression).symbol == member.tree.self);
+    test::Check(output.view().substr(span.begin, span.end - span.begin) == name);
+    test::Check(member.abi && member.abi->callable == AbiObservation::kFrameIdentity &&
+        member.abi->frame_function_reads == 1);
+  }
   if (debug) {
     const std::array expected_pc{abc::CodeOffset{1},
         abc::CodeOffset{static_cast<std::uint32_t>(code.size() - 2)}};
@@ -203,7 +214,21 @@ int main() {
   for (const auto profile : kProfiles)
     Emit(profile, abc::Opcode::kLDTHIS, false, ExpectedSource::kRejected,
         false, false, abc::FunctionKind::kArrow);
+  std::cout << "export const functions = [\n";
   for (const auto profile : kProfiles)
     for (const bool callback : {false, true})
-      Emit(profile, abc::Opcode::kLDFUNCTION, callback, ExpectedSource::kRejected);
+      for (const bool overwritten : {false, true})
+        Emit(profile, abc::Opcode::kLDFUNCTION, callback, ExpectedSource::kPrinted, false, overwritten);
+  std::cout << "];\n";
+  std::cout << "export const namedFunctions = [\n";
+  for (const std::string_view name : {"$arg0", "__proto__", "MethodSelf1", "ClassValue"})
+    Emit(kProfiles.front(), abc::Opcode::kLDFUNCTION, true, ExpectedSource::kPrinted,
+        false, false, abc::FunctionKind::kBaseConstructor, name);
+  std::cout << "];\n";
+  for (const std::string_view name : {"", "eval", "with space"})
+    Emit(kProfiles.front(), abc::Opcode::kLDFUNCTION, false, ExpectedSource::kRejected,
+        false, false, abc::FunctionKind::kBaseConstructor, name);
+  for (const auto profile : kProfiles)
+    Emit(profile, abc::Opcode::kLDFUNCTION, false, ExpectedSource::kRejected,
+        false, false, abc::FunctionKind::kArrow);
 }

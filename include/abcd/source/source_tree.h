@@ -27,7 +27,7 @@ enum class CallableKind : std::uint8_t {
   kAsyncFunction, kAsyncMethod
 };
 enum class Strictness : std::uint8_t { kStrict, kSloppy };
-enum class ScopeKind : std::uint8_t { kParameters, kFunctionBody, kBlock, kCaptures, kModule };
+enum class ScopeKind : std::uint8_t { kParameters, kFunctionBody, kBlock, kCaptures, kModule, kFunctionSelf };
 enum class BindingKind : std::uint8_t { kParameter, kLocal, kFunctionSelf, kCompilerTemporary, kCapture, kModule };
 enum class NameEvidence : std::uint8_t { kMetadata, kDebugRange, kSynthesized };
 enum class DeclarationKind : std::uint8_t { kParameter, kLet, kConst };
@@ -216,8 +216,9 @@ struct FunctionTree {
   std::vector<SignaturePlacement> signature;
   std::optional<ScopeId> module_scope;
   std::vector<TreeModuleAlias> modules;
-  // Computed data-property NamedEvaluation preserves this runtime-visible name
-  // without introducing a self binding or depending on a mutable intrinsic.
+  // Creation-proven runtime name. Without self, computed data-property
+  // NamedEvaluation preserves it without depending on a mutable intrinsic.
+  // With self, it must equal the immutable named-function binding spelling.
   // Empty strings are names too; absence is missing evidence, not an empty name.
   std::optional<NameId> inferred_name;
 };

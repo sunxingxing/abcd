@@ -27,6 +27,13 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
   // locations. Never coalesce these into mutable source parameters/cells.
   constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
   std::size_t phi_count = 0, cycle_count = 0;
+  bool needs_self = false;
+  for (const auto& op : graph.ops) {
+    if (work == 0) return Error::kWorkLimit;
+    --work;
+    needs_self |= op.life == ValueLife::kLive && std::holds_alternative<ValueFrameFunction>(op.operation);
+  }
+  const std::size_t self_count = needs_self ? 1 : 0;
   const auto cell_count = evaluation.cells ? evaluation.cells->cells.cells.size() : 0;
   for (const auto& value : graph.values) {
     if (work == 0) return Error::kWorkLimit;
@@ -41,7 +48,9 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
   }
   if (phi_count > kMaxId - parameter_count || cycle_count > kMaxId - parameter_count - phi_count)
     return Error::kResourceLimit;
-  const auto fixed_symbols = parameter_count + phi_count + cycle_count;
+  const auto without_self = parameter_count + phi_count + cycle_count;
+  if (self_count > kMaxId - without_self) return Error::kResourceLimit;
+  const auto fixed_symbols = without_self + self_count;
   const auto bundles = evaluation.phis ? evaluation.phis->bundles.size() : 0;
   if (bundles > kMaxId || cell_count > kMaxId - fixed_symbols ||
       graph.ops.size() > kMaxId - fixed_symbols - cell_count ||
@@ -87,6 +96,10 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
       plan.symbols.emplace_back(ParameterBinding{i});
       if (const auto entry = plan.parameters.formals[i].entry)
         plan.values[entry->value] = SymbolId{i};
+    }
+    if (needs_self) {
+      plan.self = SymbolId{static_cast<std::uint32_t>(plan.symbols.size())};
+      plan.symbols.emplace_back(FunctionSelfBinding{});
     }
     for (std::size_t i = 0; i < graph.values.size(); ++i) {
       if (work == 0) return Error::kWorkLimit;

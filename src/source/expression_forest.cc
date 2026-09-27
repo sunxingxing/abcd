@@ -413,6 +413,10 @@ class ForestBuilder {
       using T = std::decay_t<decltype(operation)>;
       if constexpr (std::is_same_v<T, analysis::ValueCopy>)
         return Combine(operands[0], origin);
+      else if constexpr (std::is_same_v<T, analysis::ValueFrameFunction>) {
+        Require(forest_.bindings.self.has_value(), Error::kBinding);
+        return Add(SymbolExpr{*forest_.bindings.self}, origin);
+      }
       else if constexpr (std::is_same_v<T, analysis::ValueLexicalLoad>)
         return Add(SymbolExpr{CellSymbol(id)}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>)
@@ -479,8 +483,7 @@ class ForestBuilder {
                       std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                       std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                       std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
-                      std::is_same_v<T, analysis::ValueNop> ||
-                      std::is_same_v<T, analysis::ValueFrameFunction>);
+                      std::is_same_v<T, analysis::ValueNop>);
         throw Error::kUnsupportedOperation;
       }
     }, op.operation);

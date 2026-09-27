@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 26。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 27。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,12 +42,30 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- LDFUNCTION 普通命名函数已端到端贯通：BindingPlan 为实际 owner 分配一个
+  FunctionSelfBinding，位于参数作用域之外、捕获/模块作用域之内；表达式森林
+  降为 SymbolExpr，结构/flow/operand/ABI 独立核验，统一 printer 输出命名函数
+  表达式。没有函数体 self let，没有更改 CFG/基本块或环境 cell 的归属。
+  ABI 分开统计 frame_function_reads/self_references，明确报告 FrameIdentity；
+  创建点继续核对 runtime name，原始 PC 映射到精确 self 标识符区间。规则版本 27。
+  三个 profile 的 12 个直接/回调/覆盖 ABI 副本变体执行通过；另有 4 个名称边界
+  正例与 6 个非法/空名或 raw arrow 拒绝用例。运行检查外部变量重绑定、修改
+  function.name、construct 返回、回调异常及重入；两种宽度的闭包写入样本验证
+  父函数身份捕获、多 activation、错误 this/显式参数、key 异常与 setter 重入。
+  AST mutation 拒绝参数替换/遮蔽、缺失或可写 self、错误 scope、非法名字及
+  不支持的 callable。新增端到端测试先失败于 PrepareCreated，再实现并通过。
+  `function_tree_test`、`binding_plan_test`、`tree_structure_test`、`tree_globals_test`、
+  `family_enclosure_test`、`evaluation_plan_test`、`constant_group_test`、
+  `computed_store_test`、`source_route_test`、`value_created_family_test` 共 10/10 通过；
+  对应目标与 `abc_semantic` 构建成功。旧 self 拒绝断言已改为精确非法绑定诊断。
+  未运行 RSS/基准/全语料或 Ark VM 差分；空/非法名、现有标识符边界外的 Unicode、
+  参数/全局命名冲突及 arrow/method/async/derived 的完整身份恢复仍未完成。
 - LDFUNCTION 已接入公共 FrameFunctionLoad -> ValueFrameFunction：按 pinned
   GetFunction 读取独立 frame.function，无寄存器输入，只写 acc，正常结果为
   Defined 语言值；不把可写 ABI function 副本或函数名称当作运行时身份。
   三个 profile 验证无 ABI slot、覆盖副本、malformed 操作数及 IR 身份篡改；
-  先观察到缺少语义提升的失败，再实现并通过。self scope 尚未接线，源码求值
-  与 AST 仍明确拒绝该操作，六个文件级直接/回调变体验证不误发 Complete。
+  先观察到缺少语义提升的失败，再实现并通过。该前置提交中 self scope 尚未接线，
+  源码求值与 AST 明确拒绝该操作，六个文件级直接/回调变体验证不误发 Complete。
   `value_import_test`、`constant_group_test`、`evaluation_plan_test`、
   `source_route_test` 共 4/4 通过；对应目标及 `abc_semantic` 构建成功。
   规则版本 26；未运行 RSS/基准/全语料或 Ark VM 差分。本项不计为 LDFUNCTION

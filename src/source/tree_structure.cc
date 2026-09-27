@@ -11,6 +11,7 @@
 
 #include "tree_checks.h"
 #include "abcd/source/global_reference.h"
+#include "abcd/source/scalar_expression.h"
 
 namespace abcd::source {
 namespace {
@@ -78,7 +79,7 @@ class StructureCheck {
     CheckCallable(tree_);
     if (tree_.inferred_name) {
       RequireTree(tree_.inferred_name->value < tree_.names.size(), Error::kName);
-      RequireTree(!tree_.self && (tree_.callable == CallableKind::kFunction ||
+      RequireTree((tree_.callable == CallableKind::kFunction ||
           tree_.callable == CallableKind::kArrow), Error::kUnsupportedSyntax);
     }
     RequireTree(tree_.parameter_scope.value < tree_.scopes.size() &&
@@ -86,7 +87,18 @@ class StructureCheck {
                 tree_.parameter_scope != tree_.body_scope, Error::kScope);
     const auto& parameters = tree_.scopes[tree_.parameter_scope.value];
     const auto& body = tree_.scopes[tree_.body_scope.value];
-    const auto enclosing = tree_.capture_scope ? tree_.capture_scope : tree_.module_scope;
+    const auto outer = tree_.capture_scope ? tree_.capture_scope : tree_.module_scope;
+    std::optional<ScopeId> self_scope;
+    if (tree_.self) {
+      const auto& self = tree_.symbols[tree_.self->value];
+      self_scope = self.scope;
+      RequireTree(tree_.inferred_name == self.name && self.scope != tree_.parameter_scope &&
+          self.scope != tree_.body_scope && tree_.scopes[self.scope.value].parent == outer &&
+          tree_.scopes[self.scope.value].kind == ScopeKind::kFunctionSelf, Error::kScope);
+      budget_.Step(tree_.names[self.name.value].size());
+      RequireTree(IsSourceIdentifier(std::u16string_view{tree_.names[self.name.value]}), Error::kName);
+    }
+    const auto enclosing = self_scope ? self_scope : outer;
     RequireTree(parameters.kind == ScopeKind::kParameters && parameters.parent == enclosing &&
                 body.kind == ScopeKind::kFunctionBody && body.parent == tree_.parameter_scope, Error::kScope);
     RequireTree(tree_.capture_scope.has_value() == !tree_.captures.empty(), Error::kScope);
@@ -107,6 +119,7 @@ class StructureCheck {
     RequireTree(tree_.body.value < tree_.statements.size(), Error::kRange);
     const auto* root = std::get_if<BlockStmt>(&tree_.statements[tree_.body.value].statement);
     RequireTree(root && root->scope == tree_.body_scope, Error::kScope);
+    if (self_scope) scopes_.Enter(*self_scope);
     scopes_.Enter(tree_.parameter_scope);
     // Constant defaults cannot observe body bindings or the TDZ of later
     // formals. They are separate expression occurrences in parameter scope,
@@ -142,6 +155,7 @@ class StructureCheck {
       }
     }
     scopes_.Leave(tree_.parameter_scope);
+    if (self_scope) scopes_.Leave(*self_scope);
     if (tree_.capture_scope) scopes_.Leave(*tree_.capture_scope);
     if (tree_.module_scope) scopes_.Leave(*tree_.module_scope);
     scopes_.Finish();

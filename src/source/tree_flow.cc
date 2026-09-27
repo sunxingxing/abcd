@@ -125,7 +125,7 @@ class FlowCheck {
     for (std::size_t i = 0; i < tree_.symbols.size(); ++i) {
       budget_.Step();
       const auto& symbol = tree_.symbols[i];
-      if (symbol.kind == BindingKind::kParameter) {
+      if (symbol.kind == BindingKind::kParameter || symbol.kind == BindingKind::kFunctionSelf) {
         Require(!declared_[i] && !assigned_[i], Error::kSnapshot);
       } else if (symbol.kind == BindingKind::kLocal || symbol.kind == BindingKind::kCapture ||
                  symbol.kind == BindingKind::kModule) {
@@ -376,7 +376,7 @@ class FlowCheck {
       budget_.Step();
       Require(symbol.kind == BindingKind::kParameter || symbol.kind == BindingKind::kCompilerTemporary ||
               symbol.kind == BindingKind::kLocal || symbol.kind == BindingKind::kCapture ||
-              symbol.kind == BindingKind::kModule,
+              symbol.kind == BindingKind::kModule || symbol.kind == BindingKind::kFunctionSelf,
               Error::kSnapshot);
     }
     return count;
