@@ -75,6 +75,11 @@ class StructureCheck {
   }
   std::size_t Run() {
     CheckCallable(tree_);
+    if (tree_.inferred_name) {
+      RequireTree(tree_.inferred_name->value < tree_.names.size(), Error::kName);
+      RequireTree(!tree_.self && (tree_.callable == CallableKind::kFunction ||
+          tree_.callable == CallableKind::kArrow), Error::kUnsupportedSyntax);
+    }
     RequireTree(tree_.parameter_scope.value < tree_.scopes.size() &&
                 tree_.body_scope.value < tree_.scopes.size() &&
                 tree_.parameter_scope != tree_.body_scope, Error::kScope);

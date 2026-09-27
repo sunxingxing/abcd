@@ -3,6 +3,7 @@
 #include "../../../src/source/syntax_resolution.h"
 #include "../../../src/source/family_file.h"
 #include "../../../src/source/family_tree.h"
+#include "../../../src/source/family_print.h"
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
@@ -198,6 +199,12 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       test::Check(built.members.size() == 1 && built.root == FileFamily::kRoot &&
           built.members[0].tree.method == abc::EntityOffset{kTarget} &&
           built.members[0].tree.parameters.size() == parameters);
+      const auto& named_tree = built.members[0].tree;
+      test::Check(named_tree.inferred_name && !named_tree.self &&
+          named_tree.names[named_tree.inferred_name->value] == context.Name());
+      std::ostringstream named_output;
+      test::Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(built, named_output)));
+      test::Check(named_output.str().starts_with("({["));
       const auto mismatch = BuildFunctionAbi(opened_child.values.graph, built.members[0].tree,
           context.Frame(), static_cast<std::uint32_t>(parameters) + 1);
       test::Check(std::get<FunctionAbiError>(mismatch) == FunctionAbiError::kLength);
@@ -217,6 +224,8 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
     test::Check(syntax.syntax.owner == kSyntaxOwner && syntax.syntax.method == context.Target() &&
         syntax.syntax.identity == identity && syntax.syntax.callable == context.Callable() &&
         syntax.syntax.strictness == context.Mode() && syntax.syntax.parameters.size() == parameters);
+    test::Check(syntax.syntax.inferred_name &&
+        syntax.syntax.names[syntax.syntax.inferred_name->value] == context.Name());
     test::Check(syntax.operations.size() == opened_child.values.graph.ops.size() &&
         syntax.value_revision == opened_child.values.graph.revision &&
         syntax.cfg_revision == opened_child.values.graph.cfg_revision &&

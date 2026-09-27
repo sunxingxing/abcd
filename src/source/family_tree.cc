@@ -80,6 +80,15 @@ class FamilyTrees {
       auto constructed = Take<ConstructedFunction, FunctionTreeError>(BuildFunctionTree(graph, control,
           evaluation, std::move(syntax.syntax), constants, left_, incoming ? &*incoming : nullptr));
       Account(constructed);
+      // Naming evidence is creation-specific and must survive arena growth and
+      // capture/module alias insertion. It is not a lexical self declaration.
+      if (context.CreationSite()) {
+        const auto name = constructed.tree.inferred_name;
+        Require(name && name->value < constructed.tree.names.size(), FamilyTreeError::kContext);
+        Step(context.Name().size());
+        Require(!constructed.tree.self && constructed.tree.names[name->value] == context.Name(),
+            FamilyTreeError::kContext);
+      } else Require(!constructed.tree.inferred_name, FamilyTreeError::kContext);
       if (defaults_[i]) {
         auto signature = Take<DefaultSignatureProof, DefaultSignatureError>(
             BuildDefaultSignature(*defaults_[i], constructed.tree, left_));

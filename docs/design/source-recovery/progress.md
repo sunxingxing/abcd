@@ -11,6 +11,22 @@ observations, not an up-to-date capability summary.
 
 ### File-Backed Conditional Function Families
 
+Creation-context runtime names now survive shared syntax resolution into the
+FunctionTree as an optional typed NameId for NamedEvaluation, distinct from self
+symbols. File-family construction cross-checks the retained name against the
+actual occurrence context after alias insertion and arena growth. The shared
+printer uses a computed data-property expression to preserve ordinary and arrow
+names, including empty names, without adding a lexical scope or reading a mutable
+intrinsic. This follows the existing guarded arrow naming semantics, not its body
+writer. The additional wrapper allocation requires the existing V2 resource
+failure exclusion; V1 is refused before output. No new host premise is introduced.
+Actual 7449 family names are PageABuilder, empty, empty and paramsLambda. The last
+must not acquire the assignment target's paramsGenerator_ spelling. The named
+draft has 1434 bytes and the default formal now spans [29,41); PC provenance moves
+with printer events. G2's class-member slice stays [2638,2924), rules 23. Added
+name retention, empty/reserved/nonidentifier key, no-self-scope and V1 rejection
+specifications are uncompiled/unrun. Executable publication remains incomplete.
+
 Family draft diagnostics now stream `draft_positions` using the same serializer
 as verified single-member output. This replaces the draft-only bare range arrays
 with per-owner origin DAG/part tables, node ranges, anchors, operation placements

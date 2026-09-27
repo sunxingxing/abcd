@@ -33,7 +33,7 @@ Each entry's `positions` uses the single-function position schema:
 
 Consumers join these tables, not generated strings. For example, the current
 7449 draft's signature PCs 16, 20, 21, 24, 26 and 31 all refer to formal 0 at
-bytes [10,22), which emits `$arg0 = null`. This does not mean the removed
+bytes [29,41), which emits `$arg0 = null` after runtime-name recovery. This does not mean the removed
 prologue was a pure-effect erasure: its independent cell-default proof and
 initialized-source-parameter residual remain prerequisites.
 
@@ -47,7 +47,7 @@ source sink has a separate 1 MiB diagnostic limit and discards failed output.
 Whole-process 1G compliance remains unmeasured while RSS work is paused.
 
 These tables describe the emitted conditional tree. They do not independently
-prove all decoded PCs are covered, authorize callable naming or root enclosure,
+prove all decoded PCs are covered, authorize a lexical self name or root enclosure,
 close module/global/strictness dependencies, or grant executable equivalence.
 Tests for owner ranges, signature PCs and the source-free selector are written
 in `tests/integration/family_source_cli.cmake` but remain unrun under the testing

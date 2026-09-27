@@ -36,6 +36,9 @@ struct FunctionSyntax {
   // Source module aliases, not runtime ABC slots. The record owner must verify
   // their spelling/access/target; this only constructs conditional lexical scope.
   std::vector<ModuleSyntax> modules;
+  // Exact runtime name for anonymous NamedEvaluation at the creation site.
+  // Distinct from a lexical self binding; absence means no naming evidence.
+  std::optional<NameId> inferred_name;
 };
 }  // namespace abcd::source
 #endif

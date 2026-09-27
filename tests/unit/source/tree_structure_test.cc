@@ -1,7 +1,9 @@
 #include "../../../src/source/tree_structure.h"
+#include "../../../src/source/family_print.h"
 
 #include <cstdlib>
 #include <bit>
+#include <sstream>
 
 namespace {
 using namespace abcd;
@@ -26,6 +28,38 @@ void Expect(const FunctionTree& tree, TreeStructureError expected) {
   const auto checked = VerifyTreeStructure(tree);
   Check(std::holds_alternative<TreeStructureError>(checked));
   Check(std::get<TreeStructureError>(checked) == expected);
+}
+void InferredNames() {
+  for (const auto callable : {CallableKind::kFunction, CallableKind::kArrow}) {
+    for (const auto* name : {u"", u"__proto__", u"run", u"not an identifier"}) {
+      auto tree = Minimal(); tree.callable = callable;
+      tree.names.emplace_back(name); tree.inferred_name = NameId{0};
+      Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+      // Syntax-only fixture: the runtime name is not a local symbol and does
+      // not shadow any free read, even when its spelling matches that read.
+      tree.names.emplace_back(u"run");
+      tree.expressions[0].expression = GlobalNameExpr{{1}};
+      Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+      const auto family = std::get<ConstructedFamily>(BuildFunctionFamily({{tree, {}, {}}}, tree.owner));
+      std::ostringstream output;
+      const auto printed = std::get<PrintedFamilyDraft>(PrintFamilyDraft(family, output));
+      Check(output.str().starts_with("({[\"") && output.str().ends_with("\"]\n"));
+      Check(output.str().substr(printed.members[0].expressions[0].begin,
+          printed.members[0].expressions[0].end - printed.members[0].expressions[0].begin) == "run");
+      Check(!tree.self && tree.symbols.empty());
+      auto observable_allocation = family;
+      observable_allocation.members[0].tree.identity.contract = SourceContract::kLanguageAndHostV1;
+      std::ostringstream denied;
+      Check(std::get<TreePrintError>(PrintFamilyDraft(observable_allocation, denied)) == TreePrintError::kUnsupportedContext);
+      Check(denied.str().empty());
+    }
+  }
+  auto tree = Minimal(); tree.inferred_name = NameId{0};
+  Expect(tree, TreeStructureError::kName);
+  tree.names.emplace_back(u"run"); tree.callable = CallableKind::kMethod;
+  Expect(tree, TreeStructureError::kUnsupportedSyntax);
+  tree.callable = CallableKind::kFunction; tree.self = SymbolId{0};
+  Expect(tree, TreeStructureError::kUnsupportedSyntax);
 }
 void Ownership() {
   auto tree = Minimal();
@@ -223,6 +257,7 @@ void DeepLoops() {
 }
 }  // namespace
 int main() {
+  InferredNames();
   Ownership();
   ScopesAndBindings();
   OriginsAndAnchors();

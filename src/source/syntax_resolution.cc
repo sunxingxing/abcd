@@ -53,6 +53,15 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
     syntax.callable = context.Callable(); syntax.strictness = context.Mode();
     syntax.names = std::move(constants.names);
     syntax.texts = std::move(constants.texts);
+    if (context.CreationSite()) {
+      Require(syntax.names.size() < std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
+      reserve(syntax.names, syntax.names.size() + 1);
+      const auto name = context.Name();
+      step(name.size()); admit(name.size(), sizeof(char16_t)); admit(1, sizeof(char16_t));
+      syntax.inferred_name = NameId{static_cast<std::uint32_t>(syntax.names.size())};
+      const auto& stored = syntax.names.emplace_back(name);
+      admit(stored.capacity() - name.size(), sizeof(char16_t));
+    }
     const auto& frame = context.Frame();
     reserve(syntax.parameters, frame.parameters);
     step(frame.parameters); syntax.parameters.resize(frame.parameters);

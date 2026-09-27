@@ -132,6 +132,10 @@ class TreePrinter {
       // A class method cannot be silently changed into an ordinary function.
       // Root class fragments remain handled by the verified member entry.
       if (Tree().callable == CallableKind::kMethod) throw Error::kUnsupportedContext;
+      // Naming adds a fresh, unobservable wrapper object. Its allocation-failure
+      // timing is admitted only by the already-versioned resource-failure scope.
+      if (Tree().inferred_name && ResourceFailures(Tree().identity.contract) != ResourceFailureScope::kExcluded)
+        throw Error::kUnsupportedContext;
       owners_[i] = {Tree().owner, i};
       Result().identity = Tree().identity; Result().method = Tree().method;
       Result().value_revision = Tree().value_revision; Result().cfg_revision = Tree().cfg_revision;
@@ -348,7 +352,12 @@ class TreePrinter {
   void Run(BeginFunction) {
     if (!family_ || printed_[current_]) throw Error::kUnsupportedContext;
     printed_[current_] = true; draft_.functions[current_].begin = written_;
-    Append(Tree().callable == CallableKind::kArrow ? "((" : "(function(");
+    if (Tree().inferred_name) {
+      // NamedEvaluation, not a new lexical self scope. Computed keys preserve
+      // even an empty name or __proto__, without Object.defineProperty calls.
+      Append("({["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]: ");
+      Append(Tree().callable == CallableKind::kArrow ? "(" : "function(");
+    } else Append(Tree().callable == CallableKind::kArrow ? "((" : "(function(");
     Push(EndFunction{}); Push(Statement{Tree().body, depth_});
     Push(std::string_view(Tree().callable == CallableKind::kArrow ? ") => " : ") "));
     Push(ParameterCursor{0});
@@ -357,7 +366,10 @@ class TreePrinter {
     for (std::size_t i = 0; i < Tree().anchors.size(); ++i) {
       Step(); if (std::holds_alternative<FunctionExit>(Tree().anchors[i].position)) Result().anchors[i] = written_;
     }
-    Append(")"); draft_.functions[current_].end = written_;
+    if (Tree().inferred_name) {
+      Append("})["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]");
+    } else Append(")");
+    draft_.functions[current_].end = written_;
     Result().bytes = written_ - draft_.functions[current_].begin;
   }
   void Run(ParameterCursor cursor) {

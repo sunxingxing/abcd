@@ -62,7 +62,11 @@ void Draft(nlohmann::json& report, const ConstructedFamily& family,
   }
   positions << "],";
   report["draft_coordinates"] = "absolute-utf8-bytes";
-  report["draft_publication_pending"] = {"root-enclosure", "global-module-bindings", "callable-names", "transitive-premises"};
+  report["draft_publication_pending"] = {"root-enclosure", "global-module-bindings", "transitive-premises"};
+  std::size_t named = 0;
+  for (const auto& member : family.members) named += member.tree.inferred_name.has_value();
+  report["draft_named_members"] = named;
+  if (named != family.members.size()) report["draft_publication_pending"].push_back("callable-names");
 }
 template <class Error> unsigned Code(const Error& error) {
   if constexpr (std::is_enum_v<Error>) return static_cast<unsigned>(error);

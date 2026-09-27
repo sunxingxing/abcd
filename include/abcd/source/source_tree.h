@@ -215,6 +215,10 @@ struct FunctionTree {
   std::vector<SignaturePlacement> signature;
   std::optional<ScopeId> module_scope;
   std::vector<TreeModuleAlias> modules;
+  // Computed data-property NamedEvaluation preserves this runtime-visible name
+  // without introducing a self binding or depending on a mutable intrinsic.
+  // Empty strings are names too; absence is missing evidence, not an empty name.
+  std::optional<NameId> inferred_name;
 };
 // This is a construction product, not a source-publication certificate. The
 // printer will accept only a frozen verified owner, never raw ValueProgram.

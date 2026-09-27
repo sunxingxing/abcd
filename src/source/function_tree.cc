@@ -83,6 +83,7 @@ class TreeBuilder {
     tree_.owner = syntax_.owner;
     tree_.callable = syntax_.callable;
     tree_.strictness = syntax_.strictness;
+    tree_.inferred_name = syntax_.inferred_name;
     tree_.value_revision = graph_.revision;
     tree_.cfg_revision = graph_.cfg_revision;
     tree_.names = std::move(syntax_.names);
