@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { checkQueryDegree, checkRecover } from './exception_family_execution.mjs';
 
 // Discovery must be available before recursive child evaluation; it does not
 // authorize a parent body, invent child bindings, or close capture obligations.
@@ -25,6 +26,12 @@ for (const { method, sites, targets, allocations, bindings, captures } of sample
   assert.equal(result.family_writes_ready, true);
   assert.equal(result.family_write_creations, targets.length);
   assert.equal(result.rejected_family_write_forgery, true);
+  assert.equal(result.family_abi_methods, targets.length + 1);
+  assert.equal(result.family_source_methods, targets.length + 1);
+  assert.equal(result.rejected_source_forgery, true);
+  assert.equal(result.family_mapped_instructions, method === 8404 ? 90 : 145);
+  assert.equal(typeof result.conditional_family_source, 'string');
+  (method === 8404 ? checkQueryDegree : checkRecover)(result.conditional_family_source);
   assert.equal(result.checked_store_methods, targets.length + 1);
   assert.equal(result.checked_lexical_stores, method === 8404 ? 1 : 0);
   assert.equal(result.rejected_capture_forgery, captures.some(count => count !== 0));

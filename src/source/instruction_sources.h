@@ -5,6 +5,7 @@
 #include "abcd/source/source_tree.h"
 
 namespace abcd::source {
+class PhasedBody;
 struct ElidedInstruction {};
 using InstructionTarget = std::variant<ExprId, StmtId, AnchorId, PropertyId, ParameterId, ElidedInstruction>;
 struct InstructionSource {
@@ -26,6 +27,14 @@ enum class InstructionSourceError : std::uint8_t {
 // O(input sites + work ops + placements), with bounded dense ordinal indexes.
 [[nodiscard]] std::variant<InstructionSources, InstructionSourceError> BuildInstructionSources(
     const FunctionInput& input, const analysis::ValueProgram& graph,
+    const FunctionTree& tree, analysis::SemanticBudget budget = {});
+// Same census over original phased instructions, not Before/Commit/Catch node
+// ordinals. Requires fresh exception tree/control/flow proofs. Projected pure
+// elisions and aliases retain their original boundary anchors; they are not
+// erased IR operations. Phase signature migration is not admitted. This does
+// not create a source publication receipt.
+[[nodiscard]] std::variant<InstructionSources, InstructionSourceError> BuildInstructionSources(
+    const PhasedBody& input, const abc::MethodBody& body,
     const FunctionTree& tree, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

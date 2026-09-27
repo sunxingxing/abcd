@@ -12,6 +12,7 @@
 #include "abcd/source/class_method.h"
 #include "abcd/source/global_reference.h"
 #include "../../support/function_segments.h"
+#include "../../support/instruction_positions.h"
 #include "../../../tools/tree_position_json.h"
 #include <nlohmann/json.hpp>
 
@@ -512,8 +513,32 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
         file, header, mismatched, lookup, roles, sites, range.first, identity)).kind == FunctionPrepareError::kBody);
     Check(emission.Receipt().coverage == Coverage::kComplete &&
         emission.Receipt().stage == SourceStage::kPrinted && !ValidateRouteReceipt(emission.Receipt()));
+    const auto phase = std::get<PhasedBody>(PhasedBody::Build(owner, decoded));
+    const auto source_census = std::get<InstructionSources>(BuildInstructionSources(phase, decoded, emission.Function().Tree()));
+    Check(source_census.sites.size() == phase.TreeInput(decoded).input.flow.instructions.size());
+    test::CheckInstructionPositions(emission.Function().Tree(), source_census, emission.Positions(),
+        {0, output.str().size()});
+    for (std::size_t i = 0; i < moved.Evaluation().operations.size(); ++i) {
+      const auto kind = moved.Evaluation().operations[i].kind;
+      if (kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure || kind == EvaluationKind::kEnvironment) {
+        const auto& origin = phase.Graph().origins[phase.Graph().ops[i].origin.value];
+        Check(std::holds_alternative<AnchorId>(source_census.sites[origin.site.value].target));
+      }
+    }
+    auto wrong_sources = emission.Function().Tree();
+    ++wrong_sources.value_revision.value;
+    Check(std::get<InstructionSourceError>(BuildInstructionSources(phase, decoded, wrong_sources)) ==
+        InstructionSourceError::kRevision);
+    --wrong_sources.value_revision.value;
+    auto& wrong_origin = std::get<OriginalSite>(wrong_sources.origins[source_census.sites.front().origin.value]);
+    ++wrong_origin.pc.value;
+    Check(std::get<InstructionSourceError>(BuildInstructionSources(phase, decoded, wrong_sources)) ==
+        InstructionSourceError::kOrigin);
+    --wrong_origin.pc.value;
+    wrong_sources.signature.push_back({{0}, {0}, {0}});
+    Check(std::get<InstructionSourceError>(BuildInstructionSources(phase, decoded, wrong_sources)) ==
+        InstructionSourceError::kPlacement);
     if (exception == ExceptionShape::kLexical) {
-      const auto phase = std::get<PhasedBody>(PhasedBody::Build(owner, decoded));
       const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(phase.Graph()));
       auto tree = emission.Function().Tree();
       const auto flow = std::get<TreeFlow>(VerifyExceptionTreeFlow(phase.Graph(), phase.TreeInput(decoded), evaluation, tree));

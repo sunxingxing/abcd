@@ -869,3 +869,33 @@ file-family ownership, ABI/PC census and destination/module publication gates
 still need integration, followed by executable combined-family verification.
 Rules 56 and the standalone source refusals remain unchanged. Loop/exception,
 completion/finally and suspension work retain their original acceptance scope.
+
+### Shared Instruction Census and Conditional Family Execution
+
+`BuildInstructionSources` now borrows either normal input/work products or an
+immutable `PhasedBody` with its original method. Both use the same bounded dense
+source index. Original instruction ordinals, not phase-node IDs, determine the
+census. Projected phase aliases and dead copies retain `AnchorId` targets at
+their original lexical boundaries; only already-proved removed normal IR uses
+`ElidedInstruction`. Phase signature migration remains refused. This pass
+checks identity/revisions, original provenance, unique retained placement and
+complete coverage; it does not independently prove body semantics or erasure.
+
+The two real mixed families now retain ABI and instruction-source censuses for
+all five members, then use the shared class-family printer. All 145 original
+instructions of `recover` plus children and all 90 of `queryDegree` plus child
+map through AST IDs to generated event ranges/anchors. Tests also cover decoded
+standalone branch/catch, receiver calls, live/dead copies and normal/catch stores,
+including wrong original PC/revision, missing/duplicate placements and exact or
+one-less byte/work budgets. No generated-text search or source-map input is used.
+
+Controlled execution of these CONDITIONAL drafts checks both status branches,
+distinct repeated receiver reads, getter/call failure, code/message evaluation
+order, callback parameters/length, synchronous versus later callback throws,
+mutable receiver capture after the parent returns and separate per-invocation
+cells. The harness supplies named host/module bindings explicitly. It does not
+prove native module initialization, general destination enclosure or actual
+host behavior, and does not turn the diagnostic draft into a publication
+receipt. Mixed file ownership and sealed publication remain the next gate;
+no claim is made for loops/finally/suspension or full ISA completion. Rules 56
+are unchanged because executable publication routes are not broadened.

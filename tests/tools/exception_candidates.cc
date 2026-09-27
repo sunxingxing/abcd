@@ -245,6 +245,11 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       report["family_writes_ready"] = probe.family_writes;
       report["family_write_creations"] = probe.write_creations;
       report["rejected_family_write_forgery"] = probe.rejected_write_forgery;
+      report["family_abi_methods"] = probe.abi_methods;
+      report["family_source_methods"] = probe.source_methods;
+      report["rejected_source_forgery"] = probe.rejected_source_forgery;
+      report["family_mapped_instructions"] = probe.mapped_instructions;
+      if (probe.draft) report["conditional_family_source"] = *probe.draft;
       report["family_probe_stage"] = static_cast<unsigned>(probe.stage);
       if (probe.tree_error) report["family_probe_tree_error"] = static_cast<unsigned>(*probe.tree_error);
     }

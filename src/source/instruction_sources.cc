@@ -1,4 +1,5 @@
 #include "instruction_sources.h"
+#include "phased_body.h"
 
 #include <new>
 #include <stdexcept>
@@ -10,11 +11,11 @@ void Require(bool ok, Error error) { if (!ok) throw error; }
 class SourceIndex {
  public:
   explicit SourceIndex(analysis::SemanticBudget budget) : initial_(budget), left_(budget) {}
-  InstructionSources Build(const FunctionInput& input, const analysis::ValueProgram& graph,
+  InstructionSources Build(const RouteInputIdentity& identity, abc::EntityOffset method,
+      std::span<const analysis::SemanticInstruction> instructions, const analysis::ValueProgram& graph,
       const FunctionTree& tree) {
-    Require(input.Identity() == tree.identity && input.Method() == tree.method, Error::kIdentity);
+    Require(identity == tree.identity && method == tree.method, Error::kIdentity);
     Require(graph.revision == tree.value_revision && graph.cfg_revision == tree.cfg_revision, Error::kRevision);
-    const auto& instructions = input.Input().instructions;
     Require(graph.origins.size() == instructions.size() && tree.origins.size() >= graph.origins.size(), Error::kOrigin);
     InstructionSources result;
     Array(result.sites, instructions.size());
@@ -95,7 +96,18 @@ class SourceIndex {
 std::variant<InstructionSources, InstructionSourceError> BuildInstructionSources(
     const FunctionInput& input, const analysis::ValueProgram& graph,
     const FunctionTree& tree, analysis::SemanticBudget budget) {
-  try { return SourceIndex(budget).Build(input, graph, tree);
+  try { return SourceIndex(budget).Build(input.Identity(), input.Method(), input.Input().instructions, graph, tree);
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+std::variant<InstructionSources, InstructionSourceError> BuildInstructionSources(
+    const PhasedBody& input, const abc::MethodBody& body,
+    const FunctionTree& tree, analysis::SemanticBudget budget) {
+  try {
+    Require(tree.signature.empty(), Error::kPlacement);
+    return SourceIndex(budget).Build(input.Identity(), input.Target(),
+        input.TreeInput(body).input.flow.instructions, input.Graph(), tree);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

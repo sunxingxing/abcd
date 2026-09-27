@@ -2,6 +2,11 @@
 
 #include "../../src/source/syntax_resolution.h"
 #include "../../src/source/lexical_stores.h"
+#include "../../src/source/function_abi.h"
+#include "../../src/source/family_print.h"
+#include "../support/instruction_positions.h"
+
+#include <sstream>
 
 namespace abcd::test {
 ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
@@ -41,9 +46,42 @@ ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
   const auto* parent_stores = std::get_if<LexicalStores>(&stores);
   if (!parent_stores) return result;
   ++result.checked_store_methods; result.checked_lexical_stores += parent_stores->stores;
+  auto parent_abi = BuildPhasedFunctionAbi(parent.Graph(), evaluation, tree->tree,
+      context.Frame(), context.Length(), budget);
+  auto* abi = std::get_if<ConstructedAbi>(&parent_abi);
+  if (!abi) return result;
+  ++result.abi_methods;
+  auto parent_sources = BuildInstructionSources(parent, body, tree->tree, budget);
+  auto* sources = std::get_if<InstructionSources>(&parent_sources);
+  if (!sources) return result;
+  ++result.source_methods;
+  auto exact_sources = budget; exact_sources.bytes = sources->allocated_bytes; exact_sources.work = sources->work;
+  if (!std::holds_alternative<InstructionSources>(BuildInstructionSources(parent, body, tree->tree, exact_sources))) return result;
+  --exact_sources.work;
+  if (std::get<InstructionSourceError>(BuildInstructionSources(parent, body, tree->tree, exact_sources)) !=
+      InstructionSourceError::kWorkLimit) return result;
+  ++exact_sources.work; --exact_sources.bytes;
+  if (std::get<InstructionSourceError>(BuildInstructionSources(parent, body, tree->tree, exact_sources)) !=
+      InstructionSourceError::kResourceLimit) return result;
+  if (tree->tree.operations.empty()) return result;
+  const auto placement = tree->tree.operations.back();
+  tree->tree.operations.pop_back();
+  if (std::get<InstructionSourceError>(BuildInstructionSources(parent, body, tree->tree, budget)) !=
+      InstructionSourceError::kCoverage) return result;
+  tree->tree.operations.push_back(placement); tree->tree.operations.push_back(placement);
+  if (std::get<InstructionSourceError>(BuildInstructionSources(parent, body, tree->tree, budget)) !=
+      InstructionSourceError::kPlacement) return result;
+  tree->tree.operations.pop_back();
+  ++tree->tree.method.value;
+  if (std::get<InstructionSourceError>(BuildInstructionSources(parent, body, tree->tree, budget)) !=
+      InstructionSourceError::kIdentity) return result;
+  --tree->tree.method.value;
+  result.rejected_source_forgery = std::holds_alternative<InstructionSources>(
+      BuildInstructionSources(parent, body, tree->tree, budget));
+  if (!result.rejected_source_forgery) return result;
   std::vector<FamilyMember> members;
   members.reserve(children.size() + 1);
-  members.push_back({std::move(tree->tree), std::move(*flow)});
+  members.push_back({std::move(tree->tree), std::move(*flow), {}, std::move(abi->abi), std::move(*sources)});
   for (auto& child : children) {
     const FunctionOwnerId owner{static_cast<std::uint32_t>(members.size())};
     const auto& graph = child.values.graph;
@@ -90,6 +128,14 @@ ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
     result.stage = FamilyProbeStage::kChildAliases;
     if (aliases && !std::holds_alternative<std::uint64_t>(VerifyModuleAliasTree(
         *aliases, *child_evaluation, child_tree->tree, budget))) return result;
+    auto child_abi = BuildFunctionAbi(graph, child_tree->tree, child.context.Frame(), child.context.Length(), budget);
+    auto* ready_abi = std::get_if<ConstructedAbi>(&child_abi);
+    if (!ready_abi) return result;
+    ++result.abi_methods;
+    auto child_sources = BuildInstructionSources(child.input, graph, child_tree->tree, budget);
+    auto* ready_sources = std::get_if<InstructionSources>(&child_sources);
+    if (!ready_sources) return result;
+    ++result.source_methods;
     if (!child_tree->tree.captures.empty()) {
       auto& alias = child_tree->tree.captures.front();
       const auto saved = alias.target;
@@ -103,7 +149,8 @@ ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
       if (!std::holds_alternative<std::uint64_t>(VerifyCaptureTree(child.captures, incoming.parent,
           {child_tree->tree, *child_flow}, budget))) return result;
     }
-    members.push_back({std::move(child_tree->tree), std::move(*child_flow), std::move(child.captures)});
+    members.push_back({std::move(child_tree->tree), std::move(*child_flow), std::move(child.captures),
+        std::move(ready_abi->abi), std::move(*ready_sources)});
     ++result.child_trees;
   }
   result.stage = FamilyProbeStage::kLayout;
@@ -171,6 +218,20 @@ ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
   }
   result.rejected_write_forgery = std::holds_alternative<FamilyWrites>(verify(budget));
   if (!result.rejected_write_forgery) return result;
+  result.stage = FamilyProbeStage::kPrint;
+  if (!context.ClassContext()) return result;
+  std::ostringstream output;
+  const auto printed = PrintClassFamilyDraft(*layout, *context.ClassContext(), output, {}, budget);
+  const auto* positions = std::get_if<PrintedFamilyDraft>(&printed);
+  if (!positions || positions->members.size() != layout->members.size() ||
+      positions->functions.size() != layout->members.size()) return result;
+  for (std::size_t i = 0; i < layout->members.size(); ++i) {
+    const auto& member = layout->members[i];
+    if (!member.sources || !member.abi) return result;
+    CheckInstructionPositions(member.tree, *member.sources, positions->members[i], positions->functions[i]);
+    result.mapped_instructions += member.sources->sites.size();
+  }
+  result.draft = output.str();
   result.stage = FamilyProbeStage::kDone;
   return result;
 }

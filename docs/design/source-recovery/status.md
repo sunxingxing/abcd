@@ -42,6 +42,20 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 普通/异常 `BuildInstructionSources` 现共用完整的原始指令来源索引，异常
+  复制消除与别名仍映射到原始 AST 边界锚点，不伪造语句或从 JS 文本反推位置。
+  真实 `recover`、`queryDegree` 两个混合函数族的五个成员均保留 ABI 和来源
+  census，并经共享 class-family printer 输出条件草稿；145 + 90 条原始指令
+  均通过 AST ID→生成事件范围/锚点检查。文件解码用例另覆盖分支/catch、成员
+  调用、正常/catch 存储、live/dead copies、错误 PC/revision、遗漏/重复放置、
+  phase 签名迁移拒绝及精确/不足预算。受控执行覆盖状态分支、重复 receiver
+  读取、getter/调用异常、日志效果顺序、回调参数/length、同步及延后抛出、
+  父函数返回后的可变 receiver 捕获及多次调用的独立绑定。
+  42 项定向 CTest、3 份真实样本脚本通过，三个 CLI 构建成功；未运行全语料、
+  RSS 或基准。受控宿主绑定不是原生模块初始化证明，条件草稿不是正式发布。
+  混合文件函数族的持有/准备/不可变发布仍须接通；不改 Rules 56，不宣布
+  循环/finally/协程组合或全部 ISA 完成。
+
 - `VerifyFamilyWrites` 现共用类型化 normal/phase 成员视图；既有 `FileFamily`
   无复制适配到同一实现，普通默认签名写入及 primitive object 证明保持不变。
   异常父函数与普通后代依次校验原始/工作捕获、实际 AST 绑定、全部词法写入，

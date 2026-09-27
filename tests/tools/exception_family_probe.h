@@ -20,7 +20,7 @@ struct ExceptionChild {
 enum class FamilyProbeStage : std::uint8_t {
   kParentSyntax, kParentTree, kParentFlow, kChildSyntax, kChildModules,
   kChildControl, kChildEvaluation, kChildTree, kChildFlow, kChildAliases,
-  kLayout, kEnclosure, kWrites, kDone
+  kLayout, kEnclosure, kWrites, kPrint, kDone
 };
 struct ExceptionFamilyProbe {
   FamilyProbeStage stage = FamilyProbeStage::kParentSyntax;
@@ -33,6 +33,10 @@ struct ExceptionFamilyProbe {
   std::size_t checked_store_methods = 0, checked_lexical_stores = 0;
   bool family_writes = false, rejected_write_forgery = false;
   std::size_t write_creations = 0;
+  std::size_t abi_methods = 0, source_methods = 0;
+  bool rejected_source_forgery = false;
+  std::size_t mapped_instructions = 0;
+  std::optional<std::string> draft;
 };
 // Real decoded inputs and checked capture edges, not invented syntax. This
 // diagnostic composes production builders but grants no publication receipt.
