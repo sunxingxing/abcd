@@ -1,16 +1,25 @@
 #include "binding_plan.h"
+#include "evaluation_flow.h"
 
 #include <limits>
 #include <new>
 #include <stdexcept>
 
 namespace abcd::source {
-std::variant<BindingPlan, BindingError> BuildBindingPlan(
+namespace {
+std::uint32_t CycleCount(const EvaluationPlan& evaluation, std::size_t bundle) {
+  // Exceptional copies use separate staging slots, never the abstract cycle
+  // schedule's destinations or temporary locations before the throwing op.
+  if (evaluation.exceptions &&
+      std::holds_alternative<ThrowCopies>(evaluation.exceptions->placements[bundle])) return 0;
+  return evaluation.phis->bundles[bundle].schedule.temporaries;
+}
+std::variant<BindingPlan, BindingError> BuildBindings(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    std::uint32_t parameter_count, analysis::SemanticBudget budget) {
+    std::uint32_t parameter_count, analysis::SemanticBudget budget, EvaluationFlow flow) {
   using namespace analysis;
   using Error = BindingError;
-  const auto verified = VerifyEvaluationPlan(graph, evaluation, budget);
+  const auto verified = VerifyEvaluationForFlow(graph, evaluation, budget, flow);
   if (const auto* error = std::get_if<EvaluationError>(&verified)) {
     if (*error == EvaluationError::kResourceLimit) return Error::kResourceLimit;
     if (*error == EvaluationError::kWorkLimit) return Error::kWorkLimit;
@@ -26,7 +35,7 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
   // Upper bound one snapshot per operation plus independent phi and cycle
   // locations. Never coalesce these into mutable source parameters/cells.
   constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
-  std::size_t phi_count = 0, cycle_count = 0;
+  std::size_t phi_count = 0, cycle_count = 0, catch_count = 0;
   bool needs_self = false;
   for (const auto& op : graph.ops) {
     if (work == 0) return Error::kWorkLimit;
@@ -35,22 +44,25 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
   }
   const std::size_t self_count = needs_self ? 1 : 0;
   const auto cell_count = evaluation.cells ? evaluation.cells->cells.cells.size() : 0;
+  const auto slot_count = evaluation.exceptions ? evaluation.exceptions->slots.size() : 0;
   for (const auto& value : graph.values) {
     if (work == 0) return Error::kWorkLimit;
     --work;
     phi_count += value.life == ValueLife::kLive && std::holds_alternative<PhiDefinition>(value.origin);
+    catch_count += value.life == ValueLife::kLive && std::holds_alternative<CatchDefinition>(value.origin);
   }
-  if (evaluation.phis) for (const auto& bundle : evaluation.phis->bundles) {
+  if (evaluation.phis) for (std::size_t i = 0; i < evaluation.phis->bundles.size(); ++i) {
     if (work == 0) return Error::kWorkLimit;
     --work;
-    if (bundle.schedule.temporaries > kMaxId - cycle_count) return Error::kResourceLimit;
-    cycle_count += bundle.schedule.temporaries;
+    const auto count = CycleCount(evaluation, i);
+    if (count > kMaxId - cycle_count) return Error::kResourceLimit;
+    cycle_count += count;
   }
-  if (phi_count > kMaxId - parameter_count || cycle_count > kMaxId - parameter_count - phi_count)
-    return Error::kResourceLimit;
-  const auto without_self = parameter_count + phi_count + cycle_count;
-  if (self_count > kMaxId - without_self) return Error::kResourceLimit;
-  const auto fixed_symbols = without_self + self_count;
+  std::size_t fixed_symbols = parameter_count;
+  for (const auto count : {phi_count, cycle_count, self_count, catch_count, slot_count}) {
+    if (count > kMaxId - fixed_symbols) return Error::kResourceLimit;
+    fixed_symbols += count;
+  }
   const auto bundles = evaluation.phis ? evaluation.phis->bundles.size() : 0;
   if (bundles > kMaxId || cell_count > kMaxId - fixed_symbols ||
       graph.ops.size() > kMaxId - fixed_symbols - cell_count ||
@@ -59,6 +71,7 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
       !admit(graph.values.size(), sizeof(ValueBinding)) ||
       !admit(bundles, sizeof(std::optional<SymbolId>)) ||
       !admit(cell_count, sizeof(SymbolId)) ||
+      !admit(slot_count, sizeof(SymbolId)) ||
       !admit(graph.ops.size() + fixed_symbols + cell_count, sizeof(BindingSource)))
     return Error::kResourceLimit;
   try {
@@ -76,6 +89,7 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
     bytes -= parameters->allocated_bytes;
     work -= parameters->work;
     BindingPlan plan;
+    plan.flow = flow;
     plan.revision = graph.revision;
     plan.cfg_revision = graph.cfg_revision;
     plan.parameter_count = parameter_count;
@@ -85,9 +99,11 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
     plan.symbols.reserve(symbol_limit);
     plan.cycle_bases.resize(bundles);
     plan.cells.resize(cell_count);
+    plan.catch_slots.resize(slot_count);
     if (!admit(plan.values.capacity() - graph.values.size(), sizeof(ValueBinding)) ||
         !admit(plan.cycle_bases.capacity() - bundles, sizeof(std::optional<SymbolId>)) ||
         !admit(plan.cells.capacity() - cell_count, sizeof(SymbolId)) ||
+        !admit(plan.catch_slots.capacity() - slot_count, sizeof(SymbolId)) ||
         !admit(plan.symbols.capacity() - symbol_limit, sizeof(BindingSource)))
       return Error::kResourceLimit;
     for (std::uint32_t i = 0; i < parameter_count; ++i) {
@@ -127,6 +143,15 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
         plan.values[i] = symbol;
         continue;
       }
+      if (const auto* caught = std::get_if<CatchDefinition>(&value.origin)) {
+        if (flow != EvaluationFlow::kPhased || !value.domain.IsLanguage() ||
+            caught->block.value >= graph.phases.size() ||
+            graph.phases[caught->block.value].phase != ExceptionPhase::kCatch) return Error::kDefinition;
+        const SymbolId symbol{static_cast<std::uint32_t>(plan.symbols.size())};
+        plan.symbols.emplace_back(CatchParameterBinding{ValueId{static_cast<std::uint32_t>(i)}, caught->block});
+        plan.values[i] = symbol;
+        continue;
+      }
       const auto producer = std::get<OpResult>(value.origin).op;
       if (producer.value >= graph.ops.size() ||
           graph.ops[producer.value].result != ValueId{static_cast<std::uint32_t>(i)})
@@ -141,7 +166,7 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
     for (std::size_t i = 0; i < bundles; ++i) {
       if (work == 0) return Error::kWorkLimit;
       --work;
-      const auto count = evaluation.phis->bundles[i].schedule.temporaries;
+      const auto count = CycleCount(evaluation, i);
       if (count != 0) plan.cycle_bases[i] = SymbolId{static_cast<std::uint32_t>(plan.symbols.size())};
       for (std::uint32_t temporary = 0; temporary < count; ++temporary) {
         if (work == 0) return Error::kWorkLimit;
@@ -155,6 +180,12 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
       plan.cells[i] = SymbolId{static_cast<std::uint32_t>(plan.symbols.size())};
       plan.symbols.emplace_back(CellBinding{CellId{static_cast<std::uint32_t>(i)}});
     }
+    for (std::size_t i = 0; i < slot_count; ++i) {
+      if (work == 0) return Error::kWorkLimit;
+      --work;
+      plan.catch_slots[i] = SymbolId{static_cast<std::uint32_t>(plan.symbols.size())};
+      plan.symbols.emplace_back(CatchSlotBinding{CatchSlotId{static_cast<std::uint32_t>(i)}});
+    }
     plan.allocated_bytes = budget.bytes - bytes;
     plan.work = budget.work - work;
     return plan;
@@ -163,5 +194,16 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
   } catch (const std::length_error&) {
     return Error::kResourceLimit;
   }
+}
+}  // namespace
+std::variant<BindingPlan, BindingError> BuildBindingPlan(
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
+    std::uint32_t parameter_count, analysis::SemanticBudget budget) {
+  return BuildBindings(graph, evaluation, parameter_count, budget, EvaluationFlow::kNormal);
+}
+std::variant<BindingPlan, BindingError> BuildPhasedBindingPlan(
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
+    std::uint32_t parameter_count, analysis::SemanticBudget budget) {
+  return BuildBindings(graph, evaluation, parameter_count, budget, EvaluationFlow::kPhased);
 }
 }  // namespace abcd::source

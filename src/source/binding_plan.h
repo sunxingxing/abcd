@@ -18,14 +18,16 @@ struct PhiBinding { analysis::ValueId value; analysis::WorkBlockId block; };
 struct CycleBinding { std::uint32_t bundle; CopyTempId temporary; };
 struct CellBinding { CellId cell; };
 struct FunctionSelfBinding {};
+struct CatchParameterBinding { analysis::ValueId value; analysis::WorkBlockId block; };
+struct CatchSlotBinding { CatchSlotId slot; };
 using BindingSource = std::variant<ParameterBinding, SnapshotBinding, PhiBinding, CycleBinding, CellBinding,
-                                   FunctionSelfBinding>;
+                                   FunctionSelfBinding, CatchParameterBinding, CatchSlotBinding>;
 struct BindingPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   std::vector<ValueBinding> values;
-  // Parameters precede optional self, value snapshots/phis, cycle temps and cells,
-  // including unused formal parameters.
+  // Parameters precede optional self, value snapshots/phis/catch parameters,
+  // cycle temps, cells and catch staging slots, including unused formals.
   // Names and lexical declarations are assigned by tree construction, not SSA.
   std::vector<BindingSource> symbols;
   // Optional first cycle-temp symbol per incoming bundle, followed by that
@@ -39,6 +41,9 @@ struct BindingPlan {
   std::optional<SymbolId> self;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  EvaluationFlow flow = EvaluationFlow::kNormal;
+  // CatchSlotId indexed private storage, never a phi/cell/parameter alias.
+  std::vector<SymbolId> catch_slots;
 };
 enum class BindingError : std::uint8_t {
   kEvaluation, kParameter, kUnsupportedEntry, kLivePhi, kDefinition,
@@ -47,6 +52,12 @@ enum class BindingError : std::uint8_t {
 // Requires imported ABI facts and a verified evaluation forest. Constructors
 // use this same mapping; receiver initialization legality belongs to tree proof.
 [[nodiscard]] std::variant<BindingPlan, BindingError> BuildBindingPlan(
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
+    std::uint32_t parameter_count, analysis::SemanticBudget budget = {});
+// Catch parameters retain their Catch block identity for lexical handler-scope
+// assignment. Staging slots are distinct invocation-private compiler symbols.
+// This allocation does not authorize hoisting a catch parameter into the body.
+[[nodiscard]] std::variant<BindingPlan, BindingError> BuildPhasedBindingPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source

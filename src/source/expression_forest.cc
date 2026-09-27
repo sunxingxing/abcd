@@ -1,4 +1,5 @@
 #include "expression_forest.h"
+#include "expression_copies.h"
 
 #include <array>
 #include <algorithm>
@@ -33,7 +34,9 @@ class ForestBuilder {
   ExpressionForest Build() {
     Require(constants_.operations.size() == graph_.ops.size(), Error::kConstant);
     Admit(1, sizeof(ExpressionForest));
-    auto calls = BuildCallPlan(graph_, evaluation_, {bytes_, work_});
+    auto calls = forest_.bindings.flow == EvaluationFlow::kNormal
+        ? BuildCallPlan(graph_, evaluation_, {bytes_, work_})
+        : BuildPhasedCallPlan(graph_, evaluation_, {bytes_, work_});
     auto* call_plan = std::get_if<CallPlan>(&calls);
     if (!call_plan) {
       const auto error = std::get<CallPlanError>(calls);
@@ -74,15 +77,25 @@ class ForestBuilder {
       captures += function.captures.size();
     }
     Reserve(forest_.closure_captures, captures);
-    std::size_t copies = 0;
+    std::size_t copies = 0, normal_copies = 0, staged_copies = 0, staged_bundles = 0;
     const auto bundles = evaluation_.phis ? evaluation_.phis->bundles.size() : 0;
     if (evaluation_.phis) {
-      for (const auto& bundle : evaluation_.phis->bundles) {
+      for (std::size_t b = 0; b < bundles; ++b) {
         Step();
-        Require(bundle.schedule.steps.size() <= kMaxId - copies, Error::kResourceLimit);
-        copies += bundle.schedule.steps.size();
+        const auto& bundle = evaluation_.phis->bundles[b];
+        const bool staged = evaluation_.exceptions &&
+            std::holds_alternative<ThrowCopies>(evaluation_.exceptions->placements[b]);
+        const auto count = staged ? bundle.count : bundle.schedule.steps.size();
+        Require(count <= kMaxId - copies, Error::kResourceLimit);
+        copies += count;
+        if (staged) { staged_copies += count; ++staged_bundles; }
+        else normal_copies += count;
       }
     }
+    const auto catch_copies = evaluation_.exceptions ? evaluation_.exceptions->slots.size() : 0;
+    const auto commits = evaluation_.exceptions ? evaluation_.exceptions->commits.size() : 0;
+    Require(catch_copies <= kMaxId - copies, Error::kResourceLimit);
+    copies += catch_copies;
     constexpr std::size_t kNodesPerCopy = 2;  // Owned RHS leaf and assignment.
     Require(graph_.ops.size() <= kMaxId / kNodesPerOperation &&
             graph_.uses.size() <= kMaxId - graph_.ops.size() * kNodesPerOperation &&
@@ -90,13 +103,18 @@ class ForestBuilder {
     const auto operation_nodes = graph_.uses.size() + graph_.ops.size() * kNodesPerOperation;
     Require(copies <= (kMaxId - operation_nodes) / kNodesPerCopy &&
             bundles <= kMaxId - graph_.origins.size() - graph_.ops.size(), Error::kResourceLimit);
+    Require(commits <= kMaxId - graph_.origins.size() - graph_.ops.size() - bundles, Error::kResourceLimit);
     const auto expression_nodes = operation_nodes + copies * kNodesPerCopy;
     Require(buffered_properties <= kMaxId - expression_nodes, Error::kResourceLimit);
     Reserve(forest_.expressions, expression_nodes + buffered_properties);
     Reserve(forest_.arguments, graph_.uses.size());
-    Reserve(forest_.origins, graph_.origins.size() + graph_.ops.size() + bundles);
-    Reserve(forest_.edge_assignments, copies);
-    Reserve(forest_.edges, bundles);
+    Reserve(forest_.origins, graph_.origins.size() + graph_.ops.size() + bundles + commits);
+    Reserve(forest_.edge_assignments, normal_copies);
+    Reserve(forest_.edges, bundles - staged_bundles);
+    Reserve(forest_.throw_assignments, staged_copies);
+    Reserve(forest_.throws, staged_bundles);
+    Reserve(forest_.catch_assignments, catch_copies);
+    Reserve(forest_.catches, commits);
     Reserve(forest_.origin_parts, graph_.ops.size() * kOriginPartsPerOperation);
     Reserve(forest_.operations, graph_.ops.size());
     forest_.operations.resize(graph_.ops.size());
@@ -175,7 +193,9 @@ class ForestBuilder {
     }
     Require(next_function_ == evaluation_.functions.size(), Error::kOwnership);
     Require(next_module_ == evaluation_.modules.size(), Error::kOwnership);
-    EdgeAssignments();
+    const auto copied = AppendCopyExpressions(graph_, evaluation_, forest_, owner_, work_);
+    if (const auto* error = std::get_if<Error>(&copied)) throw *error;
+    Step(std::get<std::uint64_t>(copied));
     forest_.allocated_bytes = budget_.bytes - bytes_;
     forest_.work = budget_.work - work_;
     return std::move(forest_);
@@ -215,60 +235,6 @@ class ForestBuilder {
       forest_.initializers[id.value] = property; forest_.operations[id.value] = value;
     }
     return Add(ObjectExpr{range}, origin);
-  }
-  SymbolId CycleSymbol(std::uint32_t bundle, CopyTempId temporary) {
-    Require(bundle < forest_.bindings.cycle_bases.size(), Error::kBinding);
-    const auto base = forest_.bindings.cycle_bases[bundle];
-    Require(base && base->value < forest_.bindings.symbols.size() &&
-            temporary.value < forest_.bindings.symbols.size() - base->value, Error::kBinding);
-    const SymbolId symbol{base->value + temporary.value};
-    const auto* binding = std::get_if<CycleBinding>(&forest_.bindings.symbols[symbol.value]);
-    Require(binding && binding->bundle == bundle && binding->temporary == temporary, Error::kBinding);
-    return symbol;
-  }
-  SymbolId CopyDestination(const CopyTarget& target, std::uint32_t bundle) {
-    if (const auto* temporary = std::get_if<CopyTempId>(&target))
-      return CycleSymbol(bundle, *temporary);
-    const auto value = std::get<analysis::ValueId>(target);
-    Require(value.value < forest_.bindings.values.size(), Error::kBinding);
-    const auto* symbol = std::get_if<SymbolId>(&forest_.bindings.values[value.value]);
-    Require(symbol && symbol->value < forest_.bindings.symbols.size(), Error::kBinding);
-    const auto* phi = std::get_if<PhiBinding>(&forest_.bindings.symbols[symbol->value]);
-    Require(phi && phi->value == value, Error::kBinding);
-    return *symbol;
-  }
-  void EdgeAssignments() {
-    if (!evaluation_.phis) return;
-    for (std::size_t i = 0; i < evaluation_.phis->bundles.size(); ++i) {
-      Step();
-      const auto& bundle = evaluation_.phis->bundles[i];
-      const TreeOriginId origin{static_cast<std::uint32_t>(forest_.origins.size())};
-      if (const auto* edge = std::get_if<analysis::EdgeId>(&bundle.incoming))
-        forest_.origins.emplace_back(EdgeOrigin{*edge});
-      else forest_.origins.emplace_back(EntryOrigin{});
-      const auto first = static_cast<std::uint32_t>(forest_.edge_assignments.size());
-      for (const auto& copy : bundle.schedule.steps) {
-        Step();
-        const auto destination = CopyDestination(copy.destination, static_cast<std::uint32_t>(i));
-        ExprId source;
-        if (const auto* temporary = std::get_if<CopyTempId>(&copy.source)) {
-          source = Add(SymbolExpr{CycleSymbol(static_cast<std::uint32_t>(i), *temporary)}, origin);
-        } else {
-          const auto& operand = std::get<analysis::ValueOperand>(copy.source);
-          // All incoming operation results must already be snapshots. Do not
-          // reuse/inline an operation tree here: doing so moves effects across
-          // the branch and gives one expression occurrence multiple owners.
-          if (const auto* value = std::get_if<analysis::ValueId>(&operand)) {
-            Require(value->value < forest_.bindings.values.size() &&
-                    !std::holds_alternative<UnboundValue>(forest_.bindings.values[value->value]),
-                    Error::kUnavailableValue);
-          }
-          source = Operand(operand, origin);
-        }
-        forest_.edge_assignments.push_back(Add(AssignmentExpr{SymbolTarget{destination}, source}, origin));
-      }
-      forest_.edges.push_back({bundle.incoming, first, static_cast<std::uint32_t>(bundle.schedule.steps.size())});
-    }
   }
   ExprId Call(const analysis::ValueOp& op, const CallBinding& binding, TreeOriginId origin) {
     const bool member = std::holds_alternative<MemberCall>(binding);
@@ -519,13 +485,13 @@ class ForestBuilder {
   std::vector<std::size_t> module_order_;
   std::size_t next_module_ = 0;
 };
-}  // namespace
-
-std::variant<ExpressionForest, ExpressionError> BuildExpressionForest(
+std::variant<ExpressionForest, ExpressionError> BuildForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner,
-    ExpressionConstants constants, analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules) {
-  auto bindings = BuildBindingPlan(graph, evaluation, parameter_count, budget);
+    ExpressionConstants constants, analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules,
+    EvaluationFlow flow) {
+  auto bindings = flow == EvaluationFlow::kNormal ? BuildBindingPlan(graph, evaluation, parameter_count, budget)
+      : BuildPhasedBindingPlan(graph, evaluation, parameter_count, budget);
   if (const auto* error = std::get_if<BindingError>(&bindings)) {
     if (*error == BindingError::kResourceLimit) return Error::kResourceLimit;
     if (*error == BindingError::kWorkLimit) return Error::kWorkLimit;
@@ -537,5 +503,18 @@ std::variant<ExpressionForest, ExpressionError> BuildExpressionForest(
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+}  // namespace
+std::variant<ExpressionForest, ExpressionError> BuildExpressionForest(
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
+    std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
+    analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules) {
+  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal);
+}
+std::variant<ExpressionForest, ExpressionError> BuildPhasedExpressionForest(
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
+    std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
+    analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules) {
+  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kPhased);
 }
 }  // namespace abcd::source

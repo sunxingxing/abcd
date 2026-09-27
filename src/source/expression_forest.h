@@ -11,6 +11,16 @@ struct EdgeExpressions {
   std::uint32_t first;
   std::uint32_t count;
 };
+struct ThrowExpressions {
+  ThrowCopies placement;
+  std::uint32_t first;
+  std::uint32_t count;
+};
+struct CatchExpressions {
+  analysis::WorkBlockId block;
+  std::uint32_t first;
+  std::uint32_t count;
+};
 struct ExpressionForest {
   BindingPlan bindings;
   CallPlan calls;
@@ -33,6 +43,12 @@ struct ExpressionForest {
   std::vector<EdgeExpressions> edges;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  // Disjoint root ranges: stage before a throwing operation, commit only at
+  // Catch entry. Neither is an ordinary edge assignment or operation subtree.
+  std::vector<ExprId> throw_assignments;
+  std::vector<ThrowExpressions> throws;
+  std::vector<ExprId> catch_assignments;
+  std::vector<CatchExpressions> catches;
 };
 enum class ExpressionError : std::uint8_t {
   kBinding, kOrigin, kConstant, kUnavailableValue, kUnsupportedOperation,
@@ -46,6 +62,11 @@ enum class ExpressionError : std::uint8_t {
 // append after bindings.symbols; FunctionTree must retain that exact order.
 [[nodiscard]] std::variant<ExpressionForest, ExpressionError>
 BuildExpressionForest(const analysis::ValueProgram& graph,
+    const EvaluationPlan& evaluation, std::uint32_t parameter_count,
+    FunctionOwnerId owner, ExpressionConstants constants,
+    analysis::SemanticBudget budget = {}, std::span<const ModuleSymbol> modules = {});
+[[nodiscard]] std::variant<ExpressionForest, ExpressionError>
+BuildPhasedExpressionForest(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, std::uint32_t parameter_count,
     FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget = {}, std::span<const ModuleSymbol> modules = {});

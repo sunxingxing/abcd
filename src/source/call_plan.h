@@ -32,5 +32,13 @@ enum class CallPlanError : std::uint8_t {
 [[nodiscard]] std::variant<std::uint64_t, CallPlanError> VerifyCallPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     const CallPlan& plan, analysis::SemanticBudget budget = {});
+// Same call/reference checks with verified phased evaluation. In particular,
+// an explicit receiver does not permit a .call lookup or getter re-evaluation.
+[[nodiscard]] std::variant<CallPlan, CallPlanError> BuildPhasedCallPlan(
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
+    analysis::SemanticBudget budget = {});
+[[nodiscard]] std::variant<std::uint64_t, CallPlanError> VerifyPhasedCallPlan(
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
+    const CallPlan& plan, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

@@ -4,6 +4,7 @@
 #include "../../../src/source/exception_plan.h"
 #include "../../../src/source/evaluation_plan.h"
 #include "../../../src/source/binding_plan.h"
+#include "../../../src/source/expression_forest.h"
 #include "analysis/ssa_fixture.h"
 
 namespace {
@@ -145,6 +146,70 @@ void Staging(std::uint32_t count) {
   test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, evaluation)) ==
       EvaluationError::kUnsupportedOperation);
   test::Check(std::holds_alternative<BindingError>(BuildBindingPlan(graph, evaluation, 1)));
+  const auto bound = BuildPhasedBindingPlan(graph, evaluation, 1);
+  test::Check(std::holds_alternative<BindingPlan>(bound));
+  const auto& bindings = std::get<BindingPlan>(bound);
+  test::Check(std::holds_alternative<BindingPlan>(BuildPhasedBindingPlan(
+      graph, evaluation, 1, {SemanticBudget{}.bytes, bindings.work})));
+  test::Check(std::get<BindingError>(BuildPhasedBindingPlan(
+      graph, evaluation, 1, {SemanticBudget{}.bytes, bindings.work - 1})) == BindingError::kWorkLimit);
+  test::Check(bindings.flow == EvaluationFlow::kPhased && bindings.catch_slots.size() == count);
+  const auto caught_symbol = std::get<SymbolId>(bindings.values[2]);
+  const auto caught = std::get<CatchParameterBinding>(bindings.symbols[caught_symbol.value]);
+  test::Check(caught.value == ValueId{2} && caught.block == WorkBlockId{6});
+  std::vector<bool> slot_symbols(bindings.symbols.size());
+  for (std::size_t s = 0; s < bindings.catch_slots.size(); ++s) {
+    const auto symbol = bindings.catch_slots[s];
+    test::Check(!slot_symbols[symbol.value]); slot_symbols[symbol.value] = true;
+    test::Check(std::get<CatchSlotBinding>(bindings.symbols[symbol.value]).slot.value == s);
+  }
+  for (const auto& value : bindings.values)
+    if (const auto* symbol = std::get_if<SymbolId>(&value)) test::Check(!slot_symbols[symbol->value]);
+  const auto called = BuildPhasedCallPlan(graph, evaluation);
+  test::Check(std::holds_alternative<CallPlan>(called));
+  test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedCallPlan(
+      graph, evaluation, std::get<CallPlan>(called))));
+  test::Check(std::get<CallPlanError>(VerifyCallPlan(graph, evaluation, std::get<CallPlan>(called))) ==
+      CallPlanError::kEvaluation);
+  const std::vector<ExpressionConstant> constants{NameId{0}, std::monostate{}, std::monostate{}};
+  const auto expressed = BuildPhasedExpressionForest(graph, evaluation, 1, {0}, {constants, 1});
+  test::Check(std::holds_alternative<ExpressionForest>(expressed));
+  const auto& forest = std::get<ExpressionForest>(expressed);
+  test::Check(std::holds_alternative<ExpressionForest>(BuildPhasedExpressionForest(
+      graph, evaluation, 1, {0}, {constants, 1}, {SemanticBudget{}.bytes, forest.work})));
+  test::Check(std::get<ExpressionError>(BuildPhasedExpressionForest(
+      graph, evaluation, 1, {0}, {constants, 1}, {SemanticBudget{}.bytes, forest.work - 1})) ==
+      ExpressionError::kWorkLimit);
+  test::Check(std::get<ExpressionError>(BuildPhasedExpressionForest(
+      graph, evaluation, 1, {0}, {constants, 1}, {0})) == ExpressionError::kResourceLimit);
+  test::Check(forest.edges.empty() && forest.edge_assignments.empty());
+  test::Check(forest.throw_assignments.size() == count && forest.catch_assignments.size() == count);
+  test::Check(std::holds_alternative<ExpressionError>(BuildExpressionForest(
+      graph, evaluation, 1, {0}, {constants, 1})));
+  std::vector<bool> owned(forest.expressions.size());
+  for (const auto roots : {std::span<const ExprId>(forest.throw_assignments),
+                           std::span<const ExprId>(forest.catch_assignments)}) {
+    for (const auto root : roots) {
+      test::Check(!owned[root.value]); owned[root.value] = true;
+      const auto rhs = std::get<AssignmentExpr>(forest.expressions[root.value].expression).value;
+      test::Check(!owned[rhs.value]); owned[rhs.value] = true;
+    }
+  }
+  for (const auto root : forest.operations) if (root) test::Check(!owned[root->value]);
+  for (std::uint32_t i = 0; i < count; ++i) {
+    const auto& staged = forest.expressions[forest.throw_assignments[i].value];
+    const auto& saved = std::get<AssignmentExpr>(staged.expression);
+    const auto slot = forest.bindings.catch_slots[plan.staging[i]->value];
+    test::Check(std::get<SymbolTarget>(saved.target).symbol == slot);
+    test::Check(std::get<SymbolExpr>(forest.expressions[saved.value.value].expression).symbol == SymbolId{0});
+    test::Check(std::get<EdgeOrigin>(forest.origins[staged.origin.value]).edge == EdgeId{1});
+    const auto& committed = forest.expressions[forest.catch_assignments[i].value];
+    const auto& assigned = std::get<AssignmentExpr>(committed.expression);
+    const auto phi = plan.slots[i].destination;
+    test::Check(std::get<SymbolTarget>(assigned.target).symbol == std::get<SymbolId>(forest.bindings.values[phi.value]));
+    test::Check(std::get<SymbolExpr>(forest.expressions[assigned.value.value].expression).symbol == slot);
+    test::Check(std::get<EdgeOrigin>(forest.origins[committed.origin.value]).edge == EdgeId{5});
+  }
   if (count) {
     auto missing = evaluation; missing.exceptions.reset();
     test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, missing)));
@@ -157,26 +222,40 @@ void Staging(std::uint32_t count) {
         EvaluationError::kUnavailableValue);
   }
 }
-void Decoded(abc::ProfileId profile) {
-  // The first getter can throw with the old r0. The second can throw after r0
+enum class ThrowingSite : std::uint8_t { kGetter, kCall };
+void Decoded(abc::ProfileId profile, ThrowingSite site) {
+  // The first getter/call can throw with old r0. The second can throw after r0
   // was updated. Both exceptions enter the same catch, but carry different r0.
-  const auto body_bytes = std::vector<std::uint8_t>{
+  auto body_bytes = std::vector<std::uint8_t>{
       static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 1,
       static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), 0,
-      static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 2,
-      static_cast<std::uint8_t>(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0,
-      static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), 0,
-      static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 3,
-      static_cast<std::uint8_t>(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0,
-      static_cast<std::uint8_t>(abc::Opcode::kRETURN),
-      static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0,
-      static_cast<std::uint8_t>(abc::Opcode::kRETURN)};
+      static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 2};
+  const auto append_site = [&] {
+    switch (site) {
+      case ThrowingSite::kGetter:
+        body_bytes.insert(body_bytes.end(), {static_cast<std::uint8_t>(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0});
+        break;
+      case ThrowingSite::kCall:
+        body_bytes.insert(body_bytes.end(), {static_cast<std::uint8_t>(abc::Opcode::kCALLARG0_IMM8), 0});
+        break;
+    }
+  };
+  const abc::CodeOffset first_pc{static_cast<std::uint32_t>(body_bytes.size())};
+  append_site();
+  body_bytes.insert(body_bytes.end(), {static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), 0,
+      static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 3});
+  const abc::CodeOffset second_pc{static_cast<std::uint32_t>(body_bytes.size())};
+  append_site();
+  body_bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kRETURN));
+  const abc::CodeOffset handler_pc{static_cast<std::uint32_t>(body_bytes.size())};
+  body_bytes.insert(body_bytes.end(), {static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
   auto body = test::Body(body_bytes);
   abc::TryRegion region;
-  region.offset = {6}; region.length = 13; region.handler_count = 1;
+  region.offset = first_pc; region.length = handler_pc.value - first_pc.value; region.handler_count = 1;
   body.tries.push_back(region);
   abc::CatchHandler handler;
-  handler.offset = {19}; handler.length = 3;
+  handler.offset = handler_pc; handler.length = 3;
   body.handlers.push_back(handler);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 3, {}));
   auto built = BuildExceptionFlow(body, profile, frame.registers, {}, {}, &frame);
@@ -195,7 +274,7 @@ void Decoded(abc::ProfileId profile) {
   const auto& environments = std::get<EnvironmentFlow>(bound);
   IdfQuota value_quota{kDefaultSemanticWork};
   auto propagated = ExceptionValueFlow::Build(flow, ssa, entries, value_quota,
-      {}, PendingExceptionValues::kLanguage);
+      {}, PendingExceptionValues::kLanguage, {}, {}, CallResultValues::kLanguage);
   const auto& values = std::get<ExceptionValueFlow>(propagated);
   auto checked = VerifyExceptionInputs(flow, ssa, environments, values);
   const auto& proof = std::get<ExceptionInputProof>(checked);
@@ -223,6 +302,24 @@ void Decoded(abc::ProfileId profile) {
   test::Check(evaluation.operations[3].kind == EvaluationKind::kRoot &&
       evaluation.operations[6].kind == EvaluationKind::kRoot);
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation)));
+  std::vector<ExpressionConstant> constants(graph.ops.size());
+  if (site == ThrowingSite::kGetter) constants[3] = constants[6] = NameId{0};
+  const auto expressed = BuildPhasedExpressionForest(graph, evaluation, 3, {0}, {constants, 1});
+  test::Check(std::holds_alternative<ExpressionForest>(expressed));
+  const auto& forest = std::get<ExpressionForest>(expressed);
+  test::Check(forest.throws.size() == 2 && forest.catches.size() == 1);
+  test::Check(forest.throw_assignments.size() == 2 && forest.catch_assignments.size() == 1);
+  const auto& first = forest.expressions[forest.operations[3]->value];
+  const auto& second = forest.expressions[forest.operations[6]->value];
+  test::Check(std::get<OriginalSite>(forest.origins[first.origin.value]).pc == first_pc);
+  test::Check(std::get<OriginalSite>(forest.origins[second.origin.value]).pc == second_pc);
+  if (site == ThrowingSite::kCall) {
+    test::Check(std::get<CallExpr>(first.expression).reference == CallReference::kValue);
+    test::Check(std::get<CallExpr>(second.expression).reference == CallReference::kValue);
+  } else {
+    test::Check(std::holds_alternative<MemberExpr>(first.expression));
+    test::Check(std::holds_alternative<MemberExpr>(second.expression));
+  }
 }
 void MixedPlacements() {
   auto graph = ReadAndCatch(1);
@@ -260,6 +357,9 @@ void MixedPlacements() {
 int main() {
   for (const std::uint32_t count : {0U, 1U, 2U, 200U, 201U, 402U}) Staging(count);
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
-                            abc::ProfileId::kDynamic1301}) Decoded(profile);
+                            abc::ProfileId::kDynamic1301}) {
+    Decoded(profile, ThrowingSite::kGetter);
+    Decoded(profile, ThrowingSite::kCall);
+  }
   MixedPlacements();
 }

@@ -18,8 +18,9 @@ class CallBudget {
   void Admit(std::size_t count, std::size_t width) {
     Require(count <= remaining_.bytes / width, Error::kResourceLimit); remaining_.bytes -= count * width;
   }
-  void Evaluation(const ValueProgram& graph, const EvaluationPlan& evaluation) {
-    const auto checked = VerifyEvaluationPlan(graph, evaluation, remaining_);
+  void Evaluation(const ValueProgram& graph, const EvaluationPlan& evaluation, EvaluationFlow flow) {
+    const auto checked = flow == EvaluationFlow::kNormal ? VerifyEvaluationPlan(graph, evaluation, remaining_)
+        : VerifyPhasedEvaluationPlan(graph, evaluation, remaining_);
     if (const auto* work = std::get_if<std::uint64_t>(&checked)) { Step(*work); return; }
     const auto error = std::get<EvaluationError>(checked);
     if (error == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
@@ -60,13 +61,13 @@ bool StableReceiver(const ValueProgram& graph, const EvaluationPlan& evaluation,
 bool Property(const ValueOperation& operation) {
   return std::holds_alternative<ValueNamedRead>(operation) || std::holds_alternative<ValuePropertyRead>(operation);
 }
-}  // namespace
-
-std::variant<CallPlan, CallPlanError> BuildCallPlan(const analysis::ValueProgram& graph,
-    const EvaluationPlan& evaluation, analysis::SemanticBudget budget) {
+std::variant<std::uint64_t, CallPlanError> VerifyCalls(const ValueProgram& graph,
+    const EvaluationPlan& evaluation, const CallPlan& plan, SemanticBudget budget, EvaluationFlow flow);
+std::variant<CallPlan, CallPlanError> BuildCalls(const analysis::ValueProgram& graph,
+    const EvaluationPlan& evaluation, analysis::SemanticBudget budget, EvaluationFlow flow) {
   try {
     CallBudget checked(budget);
-    checked.Evaluation(graph, evaluation);
+    checked.Evaluation(graph, evaluation, flow);
     checked.Admit(1, sizeof(CallPlan));
     checked.Admit(graph.ops.size(), sizeof(CallBinding)); checked.Step(graph.ops.size());
     CallPlan plan{graph.revision, graph.cfg_revision, {}};
@@ -95,7 +96,7 @@ std::variant<CallPlan, CallPlanError> BuildCallPlan(const analysis::ValueProgram
     }
     // Independent checking below validates the proposed property/receiver
     // association, including the suppressed raw receiver occurrence.
-    const auto verified = VerifyCallPlan(graph, evaluation, plan, checked.Remaining());
+    const auto verified = VerifyCalls(graph, evaluation, plan, checked.Remaining(), flow);
     if (const auto* error = std::get_if<Error>(&verified)) return *error;
     checked.Step(std::get<std::uint64_t>(verified));
     plan.allocated_bytes = sizeof(CallPlan) + plan.operations.capacity() * sizeof(CallBinding);
@@ -106,13 +107,13 @@ std::variant<CallPlan, CallPlanError> BuildCallPlan(const analysis::ValueProgram
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
 
-std::variant<std::uint64_t, CallPlanError> VerifyCallPlan(const analysis::ValueProgram& graph,
-    const EvaluationPlan& evaluation, const CallPlan& plan, analysis::SemanticBudget budget) {
+std::variant<std::uint64_t, CallPlanError> VerifyCalls(const analysis::ValueProgram& graph,
+    const EvaluationPlan& evaluation, const CallPlan& plan, analysis::SemanticBudget budget, EvaluationFlow flow) {
   try {
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
     Require(plan.operations.size() == graph.ops.size(), Error::kBinding);
     CallBudget checked(budget);
-    checked.Evaluation(graph, evaluation);
+    checked.Evaluation(graph, evaluation, flow);
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       checked.Step(); const auto& op = graph.ops[i];
       const auto& binding = plan.operations[i];
@@ -142,5 +143,22 @@ std::variant<std::uint64_t, CallPlanError> VerifyCallPlan(const analysis::ValueP
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+}  // namespace
+std::variant<CallPlan, CallPlanError> BuildCallPlan(const analysis::ValueProgram& graph,
+    const EvaluationPlan& evaluation, analysis::SemanticBudget budget) {
+  return BuildCalls(graph, evaluation, budget, EvaluationFlow::kNormal);
+}
+std::variant<std::uint64_t, CallPlanError> VerifyCallPlan(const analysis::ValueProgram& graph,
+    const EvaluationPlan& evaluation, const CallPlan& plan, analysis::SemanticBudget budget) {
+  return VerifyCalls(graph, evaluation, plan, budget, EvaluationFlow::kNormal);
+}
+std::variant<CallPlan, CallPlanError> BuildPhasedCallPlan(const analysis::ValueProgram& graph,
+    const EvaluationPlan& evaluation, analysis::SemanticBudget budget) {
+  return BuildCalls(graph, evaluation, budget, EvaluationFlow::kPhased);
+}
+std::variant<std::uint64_t, CallPlanError> VerifyPhasedCallPlan(const analysis::ValueProgram& graph,
+    const EvaluationPlan& evaluation, const CallPlan& plan, analysis::SemanticBudget budget) {
+  return VerifyCalls(graph, evaluation, plan, budget, EvaluationFlow::kPhased);
 }
 }  // namespace abcd::source

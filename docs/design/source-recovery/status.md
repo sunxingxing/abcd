@@ -42,6 +42,28 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- T09 绑定与表达式层已消费异常求值计划：CatchParameterBinding 保留独立 Catch
+  块/值身份，CatchSlotBinding 分配实际私有 SymbolId，不复用参数、phi、快照或
+  cell；异常 bundle 不再分配不会执行的抽象 cycle temporary。普通/构造器沿用
+  同一绑定算法，新 phased 入口不解除普通入口的拒绝条件。
+  暂存与提交现在成为共享 AssignmentExpr/SymbolExpr，分别记录抛出操作前的根
+  范围和 Catch 提交根范围，不冒充普通边复制，也不重用 getter/调用表达式节点。
+  正常/异常复制的 AST 构建统一提取到 expression_copies，原表达式文件相应缩小。
+  Catch 没有伪造的指令 PC；提交沿其唯一出边记录合成来源，原操作保留 OriginalSite。
+  三个 profile 的两个 getter/两个 CALLARG0 解码用例已到共享表达式 AST，分别保留
+  旧值/新值、原始 PC 和 value-call 引用形式。显式 receiver 的跨相位 member-call
+  融合尚未实现，既有引用检查保留，不用 `.call` 或重复 getter 绕过。
+  新规格覆盖私有符号不别名、0/1/2/200/201/402 phi、根/RHS 独立所有权、两阶段赋值
+  源/目标与边来源、normal/phased 入口隔离以及绑定/表达式的精确 work 和资源边界。
+  22/22 定向回归通过：exception_copies/plan、phi_copies、call_plan、evaluation_plan、
+  function_tree、control_plan、phased_value_flow/import、throw_value、constant_group、
+  三个既有应用源码切片、creation/class_tree_context、source_route、function_input、
+  async_semantics、exception_arguments/dispatch、argument_snapshot_source；abc_semantic
+  构建通过。新增绑定、调用和表达式正例先运行失败，再接通。未运行全量、RSS 或基准。
+  **新证据仍不是完整异常源码**：仅表达式 AST，尚无 TryCatchStmt、handler 声明作用域、
+  异常控制树及最终语义/生成位置证明。下一步必须完成这些集成与实际 JS 执行，
+  不能把 catch 参数当成 body 局部变量。源码规则仍为 44，全 ISA 与 group 1 目标未完成。
+
 - T09 异常 phi 已接入同一套并行复制与求值算法：新增显式 phased 入口，保留
   Before/Commit/Catch 可用性检查，不把异常图降格为普通图。EvaluationPlan 持有
   ExceptionCopies，独立验证缺失/伪造计划；normal 入口及普通 BindingPlan 仍拒绝它。
