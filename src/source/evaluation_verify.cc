@@ -134,6 +134,9 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       }
       step(std::get<std::uint64_t>(checked));
     }
+    const auto module_copies = VerifyModuleCatchCopies(graph, plan, {bytes, work});
+    if (const auto* error = std::get_if<Error>(&module_copies)) return *error;
+    step(std::get<std::uint64_t>(module_copies));
     admit(graph.ops.size(), sizeof(EvaluationFrame));
     admit(graph.ops.size(), sizeof(EvaluationVisit));
     step(graph.ops.size()); step(graph.ops.size());
@@ -207,6 +210,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       }
     }
     std::size_t next_op = 0;
+    std::optional<analysis::OpId> fused_guard;
     for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
       step();
       const auto& block = graph.blocks[b];
@@ -215,6 +219,10 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       const auto end = next_op + block.op_count;
       auto expected = next_op;
       const auto skip_pure = [&] {
+        if (expected < end && fused_guard && fused_guard->value == expected) {
+          Require(plan.operations[expected].kind == EvaluationKind::kModuleGuard, Error::kOrder);
+          step(); ++expected; fused_guard.reset();
+        }
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
                                   plan.operations[expected].kind == EvaluationKind::kInitializer ||
                                   plan.operations[expected].kind == EvaluationKind::kEnvironment ||
@@ -264,12 +272,18 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
               Require(expected < end && expected == frame.op.value, Error::kOrder);
               ++expected;
               if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) {
-                // Consume the second original event at this same root, not by
-                // adding it to skip_pure or trusting a Language result domain.
-                Require(expected < end && !module_index.peers.empty() &&
-                    module_index.peers[frame.op.value] == analysis::OpId{static_cast<std::uint32_t>(expected)} &&
-                    plan.operations[expected].kind == EvaluationKind::kModuleGuard, Error::kOrder);
-                ++expected;
+                if (flow == EvaluationFlow::kPhased) {
+                  Require(!fused_guard && !module_index.peers.empty() &&
+                      module_index.peers[frame.op.value], Error::kOrder);
+                  fused_guard = module_index.peers[frame.op.value];
+                } else {
+                  // Consume the second original event at this same root, not by
+                  // trusting a Language result domain or skipping arbitrary guards.
+                  Require(expected < end && !module_index.peers.empty() &&
+                      module_index.peers[frame.op.value] == analysis::OpId{static_cast<std::uint32_t>(expected)} &&
+                      plan.operations[expected].kind == EvaluationKind::kModuleGuard, Error::kOrder);
+                  ++expected;
+                }
               }
             }
             visits[frame.op.value] = EvaluationVisit::kDone;
@@ -281,7 +295,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       Require(expected == end, Error::kOrder);
       next_op = end;
     }
-    Require(next_op == graph.ops.size(), Error::kInvalidGraph);
+    Require(next_op == graph.ops.size() && !fused_guard, Error::kInvalidGraph);
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       step();
       Require(graph.ops[i].life != analysis::ValueLife::kLive || visits[i] == EvaluationVisit::kDone,

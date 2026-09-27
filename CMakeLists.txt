@@ -265,7 +265,7 @@ target_sources(abcd_source PRIVATE src/source/selected_function.cc)
 target_sources(abcd_source PRIVATE src/source/cell_defaults.cc)
 target_sources(abcd_source PRIVATE src/source/cell_default_proof.cc)
 target_sources(abcd_source PRIVATE src/source/module_reads.cc)
-target_sources(abcd_source PRIVATE src/source/module_guards.cc)
+target_sources(abcd_source PRIVATE src/source/module_guards.cc src/source/module_phase_order.cc)
 target_sources(abcd_source PRIVATE src/source/phased_module_guards.cc)
 target_sources(abcd_source PRIVATE src/source/module_evaluation.cc)
 target_sources(abcd_source PRIVATE src/source/module_aliases.cc)
@@ -830,6 +830,8 @@ if(BUILD_TESTING)
   target_include_directories(constant_group_fixture PRIVATE tests/support)
   target_link_libraries(constant_group_fixture PRIVATE abcd_source abcd_json)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME phased_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_module.mjs $<TARGET_FILE:phased_module_guards_test>)
     add_test(NAME try_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/try_tree.mjs
       $<TARGET_FILE:try_tree_test>)

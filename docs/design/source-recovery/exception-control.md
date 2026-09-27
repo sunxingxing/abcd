@@ -182,10 +182,39 @@ refusal into `ExceptionControlError::kMultipleExits`; forwarding normalization
 now moves it through control to the still-unsupported evaluation stage.
 The file-backed module fixture reaches
 the still-closed evaluation gate. Module binding/TDZ-name equivalence, fused
-phase evaluation, exception snapshot correspondence and explicit receiver calls
-remain publication obligations. No module source coverage is claimed merely
+phase evaluation and explicit receiver calls remain publication obligations.
+No module source coverage is claimed merely
 because pair correspondence succeeds. Different handler routes stay unpaired;
 the previous normal-flow module API retains its same-block requirement.
+
+## Conditional Module Evaluation
+
+The common evaluation index now accepts a phased pair only after checking its
+unique load Before -> Commit -> guard Before corridor and identical exceptional
+dispatch. Ordinary same-block rules are unchanged. The effect verifier carries
+an exact pending guard OpId across the empty phase boundary, consuming that
+specific second event once; it never treats arbitrary guards as pure.
+
+Catch fusion additionally requires equal source values in every staging slot
+on both raising edges, and no normal phi copies inside the corridor. Edge and
+slot indexes compare copies without depending on bundle order or searching each
+graph per read. Beyond existing phase/phi verification, these checks add
+O(B+E+I+P+S+M) work/storage for blocks, edges, operations, phi copies, catch slots
+and module pairs. All scratch shares the caller's budget. Original load and
+guard staging writes remain in the tree: the load's slots are already correct
+if its fused read throws a TDZ error, and repeated guard staging after success
+is private and identical. Different slot values are rejected.
+
+Decoded three-profile tests reach shared FunctionTree/printer with conditional
+module symbols. Execution uses actual JS lexical TDZs: caller vs catch routing,
+the old parameter on the first failed read, the first successful module value
+on the second failed read, and later live-binding changes. Both original PCs
+map to the same expression's combined origin. This does NOT establish file
+metadata/name, record enclosure or initialization obligations: the file-backed
+owner still supplies no module evaluation bindings, so Immersive 8284 remains
+unsupported at evaluation. Next bind its actual record metadata through the
+existing alias machinery rather than synthesize a module symbol or weaken the
+publication gate. Rules remain 46 until publication evidence changes.
 
 Still required before phase completion:
 

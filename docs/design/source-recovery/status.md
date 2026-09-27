@@ -42,6 +42,23 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 模块读取/TDZ 配对已接入共享相位求值、FunctionTree 和 printer 的条件性路径。
+  原始 load 与 guard 保留，验证唯一 Before/Commit/Before 通路和相同异常去向；
+  效果校验以确切 guard OpId 消费第二个事件，不泛化跳过 guard。合并还要求
+  两条 raising edge 的每个 catch 暂存槽具有相同源值，且中间没有正常 phi 复制。
+  以边/槽索引逐项核对，保留原有 staging 与 Catch 提交，不按模块逐次扫描图。
+  三个 profile 的 local/external、宽窄编码、caller/catch 和 1/200/201/402 组配对
+  已覆盖；组合执行使用真正的 JS 词法 TDZ，检查第一次失败时的旧参数、第二次
+  失败时第一次读取的值、后续 live-binding 更新及任意 JS 值。篡改 guard phi 源、
+  异常去向、guard placement 和 work 边界均拒绝；两个原 PC 映射到同一组合来源。
+  **尚无文件模块发布新增覆盖**：测试模块符号是条件性绑定，不能替代同文件元数据。
+  Immersive 8284 仍在 evaluation 拒绝，下一步将真实模块别名/名称证明接入相位 owner，
+  然后闭合 receiver 调用；规则仍为 46，第 1 步、group 1 和全 ISA 目标均未完成。
+  CLI 及相关目标构建通过，8/8 定向回归通过：phased_module_guards/source、
+  module_evaluation、exception_plan/copies/tree_source、class_tree_context、phased_method_source。
+  普通模块 4096 组夹具在进入求值前耗尽默认 SSA work，现显式提供测试预算并贯穿
+  各阶段；保留全部规模/语义/精确 work 断言，未调整生产默认预算。未运行全量、RSS 或基准。
+
 - 异常控制投影新增无效果跳转链的结构归属传播，采用 O(B+E+R) 的 Kahn 工作队列，
   不逐出口追踪跳转链。仅处理无操作数/结果/效果/异常、单后继的 ValueJump 相位；
   所有前驱必须同属一个 try 分部，原归属必须是其直接父作用域。入口、Catch、

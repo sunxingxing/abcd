@@ -10,12 +10,23 @@ struct ModuleEvaluationIndex {
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
-// Validate exact live-read census and same-block pair shape in O(I+M). This
-// checks conditional evaluation structure, NOT original proof/record identity.
+// Validate exact live-read census and normal adjacency or phased pair order.
+// This checks conditional evaluation structure, NOT original proof/record identity.
 // Guards retain their exceptional effects, and reads stay pinned at the pair.
 [[nodiscard]] std::variant<ModuleEvaluationIndex, EvaluationError>
 IndexModuleEvaluations(const analysis::ValueProgram& graph,
     std::span<const ModuleEvaluation> modules, analysis::SemanticBudget budget = {});
+// Conditional phased fusion: identical dispatch, unique load-Commit->guard
+// corridor, and identical catch snapshots. Original pair/name/record proof
+// remains mandatory at publication. No IR edges or staging writes are erased.
+// Internal prerequisites: PhaseOrder follows the indexed pair shape checks;
+// CatchCopies follows independent phase, module, phi and staging validation.
+std::variant<std::uint64_t, EvaluationError> VerifyModulePhaseOrder(
+    const analysis::ValueProgram& graph, std::span<const ModuleEvaluation> modules,
+    analysis::SemanticBudget budget);
+std::variant<std::uint64_t, EvaluationError> VerifyModuleCatchCopies(
+    const analysis::ValueProgram& graph, const EvaluationPlan& plan,
+    analysis::SemanticBudget budget);
 struct EvaluationUses {
   std::optional<analysis::UseId> first;
   bool multiple = false;

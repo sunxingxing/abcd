@@ -59,7 +59,8 @@ std::variant<ModuleEvaluationIndex, EvaluationError> IndexModuleEvaluations(
           use.role == analysis::OperandRole::kGuardValue && use.purpose == analysis::ReadPurpose::kOperand &&
           std::get_if<analysis::ValueId>(&use.operand) && std::get<analysis::ValueId>(use.operand) == *op.result,
           Error::kOwnership);
-      require(op.block == guard.block && std::uint64_t{op.order} + 1 == guard.order, Error::kOrder);
+      if (graph.phases.empty())
+        require(op.block == guard.block && std::uint64_t{op.order} + 1 == guard.order, Error::kOrder);
       // Exact imported effects. Original input correspondence is a separate
       // prerequisite; malformed effect tables cannot erase the second event.
       require(op.normal == analysis::LanguageEffect::kModuleRead && op.before_throw == op.normal &&
@@ -70,6 +71,12 @@ std::variant<ModuleEvaluationIndex, EvaluationError> IndexModuleEvaluations(
       result.peers[entry.pair.guard.value] = entry.pair.read;
     }
     require(next == modules.size(), Error::kOwnership);
+    if (!graph.phases.empty() && !modules.empty()) {
+      const auto checked = VerifyModulePhaseOrder(graph, modules,
+          {budget.bytes - result.allocated_bytes, work});
+      if (const auto* failure = std::get_if<Error>(&checked)) return *failure;
+      work -= std::get<std::uint64_t>(checked);
+    }
     result.work = budget.work - work;
     return result;
   } catch (Error error) { return error;
