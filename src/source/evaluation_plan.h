@@ -124,14 +124,15 @@ struct EvaluationShape {
     std::span<const FunctionBinding> functions = {},
     std::span<const ModuleEvaluation> modules = {});
 // Iteratively expands the proposed forest in the declared input order, checking
-// exact ordered occurrences and same-block availability. Call reference/source
-// order still needs its separate certificate. No plan replay.
+// exact ordered occurrences and availability. Cross-phase member references
+// additionally require a pure corridor and equal catch snapshots. No plan replay.
 [[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget = {});
 // Same expression planner with phase availability and staged exceptional phi
-// writes. No cross-phase fusion. Normal binding/control/tree entry points still
-// refuse these plans until catch scope and exceptional placement are verified.
+// writes. Cross-phase fusion requires its independent corridor certificate.
+// Normal entry points still refuse these plans; phased consumers verify catch
+// scope and exceptional placement separately.
 [[nodiscard]] std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     IncomingCells incoming = IncomingCells::kReject,

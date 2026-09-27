@@ -1,4 +1,5 @@
 #include "tree_correspondence.h"
+#include "phase_reference.h"
 
 #include <bit>
 #include <limits>
@@ -272,7 +273,9 @@ class OperandCheck {
       const analysis::ValueOperand& callee, const analysis::ValueOperand& receiver) {
     // Derive the actual reference from executable syntax, independently of the
     // builder's CallPlan. Its base must represent the suppressed receiver use.
-    const auto* value = std::get_if<analysis::ValueId>(&callee);
+    const auto resolved_callee = ResolveEvaluationOperand(evaluation_, callee);
+    const auto resolved_receiver = ResolveEvaluationOperand(evaluation_, receiver);
+    const auto* value = std::get_if<analysis::ValueId>(&resolved_callee);
     RequireMeaning(value != nullptr, Error::kOperand);
     const auto* result = std::get_if<analysis::OpResult>(&graph_.values[value->value].origin);
     RequireMeaning(result != nullptr, Error::kOperand);
@@ -280,19 +283,20 @@ class OperandCheck {
     const auto& placement = evaluation_.operations[result->op.value];
     RequireMeaning((std::holds_alternative<analysis::ValueNamedRead>(property.operation) ||
         std::holds_alternative<analysis::ValuePropertyRead>(property.operation)) &&
-        property.life == analysis::ValueLife::kLive && property.block == op.block &&
-        property.order < op.order && placement.kind == EvaluationKind::kInline &&
+        property.life == analysis::ValueLife::kLive &&
+        ((property.block == op.block && property.order < op.order) ||
+         CrossPhaseReference(graph_, evaluation_, result->op)) && placement.kind == EvaluationKind::kInline &&
         placement.consumer == op.first_use, Error::kOperand);
     const auto& member = Node<MemberExpr>(call.callee);
-    if (const auto* id = std::get_if<analysis::ValueId>(&receiver)) {
+    if (const auto* id = std::get_if<analysis::ValueId>(&resolved_receiver)) {
       const auto& definition = graph_.values[id->value];
       if (const auto* producer = std::get_if<analysis::OpResult>(&definition.origin))
         RequireMeaning(evaluation_.operations[producer->op.value].kind == EvaluationKind::kRoot &&
             flow_.snapshots[producer->op.value].has_value(), Error::kOperand);
       else if (std::holds_alternative<analysis::PhiDefinition>(definition.origin))
         // TreeFlow derives this symbol from the actual, exclusively owned edge
-        // assignments. Same-block property/call checks above exclude a write
-        // to the provisional phi location between reference creation and use.
+        // assignments. Same-block/no-copy corridor checks exclude a write to
+        // the provisional phi location between reference creation and use.
         RequireMeaning(id->value < flow_.phis.size() && flow_.phis[id->value], Error::kOperand);
       else RequireMeaning(std::holds_alternative<analysis::EntryDefinition>(definition.origin), Error::kOperand);
     }

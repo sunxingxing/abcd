@@ -2,6 +2,7 @@
 #include "evaluation_flow.h"
 #include "evaluation_aliases.h"
 #include "module_evaluation.h"
+#include "phase_reference.h"
 #include "../analysis/value_edits.h"
 
 #include <new>
@@ -142,6 +143,15 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     const auto module_copies = VerifyModuleCatchCopies(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&module_copies)) return *error;
     step(std::get<std::uint64_t>(module_copies));
+    const auto references = CheckPhaseReferences(graph, plan, {bytes, work});
+    if (const auto* error = std::get_if<Error>(&references)) return *error;
+    const auto& candidates = std::get<PhaseReferences>(references);
+    admit(candidates.bytes, 1); step(candidates.work);
+    // Cross-block events are not erased: the independent corridor certificate
+    // proves relocation, and the forest below must still visit each exactly once.
+    const auto cross = [&](std::size_t i) {
+      return CrossPhaseReference(graph, plan, analysis::OpId{static_cast<std::uint32_t>(i)});
+    };
     admit(graph.ops.size(), sizeof(EvaluationFrame));
     admit(graph.ops.size(), sizeof(EvaluationVisit));
     step(graph.ops.size()); step(graph.ops.size());
@@ -209,11 +219,16 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         Require(!pinned[i], Error::kOwnership);
         Require(op.result && placement.consumer && !placement.temporary, Error::kOwnership);
         const auto& value = graph.values[op.result->value];
-        Require(value.first_use == placement.consumer && placement.consumer->value < graph.uses.size(), Error::kOwnership);
+        Require(placement.consumer->value < graph.uses.size(), Error::kOwnership);
         const auto& use = graph.uses[placement.consumer->value];
         const auto* owner = std::get_if<analysis::OpId>(&use.owner);
-        Require(!use.next && owner && graph.ops[owner->value].block == op.block &&
-                graph.ops[owner->value].order > op.order, Error::kOwnership);
+        if (cross(i)) {
+          Require(i < candidates.consumers.size() && candidates.consumers[i] == placement.consumer, Error::kOrder);
+        } else {
+          Require(value.first_use == placement.consumer && !use.next && owner &&
+              graph.ops[owner->value].block == op.block && graph.ops[owner->value].order > op.order,
+              Error::kOwnership);
+        }
         Require(!PredicateSnapshot(graph, graph.ops[owner->value], use.operand), Error::kOwnership);
         const auto consumer_shape = DescribeEvaluation(graph.ops[owner->value].operation);
         Require(consumer_shape && !consumer_shape->NeedsSnapshot(use.role), Error::kOrder);
@@ -257,6 +272,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
                                   plan.operations[expected].kind == EvaluationKind::kAlias ||
                                   plan.operations[expected].kind == EvaluationKind::kInitializer ||
                                   plan.operations[expected].kind == EvaluationKind::kEnvironment ||
+                                  cross(expected) ||
                                   !OrderedEvaluation(graph.ops[expected]))) { step(); ++expected; }
       };
       for (auto i = next_op; i < end; ++i) {
@@ -283,7 +299,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
             const auto& producer = graph.ops[result->op.value];
             const auto& placement = plan.operations[result->op.value];
             if (placement.kind == EvaluationKind::kInline) {
-              Require(placement.consumer == use_id && producer.block == op.block &&
+              Require(placement.consumer == use_id && (producer.block == op.block || cross(result->op.value)) &&
                       visits[result->op.value] == EvaluationVisit::kUnseen, Error::kOwnership);
               Require(depth < stack.size(), Error::kResourceLimit);
               visits[result->op.value] = EvaluationVisit::kActive;
@@ -298,7 +314,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
             // consumer: a pure wrapper must not carry a closure past pop/push.
             if (std::holds_alternative<analysis::ValueFunctionCreation>(op.operation))
               Require(environment_epochs[frame.op.value] == environment_epochs[i], Error::kOrder);
-            if (OrderedEvaluation(op)) {
+            if (OrderedEvaluation(op) && !cross(frame.op.value)) {
               skip_pure();
               Require(expected < end && expected == frame.op.value, Error::kOrder);
               ++expected;

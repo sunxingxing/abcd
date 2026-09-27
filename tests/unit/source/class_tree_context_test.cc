@@ -34,7 +34,9 @@ static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);
 void Check(bool condition) { if (!condition) std::abort(); }
 enum class DefaultEncoding { kNone, kInteger, kNegation };
-enum class ExceptionShape { kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies };
+enum class ExceptionShape {
+  kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies, kReceiver, kReceiverCatch
+};
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
          ExceptionShape exception = ExceptionShape::kNone) {
@@ -163,6 +165,30 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           op(abc::Opcode::kLDEXTERNALMODULEVAR_IMM8), kModuleSlot,
           op(kGuard), static_cast<std::uint16_t>(kGuard) >> kByteBits, kNamePool, 0,
           kReturn, kReturn, 0, kModuleProtectedBytes, kSingleTry, kCatchAll, kModuleProtectedBytes, 1};
+    }
+    if (exception == ExceptionShape::kReceiver) {
+      constexpr std::uint8_t kLocals = 2, kReceiver = 5, kCallee = 0, kArgument = 1,
+          kValue = 7, kReceiverBytes = 28, kReceiverProtected = 27;
+      member = {kLocals, 4, kReceiverBytes, kSingleTry,
+          kLoad, kReceiver, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0,
+          kStore, kCallee, kInteger, kValue, 0, 0, 0, kStore, kArgument, kLoad, kCallee,
+          op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, kReceiver, kArgument,
+          op(abc::Opcode::kJEQZ_IMM8), kBranchDelta,
+          op(abc::Opcode::kLDTRUE), kReturn, op(abc::Opcode::kLDFALSE), kReturn, kReturn,
+          0, kReceiverProtected, kSingleTry, kCatchAll, kReceiverProtected, 1};
+    }
+    if (exception == ExceptionShape::kReceiverCatch) {
+      constexpr std::uint8_t kLocals = 2, kReceiver = 5, kCallee = 0, kArgument = 1,
+          kReceiverBytes = 26, kReceiverProtected = 23, kHandlerBytes = 3;
+      member = {kLocals, 4, kReceiverBytes, kSingleTry,
+          op(abc::Opcode::kMOV_V8_V8), kArgument, kReceiver,
+          kLoad, kReceiver, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0,
+          kStore, kCallee, kLoad, kCallee,
+          op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, kReceiver, kArgument,
+          op(abc::Opcode::kJEQZ_IMM8), kBranchDelta,
+          op(abc::Opcode::kLDTRUE), kReturn, op(abc::Opcode::kLDFALSE), kReturn,
+          kLoad, kArgument, kReturn,
+          0, kReceiverProtected, kSingleTry, kCatchAll, kReceiverProtected, kHandlerBytes};
     }
     if (exception == ExceptionShape::kForwarder) {
       constexpr std::uint8_t kForwardBodyBytes = 19, kTryEnd = 14, kHandlerPc = 16,
@@ -539,6 +565,14 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--receiver-catch-json") {
+    Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kReceiverCatch);
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--receiver-json") {
+    Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kReceiver);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--live-copies-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kLiveCopies);
     return 0;
@@ -561,6 +595,8 @@ int main(int argc, char** argv) {
     return 0;
   }
   Check(argc == 1);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverCatch);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiver);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLiveCopies);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kDeadCopies);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kModule);

@@ -306,3 +306,38 @@ Still required before phase completion:
    typed completion/finally (including nesting), then await/yield and delegated
    protocols in the same model. Validate combinations, not only isolated layers.
    Current refusal is not final coverage or completed ISA support.
+
+## Cross-Phase Member References
+
+Rules 49 add a shared evaluation certificate for property reads consumed by
+explicit-receiver calls. Canonical copy identities expose the callee producer;
+an effective-use census requires exactly one retained callee occurrence. The
+property and invocation must belong to one unique normal fallthrough corridor,
+with no branch, join, catch entry, jump, observable intermediate operation or
+normal phi-copy assignment. Prefix indexes establish these conditions without
+walking the graph once per call. Only independently erasable pure computations
+may remain between the sites; they cannot observe the getter's result.
+
+Both sites must have identical exceptional dispatch and equal canonical source
+values for every catch staging slot. Original staging writes and phase nodes
+remain unchanged. The getter can then execute at the invocation expression,
+after private pure temporaries, without changing effects or the state observed
+by catch. Evaluation verification checks relocation separately from per-block
+event order and still requires one forest visit per operation. CallPlan and
+actual AST operand verification independently check the reference's base and
+suppressed receiver. No lookup of user-overridable `.call`/`.apply` is introduced.
+
+This is not permission to move across arbitrary argument getters or calls.
+Immersive 8284's first member reference (blocks 18 to 28) now becomes inline;
+its later reference (46 to 100) remains materialized because argument evaluation
+has effects. General effect-subtree ordering and per-throw snapshot placement
+are the next obligation, not another sample-name special case. The diagnostic
+still reports non-executable/incomplete; module publication remains conditional.
+
+Named/computed property unit fixtures exercise three historical profiles,
+pure corridors at 1/200/201/402/1608, effect/jump/branch/duplicate-use barriers,
+changed versus equal catch snapshots, forged placements and exact work limits.
+File-backed member-call/branch/catch fixtures use the same immutable publication
+path as ordinary functions; runtime checks cover receiver/arguments, Proxy
+invocation, arbitrary throw values, catch snapshots and original PC ranges.
+These fixtures do not replace real application acceptance or steps 2 through 5.

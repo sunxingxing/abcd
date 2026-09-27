@@ -1,4 +1,5 @@
 #include "call_plan.h"
+#include "phase_reference.h"
 
 #include <new>
 #include <stdexcept>
@@ -50,7 +51,7 @@ bool StableReceiver(const ValueProgram& graph, const EvaluationPlan& evaluation,
     return std::holds_alternative<ParameterEntry>(*entry) || std::holds_alternative<ReceiverEntry>(*entry);
   // Fresh evaluation verification proves phi availability and edge copies.
   // This is a private provisional location, not a captured/mutable source cell.
-  // The caller separately requires property and invocation in the same block,
+  // The caller requires the same block or a certified no-copy phase corridor,
   // so no incoming-edge assignment can intervene between them.
   if (std::holds_alternative<PhiDefinition>(definition.origin))
     return evaluation.phis.has_value();
@@ -133,11 +134,13 @@ std::variant<std::uint64_t, CallPlanError> VerifyCalls(const analysis::ValueProg
       const auto& property = graph.ops[member->property.value];
       const auto& placement = evaluation.operations[member->property.value];
       Require(property.life == ValueLife::kLive && Property(property.operation) && property.result &&
-          property.block == op.block && property.order < op.order, Error::kReference);
+          ((property.block == op.block && property.order < op.order) ||
+           CrossPhaseReference(graph, evaluation, member->property)), Error::kReference);
       Require(placement.kind == EvaluationKind::kInline && placement.consumer == op.first_use, Error::kReference);
-      Require(SameValue(graph.uses[op.first_use.value].operand, *property.result), Error::kCallee);
-      const auto& base = graph.uses[property.first_use.value].operand;
-      const auto& receiver = graph.uses[member->receiver.value].operand;
+      Require(SameValue(ResolveEvaluationOperand(evaluation, graph.uses[op.first_use.value].operand),
+          *property.result), Error::kCallee);
+      const auto base = ResolveEvaluationOperand(evaluation, graph.uses[property.first_use.value].operand);
+      const auto receiver = ResolveEvaluationOperand(evaluation, graph.uses[member->receiver.value].operand);
       Require(SameValue(base, receiver) && StableReceiver(graph, evaluation, receiver), Error::kReceiver);
     }
     return checked.Work();

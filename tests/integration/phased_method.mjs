@@ -6,6 +6,8 @@ import { execFileSync } from 'node:child_process';
 const result = JSON.parse(execFileSync(process.argv[2], ['--exception-json'], { encoding: 'utf8' }));
 const copied = JSON.parse(execFileSync(process.argv[2], ['--dead-copies-json'], { encoding: 'utf8' }));
 const aliases = JSON.parse(execFileSync(process.argv[2], ['--live-copies-json'], { encoding: 'utf8' }));
+const member = JSON.parse(execFileSync(process.argv[2], ['--receiver-json'], { encoding: 'utf8' }));
+const stagedMember = JSON.parse(execFileSync(process.argv[2], ['--receiver-catch-json'], { encoding: 'utf8' }));
 // ABI bookkeeping must add neither declarations nor reads to emitted source.
 assert.equal(copied.source, result.source);
 assert.equal(aliases.source, result.source);
@@ -13,6 +15,52 @@ const Recovered = Function(`"use strict"; return class { ${result.source} };`)()
 const instance = new Recovered();
 assert.equal(instance.run.length, 1);
 const arbitrary = [undefined, null, false, -0, NaN, 19n, Symbol('payload'), {}, new Proxy({}, {})];
+const Member = Function(`"use strict"; return class { ${member.source} };`)();
+const receiverMethod = new Member();
+const StagedMember = Function(`"use strict"; return class { ${stagedMember.source} };`)();
+const stagedMethod = new StagedMember();
+for (const value of arbitrary) {
+  for (const failure of ['none', 'getter', 'call']) {
+    const events = [];
+    const input = { get run() {
+      events.push('get');
+      if (failure === 'getter') throw value;
+      return new Proxy(function () {}, {
+        get() { assert.fail('member invocation must not read call/apply'); },
+        apply(target, receiver, args) {
+          assert.equal(receiver, input);
+          assert.deepEqual(args, [7]);
+          events.push('call');
+          if (failure === 'call') throw value;
+          return value;
+        },
+      });
+    } };
+    const expected = failure === 'none' ? !(value === false || value === 0) : value;
+    assert(Object.is(receiverMethod.run(input), expected));
+    assert.deepEqual(events, failure === 'getter' ? ['get'] : ['get', 'call']);
+  }
+}
+// Both throwing sites must expose the same original register snapshot to catch.
+for (const value of arbitrary) {
+  for (const failure of ['none', 'getter', 'call']) {
+    const events = [];
+    const input = { get run() {
+      events.push('get');
+      if (failure === 'getter') throw value;
+      return function (arg) {
+        events.push('call');
+        assert.equal(this, input);
+        assert.equal(arg, input);
+        if (failure === 'call') throw value;
+        return value;
+      };
+    } };
+    assert(Object.is(stagedMethod.run(input),
+      failure === 'none' ? !(value === false || value === 0) : input));
+    assert.deepEqual(events, failure === 'getter' ? ['get'] : ['get', 'call']);
+  }
+}
 for (const value of arbitrary) {
   for (const failure of ['none', 'getter', 'call']) {
     const events = [];
@@ -44,6 +92,35 @@ const pcs = (origin, mapping = map) => {
   return mapping.origin_parts.slice(node.first_part, node.first_part + node.part_count)
     .flatMap(part => pcs(part, mapping));
 };
+const memberPcs = [0, 2, 6, 8, 13, 15, 17, 21, 23, 24, 25, 26, 27];
+const stagedPcs = [0, 3, 5, 9, 11, 13, 17, 19, 20, 21, 22, 23, 25];
+const stagedMap = stagedMember.positions;
+assert.equal(stagedMap.operations.length, stagedPcs.length);
+for (const placement of stagedMap.operations) {
+  const range = placement.kind === 'anchor' ? stagedMap.anchors[placement.node] :
+    placement.kind === 'statement' ? stagedMap.statements[placement.node] : stagedMap.expressions[placement.node];
+  assert(pcs(range.origin, stagedMap).includes(stagedPcs[placement.operation]));
+  if (placement.kind === 'anchor') assert(range.byte <= Buffer.byteLength(stagedMember.source));
+  else assert(range.begin < range.end && range.end <= Buffer.byteLength(stagedMember.source));
+}
+const memberMap = member.positions;
+const memberBytes = Buffer.from(member.source);
+assert.equal(memberMap.operations.length, memberPcs.length);
+for (const placement of memberMap.operations) {
+  const range = placement.kind === 'anchor' ? memberMap.anchors[placement.node] :
+    placement.kind === 'statement' ? memberMap.statements[placement.node] : memberMap.expressions[placement.node];
+  assert(pcs(range.origin, memberMap).includes(memberPcs[placement.operation]));
+  if (placement.kind === 'anchor') assert(range.byte <= memberBytes.length);
+  else assert(range.begin < range.end && range.end <= memberBytes.length);
+  if (placement.operation === 1) {
+    assert.equal(placement.kind, 'expression');
+    assert.equal(memberBytes.subarray(range.begin, range.end).toString(), '$arg0.run');
+  }
+  if (placement.operation === 6) {
+    assert.equal(placement.kind, 'expression');
+    assert.match(memberBytes.subarray(range.begin, range.end).toString(), /^\(\$arg0\.run\(/);
+  }
+}
 for (const placement of map.operations) {
   const range = placement.kind === 'anchor' ? map.anchors[placement.node] :
     placement.kind === 'statement' ? map.statements[placement.node] : map.expressions[placement.node];
