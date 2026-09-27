@@ -5,6 +5,7 @@
 #include "abcd/source/tree_printer.h"
 
 namespace abcd::source {
+class ClassTreeContext;
 struct PrintedFamilyDraft {
   std::vector<PrintedFunction> members;
   std::vector<GeneratedRange> functions;
@@ -21,6 +22,11 @@ struct PrintedFamilyDraft {
 // Every range uses absolute UTF-8 byte offsets within this entire draft.
 [[nodiscard]] std::variant<PrintedFamilyDraft, TreePrintError> PrintFamilyDraft(
     const ConstructedFamily& family, std::ostream& output,
+    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {});
+// Root is an actual class-body member; descendants remain ordinary/arrow
+// expressions. This is not an object-literal method or standalone function.
+[[nodiscard]] std::variant<PrintedFamilyDraft, TreePrintError> PrintClassFamilyDraft(
+    const ConstructedFamily& family, const ClassTreeContext& context, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {});
 }  // namespace abcd::source
 #endif

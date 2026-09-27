@@ -20,7 +20,7 @@ enum class FamilyPrepareError : std::uint8_t {
 };
 struct FamilyPrepareFailure {
   std::variant<FamilyPrepareError, CreationContextFailure, FamilyFileFailure,
-      FamilyTreeFailure, FamilyEnclosureFailure> cause;
+      FamilyTreeFailure, FamilyEnclosureFailure, ClassContextFailure> cause;
 };
 // Immutable, file-backed preparation, not a record-completion receipt. Factory
 // consumes a real creation occurrence and runs every family pass itself. No
@@ -38,6 +38,13 @@ class PreparedFamily {
       const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
       analysis::FunctionSiteId site, RouteInputIdentity identity,
       FamilyDestination destination, analysis::SemanticBudget budget = {});
+  [[nodiscard]] static std::variant<PreparedFamily, FamilyPrepareFailure> PrepareClass(
+      const corpus::AbcFile& file, const abc::Header& header,
+      const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+      const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& functions,
+      const analysis::ClassMethodSites& classes, analysis::ClassSiteId site,
+      RouteInputIdentity identity, FamilyDestination destination,
+      analysis::SemanticBudget budget = {});
   [[nodiscard]] const ConstructedFamily& Family() const;
   [[nodiscard]] const RouteInputIdentity& Identity() const;
   // Conservative preparation charge, including released scratch, not RSS.
@@ -53,6 +60,11 @@ class PreparedFamily {
       EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {}) const;
  private:
   struct Storage;
+  static std::variant<PreparedFamily, FamilyPrepareFailure> Prepare(
+      const corpus::AbcFile& file, const abc::Header& header,
+      const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+      const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
+      FunctionContext context, FamilyDestination destination, analysis::SemanticBudget budget);
   explicit PreparedFamily(std::unique_ptr<const Storage> storage);
   std::unique_ptr<const Storage> storage_;
 };

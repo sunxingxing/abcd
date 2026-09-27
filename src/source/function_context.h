@@ -10,6 +10,7 @@ class FunctionContext {
  public:
   explicit FunctionContext(ClassTreeContext value) : context_(std::move(value)) {}
   explicit FunctionContext(CreationTreeContext value) : context_(std::move(value)) {}
+  const ClassTreeContext* ClassContext() const { return std::get_if<ClassTreeContext>(&context_); }
   const analysis::ClassMethodSite* ClassSite() const {
     const auto* context = std::get_if<ClassTreeContext>(&context_);
     return context ? &context->Site() : nullptr;

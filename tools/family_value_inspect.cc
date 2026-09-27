@@ -27,7 +27,7 @@ class DraftBuffer final : public std::streambuf {
   std::unique_ptr<char[]> bytes_;
 };
 void Draft(nlohmann::json& report, const ConstructedFamily& family,
-           analysis::SemanticBudget budget, std::ostream& positions) {
+           const FunctionContext& context, analysis::SemanticBudget budget, std::ostream& positions) {
   report["draft_prepared"] = false;
   // Reserve both the fixed stream storage and the final JSON string copy.
   constexpr std::size_t kOutputStorage = 2 * kDraftBytes;
@@ -40,7 +40,9 @@ void Draft(nlohmann::json& report, const ConstructedFamily& family,
   budget.bytes -= family.allocated_bytes + kOutputStorage; budget.work -= family.work;
   DraftBuffer buffer;
   std::ostream output(&buffer);
-  const auto printed = PrintFamilyDraft(family, output, {kDraftBytes}, budget);
+  const auto* member = context.ClassContext();
+  const auto printed = member ? PrintClassFamilyDraft(family, *member, output, {kDraftBytes}, budget)
+                              : PrintFamilyDraft(family, output, {kDraftBytes}, budget);
   const auto* draft = std::get_if<PrintedFamilyDraft>(&printed);
   if (!draft) {
     report["draft_error"] = static_cast<unsigned>(std::get<TreePrintError>(printed)); return;
@@ -64,11 +66,12 @@ void Draft(nlohmann::json& report, const ConstructedFamily& family,
   }
   positions << "],";
   report["draft_coordinates"] = "absolute-utf8-bytes";
+  report["draft_root_fragment"] = member ? "class-member" : "function-expression";
   report["draft_publication_pending"] = {"root-enclosure", "global-module-bindings", "transitive-premises"};
   std::size_t named = 0;
   for (const auto& member : family.members) named += member.tree.inferred_name.has_value();
   report["draft_named_members"] = named;
-  if (named != family.members.size()) report["draft_publication_pending"].push_back("callable-names");
+  if (named + (member ? 1U : 0U) != family.members.size()) report["draft_publication_pending"].push_back("callable-names");
 }
 template <class Error> unsigned Code(const Error& error) {
   if constexpr (std::is_enum_v<Error>) return static_cast<unsigned>(error);
@@ -223,7 +226,7 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
       }
       report["family_tree_signatures"].push_back(std::move(signature));
     }
-    if (mode == FamilyInspectMode::kSourceDraft) Draft(report, *tree, budget, output);
+    if (mode == FamilyInspectMode::kSourceDraft) Draft(report, *tree, *context, budget, output);
   } else {
     const auto& failure = std::get<FamilyTreeFailure>(constructed);
     report["family_tree_member"] = failure.member.value;

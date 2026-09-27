@@ -46,15 +46,47 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareCreate
     FamilyDestination destination, analysis::SemanticBudget allowance) {
   try {
     Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
+    Require(allowance.bytes >= sizeof(Storage), Error::kResourceLimit);
+    auto resolution_budget = allowance; resolution_budget.bytes -= sizeof(Storage);
+    auto context = Take<CreationTreeContext, CreationContextFailure>(CreationTreeContext::Resolve(
+        file, header, index, lookup, roles, sites, site, identity, resolution_budget));
+    return Prepare(file, header, index, lookup, roles, sites,
+        FunctionContext{std::move(context)}, destination, allowance);
+  } catch (const FamilyPrepareFailure& failure) { return failure;
+  } catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit};
+  } catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
+}
+std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareClass(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& functions,
+    const analysis::ClassMethodSites& classes, analysis::ClassSiteId site,
+    RouteInputIdentity identity, FamilyDestination destination, analysis::SemanticBudget allowance) {
+  try {
+    Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
+    Require(allowance.bytes >= sizeof(Storage), Error::kResourceLimit);
+    auto resolution_budget = allowance; resolution_budget.bytes -= sizeof(Storage);
+    auto context = Take<ClassTreeContext, ClassContextFailure>(ClassTreeContext::Resolve(
+        file, header, index, lookup, roles, classes, site, identity, resolution_budget));
+    return Prepare(file, header, index, lookup, roles, functions,
+        FunctionContext{std::move(context)}, destination, allowance);
+  } catch (const FamilyPrepareFailure& failure) { return failure;
+  } catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit};
+  } catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
+}
+std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
+    FunctionContext root, FamilyDestination destination, analysis::SemanticBudget allowance) {
+  try {
+    Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
     Require(!file.CheckUnchanged(), Error::kFileChanged);
     Budget budget(allowance);
     budget.Account(sizeof(Storage), 0);
-    auto context = Take<CreationTreeContext, CreationContextFailure>(CreationTreeContext::Resolve(
-        file, header, index, lookup, roles, sites, site, identity, budget.Left()));
-    budget.Account(context.AllocatedBytes(), context.Work());
-    FunctionContext root{std::move(context)};
+    budget.Account(root.AllocatedBytes(), root.Work());
     auto input = Take<FileFamily, FamilyFileFailure>(ReadFunctionFamily(
-        file, header, index, lookup, roles, sites, root.Position(), identity, budget.Left()));
+        file, header, index, lookup, roles, sites, root.Position(), root.Identity(), budget.Left()));
     budget.Account(input.allocated_bytes, input.work);
     auto family = Take<ConstructedFamily, FamilyTreeFailure>(BuildFileFamilyTrees(
         file, header, index, std::move(input), root, budget.Left()));
@@ -63,7 +95,9 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareCreate
       budget.Account(0, 1);
       Require(member.tree.strictness == Strictness::kStrict, Error::kStrictness);
       Require(member.tree.callable == CallableKind::kFunction ||
-          member.tree.callable == CallableKind::kArrow, Error::kCallable);
+          member.tree.callable == CallableKind::kArrow ||
+          (&member == &family.members[family.root.value] && root.ClassSite() &&
+           member.tree.callable == CallableKind::kMethod), Error::kCallable);
       Require(member.tree.modules.empty(), Error::kModules);
       Require(member.abi.has_value(), Error::kAbi);
       Require(member.sources.has_value(), Error::kSources);
@@ -96,7 +130,9 @@ std::variant<PrintedFamilyDraft, FamilyPrepareFailure, TreePrintError> PreparedF
   if (const auto* failure = std::get_if<FamilyPrepareFailure>(&checked)) return *failure;
   const auto& enclosure = std::get<FamilyEnclosure>(checked);
   scratch.bytes -= enclosure.allocated_bytes; scratch.work -= enclosure.work;
-  auto printed = PrintFamilyDraft(storage_->family, output, output_budget, scratch);
+  const auto* member = storage_->context.ClassContext();
+  auto printed = member ? PrintClassFamilyDraft(storage_->family, *member, output, output_budget, scratch)
+                        : PrintFamilyDraft(storage_->family, output, output_budget, scratch);
   if (const auto* failure = std::get_if<TreePrintError>(&printed)) return *failure;
   auto result = std::get<PrintedFamilyDraft>(std::move(printed));
   result.allocated_bytes += enclosure.allocated_bytes; result.work += enclosure.work;

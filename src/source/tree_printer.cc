@@ -15,6 +15,7 @@
 #include "tree_print_tokens.h"
 #include "tree_globals.h"
 #include "family_print.h"
+#include "class_tree_context.h"
 #include "tree_checks.h"
 
 namespace abcd::source {
@@ -48,8 +49,8 @@ class TreePrinter {
       : function_(&function), tree_(&function.Tree()), output_(output),
         limit_(limit.bytes), initial_(scratch), remaining_(scratch) {}
   TreePrinter(const ConstructedFamily& family, std::ostream& output,
-              EmitBudget limit, analysis::SemanticBudget scratch)
-      : family_(&family), output_(output), limit_(limit.bytes), initial_(scratch), remaining_(scratch) {}
+              EmitBudget limit, analysis::SemanticBudget scratch, const ClassTreeContext* member = nullptr)
+      : family_(&family), class_root_(member), output_(output), limit_(limit.bytes), initial_(scratch), remaining_(scratch) {}
   PrintedFunction Print() {
     if (!function_->ClassCreation() || Tree().callable != CallableKind::kMethod ||
         Tree().strictness != Strictness::kStrict || Tree().self || Tree().capture_scope || !Tree().captures.empty() ||
@@ -111,6 +112,13 @@ class TreePrinter {
   }
   PrintedFamilyDraft Draft() {
     if (family_->root.value >= family_->members.size()) throw Error::kUnsupportedContext;
+    if (class_root_) {
+      const auto& root = family_->members[family_->root.value].tree;
+      if (root.callable != CallableKind::kMethod || root.inferred_name ||
+          root.identity != class_root_->Identity() || root.method != class_root_->Site().target ||
+          (class_root_->Site().placement != abc::ClassPlacement::kStatic &&
+           class_root_->Site().placement != abc::ClassPlacement::kPrototype)) throw Error::kUnsupportedContext;
+    }
     Array(draft_.members, family_->members.size()); Array(draft_.functions, family_->members.size());
     Array(locations_, family_->members.size()); Array(owners_, family_->members.size());
     Array(printed_, family_->members.size());
@@ -129,9 +137,9 @@ class TreePrinter {
       if (Tree().self || Tree().strictness != Strictness::kStrict ||
           (Tree().callable != CallableKind::kFunction && Tree().callable != CallableKind::kArrow &&
            Tree().callable != CallableKind::kMethod)) throw Error::kUnsupportedContext;
-      // A class method cannot be silently changed into an ordinary function.
-      // Root class fragments remain handled by the verified member entry.
-      if (Tree().callable == CallableKind::kMethod) throw Error::kUnsupportedContext;
+      // Only the actual class root has member syntax; child creation nodes do
+      // not acquire a home object or become class methods by their spelling.
+      if (Tree().callable == CallableKind::kMethod && !ClassRoot()) throw Error::kUnsupportedContext;
       // Naming adds a fresh, unobservable wrapper object. Its allocation-failure
       // timing is admitted only by the already-versioned resource-failure scope.
       if (Tree().inferred_name && ResourceFailures(Tree().identity.contract) != ResourceFailureScope::kExcluded)
@@ -139,7 +147,7 @@ class TreePrinter {
       owners_[i] = {Tree().owner, i};
       Result().identity = Tree().identity; Result().method = Tree().method;
       Result().value_revision = Tree().value_revision; Result().cfg_revision = Tree().cfg_revision;
-      Result().fragment = FunctionFragment::kConditionalExpression;
+      Result().fragment = ClassRoot() ? FunctionFragment::kClassMember : FunctionFragment::kConditionalExpression;
       Array(Result().parameters, Tree().parameters.size()); Array(Result().expressions, Tree().expressions.size());
       Array(Result().properties, Tree().properties.size()); Array(Result().statements, Tree().statements.size());
       Array(Result().anchors, Tree().anchors.size()); PrepareAnchors();
@@ -156,6 +164,7 @@ class TreePrinter {
     return std::move(draft_);
   }
  private:
+  bool ClassRoot() const { return class_root_ && current_ == family_->root.value; }
   const FunctionTree& Tree() const { return family_ ? family_->members[current_].tree : *tree_; }
   PrintedFunction& Result() { return family_ ? draft_.members[current_] : result_; }
   std::vector<LocatedAnchor>& Located() { return family_ ? locations_[current_] : located_; }
@@ -352,7 +361,10 @@ class TreePrinter {
   void Run(BeginFunction) {
     if (!family_ || printed_[current_]) throw Error::kUnsupportedContext;
     printed_[current_] = true; draft_.functions[current_].begin = written_;
-    if (Tree().inferred_name) {
+    if (ClassRoot()) {
+      if (class_root_->Site().placement == abc::ClassPlacement::kStatic) Append("static ");
+      Key(class_root_->Name()); Append("(");
+    } else if (Tree().inferred_name) {
       // NamedEvaluation, not a new lexical self scope. Computed keys preserve
       // even an empty name or __proto__, without Object.defineProperty calls.
       Append("({["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]: ");
@@ -366,9 +378,12 @@ class TreePrinter {
     for (std::size_t i = 0; i < Tree().anchors.size(); ++i) {
       Step(); if (std::holds_alternative<FunctionExit>(Tree().anchors[i].position)) Result().anchors[i] = written_;
     }
-    if (Tree().inferred_name) {
-      Append("})["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]");
-    } else Append(")");
+    // Class-body syntax closes with the block itself, not an expression wrap.
+    if (!ClassRoot()) {
+      if (Tree().inferred_name) {
+        Append("})["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]");
+      } else Append(")");
+    }
     draft_.functions[current_].end = written_;
     Result().bytes = written_ - draft_.functions[current_].begin;
   }
@@ -500,6 +515,7 @@ class TreePrinter {
   const VerifiedFunction* function_ = nullptr;
   const FunctionTree* tree_ = nullptr;
   const ConstructedFamily* family_ = nullptr;
+  const ClassTreeContext* class_root_ = nullptr;
   std::ostream& output_;
   std::size_t limit_;
   analysis::SemanticBudget initial_;
@@ -520,6 +536,14 @@ class TreePrinter {
 std::variant<PrintedFamilyDraft, TreePrintError> PrintFamilyDraft(const ConstructedFamily& family,
     std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch) {
   try { return TreePrinter(family, output, limit, scratch).Draft();
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit;
+  } catch (const std::ios_base::failure&) { return Error::kWrite; }
+}
+std::variant<PrintedFamilyDraft, TreePrintError> PrintClassFamilyDraft(const ConstructedFamily& family,
+    const ClassTreeContext& context, std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch) {
+  try { return TreePrinter(family, output, limit, scratch, &context).Draft();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit;

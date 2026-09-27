@@ -29,6 +29,13 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 类方法与普通函数已共用 `PreparedFamily::Prepare`，仅创建上下文不同。
+  共享 printer 支持实际类方法根节点，保留 prototype/static、名称和参数范围；
+  后代仍是普通/箭头函数表达式，不生成另一套 body writer。
+  ABC-only Immersive 21082 现输出 `setInitiallyProvidedValue(params)` 类成员草稿，
+  21 条原始指令有归属；pasteboard 7449 仍为四成员、1434 字节函数表达式草稿。
+  生产构建退出 0；两份产物仍不可执行、不完整。新增类路径规格未编译、未运行。
+  构造器、类整体、异常及 async 的未完成条件没有放宽。
 - 新增[原始指令源码归属表](instruction-sources.md)：整族构建逐条原始指令核对
   AST 节点、锚点、默认参数签名或已证明纯消除的归属；拒绝缺失、重复及 PC/版本错配。
   线性索引随不可变准备结果保留，草稿 JSON 流式输出 `instruction_sources`。

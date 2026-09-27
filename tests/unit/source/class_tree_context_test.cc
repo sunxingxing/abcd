@@ -1,4 +1,5 @@
 #include "../../../src/source/class_tree_context.h"
+#include "../../../src/source/prepared_family.h"
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
@@ -116,6 +117,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(file, header, index, lookup));
   const auto sites = std::get<analysis::ClassMethodSites>(analysis::ClassMethodSites::Build(file, header, index, lookup));
+  const auto functions = std::get<analysis::FunctionCreationSites>(
+      analysis::FunctionCreationSites::Build(file, header, index, lookup));
   const auto range = sites.Find({kMember});
   Check(range.count == 1 && sites.Find({kConstructor}).count == 0);
   const auto* site = sites.At(range.first);
@@ -145,6 +148,14 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     Check(output.view().find("return (typeof (0, run));") != std::string_view::npos);
     auto rejected = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity, {}, &shadow);
     Check(std::get<FunctionPrepareFailure>(rejected).kind == FunctionPrepareError::kContext);
+    auto family = PreparedFamily::PrepareClass(file, header, index, lookup, roles, functions,
+        sites, range.first, identity, {Strictness::kStrict, &scope});
+    Check(std::holds_alternative<PreparedFamily>(family));
+    std::ostringstream changed_destination;
+    const auto family_refused = std::get<PreparedFamily>(family).PrintDraft(
+        {Strictness::kStrict, &shadow}, changed_destination);
+    Check(std::get<FamilyEnclosureFailure>(std::get<FamilyPrepareFailure>(family_refused).cause).kind ==
+        FamilyEnclosureError::kShadowedGlobal && changed_destination.str().empty());
     Check(unlink(path) == 0);
     return;
   }
@@ -171,6 +182,24 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   const auto printing = PrintFunctionTree(function, output);
   Check(std::holds_alternative<PrintedFunction>(printing));
   const auto& printed = std::get<PrintedFunction>(printing);
+  auto family_result = PreparedFamily::PrepareClass(file, header, index, lookup, roles,
+      functions, sites, range.first, identity, {Strictness::kStrict, nullptr});
+  Check(std::holds_alternative<PreparedFamily>(family_result));
+  const auto& family = std::get<PreparedFamily>(family_result);
+  std::ostringstream family_output;
+  const auto family_print = family.PrintDraft({Strictness::kStrict, nullptr}, family_output);
+  Check(std::holds_alternative<PrintedFamilyDraft>(family_print));
+  const auto& family_positions = std::get<PrintedFamilyDraft>(family_print);
+  Check(family_positions.members.size() == 1 &&
+      family_positions.members[0].fragment == FunctionFragment::kClassMember);
+  Check(family_output.str() == output.str());
+  Check(family_positions.members[0].parameters == printed.parameters);
+  std::ostringstream wrong_context;
+  Check(std::get<TreePrintError>(PrintFamilyDraft(family.Family(), wrong_context)) ==
+      TreePrintError::kUnsupportedContext && wrong_context.str().empty());
+  auto wrong_owner = family.Family(); wrong_owner.members[0].tree.method.value += 1;
+  Check(std::get<TreePrintError>(PrintClassFamilyDraft(wrong_owner, value, wrong_context)) ==
+      TreePrintError::kUnsupportedContext && wrong_context.str().empty());
   Check(printed.fragment == FunctionFragment::kClassMember);
   Check(printed.bytes == output.view().size());
   Check(output.view().starts_with(defaults ? "run($arg0 = (-1)) {\n" : "run($arg0) {\n"));
