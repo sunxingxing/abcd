@@ -88,7 +88,8 @@ std::variant<ConstructedFamily, FamilyError> BuildFunctionFamily(
       const auto checked = VerifyCaptureTree(*member.incoming, {outer.tree, outer.flow},
           {member.tree, member.flow}, quota.Remaining());
       if (const auto* error = std::get_if<CaptureTreeError>(&checked))
-        return *error == CaptureTreeError::kWorkLimit ? Error::kWorkLimit : Error::kCapture;
+        return *error == CaptureTreeError::kWorkLimit ? Error::kWorkLimit :
+            *error == CaptureTreeError::kResourceLimit ? Error::kResourceLimit : Error::kCapture;
       quota.Step(std::get<std::uint64_t>(checked));
     }
     // Parent pointers form a functional graph. Each node enters/exits once;

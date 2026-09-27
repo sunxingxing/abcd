@@ -823,6 +823,32 @@ record ownership, declaration/store semantics, TDZ/cycles/dependencies and
 complete child bodies remain obligations. Rules remain 23; T07/T11 and the
 full T00-T12 objective are not complete.
 
+### T07 Parent-Driven Child Capture Syntax
+
+BuildFunctionTree now takes an optional checked incoming creation and actual
+parent tree/flow. BindCaptureAliases derives child aliases from that parent's
+cell symbols, exact spelling and name evidence; callers do not manually invent
+CaptureSyntax in this mode. The shared tree builder appends names without
+renumbering the constant/module prefix, performs normal semantic checks, then
+freshly checks child flow and VerifyCaptureTree. Captures remain aliases to
+mutable storage, not scalar copies or local declarations.
+
+The original/work-to-family regression source now uses this production path.
+Added refusal cases cover foreign child owners, stale revisions, prefilled
+aliases, missing parent cells, unresolved outward capture and budget limits;
+existing 200/201 distinct-cell fixtures remain included. Tests are uncompiled
+and unrun. Production-only abc_semantic and abc_structure builds exited 0.
+ABC-only P3 inspection still reports 85 operations, its bound CommonConstants
+alias and three child obligations, with no executable source. G2 retains the
+printed method segment [2638,2924), rules 23, within an incomplete record.
+Neither observation exercises the newly parent-bound child construction path;
+they are not runtime, regression or RSS acceptance.
+
+This removes manual parent-name assembly from the shared construction boundary;
+it does not yet traverse a real file's complete function family, discharge
+transitive writes, admit async/exception children or publish a closure. T07 and
+the full T00-T12 objective remain unfinished. Source rules stay 23.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

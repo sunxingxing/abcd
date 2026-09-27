@@ -2,6 +2,7 @@
 #include "../../../src/source/capture_cells.h"
 #include "../../../src/source/capture_evaluation.h"
 #include "../../../src/source/capture_tree.h"
+#include "../../../src/source/capture_aliases.h"
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/function_family.h"
 #include "../../../src/source/tree_semantics.h"
@@ -9,6 +10,7 @@
 #include "analysis/ssa_fixture.h"
 
 #include <type_traits>
+#include <limits>
 
 namespace {
 using namespace abcd;
@@ -66,18 +68,14 @@ void TreeBinding(const FunctionValues& parent, const FunctionValues& child,
   child_syntax.identity = child.identity; child_syntax.method = child.method;
   child_syntax.owner = {1}; child_syntax.callable = CallableKind::kFunction;
   child_syntax.strictness = Strictness::kStrict; child_syntax.parameters.resize(Frame().parameters);
-  for (const auto& binding : cells.targets) {
-    const auto symbol = *parent_flow.cells[std::get<ParentCell>(binding.target).cell.value];
-    const auto name = NameId{static_cast<std::uint32_t>(child_syntax.names.size())};
-    child_syntax.names.push_back(outer.names[outer.symbols[symbol.value].name.value]);
-    child_syntax.captures.push_back({binding.child, {outer.owner, symbol}, name});
-  }
+  child_syntax.names.push_back(u"reservedName");
+  const IncomingCaptureTree incoming{cells, {outer, parent_flow}};
   const auto child_control = std::get<ControlPlan>(BuildControlPlan(child.graph));
   const auto child_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(child.graph, {}, IncomingCells::kConditional));
   std::vector<ExpressionConstant> child_constants(child.graph.ops.size());
   const ExpressionConstants constants{child_constants, child_syntax.names.size(), 0};
   auto inner = std::get<ConstructedFunction>(BuildFunctionTree(child.graph, child_control,
-      child_evaluation, child_syntax, constants)).tree;
+      child_evaluation, child_syntax, constants, {}, &incoming)).tree;
   const auto child_flow = std::get<TreeFlow>(VerifyTreeFlow(child.graph, child_control, child_evaluation, inner));
   test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(child.graph,
       child_control, child_evaluation, inner, constants)));
@@ -85,6 +83,42 @@ void TreeBinding(const FunctionValues& parent, const FunctionValues& child,
     return VerifyCaptureTree(cells, {outer, parent_flow}, {candidate, child_flow});
   };
   const auto work = std::get<std::uint64_t>(verify(inner));
+  // Production construction, not this fixture, now selects actual parent
+  // symbols/names and independently checks the resulting child relationship.
+  const auto names = std::get<CaptureAliases>(BindCaptureAliases(cells,
+      {outer, parent_flow}, inner.owner, {1}));
+  test::Check(names.aliases.size() == cells.targets.size());
+  for (std::size_t i = 0; i < names.aliases.size(); ++i) {
+    const auto& alias = names.aliases[i];
+    test::Check(alias.cell == cells.targets[i].child && alias.name == NameId{static_cast<std::uint32_t>(i + 1)});
+    test::Check(alias.target == inner.captures[i].target);
+    test::Check(names.names[i] == inner.names[inner.symbols[inner.captures[i].symbol.value].name.value]);
+  }
+  SemanticBudget naming_budget; naming_budget.work = names.work;
+  test::Check(std::holds_alternative<CaptureAliases>(BindCaptureAliases(cells, {outer, parent_flow}, inner.owner, {1}, naming_budget)));
+  --naming_budget.work;
+  test::Check(std::get<CaptureTreeError>(BindCaptureAliases(cells, {outer, parent_flow}, inner.owner, {1}, naming_budget)) == CaptureTreeError::kWorkLimit);
+  naming_budget = {}; naming_budget.bytes = 0;
+  test::Check(std::get<CaptureTreeError>(BindCaptureAliases(cells, {outer, parent_flow}, inner.owner, {1}, naming_budget)) == CaptureTreeError::kResourceLimit);
+  auto wrong_owner = child_syntax; wrong_owner.owner = {2};
+  test::Check(std::get<FunctionTreeError>(BuildFunctionTree(child.graph, child_control,
+      child_evaluation, wrong_owner, constants, {}, &incoming)) == FunctionTreeError::kCapture);
+  auto stale = cells; ++stale.child_revision.value;
+  const IncomingCaptureTree stale_input{stale, {outer, parent_flow}};
+  test::Check(std::get<FunctionTreeError>(BuildFunctionTree(child.graph, child_control,
+      child_evaluation, child_syntax, constants, {}, &stale_input)) == FunctionTreeError::kCapture);
+  if (!names.aliases.empty()) {
+    auto supplied = child_syntax; supplied.captures = names.aliases;
+    test::Check(std::get<FunctionTreeError>(BuildFunctionTree(child.graph, child_control,
+        child_evaluation, supplied, constants, {}, &incoming)) == FunctionTreeError::kCapture);
+    test::Check(std::get<CaptureTreeError>(BindCaptureAliases(cells, {outer, parent_flow}, inner.owner,
+        {std::numeric_limits<std::uint32_t>::max()})) == CaptureTreeError::kResourceLimit);
+    auto outward = cells; outward.targets[0].target = OuterCell{{{0}, {0}}};
+    test::Check(std::get<CaptureTreeError>(BindCaptureAliases(outward, {outer, parent_flow}, inner.owner)) == CaptureTreeError::kOuterCapture);
+    auto bad_flow = parent_flow;
+    bad_flow.cells[std::get<ParentCell>(cells.targets[0].target).cell.value].reset();
+    test::Check(std::get<CaptureTreeError>(BindCaptureAliases(cells, {outer, bad_flow}, inner.owner)) == CaptureTreeError::kCell);
+  }
   if (evaluation.functions.size() == 1) {
     // Reverse storage order deliberately: owners are not vector indices, and
     // family traversal must still place the real parent before its child.

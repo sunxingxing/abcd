@@ -9,6 +9,7 @@
 
 #include "abcd/source/global_reference.h"
 #include "tree_semantics.h"
+#include "capture_aliases.h"
 
 namespace abcd::source {
 namespace {
@@ -33,10 +34,11 @@ class TreeBuilder {
  public:
   TreeBuilder(const analysis::ValueProgram& graph, const ControlPlan& control,
       const EvaluationPlan& evaluation, FunctionSyntax syntax,
-      ExpressionConstants constants, analysis::SemanticBudget budget)
+      ExpressionConstants constants, analysis::SemanticBudget budget,
+      const IncomingCaptureTree* incoming)
       : graph_(graph), control_(control), evaluation_(evaluation),
         syntax_(std::move(syntax)), constants_(constants), budget_(budget),
-        bytes_(budget.bytes), work_(budget.work) {}
+        bytes_(budget.bytes), work_(budget.work), incoming_(incoming) {}
 
   ConstructedFunction Build() {
     Require(syntax_.parameters.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
@@ -54,6 +56,7 @@ class TreeBuilder {
     Admit(syntax_.texts.capacity(), sizeof(std::u16string));
     for (const auto& name : syntax_.names) { Step(); AdmitText(name); }
     for (const auto& text : syntax_.texts) { Step(); AdmitText(text); }
+    CaptureNames();
     const auto control = VerifyControlPlan(graph_, control_, {bytes_, work_});
     if (const auto* error = std::get_if<ControlError>(&control)) {
       if (*error == ControlError::kResourceLimit) throw Error::kResourceLimit;
@@ -575,6 +578,52 @@ class TreeBuilder {
     Require(semantics->allocated_bytes >= storage->bytes, Error::kSemantics);
     Admit(semantics->allocated_bytes - storage->bytes, 1);
     Step(semantics->work);
+    CheckCaptures(*storage);
+  }
+
+  void CaptureNames() {
+    if (!incoming_) return;
+    const auto& cells = incoming_->cells;
+    Require(syntax_.captures.empty() && syntax_.identity == cells.identity &&
+        syntax_.method == cells.child && graph_.revision == cells.child_revision &&
+        graph_.cfg_revision == cells.child_cfg, Error::kCapture);
+    Require(syntax_.names.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
+    auto bound = BindCaptureAliases(cells, incoming_->parent, syntax_.owner,
+        {static_cast<std::uint32_t>(syntax_.names.size())}, {bytes_, work_});
+    const auto* error = std::get_if<CaptureTreeError>(&bound);
+    if (error) {
+      if (*error == CaptureTreeError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == CaptureTreeError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kCapture;
+    }
+    auto aliases = std::get<CaptureAliases>(std::move(bound));
+    Admit(aliases.allocated_bytes, 1); Step(aliases.work);
+    Grow(syntax_.names, syntax_.names.size() + aliases.names.size());
+    for (auto& name : aliases.names) { Step(); syntax_.names.push_back(std::move(name)); }
+    syntax_.captures = std::move(aliases.aliases);
+    constants_.name_count = syntax_.names.size();
+  }
+
+  void CheckCaptures(const TreeStorage& storage) {
+    if (!incoming_) return;
+    const auto checked = VerifyTreeFlow(graph_, control_, evaluation_, tree_,
+        {bytes_ + storage.bytes, work_});
+    const auto* flow = std::get_if<TreeFlow>(&checked);
+    if (!flow) {
+      const auto error = std::get<TreeFlowError>(checked);
+      if (error == TreeFlowError::kResourceLimit) throw Error::kResourceLimit;
+      if (error == TreeFlowError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kCapture;
+    }
+    Require(flow->allocated_bytes >= storage.bytes, Error::kCapture);
+    Admit(flow->allocated_bytes - storage.bytes, 1); Step(flow->work);
+    const auto verified = VerifyCaptureTree(incoming_->cells, incoming_->parent, {tree_, *flow}, {bytes_, work_});
+    if (const auto* error = std::get_if<CaptureTreeError>(&verified)) {
+      if (*error == CaptureTreeError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == CaptureTreeError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kCapture;
+    }
+    Step(std::get<std::uint64_t>(verified));
   }
 
   const analysis::ValueProgram& graph_;
@@ -596,15 +645,17 @@ class TreeBuilder {
   std::vector<std::optional<std::size_t>> edge_ranges_;
   std::vector<std::optional<StmtId>> loops_;
   std::optional<std::size_t> entry_range_;
+  const IncomingCaptureTree* incoming_;
 };
 }  // namespace
 
 std::variant<ConstructedFunction, FunctionTreeError> BuildFunctionTree(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, FunctionSyntax syntax,
-    ExpressionConstants constants, analysis::SemanticBudget budget) {
+    ExpressionConstants constants, analysis::SemanticBudget budget,
+    const IncomingCaptureTree* incoming) {
   try {
-    return TreeBuilder(graph, control, evaluation, std::move(syntax), constants, budget).Build();
+    return TreeBuilder(graph, control, evaluation, std::move(syntax), constants, budget, incoming).Build();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

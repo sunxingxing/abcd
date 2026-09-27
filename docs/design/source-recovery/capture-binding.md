@@ -3,7 +3,7 @@
 T07 now shares a borrowed `ScopeFacts` view between the established semantic
 capture resolver and the new creation-specific `CapturePlan`. This is binding
 infrastructure, not permission to emit a child FunctionTree or scalarize cells.
-Source rules are 20 for checked native local declarations and occurrence-bound
+Source rules are 23 for checked native local declarations and occurrence-bound
 ordinary/arrow tree preparation; no closure-expression publication is admitted.
 
 ## Inputs and Ownership
@@ -138,6 +138,39 @@ The added binding/flow passes are linear in symbols/cells/captures beyond the
 existing name sort and graph checks; storage accounting includes capture arenas.
 
 ## Conditional Creation Expressions
+
+`BuildFunctionTree` now optionally accepts an `IncomingCaptureTree`: the checked
+creation-specific `CaptureCells` plus the actual parent tree/flow. In this mode
+the caller must not supply hand-built CaptureSyntax rows. `BindCaptureAliases`
+resolves the creation's real FunctionExpr, verifies the expected child owner and
+implicit capture census, and derives each child alias from the corresponding
+actual parent cell symbol. Parent local and incoming-capture symbols are both
+admitted; snapshots, guessed equal SymbolIds and unresolved OuterCell targets
+are not. Exact spelling and naming evidence are copied after the existing child
+name arena, preserving all pool NameIds and module alias name positions.
+
+After normal structure/flow/operand/origin checking, construction obtains a
+fresh child flow and independently calls VerifyCaptureTree on the resulting
+parent/child relationship. This uses the same ordinary function tree pipeline,
+not a closure body writer or constructor-specific path. Missing or extra child
+captures cannot disappear merely because alias construction succeeded. Mutable
+cell identity, lifetime and read snapshots remain distinct and unchanged.
+
+Alias construction costs O(K + S_out), where K is unique incoming child cells
+and S_out is copied UTF-16 output. It does not scan a parent graph per capture.
+The additional child flow check is once per constructed child; it uses existing
+bounded shared verification. Alias/name buffers and replacement name-arena
+capacity are charged alongside the syntax builder, and tree storage is credited
+back only while the verifier accounts for that same retained tree. This is not
+a whole-family memory or transitive-write certificate.
+
+The existing function_input regression source now feeds actual original/work
+capture proofs through this production construction entry instead of assembling
+child aliases in the test. It includes empty captures, distinct creation sites,
+200/201 distinct cells, nonzero name prefixes, wrong owners, stale revisions,
+injected aliases, missing parent cells, outward targets and budget refusal.
+Those tests remain uncompiled/unrun. File-driven family traversal, child
+callable/name/strictness binding and publication remain outstanding.
 
 `VerifyCaptureTree` connects a verified CaptureCells mapping to actual parent
 and child syntax. Its borrowed trees/flows must be unchanged common

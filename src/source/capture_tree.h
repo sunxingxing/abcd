@@ -14,7 +14,13 @@ struct CaptureTree {
 };
 enum class CaptureTreeError : std::uint8_t {
   kOwner, kRevision, kCreation, kCoverage, kCell, kTarget, kName,
-  kOuterCapture, kWorkLimit
+  kOuterCapture, kWorkLimit, kResourceLimit
+};
+struct IncomingCaptureTree {
+  // Borrowed only during synchronous construction; the child owns copied names
+  // and typed symbol targets, never references to these parent arenas.
+  const CaptureCells& cells;
+  CaptureTree parent;
 };
 // Connects a previously verified CaptureCells proof to actual parent/child
 // syntax. No tree reconstruction or symbol-number agreement is assumed.
