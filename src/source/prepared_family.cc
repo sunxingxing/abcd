@@ -18,6 +18,7 @@ PreparedFamily::~PreparedFamily() = default;
 const ConstructedFamily& PreparedFamily::Family() const { return storage_->family; }
 const RouteInputIdentity& PreparedFamily::Identity() const { return storage_->context.Identity(); }
 const analysis::ClassMethodSite* PreparedFamily::ClassCreation() const { return storage_->context.ClassSite(); }
+std::u16string_view PreparedFamily::Name() const { return storage_->context.Name(); }
 std::span<const MethodRouteReceipt> PreparedFamily::Receipts() const { return storage_->receipts; }
 std::size_t PreparedFamily::AllocatedBytes() const { return storage_->allocated_bytes; }
 std::uint64_t PreparedFamily::Work() const { return storage_->work; }
@@ -96,6 +97,17 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     auto input = Take<FileFamily, FamilyFileFailure>(ReadFunctionFamily(
         file, header, index, lookup, roles, sites, root.Position(), root.Identity(), budget.Left()));
     budget.Account(input.allocated_bytes, input.work);
+    Require(input.members.size() <= budget.Left().bytes / sizeof(MethodRouteReceipt), Error::kResourceLimit);
+    std::vector<MethodRouteReceipt> receipts;
+    budget.Account(input.members.size() * sizeof(MethodRouteReceipt), input.members.size());
+    receipts.reserve(input.members.size());
+    budget.Account((receipts.capacity() - input.members.size()) * sizeof(MethodRouteReceipt), 0);
+    for (const auto& member : input.members) {
+      MethodRouteReceipt receipt;
+      receipt.identity = member.function.input.Identity();
+      receipt.method = member.function.input.Method(); receipt.record = member.function.input.Record();
+      receipts.push_back(receipt); // Identity only; no stage claim until all proofs close.
+    }
     auto family = Take<ConstructedFamily, FamilyTreeFailure>(BuildFileFamilyTrees(
         file, header, index, std::move(input), root, budget.Left()));
     budget.Account(family.allocated_bytes, family.work);
@@ -113,18 +125,14 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     const auto enclosure = Take<FamilyEnclosure, FamilyEnclosureFailure>(
         VerifyFamilyDestination(family, destination.globals, budget.Left()));
     budget.Account(enclosure.allocated_bytes, enclosure.work);
-    Require(family.members.size() <= budget.Left().bytes / sizeof(MethodRouteReceipt), Error::kResourceLimit);
-    std::vector<MethodRouteReceipt> receipts;
-    budget.Account(family.members.size() * sizeof(MethodRouteReceipt), family.members.size());
-    receipts.reserve(family.members.size());
-    budget.Account((receipts.capacity() - family.members.size()) * sizeof(MethodRouteReceipt), 0);
-    for (const auto& member : family.members) {
-      MethodRouteReceipt receipt;
-      receipt.identity = member.tree.identity; receipt.method = member.tree.method;
+    Require(receipts.size() == family.members.size(), Error::kReceipt);
+    for (std::size_t i = 0; i < family.members.size(); ++i) {
+      budget.Account(0, 1);
+      const auto& member = family.members[i]; auto& receipt = receipts[i];
+      Require(receipt.identity == member.tree.identity && receipt.method == member.tree.method, Error::kReceipt);
       receipt.route = SourceRoute::kValueTree; receipt.stage = SourceStage::kTreeVerified;
       receipt.coverage = Coverage::kIncomplete; receipt.work_revision = member.tree.value_revision.value;
       Require(!ValidateRouteReceipt(receipt), Error::kReceipt);
-      receipts.push_back(receipt);
     }
     Require(!file.CheckUnchanged(), Error::kFileChanged);
     // No external pointers or mutable input/SSA products survive this boundary.

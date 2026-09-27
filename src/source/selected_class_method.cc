@@ -3,39 +3,9 @@
 #include "abcd/source/class_method.h"
 #include "abcd/source/semantic_source.h"
 #include "capture_stream.h"
+#include "family_route_failure.h"
 
 namespace abcd::source {
-namespace {
-RouteFailureClass Classify(FunctionPrepareError error) {
-  switch (error) {
-    case FunctionPrepareError::kResourceLimit: return RouteFailureClass::kMemoryLimit;
-    case FunctionPrepareError::kWorkLimit: return RouteFailureClass::kWorkLimit;
-    case FunctionPrepareError::kBody:
-    case FunctionPrepareError::kFileChanged: return RouteFailureClass::kInvalidInput;
-    case FunctionPrepareError::kContext:
-    case FunctionPrepareError::kValues:
-    case FunctionPrepareError::kControl:
-    case FunctionPrepareError::kEvaluation:
-    case FunctionPrepareError::kConstants:
-    case FunctionPrepareError::kParameters:
-    case FunctionPrepareError::kTree:
-    case FunctionPrepareError::kAbi: return RouteFailureClass::kUnproved;
-  }
-  return RouteFailureClass::kInvariantViolation;
-}
-RouteFailureClass Classify(TreePrintError error) {
-  switch (error) {
-    case TreePrintError::kResourceLimit: return RouteFailureClass::kMemoryLimit;
-    case TreePrintError::kWorkLimit: return RouteFailureClass::kWorkLimit;
-    case TreePrintError::kOutputLimit:
-    case TreePrintError::kWrite: return RouteFailureClass::kOutputFailure;
-    case TreePrintError::kUnsupportedContext:
-    case TreePrintError::kInvalidLiteral: return RouteFailureClass::kInvariantViolation;
-  }
-  return RouteFailureClass::kInvariantViolation;
-}
-}  // namespace
-
 std::size_t WriteSelectedClassMethod(
     const ClassMethodSelection& selection, const corpus::AbcFile& file,
     const abc::Header& header, const abc::MetadataIndex& index,
@@ -45,44 +15,48 @@ std::size_t WriteSelectedClassMethod(
     std::ostream& output, LocalLexicalBudget budget, const GlobalScope* scope) {
   auto* sink = dynamic_cast<CaptureBuffer*>(output.rdbuf());
   GeneratedPosition begin;
-  if (!sink || !sink->Position(begin))
-    throw ClassFailure{EmitError::kInvalidExpression};
-  ExpansionFrame admission(expansion, index.methods[target.position.value].offset, budget);
+  if (!sink || !sink->Position(begin)) throw ClassFailure{EmitError::kInvalidExpression};
+  const auto* encoded = std::get_if<abc::ClassMethod>(&property.value);
+  const auto* site = selection.sites.At(selection.site);
+  if (!encoded || !site || target.position.value >= index.methods.size() ||
+      encoded->target != site->target || encoded->kind != site->kind ||
+      encoded->length != site->length || property.placement != site->placement ||
+      index.methods[target.position.value].offset != site->target)
+    throw ClassFailure{FunctionEmitError::kCreation};
+  if (target.attributes.sendable) throw ClassFailure{FunctionEmitError::kSendable};
+  if (target.attributes.kind != abc::FunctionKind::kNone || site->kind != abc::ClassMethodKind::kOrdinary)
+    throw ClassFailure{FunctionEmitError::kKind};
+  ExpansionFrame admission(expansion, site->target, budget);
   if (const auto error = admission.error())
     throw ClassFailure{*error == ExpansionError::kResourceLimit
         ? CreatedClassError::kResourceLimit : CreatedClassError::kRecursiveExpansion};
-  // Keep disjoint preparation and printing grants; the immutable tree remains
-  // live while the printer allocates its action stack and position arrays.
+  // Selection names one occurrence per invocation. Index child creations once,
+  // not per family member. A refused selected route never retries legacy bodies.
   constexpr std::size_t kStageShares = 2;
-  const analysis::SemanticBudget preparation{budget.bytes / kStageShares,
-                                            budget.work / kStageShares};
-  auto prepared = VerifiedFunction::PrepareClass(file, header, index, lookup,
-      roles, selection.sites, selection.site, selection.identity, preparation, scope);
-  auto* function = std::get_if<VerifiedFunction>(&prepared);
-  if (!function) {
-    const auto& failure = std::get<FunctionPrepareFailure>(prepared);
-    if (failure.values && failure.values->failure)
-      throw ClassFailure{RouteRefusal{*failure.values->failure}};
-    throw ClassFailure{RouteRefusal{{Classify(failure.kind),
-        failure.kind == FunctionPrepareError::kContext ? ValueRouteError::kContextStage
-                                                      : ValueRouteError::kTreeStage,
-        failure.pc}}};
-  }
-  const ClassMethod method{std::get<abc::ClassMethod>(property.value), target.attributes,
-      function->Frame(), property.placement, key, {}, EffectiveMethodKind::kOrdinary};
-  auto printed = WriteClassMethod(method, std::move(*function), output, {begin.byte},
-      budget.output, {budget.bytes - preparation.bytes, budget.work - preparation.work}, scope);
-  auto* emission = std::get_if<FunctionEmission>(&printed);
-  if (!emission) {
-    if (const auto* error = std::get_if<FunctionEmitError>(&printed)) throw ClassFailure{*error};
-    throw ClassFailure{RouteRefusal{{Classify(std::get<TreePrintError>(printed)),
-                                    ValueRouteError::kPrintStage, {}}}};
-  }
+  analysis::SemanticBudget preparation{budget.bytes / kStageShares, budget.work / kStageShares};
+  const auto printing = analysis::SemanticBudget{budget.bytes - preparation.bytes,
+                                                budget.work - preparation.work};
+  auto indexed = analysis::FunctionCreationSites::Build(file, header, index, lookup, preparation);
+  const auto* functions = std::get_if<analysis::FunctionCreationSites>(&indexed);
+  if (!functions) throw ClassFailure{RouteRefusal{FamilyRouteFailure(std::get<analysis::FunctionSiteFailure>(indexed))}};
+  if (functions->AllocatedBytes() > preparation.bytes)
+    throw ClassFailure{RouteRefusal{{RouteFailureClass::kMemoryLimit, ValueRouteError::kContextStage, {}}}};
+  if (functions->Work() > preparation.work)
+    throw ClassFailure{RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}}};
+  preparation.bytes -= functions->AllocatedBytes(); preparation.work -= functions->Work();
+  const FamilyDestination destination{Strictness::kStrict, scope, FunctionFragment::kClassMember};
+  auto prepared = PreparedFamily::PrepareClass(file, header, index, lookup, roles,
+      *functions, selection.sites, selection.site, selection.identity, destination, preparation);
+  auto* family = std::get_if<PreparedFamily>(&prepared);
+  if (!family) throw ClassFailure{RouteRefusal{FamilyRouteFailure(std::get<FamilyPrepareFailure>(prepared))}};
+  if (family->Name() != key) throw ClassFailure{FunctionEmitError::kName};
+  auto printed = FamilyEmission::Write(std::move(*family), destination, output, {begin.byte}, budget.output, printing);
+  auto* emission = std::get_if<FamilyEmission>(&printed);
+  if (!emission) throw ClassFailure{RouteRefusal{FamilyRouteFailure(std::get<FamilyEmitFailure>(printed))}};
   GeneratedPosition end;
   if (!sink->Position(end)) throw ClassFailure{EmitError::kInvalidExpression};
   const auto bytes = emission->Positions().bytes;
-  if (!sink->RetainFunction({std::make_shared<const FunctionEmission>(std::move(*emission)),
-                             begin, end}))
+  if (!sink->RetainFunction({std::make_shared<const FamilyEmission>(std::move(*emission)), begin, end}))
     throw ClassFailure{EmitError::kInvalidExpression};
   return bytes;
 }

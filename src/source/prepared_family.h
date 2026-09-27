@@ -49,6 +49,7 @@ class PreparedFamily {
   [[nodiscard]] const ConstructedFamily& Family() const;
   [[nodiscard]] const RouteInputIdentity& Identity() const;
   [[nodiscard]] const analysis::ClassMethodSite* ClassCreation() const;
+  [[nodiscard]] std::u16string_view Name() const;
   // Occurrence/member order, not deduplicated by method entity. TreeVerified
   // remains Incomplete until the owning emission succeeds in its destination.
   [[nodiscard]] std::span<const MethodRouteReceipt> Receipts() const;

@@ -59,8 +59,8 @@ class/default/object methods, prepared-versus-printed receipt states, root
 grammar mismatch, output exhaustion, zero memory and destination overflow.
 Receipt parsing rejects prior rules 23 and uses the current rule constant for
 identity-free/overflow tests. Tests, generated-JS execution and RSS remain paused.
-CLI family drafts are deliberately not promoted by this implementation; record
-assembly integration and end-to-end execution acceptance remain outstanding.
+CLI family drafts are deliberately not promoted by this implementation;
+whole-record integration and end-to-end execution acceptance remain outstanding.
 Production builds exited 0. ABC-only inspection retains the existing 7559 method
 segment [2638,2924), now serialized under rules 24, and the unchanged 1434-byte
 four-member 7449 incomplete/nonexecutable draft. Those observations do not
@@ -82,9 +82,29 @@ Template insertion captures remain forbidden inside a segment; native lexical
 captures already represented in AST are not such insertions. Moving coordinates
 does not permit changing the original lexical embedding.
 
-The selected-method producer still chooses the established standalone emitter.
-This change supplies transport and retention for the family product; routing an
-actual selected record method through it remains the next integration step.
+The selected-method producer now prepares and emits a complete family. It checks
+the actual encoded target, kind, length, placement and name against the selected
+creation site, then calls `PreparedFamily::PrepareClass` and `FamilyEmission`.
+It indexes function creations once per selected invocation and charges the
+index before family preparation. Preparation and printing retain disjoint grants;
+no refused selected method falls back to a legacy body. The enclosing record
+still uses the legacy structural assembler and remains explicitly incomplete.
+
+Prepared receipts retain the record identity from each original function input,
+before that input is consumed; only the identity is stored at this point, not a
+successful stage claim. Typed failure projection preserves nested resource/work
+failures and original instruction PCs without parsing diagnostics. A parent
+creation PC does not replace an available child instruction PC.
+
+Production builds exited 0 after this integration. ABC-only inspection of
+pasteboard 7559 now exercises the family emitter: [2638,2924), record 6897,
+one member and 43 original instruction dispositions. Method 7586 retains
+[2307,2464), record 6897 and 21 dispositions; its output bytes and receipt match
+the standalone entry. The standalone 7559 entry lacks required context and
+refuses, so it is not a source comparison baseline. Immersive 21082 still refuses
+in enclosing record assembly at PC 159; its family draft is not record success.
+All these diagnostic commands exit 1. Tests and generated JS remain unexecuted.
+
 Transport specifications now instantiate both payload kinds, including replay,
 capture insertion before the segment, zero budget, invalid envelopes and
 200/201 retained occurrences. These specifications are uncompiled/unrun.

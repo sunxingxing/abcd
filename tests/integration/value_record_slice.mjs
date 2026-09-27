@@ -28,7 +28,17 @@ assert.equal(segment.route_receipt.route, 'value_tree');
 assert.equal(segment.route_receipt.legacy_writer_used, false);
 assert.equal(segment.route_receipt.coverage, 'complete');
 assert.deepEqual(segment.route_receipt, member.route_receipt);
-assert.deepEqual(segment.local_positions, member.positions);
+const { instruction_sources, ...rootPositions } = segment.local_positions;
+assert.deepEqual(rootPositions, member.positions);
+assert.equal(segment.family_members.length, 1);
+assert.deepEqual(segment.family_members[0].route_receipt, segment.route_receipt);
+assert.deepEqual(segment.family_members[0].local_positions, segment.local_positions);
+assert.ok(instruction_sources.length > 0);
+for (const [site, source] of instruction_sources.entries()) {
+  assert.equal(segment.local_positions.origins[source.origin].site, site);
+  if (source.kind === 'elided_pure') assert.equal(source.range, null);
+  else assert.ok(source.range.begin <= source.range.end);
+}
 const bytes = Buffer.from(record.source, 'utf8');
 const methodBytes = Buffer.from(member.source, 'utf8');
 assert.ok(segment.begin > 0 && segment.end < bytes.length);
