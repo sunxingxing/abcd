@@ -11,6 +11,18 @@ observations, not an up-to-date capability summary.
 
 ### File-Backed Conditional Function Families
 
+The file-family input now feeds BuildFileFamilyTrees: actual callable context,
+shared syntax/constants, optional metadata-bound module aliases, common control
+and evaluation, parent-derived capture syntax, common FunctionTree/TreeFlow/ABI,
+then whole-family ownership/capture checking. All members must succeed; there
+is no legacy writer fallback. Defaults that need residual-graph projection are
+not silently accepted through a length mismatch. This is still conditional AST,
+not a source receipt or a proof of root/global/module initialization semantics.
+Production targets built (exit 0). ABC-only conditional-family diagnostics now
+construct one-member ASTs for Immersive 21082 (10 expressions) and pasteboard
+7559 (22 expressions). These are not multi-member closure coverage. Added
+file-backed AST/ABI and budget test specifications remain uncompiled/unrun.
+
 Follow-up: real P3 instruction inspection identified PC 24 and 180 as primitive
 buffered objects, not function edges. The family reader now handles those typed
 barriers using the existing ReadObjectBuffer parser and retains per-occurrence

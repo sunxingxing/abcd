@@ -2,6 +2,7 @@
 #include "../../../src/source/function_file.h"
 #include "../../../src/source/syntax_resolution.h"
 #include "../../../src/source/family_file.h"
+#include "../../../src/source/family_tree.h"
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
@@ -188,6 +189,22 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
     auto created = std::get<CreationTreeContext>(CreationTreeContext::Resolve(
         file, header, index, lookup, roles, sites, range.first, identity));
     const FunctionContext context{std::move(created)};
+    if (child == ChildBody::kEmpty && !all_formats) {
+      auto root_family = std::get<FileFamily>(ReadFunctionFamily(file, header, index,
+          lookup, roles, sites, {1}, identity));
+      const auto tree_family = BuildFileFamilyTrees(file, header, index, std::move(root_family), context);
+      test::Check(std::holds_alternative<ConstructedFamily>(tree_family));
+      const auto& built = std::get<ConstructedFamily>(tree_family);
+      test::Check(built.members.size() == 1 && built.root == FileFamily::kRoot &&
+          built.members[0].tree.method == abc::EntityOffset{kTarget} &&
+          built.members[0].tree.parameters.size() == parameters);
+      auto exhausted = std::get<FileFamily>(ReadFunctionFamily(file, header, index,
+          lookup, roles, sites, {1}, identity));
+      SemanticBudget no_bytes; no_bytes.bytes = 0;
+      const auto failure = std::get<FamilyTreeFailure>(BuildFileFamilyTrees(file,
+          header, index, std::move(exhausted), context, no_bytes));
+      test::Check(std::get<FamilyTreeError>(failure.cause) == FamilyTreeError::kResourceLimit);
+    }
     constexpr FunctionOwnerId kSyntaxOwner{99};
     const auto resolve = [&](SemanticBudget budget = {}) {
       return ResolveFunctionSyntax(file, header, index, context, opened_child.body,

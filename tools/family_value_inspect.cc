@@ -4,6 +4,7 @@
 #include <type_traits>
 
 #include "../src/source/family_file.h"
+#include "../src/source/family_tree.h"
 
 namespace {
 using namespace abcd;
@@ -87,8 +88,8 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
         ? FamilyFileError::kResourceLimit : FamilyFileError::kWorkLimit); return report;
   }
   budget.bytes -= sites->AllocatedBytes(); budget.work -= sites->Work();
-  const auto prepared = ReadFunctionFamily(file, header, index, lookup, *roles, *sites, root, identity, budget, modules);
-  const auto* family = std::get_if<FileFamily>(&prepared);
+  auto prepared = ReadFunctionFamily(file, header, index, lookup, *roles, *sites, root, identity, budget, modules);
+  auto* family = std::get_if<FileFamily>(&prepared);
   if (!family) { Failure(report, std::get<FamilyFileFailure>(prepared)); return report; }
   report["family_prepared"] = true;
   report["family_members"] = nlohmann::json::array();
@@ -109,6 +110,54 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
     for (const auto& child : member.children)
       entry["children"].push_back({{"operation", child.creation.value}, {"owner", child.child.value}, {"captures", child.captures.size()}});
     report["family_members"].push_back(std::move(entry));
+  }
+  report["family_tree_prepared"] = false;
+  if (family->allocated_bytes > budget.bytes || family->work > budget.work) return report;
+  budget.bytes -= family->allocated_bytes; budget.work -= family->work;
+  std::optional<FunctionContext> context;
+  const auto occurrences = sites->Find(index.methods[root.value].offset);
+  if (occurrences.count == 1) {
+    auto resolved = CreationTreeContext::Resolve(file, header, index, lookup, *roles, *sites,
+        occurrences.first, identity, budget);
+    if (auto* created = std::get_if<CreationTreeContext>(&resolved)) context.emplace(std::move(*created));
+  } else if (occurrences.count == 0) {
+    auto indexed = analysis::ClassMethodSites::Build(file, header, index, lookup, budget);
+    if (const auto* classes = std::get_if<analysis::ClassMethodSites>(&indexed)) {
+      if (classes->AllocatedBytes() > budget.bytes || classes->Work() > budget.work) return report;
+      budget.bytes -= classes->AllocatedBytes(); budget.work -= classes->Work();
+      const auto range = classes->Find(index.methods[root.value].offset);
+      if (range.count == 1) {
+        auto resolved = ClassTreeContext::Resolve(file, header, index, lookup, *roles, *classes,
+            range.first, identity, budget);
+        if (auto* method = std::get_if<ClassTreeContext>(&resolved)) context.emplace(std::move(*method));
+      }
+    }
+  }
+  // Ambiguous/unproved root owners are not guessed from method attributes.
+  report["family_root_context"] = context.has_value();
+  if (!context) return report;
+  if (context->AllocatedBytes() > budget.bytes || context->Work() > budget.work) return report;
+  budget.bytes -= context->AllocatedBytes(); budget.work -= context->Work();
+  const auto constructed = BuildFileFamilyTrees(file, header, index, std::move(*family), *context, budget, modules);
+  if (const auto* tree = std::get_if<ConstructedFamily>(&constructed)) {
+    report["family_tree_prepared"] = true;
+    report["family_tree_members"] = tree->members.size();
+    report["family_tree_expressions"] = nlohmann::json::array();
+    for (const auto& member : tree->members)
+      report["family_tree_expressions"].push_back(member.tree.expressions.size());
+  } else {
+    const auto& failure = std::get<FamilyTreeFailure>(constructed);
+    report["family_tree_member"] = failure.member.value;
+    report["family_tree_failure"] = failure.cause.index();
+    std::visit([&](const auto& error) {
+      using T = std::decay_t<decltype(error)>;
+      if constexpr (std::is_same_v<T, SyntaxResolutionFailure>) {
+        report["syntax_failure"] = error.index();
+        std::visit([&](const auto& reason) { report["syntax_error"] = Code(reason); }, error);
+      } else if constexpr (std::is_same_v<T, ModuleAliasFailure>) {
+        report["module_alias_failure"] = error.cause.index();
+      } else report["family_tree_error"] = Code(error);
+    }, failure.cause);
   }
   return report;
 }
