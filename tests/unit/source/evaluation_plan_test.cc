@@ -252,7 +252,7 @@ int main() {
   Check(DescribeEvaluation(analysis::ValueObjectAllocation{abc::PoolIndex{0}}).has_value());
   for (const auto space : {analysis::ModuleSpace::kLocal, analysis::ModuleSpace::kExternal}) {
     const analysis::ValueModuleRead module{space, {0}};
-    Check(!DescribeEvaluation(module)); // Enclosing module bindings are not yet proved.
+    Check(DescribeEvaluation(module).has_value()); // A shape is not a module-binding proof.
     auto read = creation.graph.ops[0]; read.operation = module;
     Check(OrderedEvaluation(read));
   }

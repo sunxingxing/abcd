@@ -1,4 +1,5 @@
 #include "evaluation_plan.h"
+#include "module_evaluation.h"
 
 #include <limits>
 #include <new>
@@ -13,7 +14,7 @@ struct EffectInterval { std::uint32_t count = 0; std::uint32_t end = 0; };
 
 std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
-    std::span<const FunctionBinding> functions) {
+    std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules) {
   try {
     Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
     auto work = budget.work;
@@ -52,6 +53,15 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
       for (const auto cell : function.captures) { step(); owned.captures.push_back(cell); }
       plan.functions.push_back(std::move(owned));
     }
+    Require(modules.size() <= graph.ops.size(), Error::kOwnership);
+    admit(modules.size(), sizeof(ModuleEvaluation));
+    plan.modules.reserve(modules.size());
+    admit(plan.modules.capacity() - modules.size(), sizeof(ModuleEvaluation));
+    for (const auto& module : modules) { step(); plan.modules.push_back(module); }
+    auto indexed_modules = IndexModuleEvaluations(graph, plan.modules, {bytes, work});
+    if (const auto* error = std::get_if<EvaluationError>(&indexed_modules)) return *error;
+    auto module_index = std::get<ModuleEvaluationIndex>(std::move(indexed_modules));
+    admit(module_index.allocated_bytes, 1); step(module_index.work);
     admit(graph.ops.size(), sizeof(std::uint8_t)); step(graph.ops.size());
     std::vector<std::uint8_t> pinned(graph.ops.size());
     admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
@@ -69,6 +79,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
         // push/pop or infer a closure lifetime from scalar input-use order.
         pinned[i] = 1;
       }
+      if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueModuleRead>(op.operation))
+        pinned[i] = 1;
     }
     Require(next_function == functions.size(), Error::kOwnership);
     if (has_definitions) {
@@ -140,6 +152,11 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
           plan.operations[index].kind = EvaluationKind::kEnvironment;
           continue;
         }
+        if (std::holds_alternative<analysis::ValueGuard>(op.operation) &&
+            !module_index.peers.empty() && module_index.peers[index]) {
+          plan.operations[index].kind = EvaluationKind::kModuleGuard;
+          continue;
+        }
         const auto shape = DescribeEvaluation(op.operation);
         Require(shape.has_value(), Error::kUnsupportedOperation);
         Require(op.use_count == shape->Count() && shape->expression == op.result.has_value(),
@@ -151,10 +168,11 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
           continue;
         }
         placement.kind = EvaluationKind::kRoot;
-        if (op.result && graph.values[op.result->value].first_use) {
-          const auto use = *graph.values[op.result->value].first_use;
+        const auto visible_uses = ProjectEvaluationUses(graph, {static_cast<std::uint32_t>(index)}, module_index);
+        if (visible_uses.first) {
+          const auto use = *visible_uses.first;
           const auto& occurrence = graph.uses[use.value];
-          if (occurrence.next) placement.temporary = TemporaryReason::kMultipleUses;
+          if (visible_uses.multiple) placement.temporary = TemporaryReason::kMultipleUses;
           else {
             const auto* owner = std::get_if<analysis::OpId>(&occurrence.owner);
             placement.temporary = !owner || graph.ops[owner->value].block != op.block
@@ -195,7 +213,12 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
           Require(child.kind == EvaluationKind::kRoot, Error::kOwnership);
           child = {EvaluationKind::kInline, use, {}};
         }
-        if (OrderedEvaluation(op)) { ++serial; ++effects; }
+        if (OrderedEvaluation(op)) {
+          ++serial; ++effects;
+          // The pinned read executes both original ordered events. The guard
+          // has no independent source evaluation, but is never erased from IR.
+          if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) { ++serial; ++effects; }
+        }
         groups[index] = {effects, effects ? serial : 0};
       }
       next_op += block.op_count;
@@ -206,6 +229,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = plan.operations.capacity() * sizeof(OpEvaluation) +
         plan.functions.capacity() * sizeof(FunctionBinding) +
+        plan.modules.capacity() * sizeof(ModuleEvaluation) +
         (plan.phis ? plan.phis->allocated_bytes : 0) +
         (plan.literals ? plan.literals->allocated_bytes : 0);
     if (plan.cells) plan.allocated_bytes += plan.cells->allocated_bytes;

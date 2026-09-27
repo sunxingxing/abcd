@@ -80,6 +80,27 @@ does not claim a shared cumulative family-work budget or whole-process RSS proof
 
 ## Remaining Gates
 
+`BuildEvaluationPlan` accepts explicit conditional `ModuleEvaluation` entries.
+Its indexed checker requires an exact census of live module reads, matching
+space/slot and an adjacent same-block static-name guard consuming the read's
+SSA result. Default preparation without the table still refuses module reads.
+Initialized and exceptional/caller-guarded forms are not admitted by this API.
+The read stays pinned at its original root; the guard has `kModuleGuard`
+placement, not `kRemoved`. Evaluation verification consumes both original
+ordered events together, checking their separate imported effects rather than
+adding the guard to the pure-operation skip set. No IR operation is deleted.
+
+Source-use projection excludes exactly the absorbed guard dependency from the
+read's verified linked use list, in O(1). Guard-only reads retain their throwing
+effect but need no unused source snapshot. Real value uses, including a use
+after a call that may update the live binding, still retain a snapshot. The
+table is a source-binding obligation, not proof that its `ModuleSymbol` matches
+record metadata; original `ModuleGuards` and record correspondence must be
+checked independently before publication. The source wrapper explicitly rejects
+nonempty conditional module evaluation tables. Shared expression/statement
+construction and combined PC origins are the next integration step, not yet
+implemented by conditional evaluation alone.
+
 `FunctionSyntax.modules` constructs aliases to typed source module symbols in
 an outer module scope. Captures, parameters and block declarations use the same
 scope activation/checking machinery; module aliases do not produce function-local
@@ -103,3 +124,7 @@ are uncompiled/unrun under the current pause; no behavior or RSS claim follows.
 local/external), removed/changed guards, wrong SSA input, reordered pairs,
 changed PC/name/slot/effects/revisions, missing pair coverage, unguarded reads,
 budget boundaries and 200/201/geometric counts. It also remains uncompiled/unrun.
+`module_evaluation_test.cc` specifies repeated local/external pairs with calls
+between snapshot and use, guard-only reads without unused snapshots, census,
+slot/guard/effect mutation and resource/work boundaries at 200/201/geometric
+sizes. This regression source is also uncompiled/unrun.

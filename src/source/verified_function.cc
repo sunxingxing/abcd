@@ -313,7 +313,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     }
     // Standalone preparation has no enclosing capture-tree certificate.
     // Conditional child evaluation must never be promoted through this route.
-    if (!evaluation->functions.empty() ||
+    if (!evaluation->functions.empty() || !evaluation->modules.empty() ||
         (evaluation->cells && evaluation->cells->incoming != IncomingCells::kReject))
       throw Error::kEvaluation;
     budget.Admit(evaluation->allocated_bytes, 1); budget.Step(evaluation->work);

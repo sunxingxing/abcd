@@ -1,4 +1,5 @@
 #include "evaluation_plan.h"
+#include "module_evaluation.h"
 
 #include <new>
 #include <stdexcept>
@@ -30,6 +31,10 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
     step(graph.uses.size()); step(graph.uses.size()); step(graph.uses.size());
     if (const auto error = analysis::VerifyValueUses(graph, graph.uses.size()))
       return *error == analysis::ValueGraphError::kResourceLimit ? Error::kResourceLimit : Error::kInvalidGraph;
+    auto indexed_modules = IndexModuleEvaluations(graph, plan.modules, {bytes, work});
+    if (const auto* error = std::get_if<EvaluationError>(&indexed_modules)) return *error;
+    auto module_index = std::get<ModuleEvaluationIndex>(std::move(indexed_modules));
+    admit(module_index.allocated_bytes, 1); step(module_index.work);
     admit(graph.ops.size(), sizeof(std::uint8_t)); step(graph.ops.size());
     std::vector<std::uint8_t> pinned(graph.ops.size());
     admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
@@ -45,6 +50,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
         Require(next_function < plan.functions.size() && plan.functions[next_function++].creation.value == i, Error::kOwnership);
         pinned[i] = 1;
       }
+      if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueModuleRead>(op.operation))
+        pinned[i] = 1;
     }
     Require(next_function == plan.functions.size(), Error::kOwnership);
     Require(has_definitions == plan.literals.has_value(), Error::kOwnership);
@@ -122,6 +129,13 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
         visits[i] = EvaluationVisit::kDone;
         continue;
       }
+      if (std::holds_alternative<analysis::ValueGuard>(op.operation) &&
+          !module_index.peers.empty() && module_index.peers[i]) {
+        Require(placement.kind == EvaluationKind::kModuleGuard && !placement.consumer && !placement.temporary,
+            Error::kOwnership);
+        visits[i] = EvaluationVisit::kDone;
+        continue;
+      }
       const auto shape = DescribeEvaluation(op.operation);
       Require(shape.has_value(), Error::kUnsupportedOperation);
       Require(shape->Count() == op.use_count && shape->expression == op.result.has_value(), Error::kInvalidGraph);
@@ -144,12 +158,13 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
         Require(!PredicateSnapshot(graph, graph.ops[owner->value], use.operand), Error::kOwnership);
       } else {
         Require(placement.kind == EvaluationKind::kRoot && !placement.consumer, Error::kOwnership);
-        const bool used = op.result && graph.values[op.result->value].first_use.has_value();
+        const auto visible_uses = ProjectEvaluationUses(graph, {static_cast<std::uint32_t>(i)}, module_index);
+        const bool used = visible_uses.first.has_value();
         Require(used == placement.temporary.has_value(), Error::kOwnership);
         if (used) {
-          const auto& use = graph.uses[graph.values[op.result->value].first_use->value];
+          const auto& use = graph.uses[visible_uses.first->value];
           const auto* owner = std::get_if<analysis::OpId>(&use.owner);
-          const auto reason = use.next ? TemporaryReason::kMultipleUses
+          const auto reason = visible_uses.multiple ? TemporaryReason::kMultipleUses
               : !owner || graph.ops[owner->value].block != op.block ? TemporaryReason::kCrossRegionValue
               : PredicateSnapshot(graph, graph.ops[owner->value], use.operand)
                   ? TemporaryReason::kPredicateSnapshot : TemporaryReason::kEffectSnapshot;
@@ -216,6 +231,14 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
               skip_pure();
               Require(expected < end && expected == frame.op.value, Error::kOrder);
               ++expected;
+              if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) {
+                // Consume the second original event at this same root, not by
+                // adding it to skip_pure or trusting a Language result domain.
+                Require(expected < end && !module_index.peers.empty() &&
+                    module_index.peers[frame.op.value] == analysis::OpId{static_cast<std::uint32_t>(expected)} &&
+                    plan.operations[expected].kind == EvaluationKind::kModuleGuard, Error::kOrder);
+                ++expected;
+              }
             }
             visits[frame.op.value] = EvaluationVisit::kDone;
             --depth;

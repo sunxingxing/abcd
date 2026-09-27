@@ -735,6 +735,30 @@ the containing record still incomplete. P3 7366 still prepares 85 operations,
 one guarded module pair and one resolved module read, without executable source.
 These checks exercise existing routes, not the new module-alias source behavior.
 
+### T07/P3 Conditional Module Evaluation
+
+Guarded module reads now have an explicit conditional evaluation table linking
+each actual read/guard pair to a typed source module target. An O(I+M) indexed
+check enforces the complete live-read census, exact slot/SSA/static-guard shape,
+same-block adjacency and both imported effect contracts. The read is pinned;
+the guard is neither deleted nor treated as pure. Independent ordered-forest
+verification consumes the pair's two original effects at the read root.
+
+The source-use projection skips only that guard's one checked SSA dependency
+in O(1). Guard-only reads need no useless source snapshot; a real value consumed
+after an intervening call still does. Existing snapshots, phi uses and operand
+order remain handled by the common planner. No textual instruction dispatch or
+sample-specific path is introduced. The source wrapper explicitly rejects this
+conditional module table until original/record/AST proofs are closed.
+
+Production `abc_semantic` and `abc_structure` builds exited 0. ABC-only G2 7559
+keeps its existing rules-23 Printed/complete METHOD slice [2638,2924); P3 7366
+still prepares 85 operations and one guarded/resolved module read without source.
+These checks are not real-module evaluation/AST behavior evidence. New evaluation
+regression sources are uncompiled/unrun, and no generated JS or RSS ran.
+Module expressions, statement placement, combined origins and record binding
+remain open; neither P3 nor T07/T11 is declared complete.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

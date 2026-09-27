@@ -6,9 +6,10 @@
 #include "phi_copies.h"
 #include "literal_plan.h"
 #include "cell_evaluation.h"
+#include "module_guards.h"
 
 namespace abcd::source {
-enum class EvaluationKind : std::uint8_t { kRemoved, kRoot, kInline, kInitializer, kEnvironment };
+enum class EvaluationKind : std::uint8_t { kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard };
 struct OpEvaluation {
   EvaluationKind kind = EvaluationKind::kRemoved;
   std::optional<analysis::UseId> consumer;
@@ -23,6 +24,14 @@ struct FunctionBinding {
   // CaptureCells evidence must independently justify every edge at publication.
   std::vector<CellId> captures;
 };
+// Conditional source-module obligation. Original ModuleGuards and metadata
+// binding must independently justify each entry before publishing any source.
+// The raw load and Hole check jointly become one throwing live-binding read.
+struct ModuleEvaluation {
+  GuardedModuleRead pair;
+  analysis::ValueModuleRead read;
+  ModuleSymbol target;
+};
 struct EvaluationPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
@@ -33,6 +42,7 @@ struct EvaluationPlan {
   std::optional<LiteralPlan> literals;
   std::optional<CellEvaluation> cells;
   std::vector<FunctionBinding> functions;
+  std::vector<ModuleEvaluation> modules;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
@@ -71,7 +81,8 @@ struct EvaluationShape {
 [[nodiscard]] std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     IncomingCells incoming = IncomingCells::kReject,
-    std::span<const FunctionBinding> functions = {});
+    std::span<const FunctionBinding> functions = {},
+    std::span<const ModuleEvaluation> modules = {});
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and same-block availability. Call reference/source
 // order still needs its separate certificate. No plan replay.
