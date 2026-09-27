@@ -76,27 +76,39 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
   }
   std::optional<analysis::ValueEnvironments> environments;
   std::optional<CellPlan> cells;
+  auto remaining = budget.bytes;
+  const auto admit = [&](std::size_t count, std::size_t width) {
+    if (count > remaining / width) return false;
+    remaining -= count * width;
+    return true;
+  };
+  // The caller admitted input/proof. Keep the working graph alive alongside
+  // module/environment scratch and results; IDs from original proof tables
+  // must be explicitly rebased onto this working graph.
+  if (!admit(1, sizeof(*graph)) ||
+      !admit(graph->blocks.capacity(), sizeof(analysis::WorkBlock)) ||
+      !admit(graph->edges.capacity(), sizeof(analysis::WorkEdge)) ||
+      !admit(graph->ops.capacity(), sizeof(analysis::ValueOp)) ||
+      !admit(graph->values.capacity(), sizeof(analysis::ValueDefinition)) ||
+      !admit(graph->uses.capacity(), sizeof(analysis::OperandUse)) ||
+      !admit(graph->origins.capacity(), sizeof(analysis::ValueOrigin)) ||
+      !admit(graph->exceptional_exits.capacity(), sizeof(analysis::ValueExceptionalExit)) ||
+      !admit(graph->input.sites.capacity(), sizeof(std::optional<analysis::OpId>)) ||
+      !admit(graph->input.values.capacity(), sizeof(analysis::ValueId)))
+    return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kTransformStage);
+  auto guarded = BuildModuleGuards(owner, *graph, {remaining, budget.work - graph->ops.size()});
+  if (const auto* error = std::get_if<ModuleGuardError>(&guarded)) {
+    const auto kind = *error == ModuleGuardError::kResourceLimit ? RouteFailureClass::kMemoryLimit :
+        *error == ModuleGuardError::kWorkLimit ? RouteFailureClass::kWorkLimit :
+        *error == ModuleGuardError::kUnsupportedProof ? RouteFailureClass::kUnsupported : RouteFailureClass::kInvariantViolation;
+    return fail(kind, ValueRouteError::kTransformStage);
+  }
+  auto modules = std::get<ModuleGuards>(std::move(guarded));
+  if (!admit(modules.allocated_bytes, 1))
+    return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kTransformStage);
+  const auto work = budget.work - graph->ops.size() - modules.work;
   if (needs_environments) {
-    auto remaining = budget.bytes;
-    const auto admit = [&](std::size_t count, std::size_t width) {
-      if (count > remaining / width) return false;
-      remaining -= count * width;
-      return true;
-    };
-    // The caller admitted input/proof. Keep the working graph alive alongside
-    // environment scratch/result; never borrow input-local EnvironmentIds.
-    if (!admit(1, sizeof(*graph)) ||
-        !admit(graph->blocks.capacity(), sizeof(analysis::WorkBlock)) ||
-        !admit(graph->edges.capacity(), sizeof(analysis::WorkEdge)) ||
-        !admit(graph->ops.capacity(), sizeof(analysis::ValueOp)) ||
-        !admit(graph->values.capacity(), sizeof(analysis::ValueDefinition)) ||
-        !admit(graph->uses.capacity(), sizeof(analysis::OperandUse)) ||
-        !admit(graph->origins.capacity(), sizeof(analysis::ValueOrigin)) ||
-        !admit(graph->exceptional_exits.capacity(), sizeof(analysis::ValueExceptionalExit)) ||
-        !admit(graph->input.sites.capacity(), sizeof(std::optional<analysis::OpId>)) ||
-        !admit(graph->input.values.capacity(), sizeof(analysis::ValueId)))
-      return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kTransformStage);
-    auto built = analysis::BuildValueEnvironments(*graph, {remaining, budget.work - graph->ops.size()});
+    auto built = analysis::BuildValueEnvironments(*graph, {remaining, work});
     if (const auto* error = std::get_if<analysis::ValueEnvironmentError>(&built)) {
       const auto kind = *error == analysis::ValueEnvironmentError::kResourceLimit ? RouteFailureClass::kMemoryLimit :
           *error == analysis::ValueEnvironmentError::kWorkLimit ? RouteFailureClass::kWorkLimit : RouteFailureClass::kUnproved;
@@ -105,7 +117,6 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
     environments = std::get<analysis::ValueEnvironments>(std::move(built));
     if (!admit(environments->allocated_bytes, 1))
       return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kTransformStage);
-    const auto work = budget.work - graph->ops.size();
     if (environments->work > work)
       return fail(RouteFailureClass::kWorkLimit, ValueRouteError::kTransformStage);
     const auto captures = VerifyFunctionCaptures(owner, *graph, *environments,
@@ -136,6 +147,6 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
     return fail(RouteFailureClass::kInvariantViolation, ValueRouteError::kTransformStage);
   }
   return FunctionValues{std::move(*graph), std::move(environments), owner.Mode(),
-      owner.Identity(), owner.Method(), owner.Record(), std::move(cells)};
+      owner.Identity(), owner.Method(), owner.Record(), std::move(cells), std::move(modules)};
 }
 }  // namespace abcd::source

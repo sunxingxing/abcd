@@ -355,6 +355,7 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
       report["operations"] = function->values.graph.ops.size();
       report["cells"] = function->values.cells ? function->values.cells->cells.size() : 0;
       report["work_revision"] = function->values.graph.revision.value;
+      report["guarded_module_pairs"] = function->values.modules.pairs.size();
       report["module_reads_resolved"] = function->module_reads.has_value();
       if (function->module_reads) {
         report["module_reads"] = nlohmann::json::array();

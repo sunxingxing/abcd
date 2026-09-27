@@ -4,6 +4,7 @@
 #include "abcd/analysis/value_environment.h"
 #include "function_input.h"
 #include "cell_plan.h"
+#include "module_guards.h"
 
 namespace abcd::source {
 // Working state, not a source receipt. Conditional input assumptions travel
@@ -18,6 +19,7 @@ struct FunctionValues {
   // Conditional preparation retains the checked mutable-cell index once per
   // function. Rebuild it after graph edits; never rescan a graph per capture.
   std::optional<CellPlan> cells;
+  ModuleGuards modules;
 };
 struct FunctionValueFailure {
   SourceStage stage;

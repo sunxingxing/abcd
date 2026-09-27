@@ -20,6 +20,22 @@ retains the typed result alongside the working graph. Family/record callers
 must reuse the same immutable record context, not rescan all records per child.
 The diagnostic CLI resolves one context for its single requested function.
 
+`BuildFunctionValues` additionally rebases original guarded-load proofs into
+`ModuleGuards`, before environment/cell preparation. This applies to closed and
+conditional ordinary functions alike. The verifier follows original instruction
+backlinks and checks exact working load/guard kinds, original PC/provenance,
+space/slot, diagnostic-name pool slot, SSA result/guard operand, effects and
+same-block adjacency. It does not infer guard redundancy from a Language domain:
+that domain can itself depend on the original two-instruction lowering premise.
+The O(P) pair pass uses indexed origin lookup and O(P) retained storage, where P
+is original module-proof count; verification uses constant additional storage.
+Guarded, initialized, caller-guarded and catch-guarded proofs remain distinct;
+only the first is rebased by the current normal-flow API. Missing proof entries
+remain missing permission, even when a raw unused module read survives in IR.
+Both IR/CFG revision changes invalidate the table. The standalone ValueMethod
+receipt wrapper validates the correspondence but does not retain these private
+plans or gain module-print permission.
+
 ## Identity and Semantics
 
 - Binding identity is record owner plus `ModuleSpace` and `ModuleSlot`, never
@@ -73,3 +89,7 @@ aliases across different string entities, nonadjacent identical names,
 namespace imports, missing metadata, request/slot bounds, original-PC errors,
 removed operations, resource/work refusal and 200/201/geometric sizes. Tests
 are uncompiled/unrun under the current pause; no behavior or RSS claim follows.
+`module_guards_test.cc` adds actual bytecode-to-working-IR pairs (narrow/wide,
+local/external), removed/changed guards, wrong SSA input, reordered pairs,
+changed PC/name/slot/effects/revisions, missing pair coverage, unguarded reads,
+budget boundaries and 200/201/geometric counts. It also remains uncompiled/unrun.

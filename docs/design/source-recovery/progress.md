@@ -687,6 +687,24 @@ Immersive 21082 still prepares 21 operations with an empty module-read census.
 Both diagnostics exit 1 with source_complete=false/executable=false. These are
 binding/preparation observations, not source, behavior or whole-corpus evidence.
 
+### T07/P3 Module Guard Correspondence
+
+The common `BuildFunctionValues` path now retains original guarded-module-read
+proofs rebased onto the working graph. The paired check remains an explicit
+obligation: a conditional Language fact on the raw load is not used to erase
+the Hole guard. Validation checks exact input backlinks/origins, load slot and
+space, guard/name/SSA operand, normal/exception effects, revisions and adjacent
+same-block order. Initialized/caller/catch premises are not silently treated as
+the normal guarded pair. No guard or graph edge is changed by this step.
+
+Production `abc_semantic` and `abc_structure` builds exited 0. ABC-only P3 7366
+retains 85 operations and reports one checked module pair plus the prior one
+resolved module binding. Immersive 21082 retains 21 operations and zero pairs.
+Both still exit 1 with source_complete=false/executable=false. Rules remain 23;
+module-scope AST and live-binding/TDZ correspondence are still missing. New
+regression source covers tampering, bytecode forms, raw unguarded reads and
+200/201/geometric counts; tests are uncompiled/unrun. No JS or RSS work ran.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,
