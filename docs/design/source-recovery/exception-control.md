@@ -771,10 +771,43 @@ child capture target fails independently. This is not executable publication:
 unified file-family ownership, transitive write proof, complete ABI/PC evidence
 and execution verification still remain.
 
-`8257 recover` remains refused. Its property Op 9 / member call Op 12 subtree
+Before Rules 56, `8257 recover` remained refused. Its property Op 9 / member call Op 12 subtree
 is carried to pure final root Op 22 without exception dispatch evidence. The
 current fallback restores the entire proposed tree, leaving a member reference
 that cannot be emitted faithfully. Improve general tree partition/fallback
 while retaining exception/effect proofs; do not admit the pure root by assumption,
 read the getter twice, or synthesize a mutable `.call` lookup. Source rules stay
-55 until an actual publication path is admitted.
+55 at that step. The general retry below now removes this refusal.
+
+### Bounded Retry for Rejected Trees
+
+Rules 56 retains the speculative planner and independent verifier. After final
+catch checking, accepted trees stay unchanged. Rejected trees restore their
+original placements, then run the same effect-suffix scheduler once within their
+original root partition. No candidate can consume a producer from another
+partition. Each effect-carrying child must additionally have the same catch
+signature as its immediate new parent. By induction its entire retained effect
+subtree has that signature; a pure parent without dispatch evidence cannot move
+it. Pure zero-effect children still participate normally. The final verifier is
+unchanged and checks final roots rather than trusting this induction.
+
+This is a bounded conservative partition, not a maximal expression search or
+an iterative rollback loop. It can retain a legal getter/call subtree at the
+call's original site while materializing its result for a later pure expression.
+All work/space remains O(B+E+I+V+U+P+S); each producer has one effective consumer,
+and extra catch comparisons are charged to its original copy volume. No source
+text inspection, handler assumption or mutable `.call` fallback is involved.
+
+The real `recover` parent and both actual children now pass shared trees,
+capture/layout and lexical enclosure, alongside `queryDegree`. File-family
+ownership and transitive writes remain publication gates; this does not finish
+loops with exceptions, finally or suspension. Unit coverage includes deep pure
+result chains and callbacks across profiles 1202/1206/1301, exact work budgets,
+200/201/geometric counts and forced invalid final-root fusion.
+
+A file-backed standalone method reaches immutable preparation, shared AST and
+printer for `try { return typeof obj.run(7); } catch (e) { return e; }`.
+Execution checks cover 27 combinations of arbitrary JS values and normal/getter/
+call failure, original receiver/arguments and effect order; all ten original PCs
+have checked generated placements. This fixture has no child family and does
+not discharge the separate real-family publication obligations above.

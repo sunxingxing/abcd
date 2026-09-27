@@ -15,6 +15,30 @@ const Recovered = Function(`"use strict"; return class { ${result.source} };`)()
 const instance = new Recovered();
 assert.equal(instance.run.length, 1);
 const arbitrary = [undefined, null, false, -0, NaN, 19n, Symbol('payload'), {}, new Proxy({}, {})];
+const pureResult = JSON.parse(execFileSync(process.argv[2], ['--receiver-result-json'], { encoding: 'utf8' }));
+const PureResult = Function(`"use strict"; return class { ${pureResult.source} };`)();
+const pureMethod = new PureResult();
+for (const value of arbitrary) {
+  for (const failure of ['none', 'getter', 'call']) {
+    const events = [];
+    const input = { get run() {
+      events.push('get');
+      if (failure === 'getter') throw value;
+      return new Proxy(function () {}, {
+        get() { assert.fail('no call/apply lookup'); },
+        apply(target, receiver, args) {
+          assert.equal(receiver, input);
+          assert.deepEqual(args, [7]);
+          events.push('call');
+          if (failure === 'call') throw value;
+          return value;
+        },
+      });
+    } };
+    assert(Object.is(pureMethod.run(input), failure === 'none' ? typeof value : value));
+    assert.deepEqual(events, failure === 'getter' ? ['get'] : ['get', 'call']);
+  }
+}
 const Member = Function(`"use strict"; return class { ${member.source} };`)();
 const receiverMethod = new Member();
 const StagedMember = Function(`"use strict"; return class { ${stagedMember.source} };`)();
@@ -157,6 +181,16 @@ for (const placement of aliasMap.operations) {
 }
 
 const forwarded = JSON.parse(execFileSync(process.argv[2], ['--forwarder-json'], { encoding: 'utf8' }));
+const purePcs = [0, 2, 6, 8, 13, 15, 17, 21, 23, 24];
+const pureMap = pureResult.positions;
+assert.equal(pureMap.operations.length, purePcs.length);
+for (const placement of pureMap.operations) {
+  const range = placement.kind === 'anchor' ? pureMap.anchors[placement.node] :
+    placement.kind === 'statement' ? pureMap.statements[placement.node] : pureMap.expressions[placement.node];
+  assert(pcs(range.origin, pureMap).includes(purePcs[placement.operation]));
+  if (placement.kind === 'anchor') assert(range.byte <= Buffer.byteLength(pureResult.source));
+  else assert(range.begin < range.end && range.end <= Buffer.byteLength(pureResult.source));
+}
 const Forwarded = Function(`"use strict"; return class { ${forwarded.source} };`)();
 const forward = new Forwarded();
 for (const value of arbitrary) {

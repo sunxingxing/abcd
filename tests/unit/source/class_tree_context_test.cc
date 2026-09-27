@@ -38,7 +38,8 @@ void Check(bool condition) { if (!condition) std::abort(); }
 enum class DefaultEncoding { kNone, kInteger, kNegation };
 enum class ExceptionShape {
   kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies, kReceiver, kReceiverCatch,
-  kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof, kLiteral, kLexical
+  kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof, kLiteral, kLexical,
+  kReceiverResult
 };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
@@ -202,6 +203,16 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           op(abc::Opcode::kJEQZ_IMM8), kBranchDelta,
           op(abc::Opcode::kLDTRUE), kReturn, op(abc::Opcode::kLDFALSE), kReturn, kReturn,
           0, kReceiverProtected, kSingleTry, kCatchAll, kReceiverProtected, 1};
+    }
+    if (exception == ExceptionShape::kReceiverResult) {
+      constexpr std::uint8_t kLocals = 2, kReceiver = 5, kCallee = 0, kArgument = 1,
+          kValue = 7, kResultBytes = 25, kResultProtected = 24;
+      member = {kLocals, 4, kResultBytes, kSingleTry,
+          kLoad, kReceiver, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0,
+          kStore, kCallee, kInteger, kValue, 0, 0, 0, kStore, kArgument, kLoad, kCallee,
+          op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, kReceiver, kArgument,
+          op(abc::Opcode::kTYPEOF_IMM8), 0, kReturn, kReturn,
+          0, kResultProtected, kSingleTry, kCatchAll, kResultProtected, 1};
     }
     if (exception == ExceptionShape::kReceiverCatch) {
       constexpr std::uint8_t kLocals = 2, kReceiver = 5, kCallee = 0, kArgument = 1,
@@ -730,6 +741,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--receiver-result-json") {
+    Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kReceiverResult);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--lexical-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kLexical);
     return 0;
@@ -784,6 +799,7 @@ int main(int argc, char** argv) {
     return 0;
   }
   Check(argc == 1);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverResult);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLexical);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLiteral);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverTypeof);

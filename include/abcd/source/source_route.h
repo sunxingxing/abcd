@@ -249,7 +249,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // trees with phased cells require the exception-lifetime bridge.
 // Rules 55 admit local phase cells through checked try/catch source lifetimes,
 // original completed-store load facts and independent tree placement checks.
-inline constexpr std::uint32_t kRouteEvidenceRules = 55;
+// Rules 56 partition rejected phased expression trees in one bounded retry,
+// retaining legal inner effects without relaxing final-root exception checks.
+inline constexpr std::uint32_t kRouteEvidenceRules = 56;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

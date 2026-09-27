@@ -10,7 +10,7 @@ using namespace abcd::source;
 enum class Corridor {
   kPure, kEffect, kJump, kBranch, kChangedCatch, kStableCatch, kWrongReceiver, kDuplicate,
   kArgument, kArguments, kReversedArguments, kHandlerChange, kTypeofArgument,
-  kClosure, kClosureEnvironment, kClosureHandler
+  kClosure, kClosureEnvironment, kClosureHandler, kPureResult, kClosurePureResult
 };
 std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor = Corridor::kPure,
                   bool computed = false) {
@@ -32,6 +32,7 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
     bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), kArgument, kArgument});
   switch (corridor) {
     case Corridor::kClosure: case Corridor::kClosureEnvironment: case Corridor::kClosureHandler:
+    case Corridor::kClosurePureResult:
       bytes.insert(bytes.end(), {op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 0, 0, 0,
           op(abc::Opcode::kSTA_V8), kArgument});
       if (corridor == Corridor::kClosureEnvironment)
@@ -63,7 +64,7 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
             op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0, op(abc::Opcode::kSTA_V8), kSecondArgument});
       break;
     case Corridor::kPure: case Corridor::kStableCatch: case Corridor::kWrongReceiver:
-    case Corridor::kHandlerChange: break;
+    case Corridor::kHandlerChange: case Corridor::kPureResult: break;
   }
   const auto before_call = static_cast<std::uint32_t>(bytes.size());
   if (corridor == Corridor::kArguments || corridor == Corridor::kReversedArguments) {
@@ -75,6 +76,13 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
   } else bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kCallee,
       op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0,
       corridor == Corridor::kWrongReceiver ? kThis : kParameter, kArgument, op(abc::Opcode::kRETURN)});
+  const bool pure_result = corridor == Corridor::kPureResult || corridor == Corridor::kClosurePureResult;
+  if (pure_result) {
+    test::Check(bytes.back() == op(abc::Opcode::kRETURN)); bytes.pop_back();
+    for (std::uint32_t i = 0; i < count; ++i)
+      bytes.insert(bytes.end(), {op(abc::Opcode::kTYPEOF_IMM8), 0});
+    bytes.push_back(op(abc::Opcode::kRETURN));
+  }
   const auto handler_pc = static_cast<std::uint32_t>(bytes.size());
   const bool snapshot = corridor == Corridor::kChangedCatch || corridor == Corridor::kStableCatch;
   if (snapshot) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kArgument});
@@ -109,7 +117,7 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kReject, functions));
   const bool accepted = corridor == Corridor::kPure || corridor == Corridor::kStableCatch ||
       corridor == Corridor::kArgument || corridor == Corridor::kArguments || corridor == Corridor::kTypeofArgument ||
-      corridor == Corridor::kClosure;
+      corridor == Corridor::kClosure || pure_result;
   const bool fused = accepted || corridor == Corridor::kWrongReceiver;
   test::Check((evaluation.operations[kProperty.value].kind == EvaluationKind::kInline) == fused);
   for (const auto& function : functions)
@@ -144,6 +152,16 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
     auto malformed = graph;
     const auto consumer = *evaluation.operations[kProperty.value].consumer;
     const auto call = std::get<OpId>(graph.uses[consumer.value].owner);
+    if (pure_result) {
+      // The call retains its original exceptional execution site. Only its
+      // legal getter/callback subtree fuses; the pure result is still separate.
+      test::Check(evaluation.operations[call.value].kind == EvaluationKind::kRoot);
+      const auto& wrapper = graph.ops[call.value + 1];
+      test::Check(std::holds_alternative<ValueUnary>(wrapper.operation));
+      auto forged = evaluation;
+      forged.operations[call.value] = {EvaluationKind::kInline, wrapper.first_use, {}};
+      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    }
     malformed.ops[call.value].use_count = 0;
     test::Check(std::get<EvaluationError>(VerifyPhaseExpressions(malformed, evaluation, {})) ==
         EvaluationError::kInvalidGraph);
@@ -154,24 +172,29 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
     forged.operations[kProperty.value].consumer = UseId{static_cast<std::uint32_t>(graph.uses.size())};
     test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
   }
-  return std::get<PhaseEvaluationCost>(VerifyPhaseExpressions(graph, evaluation, {})).work;
+  // Include the planner's bounded retry, not just independent verification.
+  return evaluation.work + std::get<PhaseEvaluationCost>(VerifyPhaseExpressions(graph, evaluation, {})).work;
 }
 }  // namespace
 int main() {
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                             abc::ProfileId::kDynamic1301}) {
     std::uint32_t prior_count = 0;
-    std::uint64_t prior_work = 0, prior_wrapped_work = 0;
+    std::uint64_t prior_work = 0, prior_wrapped_work = 0, prior_retry_work = 0;
     constexpr std::uint32_t kScalingStart = 200;
     for (const auto count : {1U, kScalingStart, 201U, 402U, 1608U}) {
       const auto work = Run(count, profile);
       const auto wrapped_work = Run(count, profile, Corridor::kTypeofArgument);
       Run(count, profile, Corridor::kClosure);
+      Run(count, profile, Corridor::kPureResult);
+      const auto retry_work = Run(count, profile, Corridor::kClosurePureResult);
       if (prior_count >= kScalingStart) {
         test::Check(work <= prior_work * (count / prior_count + 1));
         test::Check(wrapped_work <= prior_wrapped_work * (count / prior_count + 1));
+        test::Check(retry_work <= prior_retry_work * (count / prior_count + 1));
       }
       prior_count = count; prior_work = work; prior_wrapped_work = wrapped_work;
+      prior_retry_work = retry_work;
     }
     Run(2, profile, Corridor::kPure, true);
     for (const auto corridor : {Corridor::kEffect, Corridor::kJump, Corridor::kBranch,

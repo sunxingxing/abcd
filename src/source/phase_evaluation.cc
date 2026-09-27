@@ -38,6 +38,46 @@ std::vector<OpId> Roots(const ValueProgram& graph, const EvaluationPlan& plan, P
   }
   return roots;
 }
+struct RetryPartition {
+  std::span<const OpId> roots;
+  std::span<const std::uint8_t> rejected;
+};
+void Schedule(const ValueProgram& graph, EvaluationPlan& plan, PhaseCorridors& corridors,
+    std::vector<EffectInterval>& intervals, PhaseBudget& budget, const RetryPartition* retry = nullptr) {
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    budget.Step(); const OpId id{static_cast<std::uint32_t>(i)};
+    if (retry && !retry->rejected[retry->roots[i].value]) continue;
+    const auto& op = graph.ops[i];
+    auto expected = corridors.EffectsBefore(id);
+    const auto effects = corridors.EffectCount(id);
+    intervals[i] = {effects, expected + effects};
+    if (!Inputs(op, plan.operations[i])) continue;
+    const auto shape = DescribeEvaluation(op.operation);
+    Require(shape && shape->Count() == op.use_count, Error::kInvalidGraph);
+    // Consume an effect suffix in reverse syntax order. Failed choices keep
+    // their original snapshots, never substitute .call or reorder arguments.
+    for (std::uint32_t ordinal = op.use_count; ordinal != 0; --ordinal) {
+      budget.Step(); const UseId use{op.first_use.value + ordinal - 1};
+      const auto& occurrence = graph.uses[use.value];
+      const auto producer = Producer(graph, plan, use);
+      if (!producer || shape->NeedsSnapshot(occurrence.role) ||
+          occurrence.role == OperandRole::kReceiver || PredicateSnapshot(graph, op, occurrence.operand)) continue;
+      if (retry && retry->roots[producer->value] != retry->roots[i]) continue;
+      const auto child = intervals[producer->value];
+      if (plan.operations[producer->value].kind != EvaluationKind::kRoot ||
+          (child.count && child.end != expected) ||
+          !corridors.CanFuse(*producer, id, use)) continue;
+      // Retry only inside a rejected tree. Every retained effect subtree has
+      // its root's catch signature by induction; require the same signature at
+      // each new parent. Pure roots lacking dispatch evidence keep snapshots.
+      // Single-use producers bound these comparisons by original copy volume.
+      if (retry && child.count && !corridors.SameCatch(*producer, id)) continue;
+      Require(child.count <= expected, Error::kInvalidGraph);
+      expected -= child.count; intervals[i].count += child.count;
+      plan.operations[producer->value] = {EvaluationKind::kInline, use, {}};
+    }
+  }
+}
 }  // namespace
 bool CrossPhaseInline(const ValueProgram& graph, const EvaluationPlan& plan, OpId producer) {
   const auto& placement = plan.operations[producer.value];
@@ -59,32 +99,7 @@ std::variant<PhaseEvaluationCost, EvaluationError> BuildPhaseExpressions(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step(); original[i] = plan.operations[i];
     }
-    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-      budget.Step(); const OpId id{static_cast<std::uint32_t>(i)};
-      const auto& op = graph.ops[i];
-      auto expected = corridors.EffectsBefore(id);
-      const auto effects = corridors.EffectCount(id);
-      intervals[i] = {effects, expected + effects};
-      if (!Inputs(op, plan.operations[i])) continue;
-      const auto shape = DescribeEvaluation(op.operation);
-      Require(shape && shape->Count() == op.use_count, Error::kInvalidGraph);
-      // Consume an effect suffix in reverse syntax order. Failed choices keep
-      // their original snapshots, never substitute .call or reorder arguments.
-      for (std::uint32_t ordinal = op.use_count; ordinal != 0; --ordinal) {
-        budget.Step(); const UseId use{op.first_use.value + ordinal - 1};
-        const auto& occurrence = graph.uses[use.value];
-        const auto producer = Producer(graph, plan, use);
-        if (!producer || shape->NeedsSnapshot(occurrence.role) ||
-            occurrence.role == OperandRole::kReceiver || PredicateSnapshot(graph, op, occurrence.operand)) continue;
-        const auto child = intervals[producer->value];
-        if (plan.operations[producer->value].kind != EvaluationKind::kRoot ||
-            (child.count && child.end != expected) ||
-            !corridors.CanFuse(*producer, id, use)) continue;
-        Require(child.count <= expected, Error::kInvalidGraph);
-        expected -= child.count; intervals[i].count += child.count;
-        plan.operations[producer->value] = {EvaluationKind::kInline, use, {}};
-      }
-    }
+    Schedule(graph, plan, corridors, intervals, budget);
     const auto roots = Roots(graph, plan, budget);
     std::vector<std::uint8_t> rejected;
     budget.Array(rejected, graph.ops.size());
@@ -94,12 +109,14 @@ std::variant<PhaseEvaluationCost, EvaluationError> BuildPhaseExpressions(
           PhaseCorridors::Event(graph.ops[i], plan.operations[i]) &&
           !corridors.SameCatch(id, roots[i])) rejected[roots[i].value] = 1;
     }
-    // Restoring a rejected tree is one indexed pass, not repeated rescheduling.
-    // This preserves the pre-projection snapshots when a moved throw would see
-    // another handler/state, or a standalone pure root has no dispatch proof.
+    // Restore only rejected trees, then partition them in one constrained pass.
+    // Accepted trees remain untouched. No fixed-point retry or ancestor walks;
+    // final independent verification still checks every resulting subtree.
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step(); if (rejected[roots[i].value]) plan.operations[i] = original[i];
     }
+    const RetryPartition retry{roots, rejected};
+    Schedule(graph, plan, corridors, intervals, budget, &retry);
     return budget.Cost();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
