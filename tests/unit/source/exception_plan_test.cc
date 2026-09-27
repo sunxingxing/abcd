@@ -1,4 +1,5 @@
 #include "../../../src/source/exception_plan.h"
+#include "../../../src/source/exception_control.h"
 #include "analysis/ssa_fixture.h"
 
 namespace {
@@ -7,6 +8,77 @@ using namespace abcd::analysis;
 using namespace abcd::source;
 // Pinned dynamic ISA: throw pref_none uses the throw prefix and subopcode zero.
 constexpr std::uint8_t kThrowPrefix = 0xfe, kThrowCode = 0x00;
+void Control(const abc::MethodBody& body, const ValueProgram& graph,
+             const PhasedValueInput& input, const ExceptionPlan& regions) {
+  const auto built = BuildExceptionControl(body, graph, input, regions);
+  if (const auto* error = std::get_if<ExceptionControlError>(&built))
+    std::cerr << "exception control error " << static_cast<unsigned>(*error) << '\n';
+  test::Check(std::holds_alternative<ExceptionControl>(built));
+  const auto& control = std::get<ExceptionControl>(built);
+  test::Check(control.regions.size() == regions.regions.size());
+  test::Check(control.units.size() == control.skeleton.nodes.size());
+  test::Check(control.arcs.size() == control.skeleton.edges.size());
+  for (std::size_t r = 0; r < control.regions.size(); ++r) {
+    const auto& region = control.regions[r];
+    test::Check(std::get<TryControlUnit>(control.units[region.wrapper.value]).region == TryId{static_cast<std::uint32_t>(r)});
+    test::Check(std::get<PhaseControlUnit>(control.units[region.handler.value]).block ==
+        regions.regions[r].binding->block);
+  }
+  std::size_t normal = 0;
+  for (const auto& arc : control.arcs) if (arc.edge) {
+    ++normal;
+    test::Check(!std::holds_alternative<RaiseTransfer>(regions.transfers[arc.edge->value]));
+  }
+  std::size_t expected = 0;
+  for (const auto& transfer : regions.transfers) expected += !std::holds_alternative<RaiseTransfer>(transfer);
+  test::Check(normal == expected);
+  const auto checked = VerifyExceptionControl(body, graph, input, regions, control);
+  test::Check(std::holds_alternative<std::uint64_t>(checked));
+  test::Check(std::holds_alternative<ControlError>(VerifyControlPlan(graph, control.skeleton)));
+  auto changed = control;
+  changed.regions.front().handler = changed.regions.front().body;
+  test::Check(std::holds_alternative<ExceptionControlError>(
+      VerifyExceptionControl(body, graph, input, regions, changed)));
+  changed = control;
+  changed.skeleton.nodes[changed.skeleton.entry.value].next = changed.skeleton.entry;
+  test::Check(std::holds_alternative<ExceptionControlError>(
+      VerifyExceptionControl(body, graph, input, regions, changed)));
+  changed = control;
+  changed.units.front() = TryControlUnit{{0}};
+  test::Check(std::holds_alternative<ExceptionControlError>(
+      VerifyExceptionControl(body, graph, input, regions, changed)));
+  changed = control;
+  changed.regions.front().exit = regions.regions.front().body;
+  test::Check(std::holds_alternative<ExceptionControlError>(
+      VerifyExceptionControl(body, graph, input, regions, changed)));
+  changed = control;
+  if (!changed.inactive_commits.empty()) {
+    changed.inactive_commits.clear();
+    test::Check(std::holds_alternative<ExceptionControlError>(
+        VerifyExceptionControl(body, graph, input, regions, changed)));
+  }
+  changed = control;
+  ++changed.skeleton.revision.value;
+  test::Check(std::get<ExceptionControlError>(
+      VerifyExceptionControl(body, graph, input, regions, changed)) == ExceptionControlError::kRevision);
+  changed = control;
+  if (!changed.arcs.empty()) {
+    changed.arcs.front().edge = EdgeId{static_cast<std::uint32_t>(graph.edges.size())};
+    test::Check(std::holds_alternative<ExceptionControlError>(
+        VerifyExceptionControl(body, graph, input, regions, changed)));
+  }
+  const auto work = std::get<std::uint64_t>(checked);
+  test::Check(std::holds_alternative<std::uint64_t>(VerifyExceptionControl(
+      body, graph, input, regions, control, {SemanticBudget{}.bytes, work})));
+  test::Check(std::get<ExceptionControlError>(VerifyExceptionControl(
+      body, graph, input, regions, control, {SemanticBudget{}.bytes, work - 1})) == ExceptionControlError::kWorkLimit);
+  test::Check(std::holds_alternative<ExceptionControl>(BuildExceptionControl(
+      body, graph, input, regions, {SemanticBudget{}.bytes, control.work})));
+  test::Check(std::get<ExceptionControlError>(BuildExceptionControl(
+      body, graph, input, regions, {SemanticBudget{}.bytes, control.work - 1})) == ExceptionControlError::kWorkLimit);
+  test::Check(std::get<ExceptionControlError>(BuildExceptionControl(
+      body, graph, input, regions, {0})) == ExceptionControlError::kResourceLimit);
+}
 void Nested(abc::ProfileId profile, std::uint32_t prelude, std::uint32_t depth = 2) {
   std::vector<std::uint8_t> bytes(prelude, static_cast<std::uint8_t>(abc::Opcode::kLDUNDEFINED));
   bytes.insert(bytes.end(), {static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0});
@@ -51,6 +123,7 @@ void Nested(abc::ProfileId profile, std::uint32_t prelude, std::uint32_t depth =
               << " prelude " << prelude << '\n';
   test::Check(std::holds_alternative<ExceptionPlan>(planned));
   const auto& plan = std::get<ExceptionPlan>(planned);
+  Control(body, graph, input, plan);
   test::Check(plan.regions.size() == depth && plan.regions[0].binding && plan.regions[1].binding);
   for (std::uint32_t r = 0; r < depth; ++r)
     test::Check(plan.layout.source_order[r] == TryId{depth - r - 1});
@@ -178,11 +251,81 @@ void OldLocal(abc::ProfileId profile, bool normal_handler_entry) {
   }
   test::Check(std::holds_alternative<ExceptionPlan>(planned));
   const auto& plan = std::get<ExceptionPlan>(planned);
+  Control(body, graph, input, plan);
   test::Check(plan.regions[0].binding.has_value());
   const auto loaded = std::get<ValueId>(graph.uses[graph.ops[5].first_use.value].operand);
   test::Check(loaded == graph.ops[1].result && loaded != graph.ops[3].result);
   test::Check(loaded != plan.regions[0].binding->value);
   test::Check(std::holds_alternative<std::uint64_t>(VerifyExceptionPlan(body, graph, input, plan)));
+}
+void DecodedControl(const abc::MethodBody& body, abc::ProfileId profile,
+                    std::optional<ExceptionControlError> expected = {}) {
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {}));
+  const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers, {}, {}, &frame));
+  IdfQuota quota{kDefaultSemanticWork};
+  const auto ssa = std::get<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers, quota));
+  std::vector<EntryValueFact> entries;
+  for (std::size_t v = 0; v < ssa.Values().size(); ++v)
+    if (std::holds_alternative<MethodEntry>(ssa.Values()[v].origin) &&
+        std::holds_alternative<abc::RegisterId>(ssa.Values()[v].slot))
+      entries.push_back({{static_cast<std::uint32_t>(v)}, ValueKinds::Language()});
+  const auto environments = std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
+  IdfQuota value_quota{kDefaultSemanticWork};
+  const auto values = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(
+      flow, ssa, entries, value_quota, {}, PendingExceptionValues::kLanguage));
+  const auto proof = std::get<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, environments, values));
+  const PhasedValueInput input{flow, ssa, environments, values, proof, frame};
+  const auto graph = std::get<ValueProgram>(ImportPhasedValues(input));
+  const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
+  if (expected) {
+    test::Check(std::get<ExceptionControlError>(BuildExceptionControl(body, graph, input, regions)) == *expected);
+  } else Control(body, graph, input, regions);
+}
+void BranchJoin(abc::ProfileId profile) {
+  // Protected diamond rejoins at PC14, then body and handler both continue at
+  // PC19. The getter has a raising edge, not a third source-level branch arm.
+  std::vector<std::uint8_t> bytes = {
+      static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0,
+      static_cast<std::uint8_t>(abc::Opcode::kJEQZ_IMM8), 5,
+      static_cast<std::uint8_t>(abc::Opcode::kLDTRUE),
+      static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM8), 5,
+      static_cast<std::uint8_t>(abc::Opcode::kLDFALSE),
+      static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM8), 2,
+      static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM8), 5,
+      static_cast<std::uint8_t>(abc::Opcode::kLDUNDEFINED),
+      static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM8), 2,
+      static_cast<std::uint8_t>(abc::Opcode::kRETURN)};
+  auto body = test::Body(bytes);
+  abc::TryRegion region;
+  region.length = 16; region.handler_count = 1;
+  body.tries.push_back(region);
+  abc::CatchHandler handler;
+  handler.offset = {16}; handler.length = 3;
+  body.handlers.push_back(handler);
+  DecodedControl(body, profile);
+  body.tries[0].length = 14; // Gap jump at PC14 is not yet folded across a try exit.
+  DecodedControl(body, profile, ExceptionControlError::kMultipleExits);
+  body.tries[0].length = 16;
+  constexpr std::size_t kBackedgeOperand = 13;
+  constexpr std::int8_t kBackedgeToPredicate = -6;
+  bytes[kBackedgeOperand] = static_cast<std::uint8_t>(kBackedgeToPredicate);
+  body.instructions = test::Body(bytes).instructions;
+  DecodedControl(body, profile, ExceptionControlError::kCycle);
+}
+void HandlerNestedTry(abc::ProfileId profile) {
+  const std::vector<std::uint8_t> bytes = {
+      static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0, kThrowPrefix, kThrowCode,
+      static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0, kThrowPrefix, kThrowCode,
+      static_cast<std::uint8_t>(abc::Opcode::kRETURN)};
+  auto body = test::Body(bytes);
+  abc::TryRegion outer; outer.length = 4; outer.handler_count = 1;
+  abc::TryRegion inner; inner.offset = {4}; inner.length = 4; inner.first_handler = 1; inner.handler_count = 1;
+  body.tries = {outer, inner};
+  abc::CatchHandler first; first.offset = {4}; first.length = 5;
+  abc::CatchHandler second; second.offset = {8}; second.length = 1;
+  body.handlers = {first, second};
+  DecodedControl(body, profile);
 }
 }  // namespace
 int main() {
@@ -191,6 +334,8 @@ int main() {
     for (const std::uint32_t size : {0U, 1U, 200U, 201U, 402U}) Nested(profile, size);
     OldLocal(profile, false);
     OldLocal(profile, true);
+    BranchJoin(profile);
+    HandlerNestedTry(profile);
   }
   for (const std::uint32_t depth : {200U, 201U, 402U})
     Nested(abc::ProfileId::kDynamic1301, 1, depth);

@@ -17,11 +17,10 @@ void Require(bool condition, Error error) {
 struct RegionTask { std::uint32_t first; std::uint32_t stop; };
 class ControlBuilder {
  public:
-  ControlBuilder(const analysis::ValueProgram& graph, std::span<const ControlId> entries, ControlQuota& quota)
+  ControlBuilder(ControlTopology graph, std::span<const ControlId> entries, ControlQuota& quota)
       : graph_(graph), entries_(entries), quota_(quota), exit_(graph.blocks.size()),
         levels_(std::bit_width(exit_)) {}
   ControlPlan Build() {
-    Require(graph_.phases.empty(), Error::kInvalidGraph);
     Require(exit_ != 0 && exit_ < std::numeric_limits<std::uint32_t>::max(), Error::kInvalidGraph);
     quota_.Size(indegree_, exit_);
     quota_.Size(order_, exit_);
@@ -57,7 +56,8 @@ class ControlBuilder {
         quota_.Work();
         const auto& edge = graph_.edges[next_edge++];
         Require(edge.source.value == b && edge.successor == e && edge.target.value < exit_ &&
-                edge.kind != analysis::FlowEdgeKind::kResume, Error::kInvalidGraph);
+                (edge.kind == analysis::FlowEdgeKind::kTaken ||
+                 edge.kind == analysis::FlowEdgeKind::kFallthrough), Error::kInvalidGraph);
         ++indegree_[edge.target.value];
       }
       plan_.nodes[b].block = {static_cast<std::uint32_t>(b)};
@@ -177,7 +177,7 @@ class ControlBuilder {
     }
     Require(covered == exit_, Error::kUncoveredBlock);
   }
-  const analysis::ValueProgram& graph_;
+  ControlTopology graph_;
   std::span<const ControlId> entries_;
   ControlQuota& quota_;
   std::size_t exit_;
@@ -190,6 +190,11 @@ class ControlBuilder {
 }  // namespace
 
 ControlPlan BuildControlSkeleton(const analysis::ValueProgram& graph,
+    std::span<const ControlId> entries, ControlQuota& quota) {
+  Require(graph.phases.empty(), Error::kInvalidGraph);
+  return BuildControlSkeleton(ControlTopology{graph.revision, graph.cfg_revision, graph.blocks, graph.edges}, entries, quota);
+}
+ControlPlan BuildControlSkeleton(ControlTopology graph,
     std::span<const ControlId> entries, ControlQuota& quota) {
   return ControlBuilder(graph, entries, quota).Build();
 }

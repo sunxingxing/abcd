@@ -42,6 +42,28 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- T09 异常控制层已复用共享 postdominator/区域发现算法，详见
+  [异常控制投影](exception-control.md)。ControlTopology 只借用拓扑，不复制或清空
+  ValueProgram 的 phases；ExceptionControl 显式区分原 phase、try wrapper 和区域
+  正常退出单元，投影边保留原 EdgeId，异常分派仍由 ExceptionPlan 保存。
+  Catch 相位按所属 handler 定位，不误落入同 PC 开始的内层 protected scope。
+  区域祖先采用 DFS 区间，入口采用排序索引；每条边只检查最内层出口，子区域摘要
+  按逆序传播一次，避免按边反复扫描祖先。独立骨架校验核对边、分支、根和节点
+  独占所有权，不重跑 postdominator。仅保留 explicit throw 的空 disconnected Commit；
+  其他不可达块仍拒绝。普通控制入口继续拒绝 phased graph。
+  三个 profile 的解码用例覆盖 protected diamond/汇合、共享起点嵌套、handler 起点
+  嵌套 try、旧局部值、200/201/402 层区域及篡改 handler/出口/单元/边/修订/不可达
+  Commit、精确 work/零 bytes 边界。两个 getter/两个调用的异常复制用例同时消费
+  控制投影和共享表达式，核对 staged op/raising edge/Catch 提交的相同身份。
+  13/13 定向回归通过：exception_plan/copies、control_plan、function_tree、try_tree、
+  try_tree_source、creation/class_tree_context、argument_snapshot_source、constant_group
+  和三个既有应用切片；abc_semantic 构建通过。新入口先编译失败后实现接通。
+  **该层尚未接入 FunctionTree/源码发布**。当前仅接纳无环、每个 try 单一正常出口
+  的区域；多出口和投影循环均 typed reject，不是最终支持边界。下一步接入共享树
+  构建与语义核对，包括 Commit 上的分支和原边复制，再完成循环/异常混合区域、
+  completion/finally、async/generator 挂起恢复。规则仍为 44，全 ISA/group 1 未完成。
+  未运行全量、RSS 或基准。
+
 - T09 共享源码 AST 新增 TryStmt/CatchClause，支持 try/catch、try/finally 和
   try/catch/finally；所有区域必须独占 BlockStmt。新增明确的 catch 参数 binding/
   declaration/scope 类型，只有所属 handler 才激活参数，退出后恢复外层同名绑定。

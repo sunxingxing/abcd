@@ -2,6 +2,7 @@
 #include "../../../src/analysis/value_edits.h"
 #include "../../../src/analysis/phased_value_import.h"
 #include "../../../src/source/exception_plan.h"
+#include "../../../src/source/exception_control.h"
 #include "../../../src/source/evaluation_plan.h"
 #include "../../../src/source/binding_plan.h"
 #include "../../../src/source/expression_forest.h"
@@ -281,7 +282,8 @@ void Decoded(abc::ProfileId profile, ThrowingSite site) {
   const PhasedValueInput input{flow, ssa, environments, values, proof, frame};
   auto imported = ImportPhasedValues(input);
   const auto& graph = std::get<ValueProgram>(imported);
-  test::Check(std::holds_alternative<ExceptionPlan>(BuildExceptionPlan(body, graph, input)));
+  const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
+  const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
   const auto copied = BuildPhasedPhiCopies(graph);
   test::Check(std::holds_alternative<PhiCopies>(copied));
   const auto& copies = std::get<PhiCopies>(copied);
@@ -309,6 +311,13 @@ void Decoded(abc::ProfileId profile, ThrowingSite site) {
   const auto& forest = std::get<ExpressionForest>(expressed);
   test::Check(forest.throws.size() == 2 && forest.catches.size() == 1);
   test::Check(forest.throw_assignments.size() == 2 && forest.catch_assignments.size() == 1);
+  const auto catch_entry = control.regions.front().handler;
+  test::Check(std::get<PhaseControlUnit>(control.units[catch_entry.value]).block == forest.catches.front().block);
+  for (const auto& staged : forest.throws) {
+    const auto block = graph.ops[staged.placement.operation.value].block;
+    test::Check(std::get<PhaseControlUnit>(control.units[block.value]).block == block);
+    test::Check(std::get<RaiseTransfer>(regions.transfers[staged.placement.edge.value]).region == TryId{0});
+  }
   const auto& first = forest.expressions[forest.operations[3]->value];
   const auto& second = forest.expressions[forest.operations[6]->value];
   test::Check(std::get<OriginalSite>(forest.origins[first.origin.value]).pc == first_pc);
