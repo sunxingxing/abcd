@@ -255,6 +255,18 @@ void GlobalReads() {
 }  // namespace
 
 int main() {
+  {
+    Fixture fixture;
+    fixture.Read();
+    fixture.Add(analysis::ValueDebugger{}, false, {});
+    fixture.Return({1});
+    auto plan = fixture.Plan();
+    // Even missing effect flags must not move a getter past the observation.
+    Check(OrderedEvaluation(fixture.graph.ops[1]));
+    Check(plan.operations[0].kind == EvaluationKind::kRoot);
+    Check(plan.operations[0].temporary == TemporaryReason::kEffectSnapshot);
+    Check(plan.operations[1].kind == EvaluationKind::kRoot);
+  }
   OrderedOperands(false); OrderedOperands(true);
   Barrier(false); Barrier(true);
   SharedValue(); CrossBlock();

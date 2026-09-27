@@ -512,8 +512,25 @@ void OwnDefinitionRefusal() {
         EvaluationError::kUnsupportedOperation);
   }
 }
+void DebuggerTree() {
+  using namespace analysis;
+  Fixture fixture;
+  fixture.Add(0, 0, 0, ValueDebugger{}, false, {});
+  fixture.graph.ops[0].normal = LanguageEffect::kDebugger;
+  fixture.Add(0, 1, 1, ValueReturn{}, false,
+      {{OperandRole::kReturnValue, SpecialValue::kTrue}});
+  fixture.graph.blocks = {{{0}, 2, {0}, 0}};
+  auto built = fixture.Build();
+  auto& tree = std::get<ConstructedFunction>(built).tree;
+  Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+  const auto statement = std::get<StmtId>(tree.operations[0].node);
+  Check(std::holds_alternative<DebuggerStmt>(tree.statements[statement.value].statement));
+  tree.statements[statement.value].statement = ReturnStmt{};
+  Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
+}
 }  // namespace
 int main() {
+  DebuggerTree();
   ComputedStoreTree();
   BranchTree();
   SnapshotTree();

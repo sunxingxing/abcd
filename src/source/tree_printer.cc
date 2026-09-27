@@ -472,6 +472,7 @@ class TreePrinter {
   }
   void StatementNode(BreakStmt, Statement) { Append("break;"); }
   void StatementNode(ContinueStmt, Statement) { Append("continue;"); }
+  void StatementNode(DebuggerStmt, Statement) { Append("debugger;"); }
   void Run(Statement at) {
     depth_ = at.depth;
     Result().statements[at.id.value].begin = written_;

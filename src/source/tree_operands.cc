@@ -40,6 +40,10 @@ class OperandCheck {
       current_ = {static_cast<std::uint32_t>(i)};
       origin_ = {op.origin.value};
       if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation)) continue;
+      if (std::holds_alternative<analysis::ValueDebugger>(op.operation)) {
+        RequireMeaning(!op.result && op.use_count == 0 && !flow_.expressions[i], Error::kOperand);
+        continue;
+      }
       RequireMeaning(flow_.expressions[i].has_value(), Error::kOperand);
       const auto expression = *flow_.expressions[i];
       const auto input = [&](std::uint32_t ordinal) -> const analysis::ValueOperand& {
@@ -175,7 +179,8 @@ class OperandCheck {
           static_assert(std::is_same_v<T, analysis::ValueModuleWrite> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
-                        std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueJump>);
+                        std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueDebugger> ||
+                        std::is_same_v<T, analysis::ValueJump>);
           throw Error::kUnsupportedOperation;
         }
       }, op.operation);

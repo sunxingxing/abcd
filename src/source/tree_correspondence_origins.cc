@@ -73,6 +73,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
       RequireMeaning(tree.expressions[statement.expression.value].origin == origin, Error::kOrigin);
     }
     if (std::holds_alternative<analysis::ValueJump>(op.operation) ||
+        std::holds_alternative<analysis::ValueDebugger>(op.operation) ||
         std::holds_alternative<analysis::ValueReturn>(op.operation) || IsEnvironmentState(op.operation)) continue;
     RequireMeaning(flow.expressions[i].has_value(), Error::kOrigin);
     auto& owner = expected[op.origin.value];

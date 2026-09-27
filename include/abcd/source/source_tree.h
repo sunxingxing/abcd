@@ -135,8 +135,9 @@ struct LoopStmt { StmtId body; };
 // permits only the nearest enclosing loop; outer transfers need explicit labels.
 struct BreakStmt { StmtId target; };
 struct ContinueStmt { StmtId target; };
+struct DebuggerStmt {};
 using TreeStatement = std::variant<BlockStmt, DeclarationStmt, ExpressionStmt, IfStmt, ReturnStmt,
-                                   LoopStmt, BreakStmt, ContinueStmt>;
+                                   LoopStmt, BreakStmt, ContinueStmt, DebuggerStmt>;
 struct StmtNode { TreeStatement statement; TreeOriginId origin; };
 
 // Origins/validation side tables may refer to working IDs. Executable node

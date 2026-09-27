@@ -7,6 +7,38 @@
 int main() {
   using namespace abcd;
   using namespace abcd::analysis;
+  {
+    const auto code = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDTRUE),
+        static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER),
+        static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
+    const auto frame = std::get<abc::FrameLayout>(
+        abc::BuildFrameLayout(0, 0, {false, false, false, false}));
+    const auto built = BuildSemanticMethod(code, abc::ProfileId::kDynamic1206, 0);
+    test::Check(std::holds_alternative<SemanticMethod>(built));
+    const auto& method = std::get<SemanticMethod>(built);
+    const auto& debug = method.instructions[1];
+    test::Check(std::holds_alternative<DebuggerOperation>(debug.operation));
+    test::Check(debug.pc == abc::CodeOffset{1});
+    test::Check(debug.effects.normal == LanguageEffect::kDebugger &&
+        debug.effects.before_throw == LanguageEffect::kNone &&
+        debug.effects.exceptional == ExceptionalCompletion::kImpossible);
+    test::Check(debug.effects.normal_registers.read_count == 0 &&
+        !debug.effects.normal_registers.write);
+    const auto checked = VerifySemanticSource(code, method, 0, 0);
+    const auto& proof = std::get<SemanticProof>(checked);
+    auto imported = ImportNormalValues(code, method, proof, frame);
+    auto& graph = std::get<ValueProgram>(imported);
+    test::Check(std::holds_alternative<ValueDebugger>(graph.ops[1].operation));
+    test::Check(!graph.ops[1].result && graph.ops[1].use_count == 0);
+    test::Check(!VerifyImportedValues(graph, method, proof, frame));
+    auto stripped = graph.ops[1];
+    stripped.normal = LanguageEffect::kNone;
+    test::Check(!CanErasePureOp(stripped));
+    auto malformed = code.instructions[1];
+    malformed.decoded.operand_count = 1;
+    test::Check(std::get<SemanticFailure>(LiftSemanticInstruction(
+        malformed, abc::ProfileId::kDynamic1206, 0)).kind == SemanticError::kMalformedInstruction);
+  }
   auto body = test::Body({0x60, 0, 0x61, 1, 0x60, 1, 0x64});
   const auto frame = std::get<abc::FrameLayout>(
       abc::BuildFrameLayout(0, 2, {false, false, false, false}));

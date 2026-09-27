@@ -99,6 +99,7 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       if (const auto* name = std::get_if<abc::RegisterId>(&op.name))
         Append(plan, OperandRole::kDiagnosticName, *name, ReadPurpose::kProtocol);
     } else if constexpr (std::is_same_v<T, NoOperation> ||
+                         std::is_same_v<T, DebuggerOperation> ||
                          std::is_same_v<T, JumpOperation>) {
     } else {
       return false;

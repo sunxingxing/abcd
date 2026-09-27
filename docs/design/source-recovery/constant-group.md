@@ -34,6 +34,28 @@ It does not execute the original methods in an Ark VM, prove all historical
 runtime behavior, or compare engine-specific error messages. Evaluation source
 and assertions remain outside production inputs. No RSS or benchmark is run.
 
+## Debugger Slice
+
+DEBUGGER now enters the same pipeline as a typed DebuggerOperation,
+ValueDebugger and DebuggerStmt, printed as `debugger;`. The pinned
+`ets_runtime/ecmascript/interpreter/interpreter-inl.cpp` DEBUGGER handler calls
+NotifyDebuggerStmt and dispatches without replacing the accumulator. Its IR
+therefore has no register inputs/result, a debugger observation effect and no
+ordinary JS exceptional completion. DCE cannot erase it, even if an effects
+field is missing; evaluation planning keeps observable reads ordered across it.
+
+The fixture adds two debugger instructions to each of the 36 positive cases.
+Independent Node inspector events verify both pauses, the call between them,
+and skipping the second pause when the callback throws. Both original debugger
+PCs map to their exact generated statement spans. Mutation tests reject a
+different AST statement in place of the debugger; an evaluation test keeps a
+getter snapshot before the observation point. Malformed operand counts reject.
+
+This preserves debugger statement occurrences and language execution order;
+it does not promise identical VM register views, inspector protocols, stack
+presentation or interactive debugger edits across Ark and Node. No debugger
+inspection UI or bytecode-register reconstruction has been implemented.
+
 ## Remaining Group Work
 
 - LDGLOBAL and LDSYMBOL: bind realm identity without replacing intrinsic
@@ -49,8 +71,6 @@ and assertions remain outside production inputs. No RSS or benchmark is run.
   do not substitute an ordinary rest array.
 - ASYNCFUNCTIONENTER: integrate the complete async owner and exception phases,
   not a standalone Promise expression.
-- DEBUGGER: carry an explicit observable statement through all common stages;
-  do not erase it as NOP.
 
 These are obligations, not assertions that no supporting implementation exists.
 Each needs common-path positive/negative evidence and context validation before

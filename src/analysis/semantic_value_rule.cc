@@ -66,6 +66,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
     } else {
       static_assert(std::is_same_v<T, NoOperation> ||
+                    std::is_same_v<T, DebuggerOperation> ||
                     std::is_same_v<T, NamedWrite> ||
                     std::is_same_v<T, OwnWrite> ||
                     std::is_same_v<T, IndexedWrite> ||

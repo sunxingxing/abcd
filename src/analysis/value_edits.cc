@@ -33,6 +33,7 @@ bool CanErasePureOp(const ValueOp& op) {
                   std::is_same_v<T, ValueNop>) return true;
     else {
       static_assert(std::is_same_v<T, ValueNamedRead> ||
+                    std::is_same_v<T, ValueDebugger> ||
                     std::is_same_v<T, ValueModuleRead> ||
                     std::is_same_v<T, ValueModuleWrite> ||
                     std::is_same_v<T, ValueFunctionCreation> ||

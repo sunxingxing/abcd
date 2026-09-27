@@ -37,7 +37,7 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes,
   return {{offset}, {start}, locals, args, static_cast<std::uint32_t>(code.size()), 0};
 }
 void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
-    ExpectedSource expected = ExpectedSource::kPrinted) {
+    ExpectedSource expected = ExpectedSource::kPrinted, bool debug = false) {
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kTarget >> (kByteBits * i));
@@ -46,6 +46,7 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
       {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), kCache, 0, 0, parameters,
        Op(abc::Opcode::kRETURNUNDEFINED)}, 0, 0);
   std::vector<std::uint8_t> code{Op(constant)};
+  if (debug) code.push_back(Op(abc::Opcode::kDEBUGGER));
   if (callback) {
     // Keep the loaded value live across a potentially throwing call. The
     // callback result is intentionally discarded, not substituted for it.
@@ -55,6 +56,7 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
         Op(abc::Opcode::kCALLARG1_IMM8_V8), kCache, kValue,
         Op(abc::Opcode::kLDA_V8), kValue});
   }
+  if (debug) code.push_back(Op(abc::Opcode::kDEBUGGER));
   code.push_back(Op(abc::Opcode::kRETURN));
   const auto target = Append(bytes, code, callback ? kLocals : 0,
       kImplicitArguments + parameters);
@@ -112,6 +114,23 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   const auto expression = std::get<ExprId>(mapping.target);
   const auto span = emission.Positions().members.front().expressions[expression.value];
   test::Check(span.begin < span.end && span.end <= output.view().size());
+  if (debug) {
+    const std::array expected_pc{abc::CodeOffset{1},
+        abc::CodeOffset{static_cast<std::uint32_t>(code.size() - 2)}};
+    std::size_t count = 0;
+    for (const auto& site : member.sources->sites) {
+      const auto* statement = std::get_if<StmtId>(&site.target);
+      if (!statement || !std::holds_alternative<DebuggerStmt>(
+          member.tree.statements[statement->value].statement)) continue;
+      test::Check(count < expected_pc.size());
+      const auto& origin = std::get<OriginalSite>(member.tree.origins[site.origin.value]);
+      test::Check(origin.pc == expected_pc[count++]);
+      const auto range = emission.Positions().members.front().statements[statement->value];
+      test::Check(range.begin < range.end && range.end <= output.view().size());
+      test::Check(output.view().substr(range.begin, range.end - range.begin) == "debugger;");
+    }
+    test::Check(count == expected_pc.size());
+  }
   std::cout << output.str() << ",\n";
   test::Check(unlink(path) == 0);
 }
@@ -124,5 +143,11 @@ int main() {
     for (const bool callback : {false, true})
       Emit(profile, abc::Opcode::kLDHOLE, callback, ExpectedSource::kRejected);
   }
+  std::cout << "];\n";
+  std::cout << "export const debugCases = [\n";
+  for (const auto profile : kProfiles)
+    for (const auto constant : kConstants)
+      for (const bool callback : {false, true})
+        Emit(profile, constant, callback, ExpectedSource::kPrinted, true);
   std::cout << "];\n";
 }

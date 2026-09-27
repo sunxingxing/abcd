@@ -114,6 +114,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueReturn{};
     } else if constexpr (std::is_same_v<T, NoOperation>) {
       return ValueNop{};
+    } else if constexpr (std::is_same_v<T, DebuggerOperation>) {
+      return ValueDebugger{};
     } else if constexpr (std::is_same_v<T, StringLoad>) {
       return ValueString{op.value};
     } else if constexpr (std::is_same_v<T, GlobalAccess>) {

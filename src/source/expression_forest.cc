@@ -446,7 +446,8 @@ class ForestBuilder {
         return Add(GlobalNameExpr{*name}, origin);
       } else if constexpr (std::is_same_v<T, analysis::ValueReturn>)
         return operands[0];
-      else if constexpr (std::is_same_v<T, analysis::ValueJump>)
+      else if constexpr (std::is_same_v<T, analysis::ValueJump> ||
+                         std::is_same_v<T, analysis::ValueDebugger>)
         return {};
       else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>)
         return Add(EmptyArrayExpr{}, origin);

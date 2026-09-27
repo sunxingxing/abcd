@@ -73,6 +73,11 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
       break;
   }
   if (decoded.opcode == Opcode::kNOP) return NoOperation{};
+  if (decoded.opcode == Opcode::kDEBUGGER) {
+    if (decoded.operand_count != 0)
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    return DebuggerOperation{};
+  }
   if (decoded.opcode == Opcode::kLDGLOBAL) {
     const auto constant = LiftConstantObjectInstruction(decoded);
     const auto* load = std::get_if<ConstantObjectInstruction>(&constant);
@@ -360,6 +365,8 @@ SemanticEffects Effects(const SemanticOperation& operation,
           effects.normal = LanguageEffect::kGuard;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, DebuggerOperation>) {
+          effects.normal = LanguageEffect::kDebugger;
         } else if constexpr (std::is_same_v<T, GlobalAccess>) {
           effects.normal = LanguageEffect::kGlobalAccess |
                            LanguageEffect::kUserCode;

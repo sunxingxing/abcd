@@ -462,6 +462,13 @@ class TreeBuilder {
         tree_.operations.push_back({id, anchor});
         continue;
       }
+      if (std::holds_alternative<analysis::ValueDebugger>(op.operation)) {
+        Require(!expression && !op.result, Error::kOwnership);
+        const auto statement = Statement(DebuggerStmt{}, origin);
+        Append(draft, statement);
+        tree_.operations.push_back({id, statement});
+        continue;
+      }
       Require(expression.has_value(), Error::kOwnership);
       if (std::holds_alternative<analysis::ValueBranch>(op.operation)) {
         Require(region.arms.has_value(), Error::kControl);

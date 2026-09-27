@@ -100,6 +100,9 @@ class FlowCheck {
               std::uint32_t empty = 0;
               edges_->Consume(fallthrough, BlockStmt{}, empty);
             }
+          } else if (std::holds_alternative<analysis::ValueDebugger>(op.operation)) {
+            Require(std::get_if<StmtId>(&placement) && std::get<StmtId>(placement) == statement, Error::kPlacement);
+            Require(std::holds_alternative<DebuggerStmt>(syntax), Error::kPlacement);
           } else if (std::holds_alternative<analysis::ValueReturn>(op.operation)) {
             Require(std::get_if<StmtId>(&placement) && std::get<StmtId>(placement) == statement, Error::kPlacement);
             const auto* returned = std::get_if<ReturnStmt>(&syntax);
@@ -340,6 +343,7 @@ class FlowCheck {
         flow_.initializers[i] = *property;
         flow_.expressions[i] = tree_.properties[property->value].value;
       } else if (std::holds_alternative<analysis::ValueBranch>(op.operation) ||
+          std::holds_alternative<analysis::ValueDebugger>(op.operation) ||
           std::holds_alternative<analysis::ValueReturn>(op.operation)) {
         Require(std::holds_alternative<StmtId>(placement), Error::kPlacement);
       } else if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation)) {

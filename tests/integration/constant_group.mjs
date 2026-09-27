@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
+import {Session} from 'node:inspector';
 
 const source = execFileSync(process.argv[2], {encoding: 'utf8'});
-const {cases} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {cases, debugCases} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const expected = [NaN, Infinity, undefined, null, true, false];
 const profileCount = 3;
 const forms = 2;
@@ -39,4 +40,42 @@ for (let profile = 0; profile < profileCount; ++profile) {
       }
     }
   }
+}
+
+// Real debugger notifications, not a substring-only assertion. Side effects
+// must stay between the two statements; abrupt completion skips the second.
+assert.equal(debugCases.length, cases.length);
+const session = new Session();
+session.connect();
+session.post('Debugger.enable');
+let events = [];
+session.on('Debugger.paused', () => {
+  events.push('pause');
+  session.post('Debugger.resume');
+});
+try {
+  for (let i = 0; i < debugCases.length; ++i) {
+    const recovered = debugCases[i];
+    const value = expected[Math.floor(i / forms) % expected.length];
+    const callback = i % forms === 1;
+    events = [];
+    const result = recovered(argument => {
+      assert.ok(Object.is(argument, value));
+      events.push('call');
+      return {};
+    });
+    assert.ok(Object.is(result, value));
+    assert.deepEqual(events, callback ? ['pause', 'call', 'pause'] : ['pause', 'pause']);
+    if (callback) {
+      events = [];
+      const marker = {};
+      assert.throws(() => recovered(() => {
+        events.push('throw');
+        throw marker;
+      }), error => error === marker);
+      assert.deepEqual(events, ['pause', 'throw']);
+    }
+  }
+} finally {
+  session.disconnect();
 }

@@ -49,6 +49,7 @@ enum class LanguageEffect : std::uint16_t {
   kEnvironmentWrite = 1 << 11,
   kArgumentsRead = 1 << 12,
   kSuspension = 1 << 13,
+  kDebugger = 1 << 14,
 };
 constexpr LanguageEffect operator|(LanguageEffect left, LanguageEffect right) {
   return static_cast<LanguageEffect>(static_cast<std::uint16_t>(left) |
@@ -77,6 +78,9 @@ struct ThrowOperation {
   ScalarValue value;
 };
 struct NoOperation {};
+// Pinned DEBUGGER notifies the debugger without assigning accumulator state.
+// Keep an ordered observation point; never canonicalize this to NoOperation.
+struct DebuggerOperation {};
 struct StringLoad {
   abc::PoolIndex value;
 };
@@ -100,7 +104,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        LoadHole, SuperCheck, RestCopy,
                                        BufferedArrayCreation, AwaitValue,
                                        ThrowOperation, SuperRange, ClassCreation,
-                                       DefineAccessor, IndexedWrite, GlobalObjectLoad>;
+                                       DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

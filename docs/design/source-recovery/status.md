@@ -42,6 +42,15 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- DEBUGGER 已贯穿公共 SemanticOperation、ValueOperation、求值计划、独立
+  DebuggerStmt、语义/来源校验与统一 printer。它保留 acc、无结果，有独立有序
+  观察效果，不允许按 NOP 或纯操作删除；没有增加专项 body writer。
+  三个历史 profile 的 36 个函数变体新增两次 debugger，Node inspector 实际验证
+  暂停/回调/暂停及异常跳过第二次暂停；原始 PC 对应精确的 `debugger;` 区间。
+  malformed 操作数、伪造 AST 语句、getter 跨观察点移动均有回归。
+  `abc_semantic` 与相关测试目标构建成功；value_operands、function_tree、
+  evaluation_plan、value_simplify、value_import、constant_group、computed_store
+  共 7/7 通过。不是 Ark VM 调试协议/寄存器视图等价证明，第一组仍未全部完成。
 - 第一组普通常量端到端证据已补齐：LDNAN/LDINFINITY/LDUNDEFINED/LDNULL/
   LDTRUE/LDFALSE，三个历史 profile、直接返回/跨回调保留两种形态，共 36 个
   文件方法 fixture，经 PreparedFamily/FamilyEmission 到源码执行；检查 PC 0
