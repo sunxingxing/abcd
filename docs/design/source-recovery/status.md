@@ -42,6 +42,14 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 第一组普通常量端到端证据已补齐：LDNAN/LDINFINITY/LDUNDEFINED/LDNULL/
+  LDTRUE/LDFALSE，三个历史 profile、直接返回/跨回调保留两种形态，共 36 个
+  文件方法 fixture，经 PreparedFamily/FamilyEmission 到源码执行；检查 PC 0
+  生成区间、名字遮蔽、参数/receiver、调用次数、异常身份和原值返回。
+  另有 6 个 LDHOLE 返回/传给宿主的拒绝反例。未修改生产语义，未扩大接受域。
+  `constant_group_fixture` 构建成功，`constant_group_test`、`constant_object_test`、
+  `isa_catalog_test`、`computed_store_test` 共 4/4 通过。不是 Ark VM 差分或真实
+  应用验收，第一组尚未完成；边界与剩余项见 [第一组证据](constant-group.md)。
 - 全 ISA 计划已启动：新增类型化 `IsaGroup`/`IsaSpec`，固定 YAML 的 19 groups、
   332 格式均进入不可变清单；显式生成边界拒绝未知/缺失/顺序变化的 group，
   运行时 Opcode 二分查找、不按字符串分派、不分配内存。清单不授予源码发布能力。
