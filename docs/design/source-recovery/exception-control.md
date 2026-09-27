@@ -150,10 +150,24 @@ default-parameter recovery and family/capture publication are still unsupported.
 
 The file-backed integration fixture executes getter/call/branch/catch behavior
 and checks all nine original PC placements through this publication path. It is
-not a real application acceptance result. Actual Immersive method 8284 currently
-fails input verification at PC 47 (module TDZ guard); module pairing and explicit
-receiver calls must carry their proofs through exception phases, not receive
-invented Language facts. Source evidence rules are now 45.
+not a real application acceptance result. Source evidence rules are now 45.
+
+`PhasedMethod` now carries original guarded-module facts through import and
+`BuildPhasedModuleGuards`. Its independent verifier checks unchanged imported
+operations/phase edges against the original input, then checks original
+module/guard routes through `ProveExceptionModules`. It does not regenerate a
+source tree. The resulting `ModuleGuards` retains both OpIds; no CFG, effect,
+guard, PC or snapshot is removed. Analysis remains indexed with bounded passes,
+not a separate graph walk per module read. Guard facts are conditional on the
+whole pair, not initialization premises for raw module slots.
+
+This has moved actual Immersive method 8284 past the PC 47 input refusal into
+`ExceptionControlError::kMultipleExits`. The file-backed module fixture reaches
+the still-closed evaluation gate. Module binding/TDZ-name equivalence, fused
+phase evaluation, exception snapshot correspondence and explicit receiver calls
+remain publication obligations. No module source coverage is claimed merely
+because pair correspondence succeeds. Different handler routes stay unpaired;
+the previous normal-flow module API retains its same-block requirement.
 
 Still required before phase completion:
 

@@ -32,9 +32,10 @@ static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);
 void Check(bool condition) { if (!condition) std::abort(); }
 enum class DefaultEncoding { kNone, kInteger, kNegation };
+enum class ExceptionShape { kNone, kBranch, kModule };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
-         bool exception = false) {
+         ExceptionShape exception = ExceptionShape::kNone) {
   const bool defaults = encoding != DefaultEncoding::kNone;
   constexpr std::uint32_t kPool = 64, kOwner = 80, kLiteral = 128, kCaller = 256,
       kConstructor = 300, kMember = 350, kCallerCode = 400, kMemberCode = 430, kName = 500;
@@ -100,7 +101,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     member.insert(member.end() - 1, static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS));
     --member[kCodeSizeOffset];
   }
-  if (exception) {
+  if (exception != ExceptionShape::kNone) {
     const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
     constexpr std::uint8_t kBodyBytes = 15, kProtectedBytes = 14,
         kBranchDelta = 4, kNamePool = 2, kSingleTry = 1, kCatchAll = 0;
@@ -109,6 +110,15 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
         op(abc::Opcode::kCALLARG0_IMM8), 0, op(abc::Opcode::kJEQZ_IMM8), kBranchDelta,
         op(abc::Opcode::kLDTRUE), kReturn, op(abc::Opcode::kLDFALSE), kReturn, kReturn,
         0, kProtectedBytes, kSingleTry, kCatchAll, kProtectedBytes, 1};
+    if (exception == ExceptionShape::kModule) {
+      constexpr std::uint8_t kModuleBodyBytes = 8, kModuleProtectedBytes = 7, kModuleSlot = 0;
+      constexpr auto kGuard = abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16;
+      constexpr unsigned kByteBits = 8;
+      member = {0, 4, kModuleBodyBytes, kSingleTry,
+          op(abc::Opcode::kLDEXTERNALMODULEVAR_IMM8), kModuleSlot,
+          op(kGuard), static_cast<std::uint16_t>(kGuard) >> kByteBits, kNamePool, 0,
+          kReturn, kReturn, 0, kModuleProtectedBytes, kSingleTry, kCatchAll, kModuleProtectedBytes, 1};
+    }
   }
   std::copy(caller.begin(), caller.end(), bytes.begin() + kCallerCode);
   std::copy(member.begin(), member.end(), bytes.begin() + kMemberCode);
@@ -153,11 +163,21 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   const auto& value = std::get<ClassTreeContext>(context);
   Check(value.Name() == u"run" && value.Frame().parameters == 1);
   Check(value.Callable() == CallableKind::kMethod && value.Mode() == Strictness::kStrict);
-  if (exception) {
+  if (exception != ExceptionShape::kNone) {
     const FunctionContext owner{std::get<ClassTreeContext>(ClassTreeContext::Resolve(
         file, header, index, lookup, roles, sites, range.first, identity))};
     const auto decoded = std::get<abc::MethodBody>(abc::DecodeMethodBody(file, header.profile, *index.methods[2].code));
     auto analyzed = PhasedMethod::Build(owner, decoded);
+    if (exception == ExceptionShape::kModule) {
+      // Pair correspondence must pass before the still-unsupported source
+      // module binding/evaluation gate. Never silently publish this method.
+      Check(std::get<PhasedMethodError>(analyzed) == PhasedMethodError::kEvaluation);
+      auto refused = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites,
+          range.first, identity, {});
+      Check(std::get<FunctionPrepareFailure>(refused).kind == FunctionPrepareError::kEvaluation);
+      Check(unlink(path) == 0);
+      return;
+    }
     Check(std::holds_alternative<PhasedMethod>(analyzed));
     const auto moved = std::get<PhasedMethod>(std::move(analyzed));
     const auto view = moved.TreeInput(decoded);
@@ -424,7 +444,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }  // namespace
 int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--exception-json") {
-    Run(DefaultEncoding::kNone, false, false, false, &std::cout, true);
+    Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kBranch);
     return 0;
   }
   if (argc == 2 && std::string_view(argv[1]) == "--snapshot-json") {
@@ -433,7 +453,8 @@ int main(int argc, char** argv) {
     return 0;
   }
   Check(argc == 1);
-  Run(DefaultEncoding::kNone, false, false, false, nullptr, true);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kModule);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kBranch);
   Run(); Run(DefaultEncoding::kInteger); Run(DefaultEncoding::kNegation);
   Run(DefaultEncoding::kNone, true);
   Run(DefaultEncoding::kNone, false, true);

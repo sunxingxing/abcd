@@ -3,6 +3,7 @@
 #include <new>
 #include <stdexcept>
 #include <type_traits>
+#include "abcd/analysis/exception_modules.h"
 
 namespace abcd::source {
 struct PhasedMethod::Storage {
@@ -13,6 +14,7 @@ struct PhasedMethod::Storage {
   analysis::ExceptionValueFlow values;
   analysis::ExceptionInputProof proof;
   analysis::ValueProgram graph;
+  std::optional<ModuleGuards> modules;
   ExceptionPlan regions;
   ExceptionControl control;
   EvaluationPlan evaluation;
@@ -97,6 +99,9 @@ std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Build(
     auto environments = PhaseResult<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow,
         {quota.Remaining().bytes}), Error::kEnvironment);
     quota.Admit(environments.allocated_bytes); quota.Step(environments.instruction_visits);
+    auto modules = PhaseResult<ExceptionModules>(ProveExceptionModules(flow, ssa,
+        quota.Remaining()), Error::kValues);
+    quota.Admit(modules.AllocatedBytes()); quota.Step(modules.work_units);
     std::vector<EntryValueFact> entries;
     quota.Admit(ssa.Values().size(), sizeof(EntryValueFact));
     entries.reserve(ssa.Values().size());
@@ -109,10 +114,11 @@ std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Build(
         entries.push_back({{static_cast<std::uint32_t>(i)}, ValueKinds::Language()});
     }
     IdfQuota value_work{quota.Remaining().work};
-    // Only entry and versioned host contracts are premises. Do not invent
-    // Language facts for lexical/module loads or the result of explicit THROW.
+    // Guarded module facts apply to the certified pair, never the raw load.
+    // Preserve its source correspondence below before any evaluation/publication.
+    // No Language premise is invented for lexical loads or explicit THROW.
     auto values = PhaseResult<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
-        value_work, {quota.Remaining().bytes}, PendingExceptions(context.Identity().contract), {}, {},
+        value_work, {quota.Remaining().bytes}, PendingExceptions(context.Identity().contract), modules.loads, {},
         NormalCallResults(context.Identity().contract)), Error::kValues);
     quota.Admit(values.AllocatedBytes()); quota.Step(value_work.Consumed());
     const auto arguments = frame.extra_arguments ? std::optional{ArgumentFrameFact{frame}} : std::nullopt;
@@ -122,6 +128,12 @@ std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Build(
     const PhasedValueInput input{flow, ssa, environments, values, proof, frame};
     auto imported = PhaseResult<ImportedPhases>(BuildPhasedValues(input, quota.Remaining()), Error::kImport);
     quota.Admit(imported.allocated_bytes); quota.Step(imported.work);
+    std::optional<ModuleGuards> guards;
+    if (!modules.reads.empty()) {
+      guards = PhaseResult<ModuleGuards>(BuildPhasedModuleGuards(input, imported.graph,
+          quota.Remaining()), Error::kImport);
+      quota.Admit(guards->allocated_bytes); quota.Step(guards->work);
+    }
     auto regions = PhaseResult<ExceptionPlan>(BuildExceptionPlan(body, imported.graph, input,
         quota.Remaining()), Error::kRegion);
     quota.Admit(regions.allocated_bytes); quota.Step(regions.work);
@@ -133,7 +145,7 @@ std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Build(
     quota.Admit(evaluation.allocated_bytes); quota.Step(evaluation.work);
     return PhasedMethod(std::make_unique<Storage>(Storage{frame, std::move(flow), std::move(ssa),
         std::move(environments), std::move(values), std::move(proof), std::move(imported.graph),
-        std::move(regions), std::move(control), std::move(evaluation), quota.Bytes(), quota.Work()}));
+        std::move(guards), std::move(regions), std::move(control), std::move(evaluation), quota.Bytes(), quota.Work()}));
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

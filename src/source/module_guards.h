@@ -4,6 +4,7 @@
 #include "function_input.h"
 #include "abcd/analysis/value_ir.h"
 
+namespace abcd::analysis { struct PhasedValueInput; }
 namespace abcd::source {
 struct GuardedModuleRead {
   analysis::OpId read;
@@ -31,6 +32,15 @@ enum class ModuleGuardError : std::uint8_t {
     analysis::SemanticBudget budget = {});
 [[nodiscard]] std::variant<std::uint64_t, ModuleGuardError> VerifyModuleGuards(
     const FunctionInput& input, const analysis::ValueProgram& graph,
+    const ModuleGuards& plan, analysis::SemanticBudget budget = {});
+// Original exception routes must agree and the guard must have no bypass
+// entry. This proves pair correspondence, not module-name/TDZ equivalence,
+// exception snapshot relocation, evaluation scheduling or source admission.
+[[nodiscard]] std::variant<ModuleGuards, ModuleGuardError> BuildPhasedModuleGuards(
+    const analysis::PhasedValueInput& input, const analysis::ValueProgram& graph,
+    analysis::SemanticBudget budget = {});
+[[nodiscard]] std::variant<std::uint64_t, ModuleGuardError> VerifyPhasedModuleGuards(
+    const analysis::PhasedValueInput& input, const analysis::ValueProgram& graph,
     const ModuleGuards& plan, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

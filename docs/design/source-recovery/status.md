@@ -42,6 +42,23 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 异常模块配对已从原始异常分析接到工作 IR 对应校验和 `PhasedMethod`：
+  `Build/VerifyPhasedModuleGuards` 重新核对未修改的导入图及原始异常去向，产出
+  与正常路径相同的 `ModuleGuards`。仅接纳无旁路入口、load/guard 异常去向一致的
+  配对；保留两个操作、原始 PC 和效果，不删除 guard，也不授权移动异常快照。
+  owner 仅在该配对证明成立时使用条件性的模块 Language 事实，随后再次核对
+  源码配对对应关系。模块绑定、相位求值和 AST 融合仍未接通，不能发布源码。
+  三个历史 profile 的 local/external、宽/窄编码、caller/catch 去向及
+  1/200/201/402 配对测试覆盖修订、PC、相位、效果、槽、配对覆盖篡改、不同
+  handler 边界和精确 work/零 bytes。文件化模块夹具从值域拒绝推进到求值拒绝。
+  真实 Immersive 8284 已越过 PC 47，调试确认现在由异常投影的
+  `ExceptionControlError::kMultipleExits` 拒绝；pasteboard 5165 仍在值域阶段拒绝。
+  这不是新增完整函数覆盖：规则仍为 45，第 1 步和 group 1 均未完成。
+  相关目标与 CLI 构建通过，8/8 定向回归通过（module_guards、phased_module_guards、
+  class_tree_context、phased_method_source、exception_copies/plan/tree_source、
+  phased_value_import）。未运行全量、RSS 或基准。下一步整合多出口异常区域，
+  同时保持模块绑定/求值和 receiver 调用义务，禁止靠预设初始化或外部辅助值绕过。
+
 - 文件方法入口新增 `PhasedMethod`，持有异常 CFG/SSA、环境、值域、输入证明、
   区域投影及求值计划；借用视图随所有者移动仍有效。含 try 的方法进入现有
   `VerifiedFunction` 后半段，共用同文件常量解析、FunctionTree 独立语义检查、
