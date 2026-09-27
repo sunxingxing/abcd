@@ -29,6 +29,13 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 新增 [不可变函数族准备](prepared-family.md)：`PreparedFamily::PrepareCreated`
+  从实际 ABC 创建点重新贯通完整 family 输入、默认值、AST、ABI、捕获/写入与
+  外部作用域检查，再保存 `unique_ptr<const Storage>`；不接受任意树或统计作为证明。
+  `PrintDraft` 在输出前重新检查严格模式与目标作用域，调用现有共享 printer。
+  仍输出草稿，不授予 executable/complete；CLI、module 初始化及整份 record 发布未升级。
+  简单/cell/嵌套写入、移动所有权、输入文件释放后输出与预算规格已写但未编译、未运行。
+  生产构建退出 0；测试、JS 执行和 RSS 保持暂停。
 - 新增 `VerifyFamilyDestination`：复用函数族逐创建点 scope 检查，同时核对调用方
   证明完整的外部 `GlobalScope`。缺少 context 只允许没有 global read 的函数族；
   外部 record/import/parameter/class/self/realm 绑定不能遮蔽后代全局名。

@@ -1,0 +1,59 @@
+#ifndef ABCD_SOURCE_PREPARED_FAMILY_H_
+#define ABCD_SOURCE_PREPARED_FAMILY_H_
+
+#include <memory>
+
+#include "family_tree.h"
+#include "family_print.h"
+
+namespace abcd::source {
+// Caller-proven destination, not facts inferred from ABC or free-name spelling.
+// The enclosing generated code must already be strict. Non-simple signatures
+// cannot be made strict by inserting a directive into their function body.
+struct FamilyDestination {
+  Strictness strictness;
+  const GlobalScope* globals;
+};
+enum class FamilyPrepareError : std::uint8_t {
+  kStrictness, kCallable, kModules, kAbi, kFileChanged, kResourceLimit, kWorkLimit
+};
+struct FamilyPrepareFailure {
+  std::variant<FamilyPrepareError, CreationContextFailure, FamilyFileFailure,
+      FamilyTreeFailure, FamilyEnclosureFailure> cause;
+};
+// Immutable, file-backed preparation, not a record-completion receipt. Factory
+// consumes a real creation occurrence and runs every family pass itself. No
+// constructor accepts caller-built trees, diagnostic counters or cached proof.
+// Caller owns/admitted file indexes. Destination spans are borrowed only during
+// preparation; embedding elsewhere requires a fresh destination check.
+class PreparedFamily {
+ public:
+  PreparedFamily(PreparedFamily&&) noexcept;
+  PreparedFamily& operator=(PreparedFamily&&) noexcept;
+  ~PreparedFamily();
+  [[nodiscard]] static std::variant<PreparedFamily, FamilyPrepareFailure> PrepareCreated(
+      const corpus::AbcFile& file, const abc::Header& header,
+      const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+      const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
+      analysis::FunctionSiteId site, RouteInputIdentity identity,
+      FamilyDestination destination, analysis::SemanticBudget budget = {});
+  [[nodiscard]] const ConstructedFamily& Family() const;
+  [[nodiscard]] const RouteInputIdentity& Identity() const;
+  // Conservative preparation charge, including released scratch, not RSS.
+  [[nodiscard]] std::size_t AllocatedBytes() const;
+  [[nodiscard]] std::uint64_t Work() const;
+  [[nodiscard]] std::variant<FamilyEnclosure, FamilyPrepareFailure> CheckDestination(
+      FamilyDestination destination, analysis::SemanticBudget budget = {}) const;
+  // Shared printer and original-PC positions, still no executable receipt.
+  // Rechecks the actual embedding before writing any bytes. On output failure
+  // the caller must discard the partial stream, as with PrintFamilyDraft.
+  [[nodiscard]] std::variant<PrintedFamilyDraft, FamilyPrepareFailure, TreePrintError> PrintDraft(
+      FamilyDestination destination, std::ostream& output,
+      EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {}) const;
+ private:
+  struct Storage;
+  explicit PreparedFamily(std::unique_ptr<const Storage> storage);
+  std::unique_ptr<const Storage> storage_;
+};
+}  // namespace abcd::source
+#endif

@@ -4,6 +4,7 @@
 #include "../../../src/source/family_file.h"
 #include "../../../src/source/family_tree.h"
 #include "../../../src/source/family_print.h"
+#include "../../../src/source/prepared_family.h"
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
@@ -156,6 +157,8 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
   --limited.work;
   test::Check(std::get<FunctionSiteError>(std::get<FunctionSiteFailure>(
       FunctionCreationSites::Build(file, header, index, lookup, limited)).error) == FunctionSiteError::kWorkLimit);
+  std::optional<PreparedFamily> retained_family;
+  std::string retained_source;
   {
     const auto roles = std::get<MethodRoleIndex>(MethodRoleIndex::Build(file, header, index, lookup));
     const auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
@@ -258,6 +261,26 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       std::ostringstream named_output;
       test::Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(built, named_output)));
       test::Check(named_output.str().starts_with("({["));
+      auto prepared_result = PreparedFamily::PrepareCreated(file, header, index, lookup,
+          roles, sites, range.first, identity, {Strictness::kStrict, nullptr});
+      test::Check(std::holds_alternative<PreparedFamily>(prepared_result));
+      auto prepared = std::get<PreparedFamily>(std::move(prepared_result));
+      test::Check(prepared.Family().members.size() == built.members.size() && prepared.Identity() == identity);
+      std::ostringstream prepared_output;
+      test::Check(std::holds_alternative<PrintedFamilyDraft>(prepared.PrintDraft(
+          {Strictness::kStrict, nullptr}, prepared_output)));
+      test::Check(prepared_output.str() == named_output.str());
+      std::ostringstream refused_output;
+      const auto refused = prepared.PrintDraft({Strictness::kSloppy, nullptr}, refused_output);
+      test::Check(std::get<FamilyPrepareError>(std::get<FamilyPrepareFailure>(refused).cause) ==
+          FamilyPrepareError::kStrictness && refused_output.str().empty());
+      SemanticBudget no_preparation; no_preparation.bytes = 0;
+      const auto not_prepared = PreparedFamily::PrepareCreated(file, header, index, lookup,
+          roles, sites, range.first, identity, {Strictness::kStrict, nullptr}, no_preparation);
+      test::Check(std::get<FamilyPrepareError>(std::get<FamilyPrepareFailure>(not_prepared).cause) ==
+          FamilyPrepareError::kResourceLimit);
+      retained_source = prepared_output.str();
+      retained_family.emplace(std::move(prepared));
       const auto mismatch = BuildFunctionAbi(opened_child.values.graph, built.members[0].tree,
           context.Frame(), static_cast<std::uint32_t>(parameters) + 1);
       test::Check(std::get<FunctionAbiError>(mismatch) == FunctionAbiError::kLength);
@@ -325,6 +348,13 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       test::Check(std::get<FunctionPrepareFailure>(VerifiedFunction::PrepareCreated(
           file, header, index, lookup, roles, sites, {range.first.value + 2}, identity)).kind == FunctionPrepareError::kContext);
     }
+  }
+  if (retained_family) {
+    std::get<std::unique_ptr<corpus::AbcFile>>(opened).reset();
+    std::ostringstream detached_output;
+    test::Check(std::holds_alternative<PrintedFamilyDraft>(retained_family->PrintDraft(
+        {Strictness::kStrict, nullptr}, detached_output)));
+    test::Check(detached_output.str() == retained_source);
   }
   test::Check(unlink(path) == 0);
 }
