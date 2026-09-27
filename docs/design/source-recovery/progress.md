@@ -849,6 +849,34 @@ it does not yet traverse a real file's complete function family, discharge
 transitive writes, admit async/exception children or publish a closure. T07 and
 the full T00-T12 objective remain unfinished. Source rules stay 23.
 
+### T07 Shared File-to-Syntax Preparation
+
+Extracted ResolveFunctionSyntax from the standalone factory and connected
+VerifiedFunction to it. Actual FunctionContext supplies callable/strictness and
+frame facts; the caller supplies syntax-occurrence ownership independently of
+method position. The existing constant and parameter-debug resolvers populate
+one name arena with stable pool-name prefixes, without a family-specific naming
+implementation. ResolvedSyntax owns typed constants/properties and preserves
+working revisions. Default projection, ABI, globals and publication checks stay
+in the factory unchanged; this extraction does not close family obligations.
+
+ExpressionConstants now has a small independent header, and FunctionSyntax
+explicitly includes the CellId definition. This removes accidental dependencies
+on expression-forest binding internals and header include order. Added unrun
+created-context specifications for occurrence ownership, conditional captures,
+200/201 formals, resource/work limits and context mismatch. No test target or
+generated JS was compiled/executed, and no RSS tracking ran.
+
+Production-only abc_semantic and abc_structure builds exited 0. The actual G2
+7559 record-value-slice now passes through the shared resolver and retains its
+printed method segment [2638,2924), rules 23, within an incomplete record
+(exit 1). This checks integration/output state, not execution equivalence or
+the added fixture assertions.
+
+The real-file family traversal and complete child output remain next integration
+work, including P3's async/exception child. T07 and T00-T12 are not complete;
+source evidence rules remain 23.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

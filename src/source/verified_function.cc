@@ -1,6 +1,5 @@
 #include "abcd/source/verified_function.h"
 
-#include <limits>
 #include <new>
 #include <stdexcept>
 #include <type_traits>
@@ -14,8 +13,7 @@
 #include "default_signature.h"
 #include "function_tree.h"
 #include "function_abi.h"
-#include "parameter_names.h"
-#include "tree_constants.h"
+#include "syntax_resolution.h"
 #include "tree_semantics.h"
 #include "tree_globals.h"
 
@@ -54,11 +52,6 @@ class PreparationBudget {
     remaining_.work -= count;
   }
   template <class T> void Arena(const std::vector<T>& values) { Admit(values.capacity(), sizeof(T)); }
-  template <class T> void Reserve(std::vector<T>& values, std::size_t count) {
-    if (count <= values.capacity()) return;
-    // Keep the replaced allocation charged: reserve can hold both at once.
-    Admit(count, sizeof(T)); values.reserve(count); Admit(values.capacity() - count, sizeof(T));
-  }
   [[nodiscard]] analysis::SemanticBudget Remaining() const { return remaining_; }
  private:
   analysis::SemanticBudget remaining_;
@@ -99,41 +92,6 @@ DefaultBody DefaultParameters(const analysis::ValueProgram& graph,
   }
   budget.Admit(result->AllocatedBytes(), 1); budget.Step(result->Work());
   return std::move(*result);
-}
-void Names(const corpus::AbcFile& file, const abc::Header& header,
-    const abc::MethodInfo& method, const abc::MethodBody& body,
-    const abc::FrameLayout& frame, FunctionSyntax& syntax, PreparationBudget& budget) {
-  budget.Reserve(syntax.parameters, frame.parameters);
-  syntax.parameters.resize(frame.parameters);
-  budget.Step(frame.parameters);
-  if (frame.parameters == 0) return;
-  const auto recovered = RecoverParameterNames(file, header, method, frame, body, budget.Remaining().bytes);
-  const auto* parameters = std::get_if<RecoveredParameters>(&recovered);
-  if (!parameters) {
-    if (const auto* error = std::get_if<ParameterNameError>(&recovered)) {
-      if (*error == ParameterNameError::kUnproven) return;
-      throw Error::kResourceLimit;
-    }
-    const auto error = std::get<abc::MetadataError>(recovered);
-    if (error == abc::MetadataError::kResourceLimit) throw Error::kResourceLimit;
-    if (error == abc::MetadataError::kFileChanged) throw Error::kFileChanged;
-    throw Error::kParameters;
-  }
-  if (parameters->names.size() != frame.parameters) throw Error::kParameters;
-  budget.Arena(parameters->names);
-  for (const auto& name : parameters->names) { budget.Admit(name.capacity(), 1); budget.Admit(1, 1); }
-  if (syntax.names.size() > std::numeric_limits<std::uint32_t>::max() - frame.parameters)
-    throw Error::kResourceLimit;
-  budget.Reserve(syntax.names, syntax.names.size() + frame.parameters);
-  for (std::size_t i = 0; i < parameters->names.size(); ++i) {
-    const auto& name = parameters->names[i];
-    budget.Step(name.size());
-    budget.Admit(name.size(), sizeof(char16_t)); budget.Admit(1, sizeof(char16_t));
-    const NameId id{static_cast<std::uint32_t>(syntax.names.size())};
-    auto& owned = syntax.names.emplace_back(name.begin(), name.end());
-    budget.Admit(owned.capacity() - name.size(), sizeof(char16_t));
-    syntax.parameters[i] = {id, NameEvidence::kDebugRange};
-  }
 }
 std::size_t SyntaxStorage(const FunctionSyntax& syntax) {
   // All components have already passed bounded admission in this invocation.
@@ -317,28 +275,34 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
         (evaluation->cells && evaluation->cells->incoming != IncomingCells::kReject))
       throw Error::kEvaluation;
     budget.Admit(evaluation->allocated_bytes, 1); budget.Step(evaluation->work);
-    auto constants_result = ResolveTreeConstants(file, header, index, method.offset, graph, budget.Remaining());
-    auto* constants = std::get_if<TreeConstants>(&constants_result);
-    if (!constants) {
-      if (const auto* error = std::get_if<TreeConstantError>(&constants_result)) {
-        if (*error == TreeConstantError::kResourceLimit) throw Error::kResourceLimit;
-        if (*error == TreeConstantError::kWorkLimit) throw Error::kWorkLimit;
-      }
-      if (const auto* error = std::get_if<abc::MetadataError>(&constants_result)) {
-        if (*error == abc::MetadataError::kResourceLimit) throw Error::kResourceLimit;
-        if (*error == abc::MetadataError::kFileChanged) throw Error::kFileChanged;
-      }
+    auto syntax_result = ResolveFunctionSyntax(file, header, index, *context, *body,
+        graph, {context->Position().value}, budget.Remaining());
+    auto* resolved_syntax = std::get_if<ResolvedSyntax>(&syntax_result);
+    if (!resolved_syntax) {
+      const auto& failure = std::get<SyntaxResolutionFailure>(syntax_result);
+      std::visit([](const auto& error) {
+        using T = std::decay_t<decltype(error)>;
+        if constexpr (std::is_same_v<T, SyntaxResolutionError>) {
+          switch (error) {
+            case SyntaxResolutionError::kContext: throw Error::kContext;
+            case SyntaxResolutionError::kParameters: throw Error::kParameters;
+            case SyntaxResolutionError::kResourceLimit: throw Error::kResourceLimit;
+            case SyntaxResolutionError::kWorkLimit: throw Error::kWorkLimit;
+          }
+        } else if constexpr (std::is_same_v<T, TreeConstantError>) {
+          if (error == TreeConstantError::kResourceLimit) throw Error::kResourceLimit;
+          if (error == TreeConstantError::kWorkLimit) throw Error::kWorkLimit;
+        } else {
+          static_assert(std::is_same_v<T, abc::MetadataError>);
+          if (error == abc::MetadataError::kResourceLimit) throw Error::kResourceLimit;
+          if (error == abc::MetadataError::kFileChanged) throw Error::kFileChanged;
+        }
+      }, failure);
       throw Error::kConstants;
     }
-    budget.Admit(constants->allocated_bytes, 1); budget.Step(constants->work);
-    auto constant_view = constants->View();
-    FunctionSyntax syntax{identity, method.offset, {context->Position().value},
-                          context->Callable(), context->Mode(), {},
-                          std::move(constants->names), std::move(constants->texts)};
-    Names(file, header, method, *body, context->Frame(), syntax, budget);
-    // Pool NameIds keep their prefix positions; recovered formal names append
-    // to that same arena. The view must describe the final syntax namespace.
-    constant_view.name_count = syntax.names.size();
+    budget.Admit(resolved_syntax->allocated_bytes, 1); budget.Step(resolved_syntax->work);
+    const auto constant_view = resolved_syntax->View();
+    auto syntax = std::move(resolved_syntax->syntax);
     const auto transferred = SyntaxStorage(syntax);
     auto tree_budget = budget.Remaining();
     if (transferred > allowance.bytes - tree_budget.bytes) throw Error::kResourceLimit;

@@ -1,5 +1,6 @@
 #include "../../../src/source/creation_tree_context.h"
 #include "../../../src/source/function_file.h"
+#include "../../../src/source/syntax_resolution.h"
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
@@ -42,7 +43,8 @@ abc::CodeInfo AppendCode(std::vector<std::uint8_t>& file,
   return {{offset}, {start}, 0, arguments, static_cast<std::uint32_t>(instructions.size()), 0};
 }
 
-void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child, bool all_formats = false) {
+void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
+         bool all_formats = false, std::uint8_t parameters = 0) {
   std::vector<std::uint8_t> bytes(kCallerCode);
   constexpr unsigned kByteBits = 8;
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
@@ -53,12 +55,12 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child, bool all_
     pcs.push_back(static_cast<std::uint32_t>(caller.size()));
     if (all_formats && i == 1)
       caller.insert(caller.end(), {kWideFunction, static_cast<std::uint8_t>(kWideCache),
-          static_cast<std::uint8_t>(kWideCache >> kByteBits), 0, 0, 0});
-    else if (all_formats && i == 2) caller.insert(caller.end(), {kDefineMethod, 2, 0, 0, 0});
+          static_cast<std::uint8_t>(kWideCache >> kByteBits), 0, 0, parameters});
+    else if (all_formats && i == 2) caller.insert(caller.end(), {kDefineMethod, 2, 0, 0, parameters});
     else if (all_formats && i == 3)
       caller.insert(caller.end(), {kWideMethod, static_cast<std::uint8_t>(kWideCache),
-          static_cast<std::uint8_t>(kWideCache >> kByteBits), 0, 0, 0});
-    else caller.insert(caller.end(), {kDefineFunction, 1, 0, 0, 0});
+          static_cast<std::uint8_t>(kWideCache >> kByteBits), 0, 0, parameters});
+    else caller.insert(caller.end(), {kDefineFunction, 1, 0, 0, parameters});
   }
   caller.push_back(kReturnUndefined);
   const auto caller_code = AppendCode(bytes, caller, 0);
@@ -74,7 +76,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child, bool all_
       target = {kPush, 1, kUndefined, kStoreCell, 0, kReadCell, 0, kPop, kReturn}; break;
   }
   constexpr std::uint32_t kImplicitArguments = 3;
-  const auto target_code = AppendCode(bytes, target, kImplicitArguments);
+  const auto target_code = AppendCode(bytes, target, kImplicitArguments + parameters);
   char path[] = "/tmp/abcd-creation-tree-XXXXXX";
   const int fd = mkstemp(path);
   test::Check(fd >= 0 && write(fd, bytes.data(), bytes.size()) == static_cast<ssize_t>(bytes.size()));
@@ -118,6 +120,34 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child, bool all_
         opened_child.values.method == opened_child.input.Method() &&
         opened_child.input.Mode() == InputCaptureMode::kConditional);
     test::Check(opened_child.input.Captures().size() == (child == ChildBody::kCapture ? 1 : 0));
+    auto created = std::get<CreationTreeContext>(CreationTreeContext::Resolve(
+        file, header, index, lookup, roles, sites, range.first, identity));
+    const FunctionContext context{std::move(created)};
+    constexpr FunctionOwnerId kSyntaxOwner{99};
+    const auto resolve = [&](SemanticBudget budget = {}) {
+      return ResolveFunctionSyntax(file, header, index, context, opened_child.body,
+          opened_child.values.graph, kSyntaxOwner, budget);
+    };
+    const auto syntax = std::get<ResolvedSyntax>(resolve());
+    test::Check(syntax.syntax.owner == kSyntaxOwner && syntax.syntax.method == context.Target() &&
+        syntax.syntax.identity == identity && syntax.syntax.callable == context.Callable() &&
+        syntax.syntax.strictness == context.Mode() && syntax.syntax.parameters.size() == parameters);
+    test::Check(syntax.operations.size() == opened_child.values.graph.ops.size() &&
+        syntax.value_revision == opened_child.values.graph.revision &&
+        syntax.cfg_revision == opened_child.values.graph.cfg_revision &&
+        syntax.View().name_count == syntax.syntax.names.size() &&
+        syntax.View().text_count == syntax.syntax.texts.size());
+    for (const auto& parameter : syntax.syntax.parameters)
+      test::Check(!parameter.name && parameter.evidence == NameEvidence::kSynthesized);
+    SemanticBudget syntax_budget; syntax_budget.work = syntax.work;
+    test::Check(std::holds_alternative<ResolvedSyntax>(resolve(syntax_budget)));
+    --syntax_budget.work;
+    test::Check(std::holds_alternative<SyntaxResolutionFailure>(resolve(syntax_budget)));
+    syntax_budget = {}; syntax_budget.bytes = 0;
+    test::Check(std::get<SyntaxResolutionError>(std::get<SyntaxResolutionFailure>(resolve(syntax_budget))) == SyntaxResolutionError::kResourceLimit);
+    auto wrong_index = index; ++wrong_index.methods[context.Position().value].offset.value;
+    test::Check(std::get<SyntaxResolutionError>(std::get<SyntaxResolutionFailure>(ResolveFunctionSyntax(
+        file, header, wrong_index, context, opened_child.body, opened_child.values.graph, kSyntaxOwner))) == SyntaxResolutionError::kContext);
     if (child == ChildBody::kCapture)
       test::Check(std::holds_alternative<FunctionFileFailure>(ReadFunctionValues(file, header,
           index, {1}, identity, InputCaptureMode::kClosed)));
@@ -156,4 +186,6 @@ int main() {
   Run(4, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, true);
   for (const auto kind : {abc::FunctionKind::kBaseConstructor, abc::FunctionKind::kArrow})
     for (const auto child : {ChildBody::kEmpty, ChildBody::kReceiver, ChildBody::kCapture, ChildBody::kCell}) Run(1, kind, child);
+  for (const auto count : {1U, 2U, 200U, 201U})
+    Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, false, static_cast<std::uint8_t>(count));
 }

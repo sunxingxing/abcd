@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_FUNCTION_SYNTAX_H_
 
 #include "abcd/source/source_tree.h"
+#include "cell_plan.h"
 
 namespace abcd::source {
 struct ParameterSyntax {

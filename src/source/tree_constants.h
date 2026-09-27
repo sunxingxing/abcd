@@ -2,7 +2,7 @@
 #define ABCD_SOURCE_TREE_CONSTANTS_H_
 
 #include "abcd/abc/string_entity.h"
-#include "expression_forest.h"
+#include "expression_constants.h"
 
 namespace abcd::source {
 struct TreeConstants {

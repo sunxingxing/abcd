@@ -420,6 +420,33 @@ Neither this component nor its production build closes the T07 gate.
 
 ## Creation Owners
 
+`ResolveFunctionSyntax` is now the shared file-to-syntax naming boundary used
+by VerifiedFunction, and available to file-driven family construction. It takes
+an actual FunctionContext, same-method body and verified working graph, and an
+occurrence-specific FunctionOwnerId. It resolves operation constants through
+the existing ABC resolver, preserves their name/text prefix, and appends formal
+names through the existing RecoverParameterNames proof. Unproved debug names
+stay synthesized; resource or malformed-metadata failures do not silently
+select a different naming path.
+
+The returned ResolvedSyntax owns names/texts, typed operation constants and
+buffered properties without retaining file readers or borrowed metadata names.
+Its View must be taken before moving syntax into BuildFunctionTree, and its
+operation/property arenas stay alive during construction and checking. Work
+revisions are retained. Caller admits the context/input; constant/name payloads
+and replaced arena capacities share the preparation allowance. Existing debug
+reader work is not relabeled as a new cumulative family-work guarantee.
+
+Constants moved to a lightweight expression_constants header so this metadata
+boundary does not import register binding planning. FunctionSyntax now directly
+includes its CellId dependency rather than relying on include order. The former
+private parameter-name assembly in VerifiedFunction was removed, not duplicated.
+No defaults, captures, module TDZ, global enclosure, callable ABI or publication
+proof was relaxed. The existing created-context regression source now specifies
+this boundary for ordinary/arrow contexts and conditional captured bodies,
+occurrence owner IDs, 200/201 formals, budgets and context mismatch; it remains
+uncompiled/unrun.
+
 ### Owned Conditional Families
 
 ReadFunctionValues supplies file-driven members: it reads call annotations and
