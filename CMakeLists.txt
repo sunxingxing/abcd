@@ -40,6 +40,7 @@ target_include_directories(abcd_file PUBLIC include)
 target_link_libraries(abcd_file PUBLIC OpenSSL::Crypto ZLIB::ZLIB)
 target_link_libraries(abcd_abc PUBLIC abcd_file)
 add_library(abcd_analysis src/analysis/normal_flow.cc src/analysis/exception_dispatch.cc src/analysis/dominators.cc src/analysis/scalar.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/access_catalog.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/class_method_sites.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/function_creation_sites.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/branch_condition.cc)
@@ -334,6 +335,16 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(access_catalog_test tests/unit/analysis/access_catalog_test.cc)
+  target_include_directories(access_catalog_test PRIVATE tests/support)
+  target_link_libraries(access_catalog_test PRIVATE abcd_analysis)
+  add_test(NAME access_catalog_test COMMAND access_catalog_test)
+  add_test(NAME access_catalog_guard_test COMMAND ${CMAKE_COMMAND}
+    "-DISA_ROOT=${ABCD_ISA_ROOT}"
+    "-DRUBY=${Ruby_EXECUTABLE}"
+    "-DTEMPLATE=${CMAKE_CURRENT_SOURCE_DIR}/tools/templates/access_catalog.inc.erb"
+    "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/access-catalog-guard"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/access_catalog_guard.cmake)
   add_executable(iterator_candidates EXCLUDE_FROM_ALL
     tests/tools/iterator_candidates.cc)
   target_link_libraries(iterator_candidates PRIVATE abcd_analysis abcd_corpus

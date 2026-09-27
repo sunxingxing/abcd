@@ -41,6 +41,14 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- L0 新增 pinned ISA 访问清单：146 个编码格式、21 个 typed family，包含 wide、
+  deprecated、runtime 前缀；同时纳入 MOV/FLDAI、环境建立及 named definition 依赖。
+  生成阶段校验显式边界映射的遗漏、重复和失效项，运行时不按指令名称字符串分派。
+  清单及查找不分配内存，查找 O(log N)。这是编码归属，不是 lift/AST 支持证明；
+  profile/实际 route 的分阶段证据接线仍待完成，不把 146 项写成已支持反编译。
+  独立 ISA 副本加入未知 LD 时生成失败，原输入未改动；细节见模板说明。
+  `access_catalog_test`、`access_catalog_guard_test`、`instruction_test`：3/3 通过；
+  `abcd_analysis` 与两个 C++ 测试目标构建成功。未运行性能或 RSS 测试。
 - 已开始执行 [访问恢复方案](access-recovery.md)，本次为 L1 computed Set，不是整个
   LD/ST 家族完成。`STOBJBYVALUE` 窄/宽格式进入同一 `ValuePropertyWrite`，保留三个
   输入、原始 PC、效果和 acc 不变语义；共用 AssignmentExpr/ComputedKey 与 printer。

@@ -44,9 +44,11 @@ set(ABCD_ISA_CASES
     "${ABCD_ISA_GENERATED_DIR}/abcd/abc/generated_isa_cases.inc")
 set(ABCD_ISA_FLOW
     "${ABCD_ISA_GENERATED_DIR}/abcd/abc/generated_isa_flow.inc")
+set(ABCD_ACCESS_CATALOG
+    "${ABCD_ISA_GENERATED_DIR}/abcd/abc/generated_access_catalog.inc")
 add_custom_command(
   OUTPUT "${ABCD_ISA_OPCODE_HEADER}" "${ABCD_ISA_TABLE}"
-         "${ABCD_ISA_CASES}" "${ABCD_ISA_FLOW}"
+         "${ABCD_ISA_CASES}" "${ABCD_ISA_FLOW}" "${ABCD_ACCESS_CATALOG}"
   COMMAND ${CMAKE_COMMAND} -E make_directory
           "${ABCD_ISA_GENERATED_DIR}/abcd/abc"
   COMMAND ${Ruby_EXECUTABLE} "${ABCD_ISA_GEN}"
@@ -66,13 +68,18 @@ add_custom_command(
           -t "${CMAKE_CURRENT_SOURCE_DIR}/tools/templates/isa_flow.inc.erb"
           -o "${ABCD_ISA_FLOW}"
   DEPENDS abcd_isa_pin_check
+          "${CMAKE_CURRENT_SOURCE_DIR}/tools/templates/access_catalog.inc.erb"
           "${ABCD_ISA_GEN}" "${ABCD_ISA_API}" "${ABCD_ISA_YAML}"
           "${CMAKE_CURRENT_SOURCE_DIR}/tools/templates/isa_opcode.h.erb"
           "${CMAKE_CURRENT_SOURCE_DIR}/tools/templates/isa_table.inc.erb"
           "${CMAKE_CURRENT_SOURCE_DIR}/tools/templates/isa_cases.inc.erb"
           "${CMAKE_CURRENT_SOURCE_DIR}/tools/templates/isa_flow.inc.erb"
+  COMMAND ${Ruby_EXECUTABLE} "${ABCD_ISA_GEN}"
+          -d "${ABCD_ISA_YAML}" -r "${ABCD_ISA_API}"
+          -t "${CMAKE_CURRENT_SOURCE_DIR}/tools/templates/access_catalog.inc.erb"
+          -o "${ABCD_ACCESS_CATALOG}"
   VERBATIM)
 add_custom_target(abcd_isa_generated
   DEPENDS "${ABCD_ISA_OPCODE_HEADER}" "${ABCD_ISA_TABLE}"
-          "${ABCD_ISA_CASES}" "${ABCD_ISA_FLOW}")
+          "${ABCD_ISA_CASES}" "${ABCD_ISA_FLOW}" "${ABCD_ACCESS_CATALOG}")
 add_dependencies(abcd_isa_generated abcd_isa_pin_check)

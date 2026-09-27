@@ -45,6 +45,15 @@ these are regression observations, not new computed-store corpus coverage.
 
 ## Subsequent Deliveries
 
+L0 inventory slice:
+- [x] Generate AccessSpec from explicit mnemonic-to-family boundary mappings,
+  preserving typed Opcode, byte length and accumulator use/definition.
+- [x] Add immutable, allocation-free PinnedAccessCatalog/FindPinnedAccess;
+  validate sorted uniqueness, decoding and every truncated encoding.
+- [x] Exercise a mutated independent ISA copy: unknown LD must fail generation.
+- [ ] Connect per-profile and per-route stage evidence to the catalog. Inventory
+  membership must never grant lift/AST/publication support.
+
 L0 typed coverage catalog follows existing ISA generation/profile ownership;
 include stage-specific state rather than guessing support from source text.
 L2 retains fixed-index/runtime differences and requires receiver/path proof.

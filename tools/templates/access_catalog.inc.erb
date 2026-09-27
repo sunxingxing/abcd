@@ -1,0 +1,62 @@
+<%# Textual ISA boundary only. Production receives typed Opcode/AccessFamily.
+    Every selected mnemonic needs an explicit reviewed mapping. Matching a
+    prefix selects audit scope, never establishes runtime semantics/support. %>
+<%
+groups = {
+  kScalar: %w[lda sta lda.str ldai fldai mov],
+  kConstant: %w[ldnan ldinfinity ldundefined ldnull ldsymbol ldtrue ldfalse ldhole ldbigint],
+  kEnvironment: %w[ldlexenv newlexenv newlexenvwithname poplexenv],
+  kLexical: %w[ldlexvar stlexvar],
+  kModule: %w[ldlocalmodulevar ldexternalmodulevar ldmodulevar stmodulevar],
+  kGlobal: %w[ldglobal tryldglobalbyname trystglobalbyname ldglobalvar stglobalvar
+    stconsttoglobalrecord sttoglobalrecord stlettoglobalrecord stclasstoglobalrecord],
+  kProperty: %w[ldobjbyname ldobjbyvalue ldobjbyindex stobjbyname stobjbyvalue stobjbyindex],
+  kOwnDefinition: %w[stownbyname stownbyvalue stownbyindex stownbynamewithnameset
+    stownbyvaluewithnameset definefieldbyname definepropertybyname],
+  kReceiver: %w[ldthis ldfunction ldnewtarget ldhomeobject ldthisbyname ldthisbyvalue
+    stthisbyname stthisbyvalue],
+  kSuper: %w[ldsuperbyname ldsuperbyvalue stsuperbyname stsuperbyvalue],
+  kPrivate: %w[ldprivateproperty stprivateproperty],
+  kSendable: %w[ldsendableclass ldsendableexternalmodulevar ldsendablelocalmodulevar
+    ldsendablevar stsendablevar newsendableenv],
+  kLazyModule: %w[ldlazymodulevar ldlazysendablemodulevar],
+  kPatch: %w[ldpatchvar stpatchvar],
+  kNamespace: %w[getmodulenamespace],
+  kIterator: %w[getpropiterator getiterator getiteratornext getasynciterator getnextpropname],
+  kArguments: %w[getunmappedargs],
+  kTemplate: %w[gettemplateobject],
+  kCoroutine: %w[getresumemode setgeneratorstate],
+  kSpread: %w[starrayspread],
+  kPrototype: %w[setobjectwithproto]
+}
+mapping = {}
+groups.each do |family, names|
+  names.each do |name|
+    raise "duplicate access mnemonic #{name}" if mapping.key?(name)
+    mapping[name] = family
+  end
+end
+seen = {}
+entries = []
+Panda.instructions.each do |instruction|
+  name = instruction.mnemonic.sub(/\A(?:wide|deprecated|callruntime)\./, '')
+  # Runtime-prefixed wide instructions encode width in the mnemonic as well.
+  name = name.sub(/\Awide(?=(?:ld|st|newsendableenv))/, '')
+  next if %w[stricteq strictnoteq].include?(name)
+  selected = name.match?(/\A(?:ld|st|get|set|tryld|tryst)/) || mapping.key?(name)
+  next unless selected
+  family = mapping.fetch(name) { raise "unclassified access mnemonic #{instruction.mnemonic}" }
+  seen[name] = true
+  entries << [instruction, family]
+end
+missing = mapping.keys.reject { |name| seen.key?(name) }
+raise "unused access mappings: #{missing.join(', ')}" unless missing.empty?
+entries.sort_by! { |instruction, _| instruction.opcode_idx }
+raise 'duplicate access opcode' unless entries.map { |instruction, _| instruction.opcode_idx }.uniq.size == entries.size
+%>
+inline constexpr std::array<AccessSpec, <%= entries.size %>> kAccessSpecs = {{
+<% entries.each do |instruction, family| %>
+  {abc::Opcode::k<%= instruction.opcode.upcase %>, AccessFamily::<%= family %>,
+   <%= instruction.format.size %>, <%= instruction.acc_read? %>, <%= instruction.acc_write? %>},
+<% end %>
+}};

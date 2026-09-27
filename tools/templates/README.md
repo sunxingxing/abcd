@@ -20,3 +20,18 @@ mixed microbenchmark measured 31.11 ns/instruction with binary search and
 not whole-file decompilation. Acceptance of a historical dynamic container
 profile establishes structural decode only; historical semantic availability
 needs separate rules.
+# Access Inventory
+
+`access_catalog.inc.erb` generates the immutable typed access inventory from
+the same pinned ISA API. Explicit textual boundary mappings classify 146
+formats into 21 families, retaining byte widths and accumulator behavior.
+The generator rejects unclassified access mnemonics, duplicate mappings and
+mapping entries no longer present in the ISA. Runtime lookup uses Opcode,
+never mnemonic strings. Prefix stripping here is a generation boundary, not
+a claim that wide/deprecated/runtime-prefixed operations share semantics.
+
+Inventory membership does not authorize any semantic profile, lift, AST or
+source publication. Actual stages must remain tied to engine route evidence.
+`access_catalog_test` checks all inventory encodings and truncations;
+`access_catalog_guard_test` changes only a build-directory copy of the ISA and
+requires a missing classification to fail. Pinned upstream inputs are untouched.
