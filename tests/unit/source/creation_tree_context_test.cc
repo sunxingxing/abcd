@@ -29,7 +29,7 @@ using namespace abcd::analysis;
 using namespace abcd::source;
 enum class ChildBody { kEmpty, kReceiver, kCapture, kCell, kRecursive, kNestedWriter, kSnapshot };
 enum class CallerObject { kAbsent, kPrimitive, kMethod };
-enum class SnapshotCase { kRead, kWrite, kPair, kBranch };
+enum class SnapshotCase { kRead, kWrite, kPair, kBranch, kLoop };
 constexpr std::uint32_t kPool = 64, kCaller = 256, kTarget = 300, kWriter = 320,
     kRecord = 128, kCallerCode = 400, kCodePadding = 16;
 constexpr unsigned kFunctionKindShift = 8;  // Pinned dynamic method access flags.
@@ -111,7 +111,20 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
   std::vector<std::uint8_t> target;
   switch (child) {
     case ChildBody::kSnapshot:
-      if (snapshot_case == SnapshotCase::kBranch) {
+      if (snapshot_case == SnapshotCase::kLoop) {
+        test::Check(parameters >= 2);
+        const auto op = [](abc::Opcode value) { return static_cast<std::uint8_t>(value); };
+        constexpr std::uint8_t kSecondParameter = kImplicitArguments + 1;
+        // Two iterations: each snapshot becomes the next value of parameter 1.
+        // Taken exit is PC 15; the backedge at PC 13 targets the snapshot at 3.
+        constexpr std::uint8_t kExitDelta = 7;
+        constexpr auto kBackDelta = static_cast<std::uint8_t>(-10);
+        target = {op(abc::Opcode::kLDTRUE), op(abc::Opcode::kSTA_V8), kImplicitArguments,
+            op(abc::Opcode::kGETUNMAPPEDARGS), op(abc::Opcode::kSTA_V8), kSecondParameter,
+            kLoad, kImplicitArguments, op(abc::Opcode::kJEQZ_IMM8), kExitDelta,
+            op(abc::Opcode::kLDFALSE), op(abc::Opcode::kSTA_V8), kImplicitArguments,
+            op(abc::Opcode::kJMP_IMM8), kBackDelta};
+      } else if (snapshot_case == SnapshotCase::kBranch) {
         test::Check(parameters != 0);
         constexpr std::uint8_t kElseDelta = 11, kJoinDelta = 9, kThenValue = 37, kElseValue = 42;
         const auto op = [](abc::Opcode value) { return static_cast<std::uint8_t>(value); };
@@ -273,6 +286,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
           *evidence << nlohmann::json{{"source", output.str()}, {"parameters", parameters},
               {"writes_parameter", snapshot_case == SnapshotCase::kWrite},
               {"branch_parameter", snapshot_case == SnapshotCase::kBranch},
+              {"loop_snapshots", snapshot_case == SnapshotCase::kLoop},
               {"nested_snapshot", snapshot_case == SnapshotCase::kPair}, {"snapshots", sites},
               {"positions", nlohmann::json::parse(positions.str())}} << '\n';
         }
@@ -619,8 +633,9 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
 int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--snapshot-json") {
     for (const auto parameters : {0U, 1U, 2U, 200U, 201U}) {
-      for (const auto variant : {SnapshotCase::kRead, SnapshotCase::kWrite, SnapshotCase::kPair, SnapshotCase::kBranch}) {
+      for (const auto variant : {SnapshotCase::kRead, SnapshotCase::kWrite, SnapshotCase::kPair, SnapshotCase::kBranch, SnapshotCase::kLoop}) {
         if (parameters == 0 && variant != SnapshotCase::kRead) continue;
+        if (parameters < 2 && variant == SnapshotCase::kLoop) continue;
         Run(2, abc::FunctionKind::kBaseConstructor, ChildBody::kSnapshot, false,
             static_cast<std::uint8_t>(parameters), CallerObject::kAbsent, variant, &std::cout);
       }

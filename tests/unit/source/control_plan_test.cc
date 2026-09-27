@@ -2,6 +2,7 @@
 #include "abcd/source/source_tree.h"
 
 #include <array>
+#include <bit>
 #include <cstdlib>
 #include <span>
 #include <type_traits>
@@ -116,12 +117,18 @@ void Loops() {
     for (std::uint32_t i = 0; i < depth; ++i)
       nesting[i] = {i + 1 < depth ? i + 1 : i, i == 0 ? depth : i - 1};
     const auto deep_graph = Graph(nesting);
-    const auto deep_built = BuildControlPlan(deep_graph);
+    // Deep synthetic graphs need an explicit bounded grant; exhausting the
+    // production default is not evidence of an invalid loop representation.
+    constexpr std::uint64_t kWorkPerNodeLogBound = 512;
+    analysis::SemanticBudget budget;
+    budget.work = kWorkPerNodeLogBound * (deep_graph.blocks.size() + deep_graph.edges.size()) *
+        std::bit_width(deep_graph.blocks.size());
+    const auto deep_built = BuildControlPlan(deep_graph, budget);
     const auto* deep = std::get_if<ControlPlan>(&deep_built);
     Check(deep && deep->loops.size() == depth);
     Check(deep->nodes.size() <= deep_graph.blocks.size() +
         deep_graph.edges.size() + 2 * deep->loops.size());
-    analysis::SemanticBudget budget;
+    Check(deep->work <= budget.work);
     budget.work = deep->work;
     Check(std::holds_alternative<ControlPlan>(BuildControlPlan(deep_graph, budget)));
     --budget.work;

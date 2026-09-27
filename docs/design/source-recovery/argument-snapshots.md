@@ -155,6 +155,16 @@ callee, and installs caller then callee; using a strict native arguments object
 would retain the wrong string-key order. This fixture is not an Ark VM differential
 run or a production host adapter.
 
+The source acceptance matrix also contains a finite backedge fixture at declared
+arities 2, 200 and 201. A snapshot is stored into a parameter on each iteration,
+then included in the next snapshot. Executed output checks the nested object
+identities and current boolean slot on both iterations, independent calls and
+construction. Factory-call counts verify all three allocations even when no
+actual arguments expose the intermediate objects. Both original snapshot PCs
+retain generated ranges. This uses the existing CFG/phi/loop AST route without
+a loop-specific snapshot writer; the 20 file-backed variants are synthetic, not
+additional application-corpus or Ark VM differential evidence.
+
 Still open: arrow-owned invocation carriers and their ABI/name/constructibility
 proofs; broader method/constructor/async/generator and default/rest combinations;
 host integration in actual applications and multi-application runtime evidence.

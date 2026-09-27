@@ -48,13 +48,20 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   显式 HostArgumentSnapshotBinding 工厂按 v7 契约新建，不能直接返回 arguments
   或数组。绑定名称、类型化 ABI 与契约版本写入位置产物；缺绑定、遮蔽、V1
   资源契约、错 owner、错槽对应均拒绝。箭头仍拒绝，未虚构其自身调用载体。
-  文件级普通函数包含读、改写参数、重复快照和分支汇合；源码执行与 PC 映射
+  文件级普通函数包含读、改写参数、重复快照、分支汇合和有限循环；源码执行与 PC 映射
   测试使用独立测试工厂。实际应用宿主适配、多应用与更多 callable/默认值/rest
   组合仍待验证，未将 GETUNMAPPEDARGS 或 group 1 标为整体完成。
-  源码运行覆盖 17 个文件级变体（0/1/2/200/201 声明参数），每个再测试不同实际
+  源码运行覆盖 20 个文件级合成变体（0/1/2/200/201 声明参数），每个再测试不同实际
   实参数量；包含分支 false/0 与 undefined/null/BigInt 的区别、构造调用、对象身份、
   属性描述符/顺序、公共数组迭代器改写及原始 PC→生成范围。封存后方法 receipt
   为 Complete，但明确依赖输出中的宿主工厂契约，不等于整份 record 或全组完成。
+  新增循环覆盖 2/200/201 声明参数：两次迭代分别保存快照到参数，退出后再次读取；
+  执行验证各轮槽值、嵌套对象身份与跨调用隔离，实际零参数也必须调用工厂三次。
+  复用既有 CFG/phi/循环 AST，无生产代码或规则版本改动，不扩大 callable 支持声明。
+  本轮循环相关 8/8 定向回归通过（上述快照/创建/求值测试及 control_plan、phi_copies、
+  function_tree、tree_structure）。其中既有 control/phi 4096 规模夹具最初触发
+  kWorkLimit，已改为显式有界 O(n log n) 测试配额，并保留精确 work / work-1
+  成功与拒绝检查；未放宽生产默认限制，也未启动性能基准或 RSS 测量。
   新正例先在旧 AST 门禁失败；`argument_snapshot_source_test`、
   `creation_tree_context_test`、`argument_snapshot_test`、`argument_evaluation_test`、
   `tree_structure_test`、`family_enclosure_test`、`function_tree_test`、

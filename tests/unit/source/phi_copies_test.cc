@@ -11,6 +11,13 @@ namespace {
 using namespace abcd::analysis;
 using namespace abcd::source;
 void Check(bool condition) { if (!condition) std::abort(); }
+SemanticBudget PhiBudget(const ValueProgram& graph) {
+  // Explicit O(U log U) fixture grant; production defaults are unchanged.
+  constexpr std::uint64_t kWorkPerInputLogBound = 512;
+  SemanticBudget budget;
+  budget.work = kWorkPerInputLogBound * graph.uses.size() * std::bit_width(graph.uses.size());
+  return budget;
+}
 void Append(ValueProgram& graph, OperandUse use) {
   const UseId id{static_cast<std::uint32_t>(graph.uses.size())};
   auto& definition = graph.values[std::get<ValueId>(use.operand).value];
@@ -42,11 +49,11 @@ ValueProgram Graph(std::uint32_t count, bool loop) {
   }
   return graph;
 }
-PhiCopies Plan(const ValueProgram& graph) {
-  auto built = BuildPhiCopies(graph);
+PhiCopies Plan(const ValueProgram& graph, SemanticBudget budget = {}) {
+  auto built = BuildPhiCopies(graph, budget);
   Check(std::holds_alternative<PhiCopies>(built));
   auto plan = std::get<PhiCopies>(std::move(built));
-  Check(std::holds_alternative<std::uint64_t>(VerifyPhiCopies(graph, plan)));
+  Check(std::holds_alternative<std::uint64_t>(VerifyPhiCopies(graph, plan, budget)));
   return plan;
 }
 FunctionSyntax Syntax() {
@@ -58,15 +65,15 @@ FunctionSyntax Syntax() {
   return syntax;
 }
 FunctionTree Tree(const ValueProgram& graph, const EvaluationPlan& evaluation,
-    ExpressionConstants constants) {
-  const auto control = BuildControlPlan(graph);
+    ExpressionConstants constants, SemanticBudget budget = {}) {
+  const auto control = BuildControlPlan(graph, budget);
   Check(std::holds_alternative<ControlPlan>(control));
   auto built = BuildFunctionTree(graph, std::get<ControlPlan>(control), evaluation,
-      Syntax(), constants);
+      Syntax(), constants, budget);
   Check(std::holds_alternative<ConstructedFunction>(built));
   auto tree = std::get<ConstructedFunction>(std::move(built)).tree;
   Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph,
-      std::get<ControlPlan>(control), evaluation, tree, constants)));
+      std::get<ControlPlan>(control), evaluation, tree, constants, budget)));
   return tree;
 }
 void Mutations() {
@@ -107,17 +114,18 @@ void EntryAndScaling() {
   for (const std::uint32_t count : {1U, 2U, 200U, 201U, 4096U}) {
     for (const bool loop : {false, true}) {
       const auto graph = Graph(count, loop);
-      const auto plan = Plan(graph);
+      auto budget = PhiBudget(graph);
+      const auto plan = Plan(graph, budget);
       Check(plan.bundles.size() == 2);
       Check(plan.bundles[0].count == count && plan.bundles[1].count == count);
       Check(std::holds_alternative<MethodEntryKey>(plan.bundles[0].incoming) == loop);
       Check(plan.bundles[0].schedule.temporaries == 0);
       Check(plan.bundles[1].schedule.temporaries == (loop && count > 1 ? 1U : 0U));
-      const auto evaluated = BuildEvaluationPlan(graph);
+      const auto evaluated = BuildEvaluationPlan(graph, budget);
       Check(std::holds_alternative<EvaluationPlan>(evaluated));
       const auto& evaluation = std::get<EvaluationPlan>(evaluated);
       Check(evaluation.phis && evaluation.phis->bundles.size() == 2);
-      const auto bound = BuildBindingPlan(graph, evaluation, 1);
+      const auto bound = BuildBindingPlan(graph, evaluation, 1, budget);
       Check(std::holds_alternative<BindingPlan>(bound));
       const auto& bindings = std::get<BindingPlan>(bound);
       for (std::uint32_t i = 1; i <= count; ++i) {
@@ -132,9 +140,12 @@ void EntryAndScaling() {
       }
       auto missing = evaluation;
       missing.phis.reset();
-      Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, missing)) == EvaluationError::kLivePhi);
-      constexpr std::uint64_t kWorkPerInputLogBound = 512;
-      Check(plan.work <= kWorkPerInputLogBound * graph.uses.size() * std::bit_width(graph.uses.size()));
+      Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, missing, budget)) == EvaluationError::kLivePhi);
+      Check(plan.work <= budget.work);
+      budget.work = plan.work;
+      Check(std::holds_alternative<PhiCopies>(BuildPhiCopies(graph, budget)));
+      --budget.work;
+      Check(std::get<PhiCopyError>(BuildPhiCopies(graph, budget)) == PhiCopyError::kWorkLimit);
     }
   }
 }
@@ -205,11 +216,12 @@ void EdgeSyntax() {
   for (const std::uint32_t count : {1U, 2U, 200U, 201U, 4096U}) {
     auto graph = Graph(count, false);
     graph.origins = {{{0}, {0}, {}}, {{1}, {1}, {}}};
-    const auto evaluated = BuildEvaluationPlan(graph);
+    const auto allowance = PhiBudget(graph);
+    const auto evaluated = BuildEvaluationPlan(graph, allowance);
     Check(std::holds_alternative<EvaluationPlan>(evaluated));
     const auto& evaluation = std::get<EvaluationPlan>(evaluated);
     const std::vector<ExpressionConstant> constants(graph.ops.size());
-    const auto built = BuildExpressionForest(graph, evaluation, 1, {0}, {constants});
+    const auto built = BuildExpressionForest(graph, evaluation, 1, {0}, {constants}, allowance);
     Check(std::holds_alternative<ExpressionForest>(built));
     const auto& forest = std::get<ExpressionForest>(built);
     Check(forest.edges.size() == 2 && forest.edge_assignments.size() == count * 2);
@@ -238,9 +250,9 @@ void EdgeSyntax() {
     Check(std::holds_alternative<ExpressionForest>(BuildExpressionForest(graph, evaluation, 1, {0}, {constants}, budget)));
     --budget.work;
     Check(std::get<ExpressionError>(BuildExpressionForest(graph, evaluation, 1, {0}, {constants}, budget)) == ExpressionError::kWorkLimit);
-    const auto tree = Tree(graph, evaluation, {constants, 2});
+    const auto tree = Tree(graph, evaluation, {constants, 2}, allowance);
     const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
-    const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, tree));
+    const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, tree, allowance));
     Check(flow.copies.size() == 2 && flow.copies[0].expressions.size() == count);
     for (std::uint32_t i = 1; i <= count; ++i) Check(flow.phis[i].has_value());
     if (count == 2) {

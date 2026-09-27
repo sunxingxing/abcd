@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 
 const cases = execFileSync(process.argv[2], ['--snapshot-json'], {encoding: 'utf8'})
   .trim().split('\n').map(line => JSON.parse(line));
-assert.equal(cases.length, 17);
+assert.equal(cases.length, 20);
 
 // Test-only embedding capability for the pinned runtime contract. Retained
 // intrinsics avoid public prototype lookups; no input carrier escapes.
@@ -19,7 +19,9 @@ const makeArguments = Function('return arguments');
 const iterator = Array.prototype.values;
 const iteratorKey = Symbol.iterator;
 const objectPrototype = Object.prototype;
+let factoryCalls = 0;
 const factory = (carrier, slots) => {
+  ++factoryCalls;
   const values = [];
   for (let i = 0; i < carrier.length; ++i) {
     define(values, i, {value: i < slots.length ? slots[i] : carrier[i],
@@ -59,18 +61,39 @@ function checkObject(actual, expected) {
   ]);
 }
 
+function checkLoop(actual, values) {
+  const expected = values.slice();
+  if (values.length) expected[0] = false;
+  if (values.length > 1) {
+    const second = actual[1];
+    const first = second[1];
+    const initial = values.slice(); initial[0] = true;
+    checkObject(first, initial);
+    const next = values.slice(); next[0] = false; next[1] = first;
+    checkObject(second, next);
+    assert.notEqual(first, second);
+    assert.notEqual(first, actual);
+    assert.notEqual(second, actual);
+    expected[1] = second;
+  }
+  checkObject(actual, expected);
+}
+
 for (const item of cases) {
   assert.equal(typeof item.source, 'string');
   assert.equal(typeof item.writes_parameter, 'boolean');
   assert.equal(typeof item.nested_snapshot, 'boolean');
   assert.equal(typeof item.branch_parameter, 'boolean');
+  assert.equal(typeof item.loop_snapshots, 'boolean');
   const fn = Function('factory', `"use strict"; const snapshotArguments = factory; return (${item.source});`)(factory);
   assert.equal(fn.length, item.parameters);
   assert.equal(Object.hasOwn(fn, 'prototype'), true);
   const counts = new Set([0, 1, Math.max(0, item.parameters - 1), item.parameters, item.parameters + 2]);
   for (const count of counts) {
     const values = Array.from({length: count}, (_, i) => i === 0 ? undefined : {ordinal: i});
+    const before = factoryCalls;
     const result = apply(fn, {unrelated: true}, values);
+    assert.equal(factoryCalls - before, item.loop_snapshots ? 3 : item.nested_snapshot ? 2 : 1);
     const second = apply(fn, null, values);
     const expected = values.slice();
     if (count && (item.writes_parameter || item.branch_parameter)) expected[0] = 37;
@@ -81,7 +104,11 @@ for (const item of cases) {
       assert.notEqual(result[0], second[0]);
       expected[0] = result[0];
     }
-    checkObject(result, expected);
+    if (item.loop_snapshots) {
+      checkLoop(result, values);
+      checkLoop(second, values);
+      if (count > 1) assert.notEqual(result[1], second[1]);
+    } else checkObject(result, expected);
     assert.notEqual(result, second);
     if (count) {
       result[0] = 'changed';
@@ -90,6 +117,7 @@ for (const item of cases) {
     }
     const constructed = Reflect.construct(fn, values);
     assert.equal(Object.prototype.toString.call(constructed), '[object Arguments]');
+    if (item.loop_snapshots) checkLoop(constructed, values);
     if (count && item.branch_parameter) {
       for (const predicate of [false, 0, -0, true, 1, undefined, null, 0n]) {
         const branchValues = values.slice(); branchValues[0] = predicate;
@@ -115,7 +143,7 @@ for (const item of cases) {
   assert.equal(binding.name, 'snapshotArguments');
   assert.equal(binding.policy, 'explicit_host');
   assert.equal(binding.abi, 'v7_current_slots');
-  assert.equal(item.snapshots.length, item.nested_snapshot ? 2 : 1);
+  assert.equal(item.snapshots.length, item.nested_snapshot || item.loop_snapshots ? 2 : 1);
   for (const site of item.snapshots) {
     const source = item.positions.instruction_sources[site.instruction];
     assert.equal(item.positions.origins[source.origin].pc, site.pc);
