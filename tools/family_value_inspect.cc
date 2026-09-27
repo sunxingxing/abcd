@@ -1,4 +1,5 @@
 #include "family_value_inspect.h"
+#include "tree_position_json.h"
 
 #include <nlohmann/json.hpp>
 #include <type_traits>
@@ -26,7 +27,7 @@ class DraftBuffer final : public std::streambuf {
   std::unique_ptr<char[]> bytes_;
 };
 void Draft(nlohmann::json& report, const ConstructedFamily& family,
-           analysis::SemanticBudget budget) {
+           analysis::SemanticBudget budget, std::ostream& positions) {
   report["draft_prepared"] = false;
   // Reserve both the fixed stream storage and the final JSON string copy.
   constexpr std::size_t kOutputStorage = 2 * kDraftBytes;
@@ -46,23 +47,20 @@ void Draft(nlohmann::json& report, const ConstructedFamily& family,
   }
   report["draft_prepared"] = true;
   report["draft_source"] = buffer.Text();
-  report["draft_ranges"] = nlohmann::json::array();
+  // Stream the shared DAG once per owner. Expanding combined origins per node
+  // can be quadratic; building a second JSON DOM needlessly duplicates arenas.
+  positions << "\"draft_positions\":[";
   for (std::size_t i = 0; i < draft->members.size(); ++i) {
     const auto& member = draft->members[i];
-    nlohmann::json item{{"owner", family.members[i].tree.owner.value}, {"method", member.method.value},
-        {"begin", draft->functions[i].begin}, {"end", draft->functions[i].end}};
-    const auto ranges = [](const auto& events) {
-      auto result = nlohmann::json::array();
-      for (const auto& event : events) result.push_back({event.begin, event.end});
-      return result;
-    };
-    item["parameters"] = ranges(member.parameters);
-    item["expressions"] = ranges(member.expressions);
-    item["properties"] = ranges(member.properties);
-    item["statements"] = ranges(member.statements);
-    item["anchors"] = member.anchors;
-    report["draft_ranges"].push_back(std::move(item));
+    if (i) positions << ',';
+    positions << "{\"owner\":" << family.members[i].tree.owner.value
+              << ",\"method\":" << member.method.value
+              << ",\"begin\":" << draft->functions[i].begin
+              << ",\"end\":" << draft->functions[i].end << ",\"positions\":";
+    abcd::tools::WriteTreePositions(positions, family.members[i].tree, member);
+    positions << '}';
   }
+  positions << "],";
   report["draft_coordinates"] = "absolute-utf8-bytes";
   report["draft_publication_pending"] = {"root-enclosure", "global-module-bindings", "callable-names", "transitive-premises"};
 }
@@ -118,7 +116,7 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
     const abcd::abc::Header& header, const abcd::abc::MetadataIndex& index,
     const abcd::abc::MethodLookup& lookup, abcd::abc::MethodPosition root,
     abcd::source::RouteInputIdentity identity, const abcd::source::RecordModuleContext* modules,
-    FamilyInspectMode mode) {
+    std::ostream& output, FamilyInspectMode mode) {
   nlohmann::json report{{"family_prepared", false}};
   analysis::SemanticBudget budget;
   const auto indexed_roles = analysis::MethodRoleIndex::Build(file, header, index, lookup, {budget.bytes});
@@ -215,7 +213,7 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
       }
       report["family_tree_signatures"].push_back(std::move(signature));
     }
-    if (mode == FamilyInspectMode::kSourceDraft) Draft(report, *tree, budget);
+    if (mode == FamilyInspectMode::kSourceDraft) Draft(report, *tree, budget, output);
   } else {
     const auto& failure = std::get<FamilyTreeFailure>(constructed);
     report["family_tree_member"] = failure.member.value;

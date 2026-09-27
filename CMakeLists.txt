@@ -290,7 +290,7 @@ option(ABCD_BUILD_TOOLS "Build standalone ABC command-line tools" ON)
 if(ABCD_BUILD_TOOLS)
   add_executable(abc_semantic tools/abc_semantic.cc tools/semantic_survey.cc
     tools/exception_inspect.cc tools/exception_source_inspect.cc tools/record_module.cc
-    tools/value_source_inspect.cc tools/family_value_inspect.cc)
+    tools/value_source_inspect.cc tools/family_value_inspect.cc tools/tree_position_json.cc)
   target_link_libraries(abc_semantic PRIVATE abcd_source abcd_json)
   add_executable(abc_structure tools/abc_structure.cc)
   target_link_libraries(abc_structure PRIVATE abcd_structure abcd_corpus abcd_json)
@@ -423,6 +423,10 @@ if(BUILD_TESTING)
         "-DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>"
         "-DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/source_route_cli.cmake)
+      add_test(NAME family_source_cli_test COMMAND ${CMAKE_COMMAND}
+        "-DABCD_SEMANTIC=$<TARGET_FILE:abc_semantic>"
+        "-DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/family_source_cli.cmake)
     endif()
   endif()
   add_executable(capture_summary_test tests/unit/analysis/capture_summary_test.cc)

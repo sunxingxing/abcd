@@ -11,6 +11,18 @@ observations, not an up-to-date capability summary.
 
 ### File-Backed Conditional Function Families
 
+Family draft diagnostics now stream `draft_positions` using the same serializer
+as verified single-member output. This replaces the draft-only bare range arrays
+with per-owner origin DAG/part tables, node ranges, anchors, operation placements
+and signature placements, plus work/CFG revisions. No transitive origin expansion
+or second whole-tree JSON DOM is built. Source text and offsets are unchanged.
+Real ABC 7449 exports origin counts [42,84,5,5]. Its six signature PCs
+[16,20,21,24,26,31] resolve to generated parameter bytes [10,22), `$arg0 = null`.
+The G2 7559 printed record segment stays [2638,2924), rules 23, record incomplete.
+These are ABC-only artifact observations, not JS execution or all-PC coverage
+certification. The new CLI regression specification remains unrun. Production
+builds succeeded after correcting an ABI-array call exposed by serializer extraction.
+
 The shared iterative tree printer now carries an owner and indentation depth
 on every action. Nested FunctionExpr nodes enter actual child trees through an
 indexed owner lookup, without recursion, a second body writer or text replay.

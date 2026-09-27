@@ -1,5 +1,6 @@
 #include "value_source_inspect.h"
 #include "family_value_inspect.h"
+#include "tree_position_json.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -122,96 +123,6 @@ int Refused(std::ostream& output, MethodRouteReceipt receipt, InspectionError er
   output << report << '\n';
   return EXIT_FAILURE;
 }
-nlohmann::json Origin(const TreeOrigin& origin) {
-  return std::visit([](const auto& node) -> nlohmann::json {
-    using T = std::decay_t<decltype(node)>;
-    if constexpr (std::is_same_v<T, OriginalSite> || std::is_same_v<T, ElidedOrigin>) {
-      nlohmann::json out{{"kind", std::is_same_v<T, OriginalSite> ? "original" : "elided_pure"},
-                         {"site", node.site.value}, {"pc", node.pc.value}};
-      out["original_pc"] = node.original ? nlohmann::json(node.original->value) : nlohmann::json(nullptr);
-      return out;
-    } else if constexpr (std::is_same_v<T, CombinedOrigin>) {
-      return {{"kind", "combined"}, {"first_part", node.first_part}, {"part_count", node.part_count}};
-    } else if constexpr (std::is_same_v<T, EdgeOrigin>) {
-      return {{"kind", "edge"}, {"edge", node.edge.value}};
-    } else if constexpr (std::is_same_v<T, LoopOrigin>) {
-      return {{"kind", "loop"}, {"header", node.header.value}};
-    } else if constexpr (std::is_same_v<T, EntryOrigin>) {
-      return {{"kind", "method_entry"}};
-    } else {
-      static_assert(std::is_same_v<T, BindingOrigin>);
-      return {{"kind", "binding"}, {"symbol", node.symbol.value}};
-    }
-  }, origin);
-}
-template <class Items, class Encode>
-void Array(std::ostream& output, const Items& items, Encode encode) {
-  output << '[';
-  bool first = true;
-  for (const auto& item : items) {
-    if (!first) output << ',';
-    first = false;
-    output << encode(item);
-  }
-  output << ']';
-}
-void Positions(std::ostream& output, const FunctionTree& tree, const PrintedFunction& printed) {
-  // Stream tables independently: do not expand each node's transitive PC set,
-  // or hold an unbounded JSON DOM duplicating the complete source tree.
-  output << "{\"unit\":\"utf8_byte\",\"origins\":";
-  Array(output, tree.origins, Origin);
-  output << ",\"origin_parts\":";
-  Array(output, tree.origin_parts, [](auto id) { return id.value; });
-  output << ",\"parameters\":[";
-  for (std::size_t i = 0; i < tree.parameters.size(); ++i) {
-    if (i != 0) output << ',';
-    const auto& parameter = tree.parameters[i];
-    nlohmann::json entry{{"symbol", parameter.symbol.value},
-        {"begin", printed.parameters[i].begin}, {"end", printed.parameters[i].end}};
-    entry["initializer"] = parameter.initializer
-        ? nlohmann::json(parameter.initializer->value) : nlohmann::json(nullptr);
-    output << entry;
-  }
-  output << ']';
-  const auto nodes = [&](std::string_view label, const auto& syntax, const auto& spans) {
-    output << ",\"" << label << "\":[";
-    for (std::size_t i = 0; i < syntax.size(); ++i) {
-      if (i != 0) output << ',';
-      output << nlohmann::json{{"origin", syntax[i].origin.value},
-          {"begin", spans[i].begin}, {"end", spans[i].end}};
-    }
-    output << ']';
-  };
-  nodes("expressions", tree.expressions, printed.expressions);
-  nodes("properties", tree.properties, printed.properties);
-  nodes("statements", tree.statements, printed.statements);
-  output << ",\"anchors\":[";
-  for (std::size_t i = 0; i < tree.anchors.size(); ++i) {
-    if (i != 0) output << ',';
-    const auto& anchor = tree.anchors[i];
-    nlohmann::json entry{{"origin", anchor.origin.value}, {"byte", printed.anchors[i]}};
-    if (const auto* boundary = std::get_if<BlockBoundary>(&anchor.position)) {
-      entry["kind"] = "block_boundary";
-      entry["block"] = boundary->block.value; entry["index"] = boundary->index;
-    } else entry["kind"] = "function_exit";
-    output << entry;
-  }
-  output << "],\"operations\":";
-  Array(output, tree.operations, [](const OpPlacement& operation) {
-    return std::visit([&](auto node) {
-      using T = decltype(node);
-      constexpr std::string_view kind = std::is_same_v<T, ExprId> ? "expression" :
-          std::is_same_v<T, StmtId> ? "statement" : std::is_same_v<T, PropertyId> ? "property" : "anchor";
-      return nlohmann::json{{"operation", operation.operation.value}, {"kind", kind}, {"node", node.value}};
-    }, operation.node);
-  });
-  output << ",\"signature\":";
-  Array(output, tree.signature, [](const SignaturePlacement& placement) {
-    return nlohmann::json{{"operation", placement.operation.value},
-        {"parameter", placement.parameter.value}, {"origin", placement.origin.value}};
-  });
-  output << '}';
-}
 
 int RecordSlice(const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
@@ -271,7 +182,7 @@ int RecordSlice(const corpus::AbcFile& file, const abc::Header& header,
                 {"pc", creation.pc.value}, {"literal", creation.literal.value},
                 {"property", creation.property}}
            << ",\"route_receipt\":" << *receipt << ",\"local_positions\":";
-    Positions(output, emission.Function().Tree(), emission.Positions());
+    abcd::tools::WriteTreePositions(output, emission.Function().Tree(), emission.Positions());
     output << '}';
   }
   output << "]}\n";
@@ -350,10 +261,17 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
     }
     report["module_context_ready"] = modules.has_value();
     if (scope == ValueSourceScope::kConditionalFamily || scope == ValueSourceScope::kFamilyDraft) {
+      output << '{';
       report.update(InspectFamilyValues(file, header, index, *lookup, *position, identity,
-          modules ? &*modules : nullptr, scope == ValueSourceScope::kFamilyDraft
+          modules ? &*modules : nullptr, output, scope == ValueSourceScope::kFamilyDraft
               ? FamilyInspectMode::kSourceDraft : FamilyInspectMode::kValues));
-      output << report << '\n';
+      bool first = true;
+      for (const auto& [key, value] : report.items()) {
+        if (!first) output << ',';
+        first = false;
+        output << nlohmann::json(key) << ':' << value;
+      }
+      output << "}\n";
       return EXIT_FAILURE; // File-driven family inputs are not source publication.
     }
     const auto prepared = ReadFunctionValues(file, header, index, *position, identity,
@@ -523,13 +441,17 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
          << ",\"callable\":" << nlohmann::json(AbiObservationName(abi.callable))
          << ",\"new_target\":" << nlohmann::json(AbiObservationName(abi.new_target))
          << ",\"arguments\":" << nlohmann::json(AbiObservationName(abi.arguments)) << ",\"parameters\":";
-  Array(output, abi.parameters, [](const ParameterAbiUse& use) {
-    return nlohmann::json{{"symbol", use.symbol.value}, {"operands", use.reads.operands},
+  output << '[';
+  for (std::size_t i = 0; i < abi.parameters.size(); ++i) {
+    if (i) output << ',';
+    const auto& use = abi.parameters[i];
+    output << nlohmann::json{{"symbol", use.symbol.value}, {"operands", use.reads.operands},
         {"references", use.reads.references}, {"writes", use.writes}};
-  });
+  }
+  output << ']';
   output << "},\"destination\":" << nlohmann::json{{"begin", emission->Destination().begin}, {"end", emission->Destination().end}}
          << ",\"source\":" << nlohmann::json(source.view()) << ",\"positions\":";
-  Positions(output, emission->Function().Tree(), emission->Positions());
+  abcd::tools::WriteTreePositions(output, emission->Function().Tree(), emission->Positions());
   output << "}\n";
   return EXIT_FAILURE;  // Incomplete record coverage, even after fragment printing.
 }
