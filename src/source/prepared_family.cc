@@ -18,6 +18,7 @@ PreparedFamily::~PreparedFamily() = default;
 const ConstructedFamily& PreparedFamily::Family() const { return storage_->family; }
 const RouteInputIdentity& PreparedFamily::Identity() const { return storage_->context.Identity(); }
 const analysis::ClassMethodSite* PreparedFamily::ClassCreation() const { return storage_->context.ClassSite(); }
+const analysis::FunctionCreationSite* PreparedFamily::FunctionCreation() const { return storage_->context.CreationSite(); }
 std::u16string_view PreparedFamily::Name() const { return storage_->context.Name(); }
 std::span<const MethodRouteReceipt> PreparedFamily::Receipts() const { return storage_->receipts; }
 std::size_t PreparedFamily::AllocatedBytes() const { return storage_->allocated_bytes; }

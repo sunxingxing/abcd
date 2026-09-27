@@ -7,6 +7,7 @@
 
 namespace abcd::source {
 struct ClassMethodSelection;
+struct FunctionCreationSelection;
 // RouteRefusal is appended (stable indices). Also reports an explicit member
 // migration obligation that could not be retained by record assembly.
 using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure,
@@ -24,12 +25,15 @@ using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure,
 // Optional selection requires that exact class occurrence to use the verified
 // value-tree member route. Other code remains legacy; this mixed artifact is
 // not a complete value-tree record. A missing selected segment refuses output.
+// Alternatively select a DEFINEFUNC/DEFINEMETHOD occurrence with the same
+// obligation. Supplying both selections is rejected, never precedence-based.
 [[nodiscard]] RecordSourceResult BuildRecordSource(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const abc::RecordInfo& record, const RecordModuleContext& context,
     const analysis::MethodRoleIndex& roles, RecordProgramBudget budget,
     const HostRealmBinding* realm_binding, RoutePolicy policy,
-    const ClassMethodSelection* selection = nullptr);
+    const ClassMethodSelection* selection = nullptr,
+    const FunctionCreationSelection* function_selection = nullptr);
 }  // namespace abcd::source
 #endif

@@ -6,6 +6,8 @@
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/prepared_family.h"
 #include "../../../src/source/family_emission.h"
+#include "../../../src/source/selected_function.h"
+#include "../../support/function_segments.h"
 #include "abcd/source/verified_function.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
@@ -292,6 +294,44 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       test::Check(std::holds_alternative<PrintedFamilyDraft>(prepared.PrintDraft(
           {Strictness::kStrict, nullptr}, prepared_output)));
       test::Check(prepared_output.str() == named_output.str());
+      // Exercise the production creation adapter with a real indexed site,
+      // not a raw tree, and retain the whole family as one record envelope.
+      {
+        const FunctionCreationSelection selection{sites, range.first, identity};
+        const auto& site = *sites.At(range.first);
+        MethodConstants constants{file, header, index, {kCaller}};
+        constants.roles = &roles; constants.leaf_methods = &lookup;
+        LocalLexicalBudget budget;
+        CreationExpansion expansion({kCaller}, budget.bytes, budget.work, nullptr, &selection);
+        test::BoundSegmentSink sink;
+        std::ostream output(&sink);
+        const auto emitted = WriteSelectedFunction(selection, site.creation, site.pc,
+            constants, expansion, output, budget);
+        test::Check(std::holds_alternative<std::size_t>(emitted));
+        test::Check(sink.text == named_output.str() && sink.segments.size() == 1);
+        const auto view = ViewFunctionSegment(sink.segments.front());
+        test::Check(view.family && view.family->Family().FunctionCreation()->pc == site.pc &&
+            view.family->Family().Family().members.size() == built.members.size());
+        test::Check(view.receipt.record == abc::EntityOffset{kRecord});
+        test::BoundSegmentSink refused_sink;
+        std::ostream refused_stream(&refused_sink);
+        const auto wrong_pc = WriteSelectedFunction(selection, site.creation,
+            {site.pc.value + 1}, constants, expansion, refused_stream, budget);
+        test::Check(std::get<FunctionEmitError>(wrong_pc) == FunctionEmitError::kCreation);
+        auto changed = site.creation; ++changed.length.value;
+        const auto wrong_shape = WriteSelectedFunction(selection, changed, site.pc,
+            constants, expansion, refused_stream, budget);
+        test::Check(std::get<FunctionEmitError>(wrong_shape) == FunctionEmitError::kCreation);
+        auto no_memory = budget; no_memory.bytes = 0;
+        const auto limited = WriteSelectedFunction(selection, site.creation, site.pc,
+            constants, expansion, refused_stream, no_memory);
+        test::Check(std::get<CreatedFunctionError>(limited) == CreatedFunctionError::kResourceLimit);
+        CreationExpansion cycle({kTarget}, budget.bytes, budget.work, nullptr, &selection);
+        const auto recursive = WriteSelectedFunction(selection, site.creation, site.pc,
+            constants, cycle, refused_stream, budget);
+        test::Check(std::get<CreatedFunctionError>(recursive) == CreatedFunctionError::kCreationCycle);
+        test::Check(refused_sink.text.empty() && refused_sink.segments.empty());
+      }
       std::ostringstream refused_output;
       const auto refused = prepared.PrintDraft({Strictness::kSloppy, nullptr}, refused_output);
       test::Check(std::get<FamilyPrepareError>(std::get<FamilyPrepareFailure>(refused).cause) ==

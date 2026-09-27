@@ -12,6 +12,7 @@
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
 #include "abcd/source/class_method_selection.h"
+#include "abcd/source/function_creation_selection.h"
 #include "abcd/source/record_source.h"
 #include "../src/source/function_file.h"
 #include "../src/source/module_aliases.h"
@@ -136,7 +137,8 @@ int Refused(std::ostream& output, MethodRouteReceipt receipt, InspectionError er
 int RecordSlice(const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const abc::MethodInfo& method,
-    const ClassMethodSelection& selection, std::ostream& output) {
+    const ClassMethodSelection* selection, const FunctionCreationSelection* function_selection,
+    std::ostream& output) {
   const auto refuse = [&](std::string_view stage) {
     output << nlohmann::json{{"fragment", "record_slice"}, {"source_complete", false},
         {"executable", false}, {"record_emitted", false}, {"refused_at", stage}} << '\n';
@@ -152,7 +154,7 @@ int RecordSlice(const corpus::AbcFile& file, const abc::Header& header,
   const auto* ready = std::get_if<RecordModuleContext>(&context);
   if (!ready) return refuse("module_context");
   auto built = BuildRecordSource(file, header, index, lookup, *owner, *ready, roles,
-      {}, nullptr, RoutePolicy::kLegacyAllowed, &selection);
+      {}, nullptr, RoutePolicy::kLegacyAllowed, selection, function_selection);
   const auto* source = std::get_if<PrintedSource>(&built);
   if (!source) {
     nlohmann::json failure{{"fragment", "record_slice"}, {"source_complete", false},
@@ -163,6 +165,7 @@ int RecordSlice(const corpus::AbcFile& file, const abc::Header& header,
       if constexpr (std::is_same_v<T, RouteRefusal>) {
         failure["failure_class"] = RouteFailureClassName(error.failure.failure_class);
         failure["reason"] = ValueRouteErrorName(error.failure.reason);
+        if (error.failure.pc) failure["pc"] = error.failure.pc->value;
       } else if constexpr (requires { error.kind; }) {
         failure["error"] = static_cast<unsigned>(error.kind);
       }
@@ -183,13 +186,16 @@ int RecordSlice(const corpus::AbcFile& file, const abc::Header& header,
     const auto serialized = SerializeRouteReceipt(emission.receipt);
     const auto* receipt = std::get_if<std::string>(&serialized);
     if (!receipt) return EXIT_FAILURE;
-    const auto* site = emission.creation;
-    if (!site) return EXIT_FAILURE;
-    const auto& creation = *site;
+    nlohmann::json creation;
+    if (const auto* site = emission.creation) {
+      creation = {{"creator", site->creator.value}, {"pc", site->pc.value},
+          {"literal", site->literal.value}, {"property", site->property}};
+    } else if (emission.family && emission.family->Family().FunctionCreation()) {
+      const auto& site = *emission.family->Family().FunctionCreation();
+      creation = {{"creator", site.creator.value}, {"pc", site.pc.value}};
+    } else return EXIT_FAILURE;
     output << "{\"begin\":" << segment.begin.byte << ",\"end\":" << segment.end.byte
-           << ",\"creation\":" << nlohmann::json{{"creator", creation.creator.value},
-                {"pc", creation.pc.value}, {"literal", creation.literal.value},
-                {"property", creation.property}}
+           << ",\"creation\":" << creation
            << ",\"route_receipt\":" << *receipt << ",\"local_positions\":";
     abcd::tools::WriteTreePositions(output, emission.tree, emission.positions, emission.sources);
     if (emission.family) {
@@ -421,14 +427,28 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
           std::get<analysis::ClassSiteFailure>(indexed_sites).error));
   const auto range = sites->Find(method.offset);
   if (range.count == 0) {
-    if (scope == ValueSourceScope::kRecordSlice)
-      return Refused(output, receipt, InspectionError::kMissingSite);
+    if (scope == ValueSourceScope::kRecordSlice) {
+      auto indexed = analysis::FunctionCreationSites::Build(file, header, index, *lookup);
+      const auto* functions = std::get_if<analysis::FunctionCreationSites>(&indexed);
+      if (!functions) {
+        const auto failure = FamilyRouteFailure(std::get<analysis::FunctionSiteFailure>(indexed));
+        return Refused(output, receipt, InspectionError::kFunctionSites, failure.failure_class,
+            failure.reason, {}, failure.pc);
+      }
+      const auto occurrences = functions->Find(method.offset);
+      if (!occurrences.count) return Refused(output, receipt, InspectionError::kMissingSite);
+      if (occurrences.count != 1) return Refused(output, receipt, InspectionError::kAmbiguousSite);
+      const FunctionCreationSelection selection{*functions, occurrences.first, identity};
+      return RecordSlice(file, header, index, *lookup, *roles, method, nullptr, &selection, output);
+    }
     return InspectCreated(file, header, index, *lookup, *roles, method, receipt, output);
   }
   if (range.count != 1) return Refused(output, receipt, InspectionError::kAmbiguousSite);
-  if (scope == ValueSourceScope::kRecordSlice)
+  if (scope == ValueSourceScope::kRecordSlice) {
+    const ClassMethodSelection selection{*sites, range.first, identity};
     return RecordSlice(file, header, index, *lookup, *roles, method,
-                       {*sites, range.first, identity}, output);
+                       &selection, nullptr, output);
+  }
   auto prepared = VerifiedFunction::PrepareClass(file, header, index, *lookup, *roles, *sites, range.first, identity);
   auto* function = std::get_if<VerifiedFunction>(&prepared);
   if (!function) {

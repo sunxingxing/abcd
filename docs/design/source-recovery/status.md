@@ -29,6 +29,16 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 普通函数创建点已接入真实 record 装配：`FunctionCreationSelection` 按 caller/PC
+  选择，同一调用不能同时选择类方法；输出必须保留对应函数族片段，否则整次拒绝。
+  适配层复核实际创建操作数、借用 record 的完整绑定上下文，不新增 body writer，
+  不允许选中路径失败后回退；类型化拒绝保留到 record 返回值。
+  ABC-only 7117、7477 分别在 [975,1018)、[1139,1202) 输出，实际创建点为
+  7089/PC 55、7089/PC 102；7586 类片段仍为 [2307,2464)。所有 record 仍明确不完整。
+  7449 的真实阻点已由调试确认：成员 1（7089）的 `FamilyTreeError::kModules`。
+  仅提供 globals 不能解决；模块 alias 的 TDZ/循环初始化/作用域发布义务仍未闭合，
+  不能把诊断 metadata alias 当成执行证明。新增适配层/record 规格未编译、未运行。
+  生产双目标构建退出 0；未运行测试、生成 JS、基准或 RSS。
 - 普通/箭头函数的 `--value-source` 不再在准备后固定拒绝输出，现经过
   `PreparedFamily::PrepareCreated` 与同一个 `FamilyEmission`。结果显式要求
   strict enclosing destination；缺失 global/capture 证明仍拒绝，不插入伪造上下文。

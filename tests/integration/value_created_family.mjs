@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 
 const [tool, abc] = process.argv.slice(2);
-function inspect(method) {
-  const run = spawnSync(tool, [abc, String(method), '--value-source'], {
+function inspect(method, mode = '--value-source') {
+  const run = spawnSync(tool, [abc, String(method), mode], {
     encoding: 'utf8', maxBuffer: 8 * 1024 * 1024,
   });
   assert.equal(run.error, undefined);
@@ -40,6 +40,18 @@ for (const method of [7117, 7477]) {
       assert.ok(source.range.end <= member.end);
     }
   }
+  const record = inspect(method, '--record-value-slice');
+  assert.equal(record.record_emitted, true);
+  assert.equal(record.source_complete, false);
+  assert.equal(record.executable, false);
+  assert.equal(record.enclosing_route, 'legacy');
+  assert.equal(record.function_segments.length, 1);
+  const segment = record.function_segments[0];
+  assert.deepEqual(segment.creation, result.creation);
+  assert.deepEqual(segment.route_receipt, result.route_receipt);
+  assert.deepEqual(segment.family_members, result.family_members);
+  assert.deepEqual(Buffer.from(record.source).subarray(segment.begin, segment.end),
+      Buffer.from(result.source));
 }
 // Family refusal must not manufacture completed root stages or hide behind an
 // invalid serialized receipt. This closure needs external embedding evidence.
@@ -51,3 +63,10 @@ assert.equal(refused.route_receipt.coverage, 'unsupported');
 assert.equal(refused.route_receipt.failure.reason, 'context_stage');
 assert.equal(refused.route_receipt.failure.pc, null);
 assert.ok(refused.family_failure);
+// Supplying the real record globals must not bypass unresolved child module
+// bindings or silently publish the old body at the selected creation site.
+const recordRefusal = inspect(7449, '--record-value-slice');
+assert.equal(recordRefusal.record_emitted, false);
+assert.equal(recordRefusal.source, undefined);
+assert.equal(recordRefusal.failure_class, 'unproved');
+assert.equal(recordRefusal.reason, 'tree_stage');

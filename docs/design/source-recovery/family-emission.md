@@ -140,3 +140,38 @@ record 6897. 7449 continues to refuse preparation without output; its receipt
 remains valid and does not claim TreeVerified. This does not replace the full
 P3 family gate or establish cross-application execution equivalence. Added CLI
 specifications are unrun while tests remain paused.
+
+## Ordinary Record Creation Selection
+
+`FunctionCreationSelection` identifies a specific indexed caller/PC occurrence.
+`BuildRecordSource` accepts either this selection or a class-method selection,
+never both. It checks same-record creator and target ownership, passes the
+selection through bounded synchronous expansion, and requires the resulting
+record to retain a sealed family segment for that exact site and input identity.
+
+The typed leaf bridge validates the original creation operands against the site,
+borrows the actual generated record's global binding context, and calls the same
+`PrepareCreated` / `FamilyEmission` pipeline. A selected failure cannot call the
+old body writer. Root incoming captures and unresolved module aliases remain
+refused. Retention transports the complete family with a single outer offset.
+Selected typed refusals survive legacy body-error compression through the
+expansion invocation; no later enclosing writer attempt can erase them.
+
+ABC-only record inspection now retains 7117 at [975,1018), creator 7089/PC 55,
+and 7477 at [1139,1202), creator 7089/PC 102. Class method 7586 remains at
+[2307,2464). These records still report legacy enclosure, incomplete source,
+nonexecutable status and exit 1. This exercises real creation-context transport,
+not whole-record or cross-application acceptance.
+
+7449 does NOT become publishable just by supplying globals. Debugging the actual
+record invocation identifies `FamilyTreeError::kModules` for member 1 (7089):
+the child needs module aliases. The diagnostic family builder has metadata
+aliases, but their own contract explicitly does not prove TDZ, cyclic
+initialization, scope or executable publication. The production factory must
+close these obligations before admitting the full family; passing metadata
+through and deleting the guard would not be a correct fix.
+
+Encoded-fixture specifications now cover actual selected creation, whole-family
+retention, wrong PC/length, zero memory and cycle refusal. CLI specifications
+compare real record segments to standalone expression bytes/receipts and require
+7449 to refuse without legacy substitution. These tests remain uncompiled/unrun.

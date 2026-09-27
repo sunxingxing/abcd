@@ -6,9 +6,11 @@
 #include <optional>
 
 #include "abcd/source/local_lexical_body.h"
+#include "abcd/source/source_route.h"
 
 namespace abcd::source {
 struct ClassMethodSelection;
+struct FunctionCreationSelection;
 enum class ExpansionError { kCycle, kResourceLimit };
 
 // A synchronous emission tree, not a method scheduler. Depth bounds the host
@@ -18,9 +20,15 @@ class CreationExpansion {
  public:
   static constexpr std::size_t kMaxDepth = 32;
   CreationExpansion(abc::EntityOffset root, std::size_t bytes,
-                    std::uint64_t work, const ClassMethodSelection* selection = nullptr)
-      : bytes_(bytes), work_(work), selection_(selection) { active_[0] = root; }
+                    std::uint64_t work, const ClassMethodSelection* selection = nullptr,
+                    const FunctionCreationSelection* function_selection = nullptr)
+      : bytes_(bytes), work_(work), selection_(selection), function_selection_(function_selection) { active_[0] = root; }
   const ClassMethodSelection* Selection() const { return selection_; }
+  const FunctionCreationSelection* FunctionSelection() const { return function_selection_; }
+  // Selected-route refusal survives legacy bridge error compression. A later
+  // enclosing writer attempt must not turn it into a successful mixed record.
+  void Refuse(RouteFailure failure) { if (!refusal_) refusal_ = failure; }
+  const std::optional<RouteFailure>& Refusal() const { return refusal_; }
   CreationExpansion(const CreationExpansion&) = delete;
   CreationExpansion& operator=(const CreationExpansion&) = delete;
 
@@ -50,6 +58,8 @@ class CreationExpansion {
   std::size_t bytes_;
   std::uint64_t work_;
   const ClassMethodSelection* selection_;
+  const FunctionCreationSelection* function_selection_;
+  std::optional<RouteFailure> refusal_;
 };
 
 class ExpansionFrame {

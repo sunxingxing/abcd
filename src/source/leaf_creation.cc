@@ -4,6 +4,7 @@
 
 #include "abcd/source/created_function.h"
 #include "function_template.h"
+#include "selected_function.h"
 
 namespace abcd::source {
 namespace {
@@ -52,15 +53,17 @@ BodyEmitResult CreationResult(const CreatedFunctionResult& result,
             failure.metadata_error = value.metadata_error;
             if (value.kind == BodyEmitError::kWorkLimit)
               failure.kind = BodyEmitError::kWorkLimit;
+          } else if constexpr (std::is_same_v<T, RouteRefusal>) {
+            resource = value.failure.failure_class == RouteFailureClass::kMemoryLimit;
+            if (value.failure.failure_class == RouteFailureClass::kWorkLimit)
+              failure.kind = BodyEmitError::kWorkLimit;
+            if (value.failure.failure_class == RouteFailureClass::kOutputFailure)
+              failure.emit_error = EmitError::kOutputLimit;
           } else {
-            // RouteRefusal carries no body-failure detail and cannot occur in
-            // this leaf path: it only ever runs inside an already admitted
-            // legacy invocation (invocation-context rule in source_route.h).
             static_assert(std::is_same_v<T, analysis::CreationError> ||
                           std::is_same_v<T, abc::MethodTargetError> ||
                           std::is_same_v<T, abc::MethodAttributeError> ||
-                          std::is_same_v<T, abc::FrameError> ||
-                          std::is_same_v<T, RouteRefusal>);
+                          std::is_same_v<T, abc::FrameError>);
           }
           if (resource) failure.kind = BodyEmitError::kResourceLimit;
           return failure;
@@ -74,6 +77,13 @@ BodyEmitResult WriteLeafCreation(const abc::BodyInstruction& site,
                                  const abc::MethodLookup& methods,
                                  std::ostream& output,
                                  LocalLexicalBudget budget) {
+  if (constants.expansion && constants.expansion->FunctionSelection()) {
+    const auto lifted = analysis::LiftFunctionCreation(site.decoded);
+    if (const auto* creation = std::get_if<analysis::FunctionCreation>(&lifted))
+      return WriteLeafFunction(*creation, site.offset, constants, output, budget,
+          analysis::CapturedValues::kLanguage, constants.expansion);
+    return BodyEmitFailure{BodyEmitError::kCreation, site.offset, {}, {}};
+  }
   return CreationResult(WriteCreatedFunctionTemplate(
       constants.file, constants.header, constants.index, methods,
       constants.method, site.decoded, output, budget, constants.string_budget,
@@ -89,6 +99,17 @@ BodyEmitResult WriteLeafFunction(const analysis::FunctionCreation& creation,
                                  CreationExpansion* expansion) {
   if (!constants.leaf_methods)
     return BodyEmitFailure{BodyEmitError::kCreation, pc, {}, {}};
+  if (expansion && expansion->FunctionSelection()) {
+    const auto& selection = *expansion->FunctionSelection();
+    const auto* site = selection.sites.At(selection.site);
+    if (!site) return BodyEmitFailure{BodyEmitError::kCreation, pc, {}, {}};
+    if (site->creator == constants.method && site->pc == pc) {
+      const auto result = WriteSelectedFunction(selection, creation, pc,
+          constants, *expansion, output, budget);
+      if (const auto* refused = std::get_if<RouteRefusal>(&result)) expansion->Refuse(refused->failure);
+      return CreationResult(result, pc);
+    }
+  }
   if (captures == analysis::CapturedValues::kLanguage)
     return CreationResult(WriteCreatedFunctionTemplate(
         constants.file, constants.header, constants.index, *constants.leaf_methods,

@@ -8,6 +8,8 @@
 #include "import_names.h"
 #include "creation_expansion.h"
 #include "abcd/source/class_method_selection.h"
+#include "abcd/source/function_creation_selection.h"
+#include "family_emission.h"
 #include "abcd/source/function_emission.h"
 #include "function_segments.h"
 
@@ -18,7 +20,8 @@ RecordSourceResult BuildRecordSource(
     const abc::RecordInfo& record, const RecordModuleContext& context,
     const analysis::MethodRoleIndex& roles, RecordProgramBudget budget,
     const HostRealmBinding* realm_binding, RoutePolicy policy,
-    const ClassMethodSelection* selection) {
+    const ClassMethodSelection* selection,
+    const FunctionCreationSelection* function_selection) {
   using Error = RecordProgramError;
   const auto fail = [](Error kind) { return RecordProgramFailure{kind, {}}; };
   const auto metadata = [&](abc::MetadataError kind) {
@@ -36,6 +39,7 @@ RecordSourceResult BuildRecordSource(
   if (!admission.legacy_permitted)
     return RouteRefusal{*admission.value_route_failure};
   try {
+    if (selection && function_selection) return fail(Error::kEntry);
     if (header.kind != abc::AbcKind::kDynamic ||
         !SupportsRecordProgramProfile(header.profile)) return fail(Error::kProfile);
     const auto module = context.ForOwner(file, record.offset);
@@ -71,6 +75,13 @@ RecordSourceResult BuildRecordSource(
       const auto creator = site ? lookup.Find(site->creator) : std::nullopt;
       if (!creator || index.methods[creator->value].owner_offset != record.offset)
         return fail(Error::kEntry);
+    }
+    if (function_selection) {
+      const auto* site = function_selection->sites.At(function_selection->site);
+      const auto creator = site ? lookup.Find(site->creator) : std::nullopt;
+      const auto target = site ? lookup.Find(site->target) : std::nullopt;
+      if (!creator || !target || index.methods[creator->value].owner_offset != record.offset ||
+          index.methods[target->value].owner_offset != record.offset) return fail(Error::kEntry);
     }
     const auto call = abc::ReadCallType(file, header, index, entry->annotations,
                                        {budget.bytes});
@@ -124,8 +135,8 @@ RecordSourceResult BuildRecordSource(
     const auto* method = std::get_if<analysis::SemanticMethod>(&lifted);
     if (!method) return std::get<analysis::SemanticFailure>(lifted);
     MethodConstants constants{file, header, index, entry->offset, budget.strings};
-    CreationExpansion expansion(entry->offset, budget.bytes, kDefaultMethodWork, selection);
-    if (selection) constants.expansion = &expansion;
+    CreationExpansion expansion(entry->offset, budget.bytes, kDefaultMethodWork, selection, function_selection);
+    if (selection || function_selection) constants.expansion = &expansion;
     constants.leaf_methods = &lookup;
     constants.roles = &roles;
     constants.module = module.get();
@@ -138,6 +149,7 @@ RecordSourceResult BuildRecordSource(
     auto result = BuildEntrySource(*body, *method, *frame, SourceForm::kRecord,
         entry->name, constants, exports, {budget.bytes}, budget.output.bytes,
         policy);
+    if (function_selection && expansion.Refusal()) return RouteRefusal{*expansion.Refusal()};
     if (selection) {
       if (const auto* printed = std::get_if<PrintedSource>(&result)) {
         const auto* site = selection->sites.At(selection->site);
@@ -148,6 +160,20 @@ RecordSourceResult BuildRecordSource(
               return creation && creation->creator == site->creator && creation->pc == site->pc &&
                   creation->property == site->property && creation->target == site->target &&
                   view.receipt.identity == selection->identity;
+            });
+        if (!retained) return RouteRefusal{{RouteFailureClass::kUnproved,
+                                          ValueRouteError::kContextStage, site->pc}};
+      }
+    }
+    if (function_selection) {
+      if (const auto* printed = std::get_if<PrintedSource>(&result)) {
+        const auto* site = function_selection->sites.At(function_selection->site);
+        const bool retained = std::any_of(printed->function_segments.begin(),
+            printed->function_segments.end(), [&](const FunctionSegment& segment) {
+              const auto view = ViewFunctionSegment(segment);
+              const auto* creation = view.family ? view.family->Family().FunctionCreation() : nullptr;
+              return creation && creation->creator == site->creator && creation->pc == site->pc &&
+                  creation->target == site->target && view.receipt.identity == function_selection->identity;
             });
         if (!retained) return RouteRefusal{{RouteFailureClass::kUnproved,
                                           ValueRouteError::kContextStage, site->pc}};
