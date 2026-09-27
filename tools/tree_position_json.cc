@@ -1,5 +1,6 @@
 #include "tree_position_json.h"
 #include "../src/source/instruction_sources.h"
+#include "../src/source/family_emission.h"
 
 #include <nlohmann/json.hpp>
 #include <ostream>
@@ -131,5 +132,25 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
     });
   }
   output << '}';
+}
+bool WriteFamilyMembers(std::ostream& output, const FamilyEmission& emission) {
+  const auto& family = emission.Family().Family();
+  const auto& positions = emission.Positions();
+  output << '[';
+  for (std::size_t i = 0; i < family.members.size(); ++i) {
+    if (i) output << ',';
+    const auto serialized = SerializeRouteReceipt(emission.Receipts()[i]);
+    const auto* receipt = std::get_if<std::string>(&serialized);
+    if (!receipt) return false;
+    output << "{\"owner\":" << family.members[i].tree.owner.value
+           << ",\"begin\":" << positions.functions[i].begin
+           << ",\"end\":" << positions.functions[i].end
+           << ",\"route_receipt\":" << *receipt << ",\"local_positions\":";
+    WriteTreePositions(output, family.members[i].tree, positions.members[i],
+        &*family.members[i].sources);
+    output << '}';
+  }
+  output << ']';
+  return static_cast<bool>(output);
 }
 }  // namespace abcd::tools

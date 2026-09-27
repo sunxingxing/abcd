@@ -17,6 +17,7 @@
 #include "../src/source/module_aliases.h"
 #include "../src/source/function_segments.h"
 #include "../src/source/family_emission.h"
+#include "../src/source/family_route_failure.h"
 
 namespace {
 using namespace abcd;
@@ -112,13 +113,19 @@ RouteFailureClass PrintClass(TreePrintError error) {
 int Refused(std::ostream& output, MethodRouteReceipt receipt, InspectionError error,
     RouteFailureClass kind = RouteFailureClass::kUnproved,
     ValueRouteError reason = ValueRouteError::kContextStage,
-    std::optional<unsigned> detail = {}, std::optional<abc::CodeOffset> pc = {}) {
+    std::optional<unsigned> detail = {}, std::optional<abc::CodeOffset> pc = {},
+    const RouteFailure* family_failure = nullptr) {
   if (!receipt.failure) receipt.failure = RouteFailure{kind, reason, pc};
   receipt.coverage = Coverage::kUnsupported;
   const auto serialized = SerializeRouteReceipt(receipt);
   nlohmann::json report{{"source_complete", false}, {"executable", false},
                         {"inspection_error", static_cast<unsigned>(error)}};
   if (detail) report["detail"] = *detail;
+  if (family_failure) {
+    report["family_failure"] = {{"class", RouteFailureClassName(family_failure->failure_class)},
+        {"reason", ValueRouteErrorName(family_failure->reason)},
+        {"pc", family_failure->pc ? nlohmann::json(family_failure->pc->value) : nlohmann::json(nullptr)}};
+  }
   if (const auto* text = std::get_if<std::string>(&serialized))
     report["route_receipt"] = nlohmann::json::parse(*text);
   else report["receipt_error"] = static_cast<unsigned>(std::get<RouteReceiptError>(serialized));
@@ -186,21 +193,8 @@ int RecordSlice(const corpus::AbcFile& file, const abc::Header& header,
            << ",\"route_receipt\":" << *receipt << ",\"local_positions\":";
     abcd::tools::WriteTreePositions(output, emission.tree, emission.positions, emission.sources);
     if (emission.family) {
-      output << ",\"family_members\":[";
-      const auto& family = emission.family->Family().Family();
-      const auto& positions = emission.family->Positions();
-      for (std::size_t i = 0; i < family.members.size(); ++i) {
-        if (i) output << ',';
-        const auto child_receipt = SerializeRouteReceipt(emission.family->Receipts()[i]);
-        const auto* encoded = std::get_if<std::string>(&child_receipt);
-        if (!encoded) return EXIT_FAILURE;
-        output << "{\"owner\":" << family.members[i].tree.owner.value
-               << ",\"begin\":" << positions.functions[i].begin << ",\"end\":" << positions.functions[i].end
-               << ",\"route_receipt\":" << *encoded << ",\"local_positions\":";
-        abcd::tools::WriteTreePositions(output, family.members[i].tree, positions.members[i], &*family.members[i].sources);
-        output << '}';
-      }
-      output << ']';
+      output << ",\"family_members\":";
+      if (!abcd::tools::WriteFamilyMembers(output, *emission.family)) return EXIT_FAILURE;
     }
     output << '}';
   }
@@ -222,20 +216,50 @@ int InspectCreated(const corpus::AbcFile& file, const abc::Header& header,
   const auto range = sites->Find(method.offset);
   if (range.count == 0) return Refused(output, receipt, InspectionError::kMissingSite);
   if (range.count != 1) return Refused(output, receipt, InspectionError::kAmbiguousSite);
-  auto prepared = VerifiedFunction::PrepareCreated(file, header, index, lookup,
-      roles, *sites, range.first, receipt.identity);
-  const auto* function = std::get_if<VerifiedFunction>(&prepared);
-  if (!function) {
-    const auto& failure = std::get<FunctionPrepareFailure>(prepared);
-    if (failure.values) receipt = *failure.values;
-    return Refused(output, receipt, InspectionError::kPrepare, PreparationClass(failure.kind),
-        failure.values ? ValueRouteError::kTreeStage : ValueRouteError::kContextStage,
-        static_cast<unsigned>(failure.kind), failure.pc);
+  // This is a fragment for a strict destination, not a standalone script.
+  // Null globals deliberately does not assert an empty enclosing scope: any
+  // global dependency still requires a real record embedding and is refused.
+  const FamilyDestination destination{Strictness::kStrict, nullptr};
+  auto prepared = PreparedFamily::PrepareCreated(file, header, index, lookup,
+      roles, *sites, range.first, receipt.identity, destination);
+  auto* family = std::get_if<PreparedFamily>(&prepared);
+  if (!family) {
+    const auto failure = FamilyRouteFailure(std::get<FamilyPrepareFailure>(prepared));
+    // A nested failure does not prove the root reached that stage, nor identify
+    // its PC as a root PC. Keep the entry receipt at Decoded; report separately.
+    return Refused(output, receipt, InspectionError::kPrepare, failure.failure_class,
+        ValueRouteError::kContextStage, {}, {}, &failure);
   }
-  // A verified ordinary/arrow body is not yet an emitted closure expression.
-  // Never disguise it as a class member to bypass name/strictness/owner checks.
-  return Refused(output, function->Receipt(), InspectionError::kPrint,
-      RouteFailureClass::kUnsupported, ValueRouteError::kPrintStage);
+  constexpr std::size_t kInspectionSourceBytes = 4 * 1024 * 1024;
+  std::ostringstream source;
+  receipt = family->Receipts()[family->Family().root.value];
+  auto printing = FamilyEmission::Write(std::move(*family), destination, source,
+      GeneratedOffset{0}, {kInspectionSourceBytes});
+  const auto* emission = std::get_if<FamilyEmission>(&printing);
+  if (!emission) {
+    const auto failure = FamilyRouteFailure(std::get<FamilyEmitFailure>(printing));
+    return Refused(output, receipt, InspectionError::kPrint, failure.failure_class,
+        ValueRouteError::kPrintStage, {}, {}, &failure);
+  }
+  if (file.CheckUnchanged()) return Refused(output, receipt, InspectionError::kChanged,
+      RouteFailureClass::kInvalidInput, ValueRouteError::kPrintStage);
+  const auto& tree = emission->Family().Family();
+  const auto root = tree.root.value;
+  const auto serialized = SerializeRouteReceipt(emission->Receipts()[root]);
+  const auto* text = std::get_if<std::string>(&serialized);
+  if (!text) return EXIT_FAILURE;
+  const auto* site = sites->At(range.first);
+  output << "{\"route_receipt\":" << *text
+         << ",\"source_complete\":false,\"executable\":false,\"method_slice_complete\":true"
+         << ",\"fragment\":\"function_expression\",\"required_strict_destination\":true"
+         << ",\"creation\":" << nlohmann::json{{"creator", site->creator.value}, {"pc", site->pc.value}}
+         << ",\"source\":" << nlohmann::json(source.str()) << ",\"positions\":";
+  abcd::tools::WriteTreePositions(output, tree.members[root].tree,
+      emission->Positions().members[root], &*tree.members[root].sources);
+  output << ",\"family_members\":";
+  if (!abcd::tools::WriteFamilyMembers(output, *emission)) return EXIT_FAILURE;
+  output << "}\n";
+  return EXIT_FAILURE; // A closure fragment does not certify a complete record.
 }
 }  // namespace
 

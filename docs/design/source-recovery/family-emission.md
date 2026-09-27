@@ -113,3 +113,30 @@ Joining old/new headers exposed their unrelated `ReceiverBinding` definitions.
 The new value binding's ABI-entry marker is now `ReceiverEntryBinding`; the old
 receiver-expression variant is unchanged. This is a type-name correction, not
 a new receiver equivalence or constructor admission.
+
+## Ordinary Expression Inspection
+
+`--value-source` now routes an ordinary/arrow creation through `PrepareCreated`
+and `FamilyEmission`, instead of unconditionally refusing after standalone body
+preparation. It reports `fragment=function_expression` and
+`required_strict_destination=true`: the text is only a fragment for a strict
+enclosure, not an executable script. No strict directive is injected into the
+body, and a null global context still refuses free global dependencies. Actual
+creation identity and runtime naming remain attached to the output.
+
+Class-record segments and ordinary expression fragments now share one streaming
+member-receipt/position serializer. It accepts only the sealed emission owner,
+retains whole-family coordinates, and does not infer origins from source text.
+
+On preparation refusal, the entry receipt stays at Decoded; the projected
+`family_failure` is reported separately. An error from a descendant cannot
+prove a successful root stage or be labeled as a root instruction PC. After
+successful preparation the real root TreeVerified receipt is available for
+print-failure reporting. No failure produces partial source in the JSON report.
+
+ABC-only inspection of pasteboard 7117 and 7477 now produces named arrow
+expression fragments, each with five original instruction dispositions and
+record 6897. 7449 continues to refuse preparation without output; its receipt
+remains valid and does not claim TreeVerified. This does not replace the full
+P3 family gate or establish cross-application execution equivalence. Added CLI
+specifications are unrun while tests remain paused.

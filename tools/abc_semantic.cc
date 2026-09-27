@@ -583,8 +583,10 @@ int main(int argc, char** argv) {
                  "  exactly one source form per invocation; duplicates, conflicting forms\n"
                  "  and any combination of a detail mode with --value-source are rejected\n"
                  "  regardless of option order\n"
-                 "  --value-source requires the unified value-tree route; stages that are\n"
-                 "  not implemented return a typed route receipt with no source text and\n"
+                 "  --value-source requires the unified value-tree route\n"
+                 "  ordinary function expressions require a strict enclosing destination;\n"
+                 "  method/closure fragments do not certify a complete executable record\n"
+                 "  unimplemented stages return a typed route receipt with no source text and\n"
                  "  never fall back to the legacy writer\n";
     return Fail(InspectError::kArguments);
   }

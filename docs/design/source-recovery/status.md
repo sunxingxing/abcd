@@ -29,6 +29,14 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 普通/箭头函数的 `--value-source` 不再在准备后固定拒绝输出，现经过
+  `PreparedFamily::PrepareCreated` 与同一个 `FamilyEmission`。结果显式要求
+  strict enclosing destination；缺失 global/capture 证明仍拒绝，不插入伪造上下文。
+  ABC-only 7117、7477 已输出函数表达式片段，各保留 5 条指令归属、record=6897；
+  7449 仍拒绝且无源码，根收据保持 Decoded，族内失败单独报告，不虚报阶段。
+  普通表达式与 record 片段共用逐成员位置/收据序列化。CLI 回归规格已写、未运行。
+  生产 `abc_semantic` / `abc_structure` 构建退出 0；测试、JS 执行和 RSS 仍暂停。
+  这不代表完整 P3、多应用运行验收或 record/module 完成。
 - selected-method 生产入口现已切换到 `PreparedFamily` / `FamilyEmission`，
   核对实际创建点的目标、种类、length、placement 和名称；拒绝后不回退旧函数体。
   函数创建索引每次选择只构建一次并计费；原始 record 身份随逐成员收据保留。
