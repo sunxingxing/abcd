@@ -124,8 +124,8 @@ struct EvaluationShape {
     std::span<const FunctionBinding> functions = {},
     std::span<const ModuleEvaluation> modules = {});
 // Iteratively expands the proposed forest in the declared input order, checking
-// exact ordered occurrences and availability. Cross-phase member references
-// additionally require a pure corridor and equal catch snapshots. No plan replay.
+// exact ordered occurrences and availability. Cross-phase expressions require
+// contiguous effect intervals and equal catch snapshots at their final roots.
 [[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget = {});

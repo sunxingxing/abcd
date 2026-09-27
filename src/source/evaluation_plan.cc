@@ -3,7 +3,7 @@
 #include "evaluation_liveness.h"
 #include "evaluation_aliases.h"
 #include "module_evaluation.h"
-#include "phase_reference.h"
+#include "phase_evaluation.h"
 
 #include <limits>
 #include <new>
@@ -268,14 +268,10 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       next_op += block.op_count;
     }
     Require(next_op == graph.ops.size(), Error::kInvalidGraph);
-    const auto references = CheckPhaseReferences(graph, plan, {bytes, work});
-    if (const auto* error = std::get_if<Error>(&references)) return *error;
-    const auto& candidates = std::get<PhaseReferences>(references);
-    admit(candidates.bytes, 1); step(candidates.work);
-    for (std::size_t i = 0; i < candidates.consumers.size(); ++i) {
-      step();
-      if (candidates.consumers[i]) plan.operations[i] = {EvaluationKind::kInline, candidates.consumers[i], {}};
-    }
+    const auto expressions = BuildPhaseExpressions(graph, plan, {bytes, work});
+    if (const auto* error = std::get_if<Error>(&expressions)) return *error;
+    const auto& phase_cost = std::get<PhaseEvaluationCost>(expressions);
+    admit(phase_cost.bytes, 1); step(phase_cost.work);
     const auto checked = VerifyEvaluationForFlow(graph, plan, {bytes, work}, flow);
     if (const auto* error = std::get_if<EvaluationError>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));

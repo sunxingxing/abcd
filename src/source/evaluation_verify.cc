@@ -2,7 +2,7 @@
 #include "evaluation_flow.h"
 #include "evaluation_aliases.h"
 #include "module_evaluation.h"
-#include "phase_reference.h"
+#include "phase_evaluation.h"
 #include "../analysis/value_edits.h"
 
 #include <new>
@@ -143,14 +143,15 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     const auto module_copies = VerifyModuleCatchCopies(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&module_copies)) return *error;
     step(std::get<std::uint64_t>(module_copies));
-    const auto references = CheckPhaseReferences(graph, plan, {bytes, work});
-    if (const auto* error = std::get_if<Error>(&references)) return *error;
-    const auto& candidates = std::get<PhaseReferences>(references);
-    admit(candidates.bytes, 1); step(candidates.work);
+    const auto expressions = VerifyPhaseExpressions(graph, plan, {bytes, work});
+    if (const auto* error = std::get_if<Error>(&expressions)) return *error;
+    const auto& phase_cost = std::get<PhaseEvaluationCost>(expressions);
+    admit(phase_cost.bytes, 1); step(phase_cost.work);
     // Cross-block events are not erased: the independent corridor certificate
-    // proves relocation, and the forest below must still visit each exactly once.
+    // proves ordered intervals and final throw owners. The forest below must
+    // still visit every operation exactly once.
     const auto cross = [&](std::size_t i) {
-      return CrossPhaseReference(graph, plan, analysis::OpId{static_cast<std::uint32_t>(i)});
+      return CrossPhaseInline(graph, plan, analysis::OpId{static_cast<std::uint32_t>(i)});
     };
     admit(graph.ops.size(), sizeof(EvaluationFrame));
     admit(graph.ops.size(), sizeof(EvaluationVisit));
@@ -222,9 +223,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         Require(placement.consumer->value < graph.uses.size(), Error::kOwnership);
         const auto& use = graph.uses[placement.consumer->value];
         const auto* owner = std::get_if<analysis::OpId>(&use.owner);
-        if (cross(i)) {
-          Require(i < candidates.consumers.size() && candidates.consumers[i] == placement.consumer, Error::kOrder);
-        } else {
+        if (!cross(i)) {
           Require(value.first_use == placement.consumer && !use.next && owner &&
               graph.ops[owner->value].block == op.block && graph.ops[owner->value].order > op.order,
               Error::kOwnership);

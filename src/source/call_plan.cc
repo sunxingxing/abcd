@@ -1,5 +1,5 @@
 #include "call_plan.h"
-#include "phase_reference.h"
+#include "phase_evaluation.h"
 
 #include <new>
 #include <stdexcept>
@@ -135,7 +135,7 @@ std::variant<std::uint64_t, CallPlanError> VerifyCalls(const analysis::ValueProg
       const auto& placement = evaluation.operations[member->property.value];
       Require(property.life == ValueLife::kLive && Property(property.operation) && property.result &&
           ((property.block == op.block && property.order < op.order) ||
-           CrossPhaseReference(graph, evaluation, member->property)), Error::kReference);
+           CrossPhaseInline(graph, evaluation, member->property)), Error::kReference);
       Require(placement.kind == EvaluationKind::kInline && placement.consumer == op.first_use, Error::kReference);
       Require(SameValue(ResolveEvaluationOperand(evaluation, graph.uses[op.first_use.value].operand),
           *property.result), Error::kCallee);

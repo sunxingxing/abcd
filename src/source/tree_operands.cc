@@ -1,5 +1,5 @@
 #include "tree_correspondence.h"
-#include "phase_reference.h"
+#include "phase_evaluation.h"
 
 #include <bit>
 #include <limits>
@@ -285,7 +285,7 @@ class OperandCheck {
         std::holds_alternative<analysis::ValuePropertyRead>(property.operation)) &&
         property.life == analysis::ValueLife::kLive &&
         ((property.block == op.block && property.order < op.order) ||
-         CrossPhaseReference(graph_, evaluation_, result->op)) && placement.kind == EvaluationKind::kInline &&
+         CrossPhaseInline(graph_, evaluation_, result->op)) && placement.kind == EvaluationKind::kInline &&
         placement.consumer == op.first_use, Error::kOperand);
     const auto& member = Node<MemberExpr>(call.callee);
     if (const auto* id = std::get_if<analysis::ValueId>(&resolved_receiver)) {

@@ -1,0 +1,47 @@
+#ifndef ABCD_SOURCE_PHASE_CORRIDOR_H_
+#define ABCD_SOURCE_PHASE_CORRIDOR_H_
+
+#include "phase_evaluation.h"
+
+namespace abcd::source {
+class PhaseBudget {
+ public:
+  explicit PhaseBudget(analysis::SemanticBudget budget) : initial_(budget), remaining_(budget) {}
+  void Step(std::size_t count = 1);
+  template<class T> void Array(std::vector<T>& values, std::size_t count) {
+    if (count > remaining_.bytes / sizeof(T)) throw EvaluationError::kResourceLimit;
+    Step(count); values.resize(count);
+    if (values.capacity() > remaining_.bytes / sizeof(T)) throw EvaluationError::kResourceLimit;
+    remaining_.bytes -= values.capacity() * sizeof(T);
+  }
+  PhaseEvaluationCost Cost() const {
+    return {initial_.bytes - remaining_.bytes, initial_.work - remaining_.work};
+  }
+ private:
+  analysis::SemanticBudget initial_, remaining_;
+};
+struct PhasePosition {
+  std::optional<analysis::WorkBlockId> head;
+  std::size_t order = 0, effects = 0, copies = 0;
+};
+struct PhaseUse { std::optional<analysis::UseId> first; bool multiple = false; };
+// O(B+E+I+V+U+P+S) indexing. Slot comparisons are charged to uniquely consumed
+// producers; never perform a fresh graph walk per expression or operand.
+class PhaseCorridors {
+ public:
+  PhaseCorridors(const analysis::ValueProgram& graph, const EvaluationPlan& plan, PhaseBudget& budget);
+  bool CanFuse(analysis::OpId producer, analysis::OpId consumer, analysis::UseId use) const;
+  bool SameCatch(analysis::OpId producer, analysis::OpId root);
+  std::size_t EffectsBefore(analysis::OpId op) const;
+  static bool Expression(const analysis::ValueOperation& operation);
+  static bool Event(const analysis::ValueOp& op, const OpEvaluation& placement);
+ private:
+  const analysis::ValueProgram& graph_;
+  const EvaluationPlan& plan_;
+  PhaseBudget& budget_;
+  std::vector<PhasePosition> positions_;
+  std::vector<PhaseUse> uses_;
+  std::vector<std::optional<std::size_t>> exits_, throws_, staged_;
+};
+}  // namespace abcd::source
+#endif

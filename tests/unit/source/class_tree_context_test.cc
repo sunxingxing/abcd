@@ -35,7 +35,8 @@ static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
 void Check(bool condition) { if (!condition) std::abort(); }
 enum class DefaultEncoding { kNone, kInteger, kNegation };
 enum class ExceptionShape {
-  kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies, kReceiver, kReceiverCatch
+  kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies, kReceiver, kReceiverCatch,
+  kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof
 };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
@@ -190,6 +191,52 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           kLoad, kArgument, kReturn,
           0, kReceiverProtected, kSingleTry, kCatchAll, kReceiverProtected, kHandlerBytes};
     }
+    if (exception == ExceptionShape::kReceiverArgument || exception == ExceptionShape::kReceiverPair ||
+        exception == ExceptionShape::kReceiverNumericPair || exception == ExceptionShape::kReceiverTypeof) {
+      constexpr std::uint8_t kLocals = 2, kReceiver = 5, kCallee = 0, kArgument = 1,
+          kBodyBytes = 29, kProtectedBytes = 28;
+      member = {kLocals, 4, kBodyBytes, kSingleTry,
+          kLoad, kReceiver, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0,
+          kStore, kCallee,
+          kLoad, kReceiver, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0,
+          kStore, kArgument, kLoad, kCallee,
+          op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, kReceiver, kArgument,
+          op(abc::Opcode::kJEQZ_IMM8), kBranchDelta,
+          op(abc::Opcode::kLDTRUE), kReturn, op(abc::Opcode::kLDFALSE), kReturn, kReturn,
+          0, kProtectedBytes, kSingleTry, kCatchAll, kProtectedBytes, 1};
+      if (exception == ExceptionShape::kReceiverTypeof) {
+        constexpr std::size_t kStoreArgumentPc = 14;
+        constexpr std::uint8_t kTypeofBytes = 2;
+        member.insert(member.begin() + kHeaderBytes + kStoreArgumentPc, {op(abc::Opcode::kTYPEOF_IMM8), 0});
+        member[kCodeSizeOffset] += kTypeofBytes;
+        const auto table = kHeaderBytes + member[kCodeSizeOffset];
+        member[table + 1] += kTypeofBytes;
+        member[table + 4] += kTypeofBytes;
+      }
+      if (exception == ExceptionShape::kReceiverPair || exception == ExceptionShape::kReceiverNumericPair) {
+        constexpr std::size_t kArgumentReadyPc = 16;
+        constexpr std::uint8_t kSecondArgumentBytes = 11;
+        member.insert(member.begin() + kHeaderBytes + kArgumentReadyPc, {
+            kLoad, kReceiver, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0,
+            op(abc::Opcode::kADD2_IMM8_V8), 0, kArgument, kStore, kArgument});
+        member[kCodeSizeOffset] += kSecondArgumentBytes;
+        const auto table = kHeaderBytes + member[kCodeSizeOffset];
+        member[table + 1] += kSecondArgumentBytes;
+        member[table + 4] += kSecondArgumentBytes;
+        if (exception == ExceptionShape::kReceiverPair) {
+          // A string operand proves ADD's normal result is a Language value.
+          // Arbitrary numeric ADD still needs the separate NaN-payload proof.
+          constexpr std::uint8_t kStringPrefixBytes = 8;
+          member.insert(member.begin() + kHeaderBytes + kArgumentReadyPc, {
+              op(abc::Opcode::kLDA_STR_ID16), kNamePool, 0,
+              op(abc::Opcode::kADD2_IMM8_V8), 0, kArgument, kStore, kArgument});
+          member[kCodeSizeOffset] += kStringPrefixBytes;
+          const auto updated_table = kHeaderBytes + member[kCodeSizeOffset];
+          member[updated_table + 1] += kStringPrefixBytes;
+          member[updated_table + 4] += kStringPrefixBytes;
+        }
+      }
+    }
     if (exception == ExceptionShape::kForwarder) {
       constexpr std::uint8_t kForwardBodyBytes = 19, kTryEnd = 14, kHandlerPc = 16,
           kHandlerBytes = 2, kToFalse = 5, kToJoin = 5, kToGap = 2, kToReturn = 4;
@@ -250,6 +297,11 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
         file, header, index, lookup, roles, sites, range.first, identity))};
     const auto decoded = std::get<abc::MethodBody>(abc::DecodeMethodBody(file, header.profile, *index.methods[2].code));
     auto analyzed = PhasedMethod::Build(owner, decoded);
+    if (exception == ExceptionShape::kReceiverNumericPair) {
+      Check(std::get<PhasedMethodError>(analyzed) == PhasedMethodError::kValues);
+      Check(unlink(path) == 0);
+      return;
+    }
     if (exception == ExceptionShape::kModule) {
       // Pair correspondence must pass before the still-unsupported source
       // module binding/evaluation gate. Never silently publish this method.
@@ -565,6 +617,18 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--receiver-typeof-json") {
+    Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kReceiverTypeof);
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--receiver-pair-json") {
+    Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kReceiverPair);
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--receiver-argument-json") {
+    Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kReceiverArgument);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--receiver-catch-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kReceiverCatch);
     return 0;
@@ -595,6 +659,10 @@ int main(int argc, char** argv) {
     return 0;
   }
   Check(argc == 1);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverTypeof);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverNumericPair);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverPair);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverArgument);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverCatch);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiver);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLiveCopies);

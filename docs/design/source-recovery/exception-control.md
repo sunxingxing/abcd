@@ -341,3 +341,47 @@ File-backed member-call/branch/catch fixtures use the same immutable publication
 path as ordinary functions; runtime checks cover receiver/arguments, Proxy
 invocation, arbitrary throw values, catch snapshots and original PC ranges.
 These fixtures do not replace real application acceptance or steps 2 through 5.
+
+## Ordered Phase Expressions
+
+Rules 50 replace the property-only corridor check with one shared scalar,
+reference and invocation expression planner. The original IR and control
+projection remain unchanged. The planner uses effective (alias-resolved) use
+counts and normal-corridor coordinates; every selected forest edge must have
+one retained use, move forward within a unique fallthrough chain and cross no
+normal phi copies. Raw receiver uses, first phi/catch snapshots, conditional
+argument reads and predicate-repeat boundaries remain protected. Environment,
+module, creation, initializer and control protocols are not newly authorized.
+
+Within a corridor, each observable operation has an ordinal. Discovery consumes
+available child-effect suffixes in reverse source operand order. Verification
+does not rerun discovery: it checks the proposed children in forward operand
+order and requires their intervals to concatenate without gaps or overlaps,
+ending immediately before the parent's own event. The existing forest checker
+still requires one visit per original live operation; a cross-phase event is
+not discarded merely because it moved into another block's expression.
+
+Exception ownership is checked at the FINAL expression root. In particular,
+`typeof obj.value` can carry a throwing getter despite TYPEOF itself being pure.
+A backward ID pass computes final roots in O(I), without following a parent
+chain once per operation. Each moved observable operation must have the same
+exception dispatch and equal canonical catch-slot sources as that root.
+All original staging writes stay in place. Trees lacking this proof are restored
+to their original snapshots in one indexed pass, not repeatedly rescheduled.
+The verifier independently rejects forged order, ownership or dispatch claims.
+
+File-backed publication fixtures cover an argument getter, a pure TYPEOF wrapper
+and nested string concatenations containing multiple getters/coercions, followed
+by a branch and catch. Generated JS is executed with arbitrary thrown values,
+Proxy callees and non-callable targets. The non-callable check must occur AFTER
+all argument effects. PC ranges retain separate getter, conversion operation,
+call and control origins. Generic numeric ADD remains refused without its
+existing value-domain proof; the negative fixture preserves that boundary.
+
+Immersive 8284 now reaches the shared FunctionTree and passes module-alias tree
+validation, including its previously refused effectful log-call arguments. This
+is still conditional diagnostic evidence, not executable record publication.
+Next close the enclosing module/publication obligation and run the actual method
+through the immutable emission path; do not bypass that gate with a raw printer.
+Loop/try integration, typed completion/finally and suspension protocols retain
+the previously approved order and full acceptance requirements.
