@@ -5,11 +5,28 @@ was stopped at the user's request; it must not be restarted for this plan.
 Scope remains T00 through T12 in the dependency order from the implementation
 plan. No task scheduler, additional host assumptions or sidecar source inputs.
 
-Current status and recurring design audit: [status.md](status.md). T07 remains
+Current status: [status.md](status.md). Scheduled audits are cancelled. T07 remains
 incomplete; current source rules are 23. The entries below are chronological
 observations, not an up-to-date capability summary.
 
 ### File-Backed Conditional Function Families
+
+The shared iterative tree printer now carries an owner and indentation depth
+on every action. Nested FunctionExpr nodes enter actual child trees through an
+indexed owner lookup, without recursion, a second body writer or text replay.
+Each member retains independent parameter/expression/property/statement/anchor
+events in absolute UTF-8 draft coordinates. The verified class-member entry
+keeps its existing publication checks. Resource/work failures remain typed.
+The new --family-source-draft selector is separate from --conditional-family,
+which still emits no source. Draft syntax is explicitly incomplete and never
+grants executable/complete receipts; strict outer enclosure, globals/modules,
+callable names and transitive premises remain publication gates. A fixed 1 MiB
+source buffer discards failed output in full. Node events are not yet a complete
+CLI PC mapping: exporting their origin DAG and signature placements is next.
+ABC-only inspection of 7449 prints all four members, the null default and actual
+lexical captures. Remaining phi/snapshot temporaries are not claimed eliminated.
+New reversed-owner, nested-range, work/memory/output-boundary and CLI selector
+specifications are written but uncompiled/unrun under the testing pause.
 
 Cell-default projection now reuses DefaultBody's normal graph/edge/use remapping.
 A shared signature view separates SSA-phi and cell-backed proofs without a new

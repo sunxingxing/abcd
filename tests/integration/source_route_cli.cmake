@@ -14,14 +14,15 @@ set(ABCD_ROUTE_HASH
 
 # InspectError::kArguments is the first wire enum value in abc_semantic.cc.
 set(ABCD_ARGUMENT_ERROR 0)
-foreach(selector IN ITEMS --conditional-family --conditional-values --value-source
+foreach(family_selector IN ITEMS --conditional-family --family-source-draft)
+foreach(selector IN ITEMS --conditional-family --family-source-draft --conditional-values --value-source
     --record-value-slice --class-source --function-source --record-source
     --instructions --exception-flow --exception-template)
   foreach(first IN ITEMS 1 0)
     if(first)
-      set(arguments "--conditional-family" "${selector}")
+      set(arguments "${family_selector}" "${selector}")
     else()
-      set(arguments "${selector}" "--conditional-family")
+      set(arguments "${selector}" "${family_selector}")
     endif()
     execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}.absent" "7366"
       ${arguments} RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_VARIABLE failure)
@@ -30,6 +31,7 @@ foreach(selector IN ITEMS --conditional-family --conditional-values --value-sour
       message(FATAL_ERROR "family selector must refuse before file access: ${arguments}")
     endif()
   endforeach()
+endforeach()
 endforeach()
 
 foreach(detail IN ITEMS --instructions --exception-flow --exception-template)

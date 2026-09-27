@@ -12,7 +12,7 @@ struct GeneratedRange {
   std::size_t end = 0;
   auto operator<=>(const GeneratedRange&) const = default;
 };
-enum class FunctionFragment : std::uint8_t { kClassMember };
+enum class FunctionFragment : std::uint8_t { kClassMember, kConditionalExpression };
 enum class TreePrintError : std::uint8_t {
   kUnsupportedContext, kOutputLimit, kWrite, kResourceLimit, kWorkLimit,
   kInvalidLiteral
@@ -30,7 +30,8 @@ struct PrintedFunction {
   std::vector<GeneratedRange> parameters;
   // Indexed by the same immutable tree's ExprId/PropertyId/StmtId/AnchorId. Combine these
   // event ranges with its origin DAG, never reparse JS to recover provenance.
-  // Ranges are half-open UTF-8 byte coordinates relative to this fragment.
+  // Ranges are half-open UTF-8 byte coordinates relative to this fragment;
+  // conditional family drafts instead use the enclosing draft's coordinates.
   std::vector<GeneratedRange> expressions;
   std::vector<GeneratedRange> properties;
   std::vector<GeneratedRange> statements;

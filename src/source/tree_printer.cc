@@ -14,6 +14,8 @@
 #include "abcd/source/string_literal.h"
 #include "tree_print_tokens.h"
 #include "tree_globals.h"
+#include "family_print.h"
+#include "tree_checks.h"
 
 namespace abcd::source {
 namespace {
@@ -28,82 +30,139 @@ struct SymbolName { SymbolId id; };
 struct ArgumentCursor { ArgumentRange range; std::uint32_t index; };
 struct ObjectCursor { PropertyRange range; std::uint32_t index; };
 struct EndProperty { PropertyId id; };
+struct BeginFunction {};
+struct EndFunction {};
+struct ParameterCursor { std::uint32_t index; };
+struct EndParameter { std::uint32_t index; };
 using PrintAction = std::variant<std::string_view, ExprId, EndExpression,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
-    ObjectCursor, EndProperty>;
+    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter>;
+struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
 struct LocatedAnchor { BlockBoundary boundary; AnchorId id; };
+struct OwnerTree { FunctionOwnerId owner; std::size_t member; };
 
 class TreePrinter {
  public:
   TreePrinter(const VerifiedFunction& function, std::ostream& output,
               EmitBudget limit, analysis::SemanticBudget scratch)
-      : function_(function), tree_(function.Tree()), output_(output),
+      : function_(&function), tree_(&function.Tree()), output_(output),
         limit_(limit.bytes), initial_(scratch), remaining_(scratch) {}
+  TreePrinter(const ConstructedFamily& family, std::ostream& output,
+              EmitBudget limit, analysis::SemanticBudget scratch)
+      : family_(&family), output_(output), limit_(limit.bytes), initial_(scratch), remaining_(scratch) {}
   PrintedFunction Print() {
-    if (!function_.ClassCreation() || tree_.callable != CallableKind::kMethod ||
-        tree_.strictness != Strictness::kStrict || tree_.self || tree_.capture_scope || !tree_.captures.empty() ||
-        tree_.module_scope || !tree_.modules.empty())
+    if (!function_->ClassCreation() || Tree().callable != CallableKind::kMethod ||
+        Tree().strictness != Strictness::kStrict || Tree().self || Tree().capture_scope || !Tree().captures.empty() ||
+        Tree().module_scope || !Tree().modules.empty())
       throw Error::kUnsupportedContext;
     // Standalone printing has no verified family/child lookup. Reject before
     // writing the header, never leave a partial fake function body behind.
-    for (const auto& expression : tree_.expressions) {
+    for (const auto& expression : Tree().expressions) {
       Step();
       if (std::holds_alternative<FunctionExpr>(expression.expression)) throw Error::kUnsupportedContext;
     }
-    result_.identity = tree_.identity;
-    result_.method = tree_.method;
-    result_.value_revision = tree_.value_revision;
-    result_.cfg_revision = tree_.cfg_revision;
-    Array(result_.parameters, tree_.parameters.size());
-    Array(result_.expressions, tree_.expressions.size());
-    Array(result_.properties, tree_.properties.size());
-    Array(result_.statements, tree_.statements.size());
-    Array(result_.anchors, tree_.anchors.size());
+    Result().identity = Tree().identity;
+    Result().method = Tree().method;
+    Result().value_revision = Tree().value_revision;
+    Result().cfg_revision = Tree().cfg_revision;
+    Array(Result().parameters, Tree().parameters.size());
+    Array(Result().expressions, Tree().expressions.size());
+    Array(Result().properties, Tree().properties.size());
+    Array(Result().statements, Tree().statements.size());
+    Array(Result().anchors, Tree().anchors.size());
     PrepareAnchors();
-    switch (function_.ClassCreation()->placement) {
+    switch (function_->ClassCreation()->placement) {
       case abc::ClassPlacement::kStatic: Append("static "); break;
       case abc::ClassPlacement::kPrototype: break;
       default: throw Error::kUnsupportedContext;
     }
-    Key(function_.Name());
+    Key(function_->Name());
     Append("(");
-    for (std::size_t i = 0; i < tree_.parameters.size(); ++i) {
+    for (std::size_t i = 0; i < Tree().parameters.size(); ++i) {
       Step();
-      const auto& parameter = tree_.parameters[i];
+      const auto& parameter = Tree().parameters[i];
       if (parameter.rest) throw Error::kUnsupportedContext;
       if (i != 0) Append(", ");
-      result_.parameters[i].begin = result_.bytes;
+      Result().parameters[i].begin = written_;
       Name(parameter.symbol);
       if (parameter.initializer) {
-        if (parameter.initializer->value >= tree_.expressions.size() ||
-            !std::holds_alternative<TreeLiteral>(tree_.expressions[parameter.initializer->value].expression))
+        if (parameter.initializer->value >= Tree().expressions.size() ||
+            !std::holds_alternative<TreeLiteral>(Tree().expressions[parameter.initializer->value].expression))
           throw Error::kUnsupportedContext;
         Append(" = ");
         Push(*parameter.initializer);
         Drain();
       }
-      result_.parameters[i].end = result_.bytes;
+      Result().parameters[i].end = written_;
     }
     Append(") ");
-    Push(Statement{tree_.body, 0});
+    Push(Statement{Tree().body, 0});
     Drain();
-    for (std::size_t i = 0; i < tree_.anchors.size(); ++i) {
+    for (std::size_t i = 0; i < Tree().anchors.size(); ++i) {
       Step();
-      if (std::holds_alternative<FunctionExit>(tree_.anchors[i].position))
-        result_.anchors[i] = result_.bytes;
+      if (std::holds_alternative<FunctionExit>(Tree().anchors[i].position))
+        Result().anchors[i] = written_;
     }
     Append("\n");
-    result_.allocated_bytes = initial_.bytes - remaining_.bytes;
-    result_.work = initial_.work - remaining_.work;
+    result_.bytes = written_;
+    Result().allocated_bytes = initial_.bytes - remaining_.bytes;
+    Result().work = initial_.work - remaining_.work;
     return std::move(result_);
   }
+  PrintedFamilyDraft Draft() {
+    if (family_->root.value >= family_->members.size()) throw Error::kUnsupportedContext;
+    Array(draft_.members, family_->members.size()); Array(draft_.functions, family_->members.size());
+    Array(locations_, family_->members.size()); Array(owners_, family_->members.size());
+    Array(printed_, family_->members.size());
+    for (std::size_t i = 0; i < family_->members.size(); ++i) {
+      current_ = i; Step();
+      const auto checked = VerifyTreeStructure(Tree(), remaining_);
+      const auto* structure = std::get_if<TreeStructure>(&checked);
+      if (!structure) {
+        switch (std::get<TreeStructureError>(checked)) {
+          case TreeStructureError::kResourceLimit: throw Error::kResourceLimit;
+          case TreeStructureError::kWorkLimit: throw Error::kWorkLimit;
+          default: throw Error::kUnsupportedContext;
+        }
+      }
+      Admit(structure->allocated_bytes, 1); Step(structure->work);
+      if (Tree().self || Tree().strictness != Strictness::kStrict ||
+          (Tree().callable != CallableKind::kFunction && Tree().callable != CallableKind::kArrow &&
+           Tree().callable != CallableKind::kMethod)) throw Error::kUnsupportedContext;
+      // A class method cannot be silently changed into an ordinary function.
+      // Root class fragments remain handled by the verified member entry.
+      if (Tree().callable == CallableKind::kMethod) throw Error::kUnsupportedContext;
+      owners_[i] = {Tree().owner, i};
+      Result().identity = Tree().identity; Result().method = Tree().method;
+      Result().value_revision = Tree().value_revision; Result().cfg_revision = Tree().cfg_revision;
+      Result().fragment = FunctionFragment::kConditionalExpression;
+      Array(Result().parameters, Tree().parameters.size()); Array(Result().expressions, Tree().expressions.size());
+      Array(Result().properties, Tree().properties.size()); Array(Result().statements, Tree().statements.size());
+      Array(Result().anchors, Tree().anchors.size()); PrepareAnchors();
+    }
+    std::sort(owners_.begin(), owners_.end(), [&](const auto& a, const auto& b) { Step(); return a.owner < b.owner; });
+    for (std::size_t i = 1; i < owners_.size(); ++i) {
+      Step(); if (owners_[i - 1].owner == owners_[i].owner) throw Error::kUnsupportedContext;
+    }
+    current_ = family_->root.value;
+    Push(BeginFunction{}); Drain(); Append("\n");
+    for (const auto emitted : printed_) { Step(); if (!emitted) throw Error::kUnsupportedContext; }
+    draft_.bytes = written_; draft_.allocated_bytes = initial_.bytes - remaining_.bytes;
+    draft_.work = initial_.work - remaining_.work;
+    return std::move(draft_);
+  }
  private:
+  const FunctionTree& Tree() const { return family_ ? family_->members[current_].tree : *tree_; }
+  PrintedFunction& Result() { return family_ ? draft_.members[current_] : result_; }
+  std::vector<LocatedAnchor>& Located() { return family_ ? locations_[current_] : located_; }
   void Drain() {
     while (!actions_.empty()) {
       Step();
       const auto action = actions_.back();
       actions_.pop_back();
-      std::visit([&](const auto& value) { Run(value); }, action);
+      current_ = action.owner;
+      depth_ = action.depth;
+      std::visit([&](const auto& value) { Run(value); }, action.action);
     }
   }
   void Step(std::uint64_t count = 1) {
@@ -128,23 +187,23 @@ class TreePrinter {
       if (old > std::numeric_limits<std::size_t>::max() / 2)
         throw Error::kResourceLimit;
       const auto capacity = old == 0 ? kInitialActions : old * 2;
-      Admit(capacity, sizeof(PrintAction));
+      Admit(capacity, sizeof(OwnedAction));
       actions_.reserve(capacity);
-      Admit(actions_.capacity() - capacity, sizeof(PrintAction));
+      Admit(actions_.capacity() - capacity, sizeof(OwnedAction));
     }
-    actions_.push_back(action);
+    actions_.push_back({current_, depth_, action});
   }
   void Append(std::string_view text) {
     Step(text.size());
-    if (text.size() > limit_ - result_.bytes) throw Error::kOutputLimit;
+    if (text.size() > limit_ - written_) throw Error::kOutputLimit;
     output_.write(text.data(), static_cast<std::streamsize>(text.size()));
     if (!output_) throw Error::kWrite;
-    result_.bytes += text.size();
+    written_ += text.size();
   }
   void Quoted(std::u16string_view text) {
     Step(text.size());
-    const auto written = WriteStringLiteral(text, output_, {limit_ - result_.bytes});
-    if (const auto* bytes = std::get_if<std::size_t>(&written)) result_.bytes += *bytes;
+    const auto written = WriteStringLiteral(text, output_, {limit_ - written_});
+    if (const auto* bytes = std::get_if<std::size_t>(&written)) written_ += *bytes;
     else {
       switch (std::get<EmitError>(written)) {
         case EmitError::kOutputLimit: throw Error::kOutputLimit;
@@ -168,7 +227,7 @@ class TreePrinter {
     if (IsSourceIdentifier(name)) Identifier(name);
     else Quoted(name);
   }
-  void Name(SymbolId id) { Identifier(tree_.names[tree_.symbols[id.value].name.value]); }
+  void Name(SymbolId id) { Identifier(Tree().names[Tree().symbols[id.value].name.value]); }
   template <class T> void Numeric(T value) {
     // General to_chars uses a shortest round-tripping representation. The fixed
     // scratch covers sign, max_digits10, exponent marker/sign and decimal exponent.
@@ -201,12 +260,12 @@ class TreePrinter {
       if (std::signbit(number)) Append(")");
     }
   }
-  void Literal(TextId id) { Quoted(tree_.texts[id.value]); }
+  void Literal(TextId id) { Quoted(Tree().texts[id.value]); }
   void Expression(const TreeLiteral& node) {
     std::visit([&](auto value) { Literal(value); }, node);
   }
   void Expression(SymbolExpr node) { Name(node.symbol); }
-  void Expression(GlobalNameExpr node) { Identifier(tree_.names[node.name.value]); }
+  void Expression(GlobalNameExpr node) { Identifier(Tree().names[node.name.value]); }
   void Expression(ThisExpr) { Append("this"); }
   void Member(ExprId base, const MemberKey& key) {
     if (const auto* name = std::get_if<NameId>(&key)) Push(PropertyKey{*name});
@@ -215,7 +274,7 @@ class TreePrinter {
       Push(std::get<ComputedKey>(key).expression);
       Push(std::string_view("["));
     }
-    const auto& expression = tree_.expressions[base.value].expression;
+    const auto& expression = Tree().expressions[base.value].expression;
     const bool primary = std::holds_alternative<SymbolExpr>(expression) ||
         std::holds_alternative<ThisExpr>(expression) ||
         std::holds_alternative<MemberExpr>(expression);
@@ -278,7 +337,43 @@ class TreePrinter {
   }
   void Expression(EmptyArrayExpr) { Append("[]"); }
   void Expression(EmptyObjectExpr) { Append("({})"); }
-  void Expression(FunctionExpr) { throw Error::kUnsupportedContext; }
+  void Expression(FunctionExpr node) {
+    if (!family_) throw Error::kUnsupportedContext;
+    const auto child = std::lower_bound(owners_.begin(), owners_.end(), node.child,
+        [&](const auto& item, FunctionOwnerId owner) { Step(); return item.owner < owner; });
+    if (child == owners_.end() || child->owner != node.child) throw Error::kUnsupportedContext;
+    const auto parent = current_; current_ = child->member;
+    Push(BeginFunction{}); current_ = parent;
+  }
+  void Run(BeginFunction) {
+    if (!family_ || printed_[current_]) throw Error::kUnsupportedContext;
+    printed_[current_] = true; draft_.functions[current_].begin = written_;
+    Append(Tree().callable == CallableKind::kArrow ? "((" : "(function(");
+    Push(EndFunction{}); Push(Statement{Tree().body, depth_});
+    Push(std::string_view(Tree().callable == CallableKind::kArrow ? ") => " : ") "));
+    Push(ParameterCursor{0});
+  }
+  void Run(EndFunction) {
+    for (std::size_t i = 0; i < Tree().anchors.size(); ++i) {
+      Step(); if (std::holds_alternative<FunctionExit>(Tree().anchors[i].position)) Result().anchors[i] = written_;
+    }
+    Append(")"); draft_.functions[current_].end = written_;
+    Result().bytes = written_ - draft_.functions[current_].begin;
+  }
+  void Run(ParameterCursor cursor) {
+    if (cursor.index == Tree().parameters.size()) return;
+    if (cursor.index) Append(", ");
+    const auto& parameter = Tree().parameters[cursor.index];
+    if (parameter.rest) throw Error::kUnsupportedContext;
+    Result().parameters[cursor.index].begin = written_; Name(parameter.symbol);
+    Push(ParameterCursor{cursor.index + 1}); Push(EndParameter{cursor.index});
+    if (parameter.initializer) {
+      if (!std::holds_alternative<TreeLiteral>(Tree().expressions[parameter.initializer->value].expression))
+        throw Error::kUnsupportedContext;
+      Append(" = "); Push(*parameter.initializer);
+    }
+  }
+  void Run(EndParameter end) { Result().parameters[end.index].end = written_; }
   void Expression(ObjectExpr node) {
     Append("({"); Push(std::string_view("})")); Push(ObjectCursor{node.properties, 0});
   }
@@ -286,33 +381,33 @@ class TreePrinter {
     if (cursor.index == cursor.range.count) return;
     if (cursor.index != 0) Append(", ");
     const PropertyId id{cursor.range.first + cursor.index};
-    const auto& property = tree_.properties[id.value];
-    result_.properties[id.value].begin = result_.bytes;
-    Append("["); Quoted(tree_.names[property.key.value]); Append("]: ");
+    const auto& property = Tree().properties[id.value];
+    Result().properties[id.value].begin = written_;
+    Append("["); Quoted(Tree().names[property.key.value]); Append("]: ");
     Push(ObjectCursor{cursor.range, cursor.index + 1});
     Push(EndProperty{id}); Push(property.value);
   }
-  void Run(EndProperty property) { result_.properties[property.id.value].end = result_.bytes; }
+  void Run(EndProperty property) { Result().properties[property.id.value].end = written_; }
   void Run(ArgumentCursor cursor) {
     if (cursor.index == cursor.range.count) return;
     if (cursor.index != 0) Append(", ");
     Push(ArgumentCursor{cursor.range, cursor.index + 1});
-    Push(tree_.arguments[cursor.range.first + cursor.index]);
+    Push(Tree().arguments[cursor.range.first + cursor.index]);
   }
   void Run(std::string_view token) { Append(token); }
   void Run(SymbolName symbol) { Name(symbol.id); }
   void Run(PropertyKey key) {
-    const auto& name = tree_.names[key.id.value];
+    const auto& name = Tree().names[key.id.value];
     Step(name.size());
     if (IsSourceIdentifier(name)) { Append("."); Identifier(name); }
     else { Append("["); Quoted(name); Append("]"); }
   }
   void Run(ExprId id) {
-    result_.expressions[id.value].begin = result_.bytes;
+    Result().expressions[id.value].begin = written_;
     Push(EndExpression{id});
-    std::visit([&](const auto& node) { Expression(node); }, tree_.expressions[id.value].expression);
+    std::visit([&](const auto& node) { Expression(node); }, Tree().expressions[id.value].expression);
   }
-  void Run(EndExpression end) { result_.expressions[end.id.value].end = result_.bytes; }
+  void Run(EndExpression end) { Result().expressions[end.id.value].end = written_; }
   void Run(Indent indent) {
     constexpr std::string_view kIndent = "  ";
     for (std::size_t i = 0; i < indent.depth; ++i) Append(kIndent);
@@ -321,7 +416,7 @@ class TreePrinter {
     Append("{\n"); Push(BlockCursor{at.id, 0, at.depth});
   }
   void StatementNode(const DeclarationStmt& node, Statement) {
-    switch (tree_.symbols[node.symbol.value].declaration) {
+    switch (Tree().symbols[node.symbol.value].declaration) {
       case DeclarationKind::kLet: Append("let "); break;
       case DeclarationKind::kConst: Append("const "); break;
       case DeclarationKind::kParameter: throw Error::kUnsupportedContext;
@@ -351,30 +446,31 @@ class TreePrinter {
   void StatementNode(BreakStmt, Statement) { Append("break;"); }
   void StatementNode(ContinueStmt, Statement) { Append("continue;"); }
   void Run(Statement at) {
-    result_.statements[at.id.value].begin = result_.bytes;
+    depth_ = at.depth;
+    Result().statements[at.id.value].begin = written_;
     Push(EndStatement{at.id});
-    std::visit([&](const auto& node) { StatementNode(node, at); }, tree_.statements[at.id.value].statement);
+    std::visit([&](const auto& node) { StatementNode(node, at); }, Tree().statements[at.id.value].statement);
   }
-  void Run(EndStatement end) { result_.statements[end.id.value].end = result_.bytes; }
+  void Run(EndStatement end) { Result().statements[end.id.value].end = written_; }
   void Run(BlockCursor at) {
-    const auto& block = std::get<BlockStmt>(tree_.statements[at.id.value].statement);
+    const auto& block = std::get<BlockStmt>(Tree().statements[at.id.value].statement);
     Boundary({at.id, at.index});
     if (at.index == block.child_count) { Run(Indent{at.depth}); Append("}"); return; }
     Push(BlockCursor{at.id, at.index + 1, at.depth});
     Push(std::string_view("\n"));
-    Push(Statement{tree_.children[block.first_child + at.index], at.depth + 1});
+    Push(Statement{Tree().children[block.first_child + at.index], at.depth + 1});
     Push(Indent{at.depth + 1});
   }
   void PrepareAnchors() {
-    Array(located_, tree_.anchors.size());
+    Array(Located(), Tree().anchors.size());
     std::size_t count = 0;
-    for (std::size_t i = 0; i < tree_.anchors.size(); ++i) {
+    for (std::size_t i = 0; i < Tree().anchors.size(); ++i) {
       Step();
-      if (const auto* position = std::get_if<BlockBoundary>(&tree_.anchors[i].position))
-        located_[count++] = {*position, {static_cast<std::uint32_t>(i)}};
+      if (const auto* position = std::get_if<BlockBoundary>(&Tree().anchors[i].position))
+        Located()[count++] = {*position, {static_cast<std::uint32_t>(i)}};
     }
-    located_.resize(count);
-    std::sort(located_.begin(), located_.end(), [&](const auto& left, const auto& right) {
+    Located().resize(count);
+    std::sort(Located().begin(), Located().end(), [&](const auto& left, const auto& right) {
       Step(); return Less(left.boundary, right.boundary);
     });
   }
@@ -383,23 +479,40 @@ class TreePrinter {
   }
   void Boundary(BlockBoundary position) {
     // Binary lookup per structural boundary, not a scan of every method anchor.
-    auto found = std::lower_bound(located_.begin(), located_.end(), position,
+    auto found = std::lower_bound(Located().begin(), Located().end(), position,
         [&](const auto& item, auto key) { Step(); return Less(item.boundary, key); });
-    while (found != located_.end() && !Less(position, found->boundary)) {
-      Step(); result_.anchors[found->id.value] = result_.bytes; ++found;
+    while (found != Located().end() && !Less(position, found->boundary)) {
+      Step(); Result().anchors[found->id.value] = written_; ++found;
     }
   }
-  const VerifiedFunction& function_;
-  const FunctionTree& tree_;
+  const VerifiedFunction* function_ = nullptr;
+  const FunctionTree* tree_ = nullptr;
+  const ConstructedFamily* family_ = nullptr;
   std::ostream& output_;
   std::size_t limit_;
   analysis::SemanticBudget initial_;
   analysis::SemanticBudget remaining_;
   PrintedFunction result_;
-  std::vector<PrintAction> actions_;
+  PrintedFamilyDraft draft_;
+  std::size_t current_ = 0;
+  std::size_t depth_ = 0;
+  std::size_t written_ = 0;
+  std::vector<OwnedAction> actions_;
   std::vector<LocatedAnchor> located_;
+  std::vector<std::vector<LocatedAnchor>> locations_;
+  std::vector<OwnerTree> owners_;
+  std::vector<std::uint8_t> printed_;
 };
 }  // namespace
+
+std::variant<PrintedFamilyDraft, TreePrintError> PrintFamilyDraft(const ConstructedFamily& family,
+    std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch) {
+  try { return TreePrinter(family, output, limit, scratch).Draft();
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit;
+  } catch (const std::ios_base::failure&) { return Error::kWrite; }
+}
 
 std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
     const VerifiedFunction& function, std::ostream& output,

@@ -2,13 +2,70 @@
 
 #include <nlohmann/json.hpp>
 #include <type_traits>
+#include <memory>
+#include <ostream>
+#include <streambuf>
 
 #include "../src/source/family_file.h"
 #include "../src/source/family_tree.h"
+#include "../src/source/family_print.h"
 
 namespace {
 using namespace abcd;
 using namespace abcd::source;
+// Diagnostic output is bounded independently of the engine's publication path.
+// A failed print is discarded in full; no partial source enters the report.
+constexpr std::size_t kDraftBytes = 1024 * 1024;
+class DraftBuffer final : public std::streambuf {
+ public:
+  DraftBuffer() : bytes_(std::make_unique<char[]>(kDraftBytes)) {
+    setp(bytes_.get(), bytes_.get() + kDraftBytes);
+  }
+  std::string_view Text() const { return {pbase(), static_cast<std::size_t>(pptr() - pbase())}; }
+ private:
+  std::unique_ptr<char[]> bytes_;
+};
+void Draft(nlohmann::json& report, const ConstructedFamily& family,
+           analysis::SemanticBudget budget) {
+  report["draft_prepared"] = false;
+  // Reserve both the fixed stream storage and the final JSON string copy.
+  constexpr std::size_t kOutputStorage = 2 * kDraftBytes;
+  if (family.allocated_bytes > budget.bytes || kOutputStorage > budget.bytes - family.allocated_bytes) {
+    report["draft_error"] = static_cast<unsigned>(TreePrintError::kResourceLimit); return;
+  }
+  if (family.work > budget.work) {
+    report["draft_error"] = static_cast<unsigned>(TreePrintError::kWorkLimit); return;
+  }
+  budget.bytes -= family.allocated_bytes + kOutputStorage; budget.work -= family.work;
+  DraftBuffer buffer;
+  std::ostream output(&buffer);
+  const auto printed = PrintFamilyDraft(family, output, {kDraftBytes}, budget);
+  const auto* draft = std::get_if<PrintedFamilyDraft>(&printed);
+  if (!draft) {
+    report["draft_error"] = static_cast<unsigned>(std::get<TreePrintError>(printed)); return;
+  }
+  report["draft_prepared"] = true;
+  report["draft_source"] = buffer.Text();
+  report["draft_ranges"] = nlohmann::json::array();
+  for (std::size_t i = 0; i < draft->members.size(); ++i) {
+    const auto& member = draft->members[i];
+    nlohmann::json item{{"owner", family.members[i].tree.owner.value}, {"method", member.method.value},
+        {"begin", draft->functions[i].begin}, {"end", draft->functions[i].end}};
+    const auto ranges = [](const auto& events) {
+      auto result = nlohmann::json::array();
+      for (const auto& event : events) result.push_back({event.begin, event.end});
+      return result;
+    };
+    item["parameters"] = ranges(member.parameters);
+    item["expressions"] = ranges(member.expressions);
+    item["properties"] = ranges(member.properties);
+    item["statements"] = ranges(member.statements);
+    item["anchors"] = member.anchors;
+    report["draft_ranges"].push_back(std::move(item));
+  }
+  report["draft_coordinates"] = "absolute-utf8-bytes";
+  report["draft_publication_pending"] = {"root-enclosure", "global-module-bindings", "callable-names", "transitive-premises"};
+}
 template <class Error> unsigned Code(const Error& error) {
   if constexpr (std::is_enum_v<Error>) return static_cast<unsigned>(error);
   else return static_cast<unsigned>(error.kind);
@@ -60,7 +117,8 @@ void Failure(nlohmann::json& report, const FamilyFileFailure& failure) {
 nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
     const abcd::abc::Header& header, const abcd::abc::MetadataIndex& index,
     const abcd::abc::MethodLookup& lookup, abcd::abc::MethodPosition root,
-    abcd::source::RouteInputIdentity identity, const abcd::source::RecordModuleContext* modules) {
+    abcd::source::RouteInputIdentity identity, const abcd::source::RecordModuleContext* modules,
+    FamilyInspectMode mode) {
   nlohmann::json report{{"family_prepared", false}};
   analysis::SemanticBudget budget;
   const auto indexed_roles = analysis::MethodRoleIndex::Build(file, header, index, lookup, {budget.bytes});
@@ -157,6 +215,7 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
       }
       report["family_tree_signatures"].push_back(std::move(signature));
     }
+    if (mode == FamilyInspectMode::kSourceDraft) Draft(report, *tree, budget);
   } else {
     const auto& failure = std::get<FamilyTreeFailure>(constructed);
     report["family_tree_member"] = failure.member.value;

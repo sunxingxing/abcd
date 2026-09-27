@@ -5,6 +5,7 @@
 #include "../../../src/source/capture_aliases.h"
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/function_family.h"
+#include "../../../src/source/family_print.h"
 #include "../../../src/source/cell_defaults.h"
 #include "../../../src/source/cell_default_proof.h"
 #include "../../../src/source/default_signature.h"
@@ -14,6 +15,7 @@
 
 #include <type_traits>
 #include <limits>
+#include <sstream>
 
 namespace {
 using namespace abcd;
@@ -131,6 +133,32 @@ void TreeBinding(const FunctionValues& parent, const FunctionValues& child,
     const auto family = std::get<ConstructedFamily>(BuildFunctionFamily(members, outer.owner));
     test::Check(family.root == FamilyId{1} && family.order == std::vector<FamilyId>{{1}, {0}});
     test::Check(family.parents[0]->function == FamilyId{1} && !family.parents[1]);
+    // Shared printer events must return to the caller's owner after each child.
+    // This source draft carries no executable/publication receipt.
+    std::ostringstream output;
+    const auto printed = std::get<PrintedFamilyDraft>(PrintFamilyDraft(family, output));
+    test::Check(printed.members.size() == 2 && printed.bytes == output.str().size());
+    test::Check(printed.functions[1].begin == 0);
+    test::Check(printed.functions[0].begin > printed.functions[1].begin &&
+        printed.functions[0].end < printed.functions[1].end);
+    for (std::size_t i = 0; i < family.members.size(); ++i) {
+      test::Check(printed.members[i].method == family.members[i].tree.method);
+      test::Check(printed.members[i].fragment == FunctionFragment::kConditionalExpression);
+      for (const auto& range : printed.members[i].expressions)
+        test::Check(range.begin >= printed.functions[i].begin && range.end <= printed.functions[i].end && range.begin < range.end);
+    }
+    for (std::size_t i = 0; i < outer.expressions.size(); ++i)
+      if (std::holds_alternative<FunctionExpr>(outer.expressions[i].expression))
+        test::Check(printed.members[1].expressions[i] == printed.functions[0]);
+    SemanticBudget print_budget; print_budget.work = printed.work;
+    std::ostringstream exact;
+    test::Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family, exact, {}, print_budget)));
+    --print_budget.work;
+    std::ostringstream exhausted;
+    test::Check(std::get<TreePrintError>(PrintFamilyDraft(family, exhausted, {}, print_budget)) == TreePrintError::kWorkLimit);
+    print_budget = {}; print_budget.bytes = 0;
+    test::Check(std::get<TreePrintError>(PrintFamilyDraft(family, exhausted, {}, print_budget)) == TreePrintError::kResourceLimit);
+    test::Check(std::get<TreePrintError>(PrintFamilyDraft(family, exhausted, {0})) == TreePrintError::kOutputLimit);
     auto missing = members; missing.erase(missing.begin());
     test::Check(std::get<FamilyError>(BuildFunctionFamily(std::move(missing), outer.owner)) == FamilyError::kMissingChild);
     auto duplicate = members; duplicate.push_back(members[0]);

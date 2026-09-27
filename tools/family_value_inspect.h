@@ -7,9 +7,11 @@
 #include "abcd/source/record_module_context.h"
 #include "abcd/source/source_route.h"
 
+enum class FamilyInspectMode { kValues, kSourceDraft };
 nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
     const abcd::abc::Header& header, const abcd::abc::MetadataIndex& index,
     const abcd::abc::MethodLookup& lookup, abcd::abc::MethodPosition root,
     abcd::source::RouteInputIdentity identity,
-    const abcd::source::RecordModuleContext* modules);
+    const abcd::source::RecordModuleContext* modules,
+    FamilyInspectMode mode = FamilyInspectMode::kValues);
 #endif

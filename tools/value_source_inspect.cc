@@ -320,7 +320,8 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
   const auto* lookup = std::get_if<abc::MethodLookup>(&looked_up);
   if (!lookup) return Refused(output, receipt, InspectionError::kLookup,
       IndexClass(std::get<abc::MethodLookupError>(looked_up)));
-  if (scope == ValueSourceScope::kConditionalValues || scope == ValueSourceScope::kConditionalFamily) {
+  if (scope == ValueSourceScope::kConditionalValues || scope == ValueSourceScope::kConditionalFamily ||
+      scope == ValueSourceScope::kFamilyDraft) {
     const auto position = lookup->Find(method.offset);
     if (!position) return Refused(output, receipt, InspectionError::kLookup);
     nlohmann::json report{{"source_complete", false}, {"executable", false},
@@ -348,9 +349,10 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
       } else report["module_packaging_error"] = static_cast<unsigned>(std::get<abc::AttributeFailure>(packaging).kind);
     }
     report["module_context_ready"] = modules.has_value();
-    if (scope == ValueSourceScope::kConditionalFamily) {
+    if (scope == ValueSourceScope::kConditionalFamily || scope == ValueSourceScope::kFamilyDraft) {
       report.update(InspectFamilyValues(file, header, index, *lookup, *position, identity,
-          modules ? &*modules : nullptr));
+          modules ? &*modules : nullptr, scope == ValueSourceScope::kFamilyDraft
+              ? FamilyInspectMode::kSourceDraft : FamilyInspectMode::kValues));
       output << report << '\n';
       return EXIT_FAILURE; // File-driven family inputs are not source publication.
     }
