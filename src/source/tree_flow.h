@@ -5,12 +5,15 @@
 #include "evaluation_plan.h"
 
 namespace abcd::source {
+struct ExceptionTreeInput;
 enum class TreeFlowError : std::uint8_t {
   kRevision, kStructure, kControl, kEvaluation, kPlacement, kSnapshot,
   kSequence, kResourceLimit, kWorkLimit
 };
 struct TreeEdgeCopies {
   analysis::IncomingKey incoming;
+  // Normal bundles follow ParallelSchedule. Exceptional bundles follow the
+  // original PhiBundle copy order and target private staging slots instead.
   std::vector<ExprId> expressions;
   std::vector<std::optional<SymbolId>> temporaries;
 };
@@ -34,6 +37,12 @@ struct TreeFlow {
   std::vector<std::optional<SymbolId>> phis;
   // Indexed by the freshly checked PhiCopies bundle ordinal.
   std::vector<TreeEdgeCopies> copies;
+  // Phased mode only: recovered from actual catch clauses and assignment
+  // targets, never copied from the builder's BindingPlan.
+  std::vector<std::optional<SymbolId>> catch_parameters; // ValueId indexed.
+  std::vector<std::optional<SymbolId>> catch_slots; // CatchSlotId indexed.
+  std::vector<std::vector<ExprId>> catch_commits; // ExceptionCopies commit order.
+  std::vector<std::optional<StmtId>> tries; // Original TryId indexed.
   // Origins of independently checked synthetic loop/transfer statements.
   // Indexed by the synthetic ControlNode suffix, not inferred from text.
   std::vector<TreeOriginId> controls;
@@ -47,6 +56,15 @@ struct TreeFlow {
 // caller separately admits input graph/control/evaluation storage.
 [[nodiscard]] std::variant<TreeFlow, TreeFlowError> VerifyTreeFlow(
     const analysis::ValueProgram& graph, const ControlPlan& control,
+    const EvaluationPlan& evaluation, const FunctionTree& tree,
+    analysis::SemanticBudget budget = {});
+// Checks the actual tree against freshly verified original exceptional control
+// and staged copies. Same expression/ABI limitations as normal flow above.
+// Exceptional indexing/traversal adds O(B + E + O + V + R + C) work/storage
+// for blocks, edges, operations, values, regions and copy occurrences beyond
+// the shared flow checks and prerequisites. Does not replay AST construction.
+[[nodiscard]] std::variant<TreeFlow, TreeFlowError> VerifyExceptionTreeFlow(
+    const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
     analysis::SemanticBudget budget = {});
 }  // namespace abcd::source

@@ -1,6 +1,8 @@
 #include "../../../src/source/exception_plan.h"
 #include "../../../src/source/exception_control.h"
 #include "../../../src/source/exception_tree.h"
+#include "../../../src/source/tree_flow.h"
+#include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/family_print.h"
 #include "analysis/ssa_fixture.h"
 
@@ -129,6 +131,20 @@ void Nested(abc::ProfileId profile, std::uint32_t prelude, std::uint32_t depth =
   test::Check(std::holds_alternative<ExceptionPlan>(planned));
   const auto& plan = std::get<ExceptionPlan>(planned);
   Control(body, graph, input, plan);
+  const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, plan));
+  const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
+  FunctionSyntax syntax{};
+  syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  syntax.parameters.resize(1);
+  const std::vector<ExpressionConstant> constants(graph.ops.size());
+  const ExceptionTreeInput context{body, input, plan, control};
+  const auto drafted = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, {constants});
+  if (const auto* error = std::get_if<FunctionTreeError>(&drafted))
+    std::cerr << "nested exception tree error " << static_cast<unsigned>(*error) << '\n';
+  test::Check(std::holds_alternative<ExceptionFunctionDraft>(drafted));
+  const auto& tree = std::get<ExceptionFunctionDraft>(drafted).tree;
+  test::Check(std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(
+      graph, context, evaluation, tree, {constants})));
   test::Check(plan.regions.size() == depth && plan.regions[0].binding && plan.regions[1].binding);
   for (std::uint32_t r = 0; r < depth; ++r)
     test::Check(plan.layout.source_order[r] == TryId{depth - r - 1});
@@ -300,10 +316,46 @@ void DecodedControl(const abc::MethodBody& body, abc::ProfileId profile,
       std::cerr << "control draft error " << static_cast<unsigned>(*error) << '\n';
     test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
     const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
+    const auto checked_tree = VerifyExceptionTreeFlow(graph, context, evaluation, tree);
+    if (const auto* error = std::get_if<TreeFlowError>(&checked_tree))
+      std::cerr << "exception region flow error " << static_cast<unsigned>(*error) << '\n';
+    test::Check(std::holds_alternative<TreeFlow>(checked_tree));
+    const auto checked_semantics = VerifyExceptionTreeSemantics(graph, context, evaluation, tree, {constants, 1});
+    if (const auto* error = std::get_if<TreeSemanticError>(&checked_semantics))
+      std::cerr << "exception region semantics error " << static_cast<unsigned>(*error) << '\n';
+    test::Check(std::holds_alternative<TreeSemantics>(checked_semantics));
+    const auto& checked_flow = std::get<TreeFlow>(checked_tree);
+    std::vector<bool> parameters(tree.symbols.size());
+    for (const auto symbol : checked_flow.catch_parameters)
+      if (symbol) parameters[symbol->value] = true;
+    for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
+      const auto* symbol = std::get_if<SymbolExpr>(&tree.expressions[i].expression);
+      if (!symbol || !parameters[symbol->symbol.value]) continue;
+      auto changed = tree;
+      changed.expressions[i].expression = SymbolExpr{tree.parameters[0].symbol};
+      test::Check(std::holds_alternative<TreeFlow>(VerifyExceptionTreeFlow(graph, context, evaluation, changed)));
+      test::Check(std::get<TreeSemanticError>(VerifyExceptionTreeSemantics(
+          graph, context, evaluation, changed, {constants, 1})) == TreeSemanticError::kOperand);
+      break;
+    }
     test::Check(tree.operations.size() == graph.ops.size());
     const auto family = std::get<ConstructedFamily>(BuildFunctionFamily({{tree, {}, {}}}, tree.owner));
     std::ostringstream text;
-    test::Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family, text)));
+    const auto printed = PrintFamilyDraft(family, text);
+    test::Check(std::holds_alternative<PrintedFamilyDraft>(printed));
+    const auto& positions = std::get<PrintedFamilyDraft>(printed).members[0];
+    const auto source_size = text.str().size();
+    for (const auto& placement : tree.operations) {
+      if (const auto* statement = std::get_if<StmtId>(&placement.node)) {
+        const auto range = positions.statements[statement->value];
+        test::Check(range.begin < range.end && range.end <= source_size);
+        const auto origin = tree.statements[statement->value].origin;
+        test::Check(std::get<OriginalSite>(tree.origins[origin.value]).pc ==
+            graph.origins[graph.ops[placement.operation.value].origin.value].pc);
+      } else if (const auto* anchor = std::get_if<AnchorId>(&placement.node)) {
+        test::Check(positions.anchors[anchor->value] <= source_size);
+      }
+    }
     if (output) *output << text.str() << ",\n";
   }
 }

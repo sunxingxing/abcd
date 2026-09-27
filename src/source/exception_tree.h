@@ -11,9 +11,10 @@ struct ExceptionTreeInput {
   const ExceptionPlan& regions;
   const ExceptionControl& control;
 };
-// Deliberately distinct from ConstructedFunction: phase/control/evaluation and
-// syntax are checked, but the independent exception tree correspondence proof
-// is not implemented yet. No VerifiedFunction or source receipt follows.
+// Deliberately distinct from a publication receipt: original phase/control,
+// evaluation and independent tree correspondence are checked. Callable ABI,
+// same-file constant resolution and family enclosure still need admission.
+// No VerifiedFunction or source receipt follows from this draft alone.
 struct ExceptionFunctionDraft {
   FunctionTree tree;
   std::size_t allocated_bytes = 0;

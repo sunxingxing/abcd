@@ -13,9 +13,13 @@ class TreeEdgeFlow {
       const FunctionTree& tree, TreeFlow& flow, std::vector<std::uint8_t>& declared,
       std::vector<std::uint8_t>& assigned, TreeCheckBudget& budget);
   void Consume(analysis::IncomingKey incoming, const BlockStmt& block, std::uint32_t& child);
+  void Stage(analysis::OpId operation, const BlockStmt& block, std::uint32_t& child);
+  void Catch(analysis::WorkBlockId handler, const BlockStmt& block, std::uint32_t& child);
+  [[nodiscard]] bool HasCopies(analysis::EdgeId edge) const;
   void Finish();
  private:
   void Bind(std::optional<SymbolId>& binding, SymbolId symbol, TemporaryReason reason);
+  ExprId Assignment(analysis::IncomingKey incoming, const BlockStmt& block, std::uint32_t& child);
   const analysis::ValueProgram& graph_;
   const EvaluationPlan& evaluation_;
   const FunctionTree& tree_;
@@ -26,6 +30,8 @@ class TreeEdgeFlow {
   std::vector<std::optional<std::size_t>> bundles_;
   std::vector<std::uint8_t> visited_;
   std::optional<std::size_t> entry_;
+  std::vector<std::optional<std::size_t>> throws_, catches_;
+  std::vector<std::uint8_t> committed_;
 };
 }  // namespace abcd::source
 #endif

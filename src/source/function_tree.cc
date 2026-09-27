@@ -1,6 +1,5 @@
 #include "function_tree.h"
 #include "exception_tree.h"
-#include "tree_structure.h"
 
 #include <algorithm>
 #include <array>
@@ -764,20 +763,11 @@ class TreeBuilder {
           ? Error::kWorkLimit : Error::kResourceLimit;
     Step(storage->work);
     Require(storage->bytes <= budget_.bytes - bytes_, Error::kResourceLimit);
-    if (exceptions_) {
-      const auto checked = VerifyTreeStructure(tree_, {bytes_ + storage->bytes, work_});
-      if (const auto* error = std::get_if<TreeStructureError>(&checked)) {
-        if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
-        if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
-        throw Error::kStructure;
-      }
-      const auto& syntax = std::get<TreeStructure>(checked);
-      Require(syntax.allocated_bytes >= storage->bytes, Error::kStructure);
-      Admit(syntax.allocated_bytes - storage->bytes, 1); Step(syntax.work);
-      return; // Draft only; never substitute syntax success for the missing phased tree proof.
-    }
-    const auto checked = VerifyTreeSemantics(graph_, control_, evaluation_, tree_, constants_,
-                                             {bytes_ + storage->bytes, work_});
+    const auto checked = exceptions_
+        ? VerifyExceptionTreeSemantics(graph_, *exceptions_, evaluation_, tree_, constants_,
+                                       {bytes_ + storage->bytes, work_})
+        : VerifyTreeSemantics(graph_, control_, evaluation_, tree_, constants_,
+                              {bytes_ + storage->bytes, work_});
     const auto* semantics = std::get_if<TreeSemantics>(&checked);
     if (!semantics) {
       const auto error = std::get<TreeSemanticError>(checked);

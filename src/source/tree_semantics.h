@@ -29,5 +29,11 @@ struct TreeSemantics {
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
     ExpressionConstants constants, analysis::SemanticBudget budget = {});
+// Same conditional correspondence contract, with original phase/region evidence.
+// Does not authorize finally recognition, suspension lowering or publication.
+[[nodiscard]] std::variant<TreeSemantics, TreeSemanticError> VerifyExceptionTreeSemantics(
+    const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
+    const EvaluationPlan& evaluation, const FunctionTree& tree,
+    ExpressionConstants constants, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

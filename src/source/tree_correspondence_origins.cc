@@ -41,7 +41,25 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
          std::holds_alternative<EdgeOrigin>(tree.origins[origin.value])), Error::kOrigin);
     visited[origin.value] = 1;
   }
-  if (!flow.copies.empty()) budget.Array(edge_expressions, tree.expressions.size());
+  for (std::size_t i = 0; i < flow.tries.size(); ++i) {
+    budget.Step();
+    RequireMeaning(flow.tries[i].has_value(), Error::kOrigin);
+    const auto origin = tree.statements[flow.tries[i]->value].origin;
+    const auto* region = std::get_if<TryOrigin>(&tree.origins[origin.value]);
+    RequireMeaning(origin.value >= graph.origins.size() && region && region->region.value == i &&
+        !visited[origin.value], Error::kOrigin);
+    visited[origin.value] = 1;
+  }
+  if (!flow.copies.empty() || !flow.catch_commits.empty())
+    budget.Array(edge_expressions, tree.expressions.size());
+  const auto mark_copy = [&](ExprId root) {
+    const auto& assignment = std::get<AssignmentExpr>(tree.expressions[root.value].expression);
+    // Fresh flow checked placement/targets, operands proved the snapshot RHS;
+    // catch commit RHS is a slot leaf checked directly by fresh flow.
+    RequireMeaning(!edge_expressions[root.value] && !edge_expressions[assignment.value.value], Error::kOrigin);
+    edge_expressions[root.value] = 1;
+    edge_expressions[assignment.value.value] = 1;
+  };
   for (const auto& copies : flow.copies) {
     budget.Step();
     for (const auto root : copies.expressions) {
@@ -52,12 +70,16 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
         const auto* source = std::get_if<EdgeOrigin>(&origin);
         RequireMeaning(source && source->edge == *edge, Error::kOrigin);
       } else RequireMeaning(std::holds_alternative<EntryOrigin>(origin), Error::kOrigin);
-      const auto& assignment = std::get<AssignmentExpr>(node.expression);
-      // Flow checked the statement and RHS origins; operand checking proved
-      // the RHS is a leaf. No original-PC provenance is invented for copies.
-      RequireMeaning(!edge_expressions[root.value] && !edge_expressions[assignment.value.value], Error::kOrigin);
-      edge_expressions[root.value] = 1;
-      edge_expressions[assignment.value.value] = 1;
+      mark_copy(root);
+    }
+  }
+  for (const auto& commit : flow.catch_commits) {
+    budget.Step();
+    for (const auto root : commit) {
+      budget.Step();
+      RequireMeaning(std::holds_alternative<EdgeOrigin>(tree.origins[tree.expressions[root.value].origin.value]),
+          Error::kOrigin);
+      mark_copy(root);
     }
   }
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
@@ -145,6 +167,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
                                   std::holds_alternative<BindingOrigin>(tree.origins[i]) ||
                                   std::holds_alternative<EdgeOrigin>(tree.origins[i]) ||
                                   std::holds_alternative<LoopOrigin>(tree.origins[i]) ||
+                                  std::holds_alternative<TryOrigin>(tree.origins[i]) ||
                                   std::holds_alternative<EntryOrigin>(tree.origins[i])), Error::kOrigin);
   }
 }

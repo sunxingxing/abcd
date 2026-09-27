@@ -92,17 +92,52 @@ effects, old-local snapshots, protected branches and nested catch/rethrow.
 Expression origins include the original operation PC and printed ranges are
 nonempty. This does not certify complete PC mapping or file-backed methods.
 
-Still required before executable source publication (items 1-3 now have draft
-construction, not independent semantic certification):
+## Independent Tree Correspondence
 
-1. Let the common function-tree builder consume this typed projection, creating
-   TryStmt and handler-only catch bindings, not function-body catch locals.
-2. Place staged copies before their original throwing operations, catch commits
-   at Catch entry, and normal copies using original EdgeId mappings.
-3. Preserve Before/Commit ordering, including predicates whose branch successors
-   belong to Commit. Never move normal result availability onto throwing paths.
-4. Extend independent tree flow/operand/origin and ABI verification for those
-   placements, then execute the same decoded function and check PC ranges.
-5. Integrate region-local loops, more general exits/completions, catch captures,
-   finally recognition and certified async owners. Current refusal is not final
-   coverage and must not be recorded as completed ISA support.
+`VerifyExceptionTreeFlow` extends the common sequence checker, not the tree
+builder. It freshly verifies original region/control/evaluation inputs, then
+consumes the actual tree's blocks, branches, try clauses and copy statements.
+Each TryId owns exactly one TryStmt; its protected and handler roots have the
+required sibling scopes. The actual catch parameter binds the original
+CatchDefinition and cannot become a body-local or another region's parameter.
+
+The shared edge-copy checker indexes throw bundles by operation and commits by
+Catch block. It consumes each once, at its exact boundary. Staging symbols are
+recovered from actual assignment targets and must be distinct from phi, cycle,
+ordinary snapshot and parameter bindings. Catch commits must read those same
+slots. Exceptional bundle expressions follow the original parallel-copy list,
+not its abstract cycle-breaking schedule; normal bundles retain their existing
+schedule. No exceptional assignment is authorized at a normal edge boundary.
+
+`VerifyExceptionTreeSemantics` then uses the common operand and origin checks.
+Every snapshot RHS must match the original pre-throw operand; every catch read
+must reference the actual bound exception value. Try syntax uses checked TryId
+origins; copies use original edge origins; operations preserve original sites
+and PCs, including combined origins. The draft builder now requires this check.
+It does not rebuild the expected AST or trust BindingPlan symbol identities.
+
+Beyond existing input, structure and common flow checks, exceptional indexing
+and traversal add O(B + E + O + V + R + C) work/storage, for blocks, edges,
+operations, values, regions and copy occurrences. Work and byte budgets include
+fresh checks and additional tables; these counters are not peak-RSS evidence.
+Traversal is iterative, including the 200/201/402-region fixture cases.
+
+Mutation tests cover shifted snapshots, staging/phi aliasing, wrong committed
+slot, exchanged body/handler, escaped catch scope, wrong snapshot RHS/catch
+value, forged PC and stale revision. The latter operand/PC changes deliberately
+remain structurally legal to distinguish correspondence from syntax checking.
+Exact work and exhausted-work/byte boundaries are checked. Decoded branch,
+return and throw placements also have generated statement ranges; jumps have
+generated anchors, without reverse-parsing source text.
+
+Still required before phase completion:
+
+1. Bind this conditional correspondence to actual file-backed constants,
+   callable ABI and immutable publication identity; verify the complete emitted
+   PC map on the same real method. Current diagnostic trees are not receipts.
+2. Close capture/family obligations where present; do not treat a legal catch
+   parameter read as proof that a created closure captures the correct cell.
+3. Integrate loop/try nesting in both directions and cross-region exits, then
+   typed completion/finally (including nesting), then await/yield and delegated
+   protocols in the same model. Validate combinations, not only isolated layers.
+   Current refusal is not final coverage or completed ISA support.

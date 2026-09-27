@@ -16,6 +16,20 @@ TreeEdgeFlow::TreeEdgeFlow(const analysis::ValueProgram& graph,
   budget.Array(bundles_, graph.edges.size());
   budget.Array(flow.copies, evaluation.phis->bundles.size());
   budget.Array(visited_, evaluation.phis->bundles.size());
+  if (evaluation.exceptions) {
+    budget.Array(throws_, graph.ops.size());
+    budget.Array(catches_, graph.blocks.size());
+    budget.Array(flow.catch_slots, evaluation.exceptions->slots.size());
+    budget.Array(flow.catch_commits, evaluation.exceptions->commits.size());
+    budget.Array(committed_, evaluation.exceptions->commits.size());
+    for (std::size_t i = 0; i < evaluation.exceptions->commits.size(); ++i) {
+      budget.Step();
+      const auto& commit = evaluation.exceptions->commits[i];
+      Require(!catches_[commit.block.value], TreeFlowError::kControl);
+      catches_[commit.block.value] = i;
+      budget.Array(flow.catch_commits[i], commit.count);
+    }
+  }
   for (std::size_t i = 0; i < evaluation.phis->bundles.size(); ++i) {
     budget.Step();
     const auto& bundle = evaluation.phis->bundles[i];
@@ -29,6 +43,14 @@ TreeEdgeFlow::TreeEdgeFlow(const analysis::ValueProgram& graph,
     }
     auto& copies = flow.copies[i];
     copies.incoming = bundle.incoming;
+    if (evaluation.exceptions) {
+      if (const auto* stage = std::get_if<ThrowCopies>(&evaluation.exceptions->placements[i])) {
+        Require(!throws_[stage->operation.value], TreeFlowError::kControl);
+        throws_[stage->operation.value] = i;
+        budget.Array(copies.expressions, bundle.count);
+        continue;
+      }
+    }
     budget.Array(copies.expressions, bundle.schedule.steps.size());
     budget.Array(copies.temporaries, bundle.schedule.temporaries);
   }
@@ -63,37 +85,97 @@ void TreeEdgeFlow::Consume(analysis::IncomingKey incoming, const BlockStmt& bloc
     bundle = bundles_[edge->value];
   } else bundle = entry_;
   if (!bundle) return;
+  Require(!evaluation_.exceptions ||
+      !std::holds_alternative<ThrowCopies>(evaluation_.exceptions->placements[*bundle]),
+      TreeFlowError::kSequence);
   Require(!visited_[*bundle], TreeFlowError::kSequence);
   visited_[*bundle] = 1;
   const auto& schedule = evaluation_.phis->bundles[*bundle].schedule;
   auto& copies = flow_.copies[*bundle];
   for (std::size_t i = 0; i < schedule.steps.size(); ++i) {
     budget_.Step();
-    Require(child < block.child_count, TreeFlowError::kSequence);
-    const auto& statement = tree_.statements[tree_.children[block.first_child + child++].value];
-    const auto* expression = std::get_if<ExpressionStmt>(&statement.statement);
-    Require(expression != nullptr, TreeFlowError::kSequence);
-    const auto& node = tree_.expressions[expression->expression.value];
-    const auto& origin = tree_.origins[node.origin.value];
-    if (edge) {
-      const auto* source = std::get_if<EdgeOrigin>(&origin);
-      Require(source && source->edge == *edge, TreeFlowError::kPlacement);
-    } else Require(std::holds_alternative<EntryOrigin>(origin), TreeFlowError::kPlacement);
-    Require(statement.origin == node.origin, TreeFlowError::kPlacement);
-    const auto* assignment = std::get_if<AssignmentExpr>(&node.expression);
-    Require(assignment != nullptr, TreeFlowError::kSequence);
-    const auto* target = std::get_if<SymbolTarget>(&assignment->target);
-    Require(target && tree_.expressions[assignment->value.value].origin == node.origin, TreeFlowError::kPlacement);
+    const auto expression = Assignment(incoming, block, child);
+    const auto& assignment = std::get<AssignmentExpr>(tree_.expressions[expression.value].expression);
+    const auto& target = std::get<SymbolTarget>(assignment.target);
     const auto& destination = schedule.steps[i].destination;
     if (const auto* value = std::get_if<analysis::ValueId>(&destination)) {
       Require(value->value < flow_.phis.size(), TreeFlowError::kSnapshot);
-      Bind(flow_.phis[value->value], target->symbol, TemporaryReason::kPhiJoin);
+      Bind(flow_.phis[value->value], target.symbol, TemporaryReason::kPhiJoin);
     } else {
       const auto temporary = std::get<CopyTempId>(destination);
       Require(temporary.value < copies.temporaries.size(), TreeFlowError::kSnapshot);
-      Bind(copies.temporaries[temporary.value], target->symbol, TemporaryReason::kParallelCopyCycle);
+      Bind(copies.temporaries[temporary.value], target.symbol, TemporaryReason::kParallelCopyCycle);
     }
-    copies.expressions[i] = expression->expression;
+    copies.expressions[i] = expression;
+  }
+}
+
+bool TreeEdgeFlow::HasCopies(analysis::EdgeId edge) const {
+  if (bundles_.empty() || !bundles_[edge.value]) return false;
+  return !flow_.copies[*bundles_[edge.value]].expressions.empty();
+}
+
+ExprId TreeEdgeFlow::Assignment(analysis::IncomingKey incoming, const BlockStmt& block,
+    std::uint32_t& child) {
+  Require(child < block.child_count, TreeFlowError::kSequence);
+  const auto& statement = tree_.statements[tree_.children[block.first_child + child++].value];
+  const auto* expression = std::get_if<ExpressionStmt>(&statement.statement);
+  Require(expression != nullptr, TreeFlowError::kSequence);
+  const auto& node = tree_.expressions[expression->expression.value];
+  const auto& origin = tree_.origins[node.origin.value];
+  if (const auto* edge = std::get_if<analysis::EdgeId>(&incoming)) {
+    const auto* source = std::get_if<EdgeOrigin>(&origin);
+    Require(source && source->edge == *edge, TreeFlowError::kPlacement);
+  } else Require(std::holds_alternative<EntryOrigin>(origin), TreeFlowError::kPlacement);
+  Require(statement.origin == node.origin, TreeFlowError::kPlacement);
+  const auto* assignment = std::get_if<AssignmentExpr>(&node.expression);
+  Require(assignment && std::holds_alternative<SymbolTarget>(assignment->target) &&
+      tree_.expressions[assignment->value.value].origin == node.origin, TreeFlowError::kPlacement);
+  return expression->expression;
+}
+
+void TreeEdgeFlow::Stage(analysis::OpId operation, const BlockStmt& block,
+    std::uint32_t& child) {
+  budget_.Step();
+  if (throws_.empty() || !throws_[operation.value]) return;
+  const auto index = *throws_[operation.value];
+  Require(!visited_[index], TreeFlowError::kSequence);
+  visited_[index] = 1;
+  const auto& bundle = evaluation_.phis->bundles[index];
+  for (std::uint32_t i = 0; i < bundle.count; ++i) {
+    budget_.Step();
+    const auto slot = evaluation_.exceptions->staging[bundle.first + i];
+    Require(slot.has_value(), TreeFlowError::kSnapshot);
+    const auto expression = Assignment(bundle.incoming, block, child);
+    const auto& assignment = std::get<AssignmentExpr>(tree_.expressions[expression.value].expression);
+    Bind(flow_.catch_slots[slot->value], std::get<SymbolTarget>(assignment.target).symbol,
+        TemporaryReason::kExceptionSnapshot);
+    flow_.copies[index].expressions[i] = expression;
+  }
+}
+
+void TreeEdgeFlow::Catch(analysis::WorkBlockId handler, const BlockStmt& block,
+    std::uint32_t& child) {
+  budget_.Step();
+  if (catches_.empty() || !catches_[handler.value]) return;
+  const auto index = *catches_[handler.value];
+  Require(!committed_[index], TreeFlowError::kSequence);
+  committed_[index] = 1;
+  const auto& commit = evaluation_.exceptions->commits[index];
+  const auto& source = graph_.blocks[handler.value];
+  Require(source.edge_count == 1, TreeFlowError::kControl);
+  for (std::uint32_t i = 0; i < commit.count; ++i) {
+    budget_.Step();
+    const auto slot = commit.first.value + i;
+    const auto destination = evaluation_.exceptions->slots[slot].destination;
+    const auto expression = Assignment(source.first_edge, block, child);
+    const auto& assignment = std::get<AssignmentExpr>(tree_.expressions[expression.value].expression);
+    Bind(flow_.phis[destination.value], std::get<SymbolTarget>(assignment.target).symbol,
+        TemporaryReason::kPhiJoin);
+    const auto* saved = std::get_if<SymbolExpr>(&tree_.expressions[assignment.value.value].expression);
+    Require(saved != nullptr, TreeFlowError::kSnapshot);
+    Bind(flow_.catch_slots[slot], saved->symbol, TemporaryReason::kExceptionSnapshot);
+    flow_.catch_commits[index][i] = expression;
   }
 }
 
@@ -102,6 +184,12 @@ void TreeEdgeFlow::Finish() {
   for (const auto visited : visited_) {
     budget_.Step();
     Require(visited, TreeFlowError::kSequence);
+  }
+  for (const auto visited : committed_) {
+    budget_.Step(); Require(visited, TreeFlowError::kSequence);
+  }
+  for (const auto slot : flow_.catch_slots) {
+    budget_.Step(); Require(slot.has_value(), TreeFlowError::kSnapshot);
   }
   for (std::size_t i = 0; i < graph_.values.size(); ++i) {
     budget_.Step();

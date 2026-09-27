@@ -9,6 +9,8 @@
 #include "../../../src/source/exception_tree.h"
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/tree_structure.h"
+#include "../../../src/source/tree_flow.h"
+#include "../../../src/source/tree_semantics.h"
 #include "analysis/ssa_fixture.h"
 
 #include <sstream>
@@ -345,6 +347,86 @@ void Decoded(abc::ProfileId profile, ThrowingSite site, std::ostream* output = n
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(drafted));
   const auto& draft = std::get<ExceptionFunctionDraft>(drafted);
   test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(draft.tree)));
+  const auto checked_tree = VerifyExceptionTreeFlow(graph, context, evaluation, draft.tree);
+  if (const auto* error = std::get_if<TreeFlowError>(&checked_tree))
+    std::cerr << "exception flow error " << static_cast<unsigned>(*error) << '\n';
+  test::Check(std::holds_alternative<TreeFlow>(checked_tree));
+  const auto& tree_flow = std::get<TreeFlow>(checked_tree);
+  const auto checked_semantics = VerifyExceptionTreeSemantics(
+      graph, context, evaluation, draft.tree, {constants, 1});
+  if (const auto* error = std::get_if<TreeSemanticError>(&checked_semantics))
+    std::cerr << "exception semantics error " << static_cast<unsigned>(*error) << '\n';
+  test::Check(std::holds_alternative<TreeSemantics>(checked_semantics));
+  const auto& semantics = std::get<TreeSemantics>(checked_semantics);
+  test::Check(tree_flow.catch_slots.size() == 1 && tree_flow.catch_slots[0]);
+  test::Check(tree_flow.catch_commits.size() == 1 && tree_flow.catch_commits[0].size() == 1);
+  test::Check(tree_flow.tries.size() == 1 && tree_flow.tries[0]);
+  const auto refuses = [&](const FunctionTree& changed) {
+    test::Check(std::holds_alternative<TreeFlowError>(
+        VerifyExceptionTreeFlow(graph, context, evaluation, changed)));
+  };
+  auto changed_tree = draft.tree;
+  auto& caught = std::get<TryStmt>(changed_tree.statements[tree_flow.tries[0]->value].statement);
+  std::swap(caught.body, caught.handler->body);
+  refuses(changed_tree);
+  changed_tree = draft.tree;
+  const auto& original_try = std::get<TryStmt>(draft.tree.statements[tree_flow.tries[0]->value].statement);
+  changed_tree.symbols[original_try.handler->parameter.value].scope = changed_tree.body_scope;
+  refuses(changed_tree);
+  changed_tree = draft.tree;
+  const auto stage = tree_flow.copies[0].expressions[0];
+  const auto committed = tree_flow.catch_commits[0][0];
+  const auto phi = std::get<SymbolTarget>(std::get<AssignmentExpr>(
+      changed_tree.expressions[committed.value].expression).target).symbol;
+  std::get<AssignmentExpr>(changed_tree.expressions[stage.value].expression).target = SymbolTarget{phi};
+  refuses(changed_tree);
+  changed_tree = draft.tree;
+  const auto rhs = std::get<AssignmentExpr>(changed_tree.expressions[committed.value].expression).value;
+  changed_tree.expressions[rhs.value].expression = SymbolExpr{phi};
+  refuses(changed_tree);
+  changed_tree = draft.tree;
+  bool moved = false;
+  for (const auto& node : draft.tree.statements) {
+    const auto* block = std::get_if<BlockStmt>(&node.statement);
+    if (!block) continue;
+    for (std::uint32_t i = 0; i + 1 < block->child_count; ++i) {
+      const auto child = block->first_child + i;
+      const auto* expression = std::get_if<ExpressionStmt>(
+          &draft.tree.statements[draft.tree.children[child].value].statement);
+      if (!expression || expression->expression != stage) continue;
+      std::swap(changed_tree.children[child], changed_tree.children[child + 1]); moved = true;
+    }
+  }
+  test::Check(moved); refuses(changed_tree);
+  changed_tree = draft.tree;
+  ++changed_tree.value_revision.value; refuses(changed_tree);
+  // These changes retain legal scopes and statement order. Only independent
+  // operand/provenance correspondence can reject them.
+  changed_tree = draft.tree;
+  const auto staged_rhs = std::get<AssignmentExpr>(changed_tree.expressions[stage.value].expression).value;
+  changed_tree.expressions[staged_rhs.value].expression = SymbolExpr{draft.tree.parameters[2].symbol};
+  test::Check(std::holds_alternative<TreeFlow>(VerifyExceptionTreeFlow(graph, context, evaluation, changed_tree)));
+  test::Check(std::get<TreeSemanticError>(VerifyExceptionTreeSemantics(
+      graph, context, evaluation, changed_tree, {constants, 1})) == TreeSemanticError::kOperand);
+  changed_tree = draft.tree;
+  ++std::get<OriginalSite>(changed_tree.origins[graph.ops[3].origin.value]).pc.value;
+  test::Check(std::holds_alternative<TreeFlow>(VerifyExceptionTreeFlow(graph, context, evaluation, changed_tree)));
+  test::Check(std::get<TreeSemanticError>(VerifyExceptionTreeSemantics(
+      graph, context, evaluation, changed_tree, {constants, 1})) == TreeSemanticError::kOrigin);
+  test::Check(std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(
+      graph, context, evaluation, draft.tree, {constants, 1}, {SemanticBudget{}.bytes, semantics.work})));
+  test::Check(std::get<TreeSemanticError>(VerifyExceptionTreeSemantics(
+      graph, context, evaluation, draft.tree, {constants, 1}, {SemanticBudget{}.bytes, semantics.work - 1})) ==
+      TreeSemanticError::kWorkLimit);
+  test::Check(std::holds_alternative<TreeFlowError>(VerifyTreeFlow(
+      graph, control.skeleton, evaluation, draft.tree)));
+  test::Check(std::holds_alternative<TreeFlow>(VerifyExceptionTreeFlow(
+      graph, context, evaluation, draft.tree, {SemanticBudget{}.bytes, tree_flow.work})));
+  test::Check(std::get<TreeFlowError>(VerifyExceptionTreeFlow(
+      graph, context, evaluation, draft.tree, {SemanticBudget{}.bytes, tree_flow.work - 1})) ==
+      TreeFlowError::kWorkLimit);
+  test::Check(std::get<TreeFlowError>(VerifyExceptionTreeFlow(
+      graph, context, evaluation, draft.tree, {0})) == TreeFlowError::kResourceLimit);
   std::size_t handlers = 0;
   for (const auto& symbol : draft.tree.symbols)
     if (symbol.kind == BindingKind::kCatchParameter) {

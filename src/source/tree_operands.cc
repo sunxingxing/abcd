@@ -227,6 +227,20 @@ class OperandCheck {
     for (std::size_t i = 0; i < flow_.copies.size(); ++i) {
       budget_.Step();
       const auto& copies = flow_.copies[i];
+      if (evaluation_.exceptions &&
+          std::holds_alternative<ThrowCopies>(evaluation_.exceptions->placements[i])) {
+        const auto& bundle = evaluation_.phis->bundles[i];
+        RequireMeaning(copies.expressions.size() == bundle.count && copies.temporaries.empty(), Error::kOperand);
+        for (std::uint32_t j = 0; j < bundle.count; ++j) {
+          budget_.Step();
+          const auto root = copies.expressions[j];
+          origin_ = tree_.expressions[root.value].origin;
+          // Snapshot the pre-throw operand, not a normal result or a cycle
+          // temporary from the abstract exceptional parallel-copy schedule.
+          Input(evaluation_.phis->copies[bundle.first + j].source, Node<AssignmentExpr>(root).value);
+        }
+        continue;
+      }
       const auto& schedule = evaluation_.phis->bundles[i].schedule;
       RequireMeaning(copies.expressions.size() == schedule.steps.size(), Error::kOperand);
       for (std::size_t j = 0; j < copies.expressions.size(); ++j) {
@@ -327,6 +341,12 @@ class OperandCheck {
           LeafOrigin(expression);
           RequireMeaning(value.value < flow_.phis.size() && flow_.phis[value.value] &&
               Node<SymbolExpr>(expression).symbol == *flow_.phis[value.value], Error::kOperand);
+          return;
+        }
+        if (std::holds_alternative<analysis::CatchDefinition>(definition.origin)) {
+          LeafOrigin(expression);
+          RequireMeaning(value.value < flow_.catch_parameters.size() && flow_.catch_parameters[value.value] &&
+              Node<SymbolExpr>(expression).symbol == *flow_.catch_parameters[value.value], Error::kOperand);
           return;
         }
         const auto* result = std::get_if<analysis::OpResult>(&definition.origin);

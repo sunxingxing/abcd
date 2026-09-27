@@ -44,10 +44,19 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 - 共享 FunctionTree 已接入异常投影、handler 作用域 catch 参数、抛出前暂存与
   Catch 入口提交，复用共享 printer。三种 profile 的解码指令用例已执行生成 JS，
-  验证分支、getter/调用效果顺序、旧局部值与嵌套 catch；相关 6 项测试通过。
-  输出类型仍为 `ExceptionFunctionDraft`，尚缺独立异常树语义证明及真实文件方法
-  发布验收，不计作第 1 步完成。后续依次为循环跨区、typed completion/finally、
+  验证分支、getter/调用效果顺序、旧局部值与嵌套 catch。
+  独立 TreeFlow/操作数/来源检查现已接入构建出口，不重新生成预期 AST：核对
+  实际 catch 绑定、try 归属、Before/Commit 分支位置、原正常边、抛出前暂存与
+  Catch 提交、暂存槽独占和原始 PC。错位复制、phi/slot 混用、错误 RHS/catch 值、
+  篡改 PC、scope 与修订均有负例，包含语法合法但语义错误的篡改。
+  200/201/402 层区域已走到共享树及独立语义检查；分支/return/throw 的语句位置
+  和 jump anchor 同时验证。仍是 `ExceptionFunctionDraft`，缺真实文件常量、ABI、
+  函数族绑定与发布验收，不计作第 1 步完成。后续依次为循环跨区、typed completion/finally、
   await/yield 协议与组合验收；规则版本仍为 44。
+  本轮 `abc_semantic` 及相关测试目标构建成功，13/13 定向回归通过：
+  exception_plan/copies/tree_source、tree_structure、try_tree/source、function_tree、
+  control_plan、creation/class_tree_context、argument_snapshot/source、constant_group。
+  未运行全量语料、RSS 或基准。
 
 - T09 异常控制层已复用共享 postdominator/区域发现算法，详见
   [异常控制投影](exception-control.md)。ControlTopology 只借用拓扑，不复制或清空
@@ -65,9 +74,9 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   13/13 定向回归通过：exception_plan/copies、control_plan、function_tree、try_tree、
   try_tree_source、creation/class_tree_context、argument_snapshot_source、constant_group
   和三个既有应用切片；abc_semantic 构建通过。新入口先编译失败后实现接通。
-  **该层尚未接入 FunctionTree/源码发布**。当前仅接纳无环、每个 try 单一正常出口
-  的区域；多出口和投影循环均 typed reject，不是最终支持边界。下一步接入共享树
-  构建与语义核对，包括 Commit 上的分支和原边复制，再完成循环/异常混合区域、
+  **已接入 FunctionTree 和条件性语义校验，尚未接入源码发布**。当前仅接纳无环、
+  每个 try 单一正常出口的区域；多出口和投影循环均 typed reject，不是最终支持
+  边界。下一步接通真实文件 callable/ABI 与发布身份，再完成循环/异常混合区域、
   completion/finally、async/generator 挂起恢复。规则仍为 44，全 ISA/group 1 未完成。
   未运行全量、RSS 或基准。
 

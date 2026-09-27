@@ -4,6 +4,7 @@
 #include <new>
 #include <stdexcept>
 
+#include "exception_tree.h"
 #include "tree_checks.h"
 #include "tree_edge_flow.h"
 
@@ -20,8 +21,9 @@ class FlowCheck {
  public:
   FlowCheck(const analysis::ValueProgram& graph, const ControlPlan& control,
       const EvaluationPlan& evaluation, const FunctionTree& tree,
-      TreeCheckBudget& budget)
-      : graph_(graph), control_(control), evaluation_(evaluation), tree_(tree), budget_(budget) {
+      TreeCheckBudget& budget, const ExceptionTreeInput* exceptions = nullptr)
+      : graph_(graph), control_(control), evaluation_(evaluation), tree_(tree), budget_(budget),
+        exceptions_(exceptions) {
     budget.Array(placements_, graph.ops.size());
     budget.Array(flow_.expressions, graph.ops.size());
     budget.Array(flow_.statements, graph.ops.size());
@@ -33,7 +35,10 @@ class FlowCheck {
     budget.Array(declared_, tree.symbols.size());
     budget.Array(tasks_, control.nodes.size());
     budget.Array(loops_, control.loops.size());
-    budget.Array(flow_.controls, control.nodes.size() - graph.blocks.size());
+    if (exceptions) {
+      budget.Array(flow_.catch_parameters, graph.values.size());
+      budget.Array(flow_.tries, exceptions->regions.regions.size());
+    } else budget.Array(flow_.controls, control.nodes.size() - graph.blocks.size());
     edges_.emplace(graph, evaluation, tree, flow_, declared_, assigned_, budget);
   }
   TreeFlow Run() {
@@ -56,16 +61,50 @@ class FlowCheck {
       while (cursor) {
         budget_.Step();
         const auto& node = control_.nodes[cursor->value];
+        if (exceptions_) {
+          const auto& unit = exceptions_->control.units[cursor->value];
+          if (const auto* region = std::get_if<TryControlUnit>(&unit)) {
+            Try(region->region, block, child, pending);
+            cursor = node.next;
+            continue;
+          }
+          if (std::holds_alternative<TryExitUnit>(unit)) {
+            cursor = node.next;
+            continue;
+          }
+          const auto original = std::get<PhaseControlUnit>(unit).block;
+          Require(node.block == original, Error::kControl);
+          if (graph_.phases[original.value].phase == analysis::ExceptionPhase::kCatch)
+            edges_->Catch(original, block, child);
+        }
         if (!std::holds_alternative<std::monostate>(node.synthetic)) {
           Loop(*cursor, block, child, pending);
           cursor = node.next;
           continue;
         }
         const auto& source = graph_.blocks[node.block.value];
-        for (std::uint32_t i = 0; i < source.op_count; ++i) {
+        // Branch operations live at Before, but their successors live at Commit.
+        // Only a checked empty boundary permits the predicate at Commit; no
+        // normal-copy writes or effects may intervene in that relocation.
+        std::optional<analysis::OpId> predicate;
+        if (exceptions_) {
+          const auto& phase = graph_.phases[node.block.value];
+          if (phase.phase == analysis::ExceptionPhase::kCommit && phase.operation &&
+              std::holds_alternative<analysis::ValueBranch>(graph_.ops[phase.operation->value].operation))
+            predicate = phase.operation;
+        }
+        const auto count = predicate ? 1U : source.op_count;
+        for (std::uint32_t i = 0; i < count; ++i) {
           budget_.Step();
-          const analysis::OpId id{source.first_op.value + i};
+          const analysis::OpId id = predicate.value_or(analysis::OpId{source.first_op.value + i});
           const auto& op = graph_.ops[id.value];
+          if (exceptions_ && !predicate && std::holds_alternative<analysis::ValueBranch>(op.operation)) {
+            Require(evaluation_.operations[id.value].kind == EvaluationKind::kRoot &&
+                source.edge_count == 1 && !edges_->HasCopies(source.first_edge), Error::kControl);
+            continue;
+          }
+          if (exceptions_ && op.life == analysis::ValueLife::kLive)
+            edges_->Stage(id, block, child);
           if (op.life != analysis::ValueLife::kLive ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInline ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInitializer ||
@@ -119,8 +158,15 @@ class FlowCheck {
             RootExpression(id, expression->expression);
           }
         }
-        if (!node.arms && source.edge_count == 1)
-          edges_->Consume(source.first_edge, block, child);
+        if (!node.arms) {
+          std::uint8_t normal = 0;
+          for (std::uint8_t e = 0; e < source.edge_count; ++e) {
+            budget_.Step(); const analysis::EdgeId edge{source.first_edge.value + e};
+            if (exceptions_ && graph_.edges[edge.value].kind == analysis::FlowEdgeKind::kException) continue;
+            Require(++normal == 1, Error::kControl);
+            edges_->Consume(edge, block, child);
+          }
+        }
         cursor = node.next;
       }
       Require(child == block.child_count, Error::kSequence);
@@ -133,11 +179,23 @@ class FlowCheck {
       if (symbol.kind == BindingKind::kParameter || symbol.kind == BindingKind::kFunctionSelf) {
         Require(!declared_[i] && !assigned_[i], Error::kSnapshot);
       } else if (symbol.kind == BindingKind::kLocal || symbol.kind == BindingKind::kCapture ||
-                 symbol.kind == BindingKind::kModule) {
+                 symbol.kind == BindingKind::kModule || symbol.kind == BindingKind::kCatchParameter) {
         Require(declared_[i] && !assigned_[i], Error::kSnapshot);
       } else Require(declared_[i] && assigned_[i], Error::kSnapshot);
     }
     for (const auto cell : flow_.cells) { budget_.Step(); Require(cell.has_value(), Error::kPlacement); }
+    if (exceptions_) {
+      for (std::size_t i = 0; i < graph_.values.size(); ++i) {
+        budget_.Step();
+        const auto& value = graph_.values[i];
+        Require(flow_.catch_parameters[i].has_value() ==
+            (value.life == analysis::ValueLife::kLive &&
+             std::holds_alternative<analysis::CatchDefinition>(value.origin)), Error::kPlacement);
+      }
+      for (const auto statement : flow_.tries) {
+        budget_.Step(); Require(statement.has_value(), Error::kControl);
+      }
+    }
     flow_.value_revision = graph_.revision;
     flow_.cfg_revision = graph_.cfg_revision;
     flow_.allocated_bytes = budget_.Bytes();
@@ -146,6 +204,40 @@ class FlowCheck {
   }
 
  private:
+  void Try(analysis::TryId id, const BlockStmt& parent, std::uint32_t& child,
+      std::size_t& pending) {
+    Require(child < parent.child_count && !flow_.tries[id.value], Error::kSequence);
+    const auto statement = tree_.children[parent.first_child + child++];
+    const auto& node = tree_.statements[statement.value];
+    const auto* syntax = std::get_if<TryStmt>(&node.statement);
+    const auto* origin = std::get_if<TryOrigin>(&tree_.origins[node.origin.value]);
+    Require(syntax && syntax->handler && !syntax->finalizer && origin && origin->region == id,
+        Error::kControl);
+    const auto& planned = exceptions_->control.regions[id.value];
+    const auto& region = exceptions_->regions.regions[id.value];
+    Require(region.binding.has_value(), Error::kPlacement);
+    const auto parameter = syntax->handler->parameter;
+    const auto& symbol = tree_.symbols[parameter.value];
+    const auto& body = std::get<BlockStmt>(tree_.statements[syntax->body.value].statement);
+    const auto& handler = std::get<BlockStmt>(tree_.statements[syntax->handler->body.value].statement);
+    Require(tree_.statements[syntax->body.value].origin == node.origin &&
+        tree_.statements[syntax->handler->body.value].origin == node.origin &&
+        tree_.scopes[body.scope.value].parent == parent.scope &&
+        tree_.scopes[body.scope.value].kind == ScopeKind::kBlock &&
+        tree_.scopes[handler.scope.value].parent == parent.scope &&
+        tree_.scopes[handler.scope.value].kind == ScopeKind::kCatch &&
+        symbol.scope == handler.scope && symbol.kind == BindingKind::kCatchParameter &&
+        symbol.declaration == DeclarationKind::kCatchParameter && !symbol.temporary &&
+        !declared_[parameter.value] && !assigned_[parameter.value], Error::kPlacement);
+    declared_[parameter.value] = 1;
+    auto& binding = flow_.catch_parameters[region.binding->value.value];
+    Require(!binding, Error::kPlacement);
+    binding = parameter;
+    flow_.tries[id.value] = statement;
+    Require(tasks_.size() - pending >= 2, Error::kResourceLimit);
+    tasks_[pending++] = {planned.handler, syntax->handler->body, 0};
+    tasks_[pending++] = {planned.body, syntax->body, 0};
+  }
   void ModulePairs() {
     for (const auto& module : evaluation_.modules) {
       budget_.Step();
@@ -307,6 +399,14 @@ class FlowCheck {
     while (cursor) {
       budget_.Step();
       const auto& node = control_.nodes[cursor->value];
+      if (exceptions_) {
+        const auto& unit = exceptions_->control.units[cursor->value];
+        if (const auto* region = std::get_if<TryControlUnit>(&unit)) {
+          cursor = exceptions_->control.regions[region->region.value].body;
+          continue;
+        }
+        Require(std::holds_alternative<PhaseControlUnit>(unit), Error::kPlacement);
+      }
       if (const auto* loop = std::get_if<LoopControl>(&node.synthetic)) {
         cursor = control_.loops[loop->loop.value].body;
         continue;
@@ -382,7 +482,8 @@ class FlowCheck {
       budget_.Step();
       Require(symbol.kind == BindingKind::kParameter || symbol.kind == BindingKind::kCompilerTemporary ||
               symbol.kind == BindingKind::kLocal || symbol.kind == BindingKind::kCapture ||
-              symbol.kind == BindingKind::kModule || symbol.kind == BindingKind::kFunctionSelf,
+              symbol.kind == BindingKind::kModule || symbol.kind == BindingKind::kFunctionSelf ||
+              (exceptions_ && symbol.kind == BindingKind::kCatchParameter),
               Error::kSnapshot);
     }
     return count;
@@ -422,6 +523,7 @@ class FlowCheck {
   const EvaluationPlan& evaluation_;
   const FunctionTree& tree_;
   TreeCheckBudget& budget_;
+  const ExceptionTreeInput* exceptions_;
   TreeFlow flow_;
   std::vector<std::optional<std::size_t>> placements_;
   std::vector<std::uint8_t> assigned_;
@@ -430,12 +532,11 @@ class FlowCheck {
   std::vector<std::optional<StmtId>> loops_;
   std::optional<TreeEdgeFlow> edges_;
 };
-}  // namespace
 
-std::variant<TreeFlow, TreeFlowError> VerifyTreeFlow(
+std::variant<TreeFlow, TreeFlowError> VerifyFlow(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    analysis::SemanticBudget budget) {
+    analysis::SemanticBudget budget, const ExceptionTreeInput* exceptions) {
   try {
     Require(tree.value_revision == graph.revision && tree.cfg_revision == graph.cfg_revision, Error::kRevision);
     const auto structure = VerifyTreeStructure(tree, budget);
@@ -449,14 +550,26 @@ std::variant<TreeFlow, TreeFlowError> VerifyTreeFlow(
     // excuse to give each independent check a fresh method-wide work allowance.
     checked.Admit(std::get<TreeStructure>(structure).allocated_bytes, 1);
     checked.Step(std::get<TreeStructure>(structure).work);
-    const auto regions = VerifyControlPlan(graph, control, checked.Remaining());
-    if (const auto* error = std::get_if<ControlError>(&regions)) {
-      if (*error == ControlError::kResourceLimit) return Error::kResourceLimit;
-      if (*error == ControlError::kWorkLimit) return Error::kWorkLimit;
-      return Error::kControl;
+    if (exceptions) {
+      const auto regions = VerifyExceptionControl(exceptions->body, graph, exceptions->input,
+          exceptions->regions, exceptions->control, checked.Remaining());
+      if (const auto* error = std::get_if<ExceptionControlError>(&regions)) {
+        if (*error == ExceptionControlError::kResourceLimit) return Error::kResourceLimit;
+        if (*error == ExceptionControlError::kWorkLimit) return Error::kWorkLimit;
+        return Error::kControl;
+      }
+      checked.Step(std::get<std::uint64_t>(regions));
+    } else {
+      const auto regions = VerifyControlPlan(graph, control, checked.Remaining());
+      if (const auto* error = std::get_if<ControlError>(&regions)) {
+        if (*error == ControlError::kResourceLimit) return Error::kResourceLimit;
+        if (*error == ControlError::kWorkLimit) return Error::kWorkLimit;
+        return Error::kControl;
+      }
+      checked.Step(std::get<std::uint64_t>(regions));
     }
-    checked.Step(std::get<std::uint64_t>(regions));
-    const auto effects = VerifyEvaluationPlan(graph, evaluation, checked.Remaining());
+    const auto verify = exceptions ? VerifyPhasedEvaluationPlan : VerifyEvaluationPlan;
+    const auto effects = verify(graph, evaluation, checked.Remaining());
     if (const auto* error = std::get_if<EvaluationError>(&effects)) {
       if (*error == EvaluationError::kResourceLimit) return Error::kResourceLimit;
       if (*error == EvaluationError::kWorkLimit) return Error::kWorkLimit;
@@ -464,11 +577,24 @@ std::variant<TreeFlow, TreeFlowError> VerifyTreeFlow(
     }
     checked.Step(std::get<std::uint64_t>(effects));
     checked.Admit(1, sizeof(FlowCheck));
-    return FlowCheck(graph, control, evaluation, tree, checked).Run();
+    return FlowCheck(graph, control, evaluation, tree, checked, exceptions).Run();
   } catch (Error error) { return error;
   } catch (TreeStructureError error) {
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+}  // namespace
+std::variant<TreeFlow, TreeFlowError> VerifyTreeFlow(
+    const analysis::ValueProgram& graph, const ControlPlan& control,
+    const EvaluationPlan& evaluation, const FunctionTree& tree,
+    analysis::SemanticBudget budget) {
+  return VerifyFlow(graph, control, evaluation, tree, budget, nullptr);
+}
+std::variant<TreeFlow, TreeFlowError> VerifyExceptionTreeFlow(
+    const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
+    const EvaluationPlan& evaluation, const FunctionTree& tree,
+    analysis::SemanticBudget budget) {
+  return VerifyFlow(graph, exceptions.control.skeleton, evaluation, tree, budget, &exceptions);
 }
 }  // namespace abcd::source
