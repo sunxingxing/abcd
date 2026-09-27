@@ -95,7 +95,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     Require(next_function == functions.size(), Error::kOwnership);
     Require(has_arguments == graph.arguments.has_value(), Error::kOwnership);
     if (has_cells) {
-      auto built = BuildCellEvaluation(graph, {bytes, work}, incoming,
+      const auto build_cells = flow == EvaluationFlow::kPhased ? BuildPhasedCellEvaluation : BuildCellEvaluation;
+      auto built = build_cells(graph, {bytes, work}, incoming,
           functions.empty() ? analysis::ClosureWrites::kUnknown : analysis::ClosureWrites::kLanguage);
       if (const auto* error = std::get_if<CellEvaluationError>(&built)) {
         if (*error == CellEvaluationError::kResourceLimit) return Error::kResourceLimit;

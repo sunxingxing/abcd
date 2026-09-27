@@ -80,7 +80,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     if (plan.cells) {
       Require(plan.cells->initialization.closure_writes == (plan.functions.empty()
           ? analysis::ClosureWrites::kUnknown : analysis::ClosureWrites::kLanguage), Error::kOwnership);
-      const auto checked = VerifyCellEvaluation(graph, *plan.cells, {bytes, work});
+      const auto verify_cells = flow == EvaluationFlow::kPhased ? VerifyPhasedCellEvaluation : VerifyCellEvaluation;
+      const auto checked = verify_cells(graph, *plan.cells, {bytes, work});
       if (const auto* error = std::get_if<CellEvaluationError>(&checked)) {
         if (*error == CellEvaluationError::kResourceLimit) return Error::kResourceLimit;
         if (*error == CellEvaluationError::kWorkLimit) return Error::kWorkLimit;

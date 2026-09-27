@@ -6,6 +6,7 @@
 namespace abcd::source {
 namespace {
 using Error = CellEvaluationError;
+enum class CellFlow { kNormal, kPhased };
 template <class T, class E> T Take(std::variant<T, E> result, Error failure) {
   if (auto* value = std::get_if<T>(&result)) return std::move(*value);
   const auto error = std::get<E>(result);
@@ -53,13 +54,19 @@ bool NeedsCellEvaluation(const analysis::ValueOperation& operation) {
   return IsEnvironmentState(operation) || std::holds_alternative<analysis::ValueLexicalLoad>(operation) ||
       std::holds_alternative<analysis::ValueLexicalStore>(operation);
 }
-std::variant<std::uint64_t, CellEvaluationError> VerifyCellEvaluation(
-    const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget) {
+namespace {
+std::variant<std::uint64_t, CellEvaluationError> VerifyEvaluation(
+    const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget,
+    CellFlow flow) {
   try {
     Quota quota(budget);
-    auto environments = Take(analysis::BuildValueEnvironments(graph, quota.Remaining()), Error::kEnvironment);
+    const auto build_environments = flow == CellFlow::kPhased
+        ? analysis::BuildPhasedValueEnvironments : analysis::BuildValueEnvironments;
+    auto environments = Take(build_environments(graph, quota.Remaining()), Error::kEnvironment);
     quota.Admit(environments.allocated_bytes); quota.Step(environments.work);
-    quota.Step(Take(VerifyCellInitializations(graph, environments, plan.cells,
+    const auto verify_initialization = flow == CellFlow::kPhased
+        ? VerifyPhasedCellInitializations : VerifyCellInitializations;
+    quota.Step(Take(verify_initialization(graph, environments, plan.cells,
         plan.initialization.closure_writes, plan.initialization, quota.Remaining()), Error::kInitialization));
     Identities(graph, plan.cells, plan.incoming, quota);
     return quota.Work();
@@ -67,16 +74,21 @@ std::variant<std::uint64_t, CellEvaluationError> VerifyCellEvaluation(
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
-std::variant<CellEvaluation, CellEvaluationError> BuildCellEvaluation(
+std::variant<CellEvaluation, CellEvaluationError> BuildEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
-    analysis::ClosureWrites writes) {
+    analysis::ClosureWrites writes, CellFlow flow) {
   try {
     Quota quota(budget); quota.Admit(sizeof(CellEvaluation));
-    auto environments = Take(analysis::BuildValueEnvironments(graph, quota.Remaining()), Error::kEnvironment);
+    const auto build_environments = flow == CellFlow::kPhased
+        ? analysis::BuildPhasedValueEnvironments : analysis::BuildValueEnvironments;
+    auto environments = Take(build_environments(graph, quota.Remaining()), Error::kEnvironment);
     quota.Admit(environments.allocated_bytes); quota.Step(environments.work);
-    auto cells = Take(BuildCellPlan(graph, environments, quota.Remaining()), Error::kCells);
+    const auto build_cells = flow == CellFlow::kPhased ? BuildPhasedCellPlan : BuildCellPlan;
+    auto cells = Take(build_cells(graph, environments, quota.Remaining()), Error::kCells);
     quota.Admit(cells.allocated_bytes); quota.Step(cells.work);
-    auto initialization = Take(BuildCellInitializations(graph, environments, cells,
+    const auto build_initialization = flow == CellFlow::kPhased
+        ? BuildPhasedCellInitializations : BuildCellInitializations;
+    auto initialization = Take(build_initialization(graph, environments, cells,
         writes, quota.Remaining()), Error::kInitialization);
     quota.Admit(initialization.allocated_bytes); quota.Step(initialization.work);
     Identities(graph, cells, incoming, quota);
@@ -85,5 +97,24 @@ std::variant<CellEvaluation, CellEvaluationError> BuildCellEvaluation(
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+}  // namespace
+std::variant<CellEvaluation, CellEvaluationError> BuildCellEvaluation(
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
+    analysis::ClosureWrites writes) {
+  return BuildEvaluation(graph, budget, incoming, writes, CellFlow::kNormal);
+}
+std::variant<std::uint64_t, CellEvaluationError> VerifyCellEvaluation(
+    const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget) {
+  return VerifyEvaluation(graph, plan, budget, CellFlow::kNormal);
+}
+std::variant<CellEvaluation, CellEvaluationError> BuildPhasedCellEvaluation(
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
+    analysis::ClosureWrites writes) {
+  return BuildEvaluation(graph, budget, incoming, writes, CellFlow::kPhased);
+}
+std::variant<std::uint64_t, CellEvaluationError> VerifyPhasedCellEvaluation(
+    const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget) {
+  return VerifyEvaluation(graph, plan, budget, CellFlow::kPhased);
 }
 }  // namespace abcd::source

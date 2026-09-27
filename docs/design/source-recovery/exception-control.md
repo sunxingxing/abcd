@@ -626,5 +626,48 @@ The dedicated cell test starts from decoded ABC and checks three profiles,
 normal versus allocation-failure catch storage, 200/201/402 allocation groups,
 corrupt access/storage/revision certificates, exact/insufficient work and zero
 memory, plus rejection by normal initialization APIs. Remaining work includes
-successful-Commit initialization witnesses, phase-aware source lifetimes and
-actual parent/child capture binding before evaluation/tree admission.
+phase-aware source lifetimes and actual parent/child capture binding before
+tree admission; completed-store witnesses are described below.
+
+### Completed-Store Initialization
+
+Phased cell initialization now reuses the normal typed witnesses and dominator
+walk with undo state, but indexes successful allocation/store Commit phases.
+Loads query state at Before. The independent verifier requires allocation
+Commit to dominate the witnessed store's Before, and store Commit to dominate
+the load's Before. All exceptional edges participate; no normal-only dominance
+certificate is substituted. Explicit throw's dead Commit is provenance-only.
+Incoming reads still require a parent proof; branch-union initialization without
+a single dominating store remains unsupported, rather than defaulting to JS
+undefined or borrowing a value from a previous allocation.
+
+`BuildPhasedCellEvaluation` and its verifier compose phased environment, storage
+and initialization checks under one allowance. The shared phased evaluation
+planner/verifier select these entries. This does not certify source declaration
+lifetimes: `FunctionTree` explicitly rejects phased cells until the exception
+scope bridge is provided. Ordinary initialization/evaluation entries still
+reject phased graphs. Original `PhasedBody` lexical-load premises and complete
+child capture ownership remain separate obligations, not inferred from domains.
+
+Rules 54 also require closure-write evidence for unresolved buffered objects,
+whose methods can capture the current environment. This applies to shared
+normal/phased initialization. Empty objects remain distinct. A future proven
+pure-data buffer exemption must carry evidence; the buffer's presence or printed
+text cannot silently assert purity. The pinned interpreter provenance matches
+the existing `ProveExceptionLocals` capture rule.
+
+Decoded tests compare a store completed before a throwing call with one placed
+after it: both normal and catch reads succeed in the former, while the latter
+rejects even with deliberately forged Language load premises and store witnesses.
+They also cover three profiles, explicit throw, buffered capture rejection,
+200/201/402 fresh allocation groups, exact/insufficient budgets, corrupted
+witnesses and source-admission refusal. These are IR/evaluation proof tests, not
+new executable-function or loop/finally/coroutine acceptance.
+
+The next scope bridge must map original phase blocks through exception control
+units to actual source scopes; skeleton unit IDs are not working block IDs.
+It must check declaration enclosure for every access/capture and fresh binding
+instances for repeated allocations. Hoisting a declaration across try/catch is
+not justified by a dominating store alone, especially inside loops. Replace
+the explicit tree refusal only with checked lifetime evidence plus composed
+execution/PC tests, not by swapping a normal verifier for a permissive one.

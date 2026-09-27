@@ -33,5 +33,16 @@ enum class CellInitializationError : std::uint8_t {
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
     const CellPlan& cells, analysis::ClosureWrites writes, const CellInitializations& plan,
     analysis::SemanticBudget budget = {});
+// Same storage witnesses, but allocation/store completion is the successful
+// Commit phase and reads occur at Before. Every exceptional edge participates
+// in dominance. Incoming reads and transitive closure writes remain obligations.
+[[nodiscard]] std::variant<CellInitializations, CellInitializationError> BuildPhasedCellInitializations(
+    const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
+    const CellPlan& cells, analysis::ClosureWrites writes = analysis::ClosureWrites::kUnknown,
+    analysis::SemanticBudget budget = {});
+[[nodiscard]] std::variant<std::uint64_t, CellInitializationError> VerifyPhasedCellInitializations(
+    const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
+    const CellPlan& cells, analysis::ClosureWrites writes, const CellInitializations& plan,
+    analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

@@ -244,7 +244,10 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // corridors, retaining canonical RHS snapshots and rejecting early observers.
 // Rules 53 compose verified module load/guard pairs as ordered phased subtrees,
 // preserving both original effects, catch snapshots and source placements.
-inline constexpr std::uint32_t kRouteEvidenceRules = 53;
+// Rules 54 require closure-write evidence for unresolved buffered methods in
+// cell initialization. Phased evaluation uses completed-store witnesses; source
+// trees with phased cells still require the pending exception-lifetime bridge.
+inline constexpr std::uint32_t kRouteEvidenceRules = 54;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

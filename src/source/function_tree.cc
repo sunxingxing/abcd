@@ -43,6 +43,10 @@ class TreeBuilder {
         bytes_(budget.bytes), work_(budget.work), incoming_(incoming), exceptions_(exceptions) {}
 
   ConstructedFunction Build() {
+    // Phased cell evaluation proves initialization, not declaration lifetime
+    // across try/catch/loops. Keep source admission closed until those source
+    // scopes are independently certified; never reuse normal-only lifetimes.
+    Require(!exceptions_ || !evaluation_.cells, Error::kBinding);
     Require(syntax_.parameters.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
     Require(constants_.name_count == syntax_.names.size() &&
             constants_.text_count == syntax_.texts.size(), Error::kName);

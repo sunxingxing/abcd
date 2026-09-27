@@ -60,6 +60,13 @@ d 为 uint32 深度域位数；另计既有 fresh flow/支配验证成本。不�
 L 为词法访问数、C 为实际存储单元数；只按实际访问建单元，不展开环境全部槽。
 `PhasedBody` 按需持有结果并累计预算，不按每个 child 重新分配父图或做全图扫描。
 
+相位 cell 初始化沿用 Lengauer-Tarjan 支配树和单次支配前序 undo-state 遍历：
+异常边全部保留，环境分配与写入在 Commit 更新，读取在 Before 查询。
+除既有环境/cell 校验成本外，时间 O((B+E) log B+I+C)，空间 O(B+E+I+C)。
+独立验证按 witness 逐项做常数时间支配区间检查，不重跑初始化选择、不逐变量
+搜索 CFG。只证明单个完成写入支配的初始化，分支合流初始化仍拒绝；不证明
+源码生命周期或任意闭包写入安全。无新增外部代码/依赖，新增相位索引计入预算。
+
 异常创建归属沿用原 `BindCreation` 区域池查询与 `CreationTreeContext` 解析，
 只增加 O(I) 的 typed creation census 和 O(C log S) 的创建位置索引查询；
 C 为活跃创建数、S 为已建创建位置索引大小。结果空间为 O(C+N)，N 为 context
