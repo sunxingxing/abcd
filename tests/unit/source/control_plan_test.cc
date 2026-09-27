@@ -153,6 +153,14 @@ void Scaling() {
 }  // namespace
 
 int main() {
+  const std::array<Targets, 1> targets{};
+  auto phased = Graph(targets);
+  const auto normal = BuildControlPlan(phased);
+  Check(std::holds_alternative<ControlPlan>(normal));
+  phased.phases.push_back({{0}, {0}, analysis::ExceptionPhase::kBefore, {}});
+  Check(std::get<ControlError>(BuildControlPlan(phased)) == ControlError::kInvalidGraph);
+  Check(std::get<ControlError>(VerifyControlPlan(phased, std::get<ControlPlan>(normal))) ==
+      ControlError::kInvalidGraph);
   // Executable AST operands are syntax IDs; VM register/value IDs do not convert.
   static_assert(!std::is_convertible_v<analysis::ValueId, ExprId>);
   static_assert(!std::is_convertible_v<analysis::WorkBlockId, ScopeId>);

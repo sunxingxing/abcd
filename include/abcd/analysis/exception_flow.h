@@ -3,13 +3,9 @@
 
 #include <array>
 #include "abcd/analysis/exception_edge.h"
+#include "abcd/analysis/exception_phase.h"
 
 namespace abcd::analysis {
-struct ExceptionNodeId {
-  std::uint32_t value = 0;
-  auto operator<=>(const ExceptionNodeId&) const = default;
-};
-enum class ExceptionPhase : std::uint8_t { kBefore, kCommit, kCatch };
 enum class ExceptionArcKind : std::uint8_t {
   kNormal, kTaken, kFallthrough, kException
 };

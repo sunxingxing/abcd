@@ -68,9 +68,10 @@ bool SameDefinition(const ValueDefinition& a, const ValueDefinition& b) {
     const auto* other = std::get_if<T>(&b.origin);
     if (!other) return false;
     if constexpr (std::is_same_v<T, EntryDefinition>) return SameEntry(definition, *other);
-    else if constexpr (std::is_same_v<T, OpResult>) return definition.op == other->op;
+    else if constexpr (std::is_same_v<T, OpResult>)
+      return definition.op == other->op && definition.commit == other->commit;
     else {
-      static_assert(std::is_same_v<T, PhiDefinition>);
+      static_assert(std::is_same_v<T, PhiDefinition> || std::is_same_v<T, CatchDefinition>);
       return definition.block == other->block;
     }
   }, a.origin);
@@ -110,6 +111,7 @@ std::variant<ValueRewriteProof, ValueRewriteError> VerifyValueRewrite(
     const ValueProgram& before, const ValueProgram& after,
     std::span<const ValueId> representatives, SemanticBudget budget) {
   try {
+    Require(before.phases.empty() && after.phases.empty(), Error::kEffect);
     Require(before.arguments == after.arguments, Error::kEffect);
     Require(before.revision == after.revision && before.cfg_revision == after.cfg_revision,
             Error::kRevision);

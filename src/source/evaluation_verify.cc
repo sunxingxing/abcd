@@ -16,6 +16,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget) {
   try {
+    Require(graph.phases.empty(), Error::kUnsupportedOperation);
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
     Require(plan.operations.size() == graph.ops.size(), Error::kInvalidGraph);
     Require(plan.arguments == graph.arguments, Error::kOwnership);

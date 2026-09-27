@@ -29,6 +29,10 @@ int main() {
           load.exceptional == ExceptionalCompletion::kImpossible);
       test::Check(graph.values[load.result->value].domain == ValueKinds::Defined());
       test::Check(!VerifyImportedValues(graph, method, std::get<SemanticProof>(checked), frame));
+      graph.phases.push_back({{0}, {0}, ExceptionPhase::kBefore, OpId{0}});
+      test::Check(VerifyImportedValues(graph, method, std::get<SemanticProof>(checked), frame)->kind ==
+          ValueImportError::kExceptionFlow);
+      graph.phases.clear();
       test::Check(!CanErasePureOp(load));
       graph.ops.front().operation = ValueGlobalObject{};
       test::Check(VerifyImportedValues(graph, method, std::get<SemanticProof>(checked), frame)->kind ==

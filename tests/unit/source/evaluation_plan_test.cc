@@ -266,6 +266,11 @@ int main() {
     Check(plan.operations[0].kind == EvaluationKind::kRoot);
     Check(plan.operations[0].temporary == TemporaryReason::kEffectSnapshot);
     Check(plan.operations[1].kind == EvaluationKind::kRoot);
+    fixture.graph.phases.push_back({{0}, {0}, analysis::ExceptionPhase::kBefore, {}});
+    Check(std::get<EvaluationError>(BuildEvaluationPlan(fixture.graph)) ==
+        EvaluationError::kUnsupportedOperation);
+    Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan)) ==
+        EvaluationError::kUnsupportedOperation);
   }
   OrderedOperands(false); OrderedOperands(true);
   // Shape admission is not a callable-owner/self-scope publication proof.

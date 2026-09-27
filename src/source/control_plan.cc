@@ -21,6 +21,7 @@ class ControlBuilder {
       : graph_(graph), entries_(entries), quota_(quota), exit_(graph.blocks.size()),
         levels_(std::bit_width(exit_)) {}
   ControlPlan Build() {
+    Require(graph_.phases.empty(), Error::kInvalidGraph);
     Require(exit_ != 0 && exit_ < std::numeric_limits<std::uint32_t>::max(), Error::kInvalidGraph);
     quota_.Size(indegree_, exit_);
     quota_.Size(order_, exit_);

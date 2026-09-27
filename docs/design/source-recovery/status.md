@@ -42,6 +42,20 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- T09 相位可用性已纳入同一个 ValueProgram：Before 保存操作与效果，正常结果
+  显式指向 Commit，CatchDefinition 独立定义异常值，保留异常边及不同于指令 PC
+  的相位身份。共享支配关系/稀疏 phi 检查阻止正常结果泄漏到抛出路径；普通导入
+  对照、简化、改写、求值和控制规划明确拒绝相位图，不静默丢弃相位。
+  新测试覆盖 Catch/正常结果隔离、异常边 phi、正常跳入 handler 的汇合、畸形
+  Commit/边/handler、精确预算及 200/201/402 阶段对直线和循环图。
+  最新验证 12/12：phased_value_flow、value_flow、value_simplify、value_import、
+  exception_arguments、async_semantics、control_plan、evaluation_plan、function_tree，
+  以及 pasteboard/Immersive/call 三个既有生成源码切片执行测试；abc_semantic 构建通过。
+  初始新测试在缺失相位 API 处编译失败，并非运行期红测；未运行全量/RSS 验证。
+  **这不是 T09 或 group 1 完成**：真实 ExceptionFlow/SSA 到值 IR 的独立导入
+  与对照、always-throw/不可达相位、环境/捕获衔接、异常区域 AST 和 async owner
+  仍未接通。接下来实现 phased importer，不另建源码 writer。
+
 - 已补齐异常图中的 GETUNMAPPEDARGS 帧衔接：BuildExceptionFlow 接收并保留布局，
   复用普通语义提升的隐式参数窗口；异常源码调用方传入真实 FrameLayout，但不
   自动伪造调用归属。VerifyExceptionInputs 可接收显式 ArgumentFrameFact 并在

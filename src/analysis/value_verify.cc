@@ -8,6 +8,8 @@ std::optional<ValueGraphError> VerifyValueUses(
     const ValueProgram& program, std::size_t scratch_bytes) {
   if (program.uses.size() > scratch_bytes)
     return ValueGraphError::kResourceLimit;
+  if (!program.phases.empty() && program.phases.size() != program.blocks.size())
+    return ValueGraphError::kDefinition;
   try {
     std::vector<std::uint8_t> linked(program.uses.size());
     for (std::size_t index = 0; index < program.values.size(); ++index) {
@@ -15,6 +17,12 @@ std::optional<ValueGraphError> VerifyValueUses(
       if (definition.life == ValueLife::kRemoved && definition.first_use)
         return ValueGraphError::kDefinition;
       if (const auto* result = std::get_if<OpResult>(&definition.origin)) {
+        if (program.phases.empty() != !result->commit)
+          return ValueGraphError::kDefinition;
+        if (result->commit && (result->commit->value >= program.phases.size() ||
+            program.phases[result->commit->value].phase != ExceptionPhase::kCommit ||
+            program.phases[result->commit->value].operation != result->op))
+          return ValueGraphError::kDefinition;
         if (result->op.value >= program.ops.size() ||
             !program.ops[result->op.value].result ||
             program.ops[result->op.value].result->value != index ||
@@ -22,6 +30,11 @@ std::optional<ValueGraphError> VerifyValueUses(
           return ValueGraphError::kDefinition;
       } else if (const auto* phi = std::get_if<PhiDefinition>(&definition.origin)) {
         if (phi->block.value >= program.blocks.size())
+          return ValueGraphError::kDefinition;
+      } else if (const auto* caught = std::get_if<CatchDefinition>(&definition.origin)) {
+        if (definition.life != ValueLife::kLive ||
+            caught->block.value >= program.phases.size() ||
+            program.phases[caught->block.value].phase != ExceptionPhase::kCatch)
           return ValueGraphError::kDefinition;
       } else if (definition.life != ValueLife::kLive) {
         return ValueGraphError::kDefinition;

@@ -52,6 +52,7 @@ std::optional<ValueImportFailure> VerifyImportedValues(
   const auto fail = [](Error kind, std::optional<abc::CodeOffset> pc = {}) {
     return std::optional<ValueImportFailure>{{kind, pc}};
   };
+  if (!graph.phases.empty()) return fail(Error::kExceptionFlow);
   if (budget.bytes < ImportedValueScratch(graph.uses.size())) return fail(Error::kResourceLimit);
   std::uint64_t work = budget.work;
   const auto take = [&](std::size_t count) {

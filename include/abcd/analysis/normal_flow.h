@@ -17,7 +17,7 @@ struct BlockId {
   auto operator<=>(const BlockId&) const = default;
 };
 
-enum class FlowEdgeKind : std::uint8_t { kTaken, kFallthrough, kResume };
+enum class FlowEdgeKind : std::uint8_t { kTaken, kFallthrough, kResume, kException };
 
 struct FlowEdge {
   BlockId target;

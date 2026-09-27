@@ -13,6 +13,15 @@ struct ValueFlowProof {
   CfgRevision cfg_revision;
   std::uint64_t work;
 };
+struct PhasedValueFlowProof {
+  IrRevision revision;
+  CfgRevision cfg_revision;
+  std::uint64_t work;
+};
+// Availability across Before/Commit/Catch, not input/handler correspondence or
+// permission to publish source. Unreachable phases currently reject.
+[[nodiscard]] std::variant<PhasedValueFlowProof, ValueAvailabilityError> VerifyPhasedValueFlow(
+    const ValueProgram& graph, SemanticBudget budget = {});
 // Normal-flow availability only, not an effects/input-identity certificate.
 // Budget covers additional verification scratch; graph storage belongs to caller.
 // Tombstone orders stay stable. Unknown entries remain VM values, not JS locals.

@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_VALUE_IR_H_
 
 #include "abcd/abc/frame_layout.h"
+#include "abcd/analysis/exception_phase.h"
 #include "abcd/analysis/semantic_ir.h"
 #include "abcd/analysis/value_kinds.h"
 
@@ -64,10 +65,12 @@ struct NewTargetEntry {};
 struct UnknownEntry { ScalarSlot slot; };
 using EntryDefinition = std::variant<ParameterEntry, ReceiverEntry,
     CallableEntry, NewTargetEntry, UnknownEntry>;
-struct OpResult { OpId op; };
+// Normal graphs define after op; phased graphs define only at Commit entry.
+struct OpResult { OpId op; std::optional<WorkBlockId> commit; };
 struct PhiDefinition { WorkBlockId block; };
+struct CatchDefinition { WorkBlockId block; };
 struct ValueDefinition {
-  std::variant<EntryDefinition, OpResult, PhiDefinition> origin;
+  std::variant<EntryDefinition, OpResult, PhiDefinition, CatchDefinition> origin;
   ValueKinds domain;
   std::optional<UseId> first_use;
   ValueLife life = ValueLife::kLive;
@@ -246,6 +249,12 @@ struct InputCorrespondence {
 // All arrays are owned. IDs never point into source body/SSA or vector storage.
 // Input identity and proof envelopes are supplied by the import boundary;
 // this mutable graph alone is not a source/publication certificate.
+struct ValuePhaseSite {
+  ExceptionNodeId input;
+  InputSiteId instruction;
+  ExceptionPhase phase;
+  std::optional<OpId> operation;
+};
 struct ValueProgram {
   IrRevision revision;
   CfgRevision cfg_revision;
@@ -258,6 +267,9 @@ struct ValueProgram {
   std::vector<ValueExceptionalExit> exceptional_exits;
   InputCorrespondence input;
   std::optional<ArgumentFrameFact> arguments;
+  // Empty for normal graphs; otherwise one site per block. Phase identity is
+  // distinct from instruction/PC identity, especially for Catch definitions.
+  std::vector<ValuePhaseSite> phases;
 };
 enum class ValueGraphError : std::uint8_t {
   kUseLink, kUseOwner, kUseRange, kDefinition, kResourceLimit

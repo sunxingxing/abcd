@@ -237,6 +237,7 @@ void MarkLive(const ValueProgram& graph, BatchScratch& scratch, BatchBudget& quo
 std::variant<ValueSimplifyStats, ValueSimplifyError> SimplifyValues(
     ValueProgram& graph, IrRevision expected, SemanticBudget budget) {
   if (graph.revision != expected) return Error::kStaleRevision;
+  if (!graph.phases.empty()) return Error::kUnsupportedFlow;
   try {
     BatchBudget quota{budget};
     quota.Admit(1, sizeof(ValueProgram));

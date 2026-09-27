@@ -44,6 +44,9 @@ NormalFlow ReadFlow(const ValueProgram& graph, FlowQuota& quota,
                     std::vector<std::size_t>& predecessors) {
   NormalFlow flow;
   Require(!graph.blocks.empty(), Error::kInvalidGraph);
+  const bool phased = !graph.phases.empty();
+  Require(!phased || graph.phases.front().phase == ExceptionPhase::kBefore,
+          Error::kInvalidGraph);
   quota.Reserve(flow.blocks, graph.blocks.size());
   quota.Reserve(predecessors, graph.blocks.size());
   quota.Work(graph.blocks.size());
@@ -60,6 +63,33 @@ NormalFlow ReadFlow(const ValueProgram& graph, FlowQuota& quota,
         block.edge_count <= kMaxNormalSuccessors, Error::kInvalidGraph);
     FlowBlock adapted;
     std::optional<OpId> last;
+    const ValuePhaseSite* phase = phased ? &graph.phases[b] : nullptr;
+    if (phase) {
+      quota.Work();
+      switch (phase->phase) {
+        case ExceptionPhase::kBefore:
+          Require(block.op_count == 1 && phase->operation == block.first_op,
+                  Error::kInvalidGraph);
+          break;
+        case ExceptionPhase::kCommit:
+          Require(block.op_count == 0 && phase->operation &&
+              phase->operation->value < graph.ops.size(), Error::kInvalidGraph);
+          break;
+        case ExceptionPhase::kCatch:
+          Require(block.op_count == 0 && !phase->operation, Error::kInvalidGraph);
+          break;
+        default: throw Error::kInvalidGraph;
+      }
+      if (phase->operation) {
+        const auto& op = graph.ops[phase->operation->value];
+        Require(op.life == ValueLife::kLive && op.origin.value < graph.origins.size() &&
+            graph.origins[op.origin.value].site == phase->instruction &&
+            op.block.value < graph.phases.size(), Error::kInvalidGraph);
+        const auto& before = graph.phases[op.block.value];
+        Require(before.phase == ExceptionPhase::kBefore &&
+            before.operation == phase->operation, Error::kInvalidGraph);
+      }
+    }
     for (std::uint32_t order = 0; order < block.op_count; ++order) {
       quota.Work();
       const auto index = next_op + order;
@@ -83,10 +113,50 @@ NormalFlow ReadFlow(const ValueProgram& graph, FlowQuota& quota,
       Require(edge.source.value == b && edge.successor == e &&
               edge.target.value < graph.blocks.size(), Error::kInvalidGraph);
       Require(edge.kind != FlowEdgeKind::kResume, Error::kResumeFlow);
-      Require(edge.kind == FlowEdgeKind::kTaken || edge.kind == FlowEdgeKind::kFallthrough,
+      Require(edge.kind == FlowEdgeKind::kTaken || edge.kind == FlowEdgeKind::kFallthrough ||
+              (phased && edge.kind == FlowEdgeKind::kException),
               Error::kInvalidGraph);
-      adapted.successors[adapted.successor_count++] = {{edge.target.value}, edge.kind};
+      // Dominance consumes topology only. Keep exception labels in ValueProgram;
+      // this private adapter does not authorize any normal-flow transformation.
+      adapted.successors[adapted.successor_count++] = {{edge.target.value},
+          edge.kind == FlowEdgeKind::kException ? FlowEdgeKind::kTaken : edge.kind};
       ++predecessors[edge.target.value];
+    }
+    if (phase && phase->phase == ExceptionPhase::kBefore) {
+      const auto& op = graph.ops[phase->operation->value];
+      Require(block.edge_count >= 1 &&
+          op.exceptional != ExceptionalCompletion::kAlwaysThrow, Error::kInvalidTerminator);
+      const auto& normal = graph.edges[block.first_edge.value];
+      const auto& commit = graph.phases[normal.target.value];
+      Require(normal.kind == FlowEdgeKind::kFallthrough &&
+          commit.phase == ExceptionPhase::kCommit && commit.operation == phase->operation,
+          Error::kInvalidGraph);
+      if (op.result) {
+        const auto& result = std::get<OpResult>(graph.values[op.result->value].origin);
+        Require(result.commit == normal.target, Error::kInvalidGraph);
+      }
+      if (block.edge_count == kMaxNormalSuccessors) {
+        const auto& caught = graph.edges[block.first_edge.value + 1];
+        Require(op.exceptional == ExceptionalCompletion::kMayThrow &&
+            caught.kind == FlowEdgeKind::kException &&
+            graph.phases[caught.target.value].phase == ExceptionPhase::kCatch,
+            Error::kInvalidGraph);
+      }
+      flow.blocks.push_back(adapted);
+      continue;
+    }
+    if (phase) {
+      for (std::uint8_t e = 0; e < block.edge_count; ++e) {
+        quota.Work();
+        const auto& edge = graph.edges[block.first_edge.value + e];
+        Require(edge.kind != FlowEdgeKind::kException &&
+            graph.phases[edge.target.value].phase == ExceptionPhase::kBefore,
+            Error::kInvalidGraph);
+        if (phase->phase == ExceptionPhase::kCatch)
+          Require(phase->instruction == graph.phases[edge.target.value].instruction,
+                  Error::kInvalidGraph);
+      }
+      if (phase->phase == ExceptionPhase::kCommit) last = phase->operation;
     }
     const auto* terminal = last ? &graph.ops[last->value] : nullptr;
     const bool returns = terminal && std::holds_alternative<ValueReturn>(terminal->operation);
@@ -118,15 +188,19 @@ bool Available(const ValueProgram& graph, const DominatorTree& dominators,
   if (const auto* result = std::get_if<OpResult>(&definition.origin)) {
     const auto& op = graph.ops[result->op.value];
     if (op.exceptional == ExceptionalCompletion::kAlwaysThrow) return false;
+    if (result->commit)
+      return dominators.Dominates({result->commit->value}, {block.value});
     if (op.block == block) return op.order < order;
     return dominators.Dominates({op.block.value}, {block.value});
   }
+  if (const auto* caught = std::get_if<CatchDefinition>(&definition.origin))
+    return dominators.Dominates({caught->block.value}, {block.value});
   const auto phi = std::get<PhiDefinition>(definition.origin);
   return dominators.Dominates({phi.block.value}, {block.value});
 }
 }  // namespace
 
-std::variant<ValueFlowProof, ValueAvailabilityError> VerifyValueFlow(
+static std::variant<ValueFlowProof, ValueAvailabilityError> VerifyAvailability(
     const ValueProgram& graph, SemanticBudget budget) {
   try {
     FlowQuota quota{budget};
@@ -219,5 +293,20 @@ std::variant<ValueFlowProof, ValueAvailabilityError> VerifyValueFlow(
   } catch (const std::length_error&) {
     return Error::kResourceLimit;
   }
+}
+
+std::variant<ValueFlowProof, ValueAvailabilityError> VerifyValueFlow(
+    const ValueProgram& graph, SemanticBudget budget) {
+  if (!graph.phases.empty()) return Error::kInvalidGraph;
+  return VerifyAvailability(graph, budget);
+}
+
+std::variant<PhasedValueFlowProof, ValueAvailabilityError> VerifyPhasedValueFlow(
+    const ValueProgram& graph, SemanticBudget budget) {
+  if (graph.phases.empty()) return Error::kInvalidGraph;
+  const auto checked = VerifyAvailability(graph, budget);
+  if (const auto* proof = std::get_if<ValueFlowProof>(&checked))
+    return PhasedValueFlowProof{proof->revision, proof->cfg_revision, proof->work};
+  return std::get<ValueAvailabilityError>(checked);
 }
 }  // namespace abcd::analysis
