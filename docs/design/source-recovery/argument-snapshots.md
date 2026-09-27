@@ -37,6 +37,14 @@ guard. This closes a prerequisite; it does not implement argument snapshots.
 
 ## Implementation Sequence
 
+The compact `ArgumentWindow` now validates canonical hidden-slot order, runtime
+count widths and declared bounds using `BuildFrameLayout`. Its typed
+`ActualArgumentCount` partition separates the supplied current-slot prefix from
+the extra tail without expanding either. `ProveRestPrologue` consumes this shared
+validation; a displaced parameter prefix previously passed its pattern proof.
+This component does not yet certify a callable owner or produce count/tail
+bindings in semantic IR. It does not convert declared count into actual count.
+
 1. **Frame inputs.** Build a compact, validated argument-window plan from the
    actual FrameLayout and callable creation occurrence. Keep actual invocation
    count and extra-argument tail as typed frame inputs, distinct from declared

@@ -34,6 +34,9 @@ int main() {
   auto body = test::Body({0x44, 0x40, 0x44, 0x51, 0x44, 0x62,
                           0x44, 0x73, 0xcf, 0, 0x61, 3, 0x60, 3, 0x64});
   test::Check(analysis::ProveRestPrologue(body, frame, 0).has_value());
+  auto misplaced_frame = frame;
+  misplaced_frame.first_parameter.value = frame.locals;
+  test::Check(!analysis::ProveRestPrologue(body, misplaced_frame, 0));
   const auto snapshot = test::Body({0x44, 0x40, 0x44, 0x51, 0x44, 0x62,
       0x44, 0x73, 0xcf, 0, 0x61, 3,
       static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS),

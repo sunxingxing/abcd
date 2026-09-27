@@ -230,7 +230,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 32 require an explicit host binding when publishing Symbol intrinsic reads.
 // Rules 33 forbid rest-signature recovery across implicit argument snapshots.
 // Rules 34 preserve wide read occurrences across SSA and value correspondence.
-inline constexpr std::uint32_t kRouteEvidenceRules = 34;
+// Rules 35 validate the canonical argument window before rest recovery.
+inline constexpr std::uint32_t kRouteEvidenceRules = 35;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

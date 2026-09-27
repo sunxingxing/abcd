@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 34。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 35。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,6 +42,16 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 实参窗口新增 ArgumentWindow：复用 BuildFrameLayout 验证隐藏 ABI 槽顺序、
+  28-bit 计数和参数边界，以 ActualArgumentCount 区分当前槽前缀与额外实参尾部。
+  计算 O(1)，不按声明或实际实参数量分配；声明数量不作为实际数量的默认值。
+  rest 证明已消费该校验，错置 first_parameter 的反例先失败后修复。
+  测试覆盖全部调用标志组合、零参数、200/201/65536、最大运行时字段、
+  数量溢出及各隐藏槽错置。规则版本 35；仍待 callable owner、语义 IR/SSA
+  快照依赖和源码接入，不计为 GETUNMAPPEDARGS 完成。
+  `argument_window_test`、`rest_arguments_test`、`frame_layout_test`、
+  `source_route_test`、`constant_group_test`、`value_created_family_test` 共 6/6
+  通过；对应目标及 `abc_semantic` 构建成功。未运行 RSS/基准/全语料或 Ark VM 差分。
 - 实参快照前置：共享 SSA、值 IR、操作数对应关系及 guarded-read 查询的读取
   序号扩为 32 位，不再把编码范围的 16-bit 宽度错误套到整个输入列表。
   65535 项范围加 callee/receiver 的边界用例先因旧上限拒绝，新增用例验证

@@ -2,6 +2,7 @@
 
 #include <climits>
 
+#include "abcd/analysis/argument_window.h"
 #include "abcd/analysis/scalar.h"
 
 namespace abcd::analysis {
@@ -30,8 +31,10 @@ std::variant<RestCopy, RestError> LiftRestArguments(
 std::optional<RestPrologue> ProveRestPrologue(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     std::uint16_t source_length) {
-  if (!frame.extra_arguments || frame.parameters !=
-                                    static_cast<std::uint32_t>(source_length) + 1 ||
+  const auto arguments = ArgumentWindow::Build(frame);
+  const auto* window = std::get_if<ArgumentWindow>(&arguments);
+  if (!window || window->Count() !=
+                     static_cast<std::uint32_t>(source_length) + 1 ||
       frame.registers < frame.locals || !body.tries.empty() ||
       !body.handlers.empty())
     return std::nullopt;
@@ -76,8 +79,7 @@ std::optional<RestPrologue> ProveRestPrologue(
   if (!destination || !value || *destination != copied_rest ||
       !std::holds_alternative<Accumulator>(*value))
     return std::nullopt;
-  const auto original_rest = abc::RegisterId{
-      frame.first_parameter.value + source_length};
+  const auto original_rest = *window->At(source_length);
   const auto prologue_end = body.instructions[copied + 1].offset.value;
   for (std::size_t i = copied + 2; i < body.instructions.size(); ++i) {
     // GETUNMAPPEDARGS copies current physical argument slots, including the
