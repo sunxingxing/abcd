@@ -90,6 +90,30 @@ class Fixture {
   analysis::ValueProgram graph;
   std::vector<ExpressionConstant> constants;
 };
+void UnprovedTryRefusal() {
+  Fixture fixture;
+  fixture.Add(0, 0, 0, analysis::ValueReturn{}, false,
+      {{analysis::OperandRole::kReturnValue, analysis::ValueId{0}}});
+  fixture.graph.blocks = {{{0}, 1, {0}, 0}};
+  auto tree = std::get<ConstructedFunction>(fixture.Build()).tree;
+  Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+  const auto original = std::get<BlockStmt>(tree.statements[tree.body.value].statement);
+  const auto origin = tree.statements[tree.body.value].origin;
+  const auto scope = static_cast<std::uint32_t>(tree.scopes.size());
+  const auto statement = static_cast<std::uint32_t>(tree.statements.size());
+  const auto child = static_cast<std::uint32_t>(tree.children.size());
+  tree.scopes.push_back({ScopeKind::kBlock, tree.body_scope});
+  tree.scopes.push_back({ScopeKind::kBlock, tree.body_scope});
+  tree.statements.push_back({TryStmt{{statement + 1}, {}, StmtId{statement + 2}}, origin});
+  tree.statements.push_back({BlockStmt{{scope}, original.first_child, original.child_count}, origin});
+  tree.statements.push_back({BlockStmt{{scope + 1}, child, 0}, origin});
+  tree.children.push_back({statement});
+  tree.statements[tree.body.value].statement = BlockStmt{tree.body_scope, child, 1};
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  // Legal syntax is not authorization to add a handler/completion region to
+  // normal IR. The common semantic publication gate must still reject it.
+  Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
+}
 constexpr auto kRead = analysis::LanguageEffect::kHeapRead | analysis::LanguageEffect::kUserCode;
 constexpr auto kWrite = analysis::LanguageEffect::kHeapWrite | analysis::LanguageEffect::kUserCode;
 
@@ -670,6 +694,7 @@ void FrameReceiverTree() {
 }
 }  // namespace
 int main() {
+  UnprovedTryRefusal();
   for (const analysis::ValueOperation operation : {
       analysis::ValueOperation{analysis::ValueGlobalObject{}},
       analysis::ValueOperation{analysis::ValueSymbolConstructor{}}}) {

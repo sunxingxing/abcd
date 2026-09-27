@@ -537,6 +537,9 @@ if(BUILD_TESTING)
   add_executable(tree_structure_test tests/unit/source/tree_structure_test.cc)
   target_link_libraries(tree_structure_test PRIVATE abcd_source)
   add_test(NAME tree_structure_test COMMAND tree_structure_test)
+  add_executable(try_tree_test tests/unit/source/try_tree_test.cc)
+  target_link_libraries(try_tree_test PRIVATE abcd_source)
+  add_test(NAME try_tree_test COMMAND try_tree_test)
   add_executable(family_enclosure_test tests/unit/source/family_enclosure_test.cc)
   target_link_libraries(family_enclosure_test PRIVATE abcd_source)
   add_test(NAME family_enclosure_test COMMAND family_enclosure_test)
@@ -817,6 +820,9 @@ if(BUILD_TESTING)
   target_include_directories(constant_group_fixture PRIVATE tests/support)
   target_link_libraries(constant_group_fixture PRIVATE abcd_source abcd_json)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME try_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/try_tree.mjs
+      $<TARGET_FILE:try_tree_test>)
     add_test(NAME argument_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/argument_snapshot.mjs
       $<TARGET_FILE:creation_tree_context_test> $<TARGET_FILE:class_tree_context_test>)

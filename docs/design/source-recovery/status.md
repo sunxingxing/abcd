@@ -42,6 +42,26 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- T09 共享源码 AST 新增 TryStmt/CatchClause，支持 try/catch、try/finally 和
+  try/catch/finally；所有区域必须独占 BlockStmt。新增明确的 catch 参数 binding/
+  declaration/scope 类型，只有所属 handler 才激活参数，退出后恢复外层同名绑定。
+  protected body、finally 和相邻语句不能看到该参数；同层重复声明拒绝，嵌套块
+  可遮蔽，catch 参数可以赋值但不能伪装为普通 DeclarationStmt。遍历沿用有界显式
+  栈和按名字分组的作用域索引，不改 CFG/SSA，也不按样本或构造器新增 writer。
+  共享 printer 输出三种结构，并记录所有区域语句及表达式的生成范围。新增
+  try_tree_test/try_tree_source_test 覆盖任意 JS 抛出值（含 Proxy、Symbol、NaN、-0）、
+  catch 赋值与外层参数隔离、finally 执行次数和 return/throw/break/continue completion、
+  非法作用域/复用/缺少区域、1/200/201/402 层嵌套以及精确 work/bytes 边界。
+  function_tree_test 确认语法合法的未证明 TryStmt 仍被语义发布检查拒绝。
+  13/13 定向回归通过：上述两项、tree_structure、function_tree、exception_copies、
+  family_enclosure、creation/class_tree_context、argument_snapshot_source、constant_group，
+  以及 pasteboard/Immersive/call 三个既有源码切片；abc_semantic 构建通过。
+  新 AST 规格先在缺少类型时编译失败，再接通并执行。未运行全量、RSS 或基准。
+  **新增 JS 用例是合成 AST 的 printer 执行验证，不是 ABC 异常端到端验收。**
+  下一步把 ExceptionPlan/异常复制接入共享控制树与 FunctionTree，并独立校验 handler
+  范围、参数载荷、两阶段赋值和 PC→生成位置；catch 闭包捕获、finally completion
+  识别和 async owner 仍未完成。规则仍为 44，group 1 与全 ISA 目标保持未完成。
+
 - T09 绑定与表达式层已消费异常求值计划：CatchParameterBinding 保留独立 Catch
   块/值身份，CatchSlotBinding 分配实际私有 SymbolId，不复用参数、phi、快照或
   cell；异常 bundle 不再分配不会执行的抽象 cycle temporary。普通/构造器沿用

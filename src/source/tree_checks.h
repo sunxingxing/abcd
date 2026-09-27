@@ -41,6 +41,7 @@ class TreeScopeCheck {
   void Leave(ScopeId scope);
   void Reference(SymbolId symbol, bool assignment = false);
   void Declare(SymbolId symbol, ScopeId scope, bool initializer);
+  void CatchParameter(SymbolId symbol, ScopeId scope);
   void Finish();
  private:
   const FunctionTree& tree_;

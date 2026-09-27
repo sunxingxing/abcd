@@ -59,6 +59,10 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
         RequireTree(symbol.scope == tree.parameter_scope &&
                     symbol.declaration == DeclarationKind::kParameter && !symbol.temporary, Error::kBinding);
         break;
+      case BindingKind::kCatchParameter:
+        RequireTree(tree.scopes[symbol.scope.value].kind == ScopeKind::kCatch &&
+            symbol.declaration == DeclarationKind::kCatchParameter && !symbol.temporary, Error::kBinding);
+        break;
       case BindingKind::kLocal:
       case BindingKind::kCompilerTemporary:
         RequireTree(symbol.scope != tree.parameter_scope &&
@@ -181,11 +185,20 @@ void TreeScopeCheck::Declare(SymbolId symbol, ScopeId scope, bool initializer) {
   Reference(symbol);
   RequireTree(tree_.symbols[symbol.value].scope == scope &&
               tree_.symbols[symbol.value].kind != BindingKind::kParameter &&
+              tree_.symbols[symbol.value].kind != BindingKind::kCatchParameter &&
               tree_.symbols[symbol.value].kind != BindingKind::kCapture &&
               tree_.symbols[symbol.value].kind != BindingKind::kModule &&
               tree_.symbols[symbol.value].kind != BindingKind::kFunctionSelf &&
               !declared_[symbol.value], Error::kBinding);
   RequireTree(tree_.symbols[symbol.value].declaration != DeclarationKind::kConst || initializer, Error::kBinding);
+  declared_[symbol.value] = 1;
+}
+void TreeScopeCheck::CatchParameter(SymbolId symbol, ScopeId scope) {
+  RequireTree(symbol.value < tree_.symbols.size(), Error::kRange);
+  RequireTree(tree_.symbols[symbol.value].scope == scope &&
+      tree_.symbols[symbol.value].kind == BindingKind::kCatchParameter &&
+      !declared_[symbol.value], Error::kBinding);
+  Reference(symbol);
   declared_[symbol.value] = 1;
 }
 void TreeScopeCheck::Finish() {

@@ -23,6 +23,7 @@ struct SyntaxFrame {
   std::size_t next_child = 0;
   bool entered = false;
   std::optional<StmtId> loop;
+  std::optional<SymbolId> catch_parameter;
 };
 bool ValidUnary(TreeUnary operation) {
   switch (operation) {
@@ -171,7 +172,14 @@ class StructureCheck {
       const auto child = Next(frame);
       if (child) {
         RequireTree(depth < stack_.size(), Error::kOwnership);
-        stack_[depth++] = {*child, frame.scope, 0, false, frame.loop};
+        std::optional<SymbolId> caught;
+        if (const auto* parent = std::get_if<StmtId>(&frame.node)) {
+          const auto* region = std::get_if<TryStmt>(&tree_.statements[parent->value].statement);
+          const auto* statement = std::get_if<StmtId>(&*child);
+          if (region && region->handler && statement && *statement == region->handler->body)
+            caught = region->handler->parameter;
+        }
+        stack_[depth++] = {*child, frame.scope, 0, false, frame.loop, caught};
         maximum_depth = std::max(depth, maximum_depth);
       } else {
         if (const auto* statement = std::get_if<StmtId>(&frame.node))
@@ -307,17 +315,25 @@ class StructureCheck {
     if (const auto* block = std::get_if<BlockStmt>(&node.statement)) {
       RequireTree(block->scope.value < tree_.scopes.size(), Error::kScope);
       const auto& scope = tree_.scopes[block->scope.value];
+      const auto kind = frame.catch_parameter ? ScopeKind::kCatch :
+          (id == tree_.body ? ScopeKind::kFunctionBody : ScopeKind::kBlock);
       RequireTree(scope.parent == frame.scope &&
-                  scope.kind == (id == tree_.body ? ScopeKind::kFunctionBody : ScopeKind::kBlock), Error::kScope);
+                  scope.kind == kind, Error::kScope);
       RequireTree(block->first_child <= tree_.children.size() &&
                   block->child_count <= tree_.children.size() - block->first_child, Error::kRange);
       scopes_.Enter(block->scope);
+      if (frame.catch_parameter) scopes_.CatchParameter(*frame.catch_parameter, block->scope);
       frame.scope = block->scope;
     } else if (const auto* declaration = std::get_if<DeclarationStmt>(&node.statement)) {
       scopes_.Declare(declaration->symbol, frame.scope, declaration->initializer.has_value());
     } else if (const auto* branch = std::get_if<IfStmt>(&node.statement)) {
       RequireBlock(branch->consequent);
       if (branch->alternate) RequireBlock(*branch->alternate);
+    } else if (const auto* region = std::get_if<TryStmt>(&node.statement)) {
+      RequireTree(region->handler || region->finalizer, Error::kUnsupportedSyntax);
+      RequireBlock(region->body);
+      if (region->handler) RequireBlock(region->handler->body);
+      if (region->finalizer) RequireBlock(*region->finalizer);
     } else if (const auto* loop = std::get_if<LoopStmt>(&node.statement)) {
       RequireBlock(loop->body);
       frame.loop = id;
@@ -399,6 +415,11 @@ class StructureCheck {
           add(node.condition); add(node.consequent); if (node.alternate) add(*node.alternate);
         } else if constexpr (std::is_same_v<T, ReturnStmt>) { if (node.value) add(*node.value); }
         else if constexpr (std::is_same_v<T, ThrowStmt>) { add(node.value); }
+        else if constexpr (std::is_same_v<T, TryStmt>) {
+          add(node.body);
+          if (node.handler) add(node.handler->body);
+          if (node.finalizer) add(*node.finalizer);
+        }
         else if constexpr (std::is_same_v<T, LoopStmt>) add(node.body);
         else { static_assert(std::is_same_v<T, BlockStmt> || std::is_same_v<T, BreakStmt> ||
                              std::is_same_v<T, DebuggerStmt> ||

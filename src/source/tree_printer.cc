@@ -538,7 +538,8 @@ class TreePrinter {
     switch (Tree().symbols[node.symbol.value].declaration) {
       case DeclarationKind::kLet: Append("let "); break;
       case DeclarationKind::kConst: Append("const "); break;
-      case DeclarationKind::kParameter: throw Error::kUnsupportedContext;
+      case DeclarationKind::kParameter: case DeclarationKind::kCatchParameter:
+        throw Error::kUnsupportedContext;
     }
     Name(node.symbol); Push(std::string_view(";"));
     if (node.initializer) { Append(" = "); Push(*node.initializer); }
@@ -560,6 +561,17 @@ class TreePrinter {
   }
   void StatementNode(ThrowStmt node, Statement) {
     Append("throw "); Push(std::string_view(";")); Push(node.value);
+  }
+  void StatementNode(const TryStmt& node, Statement at) {
+    Append("try ");
+    if (node.finalizer) {
+      Push(Statement{*node.finalizer, at.depth}); Push(std::string_view(" finally "));
+    }
+    if (node.handler) {
+      Push(Statement{node.handler->body, at.depth}); Push(std::string_view(") "));
+      Push(SymbolName{node.handler->parameter}); Push(std::string_view(" catch ("));
+    }
+    Push(Statement{node.body, at.depth});
   }
   void StatementNode(LoopStmt node, Statement at) {
     Append("while (true) ");

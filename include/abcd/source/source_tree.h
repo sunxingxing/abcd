@@ -27,14 +27,14 @@ enum class CallableKind : std::uint8_t {
   kAsyncFunction, kAsyncMethod
 };
 enum class Strictness : std::uint8_t { kStrict, kSloppy };
-enum class ScopeKind : std::uint8_t { kParameters, kFunctionBody, kBlock, kCaptures, kModule, kFunctionSelf };
-enum class BindingKind : std::uint8_t { kParameter, kLocal, kFunctionSelf, kCompilerTemporary, kCapture, kModule };
+enum class ScopeKind : std::uint8_t { kParameters, kFunctionBody, kBlock, kCaptures, kModule, kFunctionSelf, kCatch };
+enum class BindingKind : std::uint8_t { kParameter, kLocal, kFunctionSelf, kCompilerTemporary, kCapture, kModule, kCatchParameter };
 enum class SelfForm : std::uint8_t { kNamedFunction, kCreationBinding };
 // Preserve the ABC callable kind. A method carrier supplies an arrow owner's
 // native invocation only after receiver/new.target observation is excluded.
 enum class InvocationForm : std::uint8_t { kDeclared, kArrowMethod };
 enum class NameEvidence : std::uint8_t { kMetadata, kDebugRange, kSynthesized };
-enum class DeclarationKind : std::uint8_t { kParameter, kLet, kConst };
+enum class DeclarationKind : std::uint8_t { kParameter, kLet, kConst, kCatchParameter };
 enum class TemporaryReason : std::uint8_t {
   kMultipleUses, kEffectSnapshot, kPhiJoin, kParallelCopyCycle,
   kCrossRegionValue, kReferenceSnapshot, kUnprovedInline, kPredicateSnapshot
@@ -142,6 +142,15 @@ struct ExpressionStmt { ExprId expression; };
 struct IfStmt { ExprId condition; StmtId consequent; std::optional<StmtId> alternate; };
 struct ReturnStmt { std::optional<ExprId> value; };
 struct ThrowStmt { ExprId value; };
+struct CatchClause { SymbolId parameter; StmtId body; };
+// All regions own block statements. The handler's catch scope alone binds its
+// parameter; protected body/finalizer remain siblings. Syntax is not proof of
+// ABC handler coverage or finally completion preservation (T09).
+struct TryStmt {
+  StmtId body;
+  std::optional<CatchClause> handler;
+  std::optional<StmtId> finalizer;
+};
 // Canonical loop syntax: while (true), with the original header predicate in
 // the body. This keeps header effects and edge copies at their actual sites.
 struct LoopStmt { StmtId body; };
@@ -151,7 +160,7 @@ struct BreakStmt { StmtId target; };
 struct ContinueStmt { StmtId target; };
 struct DebuggerStmt {};
 using TreeStatement = std::variant<BlockStmt, DeclarationStmt, ExpressionStmt, IfStmt, ReturnStmt,
-                                   LoopStmt, BreakStmt, ContinueStmt, DebuggerStmt, ThrowStmt>;
+                                   LoopStmt, BreakStmt, ContinueStmt, DebuggerStmt, ThrowStmt, TryStmt>;
 struct StmtNode { TreeStatement statement; TreeOriginId origin; };
 
 // Origins/validation side tables may refer to working IDs. Executable node
