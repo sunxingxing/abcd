@@ -7,6 +7,7 @@
 #include "../../../src/source/function_family.h"
 #include "../../../src/source/cell_defaults.h"
 #include "../../../src/source/cell_default_proof.h"
+#include "../../../src/source/default_signature.h"
 #include "../../../src/source/tree_semantics.h"
 #include "abcd/source/value_stage.h"
 #include "analysis/ssa_fixture.h"
@@ -402,6 +403,38 @@ void CellDefaultDiscovery() {
   test::Check(std::holds_alternative<CellDefaultProof>(prove(found, proof_budget)));
   --proof_budget.work;
   test::Check(std::get<CellDefaultProofError>(prove(found, proof_budget)) == CellDefaultProofError::kWorkLimit);
+  const auto residual = std::get<DefaultBody>(DefaultBody::BuildCell(values.graph,
+      *values.environments, *values.cells, parameters, found, 0));
+  const auto& graph = residual.Graph();
+  test::Check(graph.revision.value == values.graph.revision.value + 1 &&
+      graph.cfg_revision.value == values.graph.cfg_revision.value + 1);
+  test::Check(graph.ops[candidate.initial_store.value].life == ValueLife::kLive &&
+      std::holds_alternative<ValueLexicalStore>(graph.ops[candidate.initial_store.value].operation));
+  for (const auto moved : residual.Signature().Operations()) {
+    test::Check(graph.ops[moved.operation.value].life == ValueLife::kRemoved &&
+        std::holds_alternative<ValueNop>(graph.ops[moved.operation.value].operation));
+    const auto origin = graph.ops[moved.operation.value].origin;
+    test::Check(graph.origins[origin.value].pc == values.graph.origins[origin.value].pc);
+  }
+  const auto rebuilt = std::get<ValueEnvironments>(BuildValueEnvironments(graph));
+  const auto rebound = std::get<CellPlan>(BuildCellPlan(graph, rebuilt));
+  test::Check(rebound.cells.size() == values.cells->cells.size());
+  const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+  std::vector<ExpressionConstant> constants(graph.ops.size());
+  for (const auto callable : {CallableKind::kMethod, CallableKind::kFunction, CallableKind::kArrow}) {
+    FunctionSyntax syntax;
+    syntax.identity = Identity(); syntax.method = kParent; syntax.owner = {0};
+    syntax.callable = callable; syntax.strictness = Strictness::kStrict; syntax.parameters.resize(1);
+    auto tree = std::get<ConstructedFunction>(BuildFunctionTree(graph, control, evaluation,
+        std::move(syntax), {constants, 0, 0})).tree;
+    test::Check(std::holds_alternative<DefaultSignatureProof>(BuildDefaultSignature(residual, tree)));
+    test::Check(tree.parameters[0].initializer && tree.signature.size() == residual.Signature().Operations().size());
+    test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, {constants, 0, 0})));
+    const auto initializer = *tree.parameters[0].initializer;
+    tree.expressions[initializer.value].expression = TreeLiteral{UndefinedLiteral{}};
+    test::Check(std::get<DefaultSignatureError>(VerifyDefaultSignature(residual, tree)) == DefaultSignatureError::kLiteral);
+  }
   test::Check(std::get<CellDefaults>(FindCellDefaults(values.graph, *values.cells, parameters, 1)).candidates.empty());
   auto stale = parameters; ++stale.revision.value;
   test::Check(std::get<CellDefaultError>(FindCellDefaults(values.graph, *values.cells, stale, 0)) == CellDefaultError::kRevision);

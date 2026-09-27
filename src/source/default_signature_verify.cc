@@ -38,9 +38,16 @@ class SignatureCheck {
       : body_(body), tree_(tree), budget_(budget) {}
   void Run() {
     const auto& graph = body_.Graph();
-    Require(tree_.callable == CallableKind::kMethod && tree_.strictness == Strictness::kStrict && !tree_.self,
+    const bool ordinary = tree_.callable == CallableKind::kMethod ||
+        tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kArrow;
+    // Literal defaults introduce no function/receiver/arguments references.
+    // The owner must still prove the strict enclosing source context; this
+    // signature check does not authorize a sloppy standalone wrapper.
+    Require((tree_.callable == CallableKind::kMethod ||
+        (body_.Storage() == DefaultStorage::kCell && ordinary)) &&
+        tree_.strictness == Strictness::kStrict && !tree_.self,
             Error::kContext);
-    std::vector<const DefaultCandidate*> formals;
+    std::vector<const DefaultInitializer*> formals;
     std::vector<std::optional<ParameterId>> operations;
     std::vector<std::uint8_t> initializers;
     std::vector<std::uint8_t> moved;

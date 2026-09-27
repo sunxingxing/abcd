@@ -11,9 +11,9 @@ namespace {
 using namespace analysis;
 using Error = DefaultBodyError;
 void Require(bool condition, Error error = Error::kShape) { if (!condition) throw error; }
-class Projection {
+template<class Proof> class Projection {
  public:
-  Projection(const ValueProgram& original, const DefaultValueProof& proof, SemanticBudget budget)
+  Projection(const ValueProgram& original, const Proof& proof, SemanticBudget budget)
       : original_(original), proof_(proof), initial_(budget), budget_(budget) {}
   ValueProgram Build() {
     Require(original_.revision == proof_.Revision() && original_.cfg_revision == proof_.ControlRevision(), Error::kRevision);
@@ -31,10 +31,12 @@ class Projection {
     }
     for (const auto& parameter : proof_.Defaults()) {
       Step();
-      Require(parameter.merged.value < aliases_.size() && parameter.entry.value < aliases_.size() &&
-          parameter.header.value < paths_.size() && parameter.arm.value < paths_.size());
-      Require(!aliases_[parameter.merged.value] && !paths_[parameter.header.value] && !paths_[parameter.arm.value]);
-      aliases_[parameter.merged.value] = parameter.entry;
+      Require(parameter.header.value < paths_.size() && parameter.arm.value < paths_.size());
+      Require(!paths_[parameter.header.value] && !paths_[parameter.arm.value]);
+      if constexpr (std::is_same_v<Proof, DefaultValueProof>) {
+        Require(parameter.merged.value < aliases_.size() && parameter.entry.value < aliases_.size() && !aliases_[parameter.merged.value]);
+        aliases_[parameter.merged.value] = parameter.entry;
+      }
       paths_[parameter.header.value] = parameter.missing;
       paths_[parameter.arm.value] = parameter.merge;
     }
@@ -68,6 +70,17 @@ class Projection {
       Require(op.life == ValueLife::kLive && op.origin.value < body.origins.size(), Error::kOrigin);
       op.life = ValueLife::kRemoved;
       if (op.result) body.values[op.result->value].life = ValueLife::kRemoved;
+      if constexpr (std::is_same_v<Proof, CellDefaultProof>) {
+        // This is the sealed RESIDUAL program under initialized formals, not
+        // a claim that original cell effects are pure. Migrated instructions
+        // become tombstones; Signature().Operations() still owns their PCs.
+        // Environment rebuilding must see no body read/store at these sites.
+        op.operation = ValueNop{};
+        // Dormant result/use IDs remain for bidirectional use-chain auditing;
+        // their values/occurrences are marked removed below, never evaluated.
+        op.normal = LanguageEffect::kNone; op.before_throw = LanguageEffect::kNone;
+        op.exceptional = ExceptionalCompletion::kImpossible;
+      }
       // Origins are not relabeled ElidedPure: the signature still owns these
       // PCs, including branch and refined numeric-conversion operations.
     }
@@ -105,6 +118,19 @@ class Projection {
     }
     body.revision = {original_.revision.value + 1};
     body.cfg_revision = {original_.cfg_revision.value + 1};
+    if constexpr (std::is_same_v<Proof, CellDefaultProof>) {
+      // Surviving-site lookup for ORIGINAL capture/module rebinding, not an
+      // input-correspondence certificate for initialized source parameters.
+      // Removed signature sites have no body operation; old value maps are
+      // deliberately not copied into this new parameter interpretation.
+      Clone(body.input.sites, original_.input.sites);
+      for (auto& site : body.input.sites) {
+        Step();
+        if (!site) continue;
+        Require(site->value < body.ops.size(), Error::kOrigin);
+        if (removed_[site->value]) site.reset();
+      }
+    }
     // Reconstruct use chains rather than adjusting doubly linked occurrences
     // piecemeal. Verify availability after rewriting all retained incoming keys.
     Flow(body);
@@ -143,7 +169,7 @@ class Projection {
     throw Error::kFlow;
   }
   const ValueProgram& original_;
-  const DefaultValueProof& proof_;
+  const Proof& proof_;
   SemanticBudget initial_;
   SemanticBudget budget_;
   std::vector<std::uint8_t> removed_;
@@ -152,6 +178,44 @@ class Projection {
   std::vector<std::optional<EdgeId>> edges_;
   std::vector<std::optional<UseId>> last_;
 };
+struct ProjectedDefault {
+  ValueProgram graph;
+  std::vector<DefaultInitializer> initializers;
+  std::size_t bytes;
+  std::uint64_t work;
+};
+template<class Proof> ProjectedDefault Project(const ValueProgram& original,
+    const Proof& proof, SemanticBudget budget) {
+  Require(proof.Work() <= budget.work, Error::kWorkLimit);
+  const auto count = proof.Defaults().size();
+  budget.work -= proof.Work();
+  Require(count <= budget.work, Error::kWorkLimit); budget.work -= count;
+  Require(count <= budget.bytes / sizeof(DefaultInitializer), Error::kResourceLimit);
+  std::vector<DefaultInitializer> initializers;
+  initializers.reserve(count);
+  Require(initializers.capacity() <= budget.bytes / sizeof(DefaultInitializer), Error::kResourceLimit);
+  const auto initializer_bytes = initializers.capacity() * sizeof(DefaultInitializer);
+  budget.bytes -= initializer_bytes;
+  for (const auto& candidate : proof.Defaults()) {
+    if constexpr (std::is_same_v<Proof, DefaultValueProof>)
+      initializers.push_back({candidate.parameter, candidate.fallback, candidate.initializer});
+    else initializers.push_back({candidate.parameter, candidate.fallback, candidate.fallback_store});
+  }
+  Projection<Proof> projection(original, proof, budget);
+  auto graph = projection.Build();
+  std::size_t bytes = sizeof(DefaultBody) + proof.AllocatedBytes();
+  const auto arena = [&](const auto& values) {
+    using T = typename std::decay_t<decltype(values)>::value_type;
+    Require(values.capacity() <= (std::numeric_limits<std::size_t>::max() - bytes) / sizeof(T), Error::kResourceLimit);
+    bytes += values.capacity() * sizeof(T);
+  };
+  arena(graph.blocks); arena(graph.edges); arena(graph.ops); arena(graph.values);
+  arena(graph.uses); arena(graph.origins); arena(graph.exceptional_exits);
+  arena(graph.input.sites); arena(graph.input.values);
+  Require(bytes <= budget.bytes, Error::kResourceLimit);
+  return {std::move(graph), std::move(initializers), bytes + initializer_bytes,
+      proof.Work() + count + projection.Work()};
+}
 }  // namespace
 
 std::variant<DefaultBody, DefaultBodyError> DefaultBody::Build(
@@ -170,21 +234,30 @@ std::variant<DefaultBody, DefaultBodyError> DefaultBody::Build(
       return error == DefaultProofError::kRevision ? Error::kRevision : Error::kProof;
     }
     auto proof = std::move(*verified);
-    Require(proof.Work() <= budget.work, Error::kWorkLimit);
-    const auto proof_work = proof.Work();
-    budget.work -= proof_work;
-    Projection projection(original, proof, budget);
-    auto graph = projection.Build();
-    std::size_t bytes = sizeof(DefaultBody) + proof.AllocatedBytes();
-    const auto arena = [&](const auto& values) {
-      using T = typename std::decay_t<decltype(values)>::value_type;
-      Require(values.capacity() <= (std::numeric_limits<std::size_t>::max() - bytes) / sizeof(T), Error::kResourceLimit);
-      bytes += values.capacity() * sizeof(T);
-    };
-    arena(graph.blocks); arena(graph.edges); arena(graph.ops); arena(graph.values);
-    arena(graph.uses); arena(graph.origins); arena(graph.exceptional_exits);
-    Require(bytes <= budget.bytes, Error::kResourceLimit);
-    return DefaultBody{std::move(graph), std::move(proof), bytes, proof_work + projection.Work()};
+    auto projected = Project(original, proof, budget);
+    return DefaultBody{std::move(projected.graph), std::move(proof), std::move(projected.initializers),
+        projected.bytes, projected.work};
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+
+std::variant<DefaultBody, DefaultBodyError> DefaultBody::BuildCell(
+    const analysis::ValueProgram& original, const analysis::ValueEnvironments& environments,
+    const CellPlan& cells, const ParameterPlan& parameters, const CellDefaults& candidates,
+    std::uint32_t length, analysis::SemanticBudget budget) {
+  try {
+    auto checked = CellDefaultProof::Build(original, environments, cells, parameters, candidates, length, budget);
+    auto* proof = std::get_if<CellDefaultProof>(&checked);
+    if (!proof) {
+      const auto error = std::get<CellDefaultProofError>(checked);
+      if (error == CellDefaultProofError::kResourceLimit) return Error::kResourceLimit;
+      if (error == CellDefaultProofError::kWorkLimit) return Error::kWorkLimit;
+      return error == CellDefaultProofError::kRevision ? Error::kRevision : Error::kProof;
+    }
+    auto projected = Project(original, *proof, budget);
+    return DefaultBody{std::move(projected.graph), std::move(*proof), std::move(projected.initializers),
+        projected.bytes, projected.work};
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

@@ -11,6 +11,29 @@ observations, not an up-to-date capability summary.
 
 ### File-Backed Conditional Function Families
 
+Cell-default projection now reuses DefaultBody's normal graph/edge/use remapping.
+A shared signature view separates SSA-phi and cell-backed proofs without a new
+printer. The cell residual retains environment/entry stores, uses removed Nop
+tombstones for migrated sites, retains their original PC ownership in the sealed
+signature, and rebuilds use chains/normal flow. This is not ordinary pure-effect
+erasure: the original immutable input remains separate. Only live original-site
+lookup is retained for capture/module rebinding; input value certificates are not
+copied into initialized-source-parameter interpretation.
+Family construction now projects all members first, rebuilds environment/cell/
+module guard state, rebinds all actual creation edges, then builds parent-first
+trees and common signatures, rechecks semantics/flow/ABI and whole-family capture
+ownership. Strict ordinary cell-default signatures share the existing signature
+checker; old SSA publication acceptance is unchanged. No source rule bump.
+Real ABC 7449 now constructs all four conditional trees (7449,7089,7117,7477),
+with expression counts [22,51,1,1]. Still source_complete=false/executable=false:
+enclosing/global/module publication and nested printer integration remain gates.
+Added cell projection, retained initialization, original-PC, rebuilt topology,
+method/function/arrow signature and literal-mutation specifications are unrun.
+Final production builds exited 0. ABC-only diagnostics show root default formal
+0 with signature-owned original PCs [16,20,21,24,26,31]; child formal counts are
+2/0/0 with no defaults. Immersive 21082 still constructs its one-member tree.
+These are original-PC/AST placement facts, not generated-source position maps.
+
 CellDefaultProof now independently checks supplied candidates without rerunning
 discovery: actual CFG arms/joins, branch polarity, entry parameter identity,
 allocated-cell first stores, original load/store operands and literal producers.

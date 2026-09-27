@@ -8,6 +8,8 @@
 #include "function_tree.h"
 #include "module_aliases.h"
 #include "syntax_resolution.h"
+#include "default_signature.h"
+#include "tree_semantics.h"
 
 namespace abcd::source {
 enum class FamilyTreeError : std::uint8_t {
@@ -18,7 +20,9 @@ struct FamilyTreeFailure {
   std::variant<FamilyTreeError, SyntaxResolutionFailure, ControlError,
       EvaluationError, FunctionTreeError, TreeFlowError, FunctionAbiError,
       ModuleAliasFailure, ModuleAliasTreeError, FamilyError,
-      ParameterPlanError, CellDefaultError, CellDefaultProofError> cause;
+      ParameterPlanError, CellDefaultError, CellDefaultProofError, DefaultBodyError,
+      analysis::ValueEnvironmentError, CellError, ModuleGuardError, CaptureCellError,
+      CaptureEvaluationFailure, DefaultSignatureError, TreeSemanticError> cause;
   // Discovery evidence only; no source initializer or erasure is authorized.
   std::optional<std::size_t> cell_default_candidates;
   bool cell_defaults_proved = false;
@@ -26,7 +30,8 @@ struct FamilyTreeFailure {
 // Consumes a fresh, unchanged ReadFunctionFamily result and actual root context.
 // Parent-first shared construction checks each incoming capture against the
 // actual parent tree. No source receipt: root enclosure, transitive writes,
-// global/module initialization and default projection remain publication gates.
+// global/module initialization remain publication gates. Cell-default projection
+// runs before whole-family edge rebinding; other default forms still refuse.
 // Existing file/index/context/family storage is caller-admitted. This allowance
 // covers all additional construction/scratch; conservative accounting retains
 // previous pass charges even after their storage is released.

@@ -143,8 +143,20 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
     report["family_tree_prepared"] = true;
     report["family_tree_members"] = tree->members.size();
     report["family_tree_expressions"] = nlohmann::json::array();
-    for (const auto& member : tree->members)
+    report["family_tree_signatures"] = nlohmann::json::array();
+    for (const auto& member : tree->members) {
       report["family_tree_expressions"].push_back(member.tree.expressions.size());
+      nlohmann::json signature{{"method", member.tree.method.value},
+          {"parameters", member.tree.parameters.size()}, {"defaults", nlohmann::json::array()},
+          {"signature_pcs", nlohmann::json::array()}};
+      for (std::size_t i = 0; i < member.tree.parameters.size(); ++i)
+        if (member.tree.parameters[i].initializer) signature["defaults"].push_back(i);
+      for (const auto& placement : member.tree.signature) {
+        if (const auto* original = std::get_if<OriginalSite>(&member.tree.origins[placement.origin.value]))
+          signature["signature_pcs"].push_back(original->pc.value);
+      }
+      report["family_tree_signatures"].push_back(std::move(signature));
+    }
   } else {
     const auto& failure = std::get<FamilyTreeFailure>(constructed);
     report["family_tree_member"] = failure.member.value;
@@ -154,7 +166,10 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
     report["cell_defaults_proved"] = failure.cell_defaults_proved;
     std::visit([&](const auto& error) {
       using T = std::decay_t<decltype(error)>;
-      if constexpr (std::is_same_v<T, SyntaxResolutionFailure>) {
+      if constexpr (std::is_same_v<T, CaptureEvaluationFailure>) {
+        report["capture_failure"] = error.index();
+        std::visit([&](const auto& reason) { report["capture_error"] = Code(reason); }, error);
+      } else if constexpr (std::is_same_v<T, SyntaxResolutionFailure>) {
         report["syntax_failure"] = error.index();
         std::visit([&](const auto& reason) { report["syntax_error"] = Code(reason); }, error);
       } else if constexpr (std::is_same_v<T, ModuleAliasFailure>) {

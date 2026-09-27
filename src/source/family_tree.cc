@@ -14,14 +14,21 @@ class FamilyTrees {
       : file_(file), header_(header), index_(index), initial_(budget), left_(budget),
         modules_(modules), module_owner_(owner) {}
   ConstructedFamily Build(FileFamily& family, const FunctionContext& root) {
+    Admit(1, sizeof(FamilyTrees));
     Require(!family.members.empty(), FamilyTreeError::kContext);
     Require(family.members.size() < std::numeric_limits<std::uint32_t>::max(), FamilyTreeError::kResourceLimit);
+    ProjectDefaults(family, root);
+    Rebind(family);
     std::vector<FamilyMember> trees;
     Reserve(trees, family.members.size());
     for (std::size_t i = 0; i < family.members.size(); ++i) {
       member_ = {static_cast<std::uint32_t>(i)};
       default_candidates_.reset();
       defaults_proved_ = false;
+      if (defaults_[i]) {
+        default_candidates_ = defaults_[i]->Signature().Defaults().size();
+        defaults_proved_ = true;
+      }
       Step(1);
       auto& member = family.members[i];
       std::optional<FunctionContext> child_context;
@@ -34,24 +41,6 @@ class FamilyTrees {
       const auto& graph = function.values.graph;
       Require(context.Identity() == function.input.Identity() &&
           context.Target() == function.input.Method(), FamilyTreeError::kContext);
-      if (context.Length() < context.Frame().parameters && function.values.cells) {
-        auto parameters = Take<ParameterPlan, ParameterPlanError>(BuildParameterPlan(
-            graph, context.Frame().parameters, left_));
-        Account(parameters);
-        auto defaults = Take<CellDefaults, CellDefaultError>(FindCellDefaults(
-            graph, *function.values.cells, parameters, context.Length(), left_));
-        Account(defaults);
-        default_candidates_ = defaults.candidates.size();
-        if (!defaults.candidates.empty()) {
-          Require(function.values.environments.has_value(), FamilyTreeError::kContext);
-          auto proof = Take<CellDefaultProof, CellDefaultProofError>(CellDefaultProof::Build(graph,
-              *function.values.environments, *function.values.cells, parameters, defaults, context.Length(), left_));
-          Admit(proof.AllocatedBytes(), 1); Step(proof.Work());
-          defaults_proved_ = true;
-        }
-        // Keep the ordinary tree/ABI gate intact until independent cell escape
-        // proof, residual projection and whole-family rebinding are connected.
-      }
       auto syntax = Take<ResolvedSyntax, SyntaxResolutionFailure>(ResolveFunctionSyntax(
           file_, header_, index_, context, function.body, graph, {member_.value}, left_));
       Account(syntax);
@@ -91,6 +80,14 @@ class FamilyTrees {
       auto constructed = Take<ConstructedFunction, FunctionTreeError>(BuildFunctionTree(graph, control,
           evaluation, std::move(syntax.syntax), constants, left_, incoming ? &*incoming : nullptr));
       Account(constructed);
+      if (defaults_[i]) {
+        auto signature = Take<DefaultSignatureProof, DefaultSignatureError>(
+            BuildDefaultSignature(*defaults_[i], constructed.tree, left_));
+        Account(signature);
+        auto semantics = Take<TreeSemantics, TreeSemanticError>(VerifyTreeSemantics(
+            graph, control, evaluation, constructed.tree, constants, left_));
+        Account(semantics);
+      }
       auto flow = Take<TreeFlow, TreeFlowError>(VerifyTreeFlow(graph, control, evaluation, constructed.tree, left_));
       Account(flow);
       if (aliases) Step(Take<std::uint64_t, ModuleAliasTreeError>(
@@ -109,6 +106,70 @@ class FamilyTrees {
     return result;
   }
  private:
+  void ProjectDefaults(FileFamily& family, const FunctionContext& root) {
+    Reserve(defaults_, family.members.size()); defaults_.resize(family.members.size());
+    for (std::size_t i = 0; i < family.members.size(); ++i) {
+      Step(1); member_ = {static_cast<std::uint32_t>(i)};
+      default_candidates_.reset(); defaults_proved_ = false;
+      auto& member = family.members[i];
+      Require(i == 0 || member.context.has_value(), FamilyTreeError::kContext);
+      const auto length = i == 0 ? root.Length() : member.context->Site().creation.length.value;
+      const auto& frame = i == 0 ? root.Frame() : member.context->Frame();
+      auto& values = member.function.values;
+      if (length >= frame.parameters || !values.cells) continue;
+      auto parameters = Take<ParameterPlan, ParameterPlanError>(BuildParameterPlan(values.graph, frame.parameters, left_));
+      Account(parameters);
+      auto candidates = Take<CellDefaults, CellDefaultError>(FindCellDefaults(values.graph, *values.cells, parameters, length, left_));
+      Account(candidates); default_candidates_ = candidates.candidates.size();
+      if (candidates.candidates.empty()) continue;
+      Require(values.environments.has_value(), FamilyTreeError::kContext);
+      auto body = Take<DefaultBody, DefaultBodyError>(DefaultBody::BuildCell(values.graph,
+          *values.environments, *values.cells, parameters, candidates, length, left_));
+      Admit(body.AllocatedBytes(), 1); Step(body.Work()); defaults_proved_ = true;
+      // Retain the sealed residual owner for signature checks. The mutable
+      // working copy is separately admitted before allocation and is never
+      // passed off as the original input-correspondence graph.
+      Admit(body.AllocatedBytes(), 1);
+      const auto& residual = body.Graph();
+      Step(residual.blocks.size()); Step(residual.edges.size()); Step(residual.ops.size());
+      Step(residual.values.size()); Step(residual.uses.size()); Step(residual.origins.size());
+      Step(residual.exceptional_exits.size()); Step(residual.input.sites.size()); Step(residual.input.values.size());
+      values.graph = body.Graph();
+      defaults_[i].emplace(std::move(body));
+      auto environments = Take<analysis::ValueEnvironments, analysis::ValueEnvironmentError>(
+          analysis::BuildValueEnvironments(values.graph, left_));
+      Account(environments); values.environments = std::move(environments);
+      auto cells = Take<CellPlan, CellError>(BuildCellPlan(values.graph, *values.environments, left_));
+      Account(cells); values.cells = std::move(cells);
+      auto modules = Take<ModuleGuards, ModuleGuardError>(BuildModuleGuards(member.function.input, values.graph, left_));
+      Account(modules); values.modules = std::move(modules);
+    }
+  }
+  void Rebind(FileFamily& family) {
+    // Every residual revision is fixed before any creation edge is rebound.
+    // This prevents a parent's cached binding from retaining a child's old
+    // revision when that child's own defaults are projected later.
+    for (auto& member : family.members) { Step(1); member.children.clear(); }
+    for (std::size_t i = 1; i < family.members.size(); ++i) {
+      Step(1); member_ = {static_cast<std::uint32_t>(i)};
+      auto& child = family.members[i];
+      Require(child.incoming.has_value() && child.incoming->parent.value < i, FamilyTreeError::kParent);
+      auto& edge = *child.incoming;
+      auto& parent = family.members[edge.parent.value];
+      const CaptureFunction parent_work{parent.function.input, parent.function.values};
+      const CaptureFunction child_work{child.function.input, child.function.values};
+      auto cells = Take<CaptureCells, CaptureCellError>(BindCaptureCells(index_, parent_work, child_work,
+          edge.site, edge.creation, left_));
+      Account(cells);
+      auto evaluation = Take<CapturedFunctionBinding, CaptureEvaluationFailure>(BindCaptureEvaluation(index_,
+          parent_work, child_work, edge.site, edge.creation, cells, {edge.parent.value}, {member_.value}, left_));
+      Account(evaluation);
+      Require(parent.children.size() < parent.children.capacity(), FamilyTreeError::kParent);
+      Require(parent.children.empty() || parent.children.back().creation < evaluation.binding.creation, FamilyTreeError::kParent);
+      parent.children.push_back(std::move(evaluation.binding));
+      edge.cells = std::move(cells);
+    }
+  }
   template<class T> [[noreturn]] void Fail(T error) const {
     throw FamilyTreeFailure{member_, std::move(error), default_candidates_, defaults_proved_};
   }
@@ -136,6 +197,7 @@ class FamilyTrees {
   FamilyId member_{0};
   std::optional<std::size_t> default_candidates_;
   bool defaults_proved_ = false;
+  std::vector<std::optional<DefaultBody>> defaults_;
 };
 }  // namespace
 std::variant<ConstructedFamily, FamilyTreeFailure> BuildFileFamilyTrees(
