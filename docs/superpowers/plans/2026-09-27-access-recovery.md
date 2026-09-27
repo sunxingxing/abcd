@@ -6,6 +6,12 @@ Execution: independent inline work, no CC or subagents. Approved design:
 Goal: implement L0–L9 without replacing the T00–T12 gates. C++20, existing
 typed IR, shared FunctionTree and printer; tests remain outside production.
 
+User priority update (2026-09-27): finish this LD/ST recovery plan first,
+including complex-scope, closure, generator and async test coverage; then
+finish the remaining original T00–T12 objective. Implement necessary
+T07–T11 dependencies during access recovery, not in a separate later pipeline.
+This changes execution order, not the original scope or acceptance criteria.
+
 ## First Delivery: Computed Set (L1)
 
 - [x] Add a failing narrow/wide STOBJBYVALUE import fixture in
