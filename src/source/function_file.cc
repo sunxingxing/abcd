@@ -8,7 +8,7 @@ namespace abcd::source {
 std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     abc::MethodPosition position, RouteInputIdentity identity, InputCaptureMode mode,
-    analysis::SemanticBudget budget) {
+    analysis::SemanticBudget budget, const RecordModuleContext* modules) {
   using Error = FunctionFileError;
   try {
     auto bytes = budget.bytes;
@@ -45,8 +45,18 @@ std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
     arena(graph.origins); arena(graph.exceptional_exits); arena(graph.input.sites); arena(graph.input.values);
     if (values.environments) admit(values.environments->allocated_bytes, 1);
     if (values.cells) admit(values.cells->allocated_bytes, 1);
+    std::optional<ModuleReads> module_reads;
+    if (modules) {
+      if (modules->record() != method.owner_offset) throw Error::kIdentity;
+      const auto module = modules->ForOwner(file, method.owner_offset);
+      auto resolved = ResolveModuleReads(file, header, module.get(), graph, {bytes, budget.work});
+      if (const auto* error = std::get_if<ModuleReadFailure>(&resolved)) return FunctionFileFailure{*error};
+      module_reads = std::get<ModuleReads>(std::move(resolved));
+      admit(module_reads->allocated_bytes, 1);
+    }
     if (file.CheckUnchanged()) throw Error::kChanged;
-    return FileFunction{std::move(body), frame, std::move(input), std::move(values), budget.bytes - bytes};
+    return FileFunction{std::move(body), frame, std::move(input), std::move(values),
+        budget.bytes - bytes, std::move(module_reads)};
   } catch (Error error) { return FunctionFileFailure{error};
   } catch (const std::bad_alloc&) { return FunctionFileFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return FunctionFileFailure{Error::kResourceLimit}; }

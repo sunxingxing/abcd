@@ -1,0 +1,75 @@
+# Module Read Binding
+
+This is the metadata-binding prerequisite for the shared source route, not a
+second body writer or a module source-publication certificate.
+
+## Pipeline
+
+```text
+ABC module loads -> original semantic IR -> verified working ValueModuleRead
+record-owned ModuleInfo -----------------> ResolveModuleReads
+                                          -> ModuleReads in FileFunction
+                                          -> future module scope/TDZ proof
+                                          -> shared SourceTree and printer
+```
+
+The first two arrows and metadata binding are implemented. The scope/TDZ and
+module AST arrows remain open. Default `ReadFunctionValues` leaves binding
+obligations open; an explicit `RecordModuleContext` enables resolution and
+retains the typed result alongside the working graph. Family/record callers
+must reuse the same immutable record context, not rescan all records per child.
+The diagnostic CLI resolves one context for its single requested function.
+
+## Identity and Semantics
+
+- Binding identity is record owner plus `ModuleSpace` and `ModuleSlot`, never
+  a source name, pool index or raw local-export row index.
+- The pinned v7 `ModuleDataAccessor::EnumerateImportEntry` places regular
+  import entries before namespace-import entries. Preserve the selected request
+  ID, specifier entity and local/imported name entities; never reorder slots by
+  dependency request order. Regular imported-name `*` is still a wire name here;
+  source import classification must decode it at the textual boundary later.
+- `EnumerateLocalExportEntry` assigns the same slot to adjacent equal decoded
+  local names, including names stored at different string entities. Nonadjacent
+  equal names remain different slots. The representative name entity is naming
+  evidence only; it must not replace space/slot identity.
+- Keep original read operations, domains, effects, exceptional completions and
+  origins unchanged. Resolution neither snapshots live bindings nor eliminates
+  initialization/Hole guards. String payload validation for external names and
+  dependency resolution are still downstream obligations.
+- The mutable result records working revisions and lives under `FileFunction`'s
+  file/method/record identity. It cannot be reused after graph mutation or passed
+  to the printer as a certificate. Standalone resolver callers must establish
+  same-file metadata and verified-IR preconditions themselves.
+
+Missing module metadata, out-of-range slots and invalid selected requests fail
+with typed errors. Slot/request failures retain the operation's original PC.
+No unresolved read is silently converted into a free global lookup.
+
+## Complexity and Budgets
+
+Let I be working operations, L local-export rows, U distinct local-name entities,
+S their decoded UTF-16 units, and C units examined in adjacent-name comparisons.
+External-only resolution is O(I), with O(reads) output. When local reads exist,
+resolution is O(I + L log(L+1) + S + C): sort/deduplicate entity IDs, decode each
+entity once, and traverse the original row order with indexed name lookup.
+It does not compare every export pair. Temporary/output vector capacities and
+name payloads share the byte allowance; comparison and traversal work is capped.
+Returned allocation accounting conservatively includes temporary storage too.
+
+The record context and existing graph are caller-admitted. Existing metadata
+readers and function preparation passes retain their own bounds; this change
+does not claim a shared cumulative family-work budget or whole-process RSS proof.
+
+## Remaining Gates
+
+Before source emission, bind actual module-scope symbols, prove unshadowed uses
+and live-binding behavior, preserve cyclic module initialization/TDZ and thrown
+values, and discharge record dependencies. Only then may shared expression
+construction/verification accept module reads. Source evidence rules remain 23.
+
+Regression source `module_reads_test.cc` covers slot/table separation, adjacent
+aliases across different string entities, nonadjacent identical names,
+namespace imports, missing metadata, request/slot bounds, original-PC errors,
+removed operations, resource/work refusal and 200/201/geometric sizes. Tests
+are uncompiled/unrun under the current pause; no behavior or RSS claim follows.

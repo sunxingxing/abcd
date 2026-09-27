@@ -321,9 +321,33 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
   if (scope == ValueSourceScope::kConditionalValues) {
     const auto position = lookup->Find(method.offset);
     if (!position) return Refused(output, receipt, InspectionError::kLookup);
-    const auto prepared = ReadFunctionValues(file, header, index, *position, identity, InputCaptureMode::kConditional);
     nlohmann::json report{{"source_complete", false}, {"executable", false},
         {"conditional", true}, {"method", method.offset.value}};
+    // One diagnostic method per invocation. Family callers reuse this record
+    // context rather than scanning packaging/record metadata for every child.
+    std::optional<RecordModuleContext> modules;
+    const auto owner = std::find_if(index.records.begin(), index.records.end(),
+        [&](const abc::RecordInfo& record) { return record.offset == method.owner_offset; });
+    if (owner != index.records.end()) {
+      const auto packaging = abc::DetectFilePackaging(file, header, index);
+      if (const auto* packed = std::get_if<abc::FilePackaging>(&packaging)) {
+        auto context = ReadRecordModuleContext(file, header, index, *owner, *packed);
+        if (auto* ready = std::get_if<RecordModuleContext>(&context)) modules = std::move(*ready);
+        else {
+          const auto& failure = std::get<RecordModuleFailure>(context).reason;
+          report["module_context_failure"] = failure.index();
+          std::visit([&](const auto& error) {
+            using T = std::decay_t<decltype(error)>;
+            if constexpr (std::is_same_v<T, RecordModuleError>)
+              report["module_context_error"] = static_cast<unsigned>(error);
+            else report["module_context_error"] = static_cast<unsigned>(error.kind);
+          }, failure);
+        }
+      } else report["module_packaging_error"] = static_cast<unsigned>(std::get<abc::AttributeFailure>(packaging).kind);
+    }
+    report["module_context_ready"] = modules.has_value();
+    const auto prepared = ReadFunctionValues(file, header, index, *position, identity,
+        InputCaptureMode::kConditional, {}, modules ? &*modules : nullptr);
     if (const auto* function = std::get_if<FileFunction>(&prepared)) {
       report["values_prepared"] = true;
       report["capture_occurrences"] = function->input.Captures().size();
@@ -331,10 +355,35 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
       report["operations"] = function->values.graph.ops.size();
       report["cells"] = function->values.cells ? function->values.cells->cells.size() : 0;
       report["work_revision"] = function->values.graph.revision.value;
+      report["module_reads_resolved"] = function->module_reads.has_value();
+      if (function->module_reads) {
+        report["module_reads"] = nlohmann::json::array();
+        for (const auto& binding : function->module_reads->bindings) {
+          nlohmann::json read{{"operation", binding.operation.value},
+              {"slot", binding.read.slot.value}, {"space", static_cast<unsigned>(binding.read.space)},
+              {"target_variant", binding.target.index()}};
+          std::visit([&](const auto& target) {
+            using T = std::decay_t<decltype(target)>;
+            read["local_name_entity"] = target.local.value;
+            if constexpr (!std::is_same_v<T, LocalModuleBinding>) {
+              read["request"] = target.request.value;
+              read["specifier_entity"] = target.specifier.value;
+            }
+            if constexpr (std::is_same_v<T, ImportedModuleBinding>)
+              read["imported_name_entity"] = target.imported.value;
+          }, binding.target);
+          report["module_reads"].push_back(std::move(read));
+        }
+      }
     } else {
       report["values_prepared"] = false;
       const auto& failure = std::get<FunctionFileFailure>(prepared);
       report["failure_variant"] = failure.index();
+      if (const auto* module = std::get_if<ModuleReadFailure>(&failure)) {
+        report["module_read_failure"] = module->reason.index();
+        std::visit([&](const auto& error) { report["module_read_error"] = static_cast<unsigned>(error); }, module->reason);
+        if (module->pc) report["pc"] = module->pc->value;
+      }
       if (const auto* value = std::get_if<FunctionValueFailure>(&failure)) {
         report["reason"] = ValueRouteErrorName(value->cause.reason);
         if (value->cause.pc) report["pc"] = value->cause.pc->value;

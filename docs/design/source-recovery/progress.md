@@ -664,6 +664,29 @@ space/slot tampering and retained source refusal/order checks. They remain
 uncompiled/unrun; no generated JS, benchmark or RSS work ran. Rules remain 23
 because module-read executable admission has not expanded.
 
+### T07/P3 Record-Owned Module Binding
+
+`ReadFunctionValues` now optionally consumes an immutable record module context
+and retains resolved module reads with the working graph. The resolver maps
+external slots to regular/namespace entries and request/name entities; local
+slots follow v7 adjacent decoded-name grouping rather than raw export-row
+indices. It preserves space/slot identity even for nonadjacent equal names.
+All module operations and guards remain unchanged. No module AST/printer gate
+is opened, and this metadata step does not complete the structural/source gate.
+
+The conditional diagnostic uses this same engine API and reports each resolved
+binding separately from source completeness. Family callers can reuse a context
+without rescanning packaging/record metadata per child. See `module-reads.md`
+for provenance, costs, ownership, unresolved TDZ/live-binding obligations and
+regression specifications. Tests remain uncompiled/unrun; no JS or RSS work.
+
+Production `abc_semantic` and `abc_structure` builds exited 0. ABC-only P3 7366
+still prepares 85 operations at revision 1 and now resolves operation 41 as
+external slot 1, request 0 (specifier entity 20695, local/imported entity 12555).
+Immersive 21082 still prepares 21 operations with an empty module-read census.
+Both diagnostics exit 1 with source_complete=false/executable=false. These are
+binding/preparation observations, not source, behavior or whole-corpus evidence.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,
