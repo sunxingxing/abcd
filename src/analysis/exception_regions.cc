@@ -35,11 +35,14 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
       spent += items.capacity() * sizeof(T);
     };
     std::vector<TryId> stack;
+    std::vector<std::optional<CatchScope>> entry_parents;
     auto& order = result.source_order;
     reserve(result.regions, body.tries.size());
     reserve(result.scopes, count);
     reserve(order, body.tries.size());
     reserve(stack, body.tries.size());
+    reserve(entry_parents, body.tries.size());
+    entry_parents.resize(body.tries.size());
     result.scopes.resize(count);
     const auto code_end = std::uint64_t(body.instructions.back().offset.value) +
                           body.instructions.back().decoded.size;
@@ -106,6 +109,17 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
       }
       stack.push_back(id);
     }
+    // Several nested protected scopes may begin at the same instruction. A
+    // normal edge can enter all of them at once, but never a handler scope.
+    // Outer-first memoization avoids walking a deep parent chain per CFG edge.
+    for (const auto id : order) {
+      charge();
+      const auto& region = result.regions[id.value];
+      entry_parents[id.value] = region.parent;
+      if (region.parent && region.parent->part == CatchPart::kProtected &&
+          result.regions[region.parent->region.value].body.begin == region.body.begin)
+        entry_parents[id.value] = entry_parents[region.parent->region.value];
+    }
     stack.clear();
     std::size_t next = 0;
     for (std::size_t i = 0; i < count; ++i) {
@@ -159,8 +173,9 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
         const auto scope = result.scopes[target];
         if (!scope || Contains(range(*scope), source)) continue;
         const auto& region = result.regions[scope->region.value];
+        const auto entry_parent = entry_parents[scope->region.value];
         if (scope->part == CatchPart::kProtected && target == region.body.begin.value &&
-            (!region.parent || Contains(range(*region.parent), source))) continue;
+            (!entry_parent || Contains(range(*entry_parent), source))) continue;
         return fail(Error::kNormalEntry, pc);
       }
     }

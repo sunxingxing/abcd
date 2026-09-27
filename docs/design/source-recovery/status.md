@@ -42,6 +42,24 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- T09 新增通用值 IR 的 ExceptionPlan 与独立对照验证：重新核对原始相位导入、
+  保护区/handler 范围及优先级，按原 TryId 关联 Before 入口和 CatchDefinition。
+  普通边、抛出边、Catch→handler 边采用不同类型；catch 载荷不能冒充函数体局部值。
+  计划只描述异常区域和边，不改变 CFG/SSA，不清空 phases，不授予源码发布能力。
+  构建与校验共用有界预算；一次索引 phase/definition，避免逐 handler 扫值表。
+  嵌套测试暴露并修正了原区域校验对“同一入口开始的多层 try”的误拒绝；入口祖先
+  按外到内顺序预计算，不在每条边上遍历祖先。普通跳入 catch 仍明确拒绝。
+  新测试先在未实现计划处运行失败，再覆盖三个 profile、旧局部值、异常再抛出、
+  200/201/402 前导指令与嵌套区域、错误载荷/入口/范围顺序/边分类/修订/PC 及精确预算。
+  14/14 定向回归通过：exception_plan、throw_value、phased_value_import/flow、
+  control_plan、function_tree、evaluation_plan、async_semantics、exception_arguments、
+  exception_dispatch、constant_group 及 pasteboard/Immersive/call 三个现有源码切片；
+  abc_semantic 构建通过。未运行全量测试、RSS 或基准。
+  **尚未增加 try/catch 源码输出覆盖**，规则仍为 44；下一步将本计划接入共同的
+  求值/绑定/控制树：异常边复制必须在抛出操作前落位，catch 参数进入真实 handler
+  scope，再接共享 TryCatch AST、printer 与位置验证。finally/async owner 仍未完成，
+  不以区域计划测试替代 group 1 或全 ISA 的端到端验收。
+
 - 显式 THROW_PREF_NONE 已端到端接入普通无 handler 主干：ValueThrow/kThrownValue
   保留原值，ThrowStmt 进入通用 AST、独立结构/语义验证、printer 和 PC→语句位置映射。
   文件来源的三个 profile 新增 39 个生成函数，覆盖常量/严格 this 抛出、回调副作用、
