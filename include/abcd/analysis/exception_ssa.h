@@ -25,6 +25,7 @@ class ExceptionSsa {
     return registers_.Write(InstructionId{node.value});
   }
   [[nodiscard]] std::span<const RegisterValue> Values() const { return registers_.Values(); }
+  [[nodiscard]] std::span<const PhiInput> AllInputs() const { return registers_.AllInputs(); }
   [[nodiscard]] std::span<const PhiInput> Inputs(SsaValueId phi) const {
     return registers_.Inputs(phi);
   }

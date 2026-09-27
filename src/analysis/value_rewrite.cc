@@ -227,7 +227,8 @@ std::variant<ValueRewriteProof, ValueRewriteError> VerifyValueRewrite(
     for (std::size_t i = 0; i < before.exceptional_exits.size(); ++i) {
       quota.Work();
       const auto& a = before.exceptional_exits[i]; const auto& b = after.exceptional_exits[i];
-      Require(a.op == b.op && a.origin == b.origin && a.before_throw == b.before_throw,
+      Require(a.op == b.op && a.origin == b.origin && a.before_throw == b.before_throw &&
+              a.handler == b.handler,
               Error::kEffect);
     }
     quota.Work(before.input.sites.size());

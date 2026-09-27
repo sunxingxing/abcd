@@ -26,5 +26,9 @@ enum class OperandError : std::uint8_t {
 [[nodiscard]] std::variant<ValueOperands, OperandError> DescribeValueOperands(
     const SemanticInstruction& instruction);
 [[nodiscard]] ValueOperation ImportValueOperation(const SemanticOperation& operation);
+[[nodiscard]] EntryDefinition ImportEntryValue(const ScalarSlot& slot, const abc::FrameLayout& frame);
+[[nodiscard]] bool MatchesEntryValue(const EntryDefinition& entry, const ScalarSlot& slot,
+                                    const abc::FrameLayout& frame);
+[[nodiscard]] bool MatchesValueLiteral(const ScalarValue& expected, const ValueOperand& actual);
 }  // namespace abcd::analysis
 #endif

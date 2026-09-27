@@ -6,8 +6,7 @@
 #include "operand_view.h"
 
 namespace abcd::analysis {
-namespace {
-bool EntryMatches(const EntryDefinition& entry, const ScalarSlot& slot,
+bool MatchesEntryValue(const EntryDefinition& entry, const ScalarSlot& slot,
                   const abc::FrameLayout& frame) {
   const auto* reg = std::get_if<abc::RegisterId>(&slot);
   if (reg) {
@@ -25,7 +24,7 @@ bool EntryMatches(const EntryDefinition& entry, const ScalarSlot& slot,
   if (!unknown || unknown->slot.index() != slot.index()) return false;
   return !reg || *reg == std::get<abc::RegisterId>(unknown->slot);
 }
-bool LiteralMatches(const ScalarValue& expected, const ValueOperand& actual) {
+bool MatchesValueLiteral(const ScalarValue& expected, const ValueOperand& actual) {
   return std::visit([&](const auto& value) {
     using T = std::decay_t<decltype(value)>;
     if constexpr (std::is_same_v<T, SpecialValue>) {
@@ -38,8 +37,6 @@ bool LiteralMatches(const ScalarValue& expected, const ValueOperand& actual) {
     } else return false;
   }, expected);
 }
-}
-
 std::size_t ImportedValueScratch(std::size_t uses) {
   return std::max(uses, sizeof(OperandView));
 }
@@ -109,7 +106,7 @@ std::optional<ValueImportFailure> VerifyImportedValues(
       if (!phi || phi->block.value != origin->block.value) return fail(Error::kInvalidPhi);
     } else {
       const auto* entry = std::get_if<EntryDefinition>(&graph.values[v].origin);
-      if (!entry || !EntryMatches(*entry, input.slot, frame)) return fail(Error::kInputMismatch);
+      if (!entry || !MatchesEntryValue(*entry, input.slot, frame)) return fail(Error::kInputMismatch);
     }
   }
   std::size_t read_index = 0;
@@ -145,7 +142,7 @@ std::optional<ValueImportFailure> VerifyImportedValues(
     if (op.exceptional != ExceptionalCompletion::kImpossible) {
       if (exit_index >= graph.exceptional_exits.size()) return fail(Error::kInputMismatch, input.pc);
       const auto& exit = graph.exceptional_exits[exit_index++];
-      if (exit.op.value != i || exit.origin != op.origin || exit.before_throw != op.before_throw)
+      if (exit.op.value != i || exit.origin != op.origin || exit.before_throw != op.before_throw || exit.handler)
         return fail(Error::kInputMismatch, input.pc);
     }
     const auto described = OperandView::Build(input, {budget.bytes, work});
@@ -175,7 +172,7 @@ std::optional<ValueImportFailure> VerifyImportedValues(
         if (!value || value->value != read.value.value || read.instruction.value != i ||
             read.ordinal != *expected.read_ordinal || use.input->site.value != i ||
             use.input->ordinal != read.ordinal) return fail(Error::kOperandMismatch, input.pc);
-      } else if (use.input || !LiteralMatches(expected.value, use.operand)) {
+      } else if (use.input || !MatchesValueLiteral(expected.value, use.operand)) {
         return fail(Error::kOperandMismatch, input.pc);
       }
     }

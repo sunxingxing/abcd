@@ -107,6 +107,11 @@ void KeepObservable() {
   AppendUse(graph, OpId{2}, ValueId{1}, OperandRole::kReturnValue);
   graph.blocks[0].op_count = 3;
   graph.exceptional_exits.push_back({{1}, {1}, LanguageEffect::kHeapRead});
+  auto changed = graph;
+  changed.exceptional_exits.front().handler = ValueHandler{{{0}, {0}, {0}}, {0}};
+  const std::array<ValueId, 3> identities{ValueId{0}, ValueId{1}, ValueId{2}};
+  Check(std::get<ValueRewriteError>(VerifyValueRewrite(graph, changed, identities)) ==
+      ValueRewriteError::kEffect);
   const auto result = SimplifyValues(graph, IrRevision{0});
   const auto* stats = std::get_if<ValueSimplifyStats>(&result);
   Check(stats && stats->removed_ops == 1 && stats->replaced_uses == 2);

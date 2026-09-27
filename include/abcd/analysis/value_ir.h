@@ -3,6 +3,7 @@
 
 #include "abcd/abc/frame_layout.h"
 #include "abcd/analysis/exception_phase.h"
+#include "abcd/analysis/exception_dispatch.h"
 #include "abcd/analysis/semantic_ir.h"
 #include "abcd/analysis/value_kinds.h"
 
@@ -235,12 +236,18 @@ struct WorkBlock {
   EdgeId first_edge;
   std::uint8_t edge_count;
 };
+struct ValueHandler {
+  DispatchTarget dispatch;
+  WorkBlockId entry;
+  bool operator==(const ValueHandler&) const = default;
+};
 // No handlers in normal import. Each throwing operation has its own exit;
 // its normal result is unavailable on this exit, even within one basic block.
 struct ValueExceptionalExit {
   OpId op;
   OriginId origin;
   LanguageEffect before_throw;
+  std::optional<ValueHandler> handler;
 };
 struct InputCorrespondence {
   std::vector<std::optional<OpId>> sites;

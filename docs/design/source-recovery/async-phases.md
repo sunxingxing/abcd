@@ -75,10 +75,27 @@ dominator and sparse phi-input checks, but returns a distinct proof. Its private
 normal-flow adapter is topology-only, not a source lowering or effect rewrite.
 
 This proves value availability, not bytecode correspondence or handler priority.
-The eventual importer must independently match phase identities, origins,
-effects, exceptional exits, environments and capture owners to its unchanged
-inputs. Explicit always-throw and unreachable phases currently reject; they
-must be addressed before claiming the full T09 importer. Ordinary import
+ImportPhasedValues now maps unchanged ExceptionFlow/ExceptionSsa into this
+model. VerifyImportedPhases independently compares phase identities, original
+PCs, operations, effects, results, every SSA read occurrence, phi inputs, entry
+ABI and value categories without rebuilding a second graph. Entry/literal
+matching and operation/operand mappings are shared with normal import.
+ExceptionSsa exposes a sequential phi-input span so neither import nor checking
+performs one graph scan or binary lookup per phi. InputRead remains an original
+instruction coordinate; ValuePhaseSite retains the separate phase coordinate.
+
+ValueExceptionalExit retains an optional ValueHandler containing the selected
+TryId, HandlerId, handler PC and Catch block, including the distinction from
+propagation to the caller. Normal input correspondence refuses this handler
+metadata and rewrite checking cannot change it. The low-level phase input
+bundle borrows the same immutable flow/SSA/environment/value analyses, validated
+input proof and frame. Import rechecks the input proof under its shared budget;
+this does not discharge its host/module/capture premises or turn an environment
+coordinate into a lexical binding/source-scope proof.
+
+Explicit always-throw and unreachable phases currently reject; they must be
+addressed before claiming the full T09 importer. Normalized resume origins
+also reject until an owner-certified lowering is integrated. Ordinary import
 correspondence, simplification, rewrite, evaluation and control planning reject
 phased graphs until their exception-aware integration exists. Removing the
 phase table cannot turn Commit results or Catch definitions into normal values.
@@ -92,6 +109,17 @@ phis, normal handler entry bypassing Catch, wrong Commit/edge/handler metadata,
 normal-only refusal, exact work and zero-memory limits, and 200/201/402 phase
 pairs both straight-line and cyclic. These are synthetic common-IR tests,
 not new executable exception or async source coverage.
+
+`phased_value_import_test` adds decoded ABC -> exception graph -> SSA -> input
+proof -> common value IR -> independent correspondence coverage. It includes
+parameter snapshots with 0/1/200/201/402 formals under all three admitted
+profiles, normal handler entry phis, environment allocation/pop surrounding a
+snapshot, a throwing property read whose catch sees the old local, and forged
+PC/phase/effect/handler/domain/read/frame inputs. The checker has exact work
+boundary tests; the importer refuses zero work/memory. Import construction is
+O(N+U+V+E+S log V), plus the shared availability verifier's dominator/phi bounds;
+storage is O(N+U+V+E) plus that verifier's scratch. Inputs remain caller-admitted.
+These synthetic inputs do not prove full source or corpus completion.
 
 Argument snapshots now compose with this phase graph: BuildExceptionFlow takes
 the same optional FrameLayout as normal lifting and retains a value copy.
@@ -112,10 +140,10 @@ boundaries. A lexical-prelude fixture checks that successful pop restores the
 outer environment while snapshot failure reaches Catch in the inner one.
 No exception AST or executable async receipt follows from these input proofs.
 
-1. Follow T09 with a phase-indexed value import: preserve Before, Commit, Catch,
-   exceptional edges, original instruction identities and handler priority.
-   Do not index catch definitions as normal instruction results or reuse normal
-   environment coordinates for phased capture/module proofs.
+1. Complete T09 beyond the initial phase importer: explicit throw/unreachable
+   phases, completion, exception-aware region AST and environment/capture/module
+   ownership. Do not index catch definitions as normal instruction results or
+   reuse normal environment coordinates for phased capture/module proofs.
 2. Prove callable creation identity and the state/promise relationship through
    SSA copies and joins. Reject escaping state, unrelated or merged owners,
    repeated settlement, bypassed settlement and mismatched returned promises

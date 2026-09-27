@@ -508,6 +508,10 @@ int main() {
         std::get<ValueId>(stored.operand) ==
         std::get<ValueId>(graph.uses[graph.ops[2].first_use.value].operand));
     auto changed = graph;
+    test::Check(!changed.exceptional_exits.empty());
+    changed.exceptional_exits.front().handler = ValueHandler{{{0}, {0}, {0}}, {0}};
+    test::Check(VerifyImportedValues(changed, input, proof, frame)->kind == ValueImportError::kInputMismatch);
+    changed = graph;
     changed.ops[1].operation = ValueNamedWrite{write.name};
     test::Check(VerifyImportedValues(changed, input, proof, frame)->kind == ValueImportError::kInputMismatch);
     changed = graph;

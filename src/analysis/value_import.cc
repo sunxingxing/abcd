@@ -183,6 +183,9 @@ void LinkUse(ValueProgram& graph, OperandUse use) {
 ValueOperation ImportValueOperation(const SemanticOperation& operation) {
   return Operation(operation);
 }
+EntryDefinition ImportEntryValue(const ScalarSlot& slot, const abc::FrameLayout& frame) {
+  return Entry(slot, frame);
+}
 
 std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
     const abc::MethodBody& body, const SemanticMethod& method,
