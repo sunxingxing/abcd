@@ -34,6 +34,9 @@ struct HostArgumentSnapshotBinding {
   std::u16string_view name;
   ArgumentSnapshotAbi abi;
 };
+// Explicit output contract, not an ABC proof: recovered callable text may
+// differ under Function.prototype.toString. Other behavior is not relaxed.
+enum class CallableTextPolicy : std::uint8_t { kUnspecified, kRecovered };
 struct GlobalScope {
   // Caller-proven complete ASCII outer source bindings, sorted by byte name;
   // non-ASCII names cannot collide with admitted ASCII global references.
@@ -58,6 +61,7 @@ struct GlobalScope {
   std::span<const std::string_view> import_names{};
   const HostSymbolBinding* symbol_binding = nullptr;
   const HostArgumentSnapshotBinding* argument_snapshot_binding = nullptr;
+  CallableTextPolicy callable_text = CallableTextPolicy::kUnspecified;
 };
 
 struct RealmBindingView {

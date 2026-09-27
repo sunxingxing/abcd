@@ -194,8 +194,55 @@ method name/length/nonconstructibility, omitted versus supplied undefined,
 non-undefined values, extra tail and host-binding refusal. This does not turn
 synthetic fixtures into application-corpus or Ark VM differential evidence.
 
-Still open: arrow-owned invocation carriers and their ABI/name/constructibility
-proofs; broader method/constructor/async/generator and mixed-default/rest combinations;
+## Arrow Invocation Carriers (Rules 42)
+
+`FunctionTree::invocation` separates the recovered source form from the original
+`CallableKind`. An arrow containing a snapshot can select `kArrowMethod`: the
+unified printer emits a computed-name concise method and extracts it from its
+unexposed object. The result has its own native arguments carrier, the original
+name and declared length, no own prototype, and no construct capability. It is
+NOT a change of the ABC callable kind to an ordinary function. Non-snapshot
+arrows retain arrow syntax.
+
+The structure checker requires a strict arrow, creation-proven name, an actual
+snapshot and the existing resource-failure exclusion. It forbids `ThisExpr` for
+this form. Independent ABI verification continues to reject dynamic receiver,
+LDTHIS and new.target observations; lexical captures remain explicit symbols/
+cells owned by the original enclosing function. The current source AST cannot
+express direct eval or super, so the method's unexposed home object cannot be
+observed. Adding either feature must re-audit this lowering, not simply reuse
+the carrier. LDFUNCTION self identity retains its existing private creation
+binding instead of referring to the temporary object or its method name.
+
+The form is conditional, not enabled by the default destination contract.
+Publication requires BOTH the exact snapshot factory and explicit
+`CallableTextPolicy::kRecovered`. Missing/revoked text policy refuses with typed
+`kCallableText` before output. Positions record `invocation_form: arrow_method`
+and `callable_text_policy: recovered`; the scope check is repeated on embedding.
+This policy permits different Function.prototype.toString text, not differences
+in calls, parameters, values, effects, constructibility or capture ownership.
+The user's engine-wide text-reflection decision is pending; no implicit V2
+extension or CLI capability was introduced.
+
+Pinned evidence: `js_function_kind.h` and `js_function.h` distinguish arrow
+kinds from constructor/prototype kinds; `builtins/builtins_function.cpp`'s
+FunctionPrototypeToString obtains embedded debug source (or "Cannot get source
+code"), so exact text reflection must not be inferred from the call ABI. This
+is also a cross-cutting limitation of reconstructed source, not solved for other
+callables by this carrier. Node execution below is not an Ark differential run.
+
+The synthetic matrix now includes the ordinary and arrow variants of read,
+slot write, repeated snapshots, branch, loop and LDFUNCTION self observations,
+plus the three class-method variants (51 total). It checks object identity,
+actual argument counts/tails, name/length, own keys/prototype, caller/arguments
+throws, bind constructibility, exact snapshot PCs and changed-destination refusal.
+Forged carrier kinds, missing names and dynamic receiver observations refuse.
+Selection and structure validation add bounded linear expression scans and one
+typed field per tree; ABI and destination checks reuse their existing passes.
+No CFG, dominance, scope-parent or capture-ownership relation is rewritten.
+
+Still open: default/rest and captured-family combinations for arrow carriers;
+broader method/constructor/async/generator and mixed-default/rest combinations;
 host integration in actual applications and multi-application runtime evidence.
 Without the explicit factory the normal CLI continues to refuse snapshots.
 The opcode family and group 1 are not globally complete.

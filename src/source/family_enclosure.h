@@ -7,7 +7,7 @@
 namespace abcd::source {
 enum class FamilyEnclosureError : std::uint8_t {
   kLayout, kStructure, kShadowedGlobal, kResourceLimit, kWorkLimit,
-  kMissingContext, kShadowedModule, kModuleBinding, kMissingModuleContext
+  kMissingContext, kShadowedModule, kModuleBinding, kMissingModuleContext, kCallableText
 };
 struct FamilyEnclosureFailure {
   FamilyEnclosureError kind;

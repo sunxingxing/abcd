@@ -4,7 +4,7 @@ import {execFileSync} from 'node:child_process';
 const cases = process.argv.slice(2).flatMap(executable =>
   execFileSync(executable, ['--snapshot-json'], {encoding: 'utf8'})
     .trim().split('\n').map(line => JSON.parse(line)));
-assert.equal(cases.length, 23);
+assert.equal(cases.length, 51);
 
 // Test-only embedding capability for the pinned runtime contract. Retained
 // intrinsics avoid public prototype lookups; no input carrier escapes.
@@ -90,7 +90,18 @@ for (const item of cases) {
   const fn = Function('factory', `"use strict"; const snapshotArguments = factory; return ${expression};`)(factory);
   assert.equal(fn.length, item.default_parameter ? 0 : item.parameters);
   assert.equal(fn.name, item.method ? 'run' : 'child');
-  assert.equal(Object.hasOwn(fn, 'prototype'), !item.method);
+  assert.equal(Object.hasOwn(fn, 'prototype'), !item.method && !item.arrow);
+  assert.equal(item.positions.invocation_form, item.arrow ? 'arrow_method' : 'declared');
+  if (item.arrow) {
+    assert.equal(item.positions.callable_text_policy, 'recovered');
+    assert.equal(Object.getPrototypeOf(fn), Function.prototype);
+    assert.deepEqual(Reflect.ownKeys(fn), ['length', 'name']);
+    for (const name of ['caller', 'arguments']) assert.throws(() => fn[name], TypeError);
+    const bound = fn.bind({ignored: true});
+    assert.equal(bound.length, fn.length);
+    assert.equal(bound.name, `bound ${fn.name}`);
+    assert.throws(() => Reflect.construct(bound, []), TypeError);
+  }
   const counts = new Set([0, 1, Math.max(0, item.parameters - 1), item.parameters, item.parameters + 2]);
   for (const count of counts) {
     const values = Array.from({length: count}, (_, i) => i === 0 ? undefined : {ordinal: i});
@@ -99,6 +110,7 @@ for (const item of cases) {
     assert.equal(factoryCalls - before, item.loop_snapshots ? 3 : item.nested_snapshot ? 2 : 1);
     const second = apply(fn, null, values);
     const expected = values.slice();
+    if (count && item.self_parameter) expected[0] = fn;
     if (count && item.default_parameter) expected[0] = -1;
     if (count && (item.writes_parameter || item.branch_parameter)) expected[0] = 37;
     if (count && item.nested_snapshot) {
@@ -119,7 +131,7 @@ for (const item of cases) {
       assert.notEqual(second[0], 'changed');
       assert.equal(values[0], undefined);
     }
-    if (item.method) assert.throws(() => Reflect.construct(fn, values), TypeError);
+    if (item.method || item.arrow) assert.throws(() => Reflect.construct(fn, values), TypeError);
     else {
       const constructed = Reflect.construct(fn, values);
       assert.equal(Object.prototype.toString.call(constructed), '[object Arguments]');

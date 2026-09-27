@@ -16,6 +16,14 @@ class AbiBuilder {
       : graph_(graph), tree_(tree), frame_(frame), initial_(budget), remaining_(budget) {}
   ConstructedAbi Build(std::uint32_t length) {
     Require(graph_.revision == tree_.value_revision && graph_.cfg_revision == tree_.cfg_revision, Error::kRevision);
+    switch (tree_.invocation) {
+      case InvocationForm::kDeclared: break;
+      case InvocationForm::kArrowMethod:
+        Require(tree_.callable == CallableKind::kArrow && tree_.inferred_name &&
+            tree_.strictness == Strictness::kStrict, Error::kSyntax);
+        break;
+      default: throw Error::kSyntax;
+    }
     Require(tree_.parameters.size() == frame_.parameters, Error::kParameter);
     if (tree_.self)
       Require((tree_.callable == CallableKind::kFunction ||
@@ -94,6 +102,7 @@ class AbiBuilder {
     Require(tree_.callable != CallableKind::kArrow ||
         (result_.receiver.operands == 0 && result_.frame_receiver_reads == 0 &&
          result_.receiver.references == 0), Error::kReceiver);
+    Require(tree_.invocation != InvocationForm::kArrowMethod || snapshot_, Error::kEntry);
     return {std::move(result_), initial_.bytes - remaining_.bytes,
             initial_.work - remaining_.work};
   }
@@ -150,9 +159,11 @@ class AbiBuilder {
     Increment(result_.receiver.references);
   }
   void Expression(ArgumentSnapshotExpr node) {
+    snapshot_ = true;
     Require(graph_.arguments && graph_.arguments->frame == frame_ &&
         node.owner == tree_.owner && tree_.strictness == Strictness::kStrict &&
-        tree_.callable != CallableKind::kArrow && node.slots.count == frame_.parameters &&
+        (tree_.callable != CallableKind::kArrow || tree_.invocation == InvocationForm::kArrowMethod) &&
+        node.slots.count == frame_.parameters &&
         ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded,
         Error::kEntry);
   }
@@ -176,6 +187,7 @@ class AbiBuilder {
   analysis::SemanticBudget initial_;
   analysis::SemanticBudget remaining_;
   FunctionAbi result_;
+  bool snapshot_ = false;
   std::vector<std::optional<std::uint32_t>> formals_;
 };
 }  // namespace

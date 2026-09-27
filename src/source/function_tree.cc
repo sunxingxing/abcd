@@ -90,6 +90,13 @@ class TreeBuilder {
     tree_.names = std::move(syntax_.names);
     tree_.texts = std::move(syntax_.texts);
     tree_.expressions = std::move(forest_.expressions);
+    if (tree_.callable == CallableKind::kArrow) {
+      for (const auto& node : tree_.expressions) {
+        Step();
+        if (std::holds_alternative<ArgumentSnapshotExpr>(node.expression))
+          tree_.invocation = InvocationForm::kArrowMethod;
+      }
+    }
     tree_.properties = std::move(forest_.properties);
     tree_.arguments = std::move(forest_.arguments);
     tree_.closure_captures = std::move(forest_.closure_captures);

@@ -29,7 +29,7 @@ using namespace abcd::analysis;
 using namespace abcd::source;
 enum class ChildBody { kEmpty, kReceiver, kCapture, kCell, kRecursive, kNestedWriter, kSnapshot };
 enum class CallerObject { kAbsent, kPrimitive, kMethod };
-enum class SnapshotCase { kRead, kWrite, kPair, kBranch, kLoop };
+enum class SnapshotCase { kRead, kWrite, kPair, kBranch, kLoop, kSelf, kReceiver };
 constexpr std::uint32_t kPool = 64, kCaller = 256, kTarget = 300, kWriter = 320,
     kRecord = 128, kCallerCode = 400, kCodePadding = 16;
 constexpr unsigned kFunctionKindShift = 8;  // Pinned dynamic method access flags.
@@ -138,7 +138,10 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
         if (snapshot_case == SnapshotCase::kWrite) {
           constexpr std::uint8_t kUpdatedValue = 37;
           target = {static_cast<std::uint8_t>(abc::Opcode::kLDAI_IMM32), kUpdatedValue, 0, 0, 0};
-        } else target = {static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS)};
+        } else if (snapshot_case == SnapshotCase::kSelf)
+          target = {static_cast<std::uint8_t>(abc::Opcode::kLDFUNCTION)};
+        else if (snapshot_case == SnapshotCase::kReceiver) target = {kLoad, kReceiver};
+        else target = {static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS)};
         target.insert(target.end(), {static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), kImplicitArguments});
       }
       target.insert(target.end(), {static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS), kReturn}); break;
@@ -230,19 +233,73 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       const auto prepared = PreparedFamily::PrepareCreated(file, header, index, lookup,
           roles, sites, range.first, identity, {Strictness::kStrict, nullptr});
       test::Check(std::holds_alternative<FamilyPrepareFailure>(prepared));
-      if (context.Callable() == CallableKind::kArrow) {
-        test::Check(std::holds_alternative<FamilyTreeFailure>(
-            std::get<FamilyPrepareFailure>(prepared).cause));
-      } else {
+      if (context.Callable() == CallableKind::kArrow && snapshot_case == SnapshotCase::kReceiver) {
+        const auto& failure = std::get<FamilyPrepareFailure>(prepared);
+        test::Check(std::holds_alternative<FamilyTreeFailure>(failure.cause));
+        test::Check(std::get<FunctionTreeError>(std::get<FamilyTreeFailure>(failure.cause).cause) ==
+            FunctionTreeError::kSemantics);
+        test::Check(unlink(path) == 0);
+        return;
+      }
+      {
         test::Check(std::holds_alternative<FamilyEnclosureFailure>(
             std::get<FamilyPrepareFailure>(prepared).cause));
         const HostArgumentSnapshotBinding factory{u"snapshotArguments", ArgumentSnapshotAbi::kV7CurrentSlots};
         GlobalScope globals{}; globals.argument_snapshot_binding = &factory;
         const FamilyDestination destination{Strictness::kStrict, &globals};
+        if (context.Callable() == CallableKind::kArrow) {
+          const auto denied = PreparedFamily::PrepareCreated(file, header, index, lookup,
+              roles, sites, range.first, identity, destination);
+          test::Check(std::get<FamilyEnclosureFailure>(std::get<FamilyPrepareFailure>(denied).cause).kind ==
+              FamilyEnclosureError::kCallableText);
+          globals.callable_text = CallableTextPolicy::kRecovered;
+        }
         auto complete = PreparedFamily::PrepareCreated(file, header, index, lookup,
             roles, sites, range.first, identity, destination);
         test::Check(std::holds_alternative<PreparedFamily>(complete));
         const auto& ready = std::get<PreparedFamily>(complete);
+        if (context.Callable() == CallableKind::kArrow) {
+          const auto& tree = ready.Family().members[0].tree;
+          globals.callable_text = CallableTextPolicy::kUnspecified;
+          std::ostringstream denied;
+          test::Check(std::holds_alternative<FamilyPrepareFailure>(ready.PrintDraft(destination, denied)) &&
+              denied.str().empty());
+          globals.callable_text = CallableTextPolicy::kRecovered;
+          test::Check(tree.callable == CallableKind::kArrow && tree.invocation == InvocationForm::kArrowMethod);
+          auto forged = tree; forged.invocation = InvocationForm::kDeclared;
+          test::Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(forged)));
+          test::Check(std::holds_alternative<FunctionAbiError>(
+              BuildFunctionAbi(graph, forged, context.Frame(), context.Length())));
+          forged = tree; forged.callable = CallableKind::kFunction;
+          test::Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(forged)));
+          test::Check(std::holds_alternative<FunctionAbiError>(
+              BuildFunctionAbi(graph, forged, context.Frame(), context.Length())));
+          forged = tree; forged.inferred_name.reset();
+          test::Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(forged)));
+          if (parameters != 0) {
+            forged = tree;
+            for (const auto& node : tree.expressions)
+              if (const auto* snapshot = std::get_if<ArgumentSnapshotExpr>(&node.expression)) {
+                const auto leaf = tree.arguments[snapshot->slots.first];
+                forged.expressions[leaf.value].expression = ThisExpr{tree.owner};
+                break;
+              }
+            test::Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(forged)));
+            test::Check(std::holds_alternative<FunctionAbiError>(
+                BuildFunctionAbi(graph, forged, context.Frame(), context.Length())));
+            if (snapshot_case == SnapshotCase::kRead) {
+              auto wrong_entry = graph;
+              bool replaced = false;
+              for (auto& value : wrong_entry.values)
+                if (auto* entry = std::get_if<EntryDefinition>(&value.origin))
+                  if (std::holds_alternative<ParameterEntry>(*entry)) {
+                    *entry = NewTargetEntry{}; replaced = true; break;
+                  }
+              test::Check(replaced && std::get<FunctionAbiError>(
+                  BuildFunctionAbi(wrong_entry, tree, context.Frame(), context.Length())) == FunctionAbiError::kEntry);
+            }
+          }
+        }
         const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
         const std::vector<ExpressionConstant> constants(graph.ops.size());
         const auto& plan = std::get<EvaluationPlan>(evaluation);
@@ -284,6 +341,8 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
             if (decoded.instructions[i].decoded.opcode == abc::Opcode::kGETUNMAPPEDARGS)
               sites.push_back({{"instruction", i}, {"pc", decoded.instructions[i].offset.value}});
           *evidence << nlohmann::json{{"source", output.str()}, {"parameters", parameters},
+              {"arrow", context.Callable() == CallableKind::kArrow},
+              {"self_parameter", snapshot_case == SnapshotCase::kSelf},
               {"writes_parameter", snapshot_case == SnapshotCase::kWrite},
               {"branch_parameter", snapshot_case == SnapshotCase::kBranch},
               {"loop_snapshots", snapshot_case == SnapshotCase::kLoop},
@@ -633,16 +692,20 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
 int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--snapshot-json") {
     for (const auto parameters : {0U, 1U, 2U, 200U, 201U}) {
-      for (const auto variant : {SnapshotCase::kRead, SnapshotCase::kWrite, SnapshotCase::kPair, SnapshotCase::kBranch, SnapshotCase::kLoop}) {
+      for (const auto variant : {SnapshotCase::kRead, SnapshotCase::kWrite, SnapshotCase::kPair, SnapshotCase::kBranch, SnapshotCase::kLoop, SnapshotCase::kSelf}) {
         if (parameters == 0 && variant != SnapshotCase::kRead) continue;
         if (parameters < 2 && variant == SnapshotCase::kLoop) continue;
         Run(2, abc::FunctionKind::kBaseConstructor, ChildBody::kSnapshot, false,
+            static_cast<std::uint8_t>(parameters), CallerObject::kAbsent, variant, &std::cout);
+        Run(2, abc::FunctionKind::kArrow, ChildBody::kSnapshot, false,
             static_cast<std::uint8_t>(parameters), CallerObject::kAbsent, variant, &std::cout);
       }
     }
     return 0;
   }
   test::Check(argc == 1);
+  Run(2, abc::FunctionKind::kArrow, ChildBody::kSnapshot, false, 1,
+      CallerObject::kAbsent, SnapshotCase::kReceiver);
   for (const auto kind : {abc::FunctionKind::kBaseConstructor, abc::FunctionKind::kArrow})
     for (const auto parameters : {0U, 1U, 200U, 201U})
       Run(2, kind, ChildBody::kSnapshot, false, static_cast<std::uint8_t>(parameters));

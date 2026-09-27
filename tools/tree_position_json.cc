@@ -52,6 +52,11 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
   output << "{\"unit\":\"utf8_byte\",\"value_revision\":" << printed.value_revision.value
          << ",\"cfg_revision\":" << printed.cfg_revision.value << ",\"origins\":";
   Array(output, tree.origins, Origin);
+  switch (tree.invocation) {
+    case InvocationForm::kDeclared: output << ",\"invocation_form\":\"declared\""; break;
+    case InvocationForm::kArrowMethod:
+      output << ",\"invocation_form\":\"arrow_method\",\"callable_text_policy\":\"recovered\""; break;
+  }
   if (printed.argument_snapshot_binding) {
     const auto& binding = *printed.argument_snapshot_binding;
     std::string_view abi;

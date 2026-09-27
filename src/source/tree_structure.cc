@@ -77,6 +77,21 @@ class StructureCheck {
   }
   std::size_t Run() {
     CheckCallable(tree_);
+    switch (tree_.invocation) {
+      case InvocationForm::kDeclared: break;
+      case InvocationForm::kArrowMethod: {
+        RequireTree(tree_.callable == CallableKind::kArrow && tree_.strictness == Strictness::kStrict &&
+            tree_.inferred_name && ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded,
+            Error::kUnsupportedSyntax);
+        bool snapshot = false;
+        for (const auto& node : tree_.expressions) {
+          budget_.Step(); snapshot |= std::holds_alternative<ArgumentSnapshotExpr>(node.expression);
+        }
+        RequireTree(snapshot, Error::kUnsupportedSyntax);
+        break;
+      }
+      default: throw Error::kUnsupportedSyntax;
+    }
     if (tree_.inferred_name) {
       RequireTree(tree_.inferred_name->value < tree_.names.size(), Error::kName);
       RequireTree((tree_.callable == CallableKind::kFunction ||
@@ -214,7 +229,8 @@ class StructureCheck {
       } else if constexpr (std::is_same_v<T, RealmObjectExpr> || std::is_same_v<T, SymbolConstructorExpr>) {
         // Binding selection belongs to the actual publication destination.
       } else if constexpr (std::is_same_v<T, ThisExpr>) {
-        RequireTree(expression.owner == tree_.owner, Error::kBinding);
+        RequireTree(expression.owner == tree_.owner && tree_.invocation != InvocationForm::kArrowMethod,
+            Error::kBinding);
       } else if constexpr (std::is_same_v<T, FunctionExpr>) {
         RequireTree(expression.child != tree_.owner && next_function_ < functions_.size(), Error::kOwnership);
         functions_[next_function_++] = expression.child;
@@ -240,7 +256,7 @@ class StructureCheck {
                     Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, ArgumentSnapshotExpr>) {
         RequireTree(expression.owner == tree_.owner && tree_.strictness == Strictness::kStrict &&
-            tree_.callable != CallableKind::kArrow &&
+            (tree_.callable != CallableKind::kArrow || tree_.invocation == InvocationForm::kArrowMethod) &&
             ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kBinding);
         RequireTree(expression.slots.first <= tree_.arguments.size() &&
             expression.slots.count <= tree_.arguments.size() - expression.slots.first &&

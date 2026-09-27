@@ -143,8 +143,8 @@ class TreePrinter {
       if (Tree().strictness != Strictness::kStrict ||
           (Tree().callable != CallableKind::kFunction && Tree().callable != CallableKind::kArrow &&
            Tree().callable != CallableKind::kMethod)) throw Error::kUnsupportedContext;
-      // Only the actual class root has member syntax; child creation nodes do
-      // not acquire a home object or become class methods by their spelling.
+      // Only the actual class root is a class member. An arrow method carrier
+      // retains its original callable kind and cannot observe its home object.
       if (Tree().callable == CallableKind::kMethod && !ClassRoot()) throw Error::kUnsupportedContext;
       // Naming adds a fresh, unobservable wrapper object. Its allocation-failure
       // timing is admitted only by the already-versioned resource-failure scope.
@@ -445,11 +445,16 @@ class TreePrinter {
       }
       // NamedEvaluation, not a new lexical self scope. Computed keys preserve
       // even an empty name or __proto__, without Object.defineProperty calls.
-      Append("({["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]: ");
-      Append(Tree().callable == CallableKind::kArrow ? "(" : "function(");
+      Append("({["); Quoted(Tree().names[Tree().inferred_name->value]);
+      if (Tree().invocation == InvocationForm::kArrowMethod) Append("](");
+      else {
+        Append("]: ");
+        Append(Tree().callable == CallableKind::kArrow ? "(" : "function(");
+      }
     } else Append(Tree().callable == CallableKind::kArrow ? "((" : "(function(");
     Push(EndFunction{}); Push(Statement{Tree().body, depth_});
-    Push(std::string_view(Tree().callable == CallableKind::kArrow ? ") => " : ") "));
+    Push(std::string_view(Tree().callable == CallableKind::kArrow &&
+        Tree().invocation == InvocationForm::kDeclared ? ") => " : ") "));
     Push(ParameterCursor{0});
   }
   void Run(EndFunction) {
