@@ -11,6 +11,7 @@
 #include "default_signature.h"
 #include "tree_semantics.h"
 #include "family_enclosure.h"
+#include "family_writes.h"
 
 namespace abcd::source {
 enum class FamilyTreeError : std::uint8_t {
@@ -24,15 +25,16 @@ struct FamilyTreeFailure {
       ParameterPlanError, CellDefaultError, CellDefaultProofError, DefaultBodyError,
       analysis::ValueEnvironmentError, CellError, ModuleGuardError, CaptureCellError,
       CaptureEvaluationFailure, DefaultSignatureError, TreeSemanticError,
-      FamilyEnclosureFailure> cause;
+      FamilyEnclosureFailure, FamilyWriteFailure> cause;
   // Discovery evidence only; no source initializer or erasure is authorized.
   std::optional<std::size_t> cell_default_candidates;
   bool cell_defaults_proved = false;
 };
 // Consumes a fresh, unchanged ReadFunctionFamily result and actual root context.
 // Parent-first shared construction checks each incoming capture against the
-// actual parent tree. No source receipt: root enclosure, transitive writes,
-// global/module initialization remain publication gates. Cell-default projection
+// actual parent tree. Complete-family write domains are checked against original
+// stores and residual trees, without granting immutability. No source receipt:
+// root enclosure and global/module initialization remain publication gates. Cell-default projection
 // runs before whole-family edge rebinding; other default forms still refuse.
 // Existing file/index/context/family storage is caller-admitted. This allowance
 // covers all additional construction/scratch; conservative accounting retains

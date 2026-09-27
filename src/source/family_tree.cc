@@ -115,6 +115,12 @@ class FamilyTrees {
       member_ = failure->member; Fail(*failure);
     }
     Account(std::get<FamilyEnclosure>(enclosure));
+    const auto writes = VerifyFamilyWrites(index_, family, result, left_);
+    if (const auto* failure = std::get_if<FamilyWriteFailure>(&writes)) {
+      member_ = failure->member; Fail(*failure);
+    }
+    const auto& checked_writes = std::get<FamilyWrites>(writes);
+    Account(checked_writes); result.writes = checked_writes.facts;
     result.allocated_bytes = initial_.bytes - left_.bytes;
     result.work = initial_.work - left_.work;
     return result;

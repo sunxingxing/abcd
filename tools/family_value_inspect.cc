@@ -202,6 +202,10 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
   if (const auto* tree = std::get_if<ConstructedFamily>(&constructed)) {
     report["family_tree_prepared"] = true;
     report["family_tree_members"] = tree->members.size();
+    if (tree->writes) report["family_writes"] = {
+        {"stores", tree->writes->stores}, {"captured_stores", tree->writes->captured_stores},
+        {"signature_stores", tree->writes->signature_stores}, {"creations", tree->writes->creations},
+        {"primitive_objects", tree->writes->primitive_objects}};
     report["family_tree_expressions"] = nlohmann::json::array();
     report["family_tree_signatures"] = nlohmann::json::array();
     for (const auto& member : tree->members) {
@@ -238,6 +242,9 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
       } else if constexpr (std::is_same_v<T, FamilyEnclosureFailure>) {
         report["family_tree_error"] = Code(error);
         if (error.name) report["enclosure_name"] = error.name->value;
+      } else if constexpr (std::is_same_v<T, FamilyWriteFailure>) {
+        report["family_tree_error"] = Code(error);
+        if (error.pc) report["pc"] = error.pc->value;
       } else report["family_tree_error"] = Code(error);
     }, failure.cause);
   }

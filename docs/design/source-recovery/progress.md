@@ -11,6 +11,23 @@ observations, not an up-to-date capability summary.
 
 ### File-Backed Conditional Function Families
 
+Complete-family store-domain checking now consumes original FileFamily inputs
+alongside the final common trees. It checks every original lexical store's SSA
+Language operand, requires an exact live residual store/cell assignment or a
+previously proved default-signature migration, counts live stores to reject
+unaccounted additions, and checks graph/tree/flow/cell revisions. Captured stores
+cannot be signature-elided. Every creation barrier has exactly one actual child
+or unchanged primitive-only object proof; all child capture maps and actual tree
+targets are rechecked, with a closed root. This closes the write-domain premise
+under the existing source contract, not immutability or unchanged-value snapshots.
+The retained counts are diagnostics, not a transferable executable certificate.
+ABC-only 7449 stays a four-member 1434-byte draft: 3 original stores, 1 migrated
+store, 3 child creations and 2 primitive objects. It has zero captured stores,
+so it is not behavioral evidence for mutation. Immersive 21082 has zero stores.
+The file fixture now includes a nested writer, actual capture store/read, missing
+store placement/child negatives and work limits; these specifications remain
+uncompiled/unrun. Production builds and ABC inspection do not replace execution.
+
 File-family construction now checks lexical global-name enclosure across owners.
 The existing structural traversal records an ExprId-to-ScopeId table; child
 parameter/capture/module roots attach to the parent's actual FunctionExpr scope.

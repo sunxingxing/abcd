@@ -13,6 +13,14 @@ struct FamilyMember {
   std::optional<CaptureCells> incoming;
 };
 struct FamilyParent { FamilyId function; ExprId expression; };
+// Construction diagnostics only, not transferable publication evidence.
+struct FamilyWriteFacts {
+  std::size_t stores = 0;
+  std::size_t captured_stores = 0;
+  std::size_t signature_stores = 0;
+  std::size_t creations = 0;
+  std::size_t primitive_objects = 0;
+};
 struct ConstructedFamily {
   std::vector<FamilyMember> members;
   FamilyId root;
@@ -20,6 +28,7 @@ struct ConstructedFamily {
   std::vector<FamilyId> order; // Parent before child, independent of input order.
   std::size_t allocated_bytes = 0; // Additional retained layout, not input members.
   std::uint64_t work = 0;
+  std::optional<FamilyWriteFacts> writes;
 };
 enum class FamilyError : std::uint8_t {
   kRoot, kOwner, kMissingChild, kMultipleParents, kCycle, kCapture,
