@@ -54,6 +54,11 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else if constexpr (std::is_same_v<T, analysis::ValueFrameFunction>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueGlobalObject>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueSymbolConstructor>) return EvaluationShape{kNoOperands, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueArgumentSnapshot>) {
+      EvaluationShape shape{kNoOperands, true, op.slots};
+      shape.inputs = InputEvaluation::kConditionalArgument;
+      return shape;
+    }
     else if constexpr (std::is_same_v<T, analysis::ValueString>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
       if (op.kind == analysis::CreationKind::kFunction && op.home_object == analysis::HomeObjectInput::kCurrentFunction)
@@ -81,8 +86,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     } else if constexpr (std::is_same_v<T, analysis::ValueConstruct>)
       return EvaluationShape{kConstruct, true, op.arguments};
     else {
-      static_assert(std::is_same_v<T, analysis::ValueArgumentSnapshot> ||
-                    std::is_same_v<T, analysis::ValueGuard> ||
+      static_assert(std::is_same_v<T, analysis::ValueGuard> ||
                     std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
                     std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                     std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
@@ -90,6 +94,39 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return {};
     }
   }, operation);
+}
+
+std::optional<EvaluationError> CheckArgumentSnapshot(
+    const analysis::ValueProgram& graph, const analysis::ValueOp& operation) {
+  const auto* snapshot = std::get_if<analysis::ValueArgumentSnapshot>(&operation.operation);
+  if (!snapshot) return {};
+  if (!graph.arguments || !std::holds_alternative<analysis::ArgumentWindow>(
+      analysis::ArgumentWindow::Build(graph.arguments->frame)) ||
+      snapshot->slots != graph.arguments->frame.parameters)
+    return EvaluationError::kOwnership;
+  constexpr auto kEffects = analysis::LanguageEffect::kArgumentsRead |
+      analysis::LanguageEffect::kAllocation;
+  if (operation.normal != kEffects || operation.before_throw != kEffects ||
+      operation.exceptional != analysis::ExceptionalCompletion::kMayThrow)
+    return EvaluationError::kInvalidGraph;
+  return {};
+}
+
+std::optional<EvaluationError> CheckEvaluationUse(
+    const analysis::ValueProgram& graph, const analysis::OperandUse& use,
+    const EvaluationShape& shape, std::uint32_t ordinal) {
+  const bool conditional = shape.inputs == InputEvaluation::kConditionalArgument;
+  const auto purpose = conditional ? analysis::ReadPurpose::kProtocol : analysis::ReadPurpose::kOperand;
+  if (use.purpose != purpose) return EvaluationError::kProtocolOperand;
+  if (use.role != shape.Role(ordinal)) return EvaluationError::kInvalidGraph;
+  if (conditional) {
+    const auto* value = std::get_if<analysis::ValueId>(&use.operand);
+    if (!value || value->value >= graph.values.size() || !use.input ||
+        use.input->ordinal != ordinal ||
+        !graph.values[value->value].domain.IsLanguage())
+      return EvaluationError::kInvalidGraph;
+  }
+  return {};
 }
 
 bool OrderedEvaluation(const analysis::ValueOp& op) {

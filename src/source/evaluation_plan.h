@@ -45,12 +45,18 @@ struct EvaluationPlan {
   std::vector<ModuleEvaluation> modules;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  // Invocation count/tail obligation, not a native JS arguments binding.
+  std::optional<analysis::ArgumentFrameFact> arguments;
 };
 enum class EvaluationError : std::uint8_t {
   kRevision, kInvalidGraph, kUnsupportedOperation, kProtocolOperand, kLivePhi,
   kOwnership, kOrder, kUnavailableValue, kWorkLimit, kResourceLimit
 };
 enum class ReferenceBoundary : std::uint8_t { kNone, kBeforeStoredValue };
+// ConditionalArgument reads a declared slot only when ordinal < actual count.
+// A later AST must bind that count and the extra tail to this invocation; this
+// scheduling mode never authorizes an eager call-argument array or rest rewrite.
+enum class InputEvaluation : std::uint8_t { kEager, kConditionalArgument };
 struct EvaluationShape {
   // Fixed prefix followed by argument occurrences. No array proportional to
   // range-call arity is allocated merely to describe their roles.
@@ -60,9 +66,11 @@ struct EvaluationShape {
   // An internal source-language evaluation boundary, not another CFG edge.
   // Precomputed RHS values cannot be fused across reference/key conversion.
   ReferenceBoundary reference = ReferenceBoundary::kNone;
+  InputEvaluation inputs = InputEvaluation::kEager;
   [[nodiscard]] bool NeedsSnapshot(analysis::OperandRole role) const {
-    return reference == ReferenceBoundary::kBeforeStoredValue &&
-        role == analysis::OperandRole::kStoredValue;
+    return inputs == InputEvaluation::kConditionalArgument ||
+        (reference == ReferenceBoundary::kBeforeStoredValue &&
+         role == analysis::OperandRole::kStoredValue);
   }
   [[nodiscard]] std::uint64_t Count() const { return roles.size() + static_cast<std::uint64_t>(arguments); }
   [[nodiscard]] std::optional<analysis::OperandRole> Role(std::uint32_t index) const {
@@ -77,6 +85,13 @@ struct EvaluationShape {
 [[nodiscard]] std::optional<EvaluationShape> DescribeEvaluation(
     const analysis::ValueOperation& operation);
 [[nodiscard]] bool OrderedEvaluation(const analysis::ValueOp& operation);
+// Constant-time semantic checks. Conditional slot uses remain protocol reads:
+// their producers execute at the original point, never inside a count predicate.
+[[nodiscard]] std::optional<EvaluationError> CheckArgumentSnapshot(
+    const analysis::ValueProgram& graph, const analysis::ValueOp& operation);
+[[nodiscard]] std::optional<EvaluationError> CheckEvaluationUse(
+    const analysis::ValueProgram& graph, const analysis::OperandUse& use,
+    const EvaluationShape& shape, std::uint32_t ordinal);
 [[nodiscard]] bool BooleanEvaluation(const analysis::ValueProgram& graph,
                                      const analysis::ValueOperand& operand);
 [[nodiscard]] bool PredicateSnapshot(const analysis::ValueProgram& graph,

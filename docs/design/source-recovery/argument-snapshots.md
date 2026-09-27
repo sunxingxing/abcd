@@ -95,10 +95,24 @@ the fact, declared slot count, protocol read ordinals, origins and exceptional
 exits. Rewrite verification requires the frame fact to remain unchanged, and
 snapshot allocation is explicitly non-erasable even if effect fields are cleared.
 Simplification retains separate snapshot occurrences and their conditional uses.
-The file-backed ordinary/arrow fixtures now reach value IR, but evaluation/AST
-construction still explicitly rejects snapshots: count/tail source bindings and
+At that revision the file-backed ordinary/arrow fixtures reached value IR, but
+evaluation/AST construction still rejected snapshots: count/tail source bindings and
 the exact object factory have not been implemented. This is intermediate-layer
 evidence, not executable source coverage.
+
+Rules 39 extend expression scheduling with typed `ConditionalArgument` inputs.
+Declared slots keep their protocol-read identity, language-domain check and
+original ordinal. Their producer trees cannot be inlined into the conditional
+read; even a pure copy wrapping a getter must remain evaluated before the
+snapshot. The independent schedule checker rejects forged movement and missing
+invocation facts. Snapshot allocations still participate in the ordinary ordered
+effect sequence; neither CFG nor scope structure is replaced. Count/tail facts
+travel in `EvaluationPlan`, but do not yet name a source binding. The next AST
+must implement `ordinal < actual_count` and attach the actual invocation tail;
+an eager JS array is not authorized by the plan. File-backed ordinary/arrow
+fixtures reach this schedule and still fail AST construction explicitly.
+Additional checks remain O(operations + input occurrences), use constant-size
+per-shape/fact storage and share existing pass budgets.
 
 1. **Frame inputs.** Build a compact, validated argument-window plan from the
    actual FrameLayout and callable creation occurrence. Keep actual invocation

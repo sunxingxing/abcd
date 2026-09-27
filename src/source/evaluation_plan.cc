@@ -40,6 +40,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
           std::holds_alternative<analysis::PhiDefinition>(value.origin);
     }
     EvaluationPlan plan{graph.revision, graph.cfg_revision, {}};
+    plan.arguments = graph.arguments;
     Require(functions.size() <= graph.ops.size(), Error::kOwnership);
     admit(functions.size(), sizeof(FunctionBinding));
     plan.functions.reserve(functions.size());
@@ -67,9 +68,12 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
     bool has_definitions = false;
     bool has_cells = false;
+    bool has_arguments = false;
     std::size_t next_function = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       const auto& op = graph.ops[i];
+      has_arguments |= op.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::ValueArgumentSnapshot>(op.operation);
       step(); has_definitions |= op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueOwnWrite>(op.operation);
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
@@ -82,6 +86,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
         pinned[i] = 1;
     }
     Require(next_function == functions.size(), Error::kOwnership);
+    Require(has_arguments == graph.arguments.has_value(), Error::kOwnership);
     if (has_definitions) {
       auto built = BuildLiteralPlan(graph, {bytes, work});
       const auto* error = std::get_if<LiteralError>(&built);
@@ -161,6 +166,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
           continue;
         }
         const auto shape = DescribeEvaluation(op.operation);
+        if (const auto error = CheckArgumentSnapshot(graph, op)) return *error;
         Require(shape.has_value(), Error::kUnsupportedOperation);
         Require(op.use_count == shape->Count() && shape->expression == op.result.has_value(),
                 Error::kInvalidGraph);
@@ -195,8 +201,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
           step();
           const analysis::UseId use{op.first_use.value + ordinal - 1};
           const auto& occurrence = graph.uses[use.value];
-          Require(occurrence.purpose == analysis::ReadPurpose::kOperand, Error::kProtocolOperand);
-          Require(occurrence.role == shape->Role(ordinal - 1), Error::kInvalidGraph);
+          if (const auto error = CheckEvaluationUse(graph, occurrence, *shape, ordinal - 1)) return *error;
           const auto* value = std::get_if<analysis::ValueId>(&occurrence.operand);
           if (!value) continue;
           const auto& definition = graph.values[value->value];

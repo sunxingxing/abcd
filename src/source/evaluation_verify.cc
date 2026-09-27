@@ -18,6 +18,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
   try {
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
     Require(plan.operations.size() == graph.ops.size(), Error::kInvalidGraph);
+    Require(plan.arguments == graph.arguments, Error::kOwnership);
     auto work = budget.work;
     const auto step = [&](std::size_t count = 1) {
       Require(count <= work, Error::kWorkLimit); work -= count;
@@ -44,9 +45,12 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
     std::size_t environment_epoch = 0;
     bool has_definitions = false;
     bool has_cells = false;
+    bool has_arguments = false;
     std::size_t next_function = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       const auto& op = graph.ops[i];
+      has_arguments |= op.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::ValueArgumentSnapshot>(op.operation);
       if (op.life == analysis::ValueLife::kLive && IsEnvironmentState(op.operation)) ++environment_epoch;
       environment_epochs[i] = environment_epoch;
       step(); has_definitions |= op.life == analysis::ValueLife::kLive &&
@@ -59,6 +63,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
         pinned[i] = 1;
     }
     Require(next_function == plan.functions.size(), Error::kOwnership);
+    Require(has_arguments == graph.arguments.has_value(), Error::kOwnership);
     Require(has_definitions == plan.literals.has_value(), Error::kOwnership);
     Require(has_cells == plan.cells.has_value(), Error::kOwnership);
     if (plan.cells) {
@@ -142,6 +147,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
         continue;
       }
       const auto shape = DescribeEvaluation(op.operation);
+      if (const auto error = CheckArgumentSnapshot(graph, op)) return *error;
       Require(shape.has_value(), Error::kUnsupportedOperation);
       Require(shape->Count() == op.use_count && shape->expression == op.result.has_value(), Error::kInvalidGraph);
       if (std::holds_alternative<analysis::ValueOwnWrite>(op.operation)) {
@@ -181,8 +187,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
       for (std::uint32_t ordinal = 0; ordinal < op.use_count; ++ordinal) {
         step();
         const auto& use = graph.uses[op.first_use.value + ordinal];
-        Require(use.purpose == analysis::ReadPurpose::kOperand, Error::kProtocolOperand);
-        Require(use.role == shape->Role(ordinal), Error::kInvalidGraph);
+        if (const auto error = CheckEvaluationUse(graph, use, *shape, ordinal)) return *error;
       }
     }
     std::size_t next_op = 0;

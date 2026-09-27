@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 38。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 39。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,6 +42,20 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 实参快照进入共享表达式规划：新增类型化 ConditionalArgument 输入模式，保留
+  协议读取/原序号/语言值域及当前调用前提，不将条件读取改成必定求值。
+  槽值的生产表达式禁止内联到快照里，包括携带 getter 的纯复制节点；独立调度
+  检查器验证该边界，并保留快照自身的有序分配事件。CFG、作用域和 phi 路线不变。
+  普通/arrow 文件夹具推进到求值计划，AST 仍拒绝；实际 count/tail 的源码绑定、
+  精确对象工厂和统一 printer 尚待实现，本次仍不计完整指令源码覆盖。
+  新正例先在旧求值计划门禁失败，再通过实现；覆盖三 profile、0/1/200/201/65536、
+  getter 后写参数、重复快照、分支 phi、循环、伪造内联、丢失归属、错效果/序号/
+  读取目的/内部值域和预算。`argument_evaluation_test`、`creation_tree_context_test`、
+  `evaluation_plan_test`、`argument_snapshot_test`、`value_simplify_test`、
+  `default_candidates_test`、`function_input_test`、`constant_group_test`、
+  `value_created_family_test`、`source_route_test`、`function_tree_test`、
+  `call_plan_test` 共 12/12 通过；相关目标及 `abc_semantic` 重建成功。
+  未运行 RSS、基准、全语料或 Ark VM 差分。
 - 实参快照进入共享值 IR：ValueArgumentSnapshot 保留声明槽数量及条件协议读取，
   ValueProgram 保留已核对的当前调用 ArgumentFrameFact；不是将声明数量当实际数量。
   导入重新核对原指令/效果/SSA；对应检查验证槽数量、归属、PC、读序号和异常出口。

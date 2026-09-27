@@ -189,8 +189,14 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       test::Check(std::holds_alternative<FileFunction>(values));
       const auto& graph = std::get<FileFunction>(values).values.graph;
       test::Check(graph.arguments && graph.arguments->frame == context.Frame());
-      test::Check(std::get<EvaluationError>(BuildEvaluationPlan(graph)) ==
-          EvaluationError::kUnsupportedOperation);
+      const auto evaluation = BuildEvaluationPlan(graph);
+      test::Check(std::holds_alternative<EvaluationPlan>(evaluation));
+      test::Check(std::get<EvaluationPlan>(evaluation).arguments == graph.arguments);
+      const auto prepared = PreparedFamily::PrepareCreated(file, header, index, lookup,
+          roles, sites, range.first, identity, {Strictness::kStrict, nullptr});
+      test::Check(std::holds_alternative<FamilyPrepareFailure>(prepared));
+      test::Check(std::get<FunctionTreeError>(std::get<FamilyTreeFailure>(
+          std::get<FamilyPrepareFailure>(prepared).cause).cause) == FunctionTreeError::kExpression);
       auto changed = identity;
       ++changed.file_size;
       test::Check(std::get<FunctionInputError>(std::get<FunctionInputFailure>(
