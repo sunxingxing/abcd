@@ -1,6 +1,7 @@
 #include "exception_family_probe.h"
 
 #include "../../src/source/syntax_resolution.h"
+#include "../../src/source/lexical_stores.h"
 
 namespace abcd::test {
 ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
@@ -34,6 +35,11 @@ ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
   if (parent.Modules() && !std::holds_alternative<std::uint64_t>(
       VerifyModuleAliasTree(*parent.Modules(), evaluation, tree->tree, budget))) return result;
   result.parent_tree = true;
+  const auto stores = VerifyLexicalStores(PhasedStoreInput{parent, body}, parent.Graph(), parent.Cells(),
+      {tree->tree, *flow}, {}, budget);
+  const auto* parent_stores = std::get_if<LexicalStores>(&stores);
+  if (!parent_stores) return result;
+  ++result.checked_store_methods; result.checked_lexical_stores += parent_stores->stores;
   std::vector<FamilyMember> members;
   members.reserve(children.size() + 1);
   members.push_back({std::move(tree->tree), std::move(*flow)});
@@ -75,6 +81,11 @@ ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
     auto child_flowed = VerifyTreeFlow(graph, *control, *child_evaluation, child_tree->tree, budget);
     auto* child_flow = std::get_if<TreeFlow>(&child_flowed);
     if (!child_flow) return result;
+    const auto checked_stores = VerifyLexicalStores(NormalStoreInput{child.input}, graph,
+        child.values.cells ? &*child.values.cells : nullptr, {child_tree->tree, *child_flow}, {}, budget);
+    const auto* child_stores = std::get_if<LexicalStores>(&checked_stores);
+    if (!child_stores) return result;
+    ++result.checked_store_methods; result.checked_lexical_stores += child_stores->stores;
     result.stage = FamilyProbeStage::kChildAliases;
     if (aliases && !std::holds_alternative<std::uint64_t>(VerifyModuleAliasTree(
         *aliases, *child_evaluation, child_tree->tree, budget))) return result;

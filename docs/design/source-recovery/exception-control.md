@@ -811,3 +811,27 @@ Execution checks cover 27 combinations of arbitrary JS values and normal/getter/
 call failure, original receiver/arguments and effect order; all ten original PCs
 have checked generated placements. This fixture has no child family and does
 not discharge the separate real-family publication obligations above.
+
+### Shared Lexical Store Obligations
+
+`VerifyLexicalStores` now checks normal and phased members through typed input
+views. It verifies every original store's Language operands, retained original
+site/PC/opcode provenance, working cell classification and the actual AST symbol
+assignment recovered by checked TreeFlow. It also compares the residual store
+census. A phased input indexes original Before nodes once and reads their SSA
+facts; Commit and Catch are not substitutes for the store's input. Captured
+classification comes from original input access/environment facts, not names.
+
+The existing normal `VerifyFamilyWrites` consumes this same checker, retaining
+its independent complete child/barrier/capture checks. Native-default signature
+stores still require the owner's checked signature placements; phased signature
+migration is not admitted. Resource failures keep typed byte/work distinctions.
+No graph copies or per-variable graph walks are introduced.
+
+Real `recover`, `queryDegree` and their three children now pass member-store
+checking alongside trees and enclosure. Normal/captured stores have three-profile
+and 200/201/402 coverage; file-backed phased normal/catch stores and corrupted
+targets have separate coverage. This is deliberately not a family certificate:
+complete phase/normal file ownership, creation-barrier census and transitive
+write induction still have to be connected before source publication. Rules 56
+remain unchanged by this shared member check.

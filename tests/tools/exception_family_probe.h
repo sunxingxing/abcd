@@ -28,6 +28,7 @@ struct ExceptionFamilyProbe {
   bool enclosure = false;
   std::optional<source::FunctionTreeError> tree_error;
   bool rejected_capture_forgery = false;
+  std::size_t checked_store_methods = 0, checked_lexical_stores = 0;
 };
 // Real decoded inputs and checked capture edges, not invented syntax. This
 // diagnostic composes production builders but grants no publication receipt.

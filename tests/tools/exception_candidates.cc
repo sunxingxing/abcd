@@ -240,6 +240,8 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       report["conditional_family_layout_ready"] = probe.layout;
       report["conditional_family_enclosure_ready"] = probe.enclosure;
       report["rejected_capture_forgery"] = probe.rejected_capture_forgery;
+      report["checked_store_methods"] = probe.checked_store_methods;
+      report["checked_lexical_stores"] = probe.checked_lexical_stores;
       report["family_probe_stage"] = static_cast<unsigned>(probe.stage);
       if (probe.tree_error) report["family_probe_tree_error"] = static_cast<unsigned>(*probe.tree_error);
     }

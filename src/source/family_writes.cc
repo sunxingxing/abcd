@@ -1,4 +1,5 @@
 #include "family_writes.h"
+#include "lexical_stores.h"
 
 #include <limits>
 #include <new>
@@ -103,60 +104,26 @@ class WriteCheck {
  private:
   void Stores(std::size_t owner) {
     const auto& function = inputs_.members[owner].function;
-    const auto& input = function.input.Input();
-    const auto& graph = function.values.graph;
     const auto& target = trees_.members[owner];
-    const auto accesses = function.input.CaptureAccesses();
-    Require(graph.input.sites.size() == input.instructions.size(), Error::kStore);
-    std::size_t access = 0, retained = 0;
-    for (std::size_t i = 0; i < input.instructions.size(); ++i) {
-      Step(); pc_ = input.instructions[i].pc;
-      const bool captured = access < accesses.size() && accesses[access].instruction.value == i;
-      if (captured) ++access;
-      if (!std::holds_alternative<analysis::LexicalStore>(input.instructions[i].operation)) continue;
-      ++facts_.stores;
-      if (captured) {
-        Require(accesses[access - 1].kind == analysis::LocalAccessKind::kStore, Error::kStore);
-        ++facts_.captured_stores;
+    const auto signature = std::span<const std::uint8_t>(signature_).subspan(
+        offsets_[owner], function.input.Input().instructions.size());
+    const auto checked = VerifyLexicalStores(NormalStoreInput{function.input}, function.values.graph,
+        function.values.cells ? &*function.values.cells : nullptr, {target.tree, target.flow}, signature, left_);
+    if (const auto* error = std::get_if<LexicalStoreFailure>(&checked)) {
+      pc_ = error->pc;
+      switch (error->kind) {
+        case LexicalStoreError::kOwner: Fail(Error::kOwner);
+        case LexicalStoreError::kCoverage: Fail(Error::kCoverage);
+        case LexicalStoreError::kDomain: Fail(Error::kDomain);
+        case LexicalStoreError::kStore: Fail(Error::kStore);
+        case LexicalStoreError::kResourceLimit: Fail(Error::kResourceLimit);
+        case LexicalStoreError::kWorkLimit: Fail(Error::kWorkLimit);
       }
-      const auto reads = input.ssa.Reads({static_cast<std::uint32_t>(i)});
-      Require(!reads.empty(), Error::kDomain);
-      for (const auto& read : reads) {
-        Step(); const auto domain = function.input.Proof().values.At(read.value);
-        Require(domain && domain->IsLanguage(), Error::kDomain);
-      }
-      const auto operation = graph.input.sites[i];
-      if (!operation) {
-        Require(!captured && signature_[offsets_[owner] + i], Error::kStore);
-        ++facts_.signature_stores; continue;
-      }
-      Require(!signature_[offsets_[owner] + i] && operation->value < graph.ops.size(), Error::kStore);
-      const auto& op = graph.ops[operation->value];
-      Require(op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueLexicalStore>(op.operation) &&
-          op.origin.value < graph.origins.size() && graph.origins[op.origin.value].site.value == i &&
-          graph.origins[op.origin.value].pc == *pc_ &&
-          graph.origins[op.origin.value].original == input.instructions[i].origin &&
-          graph.origins[op.origin.value].disposition == analysis::OriginDisposition::kRetained, Error::kStore);
-      Require(function.values.cells && operation->value < function.values.cells->operations.size() &&
-          function.values.cells->operations[operation->value] && operation->value < target.flow.expressions.size() &&
-          target.flow.expressions[operation->value], Error::kStore);
-      const auto cell = *function.values.cells->operations[operation->value];
-      Require(cell.value < target.flow.cells.size() && target.flow.cells[cell.value], Error::kStore);
-      const auto expression = *target.flow.expressions[operation->value];
-      Require(expression.value < target.tree.expressions.size(), Error::kStore);
-      const auto* assignment = std::get_if<AssignmentExpr>(&target.tree.expressions[expression.value].expression);
-      Require(assignment != nullptr, Error::kStore);
-      const auto* symbol = std::get_if<SymbolTarget>(&assignment->target);
-      Require(symbol && symbol->symbol == *target.flow.cells[cell.value], Error::kStore);
-      ++retained;
     }
-    Require(access == accesses.size(), Error::kCoverage);
-    std::size_t stores = 0;
-    for (const auto& operation : graph.ops) {
-      Step(); stores += operation.life == analysis::ValueLife::kLive &&
-          std::holds_alternative<analysis::ValueLexicalStore>(operation.operation);
-    }
-    Require(stores == retained, Error::kStore);
+    const auto& stores = std::get<LexicalStores>(checked);
+    Admit(stores.allocated_bytes, 1); Step(stores.work);
+    facts_.stores += stores.stores; facts_.captured_stores += stores.captured;
+    facts_.signature_stores += stores.signature;
   }
   void Mark(std::size_t owner, analysis::InstructionId site, Barrier proof) {
     Require(site.value < inputs_.members[owner].function.input.Input().instructions.size(), Error::kCoverage);

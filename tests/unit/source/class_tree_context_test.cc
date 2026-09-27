@@ -3,6 +3,7 @@
 #include "../../../src/source/family_emission.h"
 #include "../../../src/source/phased_method.h"
 #include "../../../src/source/phased_creations.h"
+#include "../../../src/source/lexical_stores.h"
 #include "../../../src/source/module_aliases.h"
 #include "../../../src/source/syntax_resolution.h"
 #include "abcd/source/verified_function.h"
@@ -511,6 +512,31 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
         file, header, mismatched, lookup, roles, sites, range.first, identity)).kind == FunctionPrepareError::kBody);
     Check(emission.Receipt().coverage == Coverage::kComplete &&
         emission.Receipt().stage == SourceStage::kPrinted && !ValidateRouteReceipt(emission.Receipt()));
+    if (exception == ExceptionShape::kLexical) {
+      const auto phase = std::get<PhasedBody>(PhasedBody::Build(owner, decoded));
+      const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(phase.Graph()));
+      auto tree = emission.Function().Tree();
+      const auto flow = std::get<TreeFlow>(VerifyExceptionTreeFlow(phase.Graph(), phase.TreeInput(decoded), evaluation, tree));
+      const auto verify = [&](analysis::SemanticBudget budget = {}) {
+        return VerifyLexicalStores(PhasedStoreInput{phase, decoded}, phase.Graph(), phase.Cells(), {tree, flow}, {}, budget);
+      };
+      const auto stores = std::get<LexicalStores>(verify());
+      Check(stores.stores == 2 && !stores.captured && !stores.signature); // Normal and catch writes.
+      Check(std::holds_alternative<LexicalStores>(verify({stores.allocated_bytes, stores.work})));
+      Check(std::get<LexicalStoreFailure>(verify({stores.allocated_bytes, stores.work - 1})).kind == LexicalStoreError::kWorkLimit);
+      Check(std::get<LexicalStoreFailure>(verify({stores.allocated_bytes - 1, stores.work})).kind == LexicalStoreError::kResourceLimit);
+      for (std::size_t i = 0; i < phase.Graph().ops.size(); ++i) {
+        if (!std::holds_alternative<analysis::ValueLexicalStore>(phase.Graph().ops[i].operation)) continue;
+        auto& assignment = std::get<AssignmentExpr>(tree.expressions[flow.expressions[i]->value].expression);
+        const auto saved = assignment.target;
+        assignment.target = SymbolTarget{SymbolId{static_cast<std::uint32_t>(tree.symbols.size())}};
+        const auto failure = std::get<LexicalStoreFailure>(verify());
+        Check(failure.kind == LexicalStoreError::kStore &&
+            failure.pc == phase.Graph().origins[phase.Graph().ops[i].origin.value].pc);
+        assignment.target = saved;
+      }
+      Check(std::holds_alternative<LexicalStores>(verify()));
+    }
     if (evidence) {
       std::ostringstream mapping;
       tools::WriteTreePositions(mapping, emission.Function().Tree(), emission.Positions());
