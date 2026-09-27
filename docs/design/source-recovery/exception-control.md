@@ -644,10 +644,10 @@ undefined or borrowing a value from a previous allocation.
 `BuildPhasedCellEvaluation` and its verifier compose phased environment, storage
 and initialization checks under one allowance. The shared phased evaluation
 planner/verifier select these entries. This does not certify source declaration
-lifetimes: `FunctionTree` explicitly rejects phased cells until the exception
-scope bridge is provided. Ordinary initialization/evaluation entries still
-reject phased graphs. Original `PhasedBody` lexical-load premises and complete
-child capture ownership remain separate obligations, not inferred from domains.
+lifetimes: the exception scope bridge below supplies that separate proof.
+Ordinary initialization/evaluation entries still reject phased graphs. Original
+`PhasedBody` lexical-load premises and complete child capture ownership remain
+separate obligations, not inferred from domains.
 
 Rules 54 also require closure-write evidence for unresolved buffered objects,
 whose methods can capture the current environment. This applies to shared
@@ -664,10 +664,30 @@ They also cover three profiles, explicit throw, buffered capture rejection,
 witnesses and source-admission refusal. These are IR/evaluation proof tests, not
 new executable-function or loop/finally/coroutine acceptance.
 
-The next scope bridge must map original phase blocks through exception control
-units to actual source scopes; skeleton unit IDs are not working block IDs.
-It must check declaration enclosure for every access/capture and fresh binding
-instances for repeated allocations. Hoisting a declaration across try/catch is
-not justified by a dominating store alone, especially inside loops. Replace
-the explicit tree refusal only with checked lifetime evidence plus composed
-execution/PC tests, not by swapping a normal verifier for a permissive one.
+### Phase Cell Source Lifetimes (Rules 55)
+
+`BuildPhasedCellLifetimes` shares the normal scope-tree/Euler-interval planner.
+Typed try-body/handler containers map projected control units to original work
+blocks; skeleton IDs are never used as work-block IDs. Fresh phase cell and
+exception-control validation precedes enclosure checks. Only certified empty,
+disconnected explicit-throw Commit nodes may be unvisited. Declarations stay at
+their allocation site, and every local access must be enclosed by that source
+scope. A valid initialized VM cell allocated inside try but read after try is
+still rejected: native declaration lifting needs a separate proof.
+
+`FunctionTree` replaces the blanket phased-cell rejection with that lifetime
+check. Existing independent tree checks validate actual declaration origins,
+positions, symbol scopes and uses; the candidate plan cannot authorize moving
+declarations. `PhasedBody` now obtains original lexical-load premises from
+`ProveExceptionLocals` when needed and validates EVERY store after propagation.
+No assumption about incoming cells, unresolved captures or uninitialized reads
+is added. Module and local facts share one budgeted load-fact boundary.
+
+A file-backed decoded class method now passes immutable preparation, shared
+tree, printer and executable JS checks for local initialization, a throwing
+call, catch write/read and return. Tests compare arbitrary JS exception-value
+identity, call receiver/arguments, effect sequence, reentrant activation
+isolation and all ten original PCs. Scope escape and declaration-scope forgery
+are negative tests across profiles 1202/1206/1301. This does not close captured
+child families or admit exception cycles, finally or suspension protocols;
+fresh bindings for repeated loop allocations remain part of that later gate.

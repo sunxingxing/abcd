@@ -3,6 +3,7 @@
 
 #include "cell_plan.h"
 #include "control_plan.h"
+#include "abcd/analysis/exception_flow.h"
 
 namespace abcd::source {
 // Candidate container IDs are NOT FunctionTree ScopeIds; map typed origins at
@@ -11,9 +12,11 @@ struct CellScopeId { std::uint32_t value; auto operator<=>(const CellScopeId&) c
 struct CellBodyScope {};
 struct CellArmScope { ControlId branch; analysis::FlowEdgeKind arm; };
 struct CellLoopScope { LoopId loop; };
+enum class CellTryPart : std::uint8_t { kBody, kHandler };
+struct CellTryScope { analysis::TryId region; CellTryPart part; };
 struct CellScope {
   std::optional<CellScopeId> parent;
-  std::variant<CellBodyScope, CellArmScope, CellLoopScope> origin;
+  std::variant<CellBodyScope, CellArmScope, CellLoopScope, CellTryScope> origin;
 };
 struct IncomingLifetime {};
 struct CellLifetimes {
@@ -38,5 +41,10 @@ enum class CellLifetimeError : std::uint8_t {
 [[nodiscard]] std::variant<CellLifetimes, CellLifetimeError> BuildCellLifetimes(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
     const CellPlan& cells, const ControlPlan& control, analysis::SemanticBudget budget = {});
+struct ExceptionTreeInput;
+[[nodiscard]] std::variant<CellLifetimes, CellLifetimeError> BuildPhasedCellLifetimes(
+    const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
+    const CellPlan& cells, const ExceptionTreeInput& exceptions,
+    analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

@@ -12,6 +12,7 @@
 #include "abcd/source/scalar_expression.h"
 #include "tree_semantics.h"
 #include "capture_aliases.h"
+#include "cell_lifetime.h"
 
 namespace abcd::source {
 namespace {
@@ -43,10 +44,7 @@ class TreeBuilder {
         bytes_(budget.bytes), work_(budget.work), incoming_(incoming), exceptions_(exceptions) {}
 
   ConstructedFunction Build() {
-    // Phased cell evaluation proves initialization, not declaration lifetime
-    // across try/catch/loops. Keep source admission closed until those source
-    // scopes are independently certified; never reuse normal-only lifetimes.
-    Require(!exceptions_ || !evaluation_.cells, Error::kBinding);
+    if (exceptions_ && evaluation_.cells) CheckCellLifetimes();
     Require(syntax_.parameters.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
     Require(constants_.name_count == syntax_.names.size() &&
             constants_.text_count == syntax_.texts.size(), Error::kName);
@@ -160,6 +158,27 @@ class TreeBuilder {
   }
 
  private:
+  void CheckCellLifetimes() {
+    auto environments = analysis::BuildPhasedValueEnvironments(graph_, {bytes_, work_});
+    if (const auto* error = std::get_if<analysis::ValueEnvironmentError>(&environments)) {
+      if (*error == analysis::ValueEnvironmentError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == analysis::ValueEnvironmentError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kBinding;
+    }
+    const auto& states = std::get<analysis::ValueEnvironments>(environments);
+    Admit(states.allocated_bytes, 1); Step(states.work);
+    const auto lifetimes = BuildPhasedCellLifetimes(graph_, states, evaluation_.cells->cells,
+        *exceptions_, {bytes_, work_});
+    if (const auto* error = std::get_if<CellLifetimeError>(&lifetimes)) {
+      if (*error == CellLifetimeError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == CellLifetimeError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kBinding;
+    }
+    const auto& scopes = std::get<CellLifetimes>(lifetimes);
+    Admit(scopes.allocated_bytes, 1); Step(scopes.work);
+    // This candidate never authorizes hoisting. Tree semantics independently
+    // checks allocation origins, declaration placement and actual use scopes.
+  }
   void Step(std::uint64_t count = 1) {
     Require(count <= work_, Error::kWorkLimit); work_ -= count;
   }

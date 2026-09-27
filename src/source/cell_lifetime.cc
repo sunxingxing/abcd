@@ -1,4 +1,5 @@
 #include "cell_lifetime.h"
+#include "exception_tree.h"
 
 #include <limits>
 #include <new>
@@ -14,7 +15,8 @@ struct Visit { CellScopeId scope; bool exit; };
 class Planner {
  public:
   Planner(const analysis::ValueProgram& graph, const CellPlan& cells, const ControlPlan& control,
-      analysis::SemanticBudget budget) : graph_(graph), cells_(cells), control_(control), initial_(budget), left_(budget) {}
+      analysis::SemanticBudget budget, const ExceptionTreeInput* exceptions = nullptr)
+      : graph_(graph), cells_(cells), control_(control), initial_(budget), left_(budget), exceptions_(exceptions) {}
   void Step(std::uint64_t n = 1) { Require(n <= left_.work, Error::kWorkLimit); left_.work -= n; }
   void Admit(std::size_t n, std::size_t width) { Require(n <= left_.bytes / width, Error::kResourceLimit); left_.bytes -= n * width; }
   template <class T> void Reserve(std::vector<T>& items, std::size_t n) {
@@ -22,20 +24,32 @@ class Planner {
   }
   template <class T> void Size(std::vector<T>& items, std::size_t n) { Reserve(items, n); Step(n); items.resize(n); }
   CellLifetimes Build(const analysis::ValueEnvironments& environments) {
-    const auto checked_cells = VerifyCellPlan(graph_, environments, cells_, left_);
+    const auto verify_cells = exceptions_ ? VerifyPhasedCellPlan : VerifyCellPlan;
+    const auto checked_cells = verify_cells(graph_, environments, cells_, left_);
     if (const auto* error = std::get_if<CellError>(&checked_cells)) {
       if (*error == CellError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == CellError::kWorkLimit) throw Error::kWorkLimit;
       throw Error::kCells;
     }
     Step(std::get<std::uint64_t>(checked_cells));
-    const auto checked_control = VerifyControlPlan(graph_, control_, left_);
-    if (const auto* error = std::get_if<ControlError>(&checked_control)) {
-      if (*error == ControlError::kResourceLimit) throw Error::kResourceLimit;
-      if (*error == ControlError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kControl;
+    if (exceptions_) {
+      const auto checked = VerifyExceptionControl(exceptions_->body, graph_, exceptions_->input,
+          exceptions_->regions, exceptions_->control, left_);
+      if (const auto* error = std::get_if<ExceptionControlError>(&checked)) {
+        if (*error == ExceptionControlError::kResourceLimit) throw Error::kResourceLimit;
+        if (*error == ExceptionControlError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kControl;
+      }
+      Step(std::get<std::uint64_t>(checked));
+    } else {
+      const auto checked_control = VerifyControlPlan(graph_, control_, left_);
+      if (const auto* error = std::get_if<ControlError>(&checked_control)) {
+        if (*error == ControlError::kResourceLimit) throw Error::kResourceLimit;
+        if (*error == ControlError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kControl;
+      }
+      Step(std::get<std::uint64_t>(checked_control));
     }
-    Step(std::get<std::uint64_t>(checked_control));
     constexpr std::size_t kArms = 2;
     Require(control_.nodes.size() <= (std::numeric_limits<std::uint32_t>::max() - 1) / kArms, Error::kResourceLimit);
     const auto capacity = control_.nodes.size() * kArms + 1;
@@ -64,14 +78,42 @@ class Planner {
       if (const auto* loop = std::get_if<LoopControl>(&node.synthetic)) {
         child(task.scope, CellLoopScope{loop->loop}, control_.loops[loop->loop.value].body);
       } else if (std::holds_alternative<std::monostate>(node.synthetic)) {
-        result.blocks[node.block.value] = task.scope;
+        if (exceptions_) {
+          // Skeleton block IDs name projected units, never original work blocks.
+          const auto& unit = exceptions_->control.units[node.block.value];
+          if (const auto* region = std::get_if<TryControlUnit>(&unit)) {
+            const auto& roots = exceptions_->control.regions[region->region.value];
+            child(task.scope, CellTryScope{region->region, CellTryPart::kBody}, roots.body);
+            child(task.scope, CellTryScope{region->region, CellTryPart::kHandler}, roots.handler);
+            continue;
+          }
+          if (std::holds_alternative<TryExitUnit>(unit)) continue;
+          result.blocks[std::get<PhaseControlUnit>(unit).block.value] = task.scope;
+        } else {
+          result.blocks[node.block.value] = task.scope;
+        }
         if (node.arms) {
           if (node.arms->taken) child(task.scope, CellArmScope{task.control, analysis::FlowEdgeKind::kTaken}, *node.arms->taken);
           if (node.arms->fallthrough) child(task.scope, CellArmScope{task.control, analysis::FlowEdgeKind::kFallthrough}, *node.arms->fallthrough);
         }
       }
     }
-    for (const auto visited : seen) { Step(); Require(visited != 0, Error::kControl); }
+    std::vector<std::uint8_t> inactive;
+    if (exceptions_) {
+      Size(inactive, graph_.blocks.size());
+      // Fresh control verification certifies exactly these empty disconnected
+      // explicit-throw Commit nodes. No reachable declaration/access is skipped.
+      for (const auto block : exceptions_->control.inactive_commits) {
+        Step(); inactive[block.value] = 1;
+      }
+    }
+    for (std::size_t i = 0; i < seen.size(); ++i) {
+      Step();
+      if (seen[i]) continue;
+      Require(exceptions_ && std::holds_alternative<std::monostate>(control_.nodes[i].synthetic), Error::kControl);
+      const auto* phase = std::get_if<PhaseControlUnit>(&exceptions_->control.units[control_.nodes[i].block.value]);
+      Require(phase && inactive[phase->block.value], Error::kControl);
+    }
     // Euler intervals permit one constant-time enclosure check per access.
     // Never walk all parents separately for every cell or lexical load.
     std::vector<std::optional<CellScopeId>> heads, siblings;
@@ -114,12 +156,21 @@ class Planner {
   const CellPlan& cells_;
   const ControlPlan& control_;
   analysis::SemanticBudget initial_, left_;
+  const ExceptionTreeInput* exceptions_;
 };
 }  // namespace
 std::variant<CellLifetimes, CellLifetimeError> BuildCellLifetimes(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
     const CellPlan& cells, const ControlPlan& control, analysis::SemanticBudget budget) {
   try { return Planner(graph, cells, control, budget).Build(environments);
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+std::variant<CellLifetimes, CellLifetimeError> BuildPhasedCellLifetimes(
+    const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
+    const CellPlan& cells, const ExceptionTreeInput& exceptions, analysis::SemanticBudget budget) {
+  try { return Planner(graph, cells, exceptions.control.skeleton, budget, &exceptions).Build(environments);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

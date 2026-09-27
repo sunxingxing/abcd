@@ -862,6 +862,8 @@ if(BUILD_TESTING)
   target_include_directories(constant_group_fixture PRIVATE tests/support)
   target_link_libraries(constant_group_fixture PRIVATE abcd_source abcd_json)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME phased_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_cells.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_literal.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME module_enclosure_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

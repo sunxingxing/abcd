@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <type_traits>
 #include "abcd/analysis/exception_modules.h"
+#include "abcd/analysis/exception_locals.h"
 #include "module_aliases.h"
 
 namespace abcd::source {
@@ -137,6 +138,24 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     auto modules = PhaseResult<ExceptionModules>(ProveExceptionModules(flow, ssa,
         quota.Remaining()), Error::kValues);
     quota.Admit(modules.AllocatedBytes()); quota.Step(modules.work_units);
+    bool lexical_reads = false;
+    for (const auto& instruction : flow.instructions) {
+      quota.Step();
+      lexical_reads |= std::holds_alternative<LexicalLoad>(instruction.operation);
+    }
+    std::optional<ExceptionLocals> locals;
+    if (lexical_reads) {
+      locals = PhaseResult<ExceptionLocals>(ProveExceptionLocals(flow, environments,
+          quota.Remaining()), Error::kValues);
+      quota.Admit(locals->AllocatedBytes()); quota.Step(locals->plan.work_units);
+    }
+    std::vector<ExceptionLoadFact> loads;
+    const auto load_count = modules.loads.size() + (locals ? locals->loads.size() : 0);
+    quota.Admit(load_count, sizeof(ExceptionLoadFact)); loads.reserve(load_count);
+    quota.Admit(loads.capacity() - load_count, sizeof(ExceptionLoadFact));
+    quota.Step(load_count);
+    loads.insert(loads.end(), modules.loads.begin(), modules.loads.end());
+    if (locals) loads.insert(loads.end(), locals->loads.begin(), locals->loads.end());
     std::vector<EntryValueFact> entries;
     quota.Admit(ssa.Values().size(), sizeof(EntryValueFact));
     entries.reserve(ssa.Values().size());
@@ -151,9 +170,11 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     IdfQuota value_work{quota.Remaining().work};
     // Guarded module facts apply to the certified pair, never the raw load.
     // Preserve its source correspondence below before any evaluation/publication.
-    // No Language premise is invented for lexical loads or explicit THROW.
+    // Local load facts require completed-store dominance. EVERY store is
+    // validated below, including exceptional paths; these are not assumptions
+    // about captured/incoming cells or default undefined initialization.
     auto values = PhaseResult<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
-        value_work, {quota.Remaining().bytes}, PendingExceptions(context.Identity().contract), modules.loads, {},
+        value_work, {quota.Remaining().bytes}, PendingExceptions(context.Identity().contract), loads, {},
         NormalCallResults(context.Identity().contract)), Error::kValues);
     quota.Admit(values.AllocatedBytes()); quota.Step(value_work.Consumed());
     const auto arguments = frame.extra_arguments ? std::optional{ArgumentFrameFact{frame}} : std::nullopt;

@@ -38,7 +38,7 @@ void Check(bool condition) { if (!condition) std::abort(); }
 enum class DefaultEncoding { kNone, kInteger, kNegation };
 enum class ExceptionShape {
   kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies, kReceiver, kReceiverCatch,
-  kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof, kLiteral
+  kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof, kLiteral, kLexical
 };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
@@ -178,6 +178,19 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           kLoad, kValue, op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, kNamePool, 0, kObject,
           kLoad, kObject, kReturn, kReturn,
           0, kLiteralProtected, kSingleTry, kCatchAll, kLiteralProtected, 1};
+    }
+    if (exception == ExceptionShape::kLexical) {
+      constexpr std::uint8_t kLocals = 0, kArguments = 4, kCellCount = 1, kFirstCell = 0;
+      constexpr std::uint8_t kLexicalBytes = 17, kCallPc = 6, kCallBytes = 2,
+          kHandlerPc = 12, kHandlerBytes = 5;
+      member = {kLocals, kArguments, kLexicalBytes, kSingleTry,
+          op(abc::Opcode::kNEWLEXENV_IMM8), kCellCount, kLoad, kParameter,
+          op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kFirstCell,
+          op(abc::Opcode::kCALLARG0_IMM8), 0,
+          op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), kFirstCell, op(abc::Opcode::kPOPLEXENV), kReturn,
+          op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kFirstCell,
+          op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), kFirstCell, kReturn,
+          kCallPc, kCallBytes, kSingleTry, kCatchAll, kHandlerPc, kHandlerBytes};
     }
     if (exception == ExceptionShape::kReceiver) {
       constexpr std::uint8_t kLocals = 2, kReceiver = 5, kCallee = 0, kArgument = 1,
@@ -717,6 +730,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--lexical-json") {
+    Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kLexical);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--literal-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kLiteral);
     return 0;
@@ -767,6 +784,7 @@ int main(int argc, char** argv) {
     return 0;
   }
   Check(argc == 1);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLexical);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLiteral);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverTypeof);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverNumericPair);

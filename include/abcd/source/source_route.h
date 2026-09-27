@@ -246,8 +246,10 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // preserving both original effects, catch snapshots and source placements.
 // Rules 54 require closure-write evidence for unresolved buffered methods in
 // cell initialization. Phased evaluation uses completed-store witnesses; source
-// trees with phased cells still require the pending exception-lifetime bridge.
-inline constexpr std::uint32_t kRouteEvidenceRules = 54;
+// trees with phased cells require the exception-lifetime bridge.
+// Rules 55 admit local phase cells through checked try/catch source lifetimes,
+// original completed-store load facts and independent tree placement checks.
+inline constexpr std::uint32_t kRouteEvidenceRules = 55;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,
