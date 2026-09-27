@@ -94,27 +94,6 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     }
     Require(next_function == functions.size(), Error::kOwnership);
     Require(has_arguments == graph.arguments.has_value(), Error::kOwnership);
-    if (has_definitions) {
-      auto built = BuildLiteralPlan(graph, {bytes, work});
-      const auto* error = std::get_if<LiteralError>(&built);
-      if (error) {
-        if (*error == LiteralError::kResourceLimit) return Error::kResourceLimit;
-        if (*error == LiteralError::kWorkLimit) return Error::kWorkLimit;
-        return Error::kUnsupportedOperation;
-      }
-      plan.literals = std::get<LiteralPlan>(std::move(built));
-      admit(plan.literals->allocated_bytes, 1); step(plan.literals->work);
-      for (const auto& object : plan.literals->objects) {
-        step(); pinned[object.allocation.value] = 1;
-      }
-      for (const auto id : plan.literals->definitions) {
-        step();
-        const auto& rhs = graph.uses[graph.ops[id.value].first_use.value + 1].operand;
-        if (const auto* value = std::get_if<analysis::ValueId>(&rhs))
-          if (const auto* result = std::get_if<analysis::OpResult>(&graph.values[value->value].origin))
-            pinned[result->op.value] = 1;
-      }
-    }
     if (has_cells) {
       auto built = BuildCellEvaluation(graph, {bytes, work}, incoming,
           functions.empty() ? analysis::ClosureWrites::kUnknown : analysis::ClosureWrites::kLanguage);
@@ -167,6 +146,28 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       if (const auto* error = std::get_if<Error>(&aliases)) return *error;
       const auto alias_cost = std::get<EvaluationAliasCost>(aliases);
       admit(alias_cost.bytes, 1); step(alias_cost.work);
+    }
+    if (has_definitions) {
+      auto built = flow == EvaluationFlow::kPhased ? BuildPhasedLiteralPlan(graph, plan, {bytes, work}) :
+          BuildLiteralPlan(graph, {bytes, work});
+      const auto* error = std::get_if<LiteralError>(&built);
+      if (error) {
+        if (*error == LiteralError::kResourceLimit) return Error::kResourceLimit;
+        if (*error == LiteralError::kWorkLimit) return Error::kWorkLimit;
+        return Error::kUnsupportedOperation;
+      }
+      plan.literals = std::get<LiteralPlan>(std::move(built));
+      admit(plan.literals->allocated_bytes, 1); step(plan.literals->work);
+      for (const auto& object : plan.literals->objects) {
+        step(); pinned[object.allocation.value] = 1;
+      }
+      for (const auto id : plan.literals->definitions) {
+        step();
+        const auto rhs = ResolveEvaluationOperand(plan, graph.uses[graph.ops[id.value].first_use.value + 1].operand);
+        if (const auto* value = std::get_if<analysis::ValueId>(&rhs))
+          if (const auto* result = std::get_if<analysis::OpResult>(&graph.values[value->value].origin))
+            pinned[result->op.value] = 1;
+      }
     }
     std::size_t next_op = 0;
     for (std::size_t b = 0; b < graph.blocks.size(); ++b) {

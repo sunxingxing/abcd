@@ -95,7 +95,9 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       }
     }
     if (plan.literals) {
-      const auto checked = VerifyLiteralPlan(graph, *plan.literals, {bytes, work});
+      const auto checked = flow == EvaluationFlow::kPhased ?
+          VerifyPhasedLiteralPlan(graph, *plan.literals, plan, {bytes, work}) :
+          VerifyLiteralPlan(graph, *plan.literals, {bytes, work});
       if (const auto* error = std::get_if<LiteralError>(&checked)) {
         if (*error == LiteralError::kResourceLimit) return Error::kResourceLimit;
         if (*error == LiteralError::kWorkLimit) return Error::kWorkLimit;
@@ -107,7 +109,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       }
       for (const auto id : plan.literals->definitions) {
         step();
-        const auto& rhs = graph.uses[graph.ops[id.value].first_use.value + 1].operand;
+        const auto rhs = ResolveEvaluationOperand(plan, graph.uses[graph.ops[id.value].first_use.value + 1].operand);
         if (const auto* value = std::get_if<analysis::ValueId>(&rhs))
           if (const auto* result = std::get_if<analysis::OpResult>(&graph.values[value->value].origin))
             pinned[result->op.value] = 1;

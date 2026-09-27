@@ -438,3 +438,45 @@ node --experimental-vm-modules tests/integration/immersive_exception.mjs \
 This explicitly selected test is not registered as a mandatory CTest dependency
 on a developer's private corpus path. Portable enclosure fixtures are registered
 as `module_enclosure_test` and `module_enclosure_source_test`.
+
+## Phased Own-Data Initialization
+
+Rules 52 reuse `LiteralPlan` for normal and phased input. Phase availability and
+copy equations are independently checked before initializer discovery. A single
+indexed pass assigns coordinates along unique normal fallthrough paths; catch,
+branch, join and jump boundaries cannot connect initializer groups. Allocation
+must be a fresh ordinary object; definitions retain original order and supported
+own-data semantics. The source value for every field must be available before
+allocation, resolving only already-verified copy aliases. Direct phi leaves
+cannot migrate across an intervening edge-copy boundary.
+
+Canonical-use checking visits each use once. Before the final definition, only
+proved copies and that object's own-definition base uses are admitted. Earlier
+reads, escapes, stored-value observations and exceptional snapshots reject.
+Observers on other corridors remain conservative refusals until a separate
+completion-dominance proof exists. This is not general store scalarization.
+Resource-exhaustion equivalence remains the existing V2/V3 publication premise:
+combining nonescaping ordinary own-data definitions cannot invoke a getter or
+setter, but may change allocation-failure timing. V1 publication stays closed.
+
+The expression forest emits existing computed-key `DataProperty` nodes, including
+`__proto__`, never an inherited setter or prototype-setter literal. Every own
+definition retains its original PC through its property node. The original phase
+graph, exceptional copies and control projection are unchanged. Tree checks and
+printer are shared; there is no phase-specific source writer.
+
+The file-backed source fixture tests getter evaluation, own-data descriptors,
+arbitrary throws through catch and instruction/property positions. Unit cases
+cover three profiles, all four supported named-own-write formats, early/catch
+observation, late RHS, intervening branches, invalid aliases/revisions/coverage,
+exact initializer work limits, copy chains and 200/201/geometric field counts.
+Large AST composition fixtures use an explicit test work allowance; this neither
+raises production defaults nor proves whole-pipeline complexity or RSS.
+
+Real Immersive 8566 now clears its buffered-object initialization and reaches a
+later member-reference refusal: callee PC 331, module load/guard PCs 337/339,
+call PC 363. Extending the common effect forest to paired module reads must keep
+the original two-operation correspondence, TDZ and throw-owner checks. Do not
+replace the saved callee with a fresh getter or untrusted `.call`/`Reflect.apply`.
+Immersive 8257/8404 instead require child-family ownership; they fail the existing
+`ValueFunctionCreation`/`FunctionBinding` coverage check, not exception parsing.

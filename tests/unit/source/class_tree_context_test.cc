@@ -37,7 +37,7 @@ void Check(bool condition) { if (!condition) std::abort(); }
 enum class DefaultEncoding { kNone, kInteger, kNegation };
 enum class ExceptionShape {
   kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies, kReceiver, kReceiverCatch,
-  kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof
+  kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof, kLiteral
 };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
@@ -167,6 +167,16 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           op(abc::Opcode::kLDEXTERNALMODULEVAR_IMM8), kModuleSlot,
           op(kGuard), static_cast<std::uint16_t>(kGuard) >> kByteBits, kNamePool, 0,
           kReturn, kReturn, 0, kModuleProtectedBytes, kSingleTry, kCatchAll, kModuleProtectedBytes, 1};
+    }
+    if (exception == ExceptionShape::kLiteral) {
+      constexpr std::uint8_t kLocals = 2, kObject = 0, kValue = 1, kInput = 5,
+          kLiteralBytes = 22, kLiteralProtected = 21;
+      member = {kLocals, 4, kLiteralBytes, kSingleTry,
+          kLoad, kInput, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0,
+          kStore, kValue, op(abc::Opcode::kCREATEEMPTYOBJECT), kStore, kObject,
+          kLoad, kValue, op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, kNamePool, 0, kObject,
+          kLoad, kObject, kReturn, kReturn,
+          0, kLiteralProtected, kSingleTry, kCatchAll, kLiteralProtected, 1};
     }
     if (exception == ExceptionShape::kReceiver) {
       constexpr std::uint8_t kLocals = 2, kReceiver = 5, kCallee = 0, kArgument = 1,
@@ -660,6 +670,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--literal-json") {
+    Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kLiteral);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--module-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kModule);
     return 0;
@@ -706,6 +720,7 @@ int main(int argc, char** argv) {
     return 0;
   }
   Check(argc == 1);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLiteral);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverTypeof);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverNumericPair);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverPair);

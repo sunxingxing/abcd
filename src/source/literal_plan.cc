@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "../analysis/value_flow.h"
+#include "evaluation_aliases.h"
 
 namespace abcd::source {
 namespace {
@@ -29,7 +30,26 @@ class LiteralBudget {
  private:
   analysis::SemanticBudget initial_, remaining_;
 };
-void Flow(const analysis::ValueProgram& graph, LiteralBudget& budget) {
+void Flow(const analysis::ValueProgram& graph, LiteralBudget& budget, const EvaluationPlan* evaluation) {
+  if (evaluation) {
+    Require(evaluation->flow == EvaluationFlow::kPhased && !graph.phases.empty() &&
+        evaluation->operations.size() == graph.ops.size(), Error::kFlow);
+    const auto proof = analysis::VerifyPhasedValueFlow(graph, budget.Remaining());
+    if (const auto* error = std::get_if<analysis::ValueAvailabilityError>(&proof)) {
+      if (*error == analysis::ValueAvailabilityError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == analysis::ValueAvailabilityError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kFlow;
+    }
+    budget.Step(std::get<analysis::PhasedValueFlowProof>(proof).work);
+    const auto aliases = VerifyEvaluationAliases(graph, *evaluation, budget.Remaining());
+    if (const auto* error = std::get_if<EvaluationError>(&aliases)) {
+      if (*error == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == EvaluationError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kFlow;
+    }
+    budget.Step(std::get<std::uint64_t>(aliases));
+    return;
+  }
   const auto proof = analysis::VerifyValueFlow(graph, budget.Remaining());
   if (const auto* error = std::get_if<analysis::ValueAvailabilityError>(&proof)) {
     if (*error == analysis::ValueAvailabilityError::kResourceLimit) throw Error::kResourceLimit;
@@ -38,7 +58,75 @@ void Flow(const analysis::ValueProgram& graph, LiteralBudget& budget) {
   }
   budget.Step(std::get<analysis::ValueFlowProof>(proof).work);
 }
-analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id) {
+struct LiteralPosition { std::optional<analysis::WorkBlockId> head; std::size_t order = 0; };
+class LiteralPath {
+ public:
+  LiteralPath(const analysis::ValueProgram& graph, const EvaluationPlan* evaluation, LiteralBudget& budget)
+      : graph_(graph), evaluation_(evaluation) {
+    if (!evaluation) return;
+    std::vector<std::size_t> incoming;
+    std::vector<std::optional<analysis::WorkBlockId>> next;
+    std::vector<std::uint8_t> previous;
+    budget.Size(incoming, graph.blocks.size()); budget.Size(next, graph.blocks.size());
+    budget.Size(previous, graph.blocks.size()); budget.Size(positions_, graph.blocks.size());
+    for (const auto& edge : graph.edges) { budget.Step(); ++incoming[edge.target.value]; }
+    for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
+      budget.Step(); const auto& block = graph.blocks[b];
+      std::optional<analysis::EdgeId> normal;
+      std::size_t count = 0;
+      for (std::size_t e = block.first_edge.value; e < std::size_t(block.first_edge.value) + block.edge_count; ++e) {
+        budget.Step(); if (graph.edges[e].kind == analysis::FlowEdgeKind::kException) continue;
+        ++count; normal = analysis::EdgeId{static_cast<std::uint32_t>(e)};
+      }
+      if (count != 1 || graph.phases[b].phase == analysis::ExceptionPhase::kCatch) continue;
+      const auto& edge = graph.edges[normal->value];
+      if (edge.kind != analysis::FlowEdgeKind::kFallthrough || incoming[edge.target.value] != 1 ||
+          graph.phases[edge.target.value].phase == analysis::ExceptionPhase::kCatch) continue;
+      next[b] = edge.target; previous[edge.target.value] = 1;
+    }
+    for (std::size_t root = 0; root < graph.blocks.size(); ++root) {
+      budget.Step(); if (previous[root]) continue;
+      std::size_t b = root, order = 0;
+      for (;;) {
+        budget.Step(); Require(!positions_[b].head, Error::kFlow);
+        positions_[b] = {analysis::WorkBlockId{static_cast<std::uint32_t>(root)}, order++};
+        if (!next[b]) break;
+        b = next[b]->value;
+      }
+    }
+  }
+  analysis::ValueOperand Resolve(const analysis::ValueOperand& operand) const {
+    return evaluation_ ? ResolveEvaluationOperand(*evaluation_, operand) : operand;
+  }
+  bool Same(analysis::WorkBlockId a, analysis::WorkBlockId b) const {
+    if (!evaluation_) return a == b;
+    return positions_[a.value].head && positions_[a.value].head == positions_[b.value].head;
+  }
+  bool Before(const analysis::ValueOp& a, const analysis::ValueOp& b) const {
+    if (!Same(a.block, b.block)) return false;
+    return a.block == b.block ? a.order < b.order : positions_[a.block.value].order < positions_[b.block.value].order;
+  }
+  bool Alias(analysis::OpId id) const {
+    return evaluation_ && evaluation_->operations[id.value].kind == EvaluationKind::kAlias;
+  }
+  bool Phased() const { return evaluation_ != nullptr; }
+  bool After(const analysis::ValueOp& last, const analysis::OperandUse& use) const {
+    if (const auto* id = std::get_if<analysis::OpId>(&use.owner)) return Before(last, graph_.ops[id->value]);
+    if (!use.incoming) return false;
+    const auto* edge = std::get_if<analysis::EdgeId>(&*use.incoming);
+    if (!edge) return false;
+    const auto& flow = graph_.edges[edge->value];
+    // No catch snapshot of a partially initialized object. Even if the only
+    // remaining throw is resource exhaustion, keep this boundary conservative.
+    return flow.kind != analysis::FlowEdgeKind::kException && Same(last.block, flow.source) &&
+        positions_[last.block.value].order <= positions_[flow.source.value].order;
+  }
+ private:
+  const analysis::ValueProgram& graph_;
+  const EvaluationPlan* evaluation_;
+  std::vector<LiteralPosition> positions_;
+};
+analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id, const LiteralPath& path) {
   Require(id.value < graph.ops.size(), Error::kDefinition);
   const auto& op = graph.ops[id.value];
   const auto* write = std::get_if<analysis::ValueOwnWrite>(&op.operation);
@@ -51,7 +139,8 @@ analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id
   Require(base.role == analysis::OperandRole::kBase && stored.role == analysis::OperandRole::kStoredValue &&
       base.purpose == analysis::ReadPurpose::kOperand && stored.purpose == analysis::ReadPurpose::kOperand,
       Error::kDefinition);
-  const auto* value = std::get_if<analysis::ValueId>(&base.operand);
+  const auto operand = path.Resolve(base.operand);
+  const auto* value = std::get_if<analysis::ValueId>(&operand);
   Require(value && value->value < graph.values.size(), Error::kReceiver);
   const auto& definition = graph.values[value->value];
   Require(definition.domain.IsLanguage(), Error::kDomain);
@@ -61,31 +150,35 @@ analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id
   Require(allocation.life == analysis::ValueLife::kLive &&
       std::holds_alternative<analysis::ValueObjectAllocation>(allocation.operation) &&
       allocation.result == *value && allocation.use_count == 0 &&
-      allocation.block == op.block && allocation.order < op.order, Error::kReceiver);
+      path.Before(allocation, op), Error::kReceiver);
   return result->op;
 }
 void EarlyValue(const analysis::ValueProgram& graph, const analysis::ValueOp& allocation,
-    const analysis::ValueOperand& operand) {
+    const analysis::ValueOperand& original, const LiteralPath& path) {
+  const auto operand = path.Resolve(original);
   const auto* value = std::get_if<analysis::ValueId>(&operand);
   if (!value) return;
   const auto& definition = graph.values[value->value];
   Require(definition.domain.IsLanguage(), Error::kDomain);
   if (const auto* result = std::get_if<analysis::OpResult>(&definition.origin)) {
     const auto& producer = graph.ops[result->op.value];
-    Require(producer.block != allocation.block || producer.order < allocation.order, Error::kLateValue);
+    Require(!path.Same(producer.block, allocation.block) || path.Before(producer, allocation), Error::kLateValue);
+  } else if (const auto* phi = std::get_if<analysis::PhiDefinition>(&definition.origin)) {
+    // Direct mutable phi leaves cannot be moved over an intervening edge copy.
+    Require(!path.Phased() || phi->block == allocation.block, Error::kLateValue);
   }
   // Fresh flow proof supplies dominance. A different-block producer available
   // at the same-block own-write is also available at the allocation block entry.
 }
 struct FieldOwner { analysis::OpId allocation; analysis::OpId definition; };
-}  // namespace
-
-std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
-    const analysis::ValueProgram& graph, const LiteralPlan& plan, analysis::SemanticBudget allowance) {
+std::variant<std::uint64_t, LiteralError> VerifyLiterals(
+    const analysis::ValueProgram& graph, const LiteralPlan& plan, const EvaluationPlan* evaluation,
+    analysis::SemanticBudget allowance) {
   try {
     LiteralBudget budget(allowance);
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
-    Flow(graph, budget);
+    Flow(graph, budget, evaluation);
+    LiteralPath path(graph, evaluation, budget);
     Require(plan.objects.size() <= graph.ops.size() && plan.definitions.size() <= graph.ops.size(), Error::kCoverage);
     std::vector<std::optional<analysis::OpId>> owners;
     std::vector<std::uint8_t> allocations;
@@ -99,14 +192,14 @@ std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
           Error::kCoverage);
       allocations[object.allocation.value] = 1;
       const auto& allocation = graph.ops[object.allocation.value];
-      auto order = allocation.order;
+      auto prior = object.allocation;
       for (std::uint32_t i = 0; i < object.count; ++i) {
         budget.Step();
         const auto id = plan.definitions[next++];
-        Require(Allocation(graph, id) == object.allocation && !owners[id.value], Error::kCoverage);
+        Require(Allocation(graph, id, path) == object.allocation && !owners[id.value], Error::kCoverage);
         const auto& op = graph.ops[id.value];
-        Require(op.order > order, Error::kDefinition); order = op.order;
-        EarlyValue(graph, allocation, graph.uses[op.first_use.value + 1].operand);
+        Require(path.Before(graph.ops[prior.value], op), Error::kDefinition); prior = id;
+        EarlyValue(graph, allocation, graph.uses[op.first_use.value + 1].operand, path);
         owners[id.value] = object.allocation;
       }
     }
@@ -116,6 +209,29 @@ std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
       const bool own = graph.ops[i].life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueOwnWrite>(graph.ops[i].operation);
       Require(owners[i].has_value() == own, Error::kCoverage);
+    }
+    if (evaluation) {
+      std::vector<std::optional<std::size_t>> objects;
+      budget.Size(objects, graph.values.size());
+      for (std::size_t i = 0; i < plan.objects.size(); ++i) {
+        budget.Step(); objects[graph.ops[plan.objects[i].allocation.value].result->value] = i;
+      }
+      // One census over canonical uses, not one graph/alias walk per field.
+      for (std::size_t i = 0; i < graph.uses.size(); ++i) {
+        budget.Step(); const auto& use = graph.uses[i];
+        if (use.life != analysis::ValueLife::kLive) continue;
+        const auto operand = path.Resolve(use.operand);
+        const auto* value = std::get_if<analysis::ValueId>(&operand);
+        if (!value || !objects[value->value]) continue;
+        const auto& object = plan.objects[*objects[value->value]];
+        if (const auto* op = std::get_if<analysis::OpId>(&use.owner)) {
+          if (graph.ops[op->value].life != analysis::ValueLife::kLive || path.Alias(*op)) continue;
+          if (owners[op->value] == object.allocation && graph.ops[op->value].first_use.value == i) continue;
+        }
+        const auto last = plan.definitions[object.first + std::size_t(object.count) - 1];
+        Require(path.After(graph.ops[last.value], use), Error::kObserved);
+      }
+      return budget.Work();
     }
     for (const auto& object : plan.objects) {
       budget.Step();
@@ -142,11 +258,12 @@ std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
 
-std::variant<LiteralPlan, LiteralError> BuildLiteralPlan(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget allowance) {
+std::variant<LiteralPlan, LiteralError> BuildLiterals(
+    const analysis::ValueProgram& graph, const EvaluationPlan* evaluation, analysis::SemanticBudget allowance) {
   try {
     LiteralBudget budget(allowance);
-    Flow(graph, budget);
+    Flow(graph, budget, evaluation);
+    LiteralPath path(graph, evaluation, budget);
     Require(graph.ops.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
     std::size_t count = 0;
     for (const auto& op : graph.ops) {
@@ -162,7 +279,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiteralPlan(
       const auto& op = graph.ops[i];
       if (op.life != analysis::ValueLife::kLive || !std::holds_alternative<analysis::ValueOwnWrite>(op.operation)) continue;
       const analysis::OpId id{static_cast<std::uint32_t>(i)};
-      fields[next++] = {Allocation(graph, id), id};
+      fields[next++] = {Allocation(graph, id, path), id};
     }
     std::sort(fields.begin(), fields.end(), [&](const auto& a, const auto& b) {
       budget.Step();
@@ -181,7 +298,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiteralPlan(
       ++plan.objects[next - 1].count;
       plan.definitions[i] = fields[i].definition;
     }
-    const auto verified = VerifyLiteralPlan(graph, plan, budget.Remaining());
+    const auto verified = VerifyLiterals(graph, plan, evaluation, budget.Remaining());
     if (const auto* error = std::get_if<Error>(&verified)) return *error;
     budget.Step(std::get<std::uint64_t>(verified));
     plan.allocated_bytes = sizeof(plan) + plan.objects.capacity() * sizeof(ObjectInit) +
@@ -191,5 +308,23 @@ std::variant<LiteralPlan, LiteralError> BuildLiteralPlan(
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+}  // namespace
+std::variant<LiteralPlan, LiteralError> BuildLiteralPlan(
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget) {
+  return BuildLiterals(graph, nullptr, budget);
+}
+std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
+    const analysis::ValueProgram& graph, const LiteralPlan& plan, analysis::SemanticBudget budget) {
+  return VerifyLiterals(graph, plan, nullptr, budget);
+}
+std::variant<LiteralPlan, LiteralError> BuildPhasedLiteralPlan(
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, analysis::SemanticBudget budget) {
+  return BuildLiterals(graph, &evaluation, budget);
+}
+std::variant<std::uint64_t, LiteralError> VerifyPhasedLiteralPlan(
+    const analysis::ValueProgram& graph, const LiteralPlan& plan, const EvaluationPlan& evaluation,
+    analysis::SemanticBudget budget) {
+  return VerifyLiterals(graph, plan, &evaluation, budget);
 }
 }  // namespace abcd::source

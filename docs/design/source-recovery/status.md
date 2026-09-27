@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 51，默认源码契约为 V3。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 52，默认源码契约为 V3。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -41,6 +41,26 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 | T12 | 语料与分类基础已有历史记录 | 全样本新路线审计、跨版本/留出集、进程 1G 实测 |
 
 ## 本次证据
+
+- Rules 52 将同一 `LiteralPlan` 的新对象 own-data 初始化证明扩展到异常相位。
+  原正常 CFG 入口不变；相位入口验证原始 availability、复制身份与唯一正常
+  fallthrough 路径，逐 use 核验对象在最后一次定义前未被观察，RHS 必须在分配
+  前已可用。保留原 CFG/SSA/异常边；不把任意 own-write 当普通属性赋值。
+  求值器先形成复制身份，再构建初始化计划；共享 AST/printer 使用原 `ObjectExpr`
+  与 `DataProperty`，写入 PC 映射到属性范围。文件化 getter/新对象/own-write/catch
+  方法已通过不可变源码出口，运行时检查任意返回/抛值、继承 setter 不被调用、
+  数据属性描述符与逐指令 PC。三 profile 覆盖窄/宽 STOWNBYNAME、DEFINEFIELD/
+  DEFINEPROPERTYBYNAME、复制链和 200/201/402/804 个字段、预算及伪造计划反例。
+  中途观察、catch 观察、晚 RHS、初始化中分支仍拒绝。大字段 AST 用例单独显式
+  提高测试工作量预算，生产默认预算没有放宽，未声称整条流水线线性。
+  真实 Immersive 8566 从 literal/evaluation 拒绝推进到 call-plan：PC 331 的 callee
+  与 PC 363 的调用之间有 PC 337/339 模块读取/guard，尚缺统一的效果子树组合。
+  8257/8404 的拒绝已确定是创建子函数缺失 FunctionBinding 归属，而非 catch 本身。
+  下一步补模块 guarded-read 的表达式组合，并保留原配对异常/TDZ 义务；随后
+  继续异常函数族、循环/异常、finally 与协程。第 1 步及五步整体仍未验收。
+  验证：`abc_structure`、`abc_semantic`、`exception_candidates` 及相关测试目标
+  重建成功；24 项定向 CTest 全部通过。`immersive_exception.mjs` 使用最新工具
+  对真实 8284 方法再次通过行为与 PC 映射回归。未运行全量语料、RSS 或基准。
 
 - Rules 51 新增不可变 `ModuleEnclosure`：同一 ABC/record 的外部 import
   slot、原始 local 名称和 owner 绑定到原生 ESM prelude；共享异常方法准备及

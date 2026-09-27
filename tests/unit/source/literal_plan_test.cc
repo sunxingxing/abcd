@@ -1,6 +1,7 @@
 #include "../../../src/source/literal_plan.h"
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/tree_semantics.h"
+#include "../../../src/source/tree_structure.h"
 
 #include <cstdlib>
 #include <utility>

@@ -240,7 +240,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 50 verify phased expression effect intervals and final throw owners.
 // Rules 51 publish guarded external module reads only into a same-input native
 // ESM enclosure, rechecking owner, slot, spelling and destination shadows.
-inline constexpr std::uint32_t kRouteEvidenceRules = 51;
+// Rules 52 recover fresh own-data initialization across unique normal phase
+// corridors, retaining canonical RHS snapshots and rejecting early observers.
+inline constexpr std::uint32_t kRouteEvidenceRules = 52;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

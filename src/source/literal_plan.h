@@ -4,6 +4,7 @@
 #include "abcd/analysis/value_ir.h"
 
 namespace abcd::source {
+struct EvaluationPlan;
 struct ObjectInit {
   analysis::OpId allocation;
   std::uint32_t first;
@@ -30,5 +31,16 @@ enum class LiteralError : std::uint8_t {
 [[nodiscard]] std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan,
     analysis::SemanticBudget budget = {});
+// Same initializer model across unique normal phase corridors. The original
+// phase graph stays intact; copy aliases must have their independent proof.
+// No observations (including exceptional snapshots) before the last define,
+// and every RHS must already be available at allocation. Source publication
+// additionally requires the versioned resource-exhaustion exclusion.
+[[nodiscard]] std::variant<LiteralPlan, LiteralError> BuildPhasedLiteralPlan(
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
+    analysis::SemanticBudget budget = {});
+[[nodiscard]] std::variant<std::uint64_t, LiteralError> VerifyPhasedLiteralPlan(
+    const analysis::ValueProgram& graph, const LiteralPlan& plan,
+    const EvaluationPlan& evaluation, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif
