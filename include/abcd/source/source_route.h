@@ -226,7 +226,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 28 distinguish named-function self from private creation-time binding.
 // Rules 29 admit realm identity into value IR, not yet into source publication.
 // Rules 30 publish realm AST only after destination binding validation.
-inline constexpr std::uint32_t kRouteEvidenceRules = 30;
+// Rules 31 preserve the intrinsic Symbol constructor through semantic/value IR.
+inline constexpr std::uint32_t kRouteEvidenceRules = 31;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

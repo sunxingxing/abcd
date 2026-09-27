@@ -264,6 +264,10 @@ int main() {
       for (const bool callback : {false, true}) Emit(profile, constant, callback);
     for (const bool callback : {false, true})
       Emit(profile, abc::Opcode::kLDHOLE, callback, ExpectedSource::kRejected);
+    // Neither V2's realm policy nor a mutable Symbol property proves the
+    // interpreter's original intrinsic constructor binding.
+    for (const bool callback : {false, true})
+      Emit(profile, abc::Opcode::kLDSYMBOL, callback, ExpectedSource::kRejected);
   }
   std::cout << "];\n";
   std::cout << "export const debugCases = [\n";

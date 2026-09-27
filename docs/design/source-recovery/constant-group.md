@@ -217,6 +217,38 @@ V1 explicit-host resolution has scope-level evidence, not an executable named
 creation fixture: V1 separately refuses the naming wrapper's allocation premise.
 Generator/async/derived owners still require their existing protocol proofs.
 
+### Symbol Constructor Dependency
+
+Pinned interpreter-inl.cpp:1745 loads
+`globalEnv->GetSymbolFunction().GetTaggedValue()`. The intrinsic is initialized
+by builtins.cpp:824 (and :893 for another realm). LDSYMBOL does not perform a
+global-name lookup or read the mutable realm object's Symbol property.
+SymbolConstructorLoad now preserves that distinction through
+ValueSymbolConstructor: no operands, acc result, Defined language domain, no
+ordinary exception or observable effect. Three-profile import tests reject
+malformed encodings and substitution with realm-object identity. Source
+evaluation currently refuses the value; six file-backed direct/callback cases
+check that no Complete receipt is published without a binding implementation.
+
+Required next steps on the same source pipeline:
+
+1. Provide an explicit embedding capability for an initialized immutable lexical
+   binding to this ABC realm's original Symbol constructor. V2 stable globalThis
+   does not imply stable Symbol. Do not infer the capability from a name, read
+   globalThis.Symbol, use Symbol.prototype.constructor, or fabricate it from a
+   CLI string option. Missing host evidence remains a typed rejection.
+2. Add a dedicated typed AST expression and independent value correspondence.
+   Share the existing indexed local/family/destination enclosure checks and
+   unified printer, with no semantic-string dispatch or alternate body writer.
+   Record the binding requirement and contract in emitted evidence. Recheck it
+   whenever the embedding changes and retain exact instruction PC spans.
+3. Execute direct/callback/captured forms across all three admitted profiles.
+   Mutate the public Symbol property to a different value or a throwing getter
+   while keeping the trusted binding, and verify original constructor identity,
+   callback exceptions and reentry. Check naming collisions, nested scopes,
+   missing/invalid bindings and AST substitution. Node behavior is not Ark VM
+   differential proof; report that evidence boundary explicitly.
+
 ### Frame Receiver Dependency
 
 LDTHIS lifts to FrameThisLoad with an accumulator definition and no

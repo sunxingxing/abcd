@@ -86,6 +86,9 @@ struct StringLoad {
 };
 // Realm-owned object identity, not a mutable globalThis identifier lookup.
 struct GlobalObjectLoad {};
+// Pinned LDSYMBOL reads GlobalEnv::SymbolFunction, not the mutable global
+// object's Symbol property. Source publication requires an intrinsic binding.
+struct SymbolConstructorLoad {};
 // Reads VM frame.thisObj, not the writable optional ABI register copy. Derived
 // construction can expose Hole here; source use needs callable-owner evidence.
 struct FrameThisLoad {};
@@ -111,7 +114,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        BufferedArrayCreation, AwaitValue,
                                        ThrowOperation, SuperRange, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
-                                       FrameThisLoad, FrameFunctionLoad>;
+                                       FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

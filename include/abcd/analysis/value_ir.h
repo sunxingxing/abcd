@@ -114,6 +114,7 @@ struct ValueFrameThis { bool operator==(const ValueFrameThis&) const = default; 
 struct ValueFrameFunction { bool operator==(const ValueFrameFunction&) const = default; };
 // Realm identity, never a property/name lookup of mutable globalThis.
 struct ValueGlobalObject { bool operator==(const ValueGlobalObject&) const = default; };
+struct ValueSymbolConstructor { bool operator==(const ValueSymbolConstructor&) const = default; };
 struct ValueString { abc::PoolIndex string; bool operator==(const ValueString&) const = default; };
 // Name lookup and IC-dependent var lookup have different domains. Retain the
 // opcode contract; neither denotes a source lexical declaration or pure read.
@@ -199,7 +200,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValueDebugger, ValueFrameThis, ValueFrameFunction,
-    ValueGlobalObject>;
+    ValueGlobalObject, ValueSymbolConstructor>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;
