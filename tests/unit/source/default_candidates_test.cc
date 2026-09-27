@@ -6,6 +6,7 @@
 #include "../../../src/source/tree_flow.h"
 #include "../../../src/source/tree_semantics.h"
 #include "../../../src/analysis/value_flow.h"
+#include "abcd/analysis/value_environment.h"
 
 #include <cstdlib>
 #include <bit>
@@ -119,6 +120,8 @@ void BodyProjection() {
   Check(graph.origins[0].disposition == OriginDisposition::kRetained);
   Check(graph.input.sites.empty() && graph.input.values.empty());
   Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(graph)));
+  Check(std::holds_alternative<ValueNop>(graph.ops[1].operation));
+  Check(std::holds_alternative<ValueEnvironments>(BuildValueEnvironments(graph)));
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
   std::vector<ExpressionConstant> constants(graph.ops.size());
@@ -174,6 +177,47 @@ void BodyProjection() {
   changed.uses[5].operand = ValueId{0};
   Relink(changed);
   Check(std::get<DefaultBodyError>(DefaultBody::Build(changed, parameters, candidates, 0)) == DefaultBodyError::kProof);
+}
+void SnapshotDefault() {
+  auto original = DefaultDiamond();
+  original.arguments = ArgumentFrameFact{std::get<abc::FrameLayout>(
+      abc::BuildFrameLayout(0, 1, {false, false, true, false}))};
+  constexpr auto effects = LanguageEffect::kArgumentsRead | LanguageEffect::kAllocation;
+  original.ops[3] = {ValueArgumentSnapshot{1}, {2}, 0, {5}, 1, ValueId{4},
+      effects, effects, ExceptionalCompletion::kMayThrow, {3}};
+  original.uses[5].role = OperandRole::kArgument;
+  original.uses[5].purpose = ReadPurpose::kProtocol;
+  original.values.push_back({OpResult{{3}}, ValueKinds::Language(), {}});
+  original.ops.push_back({ValueReturn{}, {2}, 1, {7}, 1, {}, LanguageEffect::kNone,
+      LanguageEffect::kNone, ExceptionalCompletion::kImpossible, {4}});
+  original.uses.push_back({OpId{4}, OperandRole::kReturnValue, ReadPurpose::kOperand, ValueId{4}});
+  original.origins.push_back({{4}, {4}, {}});
+  ++original.blocks[2].op_count;
+  original.input.sites = {OpId{0}, OpId{1}, OpId{2}, OpId{3}, OpId{4}};
+  Relink(original);
+  const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(original, 1));
+  const auto candidates = Find(original);
+  auto built = DefaultBody::Build(original, parameters, candidates, 0);
+  Check(std::holds_alternative<DefaultBody>(built));
+  const auto& residual = std::get<DefaultBody>(built).Graph();
+  Check(residual.arguments == original.arguments && residual.input.values.empty());
+  Check(!residual.input.sites[0] && !residual.input.sites[1] && !residual.input.sites[2]);
+  Check(residual.input.sites[3] == OpId{3} && residual.input.sites[4] == OpId{4});
+  Check(std::get<ValueId>(residual.uses[5].operand) == ValueId{0});
+  Check(residual.uses[5].purpose == ReadPurpose::kProtocol && residual.ops[3].normal == effects);
+  Check(std::holds_alternative<ValueEnvironments>(BuildValueEnvironments(residual)));
+  const auto refuses = [&](const ValueProgram& changed) {
+    Check(std::get<DefaultProofError>(DefaultValueProof::Build(changed, parameters, candidates, 0)) ==
+        DefaultProofError::kEscapedValue);
+  };
+  auto changed = original; changed.arguments.reset(); refuses(changed);
+  changed = original; changed.uses[5].operand = ValueId{0}; Relink(changed); refuses(changed);
+  changed = original; changed.uses[5].role = OperandRole::kInput; refuses(changed);
+  changed = original; changed.ops[3].operation = ValueCopy{}; refuses(changed);
+  changed = original; ++std::get<ValueArgumentSnapshot>(changed.ops[3].operation).slots; refuses(changed);
+  changed = original; ++changed.arguments->frame.parameters;
+  ++std::get<ValueArgumentSnapshot>(changed.ops[3].operation).slots;
+  ++changed.ops[3].use_count; refuses(changed);
 }
 void UndefinedProducer() {
   auto graph = DefaultDiamond();
@@ -313,4 +357,4 @@ void MaterializedNumber() {
         DefaultProofError::kEscapedValue);
 }
 }  // namespace
-int main() { MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); UndefinedProducer(); MaterializedNumber(); }
+int main() { MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); SnapshotDefault(); UndefinedProducer(); MaterializedNumber(); }

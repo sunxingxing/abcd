@@ -165,8 +165,37 @@ retain generated ranges. This uses the existing CFG/phi/loop AST route without
 a loop-specific snapshot writer; the 20 file-backed variants are synthetic, not
 additional application-corpus or Ark VM differential evidence.
 
+## Literal Defaults and Method Owners (Rules 41)
+
+The shared family builder now projects both SSA-value literal defaults and
+lexical-cell literal defaults through their existing sealed `DefaultBody` proofs.
+Value-default projection formerly existed only in the single-function route;
+the family route now performs it before environment rebuilding and child capture
+rebinding. Migrated operations are explicit residual no-ops for both storage
+forms. Their original PCs remain owned by the signature proof, not labeled as
+erasable original control/effects. Surviving instruction-site indexes are
+retained for module/capture rebinding; original value correspondence is not
+copied to the initialized-formal interpretation.
+
+`DefaultValueProof` admits a merged post-default value as a conditional snapshot
+protocol input only for a typed `ValueArgumentSnapshot` with the invocation fact
+and matching declared count. The original pre-default entry still cannot escape
+into the body. Other protocol consumers, incorrect roles/counts and absent facts
+reject. The source carrier still supplies the original actual argument count
+and extra tail; moving the default into a formal must not invent a supplied
+argument when the caller omitted it. Mixed value/cell prologues, effectful
+initializers and rest signatures are not authorized by this extension.
+
+Three additional file-backed class-method variants cover a plain parameter,
+integer `-1` default and equivalent negated numeric default. Each follows
+`PreparedFamily::PrepareClass` through emission receipts and original-PC ranges,
+then executes as a real class method. The 23 total synthetic variants check
+method name/length/nonconstructibility, omitted versus supplied undefined,
+non-undefined values, extra tail and host-binding refusal. This does not turn
+synthetic fixtures into application-corpus or Ark VM differential evidence.
+
 Still open: arrow-owned invocation carriers and their ABI/name/constructibility
-proofs; broader method/constructor/async/generator and default/rest combinations;
+proofs; broader method/constructor/async/generator and mixed-default/rest combinations;
 host integration in actual applications and multi-application runtime evidence.
 Without the explicit factory the normal CLI continues to refuse snapshots.
 The opcode family and group 1 are not globally complete.

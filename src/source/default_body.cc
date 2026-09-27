@@ -71,9 +71,9 @@ template<class Proof> class Projection {
       Require(op.life == ValueLife::kLive && op.origin.value < body.origins.size(), Error::kOrigin);
       op.life = ValueLife::kRemoved;
       if (op.result) body.values[op.result->value].life = ValueLife::kRemoved;
-      if constexpr (std::is_same_v<Proof, CellDefaultProof>) {
+      {
         // This is the sealed RESIDUAL program under initialized formals, not
-        // a claim that original cell effects are pure. Migrated instructions
+        // a claim that original effects/control are erasable. Migrated instructions
         // become tombstones; Signature().Operations() still owns their PCs.
         // Environment rebuilding must see no body read/store at these sites.
         op.operation = ValueNop{};
@@ -119,7 +119,7 @@ template<class Proof> class Projection {
     }
     body.revision = {original_.revision.value + 1};
     body.cfg_revision = {original_.cfg_revision.value + 1};
-    if constexpr (std::is_same_v<Proof, CellDefaultProof>) {
+    {
       // Surviving-site lookup for ORIGINAL capture/module rebinding, not an
       // input-correspondence certificate for initialized source parameters.
       // Removed signature sites have no body operation; old value maps are

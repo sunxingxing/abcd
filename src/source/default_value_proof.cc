@@ -252,7 +252,18 @@ class Checker {
       case ValueRole::kMerged:
         allowed = op ? !blocks_[graph_.ops[op->value].block.value] : !values_[phi->value]; break;
     }
-    Require(allowed && use.purpose == ReadPurpose::kOperand, Error::kEscapedValue);
+    bool purpose = use.purpose == ReadPurpose::kOperand;
+    if (restriction.role == ValueRole::kMerged && op &&
+        use.purpose == ReadPurpose::kProtocol && use.role == OperandRole::kArgument && graph_.arguments) {
+      const auto& consumer = graph_.ops[op->value];
+      const auto* snapshot = std::get_if<ValueArgumentSnapshot>(&consumer.operation);
+      // Only the post-default value may enter this conditional read. Raw entry
+      // escapes still reject: native formals no longer expose their old values.
+      purpose = snapshot && graph_.arguments->frame.parameters == parameters_.formals.size() &&
+          snapshot->slots == graph_.arguments->frame.parameters &&
+          consumer.use_count == snapshot->slots;
+    }
+    Require(allowed && purpose, Error::kEscapedValue);
   }
   const ValueProgram& graph_;
   const ParameterPlan& parameters_;

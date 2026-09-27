@@ -233,8 +233,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 35 validate the canonical argument window before rest recovery.
 // Rules 36 retain argument snapshot slot dependencies and require owner proof.
 // Rules 37 retain checked invocation argument facts from exact callable owners.
-// Rules 40 bind owned invocation snapshots to explicit host factory syntax.
-inline constexpr std::uint32_t kRouteEvidenceRules = 40;
+// Rules 41 prove value defaults and conditional snapshots in callable families.
+inline constexpr std::uint32_t kRouteEvidenceRules = 41;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

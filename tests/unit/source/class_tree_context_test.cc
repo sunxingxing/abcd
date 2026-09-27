@@ -6,11 +6,14 @@
 #include "abcd/source/class_method.h"
 #include "abcd/source/global_reference.h"
 #include "../../support/function_segments.h"
+#include "../../../tools/tree_position_json.h"
+#include <nlohmann/json.hpp>
 
 #include <unistd.h>
 
 #include <algorithm>
 #include <cstdlib>
+#include <iostream>
 #include <limits>
 #include <sstream>
 #include <type_traits>
@@ -29,7 +32,7 @@ static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
 void Check(bool condition) { if (!condition) std::abort(); }
 enum class DefaultEncoding { kNone, kInteger, kNegation };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
-         bool object_initializer = false) {
+         bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr) {
   const bool defaults = encoding != DefaultEncoding::kNone;
   constexpr std::uint32_t kPool = 64, kOwner = 80, kLiteral = 128, kCaller = 256,
       kConstructor = 300, kMember = 350, kCallerCode = 400, kMemberCode = 430, kName = 500;
@@ -89,6 +92,12 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
         kLoad, kObjectParameter, kDefineField, 0, kNamePoolIndex, 0,
         kObjectRegister, kLoad, kObjectRegister, kReturn};
   }
+  if (snapshot) {
+    // Replace the final two-byte parameter load, preserving the default join PC.
+    member.erase(member.end() - 3, member.end() - 1);
+    member.insert(member.end() - 1, static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS));
+    --member[kCodeSizeOffset];
+  }
   std::copy(caller.begin(), caller.end(), bytes.begin() + kCallerCode);
   std::copy(member.begin(), member.end(), bytes.begin() + kMemberCode);
   char path[] = "/tmp/abcd-class-tree-context-XXXXXX";
@@ -132,6 +141,48 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   const auto& value = std::get<ClassTreeContext>(context);
   Check(value.Name() == u"run" && value.Frame().parameters == 1);
   Check(value.Callable() == CallableKind::kMethod && value.Mode() == Strictness::kStrict);
+  if (snapshot) {
+    const HostArgumentSnapshotBinding factory{u"snapshotArguments", ArgumentSnapshotAbi::kV7CurrentSlots};
+    GlobalScope globals{}; globals.argument_snapshot_binding = &factory;
+    const FamilyDestination destination{Strictness::kStrict, &globals, FunctionFragment::kClassMember};
+    auto prepared = PreparedFamily::PrepareClass(file, header, index, lookup, roles,
+        functions, sites, range.first, identity, destination);
+    Check(std::holds_alternative<PreparedFamily>(prepared));
+    const auto& ready = std::get<PreparedFamily>(prepared);
+    const auto& root = ready.Family().members.front();
+    Check(root.tree.parameters.size() == 1 && root.tree.parameters[0].initializer.has_value() == defaults);
+    Check(root.abi && root.abi->length == encoded_length && root.sources);
+    std::ostringstream denied;
+    Check(std::holds_alternative<FamilyPrepareFailure>(ready.PrintDraft(
+        {Strictness::kStrict, nullptr, FunctionFragment::kClassMember}, denied)) && denied.str().empty());
+    std::ostringstream output;
+    const auto printed = ready.PrintDraft(destination, output);
+    Check(std::holds_alternative<PrintedFamilyDraft>(printed));
+    const auto& positions = std::get<PrintedFamilyDraft>(printed).members.front();
+    Check(positions.argument_snapshot_binding && positions.argument_snapshot_binding->name == factory.name);
+    if (evidence) {
+      std::ostringstream mapping;
+      tools::WriteTreePositions(mapping, root.tree, positions, &*root.sources);
+      auto mapped = nlohmann::json::parse(mapping.str());
+      auto snapshots = nlohmann::json::array();
+      const auto decoded = std::get<abc::MethodBody>(abc::DecodeMethodBody(file, header.profile, *index.methods[2].code));
+      for (std::size_t i = 0; i < decoded.instructions.size(); ++i)
+        if (decoded.instructions[i].decoded.opcode == abc::Opcode::kGETUNMAPPEDARGS)
+          snapshots.push_back({{"instruction", i}, {"pc", decoded.instructions[i].offset.value}});
+      Check(snapshots.size() == 1);
+      *evidence << nlohmann::json{{"source", output.str()}, {"parameters", 1},
+          {"method", true}, {"default_parameter", defaults}, {"writes_parameter", false},
+          {"branch_parameter", false}, {"loop_snapshots", false}, {"nested_snapshot", false},
+          {"snapshots", snapshots}, {"positions", std::move(mapped)}} << '\n';
+    }
+    std::ostringstream sealed;
+    auto emitted = FamilyEmission::Write(std::get<PreparedFamily>(std::move(prepared)), destination, sealed, {});
+    Check(std::holds_alternative<FamilyEmission>(emitted) && sealed.str() == output.str());
+    const auto& receipt = std::get<FamilyEmission>(emitted).Receipts().front();
+    Check(receipt.coverage == Coverage::kComplete && !ValidateRouteReceipt(receipt));
+    Check(unlink(path) == 0);
+    return;
+  }
   if (global_typeof) {
     const GlobalScope scope{}; // Complete enclosure of this synthetic fixture.
     const auto denied = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity);
@@ -302,7 +353,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   context = ClassTreeContext::Resolve(file, header, index, lookup, roles, sites, range.first, identity);
   Check(std::holds_alternative<ClassTreeContext>(context));
   auto rejected = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity);
-  Check(std::get<FunctionPrepareFailure>(rejected).kind == FunctionPrepareError::kParameters);
+  // Metadata no longer matches the encoded Code header; reject before ABI proof.
+  Check(std::get<FunctionPrepareFailure>(rejected).kind == FunctionPrepareError::kBody);
   index.methods[2].code->arguments = 4;
   index.methods[2].name = "bad";
   context = ClassTreeContext::Resolve(file, header, index, lookup, roles, sites, range.first, identity);
@@ -310,7 +362,13 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   Check(unlink(path) == 0);
 }
 }  // namespace
-int main() {
+int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--snapshot-json") {
+    for (const auto encoding : {DefaultEncoding::kNone, DefaultEncoding::kInteger, DefaultEncoding::kNegation})
+      Run(encoding, false, false, true, &std::cout);
+    return 0;
+  }
+  Check(argc == 1);
   Run(); Run(DefaultEncoding::kInteger); Run(DefaultEncoding::kNegation);
   Run(DefaultEncoding::kNone, true);
   Run(DefaultEncoding::kNone, false, true);

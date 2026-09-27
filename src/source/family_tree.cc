@@ -25,7 +25,7 @@ class FamilyTrees {
       member_ = {static_cast<std::uint32_t>(i)};
       default_candidates_.reset();
       defaults_proved_ = false;
-      if (defaults_[i]) {
+      if (defaults_[i] && defaults_[i]->Storage() == DefaultStorage::kCell) {
         default_candidates_ = defaults_[i]->Signature().Defaults().size();
         defaults_proved_ = true;
       }
@@ -144,16 +144,28 @@ class FamilyTrees {
       const auto length = i == 0 ? root.Length() : member.context->Length();
       const auto& frame = i == 0 ? root.Frame() : member.context->Frame();
       auto& values = member.function.values;
-      if (length >= frame.parameters || !values.cells) continue;
+      if (length >= frame.parameters) continue;
       auto parameters = Take<ParameterPlan, ParameterPlanError>(BuildParameterPlan(values.graph, frame.parameters, left_));
       Account(parameters);
-      auto candidates = Take<CellDefaults, CellDefaultError>(FindCellDefaults(values.graph, *values.cells, parameters, length, left_));
-      Account(candidates); default_candidates_ = candidates.candidates.size();
-      if (candidates.candidates.empty()) continue;
-      Require(values.environments.has_value(), FamilyTreeError::kContext);
-      auto body = Take<DefaultBody, DefaultBodyError>(DefaultBody::BuildCell(values.graph,
-          *values.environments, *values.cells, parameters, candidates, length, left_));
-      Admit(body.AllocatedBytes(), 1); Step(body.Work()); defaults_proved_ = true;
+      auto direct = Take<DefaultCandidates, DefaultCandidateError>(
+          FindDefaultCandidates(values.graph, parameters, length, left_));
+      Account(direct);
+      std::optional<DefaultBody> projected;
+      if (!direct.values.empty()) {
+        projected.emplace(Take<DefaultBody, DefaultBodyError>(
+            DefaultBody::Build(values.graph, parameters, direct, length, left_)));
+      } else {
+        if (!values.cells) continue;
+        auto candidates = Take<CellDefaults, CellDefaultError>(FindCellDefaults(values.graph, *values.cells, parameters, length, left_));
+        Account(candidates); default_candidates_ = candidates.candidates.size();
+        if (candidates.candidates.empty()) continue;
+        Require(values.environments.has_value(), FamilyTreeError::kContext);
+        projected.emplace(Take<DefaultBody, DefaultBodyError>(DefaultBody::BuildCell(values.graph,
+            *values.environments, *values.cells, parameters, candidates, length, left_)));
+        defaults_proved_ = true;
+      }
+      auto& body = *projected;
+      Admit(body.AllocatedBytes(), 1); Step(body.Work());
       // Retain the sealed residual owner for signature checks. The mutable
       // working copy is separately admitted before allocation and is never
       // passed off as the original input-correspondence graph.

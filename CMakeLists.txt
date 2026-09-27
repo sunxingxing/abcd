@@ -518,8 +518,8 @@ if(BUILD_TESTING)
   add_executable(tree_constants_test tests/unit/source/tree_constants_test.cc)
   target_link_libraries(tree_constants_test PRIVATE abcd_source)
   add_test(NAME tree_constants_test COMMAND tree_constants_test)
-  add_executable(class_tree_context_test tests/unit/source/class_tree_context_test.cc)
-  target_link_libraries(class_tree_context_test PRIVATE abcd_source)
+  add_executable(class_tree_context_test tests/unit/source/class_tree_context_test.cc tools/tree_position_json.cc)
+  target_link_libraries(class_tree_context_test PRIVATE abcd_source abcd_json)
   add_test(NAME class_tree_context_test COMMAND class_tree_context_test)
   add_executable(tree_structure_test tests/unit/source/tree_structure_test.cc)
   target_link_libraries(tree_structure_test PRIVATE abcd_source)
@@ -806,7 +806,7 @@ if(BUILD_TESTING)
   if(ABCD_NODE_EXECUTABLE)
     add_test(NAME argument_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/argument_snapshot.mjs
-      $<TARGET_FILE:creation_tree_context_test>)
+      $<TARGET_FILE:creation_tree_context_test> $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME constant_group_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/constant_group.mjs
       $<TARGET_FILE:constant_group_fixture>)

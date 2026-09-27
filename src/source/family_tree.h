@@ -25,7 +25,7 @@ struct FamilyTreeFailure {
       ParameterPlanError, CellDefaultError, CellDefaultProofError, DefaultBodyError,
       analysis::ValueEnvironmentError, CellError, ModuleGuardError, CaptureCellError,
       CaptureEvaluationFailure, DefaultSignatureError, TreeSemanticError,
-      FamilyEnclosureFailure, FamilyWriteFailure, InstructionSourceError> cause;
+      FamilyEnclosureFailure, FamilyWriteFailure, InstructionSourceError, DefaultCandidateError> cause;
   // Discovery evidence only; no source initializer or erasure is authorized.
   std::optional<std::size_t> cell_default_candidates;
   bool cell_defaults_proved = false;
@@ -34,8 +34,9 @@ struct FamilyTreeFailure {
 // Parent-first shared construction checks each incoming capture against the
 // actual parent tree. Complete-family write domains are checked against original
 // stores and residual trees, without granting immutability. No source receipt:
-// root enclosure and global/module initialization remain publication gates. Cell-default projection
-// runs before whole-family edge rebinding; other default forms still refuse.
+// root enclosure and global/module initialization remain publication gates.
+// Proven value/cell literal defaults project before whole-family edge rebinding;
+// mixed or effectful default prologues still require their own proof.
 // Existing file/index/context/family storage is caller-admitted. This allowance
 // covers all additional construction/scratch; conservative accounting retains
 // previous pass charges even after their storage is released.
