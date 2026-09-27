@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_FAMILY_WRITES_H_
 
 #include "family_file.h"
+#include "phased_capture_cells.h"
 
 namespace abcd::source {
 enum class FamilyWriteError : std::uint8_t {
@@ -17,6 +18,33 @@ struct FamilyWrites {
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
+struct PhasedFamilyInput {
+  const PhasedBody& function;
+  const abc::MethodBody& body;
+  const analysis::ExceptionLocals& locals;
+  const abc::MethodLookup& lookup;
+};
+struct NormalWriteEdge {
+  analysis::InstructionId site;
+  const analysis::CreationBinding& creation;
+};
+struct PhasedWriteEdge {
+  const PhasedCreation& creation;
+  const FunctionContext& owner;
+};
+struct FamilyWriteEdge {
+  FamilyId parent;
+  std::variant<NormalWriteEdge, PhasedWriteEdge> occurrence;
+};
+// Borrowed, unchanged original owners and freshly verified working products.
+// Occurrence order matches ConstructedFamily. Phase parents currently admit
+// normal children only; nested phase children are a typed refusal, not a cast
+// to normal SSA. Phase locals must retain the explicit Language-write premise.
+struct FamilyWriteInput {
+  std::variant<CaptureFunction, PhasedFamilyInput> function;
+  std::optional<FamilyWriteEdge> incoming;
+  std::span<const FamilyObject> objects;
+};
 // Requires unchanged, complete file-family inputs and freshly verified semantic
 // trees/default signatures/flows/capture layout. Rechecks every original store's
 // Language domain and residual placement, every capture edge and every barrier.
@@ -25,6 +53,9 @@ struct FamilyWrites {
 // Does not authorize snapshots, eliminate writes, or close external source scope.
 [[nodiscard]] std::variant<FamilyWrites, FamilyWriteFailure> VerifyFamilyWrites(
     const abc::MetadataIndex& index, const FileFamily& inputs,
+    const ConstructedFamily& trees, analysis::SemanticBudget budget = {});
+[[nodiscard]] std::variant<FamilyWrites, FamilyWriteFailure> VerifyFamilyWrites(
+    const abc::MetadataIndex& index, std::span<const FamilyWriteInput> inputs,
     const ConstructedFamily& trees, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

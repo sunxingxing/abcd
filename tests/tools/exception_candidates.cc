@@ -216,7 +216,7 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
         report["creations"].back()["capture_evaluation_ready"] = true;
         function_bindings.push_back(std::move(ready_binding->binding));
         tree_children.push_back({std::move(child_owner), std::move(*child_body),
-            std::move(*ready_child), std::move(*values), std::move(*mapped)});
+            std::move(*ready_child), std::move(*values), std::move(*mapped), child});
       }
     }
   }
@@ -234,7 +234,7 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       report["conditional_evaluation_ready"] = std::holds_alternative<std::uint64_t>(
           VerifyPhasedEvaluationPlan(parent_body.Graph(), *ready, budget));
       const auto probe = test::ProbeExceptionFamily(file, header, index, *record, kSelectedRecord,
-          context, *body, parent_body, *ready, std::move(tree_children), budget);
+          context, *body, parent_body, *ready, std::move(tree_children), lookup, *local_scopes, budget);
       report["conditional_parent_tree_ready"] = probe.parent_tree;
       report["conditional_child_trees"] = probe.child_trees;
       report["conditional_family_layout_ready"] = probe.layout;
@@ -242,6 +242,9 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       report["rejected_capture_forgery"] = probe.rejected_capture_forgery;
       report["checked_store_methods"] = probe.checked_store_methods;
       report["checked_lexical_stores"] = probe.checked_lexical_stores;
+      report["family_writes_ready"] = probe.family_writes;
+      report["family_write_creations"] = probe.write_creations;
+      report["rejected_family_write_forgery"] = probe.rejected_write_forgery;
       report["family_probe_stage"] = static_cast<unsigned>(probe.stage);
       if (probe.tree_error) report["family_probe_tree_error"] = static_cast<unsigned>(*probe.tree_error);
     }

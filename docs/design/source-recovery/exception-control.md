@@ -835,3 +835,37 @@ targets have separate coverage. This is deliberately not a family certificate:
 complete phase/normal file ownership, creation-barrier census and transitive
 write induction still have to be connected before source publication. Rules 56
 remain unchanged by this shared member check.
+
+### Mixed Family Write Closure
+
+`VerifyFamilyWrites` now accepts borrowed typed normal/phased members. The
+existing `FileFamily` overload adapts each member without allocating or copying
+graphs and uses the same checker. The phase view borrows its immutable body,
+original method, once-computed conditional `ExceptionLocals` and method lookup;
+each actual child edge retains its original creation and resolved owner.
+
+Checks run parent-first: identity/revision and conditional domain premises,
+closed root, original and working capture correspondence, actual AST capture
+targets, and the shared original-to-AST store obligations. Only after every
+member passes are original creation barriers discharged. Phase barriers come
+from all original typed instructions, not `ExceptionLocals.plan.capture_barriers`:
+that normal-plan field is not populated by the phase analysis, which may return
+early without local cells. Function/class/object-buffer/array-buffer creations
+all require coverage, including those absent from residual working operations.
+Only retained primitive-object evidence can discharge an object-buffer barrier;
+unsupported class/array barriers stay refused. Duplicate/omitted edges fail.
+
+The real `recover` and `queryDegree` families now pass this complete write-domain
+gate. Tests remove descendants from BOTH member censuses to check original-PC
+coverage rather than mere matching sizes, and reject unknown write premises,
+missing/self/duplicate/wrong-kind edges and one-less byte/work budgets. Normal
+file-backed families compare both overloads; three-profile and 200/201/402 store
+cases also exercise the common gate.
+
+This is a fresh, borrowed verification result, not an immutable source receipt
+or an independent input loader. Phase-parent to normal-child edges and normal
+descendants are admitted; phase children remain explicitly refused. Mixed
+file-family ownership, ABI/PC census and destination/module publication gates
+still need integration, followed by executable combined-family verification.
+Rules 56 and the standalone source refusals remain unchanged. Loop/exception,
+completion/finally and suspension work retain their original acceptance scope.

@@ -9,7 +9,8 @@ ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
     const source::RecordModuleContext& modules, source::ModuleOwnerId module_owner,
     const source::FunctionContext& context, const abc::MethodBody& body,
     const source::PhasedBody& parent, const source::EvaluationPlan& evaluation,
-    std::vector<ExceptionChild> children, analysis::SemanticBudget budget) {
+    std::vector<ExceptionChild> children, const abc::MethodLookup& lookup,
+    const analysis::ExceptionLocals& locals, analysis::SemanticBudget budget) {
   using namespace source;
   ExceptionFamilyProbe result;
   constexpr FunctionOwnerId kRoot{0};
@@ -113,6 +114,63 @@ ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
   result.stage = FamilyProbeStage::kEnclosure;
   if (!std::holds_alternative<FamilyEnclosure>(VerifyFamilyEnclosure(*layout, budget))) return result;
   result.enclosure = true;
+  result.stage = FamilyProbeStage::kWrites;
+  std::vector<FamilyWriteInput> inputs;
+  inputs.reserve(children.size() + 1);
+  inputs.push_back({PhasedFamilyInput{parent, body, locals, lookup}, {}, {}});
+  for (const auto& child : children) inputs.push_back({CaptureFunction{child.input, child.values},
+      FamilyWriteEdge{FileFamily::kRoot, PhasedWriteEdge{child.creation, child.context}}, {}});
+  const auto verify = [&](analysis::SemanticBudget limit) { return VerifyFamilyWrites(index, inputs, *layout, limit); };
+  const auto checked = verify(budget);
+  const auto* writes = std::get_if<FamilyWrites>(&checked);
+  if (!writes || writes->facts.stores != result.checked_lexical_stores ||
+      writes->facts.creations != children.size()) return result;
+  result.family_writes = true; result.write_creations = writes->facts.creations;
+  auto exact = budget; exact.bytes = writes->allocated_bytes; exact.work = writes->work;
+  if (!std::holds_alternative<FamilyWrites>(verify(exact))) return result;
+  const auto fails = [&](analysis::SemanticBudget limit, FamilyWriteError error) {
+    const auto failed = verify(limit);
+    const auto* failure = std::get_if<FamilyWriteFailure>(&failed);
+    return failure && failure->kind == error;
+  };
+  --exact.work;
+  if (!fails(exact, FamilyWriteError::kWorkLimit)) return result;
+  ++exact.work; --exact.bytes;
+  if (!fails(exact, FamilyWriteError::kResourceLimit)) return result;
+  auto unknown = locals; unknown.writes = analysis::ClosureWrites::kUnknown;
+  inputs[0].function.emplace<PhasedFamilyInput>(PhasedFamilyInput{parent, body, unknown, lookup});
+  if (!fails(budget, FamilyWriteError::kDomain)) return result;
+  inputs[0].function.emplace<PhasedFamilyInput>(PhasedFamilyInput{parent, body, locals, lookup});
+  if (!children.empty()) {
+    // Remove descendants from both censuses: matching counts alone must not
+    // hide their original creation barriers, even with zero captured cells.
+    auto omitted = *layout;
+    omitted.members.resize(1); omitted.parents.resize(1);
+    const auto missing = VerifyFamilyWrites(index, std::span<const FamilyWriteInput>(inputs).first(1), omitted, budget);
+    const auto* missing_error = std::get_if<FamilyWriteFailure>(&missing);
+    if (!missing_error || missing_error->kind != FamilyWriteError::kCoverage ||
+        missing_error->member != FileFamily::kRoot ||
+        missing_error->pc != children.front().creation.binding.offset) return result;
+    const auto saved = *inputs[1].incoming;
+    inputs[1].incoming.reset();
+    if (!fails(budget, FamilyWriteError::kCapture)) return result;
+    inputs[1].incoming.emplace(saved);
+    inputs[1].incoming->parent = FamilyId{1};
+    if (!fails(budget, FamilyWriteError::kCapture)) return result;
+    inputs[1].incoming.emplace(saved);
+    inputs[1].incoming.emplace(FamilyWriteEdge{FileFamily::kRoot,
+        NormalWriteEdge{children[0].creation.instruction, children[0].creation.binding}});
+    if (!fails(budget, FamilyWriteError::kCapture)) return result;
+    inputs[1].incoming.emplace(saved);
+    if (children.size() > 1) {
+      const auto second = *inputs[2].incoming;
+      inputs[2].incoming.emplace(saved);
+      if (!fails(budget, FamilyWriteError::kCoverage)) return result;
+      inputs[2].incoming.emplace(second);
+    }
+  }
+  result.rejected_write_forgery = std::holds_alternative<FamilyWrites>(verify(budget));
+  if (!result.rejected_write_forgery) return result;
   result.stage = FamilyProbeStage::kDone;
   return result;
 }

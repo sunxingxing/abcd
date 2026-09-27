@@ -22,6 +22,9 @@ for (const { method, sites, targets, allocations, bindings, captures } of sample
   assert.equal(result.conditional_child_trees, targets.length);
   assert.equal(result.conditional_family_layout_ready, true);
   assert.equal(result.conditional_family_enclosure_ready, true);
+  assert.equal(result.family_writes_ready, true);
+  assert.equal(result.family_write_creations, targets.length);
+  assert.equal(result.rejected_family_write_forgery, true);
   assert.equal(result.checked_store_methods, targets.length + 1);
   assert.equal(result.checked_lexical_stores, method === 8404 ? 1 : 0);
   assert.equal(result.rejected_capture_forgery, captures.some(count => count !== 0));

@@ -42,6 +42,21 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- `VerifyFamilyWrites` 现共用类型化 normal/phase 成员视图；既有 `FileFamily`
+  无复制适配到同一实现，普通默认签名写入及 primitive object 证明保持不变。
+  异常父函数与普通后代依次校验原始/工作捕获、实际 AST 绑定、全部词法写入，
+  最后关闭原始创建点覆盖。异常侧直接扫描原始类型化指令，避免无局部 cell 时
+  `ExceptionLocals` 提前返回漏掉回调；没有依据工作 IR 删除创建点义务。
+  真实 `recover→7810/8118`、`queryDegree→7978` 已通过完整传递写入 gate。
+  新增同时删除两份成员列表、遗漏/重复/自身/错类型边、Unknown 写入前提、
+  精确及不足 byte/work 预算反例；普通双接口结果/成本一致，三版本及
+  200/201/402 存储用例亦走共用 gate。42 项定向 CTest、3 份真实样本脚本
+  通过，三个 CLI 构建成功；未运行全语料、RSS 或基准。
+  这仍是借用既有输入的验证，不是不可变发布凭据。混合文件函数族所有权、
+  ABI/PC census、destination/module 发布和组合函数族执行验收尚未完成；
+  异常 child 仍明确拒绝，Rules 56 及独立源码拒绝不变。当前仍在第 1 项
+  的函数族整合，未宣布循环/异常、finally 或协程组合完成。
+
 - 普通/异常函数现共用 `VerifyLexicalStores`：检查原始 SSA 写入值域、
   原始来源、工作 cell 和实际 AST 赋值目标；异常侧只使用原始 Before 读，
   不用 Commit 或 Catch 值冒充写入操作数。普通函数族 `VerifyFamilyWrites`

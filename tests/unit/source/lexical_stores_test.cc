@@ -1,5 +1,6 @@
 #include "../../../src/source/lexical_stores.h"
 #include "../../../src/source/function_tree.h"
+#include "../../../src/source/family_writes.h"
 #include "analysis/ssa_fixture.h"
 
 namespace {
@@ -79,6 +80,19 @@ void Run(abc::ProfileId profile, bool captured, std::size_t count) {
     values.graph.origins[operation.origin.value].pc = expected_pc;
     test::Check(std::holds_alternative<LexicalStores>(verify()));
     break;
+  }
+  if (!captured) {
+    // Exercise the shared family gate at the same 200/201/geometric sizes;
+    // this synthetic layout is not file ownership or publication evidence.
+    std::vector<FamilyMember> members;
+    members.push_back({tree, flow}); members.front().tree.owner = {0};
+    const auto family = std::get<ConstructedFamily>(BuildFunctionFamily(std::move(members), {0}));
+    const FamilyWriteInput source{CaptureFunction{input, values}, {}, {}};
+    const abc::MetadataIndex index;
+    const auto checked_family = std::get<FamilyWrites>(VerifyFamilyWrites(index,
+        std::span<const FamilyWriteInput>(&source, 1), family));
+    test::Check(checked_family.facts.stores == count && !checked_family.facts.captured_stores &&
+        !checked_family.facts.creations && !checked_family.facts.signature_stores);
   }
 }
 }  // namespace

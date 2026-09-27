@@ -505,6 +505,18 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       auto write_inputs = std::get<FileFamily>(ReadFunctionFamily(file, header, index,
           lookup, roles, sites, {1}, identity));
       const auto stores = std::get<FamilyWrites>(VerifyFamilyWrites(index, write_inputs, built));
+      std::vector<FamilyWriteInput> write_views;
+      for (const auto& member : write_inputs.members) {
+        std::optional<FamilyWriteEdge> edge;
+        if (member.incoming) edge.emplace(FamilyWriteEdge{member.incoming->parent,
+            NormalWriteEdge{member.incoming->site, member.incoming->creation}});
+        write_views.push_back({CaptureFunction{member.function.input, member.function.values}, edge, member.objects});
+      }
+      const auto viewed = std::get<FamilyWrites>(VerifyFamilyWrites(index, write_views, built));
+      test::Check(viewed.facts.stores == stores.facts.stores &&
+          viewed.facts.captured_stores == stores.facts.captured_stores &&
+          viewed.facts.creations == stores.facts.creations &&
+          viewed.allocated_bytes == stores.allocated_bytes && viewed.work == stores.work);
       SemanticBudget write_budget; write_budget.work = stores.work;
       test::Check(std::holds_alternative<FamilyWrites>(VerifyFamilyWrites(index, write_inputs, built, write_budget)));
       --write_budget.work;
