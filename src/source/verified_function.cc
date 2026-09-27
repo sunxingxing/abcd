@@ -1,10 +1,13 @@
 #include "abcd/source/verified_function.h"
 
+#include <limits>
 #include <new>
 #include <stdexcept>
 #include <type_traits>
 
 #include "abcd/source/value_stage.h"
+#include "abcd/source/module_enclosure.h"
+#include "module_aliases.h"
 #include "class_tree_context.h"
 #include "function_context.h"
 #include "cell_plan.h"
@@ -193,7 +196,17 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       receipt->identity = identity; receipt->method = method.offset; receipt->record = method.owner_offset;
       receipt->route = SourceRoute::kValueTree; receipt->stage = SourceStage::kDecoded;
       receipt->coverage = Coverage::kUnsupported;
-      auto built = PhasedMethod::Build(*context, *body, budget.Remaining());
+      std::optional<PhasedModuleBinding> modules;
+      if (scope && scope->module_enclosure) {
+        const auto& enclosure = *scope->module_enclosure;
+        if (enclosure.Identity() != identity || enclosure.Context().record() != method.owner_offset ||
+            !enclosure.Context().ForOwner(file, method.owner_offset)) {
+          receipt->failure = RouteFailure{RouteFailureClass::kUnproved, ValueRouteError::kContextStage, {}};
+          throw Error::kContext;
+        }
+        modules.emplace(PhasedModuleBinding{file, header, index, enclosure.Context(), enclosure.Owner()});
+      }
+      auto built = PhasedMethod::Build(*context, *body, budget.Remaining(), modules ? &*modules : nullptr);
       auto* result = std::get_if<PhasedMethod>(&built);
       if (!result) {
         const auto error = std::get<PhasedMethodError>(built);
@@ -303,7 +316,8 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     }
     // Standalone preparation has no enclosing capture-tree certificate.
     // Conditional child evaluation must never be promoted through this route.
-    if (!evaluation->functions.empty() || !evaluation->modules.empty() ||
+    if (!evaluation->functions.empty() ||
+        (!evaluation->modules.empty() && (!phased || !phased->Modules())) ||
         (evaluation->cells && evaluation->cells->incoming != IncomingCells::kReject))
       throw Error::kEvaluation;
     if (!phased) { budget.Admit(evaluation->allocated_bytes, 1); budget.Step(evaluation->work); }
@@ -333,6 +347,29 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       throw Error::kConstants;
     }
     budget.Admit(resolved_syntax->allocated_bytes, 1); budget.Step(resolved_syntax->work);
+    if (phased && phased->Modules()) {
+      const auto& modules = *phased->Modules();
+      auto& syntax = resolved_syntax->syntax;
+      if (!syntax.modules.empty() || modules.first_name.value != 0 ||
+          syntax.names.size() > std::numeric_limits<std::uint32_t>::max() ||
+          modules.names.size() > std::numeric_limits<std::uint32_t>::max() - syntax.names.size())
+        throw Error::kTree;
+      const auto first = static_cast<std::uint32_t>(syntax.names.size());
+      // Admit replacement vector storage before reserve; the old arena can
+      // coexist during reallocation. Conservative charges stay method-local.
+      budget.Admit(syntax.names.size() + modules.names.size(), sizeof(std::u16string));
+      syntax.names.reserve(syntax.names.size() + modules.names.size());
+      budget.Admit(syntax.names.capacity() - syntax.names.size() - modules.names.size(), sizeof(std::u16string));
+      for (const auto& name : modules.names) {
+        budget.Step(name.size() + 1); budget.Admit(name.size() + 1, sizeof(char16_t));
+        syntax.names.push_back(name);
+        budget.Admit(syntax.names.back().capacity() - name.size(), sizeof(char16_t));
+      }
+      budget.Admit(modules.aliases.size(), sizeof(ModuleSyntax));
+      syntax.modules = modules.aliases;
+      budget.Admit(syntax.modules.capacity() - syntax.modules.size(), sizeof(ModuleSyntax));
+      for (auto& alias : syntax.modules) { budget.Step(1); alias.name.value += first; }
+    }
     const auto constant_view = resolved_syntax->View();
     auto syntax = std::move(resolved_syntax->syntax);
     const auto transferred = SyntaxStorage(syntax);
@@ -356,13 +393,32 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       throw Error::kTree;
     }
     if (function->tree.capture_scope || !function->tree.captures.empty() ||
-        function->tree.module_scope || !function->tree.modules.empty() ||
         function->tree.parameters.size() != context->Frame().parameters ||
         function->tree.callable != context->Callable() || function->tree.strictness != context->Mode() ||
         function->tree.method != context->Target() || function->tree.identity != context->Identity()) throw Error::kTree;
     if (function->allocated_bytes < transferred) throw Error::kTree;
     budget.Admit(function->allocated_bytes - transferred, 1);
     budget.Step(function->work);
+    if (phased && phased->Modules()) {
+      const auto aliases = VerifyModuleAliasTree(*phased->Modules(), *evaluation, function->tree, budget.Remaining());
+      const auto* checked = std::get_if<std::uint64_t>(&aliases);
+      if (!checked) {
+        const auto error = std::get<ModuleAliasTreeError>(aliases);
+        if (error == ModuleAliasTreeError::kResourceLimit) throw Error::kResourceLimit;
+        if (error == ModuleAliasTreeError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kTree;
+      }
+      budget.Step(*checked);
+    }
+    const auto destination = VerifyModuleDestination(function->tree, method.owner_offset, scope, budget.Remaining());
+    const auto* checked_destination = std::get_if<ModuleDestination>(&destination);
+    if (!checked_destination) {
+      const auto error = std::get<ModuleEnclosureError>(destination);
+      if (error == ModuleEnclosureError::kResourceLimit) throw Error::kResourceLimit;
+      if (error == ModuleEnclosureError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kContext;
+    }
+    budget.Step(checked_destination->work);
     if (defaults) {
       // Keep original and residual IR alive until BOTH signature migration and
       // residual body correspondence succeed. No caller-supplied certificate

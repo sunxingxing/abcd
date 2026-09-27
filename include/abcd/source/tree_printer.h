@@ -25,6 +25,7 @@ struct PrintedFunction {
   };
   struct SymbolBinding { std::u16string name; };
   struct ArgumentSnapshotBinding { std::u16string name; ArgumentSnapshotAbi abi; };
+  struct ModuleBinding { abc::EntityOffset record; ModuleOwnerId owner; };
   RouteInputIdentity identity;
   abc::EntityOffset method;
   analysis::IrRevision value_revision;
@@ -50,6 +51,7 @@ struct PrintedFunction {
   std::optional<RealmBinding> realm_binding;
   std::optional<SymbolBinding> symbol_binding;
   std::optional<ArgumentSnapshotBinding> argument_snapshot_binding;
+  std::optional<ModuleBinding> module_binding;
 };
 // Emits a member fragment for a CLASS body, not an object literal or ordinary
 // function. The containing class/record still needs its own creation proof.
@@ -58,6 +60,8 @@ struct PrintedFunction {
 // Failure may leave partial output: callers must discard it, never publish it.
 // Globals require the actual complete destination GlobalScope, checked before
 // any output. The scope used during preparation is not transferable permission.
+// Module reads additionally require the exact native ModuleEnclosure prelude;
+// the returned module_binding records that obligation, not record completion.
 [[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
     const VerifiedFunction& function, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},

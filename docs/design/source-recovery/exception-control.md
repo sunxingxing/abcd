@@ -3,6 +3,8 @@
 This is the T09 control step of the common source pipeline. It is not an
 alternative body writer, a source publication receipt, or completion of group 1.
 The original phased `ValueProgram` and `ExceptionPlan` remain authoritative.
+Current publication boundary is documented in **Native Module Enclosure** below;
+earlier checkpoints record how the shared path reached that boundary.
 
 ## Same-File Module Context
 
@@ -14,9 +16,9 @@ appended to the shared arena; `VerifyModuleAliasTree` independently checks ident
 and spelling after tree construction. This does not prove record initialization or
 authorize standalone module publication; the existing publication gates remain.
 
-The selected Immersive method 8284 now passes this bound phase/evaluation path and
+At the initial module-binding checkpoint, Immersive method 8284 passed the bound phase/evaluation path and
 shared bindings. Copy identity projection now resolves its callee to the property
-read. It still fails `CallPlanError::kReference`: that read is a materialized root
+read. It then failed `CallPlanError::kReference`: that read was a materialized root
 at phase block 18, while the call is at block 28. Do not infer receiver-call support
 from copy resolution alone. The next dependency is verified cross-phase reference
 evaluation with original exception snapshots and source origins preserved. Loops, typed finally and resumable protocols
@@ -378,10 +380,61 @@ all argument effects. PC ranges retain separate getter, conversion operation,
 call and control origins. Generic numeric ADD remains refused without its
 existing value-domain proof; the negative fixture preserves that boundary.
 
-Immersive 8284 now reaches the shared FunctionTree and passes module-alias tree
-validation, including its previously refused effectful log-call arguments. This
-is still conditional diagnostic evidence, not executable record publication.
-Next close the enclosing module/publication obligation and run the actual method
-through the immutable emission path; do not bypass that gate with a raw printer.
+At Rules 50, Immersive 8284 reached the shared FunctionTree and passed module-alias
+tree validation, including its previously refused effectful log-call arguments.
+That checkpoint was conditional diagnostic evidence, not executable publication.
+Rules 51 below close the external-import method-fragment obligation through the
+immutable emission path, without bypassing it with a raw printer.
 Loop/try integration, typed completion/finally and suspension protocols retain
 the previously approved order and full acceptance requirements.
+
+## Native Module Enclosure
+
+Rules 51 close external-import publication for the immutable phased method
+route. `ModuleEnclosure` is built once from the same file's record module table:
+regular-import slots followed by namespace-import slots, exact strict local
+identifiers, unique across both groups. The existing import writer emits that
+inventory in dependency order. The enclosure is move-only and owns its names;
+its input file and shared metadata budget remain caller-owned. It neither
+asserts initialization nor snapshots an imported value. Native ESM preserves
+live binding and cyclic TDZ behavior under the versioned language contract.
+
+Preparation rebinds original guarded pairs from the same record, attaches typed
+module aliases to the shared syntax, then verifies actual tree correspondence
+and destination scope before publishing `VerifiedFunction`. Printing rechecks
+owner/slot/spelling/access and complete intervening lexical bindings. Bare
+`GlobalScope` name lists cannot grant permission. Global lookup verification
+also includes all enclosure imports, not just aliases read by this method.
+Position output records an owned module-binding requirement. Moving a method
+fragment into another enclosure requires a fresh check and the exact prelude.
+
+Only external read-only aliases are admitted. Local exports are not declaration
+or initialization proof; module stores, incoming captures, family publication,
+record initialization and complete class/record assembly remain independent
+gates. No fallback printer or sample-specific engine branch is introduced.
+
+Validation includes three historical profiles, namespace slot order, duplicate
+and invalid identifiers, foreign file/identity/owner, local-slot and mutable
+alias refusal, shadows, moved ownership, work limits and 1/200/201/402/804/1608
+inventory sizes. File-backed source tests load actual native ESM modules, test
+cyclic TDZ and changed exports, and check load/guard PC ranges.
+
+Immersive 8284 now passes immutable emission and behavior comparison against a
+decoded-operation test oracle (no sidecar source input). It exercises property
+reads, member calls, catch, imported logging, throwing coercions and all 53 PC
+placements. The diagnostic `--emit` reports method-fragment completion only;
+the record remains incomplete. This real method has no conditional branch:
+existing file-backed branch/catch tests still do not replace a real application
+branching-method acceptance case. Immersive 8257/8404 still refuse evaluation.
+
+Targeted real-method check (requires the pinned local fixture hash):
+
+```sh
+cmake --build build --target exception_candidates -j 2
+node --experimental-vm-modules tests/integration/immersive_exception.mjs \
+  build/exception_candidates /home/rabbit/sample/abc_with_code/Immersive/modules.abc
+```
+
+This explicitly selected test is not registered as a mandatory CTest dependency
+on a developer's private corpus path. Portable enclosure fixtures are registered
+as `module_enclosure_test` and `module_enclosure_source_test`.

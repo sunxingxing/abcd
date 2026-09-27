@@ -90,6 +90,10 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
         {"policy", policy}, {"name", std::string(binding.name.begin(), binding.name.end())},
         {"contract", SourceContractName(printed.identity.contract)}};
   }
+  if (printed.module_binding) {
+    output << ",\"module_binding\":" << nlohmann::json{
+        {"record", printed.module_binding->record.value}, {"owner", printed.module_binding->owner.value}};
+  }
   output << ",\"origin_parts\":";
   Array(output, tree.origin_parts, [](auto id) { return id.value; });
   output << ",\"parameters\":[";

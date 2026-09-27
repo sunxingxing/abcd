@@ -5,6 +5,7 @@
 #include "../../../src/source/module_aliases.h"
 #include "../../../src/source/syntax_resolution.h"
 #include "abcd/source/verified_function.h"
+#include "abcd/source/module_enclosure.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
 #include "abcd/source/global_reference.h"
@@ -303,8 +304,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       return;
     }
     if (exception == ExceptionShape::kModule) {
-      // Pair correspondence must pass before the still-unsupported source
-      // module binding/evaluation gate. Never silently publish this method.
+      // No import enclosure means no executable module read, even when the
+      // guarded pair is valid. Names alone must not open publication.
       Check(std::get<PhasedMethodError>(analyzed) == PhasedMethodError::kEvaluation);
       auto refused = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites,
           range.first, identity, {});
@@ -317,6 +318,48 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           abc::FieldValue{abc::FieldValueEncoding::kSignedLeb, kModule}});
       const auto module_context = std::get<RecordModuleContext>(ReadRecordModuleContext(
           file, header, module_index, record, abc::FilePackaging::kMerged));
+      GlobalScope module_scope{};
+      auto enclosure = std::get<ModuleEnclosure>(ModuleEnclosure::Build(
+          file, header, module_context, identity, {1}));
+      module_scope.module_enclosure = &enclosure;
+      auto other_identity = identity; other_identity.contract = SourceContract::kLanguageAndHostV2;
+      auto other_enclosure = std::get<ModuleEnclosure>(ModuleEnclosure::Build(
+          file, header, module_context, other_identity, {1}));
+      GlobalScope foreign_scope{}; foreign_scope.module_enclosure = &other_enclosure;
+      const auto foreign_result = VerifiedFunction::PrepareClass(file, header, module_index, lookup,
+          roles, sites, range.first, identity, {}, &foreign_scope);
+      const auto& foreign_failure = std::get<FunctionPrepareFailure>(foreign_result);
+      Check(foreign_failure.kind == FunctionPrepareError::kContext && foreign_failure.values &&
+          !ValidateRouteReceipt(*foreign_failure.values));
+      auto published = VerifiedFunction::PrepareClass(file, header, module_index, lookup, roles, sites,
+          range.first, identity, {}, &module_scope);
+      Check(std::holds_alternative<VerifiedFunction>(published));
+      const auto& verified = std::get<VerifiedFunction>(published);
+      std::ostringstream denied;
+      Check(std::get<TreePrintError>(PrintFunctionTree(verified, denied)) == TreePrintError::kUnsupportedContext);
+      GlobalScope names_only{};
+      names_only.import_bindings = enclosure.Names(); names_only.import_names = enclosure.SortedNames();
+      Check(std::get<TreePrintError>(PrintFunctionTree(verified, denied, {}, {}, &names_only)) ==
+          TreePrintError::kUnsupportedContext);
+      GlobalScope shadowed = module_scope; shadowed.class_binding = "run";
+      Check(std::get<TreePrintError>(PrintFunctionTree(verified, denied, {}, {}, &shadowed)) ==
+          TreePrintError::kUnsupportedContext);
+      Check(std::get<FunctionPrepareFailure>(VerifiedFunction::PrepareClass(file, header, module_index,
+          lookup, roles, sites, range.first, identity, {}, &shadowed)).kind == FunctionPrepareError::kContext);
+      Check(denied.str().empty());
+      std::ostringstream output, imports;
+      Check(std::holds_alternative<std::size_t>(enclosure.WriteImports(file, header, imports)));
+      auto emitted = FunctionEmission::Write(std::get<VerifiedFunction>(std::move(published)), output, {}, {}, {}, &module_scope);
+      Check(std::holds_alternative<FunctionEmission>(emitted));
+      const auto& emission = std::get<FunctionEmission>(emitted);
+      Check(emission.Positions().module_binding && emission.Positions().module_binding->owner == enclosure.Owner());
+      Check(emission.Receipt().coverage == Coverage::kComplete && !ValidateRouteReceipt(emission.Receipt()));
+      if (evidence) {
+        std::ostringstream mapping;
+        tools::WriteTreePositions(mapping, emission.Function().Tree(), emission.Positions());
+        *evidence << nlohmann::json{{"source", output.str()}, {"imports", imports.str()},
+            {"positions", nlohmann::json::parse(mapping.str())}}.dump() << '\n';
+      }
       const PhasedModuleBinding binding{file, header, module_index, module_context, {1}};
       const auto bound = PhasedMethod::Build(owner, decoded, {}, &binding);
       Check(std::holds_alternative<PhasedMethod>(bound));
@@ -617,6 +660,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--module-json") {
+    Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kModule);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--receiver-typeof-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kReceiverTypeof);
     return 0;

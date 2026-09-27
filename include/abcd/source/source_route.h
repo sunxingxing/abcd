@@ -238,7 +238,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 45 admit occurrence-bound standalone try/catch through original phased
 // input, shared tree correspondence, same-file constants and callable ABI.
 // Rules 50 verify phased expression effect intervals and final throw owners.
-inline constexpr std::uint32_t kRouteEvidenceRules = 50;
+// Rules 51 publish guarded external module reads only into a same-input native
+// ESM enclosure, rechecking owner, slot, spelling and destination shadows.
+inline constexpr std::uint32_t kRouteEvidenceRules = 51;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

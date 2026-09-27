@@ -1,11 +1,15 @@
 #include <algorithm>
 #include <charconv>
 #include <iostream>
+#include <sstream>
 #include <nlohmann/json.hpp>
 
 #include "abcd/abc/metadata_index.h"
 #include "abcd/analysis/class_method_sites.h"
 #include "abcd/corpus/abc_file.h"
+#include "abcd/source/module_enclosure.h"
+#include "abcd/source/function_emission.h"
+#include "../../tools/tree_position_json.h"
 #include "../../src/source/phased_method.h"
 #include "../../src/source/module_aliases.h"
 #include "../../src/source/syntax_resolution.h"
@@ -14,7 +18,7 @@ namespace {
 int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
     const abcd::abc::MetadataIndex& index, const abcd::abc::MethodLookup& lookup,
     const abcd::analysis::ClassMethodSites& sites, const abcd::corpus::FileFingerprint& hash,
-    abcd::abc::EntityOffset entity) {
+    abcd::abc::EntityOffset entity, bool emit) {
   using namespace abcd;
   using namespace abcd::source;
   const auto position = lookup.Find(entity);
@@ -43,6 +47,29 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
   // A single explicitly selected method, not record publication or a corpus
   // scan. Its module owner is local to this diagnostic invocation.
   constexpr ModuleOwnerId kSelectedRecord{0};
+  if (emit) {
+    const auto identity = MakeRouteInputIdentity(hash, header);
+    auto planned = ModuleEnclosure::Build(file, header, *record, identity, kSelectedRecord);
+    const auto* enclosure = std::get_if<ModuleEnclosure>(&planned);
+    if (!enclosure) { std::cerr << "module enclosure error " << static_cast<unsigned>(std::get<ModuleEnclosureError>(planned)) << '\n'; return 1; }
+    GlobalScope scope{}; scope.module_enclosure = enclosure;
+    auto prepared = VerifiedFunction::PrepareClass(file, header, index, lookup, *indexed_roles,
+        sites, sites.Find(entity).first, identity, {}, &scope);
+    if (const auto* error = std::get_if<FunctionPrepareFailure>(&prepared)) {
+      std::cerr << "preparation error " << static_cast<unsigned>(error->kind) << '\n'; return 1;
+    }
+    std::ostringstream output, imports, mapping;
+    if (!std::holds_alternative<std::size_t>(enclosure->WriteImports(file, header, imports))) return 1;
+    auto printed = FunctionEmission::Write(std::get<VerifiedFunction>(std::move(prepared)), output, {}, {}, {}, &scope);
+    const auto* emission = std::get_if<FunctionEmission>(&printed);
+    if (!emission) { std::cerr << "print error " << static_cast<unsigned>(std::get<TreePrintError>(printed)) << '\n'; return 1; }
+    tools::WriteTreePositions(mapping, emission->Function().Tree(), emission->Positions());
+    std::cout << nlohmann::json{{"method", entity.value}, {"record_complete", false},
+        {"fragment_complete", emission->Receipt().coverage == Coverage::kComplete},
+        {"source", output.str()}, {"imports", imports.str()},
+        {"positions", nlohmann::json::parse(mapping.str())}} << '\n';
+    return file.CheckUnchanged() ? 1 : 0;
+  }
   const PhasedModuleBinding binding{file, header, index, *record, kSelectedRecord};
   const auto built = PhasedMethod::Build(context, *body, {}, &binding);
   nlohmann::json report{{"method", entity.value}, {"source_complete", false}, {"executable", false}};
@@ -84,7 +111,7 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
 // decompilation/support census. No source/sidecar inputs are read.
 int main(int argc, char** argv) {
   using namespace abcd;
-  if (argc != 2 && argc != 3) return 1;
+  if (argc < 2 || argc > 4 || (argc == 4 && std::string_view(argv[3]) != "--emit")) return 1;
   const auto opened = corpus::AbcFile::Open(argv[1]);
   const auto* owner = std::get_if<std::unique_ptr<corpus::AbcFile>>(&opened);
   if (!owner) return 1;
@@ -105,12 +132,12 @@ int main(int argc, char** argv) {
   const auto bound = analysis::ClassMethodSites::Build(file, *header, *index, *methods);
   const auto* sites = std::get_if<analysis::ClassMethodSites>(&bound);
   if (!sites) return 1;
-  if (argc == 3) {
+  if (argc >= 3) {
     const std::string_view text{argv[2]};
     abc::EntityOffset entity;
     const auto parsed_id = std::from_chars(text.data(), text.data() + text.size(), entity.value);
     if (parsed_id.ec != std::errc{} || parsed_id.ptr != text.data() + text.size()) return 1;
-    return Inspect(file, *header, *index, *methods, *sites, *hash, entity);
+    return Inspect(file, *header, *index, *methods, *sites, *hash, entity, argc == 4);
   }
   std::vector<const abc::MethodInfo*> candidates;
   for (const auto& method : index->methods)

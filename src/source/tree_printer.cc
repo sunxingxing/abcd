@@ -1,4 +1,5 @@
 #include "abcd/source/tree_printer.h"
+#include "abcd/source/module_enclosure.h"
 
 #include <algorithm>
 #include <array>
@@ -56,8 +57,7 @@ class TreePrinter {
       : family_(&family), class_root_(member), output_(output), limit_(limit.bytes), initial_(scratch), remaining_(scratch), scope_(scope) {}
   PrintedFunction Print() {
     if (!function_->ClassCreation() || Tree().callable != CallableKind::kMethod ||
-        Tree().strictness != Strictness::kStrict || Tree().self || Tree().capture_scope || !Tree().captures.empty() ||
-        Tree().module_scope || !Tree().modules.empty())
+        Tree().strictness != Strictness::kStrict || Tree().self || Tree().capture_scope || !Tree().captures.empty())
       throw Error::kUnsupportedContext;
     // Standalone printing has no verified family/child lookup. Reject before
     // writing the header, never leave a partial fake function body behind.
@@ -72,6 +72,9 @@ class TreePrinter {
     Result().method = Tree().method;
     Result().value_revision = Tree().value_revision;
     Result().cfg_revision = Tree().cfg_revision;
+    if (!Tree().modules.empty())
+      Result().module_binding = PrintedFunction::ModuleBinding{
+          *function_->Receipt().record, scope_->module_enclosure->Owner()};
     Array(Result().parameters, Tree().parameters.size());
     Array(Result().expressions, Tree().expressions.size());
     Array(Result().properties, Tree().properties.size());
@@ -664,6 +667,16 @@ std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
     const VerifiedFunction& function, std::ostream& output,
     EmitBudget output_budget, analysis::SemanticBudget scratch, const GlobalScope* scope) {
   try {
+    if (!function.Receipt().record) return Error::kUnsupportedContext;
+    const auto destination = VerifyModuleDestination(function.Tree(), *function.Receipt().record, scope, scratch);
+    const auto* modules = std::get_if<ModuleDestination>(&destination);
+    if (!modules) {
+      const auto error = std::get<ModuleEnclosureError>(destination);
+      if (error == ModuleEnclosureError::kResourceLimit) return Error::kResourceLimit;
+      if (error == ModuleEnclosureError::kWorkLimit) return Error::kWorkLimit;
+      return Error::kUnsupportedContext;
+    }
+    scratch.work -= modules->work;
     const auto globals = VerifyTreeGlobals(function.Tree(), scope, scratch);
     const auto* checked = std::get_if<TreeGlobals>(&globals);
     if (!checked) {
@@ -674,7 +687,7 @@ std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
     }
     scratch.work -= checked->work;
     auto result = TreePrinter(function, output, output_budget, scratch, scope).Print();
-    result.work += checked->work;
+    result.work += checked->work + modules->work;
     result.allocated_bytes = std::max(result.allocated_bytes, checked->allocated_bytes);
     return result;
   } catch (Error error) { return error;

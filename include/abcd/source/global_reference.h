@@ -10,6 +10,7 @@
 
 namespace abcd::source {
 class ModuleExports;
+class ModuleEnclosure;
 // Embedding-host trust boundary, not evidence inferred from a name or ABC.
 // Host supplies an initialized immutable lexical binding to this ABC realm's
 // original global object, visible for the generated code's entire lifetime.
@@ -37,6 +38,8 @@ struct HostArgumentSnapshotBinding {
 struct GlobalScope {
   // Caller-proven complete ASCII outer source bindings, sorted by byte name;
   // non-ASCII names cannot collide with admitted ASCII global references.
+  // Excludes imports owned by import_names/module_enclosure, which are indexed
+  // separately; includes intervening wrappers that could shadow those imports.
   // Build once per record, never rescan per method.
   std::span<const std::string_view> enclosing_bindings;
   // Filled by the class emitter for its generated inner class expression.
@@ -61,6 +64,9 @@ struct GlobalScope {
   // Additional explicit output premise for historical contracts. V3 itself
   // permits recovered text; this is never an ABC-derived behavioral proof.
   CallableTextPolicy callable_text = CallableTextPolicy::kUnspecified;
+  // Exact native ESM prelude for this destination. Borrowed names alone cannot
+  // certify module owner/slot correspondence. Rechecked at tree publication.
+  const ModuleEnclosure* module_enclosure = nullptr;
 };
 
 struct RealmBindingView {
