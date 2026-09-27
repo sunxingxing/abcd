@@ -2,10 +2,12 @@
 #define ABCD_SOURCE_FAMILY_ENCLOSURE_H_
 
 #include "function_family.h"
+#include "abcd/source/global_reference.h"
 
 namespace abcd::source {
 enum class FamilyEnclosureError : std::uint8_t {
-  kLayout, kStructure, kShadowedGlobal, kResourceLimit, kWorkLimit
+  kLayout, kStructure, kShadowedGlobal, kResourceLimit, kWorkLimit,
+  kMissingContext
 };
 struct FamilyEnclosureFailure {
   FamilyEnclosureError kind;
@@ -25,5 +27,12 @@ struct FamilyEnclosure {
 // Euler scope intervals + sorted name intervals avoid per-read ancestor walks.
 [[nodiscard]] std::variant<FamilyEnclosure, FamilyEnclosureFailure> VerifyFamilyEnclosure(
     const ConstructedFamily& family, analysis::SemanticBudget budget = {});
+// Additionally checks the caller-proven complete destination enclosure. Null
+// admits only a family without global reads, never an assumed empty enclosure.
+// Borrowed sorted indexes follow GlobalScope's contract; recheck on embedding.
+// This does not establish module initialization, strictness or publication.
+[[nodiscard]] std::variant<FamilyEnclosure, FamilyEnclosureFailure> VerifyFamilyDestination(
+    const ConstructedFamily& family, const GlobalScope* scope,
+    analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

@@ -29,6 +29,13 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 新增 `VerifyFamilyDestination`：复用函数族逐创建点 scope 检查，同时核对调用方
+  证明完整的外部 `GlobalScope`。缺少 context 只允许没有 global read 的函数族；
+  外部 record/import/parameter/class/self/realm 绑定不能遮蔽后代全局名。
+  有序外部索引借用并按比较长度计费，不按子函数复制或扫描整个 record。
+  新接口尚未接入不可变发布 owner，诊断构建仍只做内部 scope 检查，不扩大覆盖率。
+  外部绑定类别、缺失上下文、目标作用域变化与预算规格已写，未编译、未运行。
+  本次生产 `abc_semantic`/`abc_structure` 构建退出 0；不据此声称运行验收通过。
 - 单函数与文件函数族现共享箭头函数 receiver ABI 拒绝规则：动态 receiver entry
   或 owner-local `ThisExpr` 不能直接生成词法 `this`；外层 this 仍须显式捕获绑定。
   文件函数族保留各成员实际 `FunctionAbi`，不再检查后丢弃；它仍是可变构建产品，

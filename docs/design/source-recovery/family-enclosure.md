@@ -52,8 +52,27 @@ nonzero `global_reads` still requires destination-context checking at publicatio
 Capture initialization/writes, strictness, receiver and async/exception effects
 are separate obligations. Passing this check grants no executable receipt.
 
+`VerifyFamilyDestination` runs the same lexical-range check plus the actual
+external `GlobalScope` boundary. Its null context rejects global reads; it is
+not equivalent to a caller-proven empty enclosure. Every descendant's global
+name is checked against borrowed sorted enclosing/import/parameter indexes and
+class/self/host-realm bindings. ASCII admission remains the shared global-name
+policy, and byte/UTF-16 comparisons avoid signed-char mismatches. Each comparison
+charges work, including its name length. Added lookup work is O(G log D) for D
+external bindings; external indexes are neither copied nor scanned per member.
+
+This destination check must be repeated when embedding under a different
+enclosure. It does not retain borrowed scope pointers or grant a transferable
+publication certificate. The diagnostic family builder still deliberately calls
+the internal-only check: there is no inferred record scope or silent promotion
+of its draft. Wiring the destination check into an immutable publication owner
+and proving strict/module execution remain required next steps.
+
 Tests are isolated in `tests/unit/source/family_enclosure_test.cc`, including
 same-function/ancestor shadowing, sibling block exclusion, creation inside a
 block, TDZ, runtime names without self binding, malformed parents, deep families,
 200/201/geometric sizes and budget exhaustion. They remain uncompiled/unrun while
 the user's testing pause is in force.
+Destination specifications additionally cover missing context, all external
+binding categories, reserved names, destination changes, no-global families,
+sibling-block exclusion and exact work limits. These are also uncompiled/unrun.

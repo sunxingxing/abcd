@@ -4,6 +4,7 @@
 #include <limits>
 #include <new>
 #include <stdexcept>
+#include <type_traits>
 
 #include "tree_structure.h"
 
@@ -13,10 +14,12 @@ using Error = FamilyEnclosureError;
 struct ScopeInterval { std::optional<std::size_t> begin; std::size_t end = 0; };
 struct BindingInterval { std::u16string_view name; std::size_t begin; std::size_t end; };
 struct ScopeCursor { std::size_t scope; std::size_t next; };
+enum class EnclosureExtent : std::uint8_t { kFamily, kDestination };
 class EnclosureCheck {
  public:
-  EnclosureCheck(const ConstructedFamily& family, analysis::SemanticBudget budget)
-      : family_(family), initial_(budget), left_(budget) {}
+  EnclosureCheck(const ConstructedFamily& family, analysis::SemanticBudget budget,
+      EnclosureExtent extent = EnclosureExtent::kFamily, const GlobalScope* scope = nullptr)
+      : family_(family), initial_(budget), left_(budget), extent_(extent), scope_(scope) {}
   FamilyEnclosure Run() {
     Admit(1, sizeof(EnclosureCheck));
     const auto count = family_.members.size();
@@ -104,6 +107,7 @@ class EnclosureCheck {
         name_ = global->name; ++globals;
         const auto point = *intervals_[offsets_[i] + structures_[i].expression_scopes[e].value].begin;
         const auto name = std::u16string_view{tree.names[global->name.value]};
+        if (extent_ == EnclosureExtent::kDestination) Destination(name);
         const auto found = std::upper_bound(bindings_.begin(), bindings_.end(), point,
             [&](std::size_t at, const BindingInterval& binding) {
               const auto order = Compare(name, binding.name);
@@ -119,6 +123,29 @@ class EnclosureCheck {
     return {globals, initial_.bytes - left_.bytes, initial_.work - left_.work};
   }
  private:
+  template<class A, class B> bool Less(A a, B b) {
+    Step(std::min(a.size(), b.size()) + 1);
+    return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), [](auto left, auto right) {
+      return static_cast<std::make_unsigned_t<decltype(left)>>(left) <
+          static_cast<std::make_unsigned_t<decltype(right)>>(right);
+    });
+  }
+  template<class A, class B> bool Equal(A a, B b) { return !Less(a, b) && !Less(b, a); }
+  bool Contains(std::span<const std::string_view> names, std::u16string_view name) {
+    const auto found = std::lower_bound(names.begin(), names.end(), name,
+        [&](auto a, auto b) { return Less(a, b); });
+    return found != names.end() && Equal(*found, name);
+  }
+  void Destination(std::u16string_view name) {
+    Require(scope_ != nullptr, Error::kMissingContext);
+    // VerifyTreeStructure already enforced the shared global-name policy.
+    // Borrow record-owned sorted indexes, not a copied union per descendant.
+    // Family-local lexical ranges were checked separately at creation scopes.
+    Require(!Contains(scope_->enclosing_bindings, name) && !Contains(scope_->import_names, name) &&
+        !Contains(scope_->parameter_bindings, name) && !Equal(name, scope_->class_binding) &&
+        !Equal(name, scope_->self_binding) &&
+        (!scope_->realm_binding || !Equal(name, scope_->realm_binding->name)), Error::kShadowedGlobal);
+  }
   void WalkScopes(std::size_t root) {
     const auto count = parents_.size();
     Require(count < std::numeric_limits<std::size_t>::max(), Error::kResourceLimit);
@@ -165,6 +192,8 @@ class EnclosureCheck {
   void Require(bool ok, Error error) const { if (!ok) Fail(error); }
   const ConstructedFamily& family_;
   analysis::SemanticBudget initial_, left_;
+  EnclosureExtent extent_;
+  const GlobalScope* scope_;
   FamilyId member_{0};
   std::optional<NameId> name_;
   std::vector<TreeStructure> structures_;
@@ -177,6 +206,13 @@ class EnclosureCheck {
 std::variant<FamilyEnclosure, FamilyEnclosureFailure> VerifyFamilyEnclosure(
     const ConstructedFamily& family, analysis::SemanticBudget budget) {
   try { return EnclosureCheck(family, budget).Run();
+  } catch (const FamilyEnclosureFailure& failure) { return failure;
+  } catch (const std::bad_alloc&) { return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}};
+  } catch (const std::length_error&) { return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}}; }
+}
+std::variant<FamilyEnclosure, FamilyEnclosureFailure> VerifyFamilyDestination(
+    const ConstructedFamily& family, const GlobalScope* scope, analysis::SemanticBudget budget) {
+  try { return EnclosureCheck(family, budget, EnclosureExtent::kDestination, scope).Run();
   } catch (const FamilyEnclosureFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}};
   } catch (const std::length_error&) { return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}}; }

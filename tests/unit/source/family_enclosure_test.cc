@@ -100,5 +100,44 @@ void Bounds() {
     Expect(family, FamilyEnclosureError::kShadowedGlobal);
   }
 }
+void DestinationCases() {
+  auto family = Chain(2);
+  const auto missing = std::get<FamilyEnclosureFailure>(VerifyFamilyDestination(family, nullptr));
+  Check(missing.kind == FamilyEnclosureError::kMissingContext &&
+      missing.member == FamilyId{1} && missing.name == NameId{0});
+  const GlobalScope empty{};
+  Check(std::get<FamilyEnclosure>(VerifyFamilyDestination(family, &empty)).global_reads == 1);
+  const std::string_view names[]{"before", "target", "zebra"};
+  GlobalScope scope{};
+  const auto shadowed = [&] {
+    const auto failure = std::get<FamilyEnclosureFailure>(VerifyFamilyDestination(family, &scope));
+    Check(failure.kind == FamilyEnclosureError::kShadowedGlobal && failure.member == FamilyId{1});
+  };
+  scope.enclosing_bindings = names; shadowed(); scope = {};
+  scope.import_names = names; shadowed(); scope = {};
+  scope.parameter_bindings = names; shadowed(); scope = {};
+  scope.class_binding = "target"; shadowed(); scope = {};
+  scope.self_binding = "target"; shadowed(); scope = {};
+  const HostRealmBinding realm{u"target"}; scope.realm_binding = &realm; shadowed();
+  // Success under one destination is not permission to emit under another.
+  Check(std::holds_alternative<FamilyEnclosure>(VerifyFamilyDestination(family, &empty)));
+  shadowed();
+  family.members.back().tree.names[0] = u"eval";
+  Check(std::get<FamilyEnclosureFailure>(VerifyFamilyDestination(family, &empty)).kind == FamilyEnclosureError::kStructure);
+  family.members.back().tree = Tree(1);
+  Check(std::get<FamilyEnclosure>(VerifyFamilyDestination(family, nullptr)).global_reads == 0);
+  // Declaration in a sibling block must not become a function-wide collision.
+  family = Chain(2);
+  auto& root = family.members[0].tree;
+  Local(root, {2}); root.scopes.push_back({ScopeKind::kBlock, ScopeId{1}});
+  root.statements[0].statement = BlockStmt{{1}, 0, 2};
+  root.statements.push_back({BlockStmt{{2}, 2, 1}, {0}});
+  root.children = {{3}, {1}, {2}};
+  const auto checked = std::get<FamilyEnclosure>(VerifyFamilyDestination(family, &empty));
+  analysis::SemanticBudget budget; budget.work = checked.work;
+  Check(std::holds_alternative<FamilyEnclosure>(VerifyFamilyDestination(family, &empty, budget)));
+  --budget.work;
+  Check(std::get<FamilyEnclosureFailure>(VerifyFamilyDestination(family, &empty, budget)).kind == FamilyEnclosureError::kWorkLimit);
+}
 }  // namespace
-int main() { ScopeCases(); Bounds(); }
+int main() { ScopeCases(); Bounds(); DestinationCases(); }
