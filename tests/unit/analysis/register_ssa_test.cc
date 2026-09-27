@@ -82,6 +82,27 @@ int main() {
             range.Values()[range.Reads({0})[255].value.value].slot)
             .value == 509);
   Check(range.Reads({1})[0].value == *range.Write({0}));
+  // A compact range plus fixed inputs can exceed the encoded range width.
+  // Read occurrences must remain distinct even when their slots are equal.
+  {
+    constexpr std::uint16_t kLargestEncodedRange = UINT16_MAX;
+    const auto flow = std::get<NormalFlow>(BuildNormalFlow(Body({0x65})));
+    RegisterSite site{};
+    site.effect.read_count = 2;
+    site.effect.reads[0] = Accumulator{};
+    site.effect.reads[1] = abc::RegisterId{0};
+    site.effect.range = CallRange{{0}, kLargestEncodedRange};
+    IdfQuota work{UINT64_MAX};
+    const auto large = std::get<RegisterSsa>(RegisterSsa::BuildSites(
+        std::span(&site, 1), flow, kLargestEncodedRange, work));
+    const auto reads = large.Reads({0});
+    Check(reads.size() == std::size_t(kLargestEncodedRange) + 2);
+    for (std::size_t i = 0; i < reads.size(); ++i)
+      Check(reads[i].ordinal == i);
+    Check(reads[1].value == reads[2].value);
+    Check(std::get<abc::RegisterId>(large.Values()[reads.back().value.value].slot)
+              .value == kLargestEncodedRange - 1U);
+  }
   const auto hole = build(Body({0x70, 0xfe, 9, 0, 0, 0x64}));
   Check(hole.Reads({1})[0].value == *hole.Write({0}));
   Check(hole.Reads({2})[0].value == *hole.Write({0}));

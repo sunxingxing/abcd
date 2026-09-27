@@ -35,7 +35,7 @@ ValueKinds WithoutHole(ValueKinds kinds) {
 }  // namespace
 
 std::optional<GuardedRead> GuardedReads::At(InstructionId instruction,
-                                            std::uint16_t ordinal) const {
+                                            std::uint32_t ordinal) const {
   const SsaRead key{instruction, ordinal, {}};
   const auto reads = Reads();
   const auto found =

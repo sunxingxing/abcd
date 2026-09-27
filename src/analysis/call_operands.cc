@@ -32,11 +32,11 @@ std::uint32_t CallOperands::Count() const {
   }, call_);
 }
 std::optional<InputOperand> CallOperands::At(std::uint32_t index) const {
-  if (index >= Count() || index > std::numeric_limits<std::uint16_t>::max()) return {};
+  if (index >= Count()) return {};
   return std::visit([&](const auto& call) -> std::optional<InputOperand> {
     using T = std::decay_t<decltype(call)>;
     const auto operand = [&](OperandRole role, ScalarValue value) {
-      return InputOperand{role, value, ReadPurpose::kOperand, static_cast<std::uint16_t>(index)};
+      return InputOperand{role, value, ReadPurpose::kOperand, index};
     };
     if constexpr (std::is_same_v<T, ConstructorCall>) {
       if (index == 0) return operand(OperandRole::kConstructor, call.inputs.first);
@@ -72,11 +72,10 @@ std::variant<CallOperands, CallOperandError> CallOperands::Build(
     plan = CallOperands{*call};
   } else return Error::kUnsupported;
   const auto count = plan->Count();
-  // Register SSA read ordinals are uint16. Count may reach max+1, but every
-  // individual occurrence must fit; never silently wrap the last argument.
-  constexpr std::uint32_t kReadOccurrences = std::numeric_limits<std::uint16_t>::max() + 1U;
+  // Encoded range counts remain uint16, but callee/receiver add occurrences.
+  // The shared SSA/value occurrence index must not inherit the encoding width.
   const auto& effect = instruction.effects.normal_registers;
-  if (count > kReadOccurrences || effect.read_count > effect.reads.size() ||
+  if (effect.read_count > effect.reads.size() ||
       count != effect.read_count + (effect.range ? effect.range->count : 0U)) return Error::kCount;
   if (effect.range && !ValidArguments(*effect.range)) return Error::kCount;
   if (!effect.write || !std::holds_alternative<Accumulator>(*effect.write)) return Error::kWrite;

@@ -82,7 +82,7 @@ void RegisterSsa::Builder::Rename(const RegisterUses& uses,
           ? std::get<RegisterEffect>(
                 LiftRegisterEffect(body->instructions[i].decoded, frame_size))
           : semantics[i].effects.normal_registers;
-      std::uint16_t ordinal = 0;
+      std::uint32_t ordinal = 0;
       const auto read = [&](ScalarSlot slot) {
         Charge();
         const auto binding = *uses.Find(slot);

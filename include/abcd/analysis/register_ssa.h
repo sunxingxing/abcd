@@ -27,8 +27,9 @@ struct RegisterValue {
 struct SsaRead {
   InstructionId instruction;
   // Ordinal in RegisterEffect reads followed by expanded range, not ABC
-  // operand.
-  std::uint16_t ordinal = 0;
+  // operand. Fixed inputs plus a range can exceed a 16-bit encoded count;
+  // keep this width aligned with value-IR and guarded-read occurrences.
+  std::uint32_t ordinal = 0;
   SsaValueId value;
 };
 struct SsaWrite {

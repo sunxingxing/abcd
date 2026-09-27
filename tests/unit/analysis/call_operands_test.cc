@@ -50,10 +50,25 @@ void Ranges() {
     Check(std::get<CallOperandError>(CallOperands::Build(instruction, {0, 0})) ==
           CallOperandError::kResourceLimit);
   }
-  SemanticInstruction overflow{{0}, ReceiverCall{{0}, CallRange{{1}, 65535}}, {}};
-  overflow.effects.normal_registers.read_count = 2;
-  overflow.effects.normal_registers.range = CallRange{{1}, 65535};
-  Check(std::get<CallOperandError>(CallOperands::Build(overflow)) == CallOperandError::kCount);
+  constexpr std::uint16_t kLargestEncodedRange = UINT16_MAX;
+  SemanticInstruction receiver{
+      {0}, ReceiverCall{{0}, CallRange{{1}, kLargestEncodedRange}}, {}};
+  auto& effect = receiver.effects.normal_registers;
+  effect.read_count = 2;
+  effect.reads[0] = Accumulator{};
+  effect.reads[1] = abc::RegisterId{0};
+  effect.range = CallRange{{1}, kLargestEncodedRange};
+  effect.write = Accumulator{};
+  const auto wide = std::get<CallOperands>(CallOperands::Build(receiver));
+  constexpr std::uint32_t kLastRead = std::uint32_t(kLargestEncodedRange) + 1;
+  Check(wide.Count() == kLastRead + 1 &&
+        wide.At(kLastRead)->read_ordinal == kLastRead);
+  Check(std::get<abc::RegisterId>(wide.At(kLastRead)->value).value ==
+        kLargestEncodedRange);
+  Check(!wide.At(wide.Count()) && !wide.At(UINT32_MAX));
+  Check(std::get<CallOperandError>(CallOperands::Build(
+            receiver, {sizeof(CallOperands), wide.Count() - 1})) ==
+        CallOperandError::kWorkLimit);
 }
 void Construction() {
   SemanticInstruction instruction{{0}, ConstructorCall{CallRange{{10}, 3}, {}}, {}};

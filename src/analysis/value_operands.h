@@ -8,7 +8,7 @@ struct InputOperand {
   OperandRole role;
   ScalarValue value;
   ReadPurpose purpose = ReadPurpose::kOperand;
-  std::optional<std::uint16_t> read_ordinal;
+  std::optional<std::uint32_t> read_ordinal;
 };
 // Bounded G1 adapter. Calls/ranges have a separate variable-sized adapter;
 // they must never be truncated to this fixed scalar capacity.

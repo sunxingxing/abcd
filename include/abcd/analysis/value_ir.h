@@ -77,7 +77,7 @@ using IncomingKey = std::variant<MethodEntryKey, EdgeId>;
 using ValueOperand = std::variant<ValueId, SpecialValue, IntegerLiteral, Float64Bits>;
 struct InputRead {
   InputSiteId site;
-  std::uint16_t ordinal;
+  std::uint32_t ordinal;
 };
 struct OperandUse {
   std::variant<OpId, ValueId> owner;  // ValueId owns a phi input.

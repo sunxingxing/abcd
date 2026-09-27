@@ -45,6 +45,9 @@ int main() {
   Check(reads.At({2}, 0)->kinds == mixed);
   Check(!reads.At({2}, 0)->guard);
   Check(!reads.At({UINT32_MAX}, 0) && !reads.At({0}, UINT16_MAX));
+  // A caller's wide occurrence must not truncate into the existing read zero.
+  Check(!reads.At({0}, std::uint32_t(UINT16_MAX) + 1));
+  Check(!reads.At({0}, UINT32_MAX));
   Check(!reads.At({0}, 1)->guard);
   Check(reads.At({0}, 1)->kinds == ValueKinds::Unknown());
   const std::array atoms{ValueKinds::Language(), ValueKinds::Hole(),

@@ -44,7 +44,7 @@ class GuardedReads {
     return {reads_.get(), reads_ ? count_ : 0};
   }
   [[nodiscard]] std::optional<GuardedRead> At(InstructionId instruction,
-                                              std::uint16_t ordinal) const;
+                                              std::uint32_t ordinal) const;
   [[nodiscard]] std::size_t AllocatedBytes() const {
     return Reads().size_bytes();
   }

@@ -109,7 +109,7 @@ std::variant<RegisterUses, RegisterUseFailure> RegisterUses::BuildImpl(
            (effect.range->count != 0 &&
             std::uint64_t(effect.range->first.value) + effect.range->count - 1 >
                 UINT32_MAX) ||
-           effect.range->count > UINT16_MAX - effect.read_count))
+           effect.range->count > UINT32_MAX - effect.read_count))
         return RegisterUseFailure{Error::kInvalidEffects, pc, {}};
     }
     std::size_t covered = 0;

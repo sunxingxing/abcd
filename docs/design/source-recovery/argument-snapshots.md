@@ -50,10 +50,13 @@ guard. This closes a prerequisite; it does not implement argument snapshots.
    like environment ownership, not a fabricated scalar register. Tail values
    must be validated as language arguments under the execution contract.
 3. **Operand representation.** Extend the compact operand view, not the fixed
-   scalar operand array. Current CallRange counts and SsaRead ordinals are 16-bit,
-   while FrameLayout parameter counts follow 28-bit runtime fields. Do not cast
-   or truncate: widen the relevant shared occurrence representation before
-   expanding these reads, and budget O(number of admitted read occurrences).
+   scalar operand array. CallRange counts remain 16-bit, while FrameLayout
+   parameter counts follow 28-bit runtime fields. Shared SsaRead/InputRead,
+   operand correspondence and guarded-read lookup now use 32-bit occurrences;
+   the largest encoded receiver call no longer exceeds their representation.
+   A separate wider frame-window range is still required before expanding
+   argument snapshots; do not widen the bytecode call-count contract implicitly.
+   Budget O(number of admitted read occurrences).
    Actual count controls which declared slots are present. Until that condition
    is proved, may-reads cannot be discarded to make Hole-bearing cases pass.
 4. **Independent verification.** Recompute window/owner and read correspondence

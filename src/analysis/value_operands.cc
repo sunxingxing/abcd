@@ -114,7 +114,7 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
   const auto& effect = instruction.effects.normal_registers;
   if (effect.range || effect.read_count > effect.reads.size())
     return OperandError::kReadCount;
-  std::uint16_t ordinal = 0;
+  std::uint32_t ordinal = 0;
   for (auto& operand : std::span(plan.operands).first(plan.count)) {
     std::optional<ScalarSlot> slot;
     if (std::holds_alternative<Accumulator>(operand.value))
