@@ -270,6 +270,7 @@ int main() {
   OrderedOperands(false); OrderedOperands(true);
   // Shape admission is not a callable-owner/self-scope publication proof.
   Check(DescribeEvaluation(analysis::ValueFrameFunction{}).has_value());
+  Check(!DescribeEvaluation(analysis::ValueGlobalObject{}).has_value());
   Fixture self;
   self.Add(analysis::ValueFrameFunction{}, true, {});
   self.graph.blocks = {{{0}, 1, {0}, 0}};

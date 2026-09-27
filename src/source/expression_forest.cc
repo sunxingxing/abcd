@@ -477,6 +477,7 @@ class ForestBuilder {
       }
       else {
         static_assert(std::is_same_v<T, analysis::ValueGuard> ||
+                      std::is_same_v<T, analysis::ValueGlobalObject> ||
                       std::is_same_v<T, analysis::ValueModuleRead> ||
                       std::is_same_v<T, analysis::ValueModuleWrite> ||
                       std::is_same_v<T, analysis::ValueOwnWrite> ||

@@ -185,6 +185,7 @@ class OperandCheck {
           }
         } else {
           static_assert(std::is_same_v<T, analysis::ValueModuleWrite> ||
+                        std::is_same_v<T, analysis::ValueGlobalObject> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueDebugger> ||

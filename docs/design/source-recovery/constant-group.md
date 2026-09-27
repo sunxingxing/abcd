@@ -166,6 +166,37 @@ The implemented tests execute empty/illegal names and arrows across profiles, pr
 self identity after ABI-copy overwrite, preserve name/length/prototype behavior,
 and exercise parameter/global name collisions and nested captures.
 
+### Realm Object Dependency
+
+The pinned interpreter initializes `globalObj` from
+`globalEnv->GetGlobalObject()` at interpreter-inl.cpp:1074 and LDGLOBAL assigns
+that object to acc at :1750. Existing GlobalObjectLoad now imports as a distinct
+ValueGlobalObject with no operands, a Defined result and no ordinary abrupt or
+observable effect. It is not ValueGlobalRead and carries no source spelling.
+Independent import correspondence rejects substituting frame-function identity.
+Three-profile tests cover import, result domain, operand shape and malformed
+encodings. Retention is conservative until realm binding validation is wired;
+source evaluation still refuses this operation. Six file-backed direct/callback
+fixtures assert that value-import success alone cannot publish source.
+
+The remaining end-to-end steps are required, not optional fallback behavior:
+
+1. Add a dedicated realm expression to the shared AST and independently match
+   it to ValueGlobalObject. Do not represent it as GlobalNameExpr: global name
+   lookup can invoke getters or throw, whereas the VM identity load does neither.
+2. Resolve its generated binding at family publication. Under the existing V2
+   contract, stable unshadowed globalThis is admissible; V1 requires an explicit
+   HostRealmBinding. Record the chosen requirement in emission evidence rather
+   than silently acquiring the trust boundary from an identifier spelling.
+3. Verify local, parameter, capture, module, class and descendant enclosures
+   using the existing indexed scope checks. A conflicting spelling must either
+   get a proven collision-free binding or reject; never shadow user references
+   or introduce a new implicit host premise. Preserve source origin intervals.
+4. Execute three-profile direct/callback and nested-capture fixtures, checking
+   exact realm identity, ignored callback results, reentry and thrown values.
+   Add V1 missing-host, malformed binding, shadowing and AST-substitution
+   negatives. These positive source tests are still pending.
+
 ### Frame Receiver Dependency
 
 LDTHIS lifts to FrameThisLoad with an accumulator definition and no

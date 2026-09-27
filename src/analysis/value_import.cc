@@ -120,6 +120,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueFrameThis{};
     } else if constexpr (std::is_same_v<T, FrameFunctionLoad>) {
       return ValueFrameFunction{};
+    } else if constexpr (std::is_same_v<T, GlobalObjectLoad>) {
+      return ValueGlobalObject{};
     } else if constexpr (std::is_same_v<T, StringLoad>) {
       return ValueString{op.value};
     } else if constexpr (std::is_same_v<T, GlobalAccess>) {

@@ -61,6 +61,7 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       Append(plan, OperandRole::kReturnValue, op.value);
     } else if constexpr (std::is_same_v<T, FrameThisLoad> ||
                          std::is_same_v<T, FrameFunctionLoad> ||
+                         std::is_same_v<T, GlobalObjectLoad> ||
                          std::is_same_v<T, StringLoad> || std::is_same_v<T, EmptyObjectCreation> ||
                          std::is_same_v<T, BufferedObjectCreation> || std::is_same_v<T, ModuleLoad>) {
       plan.write = Accumulator{};

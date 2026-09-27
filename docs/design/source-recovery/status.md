@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 28。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 29。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,6 +42,18 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- LDGLOBAL 的新主干入口已补齐：既有 GlobalObjectLoad 导入独立
+  ValueGlobalObject，无寄存器输入、只定义 acc、结果 Defined；不复用普通
+  ValueGlobalRead 或 globalThis 字符串语义。依据 pinned interpreter 的
+  GetGlobalObject 初始化及 LDGLOBAL handler，未引入新的宿主前提。
+  三个 profile 新增导入、值域、零操作数、错误 IR 身份替换与畸形编码测试；
+  测试先失败于值 IR 导入，再实现。源码求值/AST 检查暂时明确拒绝，六个
+  文件级直接/回调反例防止误发 Complete。该项是 realm AST/绑定证明的前置，
+  `value_import_test`、`evaluation_plan_test`、`constant_group_test`、
+  `source_route_test` 共 4/4 通过，对应目标与 `abc_semantic` 构建成功。
+  规则版本 29；未运行 RSS/基准/全语料或 Ark VM 差分。
+  不计为 LDGLOBAL 端到端完成；后续执行步骤见
+  [Realm Object Dependency](constant-group.md#realm-object-dependency)。
 - LDFUNCTION 扩展到普通函数/arrow 的创建期私有不可变绑定：类型化 SelfForm
   区分命名函数表达式与 CreationBinding，共用现有 IR、作用域验证和 printer。
   空/非法 runtime name、参数/全局名字冲突、含子函数的 owner 使用私有 const；

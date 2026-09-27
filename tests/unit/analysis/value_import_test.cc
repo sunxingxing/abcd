@@ -8,6 +8,38 @@ int main() {
   using namespace abcd;
   using namespace abcd::analysis;
   {
+    const auto code = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDGLOBAL),
+        static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
+    for (const auto profile : {abc::ProfileId::kDynamic1202,
+        abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+      const auto built = BuildSemanticMethod(code, profile, 0);
+      const auto& method = std::get<SemanticMethod>(built);
+      test::Check(std::holds_alternative<GlobalObjectLoad>(method.instructions.front().operation));
+      const auto checked = VerifySemanticSource(code, method, 0, 0);
+      const auto& proof = std::get<SemanticProof>(checked);
+      const auto frame = std::get<abc::FrameLayout>(
+          abc::BuildFrameLayout(0, 0, {false, false, false, false}));
+      const auto imported = ImportNormalValues(code, method, proof, frame);
+      test::Check(std::holds_alternative<ValueProgram>(imported));
+      auto graph = std::get<ValueProgram>(imported);
+      const auto& load = graph.ops.front();
+      test::Check(std::holds_alternative<ValueGlobalObject>(load.operation));
+      test::Check(load.use_count == 0 && load.result);
+      test::Check(load.normal == LanguageEffect::kNone &&
+          load.exceptional == ExceptionalCompletion::kImpossible);
+      test::Check(graph.values[load.result->value].domain == ValueKinds::Defined());
+      test::Check(!VerifyImportedValues(graph, method, proof, frame));
+      test::Check(!CanErasePureOp(load));
+      graph.ops.front().operation = ValueFrameFunction{};
+      test::Check(VerifyImportedValues(graph, method, proof, frame)->kind ==
+          ValueImportError::kInputMismatch);
+      auto malformed = code.instructions.front();
+      malformed.decoded.operand_count = 1;
+      test::Check(std::get<SemanticFailure>(LiftSemanticInstruction(malformed, profile, 0)).kind ==
+          SemanticError::kMalformedInstruction);
+    }
+  }
+  {
     const auto code = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDFUNCTION),
         static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
     for (const auto profile : {abc::ProfileId::kDynamic1202,

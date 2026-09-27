@@ -213,6 +213,10 @@ int main() {
       for (const bool callback : {false, true}) Emit(profile, constant, callback);
     for (const bool callback : {false, true})
       Emit(profile, abc::Opcode::kLDHOLE, callback, ExpectedSource::kRejected);
+    // Value import alone cannot authorize a realm lookup in generated source.
+    // Keep publication closed until the typed realm AST and binding proof exist.
+    for (const bool callback : {false, true})
+      Emit(profile, abc::Opcode::kLDGLOBAL, callback, ExpectedSource::kRejected);
   }
   std::cout << "];\n";
   std::cout << "export const debugCases = [\n";
