@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <limits>
 #include <ostream>
+#include <type_traits>
 
 #include "abcd/source/function_emission.h"
+#include "family_emission.h"
 #include "capture_stream.h"
 
 namespace abcd::source {
@@ -22,14 +24,31 @@ GeneratedPosition Rebase(GeneratedPosition point, GeneratedPosition origin) {
   return point;
 }
 }  // namespace
+FunctionSegmentView ViewFunctionSegment(const FunctionSegment& segment) {
+  return std::visit([](const auto& payload) -> FunctionSegmentView {
+    if (!payload) Invalid();
+    using T = std::remove_cvref_t<decltype(*payload)>;
+    if constexpr (std::is_same_v<T, FunctionEmission>) {
+      return {payload->Function().Tree(), payload->Positions(), payload->Receipt(),
+          payload->Function().ClassCreation(), nullptr, nullptr, payload->Positions().bytes, payload->AllocatedBytes()};
+    } else {
+      static_assert(std::is_same_v<T, FamilyEmission>);
+      const auto& family = payload->Family().Family();
+      const auto root = family.root.value;
+      return {family.members[root].tree, payload->Positions().members[root], payload->Receipts()[root],
+          payload->Family().ClassCreation(), payload.get(), &*family.members[root].sources,
+          payload->Positions().bytes, payload->AllocatedBytes()};
+    }
+  }, segment.function);
+}
 void CheckFunctionSegment(const FunctionSegment& segment) {
-  if (!segment.function || !segment.begin.line || segment.begin.line > segment.end.line ||
+  const auto view = ViewFunctionSegment(segment);
+  if (!segment.begin.line || segment.begin.line > segment.end.line ||
       (segment.begin.line == segment.end.line && segment.begin.column > segment.end.column) ||
       segment.begin.byte > segment.end.byte || segment.begin.captures != segment.end.captures ||
-      segment.end.byte - segment.begin.byte != segment.function->Positions().bytes)
+      segment.end.byte - segment.begin.byte != view.bytes)
     Invalid();
-  if (segment.function->Receipt().coverage != Coverage::kComplete ||
-      ValidateRouteReceipt(segment.function->Receipt())) Invalid();
+  if (view.receipt.coverage != Coverage::kComplete || ValidateRouteReceipt(view.receipt)) Invalid();
 }
 void CheckFunctionSegments(std::span<const FunctionSegment> segments,
                            std::size_t bytes, std::size_t captures) {
@@ -62,7 +81,7 @@ void AppendFunctionSegment(std::vector<FunctionSegment>& segments,
   CheckFunctionSegment(segment);
   // Charge a shared payload for every retained occurrence conservatively. Never
   // spend the child preparation allowance again after it becomes parent-owned.
-  const auto payload = segment.function->AllocatedBytes();
+  const auto payload = ViewFunctionSegment(segment).allocated_bytes;
   if (payload > remaining) Resource();
   remaining -= payload;
   if (segments.size() == segments.capacity()) {

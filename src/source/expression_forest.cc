@@ -345,7 +345,7 @@ class ForestBuilder {
         const auto& binding = forest_.bindings.values[value.value];
         if (const auto* symbol = std::get_if<SymbolId>(&binding))
           return Add(SymbolExpr{*symbol}, origin);
-        if (std::holds_alternative<ReceiverBinding>(binding))
+        if (std::holds_alternative<ReceiverEntryBinding>(binding))
           return Add(ThisExpr{owner_}, origin);
         const auto* result = std::get_if<analysis::OpResult>(&graph_.values[value.value].origin);
         Require(result && result->op.value < forest_.operations.size() &&

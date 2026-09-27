@@ -214,6 +214,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   Check(published_family.Receipts()[0].stage == SourceStage::kPrinted &&
       published_family.Receipts()[0].coverage == Coverage::kComplete &&
       !ValidateRouteReceipt(published_family.Receipts()[0]));
+  test::CheckFunctionTransport(std::get<FamilyEmission>(std::move(family_emission)), emitted_output.str());
   Check(printed.fragment == FunctionFragment::kClassMember);
   Check(printed.bytes == output.view().size());
   Check(output.view().starts_with(defaults ? "run($arg0 = (-1)) {\n" : "run($arg0) {\n"));

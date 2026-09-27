@@ -17,6 +17,7 @@ PreparedFamily& PreparedFamily::operator=(PreparedFamily&&) noexcept = default;
 PreparedFamily::~PreparedFamily() = default;
 const ConstructedFamily& PreparedFamily::Family() const { return storage_->family; }
 const RouteInputIdentity& PreparedFamily::Identity() const { return storage_->context.Identity(); }
+const analysis::ClassMethodSite* PreparedFamily::ClassCreation() const { return storage_->context.ClassSite(); }
 std::span<const MethodRouteReceipt> PreparedFamily::Receipts() const { return storage_->receipts; }
 std::size_t PreparedFamily::AllocatedBytes() const { return storage_->allocated_bytes; }
 std::uint64_t PreparedFamily::Work() const { return storage_->work; }

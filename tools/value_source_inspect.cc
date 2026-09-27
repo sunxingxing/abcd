@@ -15,6 +15,8 @@
 #include "abcd/source/record_source.h"
 #include "../src/source/function_file.h"
 #include "../src/source/module_aliases.h"
+#include "../src/source/function_segments.h"
+#include "../src/source/family_emission.h"
 
 namespace {
 using namespace abcd;
@@ -170,11 +172,11 @@ int RecordSlice(const corpus::AbcFile& file, const abc::Header& header,
   for (const auto& segment : source->function_segments) {
     if (!first) output << ',';
     first = false;
-    const auto& emission = *segment.function;
-    const auto serialized = SerializeRouteReceipt(emission.Receipt());
+    const auto emission = ViewFunctionSegment(segment);
+    const auto serialized = SerializeRouteReceipt(emission.receipt);
     const auto* receipt = std::get_if<std::string>(&serialized);
     if (!receipt) return EXIT_FAILURE;
-    const auto* site = emission.Function().ClassCreation();
+    const auto* site = emission.creation;
     if (!site) return EXIT_FAILURE;
     const auto& creation = *site;
     output << "{\"begin\":" << segment.begin.byte << ",\"end\":" << segment.end.byte
@@ -182,7 +184,24 @@ int RecordSlice(const corpus::AbcFile& file, const abc::Header& header,
                 {"pc", creation.pc.value}, {"literal", creation.literal.value},
                 {"property", creation.property}}
            << ",\"route_receipt\":" << *receipt << ",\"local_positions\":";
-    abcd::tools::WriteTreePositions(output, emission.Function().Tree(), emission.Positions());
+    abcd::tools::WriteTreePositions(output, emission.tree, emission.positions, emission.sources);
+    if (emission.family) {
+      output << ",\"family_members\":[";
+      const auto& family = emission.family->Family().Family();
+      const auto& positions = emission.family->Positions();
+      for (std::size_t i = 0; i < family.members.size(); ++i) {
+        if (i) output << ',';
+        const auto child_receipt = SerializeRouteReceipt(emission.family->Receipts()[i]);
+        const auto* encoded = std::get_if<std::string>(&child_receipt);
+        if (!encoded) return EXIT_FAILURE;
+        output << "{\"owner\":" << family.members[i].tree.owner.value
+               << ",\"begin\":" << positions.functions[i].begin << ",\"end\":" << positions.functions[i].end
+               << ",\"route_receipt\":" << *encoded << ",\"local_positions\":";
+        abcd::tools::WriteTreePositions(output, family.members[i].tree, positions.members[i], &*family.members[i].sources);
+        output << '}';
+      }
+      output << ']';
+    }
     output << '}';
   }
   output << "]}\n";

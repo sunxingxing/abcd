@@ -329,12 +329,14 @@ struct GeneratedPosition {
   std::size_t captures = 0;
 };
 class FunctionEmission;
-// A separately verified value-tree method inside a possibly legacy container.
-// Only the envelope moves during replay/binding; the immutable function's local
-// byte ranges, origin DAG and receipt remain paired and shared. No captures may
-// occur inside this G1 segment. Container coverage is independent of its receipt.
+class FamilyEmission;
+// A separately verified method or function family in a possibly legacy container.
+// Only the envelope moves during replay/binding; immutable trees, local byte
+// ranges, origin DAGs and receipts remain paired. No template insertion captures
+// may occur inside it; native lexical captures stay in the owned family AST.
+// Container coverage is independent of these method receipts.
 struct FunctionSegment {
-  std::shared_ptr<const FunctionEmission> function;
+  std::variant<std::shared_ptr<const FunctionEmission>, std::shared_ptr<const FamilyEmission>> function;
   GeneratedPosition begin;
   GeneratedPosition end;
 };

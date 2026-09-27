@@ -65,3 +65,31 @@ Production builds exited 0. ABC-only inspection retains the existing 7559 method
 segment [2638,2924), now serialized under rules 24, and the unchanged 1434-byte
 four-member 7449 incomplete/nonexecutable draft. Those observations do not
 exercise the new emission entry and are not its execution acceptance.
+
+## Record Segment Transport
+
+`FunctionSegment` carries a typed variant of shared immutable `FunctionEmission`
+or `FamilyEmission`. `ViewFunctionSegment` supplies a borrowed root view without
+copying trees or consulting source text. The existing envelope validation,
+memory admission, replay, capture-position relocation and record retention checks
+consume this view. A family is one envelope, never one independently shifted
+segment per descendant; child positions and receipts remain in the shared owner.
+
+The record-slice serializer supports the root's instruction-source table and
+streams every family's member receipts and local positions. All member offsets
+are relative to the segment's relocated `begin`, not to their individual root.
+Template insertion captures remain forbidden inside a segment; native lexical
+captures already represented in AST are not such insertions. Moving coordinates
+does not permit changing the original lexical embedding.
+
+The selected-method producer still chooses the established standalone emitter.
+This change supplies transport and retention for the family product; routing an
+actual selected record method through it remains the next integration step.
+Transport specifications now instantiate both payload kinds, including replay,
+capture insertion before the segment, zero budget, invalid envelopes and
+200/201 retained occurrences. These specifications are uncompiled/unrun.
+
+Joining old/new headers exposed their unrelated `ReceiverBinding` definitions.
+The new value binding's ABI-entry marker is now `ReceiverEntryBinding`; the old
+receiver-expression variant is unchanged. This is a type-name correction, not
+a new receiver equivalence or constructor admission.

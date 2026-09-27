@@ -50,10 +50,11 @@ class BoundSegmentSink final : public source::CaptureBuffer {
 
 // Reuse a real prepared member supplied by the encoded-class fixture. No raw
 // production tree/certificate constructor or execution of generated JS.
-inline void CheckFunctionTransport(source::FunctionEmission emission,
+template<class Emission>
+inline void CheckFunctionTransport(Emission emission,
                                    std::string_view method_text) {
   using namespace source;
-  const auto function = std::make_shared<const FunctionEmission>(std::move(emission));
+  const auto function = std::make_shared<const Emission>(std::move(emission));
   constexpr std::size_t kBudget = 64 * 1024 * 1024;
   constexpr std::string_view before = "const outer = ";
   constexpr std::string_view after = ";\nclass Fixture {\n";
@@ -81,7 +82,8 @@ inline void CheckFunctionTransport(source::FunctionEmission emission,
   intermediate.Replay(output, final);
   CheckSegment(sink.segments.size() == 1);
   const auto& mapped = sink.segments.front();
-  CheckSegment(mapped.function == function && mapped.begin.captures == 0 && mapped.end.captures == 0);
+  CheckSegment(std::get<std::shared_ptr<const Emission>>(mapped.function) == function &&
+      mapped.begin.captures == 0 && mapped.end.captures == 0);
   constexpr std::string_view binding = "captured";
   CheckSegment(mapped.begin.byte == final.size() + parent.size() + wrapper.size() + before.size() + binding.size() + after.size());
   CheckSegment(mapped.end.byte - mapped.begin.byte == method_text.size());

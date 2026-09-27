@@ -547,7 +547,7 @@ class FunctionWriter {
               semantic_template->captures.size() >= remaining / sizeof(CaptureShift))
             return FunctionEmitError::kResourceLimit;
           for (const auto& segment : semantic_template->function_segments)
-            if (!segment.function || !charge(segment.function->AllocatedBytes(), 1))
+            if (!charge(ViewFunctionSegment(segment).allocated_bytes, 1))
               return FunctionEmitError::kResourceLimit;
           if (semantic_template->captures.size() >= remaining / sizeof(CaptureShift))
             return FunctionEmitError::kResourceLimit;

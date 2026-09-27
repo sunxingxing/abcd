@@ -48,6 +48,7 @@ class PreparedFamily {
       analysis::SemanticBudget budget = {});
   [[nodiscard]] const ConstructedFamily& Family() const;
   [[nodiscard]] const RouteInputIdentity& Identity() const;
+  [[nodiscard]] const analysis::ClassMethodSite* ClassCreation() const;
   // Occurrence/member order, not deduplicated by method entity. TreeVerified
   // remains Incomplete until the owning emission succeeds in its destination.
   [[nodiscard]] std::span<const MethodRouteReceipt> Receipts() const;

@@ -29,6 +29,14 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- record 的 `FunctionSegment` 现可持有单函数或完整函数族，共享原有搬运、捕获
+  位置重定位、内存计费及保留检查。整族只移动一层外部区间，内部 AST/收据/位置不拆散。
+  record-slice 序列化已支持逐成员收据和原始指令位置表。
+  selected-method 生产入口尚未切换；本步不宣称已在真实 record 中使用新函数族 emitter。
+  新旧头文件接合暴露的类型重名已修正为 `ReceiverEntryBinding`，未改变 receiver 语义。
+  双 payload 的重放、捕获前缀、预算与 200/201 规格已更新，仍未编译、未运行。
+  生产双目标构建退出 0；ABC-only 7559 仍为 [2638,2924)、规则 24 的单函数
+  record 片段，Immersive 21082 类成员草稿仍为 160 字节、不可执行、不完整。
 - 新增[拥有型函数族输出](family-emission.md)：准备接口保存逐 occurrence 的
   TreeVerified/Incomplete 收据；`FamilyEmission` 在实际输出、目标语法/作用域和
   全指令位置检查成功后才产生逐方法 Printed/Complete 收据，并持有树与位置表。

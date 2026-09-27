@@ -52,7 +52,7 @@ void ReceiverAndUnsupportedAbi() {
       Check(std::holds_alternative<BindingPlan>(built));
       const auto& plan = std::get<BindingPlan>(built);
       Check(plan.symbols.empty());
-      Check(std::holds_alternative<ReceiverBinding>(plan.values[0]));
+      Check(std::holds_alternative<ReceiverEntryBinding>(plan.values[0]));
     } else {
       Check(std::get<BindingError>(built) == BindingError::kUnsupportedEntry);
     }

@@ -99,7 +99,7 @@ std::variant<BindingPlan, BindingError> BuildBindingPlan(
               plan.parameters.formals[parameter->index].entry !=
                   ValueId{static_cast<std::uint32_t>(i)}) return Error::kParameter;
         } else if (std::holds_alternative<ReceiverEntry>(*entry)) {
-          plan.values[i] = ReceiverBinding{};
+          plan.values[i] = ReceiverEntryBinding{};
         } else if (value.first_use) {
           // Unused callable/new-target ABI entries need no source declaration.
           // A live read cannot be relabeled as an ordinary undefined local.

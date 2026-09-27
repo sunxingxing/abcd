@@ -6,8 +6,8 @@
 
 namespace abcd::source {
 struct UnboundValue {};
-struct ReceiverBinding {};
-using ValueBinding = std::variant<UnboundValue, SymbolId, ReceiverBinding>;
+struct ReceiverEntryBinding {};
+using ValueBinding = std::variant<UnboundValue, SymbolId, ReceiverEntryBinding>;
 struct ParameterBinding { std::uint32_t index; };
 struct SnapshotBinding {
   analysis::ValueId value;
