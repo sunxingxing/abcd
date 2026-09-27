@@ -49,7 +49,9 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
     const InstructionSources* sources) {
   // Stream tables independently: do not expand each node's transitive PC set,
   // or hold an unbounded JSON DOM duplicating the complete source tree.
-  output << "{\"unit\":\"utf8_byte\",\"value_revision\":" << printed.value_revision.value
+  output << "{\"unit\":\"utf8_byte\",\"source_contract\":"
+         << nlohmann::json(SourceContractName(printed.identity.contract))
+         << ",\"value_revision\":" << printed.value_revision.value
          << ",\"cfg_revision\":" << printed.cfg_revision.value << ",\"origins\":";
   Array(output, tree.origins, Origin);
   switch (tree.invocation) {

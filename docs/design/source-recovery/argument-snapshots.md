@@ -214,15 +214,16 @@ observed. Adding either feature must re-audit this lowering, not simply reuse
 the carrier. LDFUNCTION self identity retains its existing private creation
 binding instead of referring to the temporary object or its method name.
 
-The form is conditional, not enabled by the default destination contract.
-Publication requires BOTH the exact snapshot factory and explicit
-`CallableTextPolicy::kRecovered`. Missing/revoked text policy refuses with typed
-`kCallableText` before output. Positions record `invocation_form: arrow_method`
+The form still requires the exact snapshot factory. Rules 43 additionally
+accept the user-approved [V3 recovered-text contract](../source-contract-v3.md)
+as the text permission. V1/V2 do not gain this permission implicitly: their
+destination still needs explicit `CallableTextPolicy::kRecovered`, otherwise
+`kCallableText` refuses before output. Positions record `invocation_form: arrow_method`
 and `callable_text_policy: recovered`; the scope check is repeated on embedding.
 This policy permits different Function.prototype.toString text, not differences
 in calls, parameters, values, effects, constructibility or capture ownership.
-The user's engine-wide text-reflection decision is pending; no implicit V2
-extension or CLI capability was introduced.
+The user approved the engine-wide textual boundary on 2026-09-27. V2's meaning
+remains unchanged; no CLI host capability was introduced.
 
 Pinned evidence: `js_function_kind.h` and `js_function.h` distinguish arrow
 kinds from constructor/prototype kinds; `builtins/builtins_function.cpp`'s

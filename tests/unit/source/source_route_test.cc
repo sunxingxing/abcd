@@ -75,6 +75,14 @@ bool SameReceipt(const MethodRouteReceipt& left,
 // `ctest --test-dir build -R '^source_route_test$'` after the pause is
 // lifted.
 int main() {
+  Check(kSourceContract == SourceContract::kLanguageAndHostV3);
+  Check(CallableText(SourceContract::kLanguageAndHostV1) == CallableTextPolicy::kUnspecified);
+  Check(CallableText(SourceContract::kLanguageAndHostV2) == CallableTextPolicy::kUnspecified);
+  Check(CallableText(kSourceContract) == CallableTextPolicy::kRecovered);
+  Check(PendingExceptions(kSourceContract) == PendingExceptions(SourceContract::kLanguageAndHostV2));
+  Check(NormalCallResults(kSourceContract) == NormalCallResults(SourceContract::kLanguageAndHostV2));
+  Check(RealmBinding(kSourceContract) == RealmBinding(SourceContract::kLanguageAndHostV2));
+  Check(ResourceFailures(kSourceContract) == ResourceFailures(SourceContract::kLanguageAndHostV2));
   // Admission: legacy stays permitted only under LegacyAllowed; a required
   // value tree is a typed refusal, never a legacy fallback (A01).
   const auto legacy = AdmitLegacyWriter(RoutePolicy::kLegacyAllowed);
@@ -187,6 +195,17 @@ int main() {
     Check(recovered != nullptr);
     Check(SameReceipt(receipt, *recovered));
   }
+  for (const auto contract : {SourceContract::kLanguageAndHostV1,
+                              SourceContract::kLanguageAndHostV2,
+                              SourceContract::kLanguageAndHostV3}) {
+    auto receipt = RefusedReceipt();
+    receipt.identity.contract = contract;
+    Check(!ValidateRouteReceipt(receipt));
+    const auto encoded = std::get<std::string>(SerializeRouteReceipt(receipt));
+    Check(nlohmann::json::parse(encoded)["identity"]["source_contract"] ==
+          SourceContractName(contract));
+    Check(SameReceipt(receipt, std::get<MethodRouteReceipt>(ParseRouteReceipt(encoded))));
+  }
 
   // Unknown versions, labels, out-of-range integers, missing fields and
   // contradictory states are rejected; a parse never defaults into success.
@@ -221,7 +240,7 @@ int main() {
          "854fb0d9bbc1df0e", RouteReceiptError::kIdentity);
   reject("[12,0,6,0]", "[12,0,6]", RouteReceiptError::kIdentity);
   reject("\"profile\":4", "\"profile\":99", RouteReceiptError::kIdentity);
-  reject("language_and_host_v2", "language_and_host_v3",
+  reject("language_and_host_v2", "language_and_host_v4",
          RouteReceiptError::kIdentity);
   reject("\"work_revision\":null", "\"work_revision\":0",
          RouteReceiptError::kSchema);  // revisions are typed absent, invented

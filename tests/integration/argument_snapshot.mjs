@@ -81,6 +81,8 @@ function checkLoop(actual, values) {
 }
 
 for (const item of cases) {
+  assert.equal(item.positions.source_contract, 'language_and_host_v3');
+  assert.equal(item.positions.argument_snapshot_binding.contract, 'language_and_host_v3');
   assert.equal(typeof item.source, 'string');
   assert.equal(typeof item.writes_parameter, 'boolean');
   assert.equal(typeof item.nested_snapshot, 'boolean');

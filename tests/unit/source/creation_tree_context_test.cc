@@ -248,11 +248,24 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
         GlobalScope globals{}; globals.argument_snapshot_binding = &factory;
         const FamilyDestination destination{Strictness::kStrict, &globals};
         if (context.Callable() == CallableKind::kArrow) {
-          const auto denied = PreparedFamily::PrepareCreated(file, header, index, lookup,
+          const auto accepted = PreparedFamily::PrepareCreated(file, header, index, lookup,
               roles, sites, range.first, identity, destination);
+          test::Check(std::holds_alternative<PreparedFamily>(accepted));
+          auto historical = identity;
+          historical.contract = SourceContract::kLanguageAndHostV2;
+          const auto denied = PreparedFamily::PrepareCreated(file, header, index, lookup,
+              roles, sites, range.first, historical, destination);
           test::Check(std::get<FamilyEnclosureFailure>(std::get<FamilyPrepareFailure>(denied).cause).kind ==
               FamilyEnclosureError::kCallableText);
           globals.callable_text = CallableTextPolicy::kRecovered;
+          const auto old_ready = PreparedFamily::PrepareCreated(file, header, index,
+              lookup, roles, sites, range.first, historical, destination);
+          test::Check(std::holds_alternative<PreparedFamily>(old_ready));
+          globals.callable_text = CallableTextPolicy::kUnspecified;
+          std::ostringstream revoked;
+          test::Check(std::holds_alternative<FamilyPrepareFailure>(
+              std::get<PreparedFamily>(old_ready).PrintDraft(destination, revoked)) &&
+              revoked.str().empty());
         }
         auto complete = PreparedFamily::PrepareCreated(file, header, index, lookup,
             roles, sites, range.first, identity, destination);
@@ -261,10 +274,9 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
         if (context.Callable() == CallableKind::kArrow) {
           const auto& tree = ready.Family().members[0].tree;
           globals.callable_text = CallableTextPolicy::kUnspecified;
-          std::ostringstream denied;
-          test::Check(std::holds_alternative<FamilyPrepareFailure>(ready.PrintDraft(destination, denied)) &&
-              denied.str().empty());
-          globals.callable_text = CallableTextPolicy::kRecovered;
+          std::ostringstream permitted;
+          test::Check(!std::holds_alternative<FamilyPrepareFailure>(ready.PrintDraft(destination, permitted)) &&
+              !permitted.str().empty());
           test::Check(tree.callable == CallableKind::kArrow && tree.invocation == InvocationForm::kArrowMethod);
           auto forged = tree; forged.invocation = InvocationForm::kDeclared;
           test::Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(forged)));
