@@ -361,10 +361,41 @@ void DistinctCells(std::uint8_t count) {
     test::Check(binding.binding.captures[i] == CellId{i});
   }
 }
+void CreationEvaluation(bool pop) {
+  std::vector<std::uint8_t> code{kPush, 1, kFunction, 0, 0, 0, 0};
+  if (pop) code.push_back(kPop);
+  code.push_back(kReturn);
+  const auto body = test::Body(code);
+  const auto child_body = test::Body({kReturnUndefined});
+  const auto parent = Input(kParent, body);
+  const auto child = Input(kChild, child_body);
+  const auto parent_values = std::get<FunctionValues>(BuildFunctionValues(parent, body, Frame()));
+  const auto child_values = std::get<FunctionValues>(BuildFunctionValues(child, child_body, Frame()));
+  const auto site = parent.Children()[0];
+  const auto creation = Creation(parent, site);
+  const auto cells = std::get<CaptureCells>(BindCaptureCells(Index(), {parent, parent_values},
+      {child, child_values}, site, creation));
+  const auto binding = std::get<CapturedFunctionBinding>(BindCaptureEvaluation(Index(),
+      {parent, parent_values}, {child, child_values}, site, creation, cells, {0}, {1}));
+  const FunctionBinding functions[]{binding.binding};
+  auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(parent_values.graph, {},
+      IncomingCells::kConditional, functions));
+  const auto operation = binding.binding.creation;
+  test::Check(evaluation.operations[operation.value].kind ==
+      (pop ? EvaluationKind::kRoot : EvaluationKind::kInline));
+  if (pop) {
+    // A forged otherwise-once-only return expression must not move creation
+    // out of the implicit lexical environment in which ABC executed it.
+    evaluation.operations[operation.value] = {EvaluationKind::kInline,
+        parent_values.graph.ops.back().first_use, {}};
+    test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(parent_values.graph, evaluation)) == EvaluationError::kOrder);
+  }
+}
 }  // namespace
 int main() {
   for (const auto count : {0U, 1U, 2U, 200U, 201U}) Occurrences(count);
   for (const auto count : {1U, 2U, 200U, 201U}) DistinctCells(static_cast<std::uint8_t>(count));
   ForwardingAndChildren();
   ClosedAdmission();
+  CreationEvaluation(false); CreationEvaluation(true);
 }

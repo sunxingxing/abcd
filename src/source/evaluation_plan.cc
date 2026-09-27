@@ -75,9 +75,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
       if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
         Require(next_function < functions.size() && functions[next_function++].creation.value == i, Error::kOwnership);
-        // Creation reads an implicit lexical environment. Do not move it over
-        // push/pop or infer a closure lifetime from scalar input-use order.
-        pinned[i] = 1;
+        // Creation is ordered, not intrinsically a statement. Environment
+        // fences below prevent its subtree from crossing implicit scope state.
       }
       if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueModuleRead>(op.operation))
         pinned[i] = 1;
@@ -150,6 +149,10 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
         if (IsEnvironmentState(op.operation)) {
           Require(plan.cells.has_value(), Error::kUnsupportedOperation);
           plan.operations[index].kind = EvaluationKind::kEnvironment;
+          // An unconsumable serial event prevents ordered subtrees (including
+          // function creation) from fusing across a push/pop/current-env site.
+          // The independent verifier checks creation's final root epoch too.
+          ++serial;
           continue;
         }
         if (std::holds_alternative<analysis::ValueGuard>(op.operation) &&

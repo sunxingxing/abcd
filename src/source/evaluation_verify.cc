@@ -38,17 +38,22 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
     admit(graph.ops.size(), sizeof(std::uint8_t)); step(graph.ops.size());
     std::vector<std::uint8_t> pinned(graph.ops.size());
     admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
+    admit(graph.ops.size(), sizeof(std::size_t));
+    std::vector<std::size_t> environment_epochs(graph.ops.size());
+    admit(environment_epochs.capacity() - graph.ops.size(), sizeof(std::size_t));
+    std::size_t environment_epoch = 0;
     bool has_definitions = false;
     bool has_cells = false;
     std::size_t next_function = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       const auto& op = graph.ops[i];
+      if (op.life == analysis::ValueLife::kLive && IsEnvironmentState(op.operation)) ++environment_epoch;
+      environment_epochs[i] = environment_epoch;
       step(); has_definitions |= op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueOwnWrite>(op.operation);
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
       if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
         Require(next_function < plan.functions.size() && plan.functions[next_function++].creation.value == i, Error::kOwnership);
-        pinned[i] = 1;
       }
       if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueModuleRead>(op.operation))
         pinned[i] = 1;
@@ -227,6 +232,10 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
                       Error::kUnavailableValue);
             }
           } else {
+            // Check the final expression root, not only the immediate
+            // consumer: a pure wrapper must not carry a closure past pop/push.
+            if (std::holds_alternative<analysis::ValueFunctionCreation>(op.operation))
+              Require(environment_epochs[frame.op.value] == environment_epochs[i], Error::kOrder);
             if (OrderedEvaluation(op)) {
               skip_pure();
               Require(expected < end && expected == frame.op.value, Error::kOrder);

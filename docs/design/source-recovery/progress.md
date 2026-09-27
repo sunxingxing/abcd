@@ -11,6 +11,21 @@ observations, not an up-to-date capability summary.
 
 ### File-Backed Conditional Function Families
 
+Real multi-member inspection: PageABuilder 7449 discovers 7089 and its children
+7117/7477 (four members, three edges). The initial tree refusal was traced to
+unconditionally pinned FunctionCreation disrupting the member-call evaluation
+suffix. Creation now participates in the common ordered-expression fusion;
+environment-state operations insert unconsumable serial fences. Independent
+verification compares each creation's environment epoch with its FINAL expression
+root, so pure intermediate nodes cannot move a closure across push/pop. No
+instruction effect, environment operation or child obligation is removed.
+The real root now passes expression/tree construction and refuses at ABI
+parameter validation, exposing the pending family default-signature integration.
+This is not whole-family source success. Added same-environment and pop-crossing
+forged-plan specifications are uncompiled/unrun under the test pause.
+Production `abc_semantic` and `abc_structure` builds exited 0. ABC-only G2 7559
+still constructs a one-member, 22-expression conditional AST; no JS was executed.
+
 The file-family input now feeds BuildFileFamilyTrees: actual callable context,
 shared syntax/constants, optional metadata-bound module aliases, common control
 and evaluation, parent-derived capture syntax, common FunctionTree/TreeFlow/ABI,
