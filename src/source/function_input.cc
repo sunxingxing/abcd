@@ -99,8 +99,15 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     }
     // The upstream proof budget includes its input method. Do not subtract it
     // twice; retain that full charge after construction before allocating uses.
+    // Actual count/tail belong to the validated current callable, including
+    // arrows' own VM invocation (not the enclosing source arguments binding).
+    // Legal JS entry values are the existing ABI premise; explicit bytecode
+    // callers must still prove all call operands. Retain owner_ for publication.
+    const auto arguments = owner && frame.extra_arguments
+        ? std::optional{analysis::ArgumentFrameFact{frame}} : std::nullopt;
     auto verified = analysis::VerifySemanticSource(body, *input, frame.registers, frame.locals,
-        quota.Remaining(), captures, {}, writes, {}, NormalCallResults(identity.contract), receiver);
+        quota.Remaining(), captures, {}, writes, {}, NormalCallResults(identity.contract), receiver,
+        arguments ? &*arguments : nullptr);
     auto* proof = std::get_if<analysis::SemanticProof>(&verified);
     if (!proof) return FunctionInputFailure{std::get<analysis::SemanticProofFailure>(verified)};
     quota.Admit(proof->allocated_bytes, 1);

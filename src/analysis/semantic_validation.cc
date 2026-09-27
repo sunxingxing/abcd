@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include "semantic_locals.h"
+#include "argument_inputs.h"
 
 namespace abcd::analysis {
 namespace {
@@ -35,18 +36,19 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
                                          std::span<const LanguageLoadFact> initialized_modules,
                                          ClosureWrites closure_writes,
                                          std::span<const CapturePreservation> preserved,
-                                         CallResultValues calls, FrameReceiver receiver) {
+                                         CallResultValues calls, FrameReceiver receiver,
+                                         const ArgumentFrameFact* arguments) {
   try {
   if (first_abi_register > frame_size ||
       method.instructions.size() != body.instructions.size() ||
       method.allocated_bytes > budget.bytes)
     return Fail(SemanticProofError::kResourceLimit);
+  const auto argument_check = VerifyArgumentInputs(body, method, frame_size,
+      first_abi_register, arguments, budget);
+  if (const auto* failure = std::get_if<SemanticProofFailure>(&argument_check)) return *failure;
+  const auto& argument_inputs = std::get<ArgumentInputCheck>(argument_check);
+  budget.work -= argument_inputs.work;
   for (std::size_t i = 0; i < body.instructions.size(); ++i) {
-    // Layout and current-slot SSA alone do not certify actual count/tail or
-    // the invocation owner. Never publish source until that proof is supplied.
-    if (body.instructions[i].decoded.opcode == abc::Opcode::kGETUNMAPPEDARGS ||
-        std::holds_alternative<ArgumentSnapshot>(method.instructions[i].operation))
-      return Fail(SemanticProofError::kArgumentOwner, body.instructions[i].offset);
     if (method.instructions[i].pc != body.instructions[i].offset ||
         method.ssa.Write(InstructionId{static_cast<std::uint32_t>(i)})
             .has_value() !=
@@ -200,7 +202,7 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     return SemanticProof{std::move(*bound),
                          std::move(*analyzed),
                          bytes, std::move(modules), std::move(captured_reads),
-                         std::move(*locals), closure_writes, {}, receiver};
+                         std::move(*locals), closure_writes, {}, receiver, argument_inputs.fact};
   } catch (const std::bad_alloc&) {
     return Fail(SemanticProofError::kResourceLimit);
   } catch (const std::length_error&) {

@@ -17,10 +17,10 @@ int main() {
           abc::BuildFrameLayout(0, count, {false, false, true, false}));
       auto budget = SemanticBudget{};
       budget.work = UINT64_MAX;
-      const auto built = BuildSemanticMethod(body, profile, frame.registers,
+      auto built = BuildSemanticMethod(body, profile, frame.registers,
           budget, {}, &frame);
       test::Check(std::holds_alternative<SemanticMethod>(built));
-      const auto& method = std::get<SemanticMethod>(built);
+      auto& method = std::get<SemanticMethod>(built);
       test::Check(std::holds_alternative<ArgumentSnapshot>(method.instructions[0].operation));
       const auto& effects = method.instructions[0].effects;
       test::Check(effects.normal ==
@@ -40,11 +40,53 @@ int main() {
       test::Check(std::get<SemanticProofFailure>(VerifySemanticSource(
           body, method, frame.registers, 0)).kind ==
           SemanticProofError::kArgumentOwner);
+      ArgumentFrameFact invocation{frame};
+      const auto prove = [&] {
+        return VerifySemanticSource(body, method, frame.registers, frame.locals,
+            budget, CapturedValues::kReject, {}, ClosureWrites::kUnknown, {},
+            CallResultValues::kUnknown, FrameReceiver::kUnknown, &invocation);
+      };
+      const auto proven = prove();
+      test::Check(std::holds_alternative<SemanticProof>(proven));
+      test::Check(std::get<SemanticProof>(proven).arguments->frame == frame);
+      invocation.frame.extra_arguments = false;
+      test::Check(std::get<SemanticProofFailure>(prove()).kind == SemanticProofError::kArgumentOwner);
+      invocation.frame = frame;
+      const auto original = method.instructions[0];
+      method.instructions[0].effects.normal = LanguageEffect::kNone;
+      test::Check(std::get<SemanticProofFailure>(prove()).kind == SemanticProofError::kSsaMismatch);
+      method.instructions[0] = original;
+      ++method.instructions[0].effects.normal_registers.range->count;
+      test::Check(std::get<SemanticProofFailure>(prove()).kind == SemanticProofError::kSsaMismatch);
+      method.instructions[0] = original;
+      method.instructions[0].operation = NoOperation{};
+      test::Check(std::get<SemanticProofFailure>(prove()).kind == SemanticProofError::kSsaMismatch);
+      method.instructions[0] = original;
+      const auto work = budget.work;
+      budget.work = 0;
+      test::Check(std::get<SemanticProofFailure>(prove()).kind == SemanticProofError::kResourceLimit);
+      budget.work = work;
     }
     test::Check(std::holds_alternative<SemanticFailure>(
         BuildSemanticMethod(body, profile, 0)));
     auto frame = std::get<abc::FrameLayout>(
         abc::BuildFrameLayout(0, 1, {false, false, true, false}));
+    const auto internal = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDHOLE),
+        0x61, 0, static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS), 0x64});
+    const auto internal_method = std::get<SemanticMethod>(BuildSemanticMethod(
+        internal, profile, frame.registers, {}, {}, &frame));
+    const ArgumentFrameFact invocation{frame};
+    const auto prove_invocation = [](const abc::MethodBody& code,
+        const SemanticMethod& input, const abc::FrameLayout& layout) {
+      const ArgumentFrameFact fact{layout};
+      return VerifySemanticSource(code, input, layout.registers, layout.locals,
+          {}, CapturedValues::kReject, {}, ClosureWrites::kUnknown, {},
+          CallResultValues::kUnknown, FrameReceiver::kUnknown, &fact);
+    };
+    test::Check(std::get<SemanticProofFailure>(VerifySemanticSource(internal,
+        internal_method, frame.registers, frame.locals, {}, CapturedValues::kReject,
+        {}, ClosureWrites::kUnknown, {}, CallResultValues::kUnknown,
+        FrameReceiver::kUnknown, &invocation)).kind == SemanticProofError::kInternalValue);
     const auto overwritten = test::Body({0x62, 9, 0, 0, 0, 0x61, 0,
         static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS), 0x61, 0,
         static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS), 0x64});
@@ -53,6 +95,7 @@ int main() {
     test::Check(method.ssa.Reads({2})[0].value == *method.ssa.Write({1}));
     test::Check(method.ssa.Reads({4})[0].value == *method.ssa.Write({3}));
     test::Check(method.ssa.Write({2}) != method.ssa.Write({4}));
+    test::Check(std::holds_alternative<SemanticProof>(prove_invocation(overwritten, method, frame)));
     const auto loop = test::Body({
         static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS),
         0x61, 0, 0x4d, 0xfd});
@@ -62,6 +105,8 @@ int main() {
     test::Check(std::holds_alternative<PhiValue>(loop_ssa.Values()[carried.value].origin));
     test::Check(loop_ssa.Inputs(carried).size() == 2);
     test::Check(loop_ssa.Inputs(carried)[1].value == *loop_ssa.Write({1}));
+    test::Check(std::holds_alternative<SemanticProof>(
+        prove_invocation(loop, std::get<SemanticMethod>(looping), frame)));
     const auto branch = test::Body({0x60, 0, 0x4f, 11,
         0x62, 11, 0, 0, 0, 0x61, 1, 0x4d, 9,
         0x62, 22, 0, 0, 0, 0x61, 1,
@@ -75,6 +120,15 @@ int main() {
     test::Check(branch_ssa.Inputs(joined).size() == 2);
     test::Check(branch_ssa.Inputs(joined)[0].value == *branch_ssa.Write({3}));
     test::Check(branch_ssa.Inputs(joined)[1].value == *branch_ssa.Write({6}));
+    test::Check(std::holds_alternative<SemanticProof>(
+        prove_invocation(branch, std::get<SemanticMethod>(branched), pair)));
+    auto mismatched = std::get<SemanticMethod>(BuildSemanticMethod(
+        body, profile, pair.registers, {}, {}, &pair));
+    auto single = std::get<SemanticMethod>(BuildSemanticMethod(
+        body, profile, frame.registers, {}, {}, &frame));
+    mismatched.ssa = std::move(single.ssa);
+    test::Check(std::get<SemanticProofFailure>(prove_invocation(body, mismatched, pair)).kind ==
+        SemanticProofError::kSsaMismatch);
     const auto hidden = std::get<abc::FrameLayout>(
         abc::BuildFrameLayout(2, 4, {true, true, true, true}));
     const auto with_hidden = BuildSemanticMethod(body, profile,

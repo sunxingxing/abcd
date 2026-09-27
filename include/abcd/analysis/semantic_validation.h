@@ -89,6 +89,14 @@ struct LocalAccessPlan {
            capture_barriers.capacity() * sizeof(InstructionId);
   }
 };
+// Caller-certified invocation, not merely a layout. Under the existing legal
+// JS entry contract its actual count and extra tail belong to this callable;
+// the tail contains language values and cannot be addressed by declared vregs.
+// Source owners must retain/recheck their creation identity. This fact does not
+// authorize native JS arguments, arrow capture, or any source signature rewrite.
+struct ArgumentFrameFact {
+  abc::FrameLayout frame;
+};
 struct SemanticProof {
   EnvironmentFlow environments;
   RegisterValueFlow values;
@@ -104,6 +112,7 @@ struct SemanticProof {
   ClosureWrites closure_writes = ClosureWrites::kUnknown;
   DefinedCaptures defined_captures;
   FrameReceiver receiver = FrameReceiver::kUnknown;
+  std::optional<ArgumentFrameFact> arguments;
 };
 enum class SemanticProofError : std::uint8_t {
   kAccumulator,  // Retained serialized value; generic proof now uses SSA.
@@ -149,6 +158,9 @@ using SemanticProofResult = std::variant<SemanticProof,
 // receiver is a caller-proven callable-owner premise, retained in the proof.
 // It constrains frame.thisObj only, never the writable ABI register copy;
 // derived initialization and arrow capture ownership require distinct proofs.
+// arguments is a caller-certified current invocation, not one inferred from
+// GETUNMAPPEDARGS or a parameter count. Correspondence and every current-slot
+// value are checked independently; no absent-slot/Hole proof is waived.
 [[nodiscard]] SemanticProofResult VerifySemanticSource(
     const abc::MethodBody& body, const SemanticMethod& method,
     std::uint64_t frame_size, std::uint32_t first_abi_register,
@@ -158,6 +170,7 @@ using SemanticProofResult = std::variant<SemanticProof,
     ClosureWrites closure_writes = ClosureWrites::kUnknown,
     std::span<const CapturePreservation> preserved = {},
     CallResultValues calls = CallResultValues::kUnknown,
-    FrameReceiver receiver = FrameReceiver::kUnknown);
+    FrameReceiver receiver = FrameReceiver::kUnknown,
+    const ArgumentFrameFact* arguments = nullptr);
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_SEMANTIC_VALIDATION_H_

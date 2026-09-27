@@ -23,7 +23,7 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
-enum class ChildBody { kEmpty, kReceiver, kCapture, kCell, kRecursive, kNestedWriter };
+enum class ChildBody { kEmpty, kReceiver, kCapture, kCell, kRecursive, kNestedWriter, kSnapshot };
 enum class CallerObject { kAbsent, kPrimitive, kMethod };
 constexpr std::uint32_t kPool = 64, kCaller = 256, kTarget = 300, kWriter = 320,
     kRecord = 128, kCallerCode = 400, kCodePadding = 16;
@@ -104,6 +104,8 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       kReadCell = 0x3c, kStoreCell = 0x3d, kPush = 0x09, kUndefined = 0x00, kPop = 0x69;
   std::vector<std::uint8_t> target;
   switch (child) {
+    case ChildBody::kSnapshot:
+      target = {static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS), kReturn}; break;
     case ChildBody::kEmpty: target = {kReturnUndefined}; break;
     case ChildBody::kReceiver: target = {kLoad, kReceiver, kReturn}; break;
     case ChildBody::kCapture: target = {kReadCell, 0, kReturn}; break;
@@ -166,6 +168,46 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
   {
     const auto roles = std::get<MethodRoleIndex>(MethodRoleIndex::Build(file, header, index, lookup));
     const auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
+    if (child == ChildBody::kSnapshot) {
+      const auto decoded = std::get<abc::MethodBody>(
+          abc::DecodeMethodBody(file, header.profile, target_code));
+      const FunctionContext context{std::get<CreationTreeContext>(CreationTreeContext::Resolve(
+          file, header, index, lookup, roles, sites, range.first, identity))};
+      const auto missing = FunctionInput::Build(identity, {kTarget}, {kRecord},
+          decoded, context.Frame(), InputCaptureMode::kClosed);
+      test::Check(std::get<SemanticProofFailure>(
+          std::get<FunctionInputFailure>(missing).cause).kind == SemanticProofError::kArgumentOwner);
+      const auto owned = FunctionInput::Build(identity, {kTarget}, {kRecord},
+          decoded, context.Frame(), InputCaptureMode::kClosed, {}, &context);
+      test::Check(std::holds_alternative<FunctionInput>(owned));
+      test::Check(std::get<FunctionInput>(owned).MatchesOwner(context));
+      test::Check(std::get<FunctionInput>(owned).Proof().arguments->frame == context.Frame());
+      // A checked input is not yet an executable body or an AST certificate.
+      const auto values = ReadFunctionValues(file, header, index, {1}, identity,
+          InputCaptureMode::kClosed, {}, nullptr, &context);
+      test::Check(std::holds_alternative<FunctionValueFailure>(
+          std::get<FunctionFileFailure>(values)));
+      auto changed = identity;
+      ++changed.file_size;
+      test::Check(std::get<FunctionInputError>(std::get<FunctionInputFailure>(
+          FunctionInput::Build(changed, {kTarget}, {kRecord}, decoded, context.Frame(),
+              InputCaptureMode::kClosed, {}, &context)).cause) == FunctionInputError::kOwner);
+      test::Check(std::get<FunctionInputError>(std::get<FunctionInputFailure>(
+          FunctionInput::Build(identity, {kCaller}, {kRecord}, decoded, context.Frame(),
+              InputCaptureMode::kClosed, {}, &context)).cause) == FunctionInputError::kOwner);
+      auto wrong_frame = context.Frame();
+      ++wrong_frame.locals;
+      test::Check(std::get<FunctionInputError>(std::get<FunctionInputFailure>(
+          FunctionInput::Build(identity, {kTarget}, {kRecord}, decoded, wrong_frame,
+              InputCaptureMode::kClosed, {}, &context)).cause) == FunctionInputError::kOwner);
+      if (count > 1) {
+        const FunctionContext other{std::get<CreationTreeContext>(CreationTreeContext::Resolve(
+            file, header, index, lookup, roles, sites, {range.first.value + 1}, identity))};
+        test::Check(!std::get<FunctionInput>(owned).MatchesOwner(other));
+      }
+      test::Check(unlink(path) == 0);
+      return;
+    }
     const auto family_result = ReadFunctionFamily(file, header, index, lookup, roles, sites, {0}, identity);
     const bool family_refuses = all_formats || child == ChildBody::kCapture || child == ChildBody::kRecursive ||
         (object == CallerObject::kMethod && count != 0);
@@ -174,6 +216,12 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       const auto& failure = std::get<FamilyFileFailure>(family_result);
       test::Check(std::get<BodyEmitFailure>(failure.cause).object_error == ObjectBufferError::kValue &&
           failure.creation_pc == abc::CodeOffset{0});
+      const auto rejected = CreationTreeContext::Resolve(
+          file, header, index, lookup, roles, sites, range.first, identity);
+      test::Check(std::get<CreationContextError>(
+          std::get<CreationContextFailure>(rejected).error) == CreationContextError::kRole);
+      test::Check(unlink(path) == 0);
+      return;
     }
     if (child == ChildBody::kRecursive) {
       const auto& failure = std::get<FamilyFileFailure>(family_result);
@@ -299,7 +347,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       {
         const FunctionCreationSelection selection{sites, range.first, identity};
         const auto& site = *sites.At(range.first);
-        MethodConstants constants{file, header, index, {kCaller}};
+        MethodConstants constants{file, header, index, {kCaller}, {}};
         constants.roles = &roles; constants.leaf_methods = &lookup;
         LocalLexicalBudget budget;
         CreationExpansion expansion({kCaller}, budget.bytes, budget.work, nullptr, &selection);
@@ -413,7 +461,8 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
     if (!refuses) {
       const auto& function = std::get<VerifiedFunction>(prepared);
       test::Check(!function.ClassCreation() && function.FunctionCreation() &&
-          function.FunctionCreation()->pc.value == 0 && function.Receipt().stage == SourceStage::kTreeVerified);
+          function.FunctionCreation()->pc.value == pcs.front() &&
+          function.Receipt().stage == SourceStage::kTreeVerified);
       test::Check(function.Tree().callable == (kind == abc::FunctionKind::kArrow ? CallableKind::kArrow : CallableKind::kFunction));
       if (child == ChildBody::kCell) {
         test::Check(std::any_of(function.Tree().symbols.begin(), function.Tree().symbols.end(),
@@ -454,6 +503,9 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
 }
 }  // namespace
 int main() {
+  for (const auto kind : {abc::FunctionKind::kBaseConstructor, abc::FunctionKind::kArrow})
+    for (const auto parameters : {0U, 1U, 200U, 201U})
+      Run(2, kind, ChildBody::kSnapshot, false, static_cast<std::uint8_t>(parameters));
   for (const auto count : {0U, 1U, 2U, 200U, 201U}) Run(count, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty);
   Run(4, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, true);
   for (const auto kind : {abc::FunctionKind::kBaseConstructor, abc::FunctionKind::kArrow})

@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 36。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 37。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,6 +42,21 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 实参输入已绑定精确 callable owner：FunctionInput 在核对文件身份、目标和帧后
+  提供 ArgumentFrameFact，并保留原创建点 stamp；同目标不同创建点不可互换。
+  独立检查原 opcode/PC、规范帧、范围、正常/异常效果及 SSA 读写对应关系，
+  随后继续逐值域验证，Hole 不因潜在缺省实参而放行。源码规则版本 37。
+  分析层覆盖三 profile、0/1/200/201/65536、改写/分支/循环、错 IR/SSA 和预算；
+  文件级普通/arrow 覆盖 0/1/200/201 参数、缺 owner、错身份/目标/帧和不同创建点。
+  证明保留实际数量/尾部属于当前调用的前提，不将声明数量变成实际数量，
+  不把箭头函数绑定到外层 arguments。ValueOperation、运行时 count/tail 绑定、
+  AST 与源码仍待实现；带 owner 的文件级输入目前在值 IR 阶段拒绝，不计完整输出。
+  同时修复该文件级夹具的旧 API 预算参数、写死的创建 PC 和角色冲突取值错误。
+  新文件级 owner 正例先在旧 kArgumentOwner 门禁失败，再通过实现；
+  `creation_tree_context_test`、`function_input_test`、`argument_snapshot_test`、
+  `snapshot_operands_test`、`value_import_test`、`source_route_test`、
+  `constant_group_test`、`value_created_family_test` 共 8/8 通过；对应目标及
+  `abc_semantic` 构建成功。未运行 RSS/基准/全语料或 Ark VM 差分。
 - 实参快照的共享 OperandView 已接通：常量大小的窗口视图按 32-bit 序号
   描述每个当前参数槽，标记为 Argument 协议依赖，不授权无条件 JS 求值。
   独立校验读范围、acc 写入、allocation 和异常前效果；错槽、错数量、

@@ -53,10 +53,23 @@ accumulator commit. SSA consumes these effects before renaming. The semantic
 range has a 32-bit count independent of the still-16-bit encoded CallRange.
 Missing frame context remains unsupported; malformed layouts are rejected.
 
-This is not yet source admission: `VerifySemanticSource` rejects both original
-snapshot opcodes and typed snapshot operations with `kArgumentOwner`, including
-zero-declared-parameter functions. No count/tail ownership certificate, value-IR
-snapshot operation or snapshot AST is fabricated. Those are the next obligations.
+Input verification now requires an explicit `ArgumentFrameFact`: the actual
+count and extra tail are inputs of the current callable invocation, under the
+existing legal-JS entry-value contract. FunctionInput supplies this only after
+matching its resolved creation context's file identity, target and frame, and
+retains the exact creation occurrence in its immutable owner stamp. A raw layout
+or opcode does not acquire that premise. Arrows still refer to their own VM
+invocation, not the enclosing source `arguments` binding.
+
+`VerifyArgumentInputs` independently checks original opcode/PC, canonical frame,
+range, normal/exception effects and SSA read/write correspondence. The later
+value-domain check remains mandatory, including potentially absent slots that
+contain Hole. The checked argument fact is retained in SemanticProof. No owner
+still produces `kArgumentOwner`, including zero-declared-parameter functions.
+This is not source publication: ValueOperation, runtime count/tail binding,
+snapshot factory/AST and callable-specific source lowering are still missing.
+The explicit entry premise does not exempt any decoded caller from argument
+value checks or certify arbitrary VM-internal invocations.
 
 The shared `OperandView` now accepts snapshots and owns only their compact
 window. It independently checks fixed/range inputs, the accumulator write and
@@ -67,6 +80,13 @@ O(1); use expansion stays under the importing pass's existing work/memory budget
 This adapter does not authorize dropping potentially absent slots or admitting
 Hole-bearing inputs. The same decoded method is tested through semantic lifting,
 SSA and operand/slot correspondence before malformed-effect mutation checks.
+
+The independent input checker allocates nothing and uses one monotone SSA-read
+cursor. Its cost is O(I + R + S log V), where I is instruction count, R is visited
+read occurrences, S is snapshots and V bounds indexed SSA write lookup. Every
+step shares the verification work budget; it never performs a graph walk for
+each argument. File-backed ordinary/arrow fixtures check owner binding, absent
+owners, wrong identities/targets/frames and distinct same-target creation PCs.
 
 1. **Frame inputs.** Build a compact, validated argument-window plan from the
    actual FrameLayout and callable creation occurrence. Keep actual invocation

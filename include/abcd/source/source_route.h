@@ -232,7 +232,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 34 preserve wide read occurrences across SSA and value correspondence.
 // Rules 35 validate the canonical argument window before rest recovery.
 // Rules 36 retain argument snapshot slot dependencies and require owner proof.
-inline constexpr std::uint32_t kRouteEvidenceRules = 36;
+// Rules 37 retain checked invocation argument facts from exact callable owners.
+inline constexpr std::uint32_t kRouteEvidenceRules = 37;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,
