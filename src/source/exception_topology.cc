@@ -44,7 +44,7 @@ class Projection {
     quota_.Size(exits_, regions);
     quota_.Size(entries_, regions);
     unit_count_ = static_cast<std::uint32_t>(blocks + regions);
-    Index(); Exits();
+    Index(); Forwarders(); Exits();
     std::size_t root_count = 0;
     result_.entries[root_count++] = Target({0}, {});
     for (std::uint32_t b = 0; b < blocks; ++b) {
@@ -156,6 +156,66 @@ class Projection {
     const auto& outer = intervals_[region.value];
     const auto& inner = intervals_[owners_[block.value]->region.value];
     return outer.begin <= inner.begin && inner.begin < outer.end;
+  }
+  void Forwarders() {
+    struct Forwarder {
+      std::uint32_t pending = 0;
+      Scope incoming;
+      bool candidate = false, seen = false, conflict = false;
+    };
+    std::vector<Forwarder> nodes;
+    std::vector<WorkBlockId> queue;
+    quota_.Size(nodes, graph_.blocks.size());
+    quota_.Size(queue, graph_.blocks.size());
+    for (std::size_t b = 0; b < nodes.size(); ++b) {
+      quota_.Work();
+      const auto& phase = graph_.phases[b];
+      if (phase.phase == ExceptionPhase::kCatch || !phase.operation) continue;
+      const auto& op = graph_.ops[phase.operation->value];
+      // Only control-only corridors can change STRUCTURAL ownership. Never
+      // move an evaluation into a catch range or mutate semantic/lexical scope.
+      nodes[b].candidate = std::holds_alternative<ValueJump>(op.operation) &&
+          op.use_count == 0 && !op.result && op.normal == LanguageEffect::kNone &&
+          op.before_throw == LanguageEffect::kNone &&
+          op.exceptional == ExceptionalCompletion::kImpossible &&
+          graph_.blocks[b].edge_count == 1;
+    }
+    nodes.front().candidate = false;
+    for (const auto& entry : entries_) {
+      quota_.Work(); nodes[entry.block.value].candidate = false;
+    }
+    for (const auto& edge : graph_.edges) {
+      quota_.Work();
+      if (nodes[edge.target.value].candidate) ++nodes[edge.target.value].pending;
+    }
+    std::size_t first = 0, last = 0;
+    for (std::uint32_t b = 0; b < nodes.size(); ++b) {
+      quota_.Work();
+      if (!nodes[b].candidate || nodes[b].pending == 0) queue[last++] = {b};
+    }
+    // Kahn propagation visits every edge once. Shared targets require unanimous
+    // owners; unentered cycles remain unchanged for ordinary cycle rejection.
+    // Retain original blocks/edges so phi copies and jump PC anchors still emit.
+    while (first != last) {
+      quota_.Work(); const auto source = queue[first++];
+      const auto& block = graph_.blocks[source.value];
+      for (std::uint32_t e = 0; e < block.edge_count; ++e) {
+        quota_.Work();
+        const auto target = graph_.edges[block.first_edge.value + e].target;
+        auto& next = nodes[target.value];
+        if (!next.candidate) continue;
+        const auto scope = owners_[source.value];
+        if (!next.seen) { next.incoming = scope; next.seen = true; }
+        else if (next.incoming != scope) next.conflict = true;
+        Require(next.pending != 0, Error::kInput);
+        if (--next.pending != 0) continue;
+        if (!next.conflict && next.incoming &&
+            owners_[target.value] == ScopeOf(regions_.layout.regions[next.incoming->region.value].parent))
+          owners_[target.value] = next.incoming;
+        Require(last < queue.size(), Error::kInput);
+        queue[last++] = target;
+      }
+    }
   }
   void Exit(TryId region, WorkBlockId target) {
     auto& exit = exits_[region.value];

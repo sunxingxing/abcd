@@ -36,7 +36,23 @@ graph still fails normal control verification.
 Validated exception regions are disjoint or nested. Build one innermost lexical
 owner per phase and DFS intervals for the region parent forest. A Catch phase
 belongs to its region's handler, even when a nested protected region starts at
-that same instruction. Before/Commit follow the instruction's innermost scope.
+that same instruction. Before/Commit initially follow the instruction's
+innermost scope. These are structural owners; the original semantic catch and
+environment layouts remain immutable.
+
+Before collecting exits, propagate structural ownership through control-only
+jump corridors. Candidates are Before/Commit phases of `ValueJump` with no
+operands/result/effects/exception and exactly one successor. Method/try entries
+and Catch gateways cannot be absorbed. A Kahn worklist resolves each candidate
+only after all predecessor owners are known: every predecessor must agree, and
+the candidate's old owner must be the immediate parent scope of that agreed
+region. Mixed body/handler entries stay outside both arms. Candidate cycles
+remain unchanged, not silently broken. This adds O(B+E+R) work/storage, not a
+walk along the corridor for each exit. All original blocks and arcs survive;
+normal phi-copy assignments and jump PC anchors still pass through shared tree
+construction and verification. In particular an outside getter, call, guard,
+environment change or even a value-producing pure operation is not absorbed.
+This is forwarding normalization, not general multiple-completion lowering.
 
 Inspect each normal edge once. If it leaves its innermost region, record that
 region's normal exit target. Propagate child exit summaries once in reverse
@@ -150,7 +166,7 @@ default-parameter recovery and family/capture publication are still unsupported.
 
 The file-backed integration fixture executes getter/call/branch/catch behavior
 and checks all nine original PC placements through this publication path. It is
-not a real application acceptance result. Source evidence rules are now 45.
+not a real application acceptance result. Source evidence rules are now 46.
 
 `PhasedMethod` now carries original guarded-module facts through import and
 `BuildPhasedModuleGuards`. Its independent verifier checks unchanged imported
@@ -161,8 +177,10 @@ guard, PC or snapshot is removed. Analysis remains indexed with bounded passes,
 not a separate graph walk per module read. Guard facts are conditional on the
 whole pair, not initialization premises for raw module slots.
 
-This has moved actual Immersive method 8284 past the PC 47 input refusal into
-`ExceptionControlError::kMultipleExits`. The file-backed module fixture reaches
+Module correspondence moved actual Immersive method 8284 past the PC 47 input
+refusal into `ExceptionControlError::kMultipleExits`; forwarding normalization
+now moves it through control to the still-unsupported evaluation stage.
+The file-backed module fixture reaches
 the still-closed evaluation gate. Module binding/TDZ-name equivalence, fused
 phase evaluation, exception snapshot correspondence and explicit receiver calls
 remain publication obligations. No module source coverage is claimed merely

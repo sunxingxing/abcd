@@ -382,8 +382,42 @@ void BranchJoin(abc::ProfileId profile, std::ostream* output = nullptr) {
   handler.offset = {16}; handler.length = 3;
   body.handlers.push_back(handler);
   DecodedControl(body, profile, {}, output);
-  body.tries[0].length = 14; // Gap jump at PC14 is not yet folded across a try exit.
-  DecodedControl(body, profile, ExceptionControlError::kMultipleExits);
+  body.tries[0].length = 14; // The effect-free gap jump keeps its original PC/edges.
+  DecodedControl(body, profile, {}, output);
+  {
+    // A jump shared by protected and handler paths belongs to neither arm.
+    auto shared = bytes;
+    constexpr std::size_t kHandlerJumpOperand = 18;
+    constexpr std::int8_t kToSharedGap = -3;
+    shared[kHandlerJumpOperand] = static_cast<std::uint8_t>(kToSharedGap);
+    auto joined = body;
+    joined.instructions = test::Body(shared).instructions;
+    DecodedControl(joined, profile);
+  }
+  for (const std::uint32_t count : {1U, 200U, 201U, 402U}) {
+    auto corridor = bytes;
+    constexpr std::uint32_t kJumpBytes = 2, kGapPc = 14, kHandlerPc = 16;
+    std::vector<std::uint8_t> jumps;
+    for (std::uint32_t i = 0; i < count; ++i)
+      jumps.insert(jumps.end(), {static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM8), kJumpBytes});
+    corridor.insert(corridor.begin() + kGapPc, jumps.begin(), jumps.end());
+    auto extended = body;
+    extended.instructions = test::Body(corridor).instructions;
+    extended.handlers[0].offset = {kHandlerPc + count * kJumpBytes};
+    DecodedControl(extended, profile);
+  }
+  {
+    // A getter in the gap is outside the original catch. Moving it into the
+    // protected body would change thrown-value routing, even on a single path.
+    auto effectful = bytes;
+    constexpr std::uint32_t kGapPc = 14, kReadBytes = 4;
+    effectful.insert(effectful.begin() + kGapPc,
+        {static_cast<std::uint8_t>(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0});
+    auto outside = body;
+    outside.instructions = test::Body(effectful).instructions;
+    outside.handlers[0].offset.value += kReadBytes;
+    DecodedControl(outside, profile, ExceptionControlError::kMultipleExits);
+  }
   body.tries[0].length = 16;
   constexpr std::size_t kBackedgeOperand = 13;
   constexpr std::int8_t kBackedgeToPredicate = -6;

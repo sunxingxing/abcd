@@ -34,14 +34,16 @@ for (let index = 0; index < functions.length; ++index) {
 }
 const regionSource = execFileSync(process.argv[3], ['--emit'], { encoding: 'utf8' });
 const { regions } = await import(`data:text/javascript;base64,${Buffer.from(regionSource).toString('base64')}`);
-assert.equal(regions.length, 6);
-for (let index = 0; index < regions.length; index += 2) {
-  const branch = regions[index], nested = regions[index + 1];
-  assert.equal(branch({ field: 0 }), false);
-  assert.equal(branch({ field: 1 }), true);
-  let reads = 0;
-  assert.equal(branch({ get field() { ++reads; throw {}; } }), undefined);
-  assert.equal(reads, 1);
+assert.equal(regions.length, 9);
+for (let index = 0; index < regions.length; index += 3) {
+  const nested = regions[index + 2];
+  for (const branch of [regions[index], regions[index + 1]]) {
+    assert.equal(branch({ field: 0 }), false);
+    assert.equal(branch({ field: 1 }), true);
+    let reads = 0;
+    assert.equal(branch({ get field() { ++reads; throw {}; } }), undefined);
+    assert.equal(reads, 1);
+  }
   for (const value of [undefined, null, false, -0, NaN, 2n, Symbol('throw'), {}])
     assert.ok(Object.is(nested(value), value));
 }

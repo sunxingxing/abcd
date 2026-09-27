@@ -50,7 +50,9 @@ enum class ExceptionControlError : std::uint8_t {
   kWorkLimit, kResourceLimit
 };
 // Reuses common acyclic postdominator/region discovery. A single normal exit
-// target per try is required; returns/throws need no synthetic normal exit.
+// target per try is required after effect-free exit-corridor ownership is
+// projected; returns/throws need no synthetic normal exit. Jump corridors keep
+// original blocks, edge copies and PC anchors; semantic catch scopes never move.
 // Projected cycles and more general completion transfers remain explicit
 // refusals until integrated with loop/completion lowering. Not source proof.
 [[nodiscard]] std::variant<ExceptionControl, ExceptionControlError> BuildExceptionControl(

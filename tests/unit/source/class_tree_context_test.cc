@@ -32,7 +32,7 @@ static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);
 void Check(bool condition) { if (!condition) std::abort(); }
 enum class DefaultEncoding { kNone, kInteger, kNegation };
-enum class ExceptionShape { kNone, kBranch, kModule };
+enum class ExceptionShape { kNone, kBranch, kModule, kForwarder };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
          ExceptionShape exception = ExceptionShape::kNone) {
@@ -118,6 +118,17 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           op(abc::Opcode::kLDEXTERNALMODULEVAR_IMM8), kModuleSlot,
           op(kGuard), static_cast<std::uint16_t>(kGuard) >> kByteBits, kNamePool, 0,
           kReturn, kReturn, 0, kModuleProtectedBytes, kSingleTry, kCatchAll, kModuleProtectedBytes, 1};
+    }
+    if (exception == ExceptionShape::kForwarder) {
+      constexpr std::uint8_t kForwardBodyBytes = 19, kTryEnd = 14, kHandlerPc = 16,
+          kHandlerBytes = 2, kToFalse = 5, kToJoin = 5, kToGap = 2, kToReturn = 4;
+      member = {0, 4, kForwardBodyBytes, kSingleTry, kLoad, kParameter,
+          op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0,
+          op(abc::Opcode::kJEQZ_IMM8), kToFalse, op(abc::Opcode::kLDTRUE),
+          op(abc::Opcode::kJMP_IMM8), kToJoin, op(abc::Opcode::kLDFALSE),
+          op(abc::Opcode::kJMP_IMM8), kToGap, op(abc::Opcode::kJMP_IMM8), kToReturn,
+          op(abc::Opcode::kJMP_IMM8), kHandlerBytes, kReturn,
+          0, kTryEnd, kSingleTry, kCatchAll, kHandlerPc, kHandlerBytes};
     }
   }
   std::copy(caller.begin(), caller.end(), bytes.begin() + kCallerCode);
@@ -443,6 +454,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--forwarder-json") {
+    Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kForwarder);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--exception-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kBranch);
     return 0;
@@ -454,6 +469,7 @@ int main(int argc, char** argv) {
   }
   Check(argc == 1);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kModule);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kForwarder);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kBranch);
   Run(); Run(DefaultEncoding::kInteger); Run(DefaultEncoding::kNegation);
   Run(DefaultEncoding::kNone, true);
