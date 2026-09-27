@@ -5,7 +5,8 @@
 
 namespace abcd::source {
 enum class FunctionAbiError : std::uint8_t {
-  kRevision, kParameter, kEntry, kReceiver, kSyntax, kResourceLimit, kWorkLimit
+  kRevision, kParameter, kEntry, kReceiver, kSyntax, kResourceLimit, kWorkLimit,
+  kLength
 };
 struct ConstructedAbi {
   FunctionAbi abi;

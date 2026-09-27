@@ -37,7 +37,7 @@ class AbiBuilder {
       formals_[parameter.symbol.value] = static_cast<std::uint32_t>(i);
       result_.parameters[i].symbol = parameter.symbol;
     }
-    Require(length == source_length, Error::kParameter);
+    Require(length == source_length, Error::kLength);
     // SSA uses carry already-simplified entry identities. Do not count removed
     // MOVs as source ABI uses or use their register destinations as symbols.
     for (const auto& use : graph_.uses) {

@@ -11,6 +11,18 @@ observations, not an up-to-date capability summary.
 
 ### File-Backed Conditional Function Families
 
+The 7449 ABI refusal is now precisely classified as FunctionAbiError::kLength.
+ABC-only/GDB evidence gives encoded length 0 versus current source length 1;
+the actual prologue stores its parameter into a lexical cell before the null
+default branch. Existing pure-SSA default projection cannot remove that whole
+header without destroying environment/receiver/capture initialization. See
+family-defaults.md for the required typed cell-target proof, residual projection,
+two-pass whole-family rebinding and source-position obligations. No admission
+gate was relaxed and no artificial initializer was introduced. A wrong-length
+ABI rejection specification was added, uncompiled/unrun.
+Production abc_semantic/abc_structure build exited 0; the same ABC-only family
+diagnostic now reports FunctionAbiError::kLength (code 7) at root member 0.
+
 Real multi-member inspection: PageABuilder 7449 discovers 7089 and its children
 7117/7477 (four members, three edges). The initial tree refusal was traced to
 unconditionally pinned FunctionCreation disrupting the member-call evaluation

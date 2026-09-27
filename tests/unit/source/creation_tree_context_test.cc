@@ -198,6 +198,9 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       test::Check(built.members.size() == 1 && built.root == FileFamily::kRoot &&
           built.members[0].tree.method == abc::EntityOffset{kTarget} &&
           built.members[0].tree.parameters.size() == parameters);
+      const auto mismatch = BuildFunctionAbi(opened_child.values.graph, built.members[0].tree,
+          context.Frame(), static_cast<std::uint32_t>(parameters) + 1);
+      test::Check(std::get<FunctionAbiError>(mismatch) == FunctionAbiError::kLength);
       auto exhausted = std::get<FileFamily>(ReadFunctionFamily(file, header, index,
           lookup, roles, sites, {1}, identity));
       SemanticBudget no_bytes; no_bytes.bytes = 0;
