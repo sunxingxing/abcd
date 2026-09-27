@@ -705,6 +705,36 @@ module-scope AST and live-binding/TDZ correspondence are still missing. New
 regression source covers tampering, bytecode forms, raw unguarded reads and
 200/201/geometric counts; tests are uncompiled/unrun. No JS or RSS work ran.
 
+### T07/P3 Conditional Module Scope in SourceTree
+
+The shared function AST builder now accepts typed module aliases, outside
+capture/parameter/body scopes. Source module owners are distinct from function
+owners and raw ABC slots. Module aliases append to the symbol table without
+renumbering existing parameters, captures, cells or snapshots; no local
+declaration or initialization copy is emitted for them. The common scope checker
+verifies lexical visibility, readonly writes, unique target identity and scope
+nesting; aliases participate in the existing generated-name conflict index.
+All new arenas are budgeted, including duplicate-target sort scratch.
+
+The flow checker and ABI census distinguish module aliases from compiler
+temporaries and captured VM cells. Independent operand correspondence still
+rejects replacing an unrelated parameter/cell operand with a module alias.
+VerifiedFunction publication and the printer explicitly refuse these open
+module contexts. Guarded module-read expression lowering and binding to the
+actual record symbols/TDZ semantics remain unfinished; this is not T11 or P3
+source completion. Source rules remain 23.
+
+New `module_scope_test.cc` source specifies ordinary/captured construction,
+alias/parameter shadowing, mutable versus readonly references, duplicate owner
+targets, invalid scope placement, operand substitution and 200/201/geometric
+counts. Tests remain uncompiled/unrun under the pause; no JS/RSS work ran.
+
+Production `abc_semantic` and `abc_structure` builds exited 0. ABC-only G2 7559
+retains its existing rules-23 Printed/complete METHOD slice [2638,2924), with
+the containing record still incomplete. P3 7366 still prepares 85 operations,
+one guarded module pair and one resolved module read, without executable source.
+These checks exercise existing routes, not the new module-alias source behavior.
+
 ## T00
 
 Implemented route admission, identity-bound receipts, central validation,

@@ -13,8 +13,9 @@ record-owned ModuleInfo -----------------> ResolveModuleReads
                                           -> shared SourceTree and printer
 ```
 
-The first two arrows and metadata binding are implemented. The scope/TDZ and
-module AST arrows remain open. Default `ReadFunctionValues` leaves binding
+The first two arrows and metadata binding are implemented. Conditional module
+scope aliases now exist in SourceTree, but read lowering, TDZ correspondence and
+record binding remain open. Default `ReadFunctionValues` leaves binding
 obligations open; an explicit `RecordModuleContext` enables resolution and
 retains the typed result alongside the working graph. Family/record callers
 must reuse the same immutable record context, not rescan all records per child.
@@ -79,7 +80,16 @@ does not claim a shared cumulative family-work budget or whole-process RSS proof
 
 ## Remaining Gates
 
-Before source emission, bind actual module-scope symbols, prove unshadowed uses
+`FunctionSyntax.modules` constructs aliases to typed source module symbols in
+an outer module scope. Captures, parameters and block declarations use the same
+scope activation/checking machinery; module aliases do not produce function-local
+declarations. Read-only aliases cannot become assignment targets, while mutable
+aliases are distinct from snapshots. The standalone printer/publication wrapper
+still rejects all module aliases. `module_scope_test.cc` contains unrun source
+specifications for ordinary/captured functions, scope nesting/shadowing, duplicate
+targets, mutable/read-only writes, source-operand mismatch and 200/201 sizes.
+
+Before source emission, bind these aliases to actual record module symbols, prove unshadowed uses
 and live-binding behavior, preserve cyclic module initialization/TDZ and thrown
 values, and discharge record dependencies. Only then may shared expression
 construction/verification accept module reads. Source evidence rules remain 23.

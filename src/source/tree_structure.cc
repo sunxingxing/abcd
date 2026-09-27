@@ -80,13 +80,22 @@ class StructureCheck {
                 tree_.parameter_scope != tree_.body_scope, Error::kScope);
     const auto& parameters = tree_.scopes[tree_.parameter_scope.value];
     const auto& body = tree_.scopes[tree_.body_scope.value];
-    RequireTree(parameters.kind == ScopeKind::kParameters && parameters.parent == tree_.capture_scope &&
+    const auto enclosing = tree_.capture_scope ? tree_.capture_scope : tree_.module_scope;
+    RequireTree(parameters.kind == ScopeKind::kParameters && parameters.parent == enclosing &&
                 body.kind == ScopeKind::kFunctionBody && body.parent == tree_.parameter_scope, Error::kScope);
     RequireTree(tree_.capture_scope.has_value() == !tree_.captures.empty(), Error::kScope);
+    RequireTree(tree_.module_scope.has_value() == !tree_.modules.empty(), Error::kScope);
+    if (tree_.module_scope) {
+      const auto scope = *tree_.module_scope;
+      RequireTree(scope.value < tree_.scopes.size() && scope != tree_.parameter_scope && scope != tree_.body_scope &&
+          tree_.scopes[scope.value].kind == ScopeKind::kModule && !tree_.scopes[scope.value].parent, Error::kScope);
+      scopes_.Enter(scope);
+    }
     if (tree_.capture_scope) {
       const auto scope = *tree_.capture_scope;
       RequireTree(scope.value < tree_.scopes.size() && scope != tree_.parameter_scope && scope != tree_.body_scope &&
-          tree_.scopes[scope.value].kind == ScopeKind::kCaptures && !tree_.scopes[scope.value].parent, Error::kScope);
+          tree_.scopes[scope.value].kind == ScopeKind::kCaptures && tree_.scopes[scope.value].parent == tree_.module_scope,
+          Error::kScope);
       scopes_.Enter(scope);
     }
     RequireTree(tree_.body.value < tree_.statements.size(), Error::kRange);
@@ -128,6 +137,7 @@ class StructureCheck {
     }
     scopes_.Leave(tree_.parameter_scope);
     if (tree_.capture_scope) scopes_.Leave(*tree_.capture_scope);
+    if (tree_.module_scope) scopes_.Leave(*tree_.module_scope);
     scopes_.Finish();
     for (const auto seen : expressions_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
     for (const auto seen : statements_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
@@ -371,7 +381,8 @@ std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
                 tree.origins.size() <= kMaxId && tree.origin_parts.size() <= kMaxId &&
                 tree.anchors.size() <= kMaxId && tree.children.size() <= kMaxId &&
                 tree.arguments.size() <= kMaxId && tree.properties.size() <= kMaxId &&
-                tree.captures.size() <= kMaxId && tree.closure_captures.size() <= kMaxId, Error::kResourceLimit);
+                tree.captures.size() <= kMaxId && tree.closure_captures.size() <= kMaxId &&
+                tree.modules.size() <= kMaxId, Error::kResourceLimit);
     const auto maximum_depth = StructureCheck(tree, checked).Run();
     CheckTreeOrigins(tree, checked);
     return TreeStructure{tree.value_revision, tree.cfg_revision, maximum_depth, checked.Bytes(), checked.Work()};

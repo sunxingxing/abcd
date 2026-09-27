@@ -15,6 +15,12 @@ struct CaptureSyntax {
   NameId name;
   NameEvidence evidence = NameEvidence::kSynthesized;
 };
+struct ModuleSyntax {
+  ModuleSymbol target;
+  NameId name;
+  ModuleAccess access;
+  NameEvidence evidence = NameEvidence::kSynthesized;
+};
 struct FunctionSyntax {
   RouteInputIdentity identity;
   abc::EntityOffset method;
@@ -27,6 +33,9 @@ struct FunctionSyntax {
   // Sorted incoming CellIds only. Names refer to the supplied name arena;
   // actual enclosing owner/scope and spelling need a separate creation check.
   std::vector<CaptureSyntax> captures;
+  // Source module aliases, not runtime ABC slots. The record owner must verify
+  // their spelling/access/target; this only constructs conditional lexical scope.
+  std::vector<ModuleSyntax> modules;
 };
 struct ConstructedFunction {
   FunctionTree tree;

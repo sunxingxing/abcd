@@ -49,6 +49,7 @@ class TreeBuilder {
     Admit(1, sizeof(TreeBuilder));
     Admit(syntax_.parameters.capacity(), sizeof(ParameterSyntax));
     Admit(syntax_.captures.capacity(), sizeof(CaptureSyntax));
+    Admit(syntax_.modules.capacity(), sizeof(ModuleSyntax));
     Admit(syntax_.names.capacity(), sizeof(std::u16string));
     Admit(syntax_.texts.capacity(), sizeof(std::u16string));
     for (const auto& name : syntax_.names) { Step(); AdmitText(name); }
@@ -95,7 +96,8 @@ class TreeBuilder {
     tree_.body = drafts_[root].statement;
     for (std::size_t i = syntax_.parameters.size(); i < tree_.symbols.size(); ++i) {
       Step();
-      if (tree_.symbols[i].kind == BindingKind::kLocal || tree_.symbols[i].kind == BindingKind::kCapture) continue;
+      if (tree_.symbols[i].kind == BindingKind::kLocal || tree_.symbols[i].kind == BindingKind::kCapture ||
+          tree_.symbols[i].kind == BindingKind::kModule) continue;
       const SymbolId symbol{static_cast<std::uint32_t>(i)};
       const TreeOriginId origin{static_cast<std::uint32_t>(tree_.origins.size())};
       tree_.origins.emplace_back(BindingOrigin{symbol});
@@ -144,11 +146,14 @@ class TreeBuilder {
   void Reserve() {
     constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
     const auto capture_scopes = syntax_.captures.empty() ? 0U : 1U;
-    Require(control_.nodes.size() <= (kMaxId - kFunctionScopes - capture_scopes) / kBranchArms,
+    const auto module_scopes = syntax_.modules.empty() ? 0U : 1U;
+    Require(control_.nodes.size() <= (kMaxId - kFunctionScopes - capture_scopes - module_scopes) / kBranchArms,
             Error::kResourceLimit);
     const auto blocks = control_.nodes.size() * kBranchArms + 1;
     const auto synthetic = control_.nodes.size() - graph_.blocks.size();
-    const auto symbols = forest_.bindings.symbols.size();
+    Require(forest_.bindings.symbols.size() <= kMaxId &&
+        syntax_.modules.size() <= kMaxId - forest_.bindings.symbols.size(), Error::kResourceLimit);
+    const auto symbols = forest_.bindings.symbols.size() + syntax_.modules.size();
     Require(symbols < kMaxId && graph_.ops.size() <= kMaxId - blocks &&
             symbols <= kMaxId - blocks - graph_.ops.size(), Error::kResourceLimit);
     const auto original_statements = graph_.ops.size() + blocks + symbols;
@@ -165,7 +170,8 @@ class TreeBuilder {
     Grow(tree_.symbols, symbols);
     Grow(tree_.parameters, syntax_.parameters.size());
     Grow(tree_.captures, syntax_.captures.size());
-    Grow(tree_.scopes, blocks + 1 + capture_scopes);
+    Grow(tree_.modules, syntax_.modules.size());
+    Grow(tree_.scopes, blocks + 1 + capture_scopes + module_scopes);
     Grow(tree_.statements, statements);
     Grow(tree_.children, statements);
     Grow(tree_.anchors, graph_.ops.size());
@@ -255,9 +261,12 @@ class TreeBuilder {
     tree_.parameter_scope = kParameterScope;
     tree_.body_scope = kBodyScope;
     if (!syntax_.captures.empty()) tree_.capture_scope = kCaptureScope;
-    tree_.scopes.push_back({ScopeKind::kParameters, tree_.capture_scope});
+    if (!syntax_.modules.empty())
+      tree_.module_scope = ScopeId{static_cast<std::uint32_t>(kFunctionScopes + (tree_.capture_scope ? 1U : 0U))};
+    tree_.scopes.push_back({ScopeKind::kParameters, tree_.capture_scope ? tree_.capture_scope : tree_.module_scope});
     tree_.scopes.push_back({ScopeKind::kFunctionBody, kParameterScope});
-    if (tree_.capture_scope) tree_.scopes.push_back({ScopeKind::kCaptures, {}});
+    if (tree_.capture_scope) tree_.scopes.push_back({ScopeKind::kCaptures, tree_.module_scope});
+    if (tree_.module_scope) tree_.scopes.push_back({ScopeKind::kModule, {}});
     for (std::size_t i = 0; i < syntax_.parameters.size(); ++i) {
       Step();
       const auto& input = syntax_.parameters[i];
@@ -324,6 +333,19 @@ class TreeBuilder {
           NameEvidence::kSynthesized, reason});
     }
     Require(next_capture == syntax_.captures.size(), Error::kBinding);
+    for (const auto& alias : syntax_.modules) {
+      Step();
+      Require(tree_.module_scope && alias.name.value < constants_.name_count, Error::kBinding);
+      DeclarationKind declaration;
+      switch (alias.access) {
+        case ModuleAccess::kReadOnly: declaration = DeclarationKind::kConst; break;
+        case ModuleAccess::kMutable: declaration = DeclarationKind::kLet; break;
+        default: throw Error::kBinding;
+      }
+      const SymbolId symbol{static_cast<std::uint32_t>(tree_.symbols.size())};
+      tree_.symbols.push_back({*tree_.module_scope, alias.name, BindingKind::kModule, declaration, alias.evidence, {}});
+      tree_.modules.push_back({symbol, alias.target, alias.access});
+    }
   }
   TreeOriginId BodyOrigin() {
     // Removed entry copies/default prologues do not own the body braces.

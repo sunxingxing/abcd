@@ -67,6 +67,11 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
         RequireTree(tree.capture_scope == symbol.scope && symbol.declaration == DeclarationKind::kLet &&
                     !symbol.temporary, Error::kBinding);
         break;
+      case BindingKind::kModule:
+        RequireTree(tree.module_scope == symbol.scope &&
+            (symbol.declaration == DeclarationKind::kLet || symbol.declaration == DeclarationKind::kConst) &&
+            !symbol.temporary, Error::kBinding);
+        break;
       default: throw Error::kBinding;
     }
   }
@@ -104,6 +109,27 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
         tree.symbols[capture.symbol.value].kind == BindingKind::kCapture &&
         !declared_[capture.symbol.value], Error::kBinding);
     declared_[capture.symbol.value] = 1;
+  }
+  std::vector<ModuleSymbol> targets;
+  budget.Array(targets, tree.modules.size());
+  for (std::size_t i = 0; i < tree.modules.size(); ++i) {
+    budget.Step();
+    const auto& alias = tree.modules[i];
+    RequireTree(alias.symbol.value < count && !declared_[alias.symbol.value] &&
+        tree.symbols[alias.symbol.value].kind == BindingKind::kModule &&
+        alias.target.owner == tree.modules.front().target.owner, Error::kBinding);
+    const auto declaration = tree.symbols[alias.symbol.value].declaration;
+    switch (alias.access) {
+      case ModuleAccess::kReadOnly: RequireTree(declaration == DeclarationKind::kConst, Error::kBinding); break;
+      case ModuleAccess::kMutable: RequireTree(declaration == DeclarationKind::kLet, Error::kBinding); break;
+      default: throw Error::kBinding;
+    }
+    declared_[alias.symbol.value] = 1;
+    targets[i] = alias.target;
+  }
+  std::sort(targets.begin(), targets.end(), [&](auto a, auto b) { budget.Step(); return a < b; });
+  for (std::size_t i = 1; i < targets.size(); ++i) {
+    budget.Step(); RequireTree(targets[i - 1] != targets[i], Error::kBinding);
   }
 }
 
@@ -146,6 +172,7 @@ void TreeScopeCheck::Declare(SymbolId symbol, ScopeId scope, bool initializer) {
   RequireTree(tree_.symbols[symbol.value].scope == scope &&
               tree_.symbols[symbol.value].kind != BindingKind::kParameter &&
               tree_.symbols[symbol.value].kind != BindingKind::kCapture &&
+              tree_.symbols[symbol.value].kind != BindingKind::kModule &&
               !declared_[symbol.value], Error::kBinding);
   RequireTree(tree_.symbols[symbol.value].declaration != DeclarationKind::kConst || initializer, Error::kBinding);
   declared_[symbol.value] = 1;

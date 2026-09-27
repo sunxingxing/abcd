@@ -283,6 +283,18 @@ register_uses/accumulator_used 扫描生成一组 VM let。
 独立 `VerifiedFunction` 发布与 printer 显式拒绝未闭合捕获或子函数的树；printer
 在写入前拒绝创建节点。不能把条件父/子树检查通过视为完整闭包源码已经贯通。
 
+模块别名使用独立 `ModuleOwnerId`、`ModuleSymbol` 和 `TreeModuleAlias`，不复用
+函数 owner，也不把 ABC slot/pool ID 放入可执行 AST 操作数。作用域链为
+`module -> captures（可选）-> parameters -> body -> blocks`；模块别名属于
+`ScopeKind::kModule` / `BindingKind::kModule`，没有函数内声明或初始化快照。
+`ModuleAccess::kReadOnly` 禁止通过导入绑定赋值，但不意味着其值恒定；可写本地
+模块绑定用 `kMutable`。统一 SymbolExpr/SymbolTarget 和作用域激活表检查实际遮蔽。
+构造器之外的普通函数也使用同一结构；参数/捕获/模块三类身份不能互相替代。
+模块 owner 内目标唯一性采用排序检查，不做符号两两比较；名称仍走共享预算和
+命名冲突索引。已有参数/临时/单元 SymbolId 不重排，模块别名追加到符号表末尾。
+当前只有条件 AST 构造/结构对应，模块操作数降低和 record 目标/TDZ 证明仍待闭合；
+独立 VerifiedFunction 与 printer 显式拒绝带模块别名的树，不能借名字输出全局引用。
+
 `PrintFunctionTree`/`PrintRecordTree` 只消费已验证 immutable tree、NameTable、输出预算。
 不接受 MethodBody/SSA/常量 reader 以便偷偷补反编译；不触发子方法反编译或 capture replay。
 职责：语法优先级/结合性、括号、字符串/标识符转义、缩进、token/span 输出、错误传播。

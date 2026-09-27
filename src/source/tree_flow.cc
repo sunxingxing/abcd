@@ -40,6 +40,7 @@ class FlowCheck {
     IndexPlacements();
     CheckBodyOrigin();
     CapturedCells();
+    ModuleAliases();
     auto first_child = Declarations();
     edges_->Consume(analysis::MethodEntryKey{},
         std::get<BlockStmt>(tree_.statements[tree_.body.value].statement), first_child);
@@ -121,7 +122,8 @@ class FlowCheck {
       const auto& symbol = tree_.symbols[i];
       if (symbol.kind == BindingKind::kParameter) {
         Require(!declared_[i] && !assigned_[i], Error::kSnapshot);
-      } else if (symbol.kind == BindingKind::kLocal || symbol.kind == BindingKind::kCapture) {
+      } else if (symbol.kind == BindingKind::kLocal || symbol.kind == BindingKind::kCapture ||
+                 symbol.kind == BindingKind::kModule) {
         Require(declared_[i] && !assigned_[i], Error::kSnapshot);
       } else Require(declared_[i] && assigned_[i], Error::kSnapshot);
     }
@@ -152,6 +154,15 @@ class FlowCheck {
       }
     }
     Require(next == tree_.captures.size(), Error::kPlacement);
+  }
+  void ModuleAliases() {
+    for (const auto& alias : tree_.modules) {
+      budget_.Step();
+      Require(alias.symbol.value < tree_.symbols.size() && !declared_[alias.symbol.value] &&
+          tree_.symbols[alias.symbol.value].kind == BindingKind::kModule &&
+          tree_.symbols[alias.symbol.value].scope == tree_.module_scope, Error::kPlacement);
+      declared_[alias.symbol.value] = 1;
+    }
   }
   void CellDeclarations(analysis::OpId allocation, const BlockStmt& block, std::uint32_t& child) {
     Require(evaluation_.cells.has_value(), Error::kEvaluation);
@@ -348,7 +359,8 @@ class FlowCheck {
     for (const auto& symbol : tree_.symbols) {
       budget_.Step();
       Require(symbol.kind == BindingKind::kParameter || symbol.kind == BindingKind::kCompilerTemporary ||
-              symbol.kind == BindingKind::kLocal || symbol.kind == BindingKind::kCapture,
+              symbol.kind == BindingKind::kLocal || symbol.kind == BindingKind::kCapture ||
+              symbol.kind == BindingKind::kModule,
               Error::kSnapshot);
     }
     return count;

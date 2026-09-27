@@ -16,7 +16,7 @@ std::variant<TreeStorage, TreeStorageError> MeasureTreeStorage(
     using T = typename std::decay_t<decltype(items)>::value_type;
     return admit(items.capacity(), sizeof(T));
   };
-  if (!admit(1, sizeof(FunctionTree)) || !arena(tree.parameters) || !arena(tree.captures) ||
+  if (!admit(1, sizeof(FunctionTree)) || !arena(tree.parameters) || !arena(tree.captures) || !arena(tree.modules) ||
       !arena(tree.scopes) || !arena(tree.symbols) || !arena(tree.names) ||
       !arena(tree.texts) || !arena(tree.expressions) || !arena(tree.properties) || !arena(tree.arguments) || !arena(tree.statements) ||
       !arena(tree.children) || !arena(tree.closure_captures) || !arena(tree.origins) || !arena(tree.origin_parts) ||

@@ -41,7 +41,8 @@ class TreePrinter {
         limit_(limit.bytes), initial_(scratch), remaining_(scratch) {}
   PrintedFunction Print() {
     if (!function_.ClassCreation() || tree_.callable != CallableKind::kMethod ||
-        tree_.strictness != Strictness::kStrict || tree_.self || tree_.capture_scope || !tree_.captures.empty())
+        tree_.strictness != Strictness::kStrict || tree_.self || tree_.capture_scope || !tree_.captures.empty() ||
+        tree_.module_scope || !tree_.modules.empty())
       throw Error::kUnsupportedContext;
     // Standalone printing has no verified family/child lookup. Reject before
     // writing the header, never leave a partial fake function body behind.

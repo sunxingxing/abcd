@@ -102,7 +102,7 @@ class AbiBuilder {
       // No implicit self/arguments binding may appear under a local spelling.
       const auto kind = tree_.symbols[id.value].kind;
       Require(kind == BindingKind::kCompilerTemporary || kind == BindingKind::kLocal ||
-          kind == BindingKind::kCapture, Error::kSyntax);
+          kind == BindingKind::kCapture || kind == BindingKind::kModule, Error::kSyntax);
     }
   }
   void Expression(SymbolExpr node) { Symbol(node.symbol, false); }

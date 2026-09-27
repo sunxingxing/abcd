@@ -140,6 +140,7 @@ std::size_t SyntaxStorage(const FunctionSyntax& syntax) {
   // Recredit only storage subsequently moved into the syntax builder.
   std::size_t bytes = syntax.parameters.capacity() * sizeof(ParameterSyntax) +
       syntax.captures.capacity() * sizeof(CaptureSyntax) +
+      syntax.modules.capacity() * sizeof(ModuleSyntax) +
       (syntax.names.capacity() + syntax.texts.capacity()) * sizeof(std::u16string);
   for (const auto& name : syntax.names) bytes += (name.capacity() + 1) * sizeof(char16_t);
   for (const auto& text : syntax.texts) bytes += (text.capacity() + 1) * sizeof(char16_t);
@@ -351,6 +352,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       throw Error::kTree;
     }
     if (function->tree.capture_scope || !function->tree.captures.empty() ||
+        function->tree.module_scope || !function->tree.modules.empty() ||
         function->tree.parameters.size() != context->Frame().parameters ||
         function->tree.callable != context->Callable() || function->tree.strictness != context->Mode() ||
         function->tree.method != context->Target() || function->tree.identity != context->Identity()) throw Error::kTree;

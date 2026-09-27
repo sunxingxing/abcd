@@ -21,13 +21,14 @@ struct TextId { std::uint32_t value = 0; auto operator<=>(const TextId&) const =
 struct TreeOriginId { std::uint32_t value = 0; auto operator<=>(const TreeOriginId&) const = default; };
 struct AnchorId { std::uint32_t value = 0; auto operator<=>(const AnchorId&) const = default; };
 struct FunctionOwnerId { std::uint32_t value = 0; auto operator<=>(const FunctionOwnerId&) const = default; };
+struct ModuleOwnerId { std::uint32_t value = 0; auto operator<=>(const ModuleOwnerId&) const = default; };
 enum class CallableKind : std::uint8_t {
   kFunction, kMethod, kArrow, kBaseConstructor, kDerivedConstructor,
   kAsyncFunction, kAsyncMethod
 };
 enum class Strictness : std::uint8_t { kStrict, kSloppy };
-enum class ScopeKind : std::uint8_t { kParameters, kFunctionBody, kBlock, kCaptures };
-enum class BindingKind : std::uint8_t { kParameter, kLocal, kFunctionSelf, kCompilerTemporary, kCapture };
+enum class ScopeKind : std::uint8_t { kParameters, kFunctionBody, kBlock, kCaptures, kModule };
+enum class BindingKind : std::uint8_t { kParameter, kLocal, kFunctionSelf, kCompilerTemporary, kCapture, kModule };
 enum class NameEvidence : std::uint8_t { kMetadata, kDebugRange, kSynthesized };
 enum class DeclarationKind : std::uint8_t { kParameter, kLet, kConst };
 enum class TemporaryReason : std::uint8_t {
@@ -59,6 +60,16 @@ struct CapturedSymbol {
 // A local AST reference to an enclosing source binding, not a declaration or
 // copied scalar. A family/creation check must validate target and spelling.
 struct TreeCapture { SymbolId symbol; CapturedSymbol target; };
+struct ModuleSymbol {
+  ModuleOwnerId owner;
+  SymbolId symbol;
+  auto operator<=>(const ModuleSymbol&) const = default;
+};
+enum class ModuleAccess : std::uint8_t { kReadOnly, kMutable };
+// Alias to an enclosing source module symbol, not an ABC slot, declaration or
+// snapshot. ReadOnly forbids assignment through an import; its value stays live.
+// A record proof must bind owner/target/name/access before source publication.
+struct TreeModuleAlias { SymbolId symbol; ModuleSymbol target; ModuleAccess access; };
 struct UndefinedLiteral {};
 struct NullLiteral {};
 struct BooleanLiteral { bool value; };
@@ -202,6 +213,8 @@ struct FunctionTree {
   std::vector<TreeAnchor> anchors;
   std::vector<OpPlacement> operations;
   std::vector<SignaturePlacement> signature;
+  std::optional<ScopeId> module_scope;
+  std::vector<TreeModuleAlias> modules;
 };
 // This is a construction product, not a source-publication certificate. The
 // printer will accept only a frozen verified owner, never raw ValueProgram.
