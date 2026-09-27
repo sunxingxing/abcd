@@ -82,17 +82,14 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
     return file.CheckUnchanged() ? 1 : 0;
   }
   report["phase_body_ready"] = true;
-  // Independent topology probe on the actual parent IR. This is not an
-  // initialization/capture certificate or permission for child publication.
-  {
-    const auto environments = analysis::BuildPhasedValueEnvironments(
-        std::get<PhasedBody>(staged).Graph(), budget);
-    if (const auto* ready = std::get_if<analysis::ValueEnvironments>(&environments)) {
-      report["phase_environments_ready"] = true;
-      report["environment_allocations"] = ready->flow.allocations.size();
-      report["lexical_bindings"] = ready->flow.bindings.size();
-    } else report["environment_error"] = static_cast<unsigned>(
-        std::get<analysis::ValueEnvironmentError>(environments));
+  const auto* cells = std::get<PhasedBody>(staged).Cells();
+  report["phase_cells_ready"] = cells != nullptr;
+  if (cells) report["cells"] = cells->cells.size();
+  // Retained production topology, not a separately budgeted diagnostic proof.
+  if (const auto* ready = std::get<PhasedBody>(staged).CellEnvironments()) {
+    report["phase_environments_ready"] = true;
+    report["environment_allocations"] = ready->flow.allocations.size();
+    report["lexical_bindings"] = ready->flow.bindings.size();
   }
   report["creations"] = nlohmann::json::array();
   auto creation_sites = analysis::FunctionCreationSites::Build(file, header, index, lookup);

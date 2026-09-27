@@ -55,6 +55,11 @@ d 为 uint32 深度域位数；另计既有 fresh flow/支配验证成本。不�
 创建点重新遍历图，不丢弃异常边。复用本项目实现，无新增依赖/许可负担；
 200/201/402 用例只验证正确性及工作预算，不声称延迟/RSS 测量通过。
 
+相位 cell 计划复用普通 cell 的有序存储键与逐访问 census：除环境校验外，
+构建 O(I+A+L log(L+1))、独立校验 O(I+A+L+C)，空间 O(I+A+L+C)。
+L 为词法访问数、C 为实际存储单元数；只按实际访问建单元，不展开环境全部槽。
+`PhasedBody` 按需持有结果并累计预算，不按每个 child 重新分配父图或做全图扫描。
+
 异常创建归属沿用原 `BindCreation` 区域池查询与 `CreationTreeContext` 解析，
 只增加 O(I) 的 typed creation census 和 O(C log S) 的创建位置索引查询；
 C 为活跃创建数、S 为已建创建位置索引大小。结果空间为 O(C+N)，N 为 context

@@ -47,5 +47,13 @@ enum class CellError : std::uint8_t {
 [[nodiscard]] std::variant<std::uint64_t, CellError> VerifyCellPlan(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
     const CellPlan& plan, analysis::SemanticBudget budget = {});
+// Exception topology only. Initialization/lifetime proofs must independently
+// account for successful Commit and catch; normal certificates do not suffice.
+[[nodiscard]] std::variant<CellPlan, CellError> BuildPhasedCellPlan(
+    const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
+    analysis::SemanticBudget budget = {});
+[[nodiscard]] std::variant<std::uint64_t, CellError> VerifyPhasedCellPlan(
+    const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
+    const CellPlan& plan, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

@@ -425,8 +425,14 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     Check(std::get<PhasedCreationError>(std::get<PhasedCreationFailure>(BindPhasedCreations(file,
         wrong_header, index, lookup, roles, child_sites, staged, decoded)).cause) == PhasedCreationError::kIdentity);
     const auto* graph_address = &staged.Graph();
+    const auto* cell_address = staged.Cells();
+    const auto* cell_environment_address = staged.CellEnvironments();
+    Check((cell_address != nullptr) == (cell_environment_address != nullptr));
+    if (cell_address) Check(std::holds_alternative<std::uint64_t>(
+        VerifyPhasedCellPlan(staged.Graph(), *cell_environment_address, *cell_address)));
     auto relocated = std::move(staged);
     Check(&relocated.Graph() == graph_address);
+    Check(relocated.Cells() == cell_address && relocated.CellEnvironments() == cell_environment_address);
     const auto staged_view = relocated.TreeInput(decoded);
     Check(std::holds_alternative<std::uint64_t>(VerifyExceptionControl(decoded, relocated.Graph(),
         staged_view.input, staged_view.regions, staged_view.control)));

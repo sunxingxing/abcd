@@ -595,9 +595,36 @@ it does not rerun the environment planner. Ordinary APIs still reject phased
 graphs. No normal-flow initialization or capture certificate is reused here.
 
 This is a prerequisite for the parent-cell/child-capture bridge, not yet connected
-to its publication gate. `CellPlan` still requires its normal proof. No new
-function family becomes executable from topology alone. Tests cover profiles
+to its publication gate. Normal cell initialization/lifetime proofs still reject
+phased graphs. No new function family becomes executable from topology alone. Tests cover profiles
 1202/1206/1301, allocation failure versus successful commit, explicit throw,
 forged states/bindings/allocations, exact and insufficient budgets, and
 200/201/402 independent environment groups. These are correctness cases, not
 RSS or timing measurements; loop/finally/coroutine composition remains pending.
+
+### Retained Phased Cells
+
+`BuildPhasedCellPlan`/`VerifyPhasedCellPlan` reuse the same typed storage keys,
+sorting, exact access census and allocation-site index as normal cell planning.
+Only their environment validator differs. Normal APIs continue to reject phase
+graphs, so callers cannot accidentally feed a phase plan into normal dominance
+or lifetime proofs. These plans distinguish incoming storage from local
+allocation sites even when both accesses encode depth zero and slot zero.
+They neither prove initialization nor allocate source bindings.
+
+`PhasedBody` now owns both working environments and cells when environment,
+lexical or creation operations require them. Both immutable views borrow that
+body; construction debits the same remaining bytes/work as other stages, and
+evaluation inherits that charge. Original environment IDs must not be compared
+with working IDs; future capture rebasing uses allocation provenance. Pure
+bodies without such operations do not construct these optional products.
+The real-parent regression now reads retained production results, not an
+independent diagnostic analysis: 8257 has zero cells and 8404 has one. Both
+continue to reject incomplete child-family evaluation.
+
+The dedicated cell test starts from decoded ABC and checks three profiles,
+normal versus allocation-failure catch storage, 200/201/402 allocation groups,
+corrupt access/storage/revision certificates, exact/insufficient work and zero
+memory, plus rejection by normal initialization APIs. Remaining work includes
+successful-Commit initialization witnesses, phase-aware source lifetimes and
+actual parent/child capture binding before evaluation/tree admission.

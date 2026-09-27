@@ -16,6 +16,8 @@ for (const { method, sites, targets, allocations, bindings } of samples) {
   const result = JSON.parse(execFileSync(process.argv[2], [process.argv[3], String(method)], { encoding: 'utf8' }));
   assert.equal(result.phase_body_ready, true);
   assert.equal(result.phase_environments_ready, true);
+  assert.equal(result.phase_cells_ready, true);
+  assert.equal(result.cells, bindings);
   assert.equal(result.environment_allocations, allocations);
   assert.equal(result.lexical_bindings, bindings);
   assert.deepEqual(result.creations.map(({ operation, pc, instruction }) => ({ operation, pc, instruction })), sites);

@@ -17,6 +17,8 @@ struct PhasedBody::Storage {
   analysis::ExceptionValueFlow values;
   analysis::ExceptionInputProof proof;
   analysis::ValueProgram graph;
+  std::optional<analysis::ValueEnvironments> cell_environments;
+  std::optional<CellPlan> cells;
   std::optional<ModuleGuards> modules;
   std::optional<ModuleAliases> aliases;
   ExceptionPlan regions;
@@ -96,6 +98,10 @@ const RouteInputIdentity& PhasedBody::Identity() const { return storage_->identi
 abc::EntityOffset PhasedBody::Target() const { return storage_->target; }
 const ControlPlan& PhasedBody::Control() const { return storage_->control.skeleton; }
 const ModuleAliases* PhasedBody::Modules() const { return storage_->aliases ? &*storage_->aliases : nullptr; }
+const analysis::ValueEnvironments* PhasedBody::CellEnvironments() const {
+  return storage_->cell_environments ? &*storage_->cell_environments : nullptr;
+}
+const CellPlan* PhasedBody::Cells() const { return storage_->cells ? &*storage_->cells : nullptr; }
 ExceptionTreeInput PhasedBody::TreeInput(const abc::MethodBody& body) const {
   return {body, storage_->Input(), storage_->regions, storage_->control};
 }
@@ -157,6 +163,27 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     const PhasedValueInput input{flow, ssa, environments, values, proof, frame};
     auto imported = PhaseResult<ImportedPhases>(BuildPhasedValues(input, quota.Remaining()), Error::kImport);
     quota.Admit(imported.allocated_bytes); quota.Step(imported.work);
+    bool needs_cells = false;
+    for (const auto& op : imported.graph.ops) {
+      quota.Step();
+      needs_cells |= std::holds_alternative<ValueEnvironmentPush>(op.operation) ||
+          std::holds_alternative<ValueEnvironmentPop>(op.operation) ||
+          std::holds_alternative<ValueLexicalLoad>(op.operation) ||
+          std::holds_alternative<ValueLexicalStore>(op.operation) ||
+          std::holds_alternative<ValueFunctionCreation>(op.operation);
+    }
+    std::optional<ValueEnvironments> cell_environments;
+    std::optional<CellPlan> cells;
+    if (needs_cells) {
+      // Keep working IDs with their owner. Original phase EnvironmentIds are
+      // a separate namespace; capture rebasing must use allocation provenance.
+      cell_environments = PhaseResult<ValueEnvironments>(BuildPhasedValueEnvironments(
+          imported.graph, quota.Remaining()), Error::kEnvironment);
+      quota.Admit(cell_environments->allocated_bytes); quota.Step(cell_environments->work);
+      cells = PhaseResult<CellPlan>(BuildPhasedCellPlan(imported.graph, *cell_environments,
+          quota.Remaining()), Error::kCells);
+      quota.Admit(cells->allocated_bytes); quota.Step(cells->work);
+    }
     std::optional<ModuleGuards> guards;
     std::optional<ModuleAliases> aliases;
     if (!modules.reads.empty()) {
@@ -184,6 +211,7 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     quota.Admit(control.allocated_bytes); quota.Step(control.work);
     return PhasedBody(std::make_unique<Storage>(Storage{context.Identity(), context.Target(), frame, std::move(flow), std::move(ssa),
         std::move(environments), std::move(values), std::move(proof), std::move(imported.graph),
+        std::move(cell_environments), std::move(cells),
         std::move(guards), std::move(aliases), std::move(regions), std::move(control),
         quota.Bytes(), quota.Work()}));
   } catch (Error error) { return error;

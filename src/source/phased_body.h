@@ -9,7 +9,7 @@ struct PhasedModuleBinding;
 struct ModuleAliases;
 enum class PhasedMethodError : std::uint8_t {
   kInput, kSsa, kEnvironment, kValues, kImport, kRegion, kControl, kEvaluation,
-  kResourceLimit, kWorkLimit, kContract, kModules
+  kResourceLimit, kWorkLimit, kContract, kModules, kCells
 };
 // Owns original exception analyses and the checked working body before child
 // evaluation. Family discovery must inspect actual creation operations here,
@@ -30,6 +30,10 @@ class PhasedBody {
   abc::EntityOffset Target() const;
   const ControlPlan& Control() const;
   const ModuleAliases* Modules() const;
+  // Working topology/storage only, not initialization/lifetime permission.
+  // Both are absent when no environment or creation operations need them.
+  const analysis::ValueEnvironments* CellEnvironments() const;
+  const CellPlan* Cells() const;
   ExceptionTreeInput TreeInput(const abc::MethodBody& body) const;
   std::size_t AllocatedBytes() const;
   std::uint64_t Work() const;

@@ -9,6 +9,7 @@
 namespace abcd::source {
 namespace {
 using Error = CellError;
+enum class CellFlow { kNormal, kPhased };
 void Require(bool condition, Error error) { if (!condition) throw error; }
 class Quota {
  public:
@@ -31,8 +32,11 @@ auto Key(const CellStorage& storage) {
   const auto& incoming = std::get<IncomingCell>(storage);
   return std::tuple(storage.index(), incoming.depth.value, incoming.slot.value);
 }
-void Environment(const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments, Quota& quota) {
-  const auto checked = analysis::VerifyValueEnvironments(graph, environments, quota.Remaining());
+void Environment(const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
+    Quota& quota, CellFlow flow) {
+  const auto checked = flow == CellFlow::kPhased
+      ? analysis::VerifyPhasedValueEnvironments(graph, environments, quota.Remaining())
+      : analysis::VerifyValueEnvironments(graph, environments, quota.Remaining());
   if (const auto* error = std::get_if<analysis::ValueEnvironmentError>(&checked)) {
     if (*error == analysis::ValueEnvironmentError::kResourceLimit) throw Error::kResourceLimit;
     if (*error == analysis::ValueEnvironmentError::kWorkLimit) throw Error::kWorkLimit;
@@ -75,13 +79,14 @@ std::optional<CellId> FindCell(const CellPlan& plan, const CellStorage& storage)
   return CellId{static_cast<std::uint32_t>(found - plan.cells.begin())};
 }
 
-std::variant<std::uint64_t, CellError> VerifyCellPlan(
+namespace {
+std::variant<std::uint64_t, CellError> VerifyPlan(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
-    const CellPlan& plan, analysis::SemanticBudget budget) {
+    const CellPlan& plan, analysis::SemanticBudget budget, CellFlow flow) {
   try {
     Quota quota(budget);
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
-    Environment(graph, environments, quota);
+    Environment(graph, environments, quota, flow);
     Require(plan.operations.size() == graph.ops.size() && plan.accesses.size() == environments.flow.bindings.size(), Error::kCoverage);
     auto allocations = Allocations(environments, quota);
     Require(plan.allocations.size() == allocations.size(), Error::kStorage);
@@ -125,11 +130,11 @@ std::variant<std::uint64_t, CellError> VerifyCellPlan(
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
 
-std::variant<CellPlan, CellError> BuildCellPlan(
+std::variant<CellPlan, CellError> BuildPlan(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
-    analysis::SemanticBudget budget) {
+    analysis::SemanticBudget budget, CellFlow flow) {
   try {
-    Quota quota(budget); Environment(graph, environments, quota);
+    Quota quota(budget); Environment(graph, environments, quota, flow);
     Require(environments.flow.bindings.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
     quota.Admit(1, sizeof(CellPlan));
     auto allocations = Allocations(environments, quota);
@@ -157,7 +162,7 @@ std::variant<CellPlan, CellError> BuildCellPlan(
       plan.operations[candidate.access.operation.value] = CellId{static_cast<std::uint32_t>(count - 1)};
     }
     plan.allocations = std::move(allocations);
-    const auto checked = VerifyCellPlan(graph, environments, plan, quota.Remaining());
+    const auto checked = VerifyPlan(graph, environments, plan, quota.Remaining(), flow);
     if (const auto* error = std::get_if<Error>(&checked)) return *error;
     quota.Step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = sizeof(plan) + plan.cells.capacity() * sizeof(Cell) +
@@ -167,5 +172,26 @@ std::variant<CellPlan, CellError> BuildCellPlan(
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+}  // namespace
+std::variant<CellPlan, CellError> BuildCellPlan(
+    const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
+    analysis::SemanticBudget budget) {
+  return BuildPlan(graph, environments, budget, CellFlow::kNormal);
+}
+std::variant<std::uint64_t, CellError> VerifyCellPlan(
+    const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
+    const CellPlan& plan, analysis::SemanticBudget budget) {
+  return VerifyPlan(graph, environments, plan, budget, CellFlow::kNormal);
+}
+std::variant<CellPlan, CellError> BuildPhasedCellPlan(
+    const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
+    analysis::SemanticBudget budget) {
+  return BuildPlan(graph, environments, budget, CellFlow::kPhased);
+}
+std::variant<std::uint64_t, CellError> VerifyPhasedCellPlan(
+    const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
+    const CellPlan& plan, analysis::SemanticBudget budget) {
+  return VerifyPlan(graph, environments, plan, budget, CellFlow::kPhased);
 }
 }  // namespace abcd::source
