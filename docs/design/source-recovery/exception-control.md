@@ -691,3 +691,36 @@ isolation and all ten original PCs. Scope escape and declaration-scope forgery
 are negative tests across profiles 1202/1206/1301. This does not close captured
 child families or admit exception cycles, finally or suspension protocols;
 fresh bindings for repeated loop allocations remain part of that later gate.
+
+### Shared Original Capture Inputs
+
+`ScopeFacts` now holds typed normal/exception views. Both feed the existing
+`CapturePlan` builder and independent verifier. Exception queries are fixed to
+one genuine original Before node, use the same environment ancestry lookup and
+query completed-store intervals on the full exception graph. Commit, Catch,
+wrong occurrence and uninitialized handler captures cannot substitute for that
+creation. Outward bindings retain their depth/slot and domain obligation;
+Language initialization does not establish a local Defined/TDZ-guard claim.
+
+`ProveExceptionLocals` accepts an explicit `ClosureWrites::kLanguage` conditional
+family premise, retaining it in both its result and `CapturePlan`. It permits
+mutation, not snapshots or alias elimination. Every original store must still
+pass input validation, and every descendant's write-domain obligation remains
+pending. The default stays Unknown; exact preservation evidence remains a
+distinct alternative. Standalone `PhasedBody` does not opt into conditional
+writes or grant a source receipt. Cyclic capture initialization remains refused.
+
+`BindPhasedFunctionInputs` checks the real child owner, file identity, target,
+creator/PC and original-to-working creation occurrence before applying the
+common capture plan. The selected real 8257→7810/8118 and 8404→7978 inputs now
+bind zero/zero/one capture occurrences respectively. These are conditional
+original-input bindings only, not executable parent families. Parent evaluation
+still refuses missing child completion. Rules 55 remain unchanged.
+
+Next connect these plans to shared `CaptureCells`: original local environment
+IDs map through their allocation instruction provenance to working allocation
+OpIds; independently resolve child incoming depth/slot in the parent's working
+environment at creation. Never equate the two environment index namespaces.
+Then reuse capture evaluation/tree binding, retain complete child owners and
+close transitive writes before family publication. No read-only sample shortcut
+or new specialized body writer substitutes for that bridge.

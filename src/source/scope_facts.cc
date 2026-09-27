@@ -6,14 +6,14 @@
 #include <tuple>
 
 namespace abcd::source {
-std::uint64_t ScopeFacts::QueryWork() const {
+std::uint64_t NormalScopeFacts::QueryWork() const {
   // Five binary searches plus the fixed ancestry walk and bounded field checks.
   constexpr auto kChecks = std::numeric_limits<std::uint32_t>::digits;
   return 2 * kChecks + std::bit_width(locals_.cells.size()) +
       std::bit_width(locals_.stores.size()) + std::bit_width(method_.flow.blocks.size()) +
       std::bit_width(locals_.capture_barriers.size()) + std::bit_width(defined_.guards.size());
 }
-bool ScopeFacts::Matches(analysis::InstructionId site,
+bool NormalScopeFacts::Matches(analysis::InstructionId site,
     const analysis::CreationBinding& creation) const {
   const auto* ordinary = std::get_if<analysis::OrdinaryCapture>(&creation.capture);
   if (!ordinary || site.value >= method_.instructions.size()) return false;
@@ -27,7 +27,7 @@ bool ScopeFacts::Matches(analysis::InstructionId site,
       method_.instructions[site.value].pc == creation.offset &&
       *environments_.before[site.value] == ordinary->environment;
 }
-std::variant<CaptureCell, ScopeError> ScopeFacts::Rebase(
+std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
     analysis::InstructionId creation, analysis::CapturedSlot capture,
     analysis::CaptureDomain requirement) const {
   using Error = ScopeError;
@@ -88,5 +88,18 @@ std::variant<CaptureCell, ScopeError> ScopeFacts::Rebase(
         entry >= guard.end) return Error::kDomain;
   }
   return CaptureCell{cell};
+}
+std::uint64_t ScopeFacts::QueryWork() const {
+  return std::visit([](const auto& input) { return input.QueryWork(); }, input_);
+}
+analysis::ClosureWrites ScopeFacts::Writes() const {
+  return std::visit([](const auto& input) { return input.Writes(); }, input_);
+}
+bool ScopeFacts::Matches(analysis::InstructionId site, const analysis::CreationBinding& creation) const {
+  return std::visit([&](const auto& input) { return input.Matches(site, creation); }, input_);
+}
+std::variant<CaptureCell, ScopeError> ScopeFacts::Rebase(analysis::InstructionId site,
+    analysis::CapturedSlot capture, analysis::CaptureDomain domain) const {
+  return std::visit([&](const auto& input) { return input.Rebase(site, capture, domain); }, input_);
 }
 }  // namespace abcd::source

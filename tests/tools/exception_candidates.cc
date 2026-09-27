@@ -13,6 +13,7 @@
 #include "../../tools/tree_position_json.h"
 #include "../../src/source/phased_method.h"
 #include "../../src/source/phased_creations.h"
+#include "../../src/source/phased_capture_input.h"
 #include "../../src/source/module_aliases.h"
 #include "../../src/source/syntax_resolution.h"
 
@@ -97,15 +98,65 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
   if (!occurrences) return 1;
   auto bound_creations = BindPhasedCreations(file, header, index, lookup, *indexed_roles,
       *occurrences, std::get<PhasedBody>(staged), *body);
-  const auto* children = std::get_if<PhasedCreations>(&bound_creations);
+  auto* children = std::get_if<PhasedCreations>(&bound_creations);
   if (!children) {
     report["creation_error"] = std::get<PhasedCreationFailure>(bound_creations).cause.index();
     std::cout << report << '\n'; return file.CheckUnchanged() ? 1 : 0;
   }
-  for (const auto& child : children->sites) {
+  const auto original = std::get<PhasedBody>(staged).TreeInput(*body).input;
+  auto capture_locals = analysis::ProveExceptionLocals(original.flow, original.environments,
+      budget, {}, analysis::ClosureWrites::kLanguage);
+  const auto* local_scopes = std::get_if<analysis::ExceptionLocals>(&capture_locals);
+  for (auto& child : children->sites) {
     report["creations"].push_back({{"operation", child.operation.value}, {"pc", child.binding.offset.value},
         {"instruction", child.instruction.value},
         {"target", child.context.Site().target.value}});
+    if (!local_scopes) continue;
+    const FunctionContext child_owner{std::move(child.context)};
+    const auto& child_method = index.methods[child_owner.Position().value];
+    if (!child_method.code) continue;
+    const auto decoded_child = abc::DecodeMethodBody(file, header.profile, *child_method.code);
+    const auto* child_body = std::get_if<abc::MethodBody>(&decoded_child);
+    if (!child_body) continue;
+    const auto child_input = FunctionInput::Build(context.Identity(), child_owner.Target(),
+        child_method.owner_offset, *child_body, child_owner.Frame(), InputCaptureMode::kConditional,
+        budget, &child_owner);
+    const auto* ready_child = std::get_if<FunctionInput>(&child_input);
+    if (!ready_child) continue;
+    const auto captures = BindPhasedFunctionInputs(index, lookup, std::get<PhasedBody>(staged), *body,
+        *local_scopes, child, *ready_child, child_owner, budget);
+    if (const auto* plan = std::get_if<CapturePlan>(&captures)) {
+      auto exact = budget; exact.work = plan->work;
+      if (!std::holds_alternative<CapturePlan>(BindPhasedFunctionInputs(index, lookup,
+          std::get<PhasedBody>(staged), *body, *local_scopes, child, *ready_child, child_owner, exact))) return 1;
+      --exact.work;
+      const auto limited = BindPhasedFunctionInputs(index, lookup, std::get<PhasedBody>(staged), *body,
+          *local_scopes, child, *ready_child, child_owner, exact);
+      if (!std::holds_alternative<CaptureError>(limited) ||
+          std::get<CaptureError>(limited) != CaptureError::kWorkLimit) return 1;
+      exact = budget; exact.bytes = 0;
+      const auto exhausted = BindPhasedFunctionInputs(index, lookup, std::get<PhasedBody>(staged), *body,
+          *local_scopes, child, *ready_child, child_owner, exact);
+      if (!std::holds_alternative<CaptureError>(exhausted) ||
+          std::get<CaptureError>(exhausted) != CaptureError::kResourceLimit) return 1;
+      const auto saved = child.instruction;
+      child.instruction = analysis::InstructionId{static_cast<std::uint32_t>(original.flow.instructions.size())};
+      const auto invalid = BindPhasedFunctionInputs(index, lookup, std::get<PhasedBody>(staged), *body,
+          *local_scopes, child, *ready_child, child_owner, budget);
+      child.instruction = saved;
+      if (!std::holds_alternative<CaptureError>(invalid) ||
+          std::get<CaptureError>(invalid) != CaptureError::kCreation) return 1;
+      const auto offset = child.binding.offset;
+      ++child.binding.offset.value;
+      const auto wrong_owner = BindPhasedFunctionInputs(index, lookup, std::get<PhasedBody>(staged), *body,
+          *local_scopes, child, *ready_child, child_owner, budget);
+      child.binding.offset = offset;
+      if (!std::holds_alternative<InputBindingError>(wrong_owner) ||
+          std::get<InputBindingError>(wrong_owner) != InputBindingError::kTarget) return 1;
+      report["creations"].back()["capture_inputs_ready"] = true;
+      report["creations"].back()["capture_occurrences"] = plan->bindings.size();
+      report["creations"].back()["conditional_writes"] = plan->writes == analysis::ClosureWrites::kLanguage;
+    }
   }
   const auto built = PhasedMethod::Evaluate(std::get<PhasedBody>(std::move(staged)), budget);
   if (const auto* error = std::get_if<PhasedMethodError>(&built)) {

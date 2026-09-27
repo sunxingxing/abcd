@@ -24,6 +24,9 @@ std::variant<std::uint64_t, CaptureError> VerifyCapturePlan(
   if (!scopes.Matches(site, creation) || plan.site != site || plan.pc != creation.offset ||
       plan.target != creation.target.position) return CaptureError::kCreation;
   if (uses.size() != plan.bindings.size()) return CaptureError::kCoverage;
+  if (scopes.Writes() != analysis::ClosureWrites::kUnknown &&
+      scopes.Writes() != analysis::ClosureWrites::kLanguage) return CaptureError::kScope;
+  if (plan.writes != scopes.Writes()) return CaptureError::kScope;
   const auto query = scopes.QueryWork();
   for (std::size_t i = 0; i < uses.size(); ++i) {
     if (query > work) return CaptureError::kWorkLimit;
@@ -44,10 +47,13 @@ std::variant<CapturePlan, CaptureError> BuildCapturePlan(
     if (budget.work == 0) return CaptureError::kWorkLimit;
     auto work = budget.work - 1;
     if (!scopes.Matches(site, creation)) return CaptureError::kCreation;
+    if (scopes.Writes() != analysis::ClosureWrites::kUnknown &&
+        scopes.Writes() != analysis::ClosureWrites::kLanguage) return CaptureError::kScope;
     if (sizeof(CapturePlan) > budget.bytes) return CaptureError::kResourceLimit;
     const auto bytes = budget.bytes - sizeof(CapturePlan);
     if (uses.size() > bytes / sizeof(CaptureBinding)) return CaptureError::kResourceLimit;
     CapturePlan plan{site, creation.offset, creation.target.position};
+    plan.writes = scopes.Writes();
     plan.bindings.reserve(uses.size());
     if (plan.bindings.capacity() > bytes / sizeof(CaptureBinding)) return CaptureError::kResourceLimit;
     const auto query = scopes.QueryWork();

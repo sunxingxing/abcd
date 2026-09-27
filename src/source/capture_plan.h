@@ -19,6 +19,8 @@ struct CapturePlan {
   std::vector<CaptureBinding> bindings;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  // Retained transitive write-domain premise; a plan is not a family receipt.
+  analysis::ClosureWrites writes = analysis::ClosureWrites::kUnknown;
 };
 enum class CaptureError : std::uint8_t {
   kCreation, kScope, kCoverage, kBinding, kResourceLimit, kWorkLimit

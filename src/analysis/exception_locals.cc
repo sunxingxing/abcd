@@ -17,13 +17,16 @@ bool Captures(const SemanticOperation& operation) {
 }
 std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
     const ExceptionFlow& flow, const EnvironmentFlow& environments, SemanticBudget budget,
-    std::span<const CapturePreservation> preserved) {
+    std::span<const CapturePreservation> preserved, ClosureWrites writes) {
   using Error = ExceptionLocalError;
   const auto fail = [](Error kind, abc::CodeOffset pc = {}) { return ExceptionLocalFailure{kind, pc}; };
   if (flow.nodes.empty() || flow.nodes.size() > UINT32_MAX ||
       flow.nodes.size() != environments.before.size()) return fail(Error::kInvalidEnvironment);
+  if (writes != ClosureWrites::kUnknown && writes != ClosureWrites::kLanguage)
+    return fail(Error::kInvalidEnvironment);
   try {
     ExceptionLocals result;
+    result.writes = writes;
     auto& plan = result.plan;
     const auto charge = [&](std::uint64_t units = 1) {
       if (units > budget.work - plan.work_units) throw fail(Error::kResourceLimit);
@@ -209,7 +212,8 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
       const auto& instruction = flow.instructions[node.instruction.value];
       if (!std::holds_alternative<LexicalLoad>(instruction.operation)) continue;
       const auto cell = cell_id(binding);
-      if (captured[plan.cells[cell.value].environment.value]) return fail(Error::kCapturedEnvironment, instruction.pc);
+      if (writes == ClosureWrites::kUnknown && captured[plan.cells[cell.value].environment.value])
+        return fail(Error::kCapturedEnvironment, instruction.pc);
       const auto point = dominance->nodes[binding.instruction].begin;
       const auto key = std::tuple(cell.value, point);
       const auto found = std::upper_bound(stores.begin(), stores.end(), key,
@@ -236,7 +240,7 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
       std::size_t scopes = 0;
       for (const auto scope : stores) {
         charge();
-        if (!captured[plan.cells[scope.cell.value].environment.value])
+        if (writes == ClosureWrites::kLanguage || !captured[plan.cells[scope.cell.value].environment.value])
           stores[scopes++] = scope;
       }
       stores.resize(scopes);
