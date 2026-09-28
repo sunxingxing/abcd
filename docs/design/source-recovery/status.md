@@ -51,6 +51,13 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 参数载荷边界补充实测：现有共同恢复路径已支持 finally 直接 return/throw
+  函数参数，无需新增生产分支。三个 profile 的覆盖组扩为 24 个夹具，生成 JS
+  执行覆盖 undefined/null/-0/NaN/bigint/Symbol/object，检查保护调用正常/抛出时
+  均保留参数身份且不调用 cleanup。定向构建成功、相关 4/4 通过；日志
+  `/tmp/abcd-finalizer-payload-build.log` 与 `/tmp/abcd-finalizer-payload-tests.log`。
+  此项是既有能力的行为回归，不是新增 SSA 合流支持；异常路径不同值版本、
+  嵌套 finally、跨区域 completion 仍待贯通。未恢复全量测试、语料或 RSS。
 - C05 补齐仅含终结动作的覆盖型 finalizer：`RETURNUNDEFINED` 直接作为
   cleanup 动作；`LDUNDEFINED` + throw 的实体字面量复制随终结动作一起配对，
   不遗留在保护体外。捕获值/SSA 快照继续原有路径，不整体移动复制操作。
@@ -58,7 +65,7 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   实际执行生成 JS 检查原异常被覆盖、结果为 undefined 且无 cleanup 回调。
   关联构建及定向 15/15 通过，日志 `/tmp/abcd-finalizer-terminal-final-build.log`
   与 `/tmp/abcd-finalizer-terminal-final-tests.log`。未运行全量测试、语料或 RSS；
-  任意 SSA 载荷、嵌套 finally、跨区域 completion 与 hole/guard 形式仍有缺口。
+  更一般的 SSA 合流载荷、嵌套 finally、跨区域 completion 与 hole/guard 形式仍有缺口。
 - C05 新增覆盖型 finalizer：正常与异常 cleanup 路径的 return/return 或
   throw/throw 终结动作在类型、载荷、效果与 handler 一致时，一并投影到真实
   finally 内；不虚构被覆盖的原始 return，也不将 cleanup 求值提前到保护体。

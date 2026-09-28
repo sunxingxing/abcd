@@ -218,27 +218,29 @@ for (const [index, fn] of catches.entries()) for (const insideError of [undefine
 const overrideSource = execFileSync(process.argv[2], ['--finally-override'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!overrideSource.includes('INCOMPLETE'));
 const {functions: overrides} = await import(`data:text/javascript;base64,${Buffer.from(overrideSource).toString('base64')}`);
-assert.equal(overrides.length, 18);
+assert.equal(overrides.length, 24);
 for (const [index, fn] of overrides.entries()) {
   for (const result of [undefined, null, -0, NaN, 3n, Symbol('replacement'), {}]) {
     for (const getThrows of [false, true]) for (const cleanupThrows of [false, true]) {
       const log = [], pending = {}, failure = {};
+      const argument = index % 4 === 3;
+      const cleanup = function () {
+        assert.equal(this, undefined); log.push('cleanup');
+        if (cleanupThrows) throw failure;
+        return result;
+      };
       let returned, thrown, didThrow = false;
       try {
         returned = fn(function () {
           assert.equal(this, undefined); log.push('get');
           if (getThrows) throw pending;
           return pending;
-        }, function () {
-          assert.equal(this, undefined); log.push('cleanup');
-          if (cleanupThrows) throw failure;
-          return result;
-        });
+        }, argument ? result : cleanup);
       } catch (error) { didThrow = true; thrown = error; }
-      const raises = index % 6 >= 3;
-      const hasCleanup = index % 3 !== 2;
-      const keepsPayload = index % 3 === 1 && getThrows;
-      const expected = !hasCleanup ? undefined : cleanupThrows ? failure : keepsPayload ? pending : result;
+      const raises = index % 8 >= 4;
+      const hasCleanup = index % 4 < 2;
+      const keepsPayload = index % 4 === 1 && getThrows;
+      const expected = argument ? result : !hasCleanup ? undefined : cleanupThrows ? failure : keepsPayload ? pending : result;
       assert.deepEqual(log, hasCleanup ? ['get', 'cleanup'] : ['get']);
       assert.equal(didThrow, (hasCleanup && cleanupThrows) || raises);
       assert.ok(Object.is(didThrow ? thrown : returned, expected));
