@@ -32,3 +32,46 @@ for (const fn of functions) {
     }
   }
 }
+
+const pairedSource = execFileSync(process.argv[2], ['--completion-pairs'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!pairedSource.includes('INCOMPLETE'));
+const {functions: paired} = await import(`data:text/javascript;base64,${Buffer.from(pairedSource).toString('base64')}`);
+assert.equal(paired.length, 15);
+for (const [index, fn] of paired.entries()) {
+  const mode = index % 5; // chain, different callee, late payload, extra call, wrong rethrow
+  for (const getThrows of [false, true]) for (const cleanupFailure of [0, 1, 2]) {
+    const pending = {}, cleaned = {}, failure = {}, log = [];
+    let cleanups = 0, returned, thrown, didThrow = false;
+    function get() {
+      assert.equal(this, undefined); log.push('get');
+      if (getThrows) throw pending;
+      return pending;
+    }
+    function cleanup(name) {
+      log.push(name);
+      if (++cleanups === cleanupFailure) throw failure;
+      return cleaned;
+    }
+    const first = function () { assert.equal(this, undefined); return cleanup('first'); };
+    const second = function (value) {
+      assert.equal(this, undefined);
+      if (mode === 0) assert.equal(value, cleaned);
+      return cleanup('second');
+    };
+    try { returned = fn(get, first, second); }
+    catch (error) { didThrow = true; thrown = error; }
+    const expected = ['get'];
+    const names = mode === 0 ? ['first', 'second'] :
+      mode === 1 && getThrows ? ['second'] :
+      mode === 3 && getThrows ? ['first', 'first'] : ['first'];
+    let overridden = false;
+    for (const [step, name] of names.entries()) {
+      expected.push(name);
+      if (step + 1 === cleanupFailure) { overridden = true; break; }
+    }
+    assert.deepEqual(log, expected);
+    assert.equal(didThrow, getThrows || overridden);
+    if (didThrow) assert.equal(thrown, overridden ? failure : mode === 4 ? get : pending);
+    else assert.equal(returned, mode === 2 ? cleaned : pending);
+  }
+}

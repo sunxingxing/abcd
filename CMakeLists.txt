@@ -223,7 +223,7 @@ target_sources(abcd_source PRIVATE src/source/exception_plan.cc)
 target_sources(abcd_source PRIVATE src/source/phased_method.cc)
 target_sources(abcd_source PRIVATE src/source/phased_creations.cc)
 target_sources(abcd_source PRIVATE src/source/exception_control.cc src/source/exception_topology.cc
-  src/source/exception_loops.cc)
+  src/source/exception_loops.cc src/source/completion_plan.cc)
 target_sources(abcd_source PRIVATE src/source/exception_copies.cc)
 target_sources(abcd_source PRIVATE src/source/source_tree.cc)
 target_sources(abcd_source PRIVATE src/source/evaluation_shape.cc src/source/evaluation_plan.cc src/source/evaluation_verify.cc src/source/binding_plan.cc)

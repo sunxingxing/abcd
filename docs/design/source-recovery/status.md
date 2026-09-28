@@ -51,6 +51,25 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 首项 completion 分析已有生产实现 `completion_plan.h/.cc`：类型区分
+  Normal（empty 与 JS 值分开）、Return、Throw、Break、Continue；当前实际识别
+  return/rethrow 两条直线 cleanup 路径。比较 typed operations、参数/receiver
+  角色、SSA 值及内部结果对应、副作用和异常 handler，确认 pending return 在
+  cleanup 前可用、异常出口保持原 catch payload。复制身份解析有缓存，不能因
+  catch snapshot 在表达式层未被别名消除而漏掉它的值身份；原图/复制绑定未改写。
+  目前仍是供树消费的分析结果，**尚未接入 finalizer AST 构建**，没有新增发布 token。
+  三个 profiles 的单调用/依赖结果的 cleanup 链识别通过；不同 callee、cleanup
+  才产生返回值、异常路径多一次调用、错误重抛 payload 均不合并，展开源码行为
+  同时对照通过。已有循环/异常组合也调用该分析，未支持形态保留原控制方案。
+  构建成功，composition / source、exception_outer、completion_baseline **4/4 通过**，
+  日志 `/tmp/abcd-completion-plan-build.log`、`/tmp/abcd-completion-plan-final-tests.log`。
+  200/201/402 cleanup 项仅验证分析阶段；尝试 200 项完整树构建在末尾语义检查
+  触发原有默认 work 限制，未调高生产预算、未计为源码通过，定位日志
+  `/tmp/abcd-completion-scale-debug.log`。最终恢复 RED 仍是 finalizer 数量 0，见
+  `/tmp/abcd-completion-plan-recovery-red.log`。下一项是将 completion 对应关系接到
+  共同树构建/TreeFlow/origin，而非删除检查；嵌套、覆盖、break/continue、环境
+  协议 cleanup、上游 hole/guard 编译路径均未由这项分析完成。
+
 - C05 已固定第一项真实解码 RED 与行为基线：`control_composition_test --finally-return`
   要求 `try { return get(); } finally { cleanup(); }` 的 finalizer AST，目前明确失败于
   `missing recovered finalizer: 0`，**finally 恢复尚未实现**。相同字节码的

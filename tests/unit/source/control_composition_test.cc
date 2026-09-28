@@ -1,4 +1,5 @@
 #include "../../../src/source/exception_tree.h"
+#include "../../../src/source/completion_plan.h"
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/tree_flow.h"
 #include "../../../src/source/tree_semantics.h"
@@ -14,6 +15,8 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
+struct ExpectedCompletion { std::size_t regions, operations; };
+enum class CompositionStage { kSource, kCompletion };
 template <class T, class... Alternatives>
 T Take(std::variant<Alternatives...> value,
     std::source_location where = std::source_location::current()) {
@@ -30,7 +33,8 @@ T Take(std::variant<Alternatives...> value,
 void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t locals,
     std::uint32_t parameters, bool staging, std::ostream* output,
     std::optional<ScopeKind> cell_scope = {}, std::size_t expected_loops = 1,
-    bool expect_finalizer = false);
+    bool expect_finalizer = false, std::optional<ExpectedCompletion> expected_completions = {},
+    CompositionStage stage = CompositionStage::kSource);
 
 void LoopCarried(abc::ProfileId profile, std::ostream* output) {
   // x = initial; try { while (next()) { x = step(x); next(); } } catch (_) {}
@@ -60,7 +64,8 @@ void LoopCarried(abc::ProfileId profile, std::ostream* output) {
 }
 void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t locals,
     std::uint32_t parameters, bool staging, std::ostream* output, std::optional<ScopeKind> cell_scope,
-    std::size_t expected_loops, bool expect_finalizer) {
+    std::size_t expected_loops, bool expect_finalizer, std::optional<ExpectedCompletion> expected_completions,
+    CompositionStage stage) {
   const auto frame = Take<abc::FrameLayout>(abc::BuildFrameLayout(locals, parameters, {}));
   const auto flow = Take<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers, {}, {}, &frame));
   IdfQuota quota{kDefaultSemanticWork};
@@ -102,6 +107,28 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     std::cerr << "composition evaluation error " << static_cast<unsigned>(*error) << '\n';
   test::Check(std::holds_alternative<EvaluationPlan>(planned));
   const auto& evaluation = std::get<EvaluationPlan>(planned);
+  const auto completions = Take<CompletionPlan>(BuildCompletionPlan(graph, regions, control, evaluation));
+  if (expected_completions) {
+    if (completions.finalizers.size() != expected_completions->regions)
+      std::cerr << "completion candidates " << completions.finalizers.size() << '\n';
+    test::Check(completions.finalizers.size() == expected_completions->regions);
+    for (const auto& finalizer : completions.finalizers) {
+      test::Check(std::holds_alternative<ReturnCompletion>(finalizer.normal));
+      test::Check(std::holds_alternative<ThrowCompletion>(finalizer.exceptional));
+      test::Check(finalizer.cleanup.size() == expected_completions->operations);
+      const auto pending = std::get<ValueId>(std::get<ReturnCompletion>(finalizer.normal).value);
+      const auto producer = std::get<OpResult>(graph.values[pending.value].origin).op;
+      test::Check(graph.origins[graph.ops[producer.value].origin.value].pc.value == 2);
+      test::Check(std::get<ValueId>(std::get<ThrowCompletion>(finalizer.exceptional).value) ==
+          regions.regions[finalizer.region.value].binding->value);
+      test::Check(std::holds_alternative<ValueInvoke>(graph.ops[finalizer.cleanup.front().normal.value].operation));
+      test::Check(std::holds_alternative<ValueInvoke>(graph.ops[finalizer.cleanup.front().exceptional.value].operation));
+    }
+  }
+  if (stage == CompositionStage::kCompletion) {
+    test::Check(expected_completions.has_value() && !output);
+    return; // Algorithm boundary test, explicitly not source acceptance.
+  }
   if (staging) test::Check(evaluation.exceptions && !evaluation.exceptions->slots.empty());
   else if (!evaluation.cells && expected_loops == 1) {
     test::Check(evaluation.phis.has_value());
@@ -349,7 +376,9 @@ void HandlerOuterTransfer(abc::ProfileId profile, bool stop, std::ostream* outpu
   body.tries = {region}; body.handlers = {handler};
   Emit(body, profile, 0, 6, false, output, {}, 2);
 }
-void FinallyReturn(abc::ProfileId profile, bool recover, std::ostream* output) {
+enum class CleanupVariant { kSame, kDifferentCallee, kLateReturn, kExtraCall, kWrongRethrow };
+void FinallyReturn(abc::ProfileId profile, bool recover, std::ostream* output,
+    CleanupVariant variant = CleanupVariant::kSame) {
   // Lowered normal/exception cleanup copies, not source text as engine input:
   // try { return get(); } finally { cleanup(); }
   // v0 fixes the pending return/throw BEFORE cleanup; cleanup is not protected
@@ -359,7 +388,7 @@ void FinallyReturn(abc::ProfileId profile, bool recover, std::ostream* output) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
   constexpr unsigned kByteBits = 8;
-  auto body = test::Body({
+  std::vector<std::uint8_t> bytes = {
       op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
       op(abc::Opcode::kSTA_V8), 0,
       op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
@@ -367,14 +396,67 @@ void FinallyReturn(abc::ProfileId profile, bool recover, std::ostream* output) {
       op(abc::Opcode::kSTA_V8), 0,
       op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
       op(abc::Opcode::kLDA_V8), 0,
-      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)};
+  switch (variant) {
+    case CleanupVariant::kSame: break;
+    case CleanupVariant::kDifferentCallee: bytes[16] = 3; break;
+    case CleanupVariant::kLateReturn: bytes[10] = op(abc::Opcode::kSTA_V8); break;
+    case CleanupVariant::kExtraCall:
+      bytes.insert(bytes.begin() + 19, {op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0});
+      break;
+    case CleanupVariant::kWrongRethrow: bytes[20] = 1; break;
+  }
+  auto body = test::Body(bytes);
   abc::TryRegion region; region.offset = {0}; region.length = 4; region.handler_count = 1;
-  abc::CatchHandler handler; handler.offset = {13}; handler.length = 10;
+  abc::CatchHandler handler; handler.offset = {13}; handler.length = variant == CleanupVariant::kExtraCall ? 14 : 10;
   body.tries = {region}; body.handlers = {handler};
-  Emit(body, profile, 1, 2, false, output, {}, 0, recover);
+  Emit(body, profile, 1, variant == CleanupVariant::kDifferentCallee ? 3 : 2,
+      false, output, {}, 0, recover, ExpectedCompletion{variant == CleanupVariant::kSame ? 1U : 0U, 1});
+}
+void FinallyChain(abc::ProfileId profile, std::ostream* output, std::uint32_t count = 2,
+    CompositionStage stage = CompositionStage::kSource) {
+  // The second cleanup call consumes the first cleanup call's result. Match
+  // internal SSA definitions pairwise; raw ValueIds differ across the copies.
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+  constexpr unsigned kByteBits = 8;
+  std::vector<std::uint8_t> bytes = {
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kSTA_V8), 0};
+  const auto cleanup = [&] {
+    test::Check(count != 0);
+    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+        op(abc::Opcode::kSTA_V8), 1});
+    for (std::uint32_t i = 1; i < count; ++i)
+      bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kCALLARG1_IMM8_V8), 0, 1,
+          op(abc::Opcode::kSTA_V8), 1});
+  };
+  cleanup();
+  bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kRETURN)});
+  const auto catch_pc = static_cast<std::uint32_t>(bytes.size());
+  bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 0});
+  cleanup();
+  bytes.insert(bytes.end(), {
+      op(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+  auto body = test::Body(bytes);
+  abc::TryRegion region; region.offset = {0}; region.length = 4; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {catch_pc}; handler.length = static_cast<std::uint32_t>(bytes.size()) - catch_pc;
+  body.tries = {region}; body.handlers = {handler};
+  Emit(body, profile, 2, 3, false, output, {}, 0, false, ExpectedCompletion{1, count}, stage);
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--completion-pairs") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) {
+      FinallyChain(profile, &std::cout);
+      for (const auto variant : {CleanupVariant::kDifferentCallee, CleanupVariant::kLateReturn,
+          CleanupVariant::kExtraCall, CleanupVariant::kWrongRethrow}) FinallyReturn(profile, false, &std::cout, variant);
+    }
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && (std::string_view(argv[1]) == "--finally-return" ||
       std::string_view(argv[1]) == "--finally-expanded")) {
     std::cout << "export const functions = [\n";
@@ -437,6 +519,11 @@ int main(int argc, char** argv) {
     HandlerOuterTransfer(profile, false, nullptr);
     HandlerOuterTransfer(profile, true, nullptr);
     FinallyReturn(profile, false, nullptr);
+    FinallyChain(profile, nullptr);
+    for (const auto variant : {CleanupVariant::kDifferentCallee, CleanupVariant::kLateReturn,
+        CleanupVariant::kExtraCall, CleanupVariant::kWrongRethrow}) FinallyReturn(profile, false, nullptr, variant);
   }
   if (emit) std::cout << "];\n";
+  if (!emit) for (const auto count : {200U, 201U, 402U})
+    FinallyChain(abc::ProfileId::kDynamic1206, nullptr, count, CompositionStage::kCompletion);
 }
