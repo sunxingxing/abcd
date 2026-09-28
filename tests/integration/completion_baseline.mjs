@@ -117,3 +117,52 @@ for (const [index, fn] of branches.entries()) for (const choice of [0, 1]) for (
     }
   }
 }
+
+const loopSource = execFileSync(process.argv[2], ['--finally-loop'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!loopSource.includes('INCOMPLETE'));
+const {functions: loops} = await import(`data:text/javascript;base64,${Buffer.from(loopSource).toString('base64')}`);
+assert.equal(loops.length, 6);
+for (const [index, fn] of loops.entries()) for (const iterations of [0, 1, 3]) {
+  for (const getThrows of [false, true]) for (const nextFailure of [0, 1, 3]) {
+    for (const stepFailure of [0, 1, 2]) for (const cleanupThrows of [false, true]) {
+      const log = [], value = {}, getError = {}, nextError = {}, stepError = {}, cleanupError = {};
+      const states = [value, {}, {}, {}];
+      let nextCalls = 0, stepCalls = 0, returned, thrown, didThrow = false;
+      try {
+        returned = fn(function () {
+          assert.equal(this, undefined); log.push('get');
+          if (getThrows) throw getError;
+          return value;
+        }, function () {
+          assert.equal(this, undefined); log.push('cleanup');
+          if (cleanupThrows) throw cleanupError;
+        }, function () {
+          assert.equal(this, undefined); log.push(`next:${++nextCalls}`);
+          assert.ok(nextCalls <= iterations + 1);
+          if (nextCalls === nextFailure) throw nextError;
+          return nextCalls <= iterations;
+        }, function (previous) {
+          assert.equal(this, undefined); log.push(`step:${++stepCalls}`);
+          if (index % 2 === 1) assert.equal(previous, states[stepCalls - 1]);
+          if (stepCalls === stepFailure) throw stepError;
+          return states[stepCalls];
+        });
+      } catch (error) { didThrow = true; thrown = error; }
+      const expected = ['get'];
+      let failure = getThrows ? getError : null;
+      if (!failure) for (let i = 1; i <= iterations + 1; ++i) {
+        expected.push(`next:${i}`);
+        if (i === nextFailure) { failure = nextError; break; }
+        if (i > iterations) break;
+        expected.push(`step:${i}`);
+        if (i === stepFailure) { failure = stepError; break; }
+      }
+      expected.push('cleanup');
+      if (cleanupThrows) failure = cleanupError;
+      assert.deepEqual(log, expected);
+      assert.equal(didThrow, failure !== null);
+      if (didThrow) assert.equal(thrown, failure);
+      else assert.equal(returned, index % 2 === 1 ? states[iterations] : value);
+    }
+  }
+}

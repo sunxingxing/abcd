@@ -50,6 +50,7 @@ class CompletionBuilder {
         (evaluation_.aliases.empty() || evaluation_.aliases.size() == graph_.values.size()));
     quota_.Size(incoming_, control_.skeleton.nodes.size());
     quota_.Size(visited_, control_.skeleton.nodes.size());
+    quota_.Size(body_loops_, control_.skeleton.loops.size());
     quota_.Size(path_positions_, graph_.blocks.size());
     quota_.Size(peers_, graph_.values.size());
     quota_.Size(exits_, graph_.ops.size());
@@ -156,11 +157,24 @@ class CompletionBuilder {
       quota_.Work(); const auto task = pending.back(); pending.pop_back();
       const auto id = task.entry;
       Require(id.value < control_.skeleton.nodes.size());
-      if (id.value >= control_.units.size()) return false;
       if (visited_[id.value] == stamp_) continue;
       visited_[id.value] = stamp_;
       const auto& node = control_.skeleton.nodes[id.value];
-      if (!std::holds_alternative<std::monostate>(node.synthetic)) return false;
+      if (const auto* wrapper = std::get_if<LoopControl>(&node.synthetic)) {
+        const auto& loop = control_.skeleton.loops[wrapper->loop.value];
+        body_loops_[wrapper->loop.value] = stamp_;
+        // This loop is wholly in the protected body. Its transfers are already
+        // checked against the common loop forest; completion only asks whether
+        // their destination stays inside this try, not how to rediscover loops.
+        if (node.next) Append(pending, Task{*node.next, task.stop});
+        Append(pending, Task{loop.body, {}});
+        continue;
+      }
+      if (const auto* transfer = std::get_if<LoopTransfer>(&node.synthetic)) {
+        if (body_loops_[transfer->loop.value] != stamp_) return false;
+        continue;
+      }
+      if (id.value >= control_.units.size()) return false;
       if (const auto* port = std::get_if<TryExitUnit>(&control_.units[id.value])) {
         if (port->region != region || node.next) return false;
         continue;
@@ -257,7 +271,7 @@ class CompletionBuilder {
   const EvaluationPlan& evaluation_;
   ControlQuota& quota_;
   std::size_t stamp_ = 0;
-  std::vector<std::size_t> incoming_, visited_;
+  std::vector<std::size_t> incoming_, visited_, body_loops_;
   std::vector<Position> path_positions_;
   std::vector<Peer> peers_;
   std::vector<std::optional<ValueOperand>> canonical_;

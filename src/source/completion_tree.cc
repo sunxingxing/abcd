@@ -80,6 +80,52 @@ bool Tail(const std::vector<StmtId>& children, std::size_t first,
          children.back() == exit &&
          std::equal(cleanup.begin(), cleanup.end(), children.begin() + first);
 }
+bool SnapshotCopies(std::span<const StmtId> copies,
+                    const FinalizerRegion& region, const TreeFlow& flow,
+                    const FunctionTree& tree, std::vector<std::size_t>& writes,
+                    TreeCheckBudget& budget) {
+  const auto stamp = std::size_t(region.region.value) + 1;
+  for (const auto& pair : region.cleanup) {
+    budget.Step();
+    if (const auto target = flow.snapshots[pair.normal.value])
+      writes[target->value] = stamp;
+  }
+  const auto private_symbol = [&](SymbolId id) {
+    const auto& symbol = tree.symbols[id.value];
+    return symbol.kind == BindingKind::kCompilerTemporary &&
+           symbol.scope == tree.body_scope &&
+           symbol.declaration == DeclarationKind::kLet;
+  };
+  for (const auto id : copies) {
+    budget.Step();
+    const auto* statement =
+        std::get_if<ExpressionStmt>(&tree.statements[id.value].statement);
+    if (!statement) return false;
+    const auto* assignment = std::get_if<AssignmentExpr>(
+        &tree.expressions[statement->expression.value].expression);
+    if (!assignment) return false;
+    const auto* target = std::get_if<SymbolTarget>(&assignment->target);
+    if (!target || !private_symbol(target->symbol)) return false;
+    const auto reason = tree.symbols[target->symbol.value].temporary;
+    // Only single-definition snapshots, not mutable join/staging slots. Fresh
+    // operand checks still prove their exact input SSA identity and dominance.
+    if (!reason || reason == TemporaryReason::kPhiJoin ||
+        reason == TemporaryReason::kParallelCopyCycle ||
+        reason == TemporaryReason::kExceptionSnapshot ||
+        writes[target->symbol.value] == stamp)
+      return false;
+    const auto& value = tree.expressions[assignment->value.value].expression;
+    if (const auto* source = std::get_if<SymbolExpr>(&value)) {
+      if ((!private_symbol(source->symbol) &&
+           tree.symbols[source->symbol.value].kind !=
+               BindingKind::kParameter) ||
+          writes[source->symbol.value] == stamp)
+        return false;
+    } else if (!std::holds_alternative<TreeLiteral>(value))
+      return false;
+  }
+  return true;
+}
 }  // namespace
 
 void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
@@ -89,6 +135,8 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
   const auto before = Children(tree, budget);
   auto lists = Children(tree, budget);
   const auto positions = Positions(before, budget);
+  std::vector<std::size_t> cleanup_writes;
+  budget.Array(cleanup_writes, tree.symbols.size());
   // Reserve before taking views: moving an SSO string invalidates its view.
   // Monotone suffixes keep generated names unique; only input names need an
   // index. Sorted lookup has no attacker-controlled hash collision behavior.
@@ -143,10 +191,21 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
     const auto location = *positions[original->value];
     const auto normal = Roots(region, flow, false, budget);
     const auto exceptional = Roots(region, flow, true, budget);
+    const auto& following = lists[location.block.value];
+    const auto cleanup_end = location.index + 1 + normal.size();
     if (normal.empty() || exceptional.empty() ||
-        !Tail(lists[location.block.value], location.index + 1, normal,
-              *returning))
+        cleanup_end >= following.size() || following.back() != *returning ||
+        !std::equal(normal.begin(), normal.end(),
+                    following.begin() + location.index + 1))
       continue;
+    const auto copies = std::span<const StmtId>(following).subspan(
+        cleanup_end, following.size() - cleanup_end - 1);
+    if (!SnapshotCopies(copies, region, flow, tree, cleanup_writes, budget))
+      continue;
+    std::vector<StmtId> protected_children{*original};
+    protected_children.insert(protected_children.end(), copies.begin(),
+                              copies.end());
+    protected_children.push_back(*returning);
     const auto& caught = lists[handler.value];
     if (caught.size() < exceptional.size() + 1) continue;
     const auto prefix = caught.size() - exceptional.size() - 1;
@@ -162,7 +221,8 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
       continue;
     const auto origin = tree.statements[original->value].origin;
     const auto enclosure = block(scope(location.block), origin, {});
-    const auto body = block(scope(enclosure), origin, {*original, *returning});
+    const auto body =
+        block(scope(enclosure), origin, std::move(protected_children));
     const auto finalizer = block(scope(enclosure), origin, {});
     const auto normal_body = block(scope(finalizer), origin, normal);
     const auto exceptional_body = block(scope(finalizer), origin, exceptional);
@@ -290,9 +350,9 @@ CompletionTreeView::CompletionTreeView(const FunctionTree& tree,
             symbol.declaration == DeclarationKind::kLet &&
             symbol.temporary == TemporaryReason::kPendingCompletion);
     const auto body_scope = block(outer->body).scope;
-    Require(lists[outer->body.value].size() == 2);
+    Require(lists[outer->body.value].size() >= 2);
     const auto inner_id = lists[outer->body.value][0];
-    const auto return_id = lists[outer->body.value][1];
+    const auto return_id = lists[outer->body.value].back();
     const auto* inner =
         std::get_if<TryStmt>(&tree.statements[inner_id.value].statement);
     const auto* returning =
@@ -348,6 +408,8 @@ CompletionTreeView::CompletionTreeView(const FunctionTree& tree,
     parent.push_back(inner_id);
     parent.insert(parent.end(), lists[normal.value].begin(),
                   lists[normal.value].end());
+    parent.insert(parent.end(), lists[outer->body.value].begin() + 1,
+                  lists[outer->body.value].end() - 1);
     parent.push_back(return_id);
     auto& caught = lists[handler.value];
     caught.resize(caught.size() - 2);
@@ -359,7 +421,7 @@ CompletionTreeView::CompletionTreeView(const FunctionTree& tree,
     expressions_.insert(expressions_.end(),
                         {*declaration->initializer, assignment->value,
                          pending->expression, route->condition});
-    corridors_.push_back({region, normal, exceptional});
+    corridors_.push_back({region, normal, exceptional, outer->body});
     for (const auto id :
          {enclosure, outer->body, finalizer, normal, exceptional})
       lists[id.value].clear();
@@ -396,7 +458,16 @@ ScopeId CompletionTreeView::TryParent(StmtId id, ScopeId parent) const {
   return parents_.empty() ? parent : parents_[id.value].value_or(parent);
 }
 void CompletionTreeView::Finish(TreeFlow& flow, TreeCheckBudget& budget) const {
+  std::vector<std::size_t> cleanup_writes;
+  if (!corridors_.empty()) budget.Array(cleanup_writes, tree_.symbols.size());
   for (const auto& corridor : corridors_) {
+    const auto& body =
+        std::get<BlockStmt>(tree_.statements[corridor.body.value].statement);
+    const auto copies =
+        std::span<const StmtId>(tree_.children)
+            .subspan(body.first_child + 1, body.child_count - 2);
+    Require(SnapshotCopies(copies, *corridor.plan, flow, tree_, cleanup_writes,
+                           budget));
     for (const auto exceptional : {false, true}) {
       const auto roots = Roots(*corridor.plan, flow, exceptional, budget);
       const auto block_id =

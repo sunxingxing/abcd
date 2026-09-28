@@ -3,6 +3,7 @@
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/tree_flow.h"
 #include "../../../src/source/tree_semantics.h"
+#include "../../../src/source/tree_structure.h"
 #include "analysis/ssa_fixture.h"
 #include "abcd/analysis/exception_locals.h"
 
@@ -130,7 +131,7 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     return; // Algorithm boundary test, explicitly not source acceptance.
   }
   if (staging) test::Check(evaluation.exceptions && !evaluation.exceptions->slots.empty());
-  else if (!evaluation.cells && expected_loops == 1) {
+  else if (!evaluation.cells && expected_loops == 1 && !expect_finalizer) {
     test::Check(evaluation.phis.has_value());
     bool empty_schedule = false;
     for (const auto& bundle : evaluation.phis->bundles)
@@ -184,6 +185,18 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     changed.finalizers.front().enclosure = StmtId{static_cast<std::uint32_t>(tree.statements.size())};
     reject(changed);
     const auto outer = std::get<TryStmt>(tree.statements[tree.children[block.first_child + 1].value].statement);
+    const auto protected_body = std::get<BlockStmt>(tree.statements[outer.body.value].statement);
+    if (protected_body.child_count > 2) {
+      changed = tree;
+      const auto copy_id = tree.children[protected_body.first_child + 1];
+      const auto copy = std::get<ExpressionStmt>(tree.statements[copy_id.value].statement);
+      const auto rhs = std::get<AssignmentExpr>(tree.expressions[copy.expression.value].expression).value;
+      const ExprId callee{static_cast<std::uint32_t>(changed.expressions.size())};
+      changed.expressions.push_back(changed.expressions[rhs.value]);
+      changed.expressions[rhs.value].expression = CallExpr{callee, {0, 0}, CallReference::kValue};
+      test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(changed)));
+      reject(changed); // A potentially throwing expression is not a movable SSA snapshot.
+    }
     const auto finalizer = std::get<BlockStmt>(tree.statements[outer.finalizer->value].statement);
     const auto route_id = tree.children[finalizer.first_child];
     changed = tree;
@@ -489,6 +502,41 @@ void FinallyChain(abc::ProfileId profile, std::ostream* output, std::uint32_t co
   Emit(body, profile, 2, 3, false, output, {}, 0, true, ExpectedCompletion{1, count}, stage);
 }
 enum class ProtectedBranch { kSingle, kNested, kEarlyReturn };
+void FinallyLoop(abc::ProfileId profile, std::ostream* output, bool carried = false) {
+  // try { const pending = get(); while (next()) step(); return pending; }
+  // finally { cleanup(); } lowered into normal/exception cleanup corridors.
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+  constexpr unsigned kByteBits = 8;
+  std::vector<std::uint8_t> bytes = {
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 8,
+      op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-10),
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kRETURN),
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)};
+  if (carried) {
+    // x = step(x) feeds the loop phi. The final pending return is the last
+    // successful value, not the initial get() result or a failed call result.
+    bytes[14] = op(abc::Opcode::kCALLARG1_IMM8_V8);
+    bytes.insert(bytes.begin() + 16, {0, op(abc::Opcode::kSTA_V8), 0});
+    bytes[11] = 11;
+    bytes[20] = static_cast<std::uint8_t>(-13);
+  }
+  auto body = test::Body(bytes);
+  const std::uint32_t prefix = carried ? 3 : 0;
+  abc::TryRegion region; region.offset = {0}; region.length = 18 + prefix; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {25 + prefix}; handler.length = 10;
+  body.tries = {region}; body.handlers = {handler};
+  Emit(body, profile, 1, 4, false, output, {}, 1, true,
+      carried ? std::optional<ExpectedCompletion>{} : std::optional{ExpectedCompletion{1, 1}});
+}
 void FinallyBranch(abc::ProfileId profile, std::ostream* output,
     ProtectedBranch shape = ProtectedBranch::kSingle) {
   // get's value remains pending while an optional protected call executes.
@@ -531,6 +579,15 @@ void FinallyBranch(abc::ProfileId profile, std::ostream* output,
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--finally-loop") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) {
+      FinallyLoop(profile, &std::cout);
+      FinallyLoop(profile, &std::cout, true);
+    }
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--finally-branch") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -616,6 +673,8 @@ int main(int argc, char** argv) {
     FinallyBranch(profile, nullptr);
     FinallyBranch(profile, nullptr, ProtectedBranch::kNested);
     FinallyBranch(profile, nullptr, ProtectedBranch::kEarlyReturn);
+    FinallyLoop(profile, nullptr);
+    FinallyLoop(profile, nullptr, true);
     for (const auto variant : {CleanupVariant::kDifferentCallee, CleanupVariant::kLateReturn,
         CleanupVariant::kExtraCall, CleanupVariant::kWrongRethrow}) FinallyReturn(profile, false, nullptr, variant);
   }

@@ -36,7 +36,7 @@ class CompletionTreeView {
  private:
   struct Corridor {
     const FinalizerRegion* plan;
-    StmtId normal, exceptional;
+    StmtId normal, exceptional, body;
   };
   const FunctionTree& tree_;
   std::vector<BlockStmt> blocks_;

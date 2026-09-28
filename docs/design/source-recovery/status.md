@@ -51,6 +51,20 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 已接入 protected body 内的循环及循环携带返回值：直接消费共同
+  LoopControl/LoopTransfer，允许目标仍在本保护域内的跳转，不新增循环发现算法；
+  指向域外循环的 transfer 仍不作为普通 completion 合并。三个 profiles 各有
+  普通循环和 `x = step(x)` phi 携带值的真实 opcode fixture，均输出完整 finalizer。
+  phi 返回值曾因 cleanup 后的 SSA 快照阻止树变换；现在只允许无副作用的私有
+  单定义快照移到 pending return 前，拒绝读取 cleanup 结果、可变 join/staging
+  写入及调用/getter。对应序列投影仍核对原操作、边复制和 PC，未新增发布门禁。
+  执行对照覆盖零次/一次/多次迭代、step 参数与最后成功值、get/next/step/cleanup
+  抛错和覆盖、cleanup 恰好一次；把快照改成调用的结构合法反例被 TreeFlow 拒绝。
+  定向构建成功，相关 **15/15** 测试通过，日志
+  `/tmp/abcd-finalizer-loop-final-build.log`、`/tmp/abcd-finalizer-loop-final-tests.log`。
+  原 RED 为 `completion candidates 0`，carried 用例还曾是 finalizer 数量 0，
+  调试证据见 `/tmp/abcd-finalizer-loop-debug.log`。**不等于跨保护域 break/continue、
+  嵌套 finally 或通用 C05 完成**；未恢复全量语料、RSS、基准。
 - C05 已进一步贯通 protected body 中的单层/嵌套 if 汇合：completion 遍历
   现在消费共同 RegionPlan 的 enclosing continuation，识别分支末尾的隐式
   join，不再误判为无后继。没有增加图算法或按 PC 邻接猜边。
