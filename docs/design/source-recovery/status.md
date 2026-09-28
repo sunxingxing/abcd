@@ -51,6 +51,14 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C04 纯转发写入已增加纵向行为证据：在 `e77e2f2` 的共同通路上，getter 与
+  setter 两条独立中间链均不直接读写 cell；孙级 writer 只写祖先槽，另一孙级
+  reader 读取同一迭代的槽。另测 writer 先写再 throw、中间 catch 返回后写入仍可见。
+  无需新增生产特例。3 profiles × 3 父环境的矩阵从 54 扩展到 **72 组**；重建
+  `loop_closure_file_test`，精确 CTest `^loop_closure_(file|source)_test$` **2/2 通过**。
+  新增孙级 writer 写 Hole 的拒绝反例。此项补齐下面所列“纯转发写入中间链”缺口，
+  不代表更深组合、C04 外层退出/多出口或完整计划完成。
+
 - C04 纯环境转发已贯通真实文件函数族 → 共同 FunctionTree/printer：完整发现后，
   `PlanFamilyCells` 按 occurrence 逆序传播后代入口槽需求，按真实创建点环境重定位；
   每个成员一次合并 cell 存储，再正序重新绑定初始化/捕获。默认参数残余投影后重做
@@ -68,7 +76,7 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   CTest 选择 **10/10 通过**。保留 missing-cell、未初始化、Hole 写入、缺需求及根部
   未绑定反例；cell 规划既有 0/1/2/200/201 槽检查通过。此证据是合成 metadata 的
   真实 Code 解码和标准 JS 行为，不是整份 ABC parser/真实应用/全量/RSS 验收。
-  纯转发写入中间链、更深组合及 C04 外层退出/多出口仍需推进；未恢复 DFX。
+  更深组合及 C04 外层退出/多出口仍需推进；未恢复 DFX。
 
 - C04 嵌套异常函数族：修复 phased 文件输入没有向 `ProveExceptionLocals` 传递
   已有 Language 闭包写入条件，导致创建孙函数后的本地 cell 读取一律拒绝的问题。
