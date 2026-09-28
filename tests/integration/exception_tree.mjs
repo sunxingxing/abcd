@@ -34,9 +34,40 @@ for (let index = 0; index < functions.length; ++index) {
 }
 const regionSource = execFileSync(process.argv[3], ['--emit'], { encoding: 'utf8' });
 const { regions } = await import(`data:text/javascript;base64,${Buffer.from(regionSource).toString('base64')}`);
-assert.equal(regions.length, 9);
-for (let index = 0; index < regions.length; index += 3) {
-  const nested = regions[index + 2];
+assert.equal(regions.length, 18);
+assert.ok(!regionSource.includes('INCOMPLETE'));
+for (let index = 0; index < regions.length; index += 6) {
+  const nested = regions[index + 5];
+  const retry = regions[index + 4];
+  for (const rounds of [1, 2, 5]) {
+    let attempts = 0;
+    const result = {};
+    assert.equal(retry({ get field() { if (++attempts < rounds) throw {}; return result; } }), result);
+    assert.equal(attempts, rounds);
+  }
+  const handlerLoop = regions[index + 3];
+  for (const rounds of [1, 2, 5]) {
+    let reads = 0;
+    assert.equal(handlerLoop({ get field() {
+      if (++reads === 1) throw {};
+      return reads > rounds;
+    } }), true);
+    assert.equal(reads, rounds + 1);
+  }
+  const thrown = {};
+  let reads = 0;
+  assert.throws(() => handlerLoop({ get field() { ++reads; throw thrown; } }), e => e === thrown);
+  assert.equal(reads, 2);
+  assert.equal(handlerLoop({ field: 7 }), 7);
+  const loop = regions[index + 2];
+  for (const rounds of [1, 2, 5]) {
+    let reads = 0;
+    assert.equal(loop({ get field() { return ++reads === rounds; } }), true);
+    assert.equal(reads, rounds);
+    reads = 0;
+    assert.equal(loop({ get field() { if (++reads === rounds) throw {}; return false; } }), undefined);
+    assert.equal(reads, rounds);
+  }
   for (const branch of [regions[index], regions[index + 1]]) {
     assert.equal(branch({ field: 0 }), false);
     assert.equal(branch({ field: 1 }), true);

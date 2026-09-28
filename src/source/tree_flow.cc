@@ -38,7 +38,9 @@ class FlowCheck {
     if (exceptions) {
       budget.Array(flow_.catch_parameters, graph.values.size());
       budget.Array(flow_.tries, exceptions->regions.regions.size());
-    } else budget.Array(flow_.controls, control.nodes.size() - graph.blocks.size());
+    }
+    budget.Array(flow_.controls, control.nodes.size() -
+        (exceptions ? exceptions->control.units.size() : graph.blocks.size()));
     edges_.emplace(graph, evaluation, tree, flow_, declared_, assigned_, budget);
   }
   TreeFlow Run() {
@@ -61,7 +63,7 @@ class FlowCheck {
       while (cursor) {
         budget_.Step();
         const auto& node = control_.nodes[cursor->value];
-        if (exceptions_) {
+        if (exceptions_ && std::holds_alternative<std::monostate>(node.synthetic)) {
           const auto& unit = exceptions_->control.units[cursor->value];
           if (const auto* region = std::get_if<TryControlUnit>(&unit)) {
             Try(region->region, block, child, pending);
@@ -355,13 +357,16 @@ class FlowCheck {
     const auto statement = tree_.children[block.first_child + child++];
     const auto& syntax = tree_.statements[statement.value];
     const auto& node = control_.nodes[id.value];
-    Require(id.value >= graph_.blocks.size(), Error::kControl);
-    flow_.controls[id.value - graph_.blocks.size()] = syntax.origin;
+    const auto first = exceptions_ ? exceptions_->control.units.size() : graph_.blocks.size();
+    Require(id.value >= first && id.value - first < flow_.controls.size(), Error::kControl);
+    flow_.controls[id.value - first] = syntax.origin;
     if (const auto* wrapper = std::get_if<LoopControl>(&node.synthetic)) {
       const auto& loop = control_.loops[wrapper->loop.value];
       const auto* body = std::get_if<LoopStmt>(&syntax.statement);
       const auto* origin = std::get_if<LoopOrigin>(&tree_.origins[syntax.origin.value]);
-      Require(body && origin && origin->header == loop.header &&
+      const auto header = exceptions_ ? ExceptionNodeBlock(*exceptions_, {loop.header.value}) :
+          std::optional<analysis::WorkBlockId>{loop.header};
+      Require(body && origin && header && origin->header == *header &&
           tree_.statements[body->body.value].origin == syntax.origin &&
           !loops_[wrapper->loop.value], Error::kControl);
       loops_[wrapper->loop.value] = statement;
@@ -386,11 +391,22 @@ class FlowCheck {
     }
     const auto& origin = tree_.origins[syntax.origin.value];
     if (const auto* edge = std::get_if<analysis::EdgeId>(&transfer.source)) {
-      const auto* source = std::get_if<EdgeOrigin>(&origin);
-      Require(source && source->edge == *edge, Error::kPlacement);
+      const auto expected = exceptions_ ? ExceptionArcOrigin(*exceptions_, {edge->value}) :
+          std::optional<TreeOrigin>{EdgeOrigin{*edge}};
+      Require(expected.has_value(), Error::kPlacement);
+      if (const auto* original = std::get_if<EdgeOrigin>(&*expected)) {
+        const auto* source = std::get_if<EdgeOrigin>(&origin);
+        Require(source && source->edge == original->edge, Error::kPlacement);
+      } else {
+        const auto* source = std::get_if<TryOrigin>(&origin);
+        Require(source && source->region == std::get<TryOrigin>(*expected).region, Error::kPlacement);
+      }
     } else {
       const auto* source = std::get_if<LoopOrigin>(&origin);
-      Require(source && source->header == control_.loops[std::get<LoopId>(transfer.source).value].header,
+      const auto projected = control_.loops[std::get<LoopId>(transfer.source).value].header;
+      const auto header = exceptions_ ? ExceptionNodeBlock(*exceptions_, {projected.value}) :
+          std::optional<analysis::WorkBlockId>{projected};
+      Require(source && header && source->header == *header,
           Error::kPlacement);
     }
   }
@@ -401,7 +417,7 @@ class FlowCheck {
     while (cursor) {
       budget_.Step();
       const auto& node = control_.nodes[cursor->value];
-      if (exceptions_) {
+      if (exceptions_ && std::holds_alternative<std::monostate>(node.synthetic)) {
         const auto& unit = exceptions_->control.units[cursor->value];
         if (const auto* region = std::get_if<TryControlUnit>(&unit)) {
           cursor = exceptions_->control.regions[region->region.value].body;

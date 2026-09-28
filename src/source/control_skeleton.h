@@ -37,5 +37,7 @@ void VerifyControlSkeleton(ControlGraphView graph, std::span<const ControlId> en
 [[nodiscard]] ControlPlan BuildLoopControl(const analysis::ValueProgram& graph, ControlQuota& quota);
 [[nodiscard]] ControlPlan BuildLoopControl(ControlGraphView graph,
     std::span<const ControlNodeId> entries, ControlQuota& quota);
+void VerifyControlRegions(ControlGraphView graph, std::span<const ControlNodeId> entries,
+    const ControlPlan& plan, ControlQuota& quota);
 }  // namespace abcd::source
 #endif

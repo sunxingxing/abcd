@@ -150,9 +150,9 @@ class TreeBuilder {
       while (next) {
         Step();
         const auto& region = control_.nodes[next->value];
-        if (exceptions_) EmitExceptionUnit(*next, task.draft);
-        else if (std::holds_alternative<std::monostate>(region.synthetic)) EmitBlock(region, task.draft);
-        else EmitLoop(region, task.draft);
+        if (!std::holds_alternative<std::monostate>(region.synthetic)) EmitLoop(region, task.draft);
+        else if (exceptions_) EmitExceptionUnit(*next, task.draft);
+        else EmitBlock(region, task.draft);
         next = region.next;
       }
     }
@@ -500,7 +500,7 @@ class TreeBuilder {
     while (cursor) {
       Step();
       const auto& node = control_.nodes[cursor->value];
-      if (exceptions_) {
+      if (exceptions_ && std::holds_alternative<std::monostate>(node.synthetic)) {
         const auto& unit = exceptions_->control.units[cursor->value];
         if (const auto* region = std::get_if<TryControlUnit>(&unit)) {
           cursor = exceptions_->control.regions[region->region.value].body;
@@ -763,7 +763,10 @@ class TreeBuilder {
     Require(tree_.origins.size() < tree_.origins.capacity(), Error::kResourceLimit);
     if (const auto* wrapper = std::get_if<LoopControl>(&region.synthetic)) {
       const auto& loop = control_.loops[wrapper->loop.value];
-      tree_.origins.emplace_back(LoopOrigin{loop.header});
+      const auto header = exceptions_ ? ExceptionNodeBlock(*exceptions_, {loop.header.value}) :
+          std::optional<analysis::WorkBlockId>{loop.header};
+      Require(header.has_value(), Error::kOrigin);
+      tree_.origins.emplace_back(LoopOrigin{*header});
       const ScopeId scope{static_cast<std::uint32_t>(tree_.scopes.size())};
       tree_.scopes.push_back({ScopeKind::kBlock, drafts_[draft].scope});
       const auto body = Block(scope, origin);
@@ -776,9 +779,18 @@ class TreeBuilder {
     }
     const auto& transfer = std::get<LoopTransfer>(region.synthetic);
     Require(loops_[transfer.loop.value].has_value(), Error::kControl);
-    if (const auto* edge = std::get_if<analysis::EdgeId>(&transfer.source))
-      tree_.origins.emplace_back(EdgeOrigin{*edge});
-    else tree_.origins.emplace_back(LoopOrigin{control_.loops[std::get<LoopId>(transfer.source).value].header});
+    if (const auto* edge = std::get_if<analysis::EdgeId>(&transfer.source)) {
+      const auto source = exceptions_ ? ExceptionArcOrigin(*exceptions_, {edge->value}) :
+          std::optional<TreeOrigin>{EdgeOrigin{*edge}};
+      Require(source.has_value(), Error::kOrigin);
+      tree_.origins.push_back(*source);
+    } else {
+      const auto projected = control_.loops[std::get<LoopId>(transfer.source).value].header;
+      const auto header = exceptions_ ? ExceptionNodeBlock(*exceptions_, {projected.value}) :
+          std::optional<analysis::WorkBlockId>{projected};
+      Require(header.has_value(), Error::kOrigin);
+      tree_.origins.emplace_back(LoopOrigin{*header});
+    }
     const auto target = *loops_[transfer.loop.value];
     switch (transfer.kind) {
       case LoopTransferKind::kBreak: Append(draft, Statement(BreakStmt{target}, origin)); break;

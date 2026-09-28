@@ -23,7 +23,7 @@ void Control(const abc::MethodBody& body, const ValueProgram& graph,
   test::Check(std::holds_alternative<ExceptionControl>(built));
   const auto& control = std::get<ExceptionControl>(built);
   test::Check(control.regions.size() == regions.regions.size());
-  test::Check(control.units.size() == control.skeleton.nodes.size());
+  test::Check(control.units.size() <= control.skeleton.nodes.size());
   test::Check(control.arcs.size() == control.skeleton.edges.size());
   for (std::size_t r = 0; r < control.regions.size(); ++r) {
     const auto& region = control.regions[r];
@@ -55,7 +55,7 @@ void Control(const abc::MethodBody& body, const ValueProgram& graph,
   test::Check(std::holds_alternative<ExceptionControlError>(
       VerifyExceptionControl(body, graph, input, regions, changed)));
   changed = control;
-  changed.regions.front().exit = regions.regions.front().body;
+  changed.regions.front().exit = WorkBlockId{static_cast<std::uint32_t>(graph.blocks.size())};
   test::Check(std::holds_alternative<ExceptionControlError>(
       VerifyExceptionControl(body, graph, input, regions, changed)));
   changed = control;
@@ -280,7 +280,8 @@ void OldLocal(abc::ProfileId profile, bool normal_handler_entry) {
   test::Check(std::holds_alternative<std::uint64_t>(VerifyExceptionPlan(body, graph, input, plan)));
 }
 void DecodedControl(const abc::MethodBody& body, abc::ProfileId profile,
-                    std::optional<ExceptionControlError> expected = {}, std::ostream* output = nullptr) {
+                    std::optional<ExceptionControlError> expected = {}, std::ostream* output = nullptr,
+                    std::optional<std::uint32_t> backedge_pc = {}) {
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers, {}, {}, &frame));
   IdfQuota quota{kDefaultSemanticWork};
@@ -316,6 +317,22 @@ void DecodedControl(const abc::MethodBody& body, abc::ProfileId profile,
       std::cerr << "control draft error " << static_cast<unsigned>(*error) << '\n';
     test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
     const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
+    if (backedge_pc) {
+      bool saw_continue = false;
+      for (const auto& statement : tree.statements) {
+        if (!std::holds_alternative<ContinueStmt>(statement.statement)) continue;
+        saw_continue = true;
+        const auto edge = std::get<EdgeOrigin>(tree.origins[statement.origin.value]).edge;
+        test::Check(edge.value < graph.edges.size());
+        // The backedge leaves the Commit phase of the original JMP, not the
+        // numerically equal projected arc after exception edges were removed.
+        const auto phase = graph.phases[graph.edges[edge.value].source.value];
+        test::Check(phase.phase == ExceptionPhase::kCommit);
+        test::Check(phase.operation.has_value());
+        test::Check(graph.origins[graph.ops[phase.operation->value].origin.value].pc.value == *backedge_pc);
+      }
+      test::Check(saw_continue);
+    }
     const auto checked_tree = VerifyExceptionTreeFlow(graph, context, evaluation, tree);
     if (const auto* error = std::get_if<TreeFlowError>(&checked_tree))
       std::cerr << "exception region flow error " << static_cast<unsigned>(*error) << '\n';
@@ -420,10 +437,27 @@ void BranchJoin(abc::ProfileId profile, std::ostream* output = nullptr) {
   }
   body.tries[0].length = 16;
   constexpr std::size_t kBackedgeOperand = 13;
-  constexpr std::int8_t kBackedgeToPredicate = -6;
+  constexpr std::int8_t kBackedgeToPredicate = -12;
   bytes[kBackedgeOperand] = static_cast<std::uint8_t>(kBackedgeToPredicate);
   body.instructions = test::Body(bytes).instructions;
-  DecodedControl(body, profile, ExceptionControlError::kCycle);
+  DecodedControl(body, profile, {}, output, 12);
+}
+void HandlerLoop(abc::ProfileId profile, std::ostream* output = nullptr) {
+  // First getter is protected; later reads in the handler's loop are not.
+  const std::vector<std::uint8_t> bytes = {
+      static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0,
+      static_cast<std::uint8_t>(abc::Opcode::kRETURN),
+      static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0,
+      static_cast<std::uint8_t>(abc::Opcode::kJEQZ_IMM8), 3,
+      static_cast<std::uint8_t>(abc::Opcode::kRETURN),
+      static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-9)};
+  auto body = test::Body(bytes);
+  abc::TryRegion region; region.length = 6; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {7}; handler.length = 11;
+  body.tries = {region}; body.handlers = {handler};
+  DecodedControl(body, profile, {}, output, 16);
 }
 void HandlerNestedTry(abc::ProfileId profile, std::ostream* output = nullptr) {
   const std::vector<std::uint8_t> bytes = {
@@ -439,6 +473,18 @@ void HandlerNestedTry(abc::ProfileId profile, std::ostream* output = nullptr) {
   body.handlers = {first, second};
   DecodedControl(body, profile, {}, output);
 }
+void RetryTry(abc::ProfileId profile, std::ostream* output = nullptr) {
+  const std::vector<std::uint8_t> bytes = {
+      static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0,
+      static_cast<std::uint8_t>(abc::Opcode::kRETURN),
+      static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-7)};
+  auto body = test::Body(bytes);
+  abc::TryRegion region; region.length = 7; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {7}; handler.length = 2;
+  body.tries = {region}; body.handlers = {handler};
+  DecodedControl(body, profile, {}, output);
+}
 }  // namespace
 int main(int argc, char** argv) {
   const bool emit = argc == 2 && std::string_view(argv[1]) == "--emit";
@@ -449,6 +495,8 @@ int main(int argc, char** argv) {
     OldLocal(profile, false);
     OldLocal(profile, true);
     BranchJoin(profile, emit ? &std::cout : nullptr);
+    HandlerLoop(profile, emit ? &std::cout : nullptr);
+    RetryTry(profile, emit ? &std::cout : nullptr);
     HandlerNestedTry(profile, emit ? &std::cout : nullptr);
   }
   for (const std::uint32_t depth : {200U, 201U, 402U})

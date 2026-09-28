@@ -33,8 +33,9 @@ struct TryControlRegion {
   bool operator==(const TryControlRegion&) const = default;
 };
 struct ExceptionControl {
-  // IDs in this skeleton address units, not ValueProgram blocks/edges. No
-  // ValueProgram is fabricated: original phases/dispatch stay in graph/plan.
+  // The skeleton's original-node prefix addresses units, not ValueProgram
+  // blocks; loop wrappers/transfers follow that prefix. Its original arcs map
+  // through arcs. No ValueProgram is fabricated: phases/dispatch stay intact.
   ControlPlan skeleton;
   std::vector<ExceptionControlUnit> units;
   std::vector<ControlArc> arcs;
@@ -49,12 +50,13 @@ enum class ExceptionControlError : std::uint8_t {
   kInput, kRevision, kRegion, kCrossEntry, kMultipleExits, kCycle, kStructure,
   kWorkLimit, kResourceLimit
 };
-// Reuses common acyclic postdominator/region discovery. A single normal exit
+// Reuses common postdominator/region and natural-loop discovery. A single normal exit
 // target per try is required after effect-free exit-corridor ownership is
 // projected; returns/throws need no synthetic normal exit. Jump corridors keep
 // original blocks, edge copies and PC anchors; semantic catch scopes never move.
-// Projected cycles and more general completion transfers remain explicit
-// refusals until integrated with loop/completion lowering. Not source proof.
+// Reducible projected loops use the same wrappers/transfers as normal control;
+// irreducible regions and more general completion transfers remain typed refusals.
+// Not source proof.
 [[nodiscard]] std::variant<ExceptionControl, ExceptionControlError> BuildExceptionControl(
     const abc::MethodBody& body, const analysis::ValueProgram& graph,
     const analysis::PhasedValueInput& input, const ExceptionPlan& regions,

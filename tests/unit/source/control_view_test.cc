@@ -38,6 +38,7 @@ void DisjointLoopEntries() {
   Check(!forest.backedges[0] && !forest.backedges[1] && forest.backedges[2] && forest.backedges[3]);
   ControlQuota quota{{}};
   const auto plan = BuildLoopControl(view, entries, quota);
+  VerifyControlRegions(view, entries, plan, quota);
   Check(plan.view == ControlViewKind::kProjection && plan.loops.size() == 2);
   Check(plan.edges.size() == arcs.size());
   for (const auto& loop : plan.loops) {

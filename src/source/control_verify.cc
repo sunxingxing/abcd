@@ -18,13 +18,20 @@ using Targets = std::array<std::optional<ControlId>, analysis::kMaxNormalSuccess
 
 class ControlCheck {
  public:
-  ControlCheck(const analysis::ValueProgram& graph, const ControlPlan& plan, ControlQuota& quota)
-      : graph_(graph), plan_(plan), quota_(quota) {}
+  ControlCheck(ControlGraphView graph, std::span<const ControlNodeId> entries,
+      const ControlPlan& plan, ControlQuota& quota)
+      : graph_(graph), entries_(entries), plan_(plan), quota_(quota) {}
   void Run() {
     Index();
-    Require(!std::holds_alternative<LoopTransfer>(plan_.nodes[plan_.entry.value].synthetic) &&
-        ConcreteEntry(plan_.entry).value == 0, Error::kInvalidGraph);
-    Push({plan_.entry, {}, {}});
+    Require(!entries_.empty(), Error::kInvalidGraph);
+    for (std::size_t i = 0; i < entries_.size(); ++i) {
+      const auto entry = entries_[i];
+      Require(entry.value < graph_.NodeCount(), Error::kInvalidGraph);
+      const auto loop = headers_[entry.value];
+      const auto root = loop ? plan_.loops[loop->value].wrapper : ControlId{entry.value};
+      Require(i != 0 || plan_.entry == root, Error::kInvalidGraph);
+      Push({root, {}, {}});
+    }
     std::size_t covered = 0;
     while (pending_ != 0) {
       quota_.Work();
@@ -82,16 +89,17 @@ class ControlCheck {
   }
  private:
   void Index() {
-    Require(plan_.revision == graph_.revision && plan_.cfg_revision == graph_.cfg_revision, Error::kRevision);
-    const auto blocks = graph_.blocks.size();
+    Require(plan_.revision == graph_.Revision() && plan_.cfg_revision == graph_.CfgRevision(), Error::kRevision);
+    Require(plan_.view == graph_.Kind(), Error::kInvalidGraph);
+    const auto blocks = graph_.NodeCount();
     constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
-    Require(blocks != 0 && blocks < kMaxId && graph_.edges.size() < kMaxId &&
-        graph_.edges.size() <= std::numeric_limits<std::size_t>::max() - plan_.loops.size() &&
+    Require(blocks != 0 && blocks < kMaxId && graph_.ArcCount() < kMaxId &&
+        graph_.ArcCount() <= std::numeric_limits<std::size_t>::max() - plan_.loops.size() &&
         plan_.nodes.size() < kMaxId &&
         plan_.nodes.size() >= blocks && plan_.loops.size() <= blocks &&
         plan_.loops.size() <= plan_.nodes.size() - blocks &&
-        plan_.nodes.size() - blocks - plan_.loops.size() <= graph_.edges.size() + plan_.loops.size() &&
-        plan_.edges.size() == graph_.edges.size() && plan_.entry.value < plan_.nodes.size(), Error::kInvalidGraph);
+        plan_.nodes.size() - blocks - plan_.loops.size() <= graph_.ArcCount() + plan_.loops.size() &&
+        plan_.edges.size() == graph_.ArcCount() && plan_.entry.value < plan_.nodes.size(), Error::kInvalidGraph);
     quota_.Size(visited_, plan_.nodes.size());
     quota_.Size(scopes_, plan_.nodes.size());
     quota_.Size(targets_, plan_.nodes.size());
@@ -103,20 +111,20 @@ class ControlCheck {
     std::size_t next_edge = 0;
     for (std::size_t b = 0; b < blocks; ++b) {
       quota_.Work();
-      const auto& block = graph_.blocks[b];
+      const auto& block = graph_.Node({static_cast<std::uint32_t>(b)});
       Require(plan_.nodes[b].block.value == b && std::holds_alternative<std::monostate>(plan_.nodes[b].synthetic) &&
-          block.first_edge.value == next_edge && block.edge_count <= analysis::kMaxNormalSuccessors &&
-          block.edge_count <= graph_.edges.size() - next_edge, Error::kInvalidGraph);
-      for (std::uint8_t e = 0; e < block.edge_count; ++e) {
+          block.first_arc.value == next_edge && block.arc_count <= analysis::kMaxNormalSuccessors &&
+          block.arc_count <= graph_.ArcCount() - next_edge, Error::kInvalidGraph);
+      for (std::uint8_t e = 0; e < block.arc_count; ++e) {
         quota_.Work();
-        const auto& edge = graph_.edges[next_edge++];
+        const auto& edge = graph_.Arc({static_cast<std::uint32_t>(next_edge++)});
         Require(edge.source.value == b && edge.successor == e && edge.target.value < blocks &&
             (edge.kind == analysis::FlowEdgeKind::kTaken || edge.kind == analysis::FlowEdgeKind::kFallthrough), Error::kInvalidGraph);
-        if (block.edge_count == analysis::kMaxNormalSuccessors)
+        if (block.arc_count == analysis::kMaxNormalSuccessors)
           Require(edge.kind == (e == 0 ? analysis::FlowEdgeKind::kTaken : analysis::FlowEdgeKind::kFallthrough), Error::kInvalidGraph);
       }
     }
-    Require(next_edge == graph_.edges.size(), Error::kInvalidGraph);
+    Require(next_edge == graph_.ArcCount(), Error::kInvalidGraph);
     for (std::size_t i = 0; i < plan_.loops.size(); ++i) {
       quota_.Work();
       const auto& loop = plan_.loops[i];
@@ -139,7 +147,7 @@ class ControlCheck {
         const auto* transfer = std::get_if<LoopTransfer>(&node.synthetic);
         Require(transfer && transfer->loop.value < plan_.loops.size(), Error::kInvalidGraph);
         if (const auto* edge = std::get_if<analysis::EdgeId>(&transfer->source))
-          Require(edge->value < graph_.edges.size() && node.block == graph_.edges[edge->value].source, Error::kInvalidGraph);
+          Require(edge->value < graph_.ArcCount() && node.block.value == graph_.Arc({edge->value}).source.value, Error::kInvalidGraph);
         else {
           const auto loop = std::get<LoopId>(transfer->source);
           Require(loop.value < plan_.loops.size() && node.block == plan_.loops[loop.value].header, Error::kInvalidGraph);
@@ -151,7 +159,7 @@ class ControlCheck {
     Require(pending_ < tasks_.size(), Error::kResourceLimit); tasks_[pending_++] = task;
   }
   std::uint8_t Degree(ControlId id) const {
-    if (id.value < graph_.blocks.size()) return graph_.blocks[id.value].edge_count;
+    if (id.value < graph_.NodeCount()) return graph_.Node({id.value}).arc_count;
     if (const auto* loop = std::get_if<LoopControl>(&plan_.nodes[id.value].synthetic))
       return plan_.loops[loop->loop.value].exit ? 1 : 0;
     return 0;
@@ -182,19 +190,20 @@ class ControlCheck {
       std::optional<LoopId> scope, EdgePlacement placement) {
     Require(target.value < plan_.nodes.size(), Error::kInvalidGraph);
     targets_[source.value][ordinal] = target;
-    if (source.value < graph_.blocks.size()) {
-      const analysis::EdgeId id{graph_.blocks[source.value].first_edge.value + ordinal};
-      const auto& edge = graph_.edges[id.value];
+    if (source.value < graph_.NodeCount()) {
+      const analysis::EdgeId id{graph_.Node({source.value}).first_arc.value + ordinal};
+      const auto& edge = graph_.Arc({id.value});
       const auto& planned = plan_.edges[id.value];
       Require(planned.edge == id && planned.owner == source && planned.placement == placement &&
-          Destination(target, scope, id) == edge.target, Error::kInvalidGraph);
+          Destination(target, scope, id).value == edge.target.value, Error::kInvalidGraph);
     } else {
       const auto* wrapper = std::get_if<LoopControl>(&plan_.nodes[source.value].synthetic);
       Require(wrapper && plan_.loops[wrapper->loop.value].exit, Error::kInvalidGraph);
       Require(Destination(target, scope, wrapper->loop) == *plan_.loops[wrapper->loop.value].exit, Error::kInvalidGraph);
     }
   }
-  const analysis::ValueProgram& graph_;
+  ControlGraphView graph_;
+  std::span<const ControlNodeId> entries_;
   const ControlPlan& plan_;
   ControlQuota& quota_;
   std::vector<std::uint8_t> visited_, entered_, continued_, exited_;
@@ -205,13 +214,19 @@ class ControlCheck {
 };
 }  // namespace
 
+void VerifyControlRegions(ControlGraphView graph, std::span<const ControlNodeId> entries,
+    const ControlPlan& plan, ControlQuota& quota) {
+  quota.Admit(1, sizeof(ControlCheck));
+  ControlCheck(graph, entries, plan, quota).Run();
+}
+
 std::variant<std::uint64_t, ControlError> VerifyControlPlan(
     const analysis::ValueProgram& graph, const ControlPlan& plan, analysis::SemanticBudget budget) {
   try {
     Require(graph.phases.empty() && plan.view == ControlViewKind::kNormal, Error::kInvalidGraph);
     ControlQuota quota(budget);
-    quota.Admit(1, sizeof(ControlCheck));
-    ControlCheck(graph, plan, quota).Run();
+    constexpr ControlNodeId root{0};
+    VerifyControlRegions(ControlGraphView{graph}, {&root, 1}, plan, quota);
     return budget.work - quota.RemainingWork();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

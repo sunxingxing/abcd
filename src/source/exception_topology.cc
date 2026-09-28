@@ -221,18 +221,25 @@ class Projection {
     auto& exit = exits_[region.value];
     Require(!exit || *exit == target, Error::kMultipleExits); exit = target;
   }
+  bool Leaves(ControlScope scope, WorkBlockId target) const {
+    // A handler jumping to its protected entry closes this catch instance and
+    // re-enters the try wrapper on the next loop iteration. A protected-body
+    // backedge to the same PC instead stays inside the existing try.
+    return !Inside(scope.region, target) ||
+        (scope.part == CatchPart::kHandler && regions_.regions[scope.region.value].body == target);
+  }
   void Exits() {
     for (std::size_t e = 0; e < graph_.edges.size(); ++e) {
       quota_.Work();
       if (std::holds_alternative<RaiseTransfer>(regions_.transfers[e])) continue;
       const auto& edge = graph_.edges[e]; const auto owner = owners_[edge.source.value];
-      if (owner && !Inside(owner->region, edge.target)) Exit(owner->region, edge.target);
+      if (owner && Leaves(*owner, edge.target)) Exit(owner->region, edge.target);
     }
     // One child summary propagates once, not a walk over ancestors per edge.
     for (std::size_t i = regions_.layout.source_order.size(); i != 0; --i) {
       quota_.Work(); const auto r = regions_.layout.source_order[i - 1];
       const auto parent = regions_.layout.regions[r.value].parent;
-      if (parent && exits_[r.value] && !Inside(parent->region, *exits_[r.value]))
+      if (parent && exits_[r.value] && Leaves(*ScopeOf(parent), *exits_[r.value]))
         Exit(parent->region, *exits_[r.value]);
     }
   }
@@ -247,7 +254,7 @@ class Projection {
         });
     if (entry != entries_.end() && entry->parent == scope && entry->block == block)
       return Wrapper(entry->region);
-    Require(source && scope && exits_[scope->region.value] == block && !Inside(scope->region, block),
+    Require(source && scope && exits_[scope->region.value] == block && Leaves(*scope, block),
         Error::kCrossEntry);
     Require(unit_count_ < result_.mapping.units.size(), Error::kResourceLimit);
     const ControlId id{unit_count_++};

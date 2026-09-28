@@ -51,6 +51,30 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C03 首个纵向组合切片：真实动态 opcode（12.0.2/12.0.6/13.0.1）经异常 SSA、
+  ValueProgram、共同循环区域、共同 TreeBuilder/Printer，现已完整输出并执行
+  **try 内循环、catch 内循环、循环包含 try/catch** 三类基础用例。异常投影遇到
+  cycle 后复用既有自然循环构建；既有正常区域检查也迁移到相同视图/多入口，
+  没有另建异常循环算法或新的输出准入。try/handler 起点重定向到 loop wrapper，
+  TreeFlow 正确处理异常投影后追加的 loop 节点；projection arc 经原边映射才可
+  成为 AST EdgeOrigin，try wrapper 的合成后继保留 TryOrigin。
+  handler 回到本 try 的 protected entry 视为退出当前 catch 再重入 wrapper，
+  protected body 内回到自身入口仍是 try 内循环，不移动异常保护范围。
+  `exception_tree_source_test` 执行引擎生成的完整 JS：getter 第 1/2/5 次正常退出、
+  中途 throw 离开 try-loop、handler 内 throw 向外传播、catch 后下一轮重试的
+  调用次数与返回对象身份均符合预期，且拒绝 INCOMPLETE 测试输入。
+  RED 曾复现原 `kCycle` 和 handler 重入 `kCrossEntry`；修复后通过。
+  来源测试加入 Commit 相位/原 JMP PC 检查，临时恢复错误的投影边编号直用行为
+  后测试失败，撤销该临时变异后通过。另修正仅异常路径未分配 loop TreeFlow
+  控制记录所致的崩溃（崩溃栈确认 FlowCheck::Loop）；没有跳过语义检查。
+  最新重建与定向 CTest **11/11 通过**：exception_plan_test、exception_copies_test、
+  exception_tree_source_test、control_view_test、control_plan_test、loop_forest_test、
+  try_tree_test、try_tree_source_test、partial_build_test、cell_tree_test、phased_cell_test。
+  **这不是 C00b/C01/C02/C03 整体完成**：完整 W1/W2 的循环携带旧值/日志/call、
+  per-iteration/per-catch cell 组合、真实应用切片、计划字段 ID 完整分离及共同
+  RegionPlan 收敛仍待推进；已有 cell 回归不等于新增循环捕获组合的行为验收。
+  未恢复全量测试、全语料、RSS 或基准，未新增 DFX。
+
 - C01 循环区域构建子项：原有 `LoopControlBuilder` 也消费共同视图和多入口，
   循环收缩邻接改用 `ControlVertex/ControlLink`，移除用于容纳合成节点的临时
   `ValueProgram`。原普通入口保留适配；投影两独立循环岛能生成各自 loop wrapper、

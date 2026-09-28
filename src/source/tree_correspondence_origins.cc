@@ -38,6 +38,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
     RequireMeaning(origin.value >= graph.origins.size() && origin.value < tree.origins.size() &&
         !visited[origin.value] &&
         (std::holds_alternative<LoopOrigin>(tree.origins[origin.value]) ||
+         std::holds_alternative<TryOrigin>(tree.origins[origin.value]) ||
          std::holds_alternative<EdgeOrigin>(tree.origins[origin.value])), Error::kOrigin);
     visited[origin.value] = 1;
   }
