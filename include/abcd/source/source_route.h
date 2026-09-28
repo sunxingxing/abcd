@@ -251,7 +251,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // original completed-store load facts and independent tree placement checks.
 // Rules 56 partition rejected phased expression trees in one bounded retry,
 // retaining legal inner effects without relaxing final-root exception checks.
-inline constexpr std::uint32_t kRouteEvidenceRules = 56;
+// Rules 57 carry occurrence-bound phased roots through shared immutable family
+// preparation/emission, retaining destination, store and original-PC gates.
+inline constexpr std::uint32_t kRouteEvidenceRules = 57;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

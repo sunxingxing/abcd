@@ -14,6 +14,7 @@
 #include "../../support/function_segments.h"
 #include "../../support/instruction_positions.h"
 #include "../../support/phased_file_checks.h"
+#include "../../support/phased_family_emission.h"
 #include "../../../tools/tree_position_json.h"
 #include <nlohmann/json.hpp>
 
@@ -352,6 +353,9 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       auto refused = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites,
           range.first, identity, {});
       Check(std::get<FunctionPrepareFailure>(refused).kind == FunctionPrepareError::kEvaluation);
+      Check(std::holds_alternative<FamilyPrepareFailure>(PreparedFamily::PrepareClass(
+          file, header, index, lookup, roles, functions, sites, range.first, identity,
+          {Strictness::kStrict, nullptr, FunctionFragment::kClassMember})));
       auto module_index = index;
       module_index.regions[0].classes = {1, kModuleType};
       abc::RecordInfo record; record.offset = {kOwner}; record.field_count = 1;
@@ -514,6 +518,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     auto written = FunctionEmission::Write(std::get<VerifiedFunction>(std::move(prepared)), output, {});
     Check(std::holds_alternative<FunctionEmission>(written));
     const auto& emission = std::get<FunctionEmission>(written);
+    test::CheckPhasedFamilyEmission(file, header, index, lookup, roles, functions,
+        sites, range.first, identity, output.str());
     Check(emission.Function().Abi().parameters.size() == 1 && emission.Function().Abi().length == 1);
     auto mismatched = index;
     mismatched.methods[2].code->try_count = 0;

@@ -110,7 +110,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
       receipts.push_back(receipt); // Identity only; no stage claim until all proofs close.
     }
     auto family = Take<ConstructedFamily, FamilyTreeFailure>(BuildFileFamilyTrees(
-        file, header, index, std::move(input), root, budget.Left()));
+        file, header, index, std::move(input), root, budget.Left(), nullptr, {}, &lookup));
     budget.Account(family.allocated_bytes, family.work);
     for (const auto& member : family.members) {
       budget.Account(0, 1);

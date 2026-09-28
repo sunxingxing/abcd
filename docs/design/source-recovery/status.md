@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 56，默认源码契约为 V3。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 57，默认源码契约为 V3。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,12 +42,21 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- Rules 57 将同快照 lookup 传入 `PreparedFamily` 的共享构建器，让无模块依赖
+  的异常 root 沿同一不可变准备、目标检查、printer、原始 PC 核验和 receipt
+  链路发布。未取消 strictness/callable/module/destination/closure-write 门槛，
+  也未允许异常子函数或跳过原始创建点。文件解码 fixture 的共享/单函数源码
+  对照、位置迁移、错误 placement/旧契约/零预算及模块无上下文拒绝均通过。
+  14 项定向 CTest（含两个真实异常函数族 CLI 行为检查）、三个真实异常样本
+  脚本通过。异常子函数、模块函数族发布、循环/finally/协程组合仍未完成；
+  未运行全语料、RSS 或基准，不将方法 receipt 当成整个 record 完成凭据。
+
 - 常规 `abc_semantic --family-source-draft` 现先解析实际 root occurrence，再
   调用共享函数族 reader/tree factory；向异常输入传递真实 owner 和同快照 lookup。
   `recover`、`queryDegree` 可经 CLI 生成条件源码，新增 CTest 直接执行返回源码，
   检查 235 条原始指令映射、五个成员归属及非发布状态；`--conditional-family`
   保持不输出源码。8 项相关 CLI/真实切片测试通过。不是新的发布准入，Rules 56
-  不变；异常 PreparedFamily 与模块发布约束仍待接通。
+  不变；后续无模块异常 PreparedFamily 接入见上条，模块发布约束仍待接通。
 
 - 共享 `FileFamily` DFS / `BuildFileFamilyTrees` 已接入类型化 normal/phase
   所有权：异常父函数与普通闭包后代使用同一函数族构建、AST、ABI、来源索引、
@@ -60,8 +69,8 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   phase 边标记均类型化拒绝。44 项定向 CTest、三个真实样本脚本通过，
   `abc_semantic`、`abc_structure`、`exception_candidates` 构建成功；未运行
   全语料、RSS 或基准，未据此声明进程 1GB 上限已验证。
-  这不是正式模块发布：`PreparedFamily` 的异常接入及 destination/module
-  初始化证明尚未完成；诊断 CLI 的 root context 接入见上条。
+  这不是正式模块发布：无模块异常 `PreparedFamily` 后续接入见上条，模块
+  初始化证明尚未完成；诊断 CLI 的 root context 已接入。
   Rules 56 不变；循环/异常双向嵌套、finally、协程组合验收仍未完成。
 
 - 新增生产层 `FilePhasedFunction::Read`：从实际文件读取 body/call-type ABI，
