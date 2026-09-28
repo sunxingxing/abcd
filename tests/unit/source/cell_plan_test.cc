@@ -210,5 +210,45 @@ void ReadSnapshot() {
   const auto syntax = *expressions.operations[kCellReadOperation];
   test::Check(std::get<SymbolExpr>(expressions.expressions[syntax.value].expression).symbol == cell);
 }
+void ForwardedStorage() {
+  const auto op = [](abc::Opcode value) { return static_cast<std::uint8_t>(value); };
+  const auto body = test::Body({op(abc::Opcode::kNEWLEXENV_IMM8), 1,
+      op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 0, 0, 0,
+      op(abc::Opcode::kPOPLEXENV), op(abc::Opcode::kRETURN)});
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {false, false, false, false}));
+  const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, frame.registers));
+  const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, input, frame.registers, frame.locals));
+  const auto graph = std::get<ValueProgram>(ImportNormalValues(body, input, proof, frame));
+  const auto environments = std::get<ValueEnvironments>(BuildValueEnvironments(graph));
+  const auto direct = std::get<CellPlan>(BuildCellPlan(graph, environments));
+  test::Check(direct.cells.empty());
+  const CellDemand demand{{1}, {{1}, {0}}};
+  const auto plan = std::get<CellPlan>(BuildDemandedCellPlan(graph, environments, {&demand, 1}));
+  test::Check(plan.cells.size() == 1 && plan.cells[0].count == 0 && plan.accesses.empty());
+  const auto storage = std::get<IncomingCell>(plan.cells[0].storage);
+  test::Check(storage.depth.value == 0 && storage.slot.value == 0);
+  test::Check(std::holds_alternative<std::uint64_t>(VerifyCellPlan(graph, environments, plan)));
+  auto forged = plan; forged.demands.clear();
+  test::Check(std::get<CellError>(VerifyCellPlan(graph, environments, forged)) == CellError::kCoverage);
+  forged = plan; forged.demands[0].creation = {0};
+  test::Check(std::holds_alternative<CellError>(VerifyCellPlan(graph, environments, forged)));
+  forged = plan; std::get<IncomingCell>(forged.cells[0].storage).depth = {1};
+  test::Check(std::holds_alternative<CellError>(VerifyCellPlan(graph, environments, forged)));
+  for (const auto count : {0U, 1U, 2U, 200U, 201U}) {
+    std::vector<CellDemand> demands;
+    for (std::uint16_t slot = 0; slot < count; ++slot) {
+      demands.push_back({{1}, {{1}, {slot}}});
+      demands.push_back({{1}, {{1}, {slot}}});  // Two descendant uses share storage.
+    }
+    const auto many = std::get<CellPlan>(BuildDemandedCellPlan(graph, environments, demands));
+    test::Check(many.cells.size() == count && many.accesses.empty());
+    test::Check(std::holds_alternative<std::uint64_t>(VerifyCellPlan(graph, environments, many)));
+    for (std::size_t i = 0; i < many.cells.size(); ++i) {
+      test::Check(many.cells[i].count == 0);
+      const auto incoming = std::get<IncomingCell>(many.cells[i].storage);
+      test::Check(incoming.depth.value == 0 && incoming.slot.value == i);
+    }
+  }
+}
 }  // namespace
-int main() { for (const auto count : {0U, 1U, 2U, 200U, 201U}) Run(count); Incoming(); Iteration(); ClosurePremise(); ReadSnapshot(); }
+int main() { for (const auto count : {0U, 1U, 2U, 200U, 201U}) Run(count); Incoming(); Iteration(); ClosurePremise(); ReadSnapshot(); ForwardedStorage(); }

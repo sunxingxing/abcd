@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_CELL_PLAN_H_
 
 #include "abcd/analysis/value_environment.h"
+#include "abcd/analysis/creation_binding.h"
 
 namespace abcd::source {
 struct CellId { std::uint32_t value; auto operator<=>(const CellId&) const = default; };
@@ -21,6 +22,13 @@ struct Cell {
   std::uint32_t first;
   std::uint32_t count;
 };
+// A descendant's entry-slot requirement at a real function creation. This is
+// storage topology only: the family must establish the child's demand and the
+// creation's initialization/domain. It is not a fabricated lexical access.
+struct CellDemand {
+  analysis::OpId creation;
+  analysis::CapturedSlot captured;
+};
 struct CellPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
@@ -32,6 +40,7 @@ struct CellPlan {
   std::vector<analysis::OpId> allocations;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  std::vector<CellDemand> demands;
 };
 // Query an unchanged verified plan. O(log(cells + 1)); no allocation.
 [[nodiscard]] std::optional<CellId> FindCell(const CellPlan& plan, const CellStorage& storage);
@@ -44,6 +53,9 @@ enum class CellError : std::uint8_t {
 [[nodiscard]] std::variant<CellPlan, CellError> BuildCellPlan(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
     analysis::SemanticBudget budget = {});
+[[nodiscard]] std::variant<CellPlan, CellError> BuildDemandedCellPlan(
+    const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
+    std::span<const CellDemand> demands, analysis::SemanticBudget budget = {});
 [[nodiscard]] std::variant<std::uint64_t, CellError> VerifyCellPlan(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
     const CellPlan& plan, analysis::SemanticBudget budget = {});
@@ -52,6 +64,9 @@ enum class CellError : std::uint8_t {
 [[nodiscard]] std::variant<CellPlan, CellError> BuildPhasedCellPlan(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
     analysis::SemanticBudget budget = {});
+[[nodiscard]] std::variant<CellPlan, CellError> BuildDemandedPhasedCellPlan(
+    const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
+    std::span<const CellDemand> demands, analysis::SemanticBudget budget = {});
 [[nodiscard]] std::variant<std::uint64_t, CellError> VerifyPhasedCellPlan(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
     const CellPlan& plan, analysis::SemanticBudget budget = {});

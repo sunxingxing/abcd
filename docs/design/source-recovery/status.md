@@ -51,6 +51,15 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 纯转发的 cell 存储表示已补齐：`CellDemand` 记录真实 FunctionCreation 与子函数
+  入口槽需求，按创建点环境重定位后与直接访问合并；零直接访问 cell 必须由需求覆盖。
+  普通/phased 共用规划算法，不插入伪造 lexical load/store。真实解码单测验证
+  中间 push 后 depth 1 → 入口 depth 0、重复需求合并、0/1/2/200/201 槽，以及
+  缺需求、错误创建点和伪造深度拒绝。相关 5/5 定向测试通过（cell_plan、cell_tree、
+  phased_cell、loop_closure_file/source）。这只建立存储拓扑，不证明需求来自哪个
+  后代或初始化；文件族后代需求传播、求值和 AST 消费尚需接入，`--forwarding`
+  仍未通过，不计为纯转发源码支持。未恢复全量/RSS/DFX。
+
 - C04 纯环境转发进行中：新增 `loop_closure_file_test --forwarding` 真实 Code
   复现（要求完整源码，当前仍失败，不计入通过覆盖）；孙函数读取祖先 cell，而中间
   phased 函数没有直接词法读写，当前返回 `CaptureEvaluationError::kOuterCapture`。
