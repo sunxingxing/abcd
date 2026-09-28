@@ -112,9 +112,11 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
   std::vector<ExpressionConstant> constants(graph.ops.size());
   FunctionSyntax syntax{};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  syntax.texts = {u"number"};
   syntax.parameters.resize(frame.parameters);
+  const ExpressionConstants resolved{constants, 0, 1, TextId{0}};
   const ExceptionTreeInput context{body, input, regions, control};
-  const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, {constants, 0});
+  const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, resolved);
   if (const auto* error = std::get_if<FunctionTreeError>(&built))
     std::cerr << "loop-carried tree error " << static_cast<unsigned>(*error) << '\n';
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
@@ -137,7 +139,7 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
   test::Check(tree.recovery_issues.empty());
   test::Check(std::holds_alternative<TreeFlow>(VerifyExceptionTreeFlow(graph, context, evaluation, tree)));
   test::Check(std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(
-      graph, context, evaluation, tree, {constants, 0})));
+      graph, context, evaluation, tree, resolved)));
   const auto family = Take<ConstructedFamily>(BuildFunctionFamily({{tree, {}, {}}}, tree.owner));
   std::ostringstream source;
   test::Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family, source)));
@@ -290,8 +292,67 @@ void CatchOuterPorts(abc::ProfileId profile, std::ostream* output) {
   body.tries = {region}; body.handlers = {handler};
   Emit(body, profile, 0, 6, false, output, {}, 2);
 }
+void NestedOuterTransfer(abc::ProfileId profile, bool stop, std::ostream* output) {
+  // Inner catch transfers across its enclosing try; a body failure instead
+  // reaches the outer catch, which observes it before the same outer transfer.
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  auto body = test::Body({
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 32,
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 20,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-14),
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(stop ? 14 : -22),
+      op(abc::Opcode::kLDA_V8), 5, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(stop ? 8 : -28),
+      op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-34),
+      op(abc::Opcode::kRETURNUNDEFINED)});
+  abc::TryRegion inner; inner.offset = {12}; inner.length = 4; inner.handler_count = 1;
+  abc::TryRegion outer = inner; outer.length = 12; outer.first_handler = 1;
+  abc::CatchHandler inner_handler; inner_handler.offset = {22}; inner_handler.length = 2;
+  abc::CatchHandler outer_handler; outer_handler.offset = {24}; outer_handler.length = 6;
+  body.tries = {inner, outer}; body.handlers = {inner_handler, outer_handler};
+  Emit(body, profile, 0, 6, false, output, {}, 2);
+}
+void HandlerOuterTransfer(abc::ProfileId profile, bool stop, std::ostream* output) {
+  // outer: while(nextOuter()) { try { run(); } catch(e) {
+  // while(nextInner()) { if(skip()) continue/break outer; body(); } } after(); }
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  auto body = test::Body({
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 32,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), 20,
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 14,
+      op(abc::Opcode::kLDA_V8), 5, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJNEZ_IMM8), static_cast<std::uint8_t>(stop ? 14 : -22),
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-16),
+      op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-34),
+      op(abc::Opcode::kRETURNUNDEFINED)});
+  abc::TryRegion region; region.offset = {6}; region.length = 4; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {12}; handler.length = 18;
+  body.tries = {region}; body.handlers = {handler};
+  Emit(body, profile, 0, 6, false, output, {}, 2);
+}
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--nested-outer") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) {
+      NestedOuterTransfer(profile, false, &std::cout);
+      NestedOuterTransfer(profile, true, &std::cout);
+      HandlerOuterTransfer(profile, false, &std::cout);
+      HandlerOuterTransfer(profile, true, &std::cout);
+    }
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--outer-ports") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -330,6 +391,10 @@ int main(int argc, char** argv) {
     CatchOuterCarried(profile, false, nullptr);
     CatchOuterCarried(profile, true, nullptr);
     CatchOuterPorts(profile, nullptr);
+    NestedOuterTransfer(profile, false, nullptr);
+    NestedOuterTransfer(profile, true, nullptr);
+    HandlerOuterTransfer(profile, false, nullptr);
+    HandlerOuterTransfer(profile, true, nullptr);
   }
   if (emit) std::cout << "];\n";
 }

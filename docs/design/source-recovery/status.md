@@ -51,6 +51,16 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C04 继续覆盖跨两层 try 的外层跳转、catch 自身循环中的外层跳转：新增
+  `control_composition_test --nested-outer`，三个 profiles × 两种区域组合 ×
+  break/continue，共 12 个完整生成函数。Node 比较内层失败、外层 body 失败、
+  外层 catch 观察器再抛错，以及 catch-loop predicate/body 失败的路径、调用顺序
+  与向外传播；已有区域/循环组合实现无需再增加专项处理。补齐测试端 JNEZ
+  所需的 number 文本常量，未把测试输入缺失伪装成引擎修复。
+  定向构建成功，`control_composition_test` / source、`exception_outer_source_test`
+  **3/3 通过**。下一步补充带这些跳转的文件读取/函数族/捕获组合，任意普通多出口
+  及 finally 仍未完成。
+
 - C04 异常区域的外层循环跳转已完成本轮纵向贯通：此前提交 `3641ae0` 的
   `--outer-transfer` / `--outer-break` 在 `kMultipleExits` 失败，现在真实解码后经
   共同循环规划、FunctionTree、Printer 输出 catch 内的 `continue $loop0` /
@@ -69,7 +79,7 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   `control_plan_test`、`partial_file_test`、`loop_closure_file_test` / source。
   日志 `/tmp/abcd-exception-final-build.log`、`/tmp/abcd-exception-final-tests.log`。
   **边界**：仍只接受唯一普通 continuation，外层跳转之外的任意多出口、finally、
-  协程尚未由这项交付完成；多层 try/内层循环交叉退出及文件级新组合仍需继续。
+  协程尚未由这项交付完成；文件级新组合仍需继续，多层 try/内层循环补充见上。
   全量测试、语料、RSS/基准未运行，不宣称 C04 或整体目标完成。
 
 - C04 普通嵌套循环的外层 `break/continue` 已贯通真实 opcode → 共同控制规划 →
