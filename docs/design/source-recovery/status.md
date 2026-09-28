@@ -12,6 +12,21 @@
 
 ## 当前阶段
 
+### 2026-09-28：内层 try 的循环转移汇入外层共享 finally
+
+- 完成状态摘要保留尚未被本作用域消化的循环目标；共同控制结构已约束这些目标为
+  活跃祖先循环链，摘要保留最外层目标，避免向每层 try 复制目标集合。
+  循环深度来自既有 LoopForest，线性计算，不另做循环发现。
+- TryExitUnit 接往已绑定的 LoopTransfer 时继续汇总；拥有目标循环的外层作用域
+  消化内部转移。候选 finally 仍要求没有未消化的循环目标，不能吞掉真正逃逸的跳转。
+- 三 profile 真实 opcode/双异常表新例先因未恢复 finally 失败，修正后实际生成
+  `while` 内 `try` 的 break/continue 和外层 finally。Node 对照条件退出、内部 break、
+  重复 continue、条件/主体抛出以及清理覆盖，检查原异常身份与调用顺序。
+- 构建和相关 15/15 定向测试通过：`/tmp/abcd-shared-transfer-final-build.log`、
+  `/tmp/abcd-shared-transfer-final-tests.log`。首轮源码测试有变量重名的脚本语法错误，
+  已修正并完整重跑定向集合。work/内存额度未变，暂停项未恢复。
+- 尚不是 C05/整体完成证据；更深层多循环目标组合与完整应用验证继续保留为缺口。
+
 ### 2026-09-28：共享 finally 中的 catch 循环行为贯通
 
 - 新增三个 profile 的真实 opcode/双异常表夹具：内层 catch 保存原抛值，循环

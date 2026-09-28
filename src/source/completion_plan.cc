@@ -44,6 +44,7 @@ struct SharedCompletion {
   bool valid = true;
   bool uncaught = false;
   std::optional<WorkBlockId> handler;
+  std::optional<LoopId> loop;
 };
 class CompletionBuilder {
  public:
@@ -83,7 +84,8 @@ class CompletionBuilder {
     SharedGuards();
     // Source order is outer-before-inner, independent of encoded TryId order.
     // Summarize each owned body/handler once; never replay descendant graphs
-    // for every ancestor. Cross-region abrupt completions remain unsupported.
+    // for every ancestor. Shared summaries retain unresolved ancestor-loop
+    // transfers until the owning protected/handler scope consumes them.
     for (auto i = exceptions_.layout.source_order.rbegin(); i != exceptions_.layout.source_order.rend(); ++i) {
       quota_.Work(); const auto r = i->value;
       Require(r < regions_.size() && !regions_[r].ready);
@@ -105,7 +107,7 @@ class CompletionBuilder {
       const auto next = control_.skeleton.nodes[region.wrapper.value].next;
       const auto& shared_completion = shared_completions_[r];
       if (next && shared_guards_[r] && shared_completion.valid &&
-          !shared_completion.uncaught && !shared_completion.handler) {
+          !shared_completion.uncaught && !shared_completion.handler && !shared_completion.loop) {
         const auto binding = exceptions_.regions[r].binding;
         Require(binding.has_value());
         FinalizerRegion shared{{r},
@@ -245,6 +247,25 @@ class CompletionBuilder {
     quota_.Size(shared_guards_, exceptions_.regions.size());
     quota_.Size(shared_visits_, control_.skeleton.nodes.size());
     quota_.Size(shared_loops_, control_.skeleton.loops.size());
+    quota_.Size(loop_depths_, control_.skeleton.loops.size());
+    std::vector<LoopId> path;
+    for (std::uint32_t l = 0; l < loop_depths_.size(); ++l) {
+      std::optional<LoopId> cursor{LoopId{l}};
+      while (cursor) {
+        quota_.Work();
+        Require(cursor->value < loop_depths_.size());
+        if (loop_depths_[cursor->value]) break;
+        Require(path.size() < loop_depths_.size());
+        Append(path, *cursor);
+        cursor = control_.skeleton.loops[cursor->value].parent;
+      }
+      auto depth = cursor ? loop_depths_[cursor->value] : 0;
+      while (!path.empty()) {
+        quota_.Work();
+        loop_depths_[path.back().value] = ++depth;
+        path.pop_back();
+      }
+    }
     if (!evaluation_.holes) return;
     struct Incoming {
       bool hole = false, invalid = false;
@@ -322,12 +343,18 @@ class CompletionBuilder {
       shared_guards_[region.value] = guards[o];
     }
   }
-  static void Merge(SharedCompletion& result, const SharedCompletion& other) {
+  void Merge(SharedCompletion& result, const SharedCompletion& other) {
     result.valid &= other.valid;
     if (result.handler && other.handler && result.handler != other.handler) result.valid = false;
     if (other.handler) result.handler = other.handler;
     result.uncaught |= other.uncaught;
     if (result.uncaught && result.handler) result.valid = false;
+    // After internal loops are discharged, valid transfers from this lexical
+    // scope target its active ancestor-loop chain (checked by common control).
+    // Retaining its outermost target represents all required enclosing loops
+    // without copying a destination set through every nested try.
+    if (other.loop && (!result.loop || loop_depths_[other.loop->value] < loop_depths_[result.loop->value]))
+      result.loop = other.loop;
   }
   SharedCompletion SharedScope(TryId region, ControlId entry, bool handler) {
     struct Task {
@@ -343,6 +370,7 @@ class CompletionBuilder {
       // A nested rethrow may enter this region's catch. That catch is
       // summarized separately, not mistaken for an escaping completion.
       if (!handler && completion.handler == binding->block) completion.handler.reset();
+      if (completion.loop && shared_loops_[completion.loop->value] == entry) completion.loop.reset();
       Merge(result, completion);
     };
     while (!pending.empty()) {
@@ -366,13 +394,18 @@ class CompletionBuilder {
         continue;
       }
       if (const auto* transfer = std::get_if<LoopTransfer>(&node.synthetic)) {
-        if (shared_loops_[transfer->loop.value] != entry) return {false};
+        consume({true, false, {}, transfer->loop});
         continue;
       }
       if (id.value >= control_.units.size()) return {false};
       if (const auto* exit =
               std::get_if<TryExitUnit>(&control_.units[id.value])) {
-        if (exit->region != region || node.next) return {false};
+        if (exit->region != region) return {false};
+        if (node.next) {
+          const auto& route = control_.skeleton.nodes[node.next->value];
+          if (!std::holds_alternative<LoopTransfer>(route.synthetic)) return {false};
+          Append(pending, Task{*node.next, task.stop});
+        }
         continue;
       }
       if (const auto* nested = std::get_if<TryControlUnit>(&control_.units[id.value])) {
@@ -619,6 +652,7 @@ class CompletionBuilder {
   std::vector<std::optional<OpId>> shared_guards_;
   std::vector<std::uint8_t> shared_visits_;
   std::vector<std::optional<ControlId>> shared_loops_;
+  std::vector<std::size_t> loop_depths_;
   std::vector<SharedCompletion> shared_completions_;
 };
 }  // namespace

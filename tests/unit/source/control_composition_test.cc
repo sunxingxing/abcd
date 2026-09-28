@@ -621,7 +621,8 @@ void FinallyBareTransfer(abc::ProfileId profile, std::ostream* output, bool stop
 enum class SharedInnerCatch { kNone, kRethrow, kCallback, kLoopCallback, kReturn };
 void CompilerFinally(abc::ProfileId profile, std::ostream* output,
     CompositionStage stage = CompositionStage::kHoleFinally, std::uint32_t count = 1, bool early_return = false,
-    SharedInnerCatch inner = SharedInnerCatch::kNone, std::uint32_t depth = 1, bool protected_loop = false) {
+    SharedInnerCatch inner = SharedInnerCatch::kNone, std::uint32_t depth = 1, bool protected_loop = false,
+    bool nested_transfer = false) {
   // Pinned es2panda TryContext::InitFinalizer, TryStatement::CompileFinally
   // and PandaGen::EmitRethrow: shared cleanup, undefined run guard, Hole vs
   // caught payload. This isolates that lowering, not a full es2abc file.
@@ -655,9 +656,22 @@ void CompilerFinally(abc::ProfileId profile, std::ostream* output,
   // callback exceptions must enter the same shared cleanup, exactly once.
   const std::vector<std::uint8_t> backedge{op(abc::Opcode::kJEQZ_IMM8), 4,
       op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-6)};
+  const std::vector<std::uint8_t> transfer_loop{
+      op(abc::Opcode::kLDA_V8), 6, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 12,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 6,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-12),
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)};
+  test::Check(!nested_transfer || (!protected_loop && !early_return && inner == SharedInnerCatch::kNone));
   test::Check(!protected_loop || (!early_return && inner == SharedInnerCatch::kNone));
   const auto extra = early_return ? static_cast<std::uint32_t>(bypass.size()) :
-      protected_loop ? static_cast<std::uint32_t>(backedge.size()) : 0U;
+      protected_loop ? static_cast<std::uint32_t>(backedge.size()) :
+      nested_transfer ? static_cast<std::uint32_t>(transfer_loop.size()) - 4 : 0U;
+  if (nested_transfer) {
+    unit.erase(unit.begin() + 3, unit.begin() + 7);
+    unit.insert(unit.begin() + 3, transfer_loop.begin(), transfer_loop.end());
+  }
   if (protected_loop) unit.insert(unit.begin() + 7, backedge.begin(), backedge.end());
   if (early_return) unit.insert(unit.begin() + 3, bypass.begin(), bypass.end());
   test::Check(!early_return || inner == SharedInnerCatch::kNone);
@@ -708,6 +722,15 @@ void CompilerFinally(abc::ProfileId profile, std::ostream* output,
     abc::TryRegion region; region.offset = {base + 3}; region.length = 4 + extra + nested_size;
     region.handler_count = 1;
     abc::CatchHandler handler; handler.offset = {base + 12 + extra + nested_size}; handler.length = 2;
+    if (nested_transfer) {
+      abc::TryRegion transfer_region;
+      transfer_region.offset = {base + 9}; transfer_region.length = 8;
+      transfer_region.first_handler = static_cast<std::uint32_t>(body.handlers.size());
+      transfer_region.handler_count = 1;
+      abc::CatchHandler transfer_handler;
+      transfer_handler.offset = {base + 17}; transfer_handler.length = 2;
+      body.tries.push_back(transfer_region); body.handlers.push_back(transfer_handler);
+    }
     if (inner != SharedInnerCatch::kNone) {
       for (std::uint32_t level = 0; level < depth; ++level) {
         auto inner_region = region; auto inner_handler = handler;
@@ -721,8 +744,8 @@ void CompilerFinally(abc::ProfileId profile, std::ostream* output,
     body.tries.push_back(region); body.handlers.push_back(handler);
   }
   const auto callback = inner == SharedInnerCatch::kCallback || inner == SharedInnerCatch::kLoopCallback;
-  Emit(body, profile, 3, early_return || callback ? 4 : 3, false, output, {},
-      protected_loop || inner == SharedInnerCatch::kLoopCallback ? 1 : 0,
+  Emit(body, profile, 3, early_return || callback || nested_transfer ? 4 : 3, false, output, {},
+      protected_loop || nested_transfer || inner == SharedInnerCatch::kLoopCallback ? 1 : 0,
       stage != CompositionStage::kHoleSource, {}, stage, count);
 }
 void FinallyOuterTransfer(abc::ProfileId profile, std::ostream* output, bool stop) {
@@ -1048,6 +1071,14 @@ int main(int argc, char** argv) {
           SharedInnerCatch::kRethrow, depth);
     return 0;
   }
+  if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-nested-transfer") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301})
+      CompilerFinally(profile, &std::cout, CompositionStage::kHoleFinally, 1, false,
+          SharedInnerCatch::kNone, 1, false, true);
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-catch-loop") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -1263,6 +1294,8 @@ int main(int argc, char** argv) {
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally, 1, false,
         SharedInnerCatch::kNone, 1, true);
+    CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally, 1, false,
+        SharedInnerCatch::kNone, 1, false, true);
     for (const auto inner : {SharedInnerCatch::kRethrow, SharedInnerCatch::kCallback, SharedInnerCatch::kLoopCallback})
       CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally, 1, false, inner);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleSource, 1, false, SharedInnerCatch::kReturn);

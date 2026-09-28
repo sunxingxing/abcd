@@ -49,6 +49,50 @@ const catchLoopSource = execFileSync(process.argv[2], ['--compiler-finally-catch
 assert.ok(!catchLoopSource.includes('INCOMPLETE'));
 const {functions: catchLoopFinalizers} = await import(`data:text/javascript;base64,${Buffer.from(catchLoopSource).toString('base64')}`);
 assert.equal(catchLoopFinalizers.length, 3);
+const sharedTransferSource = execFileSync(process.argv[2], ['--compiler-finally-nested-transfer'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!sharedTransferSource.includes('INCOMPLETE'));
+const {functions: sharedTransfers} = await import(`data:text/javascript;base64,${Buffer.from(sharedTransferSource).toString('base64')}`);
+assert.equal(sharedTransfers.length, 3);
+for (const fn of sharedTransfers) for (const iterations of [0, 1, 4])
+  for (const breakAt of [-1, 0, 2]) for (const failure of ['none', 'condition', 'body'])
+    for (const cleanupThrows of [false, true]) for (const pending of [undefined, null, NaN, Symbol('transfer'), {}]) {
+      const log = [], cleanupError = {}, result = {};
+      let conditionCalls = 0, bodyCalls = 0, returned, thrown, didThrow = false;
+      try {
+        returned = fn(function () {
+          assert.equal(this, undefined);
+          const index = bodyCalls++; log.push(`body:${index}`);
+          if (failure === 'body') throw pending;
+          return index !== breakAt;
+        }, function () {
+          assert.equal(this, undefined); log.push('cleanup');
+          if (cleanupThrows) throw cleanupError;
+        }, function () {
+          assert.equal(this, undefined); log.push('after'); return result;
+        }, function () {
+          assert.equal(this, undefined);
+          const index = conditionCalls++; log.push(`condition:${index}`);
+          if (failure === 'condition') throw pending;
+          assert.ok(index <= iterations, 'nested continue skipped loop exit');
+          return index < iterations;
+        });
+      } catch (error) { didThrow = true; thrown = error; }
+      const expected = [];
+      let bodyThrows = false;
+      for (let i = 0; i <= iterations; ++i) {
+        expected.push(`condition:${i}`);
+        if (failure === 'condition' || i === iterations) break;
+        expected.push(`body:${i}`);
+        if (failure === 'body') { bodyThrows = true; break; }
+        if (i === breakAt) break;
+      }
+      const protectedThrows = failure === 'condition' || bodyThrows;
+      expected.push('cleanup');
+      if (!protectedThrows && !cleanupThrows) expected.push('after');
+      assert.deepEqual(log, expected);
+      assert.equal(didThrow, protectedThrows || cleanupThrows);
+      assert.equal(didThrow ? thrown : returned, cleanupThrows ? cleanupError : protectedThrows ? pending : result);
+    }
 for (const fn of catchLoopFinalizers) for (const iterations of [0, 1, 4])
   for (const getThrows of [false, true]) for (const throwAt of [-1, 0, iterations])
     for (const cleanupThrows of [false, true]) for (const afterThrows of [false, true])
