@@ -23,6 +23,18 @@ constexpr std::uint32_t kAdlerSeed = 1;
 bool SameTime(const timespec& left, const timespec& right) {
   return left.tv_sec == right.tv_sec && left.tv_nsec == right.tv_nsec;
 }
+
+// Darwin names the same nanosecond-resolution stat fields differently.
+// Keep both timestamps: size alone cannot detect same-length input mutation.
+bool SameFileTimes(const struct stat& left, const struct stat& right) {
+#if defined(__APPLE__)
+  return SameTime(left.st_mtimespec, right.st_mtimespec) &&
+         SameTime(left.st_ctimespec, right.st_ctimespec);
+#else
+  return SameTime(left.st_mtim, right.st_mtim) &&
+         SameTime(left.st_ctim, right.st_ctim);
+#endif
+}
 }  // namespace
 
 AbcFile::AbcFile(int fd, const struct stat& stamp) : fd_(fd), stamp_(stamp) {}
@@ -106,8 +118,7 @@ std::optional<FileError> AbcFile::CheckUnchanged() const {
   if (fstat(fd_, &current) != 0) return FileError::kStat;
   if (current.st_size != stamp_.st_size || current.st_ino != stamp_.st_ino ||
       current.st_dev != stamp_.st_dev ||
-      !SameTime(current.st_mtim, stamp_.st_mtim) ||
-      !SameTime(current.st_ctim, stamp_.st_ctim)) {
+      !SameFileTimes(current, stamp_)) {
     return FileError::kChanged;
   }
   return std::nullopt;

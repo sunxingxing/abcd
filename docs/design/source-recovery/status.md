@@ -49,6 +49,12 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- macOS 定向构建前置适配：`AbcFile` 按平台读取 `stat` 的纳秒级 mtime/ctime，
+  不放宽原输入变更检查；消除 AppleClang 对局部 constexpr 无捕获引用的编译错误。
+  本地使用锁定 Ruby 3.2.3、JSON release tag 和已锁定 ISA 完成 Debug/Ninja 配置；
+  依赖构建产物仅在忽略的 `build/` 下。`abc_file_test`、`acyclic_body_test` 定向通过。
+  没有运行全量测试、全语料、RSS 或基准；这是平台构建修复，不代表恢复能力增加。
+
 - mac 本地语料根调整为 `/Users/sun/abcd/samples`，忽略根目录 `/samples/`；
   同步当前命令示例、语料配置和开发约定。历史验证报告与 abc-index.json 中的
   分类证据保留原样，不因路径迁移重跑扫描、测试或 RSS；样本内容不修改。

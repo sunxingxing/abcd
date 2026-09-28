@@ -105,7 +105,7 @@ AcyclicResult WriteCapturedBranchBody(
     const abc::MethodBody& body, ScalarNames names, std::ostream& output,
     AcyclicBudget budget, const MethodConstants* constants,
     const BranchSourceFacts& facts, StructuredExit exit) {
-  constexpr std::string_view kImportPrefix = "$import";
+  static constexpr std::string_view kImportPrefix = "$import";
   const auto collision = [](std::string_view name) {
     return name.starts_with(kImportPrefix) ||
            name.starts_with(kLocalModulePrefix);
