@@ -51,6 +51,24 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C03/C04 cell 组合切片：`control_composition_test` 新增真实指令的每轮 newlexenv、
+  try/catch 写入合流读取/poplexenv，以及每次 catch 独立分配/初始化/读取/poplexenv。
+  复用生产 `ProveExceptionLocals` 的 load facts（不手工把 lexical load 结果标为
+  Language）；共同树断言 cell 声明归属 loop block/catch scope，并以提升到
+  body scope 的反例确认 TreeFlow 拒绝。三种历史 profile 的完整生成 JS 验证
+  0/1/2/5 轮、正常/异常/交替路径、值身份和顺序，以及观察回调 throw 向外传播。
+  另修复循环闭包绑定前置：`ProveExceptionLocals` 不再因为存在回边就清空全部
+  capture initialization intervals；完整相位图的 allocation→completed store→
+  creation 支配事实仍有效。它仅证明本次初始化，动态实例仍由 cell/AST 作用域
+  消费点处理，未改为函数级 cell。phased_capture_plan_test 增加每轮 pop/reallocate
+  的正常/handler 创建指令，先复现已初始化捕获被拒绝，再通过；本轮 store 前
+  抛异常的未初始化 handler 捕获、Hole store、未知子函数写入等反例保持拒绝。
+  最新重建后 **8/8 通过**：control_composition_test、control_composition_source_test、
+  phased_capture_plan_test、phased_cell_test、cell_tree_test、phased_initialization_test、
+  phased_environment_test、exception_plan_test。尚未完成逃逸闭包的完整函数族源码
+  行为验收（循环结束后读取/写入各动态实例），不能以这些 cell/绑定用例替代；
+  下一步接 file-backed family 的循环/catch 捕获。全量测试/语料/RSS/基准仍暂停。
+
 - C03 循环携带值/异常旧值纵向切片：新增 `control_composition_test` 与
   `control_composition_source_test`，三个历史动态 profile 均用实际 opcode 解码、
   异常 SSA、共同 FunctionTree/Printer 生成完整源码。覆盖 try 内循环中条件调用、

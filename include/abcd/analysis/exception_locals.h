@@ -16,8 +16,9 @@ struct ExceptionLocals {
   LocalAccessPlan plan;  // Original instruction coordinates for the AST.
   std::vector<ExceptionLoadFact> loads;  // Normal Commit value premises.
   // Complete phase-graph intervals for initialized cells under writes below
-  // (or exact preservation evidence). All stores must pass VerifyExceptionInputs. Empty when
-  // re-entry could allocate multiple runtime cells at one source binding.
+  // (or exact preservation evidence). All stores must pass VerifyExceptionInputs.
+  // These are initialization facts, not a claim of one runtime allocation per
+  // site. Shared cell-lifetime/AST scope checks preserve dynamic loop instances.
   std::vector<ExceptionCaptureScope> capture_scopes;
   std::vector<std::uint32_t> capture_entries;  // Indexed by phase node.
   // Conditional family premise, NOT preservation or an immutable-cell claim.
@@ -49,7 +50,7 @@ struct ExceptionLocalFailure {
 // creation PCs. They do not prove initialization or change exceptional edges.
 // No normal-only dominance, default undefined, or branch-union initialization.
 // Returned plan has no normal-CFG capture-initialization certificate.
-// capture_scopes instead retain phase-graph initialization for forward-only
+// capture_scopes instead retain phase-graph initialization for
 // closure-write-safe cells; owners must validate all stores before binding.
 // O((N+E)log N + L log L + I + A) time; bounded O(N+E+I+A+L) space,
 // for phase nodes/edges, lexical accesses, instructions and environments.

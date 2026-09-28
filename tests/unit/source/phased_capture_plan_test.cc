@@ -9,7 +9,8 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
-void Run(abc::ProfileId profile, bool early_store, bool hole_store = false, bool prior_environment = false) {
+void Run(abc::ProfileId profile, bool early_store, bool hole_store = false, bool prior_environment = false,
+         bool repeat = false) {
   const auto op = [](abc::Opcode value) { return static_cast<std::uint8_t>(value); };
   constexpr std::uint8_t kArgument = 3, kCellCount = 1, kFirstCell = 0;
   std::vector<std::uint8_t> bytes{op(abc::Opcode::kNEWLEXENV_IMM8), kCellCount,
@@ -23,13 +24,22 @@ void Run(abc::ProfileId profile, bool early_store, bool hole_store = false, bool
   bytes.insert(bytes.end(), {op(abc::Opcode::kCALLARG0_IMM8), 0});
   if (!early_store) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kArgument,
       op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kFirstCell});
-  bytes.insert(bytes.end(), {op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 0, 0, 0, op(abc::Opcode::kRETURN)});
+  const auto append_creation = [&] {
+    bytes.insert(bytes.end(), {op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 0, 0, 0});
+    if (repeat) {
+      bytes.insert(bytes.end(), {op(abc::Opcode::kPOPLEXENV), op(abc::Opcode::kLDA_V8), kArgument});
+      const auto backedge = static_cast<std::int8_t>(-static_cast<std::int32_t>(bytes.size()));
+      bytes.insert(bytes.end(), {op(abc::Opcode::kJNEZ_IMM8), static_cast<std::uint8_t>(backedge)});
+    }
+    bytes.push_back(op(repeat ? abc::Opcode::kRETURNUNDEFINED : abc::Opcode::kRETURN));
+  };
+  append_creation();
   const auto catch_pc = static_cast<std::uint32_t>(bytes.size());
-  bytes.insert(bytes.end(), {op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 0, 0, 0, op(abc::Opcode::kRETURN)});
+  append_creation();
   auto body = test::Body(bytes);
-  constexpr std::uint32_t kCallBytes = 2, kHandlerBytes = 6;
+  constexpr std::uint32_t kCallBytes = 2;
   abc::TryRegion region; region.offset = {call_pc}; region.length = kCallBytes; region.handler_count = 1;
-  abc::CatchHandler handler; handler.offset = {catch_pc}; handler.length = kHandlerBytes;
+  abc::CatchHandler handler; handler.offset = {catch_pc}; handler.length = bytes.size() - catch_pc;
   body.tries.push_back(region); body.handlers.push_back(handler);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 4, {true, true, false, true}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
@@ -86,6 +96,7 @@ void Run(abc::ProfileId profile, bool early_store, bool hole_store = false, bool
       test::Check(std::get<CaptureError>(built) == CaptureError::kScope);
       continue;
     }
+    test::Check(std::holds_alternative<CapturePlan>(built));
     auto plan = std::get<CapturePlan>(built);
     test::Check(plan.writes == ClosureWrites::kLanguage);
     test::Check(std::get<LocalCell>(plan.bindings[0].cell).environment == EnvironmentId{prior_environment ? 1U : 0U});
@@ -183,5 +194,7 @@ int main() {
                             abcd::abc::ProfileId::kDynamic1301}) {
     Run(profile, true); Run(profile, false); Run(profile, true, true);
     Run(profile, true, false, true);
+    Run(profile, true, false, false, true);
+    Run(profile, false, false, false, true);
   }
 }

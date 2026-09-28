@@ -100,7 +100,6 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
       allocations[allocation.environment.value] = ExceptionNodeId{allocation.instruction};
       plan.allocations[allocation.environment.value] = node.instruction;
     }
-    bool forward = true;
     for (std::size_t i = 0; i < flow.nodes.size(); ++i) {
       charge();
       const auto& node = flow.nodes[i];
@@ -132,12 +131,6 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
         charge();
         const auto target = node.successors[e].target;
         if (target.value >= flow.nodes.size()) return fail(Error::kInvalidEnvironment, instruction.pc);
-        const auto next = flow.nodes[target.value].instruction;
-        if (next < node.instruction ||
-            (next == node.instruction &&
-             (node.phase == ExceptionPhase::kCommit ||
-              node.successors[e].kind == ExceptionArcKind::kException)))
-          forward = false;
         block.successors[e] = {BlockId{target.value}, FlowEdgeKind::kTaken};
       }
       graph.blocks.push_back(block);
@@ -226,7 +219,12 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
       charge();
       return std::tie(a.cell.value, a.instruction.value) < std::tie(b.cell.value, b.instruction.value);
     });
-    if (forward) {
+    {
+      // Dominance is valid on cyclic phase graphs too: allocation dominates
+      // the completed store, which dominates creation. Re-entering allocation
+      // cannot bypass that store before creation. These facts establish only
+      // initialization; per-iteration binding identity remains the shared
+      // cell-lifetime/AST scope consumer's responsibility, never a hoist permit.
       // The tree is still live: include its result in admission for the
       // retained phase-entry index. Move scopes rather than copy their buffer.
       if (dominance->work.allocated_bytes > budget.bytes - spent)

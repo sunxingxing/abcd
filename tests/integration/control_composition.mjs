@@ -4,8 +4,18 @@ import { execFileSync } from 'node:child_process';
 const source = execFileSync(process.argv[2], ['--emit'], { encoding: 'utf8', timeout: 60000 });
 assert.ok(!source.includes('INCOMPLETE'));
 const { functions } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
-assert.equal(functions.length, 6);
-for (const fn of functions.filter((_, i) => i % 2 === 0)) {
+assert.equal(functions.length, 12);
+for (const fn of functions.filter((_, i) => i % 4 >= 2)) {
+  const observedError = {}, handlerError = {};
+  let attempts = 0, observations = 0;
+  assert.throws(() => fn(() => true, () => { ++attempts; throw observedError; }, value => {
+    assert.equal(value, observedError);
+    ++observations;
+    throw handlerError;
+  }), error => error === handlerError);
+  assert.deepEqual([attempts, observations], [1, 1]);
+}
+for (const fn of functions.filter((_, i) => i % 4 === 0)) {
   for (const initial of [undefined, null, false, -0, NaN, 3n, Symbol('initial'), {}]) {
     for (const rounds of [0, 1, 2, 5]) {
       for (const failure of ['none', 'next', 'step', 'after']) {
@@ -39,7 +49,7 @@ for (const fn of functions.filter((_, i) => i % 2 === 0)) {
     }
   }
 }
-for (const fn of functions.filter((_, i) => i % 2 === 1)) {
+for (const fn of functions.filter((_, i) => i % 4 === 1)) {
   for (const rounds of [0, 1, 2, 5]) {
     for (const fails of [() => false, () => true, i => i % 2 === 0]) {
       const initial = {}, updates = Array.from({ length: rounds }, () => ({}));
@@ -81,4 +91,48 @@ for (const fn of functions.filter((_, i) => i % 2 === 1)) {
     ++attempts; throw {};
   }, () => { ++catches; throw handlerError; }), e => e === handlerError);
   assert.deepEqual([checks, attempts, catches], [1, 1, 1]);
+}
+for (const fn of functions.filter((_, i) => i % 4 === 2)) {
+  for (const rounds of [0, 1, 2, 5]) {
+    for (const fails of [() => false, () => true, i => i % 2 === 0]) {
+      const values = Array.from({ length: rounds }, () => ({}));
+      const log = [];
+      let iteration = 0;
+      assert.equal(fn(() => iteration < rounds, () => {
+        log.push(['run', iteration]);
+        if (fails(iteration)) throw values[iteration];
+        return values[iteration];
+      }, value => {
+        assert.equal(value, values[iteration]);
+        log.push(['observe', iteration++]);
+      }), undefined);
+      const expected = [];
+      for (let i = 0; i < rounds; ++i) expected.push(['run', i], ['observe', i]);
+      assert.deepEqual(log, expected);
+    }
+  }
+}
+for (const fn of functions.filter((_, i) => i % 4 === 3)) {
+  for (const rounds of [0, 1, 2, 5]) {
+    for (const fails of [() => false, () => true, i => i % 2 === 0]) {
+      const values = Array.from({ length: rounds }, () => ({}));
+      const log = [];
+      let iteration = 0;
+      assert.equal(fn(() => iteration < rounds, () => {
+        const i = iteration++;
+        log.push(['run', i]);
+        if (fails(i)) throw values[i];
+        return values[i];
+      }, value => {
+        assert.equal(value, values[iteration - 1]);
+        log.push(['catch', iteration - 1]);
+      }), undefined);
+      const expected = [];
+      for (let i = 0; i < rounds; ++i) {
+        expected.push(['run', i]);
+        if (fails(i)) expected.push(['catch', i]);
+      }
+      assert.deepEqual(log, expected);
+    }
+  }
 }
