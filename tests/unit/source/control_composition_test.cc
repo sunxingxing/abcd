@@ -18,7 +18,7 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 struct ExpectedCompletion { std::size_t regions, operations; };
-enum class CompositionStage { kSource, kCompletion, kHoleImport };
+enum class CompositionStage { kSource, kCompletion, kHoleImport, kHoleSource };
 template <class T, class... Alternatives>
 T Take(std::variant<Alternatives...> value,
     std::source_location where = std::source_location::current()) {
@@ -90,7 +90,7 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     test::Check(std::get<ExceptionInputFailure>(language).kind == ExceptionInputError::kInternalValue);
   }
   const auto proof = Take<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, environments, values,
-      kDefaultSemanticWork, nullptr, stage == CompositionStage::kHoleImport ?
+      kDefaultSemanticWork, nullptr, (stage == CompositionStage::kHoleImport || stage == CompositionStage::kHoleSource) ?
           ExceptionInputDomain::kHoleTransport : ExceptionInputDomain::kLanguage));
   const PhasedValueInput input{flow, ssa, environments, values, proof, frame};
   const auto graph = Take<ValueProgram>(ImportPhasedValues(input));
@@ -126,7 +126,14 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     // Operand-chain links now deliberately mismatch; malformed correspondence
     // must report input failure, not masquerade as an unsupported protocol.
     test::Check(std::get<HoleProtocolError>(AnalyzeHoleProtocol(changed)) == HoleProtocolError::kInput);
-    test::Check(std::holds_alternative<EvaluationError>(BuildPhasedEvaluationPlan(graph)));
+    const auto evaluation = Take<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
+    test::Check(evaluation.holes.has_value());
+    auto altered = evaluation;
+    altered.holes.reset();
+    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, altered)));
+    altered = evaluation;
+    altered.holes->comparisons.front().equal = !altered.holes->comparisons.front().equal;
+    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, altered)));
     return; // Raw VM transport is not a source or finalizer completion claim.
   }
   const auto regions = Take<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
@@ -198,6 +205,22 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     std::cerr << "loop-carried tree error " << static_cast<unsigned>(*error) << '\n';
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
   const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
+  if (stage == CompositionStage::kHoleSource) {
+    test::Check(tree.hole.has_value());
+    auto changed = tree;
+    changed.hole.reset();
+    test::Check(std::holds_alternative<TreeFlowError>(
+        VerifyExceptionTreeFlow(graph, context, evaluation, changed)));
+    changed = tree;
+    for (const auto& statement : tree.statements) {
+      const auto* declaration = std::get_if<DeclarationStmt>(&statement.statement);
+      if (!declaration || declaration->symbol != *tree.hole) continue;
+      test::Check(declaration->initializer.has_value());
+      changed.expressions[declaration->initializer->value].expression = TreeLiteral{BooleanLiteral{false}};
+    }
+    test::Check(std::holds_alternative<TreeFlowError>(
+        VerifyExceptionTreeFlow(graph, context, evaluation, changed)));
+  }
   if (expect_finalizer) {
     std::size_t finalizers = 0;
     for (const auto& statement : tree.statements)
@@ -596,7 +619,7 @@ void CompilerFinally(abc::ProfileId profile, std::ostream* output,
   abc::TryRegion region; region.offset = {3}; region.length = 4; region.handler_count = 1;
   abc::CatchHandler handler; handler.offset = {12}; handler.length = 2;
   body.tries = {region}; body.handlers = {handler};
-  Emit(body, profile, 3, 3, false, output, {}, 0, true, {}, stage);
+  Emit(body, profile, 3, 3, false, output, {}, 0, stage != CompositionStage::kHoleSource, {}, stage);
 }
 void FinallyOuterTransfer(abc::ProfileId profile, std::ostream* output, bool stop) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
@@ -862,6 +885,13 @@ void FinallyBranch(abc::ProfileId profile, std::ostream* output,
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-expanded") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301})
+      CompilerFinally(profile, &std::cout, CompositionStage::kHoleSource);
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-import") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                               abc::ProfileId::kDynamic1301})
@@ -1066,6 +1096,7 @@ int main(int argc, char** argv) {
     FinallyBareTransfer(profile, nullptr, false, true);
     FinallyBareTransfer(profile, nullptr, true, true);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleImport);
+    CompilerFinally(profile, nullptr, CompositionStage::kHoleSource);
     FinallyOuterTransfer(profile, nullptr, false);
     FinallyOuterTransfer(profile, nullptr, true);
     FinallyOverride(profile, false, nullptr);

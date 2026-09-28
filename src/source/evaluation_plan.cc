@@ -94,6 +94,24 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     }
     Require(next_function == functions.size(), Error::kOwnership);
     Require(has_arguments == graph.arguments.has_value(), Error::kOwnership);
+    bool has_holes = false;
+    for (const auto& op : graph.ops) { step(); has_holes |= std::holds_alternative<analysis::ValueHole>(op.operation); }
+    if (has_holes) {
+      Require(flow == EvaluationFlow::kPhased, Error::kUnsupportedOperation);
+      auto analyzed = AnalyzeHoleProtocol(graph, {bytes, work});
+      const auto* protocol = std::get_if<HoleProtocol>(&analyzed);
+      if (!protocol) {
+        switch (std::get<HoleProtocolError>(analyzed)) {
+          case HoleProtocolError::kInput: throw Error::kInvalidGraph;
+          case HoleProtocolError::kResourceLimit: throw Error::kResourceLimit;
+          case HoleProtocolError::kWorkLimit: throw Error::kWorkLimit;
+          case HoleProtocolError::kEscape:
+          case HoleProtocolError::kUnguardedThrow: throw Error::kUnsupportedOperation;
+        }
+      }
+      admit(protocol->allocated_bytes, 1); step(protocol->work);
+      plan.holes = std::get<HoleProtocol>(std::move(analyzed));
+    }
     if (has_cells) {
       const auto build_cells = flow == EvaluationFlow::kPhased ? BuildPhasedCellEvaluation : BuildCellEvaluation;
       auto built = build_cells(graph, {bytes, work}, incoming,
@@ -108,7 +126,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     }
     if (has_phi) {
       auto copies = flow == EvaluationFlow::kNormal ? BuildPhiCopies(graph, {bytes, work})
-          : BuildPhasedPhiCopies(graph, {bytes, work});
+          : BuildPhasedPhiCopies(graph, {bytes, work}, plan.holes ? PhiDomain::kHoleTransport : PhiDomain::kLanguage);
       auto* phis = std::get_if<PhiCopies>(&copies);
       if (!phis) {
         const auto error = std::get<PhiCopyError>(copies);

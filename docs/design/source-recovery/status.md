@@ -12,6 +12,20 @@
 
 ## 当前阶段
 
+### 2026-09-28：共享 Hole-finally 协议贯通到源码
+
+- 将闭合的 Hole 复制/phi、身份比较、受保护重抛协议接入共同 evaluation、binding、
+  FunctionTree 和现有 printer；现代 phased method 入口允许原始 Hole 传输，源码层仍拒绝逃逸。
+- 每次调用创建私有 const 对象身份，比较降为严格相等/不等；保留原始抛出值，
+  不把 Hole 替换为 undefined，不触发用户对象隐式转换。
+- 控制投影只扩展到纯 Hole 传输路径；普通复制路径保持原处理，避免已有 finalizer 回归。
+- 三个历史 profile 的真实 opcode 解码用例已输出完整 JS；覆盖正常返回、throw undefined、
+  对象/符号/NaN、cleanup 与后继异常及调用顺序。此用例手工构造 pinned 编译协议，
+  不是完整 es2abc 产物验收。源码暂为 try/catch + 共享清理 + 条件重抛，尚未恢复为 finally。
+- 相关 15 项定向测试通过（`/tmp/abcd-hole-source-focused-tests.log`）；不运行全量语料、
+  全套测试、RSS 或基准。原 `--compiler-finally` 的 finally 形态要求仍是后续缺口。
+
+
 2026-09-28 最新用户调整：[FunctionTree 与部分输出设计](function-tree-output.md) 优先。
 投入以反编译功能为主；目标是 FunctionTree 直接进入共同 printer，允许函数前
 INCOMPLETE 与区域缺口标记。不要求新增 VerifiedFunction/不可变准入包装，新增

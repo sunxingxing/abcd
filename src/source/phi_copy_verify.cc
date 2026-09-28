@@ -11,6 +11,8 @@ std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopiesForFlow(
     RequirePhiCopy(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, PhiCopyError::kRevision);
     CopyBudget budget(allowance);
     RequirePhiCopy(plan.flow == flow, PhiCopyError::kFlow);
+    RequirePhiCopy(plan.domain == PhiDomain::kLanguage ||
+        (flow == PhiFlow::kPhased && plan.domain == PhiDomain::kHoleTransport), PhiCopyError::kDomain);
     CheckPhiFlow(graph, budget, flow);
     RequirePhiCopy(plan.inputs.size() == plan.copies.size(), PhiCopyError::kInput);
     std::vector<std::uint8_t> seen;
@@ -29,7 +31,7 @@ std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopiesForFlow(
         seen[input.value] = 1;
         const auto& use = graph.uses[input.value];
         RequirePhiCopy(PhiInput(use) && use.incoming && SameIncoming(*use.incoming, bundle.incoming), PhiCopyError::kInput);
-        CheckPhiDomain(graph, use);
+        CheckPhiDomain(graph, use, plan.domain);
         RequirePhiCopy(std::get<analysis::ValueId>(use.owner) == plan.copies[i].destination &&
             SameCopyValue(use.operand, plan.copies[i].source), PhiCopyError::kInput);
       }

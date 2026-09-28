@@ -50,6 +50,7 @@ struct TreeFlow {
   std::vector<StmtId> control_statements; // Same synthetic suffix as controls.
   // Private boolean routing expressions checked by the completion projection.
   std::vector<ExprId> completion_expressions;
+  std::optional<ExprId> hole_initializer;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

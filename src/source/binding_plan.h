@@ -18,10 +18,11 @@ struct PhiBinding { analysis::ValueId value; analysis::WorkBlockId block; };
 struct CycleBinding { std::uint32_t bundle; CopyTempId temporary; };
 struct CellBinding { CellId cell; };
 struct FunctionSelfBinding {};
+struct HoleTokenBinding {};
 struct CatchParameterBinding { analysis::ValueId value; analysis::WorkBlockId block; };
 struct CatchSlotBinding { CatchSlotId slot; };
 using BindingSource = std::variant<ParameterBinding, SnapshotBinding, PhiBinding, CycleBinding, CellBinding,
-                                   FunctionSelfBinding, CatchParameterBinding, CatchSlotBinding>;
+                                   FunctionSelfBinding, CatchParameterBinding, CatchSlotBinding, HoleTokenBinding>;
 struct BindingPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
@@ -39,6 +40,7 @@ struct BindingPlan {
   std::uint32_t parameter_count = 0;
   ParameterPlan parameters;
   std::optional<SymbolId> self;
+  std::optional<SymbolId> hole;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
   EvaluationFlow flow = EvaluationFlow::kNormal;

@@ -8,6 +8,7 @@
 #include "literal_plan.h"
 #include "cell_evaluation.h"
 #include "module_guards.h"
+#include "hole_protocol.h"
 
 namespace abcd::source {
 enum class EvaluationKind : std::uint8_t {
@@ -56,6 +57,7 @@ struct EvaluationPlan {
   // Flat, independently checked copy identities. Empty in the normal route,
   // whose IR is already simplified. Never aliases a phi or catch binding.
   std::vector<analysis::ValueId> aliases;
+  std::optional<HoleProtocol> holes;
 };
 inline analysis::ValueId ResolveEvaluationValue(const EvaluationPlan& plan, analysis::ValueId value) {
   return plan.aliases.empty() ? value : plan.aliases[value.value];

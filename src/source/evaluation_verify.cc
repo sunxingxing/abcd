@@ -40,6 +40,27 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     step(graph.uses.size()); step(graph.uses.size()); step(graph.uses.size());
     if (const auto error = analysis::VerifyValueUses(graph, graph.uses.size()))
       return *error == analysis::ValueGraphError::kResourceLimit ? Error::kResourceLimit : Error::kInvalidGraph;
+    bool has_holes = false;
+    for (const auto& op : graph.ops) { step(); has_holes |= std::holds_alternative<analysis::ValueHole>(op.operation); }
+    Require(plan.holes.has_value() == has_holes, Error::kOwnership);
+    if (plan.holes) {
+      Require(flow == EvaluationFlow::kPhased, Error::kUnsupportedOperation);
+      const auto analyzed = AnalyzeHoleProtocol(graph, {bytes, work});
+      const auto* protocol = std::get_if<HoleProtocol>(&analyzed);
+      if (!protocol) {
+        switch (std::get<HoleProtocolError>(analyzed)) {
+          case HoleProtocolError::kInput: throw Error::kInvalidGraph;
+          case HoleProtocolError::kResourceLimit: throw Error::kResourceLimit;
+          case HoleProtocolError::kWorkLimit: throw Error::kWorkLimit;
+          case HoleProtocolError::kEscape:
+          case HoleProtocolError::kUnguardedThrow: throw Error::kUnsupportedOperation;
+        }
+      }
+      Require(protocol->comparisons == plan.holes->comparisons &&
+          protocol->rethrows == plan.holes->rethrows, Error::kOwnership);
+      admit(protocol->allocated_bytes, 1); step(protocol->work);
+    }
+    if (plan.phis) Require(plan.phis->domain == (has_holes ? PhiDomain::kHoleTransport : PhiDomain::kLanguage), Error::kOwnership);
     const auto aliases = VerifyEvaluationAliases(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&aliases)) return *error;
     step(std::get<std::uint64_t>(aliases));

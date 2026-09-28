@@ -130,6 +130,10 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   }
   for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
     budget.Step();
+    if (flow.hole_initializer == ExprId{static_cast<std::uint32_t>(i)}) {
+      visited[tree.expressions[i].origin.value] = 1;
+      continue;
+    }
     if (!completion_expressions.empty() && completion_expressions[i]) continue;
     const ExprId expression{static_cast<std::uint32_t>(i)};
     const auto origin = tree.expressions[i].origin;

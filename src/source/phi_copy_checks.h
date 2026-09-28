@@ -52,11 +52,16 @@ std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopiesForFlow(
 inline bool PhiInput(const analysis::OperandUse& use) {
   return use.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueId>(use.owner);
 }
-inline void CheckPhiDomain(const analysis::ValueProgram& graph, const analysis::OperandUse& use) {
+inline void CheckPhiDomain(const analysis::ValueProgram& graph, const analysis::OperandUse& use,
+    PhiDomain domain) {
+  const auto admitted = [domain](analysis::ValueKinds kinds) {
+    return kinds.IsLanguage() || (domain == PhiDomain::kHoleTransport && !kinds.IsEmpty() &&
+        !kinds.Contains(analysis::VmValueKind::kEnvironment) && !kinds.Contains(analysis::VmValueKind::kOtherInternal));
+  };
   const auto destination = std::get<analysis::ValueId>(use.owner);
-  RequirePhiCopy(graph.values[destination.value].domain.IsLanguage(), PhiCopyError::kDomain);
+  RequirePhiCopy(admitted(graph.values[destination.value].domain), PhiCopyError::kDomain);
   if (const auto* source = std::get_if<analysis::ValueId>(&use.operand))
-    RequirePhiCopy(graph.values[source->value].domain.IsLanguage(), PhiCopyError::kDomain);
+    RequirePhiCopy(admitted(graph.values[source->value].domain), PhiCopyError::kDomain);
 }
 }  // namespace abcd::source
 #endif

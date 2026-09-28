@@ -28,6 +28,7 @@ bool Transport(ValueKinds kinds) {
 
 std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget) {
+  const auto initial = budget;
   try {
     Require(!graph.blocks.empty() &&
             graph.phases.size() == graph.blocks.size());
@@ -252,6 +253,8 @@ std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
       }
       throw Error::kEscape;
     }
+    result.allocated_bytes = initial.bytes - budget.bytes;
+    result.work = initial.work - budget.work;
     return result;
   } catch (Error error) {
     return error;

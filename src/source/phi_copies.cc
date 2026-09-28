@@ -6,7 +6,8 @@
 namespace abcd::source {
 namespace {
 std::variant<PhiCopies, PhiCopyError> BuildCopies(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget allowance, PhiFlow flow) {
+    const analysis::ValueProgram& graph, analysis::SemanticBudget allowance, PhiFlow flow,
+    PhiDomain domain = PhiDomain::kLanguage) {
   try {
     CopyBudget budget(allowance);
     CheckPhiFlow(graph, budget, flow);
@@ -15,6 +16,7 @@ std::variant<PhiCopies, PhiCopyError> BuildCopies(
     for (const auto& use : graph.uses) { budget.Step(); count += PhiInput(use); }
     PhiCopies result{graph.revision, graph.cfg_revision, {}, {}, {}};
     result.flow = flow;
+    result.domain = domain;
     budget.Admit(1, sizeof(result));
     budget.Reserve(result.inputs, count);
     budget.Reserve(result.copies, count);
@@ -22,7 +24,7 @@ std::variant<PhiCopies, PhiCopyError> BuildCopies(
       budget.Step();
       const auto& use = graph.uses[i];
       if (!PhiInput(use)) continue;
-      CheckPhiDomain(graph, use);
+      CheckPhiDomain(graph, use, domain);
       result.inputs.push_back({static_cast<std::uint32_t>(i)});
     }
     std::sort(result.inputs.begin(), result.inputs.end(), [&](auto a, auto b) {
@@ -72,7 +74,7 @@ std::variant<PhiCopies, PhiCopyError> BuildPhiCopies(
   return BuildCopies(graph, allowance, PhiFlow::kNormal);
 }
 std::variant<PhiCopies, PhiCopyError> BuildPhasedPhiCopies(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget allowance) {
-  return BuildCopies(graph, allowance, PhiFlow::kPhased);
+    const analysis::ValueProgram& graph, analysis::SemanticBudget allowance, PhiDomain domain) {
+  return BuildCopies(graph, allowance, PhiFlow::kPhased, domain);
 }
 }  // namespace abcd::source

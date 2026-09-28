@@ -43,6 +43,7 @@ std::variant<BindingPlan, BindingError> BuildBindings(
     needs_self |= op.life == ValueLife::kLive && std::holds_alternative<ValueFrameFunction>(op.operation);
   }
   const std::size_t self_count = needs_self ? 1 : 0;
+  const std::size_t hole_count = evaluation.holes ? 1 : 0;
   const auto cell_count = evaluation.cells ? evaluation.cells->cells.cells.size() : 0;
   const auto slot_count = evaluation.exceptions ? evaluation.exceptions->slots.size() : 0;
   for (const auto& value : graph.values) {
@@ -59,7 +60,7 @@ std::variant<BindingPlan, BindingError> BuildBindings(
     cycle_count += count;
   }
   std::size_t fixed_symbols = parameter_count;
-  for (const auto count : {phi_count, cycle_count, self_count, catch_count, slot_count}) {
+  for (const auto count : {phi_count, cycle_count, self_count, catch_count, slot_count, hole_count}) {
     if (count > kMaxId - fixed_symbols) return Error::kResourceLimit;
     fixed_symbols += count;
   }
@@ -116,6 +117,10 @@ std::variant<BindingPlan, BindingError> BuildBindings(
     if (needs_self) {
       plan.self = SymbolId{static_cast<std::uint32_t>(plan.symbols.size())};
       plan.symbols.emplace_back(FunctionSelfBinding{});
+    }
+    if (evaluation.holes) {
+      plan.hole = SymbolId{static_cast<std::uint32_t>(plan.symbols.size())};
+      plan.symbols.emplace_back(HoleTokenBinding{});
     }
     for (std::size_t i = 0; i < graph.values.size(); ++i) {
       if (work == 0) return Error::kWorkLimit;

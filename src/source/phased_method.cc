@@ -191,7 +191,8 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     quota.Admit(values.AllocatedBytes()); quota.Step(value_work.Consumed());
     const auto arguments = frame.extra_arguments ? std::optional{ArgumentFrameFact{frame}} : std::nullopt;
     auto proof = PhaseResult<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, environments,
-        values, quota.Remaining().work, arguments ? &*arguments : nullptr), Error::kValues);
+        values, quota.Remaining().work, arguments ? &*arguments : nullptr,
+        ExceptionInputDomain::kHoleTransport), Error::kValues);
     quota.Step(proof.work_units);
     const PhasedValueInput input{flow, ssa, environments, values, proof, frame};
     auto imported = PhaseResult<ImportedPhases>(BuildPhasedValues(input, quota.Remaining()), Error::kImport);

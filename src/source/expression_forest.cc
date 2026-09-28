@@ -459,7 +459,11 @@ class ForestBuilder {
       else if constexpr (std::is_same_v<T, analysis::ValueBranch>)
         return Unary(operation.predicate, operands[0], graph_.uses[op.first_use.value].operand, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueBinary>)
-        return Add(BinaryExpr{operation.op, operands[0], operands[1]}, origin);
+        return Add(BinaryExpr{HoleSourceOperator(evaluation_.holes ? &*evaluation_.holes : nullptr, id, operation.op), operands[0], operands[1]}, origin);
+      else if constexpr (std::is_same_v<T, analysis::ValueHole>) {
+        Require(evaluation_.holes && forest_.bindings.hole, Error::kBinding);
+        return Add(SymbolExpr{*forest_.bindings.hole}, origin);
+      }
       else if constexpr (std::is_same_v<T, analysis::ValueNamedRead> ||
                          std::is_same_v<T, analysis::ValueNamedWrite>) {
         const auto* name = std::get_if<NameId>(&constant);

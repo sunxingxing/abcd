@@ -5,6 +5,7 @@
 
 namespace abcd::source {
 enum class PhiFlow : std::uint8_t { kNormal, kPhased };
+enum class PhiDomain : std::uint8_t { kLanguage, kHoleTransport };
 struct PhiBundle {
   analysis::IncomingKey incoming;
   std::uint32_t first;
@@ -20,6 +21,7 @@ struct PhiCopies {
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
   PhiFlow flow = PhiFlow::kNormal;
+  PhiDomain domain = PhiDomain::kLanguage;
 };
 enum class PhiCopyError : std::uint8_t {
   kRevision, kFlow, kDomain, kInput, kBundle, kSchedule, kResourceLimit, kWorkLimit
@@ -39,7 +41,8 @@ enum class PhiCopyError : std::uint8_t {
 // Abstract edge schedules are NOT permission to execute writes before a throw.
 // Exceptional edges require separate staging and catch-entry commit placement.
 [[nodiscard]] std::variant<PhiCopies, PhiCopyError> BuildPhasedPhiCopies(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {});
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
+    PhiDomain domain = PhiDomain::kLanguage);
 [[nodiscard]] std::variant<std::uint64_t, PhiCopyError> VerifyPhasedPhiCopies(
     const analysis::ValueProgram& graph, const PhiCopies& plan,
     analysis::SemanticBudget budget = {});

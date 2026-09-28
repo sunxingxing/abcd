@@ -495,6 +495,8 @@ class FlowCheck {
     }
   }
   std::uint32_t Declarations() {
+    Require(tree_.hole.has_value() == evaluation_.holes.has_value(), Error::kSnapshot);
+    if (tree_.hole) Require(tree_.hole->value < tree_.symbols.size(), Error::kSnapshot);
     const auto& block = sequences_.Block(tree_.body);
     std::uint32_t count = 0;
     while (count < block.child_count) {
@@ -504,12 +506,26 @@ class FlowCheck {
       if (!declaration) break;
       const auto& symbol = tree_.symbols[declaration->symbol.value];
       if (symbol.kind == BindingKind::kLocal) break;
+      if (tree_.hole == declaration->symbol) {
+        Require(!flow_.hole_initializer && declaration->initializer && symbol.scope == tree_.body_scope &&
+            symbol.kind == BindingKind::kCompilerTemporary && symbol.declaration == DeclarationKind::kConst &&
+            symbol.temporary == TemporaryReason::kInternalSentinel &&
+            std::holds_alternative<EmptyObjectExpr>(tree_.expressions[declaration->initializer->value].expression), Error::kSnapshot);
+        const auto origin = tree_.expressions[declaration->initializer->value].origin;
+        const auto* binding = std::get_if<BindingOrigin>(&tree_.origins[origin.value]);
+        Require(binding && binding->symbol == declaration->symbol && tree_.statements[id.value].origin == origin,
+            Error::kSnapshot);
+        declared_[declaration->symbol.value] = assigned_[declaration->symbol.value] = 1;
+        flow_.hole_initializer = declaration->initializer;
+        ++count; continue;
+      }
       Require(symbol.kind == BindingKind::kCompilerTemporary && symbol.scope == tree_.body_scope &&
               symbol.declaration == DeclarationKind::kLet && symbol.temporary &&
               !declaration->initializer && !declared_[declaration->symbol.value], Error::kSnapshot);
       declared_[declaration->symbol.value] = 1;
       ++count;
     }
+    Require(!tree_.hole || flow_.hole_initializer.has_value(), Error::kSnapshot);
     // Locals are consumed only at their checked environment allocations.
     for (const auto& symbol : tree_.symbols) {
       budget_.Step();

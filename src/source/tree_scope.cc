@@ -21,6 +21,7 @@ bool ValidTemporary(TemporaryReason reason) {
     case TemporaryReason::kCrossRegionValue: case TemporaryReason::kReferenceSnapshot:
     case TemporaryReason::kUnprovedInline: case TemporaryReason::kPredicateSnapshot:
     case TemporaryReason::kExceptionSnapshot: case TemporaryReason::kPendingCompletion:
+    case TemporaryReason::kInternalSentinel:
       return true;
   }
   return false;

@@ -1,6 +1,26 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
+const sharedSource = execFileSync(process.argv[2], ['--compiler-finally-expanded'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!sharedSource.includes('INCOMPLETE'));
+const {functions: sharedFinalizers} = await import(`data:text/javascript;base64,${Buffer.from(sharedSource).toString('base64')}`);
+assert.equal(sharedFinalizers.length, 3);
+for (const fn of sharedFinalizers) for (const pending of [undefined, null, false, 0, NaN, Symbol('pending'), {},
+  {valueOf() { assert.fail('unexpected coercion'); }, toString() { assert.fail('unexpected coercion'); }}]) {
+  for (const getThrows of [false, true]) for (const cleanupThrows of [false, true]) for (const afterThrows of [false, true]) {
+    const log = [], result = {}, cleanupError = {}, afterError = {};
+    let returned, thrown, didThrow = false;
+    try {
+      returned = fn(function () { assert.equal(this, undefined); log.push('get'); if (getThrows) throw pending; return pending; },
+        function () { assert.equal(this, undefined); log.push('cleanup'); if (cleanupThrows) throw cleanupError; },
+        function () { assert.equal(this, undefined); log.push('after'); if (afterThrows) throw afterError; return result; });
+    } catch (error) { didThrow = true; thrown = error; }
+    assert.deepEqual(log, getThrows || cleanupThrows ? ['get', 'cleanup'] : ['get', 'cleanup', 'after']);
+    assert.equal(didThrow, getThrows || cleanupThrows || afterThrows);
+    assert.equal(didThrow ? thrown : returned, cleanupThrows ? cleanupError : getThrows ? pending : afterThrows ? afterError : result);
+  }
+}
+
 const bareTransferSource = execFileSync(process.argv[2], ['--finally-bare-transfer'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!bareTransferSource.includes('INCOMPLETE'));
 const {functions: bareTransfers} = await import(`data:text/javascript;base64,${Buffer.from(bareTransferSource).toString('base64')}`);

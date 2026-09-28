@@ -138,7 +138,13 @@ class TreeBuilder {
       const SymbolId symbol{static_cast<std::uint32_t>(i)};
       const TreeOriginId origin{static_cast<std::uint32_t>(tree_.origins.size())};
       tree_.origins.emplace_back(BindingOrigin{symbol});
-      Append(root, Statement(DeclarationStmt{symbol, {}}, origin));
+      std::optional<ExprId> initializer;
+      if (tree_.hole == symbol) {
+        Grow(tree_.expressions, tree_.expressions.size() + 1);
+        initializer = ExprId{static_cast<std::uint32_t>(tree_.expressions.size())};
+        tree_.expressions.push_back({EmptyObjectExpr{}, origin});
+      }
+      Append(root, Statement(DeclarationStmt{symbol, initializer}, origin));
     }
     // Formal defaults execute before the body. MethodEntry copies execute once
     // after private declarations, outside all loops and before original ops.
@@ -519,9 +525,12 @@ class TreeBuilder {
       } else if (std::holds_alternative<CatchSlotBinding>(binding)) {
         Require(exceptions_ != nullptr, Error::kBinding);
         reason = TemporaryReason::kExceptionSnapshot; prefix = u"$exception";
+      } else if (std::holds_alternative<HoleTokenBinding>(binding)) {
+        tree_.hole = SymbolId{static_cast<std::uint32_t>(i)};
+        reason = TemporaryReason::kInternalSentinel; prefix = u"$hole";
       } else throw Error::kBinding;
       tree_.symbols.push_back({kBodyScope, SyntheticName(prefix, i),
-          BindingKind::kCompilerTemporary, DeclarationKind::kLet,
+          BindingKind::kCompilerTemporary, tree_.hole == SymbolId{static_cast<std::uint32_t>(i)} ? DeclarationKind::kConst : DeclarationKind::kLet,
           NameEvidence::kSynthesized, reason});
     }
     Require(next_capture == syntax_.captures.size(), Error::kBinding);

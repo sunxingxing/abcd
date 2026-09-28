@@ -38,7 +38,7 @@ enum class DeclarationKind : std::uint8_t { kParameter, kLet, kConst, kCatchPara
 enum class TemporaryReason : std::uint8_t {
   kMultipleUses, kEffectSnapshot, kPhiJoin, kParallelCopyCycle,
   kCrossRegionValue, kReferenceSnapshot, kUnprovedInline, kPredicateSnapshot,
-  kExceptionSnapshot, kPendingCompletion
+  kExceptionSnapshot, kPendingCompletion, kInternalSentinel
 };
 struct TreeScope {
   ScopeKind kind;
@@ -277,6 +277,8 @@ struct FunctionTree {
   // LabelId -> loop statement, function-local and separate from variable names.
   std::vector<StmtId> labels;
   std::vector<FinalizerComposition> finalizers;
+  // Invocation-private identity used only by a closed VM Hole protocol.
+  std::optional<SymbolId> hole;
 };
 // FunctionTree is the direct printer input, not a source-publication token.
 // Structural safety checks do not imply complete recovery or IR equivalence.

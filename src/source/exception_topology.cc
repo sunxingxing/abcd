@@ -181,10 +181,15 @@ class Projection {
       const auto& phase = graph_.phases[b];
       if (phase.phase == ExceptionPhase::kCatch || !phase.operation) continue;
       const auto& op = graph_.ops[phase.operation->value];
-      // Only control-only corridors can change STRUCTURAL ownership. Never
-      // move an evaluation into a catch range or mutate semantic/lexical scope.
-      nodes[b].candidate = std::holds_alternative<ValueJump>(op.operation) &&
-          op.use_count == 0 && !op.result && op.normal == LanguageEffect::kNone &&
+      // Pure temporary transport can belong to the arm that uniquely enters
+      // it: compiler finally initializes its pending sentinel outside the
+      // protected PC range before joining the catch arm. Keep original SSA,
+      // edge copies and semantic scopes; never absorb a throwing/effectful op.
+      const bool transport = (std::holds_alternative<ValueCopy>(op.operation) && op.result &&
+          graph_.values[op.result->value].domain.Contains(VmValueKind::kHole)) ||
+          std::holds_alternative<ValueHole>(op.operation);
+      const bool jump = std::holds_alternative<ValueJump>(op.operation) && op.use_count == 0 && !op.result;
+      nodes[b].candidate = (jump || transport) && op.normal == LanguageEffect::kNone &&
           op.before_throw == LanguageEffect::kNone &&
           op.exceptional == ExceptionalCompletion::kImpossible &&
           graph_.blocks[b].edge_count == 1;

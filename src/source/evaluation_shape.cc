@@ -61,7 +61,8 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       shape.inputs = InputEvaluation::kConditionalArgument;
       return shape;
     }
-    else if constexpr (std::is_same_v<T, analysis::ValueString>) return EvaluationShape{kNoOperands, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueString> || std::is_same_v<T, analysis::ValueHole>)
+      return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
       if (op.kind == analysis::CreationKind::kFunction && op.home_object == analysis::HomeObjectInput::kCurrentFunction)
         return EvaluationShape{kNoOperands, true};
@@ -142,7 +143,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
     if constexpr (std::is_same_v<T, analysis::ValueCopy> ||
                   std::is_same_v<T, analysis::ValueUnary> ||
                   std::is_same_v<T, analysis::ValueBinary> ||
-                  std::is_same_v<T, analysis::ValueString>) return false;
+                  std::is_same_v<T, analysis::ValueString> || std::is_same_v<T, analysis::ValueHole>) return false;
     else {
       static_assert(std::is_same_v<T, analysis::ValueNamedRead> ||
                     std::is_same_v<T, analysis::ValueDebugger> ||

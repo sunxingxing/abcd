@@ -86,8 +86,12 @@ class OperandCheck {
           Unary(operation.predicate, input(0), expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueBinary>) {
           const auto& binary = Node<BinaryExpr>(expression);
-          RequireMeaning(binary.operation == operation.op, Error::kOperator);
+          RequireMeaning(binary.operation == HoleSourceOperator(evaluation_.holes ? &*evaluation_.holes : nullptr,
+              current_, operation.op), Error::kOperator);
           Input(input(0), binary.left); Input(input(1), binary.right);
+        } else if constexpr (std::is_same_v<T, analysis::ValueHole>) {
+          RequireMeaning(evaluation_.holes && tree_.hole && Node<SymbolExpr>(expression).symbol == *tree_.hole,
+              Error::kOperand);
         } else if constexpr (std::is_same_v<T, analysis::ValueModuleRead>) {
           RequireMeaning(next_module < evaluation_.modules.size(), Error::kOperand);
           const auto& module = evaluation_.modules[next_module++];
