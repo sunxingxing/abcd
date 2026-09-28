@@ -398,6 +398,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       auto emitted = FunctionEmission::Write(std::get<VerifiedFunction>(std::move(published)), output, {}, {}, {}, &module_scope);
       Check(std::holds_alternative<FunctionEmission>(emitted));
       const auto& emission = std::get<FunctionEmission>(emitted);
+      test::CheckPhasedFamilyEmission(file, header, module_index, lookup, roles, functions,
+          sites, range.first, identity, output.str(), &module_scope);
       Check(emission.Positions().module_binding && emission.Positions().module_binding->owner == enclosure.Owner());
       Check(emission.Receipt().coverage == Coverage::kComplete && !ValidateRouteReceipt(emission.Receipt()));
       if (evidence) {

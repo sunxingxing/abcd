@@ -2,6 +2,7 @@
 
 #include <new>
 #include <stdexcept>
+#include "abcd/source/module_enclosure.h"
 
 namespace abcd::source {
 struct PreparedFamily::Storage {
@@ -95,8 +96,18 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     Budget budget(allowance);
     budget.Account(sizeof(Storage), 0);
     budget.Account(root.AllocatedBytes(), root.Work());
+    const RecordModuleContext* modules = nullptr;
+    ModuleOwnerId module_owner{};
+    if (destination.globals && destination.globals->module_enclosure) {
+      const auto& enclosure = *destination.globals->module_enclosure;
+      Require(root.Position().value < index.methods.size(), Error::kModules);
+      const auto record = index.methods[root.Position().value].owner_offset;
+      Require(enclosure.Identity() == root.Identity() && enclosure.Context().record() == record &&
+          enclosure.Context().ForOwner(file, record), Error::kModules);
+      modules = &enclosure.Context(); module_owner = enclosure.Owner();
+    }
     auto input = Take<FileFamily, FamilyFileFailure>(ReadFunctionFamily(
-        file, header, index, lookup, roles, sites, root.Position(), root.Identity(), budget.Left(), nullptr, &root));
+        file, header, index, lookup, roles, sites, root.Position(), root.Identity(), budget.Left(), modules, &root, module_owner));
     budget.Account(input.allocated_bytes, input.work);
     Require(input.members.size() <= budget.Left().bytes / sizeof(MethodRouteReceipt), Error::kResourceLimit);
     std::vector<MethodRouteReceipt> receipts;
@@ -110,7 +121,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
       receipts.push_back(receipt); // Identity only; no stage claim until all proofs close.
     }
     auto family = Take<ConstructedFamily, FamilyTreeFailure>(BuildFileFamilyTrees(
-        file, header, index, std::move(input), root, budget.Left(), nullptr, {}, &lookup));
+        file, header, index, std::move(input), root, budget.Left(), modules, module_owner, &lookup));
     budget.Account(family.allocated_bytes, family.work);
     for (const auto& member : family.members) {
       budget.Account(0, 1);
@@ -119,7 +130,6 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
           member.tree.callable == CallableKind::kArrow ||
           (&member == &family.members[family.root.value] && root.ClassSite() &&
            member.tree.callable == CallableKind::kMethod), Error::kCallable);
-      Require(member.tree.modules.empty(), Error::kModules);
       Require(member.abi.has_value(), Error::kAbi);
       Require(member.sources.has_value(), Error::kSources);
     }
@@ -131,6 +141,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
       budget.Account(0, 1);
       const auto& member = family.members[i]; auto& receipt = receipts[i];
       Require(receipt.identity == member.tree.identity && receipt.method == member.tree.method, Error::kReceipt);
+      Require(member.record == receipt.record, Error::kReceipt);
       receipt.route = SourceRoute::kValueTree; receipt.stage = SourceStage::kTreeVerified;
       receipt.coverage = Coverage::kIncomplete; receipt.work_revision = member.tree.value_revision.value;
       Require(!ValidateRouteReceipt(receipt), Error::kReceipt);

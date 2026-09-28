@@ -37,6 +37,9 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
         positions.properties.size() == tree.properties.size() &&
         positions.statements.size() == tree.statements.size() &&
         positions.anchors.size() == tree.anchors.size(), Error::kPositions);
+    Require(tree.modules.empty() ? !positions.module_binding :
+        positions.module_binding && member.record && positions.module_binding->record == *member.record,
+        Error::kPositions);
     for (const auto& source : member.sources->sites) {
       budget.Step();
       // IDs come from the sealed instruction-source pass, not caller tables.

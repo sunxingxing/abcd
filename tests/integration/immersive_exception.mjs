@@ -7,7 +7,7 @@ import { SourceTextModule, SyntheticModule } from 'node:vm';
 // Explicitly selected real ABC, no evaluation source or source map input.
 const digest = createHash('sha256').update(readFileSync(process.argv[3])).digest('hex');
 assert.equal(digest, '8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a');
-const result = JSON.parse(execFileSync(process.argv[2], [process.argv[3], '8284', '--emit'], { encoding: 'utf8' }));
+const result = JSON.parse(execFileSync(process.argv[2], [process.argv[3], '8284', process.argv[4] ?? '--emit'], { encoding: 'utf8' }));
 assert.equal(result.fragment_complete, true);
 assert.equal(result.record_complete, false);
 const entry = new SourceTextModule(`${result.imports}

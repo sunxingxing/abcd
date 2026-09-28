@@ -4,7 +4,8 @@ import { runInNewContext } from 'node:vm';
 // Controlled bindings for conditional drafts, not production publication or
 // evidence about native module initialization. Expectations describe observable
 // behavior of the pinned decoded methods, independently of generated spelling.
-export function checkQueryDegree(source) {
+const buildDraft = (source, bindings) => runInNewContext(`class Fixture { ${source} }; Fixture`, bindings);
+export function checkQueryDegree(source, build = buildDraft) {
   for (const immediate of [false, true]) {
     const events = [];
     const gravity = Symbol('gravity');
@@ -19,7 +20,7 @@ export function checkQueryDegree(source) {
       },
     };
     const hilog = { error() { assert.fail('unexpected log'); } };
-    const Fixture = runInNewContext(`class Fixture { ${source} }; Fixture`, { sensor, hilog });
+    const Fixture = build(source, { sensor, hilog });
     const instance = new Fixture();
     assert.equal(instance.queryDegree.length, 0);
     instance.getCalDegree = function (...args) {
@@ -60,7 +61,7 @@ export function checkQueryDegree(source) {
       else throw failure;
     } };
     const hilog = { error(...args) { assert.equal(this, hilog); events.push(args); } };
-    const Fixture = runInNewContext(`class Fixture { ${source} }; Fixture`, { sensor, hilog });
+    const Fixture = build(source, { sensor, hilog });
     const instance = new Fixture();
     instance.getCalDegree = () => { events.push('degree'); throw failure; };
     assert.equal(instance.queryDegree(), undefined);
@@ -69,7 +70,7 @@ export function checkQueryDegree(source) {
   }
 }
 
-export function checkRecover(source) {
+export function checkRecover(source, build = buildDraft) {
   for (const fullscreen of [false, true]) {
     const events = [];
     const status = Symbol('fullscreen');
@@ -83,7 +84,7 @@ export function checkRecover(source) {
     const promise = { then(action) { assert.equal(this, promise); events.push('then'); callbacks.push(action); return caught; } };
     const first = { getWindowStatus() { assert.equal(this, first); events.push('get-status'); return fullscreen ? status : null; } };
     const second = { recover() { assert.equal(this, second); events.push('recover'); return promise; } };
-    const Fixture = runInNewContext(`class Fixture { ${source} }; Fixture`, { window, hilog });
+    const Fixture = build(source, { window, hilog });
     const instance = new Fixture();
     let reads = 0;
     assert.equal(instance.recover.length, 0);
@@ -111,7 +112,7 @@ export function checkRecover(source) {
       get message() { events.push('message'); return 'window-failure'; },
     };
     const hilog = { error(...args) { assert.equal(this, hilog); events.push(args); } };
-    const Fixture = runInNewContext(`class Fixture { ${source} }; Fixture`, { hilog });
+    const Fixture = build(source, { hilog });
     const instance = new Fixture();
     Object.defineProperty(instance, 'mainWindow', { get() {
       events.push('main-window');

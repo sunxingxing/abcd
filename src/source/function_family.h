@@ -17,6 +17,9 @@ struct FamilyMember {
   // fixtures may omit it; a mutable census is not publication evidence.
   std::optional<FunctionAbi> abi;
   std::optional<InstructionSources> sources;
+  // File-backed factory provenance. Synthetic layout inputs may omit it, but
+  // module publication must compare it with the actual destination record.
+  std::optional<abc::EntityOffset> record;
 };
 struct FamilyParent { FamilyId function; ExprId expression; };
 // Construction diagnostics only, not transferable publication evidence.

@@ -22,14 +22,16 @@
 #include "../../src/source/family_tree.h"
 #include "../../src/source/family_print.h"
 #include "exception_family_probe.h"
+#include "exception_family_emit.h"
 #include "../support/phased_family_checks.h"
 #include "../support/instruction_positions.h"
 
 namespace {
+enum class CandidateMode { kInspect, kFunction, kFamily };
 int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
     const abcd::abc::MetadataIndex& index, const abcd::abc::MethodLookup& lookup,
     const abcd::analysis::ClassMethodSites& sites, const abcd::corpus::FileFingerprint& hash,
-    abcd::abc::EntityOffset entity, bool emit, abcd::analysis::SemanticBudget budget) {
+    abcd::abc::EntityOffset entity, CandidateMode mode, abcd::analysis::SemanticBudget budget) {
   using namespace abcd;
   using namespace abcd::source;
   const auto position = lookup.Find(entity);
@@ -55,11 +57,14 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
   // A single explicitly selected method, not record publication or a corpus
   // scan. Its module owner is local to this diagnostic invocation.
   constexpr ModuleOwnerId kSelectedRecord{0};
-  if (emit) {
+  if (mode != CandidateMode::kInspect) {
     const auto identity = MakeRouteInputIdentity(hash, header);
     auto planned = ModuleEnclosure::Build(file, header, *record, identity, kSelectedRecord);
     const auto* enclosure = std::get_if<ModuleEnclosure>(&planned);
     if (!enclosure) { std::cerr << "module enclosure error " << static_cast<unsigned>(std::get<ModuleEnclosureError>(planned)) << '\n'; return 1; }
+    if (mode == CandidateMode::kFamily)
+      return test::EmitExceptionFamily(file, header, index, lookup, *indexed_roles, sites,
+          sites.Find(entity).first, *enclosure, budget);
     GlobalScope scope{}; scope.module_enclosure = enclosure;
     auto prepared = VerifiedFunction::PrepareClass(file, header, index, lookup, *indexed_roles,
         sites, sites.Find(entity).first, identity, budget, &scope);
@@ -333,7 +338,7 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
 int main(int argc, char** argv) {
   using namespace abcd;
   if (argc < 2 || argc > 6 || argc == 5 ||
-      (argc >= 4 && std::string_view(argv[3]) != "--emit")) return 1;
+      (argc >= 4 && std::string_view(argv[3]) != "--emit" && std::string_view(argv[3]) != "--emit-family")) return 1;
   analysis::SemanticBudget budget;
   if (argc == 6) {
     if (std::string_view(argv[4]) != "--work") return 1;
@@ -366,7 +371,9 @@ int main(int argc, char** argv) {
     abc::EntityOffset entity;
     const auto parsed_id = std::from_chars(text.data(), text.data() + text.size(), entity.value);
     if (parsed_id.ec != std::errc{} || parsed_id.ptr != text.data() + text.size()) return 1;
-    return Inspect(file, *header, *index, *methods, *sites, *hash, entity, argc >= 4, budget);
+    const auto mode = argc < 4 ? CandidateMode::kInspect :
+        std::string_view(argv[3]) == "--emit-family" ? CandidateMode::kFamily : CandidateMode::kFunction;
+    return Inspect(file, *header, *index, *methods, *sites, *hash, entity, mode, budget);
   }
   std::vector<const abc::MethodInfo*> candidates;
   for (const auto& method : index->methods)

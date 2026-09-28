@@ -253,7 +253,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // retaining legal inner effects without relaxing final-root exception checks.
 // Rules 57 carry occurrence-bound phased roots through shared immutable family
 // preparation/emission, retaining destination, store and original-PC gates.
-inline constexpr std::uint32_t kRouteEvidenceRules = 57;
+// Rules 58 verify native module destinations across immutable function families,
+// retaining file-backed member records and rechecking lexical ancestry on reuse.
+inline constexpr std::uint32_t kRouteEvidenceRules = 58;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

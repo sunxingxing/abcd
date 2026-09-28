@@ -11,7 +11,7 @@ assert.equal(createHash('sha256').update(readFileSync(process.argv[3])).digest('
 // this 330-instruction method. No production default or memory limit is changed.
 const work = 4_000_000;
 const result = JSON.parse(execFileSync(process.argv[2],
-  [process.argv[3], '8566', '--emit', '--work', String(work)], { encoding: 'utf8' }));
+  [process.argv[3], '8566', process.argv[4] ?? '--emit', '--work', String(work)], { encoding: 'utf8' }));
 assert(result.fragment_complete);
 assert.equal(result.record_complete, false);
 assert.equal(result.work_limit, work);

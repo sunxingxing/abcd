@@ -37,8 +37,8 @@ struct FamilyEnclosure {
 // admits only a family without global/realm reads, never an assumed empty enclosure.
 // Borrowed sorted indexes follow GlobalScope's contract; recheck on embedding.
 // This does not establish module initialization, strictness or publication.
-// Module reads currently refuse kMissingModuleContext after lexical checks;
-// a GlobalScope alone is not a module-binding execution capability.
+// Module reads require each member's file-backed record and a matching native
+// ModuleEnclosure; import spellings alone never authorize a binding.
 [[nodiscard]] std::variant<FamilyEnclosure, FamilyEnclosureFailure> VerifyFamilyDestination(
     const ConstructedFamily& family, const GlobalScope* scope,
     analysis::SemanticBudget budget = {});

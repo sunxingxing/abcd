@@ -7,6 +7,7 @@
 #include <type_traits>
 
 #include "tree_structure.h"
+#include "abcd/source/module_enclosure.h"
 
 namespace abcd::source {
 namespace {
@@ -43,6 +44,17 @@ class EnclosureCheck {
       auto structure = std::get<TreeStructure>(std::move(checked));
       Admit(structure.allocated_bytes, 1); Step(structure.work);
       structures_[i] = std::move(structure);
+      if (extent_ == EnclosureExtent::kDestination && (!tree.modules.empty() || tree.module_scope)) {
+        Require(family_.members[i].record.has_value() && scope_ && scope_->module_enclosure,
+            Error::kMissingModuleContext);
+        const auto destination = VerifyModuleDestination(tree, *family_.members[i].record, scope_, left_);
+        if (const auto* error = std::get_if<ModuleEnclosureError>(&destination)) {
+          if (*error == ModuleEnclosureError::kResourceLimit) Fail(Error::kResourceLimit);
+          if (*error == ModuleEnclosureError::kWorkLimit) Fail(Error::kWorkLimit);
+          Fail(Error::kModuleBinding);
+        }
+        Step(std::get<ModuleDestination>(destination).work);
+      }
       offsets_[i] = scopes;
       Add(scopes, tree.scopes.size()); Add(bindings, tree.symbols.size());
       Add(modules, tree.modules.size());
@@ -154,7 +166,8 @@ class EnclosureCheck {
           // Module-scope symbols are aliases to the record, not declarations
           // inside this child that could hide a parent local or its TDZ.
           Require(!Shadows(locals_, name, point), Error::kShadowedModule);
-          if (extent_ == EnclosureExtent::kDestination) Fail(Error::kMissingModuleContext);
+          // Native binding checks ran once per member above. This independent
+          // ancestry check still rejects parent locals/TDZ hiding the alias.
         }
         name_.reset();
       }

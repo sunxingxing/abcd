@@ -24,7 +24,7 @@
 各指令必需的 T07/T08/T09/T10/T11 能力在第一阶段按依赖提前实现，复用同一主干；
 不等第二阶段才处理异常、捕获、receiver 或协程，也不创建平行专项路线。
 独立开发，不使用 CC 或子代理；不恢复定期审视、RSS/基准或调度器开发。
-源码证据规则版本为 57，默认源码契约为 V3。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
+源码证据规则版本为 58，默认源码契约为 V3。原 T07 仍未完成，但不再作为独立于全 ISA 覆盖的首要执行目标。
 T00–T12 整体未完成；实例字段、全局变量、完整签名与函数体整合的原始 gate 未完成。
 用户批准访问恢复方案并要求测试覆盖，现恢复相关单元/集成及受控生成 JS 执行。
 全量测试、基准及 RSS 未恢复；下表均不代表阶段验收通过。
@@ -42,13 +42,25 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- Rules 58 接通函数族的原生模块发布：file-backed 成员保留实际 record，
+  准备阶段验证同输入 `ModuleEnclosure`，共享 destination 检查逐成员核验模块
+  身份/槽位/名称，再保留既有跨成员词法遮蔽检查。重新嵌入时重验，printer
+  保留每成员的模块绑定来源；仅有同名 import 列表不构成发布许可。
+  模块 fixture 覆盖缺少上下文、名字冒充、目标遮蔽、错误 owner/record、缺失
+  record、旧契约、零预算与位置迁移。`recover`、`queryDegree` 的五个成员
+  已通过共享不可变发布及原生 ESM 行为测试，235 条原始指令映射通过检查。
+  15 项定向 CTest 和六次真实样本脚本运行通过（新旧发布路径均覆盖），包括
+  `updateWindowInfo` 调用期间 live import 重绑定；沿用既有显式 work 预算。
+  三个 CLI 已重建。未运行全语料、RSS 或基准；不宣布整个 record、异常子函数
+  或循环/finally/协程完成。下一步按已批准顺序推进循环与异常区域组合。
+
 - Rules 57 将同快照 lookup 传入 `PreparedFamily` 的共享构建器，让无模块依赖
   的异常 root 沿同一不可变准备、目标检查、printer、原始 PC 核验和 receipt
   链路发布。未取消 strictness/callable/module/destination/closure-write 门槛，
   也未允许异常子函数或跳过原始创建点。文件解码 fixture 的共享/单函数源码
   对照、位置迁移、错误 placement/旧契约/零预算及模块无上下文拒绝均通过。
   14 项定向 CTest（含两个真实异常函数族 CLI 行为检查）、三个真实异常样本
-  脚本通过。异常子函数、模块函数族发布、循环/finally/协程组合仍未完成；
+  脚本通过。模块函数族后续接入见上条；异常子函数、循环/finally/协程组合仍未完成；
   未运行全语料、RSS 或基准，不将方法 receipt 当成整个 record 完成凭据。
 
 - 常规 `abc_semantic --family-source-draft` 现先解析实际 root occurrence，再
@@ -56,7 +68,7 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   `recover`、`queryDegree` 可经 CLI 生成条件源码，新增 CTest 直接执行返回源码，
   检查 235 条原始指令映射、五个成员归属及非发布状态；`--conditional-family`
   保持不输出源码。8 项相关 CLI/真实切片测试通过。不是新的发布准入，Rules 56
-  不变；后续无模块异常 PreparedFamily 接入见上条，模块发布约束仍待接通。
+  不变；后续异常 PreparedFamily 和原生模块约束接入见上条。
 
 - 共享 `FileFamily` DFS / `BuildFileFamilyTrees` 已接入类型化 normal/phase
   所有权：异常父函数与普通闭包后代使用同一函数族构建、AST、ABI、来源索引、

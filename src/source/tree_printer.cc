@@ -158,6 +158,12 @@ class TreePrinter {
       Result().identity = Tree().identity; Result().method = Tree().method;
       Result().value_revision = Tree().value_revision; Result().cfg_revision = Tree().cfg_revision;
       Result().fragment = ClassRoot() ? FunctionFragment::kClassMember : FunctionFragment::kConditionalExpression;
+      if (!Tree().modules.empty() && scope_ && scope_->module_enclosure) {
+        if (!family_->members[i].record) throw Error::kUnsupportedContext;
+        has_external_binding_ = true;
+        Result().module_binding = PrintedFunction::ModuleBinding{
+            *family_->members[i].record, scope_->module_enclosure->Owner()};
+      }
       Array(Result().parameters, Tree().parameters.size()); Array(Result().expressions, Tree().expressions.size());
       Array(Result().properties, Tree().properties.size()); Array(Result().statements, Tree().statements.size());
       Array(Result().anchors, Tree().anchors.size()); PrepareAnchors();
