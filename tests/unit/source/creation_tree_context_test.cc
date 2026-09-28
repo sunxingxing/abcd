@@ -433,11 +433,11 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       test::Check(family.members.size() == count * stride + 1 && family.members[0].children.size() == count);
       test::Check(!family.members[0].incoming && !family.members[0].context);
       test::Check(family.members[0].objects.size() == (object == CallerObject::kPrimitive ? count : 0));
-      test::Check(family.members[0].function.input.Children().size() ==
+      test::Check(family.members[0].function.Children().size() ==
           family.members[0].children.size() + family.members[0].objects.size());
       for (std::uint32_t i = 0; i < count; ++i) {
         const auto& member = family.members[i * stride + 1];
-        test::Check(member.function.input.Method() == abc::EntityOffset{kTarget} && member.context && member.incoming);
+        test::Check(member.function.Method() == abc::EntityOffset{kTarget} && member.context && member.incoming);
         test::Check(member.incoming->parent == FileFamily::kRoot && member.incoming->creation.offset.value == pcs[i]);
         test::Check(family.members[0].children[i].child == FunctionOwnerId{i * stride + 1});
         test::Check(member.children.size() == (writer_code ? 1U : 0U));
@@ -510,7 +510,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
         std::optional<FamilyWriteEdge> edge;
         if (member.incoming) edge.emplace(FamilyWriteEdge{member.incoming->parent,
             NormalWriteEdge{member.incoming->site, member.incoming->creation}});
-        write_views.push_back({CaptureFunction{member.function.input, member.function.values}, edge, member.objects});
+        write_views.push_back({CaptureFunction{member.function.Normal().input, member.function.Normal().values}, edge, member.objects});
       }
       const auto viewed = std::get<FamilyWrites>(VerifyFamilyWrites(index, write_views, built));
       test::Check(viewed.facts.stores == stores.facts.stores &&
@@ -523,7 +523,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       test::Check(std::get<FamilyWriteFailure>(VerifyFamilyWrites(index, write_inputs, built, write_budget)).kind == FamilyWriteError::kWorkLimit);
       if (child != ChildBody::kEmpty) {
         auto changed = built;
-        const auto& ops = write_inputs.members[0].function.values.graph.ops;
+        const auto& ops = write_inputs.members[0].function.Graph().ops;
         for (std::size_t op = 0; op < ops.size(); ++op)
           if (std::holds_alternative<ValueLexicalStore>(ops[op].operation)) {
             changed.members[0].flow.expressions[op].reset(); break;

@@ -111,8 +111,11 @@ I 为原始指令、O 为工作操作、P 为 AST 操作及签名放置数。pha
 原始指令 span，不按 PC 数值大小分配，不为每条指令扫描相位图或生成文本。
 原始指令到 AST ID 的清单与 printer 事件位置相连，复制消除仍保留边界锚点。
 
-文件异常方法 owner 在既有 decode/phase/local 分析之外只做常数次元数据定位、
-ABI 比较和 vector capacity 统计；不复制 body/IR，不按创建点重复计算捕获作用域。
+文件异常方法 owner 在既有 decode/phase/local 分析之外做常数次元数据定位、
+ABI 比较、vector capacity 统计和 O(I) 原始创建屏障 census；不复制 body/IR，
+不按创建点重复计算捕获作用域。共享 FileFamily 显式 DFS 保留 normal/phase
+类型化所有权，异常创建 context 每方法解析一次；按原始指令 ID 二分查找已排序
+创建表，边查找总计 O(C log(C+1))，额外存储 O(C)，不逐边扫描父图。
 移动为 O(1)，后续函数族容器扩容仅移动 envelope，原始/工作图和 body 地址稳定。
 方法读取扣除 instruction bytes 及各分析记录 work；元数据/容器解析仍仅由既有
 byte budget 约束，不将该计数声称为所有底层解析操作的总成本或 RSS 证明。

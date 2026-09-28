@@ -17,6 +17,8 @@ for (const { method, sites, targets, allocations, bindings, captures } of sample
   const result = JSON.parse(execFileSync(process.argv[2], [process.argv[3], String(method)], { encoding: 'utf8' }));
   assert.equal(result.phase_body_ready, true);
   assert.equal(result.owned_phase_input, true);
+  assert.equal(result.shared_file_family_ready, true);
+  assert.equal(result.shared_file_family_refusals, true);
   assert.equal(result.phase_environments_ready, true);
   assert.equal(result.phase_cells_ready, true);
   assert.equal(result.conditional_evaluation_ready, true);
@@ -31,8 +33,11 @@ for (const { method, sites, targets, allocations, bindings, captures } of sample
   assert.equal(result.family_source_methods, targets.length + 1);
   assert.equal(result.rejected_source_forgery, true);
   assert.equal(result.family_mapped_instructions, method === 8404 ? 90 : 145);
+  assert.equal(result.shared_file_family_mapped, result.family_mapped_instructions);
   assert.equal(typeof result.conditional_family_source, 'string');
-  (method === 8404 ? checkQueryDegree : checkRecover)(result.conditional_family_source);
+  assert.equal(result.shared_file_family_members, targets.length + 1);
+  assert.equal(result.shared_file_family_source, result.conditional_family_source);
+  (method === 8404 ? checkQueryDegree : checkRecover)(result.shared_file_family_source);
   assert.equal(result.checked_store_methods, targets.length + 1);
   assert.equal(result.checked_lexical_stores, method === 8404 ? 1 : 0);
   assert.equal(result.rejected_capture_forgery, captures.some(count => count !== 0));

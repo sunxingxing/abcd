@@ -137,10 +137,10 @@ void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kA
         owner.Position(), identity, {}, nullptr, &owner);
     const auto& read = std::get<FileFamily>(family);
     test::Check(read.members.size() == 2);
-    test::Check(read.members[0].function.input.MatchesOwner(owner));
+    test::Check(read.members[0].function.Normal().input.MatchesOwner(owner));
     test::Check(read.members[1].context.has_value());
-    test::Check(read.members[1].function.input.MatchesOwner(*read.members[1].context));
-    test::Check(!read.members[1].function.input.MatchesOwner(owner));
+    test::Check(read.members[1].function.Normal().input.MatchesOwner(*read.members[1].context));
+    test::Check(!read.members[1].function.Normal().input.MatchesOwner(owner));
   }
   auto prepared = PreparedFamily::PrepareCreated(file, header, index, lookup, roles,
       sites, sites.Find({kTarget}).first, identity, destination);

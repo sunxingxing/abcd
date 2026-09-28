@@ -10,7 +10,7 @@ CaptureCellError InputError(CaptureError error) {
   return CaptureCellError::kInput;
 }
 CaptureParent Parent(const PhasedBody& parent, const abc::MethodBody& body,
-    const analysis::ExceptionLocals& locals, const PhasedCreation& creation) {
+    const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation) {
   const auto input = parent.TreeInput(body).input;
   const auto& graph = parent.Graph();
   const auto before = graph.phases[graph.ops[creation.operation.value].block.value].input;
@@ -22,7 +22,7 @@ CaptureParent Parent(const PhasedBody& parent, const abc::MethodBody& body,
 std::variant<CaptureCells, CaptureCellError> BindPhasedCaptureCells(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
-    const analysis::ExceptionLocals& locals, const PhasedCreation& creation,
+    const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
     CaptureFunction child, const FunctionContext& owner, analysis::SemanticBudget budget) {
   auto bound = BindPhasedFunctionInputs(index, lookup, parent, body, locals, creation, child.input, owner, budget);
   if (const auto* error = std::get_if<CaptureError>(&bound)) return InputError(*error);
@@ -38,7 +38,7 @@ std::variant<CaptureCells, CaptureCellError> BindPhasedCaptureCells(
 std::variant<std::uint64_t, CaptureCellError> VerifyPhasedCaptureCells(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
-    const analysis::ExceptionLocals& locals, const PhasedCreation& creation,
+    const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
     CaptureFunction child, const FunctionContext& owner, const CaptureCells& plan,
     analysis::SemanticBudget budget) {
   const auto checked = VerifyPhasedFunctionInputs(index, lookup, parent, body, locals, creation,

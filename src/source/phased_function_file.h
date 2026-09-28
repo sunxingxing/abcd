@@ -27,6 +27,8 @@ class FilePhasedFunction {
   const abc::MethodBody& Body() const;
   const PhasedBody& Phases() const;
   const analysis::ExceptionLocals& Locals() const;
+  std::span<const analysis::InstructionId> Children() const;
+  bool MatchesOwner(const FunctionContext& context) const;
   abc::EntityOffset Record() const;
   std::size_t AllocatedBytes() const;
   // Decoded instruction-byte charge plus phase/local recorded work. Metadata

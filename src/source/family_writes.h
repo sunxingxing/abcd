@@ -29,7 +29,7 @@ struct NormalWriteEdge {
   const analysis::CreationBinding& creation;
 };
 struct PhasedWriteEdge {
-  const PhasedCreation& creation;
+  PhasedCreationSite creation;
   const FunctionContext& owner;
 };
 struct FamilyWriteEdge {
@@ -53,7 +53,7 @@ struct FamilyWriteInput {
 // Does not authorize snapshots, eliminate writes, or close external source scope.
 [[nodiscard]] std::variant<FamilyWrites, FamilyWriteFailure> VerifyFamilyWrites(
     const abc::MetadataIndex& index, const FileFamily& inputs,
-    const ConstructedFamily& trees, analysis::SemanticBudget budget = {});
+    const ConstructedFamily& trees, analysis::SemanticBudget budget = {}, const abc::MethodLookup* lookup = nullptr);
 [[nodiscard]] std::variant<FamilyWrites, FamilyWriteFailure> VerifyFamilyWrites(
     const abc::MetadataIndex& index, std::span<const FamilyWriteInput> inputs,
     const ConstructedFamily& trees, analysis::SemanticBudget budget = {});

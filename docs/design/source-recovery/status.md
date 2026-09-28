@@ -42,6 +42,21 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 共享 `FileFamily` DFS / `BuildFileFamilyTrees` 已接入类型化 normal/phase
+  所有权：异常父函数与普通闭包后代使用同一函数族构建、AST、ABI、来源索引、
+  printer、enclosure 与传递写入验证，不再依赖工具手工拼装才能贯通。创建点
+  与可移动 child context 分离，默认参数投影后仍从原始边重验捕获；异常 root
+  校验实际 occurrence，含异常表的子函数目前明确拒绝 `kUnsupportedFlow`。
+  `recover`、`queryDegree` 直接执行共享工厂生成的条件源码，覆盖分支、副作用、
+  catch、延后回调和可变闭包；新旧路径文本一致，145 + 90 条原始指令另经共享
+  printer 的 AST 事件范围检查。缺失 root owner、lookup、incoming edge 或
+  phase 边标记均类型化拒绝。44 项定向 CTest、三个真实样本脚本通过，
+  `abc_semantic`、`abc_structure`、`exception_candidates` 构建成功；未运行
+  全语料、RSS 或基准，未据此声明进程 1GB 上限已验证。
+  这不是正式模块发布：`PreparedFamily` 的异常接入及 destination/module
+  初始化证明尚未完成，诊断 `family_value_inspect` 尚未传入异常 root context。
+  Rules 56 不变；循环/异常双向嵌套、finally、协程组合验收仍未完成。
+
 - 新增生产层 `FilePhasedFunction::Read`：从实际文件读取 body/call-type ABI，
   对照已解析 occurrence，统一持有只读 body、原始/工作异常分析和每方法一次
   的条件捕获作用域。模块绑定必须来自同一 file/header/index 快照及实际 record；
@@ -50,8 +65,8 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   新增 200/201/402 容器扩容/移动后完整原始控制视图校验、精确/不足 recorded
   work、零 bytes、错误 ABI/方法/header、缺失 code、异常表元数据错配和模块
   快照混用反例。42 项定向 CTest、3 份真实样本脚本通过，三个 CLI 构建成功。
-  这不是完整函数族发布：共享 `FileFamily` DFS/tree factory 尚需纳入混合成员，
-  后续还要关闭 immutable publication/destination/module 门槛。未运行全语料、
+  此增量本身不是完整函数族发布；后续 DFS/tree factory 接入见上条，
+  仍须关闭 immutable publication/destination/module 门槛。未运行全语料、
   RSS 或基准；Rules 56、循环/finally/协程及全 ISA 目标不变。
 
 - 普通/异常 `BuildInstructionSources` 现共用完整的原始指令来源索引，异常

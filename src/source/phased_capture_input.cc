@@ -8,7 +8,7 @@ struct CheckedSite { analysis::ExceptionNodeId before; std::uint64_t work; };
 std::variant<CheckedSite, CaptureError, InputBindingError> CheckSite(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent,
-    const PhasedCreation& creation,
+    const PhasedCreationSite& creation,
     const FunctionInput& child, const FunctionContext& owner, analysis::SemanticBudget budget) {
   const std::uint64_t owner_work = 1 + std::bit_width(index.methods.size());
   if (budget.work < owner_work) return CaptureError::kWorkLimit;
@@ -40,7 +40,7 @@ std::variant<CheckedSite, CaptureError, InputBindingError> CheckSite(
 InputBindingResult BindPhasedFunctionInputs(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
-    const analysis::ExceptionLocals& locals, const PhasedCreation& creation,
+    const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
     const FunctionInput& child, const FunctionContext& owner, analysis::SemanticBudget budget) {
   const auto checked = CheckSite(index, lookup, parent, creation, child, owner, budget);
   if (const auto* error = std::get_if<CaptureError>(&checked)) return *error;
@@ -57,7 +57,7 @@ InputBindingResult BindPhasedFunctionInputs(
 std::variant<std::uint64_t, CaptureError, InputBindingError> VerifyPhasedFunctionInputs(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
-    const analysis::ExceptionLocals& locals, const PhasedCreation& creation,
+    const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
     const FunctionInput& child, const FunctionContext& owner, const CapturePlan& plan,
     analysis::SemanticBudget budget) {
   const auto checked = CheckSite(index, lookup, parent, creation, child, owner, budget);

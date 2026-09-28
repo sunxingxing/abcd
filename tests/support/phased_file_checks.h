@@ -16,6 +16,7 @@ inline void CheckPhasedFile(const corpus::AbcFile& file, const abc::Header& head
   const auto check = [](bool ok) { if (!ok) std::abort(); };
   auto value = std::get<FilePhasedFunction>(FilePhasedFunction::Read(file, header, index, context));
   check(value.Record() == index.methods[context.Position().value].owner_offset);
+  check(value.MatchesOwner(context));
   check(value.Locals().writes == analysis::ClosureWrites::kLanguage);
   const auto* body = &value.Body();
   const auto* graph = &value.Phases().Graph();

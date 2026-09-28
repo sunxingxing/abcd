@@ -6,10 +6,30 @@
 #include "module_aliases.h"
 
 namespace abcd::source {
+namespace {
+struct PhasedOwner {
+  abc::EntityOffset creator;
+  abc::CodeOffset pc;
+  std::optional<std::uint32_t> property;
+  CallableKind callable;
+  Strictness mode;
+  abc::FrameLayout frame;
+  std::uint32_t length;
+  bool operator==(const PhasedOwner&) const = default;
+};
+PhasedOwner DescribeOwner(const FunctionContext& context) {
+  if (const auto* site = context.ClassSite())
+    return {site->creator, site->pc, site->property, context.Callable(), context.Mode(), context.Frame(), context.Length()};
+  const auto* site = context.CreationSite();
+  return {site->creator, site->pc, {}, context.Callable(), context.Mode(), context.Frame(), context.Length()};
+}
+}  // namespace
 struct FilePhasedFunction::Storage {
   abc::MethodBody body;
   PhasedBody phases;
   analysis::ExceptionLocals locals;
+  std::vector<analysis::InstructionId> children;
+  PhasedOwner owner;
   abc::EntityOffset record;
   std::size_t bytes;
   std::uint64_t work;
@@ -21,6 +41,11 @@ FilePhasedFunction::~FilePhasedFunction() = default;
 const abc::MethodBody& FilePhasedFunction::Body() const { return storage_->body; }
 const PhasedBody& FilePhasedFunction::Phases() const { return storage_->phases; }
 const analysis::ExceptionLocals& FilePhasedFunction::Locals() const { return storage_->locals; }
+std::span<const analysis::InstructionId> FilePhasedFunction::Children() const { return storage_->children; }
+bool FilePhasedFunction::MatchesOwner(const FunctionContext& context) const {
+  return storage_->phases.Identity() == context.Identity() && storage_->phases.Target() == context.Target() &&
+      storage_->owner == DescribeOwner(context);
+}
 abc::EntityOffset FilePhasedFunction::Record() const { return storage_->record; }
 std::size_t FilePhasedFunction::AllocatedBytes() const { return storage_->bytes; }
 std::uint64_t FilePhasedFunction::Work() const { return storage_->work; }
@@ -74,9 +99,25 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     auto locals = Take<analysis::ExceptionLocals>(analysis::ProveExceptionLocals(input.flow,
         input.environments, left, {}, analysis::ClosureWrites::kLanguage));
     admit(locals.AllocatedBytes()); step(locals.plan.work_units);
+    const auto captures = [](const analysis::SemanticOperation& op) {
+      return std::holds_alternative<analysis::FunctionCreation>(op) ||
+          std::holds_alternative<analysis::ClassCreation>(op) ||
+          std::holds_alternative<analysis::BufferedObjectCreation>(op) ||
+          std::holds_alternative<analysis::BufferedArrayCreation>(op);
+    };
+    std::size_t count = 0;
+    for (const auto& instruction : input.flow.instructions) { step(1); count += captures(instruction.operation); }
+    std::vector<analysis::InstructionId> children;
+    admit(count, sizeof(analysis::InstructionId)); children.reserve(count);
+    admit(children.capacity() - count, sizeof(analysis::InstructionId));
+    for (std::size_t i = 0; i < input.flow.instructions.size(); ++i) {
+      step(1);
+      if (captures(input.flow.instructions[i].operation)) children.push_back({static_cast<std::uint32_t>(i)});
+    }
     Require(!file.CheckUnchanged(), Error::kChanged);
     return FilePhasedFunction(std::make_unique<const Storage>(Storage{std::move(body), std::move(phases),
-        std::move(locals), method.owner_offset, budget.bytes - left.bytes, budget.work - left.work}));
+        std::move(locals), std::move(children), DescribeOwner(context), method.owner_offset,
+        budget.bytes - left.bytes, budget.work - left.work}));
   } catch (const PhasedFileFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return PhasedFileFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return PhasedFileFailure{Error::kResourceLimit}; }

@@ -105,8 +105,8 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     budget.Account((receipts.capacity() - input.members.size()) * sizeof(MethodRouteReceipt), 0);
     for (const auto& member : input.members) {
       MethodRouteReceipt receipt;
-      receipt.identity = member.function.input.Identity();
-      receipt.method = member.function.input.Method(); receipt.record = member.function.input.Record();
+      receipt.identity = member.function.Identity();
+      receipt.method = member.function.Method(); receipt.record = member.function.Record();
       receipts.push_back(receipt); // Identity only; no stage claim until all proofs close.
     }
     auto family = Take<ConstructedFamily, FamilyTreeFailure>(BuildFileFamilyTrees(

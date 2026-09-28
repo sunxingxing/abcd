@@ -75,7 +75,10 @@ void Draft(nlohmann::json& report, const ConstructedFamily& family,
 }
 template <class Error> unsigned Code(const Error& error) {
   if constexpr (std::is_enum_v<Error>) return static_cast<unsigned>(error);
-  else return static_cast<unsigned>(error.kind);
+  else if constexpr (requires { error.kind; }) return static_cast<unsigned>(error.kind);
+  else if constexpr (requires { error.error; }) return std::visit([](const auto& nested) { return Code(nested); }, error.error);
+  else if constexpr (requires { error.cause; }) return std::visit([](const auto& nested) { return Code(nested); }, error.cause);
+  else return std::visit([](const auto& nested) { return Code(nested); }, error);
 }
 void Failure(nlohmann::json& report, const FamilyFileFailure& failure) {
   report["family_failure"] = failure.cause.index();
@@ -97,6 +100,10 @@ void Failure(nlohmann::json& report, const FamilyFileFailure& failure) {
       if (error.object_error) report["object_error"] = Code(*error.object_error);
       if (error.metadata_error) report["metadata_error"] = Code(*error.metadata_error);
       if (error.literal_error) report["literal_error"] = Code(*error.literal_error);
+    } else if constexpr (std::is_same_v<T, PhasedFileFailure>) {
+      report["phase_input_failure"] = error.index(); report["phase_input_error"] = Code(error);
+    } else if constexpr (std::is_same_v<T, PhasedCreationFailure>) {
+      report["phase_creation_failure"] = error.cause.index(); report["phase_creation_error"] = Code(error);
     } else {
       static_assert(std::is_same_v<T, FunctionFileFailure>);
       report["method_failure"] = error.index();
@@ -160,10 +167,10 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
   report["family_members"] = nlohmann::json::array();
   for (std::size_t i = 0; i < family->members.size(); ++i) {
     const auto& member = family->members[i];
-    nlohmann::json entry{{"owner", i}, {"method", member.function.input.Method().value},
-        {"operations", member.function.values.graph.ops.size()},
-        {"capture_occurrences", member.function.input.Captures().size()},
-        {"child_obligations", member.function.input.Children().size()}};
+    nlohmann::json entry{{"owner", i}, {"method", member.function.Method().value},
+        {"operations", member.function.Graph().ops.size()},
+        {"child_obligations", member.function.Children().size()}};
+    if (!member.function.Phase()) entry["capture_occurrences"] = member.function.Normal().input.Captures().size();
     entry["primitive_objects"] = member.objects.size();
     if (member.context) entry["callable"] = static_cast<unsigned>(member.context->Callable());
     if (member.incoming) {

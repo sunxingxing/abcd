@@ -5,6 +5,8 @@
 #include "creation_tree_context.h"
 #include "function_family.h"
 #include "function_file.h"
+#include "family_function.h"
+#include "phased_creations.h"
 #include "object_buffer.h"
 
 namespace abcd::source {
@@ -13,6 +15,7 @@ struct FamilyCreation {
   analysis::InstructionId site;
   analysis::CreationBinding creation;
   CaptureCells cells;
+  std::optional<analysis::OpId> phase_operation;
 };
 struct FamilyObject {
   analysis::InstructionId site;
@@ -22,13 +25,14 @@ struct FamilyObject {
   ObjectBuffer buffer;
 };
 struct FileFamilyMember {
-  FileFunction function;
+  FamilyFunction function;
   // The root context is owned by PreparedFamily; input retains its occurrence
   // stamp when supplied. Children own their actual occurrence context here.
   std::optional<FunctionContext> context;
   std::optional<FamilyCreation> incoming;
   std::vector<FunctionBinding> children;
   std::vector<FamilyObject> objects;
+  std::optional<PhasedCreations> phase_creations;
 };
 struct FileFamily {
   // Preorder, root at kRoot. Occurrence owners equal these stable member IDs;
@@ -41,11 +45,11 @@ struct FileFamily {
   std::uint64_t work = 0;
 };
 enum class FamilyFileError : std::uint8_t {
-  kMethod, kCreation, kOccurrence, kRecursiveCreation, kResourceLimit, kWorkLimit
+  kMethod, kCreation, kOccurrence, kRecursiveCreation, kResourceLimit, kWorkLimit, kUnsupportedFlow
 };
 struct FamilyFileFailure {
   std::variant<FamilyFileError, FunctionFileFailure, CreationContextFailure,
-      CaptureCellError, CaptureEvaluationFailure, BodyEmitFailure> cause;
+      CaptureCellError, CaptureEvaluationFailure, BodyEmitFailure, PhasedFileFailure, PhasedCreationFailure> cause;
   std::optional<abc::EntityOffset> method;
   std::optional<abc::EntityOffset> parent;
   std::optional<abc::CodeOffset> creation_pc;
@@ -60,6 +64,8 @@ struct FamilyFileFailure {
 // Optional root owner is checked and stamped before input verification. Each
 // child's context is resolved before its input. Ownerless diagnostic callers
 // do not gain initialized receiver or publication permissions.
+// Phase roots require an actual owner; descendants currently require normal
+// flow. Exception-bearing children return kUnsupportedFlow, never normal SSA.
 // Result remains conditional: no root enclosure, transitive-write certificate,
 // complete AST, source text or executable receipt is produced here.
 [[nodiscard]] std::variant<FileFamily, FamilyFileFailure> ReadFunctionFamily(
@@ -68,6 +74,6 @@ struct FamilyFileFailure {
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
     abc::MethodPosition root, RouteInputIdentity identity,
     analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
-    const FunctionContext* owner = nullptr);
+    const FunctionContext* owner = nullptr, ModuleOwnerId module_owner = {});
 }  // namespace abcd::source
 #endif

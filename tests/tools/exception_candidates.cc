@@ -19,7 +19,11 @@
 #include "../../src/source/phased_capture_evaluation.h"
 #include "../../src/source/module_aliases.h"
 #include "../../src/source/syntax_resolution.h"
+#include "../../src/source/family_tree.h"
+#include "../../src/source/family_print.h"
 #include "exception_family_probe.h"
+#include "../support/phased_family_checks.h"
+#include "../support/instruction_positions.h"
 
 namespace {
 int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
@@ -104,6 +108,37 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
   auto creation_sites = analysis::FunctionCreationSites::Build(file, header, index, lookup);
   const auto* occurrences = std::get_if<analysis::FunctionCreationSites>(&creation_sites);
   if (!occurrences) return 1;
+  auto file_family = ReadFunctionFamily(file, header, index, lookup, *indexed_roles, *occurrences,
+      context.Position(), context.Identity(), budget, record, &context, kSelectedRecord);
+  if (auto* inputs = std::get_if<FileFamily>(&file_family)) {
+    auto trees = BuildFileFamilyTrees(file, header, index, std::move(*inputs), context,
+        budget, record, kSelectedRecord, &lookup);
+    if (const auto* family = std::get_if<ConstructedFamily>(&trees)) {
+      report["shared_file_family_ready"] = true;
+      report["shared_file_family_members"] = family->members.size();
+      if (family->members.size() > 1)
+        report["shared_file_family_refusals"] = test::CheckPhasedFamilyRefusals(file, header,
+            index, lookup, *indexed_roles, *occurrences, context, record, kSelectedRecord, budget);
+      std::ostringstream source;
+      auto printed = PrintClassFamilyDraft(*family, *context.ClassContext(), source, {}, budget);
+      if (const auto* positions = std::get_if<PrintedFamilyDraft>(&printed)) {
+        if (positions->members.size() != family->members.size() || positions->functions.size() != family->members.size()) return 1;
+        std::size_t mapped = 0;
+        for (std::size_t i = 0; i < family->members.size(); ++i) {
+          const auto& member = family->members[i];
+          if (!member.sources || !member.abi) return 1;
+          test::CheckInstructionPositions(member.tree, *member.sources, positions->members[i], positions->functions[i]);
+          mapped += member.sources->sites.size();
+        }
+        report["shared_file_family_mapped"] = mapped;
+        report["shared_file_family_source"] = source.str();
+      }
+    } else {
+      const auto& failure = std::get<FamilyTreeFailure>(trees);
+      report["shared_family_tree_error"] = failure.cause.index();
+      report["shared_family_tree_member"] = failure.member.value;
+    }
+  } else report["shared_family_input_error"] = std::get<FamilyFileFailure>(file_family).cause.index();
   auto bound_creations = BindPhasedCreations(file, header, index, lookup, *indexed_roles,
       *occurrences, staged, *body);
   auto* children = std::get_if<PhasedCreations>(&bound_creations);

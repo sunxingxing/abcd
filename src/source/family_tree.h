@@ -37,6 +37,8 @@ struct FamilyTreeFailure {
 // root enclosure and global/module initialization remain publication gates.
 // Proven value/cell literal defaults project before whole-family edge rebinding;
 // mixed or effectful default prologues still require their own proof.
+// Phase roots use the same member AST/ABI/source pipeline and require lookup
+// from the input snapshot. Retain child contexts for post-projection rebinding.
 // Existing file/index/context/family storage is caller-admitted. This allowance
 // covers all additional construction/scratch; conservative accounting retains
 // previous pass charges even after their storage is released.
@@ -44,6 +46,6 @@ struct FamilyTreeFailure {
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, FileFamily family, const FunctionContext& root,
     analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
-    ModuleOwnerId module_owner = {});
+    ModuleOwnerId module_owner = {}, const abc::MethodLookup* lookup = nullptr);
 }  // namespace abcd::source
 #endif

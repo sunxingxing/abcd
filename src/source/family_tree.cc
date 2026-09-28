@@ -3,6 +3,7 @@
 #include <limits>
 #include <new>
 #include <stdexcept>
+#include "phased_capture_evaluation.h"
 
 namespace abcd::source {
 namespace {
@@ -10,9 +11,9 @@ class FamilyTrees {
  public:
   FamilyTrees(const corpus::AbcFile& file, const abc::Header& header,
       const abc::MetadataIndex& index, analysis::SemanticBudget budget,
-      const RecordModuleContext* modules, ModuleOwnerId owner)
+      const RecordModuleContext* modules, ModuleOwnerId owner, const abc::MethodLookup* lookup)
       : file_(file), header_(header), index_(index), initial_(budget), left_(budget),
-        modules_(modules), module_owner_(owner) {}
+        modules_(modules), module_owner_(owner), lookup_(lookup) {}
   ConstructedFamily Build(FileFamily& family, const FunctionContext& root) {
     Admit(1, sizeof(FamilyTrees));
     Require(!family.members.empty(), FamilyTreeError::kContext);
@@ -31,30 +32,35 @@ class FamilyTrees {
       }
       Step(1);
       auto& member = family.members[i];
-      std::optional<FunctionContext> child_context;
       if (i != 0) {
         Require(member.context.has_value() && member.incoming.has_value(), FamilyTreeError::kContext);
-        child_context.emplace(std::move(*member.context));
       } else Require(!member.incoming && !member.context, FamilyTreeError::kContext);
-      const auto& context = child_context ? *child_context : root;
+      const auto& context = i ? *member.context : root;
       const auto& function = member.function;
-      Require(!function.input.HasOwner() || function.input.MatchesOwner(context), FamilyTreeError::kContext);
-      Require(function.input.Proof().receiver == analysis::FrameReceiver::kUnknown ||
-          function.input.MatchesOwner(context), FamilyTreeError::kContext);
-      const auto& graph = function.values.graph;
-      Require(context.Identity() == function.input.Identity() &&
-          context.Target() == function.input.Method(), FamilyTreeError::kContext);
+      const auto* phase = function.Phase();
+      if (!phase) {
+        const auto& input = function.Normal().input;
+        Require(!input.HasOwner() || input.MatchesOwner(context), FamilyTreeError::kContext);
+        Require(input.Proof().receiver == analysis::FrameReceiver::kUnknown || input.MatchesOwner(context), FamilyTreeError::kContext);
+      } else Require(i == 0 && lookup_ && phase->MatchesOwner(context), FamilyTreeError::kContext);
+      const auto& graph = function.Graph();
+      Require(context.Identity() == function.Identity() && context.Target() == function.Method(), FamilyTreeError::kContext);
       auto syntax = Take<ResolvedSyntax, SyntaxResolutionFailure>(ResolveFunctionSyntax(
-          file_, header_, index_, context, function.body, graph, {member_.value}, left_));
+          file_, header_, index_, context, function.Body(), graph, {member_.value}, left_));
       Account(syntax);
-      std::optional<ModuleAliases> aliases;
-      if (!function.values.modules.pairs.empty()) {
+      std::optional<ModuleAliases> normal_aliases;
+      const ModuleAliases* aliases = phase ? phase->Phases().Modules() : nullptr;
+      if (aliases || (!phase && !function.Normal().values.modules.pairs.empty())) {
         Require(modules_ != nullptr, FamilyTreeError::kModules);
         Require(syntax.syntax.names.size() < std::numeric_limits<std::uint32_t>::max(), FamilyTreeError::kResourceLimit);
-        aliases = Take<ModuleAliases, ModuleAliasFailure>(BindModuleAliases(file_, header_, index_,
-            function.input, function.values, *modules_, module_owner_,
-            {static_cast<std::uint32_t>(syntax.syntax.names.size())}, left_));
-        Account(*aliases);
+        const auto first_name = static_cast<std::uint32_t>(syntax.syntax.names.size());
+        if (!phase) {
+          normal_aliases = Take<ModuleAliases, ModuleAliasFailure>(BindModuleAliases(file_, header_, index_,
+              function.Normal().input, function.Normal().values, *modules_, module_owner_, {first_name}, left_));
+          Account(*normal_aliases); aliases = &*normal_aliases;
+        }
+        Require(aliases && aliases->record == modules_->record() && aliases->owner == module_owner_ &&
+            aliases->first_name.value <= first_name, FamilyTreeError::kModules);
         Require(aliases->names.size() <= std::numeric_limits<std::uint32_t>::max() - syntax.syntax.names.size(),
             FamilyTreeError::kResourceLimit);
         Reserve(syntax.syntax.names, syntax.syntax.names.size() + aliases->names.size());
@@ -65,13 +71,19 @@ class FamilyTrees {
           Admit(syntax.syntax.names.back().capacity() - name.size(), sizeof(char16_t));
         }
         Reserve(syntax.syntax.modules, aliases->aliases.size());
-        for (const auto& alias : aliases->aliases) { Step(1); syntax.syntax.modules.push_back(alias); }
+        for (auto alias : aliases->aliases) {
+          Step(1); alias.name.value += first_name - aliases->first_name.value;
+          syntax.syntax.modules.push_back(alias);
+        }
       }
-      auto control = Take<ControlPlan, ControlError>(BuildControlPlan(graph, left_));
-      Account(control);
-      auto evaluation = Take<EvaluationPlan, EvaluationError>(BuildEvaluationPlan(graph, left_,
-          i == 0 ? IncomingCells::kReject : IncomingCells::kConditional, member.children,
-          aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{}));
+      std::optional<ControlPlan> normal_control;
+      if (!phase) { normal_control.emplace(Take<ControlPlan, ControlError>(BuildControlPlan(graph, left_))); Account(*normal_control); }
+      const auto& control = phase ? phase->Phases().Control() : *normal_control;
+      const auto module_evaluations = aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{};
+      auto evaluation = Take<EvaluationPlan, EvaluationError>(phase ?
+          BuildPhasedEvaluationPlan(graph, left_, IncomingCells::kReject, member.children, module_evaluations) :
+          BuildEvaluationPlan(graph, left_, i == 0 ? IncomingCells::kReject : IncomingCells::kConditional,
+              member.children, module_evaluations));
       Account(evaluation);
       std::optional<IncomingCaptureTree> incoming;
       if (member.incoming) {
@@ -80,8 +92,15 @@ class FamilyTrees {
         incoming.emplace(IncomingCaptureTree{member.incoming->cells, {trees[parent].tree, trees[parent].flow}});
       }
       const auto constants = syntax.View();
-      auto constructed = Take<ConstructedFunction, FunctionTreeError>(BuildFunctionTree(graph, control,
-          evaluation, std::move(syntax.syntax), constants, left_, incoming ? &*incoming : nullptr));
+      auto constructed = [&]() -> ConstructedFunction {
+        if (phase) {
+          auto draft = Take<ExceptionFunctionDraft, FunctionTreeError>(BuildExceptionFunctionDraft(graph,
+              phase->Phases().TreeInput(phase->Body()), evaluation, std::move(syntax.syntax), constants, left_));
+          return {std::move(draft.tree), draft.allocated_bytes, draft.work};
+        }
+        return Take<ConstructedFunction, FunctionTreeError>(BuildFunctionTree(graph, control,
+            evaluation, std::move(syntax.syntax), constants, left_, incoming ? &*incoming : nullptr));
+      }();
       Account(constructed);
       // Naming evidence is creation-specific and must survive arena growth and
       // capture/module alias insertion. The runtime name stays creation-proven
@@ -101,15 +120,18 @@ class FamilyTrees {
             graph, control, evaluation, constructed.tree, constants, left_));
         Account(semantics);
       }
-      auto flow = Take<TreeFlow, TreeFlowError>(VerifyTreeFlow(graph, control, evaluation, constructed.tree, left_));
+      auto flow = Take<TreeFlow, TreeFlowError>(phase ? VerifyExceptionTreeFlow(graph,
+          phase->Phases().TreeInput(phase->Body()), evaluation, constructed.tree, left_) :
+          VerifyTreeFlow(graph, control, evaluation, constructed.tree, left_));
       Account(flow);
       if (aliases) Step(Take<std::uint64_t, ModuleAliasTreeError>(
           VerifyModuleAliasTree(*aliases, evaluation, constructed.tree, left_)));
-      auto abi = Take<ConstructedAbi, FunctionAbiError>(BuildFunctionAbi(graph, constructed.tree,
-          context.Frame(), context.Length(), left_));
+      auto abi = Take<ConstructedAbi, FunctionAbiError>(phase ? BuildPhasedFunctionAbi(graph, evaluation, constructed.tree,
+          context.Frame(), context.Length(), left_) : BuildFunctionAbi(graph, constructed.tree, context.Frame(), context.Length(), left_));
       Account(abi);
-      auto sources = Take<InstructionSources, InstructionSourceError>(BuildInstructionSources(
-          function.input, graph, constructed.tree, left_));
+      auto sources = Take<InstructionSources, InstructionSourceError>(phase ?
+          BuildInstructionSources(phase->Phases(), phase->Body(), constructed.tree, left_) :
+          BuildInstructionSources(function.Normal().input, graph, constructed.tree, left_));
       Account(sources);
       std::optional<CaptureCells> cells;
       if (member.incoming) cells.emplace(std::move(member.incoming->cells));
@@ -123,7 +145,7 @@ class FamilyTrees {
       member_ = failure->member; Fail(*failure);
     }
     Account(std::get<FamilyEnclosure>(enclosure));
-    const auto writes = VerifyFamilyWrites(index_, family, result, left_);
+    const auto writes = VerifyFamilyWrites(index_, family, result, left_, lookup_);
     if (const auto* failure = std::get_if<FamilyWriteFailure>(&writes)) {
       member_ = failure->member; Fail(*failure);
     }
@@ -143,7 +165,8 @@ class FamilyTrees {
       Require(i == 0 || member.context.has_value(), FamilyTreeError::kContext);
       const auto length = i == 0 ? root.Length() : member.context->Length();
       const auto& frame = i == 0 ? root.Frame() : member.context->Frame();
-      auto& values = member.function.values;
+      if (member.function.Phase()) continue;
+      auto& values = member.function.Normal().values;
       if (length >= frame.parameters) continue;
       auto parameters = Take<ParameterPlan, ParameterPlanError>(BuildParameterPlan(values.graph, frame.parameters, left_));
       Account(parameters);
@@ -181,7 +204,7 @@ class FamilyTrees {
       Account(environments); values.environments = std::move(environments);
       auto cells = Take<CellPlan, CellError>(BuildCellPlan(values.graph, *values.environments, left_));
       Account(cells); values.cells = std::move(cells);
-      auto modules = Take<ModuleGuards, ModuleGuardError>(BuildModuleGuards(member.function.input, values.graph, left_));
+      auto modules = Take<ModuleGuards, ModuleGuardError>(BuildModuleGuards(member.function.Normal().input, values.graph, left_));
       Account(modules); values.modules = std::move(modules);
     }
   }
@@ -196,13 +219,25 @@ class FamilyTrees {
       Require(child.incoming.has_value() && child.incoming->parent.value < i, FamilyTreeError::kParent);
       auto& edge = *child.incoming;
       auto& parent = family.members[edge.parent.value];
-      const CaptureFunction parent_work{parent.function.input, parent.function.values};
-      const CaptureFunction child_work{child.function.input, child.function.values};
-      auto cells = Take<CaptureCells, CaptureCellError>(BindCaptureCells(index_, parent_work, child_work,
-          edge.site, edge.creation, left_));
+      Require(!child.function.Phase(), FamilyTreeError::kParent);
+      const CaptureFunction child_work{child.function.Normal().input, child.function.Normal().values};
+      const auto* phase = parent.function.Phase();
+      Require((phase != nullptr) == edge.phase_operation.has_value(), FamilyTreeError::kParent);
+      std::optional<PhasedCreationSite> occurrence;
+      if (phase) {
+        Require(lookup_ && child.context, FamilyTreeError::kContext);
+        occurrence.emplace(PhasedCreationSite{*edge.phase_operation, edge.site, edge.creation});
+      }
+      auto cells = Take<CaptureCells, CaptureCellError>(phase ? BindPhasedCaptureCells(index_, *lookup_, phase->Phases(),
+          phase->Body(), phase->Locals(), *occurrence, child_work, *child.context, left_) :
+          BindCaptureCells(index_, {parent.function.Normal().input, parent.function.Normal().values}, child_work,
+              edge.site, edge.creation, left_));
       Account(cells);
-      auto evaluation = Take<CapturedFunctionBinding, CaptureEvaluationFailure>(BindCaptureEvaluation(index_,
-          parent_work, child_work, edge.site, edge.creation, cells, {edge.parent.value}, {member_.value}, left_));
+      auto evaluation = Take<CapturedFunctionBinding, CaptureEvaluationFailure>(phase ?
+          BindPhasedCaptureEvaluation(index_, *lookup_, phase->Phases(), phase->Body(), phase->Locals(), *occurrence,
+              child_work, *child.context, cells, {edge.parent.value}, {member_.value}, left_) :
+          BindCaptureEvaluation(index_, {parent.function.Normal().input, parent.function.Normal().values},
+              child_work, edge.site, edge.creation, cells, {edge.parent.value}, {member_.value}, left_));
       Account(evaluation);
       Require(parent.children.size() < parent.children.capacity(), FamilyTreeError::kParent);
       Require(parent.children.empty() || parent.children.back().creation < evaluation.binding.creation, FamilyTreeError::kParent);
@@ -234,6 +269,7 @@ class FamilyTrees {
   analysis::SemanticBudget initial_, left_;
   const RecordModuleContext* modules_;
   ModuleOwnerId module_owner_;
+  const abc::MethodLookup* lookup_;
   FamilyId member_{0};
   std::optional<std::size_t> default_candidates_;
   bool defaults_proved_ = false;
@@ -243,8 +279,8 @@ class FamilyTrees {
 std::variant<ConstructedFamily, FamilyTreeFailure> BuildFileFamilyTrees(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, FileFamily family, const FunctionContext& root,
-    analysis::SemanticBudget budget, const RecordModuleContext* modules, ModuleOwnerId module_owner) {
-  try { return FamilyTrees(file, header, index, budget, modules, module_owner).Build(family, root);
+    analysis::SemanticBudget budget, const RecordModuleContext* modules, ModuleOwnerId module_owner, const abc::MethodLookup* lookup) {
+  try { return FamilyTrees(file, header, index, budget, modules, module_owner, lookup).Build(family, root);
   } catch (const FamilyTreeFailure& error) { return error;
   } catch (const std::bad_alloc&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit};
   } catch (const std::length_error&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit}; }

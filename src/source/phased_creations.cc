@@ -80,7 +80,7 @@ std::variant<PhasedCreations, PhasedCreationFailure> BindPhasedCreations(
         throw PhasedCreationFailure{current, *error};
       auto context = std::get<CreationTreeContext>(std::move(resolved));
       admit(context.AllocatedBytes(), 1); step(context.Work());
-      result.sites.push_back({*current, {site}, std::move(binding), std::move(context)});
+      result.sites.push_back({{*current, {site}, std::move(binding)}, std::move(context)});
     }
     if (file.CheckUnchanged()) throw PhasedCreationFailure{current, abc::MetadataError::kFileChanged};
     result.allocated_bytes = budget.bytes - left.bytes; result.work = budget.work - left.work;

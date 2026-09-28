@@ -5,10 +5,14 @@
 #include "abcd/analysis/creation_binding.h"
 
 namespace abcd::source {
-struct PhasedCreation {
+// Value identity survives moving the resolved child context into its owner.
+// Rebinding must use this original site, not a residual graph ordinal.
+struct PhasedCreationSite {
   analysis::OpId operation;
   analysis::InstructionId instruction;
   analysis::CreationBinding binding;
+};
+struct PhasedCreation : PhasedCreationSite {
   CreationTreeContext context;
 };
 struct PhasedCreations {

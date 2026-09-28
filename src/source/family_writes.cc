@@ -14,8 +14,8 @@ using Inputs = std::variant<const FileFamily*, std::span<const FamilyWriteInput>
 class WriteCheck {
  public:
   WriteCheck(const abc::MetadataIndex& index, Inputs inputs,
-      const ConstructedFamily& trees, analysis::SemanticBudget budget)
-      : index_(index), inputs_(inputs), trees_(trees), initial_(budget), left_(budget) {}
+      const ConstructedFamily& trees, analysis::SemanticBudget budget, const abc::MethodLookup* lookup = nullptr)
+      : index_(index), inputs_(inputs), trees_(trees), initial_(budget), left_(budget), lookup_(lookup) {}
   FamilyWrites Run() {
     Admit(1, sizeof(WriteCheck));
     const auto count = std::visit([](auto input) -> std::size_t {
@@ -106,9 +106,19 @@ class WriteCheck {
     if (const auto* file = std::get_if<const FileFamily*>(&inputs_)) {
       const auto& member = (*file)->members[i];
       std::optional<FamilyWriteEdge> edge;
-      if (member.incoming) edge.emplace(FamilyWriteEdge{member.incoming->parent,
-          NormalWriteEdge{member.incoming->site, member.incoming->creation}});
-      return {CaptureFunction{member.function.input, member.function.values}, edge, member.objects};
+      if (member.incoming) {
+        const auto& incoming = *member.incoming;
+        if (incoming.phase_operation) {
+          Require(member.context.has_value(), Error::kOwner);
+          edge.emplace(FamilyWriteEdge{incoming.parent, PhasedWriteEdge{
+              {*incoming.phase_operation, incoming.site, incoming.creation}, *member.context}});
+        } else edge.emplace(FamilyWriteEdge{incoming.parent, NormalWriteEdge{incoming.site, incoming.creation}});
+      }
+      if (const auto* phase = member.function.Phase()) {
+        Require(lookup_ != nullptr, Error::kOwner);
+        return {PhasedFamilyInput{phase->Phases(), phase->Body(), phase->Locals(), *lookup_}, edge, member.objects};
+      }
+      return {CaptureFunction{member.function.Normal().input, member.function.Normal().values}, edge, member.objects};
     }
     return std::get<std::span<const FamilyWriteInput>>(inputs_)[i];
   }
@@ -228,6 +238,7 @@ class WriteCheck {
   Inputs inputs_;
   const ConstructedFamily& trees_;
   analysis::SemanticBudget initial_, left_;
+  const abc::MethodLookup* lookup_;
   FamilyId member_{0};
   std::optional<abc::CodeOffset> pc_;
   FamilyWriteFacts facts_;
@@ -238,8 +249,8 @@ class WriteCheck {
 }  // namespace
 std::variant<FamilyWrites, FamilyWriteFailure> VerifyFamilyWrites(
     const abc::MetadataIndex& index, const FileFamily& inputs,
-    const ConstructedFamily& trees, analysis::SemanticBudget budget) {
-  try { return WriteCheck(index, &inputs, trees, budget).Run();
+    const ConstructedFamily& trees, analysis::SemanticBudget budget, const abc::MethodLookup* lookup) {
+  try { return WriteCheck(index, &inputs, trees, budget, lookup).Run();
   } catch (const FamilyWriteFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyWriteFailure{Error::kResourceLimit, {0}, {}};
   } catch (const std::length_error&) { return FamilyWriteFailure{Error::kResourceLimit, {0}, {}}; }
