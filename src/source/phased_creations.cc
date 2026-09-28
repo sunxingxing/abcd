@@ -72,7 +72,9 @@ std::variant<PhasedCreations, PhasedCreationFailure> BindPhasedCreations(
       require(binding.target.position.value < index.methods.size(), Error::kIdentity);
       const auto target = index.methods[binding.target.position.value].offset;
       step(std::bit_width(sites.Size()) + 1);
-      const auto occurrence = sites.FindOccurrence(target, parent.Target(), origin.pc);
+      // Control/capture plans use compact working PCs; the file's occurrence
+      // index still names the original DEFINEFUNC, including after await.
+      const auto occurrence = sites.FindOccurrence(target, parent.Target(), origin.original.value_or(origin.pc));
       require(occurrence.has_value(), Error::kOccurrence);
       auto resolved = CreationTreeContext::Resolve(file, header, index, lookup, roles,
           sites, *occurrence, parent.Identity(), left);

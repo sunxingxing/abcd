@@ -64,7 +64,6 @@ std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
       const auto& node = flow.nodes[b];
       RequirePhase(node.instruction.value < flow.instructions.size(), Error::kInputMismatch);
       const auto& instruction = flow.instructions[node.instruction.value];
-      RequirePhase(!instruction.origin, Error::kResumeFlow, instruction.pc);
       const WorkBlockId block{static_cast<std::uint32_t>(b)};
       const OpId op{node.instruction.value};
       graph.blocks.push_back({{static_cast<std::uint32_t>(graph.ops.size())},
@@ -81,7 +80,9 @@ std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
       if (node.phase != ExceptionPhase::kBefore) continue;
       RequirePhase(op.value == graph.ops.size(), Error::kInputMismatch, instruction.pc);
       graph.input.sites[op.value] = op;
-      graph.origins.push_back({{op.value}, instruction.pc, {}});
+      // Normalized async retains file provenance independently of working PC.
+      // This does not admit raw suspension: operation import still controls it.
+      graph.origins.push_back({{op.value}, instruction.pc, instruction.origin});
       graph.ops.push_back({ImportValueOperation(instruction.operation), block, 0, {}, 0, {},
           instruction.effects.normal, instruction.effects.before_throw,
           instruction.effects.exceptional, {op.value}});

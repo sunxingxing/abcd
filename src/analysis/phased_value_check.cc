@@ -137,7 +137,7 @@ void CheckOperands(const ValueProgram& graph, const PhasedValueInput& input, Pha
     const auto& instruction = input.flow.instructions[i];
     const auto& origin = graph.origins[i];
     RequirePhase(graph.input.sites[i] == OpId{static_cast<std::uint32_t>(i)} &&
-        origin.site.value == i && origin.pc == instruction.pc && !origin.original && !instruction.origin &&
+        origin.site.value == i && origin.pc == instruction.pc && origin.original == instruction.origin &&
         origin.disposition == OriginDisposition::kRetained && op.origin.value == i &&
         op.operation == ImportValueOperation(instruction.operation) &&
         op.normal == instruction.effects.normal && op.before_throw == instruction.effects.before_throw &&

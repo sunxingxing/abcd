@@ -111,6 +111,9 @@ void Snapshot(std::uint32_t parameters, abc::ProfileId profile,
   changed.origins[0].pc = {1};
   test::Check(std::holds_alternative<ValueImportFailure>(VerifyImportedPhases(changed, input)));
   changed = graph;
+  changed.origins[0].original = abc::CodeOffset{1};
+  test::Check(std::holds_alternative<ValueImportFailure>(VerifyImportedPhases(changed, input)));
+  changed = graph;
   changed.ops[0].before_throw = LanguageEffect::kNone;
   test::Check(std::holds_alternative<ValueImportFailure>(VerifyImportedPhases(changed, input)));
   const auto exit = std::find_if(graph.exceptional_exits.begin(), graph.exceptional_exits.end(),

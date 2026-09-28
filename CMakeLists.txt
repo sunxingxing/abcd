@@ -933,6 +933,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_exits.mjs $<TARGET_FILE:loop_exit_test>)
     add_test(NAME loop_closure_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_closures.mjs $<TARGET_FILE:loop_closure_file_test>)
+    add_test(NAME file_await_capture_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_await_captures.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME phased_method_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_method.mjs
       $<TARGET_FILE:class_tree_context_test>)

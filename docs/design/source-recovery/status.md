@@ -12,6 +12,26 @@
 
 ## 当前阶段
 
+### 2026-09-28：文件级 async 函数与跨 await 闭包进入共同主干
+
+- 普通 async 创建上下文不再在 kind 入口被拒绝；文件读取调用既有 completion/await
+  归一化，送入共同 ExceptionFlow、ValueProgram、FunctionTree 和 Printer，未调用旧 async writer。
+  保留原始解码 body 供参数调试信息消费；工作 body 用于控制分析。
+- 共同相位导入保留原始 PC；AST 沿用既有 `original` 字段。await 后 DEFINEFUNC 的
+  occurrence 查找和子函数 owner 对照使用原始 PC，控制/capture 计划继续使用工作 PC。
+  新闭包用例先在 occurrence 查找失败，修复后原始创建点 35 与完整子函数同时保留。
+- 文件化真实 opcode/异常表覆盖三 profile × 三父作用域 × 两种子函数，共 18 个函数族：
+  await 后直接读捕获 cell，或创建并返回继续共享 cell 的闭包。外围 metadata/header 为
+  合成夹具，不是完整应用 ABC 验收。生成 JS 实际验证暂停期间兄弟闭包改写、不同
+  iteration/catch 实例隔离、恢复后继续共享、任意拒绝值身份、thenable receiver/调用顺序，
+  同时检查 async 名称、length 和不可构造性。错误私有 await 状态和来源篡改继续拒绝。
+- 最终构建与相关 15/15 定向测试通过，日志：`/tmp/abcd-file-await-final-build.log`、
+  `/tmp/abcd-file-await-final-tests.log`；新增 CTest 为 `file_await_capture_source_test`。
+  初次回归发现工具仍报告工作创建 PC，已修正并重跑；新增反例缺头文件的编译错误也已修正。
+- C06 尚未完成：含 await 的用户 try/catch/finally、多个暂停点、async method/arrow、
+  async 自引用/receiver 与真实应用组合仍待推进。C05 其余组合缺口保留。
+  work/内存默认额度未调整，未新增准入封装；全量测试、语料、RSS、基准仍暂停。
+
 ### 2026-09-28：首个 await 协议贯通共同 ValueProgram/FunctionTree
 
 - 真实 opcode async enter/await/suspend/resume/resolve/reject 夹具经既有 owner

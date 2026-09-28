@@ -19,7 +19,6 @@ std::variant<CheckedSite, CaptureError, InputBindingError> CheckSite(
       index.methods[parent_position->value].owner_offset != child.Record()) return InputBindingError::kIdentity;
   const auto* occurrence = owner.CreationSite();
   if (!occurrence || occurrence->creator != parent.Target() || occurrence->target != child.Method() ||
-      occurrence->pc != creation.binding.offset ||
       occurrence->resolved.position != creation.binding.target.position) return InputBindingError::kTarget;
   if (child.Mode() != InputCaptureMode::kConditional) return InputBindingError::kMode;
   const auto target = creation.binding.target.position.value;
@@ -31,6 +30,10 @@ std::variant<CheckedSite, CaptureError, InputBindingError> CheckSite(
   const auto& op = graph.ops[creation.operation.value];
   if (op.life != analysis::ValueLife::kLive || op.block.value >= graph.phases.size() ||
       !std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) return CaptureError::kCreation;
+  if (op.origin.value >= graph.origins.size()) return CaptureError::kCreation;
+  const auto& origin = graph.origins[op.origin.value];
+  if (origin.pc != creation.binding.offset ||
+      occurrence->pc != origin.original.value_or(origin.pc)) return InputBindingError::kTarget;
   const auto& phase = graph.phases[op.block.value];
   if (phase.phase != analysis::ExceptionPhase::kBefore || phase.operation != creation.operation ||
       phase.instruction.value != creation.instruction.value) return CaptureError::kCreation;

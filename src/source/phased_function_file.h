@@ -4,16 +4,19 @@
 #include "phased_body.h"
 #include "function_input.h"
 #include "abcd/analysis/exception_locals.h"
+#include "abcd/source/async_completion.h"
 
 namespace abcd::source {
 enum class PhasedFileError : std::uint8_t {
   kIdentity, kMethod, kFrame, kChanged, kResourceLimit, kWorkLimit
 };
 using PhasedFileFailure = std::variant<PhasedFileError, abc::MetadataError,
-    abc::FrameError, abc::BodyFailure, PhasedMethodError, analysis::ExceptionLocalFailure>;
+    abc::FrameError, abc::BodyFailure, PhasedMethodError, analysis::ExceptionLocalFailure, FunctionEmitError>;
 // File-backed conditional method input, NOT a prepared source family. The
-// immutable heap owner keeps decoded body, original phases and capture scopes
+// immutable heap owner keeps working body, phase analyses and capture scopes
 // together across moves/vector growth. Views never point into a moved envelope.
+// Async completion normalization retains the decoded body for debug names and
+// original PCs in the common value/tree origins. Body() is the working view.
 // Same unchanged file/header/index/hash/occurrence are caller prerequisites.
 // Context and optional binding are borrowed during Read only, never retained.
 class FilePhasedFunction {
@@ -26,6 +29,7 @@ class FilePhasedFunction {
       const FunctionContext& context, analysis::SemanticBudget budget = {},
       const PhasedModuleBinding* modules = nullptr, InputCaptureMode mode = InputCaptureMode::kClosed);
   const abc::MethodBody& Body() const;
+  const abc::MethodBody& OriginalBody() const;
   const PhasedBody& Phases() const;
   const analysis::ExceptionLocals& Locals() const;
   std::span<const analysis::InstructionId> Children() const;

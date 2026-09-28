@@ -107,7 +107,7 @@ class StructureCheck {
     if (tree_.inferred_name) {
       RequireTree(tree_.inferred_name->value < tree_.names.size(), Error::kName);
       RequireTree((tree_.callable == CallableKind::kFunction ||
-          tree_.callable == CallableKind::kArrow), Error::kUnsupportedSyntax);
+          tree_.callable == CallableKind::kArrow || tree_.callable == CallableKind::kAsyncFunction), Error::kUnsupportedSyntax);
     }
     RequireTree(tree_.parameter_scope.value < tree_.scopes.size() &&
                 tree_.body_scope.value < tree_.scopes.size() &&

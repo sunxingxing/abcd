@@ -7,6 +7,8 @@
 #include "../../../tools/family_value_inspect.h"
 #include "../../../src/source/capture_cells.h"
 #include "abcd/abc/method_attributes.h"
+#include "abcd/analysis/coroutine.h"
+#include "abcd/source/base_function.h"
 #include "analysis/ssa_fixture.h"
 
 namespace {
@@ -19,9 +21,9 @@ constexpr unsigned kByteBits = 8, kFunctionKindShift = 8;
 std::uint8_t Op(abc::Opcode opcode) {
   return static_cast<std::uint8_t>(opcode);
 }
-abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
+abc::CodeInfo AppendCode(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
                      std::uint8_t parameters,
-                     std::initializer_list<std::uint8_t> code,
+                     std::span<const std::uint8_t> code,
                      std::initializer_list<std::uint8_t> table = {}, std::uint8_t try_count = 1) {
   constexpr std::size_t kSingleByteUlebLimit = 128;
   test::Check(code.size() < kSingleByteUlebLimit);
@@ -41,22 +43,29 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
           static_cast<std::uint32_t>(code.size()),
           tries};
 }
+abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
+                     std::uint8_t parameters, std::initializer_list<std::uint8_t> code,
+                     std::initializer_list<std::uint8_t> table = {}, std::uint8_t tries = 1) {
+  return AppendCode(bytes, locals, parameters, code, table, tries);
+}
 enum class ParentShape { kIteration, kCatch, kNormal, kOuterCatchContinue, kOuterCatchBreak };
 enum class ChildShape {
   kPlain, kException, kNested, kForwarded, kForwardedNormal, kForwardedLocal,
-  kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally, kSharedFinallyNested
+  kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally, kSharedFinallyNested,
+  kAwaitCapture, kAwaitClosure
 };
-enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter };
+enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitState };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
                  MissingCell missing = MissingCell::kNone) {
   const bool exception_child = child_shape != ChildShape::kPlain && child_shape != ChildShape::kForwardedNormal;
   const bool forwarded_writer = child_shape == ChildShape::kForwardedWriter || child_shape == ChildShape::kForwardedThrowWriter;
   const bool forwarding = child_shape == ChildShape::kForwarded || child_shape == ChildShape::kForwardedNormal ||
       child_shape == ChildShape::kForwardedLocal || forwarded_writer;
-  const bool nested = child_shape == ChildShape::kNested || forwarding;
+  const bool nested = child_shape == ChildShape::kNested || forwarding || child_shape == ChildShape::kAwaitClosure;
   const bool outer_transfer = child_shape == ChildShape::kOuterContinue || child_shape == ChildShape::kOuterBreak;
   const bool shared_finally = child_shape == ChildShape::kSharedFinally || child_shape == ChildShape::kSharedFinallyNested;
-  const std::uint8_t getter_parameters = outer_transfer ? 5 : shared_finally ? 3 : 0;
+  const bool await_capture = child_shape == ChildShape::kAwaitCapture || child_shape == ChildShape::kAwaitClosure;
+  const std::uint8_t getter_parameters = await_capture ? 1 : outer_transfer ? 5 : shared_finally ? 3 : 0;
   const bool outer_catch = shape == ParentShape::kOuterCatchContinue || shape == ParentShape::kOuterCatchBreak;
   const std::uint8_t parent_parameters = outer_catch ? 5 : 3;
   std::vector<std::uint8_t> bytes(kCodeStart);
@@ -207,7 +216,35 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const std::uint8_t write_slot = missing == MissingCell::kWrite ? 1U << kSlotShift : 0;
   // Forwarding variants have no lexical accesses. One pushes an unrelated
   // environment so its reader must pass through depth 1 to the ancestor cell.
-  const auto getter = child_shape == ChildShape::kSharedFinallyNested ? Append(bytes, 3, getter_parameters,
+  // await input; return cell. A sibling may change the captured cell while
+  // suspended: the load below must not move before the await.
+  const auto async_getter = [&] {
+    std::vector<std::uint8_t> code{
+      Op(abc::Opcode::kASYNCFUNCTIONENTER), Op(abc::Opcode::kSTA_V8), 0,
+      Op(abc::Opcode::kLDA_V8), 6, Op(abc::Opcode::kASYNCFUNCTIONAWAITUNCAUGHT_V8),
+      static_cast<std::uint8_t>(missing == MissingCell::kAwaitState ? 1 : 0),
+      Op(abc::Opcode::kSUSPENDGENERATOR_V8), 0,
+      Op(abc::Opcode::kLDA_V8), 0, Op(abc::Opcode::kRESUMEGENERATOR),
+      Op(abc::Opcode::kSTA_V8), 1, Op(abc::Opcode::kLDA_V8), 0,
+      Op(abc::Opcode::kGETRESUMEMODE), Op(abc::Opcode::kSTA_V8), 2,
+      Op(abc::Opcode::kLDAI_IMM32), static_cast<std::uint8_t>(analysis::CoroutineResumeMode::kThrow), 0, 0, 0,
+      Op(abc::Opcode::kEQ_IMM8_V8), 0, 2, Op(abc::Opcode::kJEQZ_IMM8), 6,
+      Op(abc::Opcode::kLDA_V8), 1,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+      Op(abc::Opcode::kLDA_V8), 1};
+    if (child_shape == ChildShape::kAwaitClosure)
+      code.insert(code.end(), {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 3, 0, 0});
+    else code.insert(code.end(), {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), read_slot});
+    code.insert(code.end(), {
+      Op(abc::Opcode::kASYNCFUNCTIONRESOLVE_V8), 0, Op(abc::Opcode::kRETURN),
+      Op(abc::Opcode::kSTA_V8), 1, Op(abc::Opcode::kASYNCFUNCTIONREJECT_V8), 0,
+      Op(abc::Opcode::kRETURN)});
+    const std::uint8_t handler = child_shape == ChildShape::kAwaitClosure ? 43 : 40;
+    return AppendCode(bytes, 3, getter_parameters, code,
+        {3, static_cast<std::uint8_t>(handler - 3), 1, 0, handler, 5});
+  };
+  const auto getter = await_capture ? async_getter() :
+      child_shape == ChildShape::kSharedFinallyNested ? Append(bytes, 3, getter_parameters,
       {Op(abc::Opcode::kLDUNDEFINED), Op(abc::Opcode::kSTA_V8), 0,
        Op(abc::Opcode::kLDA_V8), 6, Op(abc::Opcode::kCALLARG0_IMM8), 0,
        Op(abc::Opcode::kJMP_IMM8), 4,
@@ -359,6 +396,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
         static_cast<std::uint32_t>(abc::FunctionKind::kBaseConstructor)
         << kFunctionKindShift;
   }
+  if (await_capture) index.methods[2].access_flags =
+      static_cast<std::uint32_t>(abc::FunctionKind::kAsync) << kFunctionKindShift;
   index.methods[1].name = "capture";
   index.methods[1].name_utf16_length = 7;
   index.methods[2].name = "get";
@@ -374,6 +413,12 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       InspectFamilyValues(file, header, index, lookup, {1}, identity, nullptr,
                           positions, FamilyInspectMode::kSourceDraft);
   test::Check(unlink(path) == 0);
+  if (missing == MissingCell::kAwaitState) {
+    test::Check(!report.value("draft_prepared", false) && !report.contains("draft_source"));
+    test::Check(report.at("failed_method") == kGetter);
+    test::Check(report.at("phase_input_error") == static_cast<unsigned>(source::FunctionEmitError::kKind));
+    return {};
+  }
   if (missing == MissingCell::kHoleWriter || missing == MissingCell::kHoleSetter) {
     test::Check(!report.value("draft_prepared", false) && !report.contains("draft_source"));
     test::Check(report.at("failed_method") == (missing == MissingCell::kHoleSetter ? kWriter : kReader));
@@ -398,10 +443,33 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   test::Check(located["draft_positions"].size() == (forwarded_writer ? 5 : nested ? 4 : 3));
   for (const auto& member : located["draft_positions"])
     test::Check(member["incomplete"] == false);
+  if (await_capture) {
+    const auto& positions = located["draft_positions"][1]["positions"];
+    std::vector<std::uint32_t> original_pcs;
+    for (const auto& origin : positions["origins"])
+      if (origin.contains("original_pc") && !origin["original_pc"].is_null())
+        original_pcs.push_back(origin["original_pc"].get<std::uint32_t>());
+    // Compact PCs must not replace the raw await, continuation, lexical load
+    // or nested creation PCs in the shared AST's provenance.
+    test::Check(original_pcs == std::vector<std::uint32_t>{3, 5, 12, 16, 17, 33, 35,
+        child_shape == ChildShape::kAwaitClosure ? 42U : 39U});
+    if (child_shape == ChildShape::kAwaitClosure)
+      test::Check(report["family_members"][2]["creation_pc"] == 35);
+  }
   return report.at("draft_source").get<std::string>();
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && (std::string_view(argv[1]) == "--await-capture" ||
+                    std::string_view(argv[1]) == "--await-closure")) {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301})
+      for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+        std::cout << Emit(profile, shape, std::string_view(argv[1]) == "--await-closure" ?
+            ChildShape::kAwaitClosure : ChildShape::kAwaitCapture) << ",\n";
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && (std::string_view(argv[1]) == "--shared-finally" ||
                     std::string_view(argv[1]) == "--shared-finally-nested")) {
     const auto child = std::string_view(argv[1]) == "--shared-finally-nested" ?
@@ -458,6 +526,10 @@ int main(int argc, char** argv) {
       Emit(abc::ProfileId::kDynamic1206, shape, child);
   if (!emit) for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
     Emit(abc::ProfileId::kDynamic1206, shape, ChildShape::kSharedFinally);
+  if (!emit) for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+    Emit(abc::ProfileId::kDynamic1206, shape, ChildShape::kAwaitCapture);
+  if (!emit) for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+    Emit(abc::ProfileId::kDynamic1206, shape, ChildShape::kAwaitClosure);
   if (!emit) for (const auto parent : {ParentShape::kOuterCatchContinue, ParentShape::kOuterCatchBreak})
     for (const auto child : {ChildShape::kPlain, ChildShape::kException, ChildShape::kForwardedThrowWriter})
       Emit(abc::ProfileId::kDynamic1206, parent, child);
@@ -469,4 +541,5 @@ int main(int argc, char** argv) {
   Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, ChildShape::kOuterContinue, MissingCell::kRead);
   Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, ChildShape::kSharedFinally, MissingCell::kRead);
   Emit(abc::ProfileId::kDynamic1206, ParentShape::kOuterCatchContinue, ChildShape::kException, MissingCell::kRead);
+  Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, ChildShape::kAwaitCapture, MissingCell::kAwaitState);
 }

@@ -26,6 +26,7 @@ PhasedOwner DescribeOwner(const FunctionContext& context) {
 }  // namespace
 struct FilePhasedFunction::Storage {
   abc::MethodBody body;
+  std::optional<abc::MethodBody> original;
   PhasedBody phases;
   analysis::ExceptionLocals locals;
   std::vector<analysis::InstructionId> children;
@@ -42,6 +43,9 @@ FilePhasedFunction::FilePhasedFunction(FilePhasedFunction&&) noexcept = default;
 FilePhasedFunction& FilePhasedFunction::operator=(FilePhasedFunction&&) noexcept = default;
 FilePhasedFunction::~FilePhasedFunction() = default;
 const abc::MethodBody& FilePhasedFunction::Body() const { return storage_->body; }
+const abc::MethodBody& FilePhasedFunction::OriginalBody() const {
+  return storage_->original ? *storage_->original : storage_->body;
+}
 const PhasedBody& FilePhasedFunction::Phases() const { return storage_->phases; }
 const analysis::ExceptionLocals& FilePhasedFunction::Locals() const { return storage_->locals; }
 std::span<const analysis::InstructionId> FilePhasedFunction::Children() const { return storage_->children; }
@@ -98,13 +102,25 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     step(method.code->instruction_bytes);
     auto body = Take<abc::MethodBody>(abc::DecodeMethodBody(file, header.profile, *method.code, {left.bytes}));
     arena(body.instructions); arena(body.tries); arena(body.handlers);
+    std::optional<abc::MethodBody> original;
+    std::vector<abc::CodeOffset> source_pcs;
+    std::vector<analysis::AwaitSite> awaits;
+    if (context.Callable() == CallableKind::kAsyncFunction) {
+      Require(identity.contract == SourceContract::kLanguageAndHostV2 ||
+          identity.contract == SourceContract::kLanguageAndHostV3, Error::kIdentity);
+      auto normalized = Take<abc::MethodBody>(ProveAsyncCompletion(body, frame,
+          left.bytes, &source_pcs, &awaits, header.profile, ResourceFailureScope::kExcluded));
+      arena(normalized.instructions); arena(normalized.tries); arena(normalized.handlers);
+      arena(source_pcs); arena(awaits);
+      original.emplace(std::move(body)); body = std::move(normalized);
+    }
     Require(mode == InputCaptureMode::kClosed || mode == InputCaptureMode::kConditional, Error::kIdentity);
     // File families retain the same Language-write premise in Locals below;
     // VerifyFamilyWrites must discharge every descendant store. The lower-level
     // standalone builder keeps Unknown, and no cell read becomes a snapshot.
     auto phases = Take<PhasedBody>(PhasedBody::Build(context, body, left, modules,
         mode == InputCaptureMode::kConditional ? analysis::CapturedValues::kLanguage : analysis::CapturedValues::kReject,
-        analysis::ClosureWrites::kLanguage));
+        analysis::ClosureWrites::kLanguage, awaits, source_pcs));
     admit(phases.AllocatedBytes()); step(phases.Work());
     const auto input = phases.TreeInput(body).input;
     // Retain the conditional scope proof once per method. This does NOT
@@ -155,7 +171,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       accesses.push_back({before.instruction, load ? analysis::LocalAccessKind::kLoad : analysis::LocalAccessKind::kStore});
     }
     Require(!file.CheckUnchanged(), Error::kChanged);
-    return FilePhasedFunction(std::make_unique<const Storage>(Storage{std::move(body), std::move(phases),
+    return FilePhasedFunction(std::make_unique<const Storage>(Storage{std::move(body), std::move(original), std::move(phases),
         std::move(locals), std::move(children), mode, std::move(uses), std::move(accesses), DescribeOwner(context), method.owner_offset,
         budget.bytes - left.bytes, budget.work - left.work}));
   } catch (const PhasedFileFailure& failure) { return failure;

@@ -32,7 +32,7 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
     const auto& method = index.methods[position->value];
     Require(method.code.has_value() && method.owner_offset == index.methods[caller->value].owner_offset, Error::kSite);
     // Shared MethodLiteral kinds can be refined by class materialization.
-    // Require an unambiguous non-class role for both normal and arrow targets.
+    // Require an unambiguous non-class role for ordinary, arrow and async targets.
     Require(roles.At(*position) == analysis::MethodRole::kUnseen, Error::kRole);
     const auto& creation = occurrence->creation;
     Require(creation.kind == analysis::CreationKind::kFunction &&
@@ -42,9 +42,9 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
     switch (occurrence->resolved.attributes.kind) {
       case abc::FunctionKind::kBaseConstructor: callable = CallableKind::kFunction; break;
       case abc::FunctionKind::kArrow: callable = CallableKind::kArrow; break;
+      case abc::FunctionKind::kAsync: callable = CallableKind::kAsyncFunction; break;
       case abc::FunctionKind::kNone:
       case abc::FunctionKind::kGenerator:
-      case abc::FunctionKind::kAsync:
       case abc::FunctionKind::kAsyncGenerator:
       case abc::FunctionKind::kAsyncArrow:
       case abc::FunctionKind::kConcurrent:

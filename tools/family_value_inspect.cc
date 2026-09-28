@@ -209,7 +209,8 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
     if (member.context) entry["callable"] = static_cast<unsigned>(member.context->Callable());
     if (member.incoming) {
       entry["parent"] = member.incoming->parent.value;
-      entry["creation_pc"] = member.incoming->creation.offset.value;
+      const auto* occurrence = member.context ? member.context->CreationSite() : nullptr;
+      entry["creation_pc"] = occurrence ? occurrence->pc.value : member.incoming->creation.offset.value;
       entry["bound_cells"] = member.incoming->cells.targets.size();
     }
     entry["children"] = nlohmann::json::array();

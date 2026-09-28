@@ -113,7 +113,8 @@ std::uint64_t PhasedBody::Work() const { return storage_->work; }
 std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     const FunctionContext& context, const abc::MethodBody& body, analysis::SemanticBudget budget,
     const PhasedModuleBinding* binding, analysis::CapturedValues capture_mode,
-    analysis::ClosureWrites writes) {
+    analysis::ClosureWrites writes, std::span<const analysis::AwaitSite> awaits,
+    std::span<const abc::CodeOffset> source_pcs) {
   using namespace analysis;
   try {
     // Recovered scopes/snapshots can allocate at different VM locations.
@@ -127,8 +128,17 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     PhaseBudget quota(budget);
     quota.Admit(sizeof(Storage));
     const auto frame = context.Frame();
+    // Normalized async facts come from the same file owner's completion
+    // normalization, not from opcode resemblance or provenance alone.
+    if ((!source_pcs.empty() || !awaits.empty()) &&
+        (context.Callable() != CallableKind::kAsyncFunction ||
+         source_pcs.size() != body.instructions.size())) return Error::kInput;
     auto flow = PhaseResult<ExceptionFlow>(BuildExceptionFlow(body, context.Identity().profile,
-        frame.registers, {quota.Remaining().bytes, quota.Remaining().work}, {}, &frame), Error::kInput);
+        frame.registers, {quota.Remaining().bytes, quota.Remaining().work}, awaits, &frame), Error::kInput);
+    for (std::size_t i = 0; i < source_pcs.size(); ++i) {
+      if (i && source_pcs[i] <= source_pcs[i - 1]) return Error::kInput;
+      flow.instructions[i].origin = source_pcs[i];
+    }
     quota.Admit(flow.allocated_bytes); quota.Step(flow.work_units);
     IdfQuota ssa_work{quota.Remaining().work};
     auto ssa = PhaseResult<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers,

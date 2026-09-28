@@ -45,6 +45,7 @@ class FamilyReader {
       Require(site.value < parent.Body().instructions.size(), Error::kCreation);
       parent_ = parent.Method(); pc_ = parent.Body().instructions[site.value].offset;
       Require(site.value < parent.Instructions().size(), Error::kCreation);
+      pc_ = parent.Instructions()[site.value].origin.value_or(*pc_);
       const auto& operation = parent.Instructions()[site.value].operation;
       if (const auto* object = std::get_if<analysis::BufferedObjectCreation>(&operation)) {
         // Capture barriers are not all function edges. The shared literal
@@ -142,7 +143,8 @@ class FamilyReader {
       auto& edge = *child.incoming;
       Require(edge.parent.value < i, Error::kOccurrence);
       auto& parent = result_.members[edge.parent.value];
-      method_ = child.function.Method(); parent_ = parent.function.Method(); pc_ = edge.creation.offset;
+      method_ = child.function.Method(); parent_ = parent.function.Method();
+      pc_ = child.context->CreationSite() ? child.context->CreationSite()->pc : edge.creation.offset;
       const auto work = child.function.Capture();
       const auto* phase = parent.function.Phase();
       Require((phase != nullptr) == edge.phase_operation.has_value(), Error::kCreation);

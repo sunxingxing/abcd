@@ -17,6 +17,9 @@ enum class PhasedMethodError : std::uint8_t {
 // This is NOT a source receipt or permission to invent FunctionBindings.
 // The same-file occurrence/body contract matches PhasedMethod; views borrow
 // this owner and the original body. Moving the owner preserves their storage.
+// For normalized async input, the caller first runs ProveAsyncCompletion on
+// that owner's decoded body and supplies its exact await/PC mapping together.
+// These spans are consumed during Build; provenance never grants semantics.
 class PhasedBody {
  public:
   PhasedBody(PhasedBody&&) noexcept;
@@ -26,7 +29,9 @@ class PhasedBody {
       const FunctionContext& context, const abc::MethodBody& body,
       analysis::SemanticBudget budget = {}, const PhasedModuleBinding* modules = nullptr,
       analysis::CapturedValues captures = analysis::CapturedValues::kReject,
-      analysis::ClosureWrites writes = analysis::ClosureWrites::kUnknown);
+      analysis::ClosureWrites writes = analysis::ClosureWrites::kUnknown,
+      std::span<const analysis::AwaitSite> awaits = {},
+      std::span<const abc::CodeOffset> source_pcs = {});
   const analysis::ValueProgram& Graph() const;
   const RouteInputIdentity& Identity() const;
   abc::EntityOffset Target() const;

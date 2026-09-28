@@ -49,7 +49,7 @@ class FamilyTrees {
       const auto& graph = function.Graph();
       Require(context.Identity() == function.Identity() && context.Target() == function.Method(), FamilyTreeError::kContext);
       auto syntax = Take<ResolvedSyntax, SyntaxResolutionFailure>(ResolveFunctionSyntax(
-          file_, header_, index_, context, function.Body(), graph, {member_.value}, left_));
+          file_, header_, index_, context, phase ? phase->OriginalBody() : function.Body(), graph, {member_.value}, left_));
       Account(syntax);
       std::optional<ModuleAliases> normal_aliases;
       const ModuleAliases* aliases = phase ? phase->Phases().Modules() : nullptr;
