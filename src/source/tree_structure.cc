@@ -67,6 +67,7 @@ class StructureCheck {
     budget.Array(arguments_, tree.arguments.size());
     budget.Array(properties_, tree.properties.size());
     budget.Array(capture_edges_, tree.closure_captures.size());
+    budget.Array(labels_used_, tree.labels.size());
     std::size_t functions = 0;
     for (const auto& node : tree.expressions) {
       budget.Step(); functions += std::holds_alternative<FunctionExpr>(node.expression);
@@ -192,9 +193,11 @@ class StructureCheck {
         stack_[depth++] = {*child, frame.scope, 0, false, frame.loop, caught};
         maximum_depth = std::max(depth, maximum_depth);
       } else {
-        if (const auto* statement = std::get_if<StmtId>(&frame.node))
+        if (const auto* statement = std::get_if<StmtId>(&frame.node)) {
           if (const auto* block = std::get_if<BlockStmt>(&tree_.statements[statement->value].statement))
             scopes_.Leave(block->scope);
+          statements_[statement->value] = 2; // Finished owners are not ancestors.
+        }
         --depth;
       }
     }
@@ -209,6 +212,7 @@ class StructureCheck {
     for (const auto seen : arguments_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
     for (const auto seen : properties_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
     for (const auto seen : capture_edges_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
+    for (const auto used : labels_used_) { budget_.Step(); RequireTree(used, Error::kTarget); }
     RequireTree(next_function_ == functions_.size(), Error::kOwnership);
     std::sort(functions_.begin(), functions_.end(), [&](auto left, auto right) {
       budget_.Step(); return left < right;
@@ -307,6 +311,15 @@ class StructureCheck {
     RequireTree(id.value < tree_.statements.size() &&
                 std::holds_alternative<BlockStmt>(tree_.statements[id.value].statement), Error::kScope);
   }
+  void Transfer(StmtId target, std::optional<LabelId> label, std::optional<StmtId> nearest) {
+    RequireTree(target.value < statements_.size() && statements_[target.value] == 1, Error::kTarget);
+    const auto* loop = std::get_if<LoopStmt>(&tree_.statements[target.value].statement);
+    RequireTree(loop != nullptr, Error::kTarget);
+    if (target == nearest) { RequireTree(!label, Error::kTarget); return; }
+    RequireTree(label && loop->label == label && label->value < tree_.labels.size() &&
+        tree_.labels[label->value] == target, Error::kTarget);
+    labels_used_[label->value] = 1;
+  }
   void Enter(SyntaxFrame& frame) {
     if (const auto* expression = std::get_if<ExprId>(&frame.node)) {
       RequireTree(expression->value < expressions_.size(), Error::kRange);
@@ -346,11 +359,13 @@ class StructureCheck {
       if (region->finalizer) RequireBlock(*region->finalizer);
     } else if (const auto* loop = std::get_if<LoopStmt>(&node.statement)) {
       RequireBlock(loop->body);
+      if (loop->label) RequireTree(loop->label->value < tree_.labels.size() &&
+          tree_.labels[loop->label->value] == id, Error::kTarget);
       frame.loop = id;
     } else if (const auto* transfer = std::get_if<BreakStmt>(&node.statement)) {
-      RequireTree(frame.loop == transfer->target, Error::kTarget);
+      Transfer(transfer->target, transfer->label, frame.loop);
     } else if (const auto* transfer = std::get_if<ContinueStmt>(&node.statement)) {
-      RequireTree(frame.loop == transfer->target, Error::kTarget);
+      Transfer(transfer->target, transfer->label, frame.loop);
     } else if (const auto* missing = std::get_if<UnrecoveredStmt>(&node.statement)) {
       RequireTree(missing->issue.value < tree_.recovery_issues.size(), Error::kRange);
     }
@@ -467,6 +482,7 @@ class StructureCheck {
   std::vector<SyntaxFrame> stack_;
   std::vector<FunctionOwnerId> functions_;
   std::vector<std::uint8_t> capture_edges_;
+  std::vector<std::uint8_t> labels_used_;
   std::size_t next_function_ = 0;
 };
 }  // namespace
@@ -489,7 +505,7 @@ std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
                 tree.anchors.size() <= kMaxId && tree.children.size() <= kMaxId &&
                 tree.arguments.size() <= kMaxId && tree.properties.size() <= kMaxId &&
                 tree.captures.size() <= kMaxId && tree.closure_captures.size() <= kMaxId &&
-                tree.modules.size() <= kMaxId, Error::kResourceLimit);
+                tree.modules.size() <= kMaxId && tree.labels.size() <= kMaxId, Error::kResourceLimit);
     checked.Admit(1, sizeof(TreeStructure));
     TreeStructure result{tree.value_revision, tree.cfg_revision};
     result.maximum_depth = StructureCheck(tree, checked, result.expression_scopes).Run();

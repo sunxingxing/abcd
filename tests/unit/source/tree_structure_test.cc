@@ -1,4 +1,5 @@
 #include "../../../src/source/tree_structure.h"
+#include "../../../src/source/tree_labels.h"
 #include "../../../src/source/family_print.h"
 
 #include <cstdlib>
@@ -219,7 +220,22 @@ void LoopTargets() {
   tree.statements.push_back({ContinueStmt{{1}}, {0}});
   tree.children.push_back({5});
   Expect(tree, TreeStructureError::kTarget);
+  Check(std::holds_alternative<TreeStorage>(AssignTreeLabels(tree)));
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  Check(tree.labels.size() == 1 && tree.labels[0] == StmtId{1});
+  const auto labelled = tree;
+  std::get<ContinueStmt>(tree.statements[5].statement).label.reset();
+  Expect(tree, TreeStructureError::kTarget);
+  tree = labelled;
+  std::get<ContinueStmt>(tree.statements[5].statement).label = LabelId{1};
+  Expect(tree, TreeStructureError::kTarget);
+  tree = labelled; tree.labels[0] = {3};
+  Expect(tree, TreeStructureError::kTarget);
+  tree = labelled; tree.statements[5].statement = BreakStmt{{1}, LabelId{0}};
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   tree.statements[5].statement = ContinueStmt{{3}};
+  // Reassignment discards labels no longer required after a syntax rewrite.
+  Check(std::holds_alternative<TreeStorage>(AssignTreeLabels(tree)));
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   tree = Minimal();
   tree.expressions.clear();
@@ -254,6 +270,9 @@ void DeepLoops() {
     Check(std::get<TreeStructureError>(VerifyTreeStructure(tree, budget)) == TreeStructureError::kWorkLimit);
     tree.statements.back().statement = ContinueStmt{{1}};
     Expect(tree, TreeStructureError::kTarget);
+    Check(std::holds_alternative<TreeStorage>(AssignTreeLabels(tree)));
+    Check(tree.labels.size() == 1 && tree.labels[0] == StmtId{1});
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   }
 }
 }  // namespace

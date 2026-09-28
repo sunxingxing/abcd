@@ -1,5 +1,6 @@
 #include "control_skeleton.h"
 
+#include <bit>
 #include <limits>
 
 namespace abcd::source {
@@ -85,6 +86,18 @@ class LoopControlBuilder {
         visits_[pending++] = {*child, false};
       }
     }
+    // Binary lifting locates the outermost crossed loop in logarithmic time;
+    // never walk the entire ancestor chain separately for each exit edge.
+    levels_ = std::bit_width(count);
+    Require(count <= std::numeric_limits<std::size_t>::max() / levels_, Error::kResourceLimit);
+    quota_.Size(ancestors_, count * levels_);
+    for (std::size_t i = count; i-- > 0;) {
+      quota_.Work(); ancestors_[i * levels_] = forest_.loops[i].parent;
+      for (std::size_t level = 1; level < levels_; ++level) {
+        quota_.Work(); const auto ancestor = ancestors_[i * levels_ + level - 1];
+        if (ancestor) ancestors_[i * levels_ + level] = ancestors_[ancestor->value * levels_ + level - 1];
+      }
+    }
   }
   bool Inside(LoopId loop, ControlNodeId block) const {
     const auto owner = forest_.owners[block.value];
@@ -97,19 +110,26 @@ class LoopControlBuilder {
     Require(!exit || *exit == target, Error::kLoopExits);
     exit = target;
   }
+  LoopId ExitOwner(LoopId loop, ControlNodeId target) {
+    Require(!Inside(loop, target), Error::kLoopExits);
+    for (std::size_t level = levels_; level-- > 0;) {
+      quota_.Work(); const auto ancestor = ancestors_[loop.value * levels_ + level];
+      if (ancestor && !Inside(*ancestor, target)) loop = *ancestor;
+    }
+    return loop;
+  }
   void Exits() {
     for (std::uint32_t i = 0; i < graph_.ArcCount(); ++i) {
       const auto edge = graph_.Arc({i});
       quota_.Work();
       const auto owner = forest_.owners[edge.source.value];
-      if (owner && !Inside(*owner, edge.target)) Exit(*owner, edge.target);
-    }
-    // Children precede parents. A single normal exit can be propagated once
-    // per child instead of visiting all ancestors for every CFG edge.
-    for (std::size_t i = 0; i < forest_.loops.size(); ++i) {
-      quota_.Work();
-      const auto parent = forest_.loops[i].parent;
-      if (parent && exits_[i] && !Inside(*parent, *exits_[i])) Exit(*parent, *exits_[i]);
+      // An edge to an enclosing header is an abrupt continue, not an inner
+      // loop's normal successor. It must retain its exact outer owner.
+      const auto header = headers_[edge.target.value];
+      if (owner && header && Inside(*header, edge.source)) continue;
+      // Assign a cross-nesting edge to the loop it actually exits. Intermediate
+      // loops need no made-up fallthrough port: the AST emits break outer.
+      if (owner && !Inside(*owner, edge.target)) Exit(ExitOwner(*owner, edge.target), edge.target);
     }
   }
   ControlId Wrapper(LoopId loop) const {
@@ -123,11 +143,13 @@ class LoopControlBuilder {
   }
   ControlId Target(ControlNodeId block, std::optional<LoopId> scope,
       ControlTransferSource source) {
-    if (scope && block.value == forest_.loops[scope->value].header.value)
-      return Transfer(*scope, LoopTransferKind::kContinue, source);
+    const auto header = headers_[block.value];
+    if (scope && header && Inside(*header, forest_.loops[scope->value].header))
+      return Transfer(*header, LoopTransferKind::kContinue, source);
     if (scope && !Inside(*scope, block)) {
-      Require(exits_[scope->value] == block, Error::kLoopExits);
-      return Transfer(*scope, LoopTransferKind::kBreak, source);
+      const auto owner = ExitOwner(*scope, block);
+      Require(exits_[owner.value] == block, Error::kLoopExits);
+      return Transfer(owner, LoopTransferKind::kBreak, source);
     }
     if (forest_.owners[block.value] == scope) return {block.value};
     const auto loop = headers_[block.value];
@@ -194,6 +216,8 @@ class LoopControlBuilder {
   std::vector<ControlLink> links_;
   std::vector<LoopInterval> intervals_;
   std::vector<std::optional<LoopId>> heads_, siblings_, headers_;
+  std::vector<std::optional<LoopId>> ancestors_;
+  std::size_t levels_ = 0;
   std::vector<LoopVisit> visits_;
   std::vector<std::optional<ControlNodeId>> exits_;
   std::vector<ControlSynthetic> synthetic_;

@@ -14,6 +14,8 @@ struct RegionCheck {
   std::optional<ControlId> stop;
   std::optional<LoopId> scope;
 };
+struct LoopRange { std::size_t begin = 0; std::size_t end = 0; };
+struct LoopVisit { LoopId loop; bool leave; };
 using Targets = std::array<std::optional<ControlId>, analysis::kMaxNormalSuccessors>;
 
 class ControlCheck {
@@ -51,7 +53,7 @@ class ControlCheck {
           entered_[wrapper->loop.value] = 1;
           Push({loop.body, {}, wrapper->loop});
         } else if (const auto* transfer = std::get_if<LoopTransfer>(&node.synthetic)) {
-          Require(task.scope == transfer->loop, Error::kCrossEntry);
+          Require(Encloses(transfer->loop, task.scope), Error::kCrossEntry);
         }
         if (degree == analysis::kMaxNormalSuccessors) {
           Require(node.arms.has_value(), Error::kInvalidGraph);
@@ -130,10 +132,11 @@ class ControlCheck {
       const auto& loop = plan_.loops[i];
       Require(loop.header.value < blocks && !headers_[loop.header.value] &&
           loop.body.value == loop.header.value && loop.wrapper.value == blocks + i &&
-          (!loop.parent || (loop.parent->value < plan_.loops.size() && loop.parent->value != i)) &&
+          (!loop.parent || (loop.parent->value < plan_.loops.size() && loop.parent->value > i)) &&
           (!loop.exit || (loop.exit->value < blocks && *loop.exit != loop.header)), Error::kInvalidGraph);
       headers_[loop.header.value] = LoopId{static_cast<std::uint32_t>(i)};
     }
+    IndexLoopParents();
     for (std::size_t i = blocks; i < plan_.nodes.size(); ++i) {
       quota_.Work();
       const auto& node = plan_.nodes[i];
@@ -158,6 +161,38 @@ class ControlCheck {
   void Push(RegionCheck task) {
     Require(pending_ < tasks_.size(), Error::kResourceLimit); tasks_[pending_++] = task;
   }
+  void IndexLoopParents() {
+    const auto count = plan_.loops.size();
+    constexpr std::size_t kVisitEvents = 2; // Enter and leave each loop once.
+    Require(count <= std::numeric_limits<std::size_t>::max() / kVisitEvents, Error::kResourceLimit);
+    std::vector<std::optional<LoopId>> heads, siblings;
+    std::vector<LoopVisit> pending;
+    quota_.Size(heads, count + 1); quota_.Size(siblings, count);
+    quota_.Size(loop_ranges_, count); quota_.Size(pending, count * kVisitEvents);
+    for (std::size_t i = 0; i < count; ++i) {
+      quota_.Work(); const auto parent = plan_.loops[i].parent;
+      const auto at = parent ? parent->value : count;
+      siblings[i] = heads[at]; heads[at] = LoopId{static_cast<std::uint32_t>(i)};
+    }
+    std::size_t size = 0, clock = 0;
+    for (auto root = heads[count]; root; root = siblings[root->value]) pending[size++] = {*root, false};
+    while (size) {
+      quota_.Work(); const auto visit = pending[--size];
+      auto& range = loop_ranges_[visit.loop.value];
+      if (visit.leave) { range.end = clock; continue; }
+      range.begin = clock++; pending[size++] = {visit.loop, true};
+      for (auto child = heads[visit.loop.value]; child; child = siblings[child->value]) {
+        quota_.Work(); Require(size < pending.size(), Error::kResourceLimit);
+        pending[size++] = {*child, false};
+      }
+    }
+  }
+  bool Encloses(LoopId target, std::optional<LoopId> scope) const {
+    if (!scope) return false;
+    const auto range = loop_ranges_[target.value];
+    const auto point = loop_ranges_[scope->value].begin;
+    return range.begin <= point && point < range.end;
+  }
   std::uint8_t Degree(ControlId id) const {
     if (id.value < graph_.NodeCount()) return graph_.Node({id.value}).arc_count;
     if (const auto* loop = std::get_if<LoopControl>(&plan_.nodes[id.value].synthetic))
@@ -175,7 +210,7 @@ class ControlCheck {
     Require(id.value < plan_.nodes.size(), Error::kInvalidGraph);
     const auto* transfer = std::get_if<LoopTransfer>(&plan_.nodes[id.value].synthetic);
     if (!transfer) return ConcreteEntry(id);
-    Require(scope == transfer->loop && transfer->source == source, Error::kCrossEntry);
+    Require(Encloses(transfer->loop, scope) && transfer->source == source, Error::kCrossEntry);
     const auto& loop = plan_.loops[transfer->loop.value];
     switch (transfer->kind) {
       case LoopTransferKind::kContinue:
@@ -210,6 +245,7 @@ class ControlCheck {
   std::vector<std::optional<LoopId>> scopes_, headers_;
   std::vector<Targets> targets_;
   std::vector<RegionCheck> tasks_;
+  std::vector<LoopRange> loop_ranges_;
   std::size_t pending_ = 0;
 };
 }  // namespace

@@ -108,6 +108,25 @@ void Loops() {
   const auto* nested_plan = std::get_if<ControlPlan>(&nested_built);
   Check(nested_plan && nested_plan->loops.size() == 2);
   Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(nested_graph, *nested_plan)));
+  // The inner normal exit (4) and an abrupt outer continue (0) coexist.
+  const std::array<Targets, 6> outer_continue{{{1, 5}, {2, 4}, {0, 3}, {1, {}}, {0, {}}, {}}};
+  const auto outer_graph = Graph(outer_continue);
+  const auto outer_result = BuildControlPlan(outer_graph);
+  const auto* outer = std::get_if<ControlPlan>(&outer_result);
+  Check(outer && outer->loops.size() == 2 &&
+      std::holds_alternative<std::uint64_t>(VerifyControlPlan(outer_graph, *outer)));
+  bool crossed = false;
+  for (std::size_t i = 0; i < outer->nodes.size(); ++i) {
+    const auto* transfer = std::get_if<LoopTransfer>(&outer->nodes[i].synthetic);
+    if (!transfer || transfer->source != ControlTransferSource{analysis::EdgeId{4}}) continue;
+    crossed = true;
+    Check(transfer->kind == LoopTransferKind::kContinue && outer->loops[transfer->loop.value].header.value == 0);
+    auto wrong = *outer;
+    const auto inner = transfer->loop.value == 0 ? LoopId{1} : LoopId{0};
+    std::get<LoopTransfer>(wrong.nodes[i].synthetic).loop = inner;
+    Check(std::holds_alternative<ControlError>(VerifyControlPlan(outer_graph, wrong)));
+  }
+  Check(crossed);
   const std::array<Targets, 4> multi_exit{{{1, 2}, {0, 3}, {}, {}}};
   Check(std::get<ControlError>(BuildControlPlan(Graph(multi_exit))) == ControlError::kLoopExits);
   for (const std::uint32_t depth : {1U, 2U, 200U, 201U, 4096U}) {

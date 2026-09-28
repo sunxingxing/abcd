@@ -669,11 +669,18 @@ class TreePrinter {
     Push(Statement{node.body, at.depth});
   }
   void StatementNode(LoopStmt node, Statement at) {
+    if (node.label) { Label(*node.label); Append(": "); }
     Append("while (true) ");
     Push(Statement{node.body, at.depth});
   }
-  void StatementNode(BreakStmt, Statement) { Append("break;"); }
-  void StatementNode(ContinueStmt, Statement) { Append("continue;"); }
+  void Label(LabelId label) { Append("$loop"); Numeric(label.value); }
+  void Transfer(std::string_view token, std::optional<LabelId> label) {
+    Append(token);
+    if (label) { Append(" "); Label(*label); }
+    Append(";");
+  }
+  void StatementNode(BreakStmt node, Statement) { Transfer("break", node.label); }
+  void StatementNode(ContinueStmt node, Statement) { Transfer("continue", node.label); }
   void StatementNode(DebuggerStmt, Statement) { Append("debugger;"); }
   void StatementNode(UnrecoveredStmt node, Statement) {
     const auto& issue = Tree().recovery_issues[node.issue.value];

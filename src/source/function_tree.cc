@@ -14,6 +14,7 @@
 #include "capture_aliases.h"
 #include "cell_lifetime.h"
 #include "tree_structure.h"
+#include "tree_labels.h"
 
 namespace abcd::source {
 namespace {
@@ -157,6 +158,13 @@ class TreeBuilder {
       }
     }
     Flatten();
+    const auto labels = AssignTreeLabels(tree_, {bytes_, work_});
+    if (const auto* error = std::get_if<TreeStructureError>(&labels)) {
+      if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kStructure;
+    }
+    Admit(std::get<TreeStorage>(labels).bytes, 1); Step(std::get<TreeStorage>(labels).work);
     if (forest_.recovery_stop) {
       const auto checked = VerifyTreeStructure(tree_, {bytes_, work_});
       if (const auto* error = std::get_if<TreeStructureError>(&checked)) {

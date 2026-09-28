@@ -51,6 +51,24 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C04 普通嵌套循环的外层 `break/continue` 已贯通真实 opcode → 共同控制规划 →
+  FunctionTree → Printer。先分别复现 `kLoopExits`：内层普通出口与祖先 header/
+  外层退出点混合导致拒绝。现在 header 边保留 continue 目标；其它离开边按真正
+  跨出的最外层 loop 归属，保留内层正常出口。祖先索引采用 binary lifting，出口
+  分类 O(E log L)，不逐边线性爬父链；控制检查用 Euler 区间检查祖先关系。
+  `AssignTreeLabels` 在树构建阶段迭代遍历，生成函数内 `LabelId → StmtId` 表，
+  仅跨层跳转使用标签；Printer 只读已分配标签。错误目标、缺失/错配标签仍拒绝，
+  不能把 outer continue 静默打印成 inner continue。普通循环携带值的入口、内回边、
+  外回边和外层退出沿原边安排 phi copies，未改用临时状态机或专项 writer。
+  `loop_exit_test` 覆盖 3 profiles × break/continue × 有/无携带值，共 12 个真实
+  解码函数；Node 对实际完整输出检查不跳转、总跳转、第二轮跳转、内层更新后跳转
+  的调用轨迹、旧值输入和返回值身份。tree_structure/control_plan 的 200/201/4096
+  深层检查及错误目标反例通过。重建 loop_exit、tree_structure、control_plan、
+  function_tree、control_composition、loop_closure_file、partial_file 七个目标后，
+  对应测试加 loop_exit/control_composition/loop_closure 的 source 测试 **10/10 通过**。
+  这是普通嵌套循环证据，不是 try/catch 多出口支持：异常区域仍有单出口限制，
+  C04 的 try/catch 跨层跳转、更一般多出口和 C05–C09 继续推进。全量/RSS 仍暂停。
+
 - C04 纯转发写入已增加纵向行为证据：在 `e77e2f2` 的共同通路上，getter 与
   setter 两条独立中间链均不直接读写 cell；孙级 writer 只写祖先槽，另一孙级
   reader 读取同一迭代的槽。另测 writer 先写再 throw、中间 catch 返回后写入仍可见。

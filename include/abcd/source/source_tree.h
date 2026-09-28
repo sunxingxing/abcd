@@ -154,11 +154,12 @@ struct TryStmt {
 };
 // Canonical loop syntax: while (true), with the original header predicate in
 // the body. This keeps header effects and edge copies at their actual sites.
-struct LoopStmt { StmtId body; };
-// Targets are syntax owners, never CFG/region IDs. The current syntax contract
-// permits only the nearest enclosing loop; outer transfers need explicit labels.
-struct BreakStmt { StmtId target; };
-struct ContinueStmt { StmtId target; };
+struct LabelId { std::uint32_t value; auto operator<=>(const LabelId&) const = default; };
+struct LoopStmt { StmtId body; std::optional<LabelId> label; };
+// Targets are enclosing syntax owners, never CFG/region IDs. Outer transfers
+// carry a preassigned label; the printer must not infer or retarget a jump.
+struct BreakStmt { StmtId target; std::optional<LabelId> label; };
+struct ContinueStmt { StmtId target; std::optional<LabelId> label; };
 struct DebuggerStmt {};
 enum class RecoveryMode : std::uint8_t { kCompleteOnly, kAllowPartial };
 struct RecoveryIssueId { std::uint32_t value = 0; auto operator<=>(const RecoveryIssueId&) const = default; };
@@ -267,9 +268,11 @@ struct FunctionTree {
   // creation-time const, separate from the target's runtime name and body.
   SelfForm self_form = SelfForm::kNamedFunction;
   InvocationForm invocation = InvocationForm::kDeclared;
+  // LabelId -> loop statement, function-local and separate from variable names.
+  std::vector<StmtId> labels;
 };
-// This is a construction product, not a source-publication certificate. The
-// printer will accept only a frozen verified owner, never raw ValueProgram.
+// FunctionTree is the direct printer input, not a source-publication token.
+// Structural safety checks do not imply complete recovery or IR equivalence.
 struct TreeStorage { std::size_t bytes; std::uint64_t work; };
 enum class TreeStorageError : std::uint8_t { kResourceLimit, kWorkLimit };
 // Capacity-based owned storage accounting, including UTF-16 name/literal
