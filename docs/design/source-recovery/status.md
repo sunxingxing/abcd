@@ -51,6 +51,13 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 下一项 C04 异常多出口已有真实解码 RED：`control_composition_test --outer-transfer`
+  将 try 正常出口接内层 body，catch 接外层 header；`--outer-break` 将 catch 接外层
+  return。两者要求完整源码，当前在异常控制规划返回 `kMultipleExits`，未注册为
+  成功覆盖，不以拒绝代替实现。既有 `control_composition_test` / source 的定向
+  复跑 **2/2 通过**。接下来改共同区域出口表示及消费，不能只放宽单出口检查：
+  原 body/handler 分别作为投影入口，必须保留其实际包围循环和真实边上的 phi copies。
+
 - C04 普通嵌套循环的外层 `break/continue` 已贯通真实 opcode → 共同控制规划 →
   FunctionTree → Printer。先分别复现 `kLoopExits`：内层普通出口与祖先 header/
   外层退出点混合导致拒绝。现在 header 边保留 continue 目标；其它离开边按真正

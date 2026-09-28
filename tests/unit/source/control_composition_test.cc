@@ -29,7 +29,7 @@ T Take(std::variant<Alternatives...> value,
 }
 void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t locals,
     std::uint32_t parameters, bool staging, std::ostream* output,
-    std::optional<ScopeKind> cell_scope = {});
+    std::optional<ScopeKind> cell_scope = {}, std::size_t expected_loops = 1);
 
 void LoopCarried(abc::ProfileId profile, std::ostream* output) {
   // x = initial; try { while (next()) { x = step(x); next(); } } catch (_) {}
@@ -58,7 +58,8 @@ void LoopCarried(abc::ProfileId profile, std::ostream* output) {
   Emit(body, profile, 1, 3, true, output);
 }
 void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t locals,
-    std::uint32_t parameters, bool staging, std::ostream* output, std::optional<ScopeKind> cell_scope) {
+    std::uint32_t parameters, bool staging, std::ostream* output, std::optional<ScopeKind> cell_scope,
+    std::size_t expected_loops) {
   const auto frame = Take<abc::FrameLayout>(abc::BuildFrameLayout(locals, parameters, {}));
   const auto flow = Take<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers, {}, {}, &frame));
   IdfQuota quota{kDefaultSemanticWork};
@@ -84,14 +85,14 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     std::cerr << "loop-carried control error " << static_cast<unsigned>(*error) << '\n';
   test::Check(std::holds_alternative<ExceptionControl>(built_control));
   const auto& control = std::get<ExceptionControl>(built_control);
-  test::Check(control.skeleton.loops.size() == 1);
+  test::Check(control.skeleton.loops.size() == expected_loops);
   const auto planned = BuildPhasedEvaluationPlan(graph);
   if (const auto* error = std::get_if<EvaluationError>(&planned))
     std::cerr << "composition evaluation error " << static_cast<unsigned>(*error) << '\n';
   test::Check(std::holds_alternative<EvaluationPlan>(planned));
   const auto& evaluation = std::get<EvaluationPlan>(planned);
   if (staging) test::Check(evaluation.exceptions && !evaluation.exceptions->slots.empty());
-  else if (!evaluation.cells) {
+  else if (!evaluation.cells && expected_loops == 1) {
     test::Check(evaluation.phis.has_value());
     bool empty_schedule = false;
     for (const auto& bundle : evaluation.phis->bundles)
@@ -207,8 +208,38 @@ void CatchCell(abc::ProfileId profile, std::ostream* output) {
   body.tries = {region}; body.handlers = {handler};
   Emit(body, profile, 1, 3, false, output, ScopeKind::kCatch);
 }
+void CatchOuterTransfer(abc::ProfileId profile, bool stop, std::ostream* output) {
+  // outer: while(nextOuter()) { while(nextInner()) {
+  //   try { run(); } catch(e) { continue/break outer; } body(); } after(); }
+  // Normal try exit is PC16; catch exits to the outer header (0) or return (30).
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  auto body = test::Body({
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 26,
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 14,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-14),
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(stop ? 8 : -22),
+      op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-28),
+      op(abc::Opcode::kRETURNUNDEFINED)});
+  abc::TryRegion region; region.offset = {12}; region.length = 4; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {22}; handler.length = 2;
+  body.tries = {region}; body.handlers = {handler};
+  Emit(body, profile, 0, 5, false, output, {}, 2);
+}
 }
 int main(int argc, char** argv) {
+  // Explicit next-stage RED; never count a rejection as source support.
+  if (argc == 2 && (std::string_view(argv[1]) == "--outer-transfer" || std::string_view(argv[1]) == "--outer-break")) {
+    std::cout << "export const functions = [\n";
+    if (std::string_view(argv[1]) == "--outer-transfer") CatchOuterTransfer(abc::ProfileId::kDynamic1206, false, &std::cout);
+    CatchOuterTransfer(abc::ProfileId::kDynamic1206, true, &std::cout);
+    std::cout << "];\n";
+    return 0;
+  }
   const bool emit = argc == 2 && std::string_view(argv[1]) == "--emit";
   if (emit) std::cout << "export const functions = [\n";
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
