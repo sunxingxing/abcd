@@ -12,6 +12,7 @@
 #include "abcd/source/function_emission.h"
 #include "../../tools/tree_position_json.h"
 #include "../../src/source/phased_method.h"
+#include "../../src/source/phased_function_file.h"
 #include "../../src/source/phased_creations.h"
 #include "../../src/source/phased_capture_input.h"
 #include "../../src/source/phased_capture_cells.h"
@@ -47,9 +48,6 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
   const auto* ready = std::get_if<ClassTreeContext>(&selected);
   if (!ready) return 1;
   const FunctionContext context{std::move(std::get<ClassTreeContext>(selected))};
-  const auto decoded = abc::DecodeMethodBody(file, header.profile, *method.code);
-  const auto* body = std::get_if<abc::MethodBody>(&decoded);
-  if (!body) return 1;
   // A single explicitly selected method, not record publication or a corpus
   // scan. Its module owner is local to this diagnostic invocation.
   constexpr ModuleOwnerId kSelectedRecord{0};
@@ -79,18 +77,25 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
   }
   const PhasedModuleBinding binding{file, header, index, *record, kSelectedRecord};
   nlohmann::json report{{"method", entity.value}, {"source_complete", false}, {"executable", false}};
-  auto staged = PhasedBody::Build(context, *body, budget, &binding);
-  if (const auto* error = std::get_if<PhasedMethodError>(&staged)) {
-    report["phase_error"] = static_cast<unsigned>(*error);
+  auto loaded = FilePhasedFunction::Read(file, header, index, context, budget, &binding);
+  auto* owned = std::get_if<FilePhasedFunction>(&loaded);
+  if (!owned) {
+    const auto& error = std::get<PhasedFileFailure>(loaded);
+    report["phase_input_error"] = error.index();
+    if (const auto* phase_error = std::get_if<PhasedMethodError>(&error))
+      report["phase_error"] = static_cast<unsigned>(*phase_error);
     std::cout << report << '\n';
     return file.CheckUnchanged() ? 1 : 0;
   }
+  const auto* body = &owned->Body();
+  const auto& staged = owned->Phases();
+  report["owned_phase_input"] = true;
   report["phase_body_ready"] = true;
-  const auto* cells = std::get<PhasedBody>(staged).Cells();
+  const auto* cells = staged.Cells();
   report["phase_cells_ready"] = cells != nullptr;
   if (cells) report["cells"] = cells->cells.size();
   // Retained production topology, not a separately budgeted diagnostic proof.
-  if (const auto* ready = std::get<PhasedBody>(staged).CellEnvironments()) {
+  if (const auto* ready = staged.CellEnvironments()) {
     report["phase_environments_ready"] = true;
     report["environment_allocations"] = ready->flow.allocations.size();
     report["lexical_bindings"] = ready->flow.bindings.size();
@@ -100,16 +105,14 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
   const auto* occurrences = std::get_if<analysis::FunctionCreationSites>(&creation_sites);
   if (!occurrences) return 1;
   auto bound_creations = BindPhasedCreations(file, header, index, lookup, *indexed_roles,
-      *occurrences, std::get<PhasedBody>(staged), *body);
+      *occurrences, staged, *body);
   auto* children = std::get_if<PhasedCreations>(&bound_creations);
   if (!children) {
     report["creation_error"] = std::get<PhasedCreationFailure>(bound_creations).cause.index();
     std::cout << report << '\n'; return file.CheckUnchanged() ? 1 : 0;
   }
-  const auto original = std::get<PhasedBody>(staged).TreeInput(*body).input;
-  auto capture_locals = analysis::ProveExceptionLocals(original.flow, original.environments,
-      budget, {}, analysis::ClosureWrites::kLanguage);
-  const auto* local_scopes = std::get_if<analysis::ExceptionLocals>(&capture_locals);
+  const auto original = staged.TreeInput(*body).input;
+  const auto* local_scopes = &owned->Locals();
   std::vector<FunctionBinding> function_bindings;
   std::vector<test::ExceptionChild> tree_children;
   function_bindings.reserve(children->sites.size());
@@ -117,7 +120,6 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
     report["creations"].push_back({{"operation", child.operation.value}, {"pc", child.binding.offset.value},
         {"instruction", child.instruction.value},
         {"target", child.context.Site().target.value}});
-    if (!local_scopes) continue;
     FunctionContext child_owner{std::move(child.context)};
     const auto& child_method = index.methods[child_owner.Position().value];
     if (!child_method.code) continue;
@@ -129,32 +131,32 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
         budget, &child_owner);
     auto* ready_child = std::get_if<FunctionInput>(&child_input);
     if (!ready_child) continue;
-    const auto captures = BindPhasedFunctionInputs(index, lookup, std::get<PhasedBody>(staged), *body,
+    const auto captures = BindPhasedFunctionInputs(index, lookup, staged, *body,
         *local_scopes, child, *ready_child, child_owner, budget);
     if (const auto* plan = std::get_if<CapturePlan>(&captures)) {
       auto exact = budget; exact.work = plan->work;
       if (!std::holds_alternative<CapturePlan>(BindPhasedFunctionInputs(index, lookup,
-          std::get<PhasedBody>(staged), *body, *local_scopes, child, *ready_child, child_owner, exact))) return 1;
+          staged, *body, *local_scopes, child, *ready_child, child_owner, exact))) return 1;
       --exact.work;
-      const auto limited = BindPhasedFunctionInputs(index, lookup, std::get<PhasedBody>(staged), *body,
+      const auto limited = BindPhasedFunctionInputs(index, lookup, staged, *body,
           *local_scopes, child, *ready_child, child_owner, exact);
       if (!std::holds_alternative<CaptureError>(limited) ||
           std::get<CaptureError>(limited) != CaptureError::kWorkLimit) return 1;
       exact = budget; exact.bytes = 0;
-      const auto exhausted = BindPhasedFunctionInputs(index, lookup, std::get<PhasedBody>(staged), *body,
+      const auto exhausted = BindPhasedFunctionInputs(index, lookup, staged, *body,
           *local_scopes, child, *ready_child, child_owner, exact);
       if (!std::holds_alternative<CaptureError>(exhausted) ||
           std::get<CaptureError>(exhausted) != CaptureError::kResourceLimit) return 1;
       const auto saved = child.instruction;
       child.instruction = analysis::InstructionId{static_cast<std::uint32_t>(original.flow.instructions.size())};
-      const auto invalid = BindPhasedFunctionInputs(index, lookup, std::get<PhasedBody>(staged), *body,
+      const auto invalid = BindPhasedFunctionInputs(index, lookup, staged, *body,
           *local_scopes, child, *ready_child, child_owner, budget);
       child.instruction = saved;
       if (!std::holds_alternative<CaptureError>(invalid) ||
           std::get<CaptureError>(invalid) != CaptureError::kCreation) return 1;
       const auto offset = child.binding.offset;
       ++child.binding.offset.value;
-      const auto wrong_owner = BindPhasedFunctionInputs(index, lookup, std::get<PhasedBody>(staged), *body,
+      const auto wrong_owner = BindPhasedFunctionInputs(index, lookup, staged, *body,
           *local_scopes, child, *ready_child, child_owner, budget);
       child.binding.offset = offset;
       if (!std::holds_alternative<InputBindingError>(wrong_owner) ||
@@ -165,19 +167,19 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       auto child_values = BuildFunctionValues(*ready_child, *child_body, child_owner.Frame(), budget);
       auto* values = std::get_if<FunctionValues>(&child_values);
       if (!values) continue;
-      auto cells = BindPhasedCaptureCells(index, lookup, std::get<PhasedBody>(staged), *body,
+      auto cells = BindPhasedCaptureCells(index, lookup, staged, *body,
           *local_scopes, child, {*ready_child, *values}, child_owner, budget);
       auto* mapped = std::get_if<CaptureCells>(&cells);
       if (!mapped) continue;
       exact = budget; exact.work = mapped->work;
-      if (!std::holds_alternative<CaptureCells>(BindPhasedCaptureCells(index, lookup, std::get<PhasedBody>(staged),
+      if (!std::holds_alternative<CaptureCells>(BindPhasedCaptureCells(index, lookup, staged,
           *body, *local_scopes, child, {*ready_child, *values}, child_owner, exact))) return 1;
       --exact.work;
-      const auto cells_limited = BindPhasedCaptureCells(index, lookup, std::get<PhasedBody>(staged),
+      const auto cells_limited = BindPhasedCaptureCells(index, lookup, staged,
           *body, *local_scopes, child, {*ready_child, *values}, child_owner, exact);
       if (!std::holds_alternative<CaptureCellError>(cells_limited) ||
           std::get<CaptureCellError>(cells_limited) != CaptureCellError::kWorkLimit) return 1;
-      const auto verify = [&] { return VerifyPhasedCaptureCells(index, lookup, std::get<PhasedBody>(staged),
+      const auto verify = [&] { return VerifyPhasedCaptureCells(index, lookup, staged,
           *body, *local_scopes, child, {*ready_child, *values}, child_owner, *mapped, budget); };
       if (!std::holds_alternative<std::uint64_t>(verify())) return 1;
       const auto revision = mapped->parent_revision; ++mapped->parent_revision.value;
@@ -195,20 +197,20 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
           [](const auto& target) { return std::holds_alternative<ParentCell>(target.target); });
       constexpr FunctionOwnerId kParentOwner{0};
       const FunctionOwnerId child_id{static_cast<std::uint32_t>(report["creations"].size())};
-      auto evaluated = BindPhasedCaptureEvaluation(index, lookup, std::get<PhasedBody>(staged), *body,
+      auto evaluated = BindPhasedCaptureEvaluation(index, lookup, staged, *body,
           *local_scopes, child, {*ready_child, *values}, child_owner, *mapped, kParentOwner, child_id, budget);
       if (auto* ready_binding = std::get_if<CapturedFunctionBinding>(&evaluated)) {
         if (ready_binding->binding.creation != child.operation || ready_binding->binding.captures.size() != mapped->targets.size()) return 1;
         exact = budget; exact.work = ready_binding->work;
         if (!std::holds_alternative<CapturedFunctionBinding>(BindPhasedCaptureEvaluation(index, lookup,
-            std::get<PhasedBody>(staged), *body, *local_scopes, child, {*ready_child, *values}, child_owner,
+            staged, *body, *local_scopes, child, {*ready_child, *values}, child_owner,
             *mapped, kParentOwner, child_id, exact))) return 1;
         --exact.work;
-        const auto evaluation_limited = BindPhasedCaptureEvaluation(index, lookup, std::get<PhasedBody>(staged),
+        const auto evaluation_limited = BindPhasedCaptureEvaluation(index, lookup, staged,
             *body, *local_scopes, child, {*ready_child, *values}, child_owner, *mapped, kParentOwner, child_id, exact);
         const auto* work_failure = std::get_if<CaptureEvaluationFailure>(&evaluation_limited);
         if (!work_failure || !std::visit([](auto error) { return error == decltype(error)::kWorkLimit; }, *work_failure)) return 1;
-        const auto same_owner = BindPhasedCaptureEvaluation(index, lookup, std::get<PhasedBody>(staged), *body,
+        const auto same_owner = BindPhasedCaptureEvaluation(index, lookup, staged, *body,
             *local_scopes, child, {*ready_child, *values}, child_owner, *mapped, kParentOwner, kParentOwner, budget);
         const auto* failure = std::get_if<CaptureEvaluationFailure>(&same_owner);
         if (!failure || !std::holds_alternative<CaptureEvaluationError>(*failure) ||
@@ -221,20 +223,20 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
     }
   }
   // Conditional common evaluation, never a family/source receipt. The probe
-  // below checks actual trees/enclosure; transitive writes still gate publication.
-  const auto& parent_body = std::get<PhasedBody>(staged);
+  // checks trees/enclosure/writes; sealed file-family publication is separate.
+  const auto& parent_body = staged;
   if (!function_bindings.empty() && function_bindings.size() == children->sites.size() &&
-      parent_body.AllocatedBytes() <= budget.bytes && parent_body.Work() <= budget.work) {
+      owned->AllocatedBytes() <= budget.bytes && owned->Work() <= budget.work) {
     const auto* aliases = parent_body.Modules();
     const auto evaluation = BuildPhasedEvaluationPlan(parent_body.Graph(),
-        {budget.bytes - parent_body.AllocatedBytes(), budget.work - parent_body.Work()},
+        {budget.bytes - owned->AllocatedBytes(), budget.work - owned->Work()},
         IncomingCells::kReject, function_bindings,
         aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{});
     if (const auto* ready = std::get_if<EvaluationPlan>(&evaluation)) {
       report["conditional_evaluation_ready"] = std::holds_alternative<std::uint64_t>(
           VerifyPhasedEvaluationPlan(parent_body.Graph(), *ready, budget));
       const auto probe = test::ProbeExceptionFamily(file, header, index, *record, kSelectedRecord,
-          context, *body, parent_body, *ready, std::move(tree_children), lookup, *local_scopes, budget);
+          context, *owned, *ready, std::move(tree_children), lookup, budget);
       report["conditional_parent_tree_ready"] = probe.parent_tree;
       report["conditional_child_trees"] = probe.child_trees;
       report["conditional_family_layout_ready"] = probe.layout;
@@ -254,7 +256,9 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       if (probe.tree_error) report["family_probe_tree_error"] = static_cast<unsigned>(*probe.tree_error);
     }
   }
-  const auto built = PhasedMethod::Evaluate(std::get<PhasedBody>(std::move(staged)), budget);
+  // Independent standalone admission must still refuse missing child-family
+  // ownership; the immutable file input is not consumed or converted to a receipt.
+  const auto built = PhasedMethod::Build(context, *body, budget, &binding);
   if (const auto* error = std::get_if<PhasedMethodError>(&built)) {
     report["phase_error"] = static_cast<unsigned>(*error);
   } else {

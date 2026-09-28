@@ -16,6 +16,7 @@ const samples = [
 for (const { method, sites, targets, allocations, bindings, captures } of samples) {
   const result = JSON.parse(execFileSync(process.argv[2], [process.argv[3], String(method)], { encoding: 'utf8' }));
   assert.equal(result.phase_body_ready, true);
+  assert.equal(result.owned_phase_input, true);
   assert.equal(result.phase_environments_ready, true);
   assert.equal(result.phase_cells_ready, true);
   assert.equal(result.conditional_evaluation_ready, true);

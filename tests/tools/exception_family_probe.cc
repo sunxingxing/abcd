@@ -12,11 +12,14 @@ namespace abcd::test {
 ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
     const abc::Header& header, const abc::MetadataIndex& index,
     const source::RecordModuleContext& modules, source::ModuleOwnerId module_owner,
-    const source::FunctionContext& context, const abc::MethodBody& body,
-    const source::PhasedBody& parent, const source::EvaluationPlan& evaluation,
+    const source::FunctionContext& context, const source::FilePhasedFunction& input,
+    const source::EvaluationPlan& evaluation,
     std::vector<ExceptionChild> children, const abc::MethodLookup& lookup,
-    const analysis::ExceptionLocals& locals, analysis::SemanticBudget budget) {
+    analysis::SemanticBudget budget) {
   using namespace source;
+  const auto& body = input.Body();
+  const auto& parent = input.Phases();
+  const auto& locals = input.Locals();
   ExceptionFamilyProbe result;
   constexpr FunctionOwnerId kRoot{0};
   auto resolved = ResolveFunctionSyntax(file, header, index, context, body, parent.Graph(), kRoot, budget);

@@ -899,3 +899,32 @@ host behavior, and does not turn the diagnostic draft into a publication
 receipt. Mixed file ownership and sealed publication remain the next gate;
 no claim is made for loops/finally/suspension or full ISA completion. Rules 56
 are unchanged because executable publication routes are not broadened.
+
+### Owned File-backed Phased Input
+
+`FilePhasedFunction::Read` now loads the actual method body and call-type ABI
+from the unchanged file/index, checks them against the resolved occurrence,
+and keeps the body, immutable `PhasedBody` and once-computed conditional capture
+scopes under one immutable heap owner. Views survive moving the envelope or
+growing the future family-member vector; no context, file or module descriptor
+pointer is retained. Optional module binding must use the same file/header/index
+objects and the actual owning record, not another metadata snapshot.
+
+The byte allowance admits the owner, decoded vector capacities, retained phase
+analysis and capture scopes while passing the remaining allowance to each
+builder. Work includes an instruction-byte charge and the recorded phase/local
+work; metadata/container parsers retain their existing byte limits, not a newly
+claimed complete work census. Lower-level typed failures are preserved, including
+the current combined resource failure of `ProveExceptionLocals`. This is not an
+RSS measurement or closure-write publication certificate.
+
+The real family probe now consumes this owned input instead of separately
+decoding a parent and constructing a scope proof in the test driver. Existing
+235-PC mapping and controlled execution checks still run through its views.
+File-decoded tests cover move/vector-growth stability at 200/201/402 envelopes,
+reuse of the original control view after moves, exact/insufficient recorded work,
+zero bytes, wrong ABI/method/header, missing code, malformed exception metadata
+and mixed module snapshots. The shared `FileFamily` DFS/tree factory and sealed
+publication have not yet adopted a mixed member variant; this owner is their
+required input boundary, not a second exceptional source writer. Rules 56 and
+the remaining loop/finally/suspension scope are unchanged.

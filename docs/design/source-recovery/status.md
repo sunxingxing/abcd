@@ -42,6 +42,18 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 新增生产层 `FilePhasedFunction::Read`：从实际文件读取 body/call-type ABI，
+  对照已解析 occurrence，统一持有只读 body、原始/工作异常分析和每方法一次
+  的条件捕获作用域。模块绑定必须来自同一 file/header/index 快照及实际 record；
+  不保留外部 context/module 描述符指针。真实函数族工具已改用该 owner，
+  不再自行拼装父 body/词法证明；原 235-PC 来源和条件源码执行检查继续通过。
+  新增 200/201/402 容器扩容/移动后完整原始控制视图校验、精确/不足 recorded
+  work、零 bytes、错误 ABI/方法/header、缺失 code、异常表元数据错配和模块
+  快照混用反例。42 项定向 CTest、3 份真实样本脚本通过，三个 CLI 构建成功。
+  这不是完整函数族发布：共享 `FileFamily` DFS/tree factory 尚需纳入混合成员，
+  后续还要关闭 immutable publication/destination/module 门槛。未运行全语料、
+  RSS 或基准；Rules 56、循环/finally/协程及全 ISA 目标不变。
+
 - 普通/异常 `BuildInstructionSources` 现共用完整的原始指令来源索引，异常
   复制消除与别名仍映射到原始 AST 边界锚点，不伪造语句或从 JS 文本反推位置。
   真实 `recover`、`queryDegree` 两个混合函数族的五个成员均保留 ABI 和来源

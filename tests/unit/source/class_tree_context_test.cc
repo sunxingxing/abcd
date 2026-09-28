@@ -13,6 +13,7 @@
 #include "abcd/source/global_reference.h"
 #include "../../support/function_segments.h"
 #include "../../support/instruction_positions.h"
+#include "../../support/phased_file_checks.h"
 #include "../../../tools/tree_position_json.h"
 #include <nlohmann/json.hpp>
 
@@ -423,6 +424,12 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           method.TreeInput(decoded), method.Evaluation(), std::move(syntax.syntax), constants));
       Check(std::holds_alternative<std::uint64_t>(VerifyModuleAliasTree(
           *method.Modules(), method.Evaluation(), tree.tree)));
+      const auto owned_module = std::get<FilePhasedFunction>(FilePhasedFunction::Read(
+          file, header, module_index, owner, {}, &binding));
+      Check(owned_module.Phases().Modules() && owned_module.Record() == module_context.record() &&
+          owned_module.Phases().Modules()->owner == ModuleOwnerId{1});
+      const auto mixed_snapshot = FilePhasedFunction::Read(file, header, index, owner, {}, &binding);
+      Check(std::get<PhasedFileError>(std::get<PhasedFileFailure>(mixed_snapshot)) == PhasedFileError::kIdentity);
       auto wrong_index = module_index;
       ++wrong_index.methods[owner.Position().value].owner_offset.value;
       const PhasedModuleBinding wrong_binding{file, header, wrong_index, module_context, {1}};
@@ -432,6 +439,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       return;
     }
     Check(std::holds_alternative<PhasedMethod>(analyzed));
+    test::CheckPhasedFile(file, header, index, owner);
     auto staged = std::get<PhasedBody>(PhasedBody::Build(owner, decoded));
     const auto staged_work = staged.Work();
     const auto child_sites = std::get<analysis::FunctionCreationSites>(

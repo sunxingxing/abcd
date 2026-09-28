@@ -7,6 +7,7 @@
 #include "../../src/source/family_enclosure.h"
 #include "../../src/source/module_aliases.h"
 #include "../../src/source/family_writes.h"
+#include "../../src/source/phased_function_file.h"
 
 namespace abcd::test {
 struct ExceptionChild {
@@ -43,9 +44,9 @@ struct ExceptionFamilyProbe {
 ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
     const abc::Header& header, const abc::MetadataIndex& index,
     const source::RecordModuleContext& modules, source::ModuleOwnerId module_owner,
-    const source::FunctionContext& context, const abc::MethodBody& body,
-    const source::PhasedBody& parent, const source::EvaluationPlan& evaluation,
+    const source::FunctionContext& context, const source::FilePhasedFunction& input,
+    const source::EvaluationPlan& evaluation,
     std::vector<ExceptionChild> children, const abc::MethodLookup& lookup,
-    const analysis::ExceptionLocals& locals, analysis::SemanticBudget budget);
+    analysis::SemanticBudget budget);
 }  // namespace abcd::test
 #endif
