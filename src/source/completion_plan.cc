@@ -74,6 +74,7 @@ class CompletionBuilder {
     Require(control_.regions.size() == exceptions_.regions.size());
     quota_.Size(regions_, control_.regions.size());
     Require(exceptions_.layout.source_order.size() == regions_.size());
+    SharedGuards();
     // Source order is outer-before-inner, independent of encoded TryId order.
     // Summarize each owned body/handler once; never replay descendant graphs
     // for every ancestor. Cross-region abrupt completions remain unsupported.
@@ -91,6 +92,24 @@ class CompletionBuilder {
       quota_.Work(); stamp_ = static_cast<std::size_t>(r) + 1;
       const auto& region = control_.regions[r];
       const auto next = control_.skeleton.nodes[region.wrapper.value].next;
+      if (next && shared_guards_[r] && regions_[r].body &&
+          regions_[r].handler && ClosedSharedBody({r}, region.body, false) &&
+          ClosedSharedBody({r}, region.handler, true)) {
+        const auto binding = exceptions_.regions[r].binding;
+        Require(binding.has_value());
+        FinalizerRegion shared{{r},
+                               NormalCompletion{},
+                               ThrowCompletion{binding->value},
+                               {},
+                               {},
+                               {},
+                               {},
+                               {},
+                               {}};
+        shared.shared_guard = shared_guards_[r];
+        Append(plan.finalizers, std::move(shared));
+        continue;
+      }
       if (!next) {
         // A bare abrupt suffix is consumed into the protected body's control
         // tree, not exposed as wrapper.next. Only straight tails qualify here;
@@ -211,6 +230,147 @@ class CompletionBuilder {
     return plan;
   }
  private:
+  void SharedGuards() {
+    quota_.Size(shared_guards_, exceptions_.regions.size());
+    quota_.Size(shared_visits_, control_.skeleton.nodes.size());
+    if (!evaluation_.holes) return;
+    struct Incoming {
+      bool hole = false, invalid = false;
+      std::optional<ValueId> caught;
+    };
+    std::vector<Incoming> inputs;
+    std::vector<std::optional<TryId>> catches;
+    std::vector<std::optional<OpId>> guards;
+    std::vector<std::uint8_t> multiple, rethrows;
+    std::vector<std::uint8_t> candidates;
+    quota_.Size(inputs, graph_.values.size());
+    quota_.Size(catches, graph_.values.size());
+    quota_.Size(guards, graph_.ops.size());
+    quota_.Size(multiple, graph_.ops.size());
+    quota_.Size(rethrows, graph_.ops.size());
+    quota_.Size(candidates, exceptions_.regions.size());
+    for (std::uint32_t r = 0; r < exceptions_.regions.size(); ++r) {
+      quota_.Work();
+      if (const auto binding = exceptions_.regions[r].binding)
+        catches[binding->value.value] = TryId{r};
+    }
+    for (const auto& use : graph_.uses) {
+      quota_.Work();
+      const auto* target = std::get_if<ValueId>(&use.owner);
+      if (!target || use.life != ValueLife::kLive) continue;
+      auto& input = inputs[target->value];
+      const auto* raw = std::get_if<ValueId>(&use.operand);
+      const auto* value =
+          raw ? std::get_if<ValueId>(&*canonical_[raw->value]) : nullptr;
+      if (!value) {
+        input.invalid = true;
+        continue;
+      }
+      if (graph_.values[value->value].domain == ValueKinds::Hole())
+        input.hole = true;
+      else if (catches[value->value] &&
+               (!input.caught || input.caught == *value))
+        input.caught = *value;
+      else
+        input.invalid = true;
+    }
+    for (std::uint32_t o = 0; o < graph_.ops.size(); ++o) {
+      quota_.Work();
+      const auto& op = graph_.ops[o];
+      if (!std::holds_alternative<ValueBranch>(op.operation)) continue;
+      const auto condition = Operand({o}, 0);
+      const auto* value = std::get_if<ValueId>(&condition);
+      const auto* result =
+          value ? std::get_if<OpResult>(&graph_.values[value->value].origin)
+                : nullptr;
+      if (!result) continue;
+      if (guards[result->op.value]) multiple[result->op.value] = 1;
+      guards[result->op.value] = OpId{o};
+    }
+    for (const auto& rethrow : evaluation_.holes->rethrows)
+      rethrows[rethrow.comparison.value] = 1;
+    for (const auto& comparison : evaluation_.holes->comparisons) {
+      quota_.Work();
+      const auto o = comparison.operation.value;
+      const auto& input = inputs[comparison.payload.value];
+      const auto* phi = std::get_if<PhiDefinition>(
+          &graph_.values[comparison.payload.value].origin);
+      if (!phi || !input.hole || !input.caught || input.invalid || !guards[o] ||
+          multiple[o] || !rethrows[o])
+        continue;
+      const auto region = *catches[input.caught->value];
+      if (control_.regions[region.value].exit != phi->block) continue;
+      // Multiple tests are still printable, but do not choose a finalizer
+      // boundary arbitrarily.
+      if (candidates[region.value]) {
+        shared_guards_[region.value].reset();
+        continue;
+      }
+      candidates[region.value] = 1;
+      shared_guards_[region.value] = guards[o];
+    }
+  }
+  bool ClosedSharedBody(TryId region, ControlId entry, bool handler) {
+    struct Task {
+      ControlId entry;
+      std::optional<ControlId> stop;
+    };
+    std::vector<Task> pending;
+    Append(pending, Task{entry, {}});
+    const auto binding = exceptions_.regions[region.value].binding;
+    if (!binding) return false;
+    while (!pending.empty()) {
+      quota_.Work();
+      const auto task = pending.back();
+      pending.pop_back();
+      if (task.stop == task.entry) continue;
+      const auto id = task.entry;
+      if (id.value >= control_.units.size() || shared_visits_[id.value])
+        return false;
+      shared_visits_[id.value] = 1;
+      const auto& node = control_.skeleton.nodes[id.value];
+      if (!std::holds_alternative<std::monostate>(node.synthetic)) return false;
+      if (const auto* exit =
+              std::get_if<TryExitUnit>(&control_.units[id.value])) {
+        if (exit->region != region || node.next) return false;
+        continue;
+      }
+      const auto* phase =
+          std::get_if<PhaseControlUnit>(&control_.units[id.value]);
+      if (!phase)
+        return false;  // Nested regions keep their expanded form for now.
+      const auto& block = graph_.blocks[phase->block.value];
+      bool caught_throw = false;
+      for (std::uint32_t o = 0; o < block.op_count; ++o) {
+        quota_.Work();
+        const auto index = block.first_op.value + o;
+        const auto& op = graph_.ops[index];
+        if (std::holds_alternative<ValueReturn>(op.operation)) return false;
+        if (handler && (!std::holds_alternative<ValueCopy>(op.operation) &&
+                        !std::holds_alternative<ValueJump>(op.operation)))
+          return false;
+        if (handler && (op.normal != LanguageEffect::kNone ||
+                        op.before_throw != LanguageEffect::kNone ||
+                        op.exceptional != ExceptionalCompletion::kImpossible))
+          return false;
+        if (exits_[index]) {
+          const auto& exit = graph_.exceptional_exits[*exits_[index]];
+          if (!exit.handler || exit.handler->entry != binding->block)
+            return false;
+        }
+        caught_throw |= std::holds_alternative<ValueThrow>(op.operation);
+      }
+      if (node.next) Append(pending, Task{*node.next, task.stop});
+      if (node.arms) {
+        const auto join = node.next ? node.next : task.stop;
+        if (node.arms->taken) Append(pending, Task{*node.arms->taken, join});
+        if (node.arms->fallthrough)
+          Append(pending, Task{*node.arms->fallthrough, join});
+      }
+      if (!node.next && !node.arms && !task.stop && !caught_throw) return false;
+    }
+    return true;
+  }
   template <class T> void Append(std::vector<T>& values, T value) {
     if (values.size() == values.capacity()) {
       if (values.size() > (std::numeric_limits<std::size_t>::max() - 1) / 2)
@@ -417,6 +577,8 @@ class CompletionBuilder {
   std::vector<Peer> peers_;
   std::vector<std::optional<ValueOperand>> canonical_;
   std::vector<std::optional<std::size_t>> exits_;
+  std::vector<std::optional<OpId>> shared_guards_;
+  std::vector<std::uint8_t> shared_visits_;
 };
 }  // namespace
 std::variant<CompletionPlan, CompletionError> BuildCompletionPlan(const ValueProgram& graph,

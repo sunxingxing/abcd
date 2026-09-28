@@ -27,6 +27,49 @@ struct Position {
   StmtId block;
   std::uint32_t index;
 };
+struct SequenceEdit {
+  StmtId block;
+  std::uint32_t first, end;
+  std::vector<StmtId> replacement;
+};
+void EditSequences(Lists& lists, std::vector<SequenceEdit>& edits,
+                   TreeCheckBudget& budget) {
+  std::sort(edits.begin(), edits.end(), [&](const auto& a, const auto& b) {
+    budget.Step();
+    return a.block != b.block ? a.block < b.block : a.first < b.first;
+  });
+  // Rebuild each touched sibling sequence once, rather than shifting its
+  // entire remaining suffix for every recovered try. O(C + R log R).
+  for (std::size_t first = 0; first < edits.size();) {
+    const auto block = edits[first].block;
+    const auto& before = lists[block.value];
+    auto end = first;
+    std::size_t size = before.size();
+    while (end < edits.size() && edits[end].block == block) {
+      const auto& edit = edits[end++];
+      Require(edit.first <= edit.end && edit.end <= before.size());
+      size -= edit.end - edit.first;
+      size += edit.replacement.size();
+    }
+    budget.Admit(size, sizeof(StmtId));
+    std::vector<StmtId> after;
+    after.reserve(size);
+    std::size_t cursor = 0;
+    for (auto i = first; i < end; ++i) {
+      const auto& edit = edits[i];
+      Require(cursor <= edit.first);
+      after.insert(after.end(), before.begin() + cursor,
+                   before.begin() + edit.first);
+      after.insert(after.end(), edit.replacement.begin(),
+                   edit.replacement.end());
+      cursor = edit.end;
+    }
+    after.insert(after.end(), before.begin() + cursor, before.end());
+    budget.Step(before.size() + after.size());
+    lists[block.value] = std::move(after);
+    first = end;
+  }
+}
 std::vector<std::optional<Position>> Positions(const Lists& lists,
                                                TreeCheckBudget& budget) {
   std::vector<std::optional<Position>> positions;
@@ -79,6 +122,28 @@ bool Leaf(const FunctionTree& tree, ExprId id) {
   const auto& expression = tree.expressions[id.value].expression;
   return std::holds_alternative<SymbolExpr>(expression) ||
          std::holds_alternative<TreeLiteral>(expression);
+}
+// A fresh wrapper has no bindings of its own. Only the immediate lexical
+// children change parent; their internal cells and occurrence IDs stay put.
+void Reparent(FunctionTree& tree, StmtId id, ScopeId parent) {
+  const auto block = [&](StmtId child) {
+    const auto& value =
+        std::get<BlockStmt>(tree.statements[child.value].statement);
+    tree.scopes[value.scope.value].parent = parent;
+  };
+  const auto& statement = tree.statements[id.value].statement;
+  if (std::holds_alternative<BlockStmt>(statement))
+    block(id);
+  else if (const auto* branch = std::get_if<IfStmt>(&statement)) {
+    block(branch->consequent);
+    if (branch->alternate) block(*branch->alternate);
+  } else if (const auto* loop = std::get_if<LoopStmt>(&statement))
+    block(loop->body);
+  else if (const auto* region = std::get_if<TryStmt>(&statement)) {
+    block(region->body);
+    if (region->handler) block(region->handler->body);
+    if (region->finalizer) block(*region->finalizer);
+  }
 }
 bool LeafCompletion(const FunctionTree& tree, StmtId id) {
   const auto& statement = tree.statements[id.value].statement;
@@ -191,114 +256,194 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
     tree.expressions.push_back({std::move(value), origin});
     return id;
   };
-  for (const auto& region : plan.finalizers) {
-    budget.Step();
-    const auto original = flow.tries[region.region.value];
-    const auto normal = Roots(region, flow, false, budget);
-    const auto exceptional = Roots(region, flow, true, budget);
-    const auto returning = region.transfer && !normal.empty() ? std::optional{normal.back()} :
-        region.normal_exit ? flow.statements[region.normal_exit->value] : std::nullopt;
-    const auto throwing = region.transfer && !exceptional.empty() ? std::optional{exceptional.back()} :
-        region.exceptional_exit ? flow.statements[region.exceptional_exit->value] : std::nullopt;
-    if (!original || !returning || !throwing || !positions[original->value])
-      continue;
-    const auto inner =
-        std::get<TryStmt>(tree.statements[original->value].statement);
-    const auto handler = inner.handler->body;
-    const auto location = *positions[original->value];
-    const bool replaces = region.replacement.has_value();
-    const bool body_tail = region.placement == CleanupPlacement::kBodyTail;
-    const bool falls_through = !replaces && std::holds_alternative<NormalCompletion>(region.normal);
-    const auto& following = lists[location.block.value];
-    const auto cleanup_end = location.index + 1 + normal.size();
-    // Normal completion may end this block and enter its enclosing region.
-    // A preserved return/throw requires a trailing statement in the same block.
-    if (body_tail) {
-      if (!replaces || !region.transfer || !region.cleanup.empty() || normal.size() != 1 ||
-          lists[inner.body.value].empty() || lists[inner.body.value].back() != normal.front() ||
-          location.index + 1 != following.size()) continue;
-    } else if (normal.empty() || exceptional.empty() ||
-        cleanup_end > following.size() || (!replaces && !falls_through && cleanup_end == following.size()) ||
-        (!falls_through && following.back() != *returning) ||
-        !std::equal(normal.begin(), normal.end(),
-                    following.begin() + location.index + 1))
-      continue;
-    std::vector<StmtId> protected_children{*original};
-    if (replaces) {
-      if ((!body_tail && cleanup_end != following.size()) || normal.back() != *returning ||
-          exceptional.back() != *throwing) continue;
-    } else if (!falls_through) {
-      const auto copies = std::span<const StmtId>(following).subspan(
-          cleanup_end, following.size() - cleanup_end - 1);
-      if (!SnapshotCopies(copies, region, flow, tree, cleanup_writes, budget)) continue;
-      protected_children.insert(protected_children.end(), copies.begin(), copies.end());
-      protected_children.push_back(*returning);
-    }
-    const auto& caught = lists[handler.value];
-    const auto preserved_exit = replaces ? 0U : 1U;
-    if (caught.size() < exceptional.size() + preserved_exit) continue;
-    const auto prefix = caught.size() - exceptional.size() - preserved_exit;
-    if (replaces) {
-      if (!std::equal(exceptional.begin(), exceptional.end(), caught.begin() + prefix)) continue;
-    } else if (!Tail(caught, prefix, exceptional, *throwing)) continue;
-    // Moving completion before cleanup cannot introduce a GetValue or throw.
-    // The plan has separately established payload availability/identity.
-    if (!replaces && !falls_through) {
-      if (!LeafCompletion(tree, *returning) || !LeafCompletion(tree, *throwing)) continue;
-    }
-    if (falls_through && !Leaf(tree, std::get<ThrowStmt>(tree.statements[throwing->value].statement).value)) continue;
-    std::vector<StmtId> continuation;
-    if (falls_through) continuation.assign(following.begin() + cleanup_end, following.end());
-    const auto origin = tree.statements[original->value].origin;
-    const auto enclosure = block(scope(location.block), origin, {});
-    const auto body =
-        block(scope(enclosure), origin, std::move(protected_children));
-    const auto finalizer = block(scope(enclosure), origin, {});
-    const auto normal_body = block(scope(finalizer), origin, normal);
-    const auto exceptional_body = block(scope(finalizer), origin, exceptional);
-    tree.scopes[scope(inner.body).value].parent = scope(body);
-    tree.scopes[scope(handler).value].parent = scope(body);
-    std::u16string name;
-    do {
-      name = u"$completion";
-      const auto digits = std::to_string(suffix++);
-      name.append(digits.begin(), digits.end());
+  // Paired and shared shapes have different source sequences. Finish paired
+  // edits first; shared edits then use fresh positions and batch sibling spans.
+  std::vector<SequenceEdit> shared_edits;
+  std::vector<std::optional<Position>> shared_positions;
+  for (const bool shared_pass : {false, true}) {
+    if (shared_pass) shared_positions = Positions(lists, budget);
+    for (const auto& region : plan.finalizers) {
+      if (region.shared_guard.has_value() != shared_pass) continue;
       budget.Step();
-    } while (std::binary_search(names.begin(), names.end(), name));
-    const NameId name_id{static_cast<std::uint32_t>(tree.names.size())};
-    const SymbolId flag{static_cast<std::uint32_t>(tree.symbols.size())};
-    budget.Admit(1, sizeof(TreeSymbol) + sizeof(std::u16string));
-    budget.Admit(name.size(), sizeof(char16_t));
-    tree.names.push_back(std::move(name));
-    tree.symbols.push_back({scope(enclosure), name_id,
-                            BindingKind::kCompilerTemporary,
-                            DeclarationKind::kLet, NameEvidence::kSynthesized,
-                            TemporaryReason::kPendingCompletion});
-    const auto reset = expression(TreeLiteral{BooleanLiteral{false}}, origin);
-    const auto set = expression(TreeLiteral{BooleanLiteral{true}}, origin);
-    const auto assign =
-        expression(AssignmentExpr{SymbolTarget{flag}, set}, origin);
-    const auto condition = expression(SymbolExpr{flag}, origin);
-    const auto route =
-        statement(IfStmt{condition, exceptional_body, normal_body}, origin);
-    lists[finalizer.value] = {route};
-    const auto outer = statement(TryStmt{body, {}, finalizer}, origin);
-    const TreeOriginId binding{static_cast<std::uint32_t>(tree.origins.size())};
-    budget.Admit(1, sizeof(TreeOrigin));
-    tree.origins.push_back(BindingOrigin{flag});
-    const auto declaration = statement(DeclarationStmt{flag, reset}, binding);
-    const auto pending = statement(ExpressionStmt{assign}, origin);
-    lists[enclosure.value] = {declaration, outer};
-    lists[handler.value].resize(prefix);
-    lists[handler.value].push_back(pending);
-    if (!replaces) lists[handler.value].push_back(*throwing);
-    if (body_tail) lists[inner.body.value].pop_back();
-    lists[location.block.value].resize(location.index);
-    lists[location.block.value].push_back(enclosure);
-    lists[location.block.value].insert(lists[location.block.value].end(), continuation.begin(), continuation.end());
-    budget.Admit(1, sizeof(FinalizerComposition));
-    tree.finalizers.push_back({region.region, enclosure});
+      const auto original = flow.tries[region.region.value];
+      if (region.shared_guard) {
+        const auto guard = flow.statements[region.shared_guard->value];
+        if (!original || !guard || !shared_positions[original->value] ||
+            !shared_positions[guard->value])
+          continue;
+        const auto location = *shared_positions[original->value],
+                   end = *shared_positions[guard->value];
+        if (location.block != end.block || location.index + 1 >= end.index)
+          continue;
+        const auto& following = lists[location.block.value];
+        if (end.index >= following.size() ||
+            following[location.index] != *original ||
+            following[end.index] != *guard)
+          continue;
+        bool declarations = false;
+        for (auto i = location.index + 1; i < end.index; ++i) {
+          budget.Step();
+          declarations |= std::holds_alternative<DeclarationStmt>(
+              tree.statements[following[i].value].statement);
+        }
+        if (declarations) continue;
+        const auto origin = tree.statements[original->value].origin;
+        std::vector<StmtId> cleanup(following.begin() + location.index + 1,
+                                    following.begin() + end.index);
+        const auto enclosure = block(scope(location.block), origin, {});
+        const auto body = block(scope(enclosure), origin, {*original});
+        const auto finalizer =
+            block(scope(enclosure), origin, std::move(cleanup));
+        Reparent(tree, *original, scope(body));
+        for (const auto id : lists[finalizer.value]) {
+          budget.Step();
+          Reparent(tree, id, scope(finalizer));
+        }
+        const auto outer = statement(TryStmt{body, {}, finalizer}, origin);
+        lists[enclosure.value] = {outer};
+        budget.Admit(1, sizeof(SequenceEdit) + sizeof(StmtId));
+        shared_edits.push_back(
+            {location.block, location.index, end.index, {enclosure}});
+        budget.Admit(1, sizeof(FinalizerComposition));
+        tree.finalizers.push_back({region.region, enclosure});
+        continue;
+      }
+      const auto normal = Roots(region, flow, false, budget);
+      const auto exceptional = Roots(region, flow, true, budget);
+      const auto returning =
+          region.transfer && !normal.empty() ? std::optional{normal.back()}
+          : region.normal_exit ? flow.statements[region.normal_exit->value]
+                               : std::nullopt;
+      const auto throwing =
+          region.transfer && !exceptional.empty()
+              ? std::optional{exceptional.back()}
+          : region.exceptional_exit
+              ? flow.statements[region.exceptional_exit->value]
+              : std::nullopt;
+      if (!original || !returning || !throwing || !positions[original->value])
+        continue;
+      const auto inner =
+          std::get<TryStmt>(tree.statements[original->value].statement);
+      const auto handler = inner.handler->body;
+      const auto location = *positions[original->value];
+      const bool replaces = region.replacement.has_value();
+      const bool body_tail = region.placement == CleanupPlacement::kBodyTail;
+      const bool falls_through =
+          !replaces && std::holds_alternative<NormalCompletion>(region.normal);
+      const auto& following = lists[location.block.value];
+      const auto cleanup_end = location.index + 1 + normal.size();
+      // Normal completion may end this block and enter its enclosing region.
+      // A preserved return/throw requires a trailing statement in the same
+      // block.
+      if (body_tail) {
+        if (!replaces || !region.transfer || !region.cleanup.empty() ||
+            normal.size() != 1 || lists[inner.body.value].empty() ||
+            lists[inner.body.value].back() != normal.front() ||
+            location.index + 1 != following.size())
+          continue;
+      } else if (normal.empty() || exceptional.empty() ||
+                 cleanup_end > following.size() ||
+                 (!replaces && !falls_through &&
+                  cleanup_end == following.size()) ||
+                 (!falls_through && following.back() != *returning) ||
+                 !std::equal(normal.begin(), normal.end(),
+                             following.begin() + location.index + 1))
+        continue;
+      std::vector<StmtId> protected_children{*original};
+      if (replaces) {
+        if ((!body_tail && cleanup_end != following.size()) ||
+            normal.back() != *returning || exceptional.back() != *throwing)
+          continue;
+      } else if (!falls_through) {
+        const auto copies = std::span<const StmtId>(following).subspan(
+            cleanup_end, following.size() - cleanup_end - 1);
+        if (!SnapshotCopies(copies, region, flow, tree, cleanup_writes, budget))
+          continue;
+        protected_children.insert(protected_children.end(), copies.begin(),
+                                  copies.end());
+        protected_children.push_back(*returning);
+      }
+      const auto& caught = lists[handler.value];
+      const auto preserved_exit = replaces ? 0U : 1U;
+      if (caught.size() < exceptional.size() + preserved_exit) continue;
+      const auto prefix = caught.size() - exceptional.size() - preserved_exit;
+      if (replaces) {
+        if (!std::equal(exceptional.begin(), exceptional.end(),
+                        caught.begin() + prefix))
+          continue;
+      } else if (!Tail(caught, prefix, exceptional, *throwing))
+        continue;
+      // Moving completion before cleanup cannot introduce a GetValue or throw.
+      // The plan has separately established payload availability/identity.
+      if (!replaces && !falls_through) {
+        if (!LeafCompletion(tree, *returning) ||
+            !LeafCompletion(tree, *throwing))
+          continue;
+      }
+      if (falls_through &&
+          !Leaf(tree,
+                std::get<ThrowStmt>(tree.statements[throwing->value].statement)
+                    .value))
+        continue;
+      std::vector<StmtId> continuation;
+      if (falls_through)
+        continuation.assign(following.begin() + cleanup_end, following.end());
+      const auto origin = tree.statements[original->value].origin;
+      const auto enclosure = block(scope(location.block), origin, {});
+      const auto body =
+          block(scope(enclosure), origin, std::move(protected_children));
+      const auto finalizer = block(scope(enclosure), origin, {});
+      const auto normal_body = block(scope(finalizer), origin, normal);
+      const auto exceptional_body =
+          block(scope(finalizer), origin, exceptional);
+      tree.scopes[scope(inner.body).value].parent = scope(body);
+      tree.scopes[scope(handler).value].parent = scope(body);
+      std::u16string name;
+      do {
+        name = u"$completion";
+        const auto digits = std::to_string(suffix++);
+        name.append(digits.begin(), digits.end());
+        budget.Step();
+      } while (std::binary_search(names.begin(), names.end(), name));
+      const NameId name_id{static_cast<std::uint32_t>(tree.names.size())};
+      const SymbolId flag{static_cast<std::uint32_t>(tree.symbols.size())};
+      budget.Admit(1, sizeof(TreeSymbol) + sizeof(std::u16string));
+      budget.Admit(name.size(), sizeof(char16_t));
+      tree.names.push_back(std::move(name));
+      tree.symbols.push_back({scope(enclosure), name_id,
+                              BindingKind::kCompilerTemporary,
+                              DeclarationKind::kLet, NameEvidence::kSynthesized,
+                              TemporaryReason::kPendingCompletion});
+      const auto reset = expression(TreeLiteral{BooleanLiteral{false}}, origin);
+      const auto set = expression(TreeLiteral{BooleanLiteral{true}}, origin);
+      const auto assign =
+          expression(AssignmentExpr{SymbolTarget{flag}, set}, origin);
+      const auto condition = expression(SymbolExpr{flag}, origin);
+      const auto route =
+          statement(IfStmt{condition, exceptional_body, normal_body}, origin);
+      lists[finalizer.value] = {route};
+      const auto outer = statement(TryStmt{body, {}, finalizer}, origin);
+      const TreeOriginId binding{
+          static_cast<std::uint32_t>(tree.origins.size())};
+      budget.Admit(1, sizeof(TreeOrigin));
+      tree.origins.push_back(BindingOrigin{flag});
+      const auto declaration = statement(DeclarationStmt{flag, reset}, binding);
+      const auto pending = statement(ExpressionStmt{assign}, origin);
+      lists[enclosure.value] = {declaration, outer};
+      lists[handler.value].resize(prefix);
+      lists[handler.value].push_back(pending);
+      if (!replaces) lists[handler.value].push_back(*throwing);
+      if (body_tail) lists[inner.body.value].pop_back();
+      lists[location.block.value].resize(location.index);
+      lists[location.block.value].push_back(enclosure);
+      lists[location.block.value].insert(lists[location.block.value].end(),
+                                         continuation.begin(),
+                                         continuation.end());
+      budget.Admit(1, sizeof(FinalizerComposition));
+      tree.finalizers.push_back({region.region, enclosure});
+    }
   }
+  EditSequences(lists, shared_edits, budget);
   if (tree.finalizers.empty()) return;
   const auto after = Positions(lists, budget);
   for (auto& anchor : tree.anchors) {
@@ -341,6 +486,8 @@ CompletionTreeView::CompletionTreeView(const FunctionTree& tree,
   for (const auto& region : plan.finalizers)
     region_count = std::max(region_count, std::size_t(region.region.value) + 1);
   budget.Array(regions, region_count);
+  std::vector<std::uint8_t> consumed;
+  budget.Array(consumed, region_count);
   for (const auto& region : plan.finalizers)
     regions[region.region.value] = &region;
   const auto block = [&](StmtId id) -> const BlockStmt& {
@@ -357,121 +504,194 @@ CompletionTreeView::CompletionTreeView(const FunctionTree& tree,
             std::get<BooleanLiteral>(*literal).value == value &&
             tree.expressions[id.value].origin == origin);
   };
-  for (const auto& recovered : tree.finalizers) {
-    budget.Step();
-    Require(recovered.region.value < regions.size() &&
-            regions[recovered.region.value]);
-    const auto* region = regions[recovered.region.value];
-    regions[recovered.region.value] = nullptr;
-    const bool replaces = region->replacement.has_value();
-    const bool falls_through = !replaces && std::holds_alternative<NormalCompletion>(region->normal);
-    const auto enclosure = recovered.enclosure;
-    const auto enclosure_scope = block(enclosure).scope;
-    Require(positions[enclosure.value].has_value() &&
-            lists[enclosure.value].size() == 2);
-    const auto declaration_id = lists[enclosure.value][0];
-    const auto* declaration = std::get_if<DeclarationStmt>(
-        &tree.statements[declaration_id.value].statement);
-    const auto outer_id = lists[enclosure.value][1];
-    const auto* outer =
-        std::get_if<TryStmt>(&tree.statements[outer_id.value].statement);
-    Require(declaration && declaration->initializer && outer &&
-            !outer->handler && outer->finalizer);
-    const auto flag = declaration->symbol;
-    const auto& symbol = tree.symbols[flag.value];
-    Require(symbol.scope == enclosure_scope &&
-            symbol.kind == BindingKind::kCompilerTemporary &&
-            symbol.declaration == DeclarationKind::kLet &&
-            symbol.temporary == TemporaryReason::kPendingCompletion);
-    const auto body_scope = block(outer->body).scope;
-    Require(replaces || falls_through ? lists[outer->body.value].size() == 1 : lists[outer->body.value].size() >= 2);
-    const auto inner_id = lists[outer->body.value][0];
-    const auto return_id = replaces || falls_through ? std::optional<StmtId>{} : std::optional{lists[outer->body.value].back()};
-    const auto* inner =
-        std::get_if<TryStmt>(&tree.statements[inner_id.value].statement);
-    Require(inner && inner->handler && !inner->finalizer);
-    if (return_id) {
-      Require(LeafCompletion(tree, *return_id));
+  std::vector<SequenceEdit> shared_edits;
+  std::vector<std::optional<Position>> shared_positions;
+  for (const bool shared_pass : {false, true}) {
+    if (shared_pass) shared_positions = Positions(lists, budget);
+    for (const auto& recovered : tree.finalizers) {
+      budget.Step();
+      Require(recovered.region.value < regions.size() &&
+              regions[recovered.region.value]);
+      const auto* region = regions[recovered.region.value];
+      if (region->shared_guard.has_value() != shared_pass) continue;
+      Require(!consumed[recovered.region.value]);
+      consumed[recovered.region.value] = 1;
+      if (region->shared_guard) {
+        const auto enclosure = recovered.enclosure;
+        const auto enclosure_scope = block(enclosure).scope;
+        Require(shared_positions[enclosure.value].has_value() &&
+                lists[enclosure.value].size() == 1);
+        const auto outer_id = lists[enclosure.value].front();
+        const auto* outer =
+            std::get_if<TryStmt>(&tree.statements[outer_id.value].statement);
+        Require(outer && !outer->handler && outer->finalizer &&
+                lists[outer->body.value].size() == 1);
+        const auto inner_id = lists[outer->body.value].front();
+        const auto* inner =
+            std::get_if<TryStmt>(&tree.statements[inner_id.value].statement);
+        Require(inner && inner->handler && !inner->finalizer);
+        const auto origin = tree.statements[inner_id.value].origin;
+        const auto* source =
+            std::get_if<TryOrigin>(&tree.origins[origin.value]);
+        Require(source && source->region == recovered.region);
+        const auto finalizer = *outer->finalizer;
+        Require(!lists[finalizer.value].empty() &&
+                tree.scopes[block(outer->body).scope.value].parent ==
+                    enclosure_scope &&
+                tree.scopes[block(finalizer).scope.value].parent ==
+                    enclosure_scope);
+        for (const auto id : {enclosure, outer_id, outer->body, finalizer})
+          Require(tree.statements[id.value].origin == origin);
+        const auto location = *shared_positions[enclosure.value];
+        auto& parent = lists[location.block.value];
+        Require(location.index + 1 < parent.size());
+        const auto guard = parent[location.index + 1];
+        Require(std::holds_alternative<IfStmt>(
+            tree.statements[guard.value].statement));
+        std::vector<StmtId> expanded{inner_id};
+        expanded.insert(expanded.end(), lists[finalizer.value].begin(),
+                        lists[finalizer.value].end());
+        budget.Admit(1, sizeof(SequenceEdit));
+        budget.Admit(expanded.size(), sizeof(StmtId));
+        shared_edits.push_back({location.block, location.index,
+                                location.index + 1, std::move(expanded)});
+        parents_[inner_id.value] = block(outer->body).scope;
+        for (const auto id : lists[finalizer.value]) {
+          budget.Step();
+          if (std::holds_alternative<TryStmt>(
+                  tree.statements[id.value].statement))
+            parents_[id.value] = block(finalizer).scope;
+        }
+        budget.Admit(1, sizeof(SharedCorridor));
+        shared_.push_back(
+            {*region->shared_guard, guard, recovered.region, inner_id});
+        lists[enclosure.value].clear();
+        lists[outer->body.value].clear();
+        lists[finalizer.value].clear();
+        continue;
+      }
+      const bool replaces = region->replacement.has_value();
+      const bool falls_through =
+          !replaces && std::holds_alternative<NormalCompletion>(region->normal);
+      const auto enclosure = recovered.enclosure;
+      const auto enclosure_scope = block(enclosure).scope;
+      Require(positions[enclosure.value].has_value() &&
+              lists[enclosure.value].size() == 2);
+      const auto declaration_id = lists[enclosure.value][0];
+      const auto* declaration = std::get_if<DeclarationStmt>(
+          &tree.statements[declaration_id.value].statement);
+      const auto outer_id = lists[enclosure.value][1];
+      const auto* outer =
+          std::get_if<TryStmt>(&tree.statements[outer_id.value].statement);
+      Require(declaration && declaration->initializer && outer &&
+              !outer->handler && outer->finalizer);
+      const auto flag = declaration->symbol;
+      const auto& symbol = tree.symbols[flag.value];
+      Require(symbol.scope == enclosure_scope &&
+              symbol.kind == BindingKind::kCompilerTemporary &&
+              symbol.declaration == DeclarationKind::kLet &&
+              symbol.temporary == TemporaryReason::kPendingCompletion);
+      const auto body_scope = block(outer->body).scope;
+      Require(replaces || falls_through ? lists[outer->body.value].size() == 1
+                                        : lists[outer->body.value].size() >= 2);
+      const auto inner_id = lists[outer->body.value][0];
+      const auto return_id =
+          replaces || falls_through
+              ? std::optional<StmtId>{}
+              : std::optional{lists[outer->body.value].back()};
+      const auto* inner =
+          std::get_if<TryStmt>(&tree.statements[inner_id.value].statement);
+      Require(inner && inner->handler && !inner->finalizer);
+      if (return_id) {
+        Require(LeafCompletion(tree, *return_id));
+      }
+      const auto origin = tree.statements[inner_id.value].origin;
+      const auto* source = std::get_if<TryOrigin>(&tree.origins[origin.value]);
+      Require(source && source->region == recovered.region);
+      const auto handler = inner->handler->body;
+      const auto pending_tail = replaces ? 1U : 2U;
+      Require(lists[handler.value].size() >= pending_tail);
+      const auto pending_id =
+          lists[handler.value][lists[handler.value].size() - pending_tail];
+      const auto throw_id = replaces
+                                ? std::optional<StmtId>{}
+                                : std::optional{lists[handler.value].back()};
+      const auto* pending = std::get_if<ExpressionStmt>(
+          &tree.statements[pending_id.value].statement);
+      Require(pending != nullptr);
+      if (throw_id) {
+        const auto* throwing =
+            std::get_if<ThrowStmt>(&tree.statements[throw_id->value].statement);
+        Require(throwing && Leaf(tree, throwing->value));
+      }
+      const auto* assignment = std::get_if<AssignmentExpr>(
+          &tree.expressions[pending->expression.value].expression);
+      Require(assignment &&
+              std::holds_alternative<SymbolTarget>(assignment->target) &&
+              std::get<SymbolTarget>(assignment->target).symbol == flag);
+      const auto finalizer = *outer->finalizer;
+      const auto finalizer_scope = block(finalizer).scope;
+      Require(lists[finalizer.value].size() == 1);
+      const auto route_id = lists[finalizer.value][0];
+      const auto* route =
+          std::get_if<IfStmt>(&tree.statements[route_id.value].statement);
+      Require(route && route->alternate);
+      const auto exceptional = route->consequent;
+      const auto normal = *route->alternate;
+      const auto* condition = std::get_if<SymbolExpr>(
+          &tree.expressions[route->condition.value].expression);
+      Require(condition && condition->symbol == flag &&
+              tree.expressions[route->condition.value].origin == origin &&
+              tree.expressions[pending->expression.value].origin == origin);
+      boolean(*declaration->initializer, false, origin);
+      boolean(assignment->value, true, origin);
+      for (const auto id : {enclosure, outer->body, finalizer, normal,
+                            exceptional, outer_id, pending_id, route_id})
+        Require(tree.statements[id.value].origin == origin);
+      Require(tree.scopes[body_scope.value].parent == enclosure_scope &&
+              tree.scopes[finalizer_scope.value].parent == enclosure_scope &&
+              tree.scopes[block(normal).scope.value].parent ==
+                  finalizer_scope &&
+              tree.scopes[block(exceptional).scope.value].parent ==
+                  finalizer_scope);
+      const auto location = *positions[enclosure.value];
+      auto& parent = lists[location.block.value];
+      Require(falls_through || location.index + 1 == parent.size());
+      std::vector<StmtId> continuation(parent.begin() + location.index + 1,
+                                       parent.end());
+      parent.resize(location.index);
+      parent.push_back(inner_id);
+      if (region->placement == CleanupPlacement::kBodyTail) {
+        Require(replaces && region->transfer && region->cleanup.empty() &&
+                lists[normal.value].size() == 1);
+        lists[inner->body.value].push_back(lists[normal.value].front());
+      } else {
+        parent.insert(parent.end(), lists[normal.value].begin(),
+                      lists[normal.value].end());
+      }
+      if (return_id) {
+        parent.insert(parent.end(), lists[outer->body.value].begin() + 1,
+                      lists[outer->body.value].end() - 1);
+        parent.push_back(*return_id);
+      }
+      parent.insert(parent.end(), continuation.begin(), continuation.end());
+      auto& caught = lists[handler.value];
+      caught.resize(caught.size() - pending_tail);
+      caught.insert(caught.end(), lists[exceptional.value].begin(),
+                    lists[exceptional.value].end());
+      if (throw_id) caught.push_back(*throw_id);
+      parents_[inner_id.value] = body_scope;
+      symbols_.push_back(flag);
+      expressions_.insert(expressions_.end(),
+                          {*declaration->initializer, assignment->value,
+                           pending->expression, route->condition});
+      corridors_.push_back({region, normal, exceptional, outer->body});
+      for (const auto id :
+           {enclosure, outer->body, finalizer, normal, exceptional})
+        lists[id.value].clear();
     }
-    const auto origin = tree.statements[inner_id.value].origin;
-    const auto* source = std::get_if<TryOrigin>(&tree.origins[origin.value]);
-    Require(source && source->region == recovered.region);
-    const auto handler = inner->handler->body;
-    const auto pending_tail = replaces ? 1U : 2U;
-    Require(lists[handler.value].size() >= pending_tail);
-    const auto pending_id =
-        lists[handler.value][lists[handler.value].size() - pending_tail];
-    const auto throw_id = replaces ? std::optional<StmtId>{} : std::optional{lists[handler.value].back()};
-    const auto* pending = std::get_if<ExpressionStmt>(
-        &tree.statements[pending_id.value].statement);
-    Require(pending != nullptr);
-    if (throw_id) {
-      const auto* throwing = std::get_if<ThrowStmt>(&tree.statements[throw_id->value].statement);
-      Require(throwing && Leaf(tree, throwing->value));
-    }
-    const auto* assignment = std::get_if<AssignmentExpr>(
-        &tree.expressions[pending->expression.value].expression);
-    Require(assignment &&
-            std::holds_alternative<SymbolTarget>(assignment->target) &&
-            std::get<SymbolTarget>(assignment->target).symbol == flag);
-    const auto finalizer = *outer->finalizer;
-    const auto finalizer_scope = block(finalizer).scope;
-    Require(lists[finalizer.value].size() == 1);
-    const auto route_id = lists[finalizer.value][0];
-    const auto* route =
-        std::get_if<IfStmt>(&tree.statements[route_id.value].statement);
-    Require(route && route->alternate);
-    const auto exceptional = route->consequent;
-    const auto normal = *route->alternate;
-    const auto* condition = std::get_if<SymbolExpr>(
-        &tree.expressions[route->condition.value].expression);
-    Require(condition && condition->symbol == flag &&
-            tree.expressions[route->condition.value].origin == origin &&
-            tree.expressions[pending->expression.value].origin == origin);
-    boolean(*declaration->initializer, false, origin);
-    boolean(assignment->value, true, origin);
-    for (const auto id : {enclosure, outer->body, finalizer, normal,
-                          exceptional, outer_id, pending_id, route_id})
-      Require(tree.statements[id.value].origin == origin);
-    Require(tree.scopes[body_scope.value].parent == enclosure_scope &&
-            tree.scopes[finalizer_scope.value].parent == enclosure_scope &&
-            tree.scopes[block(normal).scope.value].parent == finalizer_scope &&
-            tree.scopes[block(exceptional).scope.value].parent ==
-                finalizer_scope);
-    const auto location = *positions[enclosure.value];
-    auto& parent = lists[location.block.value];
-    Require(falls_through || location.index + 1 == parent.size());
-    std::vector<StmtId> continuation(parent.begin() + location.index + 1, parent.end());
-    parent.resize(location.index);
-    parent.push_back(inner_id);
-    if (region->placement == CleanupPlacement::kBodyTail) {
-      Require(replaces && region->transfer && region->cleanup.empty() && lists[normal.value].size() == 1);
-      lists[inner->body.value].push_back(lists[normal.value].front());
-    } else {
-      parent.insert(parent.end(), lists[normal.value].begin(),
-                    lists[normal.value].end());
-    }
-    if (return_id) {
-      parent.insert(parent.end(), lists[outer->body.value].begin() + 1,
-                    lists[outer->body.value].end() - 1);
-      parent.push_back(*return_id);
-    }
-    parent.insert(parent.end(), continuation.begin(), continuation.end());
-    auto& caught = lists[handler.value];
-    caught.resize(caught.size() - pending_tail);
-    caught.insert(caught.end(), lists[exceptional.value].begin(),
-                  lists[exceptional.value].end());
-    if (throw_id) caught.push_back(*throw_id);
-    parents_[inner_id.value] = body_scope;
-    symbols_.push_back(flag);
-    expressions_.insert(expressions_.end(),
-                        {*declaration->initializer, assignment->value,
-                         pending->expression, route->condition});
-    corridors_.push_back({region, normal, exceptional, outer->body});
-    for (const auto id :
-         {enclosure, outer->body, finalizer, normal, exceptional})
-      lists[id.value].clear();
   }
+  EditSequences(lists, shared_edits, budget);
   const auto after = Positions(lists, budget);
   budget.Array(anchors_, tree.anchors.size());
   for (std::size_t i = 0; i < tree.anchors.size(); ++i) {
@@ -504,6 +724,11 @@ ScopeId CompletionTreeView::TryParent(StmtId id, ScopeId parent) const {
   return parents_.empty() ? parent : parents_[id.value].value_or(parent);
 }
 void CompletionTreeView::Finish(TreeFlow& flow, TreeCheckBudget& budget) const {
+  for (const auto& shared : shared_) {
+    budget.Step();
+    Require(flow.statements[shared.guard.value] == shared.branch &&
+            flow.tries[shared.region.value] == shared.original);
+  }
   std::vector<std::size_t> cleanup_writes;
   if (!corridors_.empty()) budget.Array(cleanup_writes, tree_.symbols.size());
   for (const auto& corridor : corridors_) {

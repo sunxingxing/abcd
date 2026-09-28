@@ -37,6 +37,10 @@ struct FinalizerRegion {
   // A typed synthetic loop transfer is not an opcode. Keep its separate IDs.
   std::optional<CleanupTransferPair> transfer{};
   CleanupPlacement placement = CleanupPlacement::kAfterTry;
+  // Shared pending-Hole protocol: cleanup lies between the normally completing
+  // try/catch and this rethrow branch. Keep the payload test/rethrow outside;
+  // the finalizer moves existing roots, without duplicated cleanup or new SSA.
+  std::optional<analysis::OpId> shared_guard;
 };
 struct CompletionPlan {
   analysis::IrRevision revision;

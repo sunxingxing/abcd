@@ -46,6 +46,13 @@ class CompletionTreeView {
   std::vector<SymbolId> symbols_;
   std::vector<ExprId> expressions_;
   std::vector<Corridor> corridors_;
+  struct SharedCorridor {
+    analysis::OpId guard;
+    StmtId branch;
+    analysis::TryId region;
+    StmtId original;
+  };
+  std::vector<SharedCorridor> shared_;
 };
 }  // namespace abcd::source
 #endif

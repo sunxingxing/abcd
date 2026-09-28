@@ -12,6 +12,21 @@
 
 ## 当前阶段
 
+### 2026-09-28：共享清理区域恢复为 finally
+
+- 在上述 Hole 源码贯通基础上，CompletionPlan 关联 catch/Hole 的 phi 与唯一重抛分支；
+  确认 try/catch 汇合后，将共享清理投影为普通 TryStmt.finalizer，继续使用共同 printer。
+  清理仅一份，原异常暂存、比较与后继重抛仍保留；未做源码级临时变量美化。
+- 变换不改变 ValueProgram、动态 cell 或原操作身份。共享序列采用批量替换，
+  避免按区域重复搬移整个后缀；未运行性能基准，不宣称实测性能或 RSS 达标。
+- 三 profile 的单段及 2/3 段连续协议生成源码通过 Node 对照：调用顺序、异常身份、
+  清理异常覆盖、后继异常及停止位置；提前 return 绕过清理的反例保持展开语义。
+- 相关 15 项测试通过：`/tmp/abcd-shared-finally-focused-tests.log`；新增反例后的核心
+  4 项再次通过：`/tmp/abcd-shared-finally-final-tests.log`。原 `--compiler-finally`
+  形态用例已转绿。没有恢复全量测试、全语料、RSS 或基准。
+- 剩余边界：共享协议的嵌套保护域、跨区域提前退出暂不做此 finally 投影；
+  这不替代完整 es2abc 产物、C05 全组合、C06–C09、全 ISA 及结构 gate 验收。
+
 ### 2026-09-28：共享 Hole-finally 协议贯通到源码
 
 - 将闭合的 Hole 复制/phi、身份比较、受保护重抛协议接入共同 evaluation、binding、

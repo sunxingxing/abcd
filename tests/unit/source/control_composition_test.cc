@@ -18,7 +18,7 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 struct ExpectedCompletion { std::size_t regions, operations; };
-enum class CompositionStage { kSource, kCompletion, kHoleImport, kHoleSource };
+enum class CompositionStage { kSource, kCompletion, kHoleImport, kHoleSource, kHoleFinally };
 template <class T, class... Alternatives>
 T Take(std::variant<Alternatives...> value,
     std::source_location where = std::source_location::current()) {
@@ -90,7 +90,7 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     test::Check(std::get<ExceptionInputFailure>(language).kind == ExceptionInputError::kInternalValue);
   }
   const auto proof = Take<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, environments, values,
-      kDefaultSemanticWork, nullptr, (stage == CompositionStage::kHoleImport || stage == CompositionStage::kHoleSource) ?
+      kDefaultSemanticWork, nullptr, (stage == CompositionStage::kHoleImport || stage == CompositionStage::kHoleSource || stage == CompositionStage::kHoleFinally) ?
           ExceptionInputDomain::kHoleTransport : ExceptionInputDomain::kLanguage));
   const PhasedValueInput input{flow, ssa, environments, values, proof, frame};
   const auto graph = Take<ValueProgram>(ImportPhasedValues(input));
@@ -193,7 +193,7 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.texts = {u"number"};
   syntax.parameters.resize(frame.parameters);
-  if (expect_finalizer) {
+  if (expect_finalizer && stage != CompositionStage::kHoleFinally) {
     // Reserve an existing spelling. Source parameter names currently exclude
     // the '$' namespace, but recovery must not assume every input name does.
     syntax.names = {u"$completion0"};
@@ -205,6 +205,19 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     std::cerr << "loop-carried tree error " << static_cast<unsigned>(*error) << '\n';
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
   const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
+  if (stage == CompositionStage::kHoleFinally) {
+    std::size_t finalizers = 0;
+    for (const auto& statement : tree.statements)
+      if (const auto* region = std::get_if<TryStmt>(&statement.statement); region && region->finalizer)
+        ++finalizers;
+    test::Check(finalizers == finalizer_count && tree.finalizers.size() == finalizer_count);
+    auto changed = tree;
+    changed.finalizers.clear();
+    test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph, context, evaluation, changed)));
+    changed = tree;
+    changed.finalizers.push_back(changed.finalizers.front());
+    test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph, context, evaluation, changed)));
+  }
   if (stage == CompositionStage::kHoleSource) {
     test::Check(tree.hole.has_value());
     auto changed = tree;
@@ -221,7 +234,7 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     test::Check(std::holds_alternative<TreeFlowError>(
         VerifyExceptionTreeFlow(graph, context, evaluation, changed)));
   }
-  if (expect_finalizer) {
+  if (expect_finalizer && stage != CompositionStage::kHoleFinally) {
     std::size_t finalizers = 0;
     for (const auto& statement : tree.statements)
       if (const auto* region = std::get_if<TryStmt>(&statement.statement); region && region->finalizer)
@@ -590,14 +603,14 @@ void FinallyBareTransfer(abc::ProfileId profile, std::ostream* output, bool stop
       different ? std::optional{ExpectedCompletion{0, 0}} : std::optional<ExpectedCompletion>{});
 }
 void CompilerFinally(abc::ProfileId profile, std::ostream* output,
-    CompositionStage stage = CompositionStage::kSource) {
+    CompositionStage stage = CompositionStage::kHoleFinally, std::uint32_t count = 1, bool early_return = false) {
   // Pinned es2panda TryContext::InitFinalizer, TryStatement::CompileFinally
   // and PandaGen::EmitRethrow: shared cleanup, undefined run guard, Hole vs
   // caught payload. This isolates that lowering, not a full es2abc file.
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
   constexpr unsigned kByteBits = 8;
-  auto body = test::Body({
+  std::vector<std::uint8_t> unit{
       op(abc::Opcode::kLDUNDEFINED), op(abc::Opcode::kSTA_V8), 0,
       op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
       op(abc::Opcode::kLDHOLE), op(abc::Opcode::kSTA_V8), 1,
@@ -615,11 +628,24 @@ void CompilerFinally(abc::ProfileId profile, std::ostream* output,
       op(abc::Opcode::kLDA_V8), 2,
       static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
       op(abc::Opcode::kLDA_V8), 5, op(abc::Opcode::kCALLARG0_IMM8), 0,
-      op(abc::Opcode::kRETURN)});
-  abc::TryRegion region; region.offset = {3}; region.length = 4; region.handler_count = 1;
-  abc::CatchHandler handler; handler.offset = {12}; handler.length = 2;
-  body.tries = {region}; body.handlers = {handler};
-  Emit(body, profile, 3, 3, false, output, {}, 0, stage != CompositionStage::kHoleSource, {}, stage);
+      op(abc::Opcode::kRETURN)};
+  // Deliberately not a compiler finally: a protected early return bypasses
+  // cleanup. Recovering a finally here would observably add a call.
+  const std::vector<std::uint8_t> bypass{op(abc::Opcode::kLDA_V8), 6,
+      op(abc::Opcode::kJEQZ_IMM8), 4, op(abc::Opcode::kLDUNDEFINED), op(abc::Opcode::kRETURN)};
+  const auto extra = early_return ? static_cast<std::uint32_t>(bypass.size()) : 0U;
+  if (early_return) unit.insert(unit.begin() + 3, bypass.begin(), bypass.end());
+  std::vector<std::uint8_t> bytes;
+  for (std::uint32_t i = 0; i < count; ++i) bytes.insert(bytes.end(), unit.begin(), unit.end() - 1);
+  bytes.push_back(op(abc::Opcode::kRETURN));
+  auto body = test::Body(bytes);
+  for (std::uint32_t i = 0; i < count; ++i) {
+    const auto base = static_cast<std::uint32_t>(i * (unit.size() - 1));
+    abc::TryRegion region; region.offset = {base + 3}; region.length = 4 + extra; region.first_handler = i; region.handler_count = 1;
+    abc::CatchHandler handler; handler.offset = {base + 12 + extra}; handler.length = 2;
+    body.tries.push_back(region); body.handlers.push_back(handler);
+  }
+  Emit(body, profile, 3, early_return ? 4 : 3, false, output, {}, 0, stage != CompositionStage::kHoleSource, {}, stage, count);
 }
 void FinallyOuterTransfer(abc::ProfileId profile, std::ostream* output, bool stop) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
@@ -915,6 +941,21 @@ int main(int argc, char** argv) {
                               abc::ProfileId::kDynamic1301}) CompilerFinally(profile, &std::cout);
     std::cout << "];\n"; return 0;
   }
+  if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-chain") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301})
+      for (const auto count : {2U, 3U}) CompilerFinally(profile, &std::cout, CompositionStage::kHoleFinally, count);
+    std::cout << "];\n";
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-early-return") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301})
+      CompilerFinally(profile, &std::cout, CompositionStage::kHoleSource, 1, true);
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--finally-outer-transfer") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -1097,6 +1138,7 @@ int main(int argc, char** argv) {
     FinallyBareTransfer(profile, nullptr, true, true);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleImport);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleSource);
+    CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally);
     FinallyOuterTransfer(profile, nullptr, false);
     FinallyOuterTransfer(profile, nullptr, true);
     FinallyOverride(profile, false, nullptr);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
-const sharedSource = execFileSync(process.argv[2], ['--compiler-finally-expanded'], {encoding: 'utf8', timeout: 60_000});
+const sharedSource = execFileSync(process.argv[2], ['--compiler-finally'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!sharedSource.includes('INCOMPLETE'));
 const {functions: sharedFinalizers} = await import(`data:text/javascript;base64,${Buffer.from(sharedSource).toString('base64')}`);
 assert.equal(sharedFinalizers.length, 3);
@@ -18,6 +18,46 @@ for (const fn of sharedFinalizers) for (const pending of [undefined, null, false
     assert.deepEqual(log, getThrows || cleanupThrows ? ['get', 'cleanup'] : ['get', 'cleanup', 'after']);
     assert.equal(didThrow, getThrows || cleanupThrows || afterThrows);
     assert.equal(didThrow ? thrown : returned, cleanupThrows ? cleanupError : getThrows ? pending : afterThrows ? afterError : result);
+  }
+}
+
+const bypassSource = execFileSync(process.argv[2], ['--compiler-finally-early-return'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!bypassSource.includes('INCOMPLETE'));
+const {functions: bypasses} = await import(`data:text/javascript;base64,${Buffer.from(bypassSource).toString('base64')}`);
+assert.equal(bypasses.length, 3);
+for (const fn of bypasses) for (const bypass of [false, true]) {
+  const log = [], result = {};
+  const returned = fn(() => { log.push('get'); }, () => { log.push('cleanup'); },
+    () => { log.push('after'); return result; }, bypass);
+  assert.deepEqual(log, bypass ? [] : ['get', 'cleanup', 'after']);
+  assert.equal(returned, bypass ? undefined : result);
+}
+
+const sharedChainSource = execFileSync(process.argv[2], ['--compiler-finally-chain'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!sharedChainSource.includes('INCOMPLETE'));
+const {functions: sharedChains} = await import(`data:text/javascript;base64,${Buffer.from(sharedChainSource).toString('base64')}`);
+assert.equal(sharedChains.length, 6);
+for (const [index, fn] of sharedChains.entries()) {
+  const count = index % 2 + 2;
+  for (const failAt of [0, 1, count]) for (const failure of ['get', 'cleanup', 'after']) {
+    const log = [], value = {}, pending = Symbol('pending');
+    let iteration = 0, returned, thrown, didThrow = false;
+    const call = (name) => {
+      if (name === 'get') ++iteration;
+      log.push(`${iteration}:${name}`);
+      if (iteration === failAt && name === failure) throw pending;
+      return value;
+    };
+    try { returned = fn(() => call('get'), () => call('cleanup'), () => call('after')); }
+    catch (error) { didThrow = true; thrown = error; }
+    const expected = [];
+    for (let i = 1; i <= (failAt || count); ++i) {
+      expected.push(`${i}:get`, `${i}:cleanup`);
+      if (i !== failAt || failure === 'after') expected.push(`${i}:after`);
+    }
+    assert.deepEqual(log, expected);
+    assert.equal(didThrow, failAt !== 0);
+    assert.equal(didThrow ? thrown : returned, failAt ? pending : value);
   }
 }
 
