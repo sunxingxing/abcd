@@ -17,7 +17,7 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 struct ExpectedCompletion { std::size_t regions, operations; };
-enum class CompositionStage { kSource, kCompletion };
+enum class CompositionStage { kSource, kCompletion, kHoleImport };
 template <class T, class... Alternatives>
 T Take(std::variant<Alternatives...> value,
     std::source_location where = std::source_location::current()) {
@@ -83,9 +83,29 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
   IdfQuota value_quota{kDefaultSemanticWork};
   const auto values = Take<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
       value_quota, {}, PendingExceptionValues::kLanguage, lexical.loads, {}, CallResultValues::kLanguage));
-  const auto proof = Take<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, environments, values));
+  if (stage == CompositionStage::kHoleImport) {
+    const auto language = VerifyExceptionInputs(flow, ssa, environments, values);
+    test::Check(std::holds_alternative<ExceptionInputFailure>(language));
+    test::Check(std::get<ExceptionInputFailure>(language).kind == ExceptionInputError::kInternalValue);
+  }
+  const auto proof = Take<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, environments, values,
+      kDefaultSemanticWork, nullptr, stage == CompositionStage::kHoleImport ?
+          ExceptionInputDomain::kHoleTransport : ExceptionInputDomain::kLanguage));
   const PhasedValueInput input{flow, ssa, environments, values, proof, frame};
   const auto graph = Take<ValueProgram>(ImportPhasedValues(input));
+  if (stage == CompositionStage::kHoleImport) {
+    std::size_t holes = 0, mixed = 0;
+    for (const auto& op : graph.ops) if (std::holds_alternative<ValueHole>(op.operation)) {
+      ++holes; test::Check(op.result.has_value());
+      test::Check(graph.values[op.result->value].domain == ValueKinds::Hole());
+      test::Check(op.use_count == 0);
+    }
+    for (const auto& value : graph.values)
+      if (value.domain.Contains(VmValueKind::kHole) && value.domain.Contains(VmValueKind::kLanguage)) ++mixed;
+    test::Check(holes == 2 && mixed > 0);
+    test::Check(std::holds_alternative<EvaluationError>(BuildPhasedEvaluationPlan(graph)));
+    return; // Raw VM transport is not a source or finalizer completion claim.
+  }
   const auto regions = Take<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto built_control = BuildExceptionControl(body, graph, input, regions);
   if (const auto* error = std::get_if<ExceptionControlError>(&built_control))
@@ -523,7 +543,8 @@ void FinallyBareTransfer(abc::ProfileId profile, std::ostream* output, bool stop
   Emit(body, profile, 1, 4, false, output, {}, 1, !different,
       different ? std::optional{ExpectedCompletion{0, 0}} : std::optional<ExpectedCompletion>{});
 }
-void CompilerFinally(abc::ProfileId profile, std::ostream* output) {
+void CompilerFinally(abc::ProfileId profile, std::ostream* output,
+    CompositionStage stage = CompositionStage::kSource) {
   // Pinned es2panda TryContext::InitFinalizer, TryStatement::CompileFinally
   // and PandaGen::EmitRethrow: shared cleanup, undefined run guard, Hole vs
   // caught payload. This isolates that lowering, not a full es2abc file.
@@ -552,7 +573,7 @@ void CompilerFinally(abc::ProfileId profile, std::ostream* output) {
   abc::TryRegion region; region.offset = {3}; region.length = 4; region.handler_count = 1;
   abc::CatchHandler handler; handler.offset = {12}; handler.length = 2;
   body.tries = {region}; body.handlers = {handler};
-  Emit(body, profile, 3, 3, false, output, {}, 0, true);
+  Emit(body, profile, 3, 3, false, output, {}, 0, true, {}, stage);
 }
 void FinallyOuterTransfer(abc::ProfileId profile, std::ostream* output, bool stop) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
@@ -818,6 +839,12 @@ void FinallyBranch(abc::ProfileId profile, std::ostream* output,
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-import") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301})
+      CompilerFinally(profile, nullptr, CompositionStage::kHoleImport);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--finally-bare-transfer") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -1015,6 +1042,7 @@ int main(int argc, char** argv) {
     FinallyBareTransfer(profile, nullptr, true);
     FinallyBareTransfer(profile, nullptr, false, true);
     FinallyBareTransfer(profile, nullptr, true, true);
+    CompilerFinally(profile, nullptr, CompositionStage::kHoleImport);
     FinallyOuterTransfer(profile, nullptr, false);
     FinallyOuterTransfer(profile, nullptr, true);
     FinallyOverride(profile, false, nullptr);

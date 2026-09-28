@@ -19,10 +19,16 @@ struct ExceptionInputProof {
   std::uint64_t work_units = 0;
   std::optional<ArgumentFrameFact> arguments;
 };
+// Import can retain a Hole-valued protocol without interpreting it as JS.
+// Source consumers still use kLanguage; transport is not source admission.
+enum class ExceptionInputDomain : std::uint8_t { kLanguage, kHoleTransport };
 
 // Requires analyses of the same unchanged phased flow. Checks every reachable
 // Before read against the converged value categories; internal VM values may
 // not enter source operations (including stores, returns and explicit throws).
+// kHoleTransport additionally retains Language|Hole operands for VM IR analysis;
+// their domains remain unchanged. It does not establish a closed protocol or
+// license printing, coercion, escape, or an unguarded source throw.
 // Environment presence establishes reachability, not cell initialization.
 // This is conditional on the value solver's owner premises. It does not
 // discharge capture/module bindings, prove host semantics or permit code motion.
@@ -36,6 +42,7 @@ VerifyExceptionInputs(const ExceptionFlow& flow, const ExceptionSsa& ssa,
                       const EnvironmentFlow& environments,
                       const ExceptionValueFlow& values,
                       std::uint64_t work = kDefaultSemanticWork,
-                      const ArgumentFrameFact* arguments = nullptr);
+                      const ArgumentFrameFact* arguments = nullptr,
+                      ExceptionInputDomain domain = ExceptionInputDomain::kLanguage);
 }  // namespace abcd::analysis
 #endif

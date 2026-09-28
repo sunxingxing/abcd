@@ -205,7 +205,10 @@ struct ValueConstruct {
   std::uint32_t arguments;
   bool operator==(const ValueConstruct&) const = default;
 };
-using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary,
+// VM sentinel, not a JS literal. A source lowering must consume the closed
+// protocol before evaluation/printing; never substitute undefined or null.
+struct ValueHole { bool operator==(const ValueHole&) const = default; };
+using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHole,
     ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValuePropertyRead, ValueBranch, ValueJump,
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation,
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueLexicalLoad, ValueLexicalStore,

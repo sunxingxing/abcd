@@ -26,7 +26,11 @@ struct ImportedPhases {
 // scratch conservatively so an owning method can share one stage allowance.
 [[nodiscard]] std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
     const PhasedValueInput& input, SemanticBudget budget = {});
-// Low-level import, not a source receipt. Additional owned graph and scratch
+// Low-level import, not a source receipt. Retains typed Hole operations and
+// their original SSA domains; callers may use kHoleTransport input checking.
+// Such graphs require protocol recovery before source evaluation. No internal
+// domain is upgraded to Language by importing it.
+// Additional owned graph and scratch
 // share the budget; caller separately admits retained input analyses.
 [[nodiscard]] std::variant<ValueProgram, ValueImportFailure> ImportPhasedValues(
     const PhasedValueInput& input, SemanticBudget budget = {});

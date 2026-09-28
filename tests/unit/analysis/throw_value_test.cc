@@ -86,6 +86,18 @@ void ThrowParameter(abc::ProfileId profile, bool caught, bool unreachable = fals
       {}, PendingExceptionValues::kLanguage);
   test::Check(std::get<ExceptionInputFailure>(VerifyExceptionInputs(flow, ssa, environments,
       std::get<ExceptionValueFlow>(internal))).kind == ExceptionInputError::kInternalValue);
+  test::Check(std::holds_alternative<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, environments,
+      std::get<ExceptionValueFlow>(internal), kDefaultSemanticWork, nullptr,
+      ExceptionInputDomain::kHoleTransport)));
+  for (const auto kinds : {ValueKinds::Environment(), ValueKinds::OtherInternal(), ValueKinds::Unknown()}) {
+    entries.front().kinds = kinds;
+    IdfQuota transport_quota{kDefaultSemanticWork};
+    auto transport = ExceptionValueFlow::Build(flow, ssa, entries, transport_quota,
+        {}, PendingExceptionValues::kLanguage);
+    test::Check(std::get<ExceptionInputFailure>(VerifyExceptionInputs(flow, ssa, environments,
+        std::get<ExceptionValueFlow>(transport), kDefaultSemanticWork, nullptr,
+        ExceptionInputDomain::kHoleTransport)).kind == ExceptionInputError::kInternalValue);
+  }
 }
 }
 int main() {

@@ -73,20 +73,25 @@ void PropagateValues(std::span<const ValueNode> nodes,
       const auto target = targets[edge].value;
       ValueKinds propagated = incoming;
       if (nodes[target].kind == Kind::kLanguageOperation ||
+          nodes[target].kind == Kind::kEquality ||
           nodes[target].kind == Kind::kStringAdd ||
           nodes[target].kind == Kind::kNonNaNUnary ||
           nodes[target].kind == Kind::kNonNaNMultiply) {
-        bool ready = true, language = true, string = false;
+        bool ready = true, language = true, equality_inputs = true, string = false;
         bool non_nan_number = true;
         for (std::size_t i = 0; i < nodes[target].input_count; ++i) {
           const auto input = facts[nodes[target].inputs[i].value];
           ready &= !input.IsEmpty();
           language &= input.IsLanguage();
+          equality_inputs &= !input.Contains(VmValueKind::kEnvironment) &&
+                             !input.Contains(VmValueKind::kOtherInternal);
           string |= input.IsString();
           non_nan_number &= input.IsNonNaNNumber();
         }
         if (!ready) {
           propagated = {};
+        } else if (nodes[target].kind == Kind::kEquality && equality_inputs) {
+          propagated = ValueKinds::Language();
         } else if (!language) {
           propagated = ValueKinds::Unknown();
         } else if (nodes[target].kind == Kind::kStringAdd) {

@@ -388,6 +388,7 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
             // Register/accumulator copies were handled before this path.
             return fail(Error::kInstruction);
           case detail::ValueRuleKind::kLanguageOperation:
+          case detail::ValueRuleKind::kEquality:
             state(*access.write) = ValueKinds::Language();
             break;
           case detail::ValueRuleKind::kStringAdd: {

@@ -15,6 +15,7 @@ enum class ValueRuleKind {
   kFixed,
   kJoin,
   kLanguageOperation,
+  kEquality,
   kStringAdd,
   kNonNaNUnary,
   kNonNaNMultiply

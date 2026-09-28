@@ -140,6 +140,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
           throw ValueImportFailure{Error::kUnsupportedOperation, {}};
       }
       throw ValueImportFailure{Error::kUnsupportedOperation, {}};
+    } else if constexpr (std::is_same_v<T, LoadHole>) {
+      return ValueHole{};
     } else if constexpr (std::is_same_v<T, HoleGuard>) {
       const auto* name = std::get_if<HoleNameSlot>(&op.name);
       return ValueGuard{name ? std::optional{ name->slot } : std::nullopt};

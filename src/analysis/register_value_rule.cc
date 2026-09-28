@@ -128,6 +128,13 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
   }
   if (const auto* binary =
           std::get_if<BinaryExpression>(&assignment.expression)) {
+    // Pinned interpreter FastEqual/FastStrictEqual and slow equality return
+    // tagged booleans on normal completion, including the compiler's Hole
+    // comparisons. This does not make their operands language values or
+    // remove coercion/exception effects from the operation.
+    if (binary->op == BinaryOperator::kEqual || binary->op == BinaryOperator::kNotEqual ||
+        binary->op == BinaryOperator::kStrictEqual || binary->op == BinaryOperator::kStrictNotEqual)
+      return ValueRule{ValueRuleKind::kEquality, {}};
     if (binary->op == BinaryOperator::kAdd)
       return ValueRule{ValueRuleKind::kStringAdd, {}};
     if (binary->op == BinaryOperator::kMultiply)

@@ -8,7 +8,7 @@ namespace abcd::analysis {
 std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
     const ExceptionFlow& flow, const ExceptionSsa& ssa,
     const EnvironmentFlow& environments, const ExceptionValueFlow& values,
-    std::uint64_t work, const ArgumentFrameFact* arguments) {
+    std::uint64_t work, const ArgumentFrameFact* arguments, ExceptionInputDomain domain) {
   using Error = ExceptionInputError;
   const auto fail = [](Error kind, abc::CodeOffset pc = {},
                        std::optional<ExceptionNodeId> node = {},
@@ -93,7 +93,11 @@ std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
           return fail(Error::kMismatchedAnalysis, pc, id, read.value);
         ++ordinal;
       }
-      if (!values.Facts()[read.value.value].IsLanguage())
+      const auto kinds = values.Facts()[read.value.value];
+      const bool hole_transport = domain == ExceptionInputDomain::kHoleTransport &&
+          !kinds.IsEmpty() && !kinds.Contains(VmValueKind::kEnvironment) &&
+          !kinds.Contains(VmValueKind::kOtherInternal);
+      if (!kinds.IsLanguage() && !hole_transport)
         return fail(Error::kInternalValue, pc, id, read.value);
       ++proof.reads;
     }

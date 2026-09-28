@@ -171,9 +171,9 @@ void EnvironmentEscape::Builder::Extract() {
                      assignment->expression)) {
         const auto rule =
             detail::DescribeRegisterValue(instruction, frame_size);
-        if (!std::holds_alternative<detail::ValueRule>(rule) ||
-            std::get<detail::ValueRule>(rule).kind !=
-                detail::ValueRuleKind::kLanguageOperation)
+        const auto* value_rule = std::get_if<detail::ValueRule>(&rule);
+        if (!value_rule || (value_rule->kind != detail::ValueRuleKind::kLanguageOperation &&
+                            value_rule->kind != detail::ValueRuleKind::kEquality))
           throw EscapeError::kOpaqueValue;
       }
     }

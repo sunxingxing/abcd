@@ -19,6 +19,24 @@ int main() {
       RegisterValueFlow::Build(body, ssa, 1, {}, quota));
   for (std::uint32_t i = 0; i < 3; ++i)
     Check(flow.At(*ssa.Write({i})) == ValueKinds::Hole());
+  for (const auto comparison : {abc::Opcode::kEQ_IMM8_V8, abc::Opcode::kNOTEQ_IMM8_V8,
+      abc::Opcode::kSTRICTEQ_IMM8_V8, abc::Opcode::kSTRICTNOTEQ_IMM8_V8}) {
+    const auto op = [](abc::Opcode value) { return static_cast<std::uint8_t>(value); };
+    for (const bool environment : {false, true}) {
+      std::vector<std::uint8_t> bytes;
+      if (environment) bytes = {op(abc::Opcode::kNEWLEXENV_IMM8), 1};
+      else bytes = {op(abc::Opcode::kLDHOLE)};
+      bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 0,
+          op(abc::Opcode::kLDUNDEFINED), op(comparison), 0, 0, op(abc::Opcode::kRETURN)});
+      const auto input = Body(bytes);
+      IdfQuota work{UINT64_MAX};
+      const auto renamed = std::get<RegisterSsa>(RegisterSsa::Build(
+          input, std::get<NormalFlow>(BuildNormalFlow(input)), 1, work));
+      const auto kinds = std::get<RegisterValueFlow>(RegisterValueFlow::Build(input, renamed, 1, {}, work));
+      Check(kinds.At(*renamed.Write({0})) == (environment ? ValueKinds::Environment() : ValueKinds::Hole()));
+      Check(kinds.At(*renamed.Write({3})) == (environment ? ValueKinds::Unknown() : ValueKinds::Language()));
+    }
+  }
   for (const auto bytes :
        {std::initializer_list<std::uint8_t>{0x63, 5, 0, 0, 0, 0, 0, 0xff, 0xff,
                                             0x64},
@@ -54,7 +72,7 @@ int main() {
         Case{{0x37, 0, 0, 0x64}, ValueKinds::Unknown()},
         Case{{0x33, 0, 0, 0, 0, 0x64}, ValueKinds::Language()},
         Case{{0x34, 0, 0, 0, 0, 0x64}, ValueKinds::Language()},
-        Case{{0x3e, 0, 0, 0x64}, ValueKinds::Language()},
+        Case{{0x3e, 0, 0, 0x64}, ValueKinds::String()},
         Case{{0x3f, 0, 0, 0, 0x64}, ValueKinds::Language()},
         Case{{0xad, 0x64}, ValueKinds::Language()},
         Case{{0x6d, 0x64}, ValueKinds::Language()},

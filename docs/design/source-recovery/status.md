@@ -51,6 +51,18 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- **共享 finally 仍在实现中，新增的是值图贯通，不是源码支持**：共同 IR
+  现以 `ValueHole` 保留 VM 哨兵、原 SSA 域和 PC。显式 Hole 传输模式只允许
+  Language/Hole，不接纳 Environment/OtherInternal；默认源码输入检查仍拒绝
+  Hole。相等比较正常结果细化为语言布尔值，未改操作数域、效果或异常边。
+  `--compiler-finally-import` 在三个 profile 均已导入含共享 cleanup、Hole/语言值
+  phi 和受条件控制重抛的完整 ValueProgram；尚未消除协议，源码求值继续拒绝。
+  该导入回归已加入既有 control_composition_test；原 `--compiler-finally` 源码
+  RED 入口仍保留，不能当作已通过。相关 10/10、词法关联 3/3 定向测试通过，
+  见 `/tmp/abcd-hole-import-focused-tests.log`、`/tmp/abcd-hole-lexical-tests.log`；
+  构建日志同名前缀 `*-build.log`。同时修正既有寄存器值测试中 LDA_STR 的
+  过期 Language 预期为已经实现的 String。下一步必须做封闭哨兵协议的使用
+  分析及源码消除，不能将传输模式用于放行 Hole 源码。未运行全量测试/语料/RSS。
 - C05 新增仅含 break/continue 的 finally：原先裸跳转由共同控制树收进
   try 主体尾部，没有 wrapper 后继，因而未恢复 finalizer。现用类型化的
   body-tail 放置保留原 ControlId，将无副作用的尾跳转移入共同 FunctionTree
@@ -65,11 +77,11 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   `TryStatement::CompileFinally`、`PandaGen::EmitRethrow` 新增共享 cleanup 的
   Hole/undefined guard 解码复现入口 `control_composition_test --compiler-finally`。
   该入口是明确的 RED 复现，未加入通过型 CTest；不是完整 es2abc 文件验收。
-  当前首个 profile 的解码、ExceptionFlow、SSA、值传播成功，
+  最初首个 profile 的解码、ExceptionFlow、SSA、值传播成功，
   VerifyExceptionInputs 在 PC 8 的 Hole 寄存器保存处返回 kInternalValue
   （node 10、SSA value 12），尚未进入 FunctionTree。证据日志
   `/tmp/abcd-compiler-finalizer-red.log`、`/tmp/abcd-compiler-finalizer-input-debug.log`。
-  不将 Hole 改成 undefined、不放宽一般内部值输出检查；下一步需在共同路径中
+  不将 Hole 改成 undefined、不放宽一般内部值输出检查；需在共同路径中
   识别并消除封闭的 pending-exception 哨兵协议。已有相关 4/4 回归通过，
   `/tmp/abcd-compiler-finalizer-existing-tests.log`；本条不代表新增源码支持。
 - C05 新增 finally 内 break/continue 覆盖原异常：两侧 cleanup 的操作配对后，
