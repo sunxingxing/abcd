@@ -195,8 +195,10 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
     const bool falls_through = !replaces && std::holds_alternative<NormalCompletion>(region.normal);
     const auto& following = lists[location.block.value];
     const auto cleanup_end = location.index + 1 + normal.size();
+    // Normal completion may end this block and enter its enclosing region.
+    // Only a preserved return requires a trailing statement in the same block.
     if (normal.empty() || exceptional.empty() ||
-        cleanup_end > following.size() || (!replaces && cleanup_end == following.size()) ||
+        cleanup_end > following.size() || (!replaces && !falls_through && cleanup_end == following.size()) ||
         (!falls_through && following.back() != *returning) ||
         !std::equal(normal.begin(), normal.end(),
                     following.begin() + location.index + 1))

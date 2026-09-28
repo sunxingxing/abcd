@@ -1,6 +1,32 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
+const nestedSource = execFileSync(process.argv[2], ['--nested-finally'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!nestedSource.includes('INCOMPLETE'));
+const {functions: nested} = await import(`data:text/javascript;base64,${Buffer.from(nestedSource).toString('base64')}`);
+assert.equal(nested.length, 3);
+for (const fn of nested) for (const initial of [undefined, Symbol('pending'), {}]) {
+  for (const getThrows of [false, true]) for (const innerThrows of [false, true]) {
+    for (const outerThrows of [false, true]) for (const afterThrows of [false, true]) {
+      const flags = [getThrows, innerThrows, outerThrows, afterThrows];
+      const errors = [initial, {}, {}, {}], result = {}, log = [];
+      let returned, thrown, didThrow = false;
+      try {
+        returned = fn(...['get', 'inner', 'outer', 'after'].map((name, index) => function () {
+          assert.equal(this, undefined); log.push(name);
+          if (flags[index]) throw errors[index];
+          return result;
+        }));
+      } catch (error) { didThrow = true; thrown = error; }
+      const pending = outerThrows ? 2 : innerThrows ? 1 : getThrows ? 0 : afterThrows ? 3 : -1;
+      assert.deepEqual(log, getThrows || innerThrows || outerThrows ?
+        ['get', 'inner', 'outer'] : ['get', 'inner', 'outer', 'after']);
+      assert.equal(didThrow, pending !== -1);
+      assert.equal(didThrow ? thrown : returned, pending === -1 ? result : errors[pending]);
+    }
+  }
+}
+
 const fallthroughSource = execFileSync(process.argv[2], ['--finally-fallthrough'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!fallthroughSource.includes('INCOMPLETE'));
 const {functions: fallthroughs} = await import(`data:text/javascript;base64,${Buffer.from(fallthroughSource).toString('base64')}`);

@@ -35,7 +35,7 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     std::uint32_t parameters, bool staging, std::ostream* output,
     std::optional<ScopeKind> cell_scope = {}, std::size_t expected_loops = 1,
     bool expect_finalizer = false, std::optional<ExpectedCompletion> expected_completions = {},
-    CompositionStage stage = CompositionStage::kSource);
+    CompositionStage stage = CompositionStage::kSource, std::size_t finalizer_count = 1);
 
 void LoopCarried(abc::ProfileId profile, std::ostream* output) {
   // x = initial; try { while (next()) { x = step(x); next(); } } catch (_) {}
@@ -66,7 +66,7 @@ void LoopCarried(abc::ProfileId profile, std::ostream* output) {
 void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t locals,
     std::uint32_t parameters, bool staging, std::ostream* output, std::optional<ScopeKind> cell_scope,
     std::size_t expected_loops, bool expect_finalizer, std::optional<ExpectedCompletion> expected_completions,
-    CompositionStage stage) {
+    CompositionStage stage, std::size_t finalizer_count) {
   const auto frame = Take<abc::FrameLayout>(abc::BuildFrameLayout(locals, parameters, {}));
   const auto flow = Take<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers, {}, {}, &frame));
   IdfQuota quota{kDefaultSemanticWork};
@@ -160,9 +160,9 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     for (const auto& statement : tree.statements)
       if (const auto* region = std::get_if<TryStmt>(&statement.statement); region && region->finalizer)
         ++finalizers;
-    if (finalizers != 1) std::cerr << "missing recovered finalizer: " << finalizers << '\n';
-    test::Check(finalizers == 1);
-    test::Check(tree.finalizers.size() == 1);
+    if (finalizers != finalizer_count) std::cerr << "missing recovered finalizer: " << finalizers << '\n';
+    test::Check(finalizers == finalizer_count);
+    test::Check(tree.finalizers.size() == finalizer_count);
     const auto enclosure = tree.finalizers.front().enclosure;
     const auto block = std::get<BlockStmt>(tree.statements[enclosure.value].statement);
     const auto declaration = std::get<DeclarationStmt>(
@@ -503,6 +503,32 @@ void FinallyChain(abc::ProfileId profile, std::ostream* output, std::uint32_t co
 }
 enum class ProtectedBranch { kSingle, kNested, kEarlyReturn };
 enum class OverrideValue { kCleanup, kCaught, kUndefined, kArgument };
+void NestedFinally(abc::ProfileId profile, std::ostream* output) {
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+  constexpr unsigned kByteBits = 8;
+  auto body = test::Body({
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), 12,
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kRETURN),
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+  abc::TryRegion inner; inner.offset = {0}; inner.length = 4; inner.handler_count = 1;
+  abc::TryRegion outer = inner; outer.length = 20; outer.first_handler = 1;
+  abc::CatchHandler first; first.offset = {10}; first.length = 10;
+  abc::CatchHandler second = first; second.offset = {29};
+  body.tries = {inner, outer}; body.handlers = {first, second};
+  Emit(body, profile, 1, 4, false, output, {}, 0, true, {}, CompositionStage::kSource, 2);
+}
 void FinallyFallthrough(abc::ProfileId profile, std::ostream* output, bool branch = false,
     bool conditional_cleanup = false) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
@@ -676,6 +702,14 @@ void FinallyBranch(abc::ProfileId profile, std::ostream* output,
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--nested-finally") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) {
+      NestedFinally(profile, &std::cout);
+    }
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--finally-fallthrough") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -811,6 +845,7 @@ int main(int argc, char** argv) {
     FinallyFallthrough(profile, nullptr);
     FinallyFallthrough(profile, nullptr, true);
     FinallyFallthrough(profile, nullptr, true, true);
+    NestedFinally(profile, nullptr);
     FinallyOverride(profile, false, nullptr);
     FinallyOverride(profile, false, nullptr, OverrideValue::kCaught);
     FinallyOverride(profile, false, nullptr, OverrideValue::kUndefined);

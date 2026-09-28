@@ -51,6 +51,17 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 已贯通双层正常落下型 finally：内层 cleanup 在块末完成后进入外层区域，
+  不要求同块还有后续语句。原始用例仅恢复外层一个 finalizer；修复后共同
+  FunctionTree 中存在两个嵌套 finalizer，既有流/来源检查通过，Printer 未改。
+  三个 profile 的解码输入经实际源码执行，覆盖 get/inner/outer/after 的全部
+  抛出组合及 undefined/Symbol/object 原异常身份，验证两层 cleanup 的顺序、
+  外层覆盖内层异常和 after 跳过行为。关联构建与定向 15/15 通过；日志
+  `/tmp/abcd-nested-finalizer-final-build.log` 和
+  `/tmp/abcd-nested-finalizer-final-tests.log`。
+  交换异常表记录的尝试在前置 ExceptionFlow 构建被拒，未计入支持范围；
+  本步不是任意嵌套 return/break/continue completion 完成，也未处理 hole/guard。
+  未运行全量测试、语料、RSS 或基准。
 - C05 正常 completion 已支持 cleanup 后接 if/return：正常路径在分支边界
   保留直线前缀，只要该前缀完整包含与异常路径配对的 cleanup，就由共同控制树
   继续消费后继，不再要求全部后继是直线。无新增分支算法或 printer 分支。
