@@ -51,6 +51,15 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- **共享 finally 仍未生成源码**：新增直接消费上述 ValueProgram 的 Hole 使用
+  分析，实际识别三个 profile 复现中 PC 39 的比较和 PC 46 的受保护重抛。
+  只接受由 ValueHole/复制/phi 形成的封闭内部值流，比较左侧必须确定为 Hole；
+  重抛需沿单入口路径由非 Hole 分支保护。返回逃逸、比较极性反转、算术消费
+  和损坏 use 链分别有反例。复制链压缩和路径缓存均为迭代 O(V+O+U+B+E)，
+  不逐 throw 遍历整图。该分析目前由真实解码集成夹具消费，**尚未接入 AST
+  消除，不能作为新的源码能力计数**。相关构建与定向 4/4 通过，日志
+  `/tmp/abcd-hole-protocol-build.log`、`/tmp/abcd-hole-protocol-tests.log`。
+  下一步是把已识别协议转换为共同树中的 completion/cleanup，不新增输出 token。
 - **共享 finally 仍在实现中，新增的是值图贯通，不是源码支持**：共同 IR
   现以 `ValueHole` 保留 VM 哨兵、原 SSA 域和 PC。显式 Hole 传输模式只允许
   Language/Hole，不接纳 Environment/OtherInternal；默认源码输入检查仍拒绝

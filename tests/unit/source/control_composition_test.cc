@@ -1,5 +1,6 @@
 #include "../../../src/source/exception_tree.h"
 #include "../../../src/source/completion_plan.h"
+#include "../../../src/source/hole_protocol.h"
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/tree_flow.h"
 #include "../../../src/source/tree_semantics.h"
@@ -103,6 +104,28 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     for (const auto& value : graph.values)
       if (value.domain.Contains(VmValueKind::kHole) && value.domain.Contains(VmValueKind::kLanguage)) ++mixed;
     test::Check(holes == 2 && mixed > 0);
+    const auto protocol = Take<HoleProtocol>(AnalyzeHoleProtocol(graph));
+    test::Check(protocol.comparisons.size() == 1 && protocol.rethrows.size() == 1);
+    const auto compared = protocol.comparisons.front().operation;
+    const auto rethrown = protocol.rethrows.front().operation;
+    test::Check(protocol.rethrows.front().comparison == compared);
+    test::Check(graph.origins[graph.ops[compared.value].origin.value].pc.value == 39);
+    test::Check(graph.origins[graph.ops[rethrown.value].origin.value].pc.value == 46);
+    auto changed = graph;
+    changed.ops[rethrown.value].operation = ValueReturn{};
+    test::Check(std::get<HoleProtocolError>(AnalyzeHoleProtocol(changed)) == HoleProtocolError::kEscape);
+    changed = graph;
+    std::get<ValueBinary>(changed.ops[compared.value].operation).op = BinaryOperator::kEqual;
+    test::Check(std::get<HoleProtocolError>(AnalyzeHoleProtocol(changed)) == HoleProtocolError::kUnguardedThrow);
+    changed = graph;
+    std::get<ValueBinary>(changed.ops[compared.value].operation).op = BinaryOperator::kAdd;
+    test::Check(std::get<HoleProtocolError>(AnalyzeHoleProtocol(changed)) == HoleProtocolError::kEscape);
+    changed = graph;
+    const auto comparison_use = changed.ops[compared.value].first_use.value;
+    std::swap(changed.uses[comparison_use].operand, changed.uses[comparison_use + 1].operand);
+    // Operand-chain links now deliberately mismatch; malformed correspondence
+    // must report input failure, not masquerade as an unsupported protocol.
+    test::Check(std::get<HoleProtocolError>(AnalyzeHoleProtocol(changed)) == HoleProtocolError::kInput);
     test::Check(std::holds_alternative<EvaluationError>(BuildPhasedEvaluationPlan(graph)));
     return; // Raw VM transport is not a source or finalizer completion claim.
   }
