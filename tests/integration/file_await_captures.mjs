@@ -77,3 +77,51 @@ for (const [index, capture] of closureFamilies.entries()) {
   saved[1].set(afterResume);
   assert.deepEqual(readers.map(read => read()), [beforeResume, afterResume]);
 }
+
+const catchSource = execFileSync(process.argv[2], ['--await-catch'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!catchSource.includes('INCOMPLETE'));
+const {functions: catchFamilies} = await import(`data:text/javascript;base64,${Buffer.from(catchSource).toString('base64')}`);
+assert.equal(catchFamilies.length, 9);
+async function observeCatch(fn, makeInput) {
+  const log = [];
+  const promise = fn(makeInput(log));
+  assert.ok(promise instanceof Promise);
+  log.push('returned');
+  let result;
+  const settled = promise.then(value => { result = value; log.push('fulfilled'); });
+  queueMicrotask(() => log.push('external-microtask'));
+  await settled;
+  return {result, log};
+}
+for (const [index, capture] of catchFamilies.entries()) {
+  const saved = [], cell = {};
+  let iteration = 0;
+  capture(() => iteration++ === 0, () => {
+    if (index % 3 === 1) throw cell;
+    return cell;
+  }, (get, set) => saved.push({get, set}));
+  assert.equal(saved.length, 1);
+  const oracle = async input => {
+    try { await input; } catch (error) { return error; }
+    return cell;
+  };
+  for (const payload of [undefined, null, false, 0, NaN, Symbol('caught'), {}]) {
+    for (const makeInput of [() => payload, () => Promise.resolve(payload),
+      () => Promise.reject(payload),
+      log => ({get then() { log.push('get-then'); throw payload; }}),
+      log => {
+        const input = {get then() {
+          log.push('get-then');
+          return function (resolve, reject) {
+            assert.equal(this, input); log.push('call-then'); reject(payload);
+          };
+        }};
+        return input;
+      }]) {
+      const expected = await observeCatch(oracle, makeInput);
+      const actual = await observeCatch(saved[0].get, makeInput);
+      assert.ok(Object.is(actual.result, expected.result));
+      assert.deepEqual(actual.log, expected.log);
+    }
+  }
+}

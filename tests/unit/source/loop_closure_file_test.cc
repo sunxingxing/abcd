@@ -52,7 +52,7 @@ enum class ParentShape { kIteration, kCatch, kNormal, kOuterCatchContinue, kOute
 enum class ChildShape {
   kPlain, kException, kNested, kForwarded, kForwardedNormal, kForwardedLocal,
   kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally, kSharedFinallyNested,
-  kAwaitCapture, kAwaitClosure
+  kAwaitCapture, kAwaitClosure, kAwaitCatch
 };
 enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitState };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
@@ -64,7 +64,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const bool nested = child_shape == ChildShape::kNested || forwarding || child_shape == ChildShape::kAwaitClosure;
   const bool outer_transfer = child_shape == ChildShape::kOuterContinue || child_shape == ChildShape::kOuterBreak;
   const bool shared_finally = child_shape == ChildShape::kSharedFinally || child_shape == ChildShape::kSharedFinallyNested;
-  const bool await_capture = child_shape == ChildShape::kAwaitCapture || child_shape == ChildShape::kAwaitClosure;
+  const bool await_capture = child_shape == ChildShape::kAwaitCapture || child_shape == ChildShape::kAwaitClosure ||
+      child_shape == ChildShape::kAwaitCatch;
   const std::uint8_t getter_parameters = await_capture ? 1 : outer_transfer ? 5 : shared_finally ? 3 : 0;
   const bool outer_catch = shape == ParentShape::kOuterCatchContinue || shape == ParentShape::kOuterCatchBreak;
   const std::uint8_t parent_parameters = outer_catch ? 5 : 3;
@@ -235,10 +236,15 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     if (child_shape == ChildShape::kAwaitClosure)
       code.insert(code.end(), {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 3, 0, 0});
     else code.insert(code.end(), {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), read_slot});
+    code.insert(code.end(), {Op(abc::Opcode::kASYNCFUNCTIONRESOLVE_V8), 0, Op(abc::Opcode::kRETURN)});
+    if (child_shape == ChildShape::kAwaitCatch)
+      code.insert(code.end(), {Op(abc::Opcode::kASYNCFUNCTIONRESOLVE_V8), 0, Op(abc::Opcode::kRETURN)});
     code.insert(code.end(), {
-      Op(abc::Opcode::kASYNCFUNCTIONRESOLVE_V8), 0, Op(abc::Opcode::kRETURN),
       Op(abc::Opcode::kSTA_V8), 1, Op(abc::Opcode::kASYNCFUNCTIONREJECT_V8), 0,
       Op(abc::Opcode::kRETURN)});
+    if (child_shape == ChildShape::kAwaitCatch)
+      return AppendCode(bytes, 3, getter_parameters, code,
+          {3, 32, 1, 0, 40, 3, 3, 40, 1, 0, 43, 5}, 2);
     const std::uint8_t handler = child_shape == ChildShape::kAwaitClosure ? 43 : 40;
     return AppendCode(bytes, 3, getter_parameters, code,
         {3, static_cast<std::uint8_t>(handler - 3), 1, 0, handler, 5});
@@ -451,8 +457,10 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
         original_pcs.push_back(origin["original_pc"].get<std::uint32_t>());
     // Compact PCs must not replace the raw await, continuation, lexical load
     // or nested creation PCs in the shared AST's provenance.
-    test::Check(original_pcs == std::vector<std::uint32_t>{3, 5, 12, 16, 17, 33, 35,
-        child_shape == ChildShape::kAwaitClosure ? 42U : 39U});
+    auto expected = std::vector<std::uint32_t>{3, 5, 12, 16, 17, 33, 35,
+        child_shape == ChildShape::kAwaitClosure ? 42U : 39U};
+    if (child_shape == ChildShape::kAwaitCatch) expected.push_back(42);
+    test::Check(original_pcs == expected);
     if (child_shape == ChildShape::kAwaitClosure)
       test::Check(report["family_members"][2]["creation_pc"] == 35);
   }
@@ -461,13 +469,15 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }  // namespace
 int main(int argc, char** argv) {
   if (argc == 2 && (std::string_view(argv[1]) == "--await-capture" ||
-                    std::string_view(argv[1]) == "--await-closure")) {
+                    std::string_view(argv[1]) == "--await-closure" ||
+                    std::string_view(argv[1]) == "--await-catch")) {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                               abc::ProfileId::kDynamic1301})
       for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
         std::cout << Emit(profile, shape, std::string_view(argv[1]) == "--await-closure" ?
-            ChildShape::kAwaitClosure : ChildShape::kAwaitCapture) << ",\n";
+            ChildShape::kAwaitClosure : std::string_view(argv[1]) == "--await-catch" ?
+            ChildShape::kAwaitCatch : ChildShape::kAwaitCapture) << ",\n";
     std::cout << "];\n"; return 0;
   }
   if (argc == 2 && (std::string_view(argv[1]) == "--shared-finally" ||
@@ -530,6 +540,8 @@ int main(int argc, char** argv) {
     Emit(abc::ProfileId::kDynamic1206, shape, ChildShape::kAwaitCapture);
   if (!emit) for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
     Emit(abc::ProfileId::kDynamic1206, shape, ChildShape::kAwaitClosure);
+  if (!emit) for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+    Emit(abc::ProfileId::kDynamic1206, shape, ChildShape::kAwaitCatch);
   if (!emit) for (const auto parent : {ParentShape::kOuterCatchContinue, ParentShape::kOuterCatchBreak})
     for (const auto child : {ChildShape::kPlain, ChildShape::kException, ChildShape::kForwardedThrowWriter})
       Emit(abc::ProfileId::kDynamic1206, parent, child);

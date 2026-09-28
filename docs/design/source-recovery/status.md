@@ -12,6 +12,20 @@
 
 ## 当前阶段
 
+### 2026-09-28：文件级用户 catch 接收 await 拒绝
+
+- 在已接通的文件级 async 主干上，增加用户 try/catch 与函数级 completion catch 共存的
+  真实双异常表夹具；三 profile × 三父作用域共 9 个函数族。归一化仅移除隐式 reject
+  尾部，用户 catch 仍由共同区域/AST 消费；无需新增生产逻辑或专用 writer。
+- 实际生成源码对照原生 async oracle：普通值/Promise fulfill 后读捕获 cell；Promise
+  reject、then getter throw、thenable reject 进入用户 catch 并返回原抛值，检查
+  receiver、任意 payload 身份与微任务事件顺序；保留原始返回点 PC 39/42。
+- `cmake --build build --target loop_closure_file_test control_composition_test -j4` 和相关
+  6/6 定向测试通过；日志 `/tmp/abcd-file-await-catch-final-build.log`、
+  `/tmp/abcd-file-await-catch-tests.log`。此提交仅增加共同主干的纵向回归证据。
+- 仍未完成 C06：await 与 finally、多个暂停点、更复杂用户 handler/live-value 组合、
+  async method/arrow/self/receiver 和真实应用仍待推进。全量测试、语料、RSS、基准未恢复。
+
 ### 2026-09-28：文件级 async 函数与跨 await 闭包进入共同主干
 
 - 普通 async 创建上下文不再在 kind 入口被拒绝；文件读取调用既有 completion/await
