@@ -10,6 +10,41 @@ assert.ok(!depthSource.includes('INCOMPLETE'));
 const {functions: depthFinalizers} = await import(`data:text/javascript;base64,${Buffer.from(depthSource).toString('base64')}`);
 assert.equal(depthFinalizers.length, 5);
 sharedFinalizers.push(...depthFinalizers);
+const sharedLoopSource = execFileSync(process.argv[2], ['--compiler-finally-loop'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!sharedLoopSource.includes('INCOMPLETE'));
+const {functions: sharedLoopFinalizers} = await import(`data:text/javascript;base64,${Buffer.from(sharedLoopSource).toString('base64')}`);
+assert.equal(sharedLoopFinalizers.length, 3);
+for (const fn of sharedLoopFinalizers) for (const iterations of [0, 1, 4])
+  for (const throwAt of [-1, 0, iterations]) for (const cleanupThrows of [false, true])
+    for (const afterThrows of [false, true]) for (const pending of [undefined, null, NaN, Symbol('loop'), {}]) {
+      const log = [], cleanupError = {}, afterError = {}, result = {};
+      let calls = 0, returned, thrown, didThrow = false;
+      try {
+        returned = fn(function () {
+          assert.equal(this, undefined);
+          const index = calls++;
+          log.push(`get:${index}`);
+          if (index === throwAt) throw pending;
+          assert.ok(index <= iterations, 'loop failed to exit');
+          return index < iterations;
+        }, function () {
+          assert.equal(this, undefined); log.push('cleanup');
+          if (cleanupThrows) throw cleanupError;
+        }, function () {
+          assert.equal(this, undefined); log.push('after');
+          if (afterThrows) throw afterError;
+          return result;
+        });
+      } catch (error) { didThrow = true; thrown = error; }
+      const getThrows = throwAt >= 0;
+      const expected = Array.from({length: getThrows ? throwAt + 1 : iterations + 1}, (_, i) => `get:${i}`);
+      expected.push('cleanup');
+      if (!getThrows && !cleanupThrows) expected.push('after');
+      assert.deepEqual(log, expected);
+      assert.equal(didThrow, getThrows || cleanupThrows || afterThrows);
+      assert.equal(didThrow ? thrown : returned,
+        cleanupThrows ? cleanupError : getThrows ? pending : afterThrows ? afterError : result);
+    }
 for (const fn of sharedFinalizers) for (const pending of [undefined, null, false, 0, NaN, Symbol('pending'), {},
   {valueOf() { assert.fail('unexpected coercion'); }, toString() { assert.fail('unexpected coercion'); }}]) {
   for (const getThrows of [false, true]) for (const cleanupThrows of [false, true]) for (const afterThrows of [false, true]) {

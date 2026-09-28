@@ -12,6 +12,19 @@
 
 ## 当前阶段
 
+### 2026-09-28：共享 finally 保护域内循环
+
+- SharedScope 消费既有 LoopControl/LoopTransfer；记录本次 protected/handler 入口
+  拥有的循环，内部 break/continue 不再误判为逃逸。指向外层循环的跳转仍不能据此
+  折叠为 shared finally；没有引入另一套循环发现算法或专项 printer。
+- 真实 opcode 解码夹具在三个 profile 上生成循环与 finally 的完整源码。
+  Node 对照立即退出、1/4 次回边、首轮/末轮抛出、清理覆盖异常、后继抛出，
+  验证异常身份、receiver、顺序以及清理仅一次。此证据不是完整应用 ABC 验收。
+- 新用例先因未恢复 finally 失败：`/tmp/abcd-shared-loop-red.log`；修正后相关构建
+  和 15/15 定向测试通过：`/tmp/abcd-shared-loop-final-build.log`、
+  `/tmp/abcd-shared-loop-tests.log`。work/内存限额未改，全量测试/语料/RSS/基准仍暂停。
+- C05 尚未完成：共享协议的 catch 内循环、跨嵌套 try 的外层跳转等组合继续推进。
+
 ### 2026-09-28：避免同次树构建重复检查异常控制计划
 
 - 定位 200 层共享 finally 的默认 work 失败：构建入口已检查控制计划，

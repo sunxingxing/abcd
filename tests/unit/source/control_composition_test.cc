@@ -621,7 +621,7 @@ void FinallyBareTransfer(abc::ProfileId profile, std::ostream* output, bool stop
 enum class SharedInnerCatch { kNone, kRethrow, kCallback, kReturn };
 void CompilerFinally(abc::ProfileId profile, std::ostream* output,
     CompositionStage stage = CompositionStage::kHoleFinally, std::uint32_t count = 1, bool early_return = false,
-    SharedInnerCatch inner = SharedInnerCatch::kNone, std::uint32_t depth = 1) {
+    SharedInnerCatch inner = SharedInnerCatch::kNone, std::uint32_t depth = 1, bool protected_loop = false) {
   // Pinned es2panda TryContext::InitFinalizer, TryStatement::CompileFinally
   // and PandaGen::EmitRethrow: shared cleanup, undefined run guard, Hole vs
   // caught payload. This isolates that lowering, not a full es2abc file.
@@ -651,7 +651,14 @@ void CompilerFinally(abc::ProfileId profile, std::ostream* output,
   // cleanup. Recovering a finally here would observably add a call.
   const std::vector<std::uint8_t> bypass{op(abc::Opcode::kLDA_V8), 6,
       op(abc::Opcode::kJEQZ_IMM8), 4, op(abc::Opcode::kLDUNDEFINED), op(abc::Opcode::kRETURN)};
-  const auto extra = early_return ? static_cast<std::uint32_t>(bypass.size()) : 0U;
+  // Repeat the protected callback while it returns true. Both loop exit and
+  // callback exceptions must enter the same shared cleanup, exactly once.
+  const std::vector<std::uint8_t> backedge{op(abc::Opcode::kJEQZ_IMM8), 4,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-6)};
+  test::Check(!protected_loop || (!early_return && inner == SharedInnerCatch::kNone));
+  const auto extra = early_return ? static_cast<std::uint32_t>(bypass.size()) :
+      protected_loop ? static_cast<std::uint32_t>(backedge.size()) : 0U;
+  if (protected_loop) unit.insert(unit.begin() + 7, backedge.begin(), backedge.end());
   if (early_return) unit.insert(unit.begin() + 3, bypass.begin(), bypass.end());
   test::Check(!early_return || inner == SharedInnerCatch::kNone);
   std::vector<std::uint8_t> nested;
@@ -705,7 +712,8 @@ void CompilerFinally(abc::ProfileId profile, std::ostream* output,
     region.first_handler = static_cast<std::uint32_t>(body.handlers.size());
     body.tries.push_back(region); body.handlers.push_back(handler);
   }
-  Emit(body, profile, 3, early_return || inner == SharedInnerCatch::kCallback ? 4 : 3, false, output, {}, 0,
+  Emit(body, profile, 3, early_return || inner == SharedInnerCatch::kCallback ? 4 : 3, false, output, {},
+      protected_loop ? 1 : 0,
       stage != CompositionStage::kHoleSource, {}, stage, count);
 }
 void FinallyOuterTransfer(abc::ProfileId profile, std::ostream* output, bool stop) {
@@ -1031,6 +1039,14 @@ int main(int argc, char** argv) {
           SharedInnerCatch::kRethrow, depth);
     return 0;
   }
+  if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-loop") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301})
+      CompilerFinally(profile, &std::cout, CompositionStage::kHoleFinally, 1, false,
+          SharedInnerCatch::kNone, 1, true);
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-depth-source") {
     std::cout << "export const functions = [\n";
     for (const auto depth : {4U, 8U, 16U, 200U, 201U})
@@ -1228,6 +1244,8 @@ int main(int argc, char** argv) {
     CompilerFinally(profile, nullptr, CompositionStage::kHoleImport);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleSource);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally);
+    CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally, 1, false,
+        SharedInnerCatch::kNone, 1, true);
     for (const auto inner : {SharedInnerCatch::kRethrow, SharedInnerCatch::kCallback})
       CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally, 1, false, inner);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleSource, 1, false, SharedInnerCatch::kReturn);

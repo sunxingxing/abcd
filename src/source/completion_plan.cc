@@ -244,6 +244,7 @@ class CompletionBuilder {
   void SharedGuards() {
     quota_.Size(shared_guards_, exceptions_.regions.size());
     quota_.Size(shared_visits_, control_.skeleton.nodes.size());
+    quota_.Size(shared_loops_, control_.skeleton.loops.size());
     if (!evaluation_.holes) return;
     struct Incoming {
       bool hole = false, invalid = false;
@@ -350,11 +351,25 @@ class CompletionBuilder {
       pending.pop_back();
       if (task.stop == task.entry) continue;
       const auto id = task.entry;
-      if (id.value >= control_.units.size() || shared_visits_[id.value])
+      if (id.value >= control_.skeleton.nodes.size() || shared_visits_[id.value])
         return {false};
       shared_visits_[id.value] = 1;
       const auto& node = control_.skeleton.nodes[id.value];
-      if (!std::holds_alternative<std::monostate>(node.synthetic)) return {false};
+      if (const auto* wrapper = std::get_if<LoopControl>(&node.synthetic)) {
+        const auto& loop = control_.skeleton.loops[wrapper->loop.value];
+        // The common loop forest has already bound transfers. Only loops
+        // entered by this exact protected/handler scope are internal exits;
+        // a jump to an enclosing loop still prevents shared-finally folding.
+        shared_loops_[wrapper->loop.value] = entry;
+        if (node.next) Append(pending, Task{*node.next, task.stop});
+        Append(pending, Task{loop.body, {}});
+        continue;
+      }
+      if (const auto* transfer = std::get_if<LoopTransfer>(&node.synthetic)) {
+        if (shared_loops_[transfer->loop.value] != entry) return {false};
+        continue;
+      }
+      if (id.value >= control_.units.size()) return {false};
       if (const auto* exit =
               std::get_if<TryExitUnit>(&control_.units[id.value])) {
         if (exit->region != region || node.next) return {false};
@@ -603,6 +618,7 @@ class CompletionBuilder {
   std::vector<std::optional<std::size_t>> exits_;
   std::vector<std::optional<OpId>> shared_guards_;
   std::vector<std::uint8_t> shared_visits_;
+  std::vector<std::optional<ControlId>> shared_loops_;
   std::vector<SharedCompletion> shared_completions_;
 };
 }  // namespace
