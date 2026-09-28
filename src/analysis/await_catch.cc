@@ -132,6 +132,25 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
     std::vector<FirstUse> suffix_nodes(slots.size() * kTreeNodesPerSlot, FirstUse::kExit);
     retain(suffix_nodes.capacity() * sizeof(FirstUse));
     FirstUseIndex suffix_reads{suffix_nodes, slots.size(), work};
+    // FindAwaitRegions forbids interior entries but deliberately allows entry
+    // at the retained continuation load. Such an entry may observe the old
+    // result; only protocol-owned continuation edges make that read local.
+    if (regions.size() > budget.bytes) throw std::bad_alloc{};
+    std::vector<std::uint8_t> continuation_entries(regions.size());
+    retain(continuation_entries.capacity());
+    const auto entry = [&](abc::CodeOffset pc, std::optional<abc::CodeOffset> source) {
+      const auto found = std::lower_bound(regions.begin(), regions.end(), pc,
+          [&](const AwaitRegion& region, abc::CodeOffset target) {
+            charge(); return region.continuation < target;
+          });
+      if (found != regions.end() && found->continuation == pc && source != found->branch)
+        continuation_entries[static_cast<std::size_t>(found - regions.begin())] = 1;
+    };
+    for (const auto& site : body.instructions) {
+      charge();
+      if (site.branch_target) entry(*site.branch_target, site.offset);
+    }
+    for (const auto& handler : body.handlers) { charge(); entry(handler.offset, std::nullopt); }
     bool suffix_known = true;
     std::optional<abc::CodeOffset> suffix_target;
     const auto position = [&](std::uint64_t reg) {
@@ -156,8 +175,9 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
       // A closed suffix with no possible reads proves a register dead even
       // through branches/loops. Keep the straight-prefix overwrite proof too;
       // neither proof treats a branch or an unknown register effect as an exit.
-      // All reads are accumulated, including unreachable sites; writes never
-      // erase them. Every encoded/exception target must stay in the suffix.
+      // Reads are accumulated, including unreachable sites; writes never erase
+      // them. Certified protocol-local reads refer to new definitions, not the
+      // incoming value. Every encoded/exception target must stay in the suffix.
       const auto target = [&](abc::CodeOffset pc) {
         if (!suffix_target || pc < *suffix_target) suffix_target = pc;
       };
@@ -167,9 +187,19 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
       // full semantic lifting may declare the suffix's read set complete.
       if (instruction) {
         const auto& effect = instruction->effects.normal_registers;
-        for (std::size_t i = 0; i < effect.read_count; ++i)
-          if (const auto* reg = std::get_if<abc::RegisterId>(&effect.reads[i]))
+        for (std::size_t i = 0; i < effect.read_count; ++i) {
+          if (const auto* reg = std::get_if<abc::RegisterId>(&effect.reads[i])) {
+            // Await's exact single-entry protocol defines result/mode before
+            // reading them. This is a local def-use fact, not a kill of reads
+            // elsewhere in the suffix. External continuation entries disable it.
+            const bool local_read = region && site->offset <= region->continuation &&
+                (site->offset != region->continuation || !continuation_entries[suffix_region - 1]) &&
+                ((*reg == region->result && site->offset > region->result_store) ||
+                 (*reg == region->resume_mode && site->offset > region->mode_store));
+            if (local_read) continue;
             suffix_reads.Assign(position(reg->value), position(std::uint64_t(reg->value) + 1), FirstUse::kRead);
+          }
+        }
         if (effect.range)
           suffix_reads.Assign(position(effect.range->first.value),
               position(std::uint64_t(effect.range->first.value) + effect.range->count), FirstUse::kRead);

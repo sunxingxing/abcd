@@ -12,6 +12,30 @@
 
 ## 当前阶段
 
+### 2026-09-28：finally await 重用 resume 临时寄存器
+
+- 将文件化 finally 第二次 await 改为重用首个 await 的 result/mode，先在原始
+  PC 8 的 catch-input 检查复现拒绝。问题是后缀 may-read 集合把后续协议中读取
+  新定义的操作也计为对旧输入值的读取；不是 work 额度耗尽。
+- 分析现区分精确 await 协议的局部定义/使用，保留其它位置的全部读取。额外
+  索引普通分支及 handler 到 continuation 的外部入口；该入口可能绕过新定义，
+  不能排除其读取。仍复用既有协议与压缩范围索引，不逐 await 遍历 handler，
+  不新增 writer/发布前置包装，也未改默认限额。
+- 三 profile × 三父作用域的重用布局经真实 Code 解码、共同 AST/Printer 完整
+  输出，执行同一原生 async oracle 对照矩阵：原拒绝与清理拒绝覆盖、thenable、
+  微任务、pending cleanup 及跨两次暂停的共享 cell。新增
+  `file_await_finally_reuse_source_test`；原不同寄存器布局继续通过。
+- 分析正例覆盖 1/200/201/402 await/分支加重用的 handler await；反例覆盖普通
+  跳转/异常入口绕过定义、把旧 result 作为下一 await 输入、固定/range 读取、
+  未知效果/协程及外跳。协议外的更一般重定义/活跃性仍可能保守拒绝，不能把
+  此项称为任意多暂停点寄存器重用均已支持。
+- 相关九个目标构建成功，18/18 定向测试通过（12.51 秒）；完整命令集合/结果
+  见 `/tmp/abcd-await-reuse-final-tests.log`，构建日志
+  `/tmp/abcd-await-reuse-final-build.log`；初始失败和定位见
+  `/tmp/abcd-await-reuse-red.log`、`/tmp/abcd-await-reuse-debug.log`。
+  `git diff --check` 通过。此前两个 base_function 旧路径失败未修复、本轮未重跑；
+  全量测试/语料/RSS/基准仍暂停。C06、更广 ISA 和结构整合目标仍未完成。
+
 ### 2026-09-28：共享 finally 内再次 await 保留 pending completion
 
 - 新文件化双 await 夹具先在原始 PC 8 的 catch-input 分析拒绝：第二个协议已被

@@ -220,9 +220,12 @@ void RepeatedEntry() {
     test::Check(std::holds_alternative<ExceptionSsa>(renamed));
   }
 }
-enum class HandlerRead { kNone, kClosedLoop, kResult, kMode, kRange, kUnknownEffects, kUnknownCoroutine, kBackEdge, kExceptionBackEdge };
+enum class HandlerRead {
+  kNone, kClosedLoop, kResult, kMode, kRange, kUnknownEffects, kUnknownCoroutine,
+  kBackEdge, kExceptionBackEdge, kContinuationEntry, kExceptionContinuationEntry, kAwaitInput
+};
 void AwaitHandlerBranches(std::uint32_t branches, HandlerRead read, std::uint32_t awaits = 1,
-                          bool handler_await = false) {
+                          bool handler_await = false, bool reuse = false) {
   const auto op = [](abc::Opcode value) { return static_cast<std::uint8_t>(value); };
   constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
   constexpr unsigned kByteBits = 8;
@@ -249,21 +252,27 @@ void AwaitHandlerBranches(std::uint32_t branches, HandlerRead read, std::uint32_
   for (std::uint32_t i = 0; i < branches; ++i) {
     // Both successors are real CFG alternatives. A backwards jump out of the
     // suffix reaches the continuation's v1 read and must not be called dead.
-    const auto delta = static_cast<std::uint8_t>(i == 0 && read == HandlerRead::kBackEdge ? -10 :
+    const auto delta = static_cast<std::uint8_t>(i == 0 && read == HandlerRead::kContinuationEntry ? 32 :
+        i == 0 && read == HandlerRead::kBackEdge ? -10 :
         read == HandlerRead::kClosedLoop ? -3 : 2);
     bytes.insert(bytes.end(), {op(abc::Opcode::kLDTRUE), op(abc::Opcode::kJEQZ_IMM8), 4,
         op(abc::Opcode::kJMP_IMM8), delta});
   }
+  if (read == HandlerRead::kExceptionContinuationEntry)
+    bytes.insert(bytes.end(), {op(abc::Opcode::kCALLARG0_IMM8), 0});
+  const auto handler_protocol = static_cast<std::uint32_t>(bytes.size());
+  const std::uint8_t result_slot = reuse ? 1 : 5, mode_slot = reuse ? 2 : 6;
+  const std::uint8_t input_slot = read == HandlerRead::kAwaitInput ? 1 : 3;
   if (handler_await) bytes.insert(bytes.end(), {
-      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kASYNCFUNCTIONAWAITUNCAUGHT_V8), 0,
+      op(abc::Opcode::kLDA_V8), input_slot, op(abc::Opcode::kASYNCFUNCTIONAWAITUNCAUGHT_V8), 0,
       op(abc::Opcode::kSUSPENDGENERATOR_V8), 0, op(abc::Opcode::kLDA_V8), 0,
-      op(abc::Opcode::kRESUMEGENERATOR), op(abc::Opcode::kSTA_V8), 5,
-      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kGETRESUMEMODE), op(abc::Opcode::kSTA_V8), 6,
+      op(abc::Opcode::kRESUMEGENERATOR), op(abc::Opcode::kSTA_V8), result_slot,
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kGETRESUMEMODE), op(abc::Opcode::kSTA_V8), mode_slot,
       op(abc::Opcode::kLDAI_IMM32), static_cast<std::uint8_t>(CoroutineResumeMode::kThrow), 0, 0, 0,
-      op(abc::Opcode::kEQ_IMM8_V8), 0, 6, op(abc::Opcode::kJEQZ_IMM8), 6,
-      op(abc::Opcode::kLDA_V8), 5,
+      op(abc::Opcode::kEQ_IMM8_V8), 0, mode_slot, op(abc::Opcode::kJEQZ_IMM8), 6,
+      op(abc::Opcode::kLDA_V8), result_slot,
       static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
-      op(abc::Opcode::kLDA_V8), 5});
+      op(abc::Opcode::kLDA_V8), result_slot});
   const std::uint8_t observed = read == HandlerRead::kResult ? 1 : read == HandlerRead::kMode ? 2 : 4;
   if (read == HandlerRead::kRange)
     bytes.insert(bytes.end(), {op(abc::Opcode::kCALLRANGE_IMM8_IMM8_V8), 0, 2, 1});
@@ -285,6 +294,14 @@ void AwaitHandlerBranches(std::uint32_t branches, HandlerRead read, std::uint32_
     inner.first_handler = 1; inner.handler_count = 1;
     abc::CatchHandler back; back.offset = {33}; back.length = 2;
     body.tries.push_back(inner); body.handlers.push_back(back);
+  }
+  if (read == HandlerRead::kExceptionContinuationEntry) {
+    abc::TryRegion inner; inner.offset = {handler_pc}; inner.length = handler_protocol - handler_pc;
+    inner.first_handler = 1; inner.handler_count = 1;
+    // The retained continuation load allows external entry, unlike the strict
+    // protocol interior. This catch bypasses the new result definition.
+    abc::CatchHandler resumed; resumed.offset = {handler_protocol + 30}; resumed.length = 2;
+    body.tries.push_back(inner); body.handlers.push_back(resumed);
   }
   abc::TryRegion completion; completion.offset = {3}; completion.length = completion_pc - 3;
   completion.first_handler = static_cast<std::uint32_t>(body.handlers.size()); completion.handler_count = 1;
@@ -313,11 +330,15 @@ int main() {
   for (const auto branches : {1U, 200U, 201U, 402U}) AwaitHandlerBranches(branches, HandlerRead::kNone);
   for (const auto count : {200U, 201U, 402U}) AwaitHandlerBranches(count, HandlerRead::kNone, count);
   for (const auto count : {1U, 200U, 201U, 402U}) AwaitHandlerBranches(count, HandlerRead::kNone, count, true);
+  for (const auto count : {1U, 200U, 201U, 402U}) AwaitHandlerBranches(count, HandlerRead::kNone, count, true, true);
   AwaitHandlerBranches(1, HandlerRead::kClosedLoop);
   for (const auto read : {HandlerRead::kResult, HandlerRead::kMode, HandlerRead::kRange,
                           HandlerRead::kUnknownEffects, HandlerRead::kUnknownCoroutine, HandlerRead::kBackEdge,
                           HandlerRead::kExceptionBackEdge}) {
     AwaitHandlerBranches(1, read);
     AwaitHandlerBranches(1, read, 1, true);
+    AwaitHandlerBranches(1, read, 1, true, true);
   }
+  for (const auto read : {HandlerRead::kContinuationEntry, HandlerRead::kExceptionContinuationEntry,
+                          HandlerRead::kAwaitInput}) AwaitHandlerBranches(1, read, 1, true, true);
 }
