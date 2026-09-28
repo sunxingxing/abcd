@@ -47,6 +47,10 @@ struct OwnerTree { FunctionOwnerId owner; std::size_t member; };
 
 class TreePrinter {
  public:
+  TreePrinter(const FunctionTree& tree, std::ostream& output,
+              EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope)
+      : tree_(&tree), output_(output), limit_(limit.bytes), initial_(scratch),
+        remaining_(scratch), scope_(scope) {}
   TreePrinter(const VerifiedFunction& function, std::ostream& output,
               EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope)
       : function_(&function), tree_(&function.Tree()), output_(output),
@@ -119,6 +123,37 @@ class TreePrinter {
     Result().work = initial_.work - remaining_.work;
     return std::move(result_);
   }
+  PrintedFunction Direct() {
+    const auto checked = VerifyTreeStructure(Tree(), remaining_);
+    if (const auto* error = std::get_if<TreeStructureError>(&checked)) {
+      if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kUnsupportedContext;
+    }
+    const auto& structure = std::get<TreeStructure>(checked);
+    Admit(structure.allocated_bytes, 1); Step(structure.work);
+    if (Tree().callable != CallableKind::kFunction && Tree().callable != CallableKind::kArrow)
+      throw Error::kUnsupportedContext;
+    for (const auto& node : Tree().expressions) {
+      Step();
+      if (std::holds_alternative<FunctionExpr>(node.expression)) throw Error::kUnsupportedContext;
+      if (std::holds_alternative<RealmObjectExpr>(node.expression)) RecordRealm();
+      if (std::holds_alternative<SymbolConstructorExpr>(node.expression)) RecordSymbol();
+      if (std::holds_alternative<ArgumentSnapshotExpr>(node.expression)) RecordArgumentSnapshot();
+    }
+    Result().identity = Tree().identity; Result().method = Tree().method;
+    Result().value_revision = Tree().value_revision; Result().cfg_revision = Tree().cfg_revision;
+    Result().fragment = FunctionFragment::kConditionalExpression;
+    Result().incomplete = !Tree().recovery_issues.empty();
+    Array(Result().parameters, Tree().parameters.size()); Array(Result().expressions, Tree().expressions.size());
+    Array(Result().properties, Tree().properties.size()); Array(Result().statements, Tree().statements.size());
+    Array(Result().anchors, Tree().anchors.size()); PrepareAnchors();
+    Push(BeginFunction{}); Drain(); Append("\n");
+    Result().bytes = written_;
+    Result().allocated_bytes = initial_.bytes - remaining_.bytes;
+    Result().work = initial_.work - remaining_.work;
+    return std::move(result_);
+  }
   PrintedFamilyDraft Draft() {
     if (family_->root.value >= family_->members.size()) throw Error::kUnsupportedContext;
     if (class_root_) {
@@ -158,6 +193,7 @@ class TreePrinter {
       Result().identity = Tree().identity; Result().method = Tree().method;
       Result().value_revision = Tree().value_revision; Result().cfg_revision = Tree().cfg_revision;
       Result().fragment = ClassRoot() ? FunctionFragment::kClassMember : FunctionFragment::kConditionalExpression;
+      Result().incomplete = !Tree().recovery_issues.empty();
       if (!Tree().modules.empty() && scope_ && scope_->module_enclosure) {
         if (!family_->members[i].record) throw Error::kUnsupportedContext;
         has_external_binding_ = true;
@@ -190,6 +226,7 @@ class TreePrinter {
     for (std::size_t i = 1; i < owners_.size(); ++i) {
       Step(); if (owners_[i - 1].owner == owners_[i].owner) throw Error::kUnsupportedContext;
     }
+    PrepareFamilyStatus();
     current_ = family_->root.value;
     Push(BeginFunction{}); Drain(); Append("\n");
     for (const auto emitted : printed_) { Step(); if (!emitted) throw Error::kUnsupportedContext; }
@@ -198,6 +235,45 @@ class TreePrinter {
     return std::move(draft_);
   }
  private:
+  void PrepareFamilyStatus() {
+    // Follow the actual syntax ownership, not a possibly stale construction
+    // order. A gap affects every enclosing function, never its siblings.
+    // Leaf-to-root reduction is iterative and visits each creation once.
+    std::vector<std::optional<std::size_t>> parents;
+    std::vector<std::size_t> children, pending;
+    Array(parents, family_->members.size());
+    Array(children, family_->members.size());
+    Array(pending, family_->members.size());
+    for (std::size_t parent = 0; parent < family_->members.size(); ++parent) {
+      for (const auto& expression : family_->members[parent].tree.expressions) {
+        Step();
+        const auto* function = std::get_if<FunctionExpr>(&expression.expression);
+        if (!function) continue;
+        const auto found = std::lower_bound(owners_.begin(), owners_.end(), function->child,
+            [&](const auto& item, FunctionOwnerId owner) { Step(); return item.owner < owner; });
+        if (found == owners_.end() || found->owner != function->child ||
+            found->member == family_->root.value || parents[found->member])
+          throw Error::kUnsupportedContext;
+        parents[found->member] = parent;
+        ++children[parent];
+      }
+    }
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < parents.size(); ++i) {
+      Step();
+      if (i != family_->root.value && !parents[i]) throw Error::kUnsupportedContext;
+      if (children[i] == 0) pending[count++] = i;
+    }
+    for (std::size_t next = 0; next < count; ++next) {
+      Step();
+      const auto child = pending[next];
+      if (!parents[child]) continue;
+      const auto parent = *parents[child];
+      draft_.members[parent].incomplete |= draft_.members[child].incomplete;
+      if (--children[parent] == 0) pending[count++] = parent;
+    }
+    if (count != parents.size()) throw Error::kUnsupportedContext;
+  }
   void RecordRealm() {
     has_external_binding_ = true;
     if (Result().realm_binding) return;
@@ -439,8 +515,16 @@ class TreePrinter {
     Push(BeginFunction{}); current_ = parent;
   }
   void Run(BeginFunction) {
-    if (!family_ || printed_[current_]) throw Error::kUnsupportedContext;
-    printed_[current_] = true; draft_.functions[current_].begin = written_;
+    if (family_) {
+      if (printed_[current_]) throw Error::kUnsupportedContext;
+      printed_[current_] = true; draft_.functions[current_].begin = written_;
+    }
+    if (Result().incomplete) {
+      Append("/* INCOMPLETE: partial decompilation; not executable-equivalent. */");
+      // Nested function expressions can follow return/throw. A newline inside
+      // this annotation would insert a semicolon before the recovered value.
+      Append(family_ && current_ != family_->root.value ? " " : "\n");
+    }
     if (ClassRoot()) {
       if (class_root_->Site().placement == abc::ClassPlacement::kStatic) Append("static ");
       Key(class_root_->Name()); Append("(");
@@ -477,8 +561,10 @@ class TreePrinter {
         if (Tree().self) { Append("; return "); Name(*Tree().self); Append("; })()"); }
       } else Append(")");
     }
-    draft_.functions[current_].end = written_;
-    Result().bytes = written_ - draft_.functions[current_].begin;
+    if (family_) {
+      draft_.functions[current_].end = written_;
+      Result().bytes = written_ - draft_.functions[current_].begin;
+    }
   }
   void Run(ParameterCursor cursor) {
     if (cursor.index == Tree().parameters.size()) return;
@@ -589,6 +675,22 @@ class TreePrinter {
   void StatementNode(BreakStmt, Statement) { Append("break;"); }
   void StatementNode(ContinueStmt, Statement) { Append("continue;"); }
   void StatementNode(DebuggerStmt, Statement) { Append("debugger;"); }
+  void StatementNode(UnrecoveredStmt node, Statement) {
+    const auto& issue = Tree().recovery_issues[node.issue.value];
+    Append("/* UNRECOVERED: ");
+    switch (issue.reason) {
+      case RecoveryReason::kUnsupportedOperation: Append("unsupported operation"); break;
+      case RecoveryReason::kUnsupportedControl: Append("unsupported control flow"); break;
+      case RecoveryReason::kUnavailableValue: Append("unavailable value"); break;
+      case RecoveryReason::kUnresolvedBinding: Append("unresolved binding"); break;
+      case RecoveryReason::kIncompleteChild: Append("incomplete child function"); break;
+    }
+    if (issue.begin) {
+      Append("; PC "); Numeric(issue.begin->value);
+      if (issue.end) { Append(".."); Numeric(issue.end->value); }
+    }
+    Append(" */");
+  }
   void Run(Statement at) {
     depth_ = at.depth;
     Result().statements[at.id.value].begin = written_;
@@ -651,6 +753,16 @@ class TreePrinter {
   std::vector<std::uint8_t> printed_;
 };
 }  // namespace
+
+std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
+    const FunctionTree& tree, std::ostream& output,
+    EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope) {
+  try { return TreePrinter(tree, output, limit, scratch, scope).Direct();
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit;
+  } catch (const std::ios_base::failure&) { return Error::kWrite; }
+}
 
 std::variant<PrintedFamilyDraft, TreePrintError> PrintFamilyDraft(const ConstructedFamily& family,
     std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope) {

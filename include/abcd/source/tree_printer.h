@@ -32,6 +32,8 @@ struct PrintedFunction {
   analysis::CfgRevision cfg_revision;
   FunctionFragment fragment = FunctionFragment::kClassMember;
   std::size_t bytes = 0;
+  // Recovery completeness only, not a claim of behavioral verification.
+  bool incomplete = false;
   // Formal ordinal indexes complete parameter syntax (name and initializer),
   // excluding separators. Signature migration maps to these events, not to a
   // body-wide range or a search for matching generated text.
@@ -53,6 +55,15 @@ struct PrintedFunction {
   std::optional<ArgumentSnapshotBinding> argument_snapshot_binding;
   std::optional<ModuleBinding> module_binding;
 };
+// Direct syntax output, including marked partial trees. No CFG/SSA or publication
+// owner is required. Structural safety is checked before writing; callers retain
+// ownership and must not mutate the tree during printing. Standalone function/
+// arrow expressions have no child lookup; use the shared family entry for those.
+[[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
+    const FunctionTree& tree, std::ostream& output,
+    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
+    const GlobalScope* scope = nullptr);
+
 // Emits a member fragment for a CLASS body, not an object literal or ordinary
 // function. The containing class/record still needs its own creation proof.
 // No bytecode, analysis or legacy writer is consulted. Input tree/stream storage

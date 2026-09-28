@@ -17,7 +17,8 @@
 INCOMPLETE 与区域缺口标记。不要求新增 VerifiedFunction/不可变准入包装，新增
 budget/work 计费、通用验证器、发布 receipt 和全面映射审计暂缓；已有设施保留。
 语义恢复和定向行为测试继续，部分输出不算完整支持。下述完整 gate 保留为最终
-目标，不再阻止已恢复片段输出；本次仅改文档，当前程序接口和能力尚未改变。
+目标，不再阻止已恢复片段输出。C00a 已开始实现，具体已测范围见本次证据；
+真实解码部分构建和 CLI 贯通尚未交付，不按打印器子项宣布 C00a 完成。
 
 执行目标已按用户要求调整为两阶段：
 
@@ -48,6 +49,19 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 | T12 | 语料与分类基础已有历史记录 | 全样本新路线审计、跨版本/留出集、进程 1G 实测 |
 
 ## 本次证据
+
+- C00a 第一子项：新增直接 `PrintFunctionTree(const FunctionTree&, ...)`，
+  复用现有迭代 printer，不依赖 VerifiedFunction。`RecoveryIssue`/`UnrecoveredStmt`
+  保留类型化原因及可用 PC，只输出注释缺口，不生成 return/throw/undefined 占位。
+  共同 family printer 将不完整状态传到所有语法祖先，不污染兄弟函数；嵌套函数
+  注释不引入 return/throw 后的自动分号。节点/范围错误仍在写入前失败，旧语义
+  验证入口拒绝将部分树当作完整函数。生成位置继续按实际输出记录。
+  新增 partial_tree_test；观察到祖先传播、return 换行两个回归先失败后修复。
+  Debug 构建成功，定向 CTest：partial_tree_test、function_tree_test、
+  tree_structure_test、try_tree_test、function_input_test 共 5/5 通过。
+  本子项只证明树打印与既有构建回归；尚未让未支持的真实 ABC 保留部分树，
+  尚未接 CLI/record 状态，也未验证部分输出的执行等价（不作该声明）。
+  下一步继续共同构建器的可靠片段保留和真实解码 fixture，不转向 DFX。
 
 - macOS 定向构建前置适配：`AbcFile` 按平台读取 `stat` 的纳秒级 mtime/ctime，
   不放宽原输入变更检查；消除 AppleClang 对局部 constexpr 无捕获引用的编译错误。

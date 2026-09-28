@@ -78,6 +78,16 @@ class StructureCheck {
   }
   std::size_t Run() {
     CheckCallable(tree_);
+    for (const auto& issue : tree_.recovery_issues) {
+      budget_.Step();
+      RequireTree(!issue.end || (issue.begin && *issue.begin <= *issue.end), Error::kRange);
+      switch (issue.reason) {
+        case RecoveryReason::kUnsupportedOperation: case RecoveryReason::kUnsupportedControl:
+        case RecoveryReason::kUnavailableValue: case RecoveryReason::kUnresolvedBinding:
+        case RecoveryReason::kIncompleteChild: break;
+        default: throw Error::kUnsupportedSyntax;
+      }
+    }
     switch (tree_.invocation) {
       case InvocationForm::kDeclared: break;
       case InvocationForm::kArrowMethod: {
@@ -341,6 +351,8 @@ class StructureCheck {
       RequireTree(frame.loop == transfer->target, Error::kTarget);
     } else if (const auto* transfer = std::get_if<ContinueStmt>(&node.statement)) {
       RequireTree(frame.loop == transfer->target, Error::kTarget);
+    } else if (const auto* missing = std::get_if<UnrecoveredStmt>(&node.statement)) {
+      RequireTree(missing->issue.value < tree_.recovery_issues.size(), Error::kRange);
     }
   }
   std::optional<SyntaxNode> Next(SyntaxFrame& frame) {
@@ -422,7 +434,7 @@ class StructureCheck {
         }
         else if constexpr (std::is_same_v<T, LoopStmt>) add(node.body);
         else { static_assert(std::is_same_v<T, BlockStmt> || std::is_same_v<T, BreakStmt> ||
-                             std::is_same_v<T, DebuggerStmt> ||
+                             std::is_same_v<T, DebuggerStmt> || std::is_same_v<T, UnrecoveredStmt> ||
                              std::is_same_v<T, ContinueStmt>); }
       }, statement);
     }

@@ -544,6 +544,9 @@ std::variant<TreeFlow, TreeFlowError> VerifyFlow(
     const EvaluationPlan& evaluation, const FunctionTree& tree,
     analysis::SemanticBudget budget, const ExceptionTreeInput* exceptions) {
   try {
+    // Partial syntax is printable, but cannot certify correspondence to a whole
+    // function. Keep the old semantic route from interpreting a gap as a no-op.
+    Require(tree.recovery_issues.empty(), Error::kStructure);
     Require(tree.value_revision == graph.revision && tree.cfg_revision == graph.cfg_revision, Error::kRevision);
     const auto structure = VerifyTreeStructure(tree, budget);
     if (const auto* error = std::get_if<TreeStructureError>(&structure)) {

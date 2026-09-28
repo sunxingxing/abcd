@@ -160,8 +160,22 @@ struct LoopStmt { StmtId body; };
 struct BreakStmt { StmtId target; };
 struct ContinueStmt { StmtId target; };
 struct DebuggerStmt {};
+struct RecoveryIssueId { std::uint32_t value = 0; auto operator<=>(const RecoveryIssueId&) const = default; };
+enum class RecoveryReason : std::uint8_t {
+  kUnsupportedOperation, kUnsupportedControl, kUnavailableValue, kUnresolvedBinding,
+  kIncompleteChild
+};
+struct RecoveryIssue {
+  RecoveryReason reason;
+  std::optional<abc::CodeOffset> begin;
+  std::optional<abc::CodeOffset> end;
+};
+// A readable gap, never an executable stand-in for an unknown operation.
+// Builders must omit dependent statements rather than invent values across it.
+struct UnrecoveredStmt { RecoveryIssueId issue; };
 using TreeStatement = std::variant<BlockStmt, DeclarationStmt, ExpressionStmt, IfStmt, ReturnStmt,
-                                   LoopStmt, BreakStmt, ContinueStmt, DebuggerStmt, ThrowStmt, TryStmt>;
+                                   LoopStmt, BreakStmt, ContinueStmt, DebuggerStmt, ThrowStmt, TryStmt,
+                                   UnrecoveredStmt>;
 struct StmtNode { TreeStatement statement; TreeOriginId origin; };
 
 // Origins/validation side tables may refer to working IDs. Executable node
@@ -239,6 +253,7 @@ struct FunctionTree {
   std::vector<TreeAnchor> anchors;
   std::vector<OpPlacement> operations;
   std::vector<SignaturePlacement> signature;
+  std::vector<RecoveryIssue> recovery_issues;
   std::optional<ScopeId> module_scope;
   std::vector<TreeModuleAlias> modules;
   // Creation-proven runtime name. Without self, computed data-property
