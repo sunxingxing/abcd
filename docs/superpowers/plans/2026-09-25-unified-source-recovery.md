@@ -1,5 +1,10 @@
 # Unified Source Recovery Implementation Plan
 
+2026-09-28 优先修订：执行 [FunctionTree 与部分输出设计](../../design/source-recovery/function-tree-output.md)
+和 [最新演进计划](2026-09-28-unified-control-regions.md)。下面 T00–T12 保留功能范围及
+历史任务记录；新增预算/验证包装/发布 receipt/全面映射审计任务暂缓，不作为反编译
+功能或部分输出的前置。允许直接打印 FunctionTree，并标记未恢复函数与区域。
+
 > **For agentic workers:** 使用 `superpowers:executing-plans` 逐任务执行；只有获得委派授权时才使用 `superpowers:subagent-driven-development`。以下复选框记录实际交付，不表示本轮已实施。
 
 **Goal:** 面向全部样本及新应用建立 Value IR → 绑定/求值规划 → SourceTree → 源码及 PC 映射的通用主干；pasteboard 仅作启动切片，优先恢复参数、局部、this/捕获和必要的表达式合并。
@@ -16,8 +21,8 @@
 - 必读 [设计入口](../../design/source-recovery/README.md)、[IR 合同](../../design/source-recovery/value-ir.md)、
   [AST 合同](../../design/source-recovery/source-tree.md)、[验收合同](../../design/source-recovery/acceptance.md)、
   [全样本能力合同](../../design/source-recovery/corpus.md)。
-- **当前禁止运行测试、执行生成的 JS、基准和 RSS 跟踪。** 可编写回归规格/测试源、生产构建和
-  ABC-only 导出；测试/行为/内存 gate 标为未验证。本文测试命令均待恢复授权后执行。
+- 当前允许相关定向单元/集成和受控完整生成 JS 行为测试；全量测试、基准和 RSS
+  仍暂停。部分输出不作等价执行输入；未执行的命令和内存 gate 保持未验证。
 - 不实现任务调度器，不新增宿主前提，不读取配对源码/sourcesMap.map，不特判样本 ID。
   各任务必须按全 corpus 的 typed capability 定义支持域，不按 pasteboard 代码形状定义。
 - 新文件是拟创建路径；若已有同职责接口先复用并记录映射，不创建第二套含义相同的类型。

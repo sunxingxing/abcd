@@ -4,15 +4,20 @@
 > CC 或子代理；不得因执行本文恢复代理、定期审视、RSS/基准或引擎调度器开发。
 > 每个阶段先核验设计与失败用例，再实施、定向验证、更新状态并提交。
 
-**Goal:** 将循环、异常、completion 与协程逐步纳入同一可验证源码通路，保留
-值、效果、作用域、闭包、原始 PC 和发布边界；覆盖全部样本而非专用应用。
+**Goal:** 优先交付可用反编译功能：允许标记后的部分源码输出，将循环、异常、
+completion 与协程逐步纳入共同源码通路；覆盖全部样本而非专用应用。
 
 **Architecture:** 保留 ValueProgram、相位 SSA/环境分析、FunctionTree 和 printer。
 以类型化图视图和 RegionPlan 替换两种控制布局的下游消费约定；先打通循环/catch
-组合，再闭合 finally 与 suspension，不新增专项 body writer。
+组合，再闭合 finally 与 suspension，不新增专项 body writer。最终 printer 直接消费
+FunctionTree；不新增 VerifiedFunction 准入包装，DFX 配套不作为功能前置。
 
 **Tech Stack:** C++20、现有 CMake/CTest、受控 Node.js 行为对照、锁定 Ark ISA/profile。
 不引入新的运行时依赖。
+
+**Spec:** [FunctionTree 与功能优先的部分输出](../../design/source-recovery/function-tree-output.md)。
+2026-09-28 讨论后的修订优先于本计划旧版本的全验证/预算/发布门槛；这是待实施
+计划，不表示现有严格入口已改变。既有设施保留兼容，不集中拆除。
 
 基线：`1c7e44d2a23e14b91fb91ab98244f3dec355f6ba`，Rules 58 / V3。
 [审计证据](../../design/source-recovery/control-composition-audit.md) 为本计划输入。
@@ -34,18 +39,20 @@
    或把 effectful gap 当无效果跳转走廊。
 6. finally 的恢复建立在 completion 证明上，不由相似指令、源码文本或方法名猜测。
    suspension 与 completion 分离；yield/await 暂停不等于执行 finally。
-7. 既有 ABI、callable、参数默认值、cell/capture、module/enclosure、V3 和
-   PC census 门槛保持。构造器也是同一通路的 callable 变体，不另建控制系统。
+7. ABI、callable、参数默认值、cell/capture、module/enclosure 的语义不得伪造。
+   不能恢复的部分明确标注；不以 V3 发布证明或全 PC census 阻止其他片段输出。
+   构造器也是同一通路的 callable 变体，不另建控制系统。
 8. 每个新接受域都要增加实际解码到源码的测试。typed refusal 明确记录未支持项，
-   不算完成，也不退回伪源码。保留用户拒绝的 Proxy-super 等边界。
-9. 整个进程 1,000,000,000 字节上限不变；本计划不恢复 RSS 测量。
-   只可声明预算检查通过，不能声明整体内存上限实测通过。
+   不算完整支持，但允许共同 AST 输出已恢复部分。保留用户拒绝的 Proxy-super 等边界。
+9. 暂缓新增 budget/work 计费、资源失败注入、通用验证包装、发布 receipt 和全面
+   来源审计；现有保护保留。进程 1,000,000,000 字节为长期约束，不恢复 RSS/基准，
+   不宣称实测达标。必要的语义检查和定向功能测试继续。
 
 ## 2. 数据与算法契约
 
 ### 2.1 图视图及身份
 
-新增内部 `control_view.h/.cc`，提供只读、预算化的邻接视图和显式原始映射：
+新增内部 `control_view.h/.cc`，按当前组合功能需要提供只读邻接视图和原始映射：
 
 | 视图 | 用途 | 禁止事项 |
 |---|---|---|
@@ -106,14 +113,15 @@ Leaf 只拥有要发射一次的操作范围；其他节点拥有结构和证据
    handler 的 continue 端口可以回到外层 loop；其异常可达性来自原 dispatch 证明，
    不是给 handler 随便增加一条普通入口边。
 
-使用有依赖的工作队列、区域归属索引和边界摘要，每个节点/边的投影和归属变化计费。
+使用有依赖的工作队列、区域归属索引和边界摘要；不为本阶段新增逐项计费设施。
 不能对每个 try 全图扫描、为每个变量重跑图算法或展开每层祖先的全部后代。
 普通自然循环发现与商图循环发现使用同一内核；捕获值可用性仍由完整相位图验证。
 
 必须专门验证两类情况：try 包含 loop；loop 包含 try 且 catch 有回边。
 源异常区间与循环集合部分交叠时，不能硬塞成父子。先验证是否能通过不移动效果的
 边界分裂/端口重定向得到合法嵌套，所有操作 handler 和求值次数必须不变；不能证明
-时返回 typed unsupported overlap，并保留原图证据。不可约图暂拒绝，不伪装支持。
+时记录 typed unsupported overlap，并保留原图证据；不可约图暂不完整恢复，
+通过缺口策略输出其他可靠片段，不伪装支持。
 **本阶段不承诺全部合法 ABC 都可直接还原结构化 JS**；该覆盖缺口必须保留在清单。
 
 循环发现不强依赖退出可达性。无终止 SCC 必须独立识别，不伪造可执行退出边来让
@@ -121,13 +129,15 @@ postdominator 算法成立。结构分析使用的虚拟出口只能作为证据
 
 复杂度分开报告：原图 V/E、相位 P、区域 R、边界端口 X、phi 输入 H、输出来源 M。
 索引与结构遍历目标 O(V+E+P+R+X+H+M)，排序/区间及支配步骤注明自身成本；
-不要承诺整个恢复过程严格线性。实际稠密边界按 X 计费，不隐藏在 R 内。
-嵌套收缩反复扫描必须给出上界和 work 计数；若只能实现二次算法，不进入生产。
+不要承诺整个恢复过程严格线性。实际稠密边界按 X 分析，不隐藏在 R 内。
+避免嵌套收缩反复扫描；保留复杂度分析，不以新增 work 计数器和预算规格阻塞功能。
 
-### 2.4 独立验证
+### 2.4 功能检查与后移的独立验证
 
-新增 `region_verify.cc`，禁止以重新运行 RegionPlan builder 并比相等为唯一验证。
-允许共享无语义的索引工具，不共享决定归属和出口的核心推断过程。
+通用 `region_verify.cc` 及全面证书框架后移，不作为 C03 的前置交付。
+以下与控制组合直接相关的检查随构建/现有 TreeFlow 和定向测试接入；某区域无法
+满足时成为恢复缺口，不阻止其他部分输出。将来扩展独立验证器时，不以重跑 builder
+并比相等为唯一依据，不共享决定归属和出口的核心推断过程。
 
 - 从原图及 handler 表逐项核对正常/异常转移的 coverage；不能只遍历计划中的边。
 - 校验单入口或已证明的入口集合、兄弟无非法交叠、子区域 owner、全部出口目标。
@@ -137,12 +147,15 @@ postdominator 算法成立。结构分析使用的虚拟出口只能作为证据
 - normal/throw/return/break/continue 的路径与效果顺序经原转移证明逐项匹配。
 - 所有推导都有 revision/owner/profile；同数值不同身份的 ID 不能互换。
 
-验证器须接受合法手工计划作为正例，并拒绝篡改计划，不能只接受 builder 的产物。
-属性测试的随机小图可以使用慢 oracle；生产路径不能依赖逐节点 DFS。
+保留错 target、漏 handler、copy 放错边等当前功能负例；全套篡改计划/随机图验证
+框架后移。生产路径不能依赖逐节点 DFS。
 
 ### 2.5 AST、scope 和映射
 
 FunctionTree 仍是源码层唯一 AST。基本块不等于 BlockStmt，结构 region 不等于 scope。
+直接输出入口不要求 VerifiedFunction、不可变工厂或发布 receipt；基本节点安全检查
+继续。复用已有 printer 增加函数前 INCOMPLETE 和区域 UnrecoveredStmt 注释，缺口
+状态沿包含关系传播。不能构造完整表达式时扩大缺口，不制造值或拼接未知后继。
 新增 `region_tree.cc` 仅负责区域到现有节点的发射，复用表达式、绑定、origin 和 printer。
 迁移 `function_tree.cc`、`tree_flow.cc`、`cell_lifetime.cc` 的全部相关消费点，
 取消“函数有异常就优先走异常 unit”的发射规则。
@@ -153,7 +166,8 @@ outer break/continue 用 AST `StmtId` 指向实际包围循环；增加类型化
 
 每个节点/操作来源进入既有 origin DAG；合并 finally 的多个原始副本用共享来源集合，
 不丢弃各原始 PC，也不为每个节点展开所有 PC。映射允许多个 PC 对应同一语法区间，
-但原指令 census 及变换证据必须闭合。UTF-8 区间与函数族 owner 保留。
+沿用已有映射能力和回归，全面原指令 census 不作为本阶段输出门槛。
+UTF-8 区间与函数族 owner 保留；没有恢复的区域记录可用原 PC，不伪造完整映射。
 
 表达式内联和临时变量消除继续经过既有 effect/evaluation 证明。除普通依赖外，
 移动前后还须保持可能抛出操作的 handler、环境和求值次数；不能跨 try 边界移动调用
@@ -195,14 +209,17 @@ printer 和 origin census 的穷尽处理。不能用默认分支将新操作当
 |---|---|
 | `src/source/control_view.h/.cc` | 图视图身份、强 ID、邻接和原始来源映射 |
 | `src/source/region_plan.h/.cc` | 组合节点、端口、归属、构建 orchestration |
-| `src/source/region_verify.cc` | 对原始图的独立 coverage/转移验证 |
+| `src/source/region_verify.cc` | 后移：通用独立 coverage/转移验证，不阻塞组合功能 |
 | `src/source/region_tree.cc` | 统一控制节点向既有 AST 发射 |
 | `src/source/completion_plan.h/.cc` | 待完成方式与 finalizer 转移证明 |
 | `src/source/finally_recovery.cc` | 候选识别、等价性证明、共享 finalizer 来源 |
 | `src/source/suspension_plan.h/.cc` | 暂停/恢复、owner、值/环境保存证明 |
 | `src/source/delegation_plan.h/.cc` | yield* 的迭代委托协议证明 |
 | `src/source/tree_labels.cc` | AST 目标对应标签及其验证，printer 只读使用 |
-| `tests/unit/source/{control_view,region_plan,region_verify,completion_plan,suspension_plan,delegation_plan}_test.cc` | 对应单元及负例 |
+| `tests/unit/source/{control_view,region_plan,completion_plan,suspension_plan,delegation_plan}_test.cc` | 对应功能单元及必要负例；通用 region_verify_test 后移 |
+| `include/abcd/source/source_tree.h`, `tree_printer.h` | 缺口类型/附属状态、直接 FunctionTree 打印接口 |
+| `src/source/function_tree.h/.cc`, `tree_printer.cc`, `family_print.h` | 保留部分构建结果、复用统一打印实现、传播不完整状态 |
+| `tools/source_inspection.cc`, `tools/value_source_inspect.cc` | 将部分结果与函数前标记接入现有源码命令，不新增专项 writer |
 | `tests/unit/source/control_composition_test.cc` | 解码 fixture，经全部共享层输出与映射 |
 | `tests/integration/control_composition.mjs` | 组合行为 oracle；不被引擎读取 |
 
@@ -214,20 +231,45 @@ printer 和 origin census 的穷尽处理。不能用默认分支将新操作当
 
 ## 4. 实施任务与停止条件
 
-依赖链：`C00 -> C01 -> C02 -> C03 -> C04 -> C05 -> C06 -> C07 -> C08 -> C09`。
+依赖链：`C00a -> C00b -> C01 -> C02 -> C03 -> C04 -> C05 -> C06 -> C07 -> C08 -> C09`。
 每个 C 是可单独验收的工作包，不是假定几分钟能完成的微任务。
-生产开关不得在 C01/C02 的接口完成时切换；C03 通过后逐项迁移接受域。
+C00a 先交付部分输出；C01/C02 限于 C03 必要结构，可随纵向功能内聚提交。
+不等待通用验证框架、全映射审计或预算配套；完整组合支持仍以 C03 行为测试为准。
 
-### C00：冻结基线与组合证据
+### C00a：FunctionTree 直接打印与部分源码
+
+文件：上表 source_tree/tree_printer/function_tree/family_print 与源码 CLI 消费点；
+测试复用 `tests/unit/source/function_tree_test.cc`，增加本计划的 composition fixture。
+
+接口：拟议 `UnrecoveredStmt{RecoveryIssueId}` 和函数恢复状态/问题表见设计；构建器
+返回已恢复 FunctionTree 及问题，而非遇到普通 unsupported 就丢弃整个函数。
+为 `PrintFunctionTree` 增加直接消费 `const FunctionTree&` 及必要输出上下文的入口，
+底层复用现有事件 printer；已有 VerifiedFunction 入口保留适配，不先做删除重构。
+
+- [ ] 先加入完整函数、已恢复前缀+缺口、依赖未知值的后续语句、未知控制后继、
+  不完整子函数以及损坏 AST ID 的规格；确认当前入口无法提供所需部分输出。
+- [ ] 实现最小缺口节点、构建结果保留与状态传播；不伪造占位表达式/返回值，
+  操作数不全时扩大到语句或区域缺口，控制关系不明时不连接后续代码。
+- [ ] 直接树入口输出函数前 INCOMPLETE、缺口处原因/可用 PC；名字或签名未知时
+  明示缺失。子函数/父函数/record 状态一致，其他成员继续输出。
+- [ ] CLI 复用上述结果；不要求发布收据，不增加完整验证准入，不把内部错误
+  降级为普通 unsupported。已有严格输出能力和完整函数文本保持回归覆盖。
+- [ ] 运行实际注册的 function_tree/打印/CLI 定向目标，部分结果只检查片段、标记、
+  缺口边界和状态，不执行为等价程序。记录真实命令、更新 status 并提交。
+
+验收：真实解码输入遇到不支持区域仍能输出可靠片段及标记；完整样例继续通过行为
+测试；未恢复依赖不会作为正常语句泄漏。该交付不宣称循环/catch 已恢复。
+
+### C00b：冻结基线与组合证据
 
 文件：新增 `tests/unit/source/control_composition_test.cc`、
 `tests/integration/control_composition.mjs`，修改 CMakeLists.txt 和 status.md。
 
 - [ ] 保存现有正常/异常真实函数族的行为与映射基线；不把未执行历史规格算通过。
 - [ ] fixture 通过真实 opcode/profile 解码，而非只手工制造 AST。
-- [ ] 先加入下节 W1/W2。当前版本应在异常循环处拒绝，不允许改成直接输出参考源码。
-- [ ] C00 可提交明确验证旧拒绝的 green 基线；C03 实施前将同一用例改成源码成功断言，
-  确认 red，保留拒绝诊断。禁止用“仍预期拒绝”让新功能验收变绿。
+- [ ] 先加入下节 W1/W2，保留旧异常循环拒绝原因，新入口期望带标记的部分结果；
+  不允许直接输出参考源码。C03 实施前启用完整源码/行为成功断言并确认 red。
+  不能用“仍然不完整”或“仍预期拒绝”让完整组合验收变绿。
 - [ ] 注册 `control_composition_test` 与 `control_composition_js`；C++ emitter 的 `--emit`
   输出可导入 ES module，导出测试函数集合和映射证据，复用现有测试 emitter 模式。
 - [ ] 每份真实切片记录内容 hash、profile、record/method identity、原始 PC 范围、
@@ -246,32 +288,34 @@ printer 和 origin census 的穷尽处理。不能用默认分支将新操作当
 - [ ] 引入投影 ID 与显式原始引用；替换块数偏移及 WorkBlockId 借用。
 - [ ] 抽取循环内核的只读邻接入口；正常路径适配该入口，算法和接受域不变。
 - [ ] 保留 phase/catch 的原始事实；单元断言每条投影弧能回溯原边或有证明的合成端口。
-- [ ] 验证既有 JS 行为、原始 PC census 无变化，并核对预算字段不是漏计的新容器。
+- [ ] 验证既有 JS 行为和已有映射回归；不新增预算字段、计费框架或全 PC census 门槛。
 
 验收：没有任何新循环/try 成功声明；ID/view 混用负例全部拒绝。
 提交：`refactor: separate control projection identities`。
 
-### C02：共享 RegionPlan 和独立验证器
+### C02：满足首个组合功能的共享 RegionPlan
 
-文件：region_plan、region_verify；迁移普通 control adapter；新增 region_plan_test、
-region_verify_test。
+文件：region_plan；迁移普通 control adapter；新增 region_plan_test。
+不在此任务建设通用 region_verify/证书框架。
 
 - [ ] 先编写手工合法计划及篡改计划：漏一条 handler 边、出口换 target、重复 Leaf、
   catch 消费正常结果、交换入口/回边 copy、跨 owner/revision。
 - [ ] 实现 Sequence/Leaf/If/Loop/Try 及端口；普通和现有无环异常都能适配同一规格。
-- [ ] 实现从原图出发的独立验证；不能只是调用旧构建器重建相等。
+- [ ] 接入 C03 必要的边/handler/target/copy 一致性检查，失败成为该区域缺口；
+  复用现有检查，不以完整独立验证器为前置。
 - [ ] 验证非终止 SCC、空 continuation、return/throw-only 区域及多个异常站点。
-- [ ] 200/201/402/804 节点及嵌套规格检查 work/空间计数；不运行 RSS 或时间基准。
+- [ ] 保留算法复杂度说明和适用的 200/201 结构回归；计费/scaling 测量后移，
+  不运行 RSS 或时间基准。
 
-验收：当前接受域可无损表示；负例验证器拒绝；原 control 验证仍保留作迁移对照。
-提交：`feat: verify shared control regions against original flow`。
+验收：当前接受域可无损表示，必要负例能定位缺口；原 control 检查保留迁移对照。
+提交：`feat: build shared control regions for loop catch composition`。
 
-### C03：第一条功能交付，循环与 catch 双向嵌套
+### C03：首个完整控制组合交付，循环与 catch 双向嵌套
 
 文件：region_plan、region_tree、function_tree、tree_flow、cell_lifetime、phased_method；
 control_composition fixture/oracle，真实切片注册。
 
-- [ ] 将 C00 的 W1/W2 成功断言启用并确认失败；补 W3 的 handler 含循环。
+- [ ] 将 C00b 的 W1/W2 成功断言启用并确认失败；补 W3 的 handler 含循环。
 - [ ] 按 2.3 的内部结构化与区域收缩实现组合，所有边界以端口保留。
 - [ ] TreeBuilder 按 Region 节点派发；迁移 TreeFlow、CellLifetimes、入口 origins、
   AST 容量计算和 copy 放置。不能让旧异常模式吞掉 Loop 节点。
@@ -297,12 +341,12 @@ control_composition fixture/oracle，真实切片注册。
   外层可变 cell 在回调前后写入、在异常子函数中再次创建闭包。
 
 验收：目标不是最近 loop 的跳转行为正确，闭包返回每次独立绑定且外层写入可见；
-普通与异常子函数使用同一发布证明，不跳过失败成员。
+普通与异常子函数使用同一 AST/printer；失败成员标记并传播不完整，不丢弃其他结果。
 提交可拆为 labels、exit ports、exception family 三个经验证的内聚提交。
 
 ### C05：typed completion 与 finally
 
-文件：completion_plan、finally_recovery、region_plan/verify、tree_flow、origin 对应；
+文件：completion_plan、finally_recovery、region_plan、tree_flow、origin 对应；
 新增 completion_plan_test，扩充 decoded composition。
 
 - [ ] 先测试 W5/W6：待返回值先求值、finally 修改绑定、finally return/throw 覆盖，
@@ -370,7 +414,7 @@ family_file、各目标 CMake、status.md、全 ISA/corpus 的既有覆盖报告
 - [ ] 搜索生产消费者，消除按普通/异常选择独立控制发射的逻辑。
   异常 dispatch/SSA/env 的专门分析继续保留；不是要求删除所有 Exception 类型。
 - [ ] 旧构建路径仅保留有明确差分价值的测试入口；有生产调用则尚未完成退役。
-- [ ] 每个支持项记录解码格式、profile、IR、区域、AST、发布与组合测试，不按 opcode
+- [ ] 每个支持项记录解码格式、profile、IR、区域、AST、完整/部分输出与组合测试，不按 opcode
   已识别就标记反编译成功。19 groups/332 formats 的总目标保持。
 - [ ] 对两个实际 corpus 根按现有持久分类索引选取多应用定向切片；静态 ABC 重用
   有效 hash/检测版本，不把未知版本或解码错误归类 static。
@@ -476,7 +520,7 @@ cmake --build build --target control_plan_test loop_forest_test exception_plan_t
 ctest --test-dir build -R '^(control_plan_test|loop_forest_test|exception_plan_test)$' --output-on-failure
 ```
 
-C00 注册新目标后，每次控制组合交付运行：
+C00b 注册新目标后，每次控制组合交付运行：
 
 ```sh
 cmake -S . -B build
@@ -487,17 +531,19 @@ ctest --test-dir build -R '^(control_composition_test|control_composition_js)$' 
 各阶段新增单元目标与文件同名，例如 C02：
 
 ```sh
-cmake --build build --target region_plan_test region_verify_test -j 2
-ctest --test-dir build -R '^(region_plan_test|region_verify_test)$' --output-on-failure
+cmake --build build --target region_plan_test -j 2
+ctest --test-dir build -R '^region_plan_test$' --output-on-failure
 ```
 
 其他阶段严格替换为已注册的 `control_view_test`、`completion_plan_test`、
 `suspension_plan_test`、`delegation_plan_test`，不得使用未注册 target 假定测试存在。
-正例期望源码/映射成功并对照行为；负例期望明确 typed refusal。功能前 red，功能后
+完整正例期望源码成功并对照行为；不支持输入期望部分输出与明确缺口，内部错误
+仍需报告失败。沿用现有映射回归，不扩展全面映射门槛。功能前 red，功能后
 green；若只因 fixture 格式错误而 red，不是功能失败证据。
 
 每次提交附：设计不变式、实际修改文件、red/green 命令及退出码、真实样本身份、
-结果/效果/捕获/finally/mapping 证据、work/bytes 计费、剩余拒绝、下一依赖。
+结果/效果/捕获/finally 的相关证据、实际输出与剩余缺口、下一依赖；不要求新增
+work/bytes 计费、发布 receipt 或全面 mapping 审计。
 同步更新 `docs/design/source-recovery/status.md`。Rules 或契约仅在证据/准入语义变化
 时按现有规则更新，不能把 Rules 增长当完成度。
 
@@ -505,13 +551,14 @@ green；若只因 fixture 格式错误而 red，不是功能失败证据。
 
 实施前检查：不复制循环/异常 writer；图视图与 ID 域明确；原始 dispatch 不变；
 scope/cell/copy/effect 消费点迁移完整；算法没有隐含平方扫描；证明不循环自证。
-任一项不满足先修设计，不解除现有拒绝。
+恢复不成立的区域保留缺口，不解除语义限制；其他可靠片段允许输出。
 
-阶段完成必须同时满足：真实解码 -> ValueProgram -> RegionPlan -> FunctionTree ->
-printer -> PC mapping；所需行为 oracle 通过；原始输入与来源可追溯；发布义务闭合。
-草稿可以用于中途调试，但不能用草稿状态宣布整个函数/record 成功。
+功能完成要求真实解码 -> ValueProgram -> RegionPlan -> FunctionTree -> printer
+贯通，对应完整样例的行为 oracle 通过；不要求新的发布义务、预算或全来源审计闭合。
+C00a 的部分输出以片段/标记/状态验收；后续功能未恢复部分继续输出缺口，但不能
+把部分结果宣布为整个函数/record 或该控制组合完整成功。
 
-回退策略：新接受域的证明失败则明确拒绝或维持 incomplete；既有经验证路径可在
+回退策略：新接受域无法可靠恢复则输出有标记的 incomplete；既有经验证路径可在
 迁移期间作受版本控制的差分基线。不得 fallback 到缺少效果/异常证明的 writer。
 统一完成后删除重复的生产消费入口，不长期保留三套控制系统。
 

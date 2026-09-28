@@ -1,5 +1,9 @@
 # 绑定恢复、控制结构与源码树
 
+2026-09-28 修订：[FunctionTree 与部分输出设计](function-tree-output.md) 规定最终
+AST 直接进入共同 printer，允许缺口标记；不要求先封装 VerifiedFunction 或冻结为
+通过全部验证的树。下文语义约束继续指导已恢复代码，无法恢复的区域按新设计留缺口。
+
 状态：拟实施合同。输入来自 [Value IR](value-ir.md)，阶段与任务见
 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
 本文的 SourceTree 是新的最终表示；现有 `SourceAst` 保持旧名称与旧路径，不改名冒充迁移。
