@@ -926,6 +926,9 @@ if(BUILD_TESTING)
         $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+      add_test(NAME phased_family_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_family_cli.mjs
+        $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
       add_test(NAME value_tree_immersive_slice_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_tree_slice.mjs
         $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"

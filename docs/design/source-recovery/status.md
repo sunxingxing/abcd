@@ -42,6 +42,13 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 常规 `abc_semantic --family-source-draft` 现先解析实际 root occurrence，再
+  调用共享函数族 reader/tree factory；向异常输入传递真实 owner 和同快照 lookup。
+  `recover`、`queryDegree` 可经 CLI 生成条件源码，新增 CTest 直接执行返回源码，
+  检查 235 条原始指令映射、五个成员归属及非发布状态；`--conditional-family`
+  保持不输出源码。8 项相关 CLI/真实切片测试通过。不是新的发布准入，Rules 56
+  不变；异常 PreparedFamily 与模块发布约束仍待接通。
+
 - 共享 `FileFamily` DFS / `BuildFileFamilyTrees` 已接入类型化 normal/phase
   所有权：异常父函数与普通闭包后代使用同一函数族构建、AST、ABI、来源索引、
   printer、enclosure 与传递写入验证，不再依赖工具手工拼装才能贯通。创建点
@@ -54,7 +61,7 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   `abc_semantic`、`abc_structure`、`exception_candidates` 构建成功；未运行
   全语料、RSS 或基准，未据此声明进程 1GB 上限已验证。
   这不是正式模块发布：`PreparedFamily` 的异常接入及 destination/module
-  初始化证明尚未完成，诊断 `family_value_inspect` 尚未传入异常 root context。
+  初始化证明尚未完成；诊断 CLI 的 root context 接入见上条。
   Rules 56 不变；循环/异常双向嵌套、finally、协程组合验收仍未完成。
 
 - 新增生产层 `FilePhasedFunction::Read`：从实际文件读取 body/call-type ABI，

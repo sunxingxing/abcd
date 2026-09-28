@@ -134,6 +134,9 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
     abcd::source::RouteInputIdentity identity, const abcd::source::RecordModuleContext* modules,
     std::ostream& output, FamilyInspectMode mode) {
   nlohmann::json report{{"family_prepared", false}};
+  if (root.value >= index.methods.size()) {
+    report["family_error"] = Code(FamilyFileError::kMethod); return report;
+  }
   analysis::SemanticBudget budget;
   const auto indexed_roles = analysis::MethodRoleIndex::Build(file, header, index, lookup, {budget.bytes});
   const auto* roles = std::get_if<analysis::MethodRoleIndex>(&indexed_roles);
@@ -160,7 +163,34 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
         ? FamilyFileError::kResourceLimit : FamilyFileError::kWorkLimit); return report;
   }
   budget.bytes -= sites->AllocatedBytes(); budget.work -= sites->Work();
-  auto prepared = ReadFunctionFamily(file, header, index, lookup, *roles, *sites, root, identity, budget, modules);
+  // Resolve the actual occurrence before decoding: phase inputs and receiver
+  // proofs need its ABI/owner stamp. Ambiguous owners remain diagnostic-only.
+  std::optional<FunctionContext> context;
+  const auto occurrences = sites->Find(index.methods[root.value].offset);
+  if (occurrences.count == 1) {
+    auto resolved = CreationTreeContext::Resolve(file, header, index, lookup, *roles, *sites,
+        occurrences.first, identity, budget);
+    if (auto* created = std::get_if<CreationTreeContext>(&resolved)) context.emplace(std::move(*created));
+  } else if (occurrences.count == 0) {
+    auto indexed = analysis::ClassMethodSites::Build(file, header, index, lookup, budget);
+    if (const auto* classes = std::get_if<analysis::ClassMethodSites>(&indexed)) {
+      if (classes->AllocatedBytes() > budget.bytes || classes->Work() > budget.work) return report;
+      budget.bytes -= classes->AllocatedBytes(); budget.work -= classes->Work();
+      const auto range = classes->Find(index.methods[root.value].offset);
+      if (range.count == 1) {
+        auto resolved = ClassTreeContext::Resolve(file, header, index, lookup, *roles, *classes,
+            range.first, identity, budget);
+        if (auto* method = std::get_if<ClassTreeContext>(&resolved)) context.emplace(std::move(*method));
+      }
+    }
+  }
+  report["family_root_context"] = context.has_value();
+  if (context) {
+    if (context->AllocatedBytes() > budget.bytes || context->Work() > budget.work) return report;
+    budget.bytes -= context->AllocatedBytes(); budget.work -= context->Work();
+  }
+  auto prepared = ReadFunctionFamily(file, header, index, lookup, *roles, *sites, root, identity,
+      budget, modules, context ? &*context : nullptr);
   auto* family = std::get_if<FileFamily>(&prepared);
   if (!family) { Failure(report, std::get<FamilyFileFailure>(prepared)); return report; }
   report["family_prepared"] = true;
@@ -186,31 +216,9 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
   report["family_tree_prepared"] = false;
   if (family->allocated_bytes > budget.bytes || family->work > budget.work) return report;
   budget.bytes -= family->allocated_bytes; budget.work -= family->work;
-  std::optional<FunctionContext> context;
-  const auto occurrences = sites->Find(index.methods[root.value].offset);
-  if (occurrences.count == 1) {
-    auto resolved = CreationTreeContext::Resolve(file, header, index, lookup, *roles, *sites,
-        occurrences.first, identity, budget);
-    if (auto* created = std::get_if<CreationTreeContext>(&resolved)) context.emplace(std::move(*created));
-  } else if (occurrences.count == 0) {
-    auto indexed = analysis::ClassMethodSites::Build(file, header, index, lookup, budget);
-    if (const auto* classes = std::get_if<analysis::ClassMethodSites>(&indexed)) {
-      if (classes->AllocatedBytes() > budget.bytes || classes->Work() > budget.work) return report;
-      budget.bytes -= classes->AllocatedBytes(); budget.work -= classes->Work();
-      const auto range = classes->Find(index.methods[root.value].offset);
-      if (range.count == 1) {
-        auto resolved = ClassTreeContext::Resolve(file, header, index, lookup, *roles, *classes,
-            range.first, identity, budget);
-        if (auto* method = std::get_if<ClassTreeContext>(&resolved)) context.emplace(std::move(*method));
-      }
-    }
-  }
   // Ambiguous/unproved root owners are not guessed from method attributes.
-  report["family_root_context"] = context.has_value();
   if (!context) return report;
-  if (context->AllocatedBytes() > budget.bytes || context->Work() > budget.work) return report;
-  budget.bytes -= context->AllocatedBytes(); budget.work -= context->Work();
-  const auto constructed = BuildFileFamilyTrees(file, header, index, std::move(*family), *context, budget, modules);
+  const auto constructed = BuildFileFamilyTrees(file, header, index, std::move(*family), *context, budget, modules, {}, &lookup);
   if (const auto* tree = std::get_if<ConstructedFamily>(&constructed)) {
     report["family_tree_prepared"] = true;
     report["family_tree_members"] = tree->members.size();
