@@ -51,6 +51,15 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C01 循环区域构建子项：原有 `LoopControlBuilder` 也消费共同视图和多入口，
+  循环收缩邻接改用 `ControlVertex/ControlLink`，移除用于容纳合成节点的临时
+  `ValueProgram`。原普通入口保留适配；投影两独立循环岛能生成各自 loop wrapper、
+  body 与 transfer，真实输入弧保持前缀映射，支配专用虚拟根不进入区域计划。
+  新多入口区域断言先因缺少接口失败；实现后重建并运行 control_view_test、
+  control_plan_test、loop_forest_test、exception_plan_test **4/4 通过**。
+  仍未解除异常路径的循环拒绝：异常映射、phi/cell/TreeFlow 和树消费需一起迁移，
+  不能仅因循环内核已能构建就声称 C03 支持。下一步以真实解码组合 fixture 驱动这些消费点。
+
 - C01 共同视图接入：无环区域发现及已有骨架检查改为消费 `ControlGraphView`，
   异常投影保存独立 `ControlVertex/ControlLink`，不再借用语义 `WorkBlock/WorkEdge`
   装载投影邻接。`ControlPlan.view` 区分普通/投影视图；相同数字 ID/revision 的

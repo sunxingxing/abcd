@@ -11,13 +11,18 @@ struct LoopVisit { LoopId loop; bool leave; };
 
 class LoopControlBuilder {
  public:
-  LoopControlBuilder(const analysis::ValueProgram& graph, LoopForest forest, ControlQuota& quota)
-      : graph_(graph), forest_(std::move(forest)), quota_(quota) {}
+  LoopControlBuilder(ControlGraphView graph, std::span<const ControlNodeId> roots,
+      LoopForest forest, ControlQuota& quota)
+      : graph_(graph), roots_(roots), forest_(std::move(forest)), quota_(quota) {}
   ControlPlan Build() {
     IndexLoops();
     Exits();
     Units();
-    auto plan = BuildControlSkeleton(units_, entries_, quota_);
+    auto plan = BuildControlSkeleton(ControlGraphView{ControlProjection{
+        graph_.Revision(), graph_.CfgRevision(), vertices_, links_}}, entries_, quota_);
+    // The skeleton's synthetic adjacency is projected, but its published plan
+    // indexes this builder's input view, with original arcs as the prefix.
+    plan.view = graph_.Kind();
     for (std::size_t i = 0; i < plan.nodes.size(); ++i) {
       quota_.Work();
       plan.nodes[i].synthetic = synthetic_[i];
@@ -25,18 +30,19 @@ class LoopControlBuilder {
         plan.nodes[i].block = {forest_.loops[wrapper->loop.value].header.value};
       else if (const auto* transfer = std::get_if<LoopTransfer>(&synthetic_[i])) {
         if (const auto* edge = std::get_if<analysis::EdgeId>(&transfer->source))
-          plan.nodes[i].block = graph_.edges[edge->value].source;
+          plan.nodes[i].block = {graph_.Arc({edge->value}).source.value};
         else plan.nodes[i].block = {forest_.loops[std::get<LoopId>(transfer->source).value].header.value};
       }
     }
     // Original blocks precede wrappers/transfer units, so their edge ranges
     // remain the exact original EdgeId prefix. Synthetic arcs are not ABC edges.
-    plan.edges.resize(graph_.edges.size());
+    plan.edges.resize(graph_.ArcCount());
     quota_.Size(plan.loops, forest_.loops.size());
     for (std::size_t i = 0; i < forest_.loops.size(); ++i) {
       quota_.Work();
       const auto& loop = forest_.loops[i];
-      plan.loops[i] = {{loop.header.value}, loop.parent, {loop.header.value}, Wrapper({static_cast<std::uint32_t>(i)}), exits_[i]};
+      const auto exit = exits_[i] ? std::optional<analysis::WorkBlockId>{{exits_[i]->value}} : std::nullopt;
+      plan.loops[i] = {{loop.header.value}, loop.parent, {loop.header.value}, Wrapper({static_cast<std::uint32_t>(i)}), exit};
     }
     plan.allocated_bytes += plan.loops.capacity() * sizeof(ControlLoop);
     return plan;
@@ -51,7 +57,7 @@ class LoopControlBuilder {
     quota_.Size(siblings_, count);
     quota_.Size(visits_, count * 2);
     quota_.Size(exits_, count);
-    quota_.Size(headers_, graph_.blocks.size());
+    quota_.Size(headers_, graph_.NodeCount());
     for (std::size_t i = 0; i < count; ++i) {
       quota_.Work();
       const auto& loop = forest_.loops[i];
@@ -80,19 +86,20 @@ class LoopControlBuilder {
       }
     }
   }
-  bool Inside(LoopId loop, analysis::WorkBlockId block) const {
+  bool Inside(LoopId loop, ControlNodeId block) const {
     const auto owner = forest_.owners[block.value];
     if (!owner) return false;
     const auto& outer = intervals_[loop.value];
     return outer.begin <= intervals_[owner->value].begin && intervals_[owner->value].begin < outer.end;
   }
-  void Exit(LoopId loop, analysis::WorkBlockId target) {
+  void Exit(LoopId loop, ControlNodeId target) {
     auto& exit = exits_[loop.value];
     Require(!exit || *exit == target, Error::kLoopExits);
     exit = target;
   }
   void Exits() {
-    for (const auto& edge : graph_.edges) {
+    for (std::uint32_t i = 0; i < graph_.ArcCount(); ++i) {
+      const auto edge = graph_.Arc({i});
       quota_.Work();
       const auto owner = forest_.owners[edge.source.value];
       if (owner && !Inside(*owner, edge.target)) Exit(*owner, edge.target);
@@ -106,7 +113,7 @@ class LoopControlBuilder {
     }
   }
   ControlId Wrapper(LoopId loop) const {
-    return {static_cast<std::uint32_t>(graph_.blocks.size() + loop.value)};
+    return {static_cast<std::uint32_t>(graph_.NodeCount() + loop.value)};
   }
   ControlId Transfer(LoopId loop, LoopTransferKind kind, ControlTransferSource source) {
     Require(unit_count_ < synthetic_.size(), Error::kResourceLimit);
@@ -114,7 +121,7 @@ class LoopControlBuilder {
     synthetic_[id.value] = LoopTransfer{loop, kind, source};
     return id;
   }
-  ControlId Target(analysis::WorkBlockId block, std::optional<LoopId> scope,
+  ControlId Target(ControlNodeId block, std::optional<LoopId> scope,
       ControlTransferSource source) {
     if (scope && block.value == forest_.loops[scope->value].header.value)
       return Transfer(*scope, LoopTransferKind::kContinue, source);
@@ -129,27 +136,26 @@ class LoopControlBuilder {
   }
   void Units() {
     constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
-    Require(forest_.loops.size() <= (kMaxId - graph_.blocks.size()) / 2 &&
-        graph_.edges.size() <= kMaxId - graph_.blocks.size() - forest_.loops.size() * 2,
+    Require(forest_.loops.size() <= (kMaxId - graph_.NodeCount()) / 2 &&
+        graph_.ArcCount() <= kMaxId - graph_.NodeCount() - forest_.loops.size() * 2,
         Error::kResourceLimit);
-    const auto capacity = graph_.blocks.size() + forest_.loops.size() * 2 + graph_.edges.size();
-    quota_.Size(units_.blocks, capacity);
+    const auto capacity = graph_.NodeCount() + forest_.loops.size() * 2 + graph_.ArcCount();
+    quota_.Size(vertices_, capacity);
     quota_.Size(synthetic_, capacity);
-    quota_.Size(units_.edges, graph_.edges.size() + forest_.loops.size());
-    quota_.Size(entries_, forest_.loops.size() + 1);
-    units_.revision = graph_.revision; units_.cfg_revision = graph_.cfg_revision;
-    unit_count_ = static_cast<std::uint32_t>(graph_.blocks.size() + forest_.loops.size());
+    quota_.Size(links_, graph_.ArcCount() + forest_.loops.size());
+    quota_.Size(entries_, forest_.loops.size() + roots_.size());
+    unit_count_ = static_cast<std::uint32_t>(graph_.NodeCount() + forest_.loops.size());
     std::uint32_t edge_count = 0;
-    for (std::uint32_t b = 0; b < graph_.blocks.size(); ++b) {
+    for (std::uint32_t b = 0; b < graph_.NodeCount(); ++b) {
       quota_.Work();
-      const auto& original = graph_.blocks[b];
-      auto& block = units_.blocks[b];
-      block.first_edge = {edge_count}; block.edge_count = original.edge_count;
-      for (std::uint8_t e = 0; e < original.edge_count; ++e) {
+      const auto& original = graph_.Node({b});
+      auto& block = vertices_[b];
+      block.first_arc = {edge_count}; block.arc_count = original.arc_count;
+      for (std::uint8_t e = 0; e < original.arc_count; ++e) {
         quota_.Work();
-        const auto& edge = graph_.edges[edge_count];
+        const auto& edge = graph_.Arc({edge_count});
         const auto target = Target(edge.target, forest_.owners[b], analysis::EdgeId{edge_count});
-        units_.edges[edge_count++] = {{b}, {target.value}, edge.kind, e};
+        links_[edge_count++] = {{b}, {target.value}, edge.kind, e};
       }
     }
     for (std::uint32_t i = 0; i < forest_.loops.size(); ++i) {
@@ -157,33 +163,39 @@ class LoopControlBuilder {
       const LoopId loop{i};
       const auto id = Wrapper(loop);
       synthetic_[id.value] = LoopControl{loop};
-      auto& block = units_.blocks[id.value];
-      block.first_edge = {edge_count};
+      auto& block = vertices_[id.value];
+      block.first_arc = {edge_count};
       if (exits_[i]) {
         const auto target = Target(*exits_[i], forest_.loops[i].parent, loop);
-        units_.edges[edge_count++] = {{id.value}, {target.value}, analysis::FlowEdgeKind::kTaken, 0};
-        block.edge_count = 1;
+        links_[edge_count++] = {{id.value}, {target.value}, analysis::FlowEdgeKind::kTaken, 0};
+        block.arc_count = 1;
       }
-      entries_[i + 1] = {forest_.loops[i].header.value};
+      entries_[i + roots_.size()] = {forest_.loops[i].header.value};
     }
-    for (std::size_t i = graph_.blocks.size() + forest_.loops.size(); i < unit_count_; ++i) {
-      quota_.Work(); units_.blocks[i].first_edge = {edge_count};
+    for (std::size_t i = graph_.NodeCount() + forest_.loops.size(); i < unit_count_; ++i) {
+      quota_.Work(); vertices_[i].first_arc = {edge_count};
     }
-    if (forest_.owners[0]) {
-      const auto root = headers_[0];
-      Require(root && !forest_.loops[root->value].parent, Error::kCrossEntry);
-      entries_[0] = Wrapper(*root);
-    } else entries_[0] = {0};
-    units_.blocks.resize(unit_count_); synthetic_.resize(unit_count_); units_.edges.resize(edge_count);
+    for (std::size_t i = 0; i < roots_.size(); ++i) {
+      quota_.Work();
+      const auto node = roots_[i];
+      if (forest_.owners[node.value]) {
+        const auto root = headers_[node.value];
+        Require(root && !forest_.loops[root->value].parent, Error::kCrossEntry);
+        entries_[i] = Wrapper(*root);
+      } else entries_[i] = {node.value};
+    }
+    vertices_.resize(unit_count_); synthetic_.resize(unit_count_); links_.resize(edge_count);
   }
-  const analysis::ValueProgram& graph_;
+  ControlGraphView graph_;
+  std::span<const ControlNodeId> roots_;
   LoopForest forest_;
   ControlQuota& quota_;
-  analysis::ValueProgram units_;
+  std::vector<ControlVertex> vertices_;
+  std::vector<ControlLink> links_;
   std::vector<LoopInterval> intervals_;
   std::vector<std::optional<LoopId>> heads_, siblings_, headers_;
   std::vector<LoopVisit> visits_;
-  std::vector<std::optional<analysis::WorkBlockId>> exits_;
+  std::vector<std::optional<ControlNodeId>> exits_;
   std::vector<ControlSynthetic> synthetic_;
   std::vector<ControlId> entries_;
   std::uint32_t unit_count_ = 0;
@@ -191,7 +203,13 @@ class LoopControlBuilder {
 }  // namespace
 
 ControlPlan BuildLoopControl(const analysis::ValueProgram& graph, ControlQuota& quota) {
-  auto found = BuildLoopForest(graph, quota.Remaining());
+  Require(graph.phases.empty(), Error::kInvalidGraph);
+  constexpr ControlNodeId root{0};
+  return BuildLoopControl(ControlGraphView{graph}, {&root, 1}, quota);
+}
+ControlPlan BuildLoopControl(ControlGraphView graph,
+    std::span<const ControlNodeId> entries, ControlQuota& quota) {
+  auto found = BuildLoopForest(graph, entries, quota.Remaining());
   if (const auto* error = std::get_if<LoopError>(&found)) {
     switch (*error) {
       case LoopError::kInvalidGraph: throw Error::kInvalidGraph;
@@ -204,6 +222,6 @@ ControlPlan BuildLoopControl(const analysis::ValueProgram& graph, ControlQuota& 
   auto forest = std::get<LoopForest>(std::move(found));
   quota.Work(forest.work); quota.Admit(forest.allocated_bytes, 1);
   quota.Admit(1, sizeof(LoopControlBuilder));
-  return LoopControlBuilder(graph, std::move(forest), quota).Build();
+  return LoopControlBuilder(graph, entries, std::move(forest), quota).Build();
 }
 }  // namespace abcd::source

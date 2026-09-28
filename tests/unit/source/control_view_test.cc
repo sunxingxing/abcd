@@ -36,6 +36,16 @@ void DisjointLoopEntries() {
   Check(forest.loops[forest.owners[0]->value].header == ControlNodeId{0});
   Check(forest.loops[forest.owners[3]->value].header == ControlNodeId{3});
   Check(!forest.backedges[0] && !forest.backedges[1] && forest.backedges[2] && forest.backedges[3]);
+  ControlQuota quota{{}};
+  const auto plan = BuildLoopControl(view, entries, quota);
+  Check(plan.view == ControlViewKind::kProjection && plan.loops.size() == 2);
+  Check(plan.edges.size() == arcs.size());
+  for (const auto& loop : plan.loops) {
+    Check(loop.header.value == 0 || loop.header.value == 3);
+    Check(loop.body.value == loop.header.value);
+    Check(std::get<LoopControl>(plan.nodes[loop.wrapper.value].synthetic).loop.value < 2);
+  }
+  Check(std::holds_alternative<LoopControl>(plan.nodes[plan.entry.value].synthetic));
   const std::array<ControlNodeId, 1> missing{{{0}}};
   Check(std::get<LoopError>(BuildLoopForest(view, missing)) == LoopError::kUnreachable);
   const std::array<ControlNodeId, 2> duplicate{{{0}, {0}}};
