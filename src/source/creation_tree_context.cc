@@ -43,10 +43,12 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
       case abc::FunctionKind::kBaseConstructor: callable = CallableKind::kFunction; break;
       case abc::FunctionKind::kArrow: callable = CallableKind::kArrow; break;
       case abc::FunctionKind::kAsync: callable = CallableKind::kAsyncFunction; break;
+      // OH7 PandaGen::SetFunctionKind emits ASYNC_NC_FUNCTION for async arrows.
+      // Keep lexical receiver semantics; ordinary async function syntax differs.
+      case abc::FunctionKind::kAsyncArrow: callable = CallableKind::kAsyncArrow; break;
       case abc::FunctionKind::kNone:
       case abc::FunctionKind::kGenerator:
       case abc::FunctionKind::kAsyncGenerator:
-      case abc::FunctionKind::kAsyncArrow:
       case abc::FunctionKind::kConcurrent:
       default: throw CreationContextFailure{Error::kKind};
     }

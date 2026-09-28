@@ -131,7 +131,7 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     // Normalized async facts come from the same file owner's completion
     // normalization, not from opcode resemblance or provenance alone.
     if ((!source_pcs.empty() || !awaits.empty()) &&
-        ((context.Callable() != CallableKind::kAsyncFunction && context.Callable() != CallableKind::kAsyncMethod) ||
+        (!IsAsyncCallable(context.Callable()) ||
          source_pcs.size() != body.instructions.size())) return Error::kInput;
     auto flow = PhaseResult<ExceptionFlow>(BuildExceptionFlow(body, context.Identity().profile,
         frame.registers, {quota.Remaining().bytes, quota.Remaining().work}, awaits, &frame), Error::kInput);
@@ -160,6 +160,7 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
         receiver = FrameReceiver::kInitialized;
         break;
       case CallableKind::kArrow:
+      case CallableKind::kAsyncArrow:
       case CallableKind::kDerivedConstructor:
         break;
     }

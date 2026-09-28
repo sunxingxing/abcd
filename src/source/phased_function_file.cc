@@ -105,7 +105,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     std::optional<abc::MethodBody> original;
     std::vector<abc::CodeOffset> source_pcs;
     std::vector<analysis::AwaitSite> awaits;
-    if (context.Callable() == CallableKind::kAsyncFunction || context.Callable() == CallableKind::kAsyncMethod) {
+    if (IsAsyncCallable(context.Callable())) {
       Require(identity.contract == SourceContract::kLanguageAndHostV2 ||
           identity.contract == SourceContract::kLanguageAndHostV3, Error::kIdentity);
       auto normalized = Take<abc::MethodBody>(ProveAsyncCompletion(body, frame,

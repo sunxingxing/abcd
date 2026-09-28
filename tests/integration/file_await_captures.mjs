@@ -1,8 +1,30 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
-const source = execFileSync(process.argv[2], ['--await-capture'], {encoding: 'utf8', timeout: 60_000});
+const arrow = process.argv[3] === '--arrow';
+if (arrow) {
+  const receiverSource = execFileSync(process.argv[2], ['--arrow-this'], {encoding: 'utf8', timeout: 60_000});
+  assert.ok(!receiverSource.includes('INCOMPLETE'));
+  const {functions: receiverFamilies} = await import(`data:text/javascript;base64,${Buffer.from(receiverSource).toString('base64')}`);
+  assert.equal(receiverFamilies.length, 3);
+  for (const parent of receiverFamilies) {
+    const receivers = [undefined, null, false, 0, Symbol('receiver'), {}];
+    const resumes = [], pending = [];
+    for (const receiver of receivers) {
+      let entered = false, get;
+      Reflect.apply(parent, receiver, [() => !entered && (entered = true),
+        () => assert.fail('captured this must not call the run argument'), child => { get = child; }]);
+      assert.equal(typeof get, 'function');
+      pending.push(get.bind({wrong: true})(new Promise(resolve => resumes.push(resolve))));
+    }
+    for (const resume of resumes.reverse()) resume();
+    const results = await Promise.all(pending);
+    results.forEach((result, index) => assert.ok(Object.is(result, receivers[index])));
+  }
+}
+const source = execFileSync(process.argv[2], [arrow ? '--arrow-capture' : '--await-capture'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!source.includes('INCOMPLETE'));
+if (arrow) assert.match(source, /async \([^)]*\) =>/);
 const {functions} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 assert.equal(functions.length, 9);
 
@@ -23,7 +45,7 @@ for (const [index, capture] of functions.entries()) {
   // Keep both activations pending; mutate one via its sibling. Resumption
   // reads the live cell, and must not conflate distinct loop/catch instances.
   const resumes = [];
-  const pending = saved.map(child => child.get(new Promise(resolve => resumes.push(resolve))));
+  const pending = saved.map(child => child.get.call({unrelated: true}, new Promise(resolve => resumes.push(resolve))));
   const changed = {};
   saved[0].set(changed);
   resumes[1](); resumes[0]();
@@ -53,7 +75,7 @@ for (const [index, capture] of functions.entries()) {
   }
 }
 
-const closureSource = execFileSync(process.argv[2], ['--await-closure'], {encoding: 'utf8', timeout: 60_000});
+const closureSource = execFileSync(process.argv[2], [arrow ? '--arrow-closure' : '--await-closure'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!closureSource.includes('INCOMPLETE'));
 const {functions: closureFamilies} = await import(`data:text/javascript;base64,${Buffer.from(closureSource).toString('base64')}`);
 assert.equal(closureFamilies.length, 9);
@@ -78,7 +100,7 @@ for (const [index, capture] of closureFamilies.entries()) {
   assert.deepEqual(readers.map(read => read()), [beforeResume, afterResume]);
 }
 
-const catchSource = execFileSync(process.argv[2], ['--await-catch'], {encoding: 'utf8', timeout: 60_000});
+const catchSource = execFileSync(process.argv[2], [arrow ? '--arrow-catch' : '--await-catch'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!catchSource.includes('INCOMPLETE'));
 const {functions: catchFamilies} = await import(`data:text/javascript;base64,${Buffer.from(catchSource).toString('base64')}`);
 assert.equal(catchFamilies.length, 9);

@@ -132,7 +132,7 @@ class TreePrinter {
     }
     const auto& structure = std::get<TreeStructure>(checked);
     Admit(structure.allocated_bytes, 1); Step(structure.work);
-    if (Tree().callable != CallableKind::kFunction && Tree().callable != CallableKind::kArrow &&
+    if (Tree().callable != CallableKind::kFunction && !IsArrowCallable(Tree().callable) &&
         Tree().callable != CallableKind::kAsyncFunction)
       throw Error::kUnsupportedContext;
     for (const auto& node : Tree().expressions) {
@@ -181,7 +181,7 @@ class TreePrinter {
       }
       Admit(structure->allocated_bytes, 1); Step(structure->work);
       if (Tree().strictness != Strictness::kStrict ||
-          (Tree().callable != CallableKind::kFunction && Tree().callable != CallableKind::kArrow &&
+          (Tree().callable != CallableKind::kFunction && !IsArrowCallable(Tree().callable) &&
            Tree().callable != CallableKind::kMethod && Tree().callable != CallableKind::kAsyncFunction &&
            Tree().callable != CallableKind::kAsyncMethod))
         throw Error::kUnsupportedContext;
@@ -552,13 +552,13 @@ class TreePrinter {
       if (Tree().invocation == InvocationForm::kArrowMethod) Append("](");
       else {
         Append("]: ");
-        Append(Tree().callable == CallableKind::kArrow ? "(" :
+        Append(Tree().callable == CallableKind::kAsyncArrow ? "async (" : Tree().callable == CallableKind::kArrow ? "(" :
             Tree().callable == CallableKind::kAsyncFunction ? "async function(" : "function(");
       }
-    } else Append(Tree().callable == CallableKind::kArrow ? "((" :
+    } else Append(Tree().callable == CallableKind::kAsyncArrow ? "(async (" : Tree().callable == CallableKind::kArrow ? "((" :
         Tree().callable == CallableKind::kAsyncFunction ? "(async function(" : "(function(");
     Push(EndFunction{}); Push(Statement{Tree().body, depth_});
-    Push(std::string_view(Tree().callable == CallableKind::kArrow &&
+    Push(std::string_view(IsArrowCallable(Tree().callable) &&
         Tree().invocation == InvocationForm::kDeclared ? ") => " : ") "));
     Push(ParameterCursor{0});
   }

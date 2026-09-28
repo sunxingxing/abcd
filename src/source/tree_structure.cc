@@ -51,7 +51,7 @@ void CheckCallable(const FunctionTree& tree) {
     case CallableKind::kFunction: case CallableKind::kMethod:
     case CallableKind::kArrow: case CallableKind::kBaseConstructor:
     case CallableKind::kDerivedConstructor: case CallableKind::kAsyncFunction:
-    case CallableKind::kAsyncMethod: return;
+    case CallableKind::kAsyncMethod: case CallableKind::kAsyncArrow: return;
   }
   throw Error::kUnsupportedSyntax;
 }
@@ -107,7 +107,7 @@ class StructureCheck {
     if (tree_.inferred_name) {
       RequireTree(tree_.inferred_name->value < tree_.names.size(), Error::kName);
       RequireTree((tree_.callable == CallableKind::kFunction ||
-          tree_.callable == CallableKind::kArrow || tree_.callable == CallableKind::kAsyncFunction), Error::kUnsupportedSyntax);
+          IsArrowCallable(tree_.callable) || tree_.callable == CallableKind::kAsyncFunction), Error::kUnsupportedSyntax);
     }
     RequireTree(tree_.parameter_scope.value < tree_.scopes.size() &&
                 tree_.body_scope.value < tree_.scopes.size() &&
@@ -273,7 +273,7 @@ class StructureCheck {
       } else if constexpr (std::is_same_v<T, UnaryExpr>) {
         RequireTree(ValidUnary(expression.operation), Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, AwaitExpr>) {
-        RequireTree(tree_.callable == CallableKind::kAsyncFunction || tree_.callable == CallableKind::kAsyncMethod,
+        RequireTree(IsAsyncCallable(tree_.callable),
             Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, BinaryExpr>) {
         RequireTree(ValidBinary(expression.operation), Error::kUnsupportedSyntax);
@@ -282,7 +282,7 @@ class StructureCheck {
                     Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, ArgumentSnapshotExpr>) {
         RequireTree(expression.owner == tree_.owner && tree_.strictness == Strictness::kStrict &&
-            (tree_.callable != CallableKind::kArrow || tree_.invocation == InvocationForm::kArrowMethod) &&
+            (!IsArrowCallable(tree_.callable) || tree_.invocation == InvocationForm::kArrowMethod) &&
             ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kBinding);
         RequireTree(expression.slots.first <= tree_.arguments.size() &&
             expression.slots.count <= tree_.arguments.size() - expression.slots.first &&

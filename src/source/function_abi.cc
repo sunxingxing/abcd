@@ -38,7 +38,7 @@ class AbiBuilder {
     Require(tree_.parameters.size() == frame_.parameters, Error::kParameter);
     if (tree_.self)
       Require((tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kAsyncFunction ||
-          (tree_.callable == CallableKind::kArrow && tree_.self_form == SelfForm::kCreationBinding)) &&
+          (IsArrowCallable(tree_.callable) && tree_.self_form == SelfForm::kCreationBinding)) &&
           tree_.self->value < tree_.symbols.size() &&
           tree_.symbols[tree_.self->value].kind == BindingKind::kFunctionSelf, Error::kSyntax);
     Array(result_.parameters, frame_.parameters);
@@ -115,7 +115,7 @@ class AbiBuilder {
         tree_.self.has_value() == (result_.frame_function_reads != 0), Error::kEntry);
     // A JS arrow inherits this; a VM receiver entry is dynamic. Captured outer
     // receivers must instead retain their explicit enclosing-owner binding.
-    Require(tree_.callable != CallableKind::kArrow ||
+    Require(!IsArrowCallable(tree_.callable) ||
         (result_.receiver.operands == 0 && result_.frame_receiver_reads == 0 &&
          result_.receiver.references == 0), Error::kReceiver);
     Require(tree_.invocation != InvocationForm::kArrowMethod || snapshot_, Error::kEntry);
@@ -179,7 +179,7 @@ class AbiBuilder {
     snapshot_ = true;
     Require(graph_.arguments && graph_.arguments->frame == frame_ &&
         node.owner == tree_.owner && tree_.strictness == Strictness::kStrict &&
-        (tree_.callable != CallableKind::kArrow || tree_.invocation == InvocationForm::kArrowMethod) &&
+        (!IsArrowCallable(tree_.callable) || tree_.invocation == InvocationForm::kArrowMethod) &&
         node.slots.count == frame_.parameters &&
         ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded,
         Error::kEntry);

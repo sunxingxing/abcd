@@ -49,7 +49,7 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
                      std::initializer_list<std::uint8_t> table = {}, std::uint8_t tries = 1) {
   return AppendCode(bytes, locals, parameters, code, table, tries);
 }
-enum class ParentShape { kIteration, kCatch, kNormal, kOuterCatchContinue, kOuterCatchBreak };
+enum class ParentShape { kIteration, kCatch, kNormal, kReceiverCapture, kOuterCatchContinue, kOuterCatchBreak };
 enum class ChildShape {
   kPlain, kException, kNested, kForwarded, kForwardedNormal, kForwardedLocal,
   kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally, kSharedFinallyNested,
@@ -58,7 +58,7 @@ enum class ChildShape {
 };
 enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitState };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
-                 MissingCell missing = MissingCell::kNone) {
+                 MissingCell missing = MissingCell::kNone, bool async_arrow = false) {
   const bool exception_child = child_shape != ChildShape::kPlain && child_shape != ChildShape::kForwardedNormal;
   const bool forwarded_writer = child_shape == ChildShape::kForwardedWriter || child_shape == ChildShape::kForwardedThrowWriter;
   const bool forwarding = child_shape == ChildShape::kForwarded || child_shape == ChildShape::kForwardedNormal ||
@@ -116,11 +116,15 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       Op(abc::Opcode::kLDA_V8), 9, Op(abc::Opcode::kCALLARG0_IMM8), 0,
       Op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-53),
       Op(abc::Opcode::kRETURNUNDEFINED)}, {12, 4, 1, 0, 18, 31}) :
-      shape == ParentShape::kNormal ? Append(bytes, 2, 3, {
+      (shape == ParentShape::kNormal || shape == ParentShape::kReceiverCapture) ? Append(bytes, 2, 3, {
       Op(abc::Opcode::kLDA_V8), kNext, Op(abc::Opcode::kCALLARG0_IMM8), 0,
       Op(abc::Opcode::kJEQZ_IMM8), 33,
-      Op(abc::Opcode::kNEWLEXENV_IMM8), 1, Op(abc::Opcode::kLDA_V8), kRun,
-      Op(abc::Opcode::kCALLARG0_IMM8), 0, Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
+      Op(abc::Opcode::kNEWLEXENV_IMM8), 1,
+      Op(shape == ParentShape::kReceiverCapture ? abc::Opcode::kLDTHIS : abc::Opcode::kLDA_V8),
+      shape == ParentShape::kReceiverCapture ? Op(abc::Opcode::kNOP) : kRun,
+      Op(shape == ParentShape::kReceiverCapture ? abc::Opcode::kNOP : abc::Opcode::kCALLARG0_IMM8),
+      shape == ParentShape::kReceiverCapture ? Op(abc::Opcode::kNOP) : std::uint8_t{0},
+      Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
       Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 1, 0, getter_parameters, Op(abc::Opcode::kSTA_V8), kGet,
       Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 2, 0, 1, Op(abc::Opcode::kSTA_V8), kSet,
       Op(abc::Opcode::kLDA_V8), kCollect, Op(abc::Opcode::kCALLARGS2_IMM8_V8_V8), 0, kGet, kSet,
@@ -478,7 +482,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
         << kFunctionKindShift;
   }
   if (await_capture) index.methods[2].access_flags =
-      static_cast<std::uint32_t>(abc::FunctionKind::kAsync) << kFunctionKindShift;
+      static_cast<std::uint32_t>(async_arrow ? abc::FunctionKind::kAsyncArrow : abc::FunctionKind::kAsync) << kFunctionKindShift;
   index.methods[1].name = "capture";
   index.methods[1].name_utf16_length = 7;
   index.methods[2].name = child_shape == ChildShape::kAwaitSelfPrivate ? "get value" : "get";
@@ -551,6 +555,25 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--arrow-this") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      std::cout << Emit(profile, ParentShape::kReceiverCapture, ChildShape::kAwaitCapture, MissingCell::kNone, true) << ",\n";
+    std::cout << "];\n"; return 0;
+  }
+  if (argc == 2 && (std::string_view(argv[1]) == "--arrow-capture" ||
+                   std::string_view(argv[1]) == "--arrow-closure" ||
+                   std::string_view(argv[1]) == "--arrow-catch" ||
+                   std::string_view(argv[1]) == "--arrow-finally")) {
+    const auto child = std::string_view(argv[1]) == "--arrow-closure" ? ChildShape::kAwaitClosure :
+        std::string_view(argv[1]) == "--arrow-catch" ? ChildShape::kAwaitCatch :
+        std::string_view(argv[1]) == "--arrow-finally" ? ChildShape::kAwaitFinallyReuse : ChildShape::kAwaitCapture;
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+        std::cout << Emit(profile, shape, child, MissingCell::kNone, true) << ",\n";
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && (std::string_view(argv[1]) == "--await-capture" ||
                     std::string_view(argv[1]) == "--await-closure" ||
                     std::string_view(argv[1]) == "--await-catch" ||

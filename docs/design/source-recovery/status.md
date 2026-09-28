@@ -12,6 +12,26 @@
 
 ## 当前阶段
 
+### 2026-09-28：async arrow 贯通共同函数族与捕获恢复
+
+- 按 OH7 `PandaGen::SetFunctionKind` 的 ASYNC_NC_FUNCTION 身份恢复
+  `CallableKind::kAsyncArrow`，复用文件级 await/completion 归一化、值分析、
+  FunctionTree 和共同 Printer，输出真正的 `async (...) => ...`。
+  名称推断、创建绑定式 self 沿用箭头约定；不赋予动态 receiver 或具名函数 self。
+- 三种 profile（12.0.2/12.0.6/13.0.1）的真实解码夹具覆盖每轮/每 catch/普通
+  环境捕获、跨 await 共享与隔离、恢复后创建子闭包、用户 catch、finally 内 await
+  及 pending completion。额外外层 LDTHIS→cell→async arrow 用例，改变 bind receiver
+  并逆序恢复多个挂起调用，确认保留各自的外层 this（含 null/undefined/原始值）。
+- 红例 `/tmp/abcd-async-arrow-red.log` 原先失败于创建身份拒绝；现在生成并执行源码。
+  相关十个 C++ 目标构建成功，23/23 定向测试通过（11.80 秒），日志
+  `/tmp/abcd-async-arrow-final-build.log`、`/tmp/abcd-async-arrow-final-tests.log`。
+  新增 `file_async_arrow_source_test` 和 `file_async_arrow_finally_source_test`；
+  function_tree_test 覆盖 async arrow 创建 self 与动态 receiver/具名 self 反例。
+- 范围仍是受控 ABC 夹具，不代表真实应用或 C06 完成。async arrow 的自身 VM
+  arguments snapshot carrier 尚未支持，不能误输出为外层 arguments；generator、
+  async generator/yield* 等缺口仍在。work/内存默认值未改，未增加 DFX/输出准入设施。
+  全量测试/语料/RSS/基准仍暂停；此前两个 base_function 失败未在本轮修复或重跑。
+
 ### 2026-09-28：实例与静态 async 类方法进入共同输出路径
 
 - 文件化 async 方法先在 ClassTreeContext 的 kKind 拒绝。锁定 runtime 的

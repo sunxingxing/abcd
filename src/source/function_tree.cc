@@ -435,7 +435,7 @@ class TreeBuilder {
     if (tree_.module_scope) tree_.scopes.push_back({ScopeKind::kModule, {}});
     std::optional<ScopeId> self_scope;
     if (forest_.bindings.self) {
-      Require((tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kArrow ||
+      Require((tree_.callable == CallableKind::kFunction || IsArrowCallable(tree_.callable) ||
           tree_.callable == CallableKind::kAsyncFunction) && tree_.inferred_name &&
           tree_.inferred_name->value < tree_.names.size(), Error::kBinding);
       if (!CanNameSelf(*tree_.inferred_name)) tree_.self_form = SelfForm::kCreationBinding;

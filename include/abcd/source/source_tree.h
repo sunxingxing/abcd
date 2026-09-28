@@ -24,8 +24,14 @@ struct FunctionOwnerId { std::uint32_t value = 0; auto operator<=>(const Functio
 struct ModuleOwnerId { std::uint32_t value = 0; auto operator<=>(const ModuleOwnerId&) const = default; };
 enum class CallableKind : std::uint8_t {
   kFunction, kMethod, kArrow, kBaseConstructor, kDerivedConstructor,
-  kAsyncFunction, kAsyncMethod
+  kAsyncFunction, kAsyncMethod, kAsyncArrow
 };
+constexpr bool IsArrowCallable(CallableKind kind) {
+  return kind == CallableKind::kArrow || kind == CallableKind::kAsyncArrow;
+}
+constexpr bool IsAsyncCallable(CallableKind kind) {
+  return kind == CallableKind::kAsyncFunction || kind == CallableKind::kAsyncMethod || kind == CallableKind::kAsyncArrow;
+}
 enum class Strictness : std::uint8_t { kStrict, kSloppy };
 enum class ScopeKind : std::uint8_t { kParameters, kFunctionBody, kBlock, kCaptures, kModule, kFunctionSelf, kCatch };
 enum class BindingKind : std::uint8_t { kParameter, kLocal, kFunctionSelf, kCompilerTemporary, kCapture, kModule, kCatchParameter };

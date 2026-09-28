@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
 const reuse = process.argv[3] === '--reuse';
+const arrow = process.argv[4] === '--arrow';
 const suspending = reuse || process.argv[3] === '--suspending';
-const source = execFileSync(process.argv[2], [reuse ? '--await-finally-reuse' : suspending ? '--await-finally-suspend' : '--await-finally'],
+const source = execFileSync(process.argv[2], [arrow ? '--arrow-finally' : reuse ? '--await-finally-reuse' : suspending ? '--await-finally-suspend' : '--await-finally'],
   {encoding: 'utf8', timeout: 60_000});
 assert.ok(!source.includes('INCOMPLETE'));
 assert.ok(source.includes('finally'));

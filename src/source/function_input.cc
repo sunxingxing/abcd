@@ -70,6 +70,7 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
           receiver = analysis::FrameReceiver::kInitialized;
           break;
         case CallableKind::kArrow:
+        case CallableKind::kAsyncArrow:
         case CallableKind::kDerivedConstructor:
         case CallableKind::kAsyncFunction:
         case CallableKind::kAsyncMethod:
