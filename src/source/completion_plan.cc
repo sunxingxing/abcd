@@ -121,8 +121,11 @@ class CompletionBuilder {
       const auto returned = normal.operations.back(), thrown = handler.operations.back();
       const auto& normal_exit = graph_.ops[returned.value].operation;
       const auto& handler_exit = graph_.ops[thrown.value].operation;
-      const bool preserve = std::holds_alternative<ValueReturn>(normal_exit) &&
-          std::holds_alternative<ValueThrow>(handler_exit);
+      const auto binding = exceptions_.regions[r].binding;
+      const bool preserve = (std::holds_alternative<ValueReturn>(normal_exit) ||
+          std::holds_alternative<ValueThrow>(normal_exit)) &&
+          std::holds_alternative<ValueThrow>(handler_exit) && binding &&
+          Same(Operand(thrown, 0), ValueOperand{binding->value});
       const bool replace_return = std::holds_alternative<ValueReturn>(normal_exit) &&
           std::holds_alternative<ValueReturn>(handler_exit);
       const bool replace_throw = std::holds_alternative<ValueThrow>(normal_exit) &&
@@ -131,10 +134,9 @@ class CompletionBuilder {
       // A replacement terminal is itself the finalizer action. Preserving an
       // incoming completion still needs actual cleanup before its terminal.
       if (preserve && normal.operations.size() < 2) continue;
-      const auto pending = Operand(returned, 0), exception = Operand(thrown, 0);
-      const auto binding = exceptions_.regions[r].binding;
-      if (!binding || (preserve && (!Same(exception, ValueOperand{binding->value}) ||
-          !Available(pending, graph_.ops[normal.operations.front().value].block)))) continue;
+      const auto pending = Operand(returned, 0);
+      if (!binding || (preserve &&
+          !Available(pending, graph_.ops[normal.operations.front().value].block))) continue;
       std::vector<CleanupPair> pairs;
       bool equal = true;
       for (std::size_t i = 0; i + 1 < normal.operations.size(); ++i) {
@@ -152,8 +154,9 @@ class CompletionBuilder {
       }
       // An overwritten normal path need not invent a discarded source return.
       // Emit the actual protected effects and let finally supply its completion.
-      const PendingCompletion incoming = preserve ? PendingCompletion{ReturnCompletion{pending}} :
-          PendingCompletion{NormalCompletion{}};
+      const PendingCompletion incoming = !preserve ? PendingCompletion{NormalCompletion{}} :
+          std::holds_alternative<ValueThrow>(normal_exit) ? PendingCompletion{ThrowCompletion{pending}} :
+          PendingCompletion{ReturnCompletion{pending}};
       Append(plan.finalizers, FinalizerRegion{{r}, incoming, ThrowCompletion{binding->value},
           returned, thrown, std::move(normal.nodes), std::move(handler.nodes), std::move(pairs), replacement});
     }

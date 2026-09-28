@@ -503,31 +503,43 @@ void FinallyChain(abc::ProfileId profile, std::ostream* output, std::uint32_t co
 }
 enum class ProtectedBranch { kSingle, kNested, kEarlyReturn };
 enum class OverrideValue { kCleanup, kCaught, kUndefined, kArgument };
-void NestedFinally(abc::ProfileId profile, std::ostream* output) {
+enum class NestedCompletion { kNormal, kReturn, kThrow };
+void NestedFinally(abc::ProfileId profile, std::ostream* output,
+    NestedCompletion completion = NestedCompletion::kNormal) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
   constexpr unsigned kByteBits = 8;
-  auto body = test::Body({
-      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
-      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
-      op(abc::Opcode::kJMP_IMM8), 12,
-      op(abc::Opcode::kSTA_V8), 0,
-      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
-      op(abc::Opcode::kLDA_V8), 0,
-      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
-      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
-      op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kCALLARG0_IMM8), 0,
-      op(abc::Opcode::kRETURN),
-      op(abc::Opcode::kSTA_V8), 0,
-      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
-      op(abc::Opcode::kLDA_V8), 0,
-      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
-  abc::TryRegion inner; inner.offset = {0}; inner.length = 4; inner.handler_count = 1;
-  abc::TryRegion outer = inner; outer.length = 20; outer.first_handler = 1;
-  abc::CatchHandler first; first.offset = {10}; first.length = 10;
-  abc::CatchHandler second = first; second.offset = {29};
+  std::vector<std::uint8_t> bytes;
+  const auto pc = [&] { return static_cast<std::uint32_t>(bytes.size()); };
+  const auto call = [&](std::uint8_t reg) {
+    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), reg, op(abc::Opcode::kCALLARG0_IMM8), 0});
+  };
+  const auto raise = [&] {
+    bytes.insert(bytes.end(), {static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+  };
+  call(2);
+  if (completion != NestedCompletion::kNormal) bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 1});
+  abc::TryRegion inner; inner.offset = {0}; inner.length = pc(); inner.handler_count = 1;
+  call(3);
+  const auto jump = pc(); bytes.insert(bytes.end(), {op(abc::Opcode::kJMP_IMM8), 0});
+  abc::CatchHandler first; first.offset = {pc()};
+  bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 0});
+  call(3); bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 0}); raise();
+  first.length = pc() - first.offset.value;
+  bytes[jump + 1] = static_cast<std::uint8_t>(pc() - jump);
+  abc::TryRegion outer = inner; outer.length = pc(); outer.first_handler = 1;
+  call(4);
+  if (completion == NestedCompletion::kNormal) call(5);
+  else bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 1});
+  if (completion == NestedCompletion::kThrow) raise();
+  else bytes.push_back(op(abc::Opcode::kRETURN));
+  abc::CatchHandler second; second.offset = {pc()};
+  bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 0});
+  call(4); bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 0}); raise();
+  second.length = pc() - second.offset.value;
+  auto body = test::Body(bytes);
   body.tries = {inner, outer}; body.handlers = {first, second};
-  Emit(body, profile, 1, 4, false, output, {}, 0, true, {}, CompositionStage::kSource, 2);
+  Emit(body, profile, 2, 4, false, output, {}, 0, true, {}, CompositionStage::kSource, 2);
 }
 void FinallyFallthrough(abc::ProfileId profile, std::ostream* output, bool branch = false,
     bool conditional_cleanup = false) {
@@ -707,6 +719,8 @@ int main(int argc, char** argv) {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                               abc::ProfileId::kDynamic1301}) {
       NestedFinally(profile, &std::cout);
+      NestedFinally(profile, &std::cout, NestedCompletion::kReturn);
+      NestedFinally(profile, &std::cout, NestedCompletion::kThrow);
     }
     std::cout << "];\n"; return 0;
   }
@@ -846,6 +860,8 @@ int main(int argc, char** argv) {
     FinallyFallthrough(profile, nullptr, true);
     FinallyFallthrough(profile, nullptr, true, true);
     NestedFinally(profile, nullptr);
+    NestedFinally(profile, nullptr, NestedCompletion::kReturn);
+    NestedFinally(profile, nullptr, NestedCompletion::kThrow);
     FinallyOverride(profile, false, nullptr);
     FinallyOverride(profile, false, nullptr, OverrideValue::kCaught);
     FinallyOverride(profile, false, nullptr, OverrideValue::kUndefined);

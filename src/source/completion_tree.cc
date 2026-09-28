@@ -74,6 +74,13 @@ bool Leaf(const FunctionTree& tree, ExprId id) {
   return std::holds_alternative<SymbolExpr>(expression) ||
          std::holds_alternative<TreeLiteral>(expression);
 }
+bool LeafCompletion(const FunctionTree& tree, StmtId id) {
+  const auto& statement = tree.statements[id.value].statement;
+  if (const auto* returned = std::get_if<ReturnStmt>(&statement))
+    return !returned->value || Leaf(tree, *returned->value);
+  if (const auto* thrown = std::get_if<ThrowStmt>(&statement)) return Leaf(tree, thrown->value);
+  return false;
+}
 bool Tail(const std::vector<StmtId>& children, std::size_t first,
           const std::vector<StmtId>& cleanup, StmtId exit) {
   return first + cleanup.size() + 1 == children.size() &&
@@ -196,7 +203,7 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
     const auto& following = lists[location.block.value];
     const auto cleanup_end = location.index + 1 + normal.size();
     // Normal completion may end this block and enter its enclosing region.
-    // Only a preserved return requires a trailing statement in the same block.
+    // A preserved return/throw requires a trailing statement in the same block.
     if (normal.empty() || exceptional.empty() ||
         cleanup_end > following.size() || (!replaces && !falls_through && cleanup_end == following.size()) ||
         (!falls_through && following.back() != *returning) ||
@@ -224,9 +231,7 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
     // Moving completion before cleanup cannot introduce a GetValue or throw.
     // The plan has separately established payload availability/identity.
     if (!replaces && !falls_through) {
-      const auto& returned = std::get<ReturnStmt>(tree.statements[returning->value].statement);
-      const auto& thrown = std::get<ThrowStmt>(tree.statements[throwing->value].statement);
-      if ((returned.value && !Leaf(tree, *returned.value)) || !Leaf(tree, thrown.value)) continue;
+      if (!LeafCompletion(tree, *returning) || !LeafCompletion(tree, *throwing)) continue;
     }
     if (falls_through && !Leaf(tree, std::get<ThrowStmt>(tree.statements[throwing->value].statement).value)) continue;
     std::vector<StmtId> continuation;
@@ -372,8 +377,7 @@ CompletionTreeView::CompletionTreeView(const FunctionTree& tree,
         std::get_if<TryStmt>(&tree.statements[inner_id.value].statement);
     Require(inner && inner->handler && !inner->finalizer);
     if (return_id) {
-      const auto* returning = std::get_if<ReturnStmt>(&tree.statements[return_id->value].statement);
-      Require(returning && (!returning->value || Leaf(tree, *returning->value)));
+      Require(LeafCompletion(tree, *return_id));
     }
     const auto origin = tree.statements[inner_id.value].origin;
     const auto* source = std::get_if<TryOrigin>(&tree.origins[origin.value]);
@@ -486,7 +490,7 @@ void CompletionTreeView::Finish(TreeFlow& flow, TreeCheckBudget& budget) const {
   for (const auto& corridor : corridors_) {
     const auto& body =
         std::get<BlockStmt>(tree_.statements[corridor.body.value].statement);
-    if (!corridor.plan->replacement && std::holds_alternative<ReturnCompletion>(corridor.plan->normal)) {
+    if (!corridor.plan->replacement && !std::holds_alternative<NormalCompletion>(corridor.plan->normal)) {
       const auto copies = std::span<const StmtId>(tree_.children).subspan(body.first_child + 1, body.child_count - 2);
       Require(SnapshotCopies(copies, *corridor.plan, flow, tree_, cleanup_writes, budget));
     }

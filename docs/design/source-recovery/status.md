@@ -51,6 +51,18 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 新增保留型 pending throw，并贯通双层正常/return/throw 组合：以异常
+  cleanup 末尾是否重抛原捕获值区分“保留 completion”与“cleanup 覆盖”；保留
+  的正常抛出值必须在 cleanup 前可用。树构建沿同一叶子载荷/快照规则处理
+  ReturnStmt 和 ThrowStmt，不把 throw 当 return，也不重复执行 cleanup。
+  双层 return 用例现有实现已通过；throw 用例先复现只恢复一个 finalizer，修复后
+  三 profile 共 9 个双层夹具均生成两个 finalizer。执行生成 JS 检查两层 cleanup
+  修改外部状态后仍保留旧返回/抛出值，及全部 get/inner/outer/after 抛出组合、
+  undefined/null/-0/NaN/Symbol/object 身份和精确调用顺序。
+  关联构建成功、定向 15/15 通过；日志 `/tmp/abcd-nested-pending-final-build.log`
+  与 `/tmp/abcd-nested-pending-final-tests.log`。尚非任意嵌套 abrupt completion
+  支持；break/continue、复杂 cleanup 与 hole/guard 继续保留缺口。
+  未运行全量测试、语料、RSS 或基准。
 - C05 已贯通双层正常落下型 finally：内层 cleanup 在块末完成后进入外层区域，
   不要求同块还有后续语句。原始用例仅恢复外层一个 finalizer；修复后共同
   FunctionTree 中存在两个嵌套 finalizer，既有流/来源检查通过，Printer 未改。

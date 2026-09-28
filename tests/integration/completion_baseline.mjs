@@ -4,25 +4,29 @@ import {execFileSync} from 'node:child_process';
 const nestedSource = execFileSync(process.argv[2], ['--nested-finally'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!nestedSource.includes('INCOMPLETE'));
 const {functions: nested} = await import(`data:text/javascript;base64,${Buffer.from(nestedSource).toString('base64')}`);
-assert.equal(nested.length, 3);
-for (const fn of nested) for (const initial of [undefined, Symbol('pending'), {}]) {
+assert.equal(nested.length, 9);
+for (const [mode, fn] of nested.entries()) for (const initial of [undefined, null, -0, NaN, Symbol('pending'), {}]) {
   for (const getThrows of [false, true]) for (const innerThrows of [false, true]) {
     for (const outerThrows of [false, true]) for (const afterThrows of [false, true]) {
       const flags = [getThrows, innerThrows, outerThrows, afterThrows];
       const errors = [initial, {}, {}, {}], result = {}, log = [];
+      let current = initial;
       let returned, thrown, didThrow = false;
       try {
         returned = fn(...['get', 'inner', 'outer', 'after'].map((name, index) => function () {
           assert.equal(this, undefined); log.push(name);
           if (flags[index]) throw errors[index];
+          if (index === 0) return current;
+          current = result;
           return result;
         }));
       } catch (error) { didThrow = true; thrown = error; }
-      const pending = outerThrows ? 2 : innerThrows ? 1 : getThrows ? 0 : afterThrows ? 3 : -1;
-      assert.deepEqual(log, getThrows || innerThrows || outerThrows ?
+      const pending = outerThrows ? 2 : innerThrows ? 1 : getThrows || mode % 3 === 2 ? 0 : mode % 3 === 0 && afterThrows ? 3 : -1;
+      assert.deepEqual(log, getThrows || innerThrows || outerThrows || mode % 3 !== 0 ?
         ['get', 'inner', 'outer'] : ['get', 'inner', 'outer', 'after']);
       assert.equal(didThrow, pending !== -1);
-      assert.equal(didThrow ? thrown : returned, pending === -1 ? result : errors[pending]);
+      assert.ok(Object.is(didThrow ? thrown : returned,
+        pending === -1 ? mode % 3 === 1 ? initial : result : errors[pending]));
     }
   }
 }
