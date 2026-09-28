@@ -112,7 +112,8 @@ std::uint64_t PhasedBody::Work() const { return storage_->work; }
 
 std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     const FunctionContext& context, const abc::MethodBody& body, analysis::SemanticBudget budget,
-    const PhasedModuleBinding* binding, analysis::CapturedValues capture_mode) {
+    const PhasedModuleBinding* binding, analysis::CapturedValues capture_mode,
+    analysis::ClosureWrites writes) {
   using namespace analysis;
   try {
     // Recovered scopes/snapshots can allocate at different VM locations.
@@ -147,7 +148,7 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     std::optional<ExceptionLocals> locals;
     if (lexical_reads) {
       locals = PhaseResult<ExceptionLocals>(ProveExceptionLocals(flow, environments,
-          quota.Remaining()), Error::kValues);
+          quota.Remaining(), {}, writes), Error::kValues);
       quota.Admit(locals->AllocatedBytes()); quota.Step(locals->plan.work_units);
     }
     std::optional<ExceptionCaptures> captures;

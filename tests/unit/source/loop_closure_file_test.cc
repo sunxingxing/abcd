@@ -13,7 +13,7 @@ namespace {
 using namespace abcd;
 // Real file-backed Code entities; metadata is synthetic, not a parser oracle.
 constexpr std::uint32_t kPool = 64, kRecord = 128, kCaller = 256, kParent = 300,
-                        kGetter = 320, kSetter = 340, kCodeStart = 400;
+                        kGetter = 320, kSetter = 340, kReader = 360, kCodeStart = 400;
 constexpr std::uint8_t kImplicitArguments = 3;
 constexpr unsigned kByteBits = 8, kFunctionKindShift = 8;
 std::uint8_t Op(abc::Opcode opcode) {
@@ -42,9 +42,12 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
           tries};
 }
 enum class ParentShape { kIteration, kCatch, kNormal };
-enum class MissingCell { kNone, kRead, kWrite };
-std::string Emit(abc::ProfileId profile, ParentShape shape, bool exception_child,
+enum class ChildShape { kPlain, kException, kNested };
+enum class MissingCell { kNone, kRead, kWrite, kHoleWriter };
+std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
                  MissingCell missing = MissingCell::kNone) {
+  const bool exception_child = child_shape != ChildShape::kPlain;
+  const bool nested = child_shape == ChildShape::kNested;
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kParent); ++i) {
     bytes[kPool + i] = static_cast<std::uint8_t>(kParent >> (i * kByteBits));
@@ -52,6 +55,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, bool exception_child
         static_cast<std::uint8_t>(kGetter >> (i * kByteBits));
     bytes[kPool + sizeof(kParent) + sizeof(kGetter) + i] =
         static_cast<std::uint8_t>(kSetter >> (i * kByteBits));
+    if (nested) bytes[kPool + 3 * sizeof(kParent) + i] = static_cast<std::uint8_t>(kReader >> (i * kByteBits));
   }
   const auto caller = Append(bytes, 0, 0,
                              {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 0,
@@ -170,7 +174,17 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, bool exception_child
   constexpr unsigned kSlotShift = 4;
   const std::uint8_t read_slot = missing == MissingCell::kRead ? 1U << kSlotShift : 0;
   const std::uint8_t write_slot = missing == MissingCell::kWrite ? 1U << kSlotShift : 0;
-  const auto getter = exception_child ? Append(bytes, 0, 0,
+  // The middle function really reads both the incoming and its allocated cell;
+  // no dummy read is inserted merely to satisfy capture forwarding.
+  const auto getter = nested ? Append(bytes, 1, 0,
+      {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kSTA_V8), 0,
+       Op(abc::Opcode::kNEWLEXENV_IMM8), 1, Op(abc::Opcode::kLDA_V8), 0,
+       Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
+       Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 3, 0, 0,
+       Op(abc::Opcode::kCALLARG0_IMM8), 0,
+       Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kPOPLEXENV),
+       Op(abc::Opcode::kRETURN), Op(abc::Opcode::kRETURN)}, {15, 2, 1, 0, 21, 1}) :
+      exception_child ? Append(bytes, 0, 0,
       {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), read_slot,
        static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
        Op(abc::Opcode::kRETURN)},
@@ -185,6 +199,10 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, bool exception_child
                              {Op(abc::Opcode::kLDA_V8), kImplicitArguments,
                               Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
                               Op(abc::Opcode::kRETURNUNDEFINED)});
+  const auto reader = nested ? std::optional{missing == MissingCell::kHoleWriter ? Append(bytes, 0, 0,
+      {Op(abc::Opcode::kLDHOLE), Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
+       Op(abc::Opcode::kRETURNUNDEFINED)}) : Append(bytes, 0, 0,
+      {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kRETURN)})} : std::nullopt;
   char path[] = "/tmp/abcd-loop-closure-XXXXXX";
   const int fd = mkstemp(path);
   test::Check(fd >= 0 && write(fd, bytes.data(), bytes.size()) ==
@@ -212,8 +230,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, bool exception_child
   }
   header.file_size = bytes.size();
   abc::MetadataIndex index;
-  index.regions.push_back({kCaller, kCodeStart, {}, {3, kPool}, {}, {}});
-  index.methods.resize(4);
+  index.regions.push_back({kCaller, kCodeStart, {}, {nested ? 4U : 3U, kPool}, {}, {}});
+  index.methods.resize(nested ? 5 : 4);
   index.methods[0].offset = {kCaller};
   index.methods[0].code = caller;
   index.methods[1].offset = {kParent};
@@ -222,6 +240,10 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, bool exception_child
   index.methods[2].code = getter;
   index.methods[3].offset = {kSetter};
   index.methods[3].code = setter;
+  if (nested) {
+    index.methods[4].offset = {kReader}; index.methods[4].code = reader;
+    index.methods[4].name = "read"; index.methods[4].name_utf16_length = 4;
+  }
   for (auto& method : index.methods) {
     method.owner_offset = {kRecord};
     method.access_flags =
@@ -243,6 +265,13 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, bool exception_child
       InspectFamilyValues(file, header, index, lookup, {1}, identity, nullptr,
                           positions, FamilyInspectMode::kSourceDraft);
   test::Check(unlink(path) == 0);
+  if (missing == MissingCell::kHoleWriter) {
+    test::Check(!report.value("draft_prepared", false) && !report.contains("draft_source"));
+    test::Check(report.at("failed_method") == kReader);
+    if (!report.contains("input_error")) std::cerr << report << '\n';
+    test::Check(report.at("input_error") == static_cast<unsigned>(analysis::SemanticProofError::kInternalValue));
+    return {};
+  }
   if (missing != MissingCell::kNone) {
     if (!report.contains("family_error")) std::cerr << report << '\n';
     // Conditional Language facts must not invent a parent's missing storage,
@@ -257,7 +286,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, bool exception_child
   test::Check(!report.value("draft_incomplete", true));
   const auto located =
       nlohmann::json::parse("{" + positions.str() + "\"ready\":true}");
-  test::Check(located["draft_positions"].size() == 3);
+  test::Check(located["draft_positions"].size() == (nested ? 4 : 3));
   for (const auto& member : located["draft_positions"])
     test::Check(member["incomplete"] == false);
   return report.at("draft_source").get<std::string>();
@@ -269,14 +298,15 @@ int main(int argc, char** argv) {
   for (const auto profile :
        {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
         abc::ProfileId::kDynamic1301}) {
-    for (const bool exception_child : {false, true}) {
+    for (const auto child_shape : {ChildShape::kPlain, ChildShape::kException, ChildShape::kNested}) {
     for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal}) {
-      const auto source = Emit(profile, shape, exception_child);
+      const auto source = Emit(profile, shape, child_shape);
       if (emit) std::cout << source << ",\n";
     }
     }
   }
   if (emit) std::cout << "];\n";
   for (const auto missing : {MissingCell::kRead, MissingCell::kWrite})
-    Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, true, missing);
+    Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, ChildShape::kException, missing);
+  Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, ChildShape::kNested, MissingCell::kHoleWriter);
 }

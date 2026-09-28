@@ -51,6 +51,17 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C04 嵌套异常函数族：修复 phased 文件输入没有向 `ProveExceptionLocals` 传递
+  已有 Language 闭包写入条件，导致创建孙函数后的本地 cell 读取一律拒绝的问题。
+  文件族仍逐成员检查所有写入，独立 `PhasedBody` 默认 Unknown；不把共享 cell
+  变成快照。新增三层真实 Code fixture：异常中间函数读取外层值、初始化自身 cell、
+  创建并调用孙函数、随后读取本地 cell。先复现值分析拒绝，再通过共同 AST/printer
+  生成完整源码。三 profile、三父函数形态和三子函数形态共 27 个输出通过 Node
+  行为测试；孙函数写入 Hole 的负例仍返回 `SemanticProofError::kInternalValue`。
+  重建后定向 7/7 通过：class_tree_context、loop_closure_file/source、
+  phased_capture_plan、phased_cell、phased_initialization、creation_tree_context。
+  纯环境转发（中间函数没有直接 cell 访问）尚未打通，不能据此宣布任意多层捕获支持。
+
 - C04 异常闭包子函数已接入共同文件族：`CaptureInput`/`CaptureChild` 借用普通或
   phased 的真实输入，不伪造 normal SSA；保留异常读取的条件前提及原始读写 occurrence，
   经共同 cell rebasing、捕获别名、异常 TreeFlow 和 family writes 检查进入同一 Printer。

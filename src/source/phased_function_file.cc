@@ -99,8 +99,12 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     auto body = Take<abc::MethodBody>(abc::DecodeMethodBody(file, header.profile, *method.code, {left.bytes}));
     arena(body.instructions); arena(body.tries); arena(body.handlers);
     Require(mode == InputCaptureMode::kClosed || mode == InputCaptureMode::kConditional, Error::kIdentity);
+    // File families retain the same Language-write premise in Locals below;
+    // VerifyFamilyWrites must discharge every descendant store. The lower-level
+    // standalone builder keeps Unknown, and no cell read becomes a snapshot.
     auto phases = Take<PhasedBody>(PhasedBody::Build(context, body, left, modules,
-        mode == InputCaptureMode::kConditional ? analysis::CapturedValues::kLanguage : analysis::CapturedValues::kReject));
+        mode == InputCaptureMode::kConditional ? analysis::CapturedValues::kLanguage : analysis::CapturedValues::kReject,
+        analysis::ClosureWrites::kLanguage));
     admit(phases.AllocatedBytes()); step(phases.Work());
     const auto input = phases.TreeInput(body).input;
     // Retain the conditional scope proof once per method. This does NOT
