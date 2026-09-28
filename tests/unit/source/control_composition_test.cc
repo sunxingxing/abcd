@@ -503,23 +503,34 @@ void FinallyChain(abc::ProfileId profile, std::ostream* output, std::uint32_t co
 }
 enum class ProtectedBranch { kSingle, kNested, kEarlyReturn };
 enum class OverrideValue { kCleanup, kCaught, kUndefined, kArgument };
-void FinallyFallthrough(abc::ProfileId profile, std::ostream* output) {
+void FinallyFallthrough(abc::ProfileId profile, std::ostream* output, bool branch = false,
+    bool conditional_cleanup = false) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
   constexpr unsigned kByteBits = 8;
-  auto body = test::Body({
-      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
-      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
-      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
-      op(abc::Opcode::kRETURN),
+  std::vector<std::uint8_t> bytes = {
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0};
+  if (conditional_cleanup) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 4,
+      op(abc::Opcode::kJEQZ_IMM8), 11});
+  bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0});
+  if (branch && !conditional_cleanup) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 4,
+      op(abc::Opcode::kJEQZ_IMM8), 7});
+  bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kRETURN)});
+  if (branch) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 5,
+      op(abc::Opcode::kCALLARG0_IMM8), 0, op(abc::Opcode::kRETURN)});
+  const auto catch_pc = static_cast<std::uint32_t>(bytes.size());
+  bytes.insert(bytes.end(), {
       op(abc::Opcode::kSTA_V8), 0,
       op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
       op(abc::Opcode::kLDA_V8), 0,
       static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+  auto body = test::Body(bytes);
   abc::TryRegion region; region.offset = {0}; region.length = 4; region.handler_count = 1;
-  abc::CatchHandler handler; handler.offset = {13}; handler.length = 10;
+  abc::CatchHandler handler; handler.offset = {catch_pc}; handler.length = 10;
   body.tries = {region}; body.handlers = {handler};
-  Emit(body, profile, 1, 3, false, output, {}, 0, true);
+  Emit(body, profile, 1, branch ? 5 : 3, false, output, {}, 0, !conditional_cleanup,
+      conditional_cleanup ? std::optional{ExpectedCompletion{0, 0}} : std::optional<ExpectedCompletion>{});
 }
 void FinallyOverride(abc::ProfileId profile, bool raising, std::ostream* output,
     OverrideValue value = OverrideValue::kCleanup) {
@@ -668,7 +679,11 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--finally-fallthrough") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
-                              abc::ProfileId::kDynamic1301}) FinallyFallthrough(profile, &std::cout);
+                              abc::ProfileId::kDynamic1301}) {
+      FinallyFallthrough(profile, &std::cout);
+      FinallyFallthrough(profile, &std::cout, true);
+      FinallyFallthrough(profile, &std::cout, true, true);
+    }
     std::cout << "];\n"; return 0;
   }
   if (argc == 2 && std::string_view(argv[1]) == "--finally-override") {
@@ -794,6 +809,8 @@ int main(int argc, char** argv) {
     FinallyCatch(profile, nullptr);
     FinallyCatch(profile, nullptr, true);
     FinallyFallthrough(profile, nullptr);
+    FinallyFallthrough(profile, nullptr, true);
+    FinallyFallthrough(profile, nullptr, true, true);
     FinallyOverride(profile, false, nullptr);
     FinallyOverride(profile, false, nullptr, OverrideValue::kCaught);
     FinallyOverride(profile, false, nullptr, OverrideValue::kUndefined);

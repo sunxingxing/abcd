@@ -51,6 +51,16 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 正常 completion 已支持 cleanup 后接 if/return：正常路径在分支边界
+  保留直线前缀，只要该前缀完整包含与异常路径配对的 cleanup，就由共同控制树
+  继续消费后继，不再要求全部后继是直线。无新增分支算法或 printer 分支。
+  三 profile 的落下组扩为 9 个夹具；正例先复现 finalizer=0，恢复后执行两侧
+  分支与全部抛出组合。反例把分支放到 cleanup 之前，确保跳过 cleanup 的路径
+  不误合并成无条件 finally，展开输出的行为也实际执行验证。
+  关联目标构建成功、定向 15/15 通过；日志
+  `/tmp/abcd-finalizer-successor-final-build.log` 与
+  `/tmp/abcd-finalizer-successor-final-tests.log`。嵌套 finally、跨区域 completion
+  及 hole/guard 仍未闭合；未运行全量测试、语料或 RSS。
 - C05 新增正常落下的 finally：异常路径 cleanup + 原值 rethrow 与正常路径
   cleanup 前缀配对；正常路径后续操作保留在 finally 外，不伪造 pending return。
   FunctionTree 及既有流检查消费同一 NormalCompletion，Printer 无专项逻辑。
@@ -59,8 +69,8 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   相关目标构建成功，定向 15/15 通过；日志
   `/tmp/abcd-finalizer-fallthrough-final-build.log` 与
   `/tmp/abcd-finalizer-fallthrough-final-tests.log`。
-  当前仅覆盖既有直线 corridor 的配对前缀与后续语句；分支后继、嵌套 finally
-  和跨区域 break/continue 尚未闭合。未运行全量测试、语料、RSS 或基准。
+  后续分支支持见上条；嵌套 finally 和跨区域 break/continue 尚未闭合。
+  未运行全量测试、语料、RSS 或基准。
 - C05 参数载荷边界补充实测：现有共同恢复路径已支持 finally 直接 return/throw
   函数参数，无需新增生产分支。三个 profile 的覆盖组扩为 24 个夹具，生成 JS
   执行覆盖 undefined/null/-0/NaN/bigint/Symbol/object，检查保护调用正常/抛出时

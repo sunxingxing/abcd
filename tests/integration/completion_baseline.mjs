@@ -4,22 +4,29 @@ import {execFileSync} from 'node:child_process';
 const fallthroughSource = execFileSync(process.argv[2], ['--finally-fallthrough'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!fallthroughSource.includes('INCOMPLETE'));
 const {functions: fallthroughs} = await import(`data:text/javascript;base64,${Buffer.from(fallthroughSource).toString('base64')}`);
-assert.equal(fallthroughs.length, 3);
-for (const fn of fallthroughs) for (const getThrows of [false, true]) {
+assert.equal(fallthroughs.length, 9);
+for (const [index, fn] of fallthroughs.entries()) for (const choice of [0, 1]) for (const getThrows of [false, true]) {
   for (const cleanupThrows of [false, true]) for (const afterThrows of [false, true]) {
     const log = [], errors = [{}, {}, {}], value = {};
+    const alternative = index % 3 !== 0 && !choice;
+    const bypassCleanup = index % 3 === 2 && !choice && !getThrows;
     let returned, thrown, didThrow = false;
     try {
       returned = fn(...['get', 'cleanup', 'after'].map((name, index) => function () {
         assert.equal(this, undefined); log.push(name);
         if ([getThrows, cleanupThrows, afterThrows][index]) throw errors[index];
         return value;
-      }));
+      }), choice, function () {
+        assert.equal(this, undefined); log.push('alternative');
+        if (afterThrows) throw errors[2];
+        return value;
+      });
     } catch (error) { didThrow = true; thrown = error; }
-    assert.deepEqual(log, getThrows || cleanupThrows ? ['get', 'cleanup'] : ['get', 'cleanup', 'after']);
-    assert.equal(didThrow, getThrows || cleanupThrows || afterThrows);
+    assert.deepEqual(log, bypassCleanup ? ['get', 'alternative'] :
+      getThrows || cleanupThrows ? ['get', 'cleanup'] : ['get', 'cleanup', alternative ? 'alternative' : 'after']);
+    assert.equal(didThrow, getThrows || (!bypassCleanup && cleanupThrows) || afterThrows);
     assert.equal(didThrow ? thrown : returned,
-      cleanupThrows ? errors[1] : getThrows ? errors[0] : afterThrows ? errors[2] : value);
+      !bypassCleanup && cleanupThrows ? errors[1] : getThrows ? errors[0] : afterThrows ? errors[2] : value);
   }
 }
 

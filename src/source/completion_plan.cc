@@ -89,10 +89,15 @@ class CompletionBuilder {
       const auto next = control_.skeleton.nodes[region.wrapper.value].next;
       if (!next || !regions_[r].body) continue;
       Corridor normal, handler;
-      if (!Path(*next, normal, false) || !Path(region.handler, handler, true)) continue;
+      if (!Path(region.handler, handler, true)) continue;
+      const bool complete_normal = Path(*next, normal, false);
       // A normal completion continues after the paired cleanup prefix; those
       // following operations are not part of finally and must stay outside it.
-      if (handler.operations.size() >= 2 && normal.operations.size() > handler.operations.size()) {
+      // Path retains its straight prefix at a branch/region boundary. Once the
+      // entire cleanup fits there, the existing control tree owns the suffix.
+      if (handler.operations.size() >= 2 &&
+          ((!complete_normal && normal.operations.size() >= handler.operations.size() - 1) ||
+           normal.operations.size() > handler.operations.size())) {
         const auto thrown = handler.operations.back();
         const auto binding = exceptions_.regions[r].binding;
         if (!binding || !std::holds_alternative<ValueThrow>(graph_.ops[thrown.value].operation) ||
@@ -111,6 +116,7 @@ class CompletionBuilder {
             last, thrown, std::move(normal.nodes), std::move(handler.nodes), std::move(pairs), {}});
         continue;
       }
+      if (!complete_normal) continue;
       if (normal.operations.empty() || handler.operations.size() != normal.operations.size()) continue;
       const auto returned = normal.operations.back(), thrown = handler.operations.back();
       const auto& normal_exit = graph_.ops[returned.value].operation;
