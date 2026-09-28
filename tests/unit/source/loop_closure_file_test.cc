@@ -42,12 +42,12 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
           tries};
 }
 enum class ParentShape { kIteration, kCatch, kNormal };
-enum class ChildShape { kPlain, kException, kNested };
+enum class ChildShape { kPlain, kException, kNested, kForwarded };
 enum class MissingCell { kNone, kRead, kWrite, kHoleWriter };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
                  MissingCell missing = MissingCell::kNone) {
   const bool exception_child = child_shape != ChildShape::kPlain;
-  const bool nested = child_shape == ChildShape::kNested;
+  const bool nested = child_shape == ChildShape::kNested || child_shape == ChildShape::kForwarded;
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kParent); ++i) {
     bytes[kPool + i] = static_cast<std::uint8_t>(kParent >> (i * kByteBits));
@@ -176,7 +176,10 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const std::uint8_t write_slot = missing == MissingCell::kWrite ? 1U << kSlotShift : 0;
   // The middle function really reads both the incoming and its allocated cell;
   // no dummy read is inserted merely to satisfy capture forwarding.
-  const auto getter = nested ? Append(bytes, 1, 0,
+  const auto getter = child_shape == ChildShape::kForwarded ? Append(bytes, 0, 0,
+      {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 3, 0, 0,
+       Op(abc::Opcode::kCALLARG0_IMM8), 0, Op(abc::Opcode::kRETURN),
+       Op(abc::Opcode::kRETURN)}, {5, 2, 1, 0, 8, 1}) : nested ? Append(bytes, 1, 0,
       {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kSTA_V8), 0,
        Op(abc::Opcode::kNEWLEXENV_IMM8), 1, Op(abc::Opcode::kLDA_V8), 0,
        Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
@@ -293,6 +296,11 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--forwarding") {
+    std::cout << "export default " << Emit(abc::ProfileId::kDynamic1206,
+        ParentShape::kIteration, ChildShape::kForwarded) << ";\n";
+    return 0;
+  }
   const bool emit = argc == 2 && std::string_view(argv[1]) == "--emit";
   if (emit) std::cout << "export const functions = [\n";
   for (const auto profile :

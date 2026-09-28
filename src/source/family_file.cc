@@ -103,29 +103,47 @@ class FamilyReader {
       auto cells = std::get<CaptureCells>(std::move(captured));
       Admit(cells.allocated_bytes, 1); Step(cells.work);
       Require(result_.members.size() < std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
-      const FunctionOwnerId child_owner{static_cast<std::uint32_t>(result_.members.size())};
-      auto evaluated = parent.Phase() ? BindPhasedCaptureEvaluation(index_, lookup_, parent.Phase()->Phases(), parent.Body(),
-          parent.Phase()->Locals(), *phase_creation, child_work, context, cells, {cursor.member.value}, child_owner, Remaining()) :
-          BindCaptureEvaluation(index_, {parent.Normal().input, parent.Normal().values}, child_work, site, *binding,
-              cells, {cursor.member.value}, child_owner, Remaining());
-      if (const auto* error = std::get_if<CaptureEvaluationFailure>(&evaluated)) Fail(*error);
-      auto evaluation = std::get<CapturedFunctionBinding>(std::move(evaluated));
-      Admit(evaluation.allocated_bytes, 1); Step(evaluation.work);
-      auto& children = result_.members[cursor.member.value].children;
-      Require(children.empty() || children.back().creation < evaluation.binding.creation, Error::kCreation);
-      children.push_back(std::move(evaluation.binding));
       // No parent reference may survive Add: member-vector growth moves its
       // FileFunction envelope. All relationship identity is stored as IDs.
       FamilyCreation incoming{cursor.member, site, *binding, std::move(cells)};
       if (phase_creation) incoming.phase_operation = phase_creation->operation;
       Add(std::move(child), std::move(context), std::move(incoming), target);
     }
+    BindEvaluations();
     if (file_.CheckUnchanged()) Fail(FunctionFileFailure{FunctionFileError::kChanged});
     result_.allocated_bytes = budget_.bytes - bytes_;
     result_.work = budget_.work - work_;
     return std::move(result_);
   }
  private:
+  void BindEvaluations() {
+    // Discovery must finish before committing evaluation bindings: a child's
+    // own direct accesses are not its descendants' complete capture demand.
+    // Each occurrence is bound once here; no repeated subtree discovery.
+    for (std::size_t i = 1; i < result_.members.size(); ++i) {
+      Step();
+      auto& child = result_.members[i];
+      Require(child.incoming && child.context, Error::kOccurrence);
+      const auto& edge = *child.incoming;
+      Require(edge.parent.value < i, Error::kOccurrence);
+      auto& parent = result_.members[edge.parent.value];
+      method_ = child.function.Method(); parent_ = parent.function.Method(); pc_ = edge.creation.offset;
+      const auto work = child.function.Capture();
+      const auto* phase = parent.function.Phase();
+      Require((phase != nullptr) == edge.phase_operation.has_value(), Error::kCreation);
+      const FunctionOwnerId owner{static_cast<std::uint32_t>(i)};
+      auto evaluated = phase ? BindPhasedCaptureEvaluation(index_, lookup_, phase->Phases(), phase->Body(),
+          phase->Locals(), {*edge.phase_operation, edge.site, edge.creation}, work, *child.context,
+          edge.cells, {edge.parent.value}, owner, Remaining()) :
+          BindCaptureEvaluation(index_, {parent.function.Normal().input, parent.function.Normal().values},
+              work, edge.site, edge.creation, edge.cells, {edge.parent.value}, owner, Remaining());
+      if (const auto* error = std::get_if<CaptureEvaluationFailure>(&evaluated)) Fail(*error);
+      auto evaluation = std::get<CapturedFunctionBinding>(std::move(evaluated));
+      Admit(evaluation.allocated_bytes, 1); Step(evaluation.work);
+      Require(parent.children.empty() || parent.children.back().creation < evaluation.binding.creation, Error::kCreation);
+      parent.children.push_back(std::move(evaluation.binding));
+    }
+  }
   template <class T> [[noreturn]] void Fail(T cause) const {
     throw FamilyFileFailure{std::move(cause), method_, parent_, pc_};
   }

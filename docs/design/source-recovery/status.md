@@ -51,6 +51,14 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C04 纯环境转发进行中：新增 `loop_closure_file_test --forwarding` 真实 Code
+  复现（要求完整源码，当前仍失败，不计入通过覆盖）；孙函数读取祖先 cell，而中间
+  phased 函数没有直接词法读写，当前返回 `CaptureEvaluationError::kOuterCapture`。
+  文件族发现与求值绑定已拆为两个阶段：收集全部成员后，每个创建 occurrence
+  绑定一次，保留原有身份/cell/作用域检查，没有伪造读取。相关既有 4/4 测试通过
+  （partial_file、loop_closure_file/source、creation_tree_context）。这一阶段调整
+  尚未带来纯转发源码支持；后代需求传播和无直接访问的转发 cell 仍需接入。
+
 - C04 嵌套异常函数族：修复 phased 文件输入没有向 `ProveExceptionLocals` 传递
   已有 Language 闭包写入条件，导致创建孙函数后的本地 cell 读取一律拒绝的问题。
   文件族仍逐成员检查所有写入，独立 `PhasedBody` 默认 Unknown；不把共享 cell
