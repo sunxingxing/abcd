@@ -17,6 +17,7 @@ using TryExitSource = std::variant<analysis::EdgeId, analysis::TryId>;
 struct TryExitUnit {
   analysis::TryId region;
   TryExitSource source;
+  analysis::WorkBlockId target;
   bool operator==(const TryExitUnit&) const = default;
 };
 using ExceptionControlUnit = std::variant<PhaseControlUnit, TryControlUnit, TryExitUnit>;
@@ -51,8 +52,8 @@ enum class ExceptionControlError : std::uint8_t {
   kWorkLimit, kResourceLimit
 };
 // Reuses common postdominator/region and natural-loop discovery. A single normal exit
-// target per try is required after effect-free exit-corridor ownership is
-// projected; returns/throws need no synthetic normal exit. Jump corridors keep
+// target per try is required after enclosing-loop transfers and effect-free
+// exit corridors are projected; returns/throws need no synthetic normal exit. Jump corridors keep
 // original blocks, edge copies and PC anchors; semantic catch scopes never move.
 // Reducible projected loops use the same wrappers/transfers as normal control;
 // irreducible regions and more general completion transfers remain typed refusals.

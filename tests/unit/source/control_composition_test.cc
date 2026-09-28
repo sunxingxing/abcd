@@ -86,6 +86,16 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
   test::Check(std::holds_alternative<ExceptionControl>(built_control));
   const auto& control = std::get<ExceptionControl>(built_control);
   test::Check(control.skeleton.loops.size() == expected_loops);
+  if (expected_loops > 1) {
+    auto changed = control;
+    changed.skeleton.loops.front().parent.reset();
+    test::Check(std::holds_alternative<ExceptionControlError>(
+        VerifyExceptionControl(body, graph, input, regions, changed)));
+    changed = control;
+    changed.skeleton.loops.clear();
+    test::Check(std::holds_alternative<ExceptionControlError>(
+        VerifyExceptionControl(body, graph, input, regions, changed)));
+  }
   const auto planned = BuildPhasedEvaluationPlan(graph);
   if (const auto* error = std::get_if<EvaluationError>(&planned))
     std::cerr << "composition evaluation error " << static_cast<unsigned>(*error) << '\n';
@@ -230,13 +240,80 @@ void CatchOuterTransfer(abc::ProfileId profile, bool stop, std::ostream* output)
   body.tries = {region}; body.handlers = {handler};
   Emit(body, profile, 0, 5, false, output, {}, 2);
 }
+void CatchOuterCarried(abc::ProfileId profile, bool stop, std::ostream* output) {
+  // x=initial; outer/inner loops as above, but run/body/after update x.
+  // A throwing run preserves the value from the preceding successful call,
+  // including a value produced by an earlier inner iteration.
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  auto body = test::Body({
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 35,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 20,
+      op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kCALLARG1_IMM8_V8), 0, 0,
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 5, op(abc::Opcode::kCALLARG1_IMM8_V8), 0, 0,
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-20),
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(stop ? 11 : -28),
+      op(abc::Opcode::kLDA_V8), 6, op(abc::Opcode::kCALLARG1_IMM8_V8), 0, 0,
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-37),
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kRETURN)});
+  abc::TryRegion region; region.offset = {16}; region.length = 7; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {32}; handler.length = 2;
+  body.tries = {region}; body.handlers = {handler};
+  Emit(body, profile, 1, 6, false, output, {}, 2);
+}
+void CatchOuterPorts(abc::ProfileId profile, std::ostream* output) {
+  // One try has three destinations: normal continuation, continue outer,
+  // break outer. Summary fanout must never appear as an invented source if.
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  auto body = test::Body({
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 32,
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 20,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-14),
+      op(abc::Opcode::kLDA_V8), 5,
+      op(abc::Opcode::kJEQZ_IMM8), 4,
+      op(abc::Opcode::kJMP_IMM8), 10,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-28),
+      op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-34),
+      op(abc::Opcode::kRETURNUNDEFINED)});
+  abc::TryRegion region; region.offset = {12}; region.length = 4; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {22}; handler.length = 8;
+  body.tries = {region}; body.handlers = {handler};
+  Emit(body, profile, 0, 6, false, output, {}, 2);
+}
 }
 int main(int argc, char** argv) {
-  // Explicit next-stage RED; never count a rejection as source support.
+  if (argc == 2 && std::string_view(argv[1]) == "--outer-ports") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) CatchOuterPorts(profile, &std::cout);
+    std::cout << "];\n"; return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--outer-carried") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) {
+      CatchOuterCarried(profile, false, &std::cout);
+      CatchOuterCarried(profile, true, &std::cout);
+    }
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && (std::string_view(argv[1]) == "--outer-transfer" || std::string_view(argv[1]) == "--outer-break")) {
     std::cout << "export const functions = [\n";
-    if (std::string_view(argv[1]) == "--outer-transfer") CatchOuterTransfer(abc::ProfileId::kDynamic1206, false, &std::cout);
-    CatchOuterTransfer(abc::ProfileId::kDynamic1206, true, &std::cout);
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) {
+      if (std::string_view(argv[1]) == "--outer-transfer") CatchOuterTransfer(profile, false, &std::cout);
+      CatchOuterTransfer(profile, true, &std::cout);
+    }
     std::cout << "];\n";
     return 0;
   }
@@ -248,6 +325,11 @@ int main(int argc, char** argv) {
     RetryCarried(profile, emit ? &std::cout : nullptr);
     IterationCell(profile, emit ? &std::cout : nullptr);
     CatchCell(profile, emit ? &std::cout : nullptr);
+    CatchOuterTransfer(profile, false, nullptr);
+    CatchOuterTransfer(profile, true, nullptr);
+    CatchOuterCarried(profile, false, nullptr);
+    CatchOuterCarried(profile, true, nullptr);
+    CatchOuterPorts(profile, nullptr);
   }
   if (emit) std::cout << "];\n";
 }

@@ -4,6 +4,16 @@
 #include "control_plan.h"
 
 namespace abcd::source {
+struct ScopedControlEntry {
+  ControlNodeId node;
+  std::optional<LoopId> scope;
+};
+// Lexical composition of already discovered natural loops. A contained region
+// can enter inside an enclosing loop without being a new dominance root there.
+struct ControlLoopLayout {
+  std::vector<NaturalLoop> loops;
+  std::vector<std::optional<LoopId>> owners;
+};
 // Shared invocation budget, including failed acyclic attempts. A skeleton is a
 // candidate; only final verification against the original CFG certifies it.
 class ControlQuota {
@@ -37,7 +47,11 @@ void VerifyControlSkeleton(ControlGraphView graph, std::span<const ControlId> en
 [[nodiscard]] ControlPlan BuildLoopControl(const analysis::ValueProgram& graph, ControlQuota& quota);
 [[nodiscard]] ControlPlan BuildLoopControl(ControlGraphView graph,
     std::span<const ControlNodeId> entries, ControlQuota& quota);
+[[nodiscard]] ControlPlan BuildLoopControl(ControlGraphView graph,
+    std::span<const ScopedControlEntry> entries, ControlLoopLayout loops, ControlQuota& quota);
 void VerifyControlRegions(ControlGraphView graph, std::span<const ControlNodeId> entries,
+    const ControlPlan& plan, ControlQuota& quota);
+void VerifyControlRegions(ControlGraphView graph, std::span<const ScopedControlEntry> entries,
     const ControlPlan& plan, ControlQuota& quota);
 }  // namespace abcd::source
 #endif

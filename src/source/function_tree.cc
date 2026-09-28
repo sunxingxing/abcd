@@ -710,7 +710,9 @@ class TreeBuilder {
       EmitTry(region->region, draft);
       return;
     }
-    if (std::holds_alternative<TryExitUnit>(unit)) return; // Normal end of this try arm, not JS break.
+    // A port emits no operation/copy. Its optional next node is the common
+    // loop transfer; the original phase edge already placed any phi copies.
+    if (std::holds_alternative<TryExitUnit>(unit)) return;
     const auto block = std::get<PhaseControlUnit>(unit).block;
     const auto& phase = graph_.phases[block.value];
     const auto& node = control_.nodes[id.value];

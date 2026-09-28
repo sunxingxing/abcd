@@ -32,8 +32,18 @@ void Control(const abc::MethodBody& body, const ValueProgram& graph,
         regions.regions[r].binding->block);
   }
   std::size_t normal = 0;
-  for (const auto& arc : control.arcs) if (arc.edge) {
-    ++normal;
+  std::vector<bool> seen(graph.edges.size());
+  for (std::size_t a = 0; a < control.arcs.size(); ++a) if (const auto& arc = control.arcs[a]; arc.edge) {
+    test::Check(arc.edge->value < seen.size());
+    if (!seen[arc.edge->value]) { ++normal; seen[arc.edge->value] = true; }
+    else {
+      // The arm's real edge places its copies once; a following exit-port arc
+      // carries the same origin solely for the enclosing-loop transfer.
+      const auto source = control.skeleton.edges[a].owner;
+      test::Check(source.value < control.units.size());
+      const auto* exit = std::get_if<TryExitUnit>(&control.units[source.value]);
+      test::Check(exit && exit->source == TryExitSource{*arc.edge});
+    }
     test::Check(!std::holds_alternative<RaiseTransfer>(regions.transfers[arc.edge->value]));
   }
   std::size_t expected = 0;

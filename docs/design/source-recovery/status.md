@@ -51,12 +51,26 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
-- 下一项 C04 异常多出口已有真实解码 RED：`control_composition_test --outer-transfer`
-  将 try 正常出口接内层 body，catch 接外层 header；`--outer-break` 将 catch 接外层
-  return。两者要求完整源码，当前在异常控制规划返回 `kMultipleExits`，未注册为
-  成功覆盖，不以拒绝代替实现。既有 `control_composition_test` / source 的定向
-  复跑 **2/2 通过**。接下来改共同区域出口表示及消费，不能只放宽单出口检查：
-  原 body/handler 分别作为投影入口，必须保留其实际包围循环和真实边上的 phi copies。
+- C04 异常区域的外层循环跳转已完成本轮纵向贯通：此前提交 `3641ae0` 的
+  `--outer-transfer` / `--outer-break` 在 `kMultipleExits` 失败，现在真实解码后经
+  共同循环规划、FunctionTree、Printer 输出 catch 内的 `continue $loop0` /
+  `break $loop0`。try 摘要保留全部出口用于既有自然循环发现；独立 body/handler
+  入口继承包围循环，实际出口承担跳转，摘要分叉不生成虚假的源码 if。
+  原始 phase 边放置 phi copies，随后出口弧仅传递跳转和来源，不重复求值/复制。
+  普通与异常仍共用循环结构化算法、树构建、TreeFlow、cell 生命周期和打印器。
+  新增 `exception_outer_source_test` 执行完整生成 JS：三个 dynamic profiles，
+  普通/携值两种外层跳转，以及同一 try 的正常/continue/break 三出口；比较调用
+  顺序、受保护调用失败、未受保护调用异常传播和跨迭代值身份。无 INCOMPLETE
+  输出参加等价对照。循环父归属缺失、循环表清空的变异继续被检查拒绝。
+  本轮构建上述相关 targets 成功，定向 CTest **14/14 通过**：
+  `exception_plan_test`、`exception_copies_test`、`exception_tree_source_test`、
+  `control_composition_test` / source、`exception_outer_source_test`、
+  `loop_exit_test` / source、`tree_structure_test`、`function_tree_test`、
+  `control_plan_test`、`partial_file_test`、`loop_closure_file_test` / source。
+  日志 `/tmp/abcd-exception-final-build.log`、`/tmp/abcd-exception-final-tests.log`。
+  **边界**：仍只接受唯一普通 continuation，外层跳转之外的任意多出口、finally、
+  协程尚未由这项交付完成；多层 try/内层循环交叉退出及文件级新组合仍需继续。
+  全量测试、语料、RSS/基准未运行，不宣称 C04 或整体目标完成。
 
 - C04 普通嵌套循环的外层 `break/continue` 已贯通真实 opcode → 共同控制规划 →
   FunctionTree → Printer。先分别复现 `kLoopExits`：内层普通出口与祖先 header/

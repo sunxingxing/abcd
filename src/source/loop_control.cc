@@ -12,8 +12,8 @@ struct LoopVisit { LoopId loop; bool leave; };
 
 class LoopControlBuilder {
  public:
-  LoopControlBuilder(ControlGraphView graph, std::span<const ControlNodeId> roots,
-      LoopForest forest, ControlQuota& quota)
+  LoopControlBuilder(ControlGraphView graph, std::span<const ScopedControlEntry> roots,
+      ControlLoopLayout forest, ControlQuota& quota)
       : graph_(graph), roots_(roots), forest_(std::move(forest)), quota_(quota) {}
   ControlPlan Build() {
     IndexLoops();
@@ -199,18 +199,19 @@ class LoopControlBuilder {
     }
     for (std::size_t i = 0; i < roots_.size(); ++i) {
       quota_.Work();
-      const auto node = roots_[i];
-      if (forest_.owners[node.value]) {
+      const auto node = roots_[i].node;
+      const auto scope = roots_[i].scope;
+      if (forest_.owners[node.value] != scope) {
         const auto root = headers_[node.value];
-        Require(root && !forest_.loops[root->value].parent, Error::kCrossEntry);
+        Require(root && forest_.loops[root->value].parent == scope, Error::kCrossEntry);
         entries_[i] = Wrapper(*root);
       } else entries_[i] = {node.value};
     }
     vertices_.resize(unit_count_); synthetic_.resize(unit_count_); links_.resize(edge_count);
   }
   ControlGraphView graph_;
-  std::span<const ControlNodeId> roots_;
-  LoopForest forest_;
+  std::span<const ScopedControlEntry> roots_;
+  ControlLoopLayout forest_;
   ControlQuota& quota_;
   std::vector<ControlVertex> vertices_;
   std::vector<ControlLink> links_;
@@ -246,6 +247,15 @@ ControlPlan BuildLoopControl(ControlGraphView graph,
   auto forest = std::get<LoopForest>(std::move(found));
   quota.Work(forest.work); quota.Admit(forest.allocated_bytes, 1);
   quota.Admit(1, sizeof(LoopControlBuilder));
-  return LoopControlBuilder(graph, entries, std::move(forest), quota).Build();
+  std::vector<ScopedControlEntry> scoped;
+  quota.Size(scoped, entries.size());
+  for (std::size_t i = 0; i < entries.size(); ++i) scoped[i] = {entries[i], {}};
+  return LoopControlBuilder(graph, scoped, {std::move(forest.loops), std::move(forest.owners)}, quota).Build();
+}
+ControlPlan BuildLoopControl(ControlGraphView graph, std::span<const ScopedControlEntry> entries,
+    ControlLoopLayout loops, ControlQuota& quota) {
+  Require(loops.owners.size() == graph.NodeCount(), Error::kInvalidGraph);
+  quota.Admit(1, sizeof(LoopControlBuilder));
+  return LoopControlBuilder(graph, entries, std::move(loops), quota).Build();
 }
 }  // namespace abcd::source

@@ -20,19 +20,21 @@ using Targets = std::array<std::optional<ControlId>, analysis::kMaxNormalSuccess
 
 class ControlCheck {
  public:
-  ControlCheck(ControlGraphView graph, std::span<const ControlNodeId> entries,
+  ControlCheck(ControlGraphView graph, std::span<const ScopedControlEntry> entries,
       const ControlPlan& plan, ControlQuota& quota)
       : graph_(graph), entries_(entries), plan_(plan), quota_(quota) {}
   void Run() {
     Index();
     Require(!entries_.empty(), Error::kInvalidGraph);
     for (std::size_t i = 0; i < entries_.size(); ++i) {
-      const auto entry = entries_[i];
+      const auto entry = entries_[i].node;
       Require(entry.value < graph_.NodeCount(), Error::kInvalidGraph);
       const auto loop = headers_[entry.value];
-      const auto root = loop ? plan_.loops[loop->value].wrapper : ControlId{entry.value};
+      const auto scope = entries_[i].scope;
+      Require(!scope || scope->value < plan_.loops.size(), Error::kInvalidGraph);
+      const auto root = loop && loop != scope ? plan_.loops[loop->value].wrapper : ControlId{entry.value};
       Require(i != 0 || plan_.entry == root, Error::kInvalidGraph);
-      Push({root, {}, {}});
+      Push({root, {}, scope});
     }
     std::size_t covered = 0;
     while (pending_ != 0) {
@@ -238,7 +240,7 @@ class ControlCheck {
     }
   }
   ControlGraphView graph_;
-  std::span<const ControlNodeId> entries_;
+  std::span<const ScopedControlEntry> entries_;
   const ControlPlan& plan_;
   ControlQuota& quota_;
   std::vector<std::uint8_t> visited_, entered_, continued_, exited_;
@@ -251,6 +253,13 @@ class ControlCheck {
 }  // namespace
 
 void VerifyControlRegions(ControlGraphView graph, std::span<const ControlNodeId> entries,
+    const ControlPlan& plan, ControlQuota& quota) {
+  std::vector<ScopedControlEntry> scoped;
+  quota.Size(scoped, entries.size());
+  for (std::size_t i = 0; i < entries.size(); ++i) scoped[i] = {entries[i], {}};
+  VerifyControlRegions(graph, scoped, plan, quota);
+}
+void VerifyControlRegions(ControlGraphView graph, std::span<const ScopedControlEntry> entries,
     const ControlPlan& plan, ControlQuota& quota) {
   quota.Admit(1, sizeof(ControlCheck));
   ControlCheck(graph, entries, plan, quota).Run();

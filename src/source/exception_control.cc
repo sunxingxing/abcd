@@ -41,12 +41,6 @@ template <typename T> void Compare(const std::vector<T>& expected, const std::ve
     quota.Work(); Require(expected[i] == actual[i], Error::kStructure);
   }
 }
-std::vector<ControlNodeId> Entries(const ExceptionTopology& topology, ControlQuota& quota) {
-  std::vector<ControlNodeId> entries;
-  quota.Size(entries, topology.entries.size());
-  for (std::size_t i = 0; i < entries.size(); ++i) entries[i] = {topology.entries[i].value};
-  return entries;
-}
 void LoopEntries(ExceptionControl& mapping, const ControlPlan& plan, ControlQuota& quota) {
   // O(V+R+L): a try arm beginning at a loop header enters its wrapper once;
   // the loop body itself still starts at the original projected node.
@@ -66,10 +60,15 @@ void LoopEntries(ExceptionControl& mapping, const ControlPlan& plan, ControlQuot
 void CheckProjection(const ValueProgram& graph, ExceptionTopology& topology,
                      const ExceptionControl& actual, ControlQuota& quota) {
   const ControlGraphView view{ControlProjection{graph.revision, graph.cfg_revision, topology.blocks, topology.edges}};
+  Require(actual.skeleton.loops.size() == topology.loops.loops.size(), Error::kStructure);
   if (actual.skeleton.loops.empty()) VerifyControlSkeleton(view, topology.entries, actual.skeleton, quota);
   else {
-    const auto entries = Entries(topology, quota);
-    VerifyControlRegions(view, entries, actual.skeleton, quota);
+    for (std::size_t i = 0; i < topology.loops.loops.size(); ++i) {
+      quota.Work();
+      Require(actual.skeleton.loops[i].header.value == topology.loops.loops[i].header.value &&
+          actual.skeleton.loops[i].parent == topology.loops.loops[i].parent, Error::kStructure);
+    }
+    VerifyControlRegions(view, topology.scoped_entries, actual.skeleton, quota);
     LoopEntries(topology.mapping, actual.skeleton, quota);
   }
   const auto& mapping = topology.mapping;
@@ -87,18 +86,11 @@ std::variant<ExceptionControl, ExceptionControlError> BuildExceptionControl(
     CheckInput(body, graph, input, regions, quota);
     auto topology = ProjectExceptionControl(graph, regions, quota);
     const ControlGraphView view{ControlProjection{graph.revision, graph.cfg_revision, topology.blocks, topology.edges}};
-    auto skeleton = [&] {
-      try { return BuildControlSkeleton(view, topology.entries, quota); }
-      catch (ControlError error) {
-        if (error != ControlError::kCycle) throw;
-        const auto entries = Entries(topology, quota);
-        return BuildLoopControl(view, entries, quota);
-      }
-    }();
+    auto skeleton = topology.loops.loops.empty() ? BuildControlSkeleton(view, topology.entries, quota) :
+        BuildLoopControl(view, topology.scoped_entries, std::move(topology.loops), quota);
     if (skeleton.loops.empty()) VerifyControlSkeleton(view, topology.entries, skeleton, quota);
     else {
-      const auto entries = Entries(topology, quota);
-      VerifyControlRegions(view, entries, skeleton, quota);
+      VerifyControlRegions(view, topology.scoped_entries, skeleton, quota);
       LoopEntries(topology.mapping, skeleton, quota);
     }
     auto result = std::move(topology.mapping);

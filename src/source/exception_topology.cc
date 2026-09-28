@@ -29,27 +29,31 @@ class Projection {
   ExceptionTopology Build() {
     constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
     const auto blocks = graph_.blocks.size(), regions = regions_.regions.size();
-    // At most one exit unit per original normal edge and per wrapper.
-    Require(blocks != 0 && blocks < kMaxId && regions <= (kMaxId - blocks) / 2 &&
-        graph_.edges.size() <= kMaxId - blocks - 2 * regions, Error::kResourceLimit);
-    const auto capacity = blocks + 2 * regions + graph_.edges.size();
-    quota_.Size(result_.blocks, capacity);
-    quota_.Size(result_.mapping.units, capacity);
-    quota_.Size(result_.edges, graph_.edges.size() + regions);
-    quota_.Size(result_.mapping.arcs, result_.edges.size());
+    Require(blocks != 0 && blocks < kMaxId && regions < kMaxId - blocks, Error::kResourceLimit);
     quota_.Size(result_.mapping.regions, regions);
     quota_.Size(result_.entries, 1 + 2 * regions + blocks);
     quota_.Size(result_.mapping.inactive_commits, blocks);
     quota_.Size(owners_, blocks);
     quota_.Size(exits_, regions);
+    quota_.Size(result_.ports, regions);
     quota_.Size(entries_, regions);
     unit_count_ = static_cast<std::uint32_t>(blocks + regions);
     Index(); Forwarders(); Exits();
+    std::size_t capacity = blocks + regions;
+    const auto add = [&](std::size_t count) {
+      Require(count <= kMaxId - capacity, Error::kResourceLimit); capacity += count;
+    };
+    add(graph_.edges.size());
+    for (const auto& exits : exits_) { quota_.Work(); add(exits.size()); }
+    quota_.Size(result_.blocks, capacity); quota_.Size(result_.mapping.units, capacity);
+    quota_.Size(result_.owners, capacity);
+    quota_.Size(result_.edges, graph_.edges.size()); quota_.Size(result_.mapping.arcs, graph_.edges.size());
     std::size_t root_count = 0;
     result_.entries[root_count++] = Target({0}, {});
     for (std::uint32_t b = 0; b < blocks; ++b) {
       quota_.Work();
       result_.mapping.units[b] = PhaseControlUnit{{b}};
+      if (owners_[b]) result_.owners[b] = owners_[b]->region;
       auto& projected = result_.blocks[b];
       projected.first_arc = {edge_count_};
       const auto& original = graph_.blocks[b];
@@ -66,13 +70,16 @@ class Projection {
       const auto& original = regions_.regions[r];
       Require(original.binding.has_value(), Error::kRegion);
       result_.mapping.units[wrapper.value] = TryControlUnit{region};
+      if (const auto parent = regions_.layout.regions[r].parent) result_.owners[wrapper.value] = parent->region;
       auto& planned = result_.mapping.regions[r];
       planned = {wrapper, Target(original.body, ControlScope{region, CatchPart::kProtected}),
-          {original.binding->block.value}, exits_[r]};
+          {original.binding->block.value}, {}};
       result_.blocks[wrapper.value].first_arc = {edge_count_};
-      if (exits_[r]) {
-        const auto target = Target(*exits_[r], ScopeOf(regions_.layout.regions[r].parent), region);
-        Arc(wrapper, target, FlowEdgeKind::kTaken, {});
+      quota_.Size(result_.ports[r], exits_[r].size());
+      for (std::size_t e = 0; e < exits_[r].size(); ++e) {
+        quota_.Work(); const auto exit = exits_[r][e];
+        const auto target = Target(exit, ScopeOf(regions_.layout.regions[r].parent), region);
+        result_.ports[r][e] = {exit, {target.value}};
       }
       result_.entries[root_count++] = planned.body;
       result_.entries[root_count++] = planned.handler;
@@ -84,8 +91,10 @@ class Projection {
       quota_.Work(); result_.entries[root_count++] = {block.value};
     }
     result_.blocks.resize(unit_count_); result_.mapping.units.resize(unit_count_);
+    result_.owners.resize(unit_count_);
     result_.edges.resize(edge_count_); result_.mapping.arcs.resize(edge_count_);
     result_.entries.resize(root_count);
+    ComposeExceptionLoops(result_, regions_, graph_, quota_);
     return std::move(result_);
   }
  private:
@@ -218,8 +227,13 @@ class Projection {
     }
   }
   void Exit(TryId region, WorkBlockId target) {
-    auto& exit = exits_[region.value];
-    Require(!exit || *exit == target, Error::kMultipleExits); exit = target;
+    auto& exits = exits_[region.value];
+    if (exits.size() == exits.capacity()) {
+      Require(exits.size() <= (std::numeric_limits<std::size_t>::max() - 1) / 2, Error::kResourceLimit);
+      const auto capacity = exits.empty() ? 1 : exits.size() * 2;
+      quota_.Admit(capacity, sizeof(WorkBlockId)); exits.reserve(capacity);
+    }
+    exits.push_back(target);
   }
   bool Leaves(ControlScope scope, WorkBlockId target) const {
     // A handler jumping to its protected entry closes this catch instance and
@@ -238,9 +252,13 @@ class Projection {
     // One child summary propagates once, not a walk over ancestors per edge.
     for (std::size_t i = regions_.layout.source_order.size(); i != 0; --i) {
       quota_.Work(); const auto r = regions_.layout.source_order[i - 1];
+      auto& exits = exits_[r.value];
+      std::sort(exits.begin(), exits.end(), [&](auto a, auto b) { quota_.Work(); return a < b; });
+      exits.erase(std::unique(exits.begin(), exits.end()), exits.end());
       const auto parent = regions_.layout.regions[r.value].parent;
-      if (parent && exits_[r.value] && Leaves(*ScopeOf(parent), *exits_[r.value]))
-        Exit(parent->region, *exits_[r.value]);
+      if (parent) for (const auto exit : exits) {
+        quota_.Work(); if (Leaves(*ScopeOf(parent), exit)) Exit(parent->region, exit);
+      }
     }
   }
   ControlId Wrapper(TryId region) const {
@@ -254,11 +272,12 @@ class Projection {
         });
     if (entry != entries_.end() && entry->parent == scope && entry->block == block)
       return Wrapper(entry->region);
-    Require(source && scope && exits_[scope->region.value] == block && Leaves(*scope, block),
+    Require(source && scope && Leaves(*scope, block),
         Error::kCrossEntry);
     Require(unit_count_ < result_.mapping.units.size(), Error::kResourceLimit);
     const ControlId id{unit_count_++};
-    result_.mapping.units[id.value] = TryExitUnit{scope->region, *source};
+    result_.mapping.units[id.value] = TryExitUnit{scope->region, *source, block};
+    result_.owners[id.value] = scope->region;
     return id;
   }
   void Arc(ControlId source, ControlId target, FlowEdgeKind kind, std::optional<EdgeId> original) {
@@ -275,7 +294,7 @@ class Projection {
   std::vector<Scope> owners_;
   std::vector<RegionInterval> intervals_;
   std::vector<RegionEntry> entries_;
-  std::vector<std::optional<WorkBlockId>> exits_;
+  std::vector<std::vector<WorkBlockId>> exits_;
   std::uint32_t unit_count_ = 0;
   std::uint32_t edge_count_ = 0;
 };

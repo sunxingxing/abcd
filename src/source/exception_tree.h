@@ -22,8 +22,11 @@ inline std::optional<TreeOrigin> ExceptionArcOrigin(const ExceptionTreeInput& in
   const auto source = input.control.skeleton.edges[projected.value].owner;
   if (source.value >= input.control.units.size()) return {};
   const auto* region = std::get_if<TryControlUnit>(&input.control.units[source.value]);
-  if (!region) return {};
-  return TryOrigin{region->region};
+  if (region) return TryOrigin{region->region};
+  if (const auto* exit = std::get_if<TryExitUnit>(&input.control.units[source.value])) {
+    if (const auto* owner = std::get_if<analysis::TryId>(&exit->source)) return TryOrigin{*owner};
+  }
+  return {};
 }
 inline std::optional<analysis::WorkBlockId> ExceptionNodeBlock(const ExceptionTreeInput& input,
     ControlNodeId projected) {

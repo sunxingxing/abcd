@@ -222,7 +222,8 @@ target_sources(abcd_source PRIVATE src/source/control_skeleton_verify.cc)
 target_sources(abcd_source PRIVATE src/source/exception_plan.cc)
 target_sources(abcd_source PRIVATE src/source/phased_method.cc)
 target_sources(abcd_source PRIVATE src/source/phased_creations.cc)
-target_sources(abcd_source PRIVATE src/source/exception_control.cc src/source/exception_topology.cc)
+target_sources(abcd_source PRIVATE src/source/exception_control.cc src/source/exception_topology.cc
+  src/source/exception_loops.cc)
 target_sources(abcd_source PRIVATE src/source/exception_copies.cc)
 target_sources(abcd_source PRIVATE src/source/source_tree.cc)
 target_sources(abcd_source PRIVATE src/source/evaluation_shape.cc src/source/evaluation_plan.cc src/source/evaluation_verify.cc src/source/binding_plan.cc)
@@ -920,6 +921,8 @@ if(BUILD_TESTING)
       $<TARGET_FILE:exception_copies_test> $<TARGET_FILE:exception_plan_test>)
     add_test(NAME control_composition_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/control_composition.mjs $<TARGET_FILE:control_composition_test>)
+    add_test(NAME exception_outer_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/exception_outer.mjs $<TARGET_FILE:control_composition_test>)
     add_test(NAME loop_exit_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_exits.mjs $<TARGET_FILE:loop_exit_test>)
     add_test(NAME loop_closure_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
