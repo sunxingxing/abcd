@@ -32,14 +32,14 @@ LoopForest Build(const ValueProgram& graph) {
   for (std::size_t i = 0; i < graph.edges.size(); ++i) {
     const auto& edge = graph.edges[i];
     if (!forest.backedges[i]) Check(positions[edge.source.value] < positions[edge.target.value]);
-    else Check(forest.loops[forest.backedges[i]->value].header == edge.target);
+    else Check(forest.loops[forest.backedges[i]->value].header == ControlNodeId{edge.target.value});
   }
   return forest;
 }
 void Shapes() {
   const std::array<Targets, 2> self{{{0, 1}, {}}};
   auto forest = Build(Graph(self));
-  Check(forest.loops.size() == 1 && forest.loops[0].header == WorkBlockId{0});
+  Check(forest.loops.size() == 1 && forest.loops[0].header == ControlNodeId{0});
   Check(forest.owners[0] == LoopId{0} && !forest.owners[1]);
   Check(forest.backedges[0] == LoopId{0} && !forest.backedges[1]);
   const std::array<Targets, 4> nested{{{1, 3}, {2, 0}, {1, {}}, {}}};
@@ -52,7 +52,7 @@ void Shapes() {
   // Physical block order is irrelevant; header 2 owns the earlier-numbered 1.
   const std::array<Targets, 4> reordered{{{2, {}}, {2, {}}, {1, 3}, {}}};
   forest = Build(Graph(reordered));
-  Check(forest.loops.size() == 1 && forest.loops[0].header == WorkBlockId{2});
+  Check(forest.loops.size() == 1 && forest.loops[0].header == ControlNodeId{2});
   Check(forest.owners[1] == forest.owners[2] && !forest.owners[0]);
   const std::array<Targets, 3> multiple{{{1, 2}, {0, 0}, {}}};
   forest = Build(Graph(multiple));
@@ -84,7 +84,7 @@ void DeepNesting() {
     for (std::uint32_t i = 0; i < depth; ++i) {
       Check(forest.owners[i].has_value());
       const auto& loop = forest.loops[forest.owners[i]->value];
-      Check(loop.header == WorkBlockId{i});
+      Check(loop.header == ControlNodeId{i});
       Check(loop.parent == (i == 0 ? std::optional<LoopId>{} : forest.owners[i - 1]));
     }
     constexpr std::uint64_t kWorkPerItemLogBound = 256;

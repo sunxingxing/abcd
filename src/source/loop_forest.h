@@ -1,24 +1,25 @@
 #ifndef ABCD_SOURCE_LOOP_FOREST_H_
 #define ABCD_SOURCE_LOOP_FOREST_H_
 
-#include "abcd/analysis/value_ir.h"
+#include "control_view.h"
 
 namespace abcd::source {
 struct LoopId { std::uint32_t value; auto operator<=>(const LoopId&) const = default; };
 struct NaturalLoop {
-  analysis::WorkBlockId header;
+  ControlNodeId header;
   std::optional<LoopId> parent;
 };
 struct LoopForest {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
+  ControlViewKind view = ControlViewKind::kNormal;
   std::vector<NaturalLoop> loops;
   // Innermost owner only. Never replicate blocks in every enclosing loop.
   std::vector<std::optional<LoopId>> owners;
-  // Indexed by original EdgeId; two same-target alternatives stay distinct.
+  // Indexed by this view's ControlArcId; parallel alternatives stay distinct.
   std::vector<std::optional<LoopId>> backedges;
   // Topological order with precisely the dominance backedges removed.
-  std::vector<analysis::WorkBlockId> forward_order;
+  std::vector<ControlNodeId> forward_order;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
@@ -31,5 +32,10 @@ enum class LoopError : std::uint8_t {
 // No dependency on block numbering, PCs, or bytecode fallthrough adjacency.
 [[nodiscard]] std::variant<LoopForest, LoopError> BuildLoopForest(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {});
+// Multiple roots represent independently entered projected body/handler
+// regions. Synthetic dominance roots never appear in the returned forest.
+[[nodiscard]] std::variant<LoopForest, LoopError> BuildLoopForest(
+    ControlGraphView graph, std::span<const ControlNodeId> entries,
+    analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

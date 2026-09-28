@@ -51,6 +51,16 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C01 最小循环视图子项：新增借用型 `ControlGraphView`，正常 ValueProgram 与
+  区域投影经同一循环发现内核；ControlNodeId/ControlArcId 不可隐式转为工作图 ID。
+  LoopForest 显式携带 normal/projection 视图类别及 IR/CFG revision。多个独立
+  主体/handler 入口经支配分析专用虚拟根连接，虚拟节点/弧不进入语义图或输出
+  loop membership；保留现有 Lengauer–Tarjan 与循环发现算法，不另写异常循环器。
+  control_view_test 覆盖两个独立循环岛、缺失/重复/非法入口与正常适配；与
+  loop_forest_test、control_plan_test、exception_plan_test 定向 4/4 通过。
+  这是 C03 所需前置，不代表 loop/try 已贯通：异常投影/骨架仍需迁移，C00b
+  组合 fixture、共同区域消费和实际生成 JS 验收仍未完成；C00a 剩余缺口不撤销。
+
 - C00a 第四子项：file-backed 函数族可保留没有捕获 cell 的不完整叶子及完整兄弟。
   子函数仍必须匹配真实创建表达式、文件/方法/IR 身份和空捕获集合；不伪造子函数
   TreeFlow，现有非空捕获验证不放宽。即使有部分成员，仍检查跨成员名字/作用域

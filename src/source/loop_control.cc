@@ -22,11 +22,11 @@ class LoopControlBuilder {
       quota_.Work();
       plan.nodes[i].synthetic = synthetic_[i];
       if (const auto* wrapper = std::get_if<LoopControl>(&synthetic_[i]))
-        plan.nodes[i].block = forest_.loops[wrapper->loop.value].header;
+        plan.nodes[i].block = {forest_.loops[wrapper->loop.value].header.value};
       else if (const auto* transfer = std::get_if<LoopTransfer>(&synthetic_[i])) {
         if (const auto* edge = std::get_if<analysis::EdgeId>(&transfer->source))
           plan.nodes[i].block = graph_.edges[edge->value].source;
-        else plan.nodes[i].block = forest_.loops[std::get<LoopId>(transfer->source).value].header;
+        else plan.nodes[i].block = {forest_.loops[std::get<LoopId>(transfer->source).value].header.value};
       }
     }
     // Original blocks precede wrappers/transfer units, so their edge ranges
@@ -36,7 +36,7 @@ class LoopControlBuilder {
     for (std::size_t i = 0; i < forest_.loops.size(); ++i) {
       quota_.Work();
       const auto& loop = forest_.loops[i];
-      plan.loops[i] = {loop.header, loop.parent, {loop.header.value}, Wrapper({static_cast<std::uint32_t>(i)}), exits_[i]};
+      plan.loops[i] = {{loop.header.value}, loop.parent, {loop.header.value}, Wrapper({static_cast<std::uint32_t>(i)}), exits_[i]};
     }
     plan.allocated_bytes += plan.loops.capacity() * sizeof(ControlLoop);
     return plan;
@@ -116,7 +116,7 @@ class LoopControlBuilder {
   }
   ControlId Target(analysis::WorkBlockId block, std::optional<LoopId> scope,
       ControlTransferSource source) {
-    if (scope && block == forest_.loops[scope->value].header)
+    if (scope && block.value == forest_.loops[scope->value].header.value)
       return Transfer(*scope, LoopTransferKind::kContinue, source);
     if (scope && !Inside(*scope, block)) {
       Require(exits_[scope->value] == block, Error::kLoopExits);
