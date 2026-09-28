@@ -42,6 +42,16 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 按用户要求完成一次性[控制组合审计](control-composition-audit.md)，基线为
+  `1c7e44d` / Rules 58。修正“仅缺区域树”的旧表述：控制投影、树构建派发、
+  cell 生命周期、独立验证及 AST 跳转/协程契约须共同迁移。
+  [演进计划](../../superpowers/plans/2026-09-28-unified-control-regions.md) 明确
+  C00–C09 的类型/算法/文件/组合用例/验收门槛；先交付循环与 catch 双向嵌套，
+  再扩展跨区域出口、finally、await、generator 和委托协议。不改生产代码，
+  不新增功能支持声明。重新构建并运行 control_plan、loop_forest、exception_plan
+  三项定向 CTest，3/3 通过，其中含既有预期拒绝；未运行全语料、RSS 或基准。
+  下一步为计划 C00/C01，不通过直接解除 `kCycle` 或复制异常循环实现推进。
+
 - Rules 58 接通函数族的原生模块发布：file-backed 成员保留实际 record，
   准备阶段验证同输入 `ModuleEnclosure`，共享 destination 检查逐成员核验模块
   身份/槽位/名称，再保留既有跨成员词法遮蔽检查。重新嵌入时重验，printer
