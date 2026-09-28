@@ -548,7 +548,12 @@ class TreePrinter {
       }
       // NamedEvaluation, not a new lexical self scope. Computed keys preserve
       // even an empty name or __proto__, without Object.defineProperty calls.
-      Append("({["); Quoted(Tree().names[Tree().inferred_name->value]);
+      // A native async method supplies this VM invocation's arguments without
+      // introducing an extra promise/await turn; lexical receiver reads remain
+      // explicit capture bindings, as required by the arrow ABI checks.
+      Append(Tree().invocation == InvocationForm::kArrowMethod && IsAsyncCallable(Tree().callable)
+          ? "({async [" : "({[");
+      Quoted(Tree().names[Tree().inferred_name->value]);
       if (Tree().invocation == InvocationForm::kArrowMethod) Append("](");
       else {
         Append("]: ");

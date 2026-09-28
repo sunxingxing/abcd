@@ -30,7 +30,7 @@ class AbiBuilder {
     switch (tree_.invocation) {
       case InvocationForm::kDeclared: break;
       case InvocationForm::kArrowMethod:
-        Require(tree_.callable == CallableKind::kArrow && tree_.inferred_name &&
+        Require(IsArrowCallable(tree_.callable) && tree_.inferred_name &&
             tree_.strictness == Strictness::kStrict, Error::kSyntax);
         break;
       default: throw Error::kSyntax;

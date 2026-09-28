@@ -12,6 +12,27 @@
 
 ## 当前阶段
 
+### 2026-09-28：async arrow 自身 VM arguments 快照
+
+- 扩展已有 `InvocationForm::kArrowMethod` 到 async arrow：共享树构建选择
+  async 方法承载，Printer 输出计算属性 async method，保留名称、length、
+  不可构造性和 AsyncFunction 原型；不增加转发函数或额外 await/Promise 回合。
+  原箭头 ABI 对动态 receiver/new.target 的排除仍生效，外层值仍经显式捕获。
+- 文件解码夹具在 await 后执行 GETUNMAPPEDARGS，经过 ReadFunctionFamily、
+  BuildFileFamilyTrees 和 PrintFamilyDraft，使用已有 `kV7CurrentSlots` 宿主绑定。
+  三种 profile 的生成 JS 验证零实参、显式 undefined、额外实参、多个调用逆序
+  恢复、拒绝值身份、拒绝不执行快照、thenable 与微任务顺序。反例覆盖缺失宿主
+  绑定、伪造直接箭头 invocation、伪造普通 async function callable。
+- 红例 `/tmp/abcd-arrow-arguments-red.log` 失败于共享树构建；实现后生成完整源码。
+  相关十个 C++ 目标构建与 25/25 定向测试通过（13.82 秒），包含既有
+  `argument_snapshot_source_test` 和新增 `file_async_arguments_source_test`；日志
+  `/tmp/abcd-async-arguments-final-build.log`、`/tmp/abcd-async-arguments-final-tests.log`。
+  增加反例时曾遗漏内部 tree_structure 头文件，已修正并完整重跑该集合。
+- 此功能要求现有宿主快照 capability；未提供时仍不能声称完整输出。夹具元数据
+  是合成的，未据此声称应用覆盖、全部 arguments 场景或 C06 完成。generator、
+  async generator/yield* 和其他通用组合仍待推进。默认 work/内存值及 DFX 不变；
+  全量测试/语料/RSS/基准仍暂停，历史两个 base_function 失败未重跑或修复。
+
 ### 2026-09-28：async arrow 贯通共同函数族与捕获恢复
 
 - 按 OH7 `PandaGen::SetFunctionKind` 的 ASYNC_NC_FUNCTION 身份恢复

@@ -7,9 +7,13 @@
 
 #include "../../../tools/family_value_inspect.h"
 #include "../../../src/source/capture_cells.h"
+#include "../../../src/source/family_file.h"
+#include "../../../src/source/family_tree.h"
+#include "../../../src/source/family_print.h"
 #include "abcd/abc/method_attributes.h"
 #include "abcd/analysis/coroutine.h"
 #include "abcd/source/base_function.h"
+#include "../../../src/source/tree_structure.h"
 #include "analysis/ssa_fixture.h"
 
 namespace {
@@ -54,7 +58,7 @@ enum class ChildShape {
   kPlain, kException, kNested, kForwarded, kForwardedNormal, kForwardedLocal,
   kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally, kSharedFinallyNested,
   kAwaitCapture, kAwaitClosure, kAwaitCatch, kAwaitFinally, kAwaitFinallySuspend, kAwaitFinallyReuse,
-  kAwaitSelf, kAwaitSelfPrivate, kAwaitThis, kAwaitReceiver
+  kAwaitSelf, kAwaitSelfPrivate, kAwaitThis, kAwaitReceiver, kAwaitArguments
 };
 enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitState };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
@@ -71,7 +75,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const bool await_finally = child_shape == ChildShape::kAwaitFinally || finally_suspend;
   const bool await_self = child_shape == ChildShape::kAwaitSelf || child_shape == ChildShape::kAwaitSelfPrivate;
   const bool await_frame = await_self || child_shape == ChildShape::kAwaitThis ||
-      child_shape == ChildShape::kAwaitReceiver;
+      child_shape == ChildShape::kAwaitReceiver || child_shape == ChildShape::kAwaitArguments;
   const bool await_capture = child_shape == ChildShape::kAwaitCapture || child_shape == ChildShape::kAwaitClosure ||
       child_shape == ChildShape::kAwaitCatch || await_finally || await_frame;
   const std::uint8_t getter_parameters = await_finally ? 2 : await_capture ? 1 : outer_transfer ? 5 : shared_finally ? 3 : 0;
@@ -247,6 +251,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       Op(abc::Opcode::kLDA_V8), 1};
     if (child_shape == ChildShape::kAwaitClosure)
       code.insert(code.end(), {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 3, 0, 0});
+    else if (child_shape == ChildShape::kAwaitArguments)
+      code.insert(code.end(), {Op(abc::Opcode::kGETUNMAPPEDARGS), Op(abc::Opcode::kNOP)});
     else if (await_self || child_shape == ChildShape::kAwaitThis)
       code.insert(code.end(), {Op(await_self ? abc::Opcode::kLDFUNCTION : abc::Opcode::kLDTHIS),
           Op(abc::Opcode::kNOP)});
@@ -493,6 +499,38 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto identity = source::MakeRouteInputIdentity(
       std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
+  if (child_shape == ChildShape::kAwaitArguments) {
+    using namespace source;
+    auto roles = std::get<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(file, header, index, lookup));
+    auto sites = std::get<analysis::FunctionCreationSites>(analysis::FunctionCreationSites::Build(file, header, index, lookup));
+    const FunctionContext owner{std::get<CreationTreeContext>(CreationTreeContext::Resolve(
+        file, header, index, lookup, roles, sites, sites.Find({kParent}).first, identity))};
+    auto input = ReadFunctionFamily(file, header, index, lookup, roles, sites, {1}, identity, {}, nullptr, &owner);
+    test::Check(std::holds_alternative<FileFamily>(input));
+    auto built = BuildFileFamilyTrees(file, header, index, std::get<FileFamily>(std::move(input)),
+        owner, {}, nullptr, {}, &lookup);
+    test::Check(std::holds_alternative<ConstructedFamily>(built));
+    const auto& family = std::get<ConstructedFamily>(built);
+    test::Check(family.members.size() == 3);
+    test::Check(family.members[1].tree.callable == CallableKind::kAsyncArrow &&
+        family.members[1].tree.invocation == InvocationForm::kArrowMethod);
+    auto forged = family.members[1].tree;
+    forged.invocation = InvocationForm::kDeclared;
+    test::Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(forged)));
+    forged = family.members[1].tree;
+    forged.callable = CallableKind::kAsyncFunction;
+    test::Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(forged)));
+    std::ostringstream unbound;
+    test::Check(std::holds_alternative<TreePrintError>(PrintFamilyDraft(family, unbound)));
+    const HostArgumentSnapshotBinding factory{u"snapshotArguments", ArgumentSnapshotAbi::kV7CurrentSlots};
+    GlobalScope globals{}; globals.argument_snapshot_binding = &factory;
+    std::ostringstream output;
+    auto printed = PrintFamilyDraft(family, output, {}, {}, &globals);
+    test::Check(std::holds_alternative<PrintedFamilyDraft>(printed));
+    for (const auto& member : std::get<PrintedFamilyDraft>(printed).members) test::Check(!member.incomplete);
+    test::Check(unlink(path) == 0);
+    return output.str();
+  }
   std::ostringstream positions;
   const auto report =
       InspectFamilyValues(file, header, index, lookup, {1}, identity, nullptr,
@@ -555,6 +593,12 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--arrow-arguments") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      std::cout << Emit(profile, ParentShape::kNormal, ChildShape::kAwaitArguments, MissingCell::kNone, true) << ",\n";
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--arrow-this") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})

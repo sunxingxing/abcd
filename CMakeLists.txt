@@ -937,6 +937,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_await_captures.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_async_arrow_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_await_captures.mjs $<TARGET_FILE:loop_closure_file_test> --arrow)
+    add_test(NAME file_async_arguments_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_arguments.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_async_arrow_finally_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_await_finally.mjs $<TARGET_FILE:loop_closure_file_test> --reuse --arrow)
     add_test(NAME file_async_frame_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

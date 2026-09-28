@@ -111,7 +111,7 @@ class TreeBuilder {
     tree_.names = std::move(syntax_.names);
     tree_.texts = std::move(syntax_.texts);
     tree_.expressions = std::move(forest_.expressions);
-    if (tree_.callable == CallableKind::kArrow) {
+    if (IsArrowCallable(tree_.callable)) {
       for (const auto& node : tree_.expressions) {
         Step();
         if (std::holds_alternative<ArgumentSnapshotExpr>(node.expression))

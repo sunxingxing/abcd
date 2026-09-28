@@ -92,7 +92,7 @@ class StructureCheck {
     switch (tree_.invocation) {
       case InvocationForm::kDeclared: break;
       case InvocationForm::kArrowMethod: {
-        RequireTree(tree_.callable == CallableKind::kArrow && tree_.strictness == Strictness::kStrict &&
+        RequireTree(IsArrowCallable(tree_.callable) && tree_.strictness == Strictness::kStrict &&
             tree_.inferred_name && ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded,
             Error::kUnsupportedSyntax);
         bool snapshot = false;
