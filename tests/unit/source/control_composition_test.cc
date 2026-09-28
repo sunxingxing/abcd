@@ -504,6 +504,29 @@ void FinallyChain(abc::ProfileId profile, std::ostream* output, std::uint32_t co
 enum class ProtectedBranch { kSingle, kNested, kEarlyReturn };
 enum class OverrideValue { kCleanup, kCaught, kUndefined, kArgument };
 enum class NestedCompletion { kNormal, kReturn, kThrow };
+void FinallyTransfer(abc::ProfileId profile, std::ostream* output, bool stop) {
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+  constexpr unsigned kByteBits = 8;
+  auto body = test::Body({
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 28,
+      op(abc::Opcode::kLDA_V8), 5, op(abc::Opcode::kJEQZ_IMM8), 12,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(stop ? 14 : -18),
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-20),
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+      op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kRETURN)});
+  abc::TryRegion region; region.offset = {10}; region.length = 4; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {22}; handler.length = 10;
+  body.tries = {region}; body.handlers = {handler};
+  Emit(body, profile, 1, 5, false, output, {}, 1, true);
+}
 void NestedFinally(abc::ProfileId profile, std::ostream* output,
     NestedCompletion completion = NestedCompletion::kNormal) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
@@ -714,6 +737,15 @@ void FinallyBranch(abc::ProfileId profile, std::ostream* output,
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--finally-transfer") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) {
+      FinallyTransfer(profile, &std::cout, false);
+      FinallyTransfer(profile, &std::cout, true);
+    }
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--nested-finally") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -862,6 +894,8 @@ int main(int argc, char** argv) {
     NestedFinally(profile, nullptr);
     NestedFinally(profile, nullptr, NestedCompletion::kReturn);
     NestedFinally(profile, nullptr, NestedCompletion::kThrow);
+    FinallyTransfer(profile, nullptr, false);
+    FinallyTransfer(profile, nullptr, true);
     FinallyOverride(profile, false, nullptr);
     FinallyOverride(profile, false, nullptr, OverrideValue::kCaught);
     FinallyOverride(profile, false, nullptr, OverrideValue::kUndefined);

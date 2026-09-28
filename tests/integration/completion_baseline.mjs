@@ -1,6 +1,37 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
+const transferSource = execFileSync(process.argv[2], ['--finally-transfer'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!transferSource.includes('INCOMPLETE'));
+const {functions: transfers} = await import(`data:text/javascript;base64,${Buffer.from(transferSource).toString('base64')}`);
+assert.equal(transfers.length, 6);
+for (const [index, fn] of transfers.entries()) for (const count of [0, 1, 3]) for (const choice of [0, 1]) {
+  for (const runThrows of [false, true]) for (const cleanupThrows of [false, true]) {
+    const stop = index % 2 === 1, log = [], runError = {}, cleanupError = {}, result = {};
+    let next = 0, returned, thrown, didThrow = false;
+    try {
+      returned = fn(function () { assert.equal(this, undefined); log.push('next'); return next++ < count; },
+        function () { assert.equal(this, undefined); log.push('run'); if (runThrows) throw runError; },
+        function () { assert.equal(this, undefined); log.push('cleanup'); if (cleanupThrows) throw cleanupError; },
+        function () { assert.equal(this, undefined); log.push('after'); return result; }, choice);
+    } catch (error) { didThrow = true; thrown = error; }
+    const expected = [];
+    let failed = false;
+    for (let iteration = 0; ; ++iteration) {
+      expected.push('next');
+      if (iteration === count) break;
+      if (!choice) continue;
+      expected.push('run', 'cleanup');
+      if (runThrows || cleanupThrows) { failed = true; break; }
+      if (stop) break;
+    }
+    if (!failed) expected.push('after');
+    assert.deepEqual(log, expected);
+    assert.equal(didThrow, failed);
+    assert.equal(didThrow ? thrown : returned, failed ? cleanupThrows ? cleanupError : runError : result);
+  }
+}
+
 const nestedSource = execFileSync(process.argv[2], ['--nested-finally'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!nestedSource.includes('INCOMPLETE'));
 const {functions: nested} = await import(`data:text/javascript;base64,${Buffer.from(nestedSource).toString('base64')}`);

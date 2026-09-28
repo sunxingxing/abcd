@@ -154,6 +154,23 @@ void Loops() {
     Check(std::get<ControlError>(BuildControlPlan(deep_graph, budget)) == ControlError::kWorkLimit);
   }
 }
+void LinearExitCorridors() {
+  for (const std::uint32_t length : {1U, 200U, 201U, 402U}) {
+    const auto exit = length + 3;
+    std::vector<Targets> targets(exit + 1);
+    targets[0] = {1, exit}; targets[1] = {2, 3}; targets[2] = {0, {}};
+    for (std::uint32_t node = 3; node < exit; ++node) targets[node] = {node + 1, {}};
+    const auto graph = Graph(targets);
+    const auto built = BuildControlPlan(graph);
+    const auto* plan = std::get_if<ControlPlan>(&built);
+    Check(plan && plan->loops.size() == 1 && plan->loops[0].exit == analysis::WorkBlockId{exit});
+    Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(graph, *plan)));
+  }
+  // Branching exit subgraphs need a more general ownership proof, not this
+  // linear corridor rule. Keep the unsupported boundary explicit.
+  const std::array<Targets, 7> branching{{{1, 6}, {2, 3}, {0, {}}, {4, 5}, {6, {}}, {6, {}}, {}}};
+  Check(std::get<ControlError>(BuildControlPlan(Graph(branching))) == ControlError::kLoopExits);
+}
 void Scaling() {
   for (const std::uint32_t size : {200U, 201U, 4096U}) {
     std::vector<Targets> targets(size);
@@ -196,5 +213,6 @@ int main() {
   Diamond();
   Shapes();
   Loops();
+  LinearExitCorridors();
   Scaling();
 }

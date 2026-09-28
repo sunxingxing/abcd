@@ -36,6 +36,10 @@ class ControlQuota {
  private:
   analysis::SemanticBudget remaining_;
 };
+// Extend lexical ownership through single-entry linear exit corridors of root
+// loops. Natural-loop discovery stays unchanged; joins and region roots stop it.
+void ExtendLoopExitCorridors(ControlGraphView graph, std::span<const ControlNodeId> entries,
+    ControlLoopLayout& loops, ControlQuota& quota);
 [[nodiscard]] ControlPlan BuildControlSkeleton(const analysis::ValueProgram& graph,
     std::span<const ControlId> entries, ControlQuota& quota);
 [[nodiscard]] ControlPlan BuildControlSkeleton(ControlGraphView graph,

@@ -93,8 +93,10 @@ class Composition {
     for (const auto& loop : forest.loops) {
       quota_.Work(); Require(loop.header.value < t_.blocks.size());
     }
-    forest.owners.resize(t_.blocks.size());
     t_.loops = {std::move(forest.loops), std::move(forest.owners)};
+    ExtendLoopExitCorridors(ControlGraphView{ControlProjection{
+        graph_.revision, graph_.cfg_revision, nodes, arcs}}, roots, t_.loops, quota_);
+    t_.loops.owners.resize(t_.blocks.size());
   }
   void Inherit() {
     quota_.Size(inherited_, t_.ports.size());

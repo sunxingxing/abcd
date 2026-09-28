@@ -239,6 +239,7 @@ target_sources(abcd_source PRIVATE src/source/phi_copies.cc src/source/phi_copy_
 target_sources(abcd_source PRIVATE src/source/tree_edge_flow.cc)
 target_sources(abcd_source PRIVATE src/source/loop_forest.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
+target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc)
 target_sources(abcd_source PRIVATE src/source/scope_facts.cc src/source/exception_scope_facts.cc src/source/capture_plan.cc src/source/phased_capture_input.cc)
 target_sources(abcd_source PRIVATE src/source/cell_plan.cc)

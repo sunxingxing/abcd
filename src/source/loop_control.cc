@@ -250,7 +250,9 @@ ControlPlan BuildLoopControl(ControlGraphView graph,
   std::vector<ScopedControlEntry> scoped;
   quota.Size(scoped, entries.size());
   for (std::size_t i = 0; i < entries.size(); ++i) scoped[i] = {entries[i], {}};
-  return LoopControlBuilder(graph, scoped, {std::move(forest.loops), std::move(forest.owners)}, quota).Build();
+  ControlLoopLayout layout{std::move(forest.loops), std::move(forest.owners)};
+  ExtendLoopExitCorridors(graph, entries, layout, quota);
+  return LoopControlBuilder(graph, scoped, std::move(layout), quota).Build();
 }
 ControlPlan BuildLoopControl(ControlGraphView graph, std::span<const ScopedControlEntry> entries,
     ControlLoopLayout loops, ControlQuota& quota) {

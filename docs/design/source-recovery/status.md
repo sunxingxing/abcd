@@ -51,6 +51,18 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 已贯通 cleanup 后 break/continue 的循环组合：continue 原路径已能恢复；
+  break 夹具先在共享循环结构化报 kLoopExits。原因是自然循环不含只通向出口的
+  try/cleanup 路径。新增共同线性退出路径归属步骤，由正常/异常投影共用，原图边
+  与自然循环发现不变；单入口退出代码保留在循环内，cleanup 后发射真实跳转。
+  三 profile 共 6 个完整解码夹具执行生成 JS，检查零/一/多次迭代、分支跳过、
+  get/run/cleanup/after 次数与顺序，以及 cleanup 异常取消跳转并覆盖原异常。
+  相关目标构建及定向 15/15 通过；新增普通控制图 1/200/201/402 节点路径、
+  分支退出反例后，相关 5/5 再次通过。日志 `/tmp/abcd-finalizer-transfer-final-build.log`、
+  `/tmp/abcd-finalizer-transfer-final-tests.log`、`/tmp/abcd-finalizer-transfer-control-tests.log`。
+  当前归属扩展仅限最外层循环的单入口线性退出路径，遇到汇合、入口、其他循环、
+  分支或终结停止；不是任意多出口/嵌套 pending break/continue 或 finally 内覆盖跳转
+  的完整支持。未运行全量测试、语料、RSS 或基准。
 - C05 新增保留型 pending throw，并贯通双层正常/return/throw 组合：以异常
   cleanup 末尾是否重抛原捕获值区分“保留 completion”与“cleanup 覆盖”；保留
   的正常抛出值必须在 cleanup 前可用。树构建沿同一叶子载荷/快照规则处理
