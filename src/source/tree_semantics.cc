@@ -12,11 +12,12 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
     ExpressionConstants constants, analysis::SemanticBudget budget,
-    const ExceptionTreeInput* exceptions) {
+    const ExceptionTreeInput* exceptions,
+    TreeControlCheck control_check = TreeControlCheck::kFresh) {
   using Error = TreeSemanticError;
   try {
     auto checked_flow = exceptions
-        ? VerifyExceptionTreeFlow(graph, *exceptions, evaluation, tree, budget)
+        ? VerifyExceptionTreeFlow(graph, *exceptions, evaluation, tree, budget, control_check)
         : VerifyTreeFlow(graph, control, evaluation, tree, budget);
     const auto* flow = std::get_if<TreeFlow>(&checked_flow);
     if (!flow) {
@@ -47,7 +48,8 @@ std::variant<TreeSemantics, TreeSemanticError> VerifyTreeSemantics(
 std::variant<TreeSemantics, TreeSemanticError> VerifyExceptionTreeSemantics(
     const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    ExpressionConstants constants, analysis::SemanticBudget budget) {
-  return VerifySemantics(graph, exceptions.control.skeleton, evaluation, tree, constants, budget, &exceptions);
+    ExpressionConstants constants, analysis::SemanticBudget budget, TreeControlCheck control_check) {
+  return VerifySemantics(graph, exceptions.control.skeleton, evaluation, tree, constants, budget, &exceptions,
+      control_check);
 }
 }  // namespace abcd::source

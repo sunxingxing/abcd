@@ -12,6 +12,21 @@
 
 ## 当前阶段
 
+### 2026-09-28：避免同次树构建重复检查异常控制计划
+
+- 定位 200 层共享 finally 的默认 work 失败：构建入口已检查控制计划，
+  finally 恢复前和最终语义检查又重建/核对同一投影。单次重复消耗 222,129 work。
+- 同步构建内部复用未修改的控制输入检查；独立入口默认仍完整检查。
+  AST 结构、求值计划、phi copies、操作数与来源检查保留，不新增 verified token，
+  不提高默认 work 或内存配额。此改动只消除这条异常构建路径的重复控制检查，
+  并不声称所有预算容量问题已解决。
+- 默认额度下 200/201 层现能输出完整源码，并由 Node 对照任意抛值身份、cleanup
+  覆盖、receiver 和调用次序。402 层仍只有已有 plan 证据，不宣称完整源码通过。
+- 红例 `/tmp/abcd-work-reuse-red.log`；相关目标构建和 15/15 定向测试通过：
+  `/tmp/abcd-work-reuse-final-build.log`、`/tmp/abcd-work-reuse-tests.log`。
+  补充篡改控制投影反例后，相关 3/3 再通过：`/tmp/abcd-work-reuse-negative-tests.log`。
+  全量测试、全语料、RSS、基准未运行。下一步继续共享 finally 与循环组合，整体目标未完成。
+
 ### 2026-09-28：嵌套 catch/rethrow 与共享 finally 贯通
 
 - 对照 pinned `TryStatement::CompileTryFinally/CompileTryCatchFinally`，支持共享清理

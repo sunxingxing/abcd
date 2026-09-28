@@ -34,6 +34,7 @@ struct TreeSemantics {
 [[nodiscard]] std::variant<TreeSemantics, TreeSemanticError> VerifyExceptionTreeSemantics(
     const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    ExpressionConstants constants, analysis::SemanticBudget budget = {});
+    ExpressionConstants constants, analysis::SemanticBudget budget = {},
+    TreeControlCheck control_check = TreeControlCheck::kFresh);
 }  // namespace abcd::source
 #endif

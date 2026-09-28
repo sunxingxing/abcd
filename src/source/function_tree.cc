@@ -205,7 +205,7 @@ class TreeBuilder {
           ? Error::kWorkLimit : Error::kResourceLimit;
     Require(storage->bytes <= budget_.bytes - bytes_, Error::kResourceLimit);
     const auto checked = VerifyExceptionTreeFlow(graph_, *exceptions_, evaluation_, tree_,
-        {bytes_ + storage->bytes, work_});
+        {bytes_ + storage->bytes, work_}, TreeControlCheck::kReuseInBuild);
     const auto* flow = std::get_if<TreeFlow>(&checked);
     if (!flow) {
       const auto error = std::get<TreeFlowError>(checked);
@@ -881,7 +881,7 @@ class TreeBuilder {
     Require(storage->bytes <= budget_.bytes - bytes_, Error::kResourceLimit);
     const auto checked = exceptions_
         ? VerifyExceptionTreeSemantics(graph_, *exceptions_, evaluation_, tree_, constants_,
-                                       {bytes_ + storage->bytes, work_})
+                                       {bytes_ + storage->bytes, work_}, TreeControlCheck::kReuseInBuild)
         : VerifyTreeSemantics(graph_, control_, evaluation_, tree_, constants_,
                               {bytes_ + storage->bytes, work_});
     const auto* semantics = std::get_if<TreeSemantics>(&checked);

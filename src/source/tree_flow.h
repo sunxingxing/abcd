@@ -6,6 +6,10 @@
 
 namespace abcd::source {
 struct ExceptionTreeInput;
+// Reuse is confined to one synchronous construction: the builder has checked
+// this exact control input and has not modified it. Independent callers must
+// retain kFresh; this does not skip checking the tree or evaluation plan.
+enum class TreeControlCheck : std::uint8_t { kFresh, kReuseInBuild };
 enum class TreeFlowError : std::uint8_t {
   kRevision, kStructure, kControl, kEvaluation, kPlacement, kSnapshot,
   kSequence, kResourceLimit, kWorkLimit
@@ -71,6 +75,7 @@ struct TreeFlow {
 [[nodiscard]] std::variant<TreeFlow, TreeFlowError> VerifyExceptionTreeFlow(
     const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {},
+    TreeControlCheck control_check = TreeControlCheck::kFresh);
 }  // namespace abcd::source
 #endif

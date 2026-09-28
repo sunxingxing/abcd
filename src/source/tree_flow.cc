@@ -586,7 +586,8 @@ class FlowCheck {
 std::variant<TreeFlow, TreeFlowError> VerifyFlow(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    analysis::SemanticBudget budget, const ExceptionTreeInput* exceptions) {
+    analysis::SemanticBudget budget, const ExceptionTreeInput* exceptions,
+    TreeControlCheck control_check = TreeControlCheck::kFresh) {
   try {
     // Partial syntax is printable, but cannot certify correspondence to a whole
     // function. Keep the old semantic route from interpreting a gap as a no-op.
@@ -603,7 +604,7 @@ std::variant<TreeFlow, TreeFlowError> VerifyFlow(
     // excuse to give each independent check a fresh method-wide work allowance.
     checked.Admit(std::get<TreeStructure>(structure).allocated_bytes, 1);
     checked.Step(std::get<TreeStructure>(structure).work);
-    if (exceptions) {
+    if (exceptions && control_check == TreeControlCheck::kFresh) {
       const auto regions = VerifyExceptionControl(exceptions->body, graph, exceptions->input,
           exceptions->regions, exceptions->control, checked.Remaining());
       if (const auto* error = std::get_if<ExceptionControlError>(&regions)) {
@@ -612,7 +613,7 @@ std::variant<TreeFlow, TreeFlowError> VerifyFlow(
         return Error::kControl;
       }
       checked.Step(std::get<std::uint64_t>(regions));
-    } else {
+    } else if (!exceptions) {
       const auto regions = VerifyControlPlan(graph, control, checked.Remaining());
       if (const auto* error = std::get_if<ControlError>(&regions)) {
         if (*error == ControlError::kResourceLimit) return Error::kResourceLimit;
@@ -660,7 +661,7 @@ std::variant<TreeFlow, TreeFlowError> VerifyTreeFlow(
 std::variant<TreeFlow, TreeFlowError> VerifyExceptionTreeFlow(
     const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    analysis::SemanticBudget budget) {
-  return VerifyFlow(graph, exceptions.control.skeleton, evaluation, tree, budget, &exceptions);
+    analysis::SemanticBudget budget, TreeControlCheck control_check) {
+  return VerifyFlow(graph, exceptions.control.skeleton, evaluation, tree, budget, &exceptions, control_check);
 }
 }  // namespace abcd::source

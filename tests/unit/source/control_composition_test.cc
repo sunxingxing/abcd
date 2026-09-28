@@ -211,6 +211,17 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
   const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
   if (stage == CompositionStage::kHoleFinally) {
+    // A construction-local reuse must not turn independent entry points into
+    // trusting consumers of a changed control projection.
+    auto changed_control = control;
+    changed_control.inactive_commits.push_back(WorkBlockId{0});
+    const ExceptionTreeInput changed_context{body, input, regions, changed_control};
+    const auto changed_flow = VerifyExceptionTreeFlow(graph, changed_context, evaluation, tree);
+    test::Check(std::get_if<TreeFlowError>(&changed_flow) &&
+        std::get<TreeFlowError>(changed_flow) == TreeFlowError::kControl);
+    const auto changed_draft = BuildExceptionFunctionDraft(graph, changed_context, evaluation, syntax, resolved);
+    test::Check(std::get_if<FunctionTreeError>(&changed_draft) &&
+        std::get<FunctionTreeError>(changed_draft) == FunctionTreeError::kControl);
     std::size_t finalizers = 0;
     for (const auto& statement : tree.statements)
       if (const auto* region = std::get_if<TryStmt>(&statement.statement); region && region->finalizer)
@@ -1022,7 +1033,7 @@ int main(int argc, char** argv) {
   }
   if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-depth-source") {
     std::cout << "export const functions = [\n";
-    for (const auto depth : {4U, 8U, 16U})
+    for (const auto depth : {4U, 8U, 16U, 200U, 201U})
       CompilerFinally(abc::ProfileId::kDynamic1206, &std::cout, CompositionStage::kHoleFinally, 1, false,
           SharedInnerCatch::kRethrow, depth);
     std::cout << "];\n"; return 0;
