@@ -43,10 +43,11 @@ for (const [index, fn] of outerTransfers.entries()) for (const outerCount of [0,
 const transferSource = execFileSync(process.argv[2], ['--finally-transfer'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!transferSource.includes('INCOMPLETE'));
 const {functions: transfers} = await import(`data:text/javascript;base64,${Buffer.from(transferSource).toString('base64')}`);
-assert.equal(transfers.length, 6);
+assert.equal(transfers.length, 18);
 for (const [index, fn] of transfers.entries()) for (const count of [0, 1, 3]) for (const choice of [0, 1]) {
   for (const runThrows of [false, true]) for (const cleanupThrows of [false, true]) {
-    const stop = index % 2 === 1, log = [], runError = {}, cleanupError = {}, result = {};
+    const stop = index % 2 === 1, overrides = index % 6 >= 2, different = index % 6 >= 4;
+    const log = [], runError = {}, cleanupError = {}, result = {};
     let next = 0, returned, thrown, didThrow = false;
     try {
       returned = fn(function () { assert.equal(this, undefined); log.push('next'); return next++ < count; },
@@ -61,8 +62,8 @@ for (const [index, fn] of transfers.entries()) for (const count of [0, 1, 3]) fo
       if (iteration === count) break;
       if (!choice) continue;
       expected.push('run', 'cleanup');
-      if (runThrows || cleanupThrows) { failed = true; break; }
-      if (stop) break;
+      if ((!overrides && runThrows) || cleanupThrows) { failed = true; break; }
+      if (stop !== (different && runThrows)) break;
     }
     if (!failed) expected.push('after');
     assert.deepEqual(log, expected);

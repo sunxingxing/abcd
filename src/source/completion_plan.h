@@ -15,12 +15,13 @@ struct ContinueCompletion { LoopId target; };
 using PendingCompletion = std::variant<NormalCompletion, ReturnCompletion,
     ThrowCompletion, BreakCompletion, ContinueCompletion>;
 struct CleanupPair { analysis::OpId normal, exceptional; };
+struct CleanupTransferPair { ControlId normal, exceptional; };
 struct FinalizerRegion {
   analysis::TryId region;
   PendingCompletion normal;
   PendingCompletion exceptional;
-  // Normal fallthrough identifies the last paired cleanup operation; abrupt
-  // completion identifies its return/throw. Continuation stays outside finally.
+  // Fallthrough/loop-transfer cases identify the last paired cleanup operation;
+  // value completions identify their return/throw. Loop IDs live in transfer.
   analysis::OpId normal_exit;
   analysis::OpId exceptional_exit;
   // Original projected paths, including alias/copy boundaries. Pairing does
@@ -28,9 +29,11 @@ struct FinalizerRegion {
   std::vector<ControlId> normal_path;
   std::vector<ControlId> exceptional_path;
   std::vector<CleanupPair> cleanup;
-  // Present only when both cleanup paths end with the same overriding return
-  // or throw. That terminal pair is part of cleanup, including its evaluation.
+  // Both cleanup paths end with the same overriding completion. Value terminals
+  // are included in cleanup; loop terminals have separate control IDs below.
   std::optional<PendingCompletion> replacement;
+  // A typed synthetic loop transfer is not an opcode. Keep its separate IDs.
+  std::optional<CleanupTransferPair> transfer{};
 };
 struct CompletionPlan {
   analysis::IrRevision revision;

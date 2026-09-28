@@ -35,7 +35,11 @@ bool CleanupOperation(const ValueOperation& operation) {
         std::is_same_v<T, ValueFrameFunction> || std::is_same_v<T, ValueDebugger>;
   }, operation);
 }
-struct Corridor { std::vector<ControlId> nodes; std::vector<OpId> operations; };
+struct Corridor {
+  std::vector<ControlId> nodes;
+  std::vector<OpId> operations;
+  std::optional<ControlId> transfer;
+};
 class CompletionBuilder {
  public:
   CompletionBuilder(const ValueProgram& graph, const ExceptionPlan& exceptions,
@@ -90,7 +94,28 @@ class CompletionBuilder {
       if (!next || !regions_[r].body) continue;
       Corridor normal, handler;
       if (!Path(region.handler, handler, true)) continue;
-      const bool complete_normal = Path(*next, normal, false);
+      const bool complete_normal = Path(*next, normal, false) && !normal.transfer;
+      if (normal.transfer && handler.transfer) {
+        const auto& left = std::get<LoopTransfer>(control_.skeleton.nodes[normal.transfer->value].synthetic);
+        const auto& right = std::get<LoopTransfer>(control_.skeleton.nodes[handler.transfer->value].synthetic);
+        const auto binding = exceptions_.regions[r].binding;
+        if (!binding || left.loop != right.loop || left.kind != right.kind ||
+            normal.operations.empty() || normal.operations.size() != handler.operations.size()) continue;
+        std::vector<CleanupPair> pairs;
+        bool equal = true;
+        for (std::size_t i = 0; i < normal.operations.size(); ++i) {
+          quota_.Work(); const auto a = normal.operations[i], b = handler.operations[i];
+          if (!Pair(a, b, {r})) { equal = false; break; }
+          Append(pairs, CleanupPair{a, b});
+        }
+        if (!equal) continue;
+        const PendingCompletion replacement = left.kind == LoopTransferKind::kBreak ?
+            PendingCompletion{BreakCompletion{left.loop}} : PendingCompletion{ContinueCompletion{left.loop}};
+        Append(plan.finalizers, FinalizerRegion{{r}, NormalCompletion{}, ThrowCompletion{binding->value},
+            pairs.back().normal, pairs.back().exceptional, std::move(normal.nodes), std::move(handler.nodes),
+            std::move(pairs), replacement, CleanupTransferPair{*normal.transfer, *handler.transfer}});
+        continue;
+      }
       // A normal completion continues after the paired cleanup prefix; those
       // following operations are not part of finally and must stay outside it.
       // Path retains its straight prefix at a branch/region boundary. Once the
@@ -275,9 +300,21 @@ class CompletionBuilder {
     auto cursor = std::optional{entry};
     while (cursor) {
       quota_.Work(); const auto id = *cursor;
+      if (id.value < control_.skeleton.nodes.size() &&
+          std::holds_alternative<LoopTransfer>(control_.skeleton.nodes[id.value].synthetic)) {
+        path.transfer = id;
+        return true;
+      }
       if (id.value >= control_.units.size()) return false;
       const auto* phase = std::get_if<PhaseControlUnit>(&control_.units[id.value]);
       const auto& node = control_.skeleton.nodes[id.value];
+      // A routed try exit carries no value/effect operation. Follow only its
+      // checked direct loop-transfer successor, retaining both control IDs.
+      if (std::holds_alternative<TryExitUnit>(control_.units[id.value]) && node.next &&
+          incoming_[id.value] == 1 && !node.arms &&
+          std::holds_alternative<LoopTransfer>(control_.skeleton.nodes[node.next->value].synthetic)) {
+        Append(path.nodes, id); path.transfer = *node.next; return true;
+      }
       if (!phase || node.arms || !std::holds_alternative<std::monostate>(node.synthetic) ||
           incoming_[id.value] != (handler && path.nodes.empty() ? 0U : 1U)) return false;
       if (path.nodes.size() >= control_.units.size()) return false;

@@ -43,6 +43,8 @@ class FlowCheck {
     }
     budget.Array(flow_.controls, control.nodes.size() -
         (exceptions ? exceptions->control.units.size() : graph.blocks.size()));
+    flow_.first_control = {static_cast<std::uint32_t>(control.nodes.size() - flow_.controls.size())};
+    budget.Array(flow_.control_statements, flow_.controls.size());
     edges_.emplace(graph, evaluation, tree, flow_, declared_, assigned_, budget, sequences);
     for (const auto symbol : sequences.Symbols()) {
       Require(!declared_[symbol.value], Error::kPlacement);
@@ -368,6 +370,7 @@ class FlowCheck {
     const auto first = exceptions_ ? exceptions_->control.units.size() : graph_.blocks.size();
     Require(id.value >= first && id.value - first < flow_.controls.size(), Error::kControl);
     flow_.controls[id.value - first] = syntax.origin;
+    flow_.control_statements[id.value - first] = statement;
     if (const auto* wrapper = std::get_if<LoopControl>(&node.synthetic)) {
       const auto& loop = control_.loops[wrapper->loop.value];
       const auto* body = std::get_if<LoopStmt>(&syntax.statement);

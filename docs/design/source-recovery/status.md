@@ -51,6 +51,17 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 新增 finally 内 break/continue 覆盖原异常：两侧 cleanup 的操作配对后，
+  要求终结跳转的种类及 LoopId 均一致；原 TryExit 到循环跳转的路由继续保留。
+  completion 使用独立 ControlId 对，不把合成跳转伪装成 opcode；既有 TreeFlow
+  记录实际合成语句，FunctionTree 将两侧真实跳转放入 finally，Printer 无改动。
+  覆盖型 break 暴露 try 摘要双出口归属缺口，共同出口扩展现允许单入口分支，
+  多入口汇合仍停止；普通控制图有分支成功与共享汇合拒绝反例。
+  三 profile 的单循环组扩为 18 个完整夹具，实际执行正常/异常、break/continue、
+  覆盖及两侧跳转不一致反例，验证原异常被取消、cleanup 异常优先与循环次数。
+  关联构建和定向 15/15 通过，日志 `/tmp/abcd-finalizer-jump-override-final-build.log`
+  与 `/tmp/abcd-finalizer-jump-override-final-tests.log`。仅有跳转、没有 cleanup 操作的
+  形式及更广嵌套/捕获/phi-copy 组合仍待覆盖；未运行全量测试、语料或 RSS。
 - C05 已贯通 cleanup 后带外层标签的 break/continue：双重循环夹具先复现
   kLoopExits，退出路径归属由最外层限定扩展为 child-before-parent 顺序处理，
   Euler 区间只允许吸收无归属/祖先归属的线性路径，禁止进入同层或子循环。

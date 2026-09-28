@@ -179,10 +179,14 @@ void LinearExitCorridors() {
     Check(plan && plan->loops.size() == 2);
     Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(graph, *plan)));
   }
-  // Branching exit subgraphs need a more general ownership proof, not this
-  // linear corridor rule. Keep the unsupported boundary explicit.
+  // Single-entry exit arms may branch; do not absorb their multi-entry join.
   const std::array<Targets, 7> branching{{{1, 6}, {2, 3}, {0, {}}, {4, 5}, {6, {}}, {6, {}}, {}}};
-  Check(std::get<ControlError>(BuildControlPlan(Graph(branching))) == ControlError::kLoopExits);
+  const auto branching_graph = Graph(branching);
+  const auto branched = BuildControlPlan(branching_graph);
+  Check(std::holds_alternative<ControlPlan>(branched));
+  Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(branching_graph, std::get<ControlPlan>(branched))));
+  const std::array<Targets, 8> shared{{{1, 7}, {2, 3}, {0, {}}, {4, 5}, {6, {}}, {6, {}}, {7, {}}, {}}};
+  Check(std::get<ControlError>(BuildControlPlan(Graph(shared))) == ControlError::kLoopExits);
 }
 void Scaling() {
   for (const std::uint32_t size : {200U, 201U, 4096U}) {

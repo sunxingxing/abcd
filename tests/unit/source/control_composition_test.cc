@@ -131,7 +131,7 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     return; // Algorithm boundary test, explicitly not source acceptance.
   }
   if (staging) test::Check(evaluation.exceptions && !evaluation.exceptions->slots.empty());
-  else if (!evaluation.cells && expected_loops == 1 && !expect_finalizer) {
+  else if (!evaluation.cells && expected_loops == 1 && !expect_finalizer && !expected_completions) {
     test::Check(evaluation.phis.has_value());
     bool empty_schedule = false;
     for (const auto& bundle : evaluation.phis->bundles)
@@ -530,28 +530,33 @@ void FinallyOuterTransfer(abc::ProfileId profile, std::ostream* output, bool sto
   body.tries = {region}; body.handlers = {handler};
   Emit(body, profile, 1, 6, false, output, {}, 2, true);
 }
-void FinallyTransfer(abc::ProfileId profile, std::ostream* output, bool stop) {
+void FinallyTransfer(abc::ProfileId profile, std::ostream* output, bool stop, bool overrides = false,
+    bool different = false) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
   constexpr unsigned kByteBits = 8;
-  auto body = test::Body({
+  std::vector<std::uint8_t> bytes = {
       op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
-      op(abc::Opcode::kJEQZ_IMM8), 28,
+      op(abc::Opcode::kJEQZ_IMM8), static_cast<std::uint8_t>(overrides ? 26 : 28),
       op(abc::Opcode::kLDA_V8), 5, op(abc::Opcode::kJEQZ_IMM8), 12,
       op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
       op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
-      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(stop ? 14 : -18),
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(stop ? (overrides ? 12 : 14) : -18),
       op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-20),
       op(abc::Opcode::kSTA_V8), 0,
-      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
-      op(abc::Opcode::kLDA_V8), 0,
-      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0};
+  if (overrides) bytes.insert(bytes.end(), {op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>((stop != different) ? 2 : -28)});
+  else bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+  bytes.insert(bytes.end(), {
       op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kCALLARG0_IMM8), 0,
       op(abc::Opcode::kRETURN)});
+  auto body = test::Body(bytes);
   abc::TryRegion region; region.offset = {10}; region.length = 4; region.handler_count = 1;
-  abc::CatchHandler handler; handler.offset = {22}; handler.length = 10;
+  abc::CatchHandler handler; handler.offset = {22}; handler.length = overrides ? 8 : 10;
   body.tries = {region}; body.handlers = {handler};
-  Emit(body, profile, 1, 5, false, output, {}, 1, true);
+  Emit(body, profile, 1, 5, false, output, {}, 1, !different,
+      different ? std::optional{ExpectedCompletion{0, 0}} : std::optional<ExpectedCompletion>{});
 }
 void NestedFinally(abc::ProfileId profile, std::ostream* output,
     NestedCompletion completion = NestedCompletion::kNormal) {
@@ -778,6 +783,10 @@ int main(int argc, char** argv) {
                               abc::ProfileId::kDynamic1301}) {
       FinallyTransfer(profile, &std::cout, false);
       FinallyTransfer(profile, &std::cout, true);
+      FinallyTransfer(profile, &std::cout, false, true);
+      FinallyTransfer(profile, &std::cout, true, true);
+      FinallyTransfer(profile, &std::cout, false, true, true);
+      FinallyTransfer(profile, &std::cout, true, true, true);
     }
     std::cout << "];\n"; return 0;
   }
@@ -931,6 +940,10 @@ int main(int argc, char** argv) {
     NestedFinally(profile, nullptr, NestedCompletion::kThrow);
     FinallyTransfer(profile, nullptr, false);
     FinallyTransfer(profile, nullptr, true);
+    FinallyTransfer(profile, nullptr, false, true);
+    FinallyTransfer(profile, nullptr, true, true);
+    FinallyTransfer(profile, nullptr, false, true, true);
+    FinallyTransfer(profile, nullptr, true, true, true);
     FinallyOuterTransfer(profile, nullptr, false);
     FinallyOuterTransfer(profile, nullptr, true);
     FinallyOverride(profile, false, nullptr);

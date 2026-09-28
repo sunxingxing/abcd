@@ -15,10 +15,10 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
                              ControlLoopLayout& loops, ControlQuota& quota) {
   // A natural loop contains nodes on backedge paths, not necessarily the
   // single-entry code between a side exit and its shared destination. Absorb
-  // only linear single-predecessor corridors; never move code across a join,
+  // only single-predecessor exit arms; never move code across a join,
   // independent entry, sibling/child loop, or terminal. Only ancestor-owned
   // (or unowned) corridors can enter this lexical loop. No CFG edges change.
-  // O(V+E+L), each newly owned node queues its sole successor once.
+  // O(V+E+L), each newly owned node queues each outgoing edge once.
   std::vector<std::size_t> incoming, exits;
   std::vector<bool> root;
   std::vector<ControlArcId> pending;
@@ -29,7 +29,7 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
   quota.Size(incoming, graph.NodeCount());
   quota.Size(root, graph.NodeCount());
   quota.Size(exits, loops.loops.size());
-  quota.Size(pending, graph.ArcCount() + graph.NodeCount());
+  quota.Size(pending, graph.ArcCount() * 2);
   const auto loop_count = loops.loops.size();
   quota.Size(seeds, loop_count);
   quota.Size(next, graph.ArcCount());
@@ -103,10 +103,11 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
       const auto& node = graph.Node(target);
       if (owner != loop || exits[l] < 2 ||
           !outside(loop, loops.owners[target.value]) || root[target.value] ||
-          incoming[target.value] != 1 || node.arc_count != 1)
+          incoming[target.value] != 1 || node.arc_count == 0)
         continue;
       loops.owners[target.value] = owner;
-      pending[count++] = node.first_arc;
+      for (std::uint8_t e = 0; e < node.arc_count; ++e)
+        pending[count++] = {node.first_arc.value + e};
     }
   }
 }

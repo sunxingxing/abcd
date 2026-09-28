@@ -60,12 +60,18 @@ AnchorPosition Remap(const AnchorPosition& position, const Lists& before,
 std::vector<StmtId> Roots(const FinalizerRegion& region, const TreeFlow& flow,
                           bool exceptional, TreeCheckBudget& budget) {
   std::vector<StmtId> roots;
-  budget.Admit(region.cleanup.size(), sizeof(StmtId));
-  roots.reserve(region.cleanup.size());
+  budget.Admit(region.cleanup.size() + (region.transfer ? 1 : 0), sizeof(StmtId));
+  roots.reserve(region.cleanup.size() + (region.transfer ? 1 : 0));
   for (const auto& pair : region.cleanup) {
     budget.Step();
     const auto op = exceptional ? pair.exceptional : pair.normal;
     if (flow.statements[op.value]) roots.push_back(*flow.statements[op.value]);
+  }
+  if (region.transfer) {
+    const auto id = exceptional ? region.transfer->exceptional : region.transfer->normal;
+    Require(id.value >= flow.first_control.value &&
+        id.value - flow.first_control.value < flow.control_statements.size());
+    roots.push_back(flow.control_statements[id.value - flow.first_control.value]);
   }
   return roots;
 }
@@ -188,16 +194,16 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
   for (const auto& region : plan.finalizers) {
     budget.Step();
     const auto original = flow.tries[region.region.value];
-    const auto returning = flow.statements[region.normal_exit.value];
-    const auto throwing = flow.statements[region.exceptional_exit.value];
+    const auto normal = Roots(region, flow, false, budget);
+    const auto exceptional = Roots(region, flow, true, budget);
+    const auto returning = region.transfer ? std::optional{normal.back()} : flow.statements[region.normal_exit.value];
+    const auto throwing = region.transfer ? std::optional{exceptional.back()} : flow.statements[region.exceptional_exit.value];
     if (!original || !returning || !throwing || !positions[original->value])
       continue;
     const auto inner =
         std::get<TryStmt>(tree.statements[original->value].statement);
     const auto handler = inner.handler->body;
     const auto location = *positions[original->value];
-    const auto normal = Roots(region, flow, false, budget);
-    const auto exceptional = Roots(region, flow, true, budget);
     const bool replaces = region.replacement.has_value();
     const bool falls_through = !replaces && std::holds_alternative<NormalCompletion>(region.normal);
     const auto& following = lists[location.block.value];
