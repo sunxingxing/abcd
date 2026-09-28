@@ -8,6 +8,21 @@ C++20 项目，目标是从动态 ABC 恢复语义可信的 JS/TS/ArkTS，并为
 record 结构和部分函数体可输出源码。解码、方法体源码准入与整个 record 的行为等价
 是不同验收层级，不能互相替代。
 
+## 鸿蒙参考源码
+
+三个官方参考仓库以 submodule 放在 `references/openharmony/arkcompiler/` 下：
+`runtime_core`、`ets_runtime`、`ets_frontend`。均固定到 `OpenHarmony-v7.0-Release`
+tag 对应提交，与 [版本锁定文件](docs/reference/openharmony-v7.0-release.lock.json) 一致；
+不跟踪移动分支。首次获取或切换本项目提交后执行：
+
+```sh
+git submodule update --init --depth 1
+```
+
+这些是参考源码，不代表已构建完整鸿蒙工具链。使用本地 submodule 的 ISA 时，可传入
+`-DABCD_ISA_ROOT="$PWD/references/openharmony/arkcompiler/runtime_core/isa"`；
+其他构建依赖仍按下文配置。
+
 ## 构建与测试
 
 环境：Linux/POSIX、CMake 3.20+、C++20 编译器、Ruby 3.2.3、OpenSSL 3、zlib；集成测试还使用

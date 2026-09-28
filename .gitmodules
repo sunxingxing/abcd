@@ -1,0 +1,9 @@
+[submodule "references/openharmony/arkcompiler/runtime_core"]
+	path = references/openharmony/arkcompiler/runtime_core
+	url = https://gitcode.com/openharmony/arkcompiler_runtime_core.git
+[submodule "references/openharmony/arkcompiler/ets_runtime"]
+	path = references/openharmony/arkcompiler/ets_runtime
+	url = https://gitcode.com/openharmony/arkcompiler_ets_runtime.git
+[submodule "references/openharmony/arkcompiler/ets_frontend"]
+	path = references/openharmony/arkcompiler/ets_frontend
+	url = https://gitcode.com/openharmony/arkcompiler_ets_frontend.git

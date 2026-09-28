@@ -49,6 +49,12 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- 新增三个官方参考源码 submodule，位于 `references/openharmony/arkcompiler/`：
+  runtime_core、ets_runtime、ets_frontend，固定 OpenHarmony-v7.0-Release tag，
+  提交分别为 `3e147bb7`、`f04900cf`、`c754cf63`，与既有 release lock 一致。
+  核验 tag object、tag 对应提交、HEAD、gitlink、remote 和子仓库工作树；README
+  补充初始化命令与 ISA 路径配置。仅接入参考源码，未执行构建、功能测试或 RSS。
+
 - 按本轮讨论更新设计与 C00–C09：C00a 先实现直接树打印和可靠的部分结果保留，
   C00b 固定控制组合基线；C01/C02 缩小到 C03 循环/catch 所需结构，通用独立区域
   验证和预算配套后移。随后保持外层跳转/异常闭包、finally、await、generator、
