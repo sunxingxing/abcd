@@ -19,14 +19,22 @@ class CopyExpressions {
       Step();
       const auto& bundle = evaluation_.phis->bundles[b];
       const auto* edge = std::get_if<analysis::EdgeId>(&bundle.incoming);
-      const auto origin = Origin(edge ? TreeOrigin{EdgeOrigin{*edge}} : TreeOrigin{EntryOrigin{}});
       if (evaluation_.exceptions) {
         if (const auto* placement = std::get_if<ThrowCopies>(&evaluation_.exceptions->placements[b])) {
+          const auto origin = Origin(edge ? TreeOrigin{EdgeOrigin{*edge}} : TreeOrigin{EntryOrigin{}});
           Stage(bundle, *placement, origin);
           continue;
         }
       }
       const auto first = static_cast<std::uint32_t>(forest_.edge_assignments.size());
+      // Parallel-copy scheduling may erase every self-assignment on a loop
+      // backedge. Retain its empty placement range, but do not create an orphan
+      // syntax origin when no assignment expression will consume it.
+      if (bundle.schedule.steps.empty()) {
+        Push(forest_.edges, EdgeExpressions{bundle.incoming, first, 0});
+        continue;
+      }
+      const auto origin = Origin(edge ? TreeOrigin{EdgeOrigin{*edge}} : TreeOrigin{EntryOrigin{}});
       for (const auto& copy : bundle.schedule.steps) {
         Step();
         const auto* temporary = std::get_if<CopyTempId>(&copy.destination);

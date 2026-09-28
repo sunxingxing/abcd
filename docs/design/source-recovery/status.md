@@ -51,6 +51,24 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C03 循环携带值/异常旧值纵向切片：新增 `control_composition_test` 与
+  `control_composition_source_test`，三个历史动态 profile 均用实际 opcode 解码、
+  异常 SSA、共同 FunctionTree/Printer 生成完整源码。覆盖 try 内循环中条件调用、
+  更新调用、成功写入后的调用三个 throw 点，以及循环内 try 更新失败后
+  `observe(oldValue, exception)` 再进入下一轮。标准 JS 执行覆盖 0/1/2/5 轮、
+  各种 primitive/object 初始值、全成功/全失败/交替失败、普通值调用的 undefined
+  receiver、参数/异常/返回对象身份、调用顺序及 handler 自身 throw 向外传播。
+  新失败案例定位并修复 `expression_copies.cc`：自赋值 phi copy 消除后 schedule
+  可以为空；仍保留空边放置区间，但不再生成没有 AST 消费者的 EdgeOrigin。
+  原行为导致完整构建报 `FunctionTreeError::kSemantics`，本次没有放宽对应检查。
+  显式断言 fixture 包含空 schedule 和另一 fixture 的 throw-staging slots，
+  防止退化成只测试普通控制结构。临时定位输出已移除。
+  最新构建后定向 **8/8 通过**：control_composition_test、control_composition_source_test、
+  exception_plan_test、exception_copies_test、exception_tree_source_test、phi_copies_test、
+  phi_call_test、partial_build_test。仍未替代完整 W1/W2 的数字循环/数组日志与
+  多出口 continue、per-iteration/per-catch cell、真实应用切片验收；后续继续这些
+  功能和共同 RegionPlan 收敛。不新增 DFX，未恢复全量/RSS/基准。
+
 - C03 首个纵向组合切片：真实动态 opcode（12.0.2/12.0.6/13.0.1）经异常 SSA、
   ValueProgram、共同循环区域、共同 TreeBuilder/Printer，现已完整输出并执行
   **try 内循环、catch 内循环、循环包含 try/catch** 三类基础用例。异常投影遇到

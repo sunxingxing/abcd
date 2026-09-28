@@ -536,6 +536,10 @@ if(BUILD_TESTING)
   target_link_libraries(exception_plan_test PRIVATE abcd_source)
   target_include_directories(exception_plan_test PRIVATE tests/support)
   add_test(NAME exception_plan_test COMMAND exception_plan_test)
+  add_executable(control_composition_test tests/unit/source/control_composition_test.cc)
+  target_link_libraries(control_composition_test PRIVATE abcd_source)
+  target_include_directories(control_composition_test PRIVATE tests/support)
+  add_test(NAME control_composition_test COMMAND control_composition_test)
   add_executable(exception_copies_test tests/unit/source/exception_copies_test.cc)
   target_link_libraries(exception_copies_test PRIVATE abcd_source)
   target_include_directories(exception_copies_test PRIVATE tests/support)
@@ -903,6 +907,8 @@ if(BUILD_TESTING)
     add_test(NAME exception_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/exception_tree.mjs
       $<TARGET_FILE:exception_copies_test> $<TARGET_FILE:exception_plan_test>)
+    add_test(NAME control_composition_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/control_composition.mjs $<TARGET_FILE:control_composition_test>)
     add_test(NAME phased_method_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_method.mjs
       $<TARGET_FILE:class_tree_context_test>)
