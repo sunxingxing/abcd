@@ -19,6 +19,8 @@ struct FinalizerRegion {
   analysis::TryId region;
   PendingCompletion normal;
   PendingCompletion exceptional;
+  // Normal fallthrough identifies the last paired cleanup operation; abrupt
+  // completion identifies its return/throw. Continuation stays outside finally.
   analysis::OpId normal_exit;
   analysis::OpId exceptional_exit;
   // Original projected paths, including alias/copy boundaries. Pairing does

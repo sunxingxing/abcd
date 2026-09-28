@@ -1,6 +1,28 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
+const fallthroughSource = execFileSync(process.argv[2], ['--finally-fallthrough'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!fallthroughSource.includes('INCOMPLETE'));
+const {functions: fallthroughs} = await import(`data:text/javascript;base64,${Buffer.from(fallthroughSource).toString('base64')}`);
+assert.equal(fallthroughs.length, 3);
+for (const fn of fallthroughs) for (const getThrows of [false, true]) {
+  for (const cleanupThrows of [false, true]) for (const afterThrows of [false, true]) {
+    const log = [], errors = [{}, {}, {}], value = {};
+    let returned, thrown, didThrow = false;
+    try {
+      returned = fn(...['get', 'cleanup', 'after'].map((name, index) => function () {
+        assert.equal(this, undefined); log.push(name);
+        if ([getThrows, cleanupThrows, afterThrows][index]) throw errors[index];
+        return value;
+      }));
+    } catch (error) { didThrow = true; thrown = error; }
+    assert.deepEqual(log, getThrows || cleanupThrows ? ['get', 'cleanup'] : ['get', 'cleanup', 'after']);
+    assert.equal(didThrow, getThrows || cleanupThrows || afterThrows);
+    assert.equal(didThrow ? thrown : returned,
+      cleanupThrows ? errors[1] : getThrows ? errors[0] : afterThrows ? errors[2] : value);
+  }
+}
+
 // The producer requires a real finalizer AST and fresh operation correspondence.
 // Execute only complete generated source, never hand-written recovery output.
 const source = execFileSync(process.argv[2], ['--finally-return'], {encoding: 'utf8', timeout: 60_000});

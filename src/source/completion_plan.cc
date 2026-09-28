@@ -90,6 +90,27 @@ class CompletionBuilder {
       if (!next || !regions_[r].body) continue;
       Corridor normal, handler;
       if (!Path(*next, normal, false) || !Path(region.handler, handler, true)) continue;
+      // A normal completion continues after the paired cleanup prefix; those
+      // following operations are not part of finally and must stay outside it.
+      if (handler.operations.size() >= 2 && normal.operations.size() > handler.operations.size()) {
+        const auto thrown = handler.operations.back();
+        const auto binding = exceptions_.regions[r].binding;
+        if (!binding || !std::holds_alternative<ValueThrow>(graph_.ops[thrown.value].operation) ||
+            !Same(Operand(thrown, 0), ValueOperand{binding->value})) continue;
+        std::vector<CleanupPair> pairs;
+        bool equal = true;
+        for (std::size_t i = 0; i + 1 < handler.operations.size(); ++i) {
+          quota_.Work();
+          const auto a = normal.operations[i], b = handler.operations[i];
+          if (!Pair(a, b, {r})) { equal = false; break; }
+          Append(pairs, CleanupPair{a, b});
+        }
+        if (!equal) continue;
+        const auto last = pairs.back().normal;
+        Append(plan.finalizers, FinalizerRegion{{r}, NormalCompletion{}, ThrowCompletion{binding->value},
+            last, thrown, std::move(normal.nodes), std::move(handler.nodes), std::move(pairs), {}});
+        continue;
+      }
       if (normal.operations.empty() || handler.operations.size() != normal.operations.size()) continue;
       const auto returned = normal.operations.back(), thrown = handler.operations.back();
       const auto& normal_exit = graph_.ops[returned.value].operation;

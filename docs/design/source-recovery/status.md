@@ -51,6 +51,16 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 新增正常落下的 finally：异常路径 cleanup + 原值 rethrow 与正常路径
+  cleanup 前缀配对；正常路径后续操作保留在 finally 外，不伪造 pending return。
+  FunctionTree 及既有流检查消费同一 NormalCompletion，Printer 无专项逻辑。
+  新解码夹具先复现 finalizer=0，三个 profile 生成完整源码并执行 get/cleanup/after
+  的全部抛出组合，检查 cleanup 覆盖、原异常身份、after 执行次数与顺序。
+  相关目标构建成功，定向 15/15 通过；日志
+  `/tmp/abcd-finalizer-fallthrough-final-build.log` 与
+  `/tmp/abcd-finalizer-fallthrough-final-tests.log`。
+  当前仅覆盖既有直线 corridor 的配对前缀与后续语句；分支后继、嵌套 finally
+  和跨区域 break/continue 尚未闭合。未运行全量测试、语料、RSS 或基准。
 - C05 参数载荷边界补充实测：现有共同恢复路径已支持 finally 直接 return/throw
   函数参数，无需新增生产分支。三个 profile 的覆盖组扩为 24 个夹具，生成 JS
   执行覆盖 undefined/null/-0/NaN/bigint/Symbol/object，检查保护调用正常/抛出时

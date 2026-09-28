@@ -503,6 +503,24 @@ void FinallyChain(abc::ProfileId profile, std::ostream* output, std::uint32_t co
 }
 enum class ProtectedBranch { kSingle, kNested, kEarlyReturn };
 enum class OverrideValue { kCleanup, kCaught, kUndefined, kArgument };
+void FinallyFallthrough(abc::ProfileId profile, std::ostream* output) {
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+  constexpr unsigned kByteBits = 8;
+  auto body = test::Body({
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kRETURN),
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+  abc::TryRegion region; region.offset = {0}; region.length = 4; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {13}; handler.length = 10;
+  body.tries = {region}; body.handlers = {handler};
+  Emit(body, profile, 1, 3, false, output, {}, 0, true);
+}
 void FinallyOverride(abc::ProfileId profile, bool raising, std::ostream* output,
     OverrideValue value = OverrideValue::kCleanup) {
   const bool original_payload = value == OverrideValue::kCaught;
@@ -647,6 +665,12 @@ void FinallyBranch(abc::ProfileId profile, std::ostream* output,
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--finally-fallthrough") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) FinallyFallthrough(profile, &std::cout);
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--finally-override") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -769,6 +793,7 @@ int main(int argc, char** argv) {
     FinallyLoop(profile, nullptr, true);
     FinallyCatch(profile, nullptr);
     FinallyCatch(profile, nullptr, true);
+    FinallyFallthrough(profile, nullptr);
     FinallyOverride(profile, false, nullptr);
     FinallyOverride(profile, false, nullptr, OverrideValue::kCaught);
     FinallyOverride(profile, false, nullptr, OverrideValue::kUndefined);
