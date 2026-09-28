@@ -1,6 +1,45 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
+const bareTransferSource = execFileSync(process.argv[2], ['--finally-bare-transfer'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!bareTransferSource.includes('INCOMPLETE'));
+const {functions: bareTransfers} = await import(`data:text/javascript;base64,${Buffer.from(bareTransferSource).toString('base64')}`);
+assert.equal(bareTransfers.length, 12);
+for (const [index, fn] of bareTransfers.entries()) for (const count of [0, 1, 3]) {
+  for (const choice of [0, 1]) for (const runThrows of [false, true]) {
+    for (const pending of [undefined, null, Symbol('pending'), {}]) for (const afterThrows of [false, true]) {
+      const stop = index % 2 === 1, different = index % 4 >= 2, log = [], value = {}, afterError = {};
+      let next = 0, returned, thrown, didThrow = false;
+      try {
+        returned = fn(function () {
+          assert.equal(this, undefined); log.push('next');
+          assert.ok(next <= count); return next++ < count;
+        }, function () {
+          assert.equal(this, undefined); log.push('run'); if (runThrows) throw pending;
+        }, function () {
+          assert.equal(this, undefined); log.push('after'); if (afterThrows) throw afterError;
+          return value;
+        }, choice);
+      } catch (error) { didThrow = true; thrown = error; }
+      const expected = [];
+      if ((stop !== (different && runThrows)) && choice && count > 0) expected.push('next', 'run');
+      else {
+        for (let i = 0; i < count; ++i) {
+          expected.push('next'); if (choice) expected.push('run');
+        }
+        expected.push('next');
+      }
+      expected.push('after');
+      assert.deepEqual(log, expected);
+      assert.equal(didThrow, afterThrows);
+      assert.equal(didThrow ? thrown : returned, afterThrows ? afterError : value);
+    }
+  }
+  const nextError = {};
+  assert.throws(() => fn(() => { throw nextError; }, () => assert.fail('run'),
+    () => assert.fail('after'), 1), error => error === nextError);
+}
+
 const outerTransferSource = execFileSync(process.argv[2], ['--finally-outer-transfer'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!outerTransferSource.includes('INCOMPLETE'));
 const {functions: outerTransfers} = await import(`data:text/javascript;base64,${Buffer.from(outerTransferSource).toString('base64')}`);

@@ -91,7 +91,26 @@ class CompletionBuilder {
       quota_.Work(); stamp_ = static_cast<std::size_t>(r) + 1;
       const auto& region = control_.regions[r];
       const auto next = control_.skeleton.nodes[region.wrapper.value].next;
-      if (!next || !regions_[r].body) continue;
+      if (!next) {
+        // A bare abrupt suffix is consumed into the protected body's control
+        // tree, not exposed as wrapper.next. Only straight tails qualify here;
+        // moving a nonthrowing jump out of try preserves all body effects.
+        Corridor normal, handler;
+        const auto binding = exceptions_.regions[r].binding;
+        if (!binding || !Path(region.body, normal, true) ||
+            !Path(region.handler, handler, true) || !normal.transfer ||
+            !handler.transfer || !handler.operations.empty()) continue;
+        const auto& left = std::get<LoopTransfer>(control_.skeleton.nodes[normal.transfer->value].synthetic);
+        const auto& right = std::get<LoopTransfer>(control_.skeleton.nodes[handler.transfer->value].synthetic);
+        if (left.loop != right.loop || left.kind != right.kind) continue;
+        const PendingCompletion replacement = left.kind == LoopTransferKind::kBreak ?
+            PendingCompletion{BreakCompletion{left.loop}} : PendingCompletion{ContinueCompletion{left.loop}};
+        Append(plan.finalizers, FinalizerRegion{{r}, NormalCompletion{}, ThrowCompletion{binding->value},
+            {}, {}, std::move(normal.nodes), std::move(handler.nodes), {}, replacement,
+            CleanupTransferPair{*normal.transfer, *handler.transfer}, CleanupPlacement::kBodyTail});
+        continue;
+      }
+      if (!regions_[r].body) continue;
       Corridor normal, handler;
       if (!Path(region.handler, handler, true)) continue;
       const bool complete_normal = Path(*next, normal, false) && !normal.transfer;
@@ -100,7 +119,7 @@ class CompletionBuilder {
         const auto& right = std::get<LoopTransfer>(control_.skeleton.nodes[handler.transfer->value].synthetic);
         const auto binding = exceptions_.regions[r].binding;
         if (!binding || left.loop != right.loop || left.kind != right.kind ||
-            normal.operations.empty() || normal.operations.size() != handler.operations.size()) continue;
+            normal.operations.size() != handler.operations.size()) continue;
         std::vector<CleanupPair> pairs;
         bool equal = true;
         for (std::size_t i = 0; i < normal.operations.size(); ++i) {
@@ -111,8 +130,12 @@ class CompletionBuilder {
         if (!equal) continue;
         const PendingCompletion replacement = left.kind == LoopTransferKind::kBreak ?
             PendingCompletion{BreakCompletion{left.loop}} : PendingCompletion{ContinueCompletion{left.loop}};
+        // A finalizer may consist solely of the overriding loop transfer.
+        // Do not invent an opcode anchor or require an unrelated cleanup call.
+        const auto normal_exit = pairs.empty() ? std::nullopt : std::optional{pairs.back().normal};
+        const auto exceptional_exit = pairs.empty() ? std::nullopt : std::optional{pairs.back().exceptional};
         Append(plan.finalizers, FinalizerRegion{{r}, NormalCompletion{}, ThrowCompletion{binding->value},
-            pairs.back().normal, pairs.back().exceptional, std::move(normal.nodes), std::move(handler.nodes),
+            normal_exit, exceptional_exit, std::move(normal.nodes), std::move(handler.nodes),
             std::move(pairs), replacement, CleanupTransferPair{*normal.transfer, *handler.transfer}});
         continue;
       }

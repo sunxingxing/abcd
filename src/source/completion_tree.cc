@@ -196,8 +196,10 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
     const auto original = flow.tries[region.region.value];
     const auto normal = Roots(region, flow, false, budget);
     const auto exceptional = Roots(region, flow, true, budget);
-    const auto returning = region.transfer ? std::optional{normal.back()} : flow.statements[region.normal_exit.value];
-    const auto throwing = region.transfer ? std::optional{exceptional.back()} : flow.statements[region.exceptional_exit.value];
+    const auto returning = region.transfer && !normal.empty() ? std::optional{normal.back()} :
+        region.normal_exit ? flow.statements[region.normal_exit->value] : std::nullopt;
+    const auto throwing = region.transfer && !exceptional.empty() ? std::optional{exceptional.back()} :
+        region.exceptional_exit ? flow.statements[region.exceptional_exit->value] : std::nullopt;
     if (!original || !returning || !throwing || !positions[original->value])
       continue;
     const auto inner =
@@ -205,12 +207,17 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
     const auto handler = inner.handler->body;
     const auto location = *positions[original->value];
     const bool replaces = region.replacement.has_value();
+    const bool body_tail = region.placement == CleanupPlacement::kBodyTail;
     const bool falls_through = !replaces && std::holds_alternative<NormalCompletion>(region.normal);
     const auto& following = lists[location.block.value];
     const auto cleanup_end = location.index + 1 + normal.size();
     // Normal completion may end this block and enter its enclosing region.
     // A preserved return/throw requires a trailing statement in the same block.
-    if (normal.empty() || exceptional.empty() ||
+    if (body_tail) {
+      if (!replaces || !region.transfer || !region.cleanup.empty() || normal.size() != 1 ||
+          lists[inner.body.value].empty() || lists[inner.body.value].back() != normal.front() ||
+          location.index + 1 != following.size()) continue;
+    } else if (normal.empty() || exceptional.empty() ||
         cleanup_end > following.size() || (!replaces && !falls_through && cleanup_end == following.size()) ||
         (!falls_through && following.back() != *returning) ||
         !std::equal(normal.begin(), normal.end(),
@@ -218,7 +225,7 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
       continue;
     std::vector<StmtId> protected_children{*original};
     if (replaces) {
-      if (cleanup_end != following.size() || normal.back() != *returning ||
+      if ((!body_tail && cleanup_end != following.size()) || normal.back() != *returning ||
           exceptional.back() != *throwing) continue;
     } else if (!falls_through) {
       const auto copies = std::span<const StmtId>(following).subspan(
@@ -285,6 +292,7 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
     lists[handler.value].resize(prefix);
     lists[handler.value].push_back(pending);
     if (!replaces) lists[handler.value].push_back(*throwing);
+    if (body_tail) lists[inner.body.value].pop_back();
     lists[location.block.value].resize(location.index);
     lists[location.block.value].push_back(enclosure);
     lists[location.block.value].insert(lists[location.block.value].end(), continuation.begin(), continuation.end());
@@ -436,8 +444,13 @@ CompletionTreeView::CompletionTreeView(const FunctionTree& tree,
     std::vector<StmtId> continuation(parent.begin() + location.index + 1, parent.end());
     parent.resize(location.index);
     parent.push_back(inner_id);
-    parent.insert(parent.end(), lists[normal.value].begin(),
-                  lists[normal.value].end());
+    if (region->placement == CleanupPlacement::kBodyTail) {
+      Require(replaces && region->transfer && region->cleanup.empty() && lists[normal.value].size() == 1);
+      lists[inner->body.value].push_back(lists[normal.value].front());
+    } else {
+      parent.insert(parent.end(), lists[normal.value].begin(),
+                    lists[normal.value].end());
+    }
     if (return_id) {
       parent.insert(parent.end(), lists[outer->body.value].begin() + 1,
                     lists[outer->body.value].end() - 1);

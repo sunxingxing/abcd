@@ -504,6 +504,25 @@ void FinallyChain(abc::ProfileId profile, std::ostream* output, std::uint32_t co
 enum class ProtectedBranch { kSingle, kNested, kEarlyReturn };
 enum class OverrideValue { kCleanup, kCaught, kUndefined, kArgument };
 enum class NestedCompletion { kNormal, kReturn, kThrow };
+void FinallyBareTransfer(abc::ProfileId profile, std::ostream* output, bool stop, bool different = false) {
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  auto body = test::Body({
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJEQZ_IMM8), 18,
+      op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kJEQZ_IMM8), 8,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(stop ? 8 : -14),
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-16),
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>((stop != different) ? 2 : -20),
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kRETURN)});
+  abc::TryRegion region; region.offset = {10}; region.length = 4; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {18}; handler.length = 4;
+  body.tries = {region}; body.handlers = {handler};
+  Emit(body, profile, 1, 4, false, output, {}, 1, !different,
+      different ? std::optional{ExpectedCompletion{0, 0}} : std::optional<ExpectedCompletion>{});
+}
 void CompilerFinally(abc::ProfileId profile, std::ostream* output) {
   // Pinned es2panda TryContext::InitFinalizer, TryStatement::CompileFinally
   // and PandaGen::EmitRethrow: shared cleanup, undefined run guard, Hole vs
@@ -799,6 +818,17 @@ void FinallyBranch(abc::ProfileId profile, std::ostream* output,
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--finally-bare-transfer") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) {
+      FinallyBareTransfer(profile, &std::cout, false);
+      FinallyBareTransfer(profile, &std::cout, true);
+      FinallyBareTransfer(profile, &std::cout, false, true);
+      FinallyBareTransfer(profile, &std::cout, true, true);
+    }
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -981,6 +1011,10 @@ int main(int argc, char** argv) {
     FinallyTransfer(profile, nullptr, true, true);
     FinallyTransfer(profile, nullptr, false, true, true);
     FinallyTransfer(profile, nullptr, true, true, true);
+    FinallyBareTransfer(profile, nullptr, false);
+    FinallyBareTransfer(profile, nullptr, true);
+    FinallyBareTransfer(profile, nullptr, false, true);
+    FinallyBareTransfer(profile, nullptr, true, true);
     FinallyOuterTransfer(profile, nullptr, false);
     FinallyOuterTransfer(profile, nullptr, true);
     FinallyOverride(profile, false, nullptr);

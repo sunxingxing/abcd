@@ -51,6 +51,16 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 新增仅含 break/continue 的 finally：原先裸跳转由共同控制树收进
+  try 主体尾部，没有 wrapper 后继，因而未恢复 finalizer。现用类型化的
+  body-tail 放置保留原 ControlId，将无副作用的尾跳转移入共同 FunctionTree
+  的 finally；没有 cleanup opcode 时显式保存空锚点，不伪造 OpId。
+  三 profile 共 12 个完整解码夹具包含同目标覆盖与两侧不同跳转反例，实际
+  执行生成 JS，检查零/一/多次循环、分支跳过、原异常（含 undefined）取消、
+  循环外异常不被吞掉及精确调用次序。相关构建与定向 15/15 通过，日志
+  `/tmp/abcd-bare-transfer-final-build.log`、`/tmp/abcd-bare-transfer-final-tests.log`。
+  当前仅支持直线主体的裸尾跳转；共享 Hole cleanup 协议仍未贯通，不因本项
+  通过宣布 C05 完成。未运行全量测试、语料、RSS 或基准。
 - **进行中，尚未支持**：按 pinned es2panda `TryContext::InitFinalizer`、
   `TryStatement::CompileFinally`、`PandaGen::EmitRethrow` 新增共享 cleanup 的
   Hole/undefined guard 解码复现入口 `control_composition_test --compiler-finally`。
