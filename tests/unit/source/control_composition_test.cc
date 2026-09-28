@@ -488,8 +488,59 @@ void FinallyChain(abc::ProfileId profile, std::ostream* output, std::uint32_t co
   body.tries = {region}; body.handlers = {handler};
   Emit(body, profile, 2, 3, false, output, {}, 0, true, ExpectedCompletion{1, count}, stage);
 }
+enum class ProtectedBranch { kSingle, kNested, kEarlyReturn };
+void FinallyBranch(abc::ProfileId profile, std::ostream* output,
+    ProtectedBranch shape = ProtectedBranch::kSingle) {
+  // get's value remains pending while an optional protected call executes.
+  // The branch arm rejoins the try exit; it is not an unowned control sink.
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+  constexpr unsigned kByteBits = 8;
+  std::vector<std::uint8_t> bytes = {
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kJEQZ_IMM8), 6,
+      op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 5, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kRETURN),
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)};
+  const bool nested = shape == ProtectedBranch::kNested;
+  const bool early = shape == ProtectedBranch::kEarlyReturn;
+  if (nested) {
+    // Both conditions skip to the same protected continuation. The inner arm
+    // inherits the outer join, with no node.next of its own.
+    bytes[9] = 10;
+    bytes.insert(bytes.begin() + 10, {op(abc::Opcode::kLDA_V8), 6, op(abc::Opcode::kJEQZ_IMM8), 6});
+  } else if (early) {
+    // This return bypasses cleanup in the original bytecode. It must not be
+    // mistaken for an implicit join and placed inside a recovered finalizer.
+    bytes[9] = 7;
+    bytes.insert(bytes.begin() + 14, op(abc::Opcode::kRETURN));
+  }
+  auto body = test::Body(bytes);
+  const std::uint32_t prefix = nested ? 4 : early ? 1 : 0;
+  abc::TryRegion region; region.offset = {0}; region.length = 18 + prefix; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {25 + prefix}; handler.length = 10;
+  body.tries = {region}; body.handlers = {handler};
+  Emit(body, profile, 1, nested ? 6 : 5, false, output, {}, 0, !early,
+      ExpectedCompletion{early ? 0U : 1U, 1});
+}
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--finally-branch") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) {
+      FinallyBranch(profile, &std::cout);
+      FinallyBranch(profile, &std::cout, ProtectedBranch::kNested);
+      FinallyBranch(profile, &std::cout, ProtectedBranch::kEarlyReturn);
+    }
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--completion-pairs") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -562,6 +613,9 @@ int main(int argc, char** argv) {
     HandlerOuterTransfer(profile, true, nullptr);
     FinallyReturn(profile, true, nullptr);
     FinallyChain(profile, nullptr);
+    FinallyBranch(profile, nullptr);
+    FinallyBranch(profile, nullptr, ProtectedBranch::kNested);
+    FinallyBranch(profile, nullptr, ProtectedBranch::kEarlyReturn);
     for (const auto variant : {CleanupVariant::kDifferentCallee, CleanupVariant::kLateReturn,
         CleanupVariant::kExtraCall, CleanupVariant::kWrongRethrow}) FinallyReturn(profile, false, nullptr, variant);
   }

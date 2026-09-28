@@ -145,10 +145,16 @@ class CompletionBuilder {
     }
   }
   bool Body(TryId region, ControlId entry) {
-    std::vector<ControlId> pending;
-    Append(pending, entry);
+    // Shared RegionPlan arms stop at their enclosing continuation. A missing
+    // node.next at that boundary is a checked join, not an abrupt body exit.
+    // Follow the same stop convention as VerifyControlSkeleton; never invent
+    // a successor from instruction adjacency or cleanup PC proximity.
+    struct Task { ControlId entry; std::optional<ControlId> stop; };
+    std::vector<Task> pending;
+    Append(pending, Task{entry, {}});
     while (!pending.empty()) {
-      quota_.Work(); const auto id = pending.back(); pending.pop_back();
+      quota_.Work(); const auto task = pending.back(); pending.pop_back();
+      const auto id = task.entry;
       Require(id.value < control_.skeleton.nodes.size());
       if (id.value >= control_.units.size()) return false;
       if (visited_[id.value] == stamp_) continue;
@@ -168,12 +174,13 @@ class CompletionBuilder {
         if (std::holds_alternative<ValueReturn>(op.operation)) return false;
         throwing |= std::holds_alternative<ValueThrow>(op.operation);
       }
-      if (node.next) Append(pending, *node.next);
+      if (node.next) Append(pending, Task{*node.next, task.stop});
       if (node.arms) {
-        if (node.arms->taken) Append(pending, *node.arms->taken);
-        if (node.arms->fallthrough) Append(pending, *node.arms->fallthrough);
+        const auto join = node.next ? node.next : task.stop;
+        if (node.arms->taken) Append(pending, Task{*node.arms->taken, join});
+        if (node.arms->fallthrough) Append(pending, Task{*node.arms->fallthrough, join});
       }
-      if (!node.next && !node.arms && !throwing) return false;
+      if (!node.next && !node.arms && !throwing && !task.stop) return false;
     }
     return true;
   }

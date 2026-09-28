@@ -75,3 +75,45 @@ for (const [index, fn] of paired.entries()) {
     else assert.equal(returned, mode === 2 ? cleaned : pending);
   }
 }
+
+const branchSource = execFileSync(process.argv[2], ['--finally-branch'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!branchSource.includes('INCOMPLETE'));
+const {functions: branches} = await import(`data:text/javascript;base64,${Buffer.from(branchSource).toString('base64')}`);
+assert.equal(branches.length, 9);
+for (const [index, fn] of branches.entries()) for (const choice of [0, 1]) for (const secondChoice of [0, 1]) {
+  for (const getThrows of [false, true]) for (const insideThrows of [false, true]) {
+    for (const cleanupThrows of [false, true]) for (const afterThrows of [false, true]) {
+      const log = [], value = {}, insideValue = {}, getError = {}, insideError = {}, afterError = {}, cleanupError = {};
+      let returned, thrown, didThrow = false;
+      try {
+        returned = fn(function () {
+          assert.equal(this, undefined); log.push('get');
+          if (getThrows) throw getError;
+          return value;
+        }, function () {
+          assert.equal(this, undefined); log.push('cleanup');
+          if (cleanupThrows) throw cleanupError;
+        }, choice, function () {
+          assert.equal(this, undefined); log.push('inside');
+          if (insideThrows) throw insideError;
+          return insideValue;
+        }, function () {
+          assert.equal(this, undefined); log.push('after');
+          if (afterThrows) throw afterError;
+        }, secondChoice);
+      } catch (error) { didThrow = true; thrown = error; }
+      const ranInside = !getThrows && choice === 1 && (index % 3 !== 1 || secondChoice === 1);
+      const earlyReturn = index % 3 === 2 && ranInside && !insideThrows;
+      const ranAfter = !getThrows && !(ranInside && insideThrows) && !earlyReturn;
+      const expected = ['get'];
+      if (ranInside) expected.push('inside');
+      if (ranAfter) expected.push('after');
+      if (!earlyReturn) expected.push('cleanup');
+      assert.deepEqual(log, expected);
+      assert.equal(didThrow, (!earlyReturn && cleanupThrows) || getThrows || (ranInside && insideThrows) || (ranAfter && afterThrows));
+      if (didThrow) assert.equal(thrown, !earlyReturn && cleanupThrows ? cleanupError : getThrows ? getError :
+          ranInside && insideThrows ? insideError : afterError);
+      else assert.equal(returned, earlyReturn ? insideValue : value);
+    }
+  }
+}

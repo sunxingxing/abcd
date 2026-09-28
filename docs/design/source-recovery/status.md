@@ -51,6 +51,18 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 已进一步贯通 protected body 中的单层/嵌套 if 汇合：completion 遍历
+  现在消费共同 RegionPlan 的 enclosing continuation，识别分支末尾的隐式
+  join，不再误判为无后继。没有增加图算法或按 PC 邻接猜边。
+  三个 profiles 的实际 opcode fixture 均生成完整 finalizer 源码；执行对照
+  核对 get、可选分支调用、共同调用、cleanup 的顺序，以及四处抛错时的覆盖
+  和 pending 值身份。另有分支真实 return 绕过 cleanup 的反例，保留展开树，
+  执行确认该路径不调用 cleanup。共 9 个分支 fixture，相关 composition、
+  source、outer-exit、completion 行为测试 **4/4 通过**。
+  RED 为 `completion candidates 0`，日志 `/tmp/abcd-finalizer-branch-red.log`；
+  构建和最终测试见 `/tmp/abcd-finalizer-branch-build.log`、
+  `/tmp/abcd-finalizer-branch-tests.log`。这不是嵌套 finally/覆盖 completion 的
+  完成证明，hole/guard、循环 transfer 和动态环境 cleanup 缺口仍保持开放。
 - C05 首条真实 finalizer 源码通路已接入：共同 TreeBuilder 消费 CompletionPlan，
   将已固定的 return/rethrow 放入外层 try，在真正的 `TryStmt.finalizer` 中执行
   原 cleanup。每次进入块时初始化私有布尔状态，catch 标记异常路径；当前保留
