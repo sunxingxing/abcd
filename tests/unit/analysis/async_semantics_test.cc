@@ -220,12 +220,13 @@ void RepeatedEntry() {
     test::Check(std::holds_alternative<ExceptionSsa>(renamed));
   }
 }
-enum class HandlerRead { kNone, kClosedLoop, kResult, kMode, kRange, kUnknownEffects, kBackEdge, kExceptionBackEdge };
-void AwaitHandlerBranches(std::uint32_t branches, HandlerRead read, std::uint32_t awaits = 1) {
+enum class HandlerRead { kNone, kClosedLoop, kResult, kMode, kRange, kUnknownEffects, kUnknownCoroutine, kBackEdge, kExceptionBackEdge };
+void AwaitHandlerBranches(std::uint32_t branches, HandlerRead read, std::uint32_t awaits = 1,
+                          bool handler_await = false) {
   const auto op = [](abc::Opcode value) { return static_cast<std::uint8_t>(value); };
   constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
   constexpr unsigned kByteBits = 8;
-  constexpr std::uint32_t kRegisters = 5;
+  constexpr std::uint32_t kRegisters = 7;
   // Full private-state protocol; user catch preserves the caught accumulator
   // in v4. Only v1/v2 are the erased reject-resume definitions under test.
   std::vector<std::uint8_t> bytes{
@@ -253,11 +254,23 @@ void AwaitHandlerBranches(std::uint32_t branches, HandlerRead read, std::uint32_
     bytes.insert(bytes.end(), {op(abc::Opcode::kLDTRUE), op(abc::Opcode::kJEQZ_IMM8), 4,
         op(abc::Opcode::kJMP_IMM8), delta});
   }
+  if (handler_await) bytes.insert(bytes.end(), {
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kASYNCFUNCTIONAWAITUNCAUGHT_V8), 0,
+      op(abc::Opcode::kSUSPENDGENERATOR_V8), 0, op(abc::Opcode::kLDA_V8), 0,
+      op(abc::Opcode::kRESUMEGENERATOR), op(abc::Opcode::kSTA_V8), 5,
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kGETRESUMEMODE), op(abc::Opcode::kSTA_V8), 6,
+      op(abc::Opcode::kLDAI_IMM32), static_cast<std::uint8_t>(CoroutineResumeMode::kThrow), 0, 0, 0,
+      op(abc::Opcode::kEQ_IMM8_V8), 0, 6, op(abc::Opcode::kJEQZ_IMM8), 6,
+      op(abc::Opcode::kLDA_V8), 5,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+      op(abc::Opcode::kLDA_V8), 5});
   const std::uint8_t observed = read == HandlerRead::kResult ? 1 : read == HandlerRead::kMode ? 2 : 4;
   if (read == HandlerRead::kRange)
     bytes.insert(bytes.end(), {op(abc::Opcode::kCALLRANGE_IMM8_IMM8_V8), 0, 2, 1});
   else if (read == HandlerRead::kUnknownEffects)
     bytes.push_back(op(abc::Opcode::kGETUNMAPPEDARGS));
+  else if (read == HandlerRead::kUnknownCoroutine)
+    bytes.push_back(op(abc::Opcode::kRESUMEGENERATOR));
   else bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), observed});
   bytes.insert(bytes.end(), {op(abc::Opcode::kASYNCFUNCTIONRESOLVE_V8), 0, op(abc::Opcode::kRETURN)});
   const auto completion_pc = static_cast<std::uint32_t>(bytes.size());
@@ -280,7 +293,7 @@ void AwaitHandlerBranches(std::uint32_t branches, HandlerRead read, std::uint32_
   const auto found = FindAwaitRegions(body, kProfile, kRegisters, SemanticBudget{}.bytes);
   test::Check(std::holds_alternative<std::vector<AwaitRegion>>(found));
   const auto& regions = std::get<std::vector<AwaitRegion>>(found);
-  test::Check(regions.size() == awaits);
+  test::Check(regions.size() == awaits + (handler_await ? 1U : 0U));
   const auto result = ProveAwaitCatchInputs(body, regions, kProfile, kRegisters, {completion_pc});
   if (read == HandlerRead::kNone || read == HandlerRead::kClosedLoop)
     test::Check(std::holds_alternative<AwaitCatchProof>(result));
@@ -299,8 +312,12 @@ int main() {
   RepeatedEntry();
   for (const auto branches : {1U, 200U, 201U, 402U}) AwaitHandlerBranches(branches, HandlerRead::kNone);
   for (const auto count : {200U, 201U, 402U}) AwaitHandlerBranches(count, HandlerRead::kNone, count);
+  for (const auto count : {1U, 200U, 201U, 402U}) AwaitHandlerBranches(count, HandlerRead::kNone, count, true);
   AwaitHandlerBranches(1, HandlerRead::kClosedLoop);
   for (const auto read : {HandlerRead::kResult, HandlerRead::kMode, HandlerRead::kRange,
-                          HandlerRead::kUnknownEffects, HandlerRead::kBackEdge,
-                          HandlerRead::kExceptionBackEdge}) AwaitHandlerBranches(1, read);
+                          HandlerRead::kUnknownEffects, HandlerRead::kUnknownCoroutine, HandlerRead::kBackEdge,
+                          HandlerRead::kExceptionBackEdge}) {
+    AwaitHandlerBranches(1, read);
+    AwaitHandlerBranches(1, read, 1, true);
+  }
 }

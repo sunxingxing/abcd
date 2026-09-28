@@ -144,9 +144,13 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
       if (const auto* reg = std::get_if<abc::RegisterId>(&slot))
         uses.Assign(position(reg->value), position(std::uint64_t(reg->value) + 1), use);
     };
-    std::size_t next_probe = 0;
+    std::size_t next_probe = 0, suffix_region = regions.size();
     for (auto site = body.instructions.rbegin(); site != body.instructions.rend(); ++site) {
       charge();
+      while (suffix_region && site->offset < regions[suffix_region - 1].await) {
+        charge(); --suffix_region;
+      }
+      const auto* region = suffix_region ? &regions[suffix_region - 1] : nullptr;
       const auto lifted = LiftSemanticInstruction(*site, profile, frame_size);
       const auto* instruction = std::get_if<SemanticInstruction>(&lifted);
       // A closed suffix with no possible reads proves a register dead even
@@ -169,7 +173,25 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
         if (effect.range)
           suffix_reads.Assign(position(effect.range->first.value),
               position(std::uint64_t(effect.range->first.value) + effect.range->count), FirstUse::kRead);
-      } else suffix_known = false;
+      } else {
+        // Only the exact await protocol certified on this unchanged body has
+        // complete coroutine reads here. Suspend preserves frame values but
+        // does not observe arbitrary locals; subsequent reads still accumulate.
+        // Never use generic raw effects: arguments can hide frame-wide reads.
+        const bool protocol = region && (site->offset == region->await ||
+            site->offset == region->suspend || site->offset == region->resume ||
+            site->offset == region->mode);
+        const auto coroutine = LiftCoroutineInstruction(site->decoded, frame_size);
+        const auto read = [&](const ScalarSlot& slot) {
+          if (const auto* reg = std::get_if<abc::RegisterId>(&slot))
+            suffix_reads.Assign(position(reg->value), position(std::uint64_t(reg->value) + 1), FirstUse::kRead);
+        };
+        if (const auto* transfer = std::get_if<CoroutineTransfer>(&coroutine); protocol && transfer) {
+          read(transfer->state); read(transfer->value);
+        } else if (const auto* value = std::get_if<CoroutineRead>(&coroutine); protocol && value) {
+          read(value->state);
+        } else suffix_known = false;
+      }
       if (!instruction) {
         const auto coroutine = LiftCoroutineInstruction(site->decoded, frame_size);
         const auto* transfer = std::get_if<CoroutineTransfer>(&coroutine);

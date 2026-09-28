@@ -18,6 +18,8 @@ struct AwaitCatchProof {
 // prefix proves overwrite/exit; a suffix containing all its branch/exception
 // targets proves deadness when it has no reads of the slot at all. Unknown
 // effects and targets escaping that suffix cannot authorize this second case.
+// Exact certified await protocol sites contribute their typed coroutine reads;
+// arbitrary raw coroutine instructions remain unknown, not exits or no-ops.
 // Shared compressed range-assignment index: O((I+A) log(A+1) + I log(R+1))
 // after dispatch construction, R dispatch spans; O(A) extra storage excluding
 // dispatch. No per-await walk through the handler body.

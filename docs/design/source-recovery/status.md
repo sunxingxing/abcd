@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-09-28：共享 finally 内再次 await 保留 pending completion
+
+- 新文件化双 await 夹具先在原始 PC 8 的 catch-input 分析拒绝：第二个协议已被
+  FindAwaitRegions 识别，但后缀分析仍把 suspend/resume 当未知效果。现在用逆向
+  单调游标定位既有协议，仅其精确 await/suspend/resume/mode PC 消费类型化
+  coroutine reads；未识别协程、arguments 隐式读取等未知效果继续拒绝。
+  不引入另一套暂停分析或 async writer，不改变默认 work/内存额度。
+- 三 profile × iteration/catch/normal 三父作用域，共 9 个文件化函数族完整输出
+  `try { await input; } finally { await cleanup(cell); }` 对应的共同 AST 源码。
+  实际 JS 对照原生 oracle，覆盖原拒绝保留、清理拒绝覆盖、then getter 抛出、
+  thenable receiver/调用顺序、微任务顺序、清理一次和第二次暂停期间的 cell 改写。
+  pending cleanup 不提前结束函数；原始 await PC 8/66 和返回 PC 118 保留。
+- 分析定向例包含 1/200/201/402 个 await/分支加 handler await，以及暂停后读旧
+  result/mode、range 读取、未知协程、未知效果、普通/异常外跳反例。后缀证明仍
+  是保守 no-read 条件，不声称解决所有临时寄存器重用或任意 CFG 活跃性。
+- 相关构建与 17/17 定向测试通过（11.54 秒）；命令目标为
+  `loop_closure_file_test control_composition_test async_semantics_test class_tree_context_test
+  creation_tree_context_test phased_value_import_test phased_value_flow_test tree_structure_test
+  function_tree_test`，CTest 集合在 `/tmp/abcd-finally-suspend-final-tests.log`，
+  构建日志 `/tmp/abcd-finally-suspend-final-build.log`；新增
+  `file_await_finally_suspend_source_test`。红例及调试日志为
+  `/tmp/abcd-finally-suspend-red.log`、`/tmp/abcd-finally-suspend-debug.log`。
+- C06 仍未完成：多暂停点寄存器重用、更复杂 handler/live-value、async
+  method/arrow/self/receiver 和真实应用验收仍待推进；当前外围 metadata 为合成
+  夹具。此前两项 base_function 旧路径失败未修复、本轮未重跑；全量测试、语料、
+  RSS 和基准仍暂停。整体开发目标继续，不能用本项通过替代整体完成。
+
 ### 2026-09-28：文件级 try/await 与共享 finally 贯通
 
 - 真实 opcode/双异常表新例先在 await catch-input 检查拒绝（原始 await PC 8）：
