@@ -88,7 +88,8 @@ class TreeBuilder {
     auto expressions = build_forest(graph_, evaluation_,
         static_cast<std::uint32_t>(syntax_.parameters.size()), syntax_.owner,
         constants_, {bytes_, work_}, modules,
-        incoming_ || exceptions_ || !syntax_.captures.empty() ? RecoveryMode::kCompleteOnly : recovery_);
+        (incoming_ && !incoming_->cells.targets.empty()) || exceptions_ || !syntax_.captures.empty()
+            ? RecoveryMode::kCompleteOnly : recovery_);
     if (const auto* error = std::get_if<ExpressionError>(&expressions)) {
       if (*error == ExpressionError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == ExpressionError::kWorkLimit) throw Error::kWorkLimit;

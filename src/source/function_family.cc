@@ -85,6 +85,22 @@ std::variant<ConstructedFamily, FamilyError> BuildFunctionFamily(
       const auto creation = member.incoming->creation;
       Require(creation.value < outer.flow.expressions.size() &&
           outer.flow.expressions[creation.value] == parent->expression, Error::kCapture);
+      if (!member.tree.recovery_issues.empty()) {
+        // A capture-free incomplete leaf needs the actual creation identity,
+        // but has no complete child flow to certify. Do not invent one merely
+        // to retain other reliable members. Captured partial bodies stay closed.
+        const auto& cells = *member.incoming;
+        const auto& inner = member.tree;
+        const auto& expression = std::get<FunctionExpr>(outer.tree.expressions[parent->expression.value].expression);
+        Require(cells.identity == inner.identity && cells.parent == outer.tree.method && cells.child == inner.method &&
+            cells.targets.empty() && inner.captures.empty() && expression.captures.count == 0 &&
+            expression.captures.first <= outer.tree.closure_captures.size() &&
+            inner.value_revision == cells.child_revision && inner.cfg_revision == cells.child_cfg &&
+            outer.tree.value_revision == cells.parent_revision && outer.tree.cfg_revision == cells.parent_cfg &&
+            outer.flow.value_revision == cells.parent_revision && outer.flow.cfg_revision == cells.parent_cfg,
+            Error::kCapture);
+        continue;
+      }
       const auto checked = VerifyCaptureTree(*member.incoming, {outer.tree, outer.flow},
           {member.tree, member.flow}, quota.Remaining());
       if (const auto* error = std::get_if<CaptureTreeError>(&checked))

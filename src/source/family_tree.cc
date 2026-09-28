@@ -102,7 +102,7 @@ class FamilyTrees {
         }
         return Take<ConstructedFunction, FunctionTreeError>(BuildFunctionTree(graph, control,
             evaluation, std::move(syntax.syntax), constants, left_, incoming ? &*incoming : nullptr,
-            family.members.size() == 1 && !defaults_[i] ? recovery_ : RecoveryMode::kCompleteOnly));
+            member.children.empty() && !defaults_[i] ? recovery_ : RecoveryMode::kCompleteOnly));
       }();
       Account(constructed);
       // Naming evidence is creation-specific and must survive arena growth and
@@ -118,9 +118,12 @@ class FamilyTrees {
       if (!constructed.tree.recovery_issues.empty()) {
         // The tree carries a readable omission, not whole-input flow/ABI/source
         // evidence. Keep the original file identity and do not forge those products.
-        Require(family.members.size() == 1 && i == 0 && !defaults_[i], FamilyTreeError::kContext);
+        Require(member.children.empty() && !defaults_[i] &&
+            (!member.incoming || member.incoming->cells.targets.empty()), FamilyTreeError::kContext);
         incomplete = true;
-        trees.push_back({std::move(constructed.tree), {}, {}, {}, {}, function.Record()});
+        std::optional<CaptureCells> cells;
+        if (member.incoming) cells.emplace(std::move(member.incoming->cells));
+        trees.push_back({std::move(constructed.tree), {}, std::move(cells), {}, {}, function.Record()});
         continue;
       }
       if (defaults_[i]) {
@@ -151,16 +154,16 @@ class FamilyTrees {
     }
     auto result = Take<ConstructedFamily, FamilyError>(BuildFunctionFamily(std::move(trees), {FileFamily::kRoot.value}, left_));
     Account(result);
-    if (incomplete) {
-      result.allocated_bytes = initial_.bytes - left_.bytes;
-      result.work = initial_.work - left_.work;
-      return result;
-    }
     const auto enclosure = VerifyFamilyEnclosure(result, left_);
     if (const auto* failure = std::get_if<FamilyEnclosureFailure>(&enclosure)) {
       member_ = failure->member; Fail(*failure);
     }
     Account(std::get<FamilyEnclosure>(enclosure));
+    if (incomplete) {
+      result.allocated_bytes = initial_.bytes - left_.bytes;
+      result.work = initial_.work - left_.work;
+      return result;
+    }
     const auto writes = VerifyFamilyWrites(index_, family, result, left_, lookup_);
     if (const auto* failure = std::get_if<FamilyWriteFailure>(&writes)) {
       member_ = failure->member; Fail(*failure);

@@ -51,6 +51,16 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C00a 第四子项：file-backed 函数族可保留没有捕获 cell 的不完整叶子及完整兄弟。
+  子函数仍必须匹配真实创建表达式、文件/方法/IR 身份和空捕获集合；不伪造子函数
+  TreeFlow，现有非空捕获验证不放宽。即使有部分成员，仍检查跨成员名字/作用域
+  enclosure；不完整函数族不产生完整 writes 事实。Printer 传播到祖先状态，
+  兄弟保持完整。partial_file_test 的三成员实际 Code/创建指令 fixture 先观察到
+  member 1 整体拒绝，再验证父/叶 incomplete、兄弟完整且 `return 7` 保留。
+  partial_file_test、partial_build_test、partial_tree_test、function_input_test、
+  creation_tree_context_test、family_enclosure_test、真实 family_source_cli_test
+  定向 7/7 通过。非空捕获的部分函数、控制/导入失败保留、record 级输出仍未完成。
+
 - C00a 第三子项：`--family-source-draft` 通过原 `BuildFileFamilyTrees` 请求
   部分构建，当前限无默认参数投影、无子函数的正常直线根函数。保留真实上下文、
   名字/参数和已恢复语句；部分结果不制造完整 TreeFlow、ABI/source census 或

@@ -48,6 +48,8 @@ enum class FamilyError : std::uint8_t {
 // this call's additional layout/scratch allowance. No per-edge graph replay.
 // A conditional construction product, NOT immutable publication evidence:
 // callable/name/strictness, root enclosure and transitive effects remain gates.
+// A marked partial child can retain a checked capture-free creation without
+// complete child flow. Its body remains incomplete; captured gaps are rejected.
 [[nodiscard]] std::variant<ConstructedFamily, FamilyError> BuildFunctionFamily(
     std::vector<FamilyMember> members, FunctionOwnerId root,
     analysis::SemanticBudget budget = {});
