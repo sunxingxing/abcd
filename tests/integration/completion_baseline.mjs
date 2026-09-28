@@ -45,6 +45,47 @@ for (const fn of sharedLoopFinalizers) for (const iterations of [0, 1, 4])
       assert.equal(didThrow ? thrown : returned,
         cleanupThrows ? cleanupError : getThrows ? pending : afterThrows ? afterError : result);
     }
+const catchLoopSource = execFileSync(process.argv[2], ['--compiler-finally-catch-loop'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!catchLoopSource.includes('INCOMPLETE'));
+const {functions: catchLoopFinalizers} = await import(`data:text/javascript;base64,${Buffer.from(catchLoopSource).toString('base64')}`);
+assert.equal(catchLoopFinalizers.length, 3);
+for (const fn of catchLoopFinalizers) for (const iterations of [0, 1, 4])
+  for (const getThrows of [false, true]) for (const throwAt of [-1, 0, iterations])
+    for (const cleanupThrows of [false, true]) for (const afterThrows of [false, true])
+      for (const pending of [undefined, null, false, NaN, Symbol('caught'), {}]) {
+        const log = [], catchError = {}, cleanupError = {}, afterError = {}, result = {};
+        let calls = 0, returned, thrown, didThrow = false;
+        try {
+          returned = fn(function () {
+            assert.equal(this, undefined); log.push('get');
+            if (getThrows) throw pending;
+          }, function () {
+            assert.equal(this, undefined); log.push('cleanup');
+            if (cleanupThrows) throw cleanupError;
+          }, function () {
+            assert.equal(this, undefined); log.push('after');
+            if (afterThrows) throw afterError;
+            return result;
+          }, function (caught) {
+            assert.equal(this, undefined); assert.equal(caught, pending);
+            const index = calls++;
+            log.push(`catch:${index}`);
+            if (index === throwAt) throw catchError;
+            assert.ok(index <= iterations, 'catch loop failed to exit');
+            return index < iterations;
+          });
+        } catch (error) { didThrow = true; thrown = error; }
+        const catchThrows = getThrows && throwAt >= 0;
+        const expected = ['get'];
+        if (getThrows) for (let i = 0; i <= (catchThrows ? throwAt : iterations); ++i)
+          expected.push(`catch:${i}`);
+        expected.push('cleanup');
+        if (!catchThrows && !cleanupThrows) expected.push('after');
+        assert.deepEqual(log, expected);
+        assert.equal(didThrow, catchThrows || cleanupThrows || afterThrows);
+        assert.equal(didThrow ? thrown : returned,
+          cleanupThrows ? cleanupError : catchThrows ? catchError : afterThrows ? afterError : result);
+      }
 for (const fn of sharedFinalizers) for (const pending of [undefined, null, false, 0, NaN, Symbol('pending'), {},
   {valueOf() { assert.fail('unexpected coercion'); }, toString() { assert.fail('unexpected coercion'); }}]) {
   for (const getThrows of [false, true]) for (const cleanupThrows of [false, true]) for (const afterThrows of [false, true]) {

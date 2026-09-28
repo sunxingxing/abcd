@@ -12,6 +12,17 @@
 
 ## 当前阶段
 
+### 2026-09-28：共享 finally 中的 catch 循环行为贯通
+
+- 新增三个 profile 的真实 opcode/双异常表夹具：内层 catch 保存原抛值，循环
+  调用回调；正常离开或回调抛出都经过外层共享清理。现有共同恢复已支持该形状，
+  本轮仅补纵向回归，没有增加生产分支、writer 或准入设施。
+- 实际生成 JS 验证捕获值跨回边身份、未进入 catch 时零次回调、立即退出及多轮回边、
+  首轮/末轮 catch 抛出、cleanup 覆盖和后继抛出，均检查 receiver/完整调用顺序。
+- 构建与相关 4/4 定向测试通过：`/tmp/abcd-shared-catch-loop-build.log`、
+  `/tmp/abcd-shared-catch-loop-tests.log`。这是解码夹具证据，不是完整应用验收；
+  全量测试、语料、RSS、基准仍暂停。跨嵌套 try 的外层跳转等 C05 组合仍待推进。
+
 ### 2026-09-28：共享 finally 保护域内循环
 
 - SharedScope 消费既有 LoopControl/LoopTransfer；记录本次 protected/handler 入口

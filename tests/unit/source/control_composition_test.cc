@@ -618,7 +618,7 @@ void FinallyBareTransfer(abc::ProfileId profile, std::ostream* output, bool stop
   Emit(body, profile, 1, 4, false, output, {}, 1, !different,
       different ? std::optional{ExpectedCompletion{0, 0}} : std::optional<ExpectedCompletion>{});
 }
-enum class SharedInnerCatch { kNone, kRethrow, kCallback, kReturn };
+enum class SharedInnerCatch { kNone, kRethrow, kCallback, kLoopCallback, kReturn };
 void CompilerFinally(abc::ProfileId profile, std::ostream* output,
     CompositionStage stage = CompositionStage::kHoleFinally, std::uint32_t count = 1, bool early_return = false,
     SharedInnerCatch inner = SharedInnerCatch::kNone, std::uint32_t depth = 1, bool protected_loop = false) {
@@ -672,8 +672,16 @@ void CompilerFinally(abc::ProfileId profile, std::ostream* output,
       case SharedInnerCatch::kRethrow:
         nested = {static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)}; break;
       case SharedInnerCatch::kCallback:
+      case SharedInnerCatch::kLoopCallback:
         nested = {op(abc::Opcode::kSTA_V8), 2, op(abc::Opcode::kLDA_V8), 6,
-                  op(abc::Opcode::kCALLARG1_IMM8_V8), 0, 2}; break;
+                  op(abc::Opcode::kCALLARG1_IMM8_V8), 0, 2};
+        if (inner == SharedInnerCatch::kLoopCallback) {
+          // Keep the caught value in v2 across repeated callback invocations.
+          // The backedge enters after STA so callback results cannot replace it.
+          nested.insert(nested.end(), {op(abc::Opcode::kJEQZ_IMM8), 4,
+              op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-7)});
+        }
+        break;
       case SharedInnerCatch::kReturn: nested = {op(abc::Opcode::kRETURN)}; break;
       case SharedInnerCatch::kNone: break;
     }
@@ -712,8 +720,9 @@ void CompilerFinally(abc::ProfileId profile, std::ostream* output,
     region.first_handler = static_cast<std::uint32_t>(body.handlers.size());
     body.tries.push_back(region); body.handlers.push_back(handler);
   }
-  Emit(body, profile, 3, early_return || inner == SharedInnerCatch::kCallback ? 4 : 3, false, output, {},
-      protected_loop ? 1 : 0,
+  const auto callback = inner == SharedInnerCatch::kCallback || inner == SharedInnerCatch::kLoopCallback;
+  Emit(body, profile, 3, early_return || callback ? 4 : 3, false, output, {},
+      protected_loop || inner == SharedInnerCatch::kLoopCallback ? 1 : 0,
       stage != CompositionStage::kHoleSource, {}, stage, count);
 }
 void FinallyOuterTransfer(abc::ProfileId profile, std::ostream* output, bool stop) {
@@ -1039,6 +1048,14 @@ int main(int argc, char** argv) {
           SharedInnerCatch::kRethrow, depth);
     return 0;
   }
+  if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-catch-loop") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301})
+      CompilerFinally(profile, &std::cout, CompositionStage::kHoleFinally, 1, false,
+          SharedInnerCatch::kLoopCallback);
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-loop") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -1246,7 +1263,7 @@ int main(int argc, char** argv) {
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally, 1, false,
         SharedInnerCatch::kNone, 1, true);
-    for (const auto inner : {SharedInnerCatch::kRethrow, SharedInnerCatch::kCallback})
+    for (const auto inner : {SharedInnerCatch::kRethrow, SharedInnerCatch::kCallback, SharedInnerCatch::kLoopCallback})
       CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally, 1, false, inner);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleSource, 1, false, SharedInnerCatch::kReturn);
     FinallyOuterTransfer(profile, nullptr, false);
