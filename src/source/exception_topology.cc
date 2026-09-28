@@ -51,7 +51,7 @@ class Projection {
       quota_.Work();
       result_.mapping.units[b] = PhaseControlUnit{{b}};
       auto& projected = result_.blocks[b];
-      projected.first_edge = {edge_count_};
+      projected.first_arc = {edge_count_};
       const auto& original = graph_.blocks[b];
       for (std::uint8_t e = 0; e < original.edge_count; ++e) {
         quota_.Work(); const EdgeId id{original.first_edge.value + e};
@@ -69,7 +69,7 @@ class Projection {
       auto& planned = result_.mapping.regions[r];
       planned = {wrapper, Target(original.body, ControlScope{region, CatchPart::kProtected}),
           {original.binding->block.value}, exits_[r]};
-      result_.blocks[wrapper.value].first_edge = {edge_count_};
+      result_.blocks[wrapper.value].first_arc = {edge_count_};
       if (exits_[r]) {
         const auto target = Target(*exits_[r], ScopeOf(regions_.layout.regions[r].parent), region);
         Arc(wrapper, target, FlowEdgeKind::kTaken, {});
@@ -78,7 +78,7 @@ class Projection {
       result_.entries[root_count++] = planned.handler;
     }
     for (std::size_t u = blocks + regions; u < unit_count_; ++u) {
-      quota_.Work(); result_.blocks[u].first_edge = {edge_count_};
+      quota_.Work(); result_.blocks[u].first_arc = {edge_count_};
     }
     for (const auto block : result_.mapping.inactive_commits) {
       quota_.Work(); result_.entries[root_count++] = {block.value};
@@ -257,8 +257,8 @@ class Projection {
   void Arc(ControlId source, ControlId target, FlowEdgeKind kind, std::optional<EdgeId> original) {
     Require(edge_count_ < result_.edges.size(), Error::kResourceLimit);
     auto& block = result_.blocks[source.value];
-    Require(block.edge_count < kMaxNormalSuccessors, Error::kInput);
-    result_.edges[edge_count_] = {{source.value}, {target.value}, kind, block.edge_count++};
+    Require(block.arc_count < kMaxNormalSuccessors, Error::kInput);
+    result_.edges[edge_count_] = {{source.value}, {target.value}, kind, block.arc_count++};
     result_.mapping.arcs[edge_count_++] = {original};
   }
   const ValueProgram& graph_;

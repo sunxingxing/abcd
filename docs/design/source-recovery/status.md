@@ -51,6 +51,16 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C01 共同视图接入：无环区域发现及已有骨架检查改为消费 `ControlGraphView`，
+  异常投影保存独立 `ControlVertex/ControlLink`，不再借用语义 `WorkBlock/WorkEdge`
+  装载投影邻接。`ControlPlan.view` 区分普通/投影视图；相同数字 ID/revision 的
+  投影计划不能交给正常 CFG 消费入口。未新增源码输出准入或 DFX 框架。
+  新 `ProjectedSkeleton` 先因尚无图视图入口失败，再实现并通过；重建后
+  `ctest --test-dir build -R '^(control_view_test|control_plan_test|exception_plan_test)$' --output-on-failure`
+  **3/3 通过**。既有真实 opcode 异常树构建测试继续通过；这不是循环/try 组合
+  支持完成。下一步迁移现有循环区域构建到同一视图，接多入口及异常树消费；
+  `ControlNode.block` 等旧计划字段的完整 ID 分离仍待共同 RegionPlan 迁移。
+
 - C01 最小循环视图子项：新增借用型 `ControlGraphView`，正常 ValueProgram 与
   区域投影经同一循环发现内核；ControlNodeId/ControlArcId 不可隐式转为工作图 ID。
   LoopForest 显式携带 normal/projection 视图类别及 IR/CFG revision。多个独立

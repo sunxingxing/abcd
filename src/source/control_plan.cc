@@ -17,8 +17,8 @@ void Require(bool condition, Error error) {
 struct RegionTask { std::uint32_t first; std::uint32_t stop; };
 class ControlBuilder {
  public:
-  ControlBuilder(ControlTopology graph, std::span<const ControlId> entries, ControlQuota& quota)
-      : graph_(graph), entries_(entries), quota_(quota), exit_(graph.blocks.size()),
+  ControlBuilder(ControlGraphView graph, std::span<const ControlId> entries, ControlQuota& quota)
+      : graph_(graph), entries_(entries), quota_(quota), exit_(graph.NodeCount()),
         levels_(std::bit_width(exit_)) {}
   ControlPlan Build() {
     Require(exit_ != 0 && exit_ < std::numeric_limits<std::uint32_t>::max(), Error::kInvalidGraph);
@@ -31,12 +31,13 @@ class ControlBuilder {
     quota_.Size(up_, (exit_ + 1) * levels_);
     quota_.Size(owned_, exit_);
     quota_.Size(tasks_, exit_);
-    plan_.revision = graph_.revision;
-    plan_.cfg_revision = graph_.cfg_revision;
+    plan_.view = graph_.Kind();
+    plan_.revision = graph_.Revision();
+    plan_.cfg_revision = graph_.CfgRevision();
     Require(!entries_.empty() && entries_.size() <= exit_, Error::kInvalidGraph);
     plan_.entry = entries_.front();
     quota_.Size(plan_.nodes, exit_);
-    quota_.Size(plan_.edges, graph_.edges.size());
+    quota_.Size(plan_.edges, graph_.ArcCount());
     Order();
     Postdominators();
     Regions();
@@ -49,12 +50,12 @@ class ControlBuilder {
     std::size_t next_edge = 0;
     for (std::size_t b = 0; b < exit_; ++b) {
       quota_.Work();
-      const auto& block = graph_.blocks[b];
-      Require(block.first_edge.value == next_edge && block.edge_count <= analysis::kMaxNormalSuccessors &&
-          block.edge_count <= graph_.edges.size() - next_edge, Error::kInvalidGraph);
-      for (std::uint8_t e = 0; e < block.edge_count; ++e) {
+      const auto& block = graph_.Node({static_cast<std::uint32_t>(b)});
+      Require(block.first_arc.value == next_edge && block.arc_count <= analysis::kMaxNormalSuccessors &&
+          block.arc_count <= graph_.ArcCount() - next_edge, Error::kInvalidGraph);
+      for (std::uint8_t e = 0; e < block.arc_count; ++e) {
         quota_.Work();
-        const auto& edge = graph_.edges[next_edge++];
+        const auto& edge = graph_.Arc({static_cast<std::uint32_t>(next_edge++)});
         Require(edge.source.value == b && edge.successor == e && edge.target.value < exit_ &&
                 (edge.kind == analysis::FlowEdgeKind::kTaken ||
                  edge.kind == analysis::FlowEdgeKind::kFallthrough), Error::kInvalidGraph);
@@ -62,7 +63,7 @@ class ControlBuilder {
       }
       plan_.nodes[b].block = {static_cast<std::uint32_t>(b)};
     }
-    Require(next_edge == graph_.edges.size(), Error::kInvalidGraph);
+    Require(next_edge == graph_.ArcCount(), Error::kInvalidGraph);
     std::size_t count = 0;
     for (std::size_t b = 0; b < exit_; ++b) {
       quota_.Work();
@@ -70,10 +71,10 @@ class ControlBuilder {
     }
     for (std::size_t i = 0; i < count; ++i) {
       quota_.Work();
-      const auto& block = graph_.blocks[order_[i]];
-      for (std::uint8_t e = 0; e < block.edge_count; ++e) {
+      const auto& block = graph_.Node({order_[i]});
+      for (std::uint8_t e = 0; e < block.arc_count; ++e) {
         quota_.Work();
-        const auto target = graph_.edges[block.first_edge.value + e].target.value;
+        const auto target = graph_.Arc({block.first_arc.value + e}).target.value;
         if (--indegree_[target] == 0) order_[count++] = target;
       }
     }
@@ -110,11 +111,11 @@ class ControlBuilder {
     for (std::size_t i = exit_; i != 0; --i) {
       quota_.Work();
       const auto id = order_[i - 1];
-      const auto& block = graph_.blocks[id];
+      const auto& block = graph_.Node({id});
       std::uint32_t join = exit_;
-      for (std::uint8_t e = 0; e < block.edge_count; ++e) {
+      for (std::uint8_t e = 0; e < block.arc_count; ++e) {
         quota_.Work();
-        const auto target = graph_.edges[block.first_edge.value + e].target.value;
+        const auto target = graph_.Arc({block.first_arc.value + e}).target.value;
         join = e == 0 ? target : Common(join, target);
       }
       parent_[id] = join;
@@ -145,14 +146,14 @@ class ControlBuilder {
         owned_[cursor] = 1;
         ++covered;
         auto& node = plan_.nodes[cursor];
-        const auto& block = graph_.blocks[cursor];
-        if (block.edge_count == analysis::kMaxNormalSuccessors) {
+        const auto& block = graph_.Node({cursor});
+        if (block.arc_count == analysis::kMaxNormalSuccessors) {
           const auto join = parent_[cursor];
           ControlArms arms;
-          for (std::uint8_t e = 0; e < block.edge_count; ++e) {
+          for (std::uint8_t e = 0; e < block.arc_count; ++e) {
             quota_.Work();
-            const auto edge_id = block.first_edge.value + e;
-            const auto& edge = graph_.edges[edge_id];
+            const auto edge_id = block.first_arc.value + e;
+            const auto& edge = graph_.Arc({edge_id});
             const bool taken = edge.kind == analysis::FlowEdgeKind::kTaken;
             plan_.edges[edge_id] = {{edge_id}, {cursor}, taken ? EdgePlacement::kTaken : EdgePlacement::kFallthrough};
             if (edge.target.value != join) {
@@ -165,9 +166,9 @@ class ControlBuilder {
           node.arms = arms;
           if (join != task.stop && join != exit_) node.next = ControlId{join};
           cursor = join;
-        } else if (block.edge_count == 1) {
-          const auto edge_id = block.first_edge.value;
-          const auto target = graph_.edges[edge_id].target.value;
+        } else if (block.arc_count == 1) {
+          const auto edge_id = block.first_arc.value;
+          const auto target = graph_.Arc({edge_id}).target.value;
           const bool joins = target == task.stop;
           plan_.edges[edge_id] = {{edge_id}, {cursor}, joins ? EdgePlacement::kJoin : EdgePlacement::kNext};
           if (!joins) node.next = ControlId{target};
@@ -177,7 +178,7 @@ class ControlBuilder {
     }
     Require(covered == exit_, Error::kUncoveredBlock);
   }
-  ControlTopology graph_;
+  ControlGraphView graph_;
   std::span<const ControlId> entries_;
   ControlQuota& quota_;
   std::size_t exit_;
@@ -192,9 +193,9 @@ class ControlBuilder {
 ControlPlan BuildControlSkeleton(const analysis::ValueProgram& graph,
     std::span<const ControlId> entries, ControlQuota& quota) {
   Require(graph.phases.empty(), Error::kInvalidGraph);
-  return BuildControlSkeleton(ControlTopology{graph.revision, graph.cfg_revision, graph.blocks, graph.edges}, entries, quota);
+  return BuildControlSkeleton(ControlGraphView{graph}, entries, quota);
 }
-ControlPlan BuildControlSkeleton(ControlTopology graph,
+ControlPlan BuildControlSkeleton(ControlGraphView graph,
     std::span<const ControlId> entries, ControlQuota& quota) {
   return ControlBuilder(graph, entries, quota).Build();
 }

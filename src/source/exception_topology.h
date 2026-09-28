@@ -8,8 +8,8 @@ namespace abcd::source {
 // Private projection owner. Scratch/result grants cover both this topology and
 // its mapping while the shared skeleton is discovered or independently checked.
 struct ExceptionTopology {
-  std::vector<analysis::WorkBlock> blocks;
-  std::vector<analysis::WorkEdge> edges;
+  std::vector<ControlVertex> blocks;
+  std::vector<ControlLink> edges;
   std::vector<ControlId> entries;
   ExceptionControl mapping;
 };

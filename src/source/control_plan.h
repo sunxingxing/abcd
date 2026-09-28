@@ -40,6 +40,7 @@ struct PlacedEdge {
   EdgePlacement placement;
 };
 struct ControlPlan {
+  ControlViewKind view = ControlViewKind::kNormal;
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   ControlId entry;

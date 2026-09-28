@@ -4,15 +4,6 @@
 #include "control_plan.h"
 
 namespace abcd::source {
-// Borrowed topology only, never a ValueProgram with erased exception phases.
-// Projection owners retain original block/edge identities and must validate
-// their mapping before this normal-region discovery can authorize anything.
-struct ControlTopology {
-  analysis::IrRevision revision;
-  analysis::CfgRevision cfg_revision;
-  std::span<const analysis::WorkBlock> blocks;
-  std::span<const analysis::WorkEdge> edges;
-};
 // Shared invocation budget, including failed acyclic attempts. A skeleton is a
 // candidate; only final verification against the original CFG certifies it.
 class ControlQuota {
@@ -37,11 +28,11 @@ class ControlQuota {
 };
 [[nodiscard]] ControlPlan BuildControlSkeleton(const analysis::ValueProgram& graph,
     std::span<const ControlId> entries, ControlQuota& quota);
-[[nodiscard]] ControlPlan BuildControlSkeleton(ControlTopology graph,
+[[nodiscard]] ControlPlan BuildControlSkeleton(ControlGraphView graph,
     std::span<const ControlId> entries, ControlQuota& quota);
 // Independent edge/ownership proof for an acyclic forest. Does not rediscover
 // regions or postdominators, and does not certify the caller's projection.
-void VerifyControlSkeleton(ControlTopology graph, std::span<const ControlId> entries,
+void VerifyControlSkeleton(ControlGraphView graph, std::span<const ControlId> entries,
     const ControlPlan& plan, ControlQuota& quota);
 [[nodiscard]] ControlPlan BuildLoopControl(const analysis::ValueProgram& graph, ControlQuota& quota);
 }  // namespace abcd::source

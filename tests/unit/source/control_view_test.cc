@@ -1,4 +1,5 @@
 #include "../../../src/source/control_view.h"
+#include "../../../src/source/control_skeleton.h"
 #include "../../../src/source/loop_forest.h"
 
 #include <array>
@@ -54,5 +55,28 @@ void NormalAdapter() {
   Check(forest.view == ControlViewKind::kNormal && forest.loops.size() == 1);
   Check(forest.revision == graph.revision && forest.cfg_revision == graph.cfg_revision);
 }
+void ProjectedSkeleton() {
+  const std::array<ControlVertex, 2> nodes{{{{0}, 1}, {{1}, 0}}};
+  const std::array<ControlLink, 1> arcs{{{{0}, {1}, analysis::FlowEdgeKind::kTaken, 0}}};
+  const ControlGraphView view{ControlProjection{{7}, {9}, nodes, arcs}};
+  const std::array<ControlId, 1> entries{{{0}}};
+  ControlQuota quota{{}};
+  const auto plan = BuildControlSkeleton(view, entries, quota);
+  Check(plan.view == ControlViewKind::kProjection);
+  Check(plan.nodes.size() == 2 && plan.nodes[0].next == ControlId{1});
+  VerifyControlSkeleton(view, entries, plan, quota);
+  analysis::ValueProgram normal;
+  normal.revision = {7}; normal.cfg_revision = {9};
+  normal.blocks = {{{0}, 0, {0}, 1}, {{0}, 0, {1}, 0}};
+  normal.edges = {{{0}, {1}, analysis::FlowEdgeKind::kTaken, 0}};
+  // Equal numeric IDs and revisions do not make a projected plan a normal plan.
+  Check(std::get<ControlError>(VerifyControlPlan(normal, plan)) == ControlError::kInvalidGraph);
+  auto stale = plan;
+  stale.revision = {8};
+  bool rejected = false;
+  try { VerifyControlSkeleton(view, entries, stale, quota); }
+  catch (ControlError error) { rejected = error == ControlError::kRevision; }
+  Check(rejected);
 }
-int main() { DisjointLoopEntries(); NormalAdapter(); }
+}
+int main() { DisjointLoopEntries(); NormalAdapter(); ProjectedSkeleton(); }

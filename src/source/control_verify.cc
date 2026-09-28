@@ -208,7 +208,7 @@ class ControlCheck {
 std::variant<std::uint64_t, ControlError> VerifyControlPlan(
     const analysis::ValueProgram& graph, const ControlPlan& plan, analysis::SemanticBudget budget) {
   try {
-    Require(graph.phases.empty(), Error::kInvalidGraph);
+    Require(graph.phases.empty() && plan.view == ControlViewKind::kNormal, Error::kInvalidGraph);
     ControlQuota quota(budget);
     quota.Admit(1, sizeof(ControlCheck));
     ControlCheck(graph, plan, quota).Run();

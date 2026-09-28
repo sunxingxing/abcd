@@ -48,7 +48,7 @@ void CheckProjection(const ValueProgram& graph, const ExceptionTopology& topolog
   Compare(mapping.arcs, actual.arcs, quota);
   Compare(mapping.regions, actual.regions, quota);
   Compare(mapping.inactive_commits, actual.inactive_commits, quota);
-  VerifyControlSkeleton({graph.revision, graph.cfg_revision, topology.blocks, topology.edges},
+  VerifyControlSkeleton(ControlGraphView{ControlProjection{graph.revision, graph.cfg_revision, topology.blocks, topology.edges}},
       topology.entries, actual.skeleton, quota);
 }
 }
@@ -60,8 +60,8 @@ std::variant<ExceptionControl, ExceptionControlError> BuildExceptionControl(
     CheckInput(body, graph, input, regions, quota);
     auto topology = ProjectExceptionControl(graph, regions, quota);
     auto skeleton = BuildControlSkeleton(
-        ControlTopology{graph.revision, graph.cfg_revision, topology.blocks, topology.edges}, topology.entries, quota);
-    VerifyControlSkeleton({graph.revision, graph.cfg_revision, topology.blocks, topology.edges},
+        ControlGraphView{ControlProjection{graph.revision, graph.cfg_revision, topology.blocks, topology.edges}}, topology.entries, quota);
+    VerifyControlSkeleton(ControlGraphView{ControlProjection{graph.revision, graph.cfg_revision, topology.blocks, topology.edges}},
         topology.entries, skeleton, quota);
     auto result = std::move(topology.mapping);
     result.skeleton = std::move(skeleton);
