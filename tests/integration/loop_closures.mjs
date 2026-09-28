@@ -9,6 +9,62 @@ const outerSource = execFileSync(process.argv[2], ['--outer-transfer'], {encodin
 assert.ok(!outerSource.includes('INCOMPLETE'));
 const {functions: outerFamilies} = await import(`data:text/javascript;base64,${Buffer.from(outerSource).toString('base64')}`);
 assert.equal(outerFamilies.length, 18);
+const catchSource = execFileSync(process.argv[2], ['--outer-catch'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!catchSource.includes('INCOMPLETE'));
+const {functions: catchFamilies} = await import(`data:text/javascript;base64,${Buffer.from(catchSource).toString('base64')}`);
+assert.equal(catchFamilies.length, 18);
+for (const [index, capture] of catchFamilies.entries()) {
+  const stop = Math.floor(index / 3) % 2 === 1;
+  for (const fails of [() => false, () => true, (o, n) => o === 1 && n === 1,
+    (o, n) => (o + n) % 2 === 1]) {
+    for (const collectThrows of [false, true]) {
+      const saved = [], log = [], expected = [], caught = [], escape = {};
+      const values = [[undefined, Symbol('caught')], [{}, -0], [3n, null]];
+      let outer = -1, inner = -1, escaped = false;
+      try {
+        assert.equal(capture(() => {
+          ++outer; inner = -1; log.push(['outer', outer]); return outer < 3;
+        }, () => {
+          ++inner; log.push(['inner', outer, inner]); return inner < 2;
+        }, () => {
+          log.push(['run', outer, inner]);
+          if (fails(outer, inner)) throw values[outer][inner];
+        }, (get, set) => {
+          log.push(['collect', outer, inner]);
+          assert.ok(Object.is(get(), values[outer][inner]));
+          saved.push({get, set});
+          if (collectThrows) throw escape;
+        }, () => log.push(['after', outer])), undefined);
+      } catch (error) {
+        assert.equal(error, escape); escaped = true;
+      }
+      outerLoop: for (let o = 0; o <= 3; ++o) {
+        expected.push(['outer', o]);
+        if (o === 3) break;
+        for (let n = 0; n <= 2; ++n) {
+          expected.push(['inner', o, n]);
+          if (n === 2) break;
+          expected.push(['run', o, n]);
+          if (fails(o, n)) {
+            caught.push(values[o][n]); expected.push(['collect', o, n]);
+            if (stop || collectThrows) break outerLoop;
+            continue outerLoop;
+          }
+        }
+        expected.push(['after', o]);
+      }
+      assert.deepEqual(log, expected);
+      assert.equal(escaped, collectThrows && caught.length !== 0);
+      assert.equal(saved.length, caught.length);
+      for (let i = saved.length - 1; i >= 0; --i) {
+        assert.ok(Object.is(saved[i].get(), caught[i]));
+        const replacement = {iteration: i};
+        assert.equal(saved[i].set(replacement), undefined); caught[i] = replacement;
+        for (let j = 0; j < saved.length; ++j) assert.ok(Object.is(saved[j].get(), caught[j]));
+      }
+    }
+  }
+}
 // File-backed captured children execute their own exception-bearing nested
 // loops after the parent's per-iteration/per-catch environments have escaped.
 for (const [index, capture] of outerFamilies.entries()) {

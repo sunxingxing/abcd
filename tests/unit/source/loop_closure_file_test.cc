@@ -41,7 +41,7 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
           static_cast<std::uint32_t>(code.size()),
           tries};
 }
-enum class ParentShape { kIteration, kCatch, kNormal };
+enum class ParentShape { kIteration, kCatch, kNormal, kOuterCatchContinue, kOuterCatchBreak };
 enum class ChildShape {
   kPlain, kException, kNested, kForwarded, kForwardedNormal, kForwardedLocal,
   kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak
@@ -56,6 +56,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const bool nested = child_shape == ChildShape::kNested || forwarding;
   const bool outer_transfer = child_shape == ChildShape::kOuterContinue || child_shape == ChildShape::kOuterBreak;
   const std::uint8_t getter_parameters = outer_transfer ? 5 : 0;
+  const bool outer_catch = shape == ParentShape::kOuterCatchContinue || shape == ParentShape::kOuterCatchBreak;
+  const std::uint8_t parent_parameters = outer_catch ? 5 : 3;
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kParent); ++i) {
     bytes[kPool + i] = static_cast<std::uint8_t>(kParent >> (i * kByteBits));
@@ -68,7 +70,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   }
   const auto caller = Append(bytes, 0, 0,
                              {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 0,
-                              0, 3, Op(abc::Opcode::kRETURNUNDEFINED)});
+                              0, parent_parameters, Op(abc::Opcode::kRETURNUNDEFINED)});
   // v0 getter, v1 setter; v5 next, v6 run, v7 collect. Each iteration creates a
   // new environment. The protected call either writes its result or its
   // exception. The escaping getter must retain that iteration, not a
@@ -76,7 +78,26 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   constexpr std::uint8_t kGet = 0, kSet = 1, kNext = 5, kRun = 6, kCollect = 7;
   constexpr std::uint8_t kExitDelta = 39,
                          kBackDelta = static_cast<std::uint8_t>(-41);
-  const auto parent = shape == ParentShape::kNormal ? Append(bytes, 2, 3, {
+  const auto parent = outer_catch ? Append(bytes, 2, parent_parameters, {
+      Op(abc::Opcode::kLDA_V8), 5, Op(abc::Opcode::kCALLARG0_IMM8), 0,
+      Op(abc::Opcode::kJEQZ_IMM8), 51,
+      Op(abc::Opcode::kLDA_V8), 6, Op(abc::Opcode::kCALLARG0_IMM8), 0,
+      Op(abc::Opcode::kJEQZ_IMM8), 39,
+      Op(abc::Opcode::kLDA_V8), 7, Op(abc::Opcode::kCALLARG0_IMM8), 0,
+      Op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-10),
+      Op(abc::Opcode::kSTA_V8), kGet, Op(abc::Opcode::kNEWLEXENV_IMM8), 1,
+      Op(abc::Opcode::kLDA_V8), kGet, Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
+      Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 1, 0, getter_parameters,
+      Op(abc::Opcode::kSTA_V8), kGet,
+      Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 2, 0, 1,
+      Op(abc::Opcode::kSTA_V8), kSet,
+      Op(abc::Opcode::kLDA_V8), 8, Op(abc::Opcode::kCALLARGS2_IMM8_V8_V8), 0, kGet, kSet,
+      Op(abc::Opcode::kPOPLEXENV),
+      Op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(shape == ParentShape::kOuterCatchBreak ? 8 : -47),
+      Op(abc::Opcode::kLDA_V8), 9, Op(abc::Opcode::kCALLARG0_IMM8), 0,
+      Op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-53),
+      Op(abc::Opcode::kRETURNUNDEFINED)}, {12, 4, 1, 0, 18, 31}) :
+      shape == ParentShape::kNormal ? Append(bytes, 2, 3, {
       Op(abc::Opcode::kLDA_V8), kNext, Op(abc::Opcode::kCALLARG0_IMM8), 0,
       Op(abc::Opcode::kJEQZ_IMM8), 33,
       Op(abc::Opcode::kNEWLEXENV_IMM8), 1, Op(abc::Opcode::kLDA_V8), kRun,
@@ -344,6 +365,16 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--outer-catch") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) {
+      for (const auto parent : {ParentShape::kOuterCatchContinue, ParentShape::kOuterCatchBreak})
+        for (const auto child : {ChildShape::kPlain, ChildShape::kException, ChildShape::kForwardedThrowWriter})
+          std::cout << Emit(profile, parent, child) << ",\n";
+    }
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--outer-transfer") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -377,10 +408,14 @@ int main(int argc, char** argv) {
   if (!emit) for (const auto child : {ChildShape::kOuterContinue, ChildShape::kOuterBreak})
     for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
       Emit(abc::ProfileId::kDynamic1206, shape, child);
+  if (!emit) for (const auto parent : {ParentShape::kOuterCatchContinue, ParentShape::kOuterCatchBreak})
+    for (const auto child : {ChildShape::kPlain, ChildShape::kException, ChildShape::kForwardedThrowWriter})
+      Emit(abc::ProfileId::kDynamic1206, parent, child);
   for (const auto missing : {MissingCell::kRead, MissingCell::kWrite})
     Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, ChildShape::kException, missing);
   Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, ChildShape::kNested, MissingCell::kHoleWriter);
   Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, ChildShape::kForwarded, MissingCell::kHoleWriter);
   Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, ChildShape::kForwardedWriter, MissingCell::kHoleSetter);
   Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, ChildShape::kOuterContinue, MissingCell::kRead);
+  Emit(abc::ProfileId::kDynamic1206, ParentShape::kOuterCatchContinue, ChildShape::kException, MissingCell::kRead);
 }

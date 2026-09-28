@@ -51,6 +51,16 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- W4 catch 创建闭包后直接退出外层循环已有文件级行为证据：新增
+  `loop_closure_file_test --outer-catch` 的 18 个函数族（3 profiles × 父级外层
+  continue/break × 普通/异常/多级转发读写子函数）。Node 延后读取各次 catch
+  参数，setter 修改后检查跨实例隔离；收集回调抛错必须直接向外传播，已保存
+  闭包仍可调用；补充缺失捕获槽负例。仍是实际 Code entity reader + 合成 metadata
+  fixture，不宣称完整应用语料验收。定向构建成功，相关 **14/14 CTest 通过**，
+  `/tmp/abcd-catch-capture-final-build.log`、`/tmp/abcd-catch-capture-final-tests.log`。
+  C04 本轮外层出口/标签/异常闭包组合已贯通；更广普通多 continuation、源码
+  范围交叠规范化、真实应用切片，以及 C05 finally / 后续协程仍是明确缺口。
+
 - C04 文件读取/捕获子函数组合已补充：`loop_closure_file_test --outer-transfer`
   生成 18 个函数族（3 profiles × child 外层 break/continue × 3 种父级环境），
   Code entity/异常表由实际文件 reader 读取，metadata 是合成 fixture，不是完整
@@ -60,7 +70,7 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   增补该子函数缺失捕获槽的负例，仍拒绝虚构存储。定向构建成功，closure file /
   source、composition / source、exception_outer **5/5 通过**；日志
   `/tmp/abcd-outer-family-final-{build,tests}.log`。不以这些 fixture 代替真实应用
-  切片或全语料验收；父级 catch 创建闭包后直接跳出外层循环的组合继续补充。
+  切片或全语料验收；父级 catch 创建闭包后直接跳出外层循环的补充见上。
 
 - C04 继续覆盖跨两层 try 的外层跳转、catch 自身循环中的外层跳转：新增
   `control_composition_test --nested-outer`，三个 profiles × 两种区域组合 ×
