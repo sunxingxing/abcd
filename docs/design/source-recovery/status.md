@@ -12,6 +12,30 @@
 
 ## 当前阶段
 
+### 2026-09-28：文件级 try/await 与共享 finally 贯通
+
+- 真实 opcode/双异常表新例先在 await catch-input 检查拒绝（原始 await PC 8）：
+  finally 中的分支使旧首用检查返回未知，虽然 resume result/mode 此后均无读取。
+  增加控制闭合后缀的保守 may-read 判定，复用压缩范围索引，无每 await 的 handler 遍历；
+  所有普通/异常目标必须留在后缀，任何读取或未知语义效果不能据此放行。
+- 反例发现仅凭 raw register effects 会漏掉无 frame 的 arguments 隐式读取，已收紧为
+  完整 semantic lift 的效果；固定/range 读取、未知效果、正常/异常外跳均拒绝。
+  1/200/201/402 分支、200/201/402 await 与分支组合及闭合循环通过定向检查。
+- 三 profile × 三父作用域共 9 个文件化函数族生成共同 AST 的 await/finally；
+  实际 JS 对照原生 oracle 检查 fulfill/reject、then getter throw、thenable receiver、
+  清理一次、清理抛出覆盖原拒绝、清理期间的捕获 cell 改写和微任务顺序。
+  pending Promise 不提前进入 finally；原始 PC 8/43/63/88 保留。未增加 async writer。
+- 最终相关构建和 16/16 定向测试通过，日志 `/tmp/abcd-await-finally-final-build.log`、
+  `/tmp/abcd-await-finally-final-tests.log`；新增 `file_await_finally_source_test`。
+  额外运行的 `base_function_test`、`base_function_js_test` 失败，分别位于
+  `base_function_test.cc:260` 的 for-in 文本断言和 `:58` 的旧 fixture 发射断言。
+  临时恢复本轮修改前的 `await_catch.cc` 并重新构建后，两者仍相同失败；对照日志
+  `/tmp/abcd-await-finally-baseline-tests.log`，当前版本失败日志
+  `/tmp/abcd-await-finally-legacy-tests.log`。未修改无关旧路径，也不声称全项目通过。
+- C06 未完成：finally 本身再次 await、多暂停点与复杂 handler/live-value 组合、
+  async method/arrow/self/receiver 及真实应用验收仍待推进。此次外围 metadata 为合成
+  夹具；全量测试、语料、RSS、基准未恢复，work/内存默认额度未调整。
+
 ### 2026-09-28：文件级用户 catch 接收 await 拒绝
 
 - 在已接通的文件级 async 主干上，增加用户 try/catch 与函数级 completion catch 共存的

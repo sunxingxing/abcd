@@ -127,6 +127,13 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
     std::vector<FirstUse> nodes(slots.size() * kTreeNodesPerSlot, FirstUse::kUnknown);
     retain(nodes.capacity() * sizeof(FirstUse));
     FirstUseIndex uses{nodes, slots.size(), work};
+    if (slots.size() > budget.bytes / kTreeNodesPerSlot / sizeof(FirstUse))
+      throw std::bad_alloc{};
+    std::vector<FirstUse> suffix_nodes(slots.size() * kTreeNodesPerSlot, FirstUse::kExit);
+    retain(suffix_nodes.capacity() * sizeof(FirstUse));
+    FirstUseIndex suffix_reads{suffix_nodes, slots.size(), work};
+    bool suffix_known = true;
+    std::optional<abc::CodeOffset> suffix_target;
     const auto position = [&](std::uint64_t reg) {
       return static_cast<std::size_t>(std::lower_bound(slots.begin(), slots.end(), reg,
           [&](abc::RegisterId slot, std::uint64_t value) {
@@ -142,6 +149,27 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
       charge();
       const auto lifted = LiftSemanticInstruction(*site, profile, frame_size);
       const auto* instruction = std::get_if<SemanticInstruction>(&lifted);
+      // A closed suffix with no possible reads proves a register dead even
+      // through branches/loops. Keep the straight-prefix overwrite proof too;
+      // neither proof treats a branch or an unknown register effect as an exit.
+      // All reads are accumulated, including unreachable sites; writes never
+      // erase them. Every encoded/exception target must stay in the suffix.
+      const auto target = [&](abc::CodeOffset pc) {
+        if (!suffix_target || pc < *suffix_target) suffix_target = pc;
+      };
+      if (site->branch_target) target(*site->branch_target);
+      if (const auto dispatch_target = target_at(site->offset)) target(dispatch_target->handler_pc);
+      // Raw operand effects can omit hidden frame windows (arguments). Only
+      // full semantic lifting may declare the suffix's read set complete.
+      if (instruction) {
+        const auto& effect = instruction->effects.normal_registers;
+        for (std::size_t i = 0; i < effect.read_count; ++i)
+          if (const auto* reg = std::get_if<abc::RegisterId>(&effect.reads[i]))
+            suffix_reads.Assign(position(reg->value), position(std::uint64_t(reg->value) + 1), FirstUse::kRead);
+        if (effect.range)
+          suffix_reads.Assign(position(effect.range->first.value),
+              position(std::uint64_t(effect.range->first.value) + effect.range->count), FirstUse::kRead);
+      } else suffix_known = false;
       if (!instruction) {
         const auto coroutine = LiftCoroutineInstruction(site->decoded, frame_size);
         const auto* transfer = std::get_if<CoroutineTransfer>(&coroutine);
@@ -190,7 +218,9 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
       while (next_probe < probes.size() && probes[next_probe].handler == site->offset) {
         const auto& probe = probes[next_probe++];
         const auto use = uses.At(position(probe.slot.value));
-        if (use != FirstUse::kWrite && use != FirstUse::kExit)
+        const bool unread_suffix = suffix_known && (!suffix_target || *suffix_target >= probe.handler) &&
+            suffix_reads.At(position(probe.slot.value)) == FirstUse::kExit;
+        if (use != FirstUse::kWrite && use != FirstUse::kExit && !unread_suffix)
           return fail(AwaitCatchError::kObservedRegister, probe.await);
       }
       if (next_probe == probes.size()) return AwaitCatchProof{budget.work - work};

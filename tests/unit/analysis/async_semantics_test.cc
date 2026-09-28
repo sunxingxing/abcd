@@ -1,6 +1,8 @@
 #include "abcd/analysis/exception_ssa.h"
 #include "abcd/analysis/exception_value_flow.h"
 #include "abcd/analysis/semantic_validation.h"
+#include "abcd/analysis/await_catch.h"
+#include "abcd/analysis/coroutine.h"
 #include "../../../src/analysis/value_operands.h"
 
 #include "analysis/ssa_fixture.h"
@@ -218,6 +220,75 @@ void RepeatedEntry() {
     test::Check(std::holds_alternative<ExceptionSsa>(renamed));
   }
 }
+enum class HandlerRead { kNone, kClosedLoop, kResult, kMode, kRange, kUnknownEffects, kBackEdge, kExceptionBackEdge };
+void AwaitHandlerBranches(std::uint32_t branches, HandlerRead read, std::uint32_t awaits = 1) {
+  const auto op = [](abc::Opcode value) { return static_cast<std::uint8_t>(value); };
+  constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+  constexpr unsigned kByteBits = 8;
+  constexpr std::uint32_t kRegisters = 5;
+  // Full private-state protocol; user catch preserves the caught accumulator
+  // in v4. Only v1/v2 are the erased reject-resume definitions under test.
+  std::vector<std::uint8_t> bytes{
+      op(abc::Opcode::kASYNCFUNCTIONENTER), op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kASYNCFUNCTIONAWAITUNCAUGHT_V8), 0,
+      op(abc::Opcode::kSUSPENDGENERATOR_V8), 0, op(abc::Opcode::kLDA_V8), 0,
+      op(abc::Opcode::kRESUMEGENERATOR), op(abc::Opcode::kSTA_V8), 1,
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kGETRESUMEMODE), op(abc::Opcode::kSTA_V8), 2,
+      op(abc::Opcode::kLDAI_IMM32), static_cast<std::uint8_t>(CoroutineResumeMode::kThrow), 0, 0, 0,
+      op(abc::Opcode::kEQ_IMM8_V8), 0, 2, op(abc::Opcode::kJEQZ_IMM8), 6,
+      op(abc::Opcode::kLDA_V8), 1,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+      op(abc::Opcode::kLDA_V8), 1,
+      op(abc::Opcode::kASYNCFUNCTIONRESOLVE_V8), 0, op(abc::Opcode::kRETURN)};
+  const std::vector<std::uint8_t> protocol(bytes.begin() + 3, bytes.end() - 3);
+  for (std::uint32_t i = 1; i < awaits; ++i)
+    bytes.insert(bytes.end() - 3, protocol.begin(), protocol.end());
+  const auto handler_pc = static_cast<std::uint32_t>(bytes.size());
+  bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 4});
+  for (std::uint32_t i = 0; i < branches; ++i) {
+    // Both successors are real CFG alternatives. A backwards jump out of the
+    // suffix reaches the continuation's v1 read and must not be called dead.
+    const auto delta = static_cast<std::uint8_t>(i == 0 && read == HandlerRead::kBackEdge ? -10 :
+        read == HandlerRead::kClosedLoop ? -3 : 2);
+    bytes.insert(bytes.end(), {op(abc::Opcode::kLDTRUE), op(abc::Opcode::kJEQZ_IMM8), 4,
+        op(abc::Opcode::kJMP_IMM8), delta});
+  }
+  const std::uint8_t observed = read == HandlerRead::kResult ? 1 : read == HandlerRead::kMode ? 2 : 4;
+  if (read == HandlerRead::kRange)
+    bytes.insert(bytes.end(), {op(abc::Opcode::kCALLRANGE_IMM8_IMM8_V8), 0, 2, 1});
+  else if (read == HandlerRead::kUnknownEffects)
+    bytes.push_back(op(abc::Opcode::kGETUNMAPPEDARGS));
+  else bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), observed});
+  bytes.insert(bytes.end(), {op(abc::Opcode::kASYNCFUNCTIONRESOLVE_V8), 0, op(abc::Opcode::kRETURN)});
+  const auto completion_pc = static_cast<std::uint32_t>(bytes.size());
+  bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 4,
+      op(abc::Opcode::kASYNCFUNCTIONREJECT_V8), 0, op(abc::Opcode::kRETURN)});
+  auto body = test::Body(bytes);
+  abc::TryRegion user; user.offset = {3}; user.length = handler_pc - 6; user.handler_count = 1;
+  abc::CatchHandler caught; caught.offset = {handler_pc}; caught.length = completion_pc - handler_pc;
+  body.tries.push_back(user); body.handlers.push_back(caught);
+  if (read == HandlerRead::kExceptionBackEdge) {
+    abc::TryRegion inner; inner.offset = {handler_pc}; inner.length = completion_pc - handler_pc - 1;
+    inner.first_handler = 1; inner.handler_count = 1;
+    abc::CatchHandler back; back.offset = {33}; back.length = 2;
+    body.tries.push_back(inner); body.handlers.push_back(back);
+  }
+  abc::TryRegion completion; completion.offset = {3}; completion.length = completion_pc - 3;
+  completion.first_handler = static_cast<std::uint32_t>(body.handlers.size()); completion.handler_count = 1;
+  abc::CatchHandler rejected; rejected.offset = {completion_pc}; rejected.length = 5;
+  body.tries.push_back(completion); body.handlers.push_back(rejected);
+  const auto found = FindAwaitRegions(body, kProfile, kRegisters, SemanticBudget{}.bytes);
+  test::Check(std::holds_alternative<std::vector<AwaitRegion>>(found));
+  const auto& regions = std::get<std::vector<AwaitRegion>>(found);
+  test::Check(regions.size() == awaits);
+  const auto result = ProveAwaitCatchInputs(body, regions, kProfile, kRegisters, {completion_pc});
+  if (read == HandlerRead::kNone || read == HandlerRead::kClosedLoop)
+    test::Check(std::holds_alternative<AwaitCatchProof>(result));
+  else {
+    test::Check(std::holds_alternative<AwaitCatchFailure>(result));
+    test::Check(std::get<AwaitCatchFailure>(result).kind == AwaitCatchError::kObservedRegister);
+  }
+}
 }  // namespace
 
 int main() {
@@ -226,4 +297,10 @@ int main() {
   ExceptionState(false);
   ExceptionState(true);
   RepeatedEntry();
+  for (const auto branches : {1U, 200U, 201U, 402U}) AwaitHandlerBranches(branches, HandlerRead::kNone);
+  for (const auto count : {200U, 201U, 402U}) AwaitHandlerBranches(count, HandlerRead::kNone, count);
+  AwaitHandlerBranches(1, HandlerRead::kClosedLoop);
+  for (const auto read : {HandlerRead::kResult, HandlerRead::kMode, HandlerRead::kRange,
+                          HandlerRead::kUnknownEffects, HandlerRead::kBackEdge,
+                          HandlerRead::kExceptionBackEdge}) AwaitHandlerBranches(1, read);
 }

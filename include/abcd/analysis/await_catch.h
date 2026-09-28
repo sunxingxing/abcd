@@ -14,8 +14,10 @@ struct AwaitCatchProof {
 };
 // Requires unchanged decoded input, FindAwaitRegions certificates, and a proven
 // final compiler completion handler. Result/mode registers must be overwritten
-// before a handler can read them, or the path must exit. Branches and further
-// local exceptional transfers conservatively stop this straight-prefix proof.
+// before a handler can read them, or remain unobserved until exit. A straight
+// prefix proves overwrite/exit; a suffix containing all its branch/exception
+// targets proves deadness when it has no reads of the slot at all. Unknown
+// effects and targets escaping that suffix cannot authorize this second case.
 // Shared compressed range-assignment index: O((I+A) log(A+1) + I log(R+1))
 // after dispatch construction, R dispatch spans; O(A) extra storage excluding
 // dispatch. No per-await walk through the handler body.
