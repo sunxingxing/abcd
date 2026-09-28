@@ -398,7 +398,7 @@ class TreeBuilder {
   bool CanNameSelf(NameId candidate) {
     const auto& name = tree_.names[candidate.value];
     Step(name.size());
-    if (tree_.callable != CallableKind::kFunction ||
+    if ((tree_.callable != CallableKind::kFunction && tree_.callable != CallableKind::kAsyncFunction) ||
         !IsSourceIdentifier(std::u16string_view{name})) return false;
     const auto conflicts = [&](NameId other) {
       Require(other.value < tree_.names.size(), Error::kName);
@@ -435,7 +435,8 @@ class TreeBuilder {
     if (tree_.module_scope) tree_.scopes.push_back({ScopeKind::kModule, {}});
     std::optional<ScopeId> self_scope;
     if (forest_.bindings.self) {
-      Require((tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kArrow) && tree_.inferred_name &&
+      Require((tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kArrow ||
+          tree_.callable == CallableKind::kAsyncFunction) && tree_.inferred_name &&
           tree_.inferred_name->value < tree_.names.size(), Error::kBinding);
       if (!CanNameSelf(*tree_.inferred_name)) tree_.self_form = SelfForm::kCreationBinding;
       if (tree_.self_form == SelfForm::kCreationBinding)

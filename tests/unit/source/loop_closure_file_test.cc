@@ -53,7 +53,8 @@ enum class ParentShape { kIteration, kCatch, kNormal, kOuterCatchContinue, kOute
 enum class ChildShape {
   kPlain, kException, kNested, kForwarded, kForwardedNormal, kForwardedLocal,
   kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally, kSharedFinallyNested,
-  kAwaitCapture, kAwaitClosure, kAwaitCatch, kAwaitFinally, kAwaitFinallySuspend, kAwaitFinallyReuse
+  kAwaitCapture, kAwaitClosure, kAwaitCatch, kAwaitFinally, kAwaitFinallySuspend, kAwaitFinallyReuse,
+  kAwaitSelf, kAwaitSelfPrivate, kAwaitThis, kAwaitReceiver
 };
 enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitState };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
@@ -68,8 +69,11 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const bool finally_reuse = child_shape == ChildShape::kAwaitFinallyReuse;
   const bool finally_suspend = child_shape == ChildShape::kAwaitFinallySuspend || finally_reuse;
   const bool await_finally = child_shape == ChildShape::kAwaitFinally || finally_suspend;
+  const bool await_self = child_shape == ChildShape::kAwaitSelf || child_shape == ChildShape::kAwaitSelfPrivate;
+  const bool await_frame = await_self || child_shape == ChildShape::kAwaitThis ||
+      child_shape == ChildShape::kAwaitReceiver;
   const bool await_capture = child_shape == ChildShape::kAwaitCapture || child_shape == ChildShape::kAwaitClosure ||
-      child_shape == ChildShape::kAwaitCatch || await_finally;
+      child_shape == ChildShape::kAwaitCatch || await_finally || await_frame;
   const std::uint8_t getter_parameters = await_finally ? 2 : await_capture ? 1 : outer_transfer ? 5 : shared_finally ? 3 : 0;
   const bool outer_catch = shape == ParentShape::kOuterCatchContinue || shape == ParentShape::kOuterCatchBreak;
   const std::uint8_t parent_parameters = outer_catch ? 5 : 3;
@@ -239,6 +243,11 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       Op(abc::Opcode::kLDA_V8), 1};
     if (child_shape == ChildShape::kAwaitClosure)
       code.insert(code.end(), {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 3, 0, 0});
+    else if (await_self || child_shape == ChildShape::kAwaitThis)
+      code.insert(code.end(), {Op(await_self ? abc::Opcode::kLDFUNCTION : abc::Opcode::kLDTHIS),
+          Op(abc::Opcode::kNOP)});
+    else if (child_shape == ChildShape::kAwaitReceiver)
+      code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), 5});
     else code.insert(code.end(), {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), read_slot});
     code.insert(code.end(), {Op(abc::Opcode::kASYNCFUNCTIONRESOLVE_V8), 0, Op(abc::Opcode::kRETURN)});
     if (child_shape == ChildShape::kAwaitCatch)
@@ -472,8 +481,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       static_cast<std::uint32_t>(abc::FunctionKind::kAsync) << kFunctionKindShift;
   index.methods[1].name = "capture";
   index.methods[1].name_utf16_length = 7;
-  index.methods[2].name = "get";
-  index.methods[2].name_utf16_length = 3;
+  index.methods[2].name = child_shape == ChildShape::kAwaitSelfPrivate ? "get value" : "get";
+  index.methods[2].name_utf16_length = child_shape == ChildShape::kAwaitSelfPrivate ? 9 : 3;
   index.methods[3].name = "set";
   index.methods[3].name_utf16_length = 3;
   const auto lookup =
@@ -525,6 +534,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     // or nested creation PCs in the shared AST's provenance.
     auto expected = std::vector<std::uint32_t>{3, 5, 12, 16, 17, 33, 35,
         child_shape == ChildShape::kAwaitClosure ? 42U : 39U};
+    if (await_self || child_shape == ChildShape::kAwaitThis)
+      expected.insert(expected.end() - 1, 36);  // The retained padding NOP also has an origin.
     if (child_shape == ChildShape::kAwaitCatch) expected.push_back(42);
     if (await_finally) {
       for (const auto pc : {8U, 43U, 63U, finally_suspend ? 118U : 88U})
@@ -545,7 +556,11 @@ int main(int argc, char** argv) {
                     std::string_view(argv[1]) == "--await-catch" ||
                     std::string_view(argv[1]) == "--await-finally" ||
                     std::string_view(argv[1]) == "--await-finally-suspend" ||
-                    std::string_view(argv[1]) == "--await-finally-reuse")) {
+                    std::string_view(argv[1]) == "--await-finally-reuse" ||
+                    std::string_view(argv[1]) == "--await-self" ||
+                    std::string_view(argv[1]) == "--await-self-private" ||
+                    std::string_view(argv[1]) == "--await-this" ||
+                    std::string_view(argv[1]) == "--await-receiver")) {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                               abc::ProfileId::kDynamic1301})
@@ -555,7 +570,11 @@ int main(int argc, char** argv) {
             ChildShape::kAwaitCatch : std::string_view(argv[1]) == "--await-finally" ?
             ChildShape::kAwaitFinally : std::string_view(argv[1]) == "--await-finally-suspend" ?
             ChildShape::kAwaitFinallySuspend : std::string_view(argv[1]) == "--await-finally-reuse" ?
-            ChildShape::kAwaitFinallyReuse : ChildShape::kAwaitCapture) << ",\n";
+            ChildShape::kAwaitFinallyReuse : std::string_view(argv[1]) == "--await-self" ?
+            ChildShape::kAwaitSelf : std::string_view(argv[1]) == "--await-self-private" ?
+            ChildShape::kAwaitSelfPrivate : std::string_view(argv[1]) == "--await-this" ?
+            ChildShape::kAwaitThis : std::string_view(argv[1]) == "--await-receiver" ?
+            ChildShape::kAwaitReceiver : ChildShape::kAwaitCapture) << ",\n";
     std::cout << "];\n"; return 0;
   }
   if (argc == 2 && (std::string_view(argv[1]) == "--shared-finally" ||
@@ -626,6 +645,9 @@ int main(int argc, char** argv) {
     Emit(abc::ProfileId::kDynamic1206, shape, ChildShape::kAwaitFinallySuspend);
   if (!emit) for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
     Emit(abc::ProfileId::kDynamic1206, shape, ChildShape::kAwaitFinallyReuse);
+  if (!emit) for (const auto child : {ChildShape::kAwaitSelf, ChildShape::kAwaitSelfPrivate,
+                                    ChildShape::kAwaitThis, ChildShape::kAwaitReceiver})
+    Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, child);
   if (!emit) for (const auto parent : {ParentShape::kOuterCatchContinue, ParentShape::kOuterCatchBreak})
     for (const auto child : {ChildShape::kPlain, ChildShape::kException, ChildShape::kForwardedThrowWriter})
       Emit(abc::ProfileId::kDynamic1206, parent, child);

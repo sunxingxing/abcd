@@ -150,10 +150,29 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     auto modules = PhaseResult<ExceptionModules>(ProveExceptionModules(flow, ssa,
         quota.Remaining()), Error::kValues);
     quota.Admit(modules.AllocatedBytes()); quota.Step(modules.work_units);
+    auto receiver = FrameReceiver::kUnknown;
+    switch (context.Callable()) {
+      case CallableKind::kFunction:
+      case CallableKind::kMethod:
+      case CallableKind::kBaseConstructor:
+      case CallableKind::kAsyncFunction:
+        receiver = FrameReceiver::kInitialized;
+        break;
+      case CallableKind::kArrow:
+      case CallableKind::kDerivedConstructor:
+      case CallableKind::kAsyncMethod:
+        break;
+    }
     bool lexical_reads = false;
     for (const auto& instruction : flow.instructions) {
       quota.Step();
       lexical_reads |= std::holds_alternative<LexicalLoad>(instruction.operation);
+      // An entry premise cannot cover a receiver-changing super protocol.
+      // Async await here is owner-normalized and restores this same frame;
+      // raw suspend/resume is not admitted by the common semantic importer.
+      // Pinned runtime: RuntimeStubs::SaveFrameToContext saves This/Method;
+      // interpreter-inl.cpp restores state->thisObj/function on resume.
+      if (std::holds_alternative<SuperRange>(instruction.operation)) receiver = FrameReceiver::kUnknown;
     }
     std::optional<ExceptionLocals> locals;
     if (lexical_reads) {
@@ -197,7 +216,7 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     // them to initialized cells and complete-family writes close that premise.
     auto values = PhaseResult<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
         value_work, {quota.Remaining().bytes}, PendingExceptions(context.Identity().contract), loads, {},
-        NormalCallResults(context.Identity().contract)), Error::kValues);
+        NormalCallResults(context.Identity().contract), receiver), Error::kValues);
     quota.Admit(values.AllocatedBytes()); quota.Step(value_work.Consumed());
     const auto arguments = frame.extra_arguments ? std::optional{ArgumentFrameFact{frame}} : std::nullopt;
     auto proof = PhaseResult<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, environments,

@@ -1,5 +1,6 @@
 #include "abcd/analysis/exception_ssa.h"
 #include "abcd/analysis/exception_value_flow.h"
+#include "abcd/analysis/exception_inputs.h"
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/analysis/await_catch.h"
 #include "abcd/analysis/coroutine.h"
@@ -12,6 +13,32 @@ using namespace abcd;
 using namespace abcd::analysis;
 constexpr auto kProfile = abc::ProfileId::kDynamic1301;
 constexpr std::uint32_t kFrameSize = 2;
+
+void FrameReceiverPremise() {
+  // A receiver register being present is not sufficient for LDTHIS. The
+  // callable owner must establish frame.thisObj initialization separately.
+  const auto body = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDTHIS),
+                                static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
+  const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, kProfile, kFrameSize));
+  IdfQuota ssa_work{kDefaultSemanticWork};
+  const auto ssa = std::get<ExceptionSsa>(ExceptionSsa::Build(flow, kFrameSize, ssa_work));
+  const auto environments = std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
+  IdfQuota default_work{kDefaultSemanticWork};
+  const auto unknown = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, {}, default_work));
+  test::Check(std::holds_alternative<ExceptionInputFailure>(VerifyExceptionInputs(flow, ssa, environments, unknown)));
+  for (const auto receiver : {FrameReceiver::kUnknown, FrameReceiver::kInitialized}) {
+    IdfQuota work{kDefaultSemanticWork};
+    const auto values = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, {}, work, {},
+        PendingExceptionValues::kLanguage, {}, {}, CallResultValues::kLanguage, receiver));
+    const auto proof = VerifyExceptionInputs(flow, ssa, environments, values);
+    if (receiver == FrameReceiver::kInitialized)
+      test::Check(std::holds_alternative<ExceptionInputProof>(proof));
+    else {
+      test::Check(std::holds_alternative<ExceptionInputFailure>(proof));
+      test::Check(std::get<ExceptionInputFailure>(proof).kind == ExceptionInputError::kInternalValue);
+    }
+  }
+}
 
 void LiftLifecycle() {
   // Pinned v7 encodings: enter; sta v0; ldundefined; resolve v0; return.
@@ -322,6 +349,7 @@ void AwaitHandlerBranches(std::uint32_t branches, HandlerRead read, std::uint32_
 }  // namespace
 
 int main() {
+  FrameReceiverPremise();
   LiftLifecycle();
   SettlementAndFailures();
   ExceptionState(false);

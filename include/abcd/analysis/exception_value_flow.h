@@ -44,7 +44,10 @@ class ExceptionValueFlow {
       // runtime and user-code sources on each certified edge; opcode names or
       // a NewJSError call alone do not establish that contract.
       std::span<const ExceptionPendingFact> pending_facts = {},
-      CallResultValues calls = CallResultValues::kUnknown);
+      CallResultValues calls = CallResultValues::kUnknown,
+      // Owner premise for frame.thisObj at every LDTHIS, not the ABI slot.
+      // Receiver-changing super/resume protocols require separate ownership.
+      FrameReceiver receiver = FrameReceiver::kUnknown);
   [[nodiscard]] std::span<const ValueKinds> Facts() const {
     return {facts_.get(), facts_ ? count_ : 0};
   }

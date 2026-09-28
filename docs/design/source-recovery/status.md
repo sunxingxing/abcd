@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-09-28：async 自身身份与跨 await 接收者
+
+- 新文件化 `await input; return <LDFUNCTION/LDTHIS/receiver-slot>` 用例定位两处
+  缺口：async self 被共同树绑定/作用域/ABI 的同步种类限制拒绝，LDTHIS 在相位
+  值分析中未获得 frame.thisObj 初始化依据。接收者 ABI 寄存器路线原已可用。
+- 共同 FunctionTree 的命名/私有自身绑定和对应 Scope/ABI 检查接纳普通 async
+  function；Printer 原有 async 语法直接复用。ExceptionValueFlow 复用现有
+  FrameReceiver 参数，默认仍 Unknown；PhasedBody 从已解析 callable 提供依据，
+  遇到 SuperRange 撤销。箭头、派生构造器和未贯通 async method 不据此放行。
+  暂停保存/恢复身份依据锁定 runtime 的 SaveFrameToContext 与 interpreter-inl.cpp。
+- 四类 × 三 profile × 三父作用域共 36 个文件化函数族完整生成并执行 JS：命名
+  self、非标识符运行时名字的私有 self、LDTHIS 和 receiver slot。对照原生 async
+  的自身/receiver 身份、原始值 this、thenable/拒绝与微任务顺序、name/length、
+  不可构造性；两个调用逆序恢复仍保持独立 this。fixture metadata 为合成，非整应用验收。
+- 补充默认/显式 Unknown receiver 不能使 LDTHIS 结果通过输入检查的反例，以及
+  async self 名称冲突和不可变绑定检查。初次扩充测试遗漏 NOP 来源 PC 36、
+  新名字的 UTF-16 长度，并遇到旧测试明确拒绝 async self 的断言，均已据事实
+  修正测试；未修改无关生产路径来适配夹具。
+- 相关十个目标构建成功，20/20 定向测试通过（13.39 秒），新增
+  `file_async_frame_source_test`。日志 `/tmp/abcd-async-frame-final-build.log`、
+  `/tmp/abcd-async-frame-final-tests.log`；初始失败见
+  `/tmp/abcd-async-self-red.log`、`/tmp/abcd-async-this-red.log`。
+  `git diff --check` 通过。未调 work/内存默认值、未加 writer/DFX；此前两个
+  base_function 旧路径失败未修复、本轮未重跑，全量测试/语料/RSS/基准仍暂停。
+- C06 未完成：async method/arrow、更多跨暂停值和 handler 组合、真实应用验收
+  仍需推进；generator/async generator/yield* 与原结构整合目标保持开放。
+
 ### 2026-09-28：finally await 重用 resume 临时寄存器
 
 - 将文件化 finally 第二次 await 改为重用首个 await 的 result/mode，先在原始

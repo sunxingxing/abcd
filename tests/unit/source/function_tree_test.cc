@@ -577,7 +577,7 @@ void DebuggerTree() {
 }
 void CreationSelfTree() {
   using namespace analysis;
-  for (const auto kind : {CallableKind::kFunction, CallableKind::kArrow}) {
+  for (const auto kind : {CallableKind::kFunction, CallableKind::kArrow, CallableKind::kAsyncFunction}) {
     Fixture fixture;
     fixture.Add(0, 0, 0, ValueFrameFunction{}, true, {});
     fixture.Add(0, 1, 1, ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{2}}});
@@ -653,8 +653,12 @@ void FrameFunctionTree() {
   reject([](auto& copy) { copy.names[copy.inferred_name->value] = u"eval"; });
   reject([&](auto& copy) { copy.expressions[expression.value].expression = SymbolExpr{copy.parameters[0].symbol}; });
   for (const auto kind : {CallableKind::kArrow, CallableKind::kMethod, CallableKind::kDerivedConstructor,
-                         CallableKind::kAsyncFunction})
+                         CallableKind::kAsyncMethod})
     reject([&](auto& copy) { copy.callable = kind; });
+  auto async = tree;
+  async.callable = CallableKind::kAsyncFunction;
+  Check(std::holds_alternative<TreeSemantics>(fixture.Verify(async)));
+  Check(std::get<ConstructedAbi>(BuildFunctionAbi(fixture.graph, async, frame, 1)).abi.frame_function_reads == 1);
   auto global = tree;
   global.expressions[expression.value].expression = GlobalNameExpr{*tree.inferred_name};
   const GlobalScope scope{};

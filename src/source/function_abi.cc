@@ -37,7 +37,7 @@ class AbiBuilder {
     }
     Require(tree_.parameters.size() == frame_.parameters, Error::kParameter);
     if (tree_.self)
-      Require((tree_.callable == CallableKind::kFunction ||
+      Require((tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kAsyncFunction ||
           (tree_.callable == CallableKind::kArrow && tree_.self_form == SelfForm::kCreationBinding)) &&
           tree_.self->value < tree_.symbols.size() &&
           tree_.symbols[tree_.self->value].kind == BindingKind::kFunctionSelf, Error::kSyntax);
@@ -92,7 +92,8 @@ class AbiBuilder {
       Step();
       if (op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueFrameThis>(op.operation)) {
-        Require(tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kMethod ||
+        Require(tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kAsyncFunction ||
+            tree_.callable == CallableKind::kMethod ||
             tree_.callable == CallableKind::kBaseConstructor, Error::kReceiver);
         Increment(result_.frame_receiver_reads);
       }
