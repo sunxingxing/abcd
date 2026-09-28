@@ -191,7 +191,7 @@ class AbiBuilder {
         std::is_same_v<T, GlobalNameExpr> ||
         std::is_same_v<T, RealmObjectExpr> ||
         std::is_same_v<T, SymbolConstructorExpr> ||
-        std::is_same_v<T, UnaryExpr> || std::is_same_v<T, BinaryExpr> ||
+        std::is_same_v<T, UnaryExpr> || std::is_same_v<T, AwaitExpr> || std::is_same_v<T, BinaryExpr> ||
         std::is_same_v<T, LogicalExpr> || std::is_same_v<T, CallExpr> ||
         std::is_same_v<T, ConstructExpr> || std::is_same_v<T, EmptyArrayExpr> ||
         std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, FunctionExpr>);

@@ -271,6 +271,9 @@ class StructureCheck {
         Key(expression.key);
       } else if constexpr (std::is_same_v<T, UnaryExpr>) {
         RequireTree(ValidUnary(expression.operation), Error::kUnsupportedSyntax);
+      } else if constexpr (std::is_same_v<T, AwaitExpr>) {
+        RequireTree(tree_.callable == CallableKind::kAsyncFunction || tree_.callable == CallableKind::kAsyncMethod,
+            Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, BinaryExpr>) {
         RequireTree(ValidBinary(expression.operation), Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, LogicalExpr>) {
@@ -408,7 +411,7 @@ class StructureCheck {
       std::visit([&](const auto& node) {
         using T = std::decay_t<decltype(node)>;
         if constexpr (std::is_same_v<T, MemberExpr>) { add(node.base); key(node.key); }
-        else if constexpr (std::is_same_v<T, UnaryExpr>) add(node.operand);
+        else if constexpr (std::is_same_v<T, UnaryExpr> || std::is_same_v<T, AwaitExpr>) add(node.operand);
         else if constexpr (std::is_same_v<T, BinaryExpr> || std::is_same_v<T, LogicalExpr>) {
           add(node.left); add(node.right);
         } else if constexpr (std::is_same_v<T, AssignmentExpr>) {

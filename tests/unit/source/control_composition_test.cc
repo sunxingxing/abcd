@@ -7,6 +7,8 @@
 #include "../../../src/source/tree_structure.h"
 #include "analysis/ssa_fixture.h"
 #include "abcd/analysis/exception_locals.h"
+#include "abcd/analysis/coroutine.h"
+#include "abcd/source/async_completion.h"
 
 #include <sstream>
 #include <source_location>
@@ -36,7 +38,8 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     std::uint32_t parameters, bool staging, std::ostream* output,
     std::optional<ScopeKind> cell_scope = {}, std::size_t expected_loops = 1,
     bool expect_finalizer = false, std::optional<ExpectedCompletion> expected_completions = {},
-    CompositionStage stage = CompositionStage::kSource, std::size_t finalizer_count = 1);
+    CompositionStage stage = CompositionStage::kSource, std::size_t finalizer_count = 1,
+    std::span<const AwaitSite> awaits = {});
 
 void LoopCarried(abc::ProfileId profile, std::ostream* output) {
   // x = initial; try { while (next()) { x = step(x); next(); } } catch (_) {}
@@ -67,9 +70,9 @@ void LoopCarried(abc::ProfileId profile, std::ostream* output) {
 void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t locals,
     std::uint32_t parameters, bool staging, std::ostream* output, std::optional<ScopeKind> cell_scope,
     std::size_t expected_loops, bool expect_finalizer, std::optional<ExpectedCompletion> expected_completions,
-    CompositionStage stage, std::size_t finalizer_count) {
+    CompositionStage stage, std::size_t finalizer_count, std::span<const AwaitSite> awaits) {
   const auto frame = Take<abc::FrameLayout>(abc::BuildFrameLayout(locals, parameters, {}));
-  const auto flow = Take<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers, {}, {}, &frame));
+  const auto flow = Take<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers, {}, awaits, &frame));
   IdfQuota quota{kDefaultSemanticWork};
   const auto ssa = Take<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers, quota));
   std::vector<EntryValueFact> entries;
@@ -195,7 +198,8 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
   }
   std::vector<ExpressionConstant> constants(graph.ops.size());
   FunctionSyntax syntax{};
-  syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  syntax.callable = awaits.empty() ? CallableKind::kFunction : CallableKind::kAsyncFunction;
+  syntax.strictness = Strictness::kStrict;
   syntax.texts = {u"number"};
   syntax.parameters.resize(frame.parameters);
   if (expect_finalizer && stage != CompositionStage::kHoleFinally) {
@@ -210,6 +214,24 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     std::cerr << "loop-carried tree error " << static_cast<unsigned>(*error) << '\n';
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
   const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
+  if (!awaits.empty()) {
+    auto changed = tree;
+    changed.callable = CallableKind::kFunction;
+    const auto invalid_context = VerifyTreeStructure(changed);
+    test::Check(std::get_if<TreeStructureError>(&invalid_context) &&
+        std::get<TreeStructureError>(invalid_context) == TreeStructureError::kUnsupportedSyntax);
+    bool found_await = false;
+    for (auto& expression : changed.expressions) {
+      if (std::holds_alternative<AwaitExpr>(expression.expression)) {
+        found_await = true;
+        expression.expression = TreeLiteral{UndefinedLiteral{}};
+      }
+    }
+    test::Check(found_await);
+    changed.callable = CallableKind::kAsyncFunction;
+    test::Check(std::holds_alternative<TreeSemanticError>(
+        VerifyExceptionTreeSemantics(graph, context, evaluation, changed, resolved)));
+  }
   if (stage == CompositionStage::kHoleFinally) {
     // A construction-local reuse must not turn independent entry points into
     // trusting consumers of a changed control projection.
@@ -617,6 +639,41 @@ void FinallyBareTransfer(abc::ProfileId profile, std::ostream* output, bool stop
   body.tries = {region}; body.handlers = {handler};
   Emit(body, profile, 1, 4, false, output, {}, 1, !different,
       different ? std::optional{ExpectedCompletion{0, 0}} : std::optional<ExpectedCompletion>{});
+}
+void AwaitCompletion(abc::ProfileId profile, std::ostream* output) {
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+  constexpr unsigned kByteBits = 8;
+  // Full compiler-style private-state owner, one await and resolve/reject tail.
+  // Normalization supplies facts, never source text; Emit uses the common tree.
+  std::vector<std::uint8_t> bytes{
+      op(abc::Opcode::kASYNCFUNCTIONENTER), op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 3,
+      op(abc::Opcode::kASYNCFUNCTIONAWAITUNCAUGHT_V8), 0,
+      op(abc::Opcode::kSUSPENDGENERATOR_V8), 0,
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kRESUMEGENERATOR),
+      op(abc::Opcode::kSTA_V8), 1, op(abc::Opcode::kLDA_V8), 0,
+      op(abc::Opcode::kGETRESUMEMODE), op(abc::Opcode::kSTA_V8), 2,
+      op(abc::Opcode::kLDAI_IMM32), static_cast<std::uint8_t>(CoroutineResumeMode::kThrow), 0, 0, 0,
+      op(abc::Opcode::kEQ_IMM8_V8), 0, 2, op(abc::Opcode::kJEQZ_IMM8), 6,
+      op(abc::Opcode::kLDA_V8), 1,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+      op(abc::Opcode::kLDA_V8), 1,
+      op(abc::Opcode::kASYNCFUNCTIONRESOLVE_V8), 0, op(abc::Opcode::kRETURN)};
+  const auto handler_pc = static_cast<std::uint32_t>(bytes.size());
+  bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 1,
+      op(abc::Opcode::kASYNCFUNCTIONREJECT_V8), 0, op(abc::Opcode::kRETURN)});
+  auto body = test::Body(bytes);
+  abc::TryRegion region; region.offset = {3}; region.length = handler_pc - 3; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {handler_pc}; handler.length = 5;
+  body.tries = {region}; body.handlers = {handler};
+  const auto frame = Take<abc::FrameLayout>(abc::BuildFrameLayout(3, 1, {}));
+  std::vector<abc::CodeOffset> origins;
+  std::vector<AwaitSite> awaits;
+  const auto normalized = Take<abc::MethodBody>(ProveAsyncCompletion(body, frame,
+      SemanticBudget{}.bytes, &origins, &awaits, profile, ResourceFailureScope::kExcluded));
+  test::Check(awaits.size() == 1);
+  Emit(normalized, profile, 3, 1, false, output, {}, 0, false, {}, CompositionStage::kSource, 0, awaits);
 }
 enum class SharedInnerCatch { kNone, kRethrow, kCallback, kLoopCallback, kReturn };
 void CompilerFinally(abc::ProfileId profile, std::ostream* output,
@@ -1071,6 +1128,12 @@ int main(int argc, char** argv) {
           SharedInnerCatch::kRethrow, depth);
     return 0;
   }
+  if (argc == 2 && std::string_view(argv[1]) == "--await-completion") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) AwaitCompletion(profile, &std::cout);
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-nested-transfer") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -1292,6 +1355,7 @@ int main(int argc, char** argv) {
     CompilerFinally(profile, nullptr, CompositionStage::kHoleImport);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleSource);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally);
+    AwaitCompletion(profile, nullptr);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally, 1, false,
         SharedInnerCatch::kNone, 1, true);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally, 1, false,

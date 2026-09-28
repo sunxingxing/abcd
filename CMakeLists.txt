@@ -927,6 +927,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/exception_outer.mjs $<TARGET_FILE:control_composition_test>)
     add_test(NAME completion_baseline_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/completion_baseline.mjs $<TARGET_FILE:control_composition_test>)
+    add_test(NAME shared_await_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_await.mjs $<TARGET_FILE:control_composition_test>)
     add_test(NAME loop_exit_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_exits.mjs $<TARGET_FILE:loop_exit_test>)
     add_test(NAME loop_closure_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

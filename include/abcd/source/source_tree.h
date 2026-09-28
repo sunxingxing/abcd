@@ -97,6 +97,7 @@ enum class TreeUnary : std::uint8_t { kNot, kNegate, kBitNot, kPlus, kTypeof };
 // Unary operands are values, not unresolved References. In particular typeof
 // must perform GetValue (including a possible global lookup failure) first.
 struct UnaryExpr { TreeUnary operation; ExprId operand; };
+struct AwaitExpr { ExprId operand; };
 struct BinaryExpr { analysis::BinaryOperator operation; ExprId left; ExprId right; };
 enum class TreeLogical : std::uint8_t { kAnd, kOr };
 struct LogicalExpr { TreeLogical operation; ExprId left; ExprId right; };
@@ -133,7 +134,7 @@ struct ObjectExpr { PropertyRange properties; };
 struct DataProperty { NameId key; ExprId value; TreeOriginId origin; };
 using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, RealmObjectExpr,
     SymbolConstructorExpr, ThisExpr, MemberExpr,
-                                    UnaryExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
+                                    UnaryExpr, AwaitExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
                                     ArgumentSnapshotExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };

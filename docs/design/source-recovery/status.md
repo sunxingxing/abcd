@@ -12,6 +12,24 @@
 
 ## 当前阶段
 
+### 2026-09-28：首个 await 协议贯通共同 ValueProgram/FunctionTree
+
+- 真实 opcode async enter/await/suspend/resume/resolve/reject 夹具经既有 owner
+  归一化，曾在 `ImportPhasedValues` 返回 `kUnsupportedOperation`（归一化 PC 2）。
+  新增 ValueAwait 接收已归一化 AwaitValue，保留协议来源与原有 suspension/user-code/
+  heap/exception 效果；不是接纳未证明的原始状态机，也不允许纯操作删除。
+- 共同表达式构建生成 AwaitExpr；操作数对应和结构检查消费该节点，限定 async 上下文；
+  共同 Printer 支持 async function 与 await，不调用旧 async writer。
+- 三 profile 的完整生成源码已执行：普通值、Promise fulfill/reject、then getter throw、
+  thenable receiver、重复 settle 及微任务事件顺序与原生 async oracle 对照。
+  同步上下文放入 await、删除实际 await 的反例拒绝。
+- 构建和源码/控制相关 17/17、IR 相关 8/8 通过：
+  `/tmp/abcd-await-common-final-tests.log`、`/tmp/abcd-await-ir-tests.log`；
+  对应 build 日志为 `/tmp/abcd-await-common-final-build.log`、`/tmp/abcd-await-ir-build.log`。
+- C06 尚未完成：文件级现代 async 入口未接入此次归一化，try/catch/finally 含 await、
+  跨暂停 live binding/闭包、命名 async 自引用等组合继续开发；旧路径不计为新主干完成。
+  C05 其余组合仍保留缺口。全量测试、全语料、RSS、基准均未恢复，限额未调整。
+
 ### 2026-09-28：内层 try 的循环转移汇入外层共享 finally
 
 - 完成状态摘要保留尚未被本作用域消化的循环目标；共同控制结构已约束这些目标为

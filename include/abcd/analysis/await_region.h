@@ -15,6 +15,7 @@ namespace abcd::analysis {
 // including the retained continuation load. Not a byte width or opcode value.
 inline constexpr std::size_t kAwaitProtocolInstructions = 14;
 struct AwaitRegion {
+  bool operator==(const AwaitRegion&) const = default;
   abc::CodeOffset await;
   abc::CodeOffset suspend;
   abc::CodeOffset resume;

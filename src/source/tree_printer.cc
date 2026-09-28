@@ -132,7 +132,8 @@ class TreePrinter {
     }
     const auto& structure = std::get<TreeStructure>(checked);
     Admit(structure.allocated_bytes, 1); Step(structure.work);
-    if (Tree().callable != CallableKind::kFunction && Tree().callable != CallableKind::kArrow)
+    if (Tree().callable != CallableKind::kFunction && Tree().callable != CallableKind::kArrow &&
+        Tree().callable != CallableKind::kAsyncFunction)
       throw Error::kUnsupportedContext;
     for (const auto& node : Tree().expressions) {
       Step();
@@ -180,7 +181,8 @@ class TreePrinter {
       Admit(structure->allocated_bytes, 1); Step(structure->work);
       if (Tree().strictness != Strictness::kStrict ||
           (Tree().callable != CallableKind::kFunction && Tree().callable != CallableKind::kArrow &&
-           Tree().callable != CallableKind::kMethod)) throw Error::kUnsupportedContext;
+           Tree().callable != CallableKind::kMethod && Tree().callable != CallableKind::kAsyncFunction))
+        throw Error::kUnsupportedContext;
       // Only the actual class root is a class member. An arrow method carrier
       // retains its original callable kind and cannot observe its home object.
       if (Tree().callable == CallableKind::kMethod && !ClassRoot()) throw Error::kUnsupportedContext;
@@ -452,6 +454,9 @@ class TreePrinter {
     if (!primary) Push(std::string_view("("));
   }
   void Expression(const MemberExpr& node) { Member(node.base, node.key); }
+  void Expression(AwaitExpr node) {
+    Append("(await "); Push(std::string_view(")")); Push(node.operand);
+  }
   void Expression(UnaryExpr node) {
     Append("("); Append(TreeUnaryToken(node.operation));
     // Lifted typeof consumes an already obtained value. JS typeof Identifier
@@ -529,7 +534,8 @@ class TreePrinter {
       if (class_root_->Site().placement == abc::ClassPlacement::kStatic) Append("static ");
       Key(class_root_->Name()); Append("(");
     } else if (Tree().self && Tree().self_form == SelfForm::kNamedFunction) {
-      Append("(function "); Name(*Tree().self); Append("(");
+      Append(Tree().callable == CallableKind::kAsyncFunction ? "(async function " : "(function ");
+      Name(*Tree().self); Append("(");
     } else if (Tree().inferred_name) {
       if (Tree().self) {
         // The private const is initialized before the target can be invoked.
@@ -542,9 +548,11 @@ class TreePrinter {
       if (Tree().invocation == InvocationForm::kArrowMethod) Append("](");
       else {
         Append("]: ");
-        Append(Tree().callable == CallableKind::kArrow ? "(" : "function(");
+        Append(Tree().callable == CallableKind::kArrow ? "(" :
+            Tree().callable == CallableKind::kAsyncFunction ? "async function(" : "function(");
       }
-    } else Append(Tree().callable == CallableKind::kArrow ? "((" : "(function(");
+    } else Append(Tree().callable == CallableKind::kArrow ? "((" :
+        Tree().callable == CallableKind::kAsyncFunction ? "(async function(" : "(function(");
     Push(EndFunction{}); Push(Statement{Tree().body, depth_});
     Push(std::string_view(Tree().callable == CallableKind::kArrow &&
         Tree().invocation == InvocationForm::kDeclared ? ") => " : ") "));
