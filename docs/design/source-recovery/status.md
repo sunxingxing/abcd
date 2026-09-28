@@ -51,6 +51,23 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 已固定第一项真实解码 RED 与行为基线：`control_composition_test --finally-return`
+  要求 `try { return get(); } finally { cleanup(); }` 的 finalizer AST，目前明确失败于
+  `missing recovered finalizer: 0`，**finally 恢复尚未实现**。相同字节码的
+  `--finally-expanded` 可完整输出等价的展开 try/catch + cleanup/return；新注册的
+  `completion_baseline_source_test` 仅验证展开基线，不计为 finally 支持。
+  三个 profiles 的返回/抛出 payload（含 undefined、NaN、-0、Symbol、对象），
+  cleanup 修改外部绑定、cleanup 抛错覆盖 pending completion、清理恰好一次均已
+  执行验证。fixture 使用真实 opcode 和异常表，属于语义 lowering fixture；没有
+  声称逐字节复现上游包含 hole/guard 的完整 finally 编译产物。
+  对照 pinned `ets_frontend/es2panda/ir/statements/tryStatement.cpp` 的
+  `CompileFinally` 与 `compiler/core/dynamicContext.cpp` 的 `EmitFinalizer`；后续
+  需从 CFG/SSA/effects 证明 cleanup 合并及 pending completion，再接共同树流，
+  不能在 Printer 折叠文本或只删除 finalizer 检查。
+  构建成功，composition / source、exception_outer、completion_baseline **4/4 通过**；
+  RED 日志 `/tmp/abcd-finally-return-red.log`，基线日志
+  `/tmp/abcd-completion-baseline-{build,tests}.log`。
+
 - W4 catch 创建闭包后直接退出外层循环已有文件级行为证据：新增
   `loop_closure_file_test --outer-catch` 的 18 个函数族（3 profiles × 父级外层
   continue/break × 普通/异常/多级转发读写子函数）。Node 延后读取各次 catch

@@ -29,7 +29,8 @@ T Take(std::variant<Alternatives...> value,
 }
 void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t locals,
     std::uint32_t parameters, bool staging, std::ostream* output,
-    std::optional<ScopeKind> cell_scope = {}, std::size_t expected_loops = 1);
+    std::optional<ScopeKind> cell_scope = {}, std::size_t expected_loops = 1,
+    bool expect_finalizer = false);
 
 void LoopCarried(abc::ProfileId profile, std::ostream* output) {
   // x = initial; try { while (next()) { x = step(x); next(); } } catch (_) {}
@@ -59,7 +60,7 @@ void LoopCarried(abc::ProfileId profile, std::ostream* output) {
 }
 void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t locals,
     std::uint32_t parameters, bool staging, std::ostream* output, std::optional<ScopeKind> cell_scope,
-    std::size_t expected_loops) {
+    std::size_t expected_loops, bool expect_finalizer) {
   const auto frame = Take<abc::FrameLayout>(abc::BuildFrameLayout(locals, parameters, {}));
   const auto flow = Take<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers, {}, {}, &frame));
   IdfQuota quota{kDefaultSemanticWork};
@@ -121,6 +122,14 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     std::cerr << "loop-carried tree error " << static_cast<unsigned>(*error) << '\n';
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
   const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
+  if (expect_finalizer) {
+    std::size_t finalizers = 0;
+    for (const auto& statement : tree.statements)
+      if (const auto* region = std::get_if<TryStmt>(&statement.statement); region && region->finalizer)
+        ++finalizers;
+    if (finalizers != 1) std::cerr << "missing recovered finalizer: " << finalizers << '\n';
+    test::Check(finalizers == 1);
+  }
   if (evaluation.cells) {
     std::size_t locals = 0;
     for (std::size_t i = 0; i < tree.symbols.size(); ++i) {
@@ -340,8 +349,40 @@ void HandlerOuterTransfer(abc::ProfileId profile, bool stop, std::ostream* outpu
   body.tries = {region}; body.handlers = {handler};
   Emit(body, profile, 0, 6, false, output, {}, 2);
 }
+void FinallyReturn(abc::ProfileId profile, bool recover, std::ostream* output) {
+  // Lowered normal/exception cleanup copies, not source text as engine input:
+  // try { return get(); } finally { cleanup(); }
+  // v0 fixes the pending return/throw BEFORE cleanup; cleanup is not protected
+  // by the original handler, so its failure must replace either completion.
+  // This is a semantic lowered fixture, not a claim of byte-for-byte es2abc
+  // output: upstream also emits hole/guard scaffolding for shared fallthrough.
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+  constexpr unsigned kByteBits = 8;
+  auto body = test::Body({
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kRETURN),
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+  abc::TryRegion region; region.offset = {0}; region.length = 4; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {13}; handler.length = 10;
+  body.tries = {region}; body.handlers = {handler};
+  Emit(body, profile, 1, 2, false, output, {}, 0, recover);
+}
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && (std::string_view(argv[1]) == "--finally-return" ||
+      std::string_view(argv[1]) == "--finally-expanded")) {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301})
+      FinallyReturn(profile, std::string_view(argv[1]) == "--finally-return", &std::cout);
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--nested-outer") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -395,6 +436,7 @@ int main(int argc, char** argv) {
     NestedOuterTransfer(profile, true, nullptr);
     HandlerOuterTransfer(profile, false, nullptr);
     HandlerOuterTransfer(profile, true, nullptr);
+    FinallyReturn(profile, false, nullptr);
   }
   if (emit) std::cout << "];\n";
 }
