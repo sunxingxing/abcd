@@ -51,6 +51,17 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C04 文件读取/捕获子函数组合已补充：`loop_closure_file_test --outer-transfer`
+  生成 18 个函数族（3 profiles × child 外层 break/continue × 3 种父级环境），
+  Code entity/异常表由实际文件 reader 读取，metadata 是合成 fixture，不是完整
+  应用 ABC 解析验收。共同 family 草稿输出全部完整；子函数含双层循环和 catch
+  外层跳转，并在结束时读取捕获变量。Node 在父函数返回后调用，子调用中经
+  setter 修改父级 cell 后再抛错/跳转，检查结果身份与其他迭代/catch cell 隔离。
+  增补该子函数缺失捕获槽的负例，仍拒绝虚构存储。定向构建成功，closure file /
+  source、composition / source、exception_outer **5/5 通过**；日志
+  `/tmp/abcd-outer-family-final-{build,tests}.log`。不以这些 fixture 代替真实应用
+  切片或全语料验收；父级 catch 创建闭包后直接跳出外层循环的组合继续补充。
+
 - C04 继续覆盖跨两层 try 的外层跳转、catch 自身循环中的外层跳转：新增
   `control_composition_test --nested-outer`，三个 profiles × 两种区域组合 ×
   break/continue，共 12 个完整生成函数。Node 比较内层失败、外层 body 失败、

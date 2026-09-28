@@ -5,6 +5,66 @@ const source = execFileSync(process.argv[2], ['--emit'], {encoding: 'utf8', time
 assert.ok(!source.includes('INCOMPLETE'));
 const {functions} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 assert.equal(functions.length, 72);
+const outerSource = execFileSync(process.argv[2], ['--outer-transfer'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!outerSource.includes('INCOMPLETE'));
+const {functions: outerFamilies} = await import(`data:text/javascript;base64,${Buffer.from(outerSource).toString('base64')}`);
+assert.equal(outerFamilies.length, 18);
+// File-backed captured children execute their own exception-bearing nested
+// loops after the parent's per-iteration/per-catch environments have escaped.
+for (const [index, capture] of outerFamilies.entries()) {
+  const stop = Math.floor(index / 3) % 2 === 1;
+  const catchOnly = index % 3 === 1, normalParent = index % 3 === 2;
+  for (const parentFailure of ['none', 'all', 'alternating']) {
+    if (normalParent && parentFailure !== 'none') continue;
+    const saved = [], cells = [], initial = [Symbol('cell'), {}, -0];
+    let iteration = 0;
+    capture(() => iteration < initial.length, () => {
+      const i = iteration++;
+      const fails = parentFailure === 'all' || (parentFailure === 'alternating' && i % 2 === 1);
+      if (!catchOnly || fails) cells.push(initial[i]);
+      if (fails) throw initial[i];
+      return initial[i];
+    }, (get, set) => saved.push({get, set}));
+    assert.equal(saved.length, cells.length);
+    const read = child => child.get(() => false, () => false, () => {}, () => {}, () => {});
+    for (let i = saved.length - 1; i >= 0; --i) {
+      for (const fails of [() => false, () => true, (o, n) => o === 1 && n === 1]) {
+        const log = [], expected = [];
+        let outer = -1, inner = -1;
+        const result = saved[i].get(() => {
+          ++outer; inner = -1; log.push(['outer', outer]); return outer < 3;
+        }, () => {
+          ++inner; log.push(['inner', outer, inner]); return inner < 2;
+        }, () => {
+          log.push(['run', outer, inner]);
+          const value = {cell: i, outer, inner};
+          assert.equal(saved[i].set(value), undefined); cells[i] = value;
+          if (fails(outer, inner)) throw {};
+        }, () => log.push(['body', outer, inner]), () => log.push(['after', outer]));
+        assert.ok(Object.is(result, cells[i]));
+        // Independent expected control path, including a successful inner
+        // iteration before a later catch exits the enclosing loop.
+        outerLoop: for (let o = 0; o <= 3; ++o) {
+          expected.push(['outer', o]);
+          if (o === 3) break;
+          for (let n = 0; n <= 2; ++n) {
+            expected.push(['inner', o, n]);
+            if (n === 2) break;
+            expected.push(['run', o, n]);
+            if (fails(o, n)) {
+              if (stop) break outerLoop;
+              continue outerLoop;
+            }
+            expected.push(['body', o, n]);
+          }
+          expected.push(['after', o]);
+        }
+        assert.deepEqual(log, expected);
+        for (let j = 0; j < saved.length; ++j) assert.ok(Object.is(read(saved[j]), cells[j]));
+      }
+    }
+  }
+}
 // Hoisting the cell out of the loop, snapshotting the initial callable, or
 // losing the catch write all break these post-return identity assertions.
 for (const [index, capture] of functions.entries()) {
