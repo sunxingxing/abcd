@@ -22,9 +22,9 @@ class ForestBuilder {
   ForestBuilder(const analysis::ValueProgram& graph,
                 const EvaluationPlan& evaluation, FunctionOwnerId owner,
                 ExpressionConstants constants, analysis::SemanticBudget budget,
-                BindingPlan bindings, std::span<const ModuleSymbol> modules)
+                BindingPlan bindings, std::span<const ModuleSymbol> modules, RecoveryMode recovery)
       : graph_(graph), evaluation_(evaluation), owner_(owner), constants_(constants),
-        budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules) {
+        budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), recovery_(recovery) {
     Require(bindings.allocated_bytes <= bytes_, Error::kResourceLimit);
     bytes_ -= bindings.allocated_bytes;
     Step(bindings.work);
@@ -138,60 +138,96 @@ class ForestBuilder {
       else
         forest_.origins.emplace_back(OriginalSite{origin.site, origin.pc, origin.original});
     }
+    const bool partial = CanRetainPrefix();
+    struct Boundary {
+      std::size_t operation = 0, expressions = 0, arguments = 0, origins = 0, parts = 0;
+    } boundary{0, 0, 0, forest_.origins.size(), 0};
+    std::optional<std::size_t> last_consumer;
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       Step();
-      const auto& op = graph_.ops[i];
-      if (op.life != analysis::ValueLife::kLive) continue;
-      Require(op.origin.value < graph_.origins.size() &&
-              graph_.origins[op.origin.value].disposition == analysis::OriginDisposition::kRetained,
-              Error::kOrigin);
-      const TreeOriginId origin{op.origin.value};
-      if (evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
-          evaluation_.operations[i].kind == EvaluationKind::kAlias) continue;
-      if (evaluation_.operations[i].kind == EvaluationKind::kInitializer) continue;
-      if (evaluation_.operations[i].kind == EvaluationKind::kEnvironment) continue;
-      if (evaluation_.operations[i].kind == EvaluationKind::kModuleGuard) continue;
-      if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) {
-        Require(next_module_ < evaluation_.modules.size(), Error::kBinding);
-        const auto& module = evaluation_.modules[next_module_++];
-        Require(module.pair.read.value == i, Error::kBinding);
-        const auto found = std::lower_bound(module_order_.begin(), module_order_.end(), module.target,
-            [&](auto index, auto target) { Step(); return modules_[index] < target; });
-        Require(found != module_order_.end() && modules_[*found] == module.target, Error::kBinding);
-        // FunctionTree appends module aliases in this supplied order after the
-        // shared IR bindings. This is a source SymbolId, never an ABC slot.
-        const SymbolId symbol{static_cast<std::uint32_t>(forest_.bindings.symbols.size() + *found)};
-        const auto expression = Combine(Add(SymbolExpr{symbol}, origin),
-            {graph_.ops[module.pair.guard.value].origin.value});
-        forest_.operations[i] = expression;
-        forest_.operations[module.pair.guard.value] = expression;
-        continue;
+      if (partial && (!last_consumer || *last_consumer < i))
+        boundary = {i, forest_.expressions.size(), forest_.arguments.size(),
+                    forest_.origins.size(), forest_.origin_parts.size()};
+      if (partial && evaluation_.operations[i].kind == EvaluationKind::kInline) {
+        const auto consumer = evaluation_.operations[i].consumer;
+        Require(consumer && consumer->value < graph_.uses.size(), Error::kOwnership);
+        const auto* owner = std::get_if<analysis::OpId>(&graph_.uses[consumer->value].owner);
+        Require(owner != nullptr && owner->value > i && owner->value < graph_.ops.size(), Error::kOwnership);
+        const auto target = owner->value;
+        last_consumer = std::max(last_consumer.value_or(i), static_cast<std::size_t>(target));
       }
-      if (objects_[i]) {
-        forest_.operations[i] = Object(evaluation_.literals->objects[*objects_[i]], origin);
-        continue;
-      }
-      if (!std::holds_alternative<NoCall>(forest_.calls.operations[i])) {
-        forest_.operations[i] = Call(op, forest_.calls.operations[i], origin);
-        continue;
-      }
-      if (std::holds_alternative<analysis::ValueArgumentSnapshot>(op.operation)) {
-        const ArgumentRange slots{static_cast<std::uint32_t>(forest_.arguments.size()), op.use_count};
+      try {
+        const auto& op = graph_.ops[i];
+        if (op.life != analysis::ValueLife::kLive) continue;
+        Require(op.origin.value < graph_.origins.size() &&
+                    graph_.origins[op.origin.value].disposition == analysis::OriginDisposition::kRetained,
+                Error::kOrigin);
+        const TreeOriginId origin{op.origin.value};
+        if (evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
+            evaluation_.operations[i].kind == EvaluationKind::kAlias)
+          continue;
+        if (evaluation_.operations[i].kind == EvaluationKind::kInitializer) continue;
+        if (evaluation_.operations[i].kind == EvaluationKind::kEnvironment) continue;
+        if (evaluation_.operations[i].kind == EvaluationKind::kModuleGuard) continue;
+        if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) {
+          Require(next_module_ < evaluation_.modules.size(), Error::kBinding);
+          const auto& module = evaluation_.modules[next_module_++];
+          Require(module.pair.read.value == i, Error::kBinding);
+          const auto found = std::lower_bound(module_order_.begin(), module_order_.end(), module.target,
+                                              [&](auto index, auto target) {
+                                                Step();
+                                                return modules_[index] < target;
+                                              });
+          Require(found != module_order_.end() && modules_[*found] == module.target, Error::kBinding);
+          // FunctionTree appends module aliases in this supplied order after the
+          // shared IR bindings. This is a source SymbolId, never an ABC slot.
+          const SymbolId symbol{static_cast<std::uint32_t>(forest_.bindings.symbols.size() + *found)};
+          const auto expression =
+              Combine(Add(SymbolExpr{symbol}, origin), {graph_.ops[module.pair.guard.value].origin.value});
+          forest_.operations[i] = expression;
+          forest_.operations[module.pair.guard.value] = expression;
+          continue;
+        }
+        if (objects_[i]) {
+          forest_.operations[i] = Object(evaluation_.literals->objects[*objects_[i]], origin);
+          continue;
+        }
+        if (!std::holds_alternative<NoCall>(forest_.calls.operations[i])) {
+          forest_.operations[i] = Call(op, forest_.calls.operations[i], origin);
+          continue;
+        }
+        if (std::holds_alternative<analysis::ValueArgumentSnapshot>(op.operation)) {
+          const ArgumentRange slots{static_cast<std::uint32_t>(forest_.arguments.size()), op.use_count};
+          for (std::uint32_t j = 0; j < op.use_count; ++j) {
+            Step();
+            Require(forest_.arguments.size() < forest_.arguments.capacity(), Error::kResourceLimit);
+            forest_.arguments.push_back(Operand(graph_.uses[op.first_use.value + j].operand, origin));
+          }
+          forest_.operations[i] = Add(ArgumentSnapshotExpr{owner_, slots}, origin);
+          continue;
+        }
+        std::array<ExprId, kFixedExpressionOperands> operands{};
+        Require(op.use_count <= operands.size(), Error::kUnsupportedOperation);
         for (std::uint32_t j = 0; j < op.use_count; ++j) {
           Step();
-          Require(forest_.arguments.size() < forest_.arguments.capacity(), Error::kResourceLimit);
-          forest_.arguments.push_back(Operand(graph_.uses[op.first_use.value + j].operand, origin));
+          operands[j] = Operand(graph_.uses[op.first_use.value + j].operand, origin);
         }
-        forest_.operations[i] = Add(ArgumentSnapshotExpr{owner_, slots}, origin);
-        continue;
+        forest_.operations[i] =
+            Lower({static_cast<std::uint32_t>(i)}, op, operands, origin, constants_.operations[i]);
+      } catch (Error error) {
+        if (!partial || error != Error::kUnsupportedOperation) throw;
+        // Roll back the entire unfinished inline expression, not just its last
+        // opcode. Retain only roots whose operands have all been consumed.
+        forest_.expressions.resize(boundary.expressions);
+        forest_.arguments.resize(boundary.arguments);
+        forest_.origins.resize(boundary.origins);
+        forest_.origin_parts.resize(boundary.parts);
+        for (std::size_t omitted = boundary.operation; omitted < forest_.operations.size(); ++omitted) {
+          Step(); forest_.operations[omitted].reset();
+        }
+        forest_.recovery_stop = analysis::OpId{static_cast<std::uint32_t>(boundary.operation)};
+        break;
       }
-      std::array<ExprId, kFixedExpressionOperands> operands{};
-      Require(op.use_count <= operands.size(), Error::kUnsupportedOperation);
-      for (std::uint32_t j = 0; j < op.use_count; ++j) {
-        Step();
-        operands[j] = Operand(graph_.uses[op.first_use.value + j].operand, origin);
-      }
-      forest_.operations[i] = Lower({static_cast<std::uint32_t>(i)}, op, operands, origin, constants_.operations[i]);
     }
     Require(next_function_ == evaluation_.functions.size(), Error::kOwnership);
     Require(next_module_ == evaluation_.modules.size(), Error::kOwnership);
@@ -204,6 +240,25 @@ class ForestBuilder {
   }
 
  private:
+  bool CanRetainPrefix() {
+    // Initial partial construction handles one normal straight-line region.
+    // Other topologies still use the full builder until their region ownership
+    // can be retained. Never linearize a branch, exception, cell or phi region.
+    if (recovery_ != RecoveryMode::kAllowPartial || evaluation_.flow != EvaluationFlow::kNormal ||
+        graph_.blocks.size() != 1 || !graph_.edges.empty() ||
+        graph_.blocks[0].first_op.value != 0 || graph_.blocks[0].op_count != graph_.ops.size() ||
+        !evaluation_.functions.empty() || !evaluation_.modules.empty() || !modules_.empty() ||
+        (evaluation_.phis && !evaluation_.phis->bundles.empty()) ||
+        (evaluation_.cells && !evaluation_.cells->cells.cells.empty()) || evaluation_.exceptions ||
+        evaluation_.literals || !forest_.bindings.cells.empty()) return false;
+    for (const auto& op : graph_.ops) {
+      Step();
+      if (std::holds_alternative<analysis::ValueEnvironmentPush>(op.operation) ||
+          std::holds_alternative<analysis::ValueEnvironmentPop>(op.operation) ||
+          std::holds_alternative<analysis::ValueObjectAllocation>(op.operation)) return false;
+    }
+    return true;
+  }
   PropertyRange BufferedProperties(const ExpressionConstant& constant, TreeOriginId origin) {
     const auto* object = std::get_if<ObjectConstant>(&constant);
     Require(object != nullptr, Error::kConstant);
@@ -486,12 +541,13 @@ class ForestBuilder {
   std::span<const ModuleSymbol> modules_;
   std::vector<std::size_t> module_order_;
   std::size_t next_module_ = 0;
+  RecoveryMode recovery_;
 };
 std::variant<ExpressionForest, ExpressionError> BuildForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner,
     ExpressionConstants constants, analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules,
-    EvaluationFlow flow) {
+    EvaluationFlow flow, RecoveryMode recovery) {
   auto bindings = flow == EvaluationFlow::kNormal ? BuildBindingPlan(graph, evaluation, parameter_count, budget)
       : BuildPhasedBindingPlan(graph, evaluation, parameter_count, budget);
   if (const auto* error = std::get_if<BindingError>(&bindings)) {
@@ -501,7 +557,7 @@ std::variant<ExpressionForest, ExpressionError> BuildForest(
   }
   try {
     return ForestBuilder(graph, evaluation, owner, constants, budget,
-                         std::get<BindingPlan>(std::move(bindings)), modules).Build();
+                         std::get<BindingPlan>(std::move(bindings)), modules, recovery).Build();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
@@ -510,13 +566,13 @@ std::variant<ExpressionForest, ExpressionError> BuildForest(
 std::variant<ExpressionForest, ExpressionError> BuildExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
-    analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules) {
-  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal);
+    analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery) {
+  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal, recovery);
 }
 std::variant<ExpressionForest, ExpressionError> BuildPhasedExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
-    analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules) {
-  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kPhased);
+    analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery) {
+  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kPhased, recovery);
 }
 }  // namespace abcd::source

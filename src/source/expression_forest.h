@@ -49,6 +49,9 @@ struct ExpressionForest {
   std::vector<ThrowExpressions> throws;
   std::vector<ExprId> catch_assignments;
   std::vector<CatchExpressions> catches;
+  // First omitted operation at a closed expression boundary. The unchanged
+  // graph remains authoritative; no fake terminator or residual CFG is made.
+  std::optional<analysis::OpId> recovery_stop;
 };
 enum class ExpressionError : std::uint8_t {
   kBinding, kOrigin, kConstant, kUnavailableValue, kUnsupportedOperation,
@@ -60,15 +63,19 @@ enum class ExpressionError : std::uint8_t {
 // still have to be checked after statement assembly.
 // Module symbols are the caller's conditional alias order. Their local SymbolIds
 // append after bindings.symbols; FunctionTree must retain that exact order.
+// AllowPartial can return recovery_stop for a supported straight-line prefix;
+// its expressions are still exclusively owned by the retained root operations.
 [[nodiscard]] std::variant<ExpressionForest, ExpressionError>
 BuildExpressionForest(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, std::uint32_t parameter_count,
     FunctionOwnerId owner, ExpressionConstants constants,
-    analysis::SemanticBudget budget = {}, std::span<const ModuleSymbol> modules = {});
+    analysis::SemanticBudget budget = {}, std::span<const ModuleSymbol> modules = {},
+    RecoveryMode recovery = RecoveryMode::kCompleteOnly);
 [[nodiscard]] std::variant<ExpressionForest, ExpressionError>
 BuildPhasedExpressionForest(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, std::uint32_t parameter_count,
     FunctionOwnerId owner, ExpressionConstants constants,
-    analysis::SemanticBudget budget = {}, std::span<const ModuleSymbol> modules = {});
+    analysis::SemanticBudget budget = {}, std::span<const ModuleSymbol> modules = {},
+    RecoveryMode recovery = RecoveryMode::kCompleteOnly);
 }  // namespace abcd::source
 #endif

@@ -24,10 +24,15 @@ enum class FunctionTreeError : std::uint8_t {
 // An incoming creation derives capture aliases from the actual checked parent
 // tree and verifies the resulting child relationship. Caller-supplied captures
 // must be empty in this mode. This does not close transitive family premises.
+// AllowPartial currently retains closed expression roots before an unsupported
+// lowering in one normal straight-line region without cells/phis/children.
+// The suffix becomes an explicit gap; malformed inputs remain errors. Other
+// topologies retain complete-only behavior, never a guessed linearization.
 [[nodiscard]] std::variant<ConstructedFunction, FunctionTreeError>
 BuildFunctionTree(const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, FunctionSyntax syntax,
     ExpressionConstants constants, analysis::SemanticBudget budget = {},
-    const IncomingCaptureTree* incoming = nullptr);
+    const IncomingCaptureTree* incoming = nullptr,
+    RecoveryMode recovery = RecoveryMode::kCompleteOnly);
 }  // namespace abcd::source
 #endif

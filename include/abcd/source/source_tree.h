@@ -160,6 +160,7 @@ struct LoopStmt { StmtId body; };
 struct BreakStmt { StmtId target; };
 struct ContinueStmt { StmtId target; };
 struct DebuggerStmt {};
+enum class RecoveryMode : std::uint8_t { kCompleteOnly, kAllowPartial };
 struct RecoveryIssueId { std::uint32_t value = 0; auto operator<=>(const RecoveryIssueId&) const = default; };
 enum class RecoveryReason : std::uint8_t {
   kUnsupportedOperation, kUnsupportedControl, kUnavailableValue, kUnresolvedBinding,

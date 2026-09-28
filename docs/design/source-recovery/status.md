@@ -18,7 +18,8 @@ INCOMPLETE 与区域缺口标记。不要求新增 VerifiedFunction/不可变准
 budget/work 计费、通用验证器、发布 receipt 和全面映射审计暂缓；已有设施保留。
 语义恢复和定向行为测试继续，部分输出不算完整支持。下述完整 gate 保留为最终
 目标，不再阻止已恢复片段输出。C00a 已开始实现，具体已测范围见本次证据；
-真实解码部分构建和 CLI 贯通尚未交付，不按打印器子项宣布 C00a 完成。
+真实解码直线前缀部分构建已有定向证据，CLI 和更广区域保留尚未贯通，
+不按子项宣布 C00a 完成。
 
 执行目标已按用户要求调整为两阶段：
 
@@ -49,6 +50,19 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 | T12 | 语料与分类基础已有历史记录 | 全样本新路线审计、跨版本/留出集、进程 1G 实测 |
 
 ## 本次证据
+
+- C00a 第二子项：共同 expression forest / FunctionTree builder 新增显式
+  `RecoveryMode::kAllowPartial`，保留单个正常直线区域中已闭合的表达式根；
+  遇未支持 lowering 回退到最后闭合边界，将整个未完成内联表达式及后缀标为缺口。
+  不修改 ValueProgram、不截断 CFG、不造终结器；常量/所有权错误不转成 unsupported。
+  默认完整接口不变；分支、异常、phi、cell、捕获/子函数仍未开放这一前缀策略。
+  新增 partial_build_test 使用真实动态 12.0.6 opcode 解码，覆盖 debugger/调用保留、
+  inc 缺口、嵌套内联回退、原始 PC、完整返回、分支拒绝与损坏常量表拒绝。
+  定向 Debug 构建成功，partial_build_test、partial_tree_test、function_tree_test、
+  tree_structure_test、try_tree_test、function_input_test、call_plan_test、phi_call_test
+  共 8/8 通过。`partial_build_test --emit-complete` 的引擎输出经 Node 实际执行返回 7；
+  部分源码没有作为等价行为测试输入。尚无文件级 CLI/record 部分恢复验收，
+  尚未覆盖导入/控制/求值分析阶段的失败保留，C00a 继续，不宣称全 opcode 支持。
 
 - C00a 第一子项：新增直接 `PrintFunctionTree(const FunctionTree&, ...)`，
   复用现有迭代 printer，不依赖 VerifiedFunction。`RecoveryIssue`/`UnrecoveredStmt`

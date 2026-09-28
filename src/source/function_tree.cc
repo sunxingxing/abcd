@@ -13,6 +13,7 @@
 #include "tree_semantics.h"
 #include "capture_aliases.h"
 #include "cell_lifetime.h"
+#include "tree_structure.h"
 
 namespace abcd::source {
 namespace {
@@ -38,10 +39,11 @@ class TreeBuilder {
   TreeBuilder(const analysis::ValueProgram& graph, const ControlPlan& control,
       const EvaluationPlan& evaluation, FunctionSyntax syntax,
       ExpressionConstants constants, analysis::SemanticBudget budget,
-      const IncomingCaptureTree* incoming, const ExceptionTreeInput* exceptions = nullptr)
+      const IncomingCaptureTree* incoming, const ExceptionTreeInput* exceptions = nullptr,
+      RecoveryMode recovery = RecoveryMode::kCompleteOnly)
       : graph_(graph), control_(control), evaluation_(evaluation),
         syntax_(std::move(syntax)), constants_(constants), budget_(budget),
-        bytes_(budget.bytes), work_(budget.work), incoming_(incoming), exceptions_(exceptions) {}
+        bytes_(budget.bytes), work_(budget.work), incoming_(incoming), exceptions_(exceptions), recovery_(recovery) {}
 
   ConstructedFunction Build() {
     if (exceptions_ && evaluation_.cells) CheckCellLifetimes();
@@ -85,7 +87,8 @@ class TreeBuilder {
     const auto build_forest = exceptions_ ? BuildPhasedExpressionForest : BuildExpressionForest;
     auto expressions = build_forest(graph_, evaluation_,
         static_cast<std::uint32_t>(syntax_.parameters.size()), syntax_.owner,
-        constants_, {bytes_, work_}, modules);
+        constants_, {bytes_, work_}, modules,
+        incoming_ || exceptions_ || !syntax_.captures.empty() ? RecoveryMode::kCompleteOnly : recovery_);
     if (const auto* error = std::get_if<ExpressionError>(&expressions)) {
       if (*error == ExpressionError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == ExpressionError::kWorkLimit) throw Error::kWorkLimit;
@@ -153,7 +156,14 @@ class TreeBuilder {
       }
     }
     Flatten();
-    CheckSemantics();
+    if (forest_.recovery_stop) {
+      const auto checked = VerifyTreeStructure(tree_, {bytes_, work_});
+      if (const auto* error = std::get_if<TreeStructureError>(&checked)) {
+        if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
+        if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kStructure;
+      }
+    } else CheckSemantics();
     return {std::move(tree_), budget_.bytes - bytes_, budget_.work - work_};
   }
 
@@ -572,6 +582,13 @@ class TreeBuilder {
       Step();
       const analysis::OpId id{block.first_op.value + j};
       const auto& op = graph_.ops[id.value];
+      if (forest_.recovery_stop && id == *forest_.recovery_stop) {
+        Grow(tree_.recovery_issues, 1);
+        tree_.recovery_issues.push_back({RecoveryReason::kUnsupportedOperation,
+            graph_.origins[op.origin.value].pc, {}});
+        Append(draft, Statement(UnrecoveredStmt{{0}}, TreeOriginId{op.origin.value}));
+        return;
+      }
       const auto& evaluation = evaluation_.operations[id.value];
       if (op.life != analysis::ValueLife::kLive) continue;
       if (exceptions_ && std::holds_alternative<analysis::ValueBranch>(op.operation)) {
@@ -877,6 +894,7 @@ class TreeBuilder {
   const ExceptionTreeInput* exceptions_;
   std::vector<std::optional<SymbolId>> catch_symbols_;
   std::vector<std::optional<std::size_t>> catch_ranges_, throw_ranges_;
+  RecoveryMode recovery_;
 };
 }  // namespace
 
@@ -884,9 +902,10 @@ std::variant<ConstructedFunction, FunctionTreeError> BuildFunctionTree(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, FunctionSyntax syntax,
     ExpressionConstants constants, analysis::SemanticBudget budget,
-    const IncomingCaptureTree* incoming) {
+    const IncomingCaptureTree* incoming, RecoveryMode recovery) {
   try {
-    return TreeBuilder(graph, control, evaluation, std::move(syntax), constants, budget, incoming).Build();
+    return TreeBuilder(graph, control, evaluation, std::move(syntax), constants, budget, incoming,
+                       nullptr, recovery).Build();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
