@@ -14,6 +14,12 @@
 
 ### 2026-09-28：共享清理区域恢复为 finally
 
+- 补充文件级函数族纵向验证：真实临时文件 Code entity/异常表 → 现代 phased method →
+  闭包族 → 共同源码入口。三 profile × per-iteration/per-catch/normal 父形状，
+  共享 finally 的清理读取捕获 cell；逃逸后执行、兄弟 setter 写入和不同动态实例隔离均通过。
+  缺失捕获 cell 的失败用例仍保留。外围 header/index 为合成测试元数据，不是完整应用 ABC。
+  `loop_closure_file_test`、`loop_closure_source_test`、`completion_baseline_source_test`
+  3/3 通过：`/tmp/abcd-shared-finally-file-final-tests.log`。
 - 在上述 Hole 源码贯通基础上，CompletionPlan 关联 catch/Hole 的 phi 与唯一重抛分支；
   确认 try/catch 汇合后，将共享清理投影为普通 TryStmt.finalizer，继续使用共同 printer。
   清理仅一份，原异常暂存、比较与后继重抛仍保留；未做源码级临时变量美化。

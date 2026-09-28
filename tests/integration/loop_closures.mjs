@@ -1,6 +1,43 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
+const sharedSource = execFileSync(process.argv[2], ['--shared-finally'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!sharedSource.includes('INCOMPLETE'));
+const {functions: sharedFamilies} = await import(`data:text/javascript;base64,${Buffer.from(sharedSource).toString('base64')}`);
+assert.equal(sharedFamilies.length, 9);
+for (const [index, capture] of sharedFamilies.entries()) {
+  const catchParent = index % 3 === 1, saved = [], cells = [{}, Symbol('cell')];
+  let iteration = 0;
+  capture(() => iteration < cells.length, () => {
+    const value = cells[iteration++];
+    if (catchParent) throw value;
+    return value;
+  }, (get, set) => saved.push({get, set}));
+  assert.equal(saved.length, cells.length);
+  for (const [cellIndex, child] of saved.entries()) {
+    for (const pending of [undefined, null, Symbol('pending'), {}])
+      for (const getThrows of [false, true]) for (const cleanupThrows of [false, true]) {
+        const log = [], cleanupError = {}, result = {};
+        let didThrow = false, returned, thrown;
+        try {
+          returned = child.get(function () {
+            assert.equal(this, undefined); log.push('get'); if (getThrows) throw pending;
+          }, function (cell) {
+            assert.equal(this, undefined); assert.equal(cell, cells[cellIndex]); log.push('cleanup');
+            if (cleanupThrows) throw cleanupError;
+          }, function () { assert.equal(this, undefined); log.push('after'); return result; });
+        } catch (error) { didThrow = true; thrown = error; }
+        assert.deepEqual(log, getThrows || cleanupThrows ? ['get', 'cleanup'] : ['get', 'cleanup', 'after']);
+        assert.equal(didThrow, getThrows || cleanupThrows);
+        assert.equal(didThrow ? thrown : returned, cleanupThrows ? cleanupError : getThrows ? pending : result);
+      }
+    const changed = {};
+    child.set(changed); cells[cellIndex] = changed;
+  }
+  // Escaped children retain distinct cells, including writes through siblings.
+  for (const [i, child] of saved.entries()) child.get(() => {}, cell => assert.equal(cell, cells[i]), () => {});
+}
+
 const source = execFileSync(process.argv[2], ['--emit'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!source.includes('INCOMPLETE'));
 const {functions} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
