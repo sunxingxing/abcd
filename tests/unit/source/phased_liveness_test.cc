@@ -116,7 +116,7 @@ void Run(std::uint32_t count, abc::ProfileId profile,
   std::vector<ExpressionConstant> constants(graph.ops.size()); constants[getter] = NameId{0};
   // The shared tree builder invokes independent graph checks at several
   // boundaries. Keep the geometric fixture, with an explicit test-only budget.
-  constexpr std::uint64_t kTreeWork = 16 * kDefaultSemanticWork;
+  constexpr std::uint64_t kTreeWork = kDefaultSemanticWork;
   const SemanticBudget tree_budget{SemanticBudget{}.bytes, kTreeWork};
   auto tree = std::get<ExceptionFunctionDraft>(BuildExceptionFunctionDraft(
       graph, context, evaluation, syntax, {constants, 1}, tree_budget)).tree;

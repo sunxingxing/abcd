@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <variant>
 #include <vector>
 
@@ -162,7 +163,10 @@ struct SemanticFailure {
   std::variant<std::monostate, RegisterUseFailure, IdfError,
                DominatorError, SsaError> ssa_cause;
 };
-inline constexpr std::uint64_t kDefaultSemanticWork = 1'000'000;
+// Default source recovery has no configured work cutoff. Keep the machine
+// counter range for accounting and legacy callers that explicitly request a
+// finite quota; memory and input safety remain independently enforced.
+inline constexpr std::uint64_t kDefaultSemanticWork = std::numeric_limits<std::uint64_t>::max();
 struct SemanticBudget {
   std::size_t bytes = 64 * 1024 * 1024;
   std::uint64_t work = kDefaultSemanticWork;

@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <variant>
 #include <vector>
@@ -61,7 +62,7 @@ enum class DerivedConstructorError {
 };
 struct DerivedConstructorBudget {
   static constexpr std::size_t kDefaultBytes = 16 * 1024 * 1024;
-  static constexpr std::uint64_t kDefaultWork = 100000000;
+  static constexpr std::uint64_t kDefaultWork = std::numeric_limits<std::uint64_t>::max();
   std::size_t bytes = kDefaultBytes;
   std::uint64_t work = kDefaultWork;
 };

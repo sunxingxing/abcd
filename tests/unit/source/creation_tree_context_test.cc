@@ -714,6 +714,17 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 1) {
+    // Sibling output must not run out of a recursively halved work grant.
+    // The same scratch memory is returned on leaving each child.
+    CreationExpansion expansion({1}, LocalLexicalBudget{}.bytes, kDefaultMethodWork);
+    for (std::uint32_t child = 2; child < 203; ++child) {
+      LocalLexicalBudget budget;
+      test::Check(!expansion.Enter({child}, budget));
+      test::Check(budget.work == kDefaultMethodWork);
+      expansion.Leave(budget.bytes);
+    }
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--snapshot-json") {
     for (const auto parameters : {0U, 1U, 2U, 200U, 201U}) {
       for (const auto variant : {SnapshotCase::kRead, SnapshotCase::kWrite, SnapshotCase::kPair, SnapshotCase::kBranch, SnapshotCase::kLoop, SnapshotCase::kSelf}) {

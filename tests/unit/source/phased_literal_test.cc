@@ -92,7 +92,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     // This exercises repeated independent tree/phase checks as well as the
     // initializer proof. Keep its explicit allowance separate from the exact
     // initializer-work tests above; production defaults are unchanged.
-    constexpr SemanticBudget kTreeBudget{SemanticBudget{}.bytes, 4 * kDefaultSemanticWork};
+    constexpr SemanticBudget kTreeBudget{};
     const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, {constants, 1}, kTreeBudget);
     test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
     const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;

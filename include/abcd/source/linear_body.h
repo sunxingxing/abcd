@@ -1,6 +1,8 @@
 #ifndef ABCD_SOURCE_LINEAR_BODY_H_
 #define ABCD_SOURCE_LINEAR_BODY_H_
 
+#include <limits>
+
 #include "abcd/abc/method_body.h"
 #include "abcd/abc/literal_array.h"
 #include "abcd/abc/module_info.h"
@@ -18,7 +20,9 @@ struct AwaitSite;
 
 namespace abcd::source {
 class CreationExpansion;
-inline constexpr std::uint64_t kDefaultMethodWork = 100000000;
+// Default output is not admitted by a work-count threshold. Explicit finite
+// budgets remain available to legacy analysis callers, not imposed here.
+inline constexpr std::uint64_t kDefaultMethodWork = std::numeric_limits<std::uint64_t>::max();
 enum class BodyEmitError {
   kExceptionRegions,
   kUnsupportedInstruction,

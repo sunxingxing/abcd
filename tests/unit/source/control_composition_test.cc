@@ -1160,7 +1160,7 @@ int main(int argc, char** argv) {
   }
   if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-depth-source") {
     std::cout << "export const functions = [\n";
-    for (const auto depth : {4U, 8U, 16U, 200U, 201U})
+    for (const auto depth : {4U, 8U, 16U, 200U, 201U, 402U})
       CompilerFinally(abc::ProfileId::kDynamic1206, &std::cout, CompositionStage::kHoleFinally, 1, false,
           SharedInnerCatch::kRethrow, depth);
     std::cout << "];\n"; return 0;

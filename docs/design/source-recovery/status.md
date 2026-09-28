@@ -12,6 +12,25 @@
 
 ## 当前阶段
 
+### 2026-09-28：默认源码产出不再受 work 配额截断
+
+- 按用户明确要求，关闭默认语义分析的 100 万 work 和旧方法/派生构造器路径的
+  1 亿 work 阈值。默认值使用 uint64 计数器完整范围，不再配置功能性的 work
+  配额；统计和显式有限预算的底层兼容接口保留。未批量删除已有检查或另建 DFX。
+  计数器表示范围不是本阶段承诺的无限执行能力；内存、合法输入和输出写入检查不变。
+- CreationExpansion 对默认无限额度不再逐次减半/扣减，避免仅因兄弟函数数量
+  耗尽 work。显式有限预算的旧调用仍保持原约定。同步移除四个测试中对默认额度
+  的乘法，避免将完整计数范围拿来放大而回绕。
+- 402 层共享 finally 的完整源码路径先在旧默认下复现 `FunctionTreeError::kWorkLimit`
+  （红例 `/tmp/abcd-work-output-red.log`），修改后完整输出并执行正常/异常/清理
+  行为对照；不再只验收其控制计划。另覆盖默认预算下 201 个兄弟函数的展开。
+- 相关十四个 C++ 目标构建成功，29/29 定向测试通过（20.84 秒），日志
+  `/tmp/abcd-work-output-final-build.log`、`/tmp/abcd-work-output-final-tests.log`；
+  `git diff --check` 通过。设计入口与主计划已同步明确默认输出策略。
+- 本轮未扩大语义支持范围：generator 接入仅完成上游协议检查，因本次用户要求
+  转向修复产出策略，未实现或声称 yield 已贯通。全量测试/语料/RSS/基准继续暂停，
+  既有两个 base_function 失败未重跑或修复，1GB 长期约束未据此宣称实测达标。
+
 ### 2026-09-28：async arrow 自身 VM arguments 快照
 
 - 扩展已有 `InvocationForm::kArrowMethod` 到 async arrow：共享树构建选择

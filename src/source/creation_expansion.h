@@ -15,7 +15,8 @@ enum class ExpansionError { kCycle, kResourceLimit };
 
 // A synchronous emission tree, not a method scheduler. Depth bounds the host
 // stack and ancestry scan. Scratch grants remain charged until the child dies;
-// work grants are never refunded, including failed/fallback attempts.
+// Explicit finite work grants are never refunded. Default source recovery has
+// no work admission: do not halve an unbounded grant until later siblings fail.
 class CreationExpansion {
  public:
   static constexpr std::size_t kMaxDepth = 32;
@@ -41,12 +42,13 @@ class CreationExpansion {
     // allowance to every live ancestor. These are policy limits, not ISA data.
     constexpr std::size_t kReserveDivisor = 2;
     budget.bytes = std::min(budget.bytes, bytes_ / kReserveDivisor);
-    budget.work = std::min(budget.work, work_ / kReserveDivisor);
+    const bool finite_work = work_ != kDefaultMethodWork;
+    if (finite_work) budget.work = std::min(budget.work, work_ / kReserveDivisor);
     budget.output.bytes = std::min(budget.output.bytes, budget.bytes);
     if (!budget.bytes || !budget.work || !budget.output.bytes)
       return ExpansionError::kResourceLimit;
     bytes_ -= budget.bytes;
-    work_ -= budget.work;
+    if (finite_work) work_ -= budget.work;
     active_[depth_++] = method;
     return std::nullopt;
   }

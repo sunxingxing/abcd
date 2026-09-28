@@ -8,7 +8,7 @@ assert.equal(sharedFinalizers.length, 3);
 const depthSource = execFileSync(process.argv[2], ['--compiler-finally-depth-source'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!depthSource.includes('INCOMPLETE'));
 const {functions: depthFinalizers} = await import(`data:text/javascript;base64,${Buffer.from(depthSource).toString('base64')}`);
-assert.equal(depthFinalizers.length, 5);
+assert.equal(depthFinalizers.length, 6);
 sharedFinalizers.push(...depthFinalizers);
 const sharedLoopSource = execFileSync(process.argv[2], ['--compiler-finally-loop'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!sharedLoopSource.includes('INCOMPLETE'));

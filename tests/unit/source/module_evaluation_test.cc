@@ -36,7 +36,7 @@ void Run(std::uint32_t count, bool external) {
   const auto body = test::Body(bytes);
   // The 4096-pair fixture exhausts the default SSA work allowance before it
   // reaches evaluation. Fund this scaling fixture explicitly, not production.
-  constexpr std::uint64_t kFixtureWork = 16 * kDefaultSemanticWork;
+  constexpr std::uint64_t kFixtureWork = kDefaultSemanticWork;
   const SemanticBudget fixture_budget{SemanticBudget{}.bytes, kFixtureWork};
   const auto input = std::get<FunctionInput>(FunctionInput::Build(identity, {300}, {100}, body, frame,
       InputCaptureMode::kClosed, fixture_budget));

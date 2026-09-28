@@ -16,7 +16,7 @@ SemanticBudget TreeBudget() {
   SemanticBudget budget;
   // Several independent graph/tree verifiers run in each construction. This
   // bounded fixture allowance is not a production work-limit change.
-  constexpr std::uint64_t kFixtureWork = 16 * kDefaultSemanticWork;
+  constexpr std::uint64_t kFixtureWork = kDefaultSemanticWork;
   budget.work = kFixtureWork;
   return budget;
 }

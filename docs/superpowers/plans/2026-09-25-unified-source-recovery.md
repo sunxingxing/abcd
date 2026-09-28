@@ -4,6 +4,8 @@
 和 [最新演进计划](2026-09-28-unified-control-regions.md)。下面 T00–T12 保留功能范围及
 历史任务记录；新增预算/验证包装/发布 receipt/全面映射审计任务暂缓，不作为反编译
 功能或部分输出的前置。允许直接打印 FunctionTree，并标记未恢复函数与区域。
+用户后续明确要求默认产出不以 work 计数拒绝：关闭生产默认 work 配额，保留统计、
+显式有限额度的底层兼容接口及独立的内存/输入安全检查，不再以调高小阈值作为功能修复。
 
 > **For agentic workers:** 使用 `superpowers:executing-plans` 逐任务执行；只有获得委派授权时才使用 `superpowers:subagent-driven-development`。以下复选框记录实际交付，不表示本轮已实施。
 
