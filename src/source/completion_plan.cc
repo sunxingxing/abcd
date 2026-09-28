@@ -67,13 +67,27 @@ class CompletionBuilder {
       quota_.Work(); const auto op = graph_.exceptional_exits[e].op;
       Require(op.value < exits_.size() && !exits_[op.value]); exits_[op.value] = e;
     }
-    CompletionPlan plan{graph_.revision, graph_.cfg_revision, {}};
     Require(control_.regions.size() == exceptions_.regions.size());
+    quota_.Size(regions_, control_.regions.size());
+    Require(exceptions_.layout.source_order.size() == regions_.size());
+    // Source order is outer-before-inner, independent of encoded TryId order.
+    // Summarize each owned body/handler once; never replay descendant graphs
+    // for every ancestor. Cross-region abrupt completions remain unsupported.
+    for (auto i = exceptions_.layout.source_order.rbegin(); i != exceptions_.layout.source_order.rend(); ++i) {
+      quota_.Work(); const auto r = i->value;
+      Require(r < regions_.size() && !regions_[r].ready);
+      stamp_ = static_cast<std::size_t>(r) + 1;
+      const auto& region = control_.regions[r];
+      const auto body = Body(*i, region.body);
+      const auto handler = Body(*i, region.handler);
+      regions_[r] = {body, handler, true};
+    }
+    CompletionPlan plan{graph_.revision, graph_.cfg_revision, {}};
     for (std::uint32_t r = 0; r < control_.regions.size(); ++r) {
       quota_.Work(); stamp_ = static_cast<std::size_t>(r) + 1;
       const auto& region = control_.regions[r];
       const auto next = control_.skeleton.nodes[region.wrapper.value].next;
-      if (!next || !Body({r}, region.body)) continue;
+      if (!next || !regions_[r].body) continue;
       Corridor normal, handler;
       if (!Path(*next, normal, false) || !Path(region.handler, handler, true)) continue;
       if (normal.operations.size() < 2 || handler.operations.size() != normal.operations.size()) continue;
@@ -179,8 +193,16 @@ class CompletionBuilder {
         if (port->region != region || node.next) return false;
         continue;
       }
+      if (const auto* nested = std::get_if<TryControlUnit>(&control_.units[id.value])) {
+        const auto& summary = regions_[nested->region.value];
+        Require(summary.ready);
+        if (!summary.body || !summary.handler) return false;
+        if (node.next) Append(pending, Task{*node.next, task.stop});
+        else if (control_.regions[nested->region.value].exit && !task.stop) return false;
+        continue;
+      }
       const auto* phase = std::get_if<PhaseControlUnit>(&control_.units[id.value]);
-      if (!phase) return false; // Nested completion requires its own composed plan.
+      Require(phase != nullptr);
       const auto& block = graph_.blocks[phase->block.value];
       bool throwing = false;
       for (std::uint32_t o = 0; o < block.op_count; ++o) {
@@ -265,6 +287,7 @@ class CompletionBuilder {
   }
   struct Position { std::size_t stamp = 0, index = 0; };
   struct Peer { std::size_t stamp = 0; ValueId value; };
+  struct RegionCompletion { bool body = false, handler = false, ready = false; };
   const ValueProgram& graph_;
   const ExceptionPlan& exceptions_;
   const ExceptionControl& control_;
@@ -272,6 +295,7 @@ class CompletionBuilder {
   ControlQuota& quota_;
   std::size_t stamp_ = 0;
   std::vector<std::size_t> incoming_, visited_, body_loops_;
+  std::vector<RegionCompletion> regions_;
   std::vector<Position> path_positions_;
   std::vector<Peer> peers_;
   std::vector<std::optional<ValueOperand>> canonical_;

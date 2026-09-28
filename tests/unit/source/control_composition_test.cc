@@ -502,6 +502,41 @@ void FinallyChain(abc::ProfileId profile, std::ostream* output, std::uint32_t co
   Emit(body, profile, 2, 3, false, output, {}, 0, true, ExpectedCompletion{1, count}, stage);
 }
 enum class ProtectedBranch { kSingle, kNested, kEarlyReturn };
+void FinallyCatch(abc::ProfileId profile, std::ostream* output, bool early = false) {
+  // Inner catch consumes inside's exception; handle/after failures still reach
+  // the outer pending-exception cleanup. No sidecar source enters the engine.
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+  constexpr unsigned kByteBits = 8;
+  std::vector<std::uint8_t> bytes = {
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kJMP_IMM8), 9,
+      op(abc::Opcode::kSTA_V8), 1,
+      op(abc::Opcode::kLDA_V8), 5, op(abc::Opcode::kCALLARG1_IMM8_V8), 0, 1,
+      op(abc::Opcode::kLDA_V8), 6, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kRETURN),
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)};
+  if (early) {
+    // A return from the inner handler bypasses outer cleanup in this input.
+    // Its child-region summary must prevent folding the outer candidate.
+    bytes[11] = 10;
+    bytes.insert(bytes.begin() + 19, op(abc::Opcode::kRETURN));
+  }
+  auto body = test::Body(bytes);
+  const std::uint32_t extra = early ? 1 : 0;
+  abc::TryRegion inner; inner.offset = {6}; inner.length = 4; inner.handler_count = 1;
+  abc::TryRegion outer; outer.offset = {0}; outer.length = 23 + extra; outer.first_handler = 1; outer.handler_count = 1;
+  abc::CatchHandler handled; handled.offset = {12}; handled.length = 7 + extra;
+  abc::CatchHandler cleanup; cleanup.offset = {30 + extra}; cleanup.length = 10;
+  body.tries = {inner, outer}; body.handlers = {handled, cleanup};
+  Emit(body, profile, 2, 5, false, output, {}, 0, !early, ExpectedCompletion{early ? 0U : 1U, 1});
+}
 void FinallyLoop(abc::ProfileId profile, std::ostream* output, bool carried = false) {
   // try { const pending = get(); while (next()) step(); return pending; }
   // finally { cleanup(); } lowered into normal/exception cleanup corridors.
@@ -579,6 +614,15 @@ void FinallyBranch(abc::ProfileId profile, std::ostream* output,
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--finally-catch") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) {
+      FinallyCatch(profile, &std::cout);
+      FinallyCatch(profile, &std::cout, true);
+    }
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--finally-loop") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -675,6 +719,8 @@ int main(int argc, char** argv) {
     FinallyBranch(profile, nullptr, ProtectedBranch::kEarlyReturn);
     FinallyLoop(profile, nullptr);
     FinallyLoop(profile, nullptr, true);
+    FinallyCatch(profile, nullptr);
+    FinallyCatch(profile, nullptr, true);
     for (const auto variant : {CleanupVariant::kDifferentCallee, CleanupVariant::kLateReturn,
         CleanupVariant::kExtraCall, CleanupVariant::kWrongRethrow}) FinallyReturn(profile, false, nullptr, variant);
   }

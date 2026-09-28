@@ -51,6 +51,17 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 已贯通 finalizer 保护体中的嵌套 try/catch：沿既有异常区域 source_order
+  内到外汇总各自 body/handler 出口，父区域消费子区域汇总，不反复遍历完整
+  后代子树，也不改变 encoded TryId 的异常优先级。当前只接纳内部正常汇合或
+  抛出，内部真实 return/跨区域 abrupt transfer 仍阻止不合法的外层合并。
+  三个 profiles 的嵌套 catch 正例均输出完整 finalizer，生成 JS 核对捕获值
+  undefined/object/Symbol 的身份、handle/after 异常传播及 cleanup 覆盖；
+  内部 handler 直接 return 的反例保留展开树，执行确认跳过 after 和 cleanup。
+  六个新增 opcode fixture，相关 **15/15** 定向测试通过，日志
+  `/tmp/abcd-finalizer-catch-final-build.log`、`/tmp/abcd-finalizer-catch-final-tests.log`；
+  原始 RED 见 `/tmp/abcd-finalizer-catch-red.log`。这是嵌套 try/catch 的组合，
+  **不是嵌套 finally/覆盖 completion 的完成证明**。全量语料、RSS、基准仍暂停。
 - C05 已接入 protected body 内的循环及循环携带返回值：直接消费共同
   LoopControl/LoopTransfer，允许目标仍在本保护域内的跳转，不新增循环发现算法；
   指向域外循环的 transfer 仍不作为普通 completion 合并。三个 profiles 各有

@@ -166,3 +166,51 @@ for (const [index, fn] of loops.entries()) for (const iterations of [0, 1, 3]) {
     }
   }
 }
+
+const catchSource = execFileSync(process.argv[2], ['--finally-catch'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!catchSource.includes('INCOMPLETE'));
+const {functions: catches} = await import(`data:text/javascript;base64,${Buffer.from(catchSource).toString('base64')}`);
+assert.equal(catches.length, 6);
+for (const [index, fn] of catches.entries()) for (const insideError of [undefined, {}, Symbol('inside')]) {
+  for (const getThrows of [false, true]) for (const insideThrows of [false, true]) {
+    for (const handleThrows of [false, true]) for (const afterThrows of [false, true]) {
+      for (const cleanupThrows of [false, true]) {
+        const log = [], value = {}, handled = {}, getError = {}, handleError = {}, afterError = {}, cleanupError = {};
+        let returned, thrown, didThrow = false;
+        try {
+          returned = fn(function () {
+            assert.equal(this, undefined); log.push('get');
+            if (getThrows) throw getError;
+            return value;
+          }, function () {
+            assert.equal(this, undefined); log.push('cleanup');
+            if (cleanupThrows) throw cleanupError;
+          }, function () {
+            assert.equal(this, undefined); log.push('inside');
+            if (insideThrows) throw insideError;
+          }, function (error) {
+            assert.equal(this, undefined); assert.equal(error, insideError); log.push('handle');
+            if (handleThrows) throw handleError;
+            return handled;
+          }, function () {
+            assert.equal(this, undefined); log.push('after');
+            if (afterThrows) throw afterError;
+          });
+        } catch (error) { didThrow = true; thrown = error; }
+        const expected = ['get'];
+        const early = index % 2 === 1 && !getThrows && insideThrows && !handleThrows;
+        let failure = getThrows ? getError : null;
+        if (!getThrows) {
+          expected.push('inside');
+          if (insideThrows) { expected.push('handle'); if (handleThrows) failure = handleError; }
+          if (!failure && !early) { expected.push('after'); if (afterThrows) failure = afterError; }
+        }
+        if (!early) { expected.push('cleanup'); if (cleanupThrows) failure = cleanupError; }
+        assert.deepEqual(log, expected);
+        assert.equal(didThrow, failure !== null);
+        if (didThrow) assert.equal(thrown, failure);
+        else assert.equal(returned, early ? handled : value);
+      }
+    }
+  }
+}
