@@ -12,6 +12,23 @@
 
 ## 当前阶段
 
+### 2026-09-28：嵌套 catch/rethrow 与共享 finally 贯通
+
+- 对照 pinned `TryStatement::CompileTryFinally/CompileTryCatchFinally`，支持共享清理
+  外层保护域内的 catch/rethrow，以及执行 catch 回调后正常汇合或再次抛出。
+- 纯跳转/Hole 传输的控制归属支持跨多层保护域，使用祖先索引，保留原始 SSA、边和
+  语义作用域。完成状态自底向上汇总，区分被祖先 handler 接住的异常和真正逃逸；
+  内层直接 return 绕过清理的输入不会被误恢复成 finally。
+- 三 profile 的嵌套完整源码经 Node 验证：原异常身份、catch 新异常、cleanup 覆盖、
+  receiver、调用次序与后继执行。4/8/16 层完整源码也通过行为对照。
+- 200/201/402 层通过控制与 CompletionPlan 检查；200 层完整树构建触及既有
+  `kWorkLimit`，未据此宣称语义不支持，也未放大/关闭现有限额或扩建预算设施。
+- 文件级函数族加入两张真实编码异常表和共享 finally，三 profile × 三种父作用域的
+  捕获 cell 读写/实例隔离通过。外围 header/index 仍为合成元数据，非完整应用验收。
+- 本轮构建和相关 15/15 测试通过：`/tmp/abcd-nested-shared-final-build.log`、
+  `/tmp/abcd-nested-shared-final-tests.log`。全套测试、全语料、RSS、基准仍暂停。
+  共享协议中循环及跨区域 abrupt completion 的更多组合仍待贯通，C05/整体目标未完成。
+
 ### 2026-09-28：共享清理区域恢复为 finally
 
 - 补充文件级函数族纵向验证：真实临时文件 Code entity/异常表 → 现代 phased method →

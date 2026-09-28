@@ -5,6 +5,11 @@ const sharedSource = execFileSync(process.argv[2], ['--compiler-finally'], {enco
 assert.ok(!sharedSource.includes('INCOMPLETE'));
 const {functions: sharedFinalizers} = await import(`data:text/javascript;base64,${Buffer.from(sharedSource).toString('base64')}`);
 assert.equal(sharedFinalizers.length, 3);
+const depthSource = execFileSync(process.argv[2], ['--compiler-finally-depth-source'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!depthSource.includes('INCOMPLETE'));
+const {functions: depthFinalizers} = await import(`data:text/javascript;base64,${Buffer.from(depthSource).toString('base64')}`);
+assert.equal(depthFinalizers.length, 3);
+sharedFinalizers.push(...depthFinalizers);
 for (const fn of sharedFinalizers) for (const pending of [undefined, null, false, 0, NaN, Symbol('pending'), {},
   {valueOf() { assert.fail('unexpected coercion'); }, toString() { assert.fail('unexpected coercion'); }}]) {
   for (const getThrows of [false, true]) for (const cleanupThrows of [false, true]) for (const afterThrows of [false, true]) {
@@ -19,6 +24,45 @@ for (const fn of sharedFinalizers) for (const pending of [undefined, null, false
     assert.equal(didThrow, getThrows || cleanupThrows || afterThrows);
     assert.equal(didThrow ? thrown : returned, cleanupThrows ? cleanupError : getThrows ? pending : afterThrows ? afterError : result);
   }
+}
+
+const nestedSharedSource = execFileSync(process.argv[2], ['--compiler-finally-nested'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!nestedSharedSource.includes('INCOMPLETE'));
+const {functions: nestedShared} = await import(`data:text/javascript;base64,${Buffer.from(nestedSharedSource).toString('base64')}`);
+assert.equal(nestedShared.length, 6);
+for (const [index, fn] of nestedShared.entries()) {
+  const rethrow = index % 2 === 0;
+  for (const pending of [undefined, null, NaN, Symbol('pending'), {}])
+    for (const getThrows of [false, true]) for (const catchThrows of [false, true])
+      for (const cleanupThrows of [false, true]) for (const afterThrows of [false, true]) {
+        const log = [], caughtError = {}, cleanupError = {}, afterError = {}, result = {};
+        let didThrow = false, returned, thrown;
+        try {
+          returned = fn(function () { assert.equal(this, undefined); log.push('get'); if (getThrows) throw pending; },
+            function () { assert.equal(this, undefined); log.push('cleanup'); if (cleanupThrows) throw cleanupError; },
+            function () { assert.equal(this, undefined); log.push('after'); if (afterThrows) throw afterError; return result; },
+            function (error) { assert.equal(this, undefined); log.push('catch'); assert.equal(error, pending); if (catchThrows) throw caughtError; });
+        } catch (error) { didThrow = true; thrown = error; }
+        const pendingThrow = getThrows && (rethrow || catchThrows);
+        const expected = ['get'];
+        if (getThrows && !rethrow) expected.push('catch');
+        expected.push('cleanup');
+        if (!pendingThrow && !cleanupThrows) expected.push('after');
+        assert.deepEqual(log, expected);
+        assert.equal(didThrow, pendingThrow || cleanupThrows || afterThrows);
+        assert.equal(didThrow ? thrown : returned,
+          cleanupThrows ? cleanupError : pendingThrow ? (rethrow ? pending : caughtError) : afterThrows ? afterError : result);
+      }
+}
+const catchReturnSource = execFileSync(process.argv[2], ['--compiler-finally-catch-return'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!catchReturnSource.includes('INCOMPLETE'));
+const {functions: catchReturns} = await import(`data:text/javascript;base64,${Buffer.from(catchReturnSource).toString('base64')}`);
+assert.equal(catchReturns.length, 3);
+for (const fn of catchReturns) for (const pending of [undefined, Symbol('return'), {}]) {
+  const log = [];
+  assert.equal(fn(() => { log.push('get'); throw pending; }, () => { log.push('cleanup'); },
+    () => { log.push('after'); }), pending);
+  assert.deepEqual(log, ['get']);
 }
 
 const bypassSource = execFileSync(process.argv[2], ['--compiler-finally-early-return'], {encoding: 'utf8', timeout: 60_000});

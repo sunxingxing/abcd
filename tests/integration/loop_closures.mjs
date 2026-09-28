@@ -5,6 +5,11 @@ const sharedSource = execFileSync(process.argv[2], ['--shared-finally'], {encodi
 assert.ok(!sharedSource.includes('INCOMPLETE'));
 const {functions: sharedFamilies} = await import(`data:text/javascript;base64,${Buffer.from(sharedSource).toString('base64')}`);
 assert.equal(sharedFamilies.length, 9);
+const nestedSharedSource = execFileSync(process.argv[2], ['--shared-finally-nested'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!nestedSharedSource.includes('INCOMPLETE'));
+const {functions: nestedSharedFamilies} = await import(`data:text/javascript;base64,${Buffer.from(nestedSharedSource).toString('base64')}`);
+assert.equal(nestedSharedFamilies.length, 9);
+sharedFamilies.push(...nestedSharedFamilies);
 for (const [index, capture] of sharedFamilies.entries()) {
   const catchParent = index % 3 === 1, saved = [], cells = [{}, Symbol('cell')];
   let iteration = 0;

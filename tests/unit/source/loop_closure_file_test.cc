@@ -22,13 +22,13 @@ std::uint8_t Op(abc::Opcode opcode) {
 abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
                      std::uint8_t parameters,
                      std::initializer_list<std::uint8_t> code,
-                     std::initializer_list<std::uint8_t> table = {}) {
+                     std::initializer_list<std::uint8_t> table = {}, std::uint8_t try_count = 1) {
   constexpr std::size_t kSingleByteUlebLimit = 128;
   test::Check(code.size() < kSingleByteUlebLimit);
   const auto offset = static_cast<std::uint32_t>(bytes.size());
   const auto arguments =
       static_cast<std::uint8_t>(parameters + kImplicitArguments);
-  const auto tries = static_cast<std::uint8_t>(table.size() != 0);
+  const auto tries = static_cast<std::uint8_t>(table.size() == 0 ? 0 : try_count);
   bytes.insert(bytes.end(), {locals, arguments,
                              static_cast<std::uint8_t>(code.size()), tries});
   const auto start = static_cast<std::uint32_t>(bytes.size());
@@ -44,7 +44,7 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
 enum class ParentShape { kIteration, kCatch, kNormal, kOuterCatchContinue, kOuterCatchBreak };
 enum class ChildShape {
   kPlain, kException, kNested, kForwarded, kForwardedNormal, kForwardedLocal,
-  kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally
+  kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally, kSharedFinallyNested
 };
 enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
@@ -55,7 +55,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       child_shape == ChildShape::kForwardedLocal || forwarded_writer;
   const bool nested = child_shape == ChildShape::kNested || forwarding;
   const bool outer_transfer = child_shape == ChildShape::kOuterContinue || child_shape == ChildShape::kOuterBreak;
-  const std::uint8_t getter_parameters = outer_transfer ? 5 : child_shape == ChildShape::kSharedFinally ? 3 : 0;
+  const bool shared_finally = child_shape == ChildShape::kSharedFinally || child_shape == ChildShape::kSharedFinallyNested;
+  const std::uint8_t getter_parameters = outer_transfer ? 5 : shared_finally ? 3 : 0;
   const bool outer_catch = shape == ParentShape::kOuterCatchContinue || shape == ParentShape::kOuterCatchBreak;
   const std::uint8_t parent_parameters = outer_catch ? 5 : 3;
   std::vector<std::uint8_t> bytes(kCodeStart);
@@ -206,7 +207,26 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const std::uint8_t write_slot = missing == MissingCell::kWrite ? 1U << kSlotShift : 0;
   // Forwarding variants have no lexical accesses. One pushes an unrelated
   // environment so its reader must pass through depth 1 to the ancestor cell.
-  const auto getter = child_shape == ChildShape::kSharedFinally ? Append(bytes, 3, getter_parameters,
+  const auto getter = child_shape == ChildShape::kSharedFinallyNested ? Append(bytes, 3, getter_parameters,
+      {Op(abc::Opcode::kLDUNDEFINED), Op(abc::Opcode::kSTA_V8), 0,
+       Op(abc::Opcode::kLDA_V8), 6, Op(abc::Opcode::kCALLARG0_IMM8), 0,
+       Op(abc::Opcode::kJMP_IMM8), 4,
+       static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+       Op(abc::Opcode::kLDHOLE), Op(abc::Opcode::kSTA_V8), 1,
+       Op(abc::Opcode::kJMP_IMM8), 4, Op(abc::Opcode::kSTA_V8), 1,
+       Op(abc::Opcode::kLDA_V8), 0, Op(abc::Opcode::kSTA_V8), 2,
+       Op(abc::Opcode::kLDUNDEFINED), Op(abc::Opcode::kEQ_IMM8_V8), 0, 2,
+       Op(abc::Opcode::kJEQZ_IMM8), 13, Op(abc::Opcode::kSTA_V8), 0,
+       Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), read_slot, Op(abc::Opcode::kSTA_V8), 2,
+       Op(abc::Opcode::kLDA_V8), 7, Op(abc::Opcode::kCALLARG1_IMM8_V8), 0, 2,
+       Op(abc::Opcode::kLDA_V8), 1, Op(abc::Opcode::kSTA_V8), 2,
+       Op(abc::Opcode::kLDHOLE), Op(abc::Opcode::kSTA_V8), 0,
+       Op(abc::Opcode::kLDA_V8), 2, Op(abc::Opcode::kNOTEQ_IMM8_V8), 0, 0,
+       Op(abc::Opcode::kJEQZ_IMM8), 6, Op(abc::Opcode::kLDA_V8), 2,
+       static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+       Op(abc::Opcode::kLDA_V8), 8, Op(abc::Opcode::kCALLARG0_IMM8), 0,
+       Op(abc::Opcode::kRETURN)}, {3, 4, 1, 0, 9, 2, 3, 8, 1, 0, 16, 2}, 2) :
+      child_shape == ChildShape::kSharedFinally ? Append(bytes, 3, getter_parameters,
       {Op(abc::Opcode::kLDUNDEFINED), Op(abc::Opcode::kSTA_V8), 0,
        Op(abc::Opcode::kLDA_V8), 6, Op(abc::Opcode::kCALLARG0_IMM8), 0,
        Op(abc::Opcode::kLDHOLE), Op(abc::Opcode::kSTA_V8), 1,
@@ -382,12 +402,15 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
-  if (argc == 2 && std::string_view(argv[1]) == "--shared-finally") {
+  if (argc == 2 && (std::string_view(argv[1]) == "--shared-finally" ||
+                    std::string_view(argv[1]) == "--shared-finally-nested")) {
+    const auto child = std::string_view(argv[1]) == "--shared-finally-nested" ?
+        ChildShape::kSharedFinallyNested : ChildShape::kSharedFinally;
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                               abc::ProfileId::kDynamic1301})
       for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
-        std::cout << Emit(profile, shape, ChildShape::kSharedFinally) << ",\n";
+        std::cout << Emit(profile, shape, child) << ",\n";
     std::cout << "];\n"; return 0;
   }
   if (argc == 2 && std::string_view(argv[1]) == "--outer-catch") {

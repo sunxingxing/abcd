@@ -1,6 +1,7 @@
 #include "exception_topology.h"
 
 #include <algorithm>
+#include <bit>
 #include <limits>
 #include <tuple>
 
@@ -176,6 +177,38 @@ class Projection {
     std::vector<WorkBlockId> queue;
     quota_.Size(nodes, graph_.blocks.size());
     quota_.Size(queue, graph_.blocks.size());
+    // A pure corridor may leave several nested protected scopes at once.
+    // Select the child scope just inside its original owner, not necessarily
+    // the source's immediate parent. Binary lifting avoids an ancestor walk
+    // per edge on deeply nested compiler catch/rethrow wrappers.
+    const auto count = regions_.regions.size();
+    const auto levels = std::bit_width(count);
+    std::vector<std::size_t> depth;
+    std::vector<Scope> ancestors;
+    quota_.Size(depth, count);
+    quota_.Size(ancestors, count * levels);
+    for (const auto id : regions_.layout.source_order) {
+      quota_.Work();
+      const auto parent = ScopeOf(regions_.layout.regions[id.value].parent);
+      depth[id.value] = parent ? depth[parent->region.value] + 1 : 1;
+      ancestors[id.value * levels] = parent;
+      for (std::size_t level = 1; level < levels; ++level) {
+        quota_.Work();
+        const auto previous = ancestors[id.value * levels + level - 1];
+        if (previous) ancestors[id.value * levels + level] = ancestors[previous->region.value * levels + level - 1];
+      }
+    }
+    const auto entered_scope = [&](Scope source, Scope target) -> Scope {
+      if (!source) return {};
+      const auto target_depth = target ? depth[target->region.value] : 0;
+      if (depth[source->region.value] <= target_depth) return {};
+      auto distance = depth[source->region.value] - target_depth - 1;
+      for (std::size_t level = 0; distance; ++level, distance >>= 1) {
+        quota_.Work();
+        if (distance & 1U) source = ancestors[source->region.value * levels + level];
+      }
+      return ancestors[source->region.value * levels] == target ? source : Scope{};
+    };
     for (std::size_t b = 0; b < nodes.size(); ++b) {
       quota_.Work();
       const auto& phase = graph_.phases[b];
@@ -218,14 +251,13 @@ class Projection {
         const auto target = graph_.edges[block.first_edge.value + e].target;
         auto& next = nodes[target.value];
         if (!next.candidate) continue;
-        const auto scope = owners_[source.value];
+        const auto promoted = entered_scope(owners_[source.value], owners_[target.value]);
+        const auto scope = promoted ? promoted : owners_[target.value];
         if (!next.seen) { next.incoming = scope; next.seen = true; }
         else if (next.incoming != scope) next.conflict = true;
         Require(next.pending != 0, Error::kInput);
         if (--next.pending != 0) continue;
-        if (!next.conflict && next.incoming &&
-            owners_[target.value] == ScopeOf(regions_.layout.regions[next.incoming->region.value].parent))
-          owners_[target.value] = next.incoming;
+        if (!next.conflict) owners_[target.value] = next.incoming;
         Require(last < queue.size(), Error::kInput);
         queue[last++] = target;
       }

@@ -18,7 +18,7 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 struct ExpectedCompletion { std::size_t regions, operations; };
-enum class CompositionStage { kSource, kCompletion, kHoleImport, kHoleSource, kHoleFinally };
+enum class CompositionStage { kSource, kCompletion, kHoleImport, kHoleSource, kHoleFinally, kHolePlan };
 template <class T, class... Alternatives>
 T Take(std::variant<Alternatives...> value,
     std::source_location where = std::source_location::current()) {
@@ -90,7 +90,7 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     test::Check(std::get<ExceptionInputFailure>(language).kind == ExceptionInputError::kInternalValue);
   }
   const auto proof = Take<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, environments, values,
-      kDefaultSemanticWork, nullptr, (stage == CompositionStage::kHoleImport || stage == CompositionStage::kHoleSource || stage == CompositionStage::kHoleFinally) ?
+      kDefaultSemanticWork, nullptr, (stage == CompositionStage::kHoleImport || stage == CompositionStage::kHoleSource || stage == CompositionStage::kHoleFinally || stage == CompositionStage::kHolePlan) ?
           ExceptionInputDomain::kHoleTransport : ExceptionInputDomain::kLanguage));
   const PhasedValueInput input{flow, ssa, environments, values, proof, frame};
   const auto graph = Take<ValueProgram>(ImportPhasedValues(input));
@@ -159,6 +159,11 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
   test::Check(std::holds_alternative<EvaluationPlan>(planned));
   const auto& evaluation = std::get<EvaluationPlan>(planned);
   const auto completions = Take<CompletionPlan>(BuildCompletionPlan(graph, regions, control, evaluation));
+  if (stage == CompositionStage::kHolePlan) {
+    test::Check(completions.finalizers.size() == finalizer_count);
+    for (const auto& finalizer : completions.finalizers) test::Check(finalizer.shared_guard.has_value());
+    return; // Deep topology coverage, not complete-source acceptance.
+  }
   if (expected_completions) {
     if (completions.finalizers.size() != expected_completions->regions)
       std::cerr << "completion candidates " << completions.finalizers.size() << '\n';
@@ -602,8 +607,10 @@ void FinallyBareTransfer(abc::ProfileId profile, std::ostream* output, bool stop
   Emit(body, profile, 1, 4, false, output, {}, 1, !different,
       different ? std::optional{ExpectedCompletion{0, 0}} : std::optional<ExpectedCompletion>{});
 }
+enum class SharedInnerCatch { kNone, kRethrow, kCallback, kReturn };
 void CompilerFinally(abc::ProfileId profile, std::ostream* output,
-    CompositionStage stage = CompositionStage::kHoleFinally, std::uint32_t count = 1, bool early_return = false) {
+    CompositionStage stage = CompositionStage::kHoleFinally, std::uint32_t count = 1, bool early_return = false,
+    SharedInnerCatch inner = SharedInnerCatch::kNone, std::uint32_t depth = 1) {
   // Pinned es2panda TryContext::InitFinalizer, TryStatement::CompileFinally
   // and PandaGen::EmitRethrow: shared cleanup, undefined run guard, Hole vs
   // caught payload. This isolates that lowering, not a full es2abc file.
@@ -635,17 +642,60 @@ void CompilerFinally(abc::ProfileId profile, std::ostream* output,
       op(abc::Opcode::kJEQZ_IMM8), 4, op(abc::Opcode::kLDUNDEFINED), op(abc::Opcode::kRETURN)};
   const auto extra = early_return ? static_cast<std::uint32_t>(bypass.size()) : 0U;
   if (early_return) unit.insert(unit.begin() + 3, bypass.begin(), bypass.end());
+  test::Check(!early_return || inner == SharedInnerCatch::kNone);
+  std::vector<std::uint8_t> nested;
+  std::uint32_t nested_handler_size = 0;
+  std::uint32_t nested_stride = 0;
+  test::Check(depth != 0 && (depth == 1 || inner == SharedInnerCatch::kRethrow));
+  if (inner != SharedInnerCatch::kNone) {
+    // CompileTryFinally adds an inner catch/rethrow. CompileTryCatchFinally
+    // instead invokes source catch code, whose throw reaches the outer catch.
+    switch (inner) {
+      case SharedInnerCatch::kRethrow:
+        nested = {static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)}; break;
+      case SharedInnerCatch::kCallback:
+        nested = {op(abc::Opcode::kSTA_V8), 2, op(abc::Opcode::kLDA_V8), 6,
+                  op(abc::Opcode::kCALLARG1_IMM8_V8), 0, 2}; break;
+      case SharedInnerCatch::kReturn: nested = {op(abc::Opcode::kRETURN)}; break;
+      case SharedInnerCatch::kNone: break;
+    }
+    nested_handler_size = static_cast<std::uint32_t>(nested.size());
+    nested.insert(nested.begin(), {op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(2 + nested.size())});
+    nested_stride = static_cast<std::uint32_t>(nested.size());
+    const auto first_nested = nested;
+    for (std::uint32_t level = 1; level < depth; ++level)
+      nested.insert(nested.end(), first_nested.begin(), first_nested.end());
+    if (inner == SharedInnerCatch::kReturn) {
+      // Keep the outer catch reachable from a call outside the inner try;
+      // the early catch return must bypass both this call and the cleanup.
+      nested.insert(nested.end(), {op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0});
+    }
+    unit.insert(unit.begin() + 7, nested.begin(), nested.end());
+  }
   std::vector<std::uint8_t> bytes;
   for (std::uint32_t i = 0; i < count; ++i) bytes.insert(bytes.end(), unit.begin(), unit.end() - 1);
   bytes.push_back(op(abc::Opcode::kRETURN));
   auto body = test::Body(bytes);
   for (std::uint32_t i = 0; i < count; ++i) {
     const auto base = static_cast<std::uint32_t>(i * (unit.size() - 1));
-    abc::TryRegion region; region.offset = {base + 3}; region.length = 4 + extra; region.first_handler = i; region.handler_count = 1;
-    abc::CatchHandler handler; handler.offset = {base + 12 + extra}; handler.length = 2;
+    const auto nested_size = static_cast<std::uint32_t>(nested.size());
+    abc::TryRegion region; region.offset = {base + 3}; region.length = 4 + extra + nested_size;
+    region.handler_count = 1;
+    abc::CatchHandler handler; handler.offset = {base + 12 + extra + nested_size}; handler.length = 2;
+    if (inner != SharedInnerCatch::kNone) {
+      for (std::uint32_t level = 0; level < depth; ++level) {
+        auto inner_region = region; auto inner_handler = handler;
+        inner_region.length = 4 + level * nested_stride;
+        inner_region.first_handler = static_cast<std::uint32_t>(body.handlers.size());
+        inner_handler.offset = {base + 9 + level * nested_stride}; inner_handler.length = nested_handler_size;
+        body.tries.push_back(inner_region); body.handlers.push_back(inner_handler);
+      }
+    }
+    region.first_handler = static_cast<std::uint32_t>(body.handlers.size());
     body.tries.push_back(region); body.handlers.push_back(handler);
   }
-  Emit(body, profile, 3, early_return ? 4 : 3, false, output, {}, 0, stage != CompositionStage::kHoleSource, {}, stage, count);
+  Emit(body, profile, 3, early_return || inner == SharedInnerCatch::kCallback ? 4 : 3, false, output, {}, 0,
+      stage != CompositionStage::kHoleSource, {}, stage, count);
 }
 void FinallyOuterTransfer(abc::ProfileId profile, std::ostream* output, bool stop) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
@@ -949,6 +999,34 @@ int main(int argc, char** argv) {
     std::cout << "];\n";
     return 0;
   }
+  if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-nested") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301})
+      for (const auto inner : {SharedInnerCatch::kRethrow, SharedInnerCatch::kCallback})
+        CompilerFinally(profile, &std::cout, CompositionStage::kHoleFinally, 1, false, inner);
+    std::cout << "];\n"; return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-catch-return") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301})
+      CompilerFinally(profile, &std::cout, CompositionStage::kHoleSource, 1, false, SharedInnerCatch::kReturn);
+    std::cout << "];\n"; return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-deep-plan") {
+    for (const auto depth : {200U, 201U, 402U})
+      CompilerFinally(abc::ProfileId::kDynamic1206, nullptr, CompositionStage::kHolePlan, 1, false,
+          SharedInnerCatch::kRethrow, depth);
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-depth-source") {
+    std::cout << "export const functions = [\n";
+    for (const auto depth : {4U, 8U, 16U})
+      CompilerFinally(abc::ProfileId::kDynamic1206, &std::cout, CompositionStage::kHoleFinally, 1, false,
+          SharedInnerCatch::kRethrow, depth);
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-early-return") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -1139,6 +1217,9 @@ int main(int argc, char** argv) {
     CompilerFinally(profile, nullptr, CompositionStage::kHoleImport);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleSource);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally);
+    for (const auto inner : {SharedInnerCatch::kRethrow, SharedInnerCatch::kCallback})
+      CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally, 1, false, inner);
+    CompilerFinally(profile, nullptr, CompositionStage::kHoleSource, 1, false, SharedInnerCatch::kReturn);
     FinallyOuterTransfer(profile, nullptr, false);
     FinallyOuterTransfer(profile, nullptr, true);
     FinallyOverride(profile, false, nullptr);
@@ -1155,4 +1236,7 @@ int main(int argc, char** argv) {
   if (emit) std::cout << "];\n";
   if (!emit) for (const auto count : {200U, 201U, 402U})
     FinallyChain(abc::ProfileId::kDynamic1206, nullptr, count, CompositionStage::kCompletion);
+  if (!emit) for (const auto depth : {200U, 201U, 402U})
+    CompilerFinally(abc::ProfileId::kDynamic1206, nullptr, CompositionStage::kHolePlan, 1, false,
+        SharedInnerCatch::kRethrow, depth);
 }

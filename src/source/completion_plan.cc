@@ -40,6 +40,11 @@ struct Corridor {
   std::vector<OpId> operations;
   std::optional<ControlId> transfer;
 };
+struct SharedCompletion {
+  bool valid = true;
+  bool uncaught = false;
+  std::optional<WorkBlockId> handler;
+};
 class CompletionBuilder {
  public:
   CompletionBuilder(const ValueProgram& graph, const ExceptionPlan& exceptions,
@@ -73,6 +78,7 @@ class CompletionBuilder {
     }
     Require(control_.regions.size() == exceptions_.regions.size());
     quota_.Size(regions_, control_.regions.size());
+    quota_.Size(shared_completions_, control_.regions.size());
     Require(exceptions_.layout.source_order.size() == regions_.size());
     SharedGuards();
     // Source order is outer-before-inner, independent of encoded TryId order.
@@ -85,6 +91,11 @@ class CompletionBuilder {
       const auto& region = control_.regions[r];
       const auto body = Body(*i, region.body);
       const auto handler = Body(*i, region.handler);
+      if (evaluation_.holes) {
+        auto shared = SharedScope(*i, region.body, false);
+        Merge(shared, SharedScope(*i, region.handler, true));
+        shared_completions_[r] = shared;
+      }
       regions_[r] = {body, handler, true};
     }
     CompletionPlan plan{graph_.revision, graph_.cfg_revision, {}};
@@ -92,9 +103,9 @@ class CompletionBuilder {
       quota_.Work(); stamp_ = static_cast<std::size_t>(r) + 1;
       const auto& region = control_.regions[r];
       const auto next = control_.skeleton.nodes[region.wrapper.value].next;
-      if (next && shared_guards_[r] && regions_[r].body &&
-          regions_[r].handler && ClosedSharedBody({r}, region.body, false) &&
-          ClosedSharedBody({r}, region.handler, true)) {
+      const auto& shared_completion = shared_completions_[r];
+      if (next && shared_guards_[r] && shared_completion.valid &&
+          !shared_completion.uncaught && !shared_completion.handler) {
         const auto binding = exceptions_.regions[r].binding;
         Require(binding.has_value());
         FinalizerRegion shared{{r},
@@ -310,7 +321,14 @@ class CompletionBuilder {
       shared_guards_[region.value] = guards[o];
     }
   }
-  bool ClosedSharedBody(TryId region, ControlId entry, bool handler) {
+  static void Merge(SharedCompletion& result, const SharedCompletion& other) {
+    result.valid &= other.valid;
+    if (result.handler && other.handler && result.handler != other.handler) result.valid = false;
+    if (other.handler) result.handler = other.handler;
+    result.uncaught |= other.uncaught;
+    if (result.uncaught && result.handler) result.valid = false;
+  }
+  SharedCompletion SharedScope(TryId region, ControlId entry, bool handler) {
     struct Task {
       ControlId entry;
       std::optional<ControlId> stop;
@@ -318,7 +336,14 @@ class CompletionBuilder {
     std::vector<Task> pending;
     Append(pending, Task{entry, {}});
     const auto binding = exceptions_.regions[region.value].binding;
-    if (!binding) return false;
+    if (!binding) return {false};
+    SharedCompletion result;
+    const auto consume = [&](SharedCompletion completion) {
+      // A nested rethrow may enter this region's catch. That catch is
+      // summarized separately, not mistaken for an escaping completion.
+      if (!handler && completion.handler == binding->block) completion.handler.reset();
+      Merge(result, completion);
+    };
     while (!pending.empty()) {
       quota_.Work();
       const auto task = pending.back();
@@ -326,37 +351,36 @@ class CompletionBuilder {
       if (task.stop == task.entry) continue;
       const auto id = task.entry;
       if (id.value >= control_.units.size() || shared_visits_[id.value])
-        return false;
+        return {false};
       shared_visits_[id.value] = 1;
       const auto& node = control_.skeleton.nodes[id.value];
-      if (!std::holds_alternative<std::monostate>(node.synthetic)) return false;
+      if (!std::holds_alternative<std::monostate>(node.synthetic)) return {false};
       if (const auto* exit =
               std::get_if<TryExitUnit>(&control_.units[id.value])) {
-        if (exit->region != region || node.next) return false;
+        if (exit->region != region || node.next) return {false};
+        continue;
+      }
+      if (const auto* nested = std::get_if<TryControlUnit>(&control_.units[id.value])) {
+        Require(regions_[nested->region.value].ready);
+        consume(shared_completions_[nested->region.value]);
+        if (!result.valid) return result;
+        if (node.next) Append(pending, Task{*node.next, task.stop});
+        else if (control_.regions[nested->region.value].exit && !task.stop) return {false};
         continue;
       }
       const auto* phase =
           std::get_if<PhaseControlUnit>(&control_.units[id.value]);
-      if (!phase)
-        return false;  // Nested regions keep their expanded form for now.
+      Require(phase != nullptr);
       const auto& block = graph_.blocks[phase->block.value];
       bool caught_throw = false;
       for (std::uint32_t o = 0; o < block.op_count; ++o) {
         quota_.Work();
         const auto index = block.first_op.value + o;
         const auto& op = graph_.ops[index];
-        if (std::holds_alternative<ValueReturn>(op.operation)) return false;
-        if (handler && (!std::holds_alternative<ValueCopy>(op.operation) &&
-                        !std::holds_alternative<ValueJump>(op.operation)))
-          return false;
-        if (handler && (op.normal != LanguageEffect::kNone ||
-                        op.before_throw != LanguageEffect::kNone ||
-                        op.exceptional != ExceptionalCompletion::kImpossible))
-          return false;
+        if (std::holds_alternative<ValueReturn>(op.operation)) return {false};
         if (exits_[index]) {
           const auto& exit = graph_.exceptional_exits[*exits_[index]];
-          if (!exit.handler || exit.handler->entry != binding->block)
-            return false;
+          consume({true, !exit.handler, exit.handler ? std::optional{exit.handler->entry} : std::nullopt});
         }
         caught_throw |= std::holds_alternative<ValueThrow>(op.operation);
       }
@@ -367,9 +391,9 @@ class CompletionBuilder {
         if (node.arms->fallthrough)
           Append(pending, Task{*node.arms->fallthrough, join});
       }
-      if (!node.next && !node.arms && !task.stop && !caught_throw) return false;
+      if (!node.next && !node.arms && !task.stop && !caught_throw) return {false};
     }
-    return true;
+    return result;
   }
   template <class T> void Append(std::vector<T>& values, T value) {
     if (values.size() == values.capacity()) {
@@ -579,6 +603,7 @@ class CompletionBuilder {
   std::vector<std::optional<std::size_t>> exits_;
   std::vector<std::optional<OpId>> shared_guards_;
   std::vector<std::uint8_t> shared_visits_;
+  std::vector<SharedCompletion> shared_completions_;
 };
 }  // namespace
 std::variant<CompletionPlan, CompletionError> BuildCompletionPlan(const ValueProgram& graph,
