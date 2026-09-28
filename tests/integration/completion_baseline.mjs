@@ -218,7 +218,7 @@ for (const [index, fn] of catches.entries()) for (const insideError of [undefine
 const overrideSource = execFileSync(process.argv[2], ['--finally-override'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!overrideSource.includes('INCOMPLETE'));
 const {functions: overrides} = await import(`data:text/javascript;base64,${Buffer.from(overrideSource).toString('base64')}`);
-assert.equal(overrides.length, 12);
+assert.equal(overrides.length, 18);
 for (const [index, fn] of overrides.entries()) {
   for (const result of [undefined, null, -0, NaN, 3n, Symbol('replacement'), {}]) {
     for (const getThrows of [false, true]) for (const cleanupThrows of [false, true]) {
@@ -235,11 +235,12 @@ for (const [index, fn] of overrides.entries()) {
           return result;
         });
       } catch (error) { didThrow = true; thrown = error; }
-      const raises = index % 4 >= 2;
-      const keepsPayload = index % 2 === 1 && getThrows;
-      const expected = cleanupThrows ? failure : keepsPayload ? pending : result;
-      assert.deepEqual(log, ['get', 'cleanup']);
-      assert.equal(didThrow, cleanupThrows || raises);
+      const raises = index % 6 >= 3;
+      const hasCleanup = index % 3 !== 2;
+      const keepsPayload = index % 3 === 1 && getThrows;
+      const expected = !hasCleanup ? undefined : cleanupThrows ? failure : keepsPayload ? pending : result;
+      assert.deepEqual(log, hasCleanup ? ['get', 'cleanup'] : ['get']);
+      assert.equal(didThrow, (hasCleanup && cleanupThrows) || raises);
       assert.ok(Object.is(didThrow ? thrown : returned, expected));
     }
   }

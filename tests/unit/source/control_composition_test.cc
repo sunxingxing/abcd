@@ -502,15 +502,22 @@ void FinallyChain(abc::ProfileId profile, std::ostream* output, std::uint32_t co
   Emit(body, profile, 2, 3, false, output, {}, 0, true, ExpectedCompletion{1, count}, stage);
 }
 enum class ProtectedBranch { kSingle, kNested, kEarlyReturn };
+enum class OverrideValue { kCleanup, kCaught, kUndefined };
 void FinallyOverride(abc::ProfileId profile, bool raising, std::ostream* output,
-    bool original_payload = false) {
+    OverrideValue value = OverrideValue::kCleanup) {
+  const bool original_payload = value == OverrideValue::kCaught;
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
   constexpr unsigned kByteBits = 8;
   std::vector<std::uint8_t> bytes = {
       op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0};
   const auto cleanup = [&](bool caught) {
-    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0});
+    if (value == OverrideValue::kUndefined && !raising) {
+      bytes.push_back(op(abc::Opcode::kRETURNUNDEFINED));
+      return;
+    }
+    if (value == OverrideValue::kUndefined) bytes.push_back(op(abc::Opcode::kLDUNDEFINED));
+    else bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0});
     if (caught) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 0});
     if (raising) bytes.insert(bytes.end(), {static_cast<std::uint8_t>(kThrow),
         static_cast<std::uint8_t>(kThrow >> kByteBits)});
@@ -644,9 +651,11 @@ int main(int argc, char** argv) {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                               abc::ProfileId::kDynamic1301}) {
       FinallyOverride(profile, false, &std::cout);
-      FinallyOverride(profile, false, &std::cout, true);
+      FinallyOverride(profile, false, &std::cout, OverrideValue::kCaught);
+      FinallyOverride(profile, false, &std::cout, OverrideValue::kUndefined);
       FinallyOverride(profile, true, &std::cout);
-      FinallyOverride(profile, true, &std::cout, true);
+      FinallyOverride(profile, true, &std::cout, OverrideValue::kCaught);
+      FinallyOverride(profile, true, &std::cout, OverrideValue::kUndefined);
     }
     std::cout << "];\n"; return 0;
   }
@@ -758,9 +767,11 @@ int main(int argc, char** argv) {
     FinallyCatch(profile, nullptr);
     FinallyCatch(profile, nullptr, true);
     FinallyOverride(profile, false, nullptr);
-    FinallyOverride(profile, false, nullptr, true);
+    FinallyOverride(profile, false, nullptr, OverrideValue::kCaught);
+    FinallyOverride(profile, false, nullptr, OverrideValue::kUndefined);
     FinallyOverride(profile, true, nullptr);
-    FinallyOverride(profile, true, nullptr, true);
+    FinallyOverride(profile, true, nullptr, OverrideValue::kCaught);
+    FinallyOverride(profile, true, nullptr, OverrideValue::kUndefined);
     for (const auto variant : {CleanupVariant::kDifferentCallee, CleanupVariant::kLateReturn,
         CleanupVariant::kExtraCall, CleanupVariant::kWrongRethrow}) FinallyReturn(profile, false, nullptr, variant);
   }

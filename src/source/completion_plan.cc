@@ -90,7 +90,7 @@ class CompletionBuilder {
       if (!next || !regions_[r].body) continue;
       Corridor normal, handler;
       if (!Path(*next, normal, false) || !Path(region.handler, handler, true)) continue;
-      if (normal.operations.size() < 2 || handler.operations.size() != normal.operations.size()) continue;
+      if (normal.operations.empty() || handler.operations.size() != normal.operations.size()) continue;
       const auto returned = normal.operations.back(), thrown = handler.operations.back();
       const auto& normal_exit = graph_.ops[returned.value].operation;
       const auto& handler_exit = graph_.ops[thrown.value].operation;
@@ -101,6 +101,9 @@ class CompletionBuilder {
       const bool replace_throw = std::holds_alternative<ValueThrow>(normal_exit) &&
           std::holds_alternative<ValueThrow>(handler_exit);
       if (!preserve && !replace_return && !replace_throw) continue;
+      // A replacement terminal is itself the finalizer action. Preserving an
+      // incoming completion still needs actual cleanup before its terminal.
+      if (preserve && normal.operations.size() < 2) continue;
       const auto pending = Operand(returned, 0), exception = Operand(thrown, 0);
       const auto binding = exceptions_.regions[r].binding;
       if (!binding || (preserve && (!Same(exception, ValueOperand{binding->value}) ||
@@ -255,8 +258,12 @@ class CompletionBuilder {
         quota_.Work(); const OpId op{block.first_op.value + o};
         const auto kind = evaluation_.operations[op.value].kind;
         if (kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure ||
-            kind == EvaluationKind::kRemoved || std::holds_alternative<ValueJump>(graph_.ops[op.value].operation) ||
-            std::holds_alternative<ValueCopy>(graph_.ops[op.value].operation)) continue;
+            kind == EvaluationKind::kRemoved || std::holds_alternative<ValueJump>(graph_.ops[op.value].operation)) continue;
+        // Materialized literal copies are real cleanup roots (e.g. the value
+        // for `return undefined`). Keep them paired, not orphaned before the
+        // finalizer. SSA/catch snapshots retain their existing separate route.
+        if (std::holds_alternative<ValueCopy>(graph_.ops[op.value].operation) &&
+            std::holds_alternative<ValueId>(Operand(op, 0))) continue;
         Append(path.operations, op);
       }
       cursor = node.next;

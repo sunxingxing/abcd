@@ -51,6 +51,14 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 补齐仅含终结动作的覆盖型 finalizer：`RETURNUNDEFINED` 直接作为
+  cleanup 动作；`LDUNDEFINED` + throw 的实体字面量复制随终结动作一起配对，
+  不遗留在保护体外。捕获值/SSA 快照继续原有路径，不整体移动复制操作。
+  新用例先复现 finalizer=0，修复后三个 profile 的覆盖组扩为 18 个夹具，
+  实际执行生成 JS 检查原异常被覆盖、结果为 undefined 且无 cleanup 回调。
+  关联构建及定向 15/15 通过，日志 `/tmp/abcd-finalizer-terminal-final-build.log`
+  与 `/tmp/abcd-finalizer-terminal-final-tests.log`。未运行全量测试、语料或 RSS；
+  任意 SSA 载荷、嵌套 finally、跨区域 completion 与 hole/guard 形式仍有缺口。
 - C05 新增覆盖型 finalizer：正常与异常 cleanup 路径的 return/return 或
   throw/throw 终结动作在类型、载荷、效果与 handler 一致时，一并投影到真实
   finally 内；不虚构被覆盖的原始 return，也不将 cleanup 求值提前到保护体。
@@ -60,8 +68,8 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
   调用顺序。异常路径返回原捕获值而正常路径返回 cleanup 结果时不误折叠。
   关联目标构建成功，定向回归 15/15；日志 `/tmp/abcd-finalizer-override-final-build.log`
   与 `/tmp/abcd-finalizer-override-final-tests.log`。未运行全套测试、全量语料或 RSS。
-  仅含终结动作的 cleanup、嵌套 finally、跨区域 break/continue 及编译器 hole/guard
-  形式仍未在本步闭合，不能据此宣布 C05 或完整反编译目标完成。
+  仅含终结动作的 cleanup 后续进展见上条；嵌套 finally、跨区域 break/continue
+  及编译器 hole/guard 仍未闭合，不能据此宣布 C05 或完整反编译目标完成。
 - C05 已贯通 finalizer 保护体中的嵌套 try/catch：沿既有异常区域 source_order
   内到外汇总各自 body/handler 出口，父区域消费子区域汇总，不反复遍历完整
   后代子树，也不改变 encoded TryId 的异常优先级。当前只接纳内部正常汇合或
