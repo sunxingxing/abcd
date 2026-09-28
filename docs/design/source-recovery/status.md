@@ -51,6 +51,17 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 新增覆盖型 finalizer：正常与异常 cleanup 路径的 return/return 或
+  throw/throw 终结动作在类型、载荷、效果与 handler 一致时，一并投影到真实
+  finally 内；不虚构被覆盖的原始 return，也不将 cleanup 求值提前到保护体。
+  沿用 FunctionTree 与共同 printer，原操作身份及来源检查保留；无新增输出准入包装。
+  三个 profile 共 12 个解码夹具覆盖 return/throw 与不同载荷反例；生成 JS 执行
+  检查 undefined/null/-0/NaN/bigint/Symbol/object 身份、get/cleanup 抛出覆盖及
+  调用顺序。异常路径返回原捕获值而正常路径返回 cleanup 结果时不误折叠。
+  关联目标构建成功，定向回归 15/15；日志 `/tmp/abcd-finalizer-override-final-build.log`
+  与 `/tmp/abcd-finalizer-override-final-tests.log`。未运行全套测试、全量语料或 RSS。
+  仅含终结动作的 cleanup、嵌套 finally、跨区域 break/continue 及编译器 hole/guard
+  形式仍未在本步闭合，不能据此宣布 C05 或完整反编译目标完成。
 - C05 已贯通 finalizer 保护体中的嵌套 try/catch：沿既有异常区域 source_order
   内到外汇总各自 body/handler 出口，父区域消费子区域汇总，不反复遍历完整
   后代子树，也不改变 encoded TryId 的异常优先级。当前只接纳内部正常汇合或

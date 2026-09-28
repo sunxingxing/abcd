@@ -92,12 +92,19 @@ class CompletionBuilder {
       if (!Path(*next, normal, false) || !Path(region.handler, handler, true)) continue;
       if (normal.operations.size() < 2 || handler.operations.size() != normal.operations.size()) continue;
       const auto returned = normal.operations.back(), thrown = handler.operations.back();
-      if (!std::holds_alternative<ValueReturn>(graph_.ops[returned.value].operation) ||
-          !std::holds_alternative<ValueThrow>(graph_.ops[thrown.value].operation)) continue;
+      const auto& normal_exit = graph_.ops[returned.value].operation;
+      const auto& handler_exit = graph_.ops[thrown.value].operation;
+      const bool preserve = std::holds_alternative<ValueReturn>(normal_exit) &&
+          std::holds_alternative<ValueThrow>(handler_exit);
+      const bool replace_return = std::holds_alternative<ValueReturn>(normal_exit) &&
+          std::holds_alternative<ValueReturn>(handler_exit);
+      const bool replace_throw = std::holds_alternative<ValueThrow>(normal_exit) &&
+          std::holds_alternative<ValueThrow>(handler_exit);
+      if (!preserve && !replace_return && !replace_throw) continue;
       const auto pending = Operand(returned, 0), exception = Operand(thrown, 0);
       const auto binding = exceptions_.regions[r].binding;
-      if (!binding || !Same(exception, ValueOperand{binding->value}) ||
-          !Available(pending, graph_.ops[normal.operations.front().value].block)) continue;
+      if (!binding || (preserve && (!Same(exception, ValueOperand{binding->value}) ||
+          !Available(pending, graph_.ops[normal.operations.front().value].block)))) continue;
       std::vector<CleanupPair> pairs;
       bool equal = true;
       for (std::size_t i = 0; i + 1 < normal.operations.size(); ++i) {
@@ -106,8 +113,19 @@ class CompletionBuilder {
         Append(pairs, CleanupPair{a, b});
       }
       if (!equal) continue;
-      Append(plan.finalizers, FinalizerRegion{{r}, ReturnCompletion{pending}, ThrowCompletion{exception},
-          returned, thrown, std::move(normal.nodes), std::move(handler.nodes), std::move(pairs)});
+      std::optional<PendingCompletion> replacement;
+      if (!preserve) {
+        if (!Pair(returned, thrown, {r}, true)) continue;
+        Append(pairs, CleanupPair{returned, thrown});
+        replacement = replace_return ? PendingCompletion{ReturnCompletion{pending}} :
+            PendingCompletion{ThrowCompletion{pending}};
+      }
+      // An overwritten normal path need not invent a discarded source return.
+      // Emit the actual protected effects and let finally supply its completion.
+      const PendingCompletion incoming = preserve ? PendingCompletion{ReturnCompletion{pending}} :
+          PendingCompletion{NormalCompletion{}};
+      Append(plan.finalizers, FinalizerRegion{{r}, incoming, ThrowCompletion{binding->value},
+          returned, thrown, std::move(normal.nodes), std::move(handler.nodes), std::move(pairs), replacement});
     }
     return plan;
   }
@@ -259,9 +277,11 @@ class CompletionBuilder {
     const auto position = path_positions_[block->value];
     return position.stamp != stamp_ || position.index <= path_positions_[first.value].index;
   }
-  bool Pair(OpId a, OpId b, TryId region) {
+  bool Pair(OpId a, OpId b, TryId region, bool completion = false) {
     const auto& left = graph_.ops[a.value]; const auto& right = graph_.ops[b.value];
-    if (!CleanupOperation(left.operation) || left.operation != right.operation ||
+    const bool supported = completion ? (std::holds_alternative<ValueReturn>(left.operation) ||
+        std::holds_alternative<ValueThrow>(left.operation)) : CleanupOperation(left.operation);
+    if (!supported || left.operation != right.operation ||
         left.normal != right.normal || left.before_throw != right.before_throw ||
         left.exceptional != right.exceptional || left.use_count != right.use_count ||
         left.result.has_value() != right.result.has_value() || exits_[a.value].has_value() != exits_[b.value].has_value()) return false;

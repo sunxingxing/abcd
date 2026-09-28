@@ -502,6 +502,31 @@ void FinallyChain(abc::ProfileId profile, std::ostream* output, std::uint32_t co
   Emit(body, profile, 2, 3, false, output, {}, 0, true, ExpectedCompletion{1, count}, stage);
 }
 enum class ProtectedBranch { kSingle, kNested, kEarlyReturn };
+void FinallyOverride(abc::ProfileId profile, bool raising, std::ostream* output,
+    bool original_payload = false) {
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+  constexpr unsigned kByteBits = 8;
+  std::vector<std::uint8_t> bytes = {
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0};
+  const auto cleanup = [&](bool caught) {
+    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0});
+    if (caught) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 0});
+    if (raising) bytes.insert(bytes.end(), {static_cast<std::uint8_t>(kThrow),
+        static_cast<std::uint8_t>(kThrow >> kByteBits)});
+    else bytes.push_back(op(abc::Opcode::kRETURN));
+  };
+  cleanup(false);
+  const auto catch_pc = static_cast<std::uint32_t>(bytes.size());
+  bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 0});
+  cleanup(original_payload);
+  auto body = test::Body(bytes);
+  abc::TryRegion region; region.offset = {0}; region.length = 4; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {catch_pc}; handler.length = static_cast<std::uint32_t>(bytes.size()) - catch_pc;
+  body.tries = {region}; body.handlers = {handler};
+  Emit(body, profile, 1, 2, false, output, {}, 0, !original_payload,
+      original_payload ? std::optional{ExpectedCompletion{0, 0}} : std::optional<ExpectedCompletion>{});
+}
 void FinallyCatch(abc::ProfileId profile, std::ostream* output, bool early = false) {
   // Inner catch consumes inside's exception; handle/after failures still reach
   // the outer pending-exception cleanup. No sidecar source enters the engine.
@@ -614,6 +639,17 @@ void FinallyBranch(abc::ProfileId profile, std::ostream* output,
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--finally-override") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) {
+      FinallyOverride(profile, false, &std::cout);
+      FinallyOverride(profile, false, &std::cout, true);
+      FinallyOverride(profile, true, &std::cout);
+      FinallyOverride(profile, true, &std::cout, true);
+    }
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--finally-catch") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
@@ -721,6 +757,10 @@ int main(int argc, char** argv) {
     FinallyLoop(profile, nullptr, true);
     FinallyCatch(profile, nullptr);
     FinallyCatch(profile, nullptr, true);
+    FinallyOverride(profile, false, nullptr);
+    FinallyOverride(profile, false, nullptr, true);
+    FinallyOverride(profile, true, nullptr);
+    FinallyOverride(profile, true, nullptr, true);
     for (const auto variant : {CleanupVariant::kDifferentCallee, CleanupVariant::kLateReturn,
         CleanupVariant::kExtraCall, CleanupVariant::kWrongRethrow}) FinallyReturn(profile, false, nullptr, variant);
   }

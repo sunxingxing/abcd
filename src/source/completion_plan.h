@@ -26,6 +26,9 @@ struct FinalizerRegion {
   std::vector<ControlId> normal_path;
   std::vector<ControlId> exceptional_path;
   std::vector<CleanupPair> cleanup;
+  // Present only when both cleanup paths end with the same overriding return
+  // or throw. That terminal pair is part of cleanup, including its evaluation.
+  std::optional<PendingCompletion> replacement;
 };
 struct CompletionPlan {
   analysis::IrRevision revision;
