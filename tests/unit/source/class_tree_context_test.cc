@@ -11,6 +11,7 @@
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
 #include "abcd/source/global_reference.h"
+#include "abcd/analysis/coroutine.h"
 #include "../../support/function_segments.h"
 #include "../../support/instruction_positions.h"
 #include "../../support/phased_file_checks.h"
@@ -43,12 +44,14 @@ enum class DefaultEncoding { kNone, kInteger, kNegation };
 enum class ExceptionShape {
   kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies, kReceiver, kReceiverCatch,
   kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof, kLiteral, kLexical,
-  kReceiverResult
+  kReceiverResult, kAsyncAwait
 };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
-         ExceptionShape exception = ExceptionShape::kNone) {
+         ExceptionShape exception = ExceptionShape::kNone,
+         abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool static_member = false) {
   const bool defaults = encoding != DefaultEncoding::kNone;
+  constexpr unsigned kFunctionKindShift = 8, kByteBits = 8;
   constexpr std::uint32_t kPool = 64, kOwner = 80, kLiteral = 128, kCaller = 256,
       kConstructor = 300, kMember = 350, kCallerCode = 400, kMemberCode = 430, kName = 500;
   std::vector<std::uint8_t> bytes(640);
@@ -67,7 +70,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   const std::uint8_t encoded_length = defaults ? 0 : 1;
   bytes[kLiteral + 15] = encoded_length;
   bytes[kLiteral + 17] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
-  word(kLiteral + 18, 1);
+  word(kLiteral + 18, static_member ? 0 : 1);
   bytes[kName] = 7;
   std::copy_n("run", 3, bytes.begin() + kName + 1);
   constexpr std::uint32_t kModuleType = 520, kModuleField = 530, kRequest = 548, kModule = 560;
@@ -289,6 +292,25 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           0, kTryEnd, kSingleTry, kCatchAll, kHandlerPc, kHandlerBytes};
     }
   }
+  if (exception == ExceptionShape::kAsyncAwait) {
+    const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+    constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+    // Full private async wrapper and await protocol. LDTHIS after resumption
+    // must retain this invocation's receiver for prototype and static methods.
+    member = {3, 4, 45, 1,
+        op(abc::Opcode::kASYNCFUNCTIONENTER), kStore, 0,
+        kLoad, 6, op(abc::Opcode::kASYNCFUNCTIONAWAITUNCAUGHT_V8), 0,
+        op(abc::Opcode::kSUSPENDGENERATOR_V8), 0, kLoad, 0,
+        op(abc::Opcode::kRESUMEGENERATOR), kStore, 1, kLoad, 0,
+        op(abc::Opcode::kGETRESUMEMODE), kStore, 2,
+        kInteger, static_cast<std::uint8_t>(analysis::CoroutineResumeMode::kThrow), 0, 0, 0,
+        op(abc::Opcode::kEQ_IMM8_V8), 0, 2, op(abc::Opcode::kJEQZ_IMM8), 6,
+        kLoad, 1, static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+        kLoad, 1, op(abc::Opcode::kLDTHIS), op(abc::Opcode::kNOP),
+        op(abc::Opcode::kASYNCFUNCTIONRESOLVE_V8), 0, kReturn,
+        kStore, 1, op(abc::Opcode::kASYNCFUNCTIONREJECT_V8), 0, kReturn,
+        3, 37, 1, 0, 40, 5};
+  }
   std::copy(caller.begin(), caller.end(), bytes.begin() + kCallerCode);
   std::copy(member.begin(), member.end(), bytes.begin() + kMemberCode);
   char path[] = "/tmp/abcd-class-tree-context-XXXXXX";
@@ -300,8 +322,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   const auto& file = *std::get<std::unique_ptr<corpus::AbcFile>>(opened);
   abc::Header header;
   header.kind = abc::AbcKind::kDynamic;
-  header.profile = abc::ProfileId::kDynamic1206;
-  header.version = {12, 0, 6, 0};
+  header.profile = profile;
+  if (profile == abc::ProfileId::kDynamic1202) header.version = {12, 0, 2, 0};
+  else if (profile == abc::ProfileId::kDynamic1301) header.version = {13, 0, 1, 0};
+  else header.version = {12, 0, 6, 0};
   header.layout = abc::DynamicLayout{};
   header.file_size = bytes.size();
   abc::MetadataIndex index;
@@ -316,6 +340,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
                                       member[kCodeSizeOffset], member[3]};
   index.methods[2].name = "run";
   index.methods[2].name_utf16_length = 3;
+  if (exception == ExceptionShape::kAsyncAwait)
+    index.methods[2].access_flags = static_cast<std::uint32_t>(abc::FunctionKind::kAsync) << kFunctionKindShift;
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(file, header, index, lookup));
   const auto sites = std::get<analysis::ClassMethodSites>(analysis::ClassMethodSites::Build(file, header, index, lookup));
@@ -331,7 +357,42 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   Check(std::holds_alternative<ClassTreeContext>(context));
   const auto& value = std::get<ClassTreeContext>(context);
   Check(value.Name() == u"run" && value.Frame().parameters == 1);
-  Check(value.Callable() == CallableKind::kMethod && value.Mode() == Strictness::kStrict);
+  Check(value.Callable() == (exception == ExceptionShape::kAsyncAwait ? CallableKind::kAsyncMethod : CallableKind::kMethod) &&
+      value.Mode() == Strictness::kStrict);
+  if (exception == ExceptionShape::kAsyncAwait) {
+    const FunctionContext owner{std::get<ClassTreeContext>(ClassTreeContext::Resolve(
+        file, header, index, lookup, roles, sites, range.first, identity))};
+    auto input = ReadFunctionFamily(file, header, index, lookup, roles, functions,
+        owner.Position(), identity, {}, nullptr, &owner);
+    Check(std::holds_alternative<FileFamily>(input));
+    auto built = BuildFileFamilyTrees(file, header, index, std::get<FileFamily>(std::move(input)),
+        owner, {}, nullptr, {}, &lookup);
+    Check(std::holds_alternative<ConstructedFamily>(built));
+    const auto& family = std::get<ConstructedFamily>(built);
+    Check(family.members.size() == 1 && family.members[0].tree.recovery_issues.empty());
+    std::ostringstream output;
+    auto printed = PrintClassFamilyDraft(family, *owner.ClassContext(), output);
+    Check(std::holds_alternative<PrintedFamilyDraft>(printed));
+    Check(!std::get<PrintedFamilyDraft>(printed).members[0].incomplete);
+    std::ostringstream unowned;
+    Check(std::get<TreePrintError>(PrintFamilyDraft(family, unowned)) == TreePrintError::kUnsupportedContext);
+    Check(unowned.str().empty());
+    auto changed = index;
+    changed.methods[2].access_flags = 0;
+    auto sync = std::get<ClassTreeContext>(ClassTreeContext::Resolve(file, header, changed, lookup,
+        roles, sites, range.first, identity));
+    Check(std::get<TreePrintError>(PrintClassFamilyDraft(family, sync, unowned)) == TreePrintError::kUnsupportedContext);
+    Check(unowned.str().empty());
+    for (const auto kind : {abc::FunctionKind::kAsyncArrow, abc::FunctionKind::kGenerator,
+                            abc::FunctionKind::kAsyncGenerator}) {
+      changed.methods[2].access_flags = static_cast<std::uint32_t>(kind) << kFunctionKindShift;
+      const auto refused = ClassTreeContext::Resolve(file, header, changed, lookup, roles, sites, range.first, identity);
+      Check(std::get<ClassContextError>(std::get<ClassContextFailure>(refused).error) == ClassContextError::kKind);
+    }
+    if (evidence) *evidence << nlohmann::json{{"source", output.str()}, {"static", static_member}}.dump() << '\n';
+    Check(unlink(path) == 0);
+    return;
+  }
   if (exception != ExceptionShape::kNone) {
     const FunctionContext owner{std::get<ClassTreeContext>(ClassTreeContext::Resolve(
         file, header, index, lookup, roles, sites, range.first, identity))};
@@ -808,6 +869,15 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--async-method-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const bool placement : {false, true})
+        Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kAsyncAwait, profile, placement);
+    return 0;
+  }
+  if (argc == 1) for (const bool placement : {false, true})
+    Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kAsyncAwait,
+        abc::ProfileId::kDynamic1206, placement);
   if (argc == 2 && std::string_view(argv[1]) == "--receiver-result-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kReceiverResult);
     return 0;

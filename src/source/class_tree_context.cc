@@ -54,8 +54,10 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::Resolve(
     // OpenHarmony-v7.0-Release LiteralDataExtractor::DefineFunctionTemplate
     // refines NONE using the class-buffer tag. MethodRoleIndex excludes all
     // competing template/constructor roles; initial NONE alone is insufficient.
-    // Async/default/rest/accessor obligations are separate later-stage proofs.
-    Require(!attributes.sendable && attributes.kind == abc::FunctionKind::kNone &&
+    // The runtime preserves an explicit ASYNC kind on an ordinary METHOD tag;
+    // its body still needs the common async completion/await normalization.
+    Require(!attributes.sendable &&
+            (attributes.kind == abc::FunctionKind::kNone || attributes.kind == abc::FunctionKind::kAsync) &&
             occurrence->kind == abc::ClassMethodKind::kOrdinary, Error::kKind);
     Require(sizeof(ClassTreeContext) <= budget.bytes, Error::kResourceLimit);
     auto bytes = budget.bytes - sizeof(ClassTreeContext);
@@ -85,6 +87,7 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::Resolve(
     result.site_ = *occurrence;
     result.position_ = *position;
     result.frame_ = frame;
+    result.callable_ = attributes.kind == abc::FunctionKind::kAsync ? CallableKind::kAsyncMethod : CallableKind::kMethod;
     result.name_ = std::move(name);
     result.work_ = budget.work - work;
     return result;

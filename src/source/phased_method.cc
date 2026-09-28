@@ -131,7 +131,7 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     // Normalized async facts come from the same file owner's completion
     // normalization, not from opcode resemblance or provenance alone.
     if ((!source_pcs.empty() || !awaits.empty()) &&
-        (context.Callable() != CallableKind::kAsyncFunction ||
+        ((context.Callable() != CallableKind::kAsyncFunction && context.Callable() != CallableKind::kAsyncMethod) ||
          source_pcs.size() != body.instructions.size())) return Error::kInput;
     auto flow = PhaseResult<ExceptionFlow>(BuildExceptionFlow(body, context.Identity().profile,
         frame.registers, {quota.Remaining().bytes, quota.Remaining().work}, awaits, &frame), Error::kInput);
@@ -156,11 +156,11 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
       case CallableKind::kMethod:
       case CallableKind::kBaseConstructor:
       case CallableKind::kAsyncFunction:
+      case CallableKind::kAsyncMethod:
         receiver = FrameReceiver::kInitialized;
         break;
       case CallableKind::kArrow:
       case CallableKind::kDerivedConstructor:
-      case CallableKind::kAsyncMethod:
         break;
     }
     bool lexical_reads = false;

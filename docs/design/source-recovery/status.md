@@ -12,6 +12,31 @@
 
 ## 当前阶段
 
+### 2026-09-28：实例与静态 async 类方法进入共同输出路径
+
+- 文件化 async 方法先在 ClassTreeContext 的 kKind 拒绝。锁定 runtime 的
+  LiteralDataExtractor::DefineFunctionTemplate 保留普通 METHOD tag 上显式的
+  ASYNC kind；上下文现记录 kAsyncMethod，仍要求唯一 ordinary 类成员来源，
+  排除 sendable/constructor/generator 等不相容种类。
+- FilePhasedFunction 对 async method 复用普通 async 的 completion/await
+  归一化、原始 PC 和相位值流；接收者与 ABI 继续消费同一模型。共同
+  PrintClassFamilyDraft 在真实类根输出 `async run(...)` / `static async run(...)`，
+  并核对树/context callable 一致。不调用旧 async writer，不扩充发布 receipt。
+- 三 profile × prototype/static 共六个真实 Code/异常表夹具完整输出并执行：
+  await 后返回 this，检查原始值 receiver、拒绝/then getter throw、thenable
+  receiver、微任务顺序、逆序恢复的并发调用隔离、name/length、不可构造性和
+  类方法属性描述符。外围 metadata/类测试外壳为合成，不是整类构造器或整应用验收。
+- 无类上下文的打印、同步上下文配 async 树、generator/async-generator/async-arrow
+  方法种类的反例拒绝且不写伪源码。首次测试编译缺少 coroutine 头文件，已补齐；
+  行为红例定位见 `/tmp/abcd-async-method-debug.log`（kKind）。
+- 相关十个目标构建成功，21/21 定向测试通过（12.38 秒），新增
+  `file_async_method_source_test`。日志 `/tmp/abcd-async-method-final-build.log`、
+  `/tmp/abcd-async-method-final-tests.log`；`git diff --check` 通过。
+  work/内存默认值未变，全量测试/语料/RSS/基准仍暂停；此前两项 base_function
+  旧路径失败未修复、本轮未重跑。旧严格发布入口未据此宣称全面支持 async method。
+- C06 尚未完成：async arrow、复杂 method/handler/闭包组合、super/home-object
+  及真实应用仍待推进；C07–C09、全 ISA 和 record/类/签名整合目标保持开放。
+
 ### 2026-09-28：async 自身身份与跨 await 接收者
 
 - 新文件化 `await input; return <LDFUNCTION/LDTHIS/receiver-slot>` 用例定位两处

@@ -32,7 +32,7 @@ class ClassTreeContext {
   [[nodiscard]] abc::MethodPosition Position() const { return position_; }
   [[nodiscard]] const abc::FrameLayout& Frame() const { return frame_; }
   [[nodiscard]] std::u16string_view Name() const { return name_; }
-  [[nodiscard]] CallableKind Callable() const { return CallableKind::kMethod; }
+  [[nodiscard]] CallableKind Callable() const { return callable_; }
   [[nodiscard]] Strictness Mode() const { return Strictness::kStrict; }
   [[nodiscard]] std::size_t AllocatedBytes() const { return sizeof(*this) + (name_.capacity() + 1) * sizeof(char16_t); }
   [[nodiscard]] std::uint64_t Work() const { return work_; }
@@ -42,6 +42,7 @@ class ClassTreeContext {
   analysis::ClassMethodSite site_{};
   abc::MethodPosition position_;
   abc::FrameLayout frame_;
+  CallableKind callable_ = CallableKind::kMethod;
   std::u16string name_;
   std::uint64_t work_ = 0;
 };

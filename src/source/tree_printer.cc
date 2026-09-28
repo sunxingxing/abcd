@@ -159,7 +159,8 @@ class TreePrinter {
     if (family_->root.value >= family_->members.size()) throw Error::kUnsupportedContext;
     if (class_root_) {
       const auto& root = family_->members[family_->root.value].tree;
-      if (root.callable != CallableKind::kMethod || root.inferred_name ||
+      if ((root.callable != CallableKind::kMethod && root.callable != CallableKind::kAsyncMethod) ||
+          root.callable != class_root_->Callable() || root.inferred_name ||
           root.identity != class_root_->Identity() || root.method != class_root_->Site().target ||
           (class_root_->Site().placement != abc::ClassPlacement::kStatic &&
            class_root_->Site().placement != abc::ClassPlacement::kPrototype)) throw Error::kUnsupportedContext;
@@ -181,11 +182,13 @@ class TreePrinter {
       Admit(structure->allocated_bytes, 1); Step(structure->work);
       if (Tree().strictness != Strictness::kStrict ||
           (Tree().callable != CallableKind::kFunction && Tree().callable != CallableKind::kArrow &&
-           Tree().callable != CallableKind::kMethod && Tree().callable != CallableKind::kAsyncFunction))
+           Tree().callable != CallableKind::kMethod && Tree().callable != CallableKind::kAsyncFunction &&
+           Tree().callable != CallableKind::kAsyncMethod))
         throw Error::kUnsupportedContext;
       // Only the actual class root is a class member. An arrow method carrier
       // retains its original callable kind and cannot observe its home object.
-      if (Tree().callable == CallableKind::kMethod && !ClassRoot()) throw Error::kUnsupportedContext;
+      if ((Tree().callable == CallableKind::kMethod || Tree().callable == CallableKind::kAsyncMethod) && !ClassRoot())
+        throw Error::kUnsupportedContext;
       // Naming adds a fresh, unobservable wrapper object. Its allocation-failure
       // timing is admitted only by the already-versioned resource-failure scope.
       if (Tree().inferred_name && (!Tree().self || Tree().self_form == SelfForm::kCreationBinding) &&
@@ -532,6 +535,7 @@ class TreePrinter {
     }
     if (ClassRoot()) {
       if (class_root_->Site().placement == abc::ClassPlacement::kStatic) Append("static ");
+      if (Tree().callable == CallableKind::kAsyncMethod) Append("async ");
       Key(class_root_->Name()); Append("(");
     } else if (Tree().self && Tree().self_form == SelfForm::kNamedFunction) {
       Append(Tree().callable == CallableKind::kAsyncFunction ? "(async function " : "(function ");
