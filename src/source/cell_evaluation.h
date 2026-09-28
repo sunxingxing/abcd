@@ -24,7 +24,8 @@ enum class CellEvaluationError : std::uint8_t {
 [[nodiscard]] std::variant<CellEvaluation, CellEvaluationError> BuildCellEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     IncomingCells incoming = IncomingCells::kReject,
-    analysis::ClosureWrites writes = analysis::ClosureWrites::kUnknown);
+    analysis::ClosureWrites writes = analysis::ClosureWrites::kUnknown,
+    std::span<const CellDemand> demands = {});
 [[nodiscard]] std::variant<std::uint64_t, CellEvaluationError> VerifyCellEvaluation(
     const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget = {});
 // Phase-aware storage and completed-store witnesses, not source lifetimes.
@@ -32,7 +33,8 @@ enum class CellEvaluationError : std::uint8_t {
 [[nodiscard]] std::variant<CellEvaluation, CellEvaluationError> BuildPhasedCellEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     IncomingCells incoming = IncomingCells::kReject,
-    analysis::ClosureWrites writes = analysis::ClosureWrites::kUnknown);
+    analysis::ClosureWrites writes = analysis::ClosureWrites::kUnknown,
+    std::span<const CellDemand> demands = {});
 [[nodiscard]] std::variant<std::uint64_t, CellEvaluationError> VerifyPhasedCellEvaluation(
     const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source

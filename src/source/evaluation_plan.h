@@ -118,11 +118,13 @@ struct EvaluationShape {
 // kConditional incoming cells retain external-binding obligations. It does not
 // authorize standalone source publication. Supplying all FunctionBindings adds
 // an explicit Language child-write premise; every child must discharge it.
+// Family demands retain forwarded storage even without local lexical accesses;
+// they must come from these actual child occurrences, not arbitrary slots.
 [[nodiscard]] std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     IncomingCells incoming = IncomingCells::kReject,
     std::span<const FunctionBinding> functions = {},
-    std::span<const ModuleEvaluation> modules = {});
+    std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {});
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and availability. Cross-phase expressions require
 // contiguous effect intervals and equal catch snapshots at their final roots.
@@ -137,7 +139,7 @@ struct EvaluationShape {
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     IncomingCells incoming = IncomingCells::kReject,
     std::span<const FunctionBinding> functions = {},
-    std::span<const ModuleEvaluation> modules = {});
+    std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {});
 [[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget = {});

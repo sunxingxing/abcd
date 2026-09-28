@@ -51,9 +51,9 @@ std::variant<CapturedFunctionBinding, CaptureEvaluationFailure> BindPhasedCaptur
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
     CaptureChild child, const FunctionContext& owner, const CaptureCells& cells,
-    FunctionOwnerId parent_owner, FunctionOwnerId child_owner, analysis::SemanticBudget budget) {
+    FunctionOwnerId parent_owner, FunctionOwnerId child_owner, analysis::SemanticBudget budget, const CellPlan* parent_cells) {
   if (parent_owner == child_owner) return CaptureEvaluationFailure{CaptureEvaluationError::kOwner};
-  const auto checked = VerifyPhasedCaptureCells(index, lookup, parent, body, locals, creation, child, owner, cells, budget);
+  const auto checked = VerifyPhasedCaptureCells(index, lookup, parent, body, locals, creation, child, owner, cells, budget, parent_cells);
   if (const auto* error = std::get_if<CaptureCellError>(&checked)) return CaptureEvaluationFailure{*error};
   return BindVerifiedCaptures(parent.Graph(), cells, child_owner, std::get<std::uint64_t>(checked), budget);
 }

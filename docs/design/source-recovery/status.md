@@ -51,22 +51,24 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
-- 纯转发的 cell 存储表示已补齐：`CellDemand` 记录真实 FunctionCreation 与子函数
-  入口槽需求，按创建点环境重定位后与直接访问合并；零直接访问 cell 必须由需求覆盖。
-  普通/phased 共用规划算法，不插入伪造 lexical load/store。真实解码单测验证
-  中间 push 后 depth 1 → 入口 depth 0、重复需求合并、0/1/2/200/201 槽，以及
-  缺需求、错误创建点和伪造深度拒绝。相关 5/5 定向测试通过（cell_plan、cell_tree、
-  phased_cell、loop_closure_file/source）。这只建立存储拓扑，不证明需求来自哪个
-  后代或初始化；文件族后代需求传播、求值和 AST 消费尚需接入，`--forwarding`
-  仍未通过，不计为纯转发源码支持。未恢复全量/RSS/DFX。
-
-- C04 纯环境转发进行中：新增 `loop_closure_file_test --forwarding` 真实 Code
-  复现（要求完整源码，当前仍失败，不计入通过覆盖）；孙函数读取祖先 cell，而中间
-  phased 函数没有直接词法读写，当前返回 `CaptureEvaluationError::kOuterCapture`。
-  文件族发现与求值绑定已拆为两个阶段：收集全部成员后，每个创建 occurrence
-  绑定一次，保留原有身份/cell/作用域检查，没有伪造读取。相关既有 4/4 测试通过
-  （partial_file、loop_closure_file/source、creation_tree_context）。这一阶段调整
-  尚未带来纯转发源码支持；后代需求传播和无直接访问的转发 cell 仍需接入。
+- C04 纯环境转发已贯通真实文件函数族 → 共同 FunctionTree/printer：完整发现后，
+  `PlanFamilyCells` 按 occurrence 逆序传播后代入口槽需求，按真实创建点环境重定位；
+  每个成员一次合并 cell 存储，再正序重新绑定初始化/捕获。默认参数残余投影后重做
+  同一规划；求值、树和函数族写入检查使用相同需求。中间函数可以没有任何词法读写，
+  不插入假指令，不把 cell 值变成快照，不修改 immutable phased 输入。
+  `--forwarding` 从原 `kOuterCapture` 失败变为完整源码；根部无来源的 incoming cell
+  仍拒绝，原始捕获前缀不可由转发表删除或改写。初次回归发现根部拒绝边界变化，
+  修复后重新构建并通过下述全部定向测试。
+  文件解码/完整输出矩阵为 54 组（3 profiles × 3 父环境 × 6 子函数形态），新增
+  普通和 phased 纯转发、中间额外 push 后 depth 1 捕获；Node 执行引擎实际完整输出，
+  检查祖父循环/捕获环境结束后的多次读取、兄弟 setter 更新、迭代隔离、异常离开。
+  `cmake --build build --target loop_closure_file_test function_input_test evaluation_plan_test
+  phased_cell_test cell_plan_test cell_tree_test capture_tree_test partial_file_test
+  creation_tree_context_test -j 4` 成功；对应目标加 `loop_closure_source_test` 的精确
+  CTest 选择 **10/10 通过**。保留 missing-cell、未初始化、Hole 写入、缺需求及根部
+  未绑定反例；cell 规划既有 0/1/2/200/201 槽检查通过。此证据是合成 metadata 的
+  真实 Code 解码和标准 JS 行为，不是整份 ABC parser/真实应用/全量/RSS 验收。
+  纯转发写入中间链、更深组合及 C04 外层退出/多出口仍需推进；未恢复 DFX。
 
 - C04 嵌套异常函数族：修复 phased 文件输入没有向 `ProveExceptionLocals` 传递
   已有 Language 闭包写入条件，导致创建孙函数后的本地 cell 读取一律拒绝的问题。

@@ -12,12 +12,13 @@ namespace abcd::source {
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
-    CaptureChild child, const FunctionContext& owner, analysis::SemanticBudget budget = {});
+    CaptureChild child, const FunctionContext& owner, analysis::SemanticBudget budget = {},
+    const CellPlan* parent_cells = nullptr);
 [[nodiscard]] std::variant<std::uint64_t, CaptureCellError> VerifyPhasedCaptureCells(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
     CaptureChild child, const FunctionContext& owner, const CaptureCells& plan,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {}, const CellPlan* parent_cells = nullptr);
 }  // namespace abcd::source
 #endif

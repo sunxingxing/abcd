@@ -42,12 +42,14 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
           tries};
 }
 enum class ParentShape { kIteration, kCatch, kNormal };
-enum class ChildShape { kPlain, kException, kNested, kForwarded };
+enum class ChildShape { kPlain, kException, kNested, kForwarded, kForwardedNormal, kForwardedLocal };
 enum class MissingCell { kNone, kRead, kWrite, kHoleWriter };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
                  MissingCell missing = MissingCell::kNone) {
-  const bool exception_child = child_shape != ChildShape::kPlain;
-  const bool nested = child_shape == ChildShape::kNested || child_shape == ChildShape::kForwarded;
+  const bool exception_child = child_shape != ChildShape::kPlain && child_shape != ChildShape::kForwardedNormal;
+  const bool forwarding = child_shape == ChildShape::kForwarded || child_shape == ChildShape::kForwardedNormal ||
+      child_shape == ChildShape::kForwardedLocal;
+  const bool nested = child_shape == ChildShape::kNested || forwarding;
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kParent); ++i) {
     bytes[kPool + i] = static_cast<std::uint8_t>(kParent >> (i * kByteBits));
@@ -174,9 +176,17 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   constexpr unsigned kSlotShift = 4;
   const std::uint8_t read_slot = missing == MissingCell::kRead ? 1U << kSlotShift : 0;
   const std::uint8_t write_slot = missing == MissingCell::kWrite ? 1U << kSlotShift : 0;
-  // The middle function really reads both the incoming and its allocated cell;
-  // no dummy read is inserted merely to satisfy capture forwarding.
-  const auto getter = child_shape == ChildShape::kForwarded ? Append(bytes, 0, 0,
+  // Forwarding variants have no lexical accesses. One pushes an unrelated
+  // environment so its reader must pass through depth 1 to the ancestor cell.
+  const auto getter = child_shape == ChildShape::kForwardedLocal ? Append(bytes, 0, 0,
+      {Op(abc::Opcode::kNEWLEXENV_IMM8), 1,
+       Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 3, 0, 0,
+       Op(abc::Opcode::kCALLARG0_IMM8), 0, Op(abc::Opcode::kPOPLEXENV), Op(abc::Opcode::kRETURN),
+       Op(abc::Opcode::kPOPLEXENV), Op(abc::Opcode::kRETURN)}, {7, 2, 1, 0, 11, 2}) :
+      child_shape == ChildShape::kForwardedNormal ? Append(bytes, 0, 0,
+      {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 3, 0, 0,
+       Op(abc::Opcode::kCALLARG0_IMM8), 0, Op(abc::Opcode::kRETURN)}) :
+      child_shape == ChildShape::kForwarded ? Append(bytes, 0, 0,
       {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 3, 0, 0,
        Op(abc::Opcode::kCALLARG0_IMM8), 0, Op(abc::Opcode::kRETURN),
        Op(abc::Opcode::kRETURN)}, {5, 2, 1, 0, 8, 1}) : nested ? Append(bytes, 1, 0,
@@ -205,7 +215,9 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const auto reader = nested ? std::optional{missing == MissingCell::kHoleWriter ? Append(bytes, 0, 0,
       {Op(abc::Opcode::kLDHOLE), Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
        Op(abc::Opcode::kRETURNUNDEFINED)}) : Append(bytes, 0, 0,
-      {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kRETURN)})} : std::nullopt;
+      {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4),
+       static_cast<std::uint8_t>(child_shape == ChildShape::kForwardedLocal ? 1 : 0),
+       Op(abc::Opcode::kRETURN)})} : std::nullopt;
   char path[] = "/tmp/abcd-loop-closure-XXXXXX";
   const int fd = mkstemp(path);
   test::Check(fd >= 0 && write(fd, bytes.data(), bytes.size()) ==
@@ -306,7 +318,8 @@ int main(int argc, char** argv) {
   for (const auto profile :
        {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
         abc::ProfileId::kDynamic1301}) {
-    for (const auto child_shape : {ChildShape::kPlain, ChildShape::kException, ChildShape::kNested}) {
+    for (const auto child_shape : {ChildShape::kPlain, ChildShape::kException, ChildShape::kNested,
+         ChildShape::kForwarded, ChildShape::kForwardedNormal, ChildShape::kForwardedLocal}) {
     for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal}) {
       const auto source = Emit(profile, shape, child_shape);
       if (emit) std::cout << source << ",\n";
@@ -317,4 +330,5 @@ int main(int argc, char** argv) {
   for (const auto missing : {MissingCell::kRead, MissingCell::kWrite})
     Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, ChildShape::kException, missing);
   Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, ChildShape::kNested, MissingCell::kHoleWriter);
+  Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, ChildShape::kForwarded, MissingCell::kHoleWriter);
 }

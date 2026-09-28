@@ -1,4 +1,5 @@
 #include "family_tree.h"
+#include "family_cells.h"
 
 #include <limits>
 #include <new>
@@ -82,11 +83,12 @@ class FamilyTrees {
       if (!phase) { normal_control.emplace(Take<ControlPlan, ControlError>(BuildControlPlan(graph, left_))); Account(*normal_control); }
       const auto& control = phase ? phase->Phases().Control() : *normal_control;
       const auto module_evaluations = aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{};
+      const auto demands = member.function.Cells() ? std::span<const CellDemand>(member.function.Cells()->demands) : std::span<const CellDemand>{};
       auto evaluation = Take<EvaluationPlan, EvaluationError>(phase ?
           BuildPhasedEvaluationPlan(graph, left_, i == 0 ? IncomingCells::kReject : IncomingCells::kConditional,
-              member.children, module_evaluations) :
+              member.children, module_evaluations, demands) :
           BuildEvaluationPlan(graph, left_, i == 0 ? IncomingCells::kReject : IncomingCells::kConditional,
-              member.children, module_evaluations));
+              member.children, module_evaluations, demands));
       Account(evaluation);
       std::optional<IncomingCaptureTree> incoming;
       if (member.incoming) {
@@ -233,6 +235,7 @@ class FamilyTrees {
     // Every residual revision is fixed before any creation edge is rebound.
     // This prevents a parent's cached binding from retaining a child's old
     // revision when that child's own defaults are projected later.
+    Account(Take<FamilyCellCost, CaptureCellError>(PlanFamilyCells(family, left_)));
     for (auto& member : family.members) { Step(1); member.children.clear(); }
     for (std::size_t i = 1; i < family.members.size(); ++i) {
       Step(1); member_ = {static_cast<std::uint32_t>(i)};
@@ -249,14 +252,14 @@ class FamilyTrees {
         occurrence.emplace(PhasedCreationSite{*edge.phase_operation, edge.site, edge.creation});
       }
       auto cells = Take<CaptureCells, CaptureCellError>(phase ? BindPhasedCaptureCells(index_, *lookup_, phase->Phases(),
-          phase->Body(), phase->Locals(), *occurrence, child_work, *child.context, left_) :
-          BindCaptureCells(index_, {parent.function.Normal().input, parent.function.Normal().values}, child_work,
+          phase->Body(), phase->Locals(), *occurrence, child_work, *child.context, left_, parent.function.Cells()) :
+          BindCaptureCells(index_, parent.function.NormalCapture(), child_work,
               edge.site, edge.creation, left_));
       Account(cells);
       auto evaluation = Take<CapturedFunctionBinding, CaptureEvaluationFailure>(phase ?
           BindPhasedCaptureEvaluation(index_, *lookup_, phase->Phases(), phase->Body(), phase->Locals(), *occurrence,
-              child_work, *child.context, cells, {edge.parent.value}, {member_.value}, left_) :
-          BindCaptureEvaluation(index_, {parent.function.Normal().input, parent.function.Normal().values},
+              child_work, *child.context, cells, {edge.parent.value}, {member_.value}, left_, parent.function.Cells()) :
+          BindCaptureEvaluation(index_, parent.function.NormalCapture(),
               child_work, edge.site, edge.creation, cells, {edge.parent.value}, {member_.value}, left_));
       Account(evaluation);
       Require(parent.children.size() < parent.children.capacity(), FamilyTreeError::kParent);

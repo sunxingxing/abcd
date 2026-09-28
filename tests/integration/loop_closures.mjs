@@ -4,7 +4,7 @@ import {execFileSync} from 'node:child_process';
 const source = execFileSync(process.argv[2], ['--emit'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!source.includes('INCOMPLETE'));
 const {functions} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
-assert.equal(functions.length, 27);
+assert.equal(functions.length, 54);
 // Hoisting the cell out of the loop, snapshotting the initial callable, or
 // losing the catch write all break these post-return identity assertions.
 for (const [index, capture] of functions.entries()) {

@@ -115,9 +115,9 @@ class WriteCheck {
       }
       if (const auto* phase = member.function.Phase()) {
         Require(lookup_ != nullptr, Error::kOwner);
-        return {PhasedFamilyInput{phase->Phases(), phase->Body(), phase->Locals(), *lookup_, phase}, edge, member.objects};
+        return {PhasedFamilyInput{phase->Phases(), phase->Body(), phase->Locals(), *lookup_, phase, member.function.Storage()}, edge, member.objects};
       }
-      return {CaptureFunction{member.function.Normal().input, member.function.Normal().values}, edge, member.objects};
+      return {member.function.NormalCapture(), edge, member.objects};
     }
     return std::get<std::span<const FamilyWriteInput>>(inputs_)[i];
   }
@@ -144,8 +144,9 @@ class WriteCheck {
     Require(tree.identity == source.function.Identity() && tree.method == source.function.Target(), Error::kOwner);
     Require(source.locals.writes == analysis::ClosureWrites::kLanguage, Error::kDomain);
   }
-  void ClosedRoot(CaptureFunction source) { Require(source.input.Captures().empty(), Error::kCapture); }
+  void ClosedRoot(CaptureFunction source) { Require(CaptureChild(source).Input().Captures().empty(), Error::kCapture); }
   void ClosedRoot(PhasedFamilyInput source) {
+    if (source.storage) Require(source.storage->uses.empty(), Error::kCapture);
     for (const auto& binding : source.function.TreeInput(source.body).input.environments.bindings) {
       Step(); Require(!std::holds_alternative<analysis::CapturedDepth>(binding.binding.environment), Error::kCapture);
     }
@@ -155,7 +156,7 @@ class WriteCheck {
     const auto& phase = std::get<PhasedFamilyInput>(source.function);
     Require(phase.owner && &phase.owner->Phases() == &phase.function &&
         &phase.owner->Body() == &phase.body && &phase.owner->Locals() == &phase.locals, Error::kOwner);
-    return *phase.owner;
+    return CaptureChild{*phase.owner, phase.storage};
   }
   std::variant<std::uint64_t, CaptureCellError> Capture(const FamilyWriteInput& source, CaptureChild child,
       const NormalWriteEdge& edge, const CaptureCells& cells, std::size_t parent) {
@@ -170,7 +171,7 @@ class WriteCheck {
     Require(phase != nullptr, Error::kCapture);
     Mark(parent, edge.creation.instruction, Barrier::kFunction);
     return VerifyPhasedCaptureCells(index_, phase->lookup, phase->function, phase->body,
-        phase->locals, edge.creation, child, edge.owner, cells, left_);
+        phase->locals, edge.creation, child, edge.owner, cells, left_, phase->storage ? &phase->storage->cells : nullptr);
   }
   void Consume(std::size_t owner, analysis::InstructionId site) {
     Step(); const auto instructions = Instructions(Member(owner));

@@ -261,6 +261,7 @@ target_sources(abcd_source PRIVATE src/source/family_writes.cc src/source/lexica
 target_sources(abcd_source PRIVATE src/source/function_file.cc)
 target_sources(abcd_source PRIVATE src/source/phased_function_file.cc)
 target_sources(abcd_source PRIVATE src/source/family_file.cc)
+target_sources(abcd_source PRIVATE src/source/family_cells.cc)
 target_sources(abcd_source PRIVATE src/source/family_tree.cc)
 target_sources(abcd_source PRIVATE src/source/prepared_family.cc)
 target_sources(abcd_source PRIVATE src/source/instruction_sources.cc)

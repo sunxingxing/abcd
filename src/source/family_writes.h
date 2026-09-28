@@ -24,6 +24,7 @@ struct PhasedFamilyInput {
   const analysis::ExceptionLocals& locals;
   const abc::MethodLookup& lookup;
   const FilePhasedFunction* owner = nullptr;
+  const CaptureStorage* storage = nullptr;
 };
 struct NormalWriteEdge {
   analysis::InstructionId site;

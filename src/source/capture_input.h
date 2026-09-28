@@ -19,8 +19,12 @@ class CaptureInput {
   std::span<const CaptureUse> Captures() const;
   std::span<const InputCaptureAccess> CaptureAccesses() const;
   std::span<const analysis::SemanticInstruction> Instructions() const;
+  CaptureInput WithCaptures(std::span<const CaptureUse> captures) const {
+    auto result = *this; result.captures_ = captures; return result;
+  }
  private:
   std::variant<const FunctionInput*, const FilePhasedFunction*> input_;
+  std::optional<std::span<const CaptureUse>> captures_;
 };
 }  // namespace abcd::source
 #endif

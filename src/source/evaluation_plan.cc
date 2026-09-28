@@ -17,7 +17,7 @@ struct EffectInterval { std::uint32_t count = 0; std::uint32_t end = 0; };
 std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
-    EvaluationFlow flow) {
+    EvaluationFlow flow, std::span<const CellDemand> demands) {
   try {
     Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
     auto work = budget.work;
@@ -74,7 +74,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     std::vector<std::uint8_t> pinned(graph.ops.size());
     admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
     bool has_definitions = false;
-    bool has_cells = false;
+    bool has_cells = !demands.empty();
     bool has_arguments = false;
     std::size_t next_function = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
@@ -97,7 +97,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     if (has_cells) {
       const auto build_cells = flow == EvaluationFlow::kPhased ? BuildPhasedCellEvaluation : BuildCellEvaluation;
       auto built = build_cells(graph, {bytes, work}, incoming,
-          functions.empty() ? analysis::ClosureWrites::kUnknown : analysis::ClosureWrites::kLanguage);
+          functions.empty() ? analysis::ClosureWrites::kUnknown : analysis::ClosureWrites::kLanguage, demands);
       if (const auto* error = std::get_if<CellEvaluationError>(&built)) {
         if (*error == CellEvaluationError::kResourceLimit) return Error::kResourceLimit;
         if (*error == CellEvaluationError::kWorkLimit) return Error::kWorkLimit;
@@ -297,12 +297,12 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
 }  // namespace
 std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
-    std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules) {
-  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal);
+    std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands) {
+  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands);
 }
 std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
-    std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules) {
-  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kPhased);
+    std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands) {
+  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kPhased, demands);
 }
 }  // namespace abcd::source

@@ -319,6 +319,36 @@ void ForwardingAndChildren() {
   test::Check(std::get<CaptureEvaluationError>(std::get<CaptureEvaluationFailure>(BindCaptureEvaluation(Index(),
       {parent, parent_values}, {child, child_values}, parent.Children()[0],
       Creation(parent, parent.Children()[0]), cells, {0}, {1}))) == CaptureEvaluationError::kOuterCapture);
+  const CellDemand demands[]{{cells.creation, {{0}, {0}}}};
+  CaptureStorage forwarding{
+      std::get<CellPlan>(BuildDemandedCellPlan(parent_values.graph, *parent_values.environments, demands)),
+      {{{{0}, {0}}, CaptureDomain::kLanguage}}};
+  const CaptureFunction forwarded{parent, parent_values, &forwarding};
+  const auto rebound = std::get<CaptureCells>(BindCaptureCells(Index(), forwarded,
+      {child, child_values}, site, Creation(parent, site)));
+  test::Check(std::get<ParentCell>(rebound.targets[0].target).cell == CellId{0});
+  const auto binding = std::get<CapturedFunctionBinding>(BindCaptureEvaluation(Index(), forwarded,
+      {child, child_values}, site, Creation(parent, site), rebound, {0}, {1}));
+  const FunctionBinding functions[]{binding.binding};
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(parent_values.graph, {},
+      IncomingCells::kConditional, functions, {}, demands));
+  test::Check(evaluation.cells && evaluation.cells->cells.cells.size() == 1 &&
+      evaluation.cells->cells.accesses.empty());
+  test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(parent_values.graph, evaluation)));
+  auto no_demand = evaluation; no_demand.cells->cells.demands.clear();
+  test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(parent_values.graph, no_demand)));
+  test::Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(parent_values.graph, {},
+      IncomingCells::kReject, functions, {}, demands)));
+  // An overlay cannot erase/rewrite genuine original capture occurrences.
+  CaptureStorage changed{*child_values.cells,
+      std::vector<CaptureUse>(child.Captures().begin(), child.Captures().end())};
+  const CaptureChild changed_child{CaptureFunction{child, child_values, &changed}};
+  ++changed.uses[0].cell.slot.value;
+  test::Check(std::get<CaptureCellError>(BindCaptureCells(Index(), forwarded, changed_child,
+      site, Creation(parent, site))) == CaptureCellError::kBinding);
+  changed.uses.clear();
+  test::Check(std::get<CaptureCellError>(BindCaptureCells(Index(), forwarded, changed_child,
+      site, Creation(parent, site))) == CaptureCellError::kCoverage);
   // The parent now directly accesses that same outer cell. The child must use
   // the parent's incoming binding, without discharging the parent's obligation.
   const auto accessing = Input(kParent, child_body);

@@ -16,6 +16,12 @@ struct OuterCell {
   }
 };
 using CaptureTarget = std::variant<ParentCell, OuterCell>;
+// Family-owned descendant demand. Original accesses remain the prefix of uses;
+// the suffix names incoming storage forwarded without a local load/store.
+struct CaptureStorage {
+  CellPlan cells;
+  std::vector<CaptureUse> uses;
+};
 // Borrowed same-function products of FunctionInput::Build/BuildFunctionValues.
 // Graph, environments and cells stay unchanged while binding; edits require
 // renewed correspondence, environment/cell plans and a fresh binding. All
@@ -23,19 +29,23 @@ using CaptureTarget = std::variant<ParentCell, OuterCell>;
 struct CaptureFunction {
   const FunctionInput& input;
   const FunctionValues& values;
+  const CaptureStorage* storage = nullptr;
 };
 class CaptureChild {
  public:
-  CaptureChild(CaptureFunction function) : function_(function) {}
+  CaptureChild(CaptureFunction function) : function_(function), storage_(function.storage) {}
   CaptureChild(const FunctionInput& input, const FunctionValues& values) : function_(CaptureFunction{input, values}) {}
-  CaptureChild(const FilePhasedFunction& function) : function_(&function) {}
+  CaptureChild(const FilePhasedFunction& function, const CaptureStorage* storage = nullptr)
+      : function_(&function), storage_(storage) {}
   CaptureInput Input() const;
+  CaptureInput OriginalInput() const;
   const analysis::ValueProgram& Graph() const;
   const analysis::ValueEnvironments* Environments() const;
   const CellPlan* Cells() const;
   bool MatchesInput() const;
  private:
   std::variant<CaptureFunction, const FilePhasedFunction*> function_;
+  const CaptureStorage* storage_ = nullptr;
 };
 struct CaptureCellBinding {
   CellId child;

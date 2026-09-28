@@ -64,8 +64,9 @@ struct FamilyFileFailure {
 // Optional root owner is checked and stamped before input verification. Each
 // child's context is resolved before its input. Ownerless diagnostic callers
 // do not gain initialized receiver or publication permissions.
-// Phase roots require an actual owner; descendants currently require normal
-// flow. Exception-bearing children return kUnsupportedFlow, never normal SSA.
+// Phase roots require an actual owner; phase descendants retain their own
+// original/working owners. Descendant storage demand forwards through members
+// with no direct lexical access, but unresolved incoming root cells are refused.
 // Result remains conditional: no root enclosure, transitive-write certificate,
 // complete AST, source text or executable receipt is produced here.
 [[nodiscard]] std::variant<FileFamily, FamilyFileFailure> ReadFunctionFamily(

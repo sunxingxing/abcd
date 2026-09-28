@@ -1,4 +1,5 @@
 #include "family_file.h"
+#include "family_cells.h"
 
 #include <bit>
 #include <algorithm>
@@ -120,11 +121,25 @@ class FamilyReader {
     // Discovery must finish before committing evaluation bindings: a child's
     // own direct accesses are not its descendants' complete capture demand.
     // Each occurrence is bound once here; no repeated subtree discovery.
+    auto planned = PlanFamilyCells(result_, Remaining());
+    if (const auto* error = std::get_if<CaptureCellError>(&planned)) Fail(*error);
+    const auto cost = std::get<FamilyCellCost>(planned); Admit(cost.allocated_bytes, 1); Step(cost.work);
+    // This reader discovers a complete rooted family, not its external lexical
+    // owner. Propagation may close intermediate obligations, never the root's.
+    if (const auto* cells = result_.members.front().function.Cells()) {
+      for (const auto& cell : cells->cells) {
+        Step();
+        if (std::holds_alternative<IncomingCell>(cell.storage)) {
+          method_ = result_.members.front().function.Method(); parent_.reset(); pc_.reset();
+          Fail(CaptureEvaluationFailure{CaptureEvaluationError::kOuterCapture});
+        }
+      }
+    }
     for (std::size_t i = 1; i < result_.members.size(); ++i) {
       Step();
       auto& child = result_.members[i];
       Require(child.incoming && child.context, Error::kOccurrence);
-      const auto& edge = *child.incoming;
+      auto& edge = *child.incoming;
       Require(edge.parent.value < i, Error::kOccurrence);
       auto& parent = result_.members[edge.parent.value];
       method_ = child.function.Method(); parent_ = parent.function.Method(); pc_ = edge.creation.offset;
@@ -132,10 +147,17 @@ class FamilyReader {
       const auto* phase = parent.function.Phase();
       Require((phase != nullptr) == edge.phase_operation.has_value(), Error::kCreation);
       const FunctionOwnerId owner{static_cast<std::uint32_t>(i)};
+      auto rebound = phase ? BindPhasedCaptureCells(index_, lookup_, phase->Phases(), phase->Body(),
+          phase->Locals(), {*edge.phase_operation, edge.site, edge.creation}, work, *child.context,
+          Remaining(), parent.function.Cells()) :
+          BindCaptureCells(index_, parent.function.NormalCapture(), work, edge.site, edge.creation, Remaining());
+      if (const auto* error = std::get_if<CaptureCellError>(&rebound)) Fail(*error);
+      edge.cells = std::get<CaptureCells>(std::move(rebound));
+      Admit(edge.cells.allocated_bytes, 1); Step(edge.cells.work);
       auto evaluated = phase ? BindPhasedCaptureEvaluation(index_, lookup_, phase->Phases(), phase->Body(),
           phase->Locals(), {*edge.phase_operation, edge.site, edge.creation}, work, *child.context,
-          edge.cells, {edge.parent.value}, owner, Remaining()) :
-          BindCaptureEvaluation(index_, {parent.function.Normal().input, parent.function.Normal().values},
+          edge.cells, {edge.parent.value}, owner, Remaining(), parent.function.Cells()) :
+          BindCaptureEvaluation(index_, parent.function.NormalCapture(),
               work, edge.site, edge.creation, edge.cells, {edge.parent.value}, owner, Remaining());
       if (const auto* error = std::get_if<CaptureEvaluationFailure>(&evaluated)) Fail(*error);
       auto evaluation = std::get<CapturedFunctionBinding>(std::move(evaluated));

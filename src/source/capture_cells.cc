@@ -26,6 +26,7 @@ bool CaptureInput::MatchesOwner(const FunctionContext& owner) const {
   return std::visit([&](auto* input) { return input->MatchesOwner(owner); }, input_);
 }
 std::span<const CaptureUse> CaptureInput::Captures() const {
+  if (captures_) return *captures_;
   return std::visit([](auto* input) { return input->Captures(); }, input_);
 }
 std::span<const InputCaptureAccess> CaptureInput::CaptureAccesses() const {
@@ -38,6 +39,10 @@ std::span<const analysis::SemanticInstruction> CaptureInput::Instructions() cons
   }, input_);
 }
 CaptureInput CaptureChild::Input() const {
+  auto input = OriginalInput();
+  return storage_ ? input.WithCaptures(storage_->uses) : input;
+}
+CaptureInput CaptureChild::OriginalInput() const {
   return std::visit([](auto function) -> CaptureInput {
     if constexpr (std::is_same_v<decltype(function), CaptureFunction>) return function.input;
     else return *function;
@@ -57,6 +62,7 @@ const analysis::ValueEnvironments* CaptureChild::Environments() const {
   }, function_);
 }
 const CellPlan* CaptureChild::Cells() const {
+  if (storage_) return &storage_->cells;
   return std::visit([](auto function) -> const CellPlan* {
     if constexpr (std::is_same_v<decltype(function), CaptureFunction>)
       return function.values.cells ? &*function.values.cells : nullptr;
@@ -110,9 +116,17 @@ IncomingRange Incoming(CaptureChild function, Quota& quota) {
   const auto offset = static_cast<std::uint32_t>(first - cells.begin());
   return {offset, std::span<const Cell>(cells).subspan(offset)};
 }
-void Owner(CaptureChild function, Quota& quota) {
+void Owner(CaptureChild function, Quota& quota, bool check_uses = true) {
   quota.Step();
   Require(function.MatchesInput() && function.Input().Mode() == InputCaptureMode::kConditional, Error::kOwner);
+  const auto original = function.OriginalInput().Captures();
+  const auto uses = function.Input().Captures();
+  Require(uses.size() >= original.size(), Error::kCoverage);
+  for (std::size_t i = 0; check_uses && i < original.size(); ++i) {
+    quota.Step();
+    Require(uses[i].cell.depth == original[i].cell.depth &&
+        uses[i].cell.slot.value == original[i].cell.slot.value && uses[i].domain == original[i].domain, Error::kBinding);
+  }
   const auto* cells = function.Cells(); const auto* environments = function.Environments();
   const auto& graph = function.Graph();
   Require((environments != nullptr) == (cells != nullptr), Error::kCell);
@@ -124,7 +138,7 @@ void Owner(CaptureChild function, Quota& quota) {
 }
 void Owners(const abc::MetadataIndex& index, CaptureFunction parent, CaptureChild child,
     const analysis::CreationBinding& creation, Quota& quota) {
-  Owner(parent, quota); Owner(child, quota); quota.Step();
+  Owner(parent, quota, false); Owner(child, quota); quota.Step();
   Require(parent.input.Identity() == child.Input().Identity() && parent.input.Record() == child.Input().Record() &&
       creation.target.position.value < index.methods.size(), Error::kOwner);
   const auto& target = index.methods[creation.target.position.value];
@@ -133,7 +147,7 @@ void Owners(const abc::MetadataIndex& index, CaptureFunction parent, CaptureChil
 CaptureParent Parent(CaptureFunction function) {
   return {function.input.Identity(), function.input.Method(), function.values.graph,
       function.values.environments ? &*function.values.environments : nullptr,
-      function.values.cells ? &*function.values.cells : nullptr, function.input.Input().instructions,
+      CaptureChild(function).Cells(), function.input.Input().instructions,
       function.input.Proof().locals.allocations, ScopeFacts(function.input.Input(), function.input.Proof())};
 }
 void Owner(const CaptureParent& parent, Quota& quota) {
@@ -240,7 +254,7 @@ std::variant<std::uint64_t, CaptureCellError> VerifyCaptureTargets(
     // Independently connect each original initialized occurrence to its child
     // work cell. The planner below groups by cell, not by this occurrence walk.
     const auto accesses = child.Input().CaptureAccesses();
-    Require(accesses.size() == plan.input.bindings.size(), Error::kCoverage);
+    Require(accesses.size() <= plan.input.bindings.size(), Error::kCoverage);
     for (std::size_t i = 0; i < accesses.size(); ++i) {
       quota.Step();
       const auto op = Operation(child.Graph(), child.Input().Instructions(), accesses[i].instruction, quota);
@@ -250,6 +264,20 @@ std::variant<std::uint64_t, CaptureCellError> VerifyCaptureTargets(
       const auto& target = plan.targets[cell->value - incoming.first];
       Require(target.child == *cell && target.target == Project(parent, plan.input.bindings[i].cell, quota), Error::kBinding);
     }
+    // Additional input obligations are exactly the zero-access incoming cells,
+    // in storage order. Never pretend a forwarding requirement is an opcode.
+    auto next = accesses.size();
+    for (std::size_t i = 0; i < incoming.cells.size(); ++i) {
+      quota.Step();
+      if (incoming.cells[i].count != 0) continue;
+      Require(next < plan.input.bindings.size(), Error::kCoverage);
+      const auto& use = child.Input().Captures()[next];
+      const auto& storage = std::get<IncomingCell>(incoming.cells[i].storage);
+      Require(use.cell.depth == storage.depth && use.cell.slot.value == storage.slot.value &&
+          use.domain == analysis::CaptureDomain::kLanguage, Error::kBinding);
+      Require(plan.targets[i].target == Project(parent, plan.input.bindings[next++].cell, quota), Error::kBinding);
+    }
+    Require(next == plan.input.bindings.size(), Error::kCoverage);
     return quota.Work();
   } catch (Error error) { return error; }
 }

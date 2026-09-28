@@ -55,7 +55,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     admit(environment_epochs.capacity() - graph.ops.size(), sizeof(std::size_t));
     std::size_t environment_epoch = 0;
     bool has_definitions = false;
-    bool has_cells = false;
+    bool has_cells = plan.cells && !plan.cells->cells.demands.empty();
     bool has_arguments = false;
     std::size_t next_function = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {

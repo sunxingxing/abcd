@@ -13,6 +13,7 @@ namespace abcd::source {
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
     CaptureChild child, const FunctionContext& owner, const CaptureCells& cells,
-    FunctionOwnerId parent_owner, FunctionOwnerId child_owner, analysis::SemanticBudget budget = {});
+    FunctionOwnerId parent_owner, FunctionOwnerId child_owner, analysis::SemanticBudget budget = {},
+    const CellPlan* parent_cells = nullptr);
 }  // namespace abcd::source
 #endif

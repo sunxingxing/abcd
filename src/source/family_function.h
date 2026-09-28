@@ -20,8 +20,13 @@ class FamilyFunction {
   abc::EntityOffset Method() const { return Phase() ? Phase()->Phases().Target() : Normal().input.Method(); }
   abc::EntityOffset Record() const { return Phase() ? Phase()->Record() : Normal().input.Record(); }
   CaptureChild Capture() const {
-    return Phase() ? CaptureChild{*Phase()} : CaptureChild{Normal().input, Normal().values};
+    return Phase() ? CaptureChild{*Phase(), Storage()} : CaptureChild{NormalCapture()};
   }
+  CaptureFunction NormalCapture() const { return {Normal().input, Normal().values, Storage()}; }
+  const CaptureStorage* Storage() const { return storage_ ? &*storage_ : nullptr; }
+  const CellPlan* Cells() const { return Capture().Cells(); }
+  void SetStorage(CaptureStorage storage) { storage_ = std::move(storage); }
+  void ClearStorage() { storage_.reset(); }
   std::span<const analysis::InstructionId> Children() const { return Phase() ? Phase()->Children() : Normal().input.Children(); }
   std::span<const analysis::SemanticInstruction> Instructions() const {
     return Phase() ? std::span<const analysis::SemanticInstruction>(Phase()->Phases().TreeInput(Phase()->Body()).input.flow.instructions)
@@ -29,6 +34,7 @@ class FamilyFunction {
   }
  private:
   std::variant<FileFunction, FilePhasedFunction> input_;
+  std::optional<CaptureStorage> storage_;
 };
 }  // namespace abcd::source
 #endif
