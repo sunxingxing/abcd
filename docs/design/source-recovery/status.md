@@ -51,6 +51,17 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C03/C04 逃逸闭包纵向证据：新增 `loop_closure_file_test` 和
+  `loop_closure_source_test`，真实文件 Code/DEFINEFUNC + 合成元数据，经
+  `InspectFamilyValues` → 共同函数族 AST → printer 生成完整源码。三种 profile
+  同时覆盖每轮分配和仅 catch 分配的 getter/setter，返回后逆序重复读取、同轮
+  写入共享、跨轮隔离，以及 collector throw 后保存的闭包仍可读写。
+  0/1/2/5 轮及正常/全异常/交替异常通过；新测试直接通过现有实现，本轮没有
+  为 fixture 新增生产特例，也不将其声称为全文件元数据解析或真实应用验收。
+  重建相关目标后定向 6/6 通过：loop_closure_file/source、phased_capture_plan、
+  control_composition/source、partial_file；全量/RSS/基准继续暂停。下一功能缺口是含
+  try/catch 的闭包子函数：文件族目前仍显式拒绝非根 phased member；C04 未完成。
+
 - C03/C04 cell 组合切片：`control_composition_test` 新增真实指令的每轮 newlexenv、
   try/catch 写入合流读取/poplexenv，以及每次 catch 独立分配/初始化/读取/poplexenv。
   复用生产 `ProveExceptionLocals` 的 load facts（不手工把 lexical load 结果标为

@@ -1,0 +1,243 @@
+#include <unistd.h>
+
+#include <nlohmann/json.hpp>
+#include <sstream>
+#include <string_view>
+
+#include "../../../tools/family_value_inspect.h"
+#include "abcd/abc/method_attributes.h"
+#include "analysis/ssa_fixture.h"
+
+namespace {
+using namespace abcd;
+// Real file-backed Code entities; metadata is synthetic, not a parser oracle.
+constexpr std::uint32_t kPool = 64, kRecord = 128, kCaller = 256, kParent = 300,
+                        kGetter = 320, kSetter = 340, kCodeStart = 400;
+constexpr std::uint8_t kImplicitArguments = 3;
+constexpr unsigned kByteBits = 8, kFunctionKindShift = 8;
+std::uint8_t Op(abc::Opcode opcode) {
+  return static_cast<std::uint8_t>(opcode);
+}
+abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
+                     std::uint8_t parameters,
+                     std::initializer_list<std::uint8_t> code,
+                     std::initializer_list<std::uint8_t> table = {}) {
+  constexpr std::size_t kSingleByteUlebLimit = 128;
+  test::Check(code.size() < kSingleByteUlebLimit);
+  const auto offset = static_cast<std::uint32_t>(bytes.size());
+  const auto arguments =
+      static_cast<std::uint8_t>(parameters + kImplicitArguments);
+  const auto tries = static_cast<std::uint8_t>(table.size() != 0);
+  bytes.insert(bytes.end(), {locals, arguments,
+                             static_cast<std::uint8_t>(code.size()), tries});
+  const auto start = static_cast<std::uint32_t>(bytes.size());
+  bytes.insert(bytes.end(), code.begin(), code.end());
+  bytes.insert(bytes.end(), table.begin(), table.end());
+  return {{offset},
+          {start},
+          locals,
+          arguments,
+          static_cast<std::uint32_t>(code.size()),
+          tries};
+}
+std::string Emit(abc::ProfileId profile, bool catch_cell) {
+  std::vector<std::uint8_t> bytes(kCodeStart);
+  for (unsigned i = 0; i < sizeof(kParent); ++i) {
+    bytes[kPool + i] = static_cast<std::uint8_t>(kParent >> (i * kByteBits));
+    bytes[kPool + sizeof(kParent) + i] =
+        static_cast<std::uint8_t>(kGetter >> (i * kByteBits));
+    bytes[kPool + sizeof(kParent) + sizeof(kGetter) + i] =
+        static_cast<std::uint8_t>(kSetter >> (i * kByteBits));
+  }
+  const auto caller = Append(bytes, 0, 0,
+                             {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 0,
+                              0, 3, Op(abc::Opcode::kRETURNUNDEFINED)});
+  // v0 getter, v1 setter; v5 next, v6 run, v7 collect. Each iteration creates a
+  // new environment. The protected call either writes its result or its
+  // exception. The escaping getter must retain that iteration, not a
+  // function-level cell.
+  constexpr std::uint8_t kGet = 0, kSet = 1, kNext = 5, kRun = 6, kCollect = 7;
+  constexpr std::uint8_t kExitDelta = 39,
+                         kBackDelta = static_cast<std::uint8_t>(-41);
+  const auto parent = catch_cell
+                          ? Append(bytes, 2, 3,
+                                   {Op(abc::Opcode::kLDA_V8),
+                                    kNext,
+                                    Op(abc::Opcode::kCALLARG0_IMM8),
+                                    0,
+                                    Op(abc::Opcode::kJEQZ_IMM8),
+                                    kExitDelta,
+                                    Op(abc::Opcode::kLDA_V8),
+                                    kRun,
+                                    Op(abc::Opcode::kCALLARG0_IMM8),
+                                    0,
+                                    Op(abc::Opcode::kJMP_IMM8),
+                                    static_cast<std::uint8_t>(-10),
+                                    Op(abc::Opcode::kSTA_V8),
+                                    kGet,
+                                    Op(abc::Opcode::kNEWLEXENV_IMM8),
+                                    1,
+                                    Op(abc::Opcode::kLDA_V8),
+                                    kGet,
+                                    Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4),
+                                    0,
+                                    Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8),
+                                    0,
+                                    1,
+                                    0,
+                                    0,
+                                    Op(abc::Opcode::kSTA_V8),
+                                    kGet,
+                                    Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8),
+                                    0,
+                                    2,
+                                    0,
+                                    1,
+                                    Op(abc::Opcode::kSTA_V8),
+                                    kSet,
+                                    Op(abc::Opcode::kLDA_V8),
+                                    kCollect,
+                                    Op(abc::Opcode::kCALLARGS2_IMM8_V8_V8),
+                                    0,
+                                    kGet,
+                                    kSet,
+                                    Op(abc::Opcode::kPOPLEXENV),
+                                    Op(abc::Opcode::kJMP_IMM8),
+                                    kBackDelta,
+                                    Op(abc::Opcode::kRETURNUNDEFINED)},
+                                   {6, 4, 1, 0, 12, 31})
+                          : Append(bytes, 2, 3,
+                                   {Op(abc::Opcode::kLDA_V8),
+                                    kNext,
+                                    Op(abc::Opcode::kCALLARG0_IMM8),
+                                    0,
+                                    Op(abc::Opcode::kJEQZ_IMM8),
+                                    kExitDelta,
+                                    Op(abc::Opcode::kNEWLEXENV_IMM8),
+                                    1,
+                                    Op(abc::Opcode::kLDA_V8),
+                                    kRun,
+                                    Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4),
+                                    0,
+                                    Op(abc::Opcode::kCALLARG0_IMM8),
+                                    0,
+                                    Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4),
+                                    0,
+                                    Op(abc::Opcode::kJMP_IMM8),
+                                    4,
+                                    Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4),
+                                    0,
+                                    Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8),
+                                    0,
+                                    1,
+                                    0,
+                                    0,
+                                    Op(abc::Opcode::kSTA_V8),
+                                    kGet,
+                                    Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8),
+                                    0,
+                                    2,
+                                    0,
+                                    1,
+                                    Op(abc::Opcode::kSTA_V8),
+                                    kSet,
+                                    Op(abc::Opcode::kLDA_V8),
+                                    kCollect,
+                                    Op(abc::Opcode::kCALLARGS2_IMM8_V8_V8),
+                                    0,
+                                    kGet,
+                                    kSet,
+                                    Op(abc::Opcode::kPOPLEXENV),
+                                    Op(abc::Opcode::kJMP_IMM8),
+                                    kBackDelta,
+                                    Op(abc::Opcode::kRETURNUNDEFINED)},
+                                   {12, 4, 1, 0, 18, 2});
+  const auto getter = Append(
+      bytes, 0, 0,
+      {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kRETURN)});
+  const auto setter = Append(bytes, 0, 1,
+                             {Op(abc::Opcode::kLDA_V8), kImplicitArguments,
+                              Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
+                              Op(abc::Opcode::kRETURNUNDEFINED)});
+  char path[] = "/tmp/abcd-loop-closure-XXXXXX";
+  const int fd = mkstemp(path);
+  test::Check(fd >= 0 && write(fd, bytes.data(), bytes.size()) ==
+                             static_cast<ssize_t>(bytes.size()));
+  test::Check(close(fd) == 0);
+  auto opened = corpus::AbcFile::Open(path);
+  test::Check(std::holds_alternative<std::unique_ptr<corpus::AbcFile>>(opened));
+  const auto& file = *std::get<std::unique_ptr<corpus::AbcFile>>(opened);
+  abc::Header header;
+  header.kind = abc::AbcKind::kDynamic;
+  header.layout = abc::DynamicLayout{};
+  header.profile = profile;
+  switch (profile) {
+    case abc::ProfileId::kDynamic1202:
+      header.version = {12, 0, 2, 0};
+      break;
+    case abc::ProfileId::kDynamic1206:
+      header.version = {12, 0, 6, 0};
+      break;
+    case abc::ProfileId::kDynamic1301:
+      header.version = {13, 0, 1, 0};
+      break;
+    default:
+      test::Check(false);
+  }
+  header.file_size = bytes.size();
+  abc::MetadataIndex index;
+  index.regions.push_back({kCaller, kCodeStart, {}, {3, kPool}, {}, {}});
+  index.methods.resize(4);
+  index.methods[0].offset = {kCaller};
+  index.methods[0].code = caller;
+  index.methods[1].offset = {kParent};
+  index.methods[1].code = parent;
+  index.methods[2].offset = {kGetter};
+  index.methods[2].code = getter;
+  index.methods[3].offset = {kSetter};
+  index.methods[3].code = setter;
+  for (auto& method : index.methods) {
+    method.owner_offset = {kRecord};
+    method.access_flags =
+        static_cast<std::uint32_t>(abc::FunctionKind::kBaseConstructor)
+        << kFunctionKindShift;
+  }
+  index.methods[1].name = "capture";
+  index.methods[1].name_utf16_length = 7;
+  index.methods[2].name = "get";
+  index.methods[2].name_utf16_length = 3;
+  index.methods[3].name = "set";
+  index.methods[3].name_utf16_length = 3;
+  const auto lookup =
+      std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
+  const auto identity = source::MakeRouteInputIdentity(
+      std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
+  std::ostringstream positions;
+  const auto report =
+      InspectFamilyValues(file, header, index, lookup, {1}, identity, nullptr,
+                          positions, FamilyInspectMode::kSourceDraft);
+  test::Check(unlink(path) == 0);
+  if (!report.value("draft_prepared", false)) std::cerr << report << '\n';
+  test::Check(report.value("draft_prepared", false));
+  test::Check(!report.value("draft_incomplete", true));
+  const auto located =
+      nlohmann::json::parse("{" + positions.str() + "\"ready\":true}");
+  test::Check(located["draft_positions"].size() == 3);
+  for (const auto& member : located["draft_positions"])
+    test::Check(member["incomplete"] == false);
+  return report.at("draft_source").get<std::string>();
+}
+}  // namespace
+int main(int argc, char** argv) {
+  const bool emit = argc == 2 && std::string_view(argv[1]) == "--emit";
+  if (emit) std::cout << "export const functions = [\n";
+  for (const auto profile :
+       {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+        abc::ProfileId::kDynamic1301}) {
+    for (const bool catch_cell : {false, true}) {
+      const auto source = Emit(profile, catch_cell);
+      if (emit) std::cout << source << ",\n";
+    }
+  }
+  if (emit) std::cout << "];\n";
+}

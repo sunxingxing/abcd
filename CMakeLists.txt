@@ -583,6 +583,11 @@ if(BUILD_TESTING)
   target_include_directories(partial_file_test PRIVATE tests/support)
   target_link_libraries(partial_file_test PRIVATE abcd_source abcd_json)
   add_test(NAME partial_file_test COMMAND partial_file_test)
+  add_executable(loop_closure_file_test tests/unit/source/loop_closure_file_test.cc
+    tools/family_value_inspect.cc tools/tree_position_json.cc)
+  target_include_directories(loop_closure_file_test PRIVATE tests/support)
+  target_link_libraries(loop_closure_file_test PRIVATE abcd_source abcd_json)
+  add_test(NAME loop_closure_file_test COMMAND loop_closure_file_test)
   add_executable(control_view_test tests/unit/source/control_view_test.cc)
   target_link_libraries(control_view_test PRIVATE abcd_source)
   add_test(NAME control_view_test COMMAND control_view_test)
@@ -909,6 +914,8 @@ if(BUILD_TESTING)
       $<TARGET_FILE:exception_copies_test> $<TARGET_FILE:exception_plan_test>)
     add_test(NAME control_composition_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/control_composition.mjs $<TARGET_FILE:control_composition_test>)
+    add_test(NAME loop_closure_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_closures.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME phased_method_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_method.mjs
       $<TARGET_FILE:class_tree_context_test>)
