@@ -2,8 +2,8 @@
   "schema": 1,
   "purpose": "Corpus-wide grouping and holdout policy for the unified source recovery effort. Groups reference content hashes; classification evidence is reused from the existing manifest, never duplicated here.",
   "roots": {
-    "paired": "/home/rabbit/sample/abc_with_code",
-    "batch": "/home/rabbit/sample/abc"
+    "paired": "/Users/sun/abcd/samples/abc_with_code",
+    "batch": "/Users/sun/abcd/samples/abc"
   },
   "classification_manifest": "tests/corpus/abc-index.json",
   "manifest_summary": "900 files, 894 unique contents, 402 dynamic, 498 static, 0 unknown/malformed (recorded evidence; not a re-scan).",

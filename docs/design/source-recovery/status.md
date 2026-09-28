@@ -49,6 +49,10 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- mac 本地语料根调整为 `/Users/sun/abcd/samples`，忽略根目录 `/samples/`；
+  同步当前命令示例、语料配置和开发约定。历史验证报告与 abc-index.json 中的
+  分类证据保留原样，不因路径迁移重跑扫描、测试或 RSS；样本内容不修改。
+
 - 新增三个官方参考源码 submodule，位于 `references/openharmony/arkcompiler/`：
   runtime_core、ets_runtime、ets_frontend，固定 OpenHarmony-v7.0-Release tag，
   提交分别为 `3e147bb7`、`f04900cf`、`c754cf63`，与既有 release lock 一致。

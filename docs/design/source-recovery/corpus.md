@@ -8,8 +8,8 @@
 
 两个根目录都属于目标集合：
 
-- `/home/rabbit/sample/abc_with_code`：仅取其中 ABC 作为引擎输入。
-- `/home/rabbit/sample/abc`：包括子目录，作为批量真实输入；不得只取根目录或应用名文件。
+- `/Users/sun/abcd/samples/abc_with_code`：仅取其中 ABC 作为引擎输入。
+- `/Users/sun/abcd/samples/abc`：包括子目录，作为批量真实输入；不得只取根目录或应用名文件。
 
 本次只读路径清点确认 paired 目录有以下 5 个 ABC：
 

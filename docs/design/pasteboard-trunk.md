@@ -39,7 +39,7 @@ visible; they are not counted as recovered executable modules.
 ## Reproduction
 
 ```sh
-build/abc_semantic /home/rabbit/sample/abc_with_code/pasteboard/modules.abc \
+build/abc_semantic /Users/sun/abcd/samples/abc_with_code/pasteboard/modules.abc \
   --all-records > build/pasteboard-semantic.jsonl
 ```
 

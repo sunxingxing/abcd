@@ -56,10 +56,10 @@ Origin evidence 记录 retained effects、control、elisions、signature placeme
 
 复用 `tests/corpus/pasteboard.json`，不把输出目录中的生成源码作为新引擎输入：
 
-- 输入：`/home/rabbit/sample/abc_with_code/pasteboard/modules.abc`。
+- 输入：`/Users/sun/abcd/samples/abc_with_code/pasteboard/modules.abc`。
 - SHA-256：`854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e`。
 - 19 records、219 methods。身份变化时重新核对任务选择，不能只按名称沿用实体号。
-- 另一份路径 `/home/rabbit/sample/abc/pasteboard.abc` 按同一内容身份处理，不重复算样本。
+- 另一份路径 `/Users/sun/abcd/samples/abc/pasteboard.abc` 按同一内容身份处理，不重复算样本。
 - 不读配对源码、sourcesMap.map 或 IDE sidecar；旧输出只作对照参考，不作 oracle。
 
 | Slice | 真实实体 | 检查重点 | 边界 |
@@ -156,7 +156,7 @@ cmake --build build --target abc_structure abc_semantic -j2
 现有 ABC-only 导出命令：
 
 ```bash
-build/abc_structure /home/rabbit/sample/abc_with_code/pasteboard/modules.abc out/pasteboard-next --shared-source
+build/abc_structure /Users/sun/abcd/samples/abc_with_code/pasteboard/modules.abc out/pasteboard-next --shared-source
 ```
 
 该命令目前不能强制新 ValueTree 路线，也不能证明迁移完成。新选项 `--value-source`

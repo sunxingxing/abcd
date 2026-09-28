@@ -2,8 +2,8 @@
   "schema": 1,
   "sha256": "854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e",
   "inputs": [
-    "/home/rabbit/sample/abc_with_code/pasteboard/modules.abc",
-    "/home/rabbit/sample/abc/pasteboard.abc"
+    "/Users/sun/abcd/samples/abc_with_code/pasteboard/modules.abc",
+    "/Users/sun/abcd/samples/abc/pasteboard.abc"
   ],
   "expected_records": 19,
   "expected_methods": 219,

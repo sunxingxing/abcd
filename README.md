@@ -43,8 +43,8 @@ ctest --test-dir build/release --output-on-failure
 
 ```sh
 build/release/abc_scan tests/corpus/abc-index.json \
-  batch /home/rabbit/sample/abc \
-  paired /home/rabbit/sample/abc_with_code
+  batch /Users/sun/abcd/samples/abc \
+  paired /Users/sun/abcd/samples/abc_with_code
 ```
 
 实际语料目录为 `~/sample/`，不是 `~/samples/`。扫描器只读取 ABC，不读取配套源码。
@@ -64,8 +64,8 @@ CLI 使用 1,000,000,000 字节的虚拟地址空间上限，并报告峰值 RSS
 
 ```sh
 build/release/abc_index tests/corpus/abc-index.json \
-  batch /home/rabbit/sample/abc \
-  paired /home/rabbit/sample/abc_with_code
+  batch /Users/sun/abcd/samples/abc \
+  paired /Users/sun/abcd/samples/abc_with_code
 ```
 
 索引器核对清单中的文件哈希及检测规则版本，直接跳过已确认的静态文件；内容变化
@@ -80,9 +80,9 @@ build/release/abc_index tests/corpus/abc-index.json \
 
 ```sh
 build/release/abc_decode tests/corpus/abc-index.json \
-  batch /home/rabbit/sample/abc paired /home/rabbit/sample/abc_with_code
+  batch /Users/sun/abcd/samples/abc paired /Users/sun/abcd/samples/abc_with_code
 build/release/abc_flow tests/corpus/abc-index.json \
-  batch /home/rabbit/sample/abc paired /home/rabbit/sample/abc_with_code
+  batch /Users/sun/abcd/samples/abc paired /Users/sun/abcd/samples/abc_with_code
 ```
 
 解码保留强类型操作数、原始数值位模式、分支目标以及有序异常范围与处理器。
@@ -98,7 +98,7 @@ build/release/abc_flow tests/corpus/abc-index.json \
 
 ```sh
 build/release/abc_exceptions tests/corpus/abc-index.json \
-  batch /home/rabbit/sample/abc paired /home/rabbit/sample/abc_with_code
+  batch /Users/sun/abcd/samples/abc paired /Users/sun/abcd/samples/abc_with_code
 ```
 
 该阶段按固定版本动态解释器的规则，选择文件顺序中第一个覆盖当前 PC 且有 catch
@@ -113,7 +113,7 @@ build/release/abc_exceptions tests/corpus/abc-index.json \
 
 ```sh
 build/release/abc_references tests/corpus/abc-index.json \
-  batch /home/rabbit/sample/abc paired /home/rabbit/sample/abc_with_code
+  batch /Users/sun/abcd/samples/abc paired /Users/sun/abcd/samples/abc_with_code
 ```
 
 该阶段在方法解码、普通图和异常派发验证后，按实体角色和池索引去重解析引用，
@@ -126,7 +126,7 @@ build/release/abc_references tests/corpus/abc-index.json \
 
 ```sh
 build/release/abc_modules tests/corpus/abc-index.json \
-  batch /home/rabbit/sample/abc paired /home/rabbit/sample/abc_with_code
+  batch /Users/sun/abcd/samples/abc paired /Users/sun/abcd/samples/abc_with_code
 ```
 
 该工具只运行字段、封装和模块元数据检查，不重复方法体分析。merged 文件按运行时

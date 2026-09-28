@@ -1,4 +1,5 @@
 /build/
 /.worktrees/
 /out/
+/samples/
 /tests/corpus/*.lock

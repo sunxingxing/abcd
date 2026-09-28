@@ -432,7 +432,7 @@ Targeted real-method check (requires the pinned local fixture hash):
 ```sh
 cmake --build build --target exception_candidates -j 2
 node --experimental-vm-modules tests/integration/immersive_exception.mjs \
-  build/exception_candidates /home/rabbit/sample/abc_with_code/Immersive/modules.abc
+  build/exception_candidates /Users/sun/abcd/samples/abc_with_code/Immersive/modules.abc
 ```
 
 This explicitly selected test is not registered as a mandatory CTest dependency

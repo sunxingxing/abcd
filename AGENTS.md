@@ -76,7 +76,7 @@ authorized. Linked specialist contracts remain binding.
 
 ## 5. Corpus Validation
 - Include paired and batch corpora; actual local roots are currently
-  /home/rabbit/sample/abc_with_code and /home/rabbit/sample/abc.
+  /Users/sun/abcd/samples/abc_with_code and /Users/sun/abcd/samples/abc.
 - Static ABC is temporarily unsupported. Persist classification, content hash,
   detector revision and evidence in `tests/corpus/abc-index.json`; reuse valid
   static classifications without repeated detection. Never modify input ABCs.
