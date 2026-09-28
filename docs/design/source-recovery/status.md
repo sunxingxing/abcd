@@ -51,6 +51,17 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- **进行中，尚未支持**：按 pinned es2panda `TryContext::InitFinalizer`、
+  `TryStatement::CompileFinally`、`PandaGen::EmitRethrow` 新增共享 cleanup 的
+  Hole/undefined guard 解码复现入口 `control_composition_test --compiler-finally`。
+  该入口是明确的 RED 复现，未加入通过型 CTest；不是完整 es2abc 文件验收。
+  当前首个 profile 的解码、ExceptionFlow、SSA、值传播成功，
+  VerifyExceptionInputs 在 PC 8 的 Hole 寄存器保存处返回 kInternalValue
+  （node 10、SSA value 12），尚未进入 FunctionTree。证据日志
+  `/tmp/abcd-compiler-finalizer-red.log`、`/tmp/abcd-compiler-finalizer-input-debug.log`。
+  不将 Hole 改成 undefined、不放宽一般内部值输出检查；下一步需在共同路径中
+  识别并消除封闭的 pending-exception 哨兵协议。已有相关 4/4 回归通过，
+  `/tmp/abcd-compiler-finalizer-existing-tests.log`；本条不代表新增源码支持。
 - C05 新增 finally 内 break/continue 覆盖原异常：两侧 cleanup 的操作配对后，
   要求终结跳转的种类及 LoopId 均一致；原 TryExit 到循环跳转的路由继续保留。
   completion 使用独立 ControlId 对，不把合成跳转伪装成 opcode；既有 TreeFlow

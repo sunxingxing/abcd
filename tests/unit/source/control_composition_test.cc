@@ -504,6 +504,37 @@ void FinallyChain(abc::ProfileId profile, std::ostream* output, std::uint32_t co
 enum class ProtectedBranch { kSingle, kNested, kEarlyReturn };
 enum class OverrideValue { kCleanup, kCaught, kUndefined, kArgument };
 enum class NestedCompletion { kNormal, kReturn, kThrow };
+void CompilerFinally(abc::ProfileId profile, std::ostream* output) {
+  // Pinned es2panda TryContext::InitFinalizer, TryStatement::CompileFinally
+  // and PandaGen::EmitRethrow: shared cleanup, undefined run guard, Hole vs
+  // caught payload. This isolates that lowering, not a full es2abc file.
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+  constexpr unsigned kByteBits = 8;
+  auto body = test::Body({
+      op(abc::Opcode::kLDUNDEFINED), op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDHOLE), op(abc::Opcode::kSTA_V8), 1,
+      op(abc::Opcode::kJMP_IMM8), 4,
+      op(abc::Opcode::kSTA_V8), 1,
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kSTA_V8), 2,
+      op(abc::Opcode::kLDUNDEFINED), op(abc::Opcode::kEQ_IMM8_V8), 0, 2,
+      op(abc::Opcode::kJEQZ_IMM8), 8,
+      op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kSTA_V8), 2,
+      op(abc::Opcode::kLDHOLE), op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kNOTEQ_IMM8_V8), 0, 0,
+      op(abc::Opcode::kJEQZ_IMM8), 6,
+      op(abc::Opcode::kLDA_V8), 2,
+      static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+      op(abc::Opcode::kLDA_V8), 5, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kRETURN)});
+  abc::TryRegion region; region.offset = {3}; region.length = 4; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {12}; handler.length = 2;
+  body.tries = {region}; body.handlers = {handler};
+  Emit(body, profile, 3, 3, false, output, {}, 0, true);
+}
 void FinallyOuterTransfer(abc::ProfileId profile, std::ostream* output, bool stop) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
@@ -768,6 +799,12 @@ void FinallyBranch(abc::ProfileId profile, std::ostream* output,
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                              abc::ProfileId::kDynamic1301}) CompilerFinally(profile, &std::cout);
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--finally-outer-transfer") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
