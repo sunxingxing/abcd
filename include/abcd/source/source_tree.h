@@ -38,7 +38,7 @@ enum class DeclarationKind : std::uint8_t { kParameter, kLet, kConst, kCatchPara
 enum class TemporaryReason : std::uint8_t {
   kMultipleUses, kEffectSnapshot, kPhiJoin, kParallelCopyCycle,
   kCrossRegionValue, kReferenceSnapshot, kUnprovedInline, kPredicateSnapshot,
-  kExceptionSnapshot
+  kExceptionSnapshot, kPendingCompletion
 };
 struct TreeScope {
   ScopeKind kind;
@@ -223,6 +223,12 @@ struct SignaturePlacement {
   ParameterId parameter;
   TreeOriginId origin;
 };
+// Correspondence for a pending-return/rethrow cleanup projection. Executable
+// behavior lives in ordinary AST nodes; the printer does not read this table.
+struct FinalizerComposition {
+  analysis::TryId region;
+  StmtId enclosure;
+};
 struct FunctionTree {
   RouteInputIdentity identity;
   abc::EntityOffset method;
@@ -270,6 +276,7 @@ struct FunctionTree {
   InvocationForm invocation = InvocationForm::kDeclared;
   // LabelId -> loop statement, function-local and separate from variable names.
   std::vector<StmtId> labels;
+  std::vector<FinalizerComposition> finalizers;
 };
 // FunctionTree is the direct printer input, not a source-publication token.
 // Structural safety checks do not imply complete recovery or IR equivalence.

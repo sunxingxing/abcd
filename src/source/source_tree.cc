@@ -20,7 +20,7 @@ std::variant<TreeStorage, TreeStorageError> MeasureTreeStorage(
       !arena(tree.scopes) || !arena(tree.symbols) || !arena(tree.names) ||
       !arena(tree.texts) || !arena(tree.expressions) || !arena(tree.properties) || !arena(tree.arguments) || !arena(tree.statements) ||
       !arena(tree.children) || !arena(tree.closure_captures) || !arena(tree.origins) || !arena(tree.origin_parts) ||
-      !arena(tree.anchors) || !arena(tree.operations) || !arena(tree.signature) || !arena(tree.recovery_issues) || !arena(tree.labels))
+      !arena(tree.anchors) || !arena(tree.operations) || !arena(tree.signature) || !arena(tree.recovery_issues) || !arena(tree.labels) || !arena(tree.finalizers))
     return TreeStorageError::kResourceLimit;
   const auto payloads = [&](const auto& strings) -> std::optional<TreeStorageError> {
     for (const auto& text : strings) {

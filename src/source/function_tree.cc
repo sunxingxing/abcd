@@ -1,4 +1,5 @@
 #include "function_tree.h"
+#include "completion_tree.h"
 #include "exception_tree.h"
 
 #include <algorithm>
@@ -172,11 +173,49 @@ class TreeBuilder {
         if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
         throw Error::kStructure;
       }
-    } else CheckSemantics();
+    } else {
+      RecoverCompletions();
+      CheckSemantics();
+    }
     return {std::move(tree_), budget_.bytes - bytes_, budget_.work - work_};
   }
 
  private:
+  void RecoverCompletions() {
+    if (!exceptions_) return;
+    auto result = BuildCompletionPlan(graph_, exceptions_->regions, exceptions_->control,
+        evaluation_, {bytes_, work_});
+    if (const auto* error = std::get_if<CompletionError>(&result)) {
+      if (*error == CompletionError::kWorkLimit) throw Error::kWorkLimit;
+      if (*error == CompletionError::kResourceLimit) throw Error::kResourceLimit;
+      throw Error::kControl;
+    }
+    const auto& plan = std::get<CompletionPlan>(result);
+    if (plan.finalizers.empty()) return;
+    const auto measured = MeasureTreeStorage(tree_, {budget_.bytes, work_});
+    const auto* storage = std::get_if<TreeStorage>(&measured);
+    if (!storage)
+      throw std::get<TreeStorageError>(measured) == TreeStorageError::kWorkLimit
+          ? Error::kWorkLimit : Error::kResourceLimit;
+    Require(storage->bytes <= budget_.bytes - bytes_, Error::kResourceLimit);
+    const auto checked = VerifyExceptionTreeFlow(graph_, *exceptions_, evaluation_, tree_,
+        {bytes_ + storage->bytes, work_});
+    const auto* flow = std::get_if<TreeFlow>(&checked);
+    if (!flow) {
+      const auto error = std::get<TreeFlowError>(checked);
+      if (error == TreeFlowError::kWorkLimit) throw Error::kWorkLimit;
+      if (error == TreeFlowError::kResourceLimit) throw Error::kResourceLimit;
+      throw Error::kSemantics;
+    }
+    Step(flow->work); Admit(flow->allocated_bytes - storage->bytes, 1);
+    TreeCheckBudget recovery({bytes_, work_});
+    try { RecoverFinalizers(plan, *flow, tree_, recovery);
+    } catch (TreeFlowError) { throw Error::kSemantics;
+    } catch (TreeStructureError error) {
+      throw error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
+    }
+    Step(recovery.Work()); Admit(recovery.Bytes(), 1);
+  }
   void CheckCellLifetimes() {
     auto environments = analysis::BuildPhasedValueEnvironments(graph_, {bytes_, work_});
     if (const auto* error = std::get_if<analysis::ValueEnvironmentError>(&environments)) {

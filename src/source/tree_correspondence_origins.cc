@@ -28,6 +28,11 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   std::vector<std::uint8_t> visited;
   std::vector<TreeOriginId> stack;
   std::vector<std::uint8_t> edge_expressions;
+  std::vector<std::uint8_t> completion_expressions;
+  if (!flow.completion_expressions.empty()) {
+    budget.Array(completion_expressions, tree.expressions.size());
+    for (const auto id : flow.completion_expressions) completion_expressions[id.value] = 1;
+  }
   budget.Admit(1, sizeof(expected) + sizeof(covered) + sizeof(visited) + sizeof(stack) + sizeof(edge_expressions));
   budget.Array(expected, graph.origins.size());
   budget.Array(covered, graph.origins.size());
@@ -125,6 +130,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   }
   for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
     budget.Step();
+    if (!completion_expressions.empty() && completion_expressions[i]) continue;
     const ExprId expression{static_cast<std::uint32_t>(i)};
     const auto origin = tree.expressions[i].origin;
     if (std::holds_alternative<EdgeOrigin>(tree.origins[origin.value]) ||

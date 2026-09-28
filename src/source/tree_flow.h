@@ -46,6 +46,8 @@ struct TreeFlow {
   // Origins of independently checked synthetic loop/transfer statements.
   // Indexed by the synthetic ControlNode suffix, not inferred from text.
   std::vector<TreeOriginId> controls;
+  // Private boolean routing expressions checked by the completion projection.
+  std::vector<ExprId> completion_expressions;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

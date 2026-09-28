@@ -5,13 +5,15 @@
 #include "tree_flow.h"
 
 namespace abcd::source {
+class CompletionTreeView;
 // Internal to fresh TreeFlow verification. Consume is called only at the
 // control check's exact edge boundary, never at a guessed target-block entry.
 class TreeEdgeFlow {
  public:
   TreeEdgeFlow(const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
       const FunctionTree& tree, TreeFlow& flow, std::vector<std::uint8_t>& declared,
-      std::vector<std::uint8_t>& assigned, TreeCheckBudget& budget);
+      std::vector<std::uint8_t>& assigned, TreeCheckBudget& budget,
+      const CompletionTreeView& sequences);
   void Consume(analysis::IncomingKey incoming, const BlockStmt& block, std::uint32_t& child);
   void Stage(analysis::OpId operation, const BlockStmt& block, std::uint32_t& child);
   void Catch(analysis::WorkBlockId handler, const BlockStmt& block, std::uint32_t& child);
@@ -23,6 +25,7 @@ class TreeEdgeFlow {
   const analysis::ValueProgram& graph_;
   const EvaluationPlan& evaluation_;
   const FunctionTree& tree_;
+  const CompletionTreeView& sequences_;
   TreeFlow& flow_;
   std::vector<std::uint8_t>& declared_;
   std::vector<std::uint8_t>& assigned_;

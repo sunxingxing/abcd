@@ -142,7 +142,12 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.texts = {u"number"};
   syntax.parameters.resize(frame.parameters);
-  const ExpressionConstants resolved{constants, 0, 1, TextId{0}};
+  if (expect_finalizer) {
+    // Reserve an existing spelling. Source parameter names currently exclude
+    // the '$' namespace, but recovery must not assume every input name does.
+    syntax.names = {u"$completion0"};
+  }
+  const ExpressionConstants resolved{constants, static_cast<std::uint32_t>(syntax.names.size()), 1, TextId{0}};
   const ExceptionTreeInput context{body, input, regions, control};
   const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, resolved);
   if (const auto* error = std::get_if<FunctionTreeError>(&built))
@@ -156,7 +161,45 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
         ++finalizers;
     if (finalizers != 1) std::cerr << "missing recovered finalizer: " << finalizers << '\n';
     test::Check(finalizers == 1);
+    test::Check(tree.finalizers.size() == 1);
+    const auto enclosure = tree.finalizers.front().enclosure;
+    const auto block = std::get<BlockStmt>(tree.statements[enclosure.value].statement);
+    const auto declaration = std::get<DeclarationStmt>(
+        tree.statements[tree.children[block.first_child].value].statement);
+    test::Check(tree.names[tree.symbols[declaration.symbol.value].name.value] != syntax.names.front());
+    const auto reject = [&](const FunctionTree& changed) {
+      test::Check(std::holds_alternative<TreeFlowError>(
+          VerifyExceptionTreeFlow(graph, context, evaluation, changed)));
+    };
+    auto changed = tree;
+    changed.expressions[declaration.initializer->value].expression = TreeLiteral{BooleanLiteral{true}};
+    reject(changed); // The entry path must not inherit an exceptional completion.
+    changed = tree;
+    changed.finalizers.clear();
+    reject(changed); // An unexplained finalizer cannot bypass original CFG edges.
+    changed = tree;
+    changed.finalizers.push_back(changed.finalizers.front());
+    reject(changed);
+    changed = tree;
+    changed.finalizers.front().enclosure = StmtId{static_cast<std::uint32_t>(tree.statements.size())};
+    reject(changed);
+    const auto outer = std::get<TryStmt>(tree.statements[tree.children[block.first_child + 1].value].statement);
+    const auto finalizer = std::get<BlockStmt>(tree.statements[outer.finalizer->value].statement);
+    const auto route_id = tree.children[finalizer.first_child];
+    changed = tree;
+    auto& route = std::get<IfStmt>(changed.statements[route_id.value].statement);
+    std::swap(route.consequent, *route.alternate);
+    reject(changed); // Both copies look alike but retain different operation IDs.
+    changed = tree;
+    for (auto& node : changed.expressions)
+      if (auto* assignment = std::get_if<AssignmentExpr>(&node.expression))
+        if (const auto* target = std::get_if<SymbolTarget>(&assignment->target);
+            target && target->symbol == declaration.symbol)
+          changed.expressions[assignment->value.value].expression = TreeLiteral{BooleanLiteral{false}};
+    reject(changed); // Catch must route the exceptional cleanup occurrence.
   }
+  if (expected_completions && expected_completions->regions == 0)
+    test::Check(tree.finalizers.empty());
   if (evaluation.cells) {
     std::size_t locals = 0;
     for (std::size_t i = 0; i < tree.symbols.size(); ++i) {
@@ -443,7 +486,7 @@ void FinallyChain(abc::ProfileId profile, std::ostream* output, std::uint32_t co
   abc::TryRegion region; region.offset = {0}; region.length = 4; region.handler_count = 1;
   abc::CatchHandler handler; handler.offset = {catch_pc}; handler.length = static_cast<std::uint32_t>(bytes.size()) - catch_pc;
   body.tries = {region}; body.handlers = {handler};
-  Emit(body, profile, 2, 3, false, output, {}, 0, false, ExpectedCompletion{1, count}, stage);
+  Emit(body, profile, 2, 3, false, output, {}, 0, true, ExpectedCompletion{1, count}, stage);
 }
 }
 int main(int argc, char** argv) {
@@ -457,12 +500,11 @@ int main(int argc, char** argv) {
     }
     std::cout << "];\n"; return 0;
   }
-  if (argc == 2 && (std::string_view(argv[1]) == "--finally-return" ||
-      std::string_view(argv[1]) == "--finally-expanded")) {
+  if (argc == 2 && std::string_view(argv[1]) == "--finally-return") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                               abc::ProfileId::kDynamic1301})
-      FinallyReturn(profile, std::string_view(argv[1]) == "--finally-return", &std::cout);
+      FinallyReturn(profile, true, &std::cout);
     std::cout << "];\n"; return 0;
   }
   if (argc == 2 && std::string_view(argv[1]) == "--nested-outer") {
@@ -518,7 +560,7 @@ int main(int argc, char** argv) {
     NestedOuterTransfer(profile, true, nullptr);
     HandlerOuterTransfer(profile, false, nullptr);
     HandlerOuterTransfer(profile, true, nullptr);
-    FinallyReturn(profile, false, nullptr);
+    FinallyReturn(profile, true, nullptr);
     FinallyChain(profile, nullptr);
     for (const auto variant : {CleanupVariant::kDifferentCallee, CleanupVariant::kLateReturn,
         CleanupVariant::kExtraCall, CleanupVariant::kWrongRethrow}) FinallyReturn(profile, false, nullptr, variant);

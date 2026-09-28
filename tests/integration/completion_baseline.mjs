@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
-// This deliberately verifies the expanded control-flow baseline, NOT finally
-// recovery. --finally-return separately requires a real finalizer AST node.
-const source = execFileSync(process.argv[2], ['--finally-expanded'], {encoding: 'utf8', timeout: 60_000});
+// The producer requires a real finalizer AST and fresh operation correspondence.
+// Execute only complete generated source, never hand-written recovery output.
+const source = execFileSync(process.argv[2], ['--finally-return'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!source.includes('INCOMPLETE'));
 const {functions} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 assert.equal(functions.length, 3);

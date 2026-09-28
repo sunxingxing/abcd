@@ -51,13 +51,32 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 首条真实 finalizer 源码通路已接入：共同 TreeBuilder 消费 CompletionPlan，
+  将已固定的 return/rethrow 放入外层 try，在真正的 `TryStmt.finalizer` 中执行
+  原 cleanup。每次进入块时初始化私有布尔状态，catch 标记异常路径；当前保留
+  正常/异常两份 cleanup 的 SSA 节点和 PC，不提前去重，也不把 cleanup 放回
+  原 catch 的保护范围。Printer 未增加控制推断或专项 writer，直接打印普通 AST。
+  TreeFlow 以临时语句序列投影核对原路径，原操作、边复制、表达式和来源继续
+  使用共同检查；侧表仅关联 TryId 与 enclosure，不是输出许可或发布 token。
+  不满足 payload 可用性、直线 cleanup、语句放置等条件时保留展开源码。
+  `--finally-return` 已由 finalizer 数量 0 的 RED 转为三个 profile 的完整源码；
+  两次依赖调用的 cleanup 链也输出 finalizer。生成 JS 对照覆盖 pending
+  undefined/null/-0/NaN/BigInt/Symbol/object 身份、正常/抛出、第一/第二次
+  cleanup 抛错覆盖、调用顺序和 receiver；私有状态名避让输入名字表的已有拼写。
+  错误状态初始化/写入、cleanup 分支对调、缺失/重复/越界关联均被拒绝。
+  定向构建成功，相关 **15/15** CTest 通过（含原异常循环、外层跳转、闭包及部分
+  文件输出），日志 `/tmp/abcd-finalizer-final-build.log`、
+  `/tmp/abcd-finalizer-final-tests.log`。未运行全量测试、语料、RSS 或基准。
+  **C05 未完成**：cleanup 去重、hole/guard 编译器脚手架、break/continue、
+  completion 覆盖/嵌套与动态环境 cleanup 仍需继续；200/201/402 仍仅有前一轮
+  completion 分析级证据，不能据此声称长链完整源码通过。
 - C05 首项 completion 分析已有生产实现 `completion_plan.h/.cc`：类型区分
   Normal（empty 与 JS 值分开）、Return、Throw、Break、Continue；当前实际识别
   return/rethrow 两条直线 cleanup 路径。比较 typed operations、参数/receiver
   角色、SSA 值及内部结果对应、副作用和异常 handler，确认 pending return 在
   cleanup 前可用、异常出口保持原 catch payload。复制身份解析有缓存，不能因
   catch snapshot 在表达式层未被别名消除而漏掉它的值身份；原图/复制绑定未改写。
-  目前仍是供树消费的分析结果，**尚未接入 finalizer AST 构建**，没有新增发布 token。
+  该提交当时仍是供树消费的分析结果，尚未接入 finalizer AST；后续接入见上条。
   三个 profiles 的单调用/依赖结果的 cleanup 链识别通过；不同 callee、cleanup
   才产生返回值、异常路径多一次调用、错误重抛 payload 均不合并，展开源码行为
   同时对照通过。已有循环/异常组合也调用该分析，未支持形态保留原控制方案。

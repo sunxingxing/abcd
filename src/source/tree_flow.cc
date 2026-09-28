@@ -4,6 +4,7 @@
 #include <new>
 #include <stdexcept>
 
+#include "completion_tree.h"
 #include "exception_tree.h"
 #include "tree_checks.h"
 #include "tree_edge_flow.h"
@@ -21,9 +22,10 @@ class FlowCheck {
  public:
   FlowCheck(const analysis::ValueProgram& graph, const ControlPlan& control,
       const EvaluationPlan& evaluation, const FunctionTree& tree,
-      TreeCheckBudget& budget, const ExceptionTreeInput* exceptions = nullptr)
+      TreeCheckBudget& budget, const CompletionTreeView& sequences,
+      const ExceptionTreeInput* exceptions = nullptr)
       : graph_(graph), control_(control), evaluation_(evaluation), tree_(tree), budget_(budget),
-        exceptions_(exceptions) {
+        exceptions_(exceptions), sequences_(sequences) {
     budget.Array(placements_, graph.ops.size());
     budget.Array(flow_.expressions, graph.ops.size());
     budget.Array(flow_.statements, graph.ops.size());
@@ -41,7 +43,11 @@ class FlowCheck {
     }
     budget.Array(flow_.controls, control.nodes.size() -
         (exceptions ? exceptions->control.units.size() : graph.blocks.size()));
-    edges_.emplace(graph, evaluation, tree, flow_, declared_, assigned_, budget);
+    edges_.emplace(graph, evaluation, tree, flow_, declared_, assigned_, budget, sequences);
+    for (const auto symbol : sequences.Symbols()) {
+      Require(!declared_[symbol.value], Error::kPlacement);
+      declared_[symbol.value] = assigned_[symbol.value] = 1;
+    }
   }
   TreeFlow Run() {
     IndexPlacements();
@@ -51,13 +57,13 @@ class FlowCheck {
     ModuleAliases();
     auto first_child = Declarations();
     edges_->Consume(analysis::MethodEntryKey{},
-        std::get<BlockStmt>(tree_.statements[tree_.body.value].statement), first_child);
+        sequences_.Block(tree_.body), first_child);
     std::size_t pending = 1;
     tasks_[0] = {control_.entry, tree_.body, first_child};
     while (pending != 0) {
       budget_.Step();
       auto region = tasks_[--pending];
-      const auto& block = std::get<BlockStmt>(tree_.statements[region.block.value].statement);
+      const auto& block = sequences_.Block(region.block);
       auto child = region.first_child;
       std::optional<ControlId> cursor = region.entry;
       while (cursor) {
@@ -117,13 +123,13 @@ class FlowCheck {
               evaluation_.operations[id.value].kind == EvaluationKind::kAlias) {
             const auto* anchor = std::get_if<AnchorId>(&placement);
             Require(anchor != nullptr, Error::kPlacement);
-            const auto* boundary = std::get_if<BlockBoundary>(&tree_.anchors[anchor->value].position);
+            const auto* boundary = std::get_if<BlockBoundary>(&sequences_.Anchor(*anchor));
             Require(boundary && boundary->block == region.block && boundary->index == child, Error::kSequence);
             if (IsEnvironmentState(op.operation)) CellDeclarations(id, block, child);
             continue;
           }
           Require(child < block.child_count, Error::kSequence);
-          const auto statement = tree_.children[block.first_child + child++];
+          const auto statement = sequences_.Child(block.first_child + child++);
           flow_.statements[id.value] = statement;
           const auto& syntax = tree_.statements[statement.value].statement;
           if (std::holds_alternative<analysis::ValueBranch>(op.operation)) {
@@ -200,6 +206,7 @@ class FlowCheck {
         budget_.Step(); Require(statement.has_value(), Error::kControl);
       }
     }
+    sequences_.Finish(flow_, budget_);
     flow_.value_revision = graph_.revision;
     flow_.cfg_revision = graph_.cfg_revision;
     flow_.allocated_bytes = budget_.Bytes();
@@ -211,7 +218,7 @@ class FlowCheck {
   void Try(analysis::TryId id, const BlockStmt& parent, std::uint32_t& child,
       std::size_t& pending) {
     Require(child < parent.child_count && !flow_.tries[id.value], Error::kSequence);
-    const auto statement = tree_.children[parent.first_child + child++];
+    const auto statement = sequences_.Child(parent.first_child + child++);
     const auto& node = tree_.statements[statement.value];
     const auto* syntax = std::get_if<TryStmt>(&node.statement);
     const auto* origin = std::get_if<TryOrigin>(&tree_.origins[node.origin.value]);
@@ -222,13 +229,14 @@ class FlowCheck {
     Require(region.binding.has_value(), Error::kPlacement);
     const auto parameter = syntax->handler->parameter;
     const auto& symbol = tree_.symbols[parameter.value];
-    const auto& body = std::get<BlockStmt>(tree_.statements[syntax->body.value].statement);
-    const auto& handler = std::get<BlockStmt>(tree_.statements[syntax->handler->body.value].statement);
+    const auto& body = sequences_.Block(syntax->body);
+    const auto& handler = sequences_.Block(syntax->handler->body);
+    const auto parent_scope = sequences_.TryParent(statement, parent.scope);
     Require(tree_.statements[syntax->body.value].origin == node.origin &&
         tree_.statements[syntax->handler->body.value].origin == node.origin &&
-        tree_.scopes[body.scope.value].parent == parent.scope &&
+        tree_.scopes[body.scope.value].parent == parent_scope &&
         tree_.scopes[body.scope.value].kind == ScopeKind::kBlock &&
-        tree_.scopes[handler.scope.value].parent == parent.scope &&
+        tree_.scopes[handler.scope.value].parent == parent_scope &&
         tree_.scopes[handler.scope.value].kind == ScopeKind::kCatch &&
         symbol.scope == handler.scope && symbol.kind == BindingKind::kCatchParameter &&
         symbol.declaration == DeclarationKind::kCatchParameter && !symbol.temporary &&
@@ -295,7 +303,7 @@ class FlowCheck {
       const auto* local = std::get_if<AllocatedCell>(&cell->storage);
       if (!local || local->allocation != allocation) break;
       Require(child < block.child_count, Error::kSequence);
-      const auto& statement = tree_.statements[tree_.children[block.first_child + child++].value];
+      const auto& statement = tree_.statements[sequences_.Child(block.first_child + child++).value];
       const auto* declaration = std::get_if<DeclarationStmt>(&statement.statement);
       Require(declaration && !declaration->initializer &&
           statement.origin.value == graph_.ops[allocation.value].origin.value, Error::kPlacement);
@@ -354,7 +362,7 @@ class FlowCheck {
   void Loop(ControlId id, const BlockStmt& block, std::uint32_t& child,
       std::size_t& pending) {
     Require(child < block.child_count, Error::kSequence);
-    const auto statement = tree_.children[block.first_child + child++];
+    const auto statement = sequences_.Child(block.first_child + child++);
     const auto& syntax = tree_.statements[statement.value];
     const auto& node = control_.nodes[id.value];
     const auto first = exceptions_ ? exceptions_->control.units.size() : graph_.blocks.size();
@@ -484,11 +492,11 @@ class FlowCheck {
     }
   }
   std::uint32_t Declarations() {
-    const auto& block = std::get<BlockStmt>(tree_.statements[tree_.body.value].statement);
+    const auto& block = sequences_.Block(tree_.body);
     std::uint32_t count = 0;
     while (count < block.child_count) {
       budget_.Step();
-      const auto id = tree_.children[block.first_child + count];
+      const auto id = sequences_.Child(block.first_child + count);
       const auto* declaration = std::get_if<DeclarationStmt>(&tree_.statements[id.value].statement);
       if (!declaration) break;
       const auto& symbol = tree_.symbols[declaration->symbol.value];
@@ -532,7 +540,7 @@ class FlowCheck {
   void Arm(std::optional<ControlId> first, StmtId block, TreeOriginId origin,
       analysis::EdgeId edge, std::size_t& pending) {
     Require(tree_.statements[block.value].origin == origin, Error::kPlacement);
-    const auto& syntax = std::get<BlockStmt>(tree_.statements[block.value].statement);
+    const auto& syntax = sequences_.Block(block);
     std::uint32_t child = 0;
     edges_->Consume(edge, syntax, child);
     if (!first) { Require(child == syntax.child_count, Error::kSequence); return; }
@@ -546,6 +554,7 @@ class FlowCheck {
   const FunctionTree& tree_;
   TreeCheckBudget& budget_;
   const ExceptionTreeInput* exceptions_;
+  const CompletionTreeView& sequences_;
   TreeFlow flow_;
   std::vector<std::optional<std::size_t>> placements_;
   std::vector<std::uint8_t> assigned_;
@@ -602,7 +611,20 @@ std::variant<TreeFlow, TreeFlowError> VerifyFlow(
     }
     checked.Step(std::get<std::uint64_t>(effects));
     checked.Admit(1, sizeof(FlowCheck));
-    return FlowCheck(graph, control, evaluation, tree, checked, exceptions).Run();
+    CompletionPlan completions;
+    if (!tree.finalizers.empty()) {
+      Require(exceptions != nullptr, Error::kControl);
+      auto result = BuildCompletionPlan(graph, exceptions->regions, exceptions->control,
+          evaluation, checked.Remaining());
+      if (const auto* error = std::get_if<CompletionError>(&result)) {
+        if (*error == CompletionError::kWorkLimit) return Error::kWorkLimit;
+        if (*error == CompletionError::kResourceLimit) return Error::kResourceLimit;
+        return Error::kControl;
+      }
+      completions = std::get<CompletionPlan>(std::move(result));
+    }
+    const CompletionTreeView sequences(tree, completions, checked);
+    return FlowCheck(graph, control, evaluation, tree, checked, sequences, exceptions).Run();
   } catch (Error error) { return error;
   } catch (TreeStructureError error) {
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;

@@ -20,7 +20,7 @@ bool ValidTemporary(TemporaryReason reason) {
     case TemporaryReason::kPhiJoin: case TemporaryReason::kParallelCopyCycle:
     case TemporaryReason::kCrossRegionValue: case TemporaryReason::kReferenceSnapshot:
     case TemporaryReason::kUnprovedInline: case TemporaryReason::kPredicateSnapshot:
-    case TemporaryReason::kExceptionSnapshot:
+    case TemporaryReason::kExceptionSnapshot: case TemporaryReason::kPendingCompletion:
       return true;
   }
   return false;

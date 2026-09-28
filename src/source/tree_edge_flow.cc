@@ -1,4 +1,5 @@
 #include "tree_edge_flow.h"
+#include "completion_tree.h"
 
 namespace abcd::source {
 namespace {
@@ -8,8 +9,8 @@ void Require(bool condition, TreeFlowError error) { if (!condition) throw error;
 TreeEdgeFlow::TreeEdgeFlow(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, const FunctionTree& tree, TreeFlow& flow,
     std::vector<std::uint8_t>& declared, std::vector<std::uint8_t>& assigned,
-    TreeCheckBudget& budget)
-    : graph_(graph), evaluation_(evaluation), tree_(tree), flow_(flow),
+    TreeCheckBudget& budget, const CompletionTreeView& sequences)
+    : graph_(graph), evaluation_(evaluation), tree_(tree), sequences_(sequences), flow_(flow),
       declared_(declared), assigned_(assigned), budget_(budget) {
   if (!evaluation.phis) return;
   budget.Array(flow.phis, graph.values.size());
@@ -118,7 +119,7 @@ bool TreeEdgeFlow::HasCopies(analysis::EdgeId edge) const {
 ExprId TreeEdgeFlow::Assignment(analysis::IncomingKey incoming, const BlockStmt& block,
     std::uint32_t& child) {
   Require(child < block.child_count, TreeFlowError::kSequence);
-  const auto& statement = tree_.statements[tree_.children[block.first_child + child++].value];
+  const auto& statement = tree_.statements[sequences_.Child(block.first_child + child++).value];
   const auto* expression = std::get_if<ExpressionStmt>(&statement.statement);
   Require(expression != nullptr, TreeFlowError::kSequence);
   const auto& node = tree_.expressions[expression->expression.value];
