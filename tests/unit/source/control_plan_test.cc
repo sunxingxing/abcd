@@ -166,6 +166,19 @@ void LinearExitCorridors() {
     Check(plan && plan->loops.size() == 1 && plan->loops[0].exit == analysis::WorkBlockId{exit});
     Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(graph, *plan)));
   }
+  for (const std::uint32_t length : {1U, 200U, 201U, 402U}) {
+    const auto inner_exit = length + 4, outer_exit = inner_exit + 1;
+    std::vector<Targets> targets(outer_exit + 1);
+    targets[0] = {1, outer_exit}; targets[1] = {2, inner_exit};
+    targets[2] = {3, 4}; targets[3] = {1, {}};
+    for (std::uint32_t node = 4; node < inner_exit; ++node) targets[node] = {node + 1, {}};
+    targets[inner_exit] = {0, {}};
+    const auto graph = Graph(targets);
+    const auto built = BuildControlPlan(graph);
+    const auto* plan = std::get_if<ControlPlan>(&built);
+    Check(plan && plan->loops.size() == 2);
+    Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(graph, *plan)));
+  }
   // Branching exit subgraphs need a more general ownership proof, not this
   // linear corridor rule. Keep the unsupported boundary explicit.
   const std::array<Targets, 7> branching{{{1, 6}, {2, 3}, {0, {}}, {4, 5}, {6, {}}, {6, {}}, {}}};

@@ -1,6 +1,45 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
+const outerTransferSource = execFileSync(process.argv[2], ['--finally-outer-transfer'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!outerTransferSource.includes('INCOMPLETE'));
+const {functions: outerTransfers} = await import(`data:text/javascript;base64,${Buffer.from(outerTransferSource).toString('base64')}`);
+assert.equal(outerTransfers.length, 6);
+for (const [index, fn] of outerTransfers.entries()) for (const outerCount of [0, 1, 3]) {
+  for (const innerCount of [0, 1, 2]) for (const choice of [0, 1]) {
+    for (const runThrows of [false, true]) for (const cleanupThrows of [false, true]) {
+      const stop = index % 2 === 1, log = [], errors = [{}, {}], value = {};
+      let outer = 0, inner = 0, returned, thrown, didThrow = false;
+      try {
+        returned = fn(function () {
+          assert.equal(this, undefined); log.push('outer'); inner = 0;
+          assert.ok(outer <= outerCount); return outer++ < outerCount;
+        }, function () {
+          assert.equal(this, undefined); log.push('inner');
+          assert.ok(inner <= innerCount); return inner++ < innerCount;
+        }, function () { assert.equal(this, undefined); log.push('run'); if (runThrows) throw errors[0]; },
+        function () { assert.equal(this, undefined); log.push('cleanup'); if (cleanupThrows) throw errors[1]; },
+        function () { assert.equal(this, undefined); log.push('after'); return value; }, choice);
+      } catch (error) { didThrow = true; thrown = error; }
+      const expected = []; let failed = false;
+      outerLoop: for (let o = 0; ; ++o) {
+        expected.push('outer'); if (o === outerCount) break;
+        for (let i = 0; ; ++i) {
+          expected.push('inner'); if (i === innerCount) break;
+          if (!choice) continue;
+          expected.push('run', 'cleanup');
+          if (runThrows || cleanupThrows) { failed = true; break outerLoop; }
+          if (stop) break outerLoop;
+          continue outerLoop;
+        }
+      }
+      if (!failed) expected.push('after');
+      assert.deepEqual(log, expected); assert.equal(didThrow, failed);
+      assert.equal(didThrow ? thrown : returned, failed ? errors[cleanupThrows ? 1 : 0] : value);
+    }
+  }
+}
+
 const transferSource = execFileSync(process.argv[2], ['--finally-transfer'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!transferSource.includes('INCOMPLETE'));
 const {functions: transfers} = await import(`data:text/javascript;base64,${Buffer.from(transferSource).toString('base64')}`);

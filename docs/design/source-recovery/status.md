@@ -51,6 +51,16 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C05 已贯通 cleanup 后带外层标签的 break/continue：双重循环夹具先复现
+  kLoopExits，退出路径归属由最外层限定扩展为 child-before-parent 顺序处理，
+  Euler 区间只允许吸收无归属/祖先归属的线性路径，禁止进入同层或子循环。
+  仍为共同循环层；每节点最多改变一次归属，不按嵌套深度反复扫描同一路径。
+  三 profile 共 6 个完整解码夹具生成真实 finally 与外层标签，执行两层零/一/多次
+  循环、跳过分支、run/cleanup 异常组合，检查目标、精确顺序和异常取消跳转。
+  普通控制图另覆盖嵌套 1/200/201/402 节点线性退出路径；关联构建与定向 15/15
+  通过，日志 `/tmp/abcd-finalizer-outer-final-build.log` 与
+  `/tmp/abcd-finalizer-outer-final-tests.log`。尚不支持有分支的退出子图，也不代表
+  finally 内覆盖 break/continue 或所有动态捕获组合完成。未运行全量语料、测试、RSS。
 - C05 已贯通 cleanup 后 break/continue 的循环组合：continue 原路径已能恢复；
   break 夹具先在共享循环结构化报 kLoopExits。原因是自然循环不含只通向出口的
   try/cleanup 路径。新增共同线性退出路径归属步骤，由正常/异常投影共用，原图边
