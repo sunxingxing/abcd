@@ -5,6 +5,7 @@
 #include <type_traits>
 #include "abcd/analysis/exception_modules.h"
 #include "abcd/analysis/exception_locals.h"
+#include "abcd/analysis/exception_captures.h"
 #include "module_aliases.h"
 
 namespace abcd::source {
@@ -111,7 +112,7 @@ std::uint64_t PhasedBody::Work() const { return storage_->work; }
 
 std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     const FunctionContext& context, const abc::MethodBody& body, analysis::SemanticBudget budget,
-    const PhasedModuleBinding* binding) {
+    const PhasedModuleBinding* binding, analysis::CapturedValues capture_mode) {
   using namespace analysis;
   try {
     // Recovered scopes/snapshots can allocate at different VM locations.
@@ -149,13 +150,21 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
           quota.Remaining()), Error::kValues);
       quota.Admit(locals->AllocatedBytes()); quota.Step(locals->plan.work_units);
     }
+    std::optional<ExceptionCaptures> captures;
+    if (capture_mode == CapturedValues::kLanguage) {
+      captures = PhaseResult<ExceptionCaptures>(PlanExceptionCaptures(flow, environments,
+          quota.Remaining()), Error::kValues);
+      quota.Admit(captures->AllocatedBytes()); quota.Step(captures->work_units);
+    } else if (capture_mode != CapturedValues::kReject) return Error::kValues;
     std::vector<ExceptionLoadFact> loads;
-    const auto load_count = modules.loads.size() + (locals ? locals->loads.size() : 0);
+    const auto load_count = modules.loads.size() + (locals ? locals->loads.size() : 0) +
+        (captures ? captures->loads.size() : 0);
     quota.Admit(load_count, sizeof(ExceptionLoadFact)); loads.reserve(load_count);
     quota.Admit(loads.capacity() - load_count, sizeof(ExceptionLoadFact));
     quota.Step(load_count);
     loads.insert(loads.end(), modules.loads.begin(), modules.loads.end());
     if (locals) loads.insert(loads.end(), locals->loads.begin(), locals->loads.end());
+    if (captures) loads.insert(loads.end(), captures->loads.begin(), captures->loads.end());
     std::vector<EntryValueFact> entries;
     quota.Admit(ssa.Values().size(), sizeof(EntryValueFact));
     entries.reserve(ssa.Values().size());
@@ -172,7 +181,9 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     // Preserve its source correspondence below before any evaluation/publication.
     // Local load facts require completed-store dominance. EVERY store is
     // validated below, including exceptional paths; these are not assumptions
-    // about captured/incoming cells or default undefined initialization.
+    // about default undefined initialization. Conditional captured loads retain
+    // their original occurrences in FilePhasedFunction; each parent must bind
+    // them to initialized cells and complete-family writes close that premise.
     auto values = PhaseResult<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
         value_work, {quota.Remaining().bytes}, PendingExceptions(context.Identity().contract), loads, {},
         NormalCallResults(context.Identity().contract)), Error::kValues);

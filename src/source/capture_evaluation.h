@@ -21,7 +21,7 @@ using CaptureEvaluationFailure = std::variant<CaptureCellError, CaptureEvaluatio
 // metadata or transitive writes. An outward capture is never silently dropped.
 [[nodiscard]] std::variant<CapturedFunctionBinding, CaptureEvaluationFailure>
 BindCaptureEvaluation(const abc::MetadataIndex& index, CaptureFunction parent,
-    CaptureFunction child, analysis::InstructionId site,
+    CaptureChild child, analysis::InstructionId site,
     const analysis::CreationBinding& creation, const CaptureCells& cells,
     FunctionOwnerId parent_owner, FunctionOwnerId child_owner,
     analysis::SemanticBudget budget = {});

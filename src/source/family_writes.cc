@@ -56,10 +56,9 @@ class WriteCheck {
         const auto& edge = *source.incoming;
         const auto p = edge.parent.value;
         const auto parent = Member(p);
-        const auto* child = std::get_if<CaptureFunction>(&source.function);
-        Require(child != nullptr, Error::kCapture);
+        const auto child = Child(source);
         const auto checked = std::visit([&](const auto& occurrence) {
-          return Capture(parent, *child, occurrence, *target.incoming, p);
+          return Capture(parent, child, occurrence, *target.incoming, p);
         }, edge.occurrence);
         if (const auto* error = std::get_if<CaptureCellError>(&checked))
           Fail(*error == CaptureCellError::kResourceLimit ? Error::kResourceLimit :
@@ -116,7 +115,7 @@ class WriteCheck {
       }
       if (const auto* phase = member.function.Phase()) {
         Require(lookup_ != nullptr, Error::kOwner);
-        return {PhasedFamilyInput{phase->Phases(), phase->Body(), phase->Locals(), *lookup_}, edge, member.objects};
+        return {PhasedFamilyInput{phase->Phases(), phase->Body(), phase->Locals(), *lookup_, phase}, edge, member.objects};
       }
       return {CaptureFunction{member.function.Normal().input, member.function.Normal().values}, edge, member.objects};
     }
@@ -151,14 +150,21 @@ class WriteCheck {
       Step(); Require(!std::holds_alternative<analysis::CapturedDepth>(binding.binding.environment), Error::kCapture);
     }
   }
-  std::variant<std::uint64_t, CaptureCellError> Capture(const FamilyWriteInput& source, CaptureFunction child,
+  CaptureChild Child(const FamilyWriteInput& source) const {
+    if (const auto* normal = std::get_if<CaptureFunction>(&source.function)) return *normal;
+    const auto& phase = std::get<PhasedFamilyInput>(source.function);
+    Require(phase.owner && &phase.owner->Phases() == &phase.function &&
+        &phase.owner->Body() == &phase.body && &phase.owner->Locals() == &phase.locals, Error::kOwner);
+    return *phase.owner;
+  }
+  std::variant<std::uint64_t, CaptureCellError> Capture(const FamilyWriteInput& source, CaptureChild child,
       const NormalWriteEdge& edge, const CaptureCells& cells, std::size_t parent) {
     const auto* normal = std::get_if<CaptureFunction>(&source.function);
     Require(normal != nullptr, Error::kCapture);
     Mark(parent, edge.site, Barrier::kFunction);
     return VerifyCaptureCells(index_, *normal, child, edge.site, edge.creation, cells, left_);
   }
-  std::variant<std::uint64_t, CaptureCellError> Capture(const FamilyWriteInput& source, CaptureFunction child,
+  std::variant<std::uint64_t, CaptureCellError> Capture(const FamilyWriteInput& source, CaptureChild child,
       const PhasedWriteEdge& edge, const CaptureCells& cells, std::size_t parent) {
     const auto* phase = std::get_if<PhasedFamilyInput>(&source.function);
     Require(phase != nullptr, Error::kCapture);

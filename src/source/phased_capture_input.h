@@ -1,7 +1,7 @@
 #ifndef ABCD_SOURCE_PHASED_CAPTURE_INPUT_H_
 #define ABCD_SOURCE_PHASED_CAPTURE_INPUT_H_
 
-#include "function_input.h"
+#include "capture_input.h"
 #include "phased_creations.h"
 
 namespace abcd::source {
@@ -13,12 +13,12 @@ namespace abcd::source {
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
-    const FunctionInput& child, const FunctionContext& owner, analysis::SemanticBudget budget = {});
+    CaptureInput child, const FunctionContext& owner, analysis::SemanticBudget budget = {});
 [[nodiscard]] std::variant<std::uint64_t, CaptureError, InputBindingError> VerifyPhasedFunctionInputs(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
-    const FunctionInput& child, const FunctionContext& owner, const CapturePlan& plan,
+    CaptureInput child, const FunctionContext& owner, const CapturePlan& plan,
     analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

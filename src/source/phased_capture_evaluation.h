@@ -12,7 +12,7 @@ namespace abcd::source {
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
-    CaptureFunction child, const FunctionContext& owner, const CaptureCells& cells,
+    CaptureChild child, const FunctionContext& owner, const CaptureCells& cells,
     FunctionOwnerId parent_owner, FunctionOwnerId child_owner, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

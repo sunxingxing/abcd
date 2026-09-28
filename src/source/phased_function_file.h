@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_PHASED_FUNCTION_FILE_H_
 
 #include "phased_body.h"
+#include "function_input.h"
 #include "abcd/analysis/exception_locals.h"
 
 namespace abcd::source {
@@ -23,11 +24,14 @@ class FilePhasedFunction {
   [[nodiscard]] static std::variant<FilePhasedFunction, PhasedFileFailure> Read(
       const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
       const FunctionContext& context, analysis::SemanticBudget budget = {},
-      const PhasedModuleBinding* modules = nullptr);
+      const PhasedModuleBinding* modules = nullptr, InputCaptureMode mode = InputCaptureMode::kClosed);
   const abc::MethodBody& Body() const;
   const PhasedBody& Phases() const;
   const analysis::ExceptionLocals& Locals() const;
   std::span<const analysis::InstructionId> Children() const;
+  InputCaptureMode Mode() const;
+  std::span<const CaptureUse> Captures() const;
+  std::span<const InputCaptureAccess> CaptureAccesses() const;
   bool MatchesOwner(const FunctionContext& context) const;
   abc::EntityOffset Record() const;
   std::size_t AllocatedBytes() const;

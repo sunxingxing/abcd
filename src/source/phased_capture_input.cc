@@ -9,7 +9,7 @@ std::variant<CheckedSite, CaptureError, InputBindingError> CheckSite(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent,
     const PhasedCreationSite& creation,
-    const FunctionInput& child, const FunctionContext& owner, analysis::SemanticBudget budget) {
+    CaptureInput child, const FunctionContext& owner, analysis::SemanticBudget budget) {
   const std::uint64_t owner_work = 1 + std::bit_width(index.methods.size());
   if (budget.work < owner_work) return CaptureError::kWorkLimit;
   if (parent.Identity() != child.Identity() || !child.MatchesOwner(owner)) return InputBindingError::kIdentity;
@@ -41,7 +41,7 @@ InputBindingResult BindPhasedFunctionInputs(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
-    const FunctionInput& child, const FunctionContext& owner, analysis::SemanticBudget budget) {
+    CaptureInput child, const FunctionContext& owner, analysis::SemanticBudget budget) {
   const auto checked = CheckSite(index, lookup, parent, creation, child, owner, budget);
   if (const auto* error = std::get_if<CaptureError>(&checked)) return *error;
   if (const auto* error = std::get_if<InputBindingError>(&checked)) return *error;
@@ -58,7 +58,7 @@ std::variant<std::uint64_t, CaptureError, InputBindingError> VerifyPhasedFunctio
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
-    const FunctionInput& child, const FunctionContext& owner, const CapturePlan& plan,
+    CaptureInput child, const FunctionContext& owner, const CapturePlan& plan,
     analysis::SemanticBudget budget) {
   const auto checked = CheckSite(index, lookup, parent, creation, child, owner, budget);
   if (const auto* error = std::get_if<CaptureError>(&checked)) return *error;

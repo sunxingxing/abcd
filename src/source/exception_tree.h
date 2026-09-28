@@ -47,6 +47,6 @@ struct ExceptionFunctionDraft {
 BuildExceptionFunctionDraft(const analysis::ValueProgram& graph,
     const ExceptionTreeInput& exceptions, const EvaluationPlan& evaluation,
     FunctionSyntax syntax, ExpressionConstants constants,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {}, const IncomingCaptureTree* incoming = nullptr);
 }  // namespace abcd::source
 #endif

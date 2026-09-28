@@ -18,11 +18,11 @@ struct CaptureParent {
   ScopeFacts scopes;
 };
 [[nodiscard]] std::variant<CaptureCells, CaptureCellError> BindCaptureTargets(
-    CaptureParent parent, CaptureFunction child, analysis::InstructionId site,
+    CaptureParent parent, CaptureChild child, analysis::InstructionId site,
     const analysis::CreationBinding& creation, CapturePlan input,
     analysis::SemanticBudget budget = {});
 [[nodiscard]] std::variant<std::uint64_t, CaptureCellError> VerifyCaptureTargets(
-    CaptureParent parent, CaptureFunction child, analysis::InstructionId site,
+    CaptureParent parent, CaptureChild child, analysis::InstructionId site,
     const analysis::CreationBinding& creation, const CaptureCells& plan,
     analysis::SemanticBudget budget = {});
 }  // namespace abcd::source

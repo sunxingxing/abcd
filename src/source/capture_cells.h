@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_CAPTURE_CELLS_H_
 
 #include "function_values.h"
+#include "capture_input.h"
 
 namespace abcd::source {
 struct ParentCell {
@@ -22,6 +23,19 @@ using CaptureTarget = std::variant<ParentCell, OuterCell>;
 struct CaptureFunction {
   const FunctionInput& input;
   const FunctionValues& values;
+};
+class CaptureChild {
+ public:
+  CaptureChild(CaptureFunction function) : function_(function) {}
+  CaptureChild(const FunctionInput& input, const FunctionValues& values) : function_(CaptureFunction{input, values}) {}
+  CaptureChild(const FilePhasedFunction& function) : function_(&function) {}
+  CaptureInput Input() const;
+  const analysis::ValueProgram& Graph() const;
+  const analysis::ValueEnvironments* Environments() const;
+  const CellPlan* Cells() const;
+  bool MatchesInput() const;
+ private:
+  std::variant<CaptureFunction, const FilePhasedFunction*> function_;
 };
 struct CaptureCellBinding {
   CellId child;
@@ -51,13 +65,13 @@ enum class CaptureCellError : std::uint8_t {
 // One genuine same-file resolved creation. Per-function plans are prepared
 // once, not rebuilt per creation. Same target at two sites produces two plans.
 [[nodiscard]] std::variant<CaptureCells, CaptureCellError> BindCaptureCells(
-    const abc::MetadataIndex& index, CaptureFunction parent, CaptureFunction child,
+    const abc::MetadataIndex& index, CaptureFunction parent, CaptureChild child,
     analysis::InstructionId site, const analysis::CreationBinding& creation,
     analysis::SemanticBudget budget = {});
 // Checks the supplied cell map against WORKING creation topology and ORIGINAL
 // initialized capture occurrences. Does not rebuild BindCaptureCells.
 [[nodiscard]] std::variant<std::uint64_t, CaptureCellError> VerifyCaptureCells(
-    const abc::MetadataIndex& index, CaptureFunction parent, CaptureFunction child,
+    const abc::MetadataIndex& index, CaptureFunction parent, CaptureChild child,
     analysis::InstructionId site, const analysis::CreationBinding& creation,
     const CaptureCells& plan, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source

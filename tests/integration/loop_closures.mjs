@@ -4,13 +4,14 @@ import {execFileSync} from 'node:child_process';
 const source = execFileSync(process.argv[2], ['--emit'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!source.includes('INCOMPLETE'));
 const {functions} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
-assert.equal(functions.length, 6);
+assert.equal(functions.length, 18);
 // Hoisting the cell out of the loop, snapshotting the initial callable, or
 // losing the catch write all break these post-return identity assertions.
 for (const [index, capture] of functions.entries()) {
-const catchOnly = index % 2 === 1;
+const catchOnly = index % 3 === 1, normalParent = index % 3 === 2;
 for (const rounds of [0, 1, 2, 5]) {
   for (const failure of ['none', 'all', 'alternating']) {
+    if (normalParent && failure !== 'none') continue;
     const values = [undefined, Symbol('cell'), {cell: true}, -0, 3n];
     const getters = [], setters = [], expected = [];
     let next = 0, run = 0;
@@ -53,7 +54,11 @@ for (const rounds of [0, 1, 2, 5]) {
 }
 const saved = [], stop = {stop: true}, value = {value: true};
 let calls = 0;
-assert.throws(() => capture(() => true, () => { ++calls; throw value; }, (getter, setter) => {
+assert.throws(() => capture(() => true, () => {
+  ++calls;
+  if (normalParent) return value;
+  throw value;
+}, (getter, setter) => {
   saved.push({getter, setter});
   throw stop;
 }), error => error === stop);
@@ -62,4 +67,10 @@ assert.equal(saved.length, 1);
 assert.equal(saved[0].getter(), value);
 saved[0].setter(stop);
 assert.equal(saved[0].getter(), stop);
+if (normalParent) {
+  let collected = false;
+  assert.throws(() => capture(() => true, () => { throw value; }, () => { collected = true; }),
+    error => error === value);
+  assert.equal(collected, false);
+}
 }

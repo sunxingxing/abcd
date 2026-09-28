@@ -23,6 +23,7 @@ struct PhasedFamilyInput {
   const abc::MethodBody& body;
   const analysis::ExceptionLocals& locals;
   const abc::MethodLookup& lookup;
+  const FilePhasedFunction* owner = nullptr;
 };
 struct NormalWriteEdge {
   analysis::InstructionId site;
@@ -37,9 +38,9 @@ struct FamilyWriteEdge {
   std::variant<NormalWriteEdge, PhasedWriteEdge> occurrence;
 };
 // Borrowed, unchanged original owners and freshly verified working products.
-// Occurrence order matches ConstructedFamily. Phase parents currently admit
-// normal children only; nested phase children are a typed refusal, not a cast
-// to normal SSA. Phase locals must retain the explicit Language-write premise.
+// Occurrence order matches ConstructedFamily. Phase children retain their real
+// file owner for original capture occurrences, never a cast to normal SSA.
+// Phase locals must retain the explicit Language-write premise.
 struct FamilyWriteInput {
   std::variant<CaptureFunction, PhasedFamilyInput> function;
   std::optional<FamilyWriteEdge> incoming;

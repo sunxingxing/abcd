@@ -44,7 +44,7 @@ class FamilyTrees {
         const auto& input = function.Normal().input;
         Require(!input.HasOwner() || input.MatchesOwner(context), FamilyTreeError::kContext);
         Require(input.Proof().receiver == analysis::FrameReceiver::kUnknown || input.MatchesOwner(context), FamilyTreeError::kContext);
-      } else Require(i == 0 && lookup_ && phase->MatchesOwner(context), FamilyTreeError::kContext);
+      } else Require(lookup_ && phase->MatchesOwner(context), FamilyTreeError::kContext);
       const auto& graph = function.Graph();
       Require(context.Identity() == function.Identity() && context.Target() == function.Method(), FamilyTreeError::kContext);
       auto syntax = Take<ResolvedSyntax, SyntaxResolutionFailure>(ResolveFunctionSyntax(
@@ -83,7 +83,8 @@ class FamilyTrees {
       const auto& control = phase ? phase->Phases().Control() : *normal_control;
       const auto module_evaluations = aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{};
       auto evaluation = Take<EvaluationPlan, EvaluationError>(phase ?
-          BuildPhasedEvaluationPlan(graph, left_, IncomingCells::kReject, member.children, module_evaluations) :
+          BuildPhasedEvaluationPlan(graph, left_, i == 0 ? IncomingCells::kReject : IncomingCells::kConditional,
+              member.children, module_evaluations) :
           BuildEvaluationPlan(graph, left_, i == 0 ? IncomingCells::kReject : IncomingCells::kConditional,
               member.children, module_evaluations));
       Account(evaluation);
@@ -97,7 +98,8 @@ class FamilyTrees {
       auto constructed = [&]() -> ConstructedFunction {
         if (phase) {
           auto draft = Take<ExceptionFunctionDraft, FunctionTreeError>(BuildExceptionFunctionDraft(graph,
-              phase->Phases().TreeInput(phase->Body()), evaluation, std::move(syntax.syntax), constants, left_));
+              phase->Phases().TreeInput(phase->Body()), evaluation, std::move(syntax.syntax), constants, left_,
+              incoming ? &*incoming : nullptr));
           return {std::move(draft.tree), draft.allocated_bytes, draft.work};
         }
         return Take<ConstructedFunction, FunctionTreeError>(BuildFunctionTree(graph, control,
@@ -238,8 +240,7 @@ class FamilyTrees {
       Require(child.incoming.has_value() && child.incoming->parent.value < i, FamilyTreeError::kParent);
       auto& edge = *child.incoming;
       auto& parent = family.members[edge.parent.value];
-      Require(!child.function.Phase(), FamilyTreeError::kParent);
-      const CaptureFunction child_work{child.function.Normal().input, child.function.Normal().values};
+      const auto child_work = child.function.Capture();
       const auto* phase = parent.function.Phase();
       Require((phase != nullptr) == edge.phase_operation.has_value(), FamilyTreeError::kParent);
       std::optional<PhasedCreationSite> occurrence;

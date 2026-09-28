@@ -37,7 +37,7 @@ std::variant<CapturedFunctionBinding, CaptureEvaluationFailure> BindVerifiedCapt
 }
 }  // namespace
 std::variant<CapturedFunctionBinding, CaptureEvaluationFailure> BindCaptureEvaluation(
-    const abc::MetadataIndex& index, CaptureFunction parent, CaptureFunction child,
+    const abc::MetadataIndex& index, CaptureFunction parent, CaptureChild child,
     analysis::InstructionId site, const analysis::CreationBinding& creation,
     const CaptureCells& cells, FunctionOwnerId parent_owner,
     FunctionOwnerId child_owner, analysis::SemanticBudget budget) {
@@ -50,7 +50,7 @@ std::variant<CapturedFunctionBinding, CaptureEvaluationFailure> BindPhasedCaptur
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
-    CaptureFunction child, const FunctionContext& owner, const CaptureCells& cells,
+    CaptureChild child, const FunctionContext& owner, const CaptureCells& cells,
     FunctionOwnerId parent_owner, FunctionOwnerId child_owner, analysis::SemanticBudget budget) {
   if (parent_owner == child_owner) return CaptureEvaluationFailure{CaptureEvaluationError::kOwner};
   const auto checked = VerifyPhasedCaptureCells(index, lookup, parent, body, locals, creation, child, owner, cells, budget);

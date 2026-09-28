@@ -51,6 +51,18 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 
 ## 本次证据
 
+- C04 异常闭包子函数已接入共同文件族：`CaptureInput`/`CaptureChild` 借用普通或
+  phased 的真实输入，不伪造 normal SSA；保留异常读取的条件前提及原始读写 occurrence，
+  经共同 cell rebasing、捕获别名、异常 TreeFlow 和 family writes 检查进入同一 Printer。
+  移除文件族对子函数 try_count 的一律拒绝，正常父函数和异常父函数均可创建异常子函数。
+  `loop_closure_file_test` 的三种 profile、三种父函数形态、两种子函数形态共 18 个
+  完整生成函数通过 Node 行为对照：异常 getter 返回捕获值，异常 setter 在 catch 内
+  更新共享 cell，退出后读写仍保持同轮共享/跨轮隔离。缺失读取槽和 catch-only 写入槽
+  均保持 `CaptureCellError::kInput` 拒绝。反例曾误把槽位编码为捕获深度，现按 ISA
+  双 IMM4 布局修正，未放宽生产检查。重建后相关 11/11 定向测试通过。
+  本项仍是 file-backed Code + 合成元数据证据，不是完整应用/record 验收；不可达
+  handler、更多层级捕获与外层多出口仍待推进，C04 和总目标未完成。全量/RSS/DFX 未恢复。
+
 - C03/C04 逃逸闭包纵向证据：新增 `loop_closure_file_test` 和
   `loop_closure_source_test`，真实文件 Code/DEFINEFUNC + 合成元数据，经
   `InspectFamilyValues` → 共同函数族 AST → printer 生成完整源码。三种 profile

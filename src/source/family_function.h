@@ -19,6 +19,9 @@ class FamilyFunction {
   const RouteInputIdentity& Identity() const { return Phase() ? Phase()->Phases().Identity() : Normal().input.Identity(); }
   abc::EntityOffset Method() const { return Phase() ? Phase()->Phases().Target() : Normal().input.Method(); }
   abc::EntityOffset Record() const { return Phase() ? Phase()->Record() : Normal().input.Record(); }
+  CaptureChild Capture() const {
+    return Phase() ? CaptureChild{*Phase()} : CaptureChild{Normal().input, Normal().values};
+  }
   std::span<const analysis::InstructionId> Children() const { return Phase() ? Phase()->Children() : Normal().input.Children(); }
   std::span<const analysis::SemanticInstruction> Instructions() const {
     return Phase() ? std::span<const analysis::SemanticInstruction>(Phase()->Phases().TreeInput(Phase()->Body()).input.flow.instructions)

@@ -23,8 +23,8 @@ std::variant<CaptureCells, CaptureCellError> BindPhasedCaptureCells(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
-    CaptureFunction child, const FunctionContext& owner, analysis::SemanticBudget budget) {
-  auto bound = BindPhasedFunctionInputs(index, lookup, parent, body, locals, creation, child.input, owner, budget);
+    CaptureChild child, const FunctionContext& owner, analysis::SemanticBudget budget) {
+  auto bound = BindPhasedFunctionInputs(index, lookup, parent, body, locals, creation, child.Input(), owner, budget);
   if (const auto* error = std::get_if<CaptureError>(&bound)) return InputError(*error);
   if (std::holds_alternative<InputBindingError>(bound)) return CaptureCellError::kOwner;
   auto input = std::get<CapturePlan>(std::move(bound));
@@ -39,10 +39,10 @@ std::variant<std::uint64_t, CaptureCellError> VerifyPhasedCaptureCells(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
-    CaptureFunction child, const FunctionContext& owner, const CaptureCells& plan,
+    CaptureChild child, const FunctionContext& owner, const CaptureCells& plan,
     analysis::SemanticBudget budget) {
   const auto checked = VerifyPhasedFunctionInputs(index, lookup, parent, body, locals, creation,
-      child.input, owner, plan.input, budget);
+      child.Input(), owner, plan.input, budget);
   if (const auto* error = std::get_if<CaptureError>(&checked)) return InputError(*error);
   if (std::holds_alternative<InputBindingError>(checked)) return CaptureCellError::kOwner;
   const auto work = std::get<std::uint64_t>(checked); budget.work -= work;

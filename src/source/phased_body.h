@@ -24,7 +24,8 @@ class PhasedBody {
   ~PhasedBody();
   [[nodiscard]] static std::variant<PhasedBody, PhasedMethodError> Build(
       const FunctionContext& context, const abc::MethodBody& body,
-      analysis::SemanticBudget budget = {}, const PhasedModuleBinding* modules = nullptr);
+      analysis::SemanticBudget budget = {}, const PhasedModuleBinding* modules = nullptr,
+      analysis::CapturedValues captures = analysis::CapturedValues::kReject);
   const analysis::ValueProgram& Graph() const;
   const RouteInputIdentity& Identity() const;
   abc::EntityOffset Target() const;

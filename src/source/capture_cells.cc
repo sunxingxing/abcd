@@ -1,4 +1,5 @@
 #include "capture_cell_targets.h"
+#include "phased_function_file.h"
 
 #include <algorithm>
 #include <bit>
@@ -7,6 +8,70 @@
 #include <stdexcept>
 
 namespace abcd::source {
+const RouteInputIdentity& CaptureInput::Identity() const {
+  return std::visit([](auto* input) -> const RouteInputIdentity& {
+    if constexpr (std::is_same_v<decltype(input), const FunctionInput*>) return input->Identity();
+    else return input->Phases().Identity();
+  }, input_);
+}
+abc::EntityOffset CaptureInput::Method() const {
+  return std::visit([](auto* input) {
+    if constexpr (std::is_same_v<decltype(input), const FunctionInput*>) return input->Method();
+    else return input->Phases().Target();
+  }, input_);
+}
+abc::EntityOffset CaptureInput::Record() const { return std::visit([](auto* input) { return input->Record(); }, input_); }
+InputCaptureMode CaptureInput::Mode() const { return std::visit([](auto* input) { return input->Mode(); }, input_); }
+bool CaptureInput::MatchesOwner(const FunctionContext& owner) const {
+  return std::visit([&](auto* input) { return input->MatchesOwner(owner); }, input_);
+}
+std::span<const CaptureUse> CaptureInput::Captures() const {
+  return std::visit([](auto* input) { return input->Captures(); }, input_);
+}
+std::span<const InputCaptureAccess> CaptureInput::CaptureAccesses() const {
+  return std::visit([](auto* input) { return input->CaptureAccesses(); }, input_);
+}
+std::span<const analysis::SemanticInstruction> CaptureInput::Instructions() const {
+  return std::visit([](auto* input) -> std::span<const analysis::SemanticInstruction> {
+    if constexpr (std::is_same_v<decltype(input), const FunctionInput*>) return input->Input().instructions;
+    else return input->Phases().TreeInput(input->Body()).input.flow.instructions;
+  }, input_);
+}
+CaptureInput CaptureChild::Input() const {
+  return std::visit([](auto function) -> CaptureInput {
+    if constexpr (std::is_same_v<decltype(function), CaptureFunction>) return function.input;
+    else return *function;
+  }, function_);
+}
+const analysis::ValueProgram& CaptureChild::Graph() const {
+  return std::visit([](auto function) -> const analysis::ValueProgram& {
+    if constexpr (std::is_same_v<decltype(function), CaptureFunction>) return function.values.graph;
+    else return function->Phases().Graph();
+  }, function_);
+}
+const analysis::ValueEnvironments* CaptureChild::Environments() const {
+  return std::visit([](auto function) -> const analysis::ValueEnvironments* {
+    if constexpr (std::is_same_v<decltype(function), CaptureFunction>)
+      return function.values.environments ? &*function.values.environments : nullptr;
+    else return function->Phases().CellEnvironments();
+  }, function_);
+}
+const CellPlan* CaptureChild::Cells() const {
+  return std::visit([](auto function) -> const CellPlan* {
+    if constexpr (std::is_same_v<decltype(function), CaptureFunction>)
+      return function.values.cells ? &*function.values.cells : nullptr;
+    else return function->Phases().Cells();
+  }, function_);
+}
+bool CaptureChild::MatchesInput() const {
+  return std::visit([](auto function) {
+    if constexpr (std::is_same_v<decltype(function), CaptureFunction>) {
+      const auto& values = function.values; const auto& input = function.input;
+      return values.identity == input.Identity() && values.method == input.Method() &&
+          values.record == input.Record() && values.capture_mode == input.Mode();
+    } else return true;  // One immutable owner contains both original and working products.
+  }, function_);
+}
 namespace {
 using Error = CaptureCellError;
 void Require(bool condition, Error error) { if (!condition) throw error; }
@@ -33,9 +98,9 @@ Error InputError(CaptureError error) {
   return Error::kInput;
 }
 struct IncomingRange { std::uint32_t first; std::span<const Cell> cells; };
-IncomingRange Incoming(CaptureFunction function, Quota& quota) {
-  if (!function.values.cells) return {0, {}};
-  const auto& cells = function.values.cells->cells;
+IncomingRange Incoming(CaptureChild function, Quota& quota) {
+  if (!function.Cells()) return {0, {}};
+  const auto& cells = function.Cells()->cells;
   quota.Step(std::bit_width(cells.size()) + 1);
   // Verified CellPlan sorts allocated storage before incoming storage. Avoid
   // walking a child's unrelated locals for each parent creation context.
@@ -45,27 +110,25 @@ IncomingRange Incoming(CaptureFunction function, Quota& quota) {
   const auto offset = static_cast<std::uint32_t>(first - cells.begin());
   return {offset, std::span<const Cell>(cells).subspan(offset)};
 }
-void Owner(CaptureFunction function, Quota& quota) {
+void Owner(CaptureChild function, Quota& quota) {
   quota.Step();
-  const auto& values = function.values;
-  Require(values.identity == function.input.Identity() && values.method == function.input.Method() &&
-      values.record == function.input.Record() && values.capture_mode == function.input.Mode() &&
-      values.capture_mode == InputCaptureMode::kConditional, Error::kOwner);
-  Require(values.environments.has_value() == values.cells.has_value(), Error::kCell);
-  if (values.cells) {
-    Require(values.cells->revision == values.graph.revision && values.cells->cfg_revision == values.graph.cfg_revision &&
-        values.environments->revision == values.graph.revision &&
-        values.environments->cfg_revision == values.graph.cfg_revision, Error::kRevision);
-    Require(values.cells->operations.size() == values.graph.ops.size(), Error::kCell);
-  } else Require(function.input.Captures().empty(), Error::kCoverage);
+  Require(function.MatchesInput() && function.Input().Mode() == InputCaptureMode::kConditional, Error::kOwner);
+  const auto* cells = function.Cells(); const auto* environments = function.Environments();
+  const auto& graph = function.Graph();
+  Require((environments != nullptr) == (cells != nullptr), Error::kCell);
+  if (cells) {
+    Require(cells->revision == graph.revision && cells->cfg_revision == graph.cfg_revision &&
+        environments->revision == graph.revision && environments->cfg_revision == graph.cfg_revision, Error::kRevision);
+    Require(cells->operations.size() == graph.ops.size(), Error::kCell);
+  } else Require(function.Input().Captures().empty(), Error::kCoverage);
 }
-void Owners(const abc::MetadataIndex& index, CaptureFunction parent, CaptureFunction child,
+void Owners(const abc::MetadataIndex& index, CaptureFunction parent, CaptureChild child,
     const analysis::CreationBinding& creation, Quota& quota) {
   Owner(parent, quota); Owner(child, quota); quota.Step();
-  Require(parent.input.Identity() == child.input.Identity() && parent.input.Record() == child.input.Record() &&
+  Require(parent.input.Identity() == child.Input().Identity() && parent.input.Record() == child.Input().Record() &&
       creation.target.position.value < index.methods.size(), Error::kOwner);
   const auto& target = index.methods[creation.target.position.value];
-  Require(target.offset == child.input.Method() && target.owner_offset == child.input.Record(), Error::kOwner);
+  Require(target.offset == child.Input().Method() && target.owner_offset == child.Input().Record(), Error::kOwner);
 }
 CaptureParent Parent(CaptureFunction function) {
   return {function.input.Identity(), function.input.Method(), function.values.graph,
@@ -82,19 +145,23 @@ void Owner(const CaptureParent& parent, Quota& quota) {
       Error::kRevision);
   Require(parent.cells->operations.size() == parent.graph.ops.size(), Error::kCell);
 }
-analysis::OpId Operation(const CaptureParent& function, analysis::InstructionId site, Quota& quota) {
-  quota.Step(); const auto& graph = function.graph;
+analysis::OpId Operation(const analysis::ValueProgram& graph,
+    std::span<const analysis::SemanticInstruction> instructions, analysis::InstructionId site, Quota& quota) {
+  quota.Step();
   Require(site.value < graph.input.sites.size() && graph.input.sites[site.value] &&
-      site.value < function.instructions.size(), Error::kCreation);
+      site.value < instructions.size(), Error::kCreation);
   const auto id = *graph.input.sites[site.value];
   Require(id.value < graph.ops.size(), Error::kCreation);
   const auto& op = graph.ops[id.value];
   Require(op.life == analysis::ValueLife::kLive && op.origin.value < graph.origins.size(), Error::kCreation);
   const auto& origin = graph.origins[op.origin.value];
-  const auto& original = function.instructions[site.value];
+  const auto& original = instructions[site.value];
   Require(origin.site.value == site.value && origin.pc == original.pc && origin.original == original.origin &&
       origin.disposition == analysis::OriginDisposition::kRetained, Error::kCreation);
   return id;
+}
+analysis::OpId Operation(const CaptureParent& function, analysis::InstructionId site, Quota& quota) {
+  return Operation(function.graph, function.instructions, site, quota);
 }
 analysis::OpId Creation(const CaptureParent& parent, analysis::InstructionId site,
     const analysis::CreationBinding& creation, Quota& quota) {
@@ -146,20 +213,20 @@ CaptureTarget Rebase(const CaptureParent& parent, analysis::OpId creation, Incom
 }  // namespace
 
 std::variant<std::uint64_t, CaptureCellError> VerifyCaptureTargets(
-    CaptureParent parent, CaptureFunction child,
+    CaptureParent parent, CaptureChild child,
     analysis::InstructionId site, const analysis::CreationBinding& creation,
     const CaptureCells& plan, analysis::SemanticBudget budget) {
   try {
     Quota quota(budget); Owner(parent, quota); Owner(child, quota);
-    Require(parent.identity == child.input.Identity(), Error::kOwner);
+    Require(parent.identity == child.Input().Identity(), Error::kOwner);
     Require(plan.identity == parent.identity && plan.parent == parent.method &&
-        plan.child == child.input.Method(), Error::kOwner);
+        plan.child == child.Input().Method(), Error::kOwner);
     Require(plan.parent_revision == parent.graph.revision && plan.parent_cfg == parent.graph.cfg_revision &&
-        plan.child_revision == child.values.graph.revision && plan.child_cfg == child.values.graph.cfg_revision, Error::kRevision);
+        plan.child_revision == child.Graph().revision && plan.child_cfg == child.Graph().cfg_revision, Error::kRevision);
     const auto operation = Creation(parent, site, creation, quota);
     Require(plan.creation == operation, Error::kCreation);
     const auto checked = VerifyCapturePlan(parent.scopes,
-        site, creation, child.input.Captures(), plan.input, quota.Remaining());
+        site, creation, child.Input().Captures(), plan.input, quota.Remaining());
     if (const auto* error = std::get_if<CaptureError>(&checked)) return InputError(*error);
     quota.Step(std::get<std::uint64_t>(checked));
     const auto incoming = Incoming(child, quota);
@@ -172,14 +239,13 @@ std::variant<std::uint64_t, CaptureCellError> VerifyCaptureTargets(
     }
     // Independently connect each original initialized occurrence to its child
     // work cell. The planner below groups by cell, not by this occurrence walk.
-    const auto accesses = child.input.CaptureAccesses();
+    const auto accesses = child.Input().CaptureAccesses();
     Require(accesses.size() == plan.input.bindings.size(), Error::kCoverage);
-    const auto child_view = Parent(child);
     for (std::size_t i = 0; i < accesses.size(); ++i) {
       quota.Step();
-      const auto op = Operation(child_view, accesses[i].instruction, quota);
-      Require(child.values.cells && op.value < child.values.cells->operations.size(), Error::kCell);
-      const auto cell = child.values.cells->operations[op.value];
+      const auto op = Operation(child.Graph(), child.Input().Instructions(), accesses[i].instruction, quota);
+      Require(child.Cells() && op.value < child.Cells()->operations.size(), Error::kCell);
+      const auto cell = child.Cells()->operations[op.value];
       Require(cell && cell->value >= incoming.first && cell->value - incoming.first < plan.targets.size(), Error::kCell);
       const auto& target = plan.targets[cell->value - incoming.first];
       Require(target.child == *cell && target.target == Project(parent, plan.input.bindings[i].cell, quota), Error::kBinding);
@@ -189,18 +255,18 @@ std::variant<std::uint64_t, CaptureCellError> VerifyCaptureTargets(
 }
 
 std::variant<CaptureCells, CaptureCellError> BindCaptureTargets(
-    CaptureParent parent, CaptureFunction child,
+    CaptureParent parent, CaptureChild child,
     analysis::InstructionId site, const analysis::CreationBinding& creation,
     CapturePlan input, analysis::SemanticBudget budget) {
   try {
     Quota quota(budget); Owner(parent, quota); Owner(child, quota);
-    Require(parent.identity == child.input.Identity(), Error::kOwner);
+    Require(parent.identity == child.Input().Identity(), Error::kOwner);
     quota.Admit(1, sizeof(CaptureCells));
     const auto operation = Creation(parent, site, creation, quota);
     quota.Admit(input.allocated_bytes, 1);
-    CaptureCells plan{parent.identity, parent.method, child.input.Method(),
+    CaptureCells plan{parent.identity, parent.method, child.Input().Method(),
         parent.graph.revision, parent.graph.cfg_revision,
-        child.values.graph.revision, child.values.graph.cfg_revision, operation, std::move(input)};
+        child.Graph().revision, child.Graph().cfg_revision, operation, std::move(input)};
     const auto incoming = Incoming(child, quota);
     quota.Size(plan.targets, incoming.cells.size());
     for (std::size_t i = 0; i < incoming.cells.size(); ++i) {
@@ -221,7 +287,7 @@ std::variant<CaptureCells, CaptureCellError> BindCaptureTargets(
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
 std::variant<std::uint64_t, CaptureCellError> VerifyCaptureCells(
-    const abc::MetadataIndex& index, CaptureFunction parent, CaptureFunction child,
+    const abc::MetadataIndex& index, CaptureFunction parent, CaptureChild child,
     analysis::InstructionId site, const analysis::CreationBinding& creation,
     const CaptureCells& plan, analysis::SemanticBudget budget) {
   try {
@@ -232,13 +298,13 @@ std::variant<std::uint64_t, CaptureCellError> VerifyCaptureCells(
   } catch (Error error) { return error; }
 }
 std::variant<CaptureCells, CaptureCellError> BindCaptureCells(
-    const abc::MetadataIndex& index, CaptureFunction parent, CaptureFunction child,
+    const abc::MetadataIndex& index, CaptureFunction parent, CaptureChild child,
     analysis::InstructionId site, const analysis::CreationBinding& creation, analysis::SemanticBudget budget) {
   try {
     Quota quota(budget); Owners(index, parent, child, creation, quota);
-    auto bound = BindFunctionInputs(index, parent.input, site, creation, child.input, quota.Remaining());
+    auto bound = BuildCapturePlan(ScopeFacts(parent.input.Input(), parent.input.Proof()),
+        site, creation, child.Input().Captures(), quota.Remaining());
     if (const auto* error = std::get_if<CaptureError>(&bound)) return InputError(*error);
-    if (std::holds_alternative<InputBindingError>(bound)) return Error::kOwner;
     auto input = std::get<CapturePlan>(std::move(bound)); quota.Step(input.work);
     auto built = BindCaptureTargets(Parent(parent), child, site, creation, std::move(input), quota.Remaining());
     if (const auto* error = std::get_if<Error>(&built)) return *error;

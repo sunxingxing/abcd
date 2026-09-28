@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "../../../tools/family_value_inspect.h"
+#include "../../../src/source/capture_cells.h"
 #include "abcd/abc/method_attributes.h"
 #include "analysis/ssa_fixture.h"
 
@@ -40,7 +41,10 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
           static_cast<std::uint32_t>(code.size()),
           tries};
 }
-std::string Emit(abc::ProfileId profile, bool catch_cell) {
+enum class ParentShape { kIteration, kCatch, kNormal };
+enum class MissingCell { kNone, kRead, kWrite };
+std::string Emit(abc::ProfileId profile, ParentShape shape, bool exception_child,
+                 MissingCell missing = MissingCell::kNone) {
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kParent); ++i) {
     bytes[kPool + i] = static_cast<std::uint8_t>(kParent >> (i * kByteBits));
@@ -59,7 +63,16 @@ std::string Emit(abc::ProfileId profile, bool catch_cell) {
   constexpr std::uint8_t kGet = 0, kSet = 1, kNext = 5, kRun = 6, kCollect = 7;
   constexpr std::uint8_t kExitDelta = 39,
                          kBackDelta = static_cast<std::uint8_t>(-41);
-  const auto parent = catch_cell
+  const auto parent = shape == ParentShape::kNormal ? Append(bytes, 2, 3, {
+      Op(abc::Opcode::kLDA_V8), kNext, Op(abc::Opcode::kCALLARG0_IMM8), 0,
+      Op(abc::Opcode::kJEQZ_IMM8), 33,
+      Op(abc::Opcode::kNEWLEXENV_IMM8), 1, Op(abc::Opcode::kLDA_V8), kRun,
+      Op(abc::Opcode::kCALLARG0_IMM8), 0, Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
+      Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 1, 0, 0, Op(abc::Opcode::kSTA_V8), kGet,
+      Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 2, 0, 1, Op(abc::Opcode::kSTA_V8), kSet,
+      Op(abc::Opcode::kLDA_V8), kCollect, Op(abc::Opcode::kCALLARGS2_IMM8_V8_V8), 0, kGet, kSet,
+      Op(abc::Opcode::kPOPLEXENV), Op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-35),
+      Op(abc::Opcode::kRETURNUNDEFINED)}) : shape == ParentShape::kCatch
                           ? Append(bytes, 2, 3,
                                    {Op(abc::Opcode::kLDA_V8),
                                     kNext,
@@ -152,10 +165,23 @@ std::string Emit(abc::ProfileId profile, bool catch_cell) {
                                     kBackDelta,
                                     Op(abc::Opcode::kRETURNUNDEFINED)},
                                    {12, 4, 1, 0, 18, 2});
-  const auto getter = Append(
+  constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+  // IMM4_IMM4 packs depth in the low nibble, slot in the high nibble.
+  constexpr unsigned kSlotShift = 4;
+  const std::uint8_t read_slot = missing == MissingCell::kRead ? 1U << kSlotShift : 0;
+  const std::uint8_t write_slot = missing == MissingCell::kWrite ? 1U << kSlotShift : 0;
+  const auto getter = exception_child ? Append(bytes, 0, 0,
+      {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), read_slot,
+       static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+       Op(abc::Opcode::kRETURN)},
+      {0, 4, 1, 0, 4, 1}) : Append(
       bytes, 0, 0,
       {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kRETURN)});
-  const auto setter = Append(bytes, 0, 1,
+  const auto setter = exception_child ? Append(bytes, 0, 1,
+      {Op(abc::Opcode::kLDA_V8), kImplicitArguments,
+       static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+       Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), write_slot, Op(abc::Opcode::kRETURNUNDEFINED)},
+      {0, 4, 1, 0, 4, 3}) : Append(bytes, 0, 1,
                              {Op(abc::Opcode::kLDA_V8), kImplicitArguments,
                               Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
                               Op(abc::Opcode::kRETURNUNDEFINED)});
@@ -217,6 +243,15 @@ std::string Emit(abc::ProfileId profile, bool catch_cell) {
       InspectFamilyValues(file, header, index, lookup, {1}, identity, nullptr,
                           positions, FamilyInspectMode::kSourceDraft);
   test::Check(unlink(path) == 0);
+  if (missing != MissingCell::kNone) {
+    if (!report.contains("family_error")) std::cerr << report << '\n';
+    // Conditional Language facts must not invent a parent's missing storage,
+    // including write-only captures accessed exclusively from a catch handler.
+    test::Check(!report.value("draft_prepared", false) && !report.contains("draft_source"));
+    test::Check(report.at("family_error") == static_cast<unsigned>(source::CaptureCellError::kInput));
+    test::Check(report.at("failed_method") == (missing == MissingCell::kRead ? kGetter : kSetter));
+    return {};
+  }
   if (!report.value("draft_prepared", false)) std::cerr << report << '\n';
   test::Check(report.value("draft_prepared", false));
   test::Check(!report.value("draft_incomplete", true));
@@ -234,10 +269,14 @@ int main(int argc, char** argv) {
   for (const auto profile :
        {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
         abc::ProfileId::kDynamic1301}) {
-    for (const bool catch_cell : {false, true}) {
-      const auto source = Emit(profile, catch_cell);
+    for (const bool exception_child : {false, true}) {
+    for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal}) {
+      const auto source = Emit(profile, shape, exception_child);
       if (emit) std::cout << source << ",\n";
+    }
     }
   }
   if (emit) std::cout << "];\n";
+  for (const auto missing : {MissingCell::kRead, MissingCell::kWrite})
+    Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, true, missing);
 }

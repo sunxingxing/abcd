@@ -864,7 +864,8 @@ class TreeBuilder {
 
   void CheckCaptures(const TreeStorage& storage) {
     if (!incoming_) return;
-    const auto checked = VerifyTreeFlow(graph_, control_, evaluation_, tree_,
+    const auto checked = exceptions_ ? VerifyExceptionTreeFlow(graph_, *exceptions_, evaluation_, tree_,
+        {bytes_ + storage.bytes, work_}) : VerifyTreeFlow(graph_, control_, evaluation_, tree_,
         {bytes_ + storage.bytes, work_});
     const auto* flow = std::get_if<TreeFlow>(&checked);
     if (!flow) {
@@ -926,10 +927,10 @@ std::variant<ConstructedFunction, FunctionTreeError> BuildFunctionTree(
 std::variant<ExceptionFunctionDraft, FunctionTreeError> BuildExceptionFunctionDraft(
     const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
     const EvaluationPlan& evaluation, FunctionSyntax syntax,
-    ExpressionConstants constants, analysis::SemanticBudget budget) {
+    ExpressionConstants constants, analysis::SemanticBudget budget, const IncomingCaptureTree* incoming) {
   try {
     auto built = TreeBuilder(graph, exceptions.control.skeleton, evaluation,
-        std::move(syntax), constants, budget, nullptr, &exceptions).Build();
+        std::move(syntax), constants, budget, incoming, &exceptions).Build();
     return ExceptionFunctionDraft{std::move(built.tree), built.allocated_bytes, built.work};
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

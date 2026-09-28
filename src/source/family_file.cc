@@ -94,9 +94,8 @@ class FamilyReader {
       };
       FunctionContext context{resolve()};
       Require(index_.methods[target.value].code.has_value(), Error::kMethod);
-      Require(!index_.methods[target.value].code->try_count, Error::kUnsupportedFlow);
-      auto child = ReadMethod(target, &context);
-      const CaptureFunction child_work{child.Normal().input, child.Normal().values};
+      auto child = ReadMethod(target, &context, InputCaptureMode::kConditional);
+      const auto child_work = child.Capture();
       auto captured = parent.Phase() ? BindPhasedCaptureCells(index_, lookup_, parent.Phase()->Phases(),
           parent.Body(), parent.Phase()->Locals(), *phase_creation, child_work, context, Remaining()) :
           BindCaptureCells(index_, {parent.Normal().input, parent.Normal().values}, child_work, site, *binding, Remaining());
@@ -148,7 +147,8 @@ class FamilyReader {
     Grow(values, values.empty() ? 1 : values.size() * kGrowth);
   }
   analysis::SemanticBudget Remaining() const { return {bytes_, work_}; }
-  FamilyFunction ReadMethod(abc::MethodPosition position, const FunctionContext* owner) {
+  FamilyFunction ReadMethod(abc::MethodPosition position, const FunctionContext* owner,
+      InputCaptureMode mode = InputCaptureMode::kClosed) {
     Require(position.value < index_.methods.size() && index_.methods[position.value].code, Error::kMethod);
     if (index_.methods[position.value].code->try_count) {
       Require(owner != nullptr, Error::kOccurrence);
@@ -156,7 +156,7 @@ class FamilyReader {
           owner->Identity() == identity_, Error::kOccurrence);
       std::optional<PhasedModuleBinding> modules;
       if (modules_) modules.emplace(PhasedModuleBinding{file_, header_, index_, *modules_, module_owner_});
-      auto read = FilePhasedFunction::Read(file_, header_, index_, *owner, Remaining(), modules ? &*modules : nullptr);
+      auto read = FilePhasedFunction::Read(file_, header_, index_, *owner, Remaining(), modules ? &*modules : nullptr, mode);
       if (const auto* error = std::get_if<PhasedFileFailure>(&read)) Fail(*error);
       auto function = std::get<FilePhasedFunction>(std::move(read));
       Admit(function.AllocatedBytes(), 1); Step(function.Work()); return function;

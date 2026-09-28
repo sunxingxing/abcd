@@ -29,6 +29,9 @@ struct FilePhasedFunction::Storage {
   PhasedBody phases;
   analysis::ExceptionLocals locals;
   std::vector<analysis::InstructionId> children;
+  InputCaptureMode mode;
+  std::vector<CaptureUse> captures;
+  std::vector<InputCaptureAccess> accesses;
   PhasedOwner owner;
   abc::EntityOffset record;
   std::size_t bytes;
@@ -42,6 +45,9 @@ const abc::MethodBody& FilePhasedFunction::Body() const { return storage_->body;
 const PhasedBody& FilePhasedFunction::Phases() const { return storage_->phases; }
 const analysis::ExceptionLocals& FilePhasedFunction::Locals() const { return storage_->locals; }
 std::span<const analysis::InstructionId> FilePhasedFunction::Children() const { return storage_->children; }
+InputCaptureMode FilePhasedFunction::Mode() const { return storage_->mode; }
+std::span<const CaptureUse> FilePhasedFunction::Captures() const { return storage_->captures; }
+std::span<const InputCaptureAccess> FilePhasedFunction::CaptureAccesses() const { return storage_->accesses; }
 bool FilePhasedFunction::MatchesOwner(const FunctionContext& context) const {
   return storage_->phases.Identity() == context.Identity() && storage_->phases.Target() == context.Target() &&
       storage_->owner == DescribeOwner(context);
@@ -59,7 +65,8 @@ template<class T, class E> T Take(std::variant<T, E> result) {
 }  // namespace
 std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
-    const FunctionContext& context, analysis::SemanticBudget budget, const PhasedModuleBinding* modules) {
+    const FunctionContext& context, analysis::SemanticBudget budget, const PhasedModuleBinding* modules,
+    InputCaptureMode mode) {
   try {
     auto left = budget;
     const auto admit = [&](std::size_t count, std::size_t width = 1) {
@@ -91,7 +98,9 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     step(method.code->instruction_bytes);
     auto body = Take<abc::MethodBody>(abc::DecodeMethodBody(file, header.profile, *method.code, {left.bytes}));
     arena(body.instructions); arena(body.tries); arena(body.handlers);
-    auto phases = Take<PhasedBody>(PhasedBody::Build(context, body, left, modules));
+    Require(mode == InputCaptureMode::kClosed || mode == InputCaptureMode::kConditional, Error::kIdentity);
+    auto phases = Take<PhasedBody>(PhasedBody::Build(context, body, left, modules,
+        mode == InputCaptureMode::kConditional ? analysis::CapturedValues::kLanguage : analysis::CapturedValues::kReject));
     admit(phases.AllocatedBytes()); step(phases.Work());
     const auto input = phases.TreeInput(body).input;
     // Retain the conditional scope proof once per method. This does NOT
@@ -114,9 +123,36 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       step(1);
       if (captures(input.flow.instructions[i].operation)) children.push_back({static_cast<std::uint32_t>(i)});
     }
+    // Exception bindings name Before nodes, not instruction IDs. Record both
+    // reads and writes in original instruction order for the common binder.
+    std::size_t capture_count = 0;
+    for (const auto& binding : input.environments.bindings) {
+      step(1); capture_count += std::holds_alternative<analysis::CapturedDepth>(binding.binding.environment);
+    }
+    std::vector<CaptureUse> uses;
+    std::vector<InputCaptureAccess> accesses;
+    admit(capture_count, sizeof(CaptureUse) + sizeof(InputCaptureAccess));
+    uses.reserve(capture_count); accesses.reserve(capture_count);
+    admit(uses.capacity() - capture_count, sizeof(CaptureUse));
+    admit(accesses.capacity() - capture_count, sizeof(InputCaptureAccess));
+    for (const auto& binding : input.environments.bindings) {
+      step(1);
+      const auto* depth = std::get_if<analysis::CapturedDepth>(&binding.binding.environment);
+      if (!depth) continue;
+      Require(binding.instruction < input.flow.nodes.size(), Error::kMethod);
+      const auto& before = input.flow.nodes[binding.instruction];
+      Require(before.phase == analysis::ExceptionPhase::kBefore &&
+          before.instruction.value < input.flow.instructions.size(), Error::kMethod);
+      const auto& operation = input.flow.instructions[before.instruction.value].operation;
+      const bool load = std::holds_alternative<analysis::LexicalLoad>(operation);
+      Require(load || std::holds_alternative<analysis::LexicalStore>(operation), Error::kMethod);
+      Require(accesses.empty() || accesses.back().instruction < before.instruction, Error::kMethod);
+      uses.push_back({{*depth, binding.binding.slot}, analysis::CaptureDomain::kLanguage});
+      accesses.push_back({before.instruction, load ? analysis::LocalAccessKind::kLoad : analysis::LocalAccessKind::kStore});
+    }
     Require(!file.CheckUnchanged(), Error::kChanged);
     return FilePhasedFunction(std::make_unique<const Storage>(Storage{std::move(body), std::move(phases),
-        std::move(locals), std::move(children), DescribeOwner(context), method.owner_offset,
+        std::move(locals), std::move(children), mode, std::move(uses), std::move(accesses), DescribeOwner(context), method.owner_offset,
         budget.bytes - left.bytes, budget.work - left.work}));
   } catch (const PhasedFileFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return PhasedFileFailure{Error::kResourceLimit};
