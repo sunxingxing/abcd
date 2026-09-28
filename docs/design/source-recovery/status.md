@@ -18,7 +18,7 @@ INCOMPLETE 与区域缺口标记。不要求新增 VerifiedFunction/不可变准
 budget/work 计费、通用验证器、发布 receipt 和全面映射审计暂缓；已有设施保留。
 语义恢复和定向行为测试继续，部分输出不算完整支持。下述完整 gate 保留为最终
 目标，不再阻止已恢复片段输出。C00a 已开始实现，具体已测范围见本次证据；
-真实解码直线前缀部分构建已有定向证据，CLI 和更广区域保留尚未贯通，
+真实解码直线前缀部分构建和单根草稿 CLI 已有定向证据，更广区域保留尚未贯通，
 不按子项宣布 C00a 完成。
 
 执行目标已按用户要求调整为两阶段：
@@ -50,6 +50,19 @@ T00–T12 整体未完成；实例字段、全局变量、完整签名与函数�
 | T12 | 语料与分类基础已有历史记录 | 全样本新路线审计、跨版本/留出集、进程 1G 实测 |
 
 ## 本次证据
+
+- C00a 第三子项：`--family-source-draft` 通过原 `BuildFileFamilyTrees` 请求
+  部分构建，当前限无默认参数投影、无子函数的正常直线根函数。保留真实上下文、
+  名字/参数和已恢复语句；部分结果不制造完整 TreeFlow、ABI/source census 或
+  family writes 证明。输出新增 draft_incomplete 和逐成员 incomplete；已有
+  --conditional-family 仍不输出源码，严格准备路径仍默认完整模式。
+  文件级 partial_file_test 覆盖实际 Code 实体/创建指令读取和生产草稿入口，
+  metadata index 为 fixture（不是完整文件 metadata parser 验收）。CLI 已在
+  macOS 构建；同步修复该工具局部 constexpr 的 AppleClang 编译问题。
+  partial_file_test、creation_tree_context_test、partial_build_test、partial_tree_test、
+  真实 pasteboard 的 family_source_cli_test 共 5/5 通过；后者验证既有四成员
+  完整函数体草稿未退化，不是新增部分恢复覆盖证明。全量/全语料/RSS/基准未运行。
+  C00a 仍缺带不完整后代的实际 family 保留、控制/导入失败保留和 record 状态贯通。
 
 - C00a 第二子项：共同 expression forest / FunctionTree builder 新增显式
   `RecoveryMode::kAllowPartial`，保留单个正常直线区域中已闭合的表达式根；

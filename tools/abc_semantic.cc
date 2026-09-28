@@ -460,7 +460,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
       if (record == index->records.end()) return Fail(InspectError::kIndex);
       if (*form == source::SourceForm::kRecord) {
         // Pinned translator wire entry name, not instruction/string dispatch.
-        constexpr std::string_view kEntryName = "func_main_0";
+        static constexpr std::string_view kEntryName = "func_main_0";
         if (method->name != kEntryName ||
             !source::SupportsRecordProgramProfile(header->profile) ||
             record->first_method > index->methods.size() ||
@@ -577,7 +577,7 @@ int main(int argc, char** argv) {
                  "       abc_semantic INPUT.abc METHOD_ENTITY --conditional-values\n"
                  "       abc_semantic INPUT.abc METHOD_ENTITY --conditional-family\n"
                  "       abc_semantic INPUT.abc METHOD_ENTITY --family-source-draft\n"
-                 "  --family-source-draft emits incomplete diagnostic syntax, not executable source\n"
+                 "  --family-source-draft retains supported body prefixes with marked gaps, not executable source\n"
                  "  --conditional-values inspects open capture obligations; it emits no source\n"
                  "  --conditional-family follows actual child creations; it emits no source\n"
                  "  exactly one source form per invocation; duplicates, conflicting forms\n"

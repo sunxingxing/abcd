@@ -42,10 +42,13 @@ struct FamilyTreeFailure {
 // Existing file/index/context/family storage is caller-admitted. This allowance
 // covers all additional construction/scratch; conservative accounting retains
 // previous pass charges even after their storage is released.
+// AllowPartial currently permits an isolated root's straight-line body prefix;
+// no ABI/source census or whole-family write proof is manufactured for a gap.
 [[nodiscard]] std::variant<ConstructedFamily, FamilyTreeFailure> BuildFileFamilyTrees(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, FileFamily family, const FunctionContext& root,
     analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
-    ModuleOwnerId module_owner = {}, const abc::MethodLookup* lookup = nullptr);
+    ModuleOwnerId module_owner = {}, const abc::MethodLookup* lookup = nullptr,
+    RecoveryMode recovery = RecoveryMode::kCompleteOnly);
 }  // namespace abcd::source
 #endif

@@ -11,9 +11,10 @@ class FamilyTrees {
  public:
   FamilyTrees(const corpus::AbcFile& file, const abc::Header& header,
       const abc::MetadataIndex& index, analysis::SemanticBudget budget,
-      const RecordModuleContext* modules, ModuleOwnerId owner, const abc::MethodLookup* lookup)
+      const RecordModuleContext* modules, ModuleOwnerId owner, const abc::MethodLookup* lookup,
+      RecoveryMode recovery)
       : file_(file), header_(header), index_(index), initial_(budget), left_(budget),
-        modules_(modules), module_owner_(owner), lookup_(lookup) {}
+        modules_(modules), module_owner_(owner), lookup_(lookup), recovery_(recovery) {}
   ConstructedFamily Build(FileFamily& family, const FunctionContext& root) {
     Admit(1, sizeof(FamilyTrees));
     Require(!family.members.empty(), FamilyTreeError::kContext);
@@ -21,6 +22,7 @@ class FamilyTrees {
     ProjectDefaults(family, root);
     Rebind(family);
     std::vector<FamilyMember> trees;
+    bool incomplete = false;
     Reserve(trees, family.members.size());
     for (std::size_t i = 0; i < family.members.size(); ++i) {
       member_ = {static_cast<std::uint32_t>(i)};
@@ -99,7 +101,8 @@ class FamilyTrees {
           return {std::move(draft.tree), draft.allocated_bytes, draft.work};
         }
         return Take<ConstructedFunction, FunctionTreeError>(BuildFunctionTree(graph, control,
-            evaluation, std::move(syntax.syntax), constants, left_, incoming ? &*incoming : nullptr));
+            evaluation, std::move(syntax.syntax), constants, left_, incoming ? &*incoming : nullptr,
+            family.members.size() == 1 && !defaults_[i] ? recovery_ : RecoveryMode::kCompleteOnly));
       }();
       Account(constructed);
       // Naming evidence is creation-specific and must survive arena growth and
@@ -112,6 +115,14 @@ class FamilyTrees {
         Require(constructed.tree.names[name->value] == context.Name(),
             FamilyTreeError::kContext);
       } else Require(!constructed.tree.inferred_name, FamilyTreeError::kContext);
+      if (!constructed.tree.recovery_issues.empty()) {
+        // The tree carries a readable omission, not whole-input flow/ABI/source
+        // evidence. Keep the original file identity and do not forge those products.
+        Require(family.members.size() == 1 && i == 0 && !defaults_[i], FamilyTreeError::kContext);
+        incomplete = true;
+        trees.push_back({std::move(constructed.tree), {}, {}, {}, {}, function.Record()});
+        continue;
+      }
       if (defaults_[i]) {
         auto signature = Take<DefaultSignatureProof, DefaultSignatureError>(
             BuildDefaultSignature(*defaults_[i], constructed.tree, left_));
@@ -140,6 +151,11 @@ class FamilyTrees {
     }
     auto result = Take<ConstructedFamily, FamilyError>(BuildFunctionFamily(std::move(trees), {FileFamily::kRoot.value}, left_));
     Account(result);
+    if (incomplete) {
+      result.allocated_bytes = initial_.bytes - left_.bytes;
+      result.work = initial_.work - left_.work;
+      return result;
+    }
     const auto enclosure = VerifyFamilyEnclosure(result, left_);
     if (const auto* failure = std::get_if<FamilyEnclosureFailure>(&enclosure)) {
       member_ = failure->member; Fail(*failure);
@@ -270,6 +286,7 @@ class FamilyTrees {
   const RecordModuleContext* modules_;
   ModuleOwnerId module_owner_;
   const abc::MethodLookup* lookup_;
+  RecoveryMode recovery_;
   FamilyId member_{0};
   std::optional<std::size_t> default_candidates_;
   bool defaults_proved_ = false;
@@ -279,8 +296,9 @@ class FamilyTrees {
 std::variant<ConstructedFamily, FamilyTreeFailure> BuildFileFamilyTrees(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, FileFamily family, const FunctionContext& root,
-    analysis::SemanticBudget budget, const RecordModuleContext* modules, ModuleOwnerId module_owner, const abc::MethodLookup* lookup) {
-  try { return FamilyTrees(file, header, index, budget, modules, module_owner, lookup).Build(family, root);
+    analysis::SemanticBudget budget, const RecordModuleContext* modules, ModuleOwnerId module_owner,
+    const abc::MethodLookup* lookup, RecoveryMode recovery) {
+  try { return FamilyTrees(file, header, index, budget, modules, module_owner, lookup, recovery).Build(family, root);
   } catch (const FamilyTreeFailure& error) { return error;
   } catch (const std::bad_alloc&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit};
   } catch (const std::length_error&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit}; }

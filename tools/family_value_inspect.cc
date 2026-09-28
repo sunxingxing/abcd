@@ -48,6 +48,7 @@ void Draft(nlohmann::json& report, const ConstructedFamily& family,
     report["draft_error"] = static_cast<unsigned>(std::get<TreePrintError>(printed)); return;
   }
   report["draft_prepared"] = true;
+  report["draft_incomplete"] = draft->members[family.root.value].incomplete;
   report["draft_source"] = buffer.Text();
   // Stream the shared DAG once per owner. Expanding combined origins per node
   // can be quadratic; building a second JSON DOM needlessly duplicates arenas.
@@ -57,6 +58,7 @@ void Draft(nlohmann::json& report, const ConstructedFamily& family,
     if (i) positions << ',';
     positions << "{\"owner\":" << family.members[i].tree.owner.value
               << ",\"method\":" << member.method.value
+              << ",\"incomplete\":" << (member.incomplete ? "true" : "false")
               << ",\"begin\":" << draft->functions[i].begin
               << ",\"end\":" << draft->functions[i].end << ",\"positions\":";
     const auto& sources = family.members[i].sources;
@@ -68,6 +70,8 @@ void Draft(nlohmann::json& report, const ConstructedFamily& family,
   report["draft_coordinates"] = "absolute-utf8-bytes";
   report["draft_root_fragment"] = member ? "class-member" : "function-expression";
   report["draft_publication_pending"] = {"root-enclosure", "global-module-bindings", "transitive-premises"};
+  if (draft->members[family.root.value].incomplete)
+    report["draft_publication_pending"].push_back("body-recovery");
   std::size_t named = 0;
   for (const auto& member : family.members) named += member.tree.inferred_name.has_value();
   report["draft_named_members"] = named;
@@ -218,7 +222,9 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
   budget.bytes -= family->allocated_bytes; budget.work -= family->work;
   // Ambiguous/unproved root owners are not guessed from method attributes.
   if (!context) return report;
-  const auto constructed = BuildFileFamilyTrees(file, header, index, std::move(*family), *context, budget, modules, {}, &lookup);
+  const auto constructed = BuildFileFamilyTrees(file, header, index, std::move(*family), *context,
+      budget, modules, {}, &lookup, mode == FamilyInspectMode::kSourceDraft
+          ? RecoveryMode::kAllowPartial : RecoveryMode::kCompleteOnly);
   if (const auto* tree = std::get_if<ConstructedFamily>(&constructed)) {
     report["family_tree_prepared"] = true;
     report["family_tree_members"] = tree->members.size();
