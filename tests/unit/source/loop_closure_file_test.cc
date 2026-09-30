@@ -85,7 +85,8 @@ enum class ChildShape {
   kYieldCatch, kYieldCatchCapture, kYieldCatchYield, kYieldCatchOverwrite, kYieldCatchLoop,
   kYieldSelf, kYieldSelfPrivate, kYieldThis, kYieldReceiver,
   kYieldCopy, kYieldLexical, kYieldClosure, kYieldFrameCopy, kYieldParameterCell, kYieldParameterFrameCell,
-  kYieldFinallyReturn, kYieldDelegate, kYieldDelegateCatch, kAsyncGeneratorPrefix
+  kYieldFinallyReturn, kYieldDelegate, kYieldDelegateCatch, kAsyncGeneratorPrefix,
+  kAsyncGeneratorAwait, kAsyncGeneratorAwaitCatch
 };
 enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitState,
                          kYieldState, kYieldDone, kYieldReturn, kYieldEntry, kYieldCleanup,
@@ -102,7 +103,9 @@ enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitS
                          kDelegateMode, kDelegateBranch, kDelegateEntry, kDelegateResultLeak,
                          kDelegateCatchLeak, kDelegateCloseBoundary, kDelegateUserBoundary, kDelegateCloseMissing, kDelegateTruth,
                          kAsyncGenCallee, kAsyncGenState, kAsyncGenDone, kAsyncGenComplete, kAsyncGenResolve, kAsyncGenReject,
-                         kAsyncGenResult, kAsyncGenMode, kAsyncGenEntry, kAsyncGenReturnEntry };
+                         kAsyncGenResult, kAsyncGenMode, kAsyncGenEntry, kAsyncGenReturnEntry,
+                         kAsyncGenAwaitState, kAsyncGenAwaitMode, kAsyncGenAwaitBranch, kAsyncGenAwaitEntry,
+                         kAsyncGenAwaitCatchResult, kAsyncGenAwaitCatchMode };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
                  MissingCell missing = MissingCell::kNone, bool async_arrow = false, std::uint32_t yield_count = 1,
                  CopyEncoding copy_encoding = CopyEncoding::kV8, std::uint32_t copy_count = 1,
@@ -137,7 +140,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const bool yield_frame = yield_self || child_shape == ChildShape::kYieldThis || child_shape == ChildShape::kYieldReceiver;
   const bool yield_delegate = child_shape == ChildShape::kYieldDelegate || child_shape == ChildShape::kYieldDelegateCatch;
   const bool yield_finally = child_shape == ChildShape::kYieldFinallyReturn;
-  const bool async_generator = child_shape == ChildShape::kAsyncGeneratorPrefix;
+  const bool async_generator_await = child_shape == ChildShape::kAsyncGeneratorAwait || child_shape == ChildShape::kAsyncGeneratorAwaitCatch;
+  const bool async_generator = child_shape == ChildShape::kAsyncGeneratorPrefix || async_generator_await;
   const bool suspended_return = yield_finalizer == YieldFinalizer::kInjectedSuspend ||
       yield_finalizer == YieldFinalizer::kInjectedSuspendUncaught;
   const bool injected_return = yield_finally && (yield_finalizer == YieldFinalizer::kInjectedReturn ||
@@ -886,11 +890,55 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       Op(abc::Opcode::kLDA_V8), 0, Op(abc::Opcode::kGETRESUMEMODE), Op(abc::Opcode::kSTA_V8), 2,
       Op(abc::Opcode::kLDA_V8), kLocals + kImplicitArguments, Op(abc::Opcode::kSTA_V8), kCallback};
     const bool private_read = missing == MissingCell::kAsyncGenState || missing == MissingCell::kAsyncGenResult || missing == MissingCell::kAsyncGenMode;
-    for (std::uint32_t i = 0; i < yield_count; ++i) code.insert(code.end(), {
+    const auto user_begin = static_cast<std::uint32_t>(code.size());
+    for (std::uint32_t i = 0; i < yield_count; ++i) {
+      const auto callback_load = code.size() + 4; // LDLEXVAR/STA precede LDA callback.
+      code.insert(code.end(), {
       Op(private_read ? abc::Opcode::kLDA_V8 : abc::Opcode::kLDLEXVAR_IMM4_IMM4),
       static_cast<std::uint8_t>(missing == MissingCell::kAsyncGenResult ? 1 : missing == MissingCell::kAsyncGenMode ? 2 : 0),
       Op(abc::Opcode::kSTA_V8), kCell, Op(abc::Opcode::kLDA_V8), kCallback,
       Op(abc::Opcode::kCALLARG1_IMM8_V8), 0, kCell});
+      if (async_generator_await) {
+        code.insert(code.end(), {Op(abc::Opcode::kASYNCFUNCTIONAWAITUNCAUGHT_V8),
+          static_cast<std::uint8_t>(missing == MissingCell::kAsyncGenAwaitState ? 1 : 0),
+          Op(abc::Opcode::kSUSPENDGENERATOR_V8), 0, Op(abc::Opcode::kLDA_V8), 0, Op(abc::Opcode::kRESUMEGENERATOR),
+          Op(abc::Opcode::kSTA_V8), 1, Op(abc::Opcode::kLDA_V8), 0,
+          Op(abc::Opcode::kGETRESUMEMODE), Op(abc::Opcode::kSTA_V8), 2,
+          Op(abc::Opcode::kLDAI_IMM32), static_cast<std::uint8_t>(analysis::CoroutineResumeMode::kThrow), 0, 0, 0,
+          Op(abc::Opcode::kEQ_IMM8_V8), 0, static_cast<std::uint8_t>(missing == MissingCell::kAsyncGenAwaitMode ? 1 : 2)});
+        const auto branch = code.size();
+        const auto encoding = resume_encoding.throw_mode;
+        const unsigned width = encoding == BranchEncoding::k8 ? 1 : encoding == BranchEncoding::k16 ? 2 : 4;
+        code.push_back(Op(encoding == BranchEncoding::k8 ? abc::Opcode::kJEQZ_IMM8 : encoding == BranchEncoding::k16 ?
+            abc::Opcode::kJEQZ_IMM16 : abc::Opcode::kJEQZ_IMM32));
+        const unsigned delta = 1 + width + 2 + 2; // Branch + load rejected + prefixed throw.
+        for (unsigned byte = 0; byte < width; ++byte)
+          code.push_back(static_cast<std::uint8_t>((delta - (missing == MissingCell::kAsyncGenAwaitBranch ? 4 : 0)) >> (byte * kByteBits)));
+        code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), 1,
+          static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits), Op(abc::Opcode::kLDA_V8), 1});
+        if (missing == MissingCell::kAsyncGenAwaitEntry) {
+          // Redirect the retained callback callee load into the private mode save.
+          constexpr unsigned kCompareBytes = 3, kModeConstantBytes = 5;
+          const auto mode_save = branch - kCompareBytes - kModeConstantBytes - 2;
+          const auto jump_delta = std::int64_t(mode_save) - std::int64_t(callback_load);
+          test::Check(jump_delta <= INT8_MAX);
+          code[callback_load] = Op(abc::Opcode::kJMP_IMM8); code[callback_load + 1] = static_cast<std::uint8_t>(jump_delta);
+        }
+      }
+    }
+    const bool caught = child_shape == ChildShape::kAsyncGeneratorAwaitCatch;
+    std::uint32_t user_end = 0, user_catch = 0, user_catch_end = 0;
+    if (caught) {
+      user_end = static_cast<std::uint32_t>(code.size());
+      const auto jump = code.size(); code.push_back(Op(abc::Opcode::kJMP_IMM32)); code.insert(code.end(), 4, 0);
+      user_catch = static_cast<std::uint32_t>(code.size());
+      code.insert(code.end(), {Op(abc::Opcode::kSTA_V8), 5, Op(abc::Opcode::kLDA_V8), kCallback,
+        Op(abc::Opcode::kCALLARG1_IMM8_V8), 0,
+        static_cast<std::uint8_t>(missing == MissingCell::kAsyncGenAwaitCatchResult ? 1 : missing == MissingCell::kAsyncGenAwaitCatchMode ? 2 : 5)});
+      user_catch_end = static_cast<std::uint32_t>(code.size());
+      const auto delta = static_cast<std::uint32_t>(code.size() - jump);
+      for (unsigned byte = 0; byte < 4; ++byte) code[jump + 1 + byte] = static_cast<std::uint8_t>(delta >> (byte * kByteBits));
+    }
     code.insert(code.end(), {Op(abc::Opcode::kLDUNDEFINED), Op(abc::Opcode::kSTA_V8), 1,
       Op(missing == MissingCell::kAsyncGenDone ? abc::Opcode::kLDFALSE : abc::Opcode::kLDTRUE), Op(abc::Opcode::kSTA_V8), 2,
       Op(abc::Opcode::kLDA_V8), 0, Op(abc::Opcode::kSETGENERATORSTATE_IMM8),
@@ -911,10 +959,11 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       Op(abc::Opcode::kASYNCGENERATORREJECT_V8), static_cast<std::uint8_t>(missing == MissingCell::kAsyncGenReject ? 1 : 0),
       Op(abc::Opcode::kRETURN)});
     std::vector<std::uint8_t> table;
+    if (caught) for (const auto operand : {user_begin, user_end - user_begin, 1U, 0U, user_catch, user_catch_end - user_catch}) Uleb(table, operand);
     constexpr std::uint32_t kTryBegin = 4; // Label before initial LDUNDEFINED.
     for (const auto operand : {kTryBegin, handler - kTryBegin, 1U, 0U, handler,
                               static_cast<std::uint32_t>(code.size()) - handler}) Uleb(table, operand);
-    return AppendEncodedCode(bytes, kLocals, getter_parameters, code, table);
+    return AppendEncodedCode(bytes, kLocals, getter_parameters, code, table, caught ? 2 : 1);
   };
   const auto getter = async_generator ? async_generator_getter() : generator ? generator_getter() : await_finally ? finally_getter() :
       await_capture ? async_getter() :
@@ -1207,6 +1256,29 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--async-generator-await-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+        for (const bool caught : {false, true}) for (const auto encoding : {BranchEncoding::k8, BranchEncoding::k16, BranchEncoding::k32})
+          std::cout << nlohmann::json{{"source", Emit(profile, shape,
+              caught ? ChildShape::kAsyncGeneratorAwaitCatch : ChildShape::kAsyncGeneratorAwait,
+              MissingCell::kNone, false, 2, CopyEncoding::kV8, 1, YieldFinalizer::kPreserve, {encoding, encoding})},
+              {"catch_parent", shape == ParentShape::kCatch}, {"count", 2}, {"caught", caught}}.dump() << '\n';
+    for (const auto count : {200U, 201U, 402U}) for (const bool caught : {false, true})
+      for (const auto encoding : {BranchEncoding::k16, BranchEncoding::k32})
+        std::cout << nlohmann::json{{"source", Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal,
+            caught ? ChildShape::kAsyncGeneratorAwaitCatch : ChildShape::kAsyncGeneratorAwait,
+            MissingCell::kNone, false, count, CopyEncoding::kV8, 1, YieldFinalizer::kPreserve, {encoding, encoding})},
+            {"catch_parent", false}, {"count", count}, {"caught", caught}}.dump() << '\n';
+    for (const auto missing : {MissingCell::kAsyncGenAwaitState, MissingCell::kAsyncGenAwaitMode, MissingCell::kAsyncGenAwaitBranch,
+        MissingCell::kAsyncGenAwaitEntry, MissingCell::kAsyncGenAwaitCatchResult, MissingCell::kAsyncGenAwaitCatchMode})
+      for (const auto encoding : {BranchEncoding::k8, BranchEncoding::k16, BranchEncoding::k32}) {
+        Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kAsyncGeneratorAwaitCatch,
+            missing, false, 1, CopyEncoding::kV8, 1, YieldFinalizer::kPreserve, {encoding, encoding});
+        std::cout << nlohmann::json{{"rejected", true}}.dump() << '\n';
+      }
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--async-generator-prefix-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})

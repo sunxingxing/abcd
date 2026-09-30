@@ -12,6 +12,29 @@
 
 ## 当前阶段
 
+### 2026-09-30：async generator 源 await 的共同源码贯通
+
+- 复用现有 AwaitRegion 与 catch-input 分析，核对真实 await state、resume
+  result/mode、分支及用户 handler；规范化时保留 await、结果/模式提交和
+  continuation，原 PC 单调重定位后进入共同 ValueProgram/ExceptionFlow。
+  原生 async function* 负责请求排队，不增加 async writer 或调度器。
+- 新集成消费 66 个完整文件解码函数族及 18 个协议反例，覆盖三 profile、
+  三父环境、8/16/32 位分支、用户 catch 和 200/201/402 个 await。
+  实际生成 JS 验证 thenable getter/call/receiver/参数次数、暂停后的动态
+  cell 重读、排队 return/next/throw 等待源 await、拒绝对象身份和 catch
+  覆盖；被丢弃的 catch 回调结果不被错误 await。反例含错误 state/mode、
+  continuation 分支、外部入口及 catch 观察跳过的结果/模式写入。
+- 有效输入红例见 `/tmp/abcd-async-generator-await-red.log`。相关八个
+  C++ 目标构建成功，15 项定向 CTest 全通过（67.93 秒），包含新 await、
+  async prefix、同步 yield/delegate、finally 和共同控制回归。证据为
+  `/tmp/abcd-async-generator-await-regression-build.log` 与
+  `/tmp/abcd-async-generator-await-regression-tests.log`；`git diff --check`
+  通过。同时补齐规范化后 user try/handler 容器的现有内存记录。
+- async generator 的实际 yield、显式 return、yield*、method 和更广的
+  finally 组合继续开放；下一步贯通实际 yield 与 await 的共同恢复。
+  C08/总目标未完成，未宣称真实应用覆盖或 1GB 实测；全量测试、全语料、
+  RSS 和基准继续暂停。独立开发与自查，未调用 CC/子代理。
+
 ### 2026-09-30：async generator 入口与隐式结束的共同源码贯通
 
 - 创建上下文保留 ASYNC_GENERATOR callable kind，共同 FunctionTree/Printer

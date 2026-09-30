@@ -958,6 +958,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator_delegate.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_async_generator_prefix_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_generator_prefix.mjs $<TARGET_FILE:loop_closure_file_test>)
+    add_test(NAME file_async_generator_await_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_generator_await.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_generator_return_suspend_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator_return_suspend.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_generator_return_loop_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

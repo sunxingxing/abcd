@@ -11,6 +11,7 @@ struct GeneratorBody {
   abc::MethodBody body;
   std::vector<abc::CodeOffset> source_pcs;
   std::vector<analysis::YieldSite> yields;
+  std::vector<analysis::AwaitSite> awaits;
 };
 // Normalize decoded OH7 synchronous generator entry and direct/delegated exits.
 // Resume dispatch uses the common typed JEQZ predicate, independent of encoding
@@ -32,8 +33,9 @@ struct GeneratorBody {
 // be dead at continuation/user catch, and no user boundary/interior entry may
 // bisect delegation. Injected RETURN cleanup in yield* remains unsupported.
 // Async execution currently admits exact Prepare + ImplicitReturn/CleanUp
-// with ordinary source effects between them. Entry result/mode slots cannot
-// be reused yet; raw await/yield/explicit return remain unsupported. Native
+// with ordinary source effects and shared AwaitRegion continuations between
+// them. Entry result/mode slots may be defined by certified awaits; other
+// source reuse, raw yield and explicit return remain unsupported. Native
 // async generator owns its request queue and settlement, never an async writer.
 // I instructions,
 // B branches, H handlers, Y yields, R dispatch spans: normalization/rebasing

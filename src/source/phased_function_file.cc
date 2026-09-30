@@ -115,8 +115,9 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       if (const auto* error = std::get_if<FunctionEmitError>(&normalization)) throw PhasedFileFailure{*error};
       if (const auto* error = std::get_if<abc::MetadataError>(&normalization)) throw PhasedFileFailure{*error};
       auto normalized = std::get<GeneratorBody>(std::move(normalization));
-      arena(normalized.body.instructions); arena(normalized.source_pcs); arena(normalized.yields);
-      source_pcs = std::move(normalized.source_pcs); yields = std::move(normalized.yields);
+      arena(normalized.body.instructions); arena(normalized.source_pcs); arena(normalized.yields); arena(normalized.awaits);
+      arena(normalized.body.tries); arena(normalized.body.handlers);
+      source_pcs = std::move(normalized.source_pcs); yields = std::move(normalized.yields); awaits = std::move(normalized.awaits);
       original.emplace(std::move(body)); body = std::move(normalized.body);
     } else if (IsAsyncCallable(context.Callable())) {
       Require(identity.contract == SourceContract::kLanguageAndHostV2 ||

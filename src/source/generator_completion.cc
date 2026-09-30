@@ -345,10 +345,47 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
     storage(protocol.capacity(), sizeof(ProtocolPart));
     storage(yields.capacity(), sizeof(YieldProtocol));
     storage(delegates.capacity(), sizeof(GeneratorDelegate));
+    std::vector<analysis::AwaitRegion> await_regions;
+    if (asynchronous) {
+      auto found = analysis::FindAwaitRegions(body, profile, frame.registers, bytes);
+      if (const auto* error = std::get_if<analysis::AwaitRegionFailure>(&found))
+        return error->kind == analysis::AwaitRegionError::kResourceLimit ? Error::kResourceLimit : Error::kKind;
+      await_regions = std::get<std::vector<analysis::AwaitRegion>>(std::move(found));
+      storage(await_regions.capacity(), sizeof(analysis::AwaitRegion));
+      result.awaits.reserve(await_regions.size()); storage(result.awaits.capacity(), sizeof(analysis::AwaitSite));
+      // Shared AwaitRegion owns pairing, rejection and exception boundaries.
+      // Retain the same await/result/mode/continuation operations used by async
+      // functions. Native rejection skips the VM commits; catch-input analysis
+      // must prove those lost writes unobserved by each user catch.
+      for (const auto& region : await_regions) {
+        Require(region.state == state && region.result.value < frame.locals && region.resume_mode.value < frame.locals &&
+            region.await >= code[first].offset && region.continuation < code[handler - kAsyncExitSize].offset);
+        const auto begin = std::lower_bound(code.begin() + first, code.begin() + handler, region.await,
+            [](const auto& site, auto pc) { return site.offset < pc; });
+        Require(begin != code.begin() + handler && begin->offset == region.await && region.instructions);
+        const auto index = static_cast<std::size_t>(begin - code.begin());
+        Require(analysis::kAwaitProtocolInstructions <= handler - index);
+        for (std::size_t step = 0; step < analysis::kAwaitProtocolInstructions; ++step) {
+          const auto pc = code[index + step].offset;
+          Require((*region.instructions)[step] == pc);
+          // Continuation is retained but also private to this await's normal
+          // entry. Source branches/handler entries cannot bypass its commits.
+          interior[index + step] = step != 0;
+          retained[index + step] = pc == region.await || pc == region.result_store || pc == region.mode ||
+              pc == region.mode_store || pc == region.continuation;
+          protocol[index + step] = ProtocolPart::kResume;
+        }
+        result.awaits.push_back({region.await, region, region.mode});
+      }
+      const auto catch_inputs = analysis::ProveAwaitCatchInputs(body, await_regions, profile, frame.registers,
+          code[handler].offset, {bytes});
+      if (const auto* error = std::get_if<analysis::AwaitCatchFailure>(&catch_inputs))
+        return error->kind == analysis::AwaitCatchError::kResourceLimit ? Error::kResourceLimit : Error::kKind;
+    }
     std::fill(interior.begin(), interior.begin() + first, 1);
     if (asynchronous) {
-      // First C08 slice: exact Prepare and implicit return/catch settlement;
-      // source await/yield/explicit returns remain unsupported. Erase only VM
+      // Exact Prepare and implicit return/catch settlement, with shared awaits
+      // above. Source yield/explicit returns remain unsupported. Erase only VM
       // operations, keeping the actual implicit undefined load and Return.
       const auto exit = handler - kAsyncExitSize;
       std::fill(retained.begin() + exit + kSaveExitValue, retained.begin() + exit + kExitReturn, 0);
@@ -525,8 +562,12 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
       Require(site != code.end() && site->offset == target && !interior[site - code.begin()]);
     }
     std::uint32_t pc = 0;
-    std::size_t next_yield = 0, next_mode = 0;
+    std::size_t next_yield = 0, next_mode = 0, next_await = 0, next_await_mode = 0;
     for (auto& site : result.body.instructions) {
+      if (next_await < result.awaits.size() && site.offset == result.awaits[next_await].origin.await)
+        result.awaits[next_await++].pc = {pc};
+      if (next_await_mode < result.awaits.size() && site.offset == result.awaits[next_await_mode].origin.mode)
+        result.awaits[next_await_mode++].mode_pc = {pc};
       if (next_yield < result.yields.size() && site.offset == result.yields[next_yield].origin.create)
         result.yields[next_yield++].pc = {pc};
       while (next_mode < result.yields.size() && !result.yields[next_mode].mode_pc) ++next_mode;
