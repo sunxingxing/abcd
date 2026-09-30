@@ -12,6 +12,45 @@
 
 ## 当前阶段
 
+### 2026-10-01：后置访问器组合进入共同类树与外层求值验证
+
+- 新 ProjectClassAccessors 复核实际 occurrence，使用一次 class/prototype use census、
+  effect prefix 与 owner 索引检查 creation 至最后定义的完整区间，复杂度
+  O(ops + uses + sites)。拒绝提前发布类/原型、外部观察、副作用屏障、环境变化和
+  活跃 definition result；不逐访问器重复遍历类的全部用途。纯 key/name-flag 叶子
+  仅在所有用途都属于同一投影时消去，不留下无意义的字符串和 false 表达式。
+- 真实 Index 的 prototype 在四个访问器之后仍用于普通方法安装。现保留这个
+  命名读取及 SSA 身份，只把已经承接的成员操作移入类创建；prototype 字符串
+  仍由 constants/独立 tree correspondence 验证，不把任何 named read 都当成它。
+- 原初始化投影统一命名为 ProjectClassMembers / ClassProjection；正常
+  EvaluationPlan 和独立 verifier 接入 accessor 请求与同一 owner 证明。
+  ClassTree 按 wire order 保存 PreparedFamily getter/setter，正式 record 路径
+  按 class 索引分组传入；printer、外层 operand 检查和 member source positions
+  共同消费实际正文。缺少正文、错误 occurrence 或伪造 owner 不能通过。
+- 新 class_accessor_tree_test 从独立合成 ABC 指令完整贯通值图、求值计划、
+  ClassTree、外层函数树和共同 printer，覆盖 prototype/static、重复定义及
+  仍被返回的 prototype。class_accessor_tree_source_test 执行实际生成的外层
+  工厂函数，与独立 native class 对照 name/length、属性顺序、getter/setter
+  描述符、跨创建身份、Proxy receiver/读写顺序、异常身份和严格 setter 写入失败。
+  这些是合成输入的完整类组合验证，不能代替真实页面与配对源码验收。
+- 单元规格覆盖三个动态 profile、1/200/201/402 个访问器、同定义 getter+setter、
+  提前类/原型发布、后续类/原型使用、debugger/环境屏障、结果逃逸、伪造 key/顺序、
+  缺失正文与资源/work 限制。真实 Index 四个成员正文及共享 prototype 保留继续通过。
+- 构建成功，日志 /tmp/abcd-accessor-final-build.log、
+  /tmp/abcd-accessor-regression-build.log。十四项定向回归全部通过（9.56 秒），
+  /tmp/abcd-accessor-regression-tests.log；后续 retained-prototype 两项通过
+  （1.06 秒），/tmp/abcd-accessor-retained-tests.log；补充 pair/environment 和真实
+  ownership 拒绝的三项通过（3.17 秒），/tmp/abcd-accessor-negative-tests.log。
+- 五输入正式导出位于 build/stage-one/value-accessor-projection-pass-1，结果
+  34 complete / 72 failure / 46 no-module，没有已完整 record 退化、没有 legacy
+  writer；/tmp/abcd-accessor-batch-summary.json。未恢复全量测试/RSS/其他 corpus。
+- Index entry10009 正式 record 仍为 kValue，source_complete=false，
+  /tmp/abcd-accessor-projection-index.json；真实外层求值确认为 kOwnership，访问器
+  之后的普通方法创建尚未被共同成员组合接纳（PC213 起）。下一步处理这种真实
+  DEFINEMETHOD + 属性安装，再继续派生构造/heritage。初始化调用与访问器同类
+  交错仍拒绝，尚需统一顺序证明；本轮不声称页面或阶段一完成。
+
+
 ### 2026-10-01：真实访问器正文贯通共同成员上下文、函数族与 printer
 
 - ClassTreeContext 新增来自真实后置定义的 accessor owner：按现有有序 occurrence

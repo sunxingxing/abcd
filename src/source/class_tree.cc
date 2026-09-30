@@ -22,7 +22,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
     const analysis::FunctionCreationSites& functions, const analysis::ClassMethodSites& classes,
     const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
-    const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer) {
+    const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer, std::span<const ClassAccessorSite> accessors) {
   const auto initial = budget;
   try {
     const auto admit = [&](std::size_t count, std::size_t width) {
@@ -74,6 +74,28 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       admit(member.AllocatedBytes(), 1); step(member.Work());
       members.push_back(std::move(member));
     }
+    // The enclosing evaluation independently proves these definitions movable.
+    // Retain their actual wire order and both halves of each descriptor; never
+    // sort by property key or drop a superseded body's preparation obligation.
+    std::vector<ClassAccessorTree> accessor_trees;
+    admit(accessors.size(), sizeof(ClassAccessorTree)); accessor_trees.reserve(accessors.size());
+    admit(accessor_trees.capacity() - accessors.size(), sizeof(ClassAccessorTree));
+    std::optional<analysis::OpId> previous;
+    for (const auto& accessor : accessors) {
+      step(1);
+      if (accessor.creation != operation || (previous && *previous >= accessor.definition) || initializer)
+        return ClassTreeFailure{Error::kCreation};
+      previous = accessor.definition;
+      ClassAccessorTree tree{accessor};
+      const auto prepare = [&](abc::ClassMethodKind kind) {
+        auto member = Take<PreparedFamily>(PreparedFamily::PrepareAccessor(file, header, index, lookup, roles,
+            functions, creator, accessor.definition, kind, identity, destination, budget));
+        admit(member.AllocatedBytes(), 1); step(member.Work()); return member;
+      };
+      if (accessor.getter) tree.getter = prepare(abc::ClassMethodKind::kGetter);
+      if (accessor.setter) tree.setter = prepare(abc::ClassMethodKind::kSetter);
+      accessor_trees.push_back(std::move(tree));
+    }
     std::optional<ClassStaticFields> fields;
     if (initializer) {
       if (initializer->creation != operation) return ClassTreeFailure{Error::kCreation};
@@ -117,7 +139,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       fields = ClassStaticFields{*initializer, std::move(body.context), std::move(built.tree), body.function.input.Record()};
     }
     if (file.CheckUnchanged()) return ClassTreeFailure{abc::MetadataError::kFileChanged};
-    return ClassTree{identity, site, std::move(spelling), std::move(constructor), std::move(members), std::move(fields),
+    return ClassTree{identity, site, std::move(spelling), std::move(constructor), std::move(members), std::move(accessor_trees), std::move(fields),
         initial.bytes - budget.bytes, initial.work - budget.work};
   } catch (const ClassTreeFailure& failure) { return failure; }
     catch (const std::bad_alloc&) { return ClassTreeFailure{Error::kResourceLimit}; }

@@ -79,7 +79,7 @@ std::variant<CallPlan, CallPlanError> BuildCalls(const analysis::ValueProgram& g
     checked.Admit(plan.operations.capacity() - graph.ops.size(), sizeof(CallBinding));
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       checked.Step(); const auto& op = graph.ops[i];
-      if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kClassInitializer) continue;
+      if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kClassProjection) continue;
       if (std::holds_alternative<ValueConstruct>(op.operation)) {
         plan.operations[i] = ConstructCall{};
         continue;
@@ -123,7 +123,7 @@ std::variant<std::uint64_t, CallPlanError> VerifyCalls(const analysis::ValueProg
       checked.Step(); const auto& op = graph.ops[i];
       const auto& binding = plan.operations[i];
       const auto* invoke = std::get_if<ValueInvoke>(&op.operation);
-      if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kClassInitializer || (!invoke && !std::holds_alternative<ValueConstruct>(op.operation))) {
+      if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kClassProjection || (!invoke && !std::holds_alternative<ValueConstruct>(op.operation))) {
         Require(std::holds_alternative<NoCall>(binding), Error::kBinding); continue;
       }
       if (!invoke) { Require(std::holds_alternative<ConstructCall>(binding), Error::kBinding); continue; }

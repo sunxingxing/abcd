@@ -1036,7 +1036,11 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassT
         tree.constructor.Family().members[tree.constructor.Family().root.value].tree.method != tree.creation.target)
       return Failure::kUnsupportedContext;
     PrintedClassTree result;
-    const auto count = tree.members.size() + 1;
+    auto count = tree.members.size() + 1;
+    for (const auto& accessor : tree.accessors) {
+      if (!budget.work) return Failure::kWorkLimit;
+      --budget.work; count += accessor.getter.has_value() + accessor.setter.has_value();
+    }
     if (count > budget.bytes / sizeof(PrintedClassTree::Member)) return Failure::kResourceLimit;
     budget.bytes -= count * sizeof(PrintedClassTree::Member); result.members.reserve(count);
     const auto excess = result.members.capacity() - count;
@@ -1084,6 +1088,23 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassT
       if (!site || family.Identity() != tree.identity || site->creator != tree.creation.creator ||
           site->pc != tree.creation.pc || site->property != i) throw Failure::kUnsupportedContext;
       member(family);
+    }
+    std::optional<analysis::OpId> previous_accessor;
+    for (const auto& accessor : tree.accessors) {
+      if (tree.initializer || (previous_accessor && *previous_accessor >= accessor.site.definition) ||
+          accessor.getter.has_value() != accessor.site.getter.has_value() ||
+          accessor.setter.has_value() != accessor.site.setter.has_value()) throw Failure::kUnsupportedContext;
+      previous_accessor = accessor.site.definition;
+      const auto emit_accessor = [&](const PreparedFamily& family, abc::ClassMethodKind kind) {
+        const auto* site = family.AccessorCreation();
+        if (!site || family.Identity() != tree.identity || site->function.creator != tree.creation.creator ||
+            site->definition != accessor.site.definition || site->kind != kind ||
+            site->placement != (accessor.site.prototype ? abc::ClassPlacement::kPrototype : abc::ClassPlacement::kStatic))
+          throw Failure::kUnsupportedContext;
+        member(family);
+      };
+      if (accessor.getter) emit_accessor(*accessor.getter, abc::ClassMethodKind::kGetter);
+      if (accessor.setter) emit_accessor(*accessor.setter, abc::ClassMethodKind::kSetter);
     }
     if (tree.initializer) {
       const auto& initializer = *tree.initializer;

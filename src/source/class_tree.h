@@ -16,12 +16,18 @@ struct ClassStaticFields {
   FunctionTree tree;
   abc::EntityOffset record;
 };
+struct ClassAccessorTree {
+  ClassAccessorSite site;
+  std::optional<PreparedFamily> getter;
+  std::optional<PreparedFamily> setter;
+};
 struct ClassTree {
   RouteInputIdentity identity;
   ClassConstructorSite creation;
   std::u16string name;
   PreparedFamily constructor;
   std::vector<PreparedFamily> members;
+  std::vector<ClassAccessorTree> accessors;
   std::optional<ClassStaticFields> initializer;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
@@ -33,13 +39,16 @@ using ClassTreeFailure = std::variant<ClassTreeError, ClassContextFailure, Famil
 // Fresh unchanged caller and same-file indexes are admitted by the caller.
 // Constructor and every member use the shared family pipeline. Refusal of any
 // member refuses this creation; no old writer or fabricated body substitutes.
+// Accessor sites are ordered, actual occurrences for this class. The enclosing
+// evaluation must independently prove their projection before publication.
 [[nodiscard]] std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
     const abc::MethodLookup&, const analysis::MethodRoleIndex&,
     const analysis::FunctionCreationSites&, const analysis::ClassMethodSites&,
     const FileFunction& creator, analysis::OpId creation, RouteInputIdentity,
     const GlobalScope* globals = nullptr, analysis::SemanticBudget budget = {},
-    const ClassInitializerCall* initializer = nullptr);
+    const ClassInitializerCall* initializer = nullptr,
+    std::span<const ClassAccessorSite> accessors = {});
 struct PrintedClassTree {
   // Each member's positions remain relative to its own byte offset, preserving
   // the existing family source maps without expanding their origin graphs.

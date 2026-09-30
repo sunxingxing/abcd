@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_CLASS_INITIALIZERS_H_
 #include "abcd/analysis/value_ir.h"
 #include <span>
+#include "class_accessors.h"
 namespace abcd::source {
 struct ClassInitializerCall {
   analysis::OpId creation;
@@ -27,13 +28,17 @@ enum class ClassInitializerError : std::uint8_t { kInput, kFlow, kResourceLimit,
 // Conditional projection: each named read in prototypes must separately be
 // resolved to the builtin "prototype" data property by the source adapter.
 // Body recovery must bind the same method occurrence into its class tree.
-struct ClassInitializerProjection {
+// Prototype reads with surviving later uses remain ordinary operations; this
+// list also carries their spelling obligation. Initializer/accessor interleaving
+// within one class remains rejected until their common ordering is proved.
+struct ClassProjection {
   std::vector<std::optional<analysis::OpId>> owners;
   std::vector<analysis::OpId> prototypes;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
-[[nodiscard]] std::variant<ClassInitializerProjection, ClassInitializerError> ProjectClassInitializers(
-    const analysis::ValueProgram&, std::span<const ClassInitializerCall>, analysis::SemanticBudget = {});
+[[nodiscard]] std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
+    const analysis::ValueProgram&, std::span<const ClassInitializerCall>, analysis::SemanticBudget = {},
+    std::span<const ClassAccessorSite> = {});
 }
 #endif

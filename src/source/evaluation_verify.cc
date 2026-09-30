@@ -81,11 +81,11 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     std::vector<std::size_t> environment_epochs(graph.ops.size());
     admit(environment_epochs.capacity() - graph.ops.size(), sizeof(std::size_t));
     std::size_t environment_epoch = 0;
-    auto projected = ProjectClassInitializers(graph, plan.class_initializers, {bytes, work});
+    auto projected = ProjectClassMembers(graph, plan.class_initializers, {bytes, work}, plan.class_accessors);
     if (const auto* error = std::get_if<ClassInitializerError>(&projected))
       return *error == ClassInitializerError::kResourceLimit ? Error::kResourceLimit :
           *error == ClassInitializerError::kWorkLimit ? Error::kWorkLimit : Error::kOwnership;
-    const auto& projection = std::get<ClassInitializerProjection>(projected);
+    const auto& projection = std::get<ClassProjection>(projected);
     admit(projection.allocated_bytes, 1); step(projection.work);
     Require(projection.owners == plan.class_projection.owners && projection.prototypes == plan.class_projection.prototypes,
         Error::kOwnership);
@@ -221,10 +221,10 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         continue;
       }
       if (projected_op(i)) {
-        Require(placement.kind == EvaluationKind::kClassInitializer && !placement.consumer && !placement.temporary, Error::kOwnership);
+        Require(placement.kind == EvaluationKind::kClassProjection && !placement.consumer && !placement.temporary, Error::kOwnership);
         visits[i] = EvaluationVisit::kDone; continue;
       }
-      Require(placement.kind != EvaluationKind::kClassInitializer, Error::kOwnership);
+      Require(placement.kind != EvaluationKind::kClassProjection, Error::kOwnership);
       if (placement.kind == EvaluationKind::kElidedPure) {
         Require(flow == EvaluationFlow::kPhased && analysis::CanErasePureOp(op) &&
             !placement.consumer && !placement.temporary, Error::kOwnership);
@@ -329,7 +329,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
           step(); ++expected; fused_guard.reset();
         }
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
-                                  plan.operations[expected].kind == EvaluationKind::kClassInitializer ||
+                                  plan.operations[expected].kind == EvaluationKind::kClassProjection ||
                                   plan.operations[expected].kind == EvaluationKind::kElidedPure ||
                                   plan.operations[expected].kind == EvaluationKind::kAlias ||
                                   plan.operations[expected].kind == EvaluationKind::kInitializer ||

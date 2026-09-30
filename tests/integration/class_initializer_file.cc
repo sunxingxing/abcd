@@ -43,6 +43,20 @@ int main(int argc, char** argv) {
     const auto& parent = std::get<FileFunction>(caller);
     const auto& graph = parent.values.graph;
     Check(parent.values.accessors.sites.size() == 4);
+    const auto projected = ProjectClassAccessors(graph, parent.values.accessors.sites);
+    if (const auto* error = std::get_if<ClassAccessorError>(&projected))
+      std::cerr << "accessor corridor failure " << static_cast<unsigned>(*error) << '\n';
+    Check(std::holds_alternative<ClassAccessorProjection>(projected));
+    const auto& projection = std::get<ClassAccessorProjection>(projected);
+    for (const auto& accessor : parent.values.accessors.sites) {
+      Check(projection.owners[accessor.definition.value] == accessor.creation);
+      Check(!projection.owners[accessor.prototype->value]);
+    }
+    // Accessor ownership alone cannot discard the remaining ordinary method
+    // creations in this actual page. Its complete outer family is still open.
+    const auto evaluation = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {},
+        analysis::ClosureWrites::kUnknown, parent.values.accessors.sites);
+    Check(std::get<EvaluationError>(evaluation) == EvaluationError::kOwnership);
     const unsigned pcs[] = {137, 160, 183, 206};
     std::ostringstream accessors;
     accessors << "class Accessors {\n";

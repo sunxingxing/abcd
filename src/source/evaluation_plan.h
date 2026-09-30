@@ -13,7 +13,7 @@
 
 namespace abcd::source {
 enum class EvaluationKind : std::uint8_t {
-  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassInitializer
+  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection
 };
 enum class EvaluationFlow : std::uint8_t { kNormal, kPhased };
 struct OpEvaluation {
@@ -60,7 +60,8 @@ struct EvaluationPlan {
   std::vector<analysis::ValueId> aliases;
   std::optional<HoleProtocol> holes;
   std::vector<ClassInitializerCall> class_initializers;
-  ClassInitializerProjection class_projection;
+  ClassProjection class_projection;
+  std::vector<ClassAccessorSite> class_accessors;
   analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown;
 };
 inline analysis::ValueId ResolveEvaluationValue(const EvaluationPlan& plan, analysis::ValueId value) {
@@ -151,7 +152,8 @@ struct EvaluationShape {
     std::span<const FunctionBinding> functions = {},
     std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {},
     std::span<const ClassInitializerCall> initializers = {},
-    analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown);
+    analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown,
+    std::span<const ClassAccessorSite> accessors = {});
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and availability. Cross-phase expressions require
 // contiguous effect intervals and equal catch snapshots at their final roots.

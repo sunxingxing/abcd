@@ -82,8 +82,8 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     auto* constants = std::get_if<TreeConstants>(&resolved);
     if (!constants) return fail(Error::kValue);
     retain(constants->allocated_bytes);
-    auto projected = ProjectClassInitializers(graph, function->values.initializers.calls, {budget.bytes});
-    const auto* projection = std::get_if<ClassInitializerProjection>(&projected);
+    auto projected = ProjectClassMembers(graph, function->values.initializers.calls, {budget.bytes}, function->values.accessors.sites);
+    const auto* projection = std::get_if<ClassProjection>(&projected);
     if (!projection) {
       const auto error = std::get<ClassInitializerError>(projected);
       if (error == ClassInitializerError::kResourceLimit) return fail(Error::kResourceLimit);
@@ -244,7 +244,7 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     if (placed != stores) return fail(Error::kInitializer);
     if (std::find(initialized.begin(), initialized.end(), false) != initialized.end())
       return fail(Error::kInitializer);
-    auto evaluated = BuildEvaluationPlan(graph, {budget.bytes}, IncomingCells::kReject, {}, bindings->evaluations, {}, function->values.initializers.calls);
+    auto evaluated = BuildEvaluationPlan(graph, {budget.bytes}, IncomingCells::kReject, {}, bindings->evaluations, {}, function->values.initializers.calls, analysis::ClosureWrites::kUnknown, function->values.accessors.sites);
     auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
     if (!evaluation) return fail(Error::kValue);
     retain(evaluation->allocated_bytes);
@@ -253,10 +253,20 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     class_scope.module_local_names = std::span<const std::u16string>(names).subspan(external);
     // File-level occurrence indexes are borrowed across records. Never rescan
     // the whole ABC for every class or use a detached class as a body fallback.
+    retain(function->values.accessors.sites.size() * sizeof(ClassAccessorSite));
+    auto accessors = function->values.accessors.sites;
+    retain((accessors.capacity() - accessors.size()) * sizeof(ClassAccessorSite));
+    std::sort(accessors.begin(), accessors.end(), [](const auto& a, const auto& b) {
+      return a.creation != b.creation ? a.creation < b.creation : a.definition < b.definition;
+    });
     for (const auto& occurrence : function->values.classes.classes) {
       if (!functions || !classes) return fail(Error::kClass);
+      const auto first = std::lower_bound(accessors.begin(), accessors.end(), occurrence.operation,
+          [](const auto& site, auto id) { return site.creation < id; });
+      const auto last = std::upper_bound(first, accessors.end(), occurrence.operation,
+          [](auto id, const auto& site) { return id < site.creation; });
       auto built = BuildClassTree(file, header, index, lookup, roles, *functions, *classes,
-          *function, occurrence.operation, identity, &class_scope, {budget.bytes}, initialization[occurrence.operation.value]);
+          *function, occurrence.operation, identity, &class_scope, {budget.bytes}, initialization[occurrence.operation.value], std::span(first, last));
       if (const auto* failure = std::get_if<ClassTreeFailure>(&built)) {
         const auto classify = [&](auto&& self, const auto& error) -> RecordSourceResult {
           using T = std::decay_t<decltype(error)>;

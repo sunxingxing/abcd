@@ -44,6 +44,28 @@ class OperandCheck {
           site->pc == graph_.origins[graph_.ops[call.method.value].origin.value].pc &&
           site->creation.method == method->method, Error::kConstant);
     }
+    for (const auto& accessor : evaluation_.class_accessors) {
+      budget_.Step();
+      RequireMeaning(accessor.creation.value < constants_.operations.size(), Error::kConstant);
+      const auto* definition = std::get_if<std::shared_ptr<const ClassTree>>(&constants_.operations[accessor.creation.value]);
+      RequireMeaning(definition && *definition, Error::kConstant);
+      const auto& members = (*definition)->accessors;
+      const auto found = std::lower_bound(members.begin(), members.end(), accessor.definition,
+          [&](const auto& member, auto id) { budget_.Step(); return member.site.definition < id; });
+      RequireMeaning(found != members.end() && found->site == accessor &&
+          found->getter.has_value() == accessor.getter.has_value() &&
+          found->setter.has_value() == accessor.setter.has_value(), Error::kConstant);
+      const auto check = [&](const PreparedFamily& family, analysis::OpId method_id, abc::ClassMethodKind kind) {
+        budget_.Step(); const auto* site = family.AccessorCreation();
+        const auto* method = std::get_if<analysis::ValueFunctionCreation>(&graph_.ops[method_id.value].operation);
+        RequireMeaning(site && method && family.Identity() == tree_.identity &&
+            site->function.creator == tree_.method && site->definition == accessor.definition && site->kind == kind &&
+            site->function.pc == graph_.origins[graph_.ops[method_id.value].origin.value].pc &&
+            site->function.creation.method == method->method, Error::kConstant);
+      };
+      if (found->getter) check(*found->getter, *accessor.getter, abc::ClassMethodKind::kGetter);
+      if (found->setter) check(*found->setter, *accessor.setter, abc::ClassMethodKind::kSetter);
+    }
     std::size_t next_function = 0;
     std::size_t next_module = 0;
     std::vector<std::optional<std::size_t>> module_aliases;
@@ -59,7 +81,7 @@ class OperandCheck {
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto& op = graph_.ops[i];
-      if (evaluation_.operations[i].kind == EvaluationKind::kClassInitializer || IsAbsentHeritageTransport(graph_, evaluation_, op) || op.life != analysis::ValueLife::kLive ||
+      if (evaluation_.operations[i].kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) || op.life != analysis::ValueLife::kLive ||
           evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
           evaluation_.operations[i].kind == EvaluationKind::kAlias) continue;
       current_ = {static_cast<std::uint32_t>(i)};

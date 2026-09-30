@@ -211,7 +211,7 @@ class ForestBuilder {
         if (evaluation_.operations[i].kind == EvaluationKind::kInitializer ||
             evaluation_.operations[i].kind == EvaluationKind::kNestedLiteral) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kEnvironment ||
-            evaluation_.operations[i].kind == EvaluationKind::kClassInitializer) continue;
+            evaluation_.operations[i].kind == EvaluationKind::kClassProjection) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kModuleGuard) continue;
         if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) {
           Module(i, op, origin);
