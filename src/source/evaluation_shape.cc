@@ -41,6 +41,8 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return shape;
     }
     else if constexpr (std::is_same_v<T, analysis::ValueNamedWrite>) return EvaluationShape{kNamedWrite, false};
+    else if constexpr (std::is_same_v<T, analysis::ValueIndexedWrite>)
+      return EvaluationShape{kNamedWrite, false};
     else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
       switch (op.kind) {
         case analysis::OwnWriteKind::kStore: case analysis::OwnWriteKind::kDefineField:
@@ -166,6 +168,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                     std::is_same_v<T, analysis::ValuePropertyWrite> ||
                     std::is_same_v<T, analysis::ValueNamedWrite> ||
                     std::is_same_v<T, analysis::ValueOwnWrite> ||
+                    std::is_same_v<T, analysis::ValueIndexedWrite> ||
                     std::is_same_v<T, analysis::ValueBranch> ||
                     std::is_same_v<T, analysis::ValueReturn> ||
                     std::is_same_v<T, analysis::ValueThrow> || std::is_same_v<T, analysis::ValueHole> ||

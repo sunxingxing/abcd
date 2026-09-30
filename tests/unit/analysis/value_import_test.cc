@@ -7,6 +7,62 @@
 int main() {
   using namespace abcd;
   using namespace abcd::analysis;
+  // Own indexed definitions preserve acc and IC absence. They must neither
+  // become [[Set]] nor disappear when their destination is otherwise unused.
+  for (const auto profile : {abc::ProfileId::kDynamic1202,
+      abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+    for (const auto encoding : {abc::Opcode::kSTOWNBYINDEX_IMM8_V8_IMM16,
+        abc::Opcode::kSTOWNBYINDEX_IMM16_V8_IMM16, abc::Opcode::kWIDE_STOWNBYINDEX_PREF_V8_IMM32}) {
+    const bool wide = encoding == abc::Opcode::kWIDE_STOWNBYINDEX_PREF_V8_IMM32;
+    const bool wide_cache = encoding == abc::Opcode::kSTOWNBYINDEX_IMM16_V8_IMM16;
+    for (const auto count : {1U, 200U, 201U, 402U}) {
+      constexpr unsigned kPrefixOperations = 3;
+      std::vector<std::uint8_t> bytes{
+          static_cast<std::uint8_t>(abc::Opcode::kCREATEEMPTYARRAY_IMM8), 0,
+          static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), 0,
+          static_cast<std::uint8_t>(abc::Opcode::kLDAI_IMM32), 1, 0, 0, 0};
+      for (unsigned n = 0; n < count; ++n) {
+        const auto opcode = static_cast<std::uint16_t>(encoding);
+        bytes.push_back(static_cast<std::uint8_t>(opcode));
+        if (wide) bytes.push_back(static_cast<std::uint8_t>(opcode >> 8));
+        else { bytes.push_back(0); if (wide_cache) bytes.push_back(0); }
+        bytes.push_back(0); // receiver register
+        const std::uint32_t index = wide ? UINT32_MAX - n : n;
+        const auto width = wide ? sizeof(std::uint32_t) : sizeof(std::uint16_t);
+        for (unsigned byte = 0; byte < width; ++byte)
+          bytes.push_back(static_cast<std::uint8_t>(index >> (byte * 8)));
+      }
+      bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kRETURNUNDEFINED));
+      const auto body = test::Body(bytes);
+      const auto method = std::get<SemanticMethod>(BuildSemanticMethod(body, profile, 1));
+      const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, method, 1, 0));
+      const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 0, {false, false, false, false}));
+      auto graph = std::get<ValueProgram>(ImportNormalValues(body, method, proof, frame));
+      test::Check(!VerifyImportedValues(graph, method, proof, frame));
+      for (unsigned n = 0; n < count; ++n) {
+        const auto& op = graph.ops[kPrefixOperations + n];
+        const auto& write = std::get<ValueIndexedWrite>(op.operation);
+        test::Check(write.index == (wide ? UINT32_MAX - n : n) &&
+            (wide ? !write.cache_slot : write.cache_slot == 0));
+        test::Check(!op.result && op.use_count == 2 && !CanErasePureOp(op));
+        test::Check(graph.uses[op.first_use.value].role == OperandRole::kBase);
+        test::Check(graph.uses[op.first_use.value + 1].role == OperandRole::kStoredValue);
+        test::Check(op.normal == method.instructions[kPrefixOperations + n].effects.normal);
+        test::Check(op.exceptional == method.instructions[kPrefixOperations + n].effects.exceptional);
+      }
+      auto& first = std::get<ValueIndexedWrite>(graph.ops[kPrefixOperations].operation);
+      first.cache_slot = wide ? std::optional<std::uint16_t>{0} : std::nullopt;
+      test::Check(VerifyImportedValues(graph, method, proof, frame)->kind == ValueImportError::kInputMismatch);
+      first.cache_slot = wide ? std::nullopt : std::optional<std::uint16_t>{0};
+      first.index ^= 1;
+      test::Check(VerifyImportedValues(graph, method, proof, frame)->kind == ValueImportError::kInputMismatch);
+      first.index ^= 1;
+      test::Check(!VerifyImportedValues(graph, method, proof, frame));
+      graph.ops[kPrefixOperations].operation = ValuePropertyWrite{};
+      test::Check(VerifyImportedValues(graph, method, proof, frame).has_value());
+    }
+  }
+  }
   {
     const auto code = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDSYMBOL),
         static_cast<std::uint8_t>(abc::Opcode::kRETURN)});

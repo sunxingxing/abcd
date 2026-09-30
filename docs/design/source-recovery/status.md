@@ -12,6 +12,26 @@
 
 ## 当前阶段
 
+### 2026-10-01：索引自有属性写入进入共同值 IR
+
+- ValueIndexedWrite 独立保存立即数索引与可选 IC 槽位，导入 base/存储值
+  两个操作数，保留累加器、原有效果和异常信息。没有转换成 [[Set]]，
+  没有把 index 当作常量池槽位，纯操作删除仍拒绝该写入。尚未具备
+  数组初始化的源码表示，树构建仍明确拒绝直接输出该操作。
+- STOWNBYINDEX 的 8 位 IC、16 位 IC、wide 无 IC 三种编码，分别经过
+  1202/1206/1301 与 1/200/201/402 项导入验证。测试包含 UINT32_MAX
+  索引、IC 缺席/零值区别、索引篡改和误改为普通属性写入的反例。
+- 真实 Constants 8889 已越过 PC 94 的 import_stage 失败；常量池与
+  对象缓冲解析成功。后续 BuildEvaluationPlan 失败已用调用栈定位到
+  literal_plan.cc 的 EarlyValue/kLateValue：对象分配之后才产生嵌套
+  属性值。需要实现保留分配/求值顺序的嵌套数组/对象初始化，不能移除
+  原检查后直接把效果前移。真实 record 尚未生成源码。
+- abc_semantic/value_import_test 与相关目标构建成功；5 项 CTest 通过
+  （5.09 秒）。证据：/tmp/abcd-indexed-build.log、
+  /tmp/abcd-indexed-final-build.log、/tmp/abcd-indexed-tests.log、
+  /tmp/abcd-indexed-literal-debug.log。阶段一与表示验收仍未完成；没有
+  恢复全量测试、其他语料、RSS/基准或代理。
+
 ### 2026-10-01：正式 record 入口的模块共同树分支
 
 - BuildRecordSource 在 RequireValueTree 且提供输入身份时，复用 record

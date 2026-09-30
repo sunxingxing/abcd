@@ -168,6 +168,9 @@ class OperandCheck {
           RequireMeaning(key != nullptr, Error::kOperator);
           Input(input(0), member->base); Input(input(1), key->expression);
           Input(input(2), assignment.value);
+        } else if constexpr (std::is_same_v<T, analysis::ValueIndexedWrite>) {
+          // Requires an array/descriptor initialization lowering, never [[Set]].
+          throw Error::kUnsupportedOperation;
         } else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
           RequireMeaning(flow_.initializers[i].has_value(), Error::kOperand);
           const auto& property = tree_.properties[flow_.initializers[i]->value];

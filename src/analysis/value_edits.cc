@@ -48,7 +48,7 @@ bool CanErasePureOp(const ValueOp& op) {
                     std::is_same_v<T, ValueCurrentEnvironment> ||
                     std::is_same_v<T, ValueGlobalRead> ||
                     std::is_same_v<T, ValueNamedWrite> ||
-                    std::is_same_v<T, ValueOwnWrite> ||
+                    std::is_same_v<T, ValueOwnWrite> || std::is_same_v<T, ValueIndexedWrite> ||
                     std::is_same_v<T, ValuePropertyRead> ||
                     std::is_same_v<T, ValuePropertyWrite> ||
                     std::is_same_v<T, ValueBranch> ||
