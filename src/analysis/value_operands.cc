@@ -115,6 +115,8 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
           return false;
         default: return false;
       }
+    } else if constexpr (std::is_same_v<T, SuperCheck>) {
+      Append(plan, OperandRole::kGuardValue, Accumulator{}, ReadPurpose::kProtocol);
     } else if constexpr (std::is_same_v<T, HoleGuard>) {
       Append(plan, OperandRole::kGuardValue, SlotValue(op.value));
       // The diagnostic register is read only on the failing guard path.

@@ -13,6 +13,24 @@
 ## 当前阶段
 
 
+### 2026-10-01：super 初始化检查贯通共同导入
+
+- ValueSuperCheck 保存 RequireInitialized/RequireUninitialized/Noop 模式，保留
+  accumulator 的 protocol 读取，无伪造结果；守卫异常和语言效果沿原语义输入导入。
+  即使 Noop 无语言效果，普通纯操作删除规则也不擅自移除该协议操作。
+- SemanticProof 明确允许 Hole 被 SuperCheck 的 accumulator 读取；此前仅允许
+  marker 搬运和类 heritage，导致合法守卫 fixture 被提前拒绝。其他可观察 Hole
+  使用仍拒绝，源码层仍须独立证明并消费构造器协议。
+- 三模式 fixture 验证输入角色、无结果、异常区别、不能纯删除及模式篡改拒绝。
+  构建 /tmp/abcd-super-check-regression-build.log；三项定向测试通过（2.97 秒），
+  包括 value_import_test、class_accessor_tree_source_test、record_import_tree_source_test；
+  /tmp/abcd-super-check-regression-tests.log。未恢复全量/RSS/基准。
+- 真实 Immersive 方法9865 --conditional-values 现为 values_prepared=true、124操作，
+  证据 /tmp/abcd-index-constructor-values-check.json。source_complete=false，
+  executable=false；尚未贯通派生构造器源码表达与 heritage，阶段一未完成。
+
+
+
 ### 2026-10-01：范围式 super 调用进入共同 Value IR
 
 - 新增独立 ValueSuperCall，保留参数数和 IC 槽；父构造器/newTarget 仍是调用上下文

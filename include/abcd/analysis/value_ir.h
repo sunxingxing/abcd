@@ -251,6 +251,12 @@ struct ValueSuperCall {
   std::optional<std::uint16_t> cache_slot;
   bool operator==(const ValueSuperCall&) const = default;
 };
+// Keep the VM initialization guard until a constructor protocol proof consumes
+// it. A normal successor does not itself authorize dropping the exception.
+struct ValueSuperCheck {
+  SuperCheckKind kind;
+  bool operator==(const ValueSuperCheck&) const = default;
+};
 // VM sentinel, not a JS literal. A source lowering must consume the closed
 // protocol before evaluation/printing; never substitute undefined or null.
 struct ValueHole { bool operator==(const ValueHole&) const = default; };
@@ -260,7 +266,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHol
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValueDebugger, ValueFrameThis, ValueFrameFunction,
-    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall>;
+    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperCheck>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

@@ -8,6 +8,30 @@
 int main() {
   using namespace abcd;
   using namespace abcd::analysis;
+  // Every encoded guard mode retains its input occurrence and exception kind.
+  for (const auto mode : {0U, 1U, 2U}) {
+    const auto wire = static_cast<std::uint16_t>(abc::Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8);
+    const std::vector<std::uint8_t> bytes{
+        static_cast<std::uint8_t>(abc::Opcode::kLDHOLE),
+        static_cast<std::uint8_t>(wire), static_cast<std::uint8_t>(wire >> 8),
+        static_cast<std::uint8_t>(mode), static_cast<std::uint8_t>(abc::Opcode::kRETURNUNDEFINED)};
+    const auto body = test::Body(bytes);
+    const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 0, {false, false, false, false}));
+    const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, 0));
+    const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, input, 0, 0));
+    auto graph = std::get<ValueProgram>(ImportNormalValues(body, input, proof, frame));
+    const auto& op = graph.ops[1];
+    test::Check(!VerifyImportedValues(graph, input, proof, frame));
+    test::Check(std::get<ValueSuperCheck>(op.operation).kind == std::get<SuperCheck>(input.instructions[1].operation).kind);
+    test::Check(!op.result && op.use_count == 1 && !CanErasePureOp(op));
+    test::Check(op.exceptional == (mode < 2 ? ExceptionalCompletion::kMayThrow : ExceptionalCompletion::kImpossible));
+    const auto& use = graph.uses[op.first_use.value];
+    test::Check(use.role == OperandRole::kGuardValue && use.purpose == ReadPurpose::kProtocol);
+    auto changed = graph;
+    std::get<ValueSuperCheck>(changed.ops[1].operation).kind = mode == 0 ?
+        SuperCheckKind::kRequireUninitialized : SuperCheckKind::kRequireInitialized;
+    test::Check(VerifyImportedValues(changed, input, proof, frame).has_value());
+  }
   // Range super arguments are all arguments: the parent/newTarget are implicit
   // invocation inputs, never a fabricated first constructor operand.
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
