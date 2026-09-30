@@ -9,6 +9,7 @@
 #include "abcd/analysis/await_catch.h"
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/lexical.h"
+#include "abcd/analysis/normal_flow.h"
 #include "async_handlers.h"
 
 namespace abcd::source {
@@ -30,7 +31,46 @@ enum ResumeStep : std::size_t {
   kReturnMode, kReturnEqual, kReturnBranch, kReturnValue, kReturn,
   kThrowMode, kThrowEqual, kThrowBranch, kThrowValue, kThrow, kContinuation, kResumeSize
 };
-struct ResumeRegion { analysis::YieldRegion origin; std::size_t cleanup, size; };
+constexpr auto kPreservingTailSize = kReturn - kReturnValue + 1;
+struct ResumeRegion {
+  analysis::YieldRegion origin;
+  std::size_t cleanup, size;
+  std::vector<std::uint8_t> retained;
+};
+// HandleCompletion emits its preserving tail even after Compile(finalizer)
+// returned/threw. Reachability is confined to this owned RETURN corridor;
+// external entries are rejected separately, never silently pruned. The common
+// normal CFG owns transfer semantics. Disjoint slices cost O(I + B log I).
+std::vector<std::uint8_t> ReachableCleanup(const abc::MethodBody& body,
+    std::size_t begin, std::size_t count, std::size_t bytes) {
+  constexpr auto kScratch = sizeof(abc::BodyInstruction) + 2 * sizeof(std::uint8_t) + sizeof(analysis::BlockId);
+  if (count > bytes / kScratch) throw Error::kResourceLimit;
+  bytes -= count * kScratch;
+  abc::MethodBody slice;
+  slice.instructions.assign(body.instructions.begin() + begin, body.instructions.begin() + begin + count);
+  const auto base = slice.instructions.front().offset.value;
+  for (auto& site : slice.instructions) {
+    site.offset.value -= base;
+    if (site.branch_target) site.branch_target->value -= base;
+  }
+  auto built = analysis::BuildNormalFlow(slice, {bytes});
+  if (const auto* failure = std::get_if<analysis::FlowFailure>(&built))
+    throw failure->kind == analysis::FlowError::kResourceLimit ? Error::kResourceLimit : Error::kKind;
+  const auto& graph = std::get<analysis::NormalFlow>(built);
+  std::vector<std::uint8_t> retained(count), seen(graph.blocks.size());
+  std::vector<analysis::BlockId> queue;
+  queue.reserve(graph.blocks.size()); queue.push_back({0}); seen.front() = true;
+  for (std::size_t head = 0; head < queue.size(); ++head) {
+    const auto& block = graph.blocks[queue[head].value];
+    std::fill(retained.begin() + block.first_instruction,
+        retained.begin() + block.first_instruction + block.instruction_count, 1);
+    for (std::size_t i = 0; i < block.successor_count; ++i) {
+      const auto target = block.successors[i].target;
+      if (!seen[target.value]) { seen[target.value] = true; queue.push_back(target); }
+    }
+  }
+  return retained;
+}
 ResumeRegion Resume(const abc::MethodBody& body, std::size_t begin,
     abc::RegisterId state, const abc::FrameLayout& frame, std::size_t bytes) {
   Require(begin <= body.instructions.size() && kResumeSize <= body.instructions.size() - begin);
@@ -78,18 +118,23 @@ ResumeRegion Resume(const abc::MethodBody& body, std::size_t begin,
   analysis::YieldRegion region{{}, at(kSuspend).offset, at(kResume).offset, at(kStoreResult).offset,
       at(kMode).offset, at(kStoreMode).offset, at(kContinuation).offset, state, {}, result, mode,
       at(kThrowBranch).offset, at(kThrow).offset};
+  std::vector<std::uint8_t> retained;
   if (cleanup) {
     region.return_route = analysis::YieldReturnRoute{at(kReturnBranch).offset,
         body.instructions[begin + kReturnValue].offset, at(kReturnValue).offset, at(kReturn).offset};
     if (cleanup > bytes / sizeof(abc::CodeOffset)) throw Error::kResourceLimit;
     std::vector<abc::CodeOffset> entries;
     entries.reserve(cleanup);
+    if (entries.capacity() > bytes / sizeof(abc::CodeOffset)) throw Error::kResourceLimit;
+    bool abrupt = false;
     for (std::size_t i = begin + kReturnValue; i < begin + kReturnValue + cleanup; ++i) {
       const auto& site = body.instructions[i];
       const auto control = abc::GetControlTransfer(site.decoded.opcode);
       Require(control && (*control == abc::ControlTransfer::kFallthrough ||
-          *control == abc::ControlTransfer::kBranch || *control == abc::ControlTransfer::kJump));
-      if (*control != abc::ControlTransfer::kFallthrough) {
+          *control == abc::ControlTransfer::kBranch || *control == abc::ControlTransfer::kJump ||
+          *control == abc::ControlTransfer::kReturn || *control == abc::ControlTransfer::kThrow));
+      abrupt |= *control == abc::ControlTransfer::kReturn || *control == abc::ControlTransfer::kThrow;
+      if (*control == abc::ControlTransfer::kBranch || *control == abc::ControlTransfer::kJump) {
         Require(site.branch_target && *site.branch_target >= region.return_route->cleanup &&
             *site.branch_target <= region.return_route->payload);
         entries.push_back(*site.branch_target);
@@ -121,8 +166,13 @@ ResumeRegion Resume(const abc::MethodBody& body, std::size_t begin,
           Require(slot.value < window.first.value || slot.value - window.first.value >= window.count);
         }
     }
+    if (abrupt) {
+      retained = ReachableCleanup(body, begin + kReturnValue, cleanup + kPreservingTailSize,
+          bytes - entries.capacity() * sizeof(abc::CodeOffset));
+      if (!retained.back()) region.return_route->completion.reset();
+    }
   }
-  return {region, cleanup, kResumeSize + cleanup};
+  return {region, cleanup, kResumeSize + cleanup, std::move(retained)};
 }
 }  // namespace
 std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
@@ -231,6 +281,7 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
         for (auto step : {kStoreResult, kMode, kStoreMode}) retain(suspend + step);
         if (resume.cleanup) {
           for (std::size_t step = kReturnMode; step < kThrowMode + resume.cleanup; ++step) {
+            if (step >= kReturnValue && !resume.retained.empty() && !resume.retained[step - kReturnValue]) continue;
             retain(suspend + step);
             if (step == kReturnBranch) result.body.instructions.back().branch_target = region.continuation;
           }

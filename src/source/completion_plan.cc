@@ -286,9 +286,10 @@ class CompletionBuilder {
       quota_.Work(); const auto* yield = std::get_if<ValueYield>(&graph_.ops[i].operation);
       if (!yield || !yield->origin.return_route) continue;
       const auto& route = *yield->origin.return_route;
-      const auto branch = find(route.branch), completion = find(route.completion);
+      const auto branch = find(route.branch);
+      const auto completion = route.completion ? std::optional{find(*route.completion)} : std::nullopt;
       Require(std::holds_alternative<ValueBranch>(graph_.ops[branch.value].operation) &&
-          std::holds_alternative<ValueReturn>(graph_.ops[completion.value].operation));
+          (!completion || std::holds_alternative<ValueReturn>(graph_.ops[completion->value].operation)));
       Append(plan.yield_returns, CompletionPlan::YieldReturn{{i}, branch, completion});
     }
   }

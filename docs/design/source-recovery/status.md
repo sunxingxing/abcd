@@ -12,6 +12,46 @@
 
 ## 当前阶段
 
+### 2026-09-30：generator 注入 RETURN 的显式 return/throw 覆盖
+
+- 支持 RETURN 内联清理中的实际 return/throw，以及捕获 cell 控制的条件
+  覆盖。对照锁定 OH7 `FunctionBuilder::HandleCompletion` 和
+  `TryContext::EmitFinalizer`：编译清理后仍发射旧 payload 的 preserving
+  tail，该尾部可能已经不可达。仅在有 abrupt 清理时复用共同 normal CFG
+  分析不相交的协议切片，保留可达指令；不扫描/裁掉普通正文，不把外部
+  分支或 handler 进入协议内部当成合法清理入口。工作量与切片大小相关，
+  没有新增 work 截止或产出准入。
+- YieldReturnRoute/CompletionPlan/FunctionTree 使用 optional preserving
+  completion 区分“仍有路径保留原 RETURN”与“清理路径已全部覆盖”。真实
+  override 的 ReturnStmt/ThrowStmt 保留并进入普通 native finally，既不
+  伪造原 payload，也不剥掉覆盖操作。共同 SSA/效果/handler、TreeFlow
+  逆投影和 Printer 继续消费同一条主干。
+- 实际红例暴露 preserving terminal 可位于 branch arm 或 following
+  sequence 的末尾 if 内。一次建立 tail-parent 索引，仅接受 Block/If 的
+  最后子节点链：该私有 terminal 在 finally 外保留审查身份，finally
+  自然落下保留 caller payload；逆投影恢复原 terminal 所属块及操作数。
+  循环或 try/finally 不是透明尾路径，不借此删除其 return。
+- 新增 96 个完整文件解码/合成元数据函数族：三 profile × 三父级环境 ×
+  有无用户 catch × 无条件/条件 × return/throw 的 72 个双暂停点组合，
+  及 200/201/402 条清理 × 16/32 位恢复分支的 24 个组合。完整生成 JS
+  核对覆盖结果（undefined/null/NaN/symbol/object/同步 thenable）、callback
+  receiver/次数、暂停中 cell 更新、NEXT/RETURN/THROW 分流、原用户 catch
+  的二次清理及错误身份。无条件覆盖后的死清理不被执行；条件 false
+  保留原 payload。另 6 个反例覆盖各恢复分支宽度下外部进入已死 payload
+  尾部，不靠丢弃入口冒充恢复。该集成目标现消费 309 个完整函数族及
+  36 个协议反例，仍不代表真实应用或任意 generator 形态覆盖。
+- 原功能红例：`/tmp/abcd-generator-return-override-red-tests.log`；嵌套
+  terminal 布局定位：`/tmp/abcd-generator-return-override-placement.log`、
+  `/tmp/abcd-generator-return-override-tail-placement.log`。相关十五个
+  C++ 目标构建成功，38/38 定向测试通过（47.48 秒）：
+  `/tmp/abcd-generator-return-override-final-build.log`、
+  `/tmp/abcd-generator-return-override-final-tests.log`；`git diff --check`
+  通过。未恢复全量测试/语料/RSS/基准，两个历史 base_function 失败未
+  重跑/修复，不宣称全套通过或 1GB 验收。
+- C07/总目标仍开放：RETURN 清理再次暂停、循环清理与嵌套 completion 的
+  完整组合、跨块 accumulator 输入、入口默认值/解构、self/super、yield*、
+  async generator、类/record/全局/完整签名及函数体整合仍需继续推进。
+
 ### 2026-09-30：generator 注入 RETURN 的条件清理与正常出口区分
 
 - 在上一项内联 RETURN 路由上支持清理内部条件分支：目标只能位于该清理

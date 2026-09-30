@@ -58,7 +58,8 @@ class CompletionTreeView {
   std::vector<SharedCorridor> shared_;
   struct YieldCorridor {
     CompletionPlan::YieldReturn plan;
-    StmtId yielded, branch, completion;
+    StmtId yielded, branch;
+    std::optional<StmtId> completion;
   };
   std::vector<YieldCorridor> yield_routes_;
 };

@@ -47,7 +47,8 @@ struct CompletionPlan {
   analysis::CfgRevision cfg_revision;
   std::vector<FinalizerRegion> finalizers;
   struct YieldReturn {
-    analysis::OpId yield, branch, completion;
+    analysis::OpId yield, branch;
+    std::optional<analysis::OpId> completion;
   };
   // These corridors are not presumed equivalent to normal/throw cleanup.
   // Native RETURN executes precisely their already-lifted effects and dispatch.

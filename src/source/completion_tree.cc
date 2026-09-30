@@ -87,6 +87,37 @@ std::vector<std::optional<Position>> Positions(const Lists& lists,
   }
   return positions;
 }
+// Only a final Block/If path may replace a private preserving RETURN with
+// native pending-completion fallthrough. Loops/try/finally are not transparent
+// tails: removing their terminal could repeat effects or change cleanup.
+std::vector<std::optional<StmtId>> TailParents(const FunctionTree& tree,
+    const Lists& lists, TreeCheckBudget& budget) {
+  std::vector<std::optional<StmtId>> parents;
+  budget.Array(parents, lists.size());
+  const auto bind = [&](StmtId child, StmtId parent) {
+    Require(child.value < parents.size() && !parents[child.value]); parents[child.value] = parent;
+  };
+  for (std::uint32_t i = 0; i < lists.size(); ++i) {
+    budget.Step();
+    if (!lists[i].empty()) bind(lists[i].back(), {i});
+    if (const auto* branch = std::get_if<IfStmt>(&tree.statements[i].statement)) {
+      bind(branch->consequent, {i});
+      if (branch->alternate) bind(*branch->alternate, {i});
+    }
+  }
+  return parents;
+}
+bool TailWithin(StmtId root, StmtId child,
+    const std::vector<std::optional<StmtId>>& parents, TreeCheckBudget& budget) {
+  for (std::size_t depth = 0; depth <= parents.size(); ++depth) {
+    budget.Step();
+    if (root == child) return true;
+    Require(child.value < parents.size());
+    if (!parents[child.value]) return false;
+    child = *parents[child.value];
+  }
+  Require(false); return false;
+}
 AnchorPosition Remap(const AnchorPosition& position, const Lists& before,
                      const std::vector<std::optional<Position>>& after) {
   const auto* boundary = std::get_if<BlockBoundary>(&position);
@@ -446,36 +477,62 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
   }
   EditSequences(lists, shared_edits, budget);
   const auto yield_positions = Positions(lists, budget);
+  const auto yield_tails = TailParents(tree, lists, budget);
   std::vector<SequenceEdit> yield_edits;
   for (const auto& route : plan.yield_returns) {
     budget.Step();
     const auto yielded = flow.statements[route.yield.value],
                branch = flow.statements[route.branch.value],
-               completion = flow.statements[route.completion.value];
-    Require(yielded && branch && completion && yield_positions[yielded->value] && yield_positions[branch->value]);
+               completion = route.completion ? flow.statements[route.completion->value] : std::nullopt;
+    Require(yielded && branch && (!route.completion || completion) &&
+        yield_positions[yielded->value] && yield_positions[branch->value]);
     const auto location = *yield_positions[yielded->value], guard_location = *yield_positions[branch->value];
     Require(location.block == guard_location.block && location.index < guard_location.index);
     const auto* guard = std::get_if<IfStmt>(&tree.statements[branch->value].statement);
     Require(guard != nullptr);
     auto placement = YieldCleanupPlacement::kBranchArm;
+    std::optional<StmtId> completion_block;
     std::vector<StmtId> cleanup;
     if (guard->alternate && !lists[guard->alternate->value].empty() &&
-        lists[guard->alternate->value].back() == *completion) {
+        (!completion || TailWithin(*guard->alternate, *completion, yield_tails, budget))) {
       auto& arm = lists[guard->alternate->value];
-      cleanup.assign(arm.begin(), arm.end() - 1);
-      arm.erase(arm.begin(), arm.end() - 1);
+      if (completion && arm.back() != *completion) {
+        Require(yield_positions[completion->value].has_value());
+        completion_block = yield_positions[completion->value]->block;
+        Require(lists[completion_block->value].back() == *completion);
+        lists[completion_block->value].pop_back();
+        cleanup = std::move(arm); arm = {*completion};
+      } else {
+        const auto end = completion ? arm.end() - 1 : arm.end();
+        cleanup.assign(arm.begin(), end);
+        arm.erase(arm.begin(), end);
+      }
     } else {
       // An early-exiting NEXT arm can leave the RETURN corridor as the
       // following sequence. Consume that existing placement, not a different
       // control algorithm or an artificial else branch.
       Require(!guard->alternate || lists[guard->alternate->value].empty());
-      Require(yield_positions[completion->value].has_value());
-      const auto end = *yield_positions[completion->value];
+      Require(!completion || yield_positions[completion->value].has_value());
+      // With no preserving completion the entire RETURN suffix is abrupt;
+      // all its real return/throw nodes move into native finally, not just
+      // their preceding effects. The inverse projection restores every root.
+      auto end = completion ? *yield_positions[completion->value] :
+          Position{guard_location.block, static_cast<std::uint32_t>(lists[guard_location.block.value].size())};
+      if (completion && end.block != guard_location.block) {
+        const auto& following = lists[guard_location.block.value];
+        Require(following.size() > guard_location.index + 1 &&
+            TailWithin(following.back(), *completion, yield_tails, budget));
+        completion_block = end.block;
+        Require(lists[completion_block->value].back() == *completion);
+        lists[completion_block->value].pop_back();
+        end = {guard_location.block, static_cast<std::uint32_t>(following.size())};
+      }
       Require(end.block == guard_location.block && end.index > guard_location.index);
       const auto& following = lists[end.block.value];
       cleanup.assign(following.begin() + guard_location.index + 1, following.begin() + end.index);
       budget.Admit(1, sizeof(SequenceEdit));
-      yield_edits.push_back({end.block, guard_location.index + 1, end.index, {}});
+      yield_edits.push_back({end.block, guard_location.index + 1, end.index,
+          completion_block ? std::vector<StmtId>{*completion} : std::vector<StmtId>{}});
       placement = YieldCleanupPlacement::kFollowing;
     }
     // Keep the certified NEXT-only dispatch/terminal in the AST for SSA audit;
@@ -523,7 +580,7 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
     lists[enclosure.value] = {statement(DeclarationStmt{flag, initial}, binding), outer};
     lists[location.block.value][location.index] = enclosure;
     budget.Admit(1, sizeof(YieldReturnComposition));
-    tree.yield_returns.push_back({route.yield, enclosure, *branch, *completion, placement});
+    tree.yield_returns.push_back({route.yield, enclosure, *branch, completion, placement, completion_block});
   }
   EditSequences(lists, yield_edits, budget);
   if (tree.finalizers.empty() && tree.yield_returns.empty()) return;
@@ -787,13 +844,16 @@ CompletionTreeView::CompletionTreeView(const FunctionTree& tree,
   // the same SSA/edge checker, without maintaining a second source tree.
   const auto yield_positions = Positions(lists, budget);
   Require(tree.yield_returns.size() == plan.yield_returns.size());
+  const auto yield_tails = TailParents(tree, lists, budget);
   std::vector<SequenceEdit> yield_edits;
   for (std::size_t i = 0; i < tree.yield_returns.size(); ++i) {
     budget.Step();
     const auto& recovered = tree.yield_returns[i]; const auto& route = plan.yield_returns[i];
     Require(recovered.enclosure.value < lists.size() && recovered.branch.value < lists.size() &&
-        recovered.completion.value < lists.size());
-    Require(recovered.yield == route.yield && yield_positions[recovered.enclosure.value]);
+        (!recovered.completion || recovered.completion->value < lists.size()) &&
+        (!recovered.completion_block || recovered.completion_block->value < lists.size()));
+    Require(recovered.yield == route.yield && yield_positions[recovered.enclosure.value] &&
+        recovered.completion.has_value() == route.completion.has_value());
     const auto enclosure = recovered.enclosure;
     const auto& header = lists[enclosure.value]; Require(header.size() == 2);
     const auto* declaration = std::get_if<DeclarationStmt>(&tree.statements[header[0].value].statement);
@@ -829,23 +889,35 @@ CompletionTreeView::CompletionTreeView(const FunctionTree& tree,
     const auto* test = std::get_if<SymbolExpr>(&tree.expressions[condition->condition.value].expression);
     Require(test && test->symbol == flag);
     const auto* guard = std::get_if<IfStmt>(&tree.statements[recovered.branch.value].statement);
-    Require(guard && std::holds_alternative<ReturnStmt>(tree.statements[recovered.completion.value].statement));
+    Require(guard && (!recovered.completion ||
+        std::holds_alternative<ReturnStmt>(tree.statements[recovered.completion->value].statement)));
     const auto& cleanup = lists[condition->consequent.value];
     switch (recovered.cleanup) {
       case YieldCleanupPlacement::kBranchArm: {
         Require(guard->alternate.has_value());
         auto& arm = lists[guard->alternate->value];
-        Require(arm.size() == 1 && arm.back() == recovered.completion);
-        arm.insert(arm.begin(), cleanup.begin(), cleanup.end());
+        Require(recovered.completion ? arm.size() == 1 && arm.back() == *recovered.completion : arm.empty());
+        if (recovered.completion_block) {
+          Require(recovered.completion && TailWithin(condition->consequent, *recovered.completion_block, yield_tails, budget));
+          arm.assign(cleanup.begin(), cleanup.end());
+          lists[recovered.completion_block->value].push_back(*recovered.completion);
+        } else arm.insert(arm.begin(), cleanup.begin(), cleanup.end());
         break;
       }
       case YieldCleanupPlacement::kFollowing: {
         Require(!guard->alternate || lists[guard->alternate->value].empty());
-        Require(yield_positions[recovered.branch.value] && yield_positions[recovered.completion.value]);
-        const auto branch = *yield_positions[recovered.branch.value], end = *yield_positions[recovered.completion.value];
+        Require(yield_positions[recovered.branch.value] &&
+            (!recovered.completion || yield_positions[recovered.completion->value]));
+        const auto branch = *yield_positions[recovered.branch.value];
+        const auto end = recovered.completion ? *yield_positions[recovered.completion->value] :
+            Position{branch.block, static_cast<std::uint32_t>(lists[branch.block.value].size())};
         Require(branch.block == end.block && end.index == branch.index + 1);
         budget.Admit(1, sizeof(SequenceEdit)); budget.Admit(cleanup.size(), sizeof(StmtId));
-        yield_edits.push_back({end.block, end.index, end.index, cleanup});
+        if (recovered.completion_block) {
+          Require(recovered.completion && TailWithin(condition->consequent, *recovered.completion_block, yield_tails, budget));
+          lists[recovered.completion_block->value].push_back(*recovered.completion);
+        }
+        yield_edits.push_back({end.block, end.index, end.index + (recovered.completion_block ? 1U : 0U), cleanup});
         break;
       }
       default: Require(false);
@@ -894,7 +966,7 @@ void CompletionTreeView::Finish(TreeFlow& flow, TreeCheckBudget& budget) const {
     budget.Step();
     Require(flow.statements[route.plan.yield.value] == route.yielded &&
         flow.statements[route.plan.branch.value] == route.branch &&
-        flow.statements[route.plan.completion.value] == route.completion);
+        (!route.plan.completion || flow.statements[route.plan.completion->value] == route.completion));
   }
   for (const auto& shared : shared_) {
     budget.Step();

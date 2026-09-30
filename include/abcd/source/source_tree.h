@@ -252,8 +252,12 @@ struct FinalizerComposition {
 enum class YieldCleanupPlacement : std::uint8_t { kBranchArm, kFollowing };
 struct YieldReturnComposition {
   analysis::OpId yield;
-  StmtId enclosure, branch, completion;
+  StmtId enclosure, branch;
+  std::optional<StmtId> completion;
   YieldCleanupPlacement cleanup;
+  // A preserving terminal nested in a tail-only Block/If chain is moved out
+  // of native finally; falling through that chain preserves caller payload.
+  std::optional<StmtId> completion_block;
 };
 struct FunctionTree {
   RouteInputIdentity identity;

@@ -10,7 +10,9 @@ namespace abcd::analysis {
 // An inline RETURN-only corridor remains in the common value/control graph.
 // Its preserving payload is private; cleanup must not read/write resume slots.
 struct YieldReturnRoute {
-  abc::CodeOffset branch, cleanup, payload, completion;
+  abc::CodeOffset branch, cleanup, payload;
+  // Absent when every reachable cleanup exit overrides pending RETURN.
+  std::optional<abc::CodeOffset> completion;
   bool operator==(const YieldReturnRoute&) const = default;
 };
 // Original OH7 iterator-result/suspend/resume protocol, owned by a generator.
