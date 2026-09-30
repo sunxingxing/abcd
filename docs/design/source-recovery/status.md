@@ -12,6 +12,40 @@
 
 ## 当前阶段
 
+### 2026-09-30：generator 入口词法环境与 ABI 参数复制
+
+- NormalizeGenerator 保留 OH7 PandaGen::InitializeLexEnv 的单个入口环境创建
+  和 CopyFunctionArguments 的 MOV v4/v8/v16 参数复制，随后折叠同一个初始
+  挂起协议。沿用异常相位值图、环境/cell、FunctionTree 与共同 Printer，
+  不引入专项 writer。前奏只含 VM 私有环境分配和 ABI 输入复制；已有资源
+  失败排除契约允许其延后至首次 next，无调用/getter/默认求值被随意延后。
+- 对照 FunctionRegScope，支持 callee/new.target/this/参数由物理 ABI 窗口
+  复制到局部槽再创建 generator。单次前奏扫描追踪创建 callee 的最后写入，
+  必须来自当前函数槽；复制不能覆盖初始协议的 state/result/mode 私有槽。
+  原始入口 PC 保留，用户异常表仍按实际创建点开始；正文回跳入口前奏不被
+  当作普通源码循环，防止重新执行一次性 generator 初始化。
+- 三 profile × 三父级环境的复制、独立词法环境、暂停后创建逃逸闭包及完整
+  参数帧组合，覆盖 v4/v8/v16，共 90 个文件解码函数族。生成完整 JS 验证
+  动态 cell 每迭代器独立、暂停后的外部 cell 更新、逃逸 reader 的持久性、
+  copied receiver 的严格 primitive/null/undefined/bind 语义、逆序恢复、
+  next/throw/return 与完成后调用。另三个 200/201/402 条 MOV 前奏用例完整
+  输出并执行；总计 93 个正向函数族。使用真实指令与合成元数据，不声称应用覆盖。
+- 21 个前奏反例覆盖用户调用、私有 state/result/mode 覆盖、读取非 ABI 局部、
+  回跳入口及 callee 被改写为参数；后三者不会因 opcode 相似而冒充完整恢复。
+  四段红例见 `/tmp/abcd-generator-prelude-red-tests.log`、
+  `/tmp/abcd-generator-prelude16-red-tests.log`、
+  `/tmp/abcd-generator-prelude-private-red-tests.log`、
+  `/tmp/abcd-generator-prelude-frame-red-tests.log`。补私有槽检查时曾误写字段名
+  导致一轮编译失败，已修正并重跑以下最终集合。
+- 相关十一个 C++ 目标构建成功，30/30 定向测试通过（19.26 秒），包含
+  file_generator_prelude_source_test 及 generator/async/await/finally/值流回归：
+  `/tmp/abcd-generator-prelude-final-build.log`、
+  `/tmp/abcd-generator-prelude-final-tests.log`；`git diff --check` 通过。
+- C07 仍开放：finally 注入 RETURN 清理、带用户求值或 lexical 参数存储的
+  入口前奏、方法 self/super 等仍待推进；yield*、async generator、整个类/record
+  集成与其余目标未完成。默认 work 阈值继续关闭；全量测试/语料/RSS/基准
+  仍暂停，两个历史 base_function 失败未重跑/修复，不宣称全套或 1GB 验收。
+
 ### 2026-09-30：generator 类方法贯通共同函数族
 
 - MethodRoleIndex 区分 GENERATORMETHOD 与普通 METHOD；类创建上下文按锁定

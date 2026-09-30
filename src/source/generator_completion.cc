@@ -7,6 +7,7 @@
 #include "abcd/abc/control_transfer.h"
 #include "abcd/analysis/coroutine.h"
 #include "abcd/analysis/await_catch.h"
+#include "abcd/analysis/lexical.h"
 #include "async_handlers.h"
 
 namespace abcd::source {
@@ -68,15 +69,39 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
          profile == abc::ProfileId::kDynamic1301));
     const auto& code = body.instructions;
     constexpr std::size_t kEntryPrefix = 3, kYieldPrefix = 3;
-    const auto first = kEntryPrefix + kResumeSize;
+    Require(!code.empty());
+    std::size_t enter = 0;
+    // OH7 PandaGen::{InitializeLexEnv,CopyFunctionArguments} prepend fresh
+    // VM-only environment allocation and frame copies. Retain them in shared
+    // IR. Delaying this unobservable prefix until first next is allowed only
+    // with allocation failure excluded; no user effects/default evaluation.
+    if (std::holds_alternative<analysis::PushEnvironment>(
+        analysis::LiftLexicalInstruction(code.front().decoded, frame.registers))) ++enter;
+    const auto copy_begin = enter;
+    while (enter < code.size() &&
+        (Op(code[enter], Opcode::kMOV_V4_V4) || Op(code[enter], Opcode::kMOV_V8_V8) ||
+         Op(code[enter], Opcode::kMOV_V16_V16))) ++enter;
+    const auto first = enter + kEntryPrefix + kResumeSize;
     Require(code.size() > first + 1 && frame.function &&
-        Op(code[0], Opcode::kCREATEGENERATOROBJ_V8) && Reg(code[0]) == *frame.function &&
-        Op(code[1], Opcode::kSTA_V8) && Op(code[2], Opcode::kLDUNDEFINED));
-    const auto state = Reg(code[1]); Require(state.value < frame.locals);
-    Resume(body, kEntryPrefix, state, frame);
+        Op(code[enter], Opcode::kCREATEGENERATOROBJ_V8) &&
+        Op(code[enter + 1], Opcode::kSTA_V8) && Op(code[enter + 2], Opcode::kLDUNDEFINED));
+    const auto state = Reg(code[enter + 1]); Require(state.value < frame.locals);
+    const auto initial = Resume(body, enter + kEntryPrefix, state, frame);
+    const auto callee = Reg(code[enter]);
+    bool same_function = callee == *frame.function;
+    for (std::size_t i = copy_begin; i < enter; ++i) {
+      const auto& copy = code[i];
+      Require(copy.decoded.operand_count == 2 && Reg(copy).value < frame.locals && Reg(copy) != state &&
+          Reg(copy) != initial.result && Reg(copy) != initial.resume_mode &&
+          Reg(copy, 1).value >= frame.locals && Reg(copy, 1).value < frame.registers);
+      // FunctionRegScope binds the callee to a copied local. All admitted
+      // sources are immutable ABI inputs; the last write decides its identity.
+      if (Reg(copy) == callee) same_function = Reg(copy, 1) == *frame.function;
+    }
+    Require(same_function);
     const auto handler = code.size() - 1;
     Require(Op(code.back(), Opcode::kTHROW_PREF_NONE) &&
-        HasAsyncCompletionCatch(body, code[0].offset, code.back().offset,
+        HasAsyncCompletionCatch(body, code[enter].offset, code.back().offset,
             std::uint64_t(code.back().offset.value) + code.back().decoded.size));
     // Only direct-return resume protocols are collapsed here. In particular,
     // an injected finalizer between ReturnBranch and ReturnValue fails Resume.
@@ -102,6 +127,7 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
     const auto retain = [&](std::size_t i) {
       result.body.instructions.push_back(code[i]); result.source_pcs.push_back(code[i].offset);
     };
+    for (std::size_t i = 0; i < enter; ++i) retain(i);
     for (std::size_t i = first; i < handler;) {
       if (i + kYieldPrefix < handler && Op(code[i + kYieldPrefix], Opcode::kCREATEITERRESULTOBJ_V8_V8)) {
         Require(Op(code[i], Opcode::kSTA_V8) && Op(code[i + 1], Opcode::kLDFALSE) && Op(code[i + 2], Opcode::kSTA_V8));

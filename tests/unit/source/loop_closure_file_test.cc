@@ -67,24 +67,33 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
   return AppendCode(bytes, locals, parameters, code, table, tries);
 }
 enum class ParentShape { kIteration, kCatch, kNormal, kReceiverCapture, kOuterCatchContinue, kOuterCatchBreak };
+enum class CopyEncoding { kV4, kV8, kV16 };
 enum class ChildShape {
   kPlain, kException, kNested, kForwarded, kForwardedNormal, kForwardedLocal,
   kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally, kSharedFinallyNested,
   kAwaitCapture, kAwaitClosure, kAwaitCatch, kAwaitFinally, kAwaitFinallySuspend, kAwaitFinallyReuse,
   kAwaitSelf, kAwaitSelfPrivate, kAwaitThis, kAwaitReceiver, kAwaitArguments, kYieldCapture, kYieldResult, kYieldLoop, kYieldCall,
   kYieldCatch, kYieldCatchCapture, kYieldCatchYield, kYieldCatchOverwrite, kYieldCatchLoop,
-  kYieldSelf, kYieldSelfPrivate, kYieldThis, kYieldReceiver
+  kYieldSelf, kYieldSelfPrivate, kYieldThis, kYieldReceiver,
+  kYieldCopy, kYieldLexical, kYieldClosure, kYieldFrameCopy
 };
 enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitState,
                          kYieldState, kYieldDone, kYieldReturn, kYieldEntry, kYieldCleanup,
-                         kYieldCatchResult, kYieldCatchMode, kYieldCatchBoundary, kYieldCatchEntry };
+                         kYieldCatchResult, kYieldCatchMode, kYieldCatchBoundary, kYieldCatchEntry,
+                         kYieldPreludeCall, kYieldPreludeState, kYieldPreludeLocal, kYieldPreludeEntry,
+                         kYieldPreludeResult, kYieldPreludeMode, kYieldPreludeCallee };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
-                 MissingCell missing = MissingCell::kNone, bool async_arrow = false, std::uint32_t yield_count = 1) {
+                 MissingCell missing = MissingCell::kNone, bool async_arrow = false, std::uint32_t yield_count = 1,
+                 CopyEncoding copy_encoding = CopyEncoding::kV8, std::uint32_t copy_count = 1) {
   const bool exception_child = child_shape != ChildShape::kPlain && child_shape != ChildShape::kForwardedNormal;
   const bool forwarded_writer = child_shape == ChildShape::kForwardedWriter || child_shape == ChildShape::kForwardedThrowWriter;
   const bool forwarding = child_shape == ChildShape::kForwarded || child_shape == ChildShape::kForwardedNormal ||
       child_shape == ChildShape::kForwardedLocal || forwarded_writer;
-  const bool nested = child_shape == ChildShape::kNested || forwarding || child_shape == ChildShape::kAwaitClosure;
+  const bool yield_closure = child_shape == ChildShape::kYieldClosure;
+  const bool yield_frame_copy = child_shape == ChildShape::kYieldFrameCopy;
+  const bool yield_lexical = child_shape == ChildShape::kYieldLexical || yield_closure;
+  const bool yield_copy = child_shape == ChildShape::kYieldCopy || yield_closure || yield_frame_copy;
+  const bool nested = child_shape == ChildShape::kNested || forwarding || child_shape == ChildShape::kAwaitClosure || yield_closure;
   const bool outer_transfer = child_shape == ChildShape::kOuterContinue || child_shape == ChildShape::kOuterBreak;
   const bool shared_finally = child_shape == ChildShape::kSharedFinally || child_shape == ChildShape::kSharedFinallyNested;
   const bool finally_reuse = child_shape == ChildShape::kAwaitFinallyReuse;
@@ -101,7 +110,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const bool yield_self = child_shape == ChildShape::kYieldSelf || child_shape == ChildShape::kYieldSelfPrivate;
   const bool yield_frame = yield_self || child_shape == ChildShape::kYieldThis || child_shape == ChildShape::kYieldReceiver;
   const bool generator = child_shape == ChildShape::kYieldCapture || child_shape == ChildShape::kYieldResult ||
-      child_shape == ChildShape::kYieldLoop || child_shape == ChildShape::kYieldCall || yield_catch || yield_frame;
+      child_shape == ChildShape::kYieldLoop || child_shape == ChildShape::kYieldCall || yield_catch || yield_frame || yield_lexical || yield_copy;
   const std::uint8_t getter_parameters = await_finally ? 2 : await_capture || generator ? 1 : outer_transfer ? 5 : shared_finally ? 3 : 0;
   const bool outer_catch = shape == ParentShape::kOuterCatchContinue || shape == ParentShape::kOuterCatchBreak;
   const std::uint8_t parent_parameters = outer_catch ? 5 : 3;
@@ -361,34 +370,75 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const auto generator_getter = [&] {
     // OH7 GeneratorFunctionBuilder: initial suspend, then one source yield.
     // Both handshakes distinguish RETURN, THROW and NEXT with the same slots.
-    std::vector<std::uint8_t> code{Op(abc::Opcode::kCREATEGENERATOROBJ_V8), 5,
-        Op(abc::Opcode::kSTA_V8), 0, Op(abc::Opcode::kLDUNDEFINED)};
+    std::vector<std::uint8_t> code;
+    // FunctionRegScope assigns mandatory/user parameters to v0..v3; the
+    // physical ABI inputs follow locals. CopyFunctionArguments connects them.
+    const std::uint8_t locals = yield_frame_copy ? 9 : 5;
+    const std::uint8_t state = yield_frame_copy ? 4 : 0, mode = yield_frame_copy ? 5 : 1,
+        result = yield_frame_copy ? 6 : 2, value = yield_frame_copy ? 7 : 3, done = yield_frame_copy ? 8 : 4;
+    const std::uint8_t function = yield_frame_copy ? 0 : locals, parameter = locals + kImplicitArguments;
+    if (yield_lexical) code.insert(code.end(), {Op(abc::Opcode::kNEWLEXENV_IMM8), 1});
+    const bool private_copy = missing == MissingCell::kYieldPreludeResult || missing == MissingCell::kYieldPreludeMode;
+    const std::uint8_t private_slot = missing == MissingCell::kYieldPreludeResult ? 2 : 1;
+    if (private_copy) code.insert(code.end(), {Op(abc::Opcode::kMOV_V8_V8), private_slot, 8});
+    const auto copy = [&](std::uint8_t destination, std::uint8_t source) {
+      // OH7 ISA MOV formats: low/high v4 nibbles, then little-endian v8/v16.
+      constexpr unsigned kNibbleBits = 4;
+      switch (copy_encoding) {
+        case CopyEncoding::kV4:
+          code.insert(code.end(), {Op(abc::Opcode::kMOV_V4_V4), static_cast<std::uint8_t>(destination | (source << kNibbleBits))});
+          break;
+        case CopyEncoding::kV8:
+          code.insert(code.end(), {Op(abc::Opcode::kMOV_V8_V8), destination, source});
+          break;
+        case CopyEncoding::kV16:
+          code.insert(code.end(), {Op(abc::Opcode::kMOV_V16_V16), destination, 0, source, 0});
+          break;
+      }
+    };
+    if (yield_frame_copy) {
+      copy(0, locals); copy(1, locals + 1); copy(2, locals + 2);
+    }
+    for (std::uint32_t i = 0; yield_copy && i < copy_count; ++i)
+      copy(missing == MissingCell::kYieldPreludeState ? 0 : 3,
+          missing == MissingCell::kYieldPreludeLocal ? 4 : parameter);
+    if (missing == MissingCell::kYieldPreludeCallee) copy(0, parameter);
+    if (missing == MissingCell::kYieldPreludeCall)
+      code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), 8, Op(abc::Opcode::kCALLARG0_IMM8), 0});
+    const auto entry = static_cast<std::uint32_t>(code.size());
+    code.insert(code.end(), {Op(abc::Opcode::kCREATEGENERATOROBJ_V8), function,
+        Op(abc::Opcode::kSTA_V8), state, Op(abc::Opcode::kLDUNDEFINED)});
     const auto resume = [&](bool source_yield) {
       code.insert(code.end(), {Op(abc::Opcode::kSUSPENDGENERATOR_V8),
-          static_cast<std::uint8_t>(source_yield && missing == MissingCell::kYieldState ? 1 : 0),
-          Op(abc::Opcode::kLDA_V8), 0, Op(abc::Opcode::kRESUMEGENERATOR),
-          Op(abc::Opcode::kSTA_V8), 2, Op(abc::Opcode::kLDA_V8), 0,
-          Op(abc::Opcode::kGETRESUMEMODE), Op(abc::Opcode::kSTA_V8), 1,
+          static_cast<std::uint8_t>(source_yield && missing == MissingCell::kYieldState ? 1 : state),
+          Op(abc::Opcode::kLDA_V8), state, Op(abc::Opcode::kRESUMEGENERATOR),
+          Op(abc::Opcode::kSTA_V8), result, Op(abc::Opcode::kLDA_V8), state,
+          Op(abc::Opcode::kGETRESUMEMODE), Op(abc::Opcode::kSTA_V8), mode,
           Op(abc::Opcode::kLDAI_IMM32), static_cast<std::uint8_t>(source_yield && missing == MissingCell::kYieldReturn ?
               analysis::CoroutineResumeMode::kThrow : analysis::CoroutineResumeMode::kReturn), 0, 0, 0,
-          Op(abc::Opcode::kEQ_IMM8_V8), 0, 1, Op(abc::Opcode::kJEQZ_IMM8), 5,
+          Op(abc::Opcode::kEQ_IMM8_V8), 0, mode, Op(abc::Opcode::kJEQZ_IMM8), 5,
           Op(source_yield && missing == MissingCell::kYieldCleanup ? abc::Opcode::kCALLARG0_IMM8 : abc::Opcode::kLDA_V8),
-          2, Op(abc::Opcode::kRETURN),
+          result, Op(abc::Opcode::kRETURN),
           Op(abc::Opcode::kLDAI_IMM32), static_cast<std::uint8_t>(analysis::CoroutineResumeMode::kThrow), 0, 0, 0,
-          Op(abc::Opcode::kEQ_IMM8_V8), 0, 1, Op(abc::Opcode::kJEQZ_IMM8), 6,
-          Op(abc::Opcode::kLDA_V8), 2,
+          Op(abc::Opcode::kEQ_IMM8_V8), 0, mode, Op(abc::Opcode::kJEQZ_IMM8), 6,
+          Op(abc::Opcode::kLDA_V8), result,
           static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
-          Op(abc::Opcode::kLDA_V8), 2});
+          Op(abc::Opcode::kLDA_V8), result});
     };
     resume(false);
     const auto try_begin = static_cast<std::uint32_t>(code.size());
+    // The initial handshake overwrites this copy. Keeping it in normalized
+    // IR without modeling that handshake would fabricate a source parameter.
+    if (private_copy) code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), private_slot, Op(abc::Opcode::kSTA_V8), 3});
+    if (yield_lexical) code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(yield_copy ? 3 : 8),
+        Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0});
     std::uint32_t first_yield_pc = 0, first_mode_pc = 0;
     const auto yield = [&] {
-      code.insert(code.end(), {Op(abc::Opcode::kSTA_V8), 3,
+      code.insert(code.end(), {Op(abc::Opcode::kSTA_V8), value,
           Op(missing == MissingCell::kYieldDone ? abc::Opcode::kLDTRUE : abc::Opcode::kLDFALSE),
-          Op(abc::Opcode::kSTA_V8), 4});
+          Op(abc::Opcode::kSTA_V8), done});
       generator_yield_pc = static_cast<std::uint32_t>(code.size());
-      code.insert(code.end(), {Op(abc::Opcode::kCREATEITERRESULTOBJ_V8_V8), 3, 4});
+      code.insert(code.end(), {Op(abc::Opcode::kCREATEITERRESULTOBJ_V8_V8), value, done});
       if (!first_yield_pc) {
         first_yield_pc = generator_yield_pc;
         // suspend(2), lda(2), resume(1), sta(2), lda(2) precede mode.
@@ -399,7 +449,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     };
     for (std::uint32_t occurrence = 0; occurrence < yield_count; ++occurrence) {
       const auto body_pc = code.size();
-      code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), 8});
+      code.insert(code.end(), {Op(child_shape == ChildShape::kYieldLexical ? abc::Opcode::kLDLEXVAR_IMM4_IMM4 : abc::Opcode::kLDA_V8),
+          static_cast<std::uint8_t>(child_shape == ChildShape::kYieldLexical ? 1 : yield_copy ? 3 : parameter)});
       if (child_shape == ChildShape::kYieldCall || yield_catch) code.insert(code.end(), {Op(abc::Opcode::kCALLARG0_IMM8), 0});
       yield();
       if (missing == MissingCell::kYieldEntry) {
@@ -414,10 +465,14 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
             static_cast<std::uint8_t>(delta)});
       }
     }
-    if (yield_self || child_shape == ChildShape::kYieldThis)
+    if (missing == MissingCell::kYieldPreludeEntry)
+      code.insert(code.end(), {Op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-static_cast<std::int32_t>(code.size()))});
+    if (yield_closure) code.insert(code.end(), {Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
+        Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 3, 0, 0});
+    else if (yield_self || child_shape == ChildShape::kYieldThis)
       code.push_back(Op(yield_self ? abc::Opcode::kLDFUNCTION : abc::Opcode::kLDTHIS));
-    else if (child_shape == ChildShape::kYieldReceiver)
-      code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), 7});
+    else if (child_shape == ChildShape::kYieldReceiver || yield_frame_copy)
+      code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(yield_frame_copy ? 2 : 7)});
     else code.insert(code.end(), {Op(child_shape == ChildShape::kYieldResult ? abc::Opcode::kLDA_V8 : abc::Opcode::kLDLEXVAR_IMM4_IMM4),
         static_cast<std::uint8_t>(child_shape == ChildShape::kYieldResult ? 2 : 0)});
     code.push_back(Op(abc::Opcode::kRETURN));
@@ -443,8 +498,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       const auto catch_entry = missing == MissingCell::kYieldCatchEntry ? first_mode_pc : catch_begin;
       for (const auto value : {try_begin, try_end - try_begin, 1U, 0U, catch_entry, handler - catch_entry}) Uleb(table, value);
     }
-    for (const auto value : {0U, handler, 1U, 0U, handler, 2U}) Uleb(table, value);
-    return AppendEncodedCode(bytes, 5, getter_parameters, code, table, yield_catch ? 2 : 1);
+    for (const auto value : {entry, handler - entry, 1U, 0U, handler, 2U}) Uleb(table, value);
+    return AppendEncodedCode(bytes, locals, getter_parameters, code, table, yield_catch ? 2 : 1);
   };
   const auto getter = generator ? generator_getter() : await_finally ? finally_getter() :
       await_capture ? async_getter() :
@@ -721,6 +776,40 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--yield-copy-many") {
+    std::cout << "export const functions = [\n";
+    for (const auto count : {200U, 201U, 402U})
+      std::cout << Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kYieldCopy,
+          MissingCell::kNone, false, 1, CopyEncoding::kV16, count) << ",\n";
+    std::cout << "];\n"; return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--yield-prelude-negative") {
+    for (const auto encoding : {CopyEncoding::kV4, CopyEncoding::kV8, CopyEncoding::kV16}) {
+      for (const auto missing : {MissingCell::kYieldPreludeCall, MissingCell::kYieldPreludeState,
+                                MissingCell::kYieldPreludeLocal, MissingCell::kYieldPreludeEntry,
+                                MissingCell::kYieldPreludeResult, MissingCell::kYieldPreludeMode})
+        Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kYieldClosure, missing, false, 1, encoding);
+      Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kYieldFrameCopy,
+          MissingCell::kYieldPreludeCallee, false, 1, encoding);
+    }
+    return 0;
+  }
+  if (argc == 2 && (std::string_view(argv[1]) == "--yield-copy" ||
+                   std::string_view(argv[1]) == "--yield-copy4" || std::string_view(argv[1]) == "--yield-copy16" ||
+                   std::string_view(argv[1]) == "--yield-closure4" || std::string_view(argv[1]) == "--yield-closure16" ||
+                   std::string_view(argv[1]) == "--yield-frame-copy" || std::string_view(argv[1]) == "--yield-frame-copy4" ||
+                   std::string_view(argv[1]) == "--yield-frame-copy16" ||
+                   std::string_view(argv[1]) == "--yield-lexical" || std::string_view(argv[1]) == "--yield-closure")) {
+    const auto mode = std::string_view(argv[1]);
+    const auto encoding = mode.ends_with("4") ? CopyEncoding::kV4 : mode.ends_with("16") ? CopyEncoding::kV16 : CopyEncoding::kV8;
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+        std::cout << Emit(profile, shape, mode.starts_with("--yield-frame-copy") ? ChildShape::kYieldFrameCopy :
+            mode.starts_with("--yield-copy") ? ChildShape::kYieldCopy :
+            mode == "--yield-lexical" ? ChildShape::kYieldLexical : ChildShape::kYieldClosure, MissingCell::kNone, false, 1, encoding) << ",\n";
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && (std::string_view(argv[1]) == "--yield-many" || std::string_view(argv[1]) == "--yield-catch-many")) {
     std::cout << "export const functions = [\n";
     for (const auto count : {200U, 201U, 402U})
