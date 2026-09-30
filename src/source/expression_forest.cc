@@ -602,8 +602,10 @@ class ForestBuilder {
       else if constexpr (std::is_same_v<T, analysis::ValueJump> ||
                          std::is_same_v<T, analysis::ValueDebugger>)
         return {};
-      else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>)
+      else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>) {
+        Require(!operation.literal, Error::kConstant);
         return Add(EmptyArrayExpr{}, origin);
+      }
       else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>)
         return Add(ThisExpr{owner_}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueGlobalObject>)

@@ -11,6 +11,7 @@ enum class CreationContextError : std::uint8_t {
 struct CreationContextFailure {
   std::variant<CreationContextError, abc::MetadataError, abc::FrameError> error;
 };
+enum class CreationContextMode : std::uint8_t { kFunction, kMethodBody };
 // Actual DEFINEFUNC occurrence, not a class-buffer member or a proof that
 // captures/home-object obligations are closed. Factory body verification
 // remains mandatory; no arbitrary caller-supplied tree can acquire this owner.
@@ -22,7 +23,8 @@ class CreationTreeContext {
       const corpus::AbcFile& file, const abc::Header& header,
       const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
       const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
-      analysis::FunctionSiteId site, RouteInputIdentity identity, analysis::SemanticBudget budget = {});
+      analysis::FunctionSiteId site, RouteInputIdentity identity, analysis::SemanticBudget budget = {},
+      CreationContextMode mode = CreationContextMode::kFunction);
   const RouteInputIdentity& Identity() const { return identity_; }
   const analysis::FunctionCreationSite& Site() const { return site_; }
   abc::MethodPosition Position() const { return site_.resolved.position; }

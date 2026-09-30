@@ -14,7 +14,8 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
-    analysis::FunctionSiteId site, RouteInputIdentity identity, analysis::SemanticBudget budget) {
+    analysis::FunctionSiteId site, RouteInputIdentity identity, analysis::SemanticBudget budget,
+    CreationContextMode mode) {
   try {
     Require(header.profile == abc::ProfileId::kDynamic1202 || header.profile == abc::ProfileId::kDynamic1206 ||
         header.profile == abc::ProfileId::kDynamic1301, Error::kProfile);
@@ -35,11 +36,21 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
     // Require an unambiguous non-class role for ordinary, arrow and async targets.
     Require(roles.At(*position) == analysis::MethodRole::kUnseen, Error::kRole);
     const auto& creation = occurrence->creation;
-    Require(creation.kind == analysis::CreationKind::kFunction &&
-        creation.home_object == analysis::HomeObjectInput::kCurrentFunction &&
-        !occurrence->resolved.attributes.sendable, Error::kKind);
+    Require(!occurrence->resolved.attributes.sendable, Error::kKind);
     CallableKind callable;
-    switch (occurrence->resolved.attributes.kind) {
+    if (mode == CreationContextMode::kMethodBody) {
+      // OH7 ObjectFactory::NewJSFunctionForDefineMethod selects the no-prototype
+      // function class for NONE and installs the actual accumulator home.
+      // This enables common body analysis only; it does not authorize emitting
+      // an ordinary function or replacing a home-object/super relationship.
+      Require(creation.kind == analysis::CreationKind::kMethod &&
+          creation.home_object == analysis::HomeObjectInput::kAccumulator &&
+          occurrence->resolved.attributes.kind == abc::FunctionKind::kNone, Error::kKind);
+      callable = CallableKind::kMethod;
+    } else {
+      Require(mode == CreationContextMode::kFunction && creation.kind == analysis::CreationKind::kFunction &&
+          creation.home_object == analysis::HomeObjectInput::kCurrentFunction, Error::kKind);
+      switch (occurrence->resolved.attributes.kind) {
       case abc::FunctionKind::kBaseConstructor: callable = CallableKind::kFunction; break;
       case abc::FunctionKind::kArrow: callable = CallableKind::kArrow; break;
       case abc::FunctionKind::kAsync: callable = CallableKind::kAsyncFunction; break;
@@ -51,6 +62,7 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
       case abc::FunctionKind::kNone:
       case abc::FunctionKind::kConcurrent:
       default: throw CreationContextFailure{Error::kKind};
+      }
     }
     const auto name = RuntimeName(method);
     Require(name.has_value(), Error::kName);

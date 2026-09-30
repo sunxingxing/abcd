@@ -5,6 +5,7 @@
 #include "function_input.h"
 #include "../analysis/value_heritage.h"
 #include "cell_plan.h"
+#include "class_initializers.h"
 #include "module_guards.h"
 
 namespace abcd::source {
@@ -23,6 +24,7 @@ struct FunctionValues {
   ModuleGuards modules;
   // Bound to graph.revision; recompute after edits before class-tree lowering.
   analysis::ValueHeritages classes;
+  ClassInitializerCalls initializers;
 };
 struct FunctionValueFailure {
   SourceStage stage;

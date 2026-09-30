@@ -154,6 +154,8 @@ analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id
                  std::holds_alternative<analysis::ValueObjectAllocation>(allocation.operation)) &&
       allocation.result == *value && allocation.use_count == 0 &&
       path.Before(allocation, op), Error::kReceiver);
+  if (const auto* array = std::get_if<analysis::ValueArrayAllocation>(&allocation.operation))
+    Require(!array->literal, Error::kReceiver);
   return result->op;
 }
 void EarlyValue(const analysis::ValueProgram& graph, const analysis::ValueOp& allocation,

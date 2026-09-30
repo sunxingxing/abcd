@@ -80,6 +80,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueModuleRead{op.space, op.slot};
     } else if constexpr (std::is_same_v<T, ModuleStore>) {
       return ValueModuleWrite{op.slot};
+    } else if constexpr (std::is_same_v<T, BufferedArrayCreation>) {
+      return ValueArrayAllocation{op.literal};
     } else if constexpr (std::is_same_v<T, BufferedObjectCreation>) {
       return ValueObjectAllocation{op.literal};
     } else if constexpr (std::is_same_v<T, ClassCreation>) {

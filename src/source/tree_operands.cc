@@ -217,6 +217,7 @@ class OperandCheck {
           constexpr std::uint32_t kConstructorPrefix = 1;
           Arguments(op, construct.arguments, kConstructorPrefix, operation.arguments);
         } else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>) {
+          RequireMeaning(!operation.literal, Error::kConstant);
           const auto* aggregate = std::get_if<ObjectExpr>(&tree_.expressions[expression.value].expression);
           RequireMeaning(aggregate ? aggregate->kind == AggregateKind::kArray :
               std::holds_alternative<EmptyArrayExpr>(tree_.expressions[expression.value].expression), Error::kOperator);

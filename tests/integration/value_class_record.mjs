@@ -21,6 +21,8 @@ for (const entry of [7312, 7531, 16638, 29031]) {
   assert.equal(report.class_heritage.length, 1);
   assert.equal(report.class_heritage[0].kind, 'absent');
   assert.equal(report.class_heritage[0].pc, 9);
+  if (entry === 7312) assert.deepEqual(report.class_initializers,
+    [{creation_pc: 9, method_pc: 32, call_pc: 43}]);
   assert.equal(report.source_complete, false);
   assert.equal(report.executable, false);
 }

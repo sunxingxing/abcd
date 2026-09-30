@@ -373,6 +373,13 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
       report["capture_occurrences"] = function->input.Captures().size();
       report["child_obligations"] = function->input.Children().size();
       report["operations"] = function->values.graph.ops.size();
+      report["class_initializers"] = nlohmann::json::array();
+      for (const auto& item : function->values.initializers.calls) {
+        const auto& graph = function->values.graph;
+        const auto pc = [&](analysis::OpId id) { return graph.origins[graph.ops[id.value].origin.value].pc.value; };
+        report["class_initializers"].push_back({{"creation_pc", pc(item.creation)},
+            {"method_pc", pc(item.method)}, {"call_pc", pc(item.call)}});
+      }
       report["class_heritage"] = nlohmann::json::array();
       for (const auto& heritage : function->values.classes.classes) {
         const auto& op = function->values.graph.ops[heritage.operation.value];

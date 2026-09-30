@@ -70,7 +70,8 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
                          std::is_same_v<T, GlobalObjectLoad> ||
                          std::is_same_v<T, SymbolConstructorLoad> || std::is_same_v<T, RestCopy> ||
                          std::is_same_v<T, StringLoad> || std::is_same_v<T, EmptyObjectCreation> ||
-                         std::is_same_v<T, BufferedObjectCreation> || std::is_same_v<T, ModuleLoad>) {
+                         std::is_same_v<T, BufferedObjectCreation> || std::is_same_v<T, BufferedArrayCreation> ||
+                         std::is_same_v<T, ModuleLoad>) {
       plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, LexicalLoad> || std::is_same_v<T, PushEnvironment> ||
                          std::is_same_v<T, CurrentEnvironment>) {

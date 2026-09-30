@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-01：实际类初始化调用与正文读取贯通
+
+- 共同 FunctionValues 在简化后的正常图上识别 class → DEFINEMETHOD →
+  同 receiver、零参数、单次且结果不逃逸的调用；使用 def/use 索引，
+  不按名字、固定 PC 或样本选择生产逻辑。此结果只证明调用身份，
+  尚不证明把调用移动进 class 的效果顺序或类逃逸条件。
+- ReadClassInitializerFunction 绑定实际方法创建 occurrence 和 no-prototype
+  method owner，复用 FunctionInput/FunctionValues 读取正文；默认普通函数
+  创建入口仍拒绝 DEFINEMETHOD，避免改变 callable/prototype/home 语义。
+- CREATEARRAYWITHBUFFER 的 literal pool 身份进入共同 ValueArrayAllocation，
+  原始操作数导入与验证同步支持。缓冲数组尚未接入共同 AST 常量输出，
+  构树、操作数检查和 indexed literal folding 均明确拒绝，不能变成空数组。
+- 实际 Immersive CommonConstants 7312 → 7368 正文读取成功，3 个 this
+  字段；HomeConstants 16391 → 16447 读取成功，31 个 this 字段及 93 个
+  新建对象字段。测试分别验证 receiver 来源；未将嵌套对象字段计为类字段。
+- 9 项定向测试通过（4.36 秒），含三个 profile 的初始化识别及
+  1/200/201/402 规模、普通创建上下文、窄/宽缓冲数组与池身份篡改、
+  实际初始化正文、共同 function/class AST 和三组 record 回归。
+  构建日志 /tmp/abcd-buffer-import-build.log、
+  /tmp/abcd-initializer-regression-build.log、/tmp/abcd-init-final-build.log；
+  测试日志 /tmp/abcd-init-final-tests.log。未运行全量测试或 RSS 验收。
+- 本次未新增完整 record，也未宣称静态字段源码恢复完成。下一步复用
+  ABC literal reader 将缓冲数组接入共同 AST，再处理初始化方法中的
+  own-field 语义及其进入 class 的位置；全阶段一验收仍未完成。
+
+
 ### 2026-10-01：类创建贯通表达式 AST 与正式 record 适配器
 
 - FunctionTree 新增持有已恢复 ClassTree 的 ClassExpr；表达式常量绑定、

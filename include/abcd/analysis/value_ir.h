@@ -172,7 +172,12 @@ struct ValueModuleWrite {
 struct ValuePropertyWrite {
   bool operator==(const ValuePropertyWrite&) const = default;
 };
-struct ValueArrayAllocation { bool operator==(const ValueArrayAllocation&) const = default; };
+struct ValueArrayAllocation {
+  // A present regional literal slot must be decoded before emitting syntax;
+  // buffered arrays are fresh allocations, never empty-array placeholders.
+  std::optional<abc::PoolIndex> literal;
+  bool operator==(const ValueArrayAllocation&) const = default;
+};
 struct ValueObjectAllocation {
   // Absent means CREATEEMPTYOBJECT, present is the original regional literal
   // slot. A buffer is not an empty object or a reusable object constant; its
