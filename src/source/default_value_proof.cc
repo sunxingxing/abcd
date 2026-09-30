@@ -61,6 +61,7 @@ class Checker {
     Admit(graph_.ops.size(), sizeof(DefaultOpPlacement));
     operations.reserve(graph_.ops.size());
     Admit(operations.capacity() - graph_.ops.size(), sizeof(DefaultOpPlacement));
+    std::optional<std::uint16_t> prefix_slots;
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       Step(); const auto& op = graph_.ops[i];
       Require(op.block.value < blocks_.size());
@@ -70,6 +71,29 @@ class Checker {
       const OpId id{static_cast<std::uint32_t>(i)};
       if (id != candidate.comparison && id != candidate.branch && id != candidate.initializer &&
           candidate.undefined != id && candidate.number != id) {
+        // Keep fresh environment initialization in the residual body. Literal
+        // defaults commute with it only when it stores unaffected invocation
+        // entries; CheckUse below still rejects every raw default-entry escape.
+        // No closure, caller cell, load or arbitrary effect is admitted here.
+        if (owner.candidate == 0 && owner.role == BlockRole::kHeader &&
+            op.order < graph_.ops[candidate.comparison.value].order) {
+          if (const auto* push = std::get_if<ValueEnvironmentPush>(&op.operation)) {
+            Require(!prefix_slots && op.use_count == 0, Error::kEffect);
+            prefix_slots = push->slots;
+            continue;
+          }
+          if (const auto* store = std::get_if<ValueLexicalStore>(&op.operation)) {
+            Require(prefix_slots && store->address.depth.value == 0 &&
+                store->address.slot.value < *prefix_slots && !op.result && op.use_count == 1,
+                Error::kEffect);
+            const auto* value = std::get_if<ValueId>(&Operand(op, 0, OperandRole::kStoredValue));
+            Require(value && value->value < graph_.values.size(), Error::kEffect);
+            const auto* entry = std::get_if<EntryDefinition>(&graph_.values[value->value].origin);
+            Require(entry && (std::holds_alternative<ParameterEntry>(*entry) ||
+                std::holds_alternative<ReceiverEntry>(*entry)), Error::kEffect);
+            continue;
+          }
+        }
         Require(std::holds_alternative<ValueNop>(op.operation) ||
             (owner.role == BlockRole::kArm && std::holds_alternative<ValueJump>(op.operation)), Error::kEffect);
         Require(op.normal == LanguageEffect::kNone && op.before_throw == LanguageEffect::kNone &&

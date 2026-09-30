@@ -75,6 +75,66 @@ void Relink(ValueProgram& graph) {
   }
   Check(!VerifyValueUses(graph, 1024 * 1024));
 }
+// The environment remains body-owned even when native literal defaults move.
+void EnvironmentPrefix() {
+  for (const std::uint32_t stores : {1U, 200U, 201U, 402U}) {
+    auto graph = DefaultDiamond();
+    const auto prefix = stores + 1;
+    for (auto& use : graph.uses)
+      if (auto* op = std::get_if<OpId>(&use.owner)) op->value += prefix;
+    for (auto& value : graph.values)
+      if (auto* result = std::get_if<OpResult>(&value.origin)) result->op.value += prefix;
+    for (auto& op : graph.ops) if (op.block.value == 0) op.order += prefix;
+    graph.blocks[0].op_count += prefix;
+    for (std::size_t i = 1; i < graph.blocks.size(); ++i) graph.blocks[i].first_op.value += prefix;
+    const ValueId receiver{static_cast<std::uint32_t>(graph.values.size())};
+    graph.values.push_back({EntryDefinition{ReceiverEntry{}}, ValueKinds::Language()});
+    const ValueId environment{static_cast<std::uint32_t>(graph.values.size())};
+    graph.values.push_back({OpResult{{0}}, ValueKinds::Language()});
+    std::vector<ValueOp> prologue;
+    const OriginId push_origin{static_cast<std::uint32_t>(graph.origins.size())};
+    graph.origins.push_back({{push_origin.value}, {push_origin.value}, {}});
+    prologue.push_back({ValueEnvironmentPush{1, {}}, {0}, 0, {}, 0, environment,
+        LanguageEffect::kEnvironmentWrite, LanguageEffect::kNone,
+        ExceptionalCompletion::kImpossible, push_origin});
+    for (std::uint32_t i = 1; i <= stores; ++i) {
+      const UseId use{static_cast<std::uint32_t>(graph.uses.size())};
+      graph.uses.push_back({OpId{i}, OperandRole::kStoredValue, ReadPurpose::kOperand, receiver});
+      const OriginId origin{static_cast<std::uint32_t>(graph.origins.size())};
+      graph.origins.push_back({{origin.value}, {origin.value}, {}});
+      prologue.push_back({ValueLexicalStore{{{0}, {0}}}, {0}, i, use, 1, {},
+          LanguageEffect::kLexicalWrite, LanguageEffect::kNone,
+          ExceptionalCompletion::kImpossible, origin});
+    }
+    graph.ops.insert(graph.ops.begin(), prologue.begin(), prologue.end());
+    Relink(graph);
+    const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(graph, 1));
+    const auto candidates = Find(graph);
+    Check(candidates.values.size() == 1);
+    auto projected = DefaultBody::Build(graph, parameters, candidates, 0);
+    Check(std::holds_alternative<DefaultBody>(projected));
+    const auto& body = std::get<DefaultBody>(projected);
+    Check(body.Signature().Operations().size() == 3);
+    for (std::uint32_t i = 0; i < prefix; ++i) {
+      Check(body.Graph().ops[i].life == ValueLife::kLive);
+      Check(body.Graph().ops[i].operation == graph.ops[i].operation);
+      Check(body.Graph().ops[i].normal == graph.ops[i].normal);
+      Check(body.Graph().ops[i].origin == graph.ops[i].origin);
+    }
+    Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(body.Graph())));
+    graph.uses[graph.ops[1].first_use.value].operand = ValueId{0};
+    Relink(graph);
+    Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0)) ==
+        DefaultProofError::kEscapedValue);
+    graph.uses[graph.ops[1].first_use.value].operand = receiver;
+    Relink(graph);
+    std::get<ValueLexicalStore>(graph.ops[1].operation).address.depth.value = 1;
+    Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0)) ==
+        DefaultProofError::kEffect);
+    graph.ops[0].operation = ValueEnvironmentPop{};
+    Check(Find(graph).values.empty());
+  }
+}
 void ProofAndEscapes() {
   auto graph = DefaultDiamond();
   const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(graph, 1));
@@ -357,4 +417,4 @@ void MaterializedNumber() {
         DefaultProofError::kEscapedValue);
 }
 }  // namespace
-int main() { MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); SnapshotDefault(); UndefinedProducer(); MaterializedNumber(); }
+int main() { EnvironmentPrefix(); MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); SnapshotDefault(); UndefinedProducer(); MaterializedNumber(); }

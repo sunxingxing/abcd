@@ -34,7 +34,9 @@ enum class DefaultCandidateError : std::uint8_t {
 // Candidate discovery only, NOT permission to erase CFG/phi or move defaults
 // into a signature. Later proof must check entry escapes, initializer scope,
 // arguments/length and signature origins. Requires verified simplified normal
-// IR. Stops at the first non-default prologue; never scans a body looking for
+// IR. Entry environment allocation/stores may precede the first test; the
+// independent proof must retain and validate them. Stops at the first
+// non-default prologue; never scans a body looking for
 // coincidental undefined tests. No old SourceAst or register identity input.
 [[nodiscard]] std::variant<DefaultCandidates, DefaultCandidateError>
 FindDefaultCandidates(const analysis::ValueProgram& graph,

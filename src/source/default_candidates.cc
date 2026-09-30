@@ -16,6 +16,7 @@ void Require(bool condition, Error error = Error::kInvalidGraph) {
 struct BlockFacts {
   std::uint32_t predecessors = 0;
   std::uint32_t operations = 0;
+  std::uint32_t environment_prefix = 0;
   std::uint32_t phis = 0;
   std::optional<OpId> last;
   std::uint32_t value_operations = 0;
@@ -94,6 +95,9 @@ class Finder {
       if (op.life != ValueLife::kLive || std::holds_alternative<ValueNop>(op.operation)) continue;
       auto& block = blocks_[op.block.value];
       Require(i <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
+      if (op.block.value == 0 && block.environment_prefix == block.operations &&
+          (std::holds_alternative<ValueEnvironmentPush>(op.operation) ||
+           std::holds_alternative<ValueLexicalStore>(op.operation))) ++block.environment_prefix;
       ++block.operations; block.last = OpId{static_cast<std::uint32_t>(i)};
       if (!std::holds_alternative<ValueJump>(op.operation)) {
         ++block.value_operations; block.value_op = block.last;
@@ -140,7 +144,8 @@ class Finder {
     const auto& block = graph_.blocks[header.value];
     if (header.value == 0 && facts.predecessors != 0) return {};
     constexpr std::uint32_t kCompareAndBranch = 2;
-    if (facts.operations < kCompareAndBranch || facts.operations > kCompareAndBranch + 1 ||
+    const auto operations = facts.operations - facts.environment_prefix;
+    if (operations < kCompareAndBranch || operations > kCompareAndBranch + 1 ||
         !facts.last || block.edge_count != 2) return {};
     const auto& branch = graph_.ops[facts.last->value];
     const auto* condition = std::get_if<ValueBranch>(&branch.operation);
@@ -176,7 +181,7 @@ class Finder {
       return true;
     };
     const auto* entry = std::get_if<ValueId>(undefined(left) ? &right : undefined(right) ? &left : nullptr);
-    if (!entry || facts.operations != kCompareAndBranch + (undefined_op ? 1U : 0U)) return {};
+    if (!entry || operations != kCompareAndBranch + (undefined_op ? 1U : 0U)) return {};
     Require(entry->value < graph_.values.size());
     const auto* definition = std::get_if<EntryDefinition>(&graph_.values[entry->value].origin);
     const auto* parameter = definition ? std::get_if<ParameterEntry>(definition) : nullptr;

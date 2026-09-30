@@ -12,6 +12,27 @@
 
 ## 当前阶段
 
+### 2026-10-01：默认参数迁移保留入口环境初始化
+
+- 共同DefaultCandidates现识别首次默认判断前连续的环境创建/词法存储前缀。
+  DefaultValueProof独立验证：仅一次新环境、depth=0且slot在分配范围内、
+  存储值为参数或receiver入口；所有待迁移参数的原始入口逃逸仍由全图Use检查拒绝。
+  这些前缀操作不进入signature迁移集合，原操作、效果、结果及origin保留在残余body。
+  未放宽调用、闭包创建、外层词法槽或任意计算的前缀准入。
+- 新增1/200/201/402次存储的规格：共同默认证明及残余流检查成功，迁移集合仍仅
+  三条默认操作；前缀保持live且来源/效果不变。提前存储待默认参数、写外层环境及
+  environment-pop前缀拒绝。含有结果值的环境创建也保留，不伪装为无结果指令。
+- 真实NavPageMap10428仍有第二处阻断：当前35个op、3个block，默认arm无live操作，
+  join无live phi。原PC28的literal及PC29复制已为Removed；这是未使用默认参数
+  的简化后形态，当前候选依赖live phi，尚不接受。证据
+  /tmp/abcd-nav-default-shape.log、/tmp/abcd-default-prefix-probe.log。下一步需从
+  保留的原始指令和删除证据恢复未使用参数默认值，不能按length猜测fallback。
+- 构建default_candidates_test、class_initializer_file_test通过；构建完成后
+  三项定向复测通过（1.67秒）：default_candidates_test、class_initializer_file_test、
+  derived_constructor_source_test。日志/tmp/abcd-default-prefix-final-build.log和
+  /tmp/abcd-default-prefix-tests.log。未重导出五输入或恢复全量/RSS/基准；
+  真实整类及阶段一仍未完成。
+
 ### 2026-10-01：定位整类默认参数阻断，保护继承打印边界
 
 - 实际 Index 10009 的 BuildClassTree 已通过构造器及前序成员，停在
