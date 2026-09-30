@@ -713,7 +713,7 @@ class TreeBuilder {
         tree_.operations.push_back({id, statement});
       } else {
         tree_.operations.push_back({id, *expression});
-        if (evaluation.kind == EvaluationKind::kInline) continue;
+        if (evaluation.kind == EvaluationKind::kInline || evaluation.kind == EvaluationKind::kNestedLiteral) continue;
         auto evaluated = *expression;
         if (evaluation.temporary) {
           Require(op.result.has_value(), Error::kBinding);

@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-01：真实 Constants 嵌套初始化首次贯通共同 record
+
+- LiteralPlan 记录内部 allocation 到唯一外层 initializer RHS 的依赖，
+  单块无边场景用线性栈验证嵌套初始化区间。拒绝共享/逃逸子对象、外部
+  可观察操作，以及外层分配之后才产生的普通 RHS 快照。数组/对象身份
+  保留；没有把 allocation 当作 primitive，也没有解除 EarlyValue。
+- kNestedLiteral 明确区分嵌套表达式与独立根；共同表达式构建按反向
+  allocation 顺序迭代构建，不递归、不生成先使用后赋值的快照。求值、
+  树流、操作数和 origin 检查同步消费依赖，属性写入 PC 保留在 property，
+  子分配保留自身 PC。篡改依赖表、placement 和不完整表都拒绝。
+- Immersive Constants entry 8889/record 8755 已通过正式共同 record 入口
+  生成完整恢复源码，无旧 writer。独立读取配对 Constants.ts 的测试使用
+  Node 类型擦除，仅在测试侧执行参考模块；ABC SHA 固定。比较 ROUTES
+  的值、属性键顺序、descriptor 和双向对象身份关系，并验证 ESM TDZ、
+  export 集合及继承索引 setter 不被调用。行为对照通过。
+- 表示质量仍未通过：输出保留缓冲 null 占位和重复键，需继续在共同
+  恢复中处理属性覆盖及高层表示。原接口 Route 等源码类型信息也不由
+  本次行为对照证明。不能据 source_complete=true 宣称阶段一完成。
+- 嵌套深度 1/2/200/201/402、提前观察、外部效果与篡改反例测试通过。
+  5 项定向 CTest 全通过（4.59 秒），随后实际 Constants oracle 再通过。
+  日志 /tmp/abcd-nested-final-build.log、/tmp/abcd-nested-final-tests.log。
+- 批量 Immersive 45 records 当前为 1 份共同源码、34 恢复失败、10 无模块；
+  输出 build/stage-one/Immersive/value-nested-pass-1/sources/default/src/main/ets/constants/Constants.mjs，
+  manifest 同目录根下。其余 ABC 本轮未重跑，旧 152-record 结果不能当作
+  当前整个阶段的新覆盖统计。未执行全量/RSS/基准/其他语料/代理。
+
 ### 2026-10-01：批量共同 record 路径实际运行全部阶段一输入
 
 - abc_structure --value-source 不再以入口占位 refusal 跳过每个 record。

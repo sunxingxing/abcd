@@ -408,6 +408,10 @@ class OperandCheck {
         }
         const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
         RequireMeaning(result != nullptr, Error::kOperand);
+        if (evaluation_.operations[result->op.value].kind == EvaluationKind::kNestedLiteral) {
+          RequireMeaning(edge_input_ && flow_.expressions[result->op.value] == expression, Error::kOperand);
+          return;
+        }
         if (evaluation_.operations[result->op.value].kind == EvaluationKind::kInline) {
           RequireMeaning(!edge_input_ && flow_.expressions[result->op.value] == expression, Error::kOperand);
         } else {

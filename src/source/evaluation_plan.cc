@@ -188,6 +188,12 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
             pinned[result->op.value] = 1;
       }
     }
+    if (plan.literals && !plan.literals->nested.empty()) {
+      for (std::size_t i = 0; i < plan.literals->nested.size(); ++i) {
+        step(); if (plan.literals->nested[i])
+          plan.operations[i] = {EvaluationKind::kNestedLiteral, plan.literals->nested[i], {}};
+      }
+    }
     std::size_t next_op = 0;
     for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
       step();
@@ -202,7 +208,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         Require(op.block.value == b && op.order == order, Error::kInvalidGraph);
         if (op.life != analysis::ValueLife::kLive ||
             plan.operations[index].kind == EvaluationKind::kElidedPure ||
-            plan.operations[index].kind == EvaluationKind::kAlias) continue;
+            plan.operations[index].kind == EvaluationKind::kAlias ||
+            plan.operations[index].kind == EvaluationKind::kNestedLiteral) continue;
         if (IsEnvironmentState(op.operation)) {
           Require(plan.cells.has_value(), Error::kUnsupportedOperation);
           plan.operations[index].kind = EvaluationKind::kEnvironment;

@@ -108,6 +108,15 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
         std::holds_alternative<analysis::ValueReturn>(op.operation) || IsEnvironmentState(op.operation) ||
         (std::holds_alternative<analysis::ValueModuleWrite>(op.operation) && flow.statements[i] &&
          std::holds_alternative<DeclarationStmt>(tree.statements[flow.statements[i]->value].statement))) continue;
+    if (evaluation.operations[i].kind == EvaluationKind::kInitializer && evaluation.literals &&
+        !evaluation.literals->nested.empty()) {
+      const analysis::UseId rhs{op.first_use.value + 1};
+      const auto* value = std::get_if<analysis::ValueId>(&graph.uses[rhs.value].operand);
+      const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
+      // The DataProperty owns the store site (checked by TreeFlow). Its child
+      // allocation expression retains its own original site, not the store PC.
+      if (result && evaluation.literals->nested[result->op.value] == rhs) continue;
+    }
     RequireMeaning(flow.expressions[i].has_value(), Error::kOrigin);
     auto& owner = expected[op.origin.value];
     RequireMeaning(!owner || owner == flow.expressions[i], Error::kOrigin);

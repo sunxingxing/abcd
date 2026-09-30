@@ -190,6 +190,60 @@ void SourceTree(bool buffered, bool array = false, bool print = false) {
     }
   }
 }
+void NestedLiterals() {
+  for (const auto depth : {1U, 2U, 200U, 201U, 402U}) {
+    Fixture fixture;
+    for (std::uint32_t i = 0; i < depth; ++i) fixture.Add(ValueArrayAllocation{}, true, {});
+    fixture.Add(ValueObjectAllocation{}, true, {});
+    for (std::uint32_t i = depth; i-- > 0;)
+      fixture.Add(ValueIndexedWrite{0, 0}, false,
+          {{OperandRole::kBase, ValueId{i}}, {OperandRole::kStoredValue, ValueId{i + 1}}});
+    fixture.Add(ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{0}}});
+    auto& graph = fixture.graph;
+    graph.blocks = {{{0}, static_cast<std::uint32_t>(graph.ops.size()), {0}, 0}};
+    for (std::size_t i = 0; i <= depth; ++i) {
+      graph.ops[i].normal = graph.ops[i].before_throw = LanguageEffect::kAllocation;
+      graph.ops[i].exceptional = ExceptionalCompletion::kMayThrow;
+    }
+    const auto evaluated = BuildEvaluationPlan(graph);
+    Check(std::holds_alternative<EvaluationPlan>(evaluated));
+    const auto& evaluation = std::get<EvaluationPlan>(evaluated);
+    Check(evaluation.literals && evaluation.literals->nested.size() == graph.ops.size());
+    const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+    FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction;
+    syntax.strictness = Strictness::kStrict; syntax.names = {u"0"};
+    std::vector<ExpressionConstant> constants(graph.ops.size());
+    for (std::uint32_t i = depth + 1; i <= 2 * depth; ++i) constants[i] = NameId{0};
+    const ExpressionConstants resolved{constants, 1, 0};
+    const auto built = BuildFunctionTree(graph, control, evaluation, syntax, resolved);
+    Check(std::holds_alternative<ConstructedFunction>(built));
+    const auto& tree = std::get<ConstructedFunction>(built).tree;
+    Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
+    std::ostringstream output;
+    Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
+    auto forged = evaluation;
+    forged.literals->nested[depth].reset();
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    forged = evaluation; forged.operations[depth].kind = EvaluationKind::kRoot;
+    forged.operations[depth].consumer.reset();
+    forged.operations[depth].temporary = TemporaryReason::kEffectSnapshot;
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    forged = evaluation; forged.literals->nested.resize(1);
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+  }
+  for (const bool observe : {false, true}) {
+    Fixture fixture;
+    fixture.Add(ValueArrayAllocation{}, true, {});
+    fixture.Add(ValueObjectAllocation{}, true, {});
+    if (observe) fixture.Add(ValueCopy{}, true, {{OperandRole::kInput, ValueId{1}}});
+    else fixture.Add(ValueDebugger{}, false, {});
+    fixture.Add(ValueIndexedWrite{0, 0}, false,
+        {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue, ValueId{1}}});
+    fixture.Add(ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{0}}});
+    fixture.graph.blocks = {{{0}, static_cast<std::uint32_t>(fixture.graph.ops.size()), {0}, 0}};
+    Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(fixture.graph)));
+  }
+}
 void RhsSnapshot() {
   Fixture fixture;
   fixture.Add(ValueCopy{}, true, {{OperandRole::kInput, abcd::analysis::IntegerLiteral{1}}});
@@ -228,4 +282,4 @@ void RhsSnapshot() {
 }  // namespace
 int main(int argc, char**) {
   if (argc > 1) { SourceTree(false, true, true); return 0; }
-  SourceTree(false, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }
+  NestedLiterals(); SourceTree(false, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }

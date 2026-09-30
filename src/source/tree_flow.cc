@@ -118,6 +118,7 @@ class FlowCheck {
             edges_->Stage(id, block, child);
           if (op.life != analysis::ValueLife::kLive ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInline ||
+              evaluation_.operations[id.value].kind == EvaluationKind::kNestedLiteral ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInitializer ||
               evaluation_.operations[id.value].kind == EvaluationKind::kModuleGuard) continue;
           const auto& placement = tree_.operations[*placements_[id.value]].node;

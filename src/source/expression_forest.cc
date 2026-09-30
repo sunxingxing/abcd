@@ -147,6 +147,15 @@ class ForestBuilder {
       else
         forest_.origins.emplace_back(OriginalSite{origin.site, origin.pc, origin.original});
     }
+    // Nested allocation edges point forward in the original operation order.
+    // Reverse construction is therefore iterative postorder, without recursion
+    // or changing the evaluation order of the resulting native literal.
+    for (std::size_t i = graph_.ops.size(); i-- > 0;) {
+      Step(); if (evaluation_.operations[i].kind != EvaluationKind::kNestedLiteral) continue;
+      const auto& op = graph_.ops[i]; const TreeOriginId origin{op.origin.value};
+      if (objects_[i]) forest_.operations[i] = Object(evaluation_.literals->objects[*objects_[i]], origin);
+      else forest_.operations[i] = Lower({static_cast<std::uint32_t>(i)}, op, {}, origin, constants_.operations[i]);
+    }
     const bool partial = CanRetainPrefix();
     struct Boundary {
       std::size_t operation = 0, expressions = 0, arguments = 0, origins = 0, parts = 0;
@@ -175,7 +184,8 @@ class ForestBuilder {
         if (evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
             evaluation_.operations[i].kind == EvaluationKind::kAlias)
           continue;
-        if (evaluation_.operations[i].kind == EvaluationKind::kInitializer) continue;
+        if (evaluation_.operations[i].kind == EvaluationKind::kInitializer ||
+            evaluation_.operations[i].kind == EvaluationKind::kNestedLiteral) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kEnvironment) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kModuleGuard) continue;
         if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) {
@@ -409,7 +419,8 @@ class ForestBuilder {
           return Add(ThisExpr{owner_}, origin);
         const auto* result = std::get_if<analysis::OpResult>(&graph_.values[value.value].origin);
         Require(result && result->op.value < forest_.operations.size() &&
-                evaluation_.operations[result->op.value].kind == EvaluationKind::kInline &&
+                (evaluation_.operations[result->op.value].kind == EvaluationKind::kInline ||
+                 evaluation_.operations[result->op.value].kind == EvaluationKind::kNestedLiteral) &&
                 forest_.operations[result->op.value].has_value(), Error::kUnavailableValue);
         return *forest_.operations[result->op.value];
       }

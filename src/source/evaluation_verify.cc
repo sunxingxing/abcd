@@ -187,6 +187,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       step();
       const auto& op = graph.ops[i];
       const auto& placement = plan.operations[i];
+      const bool nested = plan.literals && !plan.literals->nested.empty() && plan.literals->nested[i].has_value();
+      Require(nested == (placement.kind == EvaluationKind::kNestedLiteral), Error::kOwnership);
       if (op.life != analysis::ValueLife::kLive) {
         Require(placement.kind == EvaluationKind::kRemoved && !placement.consumer && !placement.temporary,
                 Error::kOwnership);
@@ -239,6 +241,11 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         // producer snapshots remain pinned before allocation, never duplicated.
         Require(plan.literals && placement.kind == EvaluationKind::kInitializer &&
             !placement.consumer && !placement.temporary, Error::kOwnership);
+        visits[i] = EvaluationVisit::kDone;
+      } else if (placement.kind == EvaluationKind::kNestedLiteral) {
+        Require(plan.literals && plan.literals->nested.size() == graph.ops.size() &&
+            plan.literals->nested[i] && placement.consumer == plan.literals->nested[i] &&
+            !placement.temporary && op.result, Error::kOwnership);
         visits[i] = EvaluationVisit::kDone;
       } else if (placement.kind == EvaluationKind::kInline) {
         Require(!pinned[i] || (cross(i) &&
@@ -295,6 +302,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
                                   plan.operations[expected].kind == EvaluationKind::kElidedPure ||
                                   plan.operations[expected].kind == EvaluationKind::kAlias ||
                                   plan.operations[expected].kind == EvaluationKind::kInitializer ||
+                                  plan.operations[expected].kind == EvaluationKind::kNestedLiteral ||
                                   plan.operations[expected].kind == EvaluationKind::kEnvironment ||
                                   (plan.operations[expected].kind == EvaluationKind::kModuleGuard &&
                                    !module_index.peers.empty() && module_index.peers[expected] &&
