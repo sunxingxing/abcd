@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
 execFileSync(process.argv[2], ['--yield-return-loop-negative'], {timeout: 60_000});
-const overrides = ['--yield-return-loop-override-json', '--yield-return-nested-loop-override-json'].flatMap(mode => {
+const overrides = ['--yield-return-loop-override-json', '--yield-return-nested-loop-override-json', '--yield-return-post-loop-override-json'].flatMap(mode => {
   const result = execFileSync(process.argv[2], [mode],
     {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000}).trim().split('\n').map(line => JSON.parse(line));
   assert.equal(result.length, 48);
@@ -27,11 +27,12 @@ for (const fixture of overrides) {
       set(false);
       for (let i = 0; i < stop; ++i) assert.deepEqual(iterator.next(payload), {value: payload, done: false});
       set(finishAt > 0);
-      if (finishAt && (failure || (!exiting && fixture.throwing))) assert.throws(() => iterator.return(payload),
+      const runs = finishAt > 0 || fixture.post;
+      if (runs && (failure || (!exiting && fixture.throwing))) assert.throws(() => iterator.return(payload),
         error => error === (failure ? failure === 2 && fixture.caught ? secondError : firstError : replacement));
-      else assert.deepEqual(iterator.return(payload), {value: !finishAt || exiting ? payload : replacement, done: true});
-      assert.equal(calls, !finishAt ? 0 : failure ? 1 + Number(fixture.caught) : exiting ?
-        Math.ceil(finishAt / fixture.count) * fixture.count : finishAt + Number(fixture.throwing && fixture.caught));
+      else assert.deepEqual(iterator.return(payload), {value: !runs || exiting ? payload : replacement, done: true});
+      assert.equal(calls, !runs ? 0 : failure ? 1 + Number(fixture.caught) : exiting ?
+        Math.ceil(Math.max(1, finishAt) / fixture.count) * fixture.count : Math.max(1, finishAt) + Number(fixture.throwing && fixture.caught));
       assert.equal(work, 1 + Number(fixture.nested && exiting && finishAt > 0 && failure === 0));
       assert.deepEqual(iterator.next(), {value: undefined, done: true});
     }

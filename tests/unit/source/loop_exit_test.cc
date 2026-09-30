@@ -12,6 +12,40 @@
 namespace {
 using namespace abcd;
 using namespace abcd::source;
+void PreservingContinuation() {
+  enum class Placement { kHeader, kLatch, kBoth };
+  for (const auto placement : {Placement::kHeader, Placement::kLatch, Placement::kBoth})
+    for (const std::uint32_t length : {1U, 200U, 201U, 402U}) {
+    // Header 0 can return via 2; the post-test 1 exits via 3 or follows a
+    // private phased/jump corridor back to 0. Either terminal can preserve RETURN;
+    // neither arc order nor header/latch shape identifies that semantic role.
+    std::vector<ControlVertex> nodes(length + 4);
+    std::vector<ControlLink> arcs;
+    ControlLoopLayout loops; loops.loops.push_back({{0}, {}});
+    loops.owners.resize(nodes.size(), LoopId{0});
+    loops.owners[2].reset(); loops.owners[3].reset();
+    for (std::uint32_t b = 0; b < nodes.size(); ++b) {
+      auto& node = nodes[b]; node.first_arc = {static_cast<std::uint32_t>(arcs.size())};
+      const auto add = [&](std::uint32_t target) {
+        const auto slot = node.arc_count++;
+        arcs.push_back({{b}, {target}, slot ? analysis::FlowEdgeKind::kFallthrough : analysis::FlowEdgeKind::kTaken, slot});
+      };
+      if (b == 0) { add(1); add(2); }
+      else if (b == 1) { add(3); add(4); }
+      else if (b < 4) {
+        node.termination = ControlTermination::kAbrupt;
+        if ((b == 2 && placement != Placement::kLatch) ||
+            (b == 3 && placement != Placement::kHeader))
+          node.completion = ControlCompletion::kPreserving;
+      }
+      else add(b + 1 == nodes.size() ? 0 : b + 1);
+    }
+    constexpr ControlNodeId root{0}; ControlQuota quota{{}};
+    ExtendLoopExitCorridors(ControlGraphView{ControlProjection{{}, {}, nodes, arcs}}, {&root, 1}, loops, quota);
+    test::Check(loops.owners[2].has_value() == (placement == Placement::kLatch));
+    test::Check(loops.owners[3].has_value() == (placement == Placement::kHeader));
+  }
+}
 void TerminalBoundaries() {
   // 0->1->0 is the natural loop. Its normal port 2 is not a return;
   // 1->3->4 is a private abrupt arm unless 4 has another entry/predecessor.
@@ -158,6 +192,7 @@ std::string OuterTransfer(abc::ProfileId profile, bool stop, bool carried) {
 }
 }
 int main(int argc, char** argv) {
+  PreservingContinuation();
   TerminalBoundaries();
   const bool emit = argc == 2 && std::string_view(argv[1]) == "--emit";
   if (emit) std::cout << "export const functions = [\n";

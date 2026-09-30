@@ -24,6 +24,7 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
   std::vector<std::size_t> incoming, exits;
   std::vector<bool> root;
   std::vector<bool> abrupt;
+  std::vector<bool> preserving;
   std::vector<std::optional<ControlNodeId>> predecessor;
   std::vector<ControlNodeId> terminals;
   std::vector<ControlArcId> pending;
@@ -34,6 +35,7 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
   quota.Size(incoming, graph.NodeCount());
   quota.Size(root, graph.NodeCount());
   quota.Size(abrupt, graph.NodeCount());
+  quota.Size(preserving, graph.NodeCount());
   quota.Size(predecessor, graph.NodeCount());
   quota.Size(terminals, graph.NodeCount());
   quota.Size(exits, loops.loops.size());
@@ -105,6 +107,7 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
     if (!root[b] && incoming[b] == 1 && node.arc_count == 0 &&
         node.termination == ControlTermination::kAbrupt) {
       abrupt[b] = true;
+      preserving[b] = node.completion == ControlCompletion::kPreserving;
       terminals[terminal_count++] = {b};
     }
   }
@@ -114,6 +117,7 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
     if (!parent || root[parent->value] || incoming[parent->value] != 1 ||
         abrupt[parent->value] || graph.Node(*parent).arc_count != 1) continue;
     abrupt[parent->value] = true;
+    preserving[parent->value] = preserving[terminals[first].value];
     terminals[terminal_count++] = *parent;
   }
   // Child-before-parent prevents an outer pass from claiming a corridor first
@@ -124,19 +128,28 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
     const auto begin = count;
     // If every exit ends privately in return/throw, retain one whole arm as
     // the loop's following continuation; the others belong inside the loop.
-    // Stable arc order chooses layout only, not semantics: CFG edges remain
-    // identical. With an ordinary continuation, absorb every private abrupt
+    // A typed preserving completion must remain following the cleanup loop;
+    // header/latch shape and arc order cannot identify that semantic role.
+    // Otherwise stable arc order chooses layout only. Absorb private abrupt
     // arm instead. Never split the retained arm at its empty phased Commit.
     std::optional<ControlArcId> following;
-    bool all_abrupt = true;
+    bool all_abrupt = true, following_preserving = false;
     for (auto seed = seeds[l]; seed; seed = next[seed->value]) {
       quota.Work();
-      all_abrupt &= abrupt[graph.Arc(*seed).target.value];
-      if (!following || seed->value < following->value) following = seed;
+      const auto edge = graph.Arc(*seed);
+      all_abrupt &= abrupt[edge.target.value];
+      const bool preserve = preserving[edge.target.value];
+      if (!following || (preserve && !following_preserving) ||
+          (preserve == following_preserving && seed->value < following->value)) {
+        following = seed; following_preserving = preserve;
+      }
     }
-    if (!all_abrupt) following.reset();
+    if (!all_abrupt && !following_preserving) following.reset();
     for (auto seed = seeds[l]; seed; seed = next[seed->value]) {
-      if (seed == following) continue;
+      // Distinct preserving exits remain distinct continuations. Let the
+      // shared region builder handle/refuse multiple exits; never absorb one
+      // into the loop just because another preserving arm sorts first.
+      if (seed == following || preserving[graph.Arc(*seed).target.value]) continue;
       pending[count++] = *seed;
     }
     for (std::size_t first = begin; first < count; ++first) {

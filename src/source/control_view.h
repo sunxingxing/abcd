@@ -8,6 +8,9 @@ struct ControlNodeId { std::uint32_t value = 0; auto operator<=>(const ControlNo
 struct ControlArcId { std::uint32_t value = 0; auto operator<=>(const ControlArcId&) const = default; };
 enum class ControlViewKind : std::uint8_t { kNormal, kProjection };
 enum class ControlTermination : std::uint8_t { kNormal, kAbrupt };
+// Source return remains abrupt. A normalized completion owner can additionally
+// require its exact terminal to stay outside a cleanup loop, regardless of PCs.
+enum class ControlCompletion : std::uint8_t { kOrdinary, kPreserving };
 // Zero arcs do not prove source termination: a projected normal try-exit
 // port emits no transfer and continues at its wrapper. Only the owning
 // projection may mark an actual return/throw/loop transfer as abrupt.
@@ -15,6 +18,7 @@ struct ControlVertex {
   ControlArcId first_arc;
   std::uint8_t arc_count;
   ControlTermination termination = ControlTermination::kNormal;
+  ControlCompletion completion = ControlCompletion::kOrdinary;
 };
 // Like the adjacency view, this borrows an already-checked ValueProgram.
 inline ControlTermination BlockTermination(const analysis::ValueProgram& graph,

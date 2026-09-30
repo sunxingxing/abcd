@@ -175,6 +175,7 @@ class LoopControlBuilder {
       auto& block = vertices_[b];
       block.first_arc = {edge_count}; block.arc_count = original.arc_count;
       block.termination = original.termination;
+      block.completion = original.completion;
       for (std::uint8_t e = 0; e < original.arc_count; ++e) {
         quota_.Work();
         const auto& edge = graph_.Arc({edge_count});

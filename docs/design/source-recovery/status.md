@@ -12,6 +12,43 @@
 
 ## 当前阶段
 
+### 2026-09-30：RETURN 清理后测试循环与 preserving 出口归属
+
+- 恢复 CLI session `01a0e5c6-2009-7403-9768-aec3d50a3587` 留下的
+  do/while 红例及未完成改动，在 `4ed6764` 上的隔离分支继续。
+  异常控制投影从 ValueYield 的 owner-normalized return_route.completion
+  精确关联原始 Return，Before/Commit 均保留类型化 preserving 属性；
+  exception-loop 发现、压缩和共同 loop-control 视图传递该属性。
+  不根据弧顺序、header/latch 或 PC 大小猜测哪个 return 保留 caller payload。
+- 共同私有出口走廊索引将 preserving 尾路径留在循环后，其他私有 abrupt
+  路径仍属于循环；不删除 Return、不修改原 CFG/handler/效果顺序。
+  多个 preserving 出口保持独立，由共同区域构建器处理多出口限制。
+  原有普通 terminal、正常 port、独立入口与共享 join 边界保留。
+  原始 completion 索引 O(O log(Y+1)+Y log(Y+1))，走廊扩展 O(V+E+L)，
+  不按循环或暂停点重复遍历图；没有新增 work 截止或专项 writer。
+- 新增 48 个真实 opcode 文件解码/合成元数据函数族：三 profile × 三
+  父环境 × 有无用户 catch × return/throw 的 36 个双暂停点组合，以及
+  200/201/402 条清理 × 16/32 位恢复分支 × return/throw 的 12 个组合。
+  实际生成 JS 检查初始条件 false 时仍执行一轮、每轮重读 cell、callback
+  receiver/次数、提前覆盖及原 catch 二次清理/错误身份。循环集成目标现
+  消费 168 个完整函数族和原 18 个协议反例。图级检查覆盖 preserving
+  位于 header/latch 两种弧排序及双 preserving 出口，规模 1/200/201/402。
+- 当前 checkout 首次构建使用固定依赖：Ruby 3.2.3、pinned ISA 和 JSON；
+  16 个相关 C++ 目标构建成功。功能红例
+  `/tmp/abcd-resume-post-loop-red-tests.log`（退出 8，family_tree_error 9）；
+  多 preserving 边界红例 `/tmp/abcd-resume-preserving-boundary-red-tests.log`。
+  最终 41/41 定向 CTest 通过（86.79 秒）：
+  `/tmp/abcd-resume-post-loop-regression-build.log`、
+  `/tmp/abcd-resume-post-loop-regression-tests.log`，覆盖控制/异常组合、
+  loop exits、finally、捕获、phased values、await/generator 和共同树消费。
+  `git diff --check` 通过；作者自查精确来源关联和投影属性传递，按用户
+  要求未使用 CC/子代理。原 checkout 与用户 sample.tar.gz 保持原样。
+- C07/总目标仍开放：RETURN 清理再次暂停、更多循环/多出口布局、嵌套
+  finally completion、入口默认值/解构、self/super、yield*、async generator
+  和字段/全局/签名/函数体整合。上述是解码 fixture 的标准 JS 行为证据，
+  不是实际应用或全语料支持证明；全量测试/语料/RSS/基准继续暂停，两个
+  历史 base_function 失败未重跑/修复，不宣称全套通过或 1GB 验收。
+
 ### 2026-09-30：RETURN 清理嵌套循环纵向验收
 
 - 在上一项共同控制/值流实现上增加嵌套循环组合，首轮完整生成 JS 即

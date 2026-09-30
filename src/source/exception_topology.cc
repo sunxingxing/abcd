@@ -39,7 +39,7 @@ class Projection {
     quota_.Size(result_.ports, regions);
     quota_.Size(entries_, regions);
     unit_count_ = static_cast<std::uint32_t>(blocks + regions);
-    Index(); Forwarders(); Exits();
+    PreservingCompletions(); Index(); Forwarders(); Exits();
     std::size_t capacity = blocks + regions;
     const auto add = [&](std::size_t count) {
       Require(count <= kMaxId - capacity, Error::kResourceLimit); capacity += count;
@@ -67,6 +67,8 @@ class Projection {
       if (operation && (std::holds_alternative<ValueReturn>(graph_.ops[operation->value].operation) ||
                         std::holds_alternative<ValueThrow>(graph_.ops[operation->value].operation)))
         projected.termination = ControlTermination::kAbrupt;
+      if (operation && !preserving_.empty() && preserving_[operation->value])
+        projected.completion = ControlCompletion::kPreserving;
       for (std::uint8_t e = 0; e < original.edge_count; ++e) {
         quota_.Work(); const EdgeId id{original.first_edge.value + e};
         if (std::holds_alternative<RaiseTransfer>(regions_.transfers[id.value])) continue;
@@ -108,6 +110,41 @@ class Projection {
     return std::move(result_);
   }
  private:
+  void PreservingCompletions() {
+    // OH7 FunctionBuilder::HandleCompletion fixes the caller payload's RETURN
+    // after ControlFlowChangeReturn. Its normalized owner identifies that exact
+    // terminal; loop shape cannot distinguish it from a cleanup override.
+    // Preserve both Before/Commit phases, the Return and every original edge.
+    // O(O log(Y+1)+Y log(Y+1)); no per-loop or per-suspension graph walks.
+    std::size_t count = 0;
+    for (const auto& op : graph_.ops) {
+      quota_.Work(); const auto* yield = std::get_if<ValueYield>(&op.operation);
+      if (yield && yield->origin.return_route && yield->origin.return_route->completion) ++count;
+    }
+    if (!count) return;
+    std::vector<abc::CodeOffset> completions;
+    quota_.Size(completions, count); count = 0;
+    for (const auto& op : graph_.ops) {
+      quota_.Work(); const auto* yield = std::get_if<ValueYield>(&op.operation);
+      if (yield && yield->origin.return_route && yield->origin.return_route->completion)
+        completions[count++] = *yield->origin.return_route->completion;
+    }
+    std::sort(completions.begin(), completions.end(), [&](auto a, auto b) { quota_.Work(); return a < b; });
+    completions.erase(std::unique(completions.begin(), completions.end()), completions.end());
+    quota_.Size(preserving_, graph_.ops.size());
+    std::size_t found = 0;
+    for (std::uint32_t i = 0; i < graph_.ops.size(); ++i) {
+      quota_.Work(); const auto& op = graph_.ops[i];
+      if (!std::holds_alternative<ValueReturn>(op.operation)) continue;
+      Require(op.origin.value < graph_.origins.size(), Error::kInput);
+      const auto& origin = graph_.origins[op.origin.value];
+      const auto pc = origin.original.value_or(origin.pc);
+      const auto at = std::lower_bound(completions.begin(), completions.end(), pc,
+          [&](auto a, auto b) { quota_.Work(); return a < b; });
+      if (at != completions.end() && *at == pc) { preserving_[i] = true; ++found; }
+    }
+    Require(found == completions.size(), Error::kInput);
+  }
   void Index() {
     const auto count = regions_.regions.size();
     quota_.Size(intervals_, count);
@@ -337,6 +374,7 @@ class Projection {
   const ExceptionPlan& regions_;
   ControlQuota& quota_;
   ExceptionTopology result_;
+  std::vector<bool> preserving_;
   std::vector<Scope> owners_;
   std::vector<RegionInterval> intervals_;
   std::vector<RegionEntry> entries_;
