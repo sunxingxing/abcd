@@ -37,7 +37,8 @@ enum class HoleProtocolError : std::uint8_t {
   kResourceLimit,
   kWorkLimit
 };
-// Imported phased IR only. Finds closed Hole transport through copies/phis,
+// Normal IR admits only closed copy transport to definite-Hole class heritage.
+// Phased IR additionally finds closed Hole transport through copies/phis,
 // identity tests with a definite Hole on the left, and rethrows on a unique
 // incoming corridor from the non-Hole branch. Does not print a VM sentinel or
 // upgrade any value domain. Other consumers, joins losing the guard, and

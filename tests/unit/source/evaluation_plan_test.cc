@@ -1,4 +1,7 @@
 #include "../../../src/source/evaluation_plan.h"
+#include "../../support/analysis/ssa_fixture.h"
+#include "abcd/analysis/value_import.h"
+#include "abcd/analysis/value_simplify.h"
 
 #include <cstdlib>
 
@@ -254,7 +257,76 @@ void GlobalReads() {
 }
 }  // namespace
 
+void DecodedClassCreation() {
+  using namespace abcd;
+  using namespace abcd::analysis;
+  using namespace abcd::source;
+  for (const auto profile : {abc::ProfileId::kDynamic1202,
+      abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+    for (const auto parent : {abc::Opcode::kLDHOLE, abc::Opcode::kLDNULL, abc::Opcode::kLDUNDEFINED}) {
+      const auto body = test::Body({static_cast<std::uint8_t>(parent),
+          static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), 0,
+          static_cast<std::uint8_t>(abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8),
+          0, 7, 0, 9, 0, 2, 0, 0,
+          static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
+      const auto method = std::get<SemanticMethod>(BuildSemanticMethod(body, profile, 1));
+      const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, method, 1, 0));
+      const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 0, {false, false, false, false}));
+      auto graph = std::get<ValueProgram>(ImportNormalValues(body, method, proof, frame));
+      test::Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
+      const auto planned = BuildEvaluationPlan(graph);
+      test::Check(std::holds_alternative<EvaluationPlan>(planned));
+      const auto& plan = std::get<EvaluationPlan>(planned);
+      test::Check(plan.operations[2].kind == EvaluationKind::kInline);
+      test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, plan)));
+    }
+  }
+}
+void ClassCreation(unsigned count, bool absent, bool barrier) {
+  Fixture fixture;
+  if (absent) {
+    fixture.Add(analysis::ValueHole{}, true, {});
+    fixture.graph.values[1].domain = analysis::ValueKinds::Hole();
+  } else fixture.Read();
+  const auto effects = analysis::LanguageEffect::kAllocation | analysis::LanguageEffect::kUserCode;
+  analysis::OpId last;
+  for (unsigned i = 0; i < count; ++i) {
+    last = fixture.Add(analysis::ValueClassCreation{{7}, {9}, 2, 0}, true,
+        {{analysis::OperandRole::kHeritage, analysis::ValueId{1}}}, effects);
+    fixture.graph.uses[fixture.graph.ops[last.value].first_use.value].purpose = analysis::ReadPurpose::kProtocol;
+  }
+  if (barrier) fixture.Write();
+  fixture.Return(*fixture.graph.ops[last.value].result);
+  const auto plan = fixture.Plan();
+  Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(fixture.graph, plan)));
+  Check(plan.holes.has_value() == absent);
+  for (unsigned i = 1; i <= count; ++i)
+    Check(plan.operations[i].kind == (i == count && !barrier ? EvaluationKind::kInline : EvaluationKind::kRoot));
+  if (barrier) {
+    auto forged = plan;
+    forged.operations[last.value] = {EvaluationKind::kInline, fixture.graph.ops.back().first_use, {}};
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, forged)));
+  }
+  auto& use = fixture.graph.uses[fixture.graph.ops[last.value].first_use.value];
+  use.purpose = analysis::ReadPurpose::kOperand;
+  Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(fixture.graph)));
+  use.purpose = analysis::ReadPurpose::kProtocol;
+  use.role = analysis::OperandRole::kInput;
+  Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(fixture.graph)));
+  use.role = analysis::OperandRole::kHeritage;
+  fixture.graph.values[1].domain = analysis::ValueKinds::Language().Join(analysis::ValueKinds::Hole());
+  Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(fixture.graph)));
+  fixture.graph.values[1].domain = analysis::ValueKinds::Hole();
+  // A missing extends clause never permits the sentinel to escape as a return.
+  use.role = analysis::OperandRole::kReturnValue;
+  fixture.graph.ops[last.value].operation = analysis::ValueReturn{};
+  Check(std::get<HoleProtocolError>(AnalyzeHoleProtocol(fixture.graph)) == HoleProtocolError::kEscape);
+}
 int main() {
+  DecodedClassCreation();
+  for (const auto count : {1U, 200U, 201U, 402U})
+    for (const bool absent : {false, true})
+      for (const bool barrier : {false, true}) ClassCreation(count, absent, barrier);
   {
     Fixture fixture;
     fixture.Read();

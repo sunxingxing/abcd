@@ -31,7 +31,7 @@ std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
   const auto initial = budget;
   try {
     Require(!graph.blocks.empty() &&
-            graph.phases.size() == graph.blocks.size());
+            (graph.phases.empty() || graph.phases.size() == graph.blocks.size()));
     Require(graph.values.size() <= UINT32_MAX &&
                 graph.ops.size() <= UINT32_MAX &&
                 graph.blocks.size() <= UINT32_MAX &&
@@ -149,6 +149,7 @@ std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
           std::get_if<ValueId>(&graph.uses[op.first_use.value].operand);
       if (!left || graph.values[left->value].domain != ValueKinds::Hole())
         continue;
+      Require(!graph.phases.empty(), Error::kEscape);
       const auto payload = operand(op, 1);
       Require(Transport(graph.values[payload.value].domain), Error::kEscape);
       // Pinned interpreter NOTEQ reads vreg as left, acc as right. With Hole
@@ -176,7 +177,7 @@ std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
     }
     // A single-parent chain has at most one nearest conditional boundary.
     // Memoize it once; no per-throw backward graph traversal or V*B fact map.
-    for (std::uint32_t b = 0; b < graph.blocks.size(); ++b) {
+    for (std::uint32_t b = 0; !graph.phases.empty() && b < graph.blocks.size(); ++b) {
       step();
       if (visits[b] == Visit::kDone) continue;
       std::size_t size = 0;
@@ -232,6 +233,7 @@ std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
       if (!kinds.Contains(VmValueKind::kHole)) continue;
       Require(Transport(kinds), Error::kEscape);
       if (const auto* phi = std::get_if<ValueId>(&use.owner)) {
+        Require(!graph.phases.empty(), Error::kEscape);
         Require(phi->value < graph.values.size() &&
                 std::holds_alternative<PhiDefinition>(
                     graph.values[phi->value].origin));
@@ -243,6 +245,11 @@ std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
       if (std::holds_alternative<ValueCopy>(op.operation) ||
           comparisons[id.value])
         continue;
+      if (std::holds_alternative<ValueClassCreation>(op.operation)) {
+        Require(kinds == ValueKinds::Hole() && use.role == OperandRole::kHeritage &&
+            use.purpose == ReadPurpose::kProtocol && op.use_count == 1, Error::kEscape);
+        continue;
+      }
       if (std::holds_alternative<ValueThrow>(op.operation)) {
         Require(op.block.value < guards.size());
         const auto& guard = guards[op.block.value];

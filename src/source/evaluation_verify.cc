@@ -44,7 +44,6 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     for (const auto& op : graph.ops) { step(); has_holes |= std::holds_alternative<analysis::ValueHole>(op.operation); }
     Require(plan.holes.has_value() == has_holes, Error::kOwnership);
     if (plan.holes) {
-      Require(flow == EvaluationFlow::kPhased, Error::kUnsupportedOperation);
       const auto analyzed = AnalyzeHoleProtocol(graph, {bytes, work});
       const auto* protocol = std::get_if<HoleProtocol>(&analyzed);
       if (!protocol) {
@@ -60,7 +59,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
           protocol->rethrows == plan.holes->rethrows, Error::kOwnership);
       admit(protocol->allocated_bytes, 1); step(protocol->work);
     }
-    if (plan.phis) Require(plan.phis->domain == (has_holes ? PhiDomain::kHoleTransport : PhiDomain::kLanguage), Error::kOwnership);
+    if (plan.phis) Require(plan.phis->domain == (has_holes && flow == EvaluationFlow::kPhased
+        ? PhiDomain::kHoleTransport : PhiDomain::kLanguage), Error::kOwnership);
     const auto aliases = VerifyEvaluationAliases(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&aliases)) return *error;
     step(std::get<std::uint64_t>(aliases));
@@ -365,7 +365,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
           } else {
             // Check the final expression root, not only the immediate
             // consumer: a pure wrapper must not carry a closure past pop/push.
-            if (std::holds_alternative<analysis::ValueFunctionCreation>(op.operation))
+            if (std::holds_alternative<analysis::ValueFunctionCreation>(op.operation) ||
+                std::holds_alternative<analysis::ValueClassCreation>(op.operation))
               Require(environment_epochs[frame.op.value] == environment_epochs[i], Error::kOrder);
             if (OrderedEvaluation(op) && !cross(frame.op.value)) {
               skip_pure();

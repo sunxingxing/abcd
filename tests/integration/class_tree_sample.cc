@@ -1,5 +1,6 @@
 #include "../../src/source/class_tree.h"
 #include "../../src/source/family_route_failure.h"
+#include "../../src/source/evaluation_plan.h"
 #include "abcd/corpus/abc_file.h"
 #include <charconv>
 #include <cstdlib>
@@ -38,6 +39,16 @@ int main(int argc, char** argv) {
   const auto& function = std::get<FileFunction>(caller);
   const auto ordinal = Number(argv[3]); Check(ordinal < function.values.classes.classes.size());
   const auto operation = function.values.classes.classes[ordinal].operation;
+  // The unchanged full record graph must also schedule this creation. A
+  // detached class body alone does not exercise heritage or surrounding order.
+  const auto evaluated = BuildEvaluationPlan(function.values.graph);
+  if (const auto* error = std::get_if<EvaluationError>(&evaluated)) {
+    std::cerr << "caller evaluation failure " << static_cast<unsigned>(*error) << '\n'; return 1;
+  }
+  const auto& evaluation = std::get<EvaluationPlan>(evaluated);
+  Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(function.values.graph, evaluation)));
+  Check(evaluation.operations[operation.value].kind == EvaluationKind::kRoot ||
+      evaluation.operations[operation.value].kind == EvaluationKind::kInline);
   auto built = BuildClassTree(file, header, index, lookup, roles, functions, classes, function, operation, identity);
   if (const auto* failure = std::get_if<ClassTreeFailure>(&built)) {
     std::cerr << "class tree failure " << failure->index();

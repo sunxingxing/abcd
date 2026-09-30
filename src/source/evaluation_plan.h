@@ -75,7 +75,10 @@ enum class ReferenceBoundary : std::uint8_t { kNone, kBeforeStoredValue };
 // ConditionalArgument reads a declared slot only when ordinal < actual count.
 // A later AST must bind that count and the extra tail to this invocation; this
 // scheduling mode never authorizes an eager call-argument array or rest rewrite.
-enum class InputEvaluation : std::uint8_t { kEager, kConditionalArgument };
+// ClassHeritage preserves the class-creation protocol occurrence and evaluates
+// language heritage in order; definite Hole means absent extends. Scheduling
+// does not establish constructor/member bodies, captures or inheritance syntax.
+enum class InputEvaluation : std::uint8_t { kEager, kConditionalArgument, kClassHeritage };
 struct EvaluationShape {
   // Fixed prefix followed by argument occurrences. No array proportional to
   // range-call arity is allocated merely to describe their roles.

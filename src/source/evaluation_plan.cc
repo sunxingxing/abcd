@@ -103,7 +103,6 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     bool has_holes = false;
     for (const auto& op : graph.ops) { step(); has_holes |= std::holds_alternative<analysis::ValueHole>(op.operation); }
     if (has_holes) {
-      Require(flow == EvaluationFlow::kPhased, Error::kUnsupportedOperation);
       auto analyzed = AnalyzeHoleProtocol(graph, {bytes, work});
       const auto* protocol = std::get_if<HoleProtocol>(&analyzed);
       if (!protocol) {

@@ -20,6 +20,7 @@ constexpr std::array kCall{Role::kCallee};
 constexpr std::array kReceiverCall{Role::kCallee, Role::kReceiver};
 constexpr std::array kConstruct{Role::kConstructor};
 constexpr std::array kCellStore{Role::kStoredValue};
+constexpr std::array kHeritage{Role::kHeritage};
 }  // namespace
 
 std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation& operation) {
@@ -72,6 +73,11 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
         return EvaluationShape{kNoOperands, true};
       return {};
     }
+    else if constexpr (std::is_same_v<T, analysis::ValueClassCreation>) {
+      EvaluationShape shape{kHeritage, true};
+      shape.inputs = InputEvaluation::kClassHeritage;
+      return shape;
+    }
     else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
       return EvaluationShape{kNoOperands, true};
     }
@@ -94,7 +100,6 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return EvaluationShape{kConstruct, true, op.arguments};
     else {
       static_assert(std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
-                    std::is_same_v<T, analysis::ValueClassCreation> ||
                     std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
                     std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                     std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
@@ -124,9 +129,20 @@ std::optional<EvaluationError> CheckEvaluationUse(
     const analysis::ValueProgram& graph, const analysis::OperandUse& use,
     const EvaluationShape& shape, std::uint32_t ordinal) {
   const bool conditional = shape.inputs == InputEvaluation::kConditionalArgument;
-  const auto purpose = conditional ? analysis::ReadPurpose::kProtocol : analysis::ReadPurpose::kOperand;
+  const bool heritage = shape.inputs == InputEvaluation::kClassHeritage;
+  const auto purpose = conditional || heritage ? analysis::ReadPurpose::kProtocol : analysis::ReadPurpose::kOperand;
   if (use.purpose != purpose) return EvaluationError::kProtocolOperand;
   if (use.role != shape.Role(ordinal)) return EvaluationError::kInvalidGraph;
+  // Hole is absence of extends, never a source value or undefined. Mixed
+  // internal/language domains need further control recovery, not a guess.
+  if (heritage) {
+    if (const auto* value = std::get_if<analysis::ValueId>(&use.operand)) {
+      if (value->value >= graph.values.size()) return EvaluationError::kInvalidGraph;
+      const auto domain = graph.values[value->value].domain;
+      if (!domain.IsLanguage() && domain != analysis::ValueKinds::Hole())
+        return EvaluationError::kProtocolOperand;
+    }
+  }
   if (conditional) {
     const auto* value = std::get_if<analysis::ValueId>(&use.operand);
     if (!value || value->value >= graph.values.size() || !use.input ||

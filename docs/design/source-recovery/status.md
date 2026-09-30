@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-10-01：类创建进入共同求值规划
+
+- DescribeEvaluation 现在按显式 kClassHeritage 输入处理 ValueClassCreation，
+  保留真实 protocol read、class creation 的顺序和结果身份。语言 heritage
+  按输入顺序求值；definite Hole 仅表示无 extends，null/undefined 不改写成
+  无继承。混合 Hole/语言或其他 VM 内部域、错误 role/purpose 均拒绝。
+- HoleProtocol 对正常值图仅开放闭合 copy 到 class heritage 的用途；原有
+  phased comparison/rethrow 保持独立限制。没有把内部 Hole 升级为语言值。
+  共同求值检查同时要求 class/function creation 的最终表达式根处于相同
+  environment epoch，防止跨 push/pop 搬移捕获时点。正文、捕获、derived
+  constructor 和真正继承语法仍由下游负责，求值准入不表示这些已经通过。
+- 新增三个 dynamic profile 的实际字节码导入/简化/求值检查，覆盖
+  Hole/null/undefined；1/200/201/402 次创建覆盖共享 heritage、未使用结果
+  的保留、副作用隔离、伪造移动、错误协议和 Hole 逃逸拒绝。
+- class_tree_sample 另对真实 IconInfoModel 16948 完整且未修改的入口值图
+  执行 BuildEvaluationPlan/VerifyEvaluationPlan，再构建 IconInfo 表达式。
+  配对行为测试仍通过；这证明完整入口的求值层可用，不证明完整 record
+  AST、IconInfoModel 方法正文或整个应用通过。
+- 构建成功，6 项定向测试全通过（5.34 秒），真实入口 fixture 更新后
+  class_tree_source_test 再通过（0.97 秒）。日志
+  /tmp/abcd-class-evaluation-final-build.log、
+  /tmp/abcd-class-evaluation-final-tests.log、
+  /tmp/abcd-class-evaluation-record-build.log、
+  /tmp/abcd-class-evaluation-record-tests.log。未恢复全量测试、RSS 或其他语料。
+- 下一阻断是表达式 AST 的类树绑定，以及仅在内部消费 absent heritage。
+  静态初始化和正式 record 输出尚未完成，完整 record 数保持 15，Goal 继续。
+
 ### 2026-10-01：共同类创建表达式组装与真实 IconInfo 对照
 
 - BuildClassTree 从父函数真实 class creation、constructor context 和 literal
