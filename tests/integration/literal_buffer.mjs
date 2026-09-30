@@ -68,3 +68,22 @@ for (const count of [1, 200, 201, 402]) {
   assert.equal(other[0], null);
 }
 assert.equal(arrays.length, index);
+
+const lateSource = execFileSync(process.argv[2], ['--late-string-source'], {encoding: 'utf8'});
+const lateArrays = vm.runInContext(`[${lateSource}]`, context);
+index = 0;
+for (const count of [1, 200, 201, 402]) {
+  const create = lateArrays[index++];
+  const a = create(), b = create();
+  assert.ok(Array.isArray(a) && Array.isArray(a[0]));
+  assert.equal(a.length, 1);
+  assert.equal(a[0].length, count);
+  assert.notEqual(a, b);
+  assert.notEqual(a[0], b[0]);
+  for (let i = 0; i < count; ++i) assert.deepEqual(Object.getOwnPropertyDescriptor(a[0], i), {
+    value: 'late', writable: true, enumerable: true, configurable: true,
+  });
+  a[0][0] = 'changed';
+  assert.equal(b[0][0], 'late');
+}
+assert.equal(lateArrays.length, index);

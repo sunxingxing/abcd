@@ -12,6 +12,26 @@
 
 ## 当前阶段
 
+### 2026-10-01：晚加载字符串进入初始化表达式，HomeConstants 字面量规划通过
+
+- 将无输入、无效果、无异常的 ValueString 作为原生字面量 primitive leaf，
+  纳入现有 nested initializer 归属。只接受唯一 RHS 使用；沿共同求值规划和
+  逆序构树保留真实来源，禁止留下在数组创建之后才定义的 snapshot。
+  任意纯计算、共享值、模块读取和可观察操作不因此获得移动权限。
+- 新增 1/200/201/402 个晚字符串的双层嵌套数组测试；检查无 $value 搬运、
+  值篡改、效果篡改和移除归属的负例。独立 Node 执行检查嵌套数组长度、
+  每项值/描述符，以及多次调用的内外数组身份隔离。
+- 真实 HomeConstants initializer 16447 的 BuildLiteralPlan 现在通过；
+  BuildEvaluationPlan 仍拒绝未绑定模块 guard。CLI --conditional-values
+  确认 op53 读取 external slot0，配对 guard 一条，解析名 BreakpointType，
+  BindModuleAliases 已能解析。下一步将实际 record 的模块作用域贯通到
+  ClassStaticFields 和打印目的地，不能删掉 guard 或假造局部变量。
+  诊断证据 /tmp/abcd-home-late-leaf-values.jsonl。
+- 最终构建日志 /tmp/abcd-late-leaf-final-build.log；五项定向测试通过，
+  日志 /tmp/abcd-late-leaf-final-tests.log，含生成源码独立执行和七个既有
+  静态类 record 的配对回归。没有恢复全量测试、RSS 或其他 corpus。
+  没有新增完整 record 的结论，阶段一未完成。
+
 ### 2026-10-01：缓冲数组的后续元素定义进入共同字面量恢复
 
 - 从 HomeConstants initializer 16447 的真实字节码确认缓冲数组创建后仍有

@@ -156,6 +156,13 @@ analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id
       path.Before(allocation, op), Error::kReceiver);
   return result->op;
 }
+// Pool string loads have no operands or mutable identity. Unlike arbitrary pure
+// computations, relocating this primitive leaf cannot read a changed binding or
+// introduce coercion. The resolved constant remains independently checked.
+bool PrimitiveLeaf(const analysis::ValueOp& op) {
+  return std::holds_alternative<analysis::ValueString>(op.operation) &&
+      op.use_count == 0 && analysis::CanErasePureOp(op);
+}
 void EarlyValue(const analysis::ValueProgram& graph, const analysis::ValueOp& allocation,
     const analysis::ValueOperand& original, const LiteralPath& path) {
   const auto operand = path.Resolve(original);
@@ -194,7 +201,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); if (!plan.nested[i]) continue;
     const auto& op = graph.ops[i]; const auto use = *plan.nested[i];
-    Require(op.life == analysis::ValueLife::kLive && Aggregate(op.operation) && op.result && op.use_count == 0 &&
+    Require(op.life == analysis::ValueLife::kLive && (Aggregate(op.operation) || PrimitiveLeaf(op)) && op.result && op.use_count == 0 &&
         use.value < graph.uses.size(), Error::kDefinition);
     const auto& occurrence = graph.uses[use.value];
     const auto* parent = std::get_if<analysis::OpId>(&occurrence.owner);
@@ -387,7 +394,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
         const analysis::UseId rhs{definition.first_use.value + 1};
         const auto* value = std::get_if<analysis::ValueId>(&graph.uses[rhs.value].operand);
         const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
-        if (!result || !Aggregate(graph.ops[result->op.value].operation) ||
+        if (!result || !(Aggregate(graph.ops[result->op.value].operation) || PrimitiveLeaf(graph.ops[result->op.value])) ||
             !path.Before(graph.ops[object.allocation.value], graph.ops[result->op.value])) continue;
         if (plan.nested.empty()) budget.Size(plan.nested, graph.ops.size());
         Require(!plan.nested[result->op.value], Error::kObserved);

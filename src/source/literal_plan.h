@@ -27,7 +27,8 @@ struct LiteralPlan {
   analysis::CfgRevision cfg_revision;
   std::vector<ObjectInit> objects;
   std::vector<analysis::OpId> definitions;
-  // Per allocation, the unique enclosing initializer RHS occurrence. Empty
+  // Per allocation or primitive string leaf, the unique enclosing initializer
+  // RHS occurrence. String leaves have no operands, effects or mutable identity. Empty
   // for roots. Only normal single-block, unobserved nesting is admitted.
   std::vector<std::optional<analysis::UseId>> nested;
   std::size_t allocated_bytes = 0;

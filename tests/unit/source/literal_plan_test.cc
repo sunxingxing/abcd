@@ -365,6 +365,53 @@ void LiteralConsumers(bool print = false) {
     if (print) std::cout << output.str() << ",\n";
   }
 }
+void LateStringLeaves(bool print = false) {
+  for (const auto count : {1U, 200U, 201U, 402U}) {
+    Fixture fixture;
+    fixture.Add(ValueArrayAllocation{}, true, {});
+    fixture.Add(ValueArrayAllocation{}, true, {});
+    for (std::uint32_t i = 0; i < count; ++i) {
+      fixture.Add(ValueString{abcd::abc::PoolIndex{i}}, true, {});
+      fixture.Add(ValueIndexedWrite{i, 0}, false,
+          {{OperandRole::kBase, ValueId{1}}, {OperandRole::kStoredValue, ValueId{i + 2}}});
+    }
+    fixture.Add(ValueIndexedWrite{0, 0}, false,
+        {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue, ValueId{1}}});
+    fixture.Add(ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{0}}});
+    auto& graph = fixture.graph;
+    graph.blocks = {{{0}, static_cast<std::uint32_t>(graph.ops.size()), {0}, 0}};
+    FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+    syntax.texts = {u"late"};
+    std::vector<ExpressionConstant> constants(graph.ops.size());
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const auto key = std::to_string(i); syntax.names.emplace_back(key.begin(), key.end());
+      constants[2 + 2 * i] = TextId{0};
+      constants[3 + 2 * i] = NameId{i};
+    }
+    constants[2 + 2 * count] = NameId{0};
+    const ExpressionConstants resolved{constants, syntax.names.size(), syntax.texts.size()};
+    const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+    const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+    const auto built = BuildFunctionTree(graph, control, evaluation, syntax, resolved);
+    const auto* result = std::get_if<ConstructedFunction>(&built); Check(result);
+    std::ostringstream output;
+    Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(result->tree, output)));
+    Check(output.str().find("$value") == std::string::npos);
+    if (print) std::cout << output.str() << ",\n";
+    auto changed = result->tree;
+    // Reject changing the leaf value while retaining its original operation.
+    for (auto& expression : changed.expressions)
+      if (std::holds_alternative<TreeLiteral>(expression.expression))
+        expression.expression = TreeLiteral{UndefinedLiteral{}};
+    Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, changed, resolved)));
+    auto effectful = graph;
+    effectful.ops[2].normal = LanguageEffect::kHeapWrite;
+    Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(effectful)));
+    auto forged = evaluation;
+    forged.literals->nested[2].reset();
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+  }
+}
 void NestedLiterals() {
   for (const auto depth : {1U, 2U, 200U, 201U, 402U}) {
     Fixture fixture;
@@ -459,5 +506,6 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--consumer-source") { LiteralConsumers(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--buffer-source") { BufferedOverwrites(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--array-buffer-source") { BufferedArraySuffix(true); return 0; }
+  if (argc == 2 && std::string_view(argv[1]) == "--late-string-source") { LateStringLeaves(true); return 0; }
   if (argc > 1) { SourceTree(false, true, true); return 0; }
-  LiteralConsumers(); BufferedArraySuffix(); BufferedOverwrites(); NestedLiterals(); SourceTree(false, true); SourceTree(true, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }
+  LateStringLeaves(); LiteralConsumers(); BufferedArraySuffix(); BufferedOverwrites(); NestedLiterals(); SourceTree(false, true); SourceTree(true, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }
