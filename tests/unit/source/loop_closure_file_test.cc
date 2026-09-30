@@ -75,13 +75,14 @@ enum class ChildShape {
   kAwaitSelf, kAwaitSelfPrivate, kAwaitThis, kAwaitReceiver, kAwaitArguments, kYieldCapture, kYieldResult, kYieldLoop, kYieldCall,
   kYieldCatch, kYieldCatchCapture, kYieldCatchYield, kYieldCatchOverwrite, kYieldCatchLoop,
   kYieldSelf, kYieldSelfPrivate, kYieldThis, kYieldReceiver,
-  kYieldCopy, kYieldLexical, kYieldClosure, kYieldFrameCopy
+  kYieldCopy, kYieldLexical, kYieldClosure, kYieldFrameCopy, kYieldParameterCell, kYieldParameterFrameCell
 };
 enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitState,
                          kYieldState, kYieldDone, kYieldReturn, kYieldEntry, kYieldCleanup,
                          kYieldCatchResult, kYieldCatchMode, kYieldCatchBoundary, kYieldCatchEntry,
                          kYieldPreludeCall, kYieldPreludeState, kYieldPreludeLocal, kYieldPreludeEntry,
-                         kYieldPreludeResult, kYieldPreludeMode, kYieldPreludeCallee };
+                         kYieldPreludeResult, kYieldPreludeMode, kYieldPreludeCallee,
+                         kYieldPreludeCellDepth, kYieldPreludeCellSlot, kYieldPreludeCellLocal, kYieldPreludeCellNoEnv };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
                  MissingCell missing = MissingCell::kNone, bool async_arrow = false, std::uint32_t yield_count = 1,
                  CopyEncoding copy_encoding = CopyEncoding::kV8, std::uint32_t copy_count = 1) {
@@ -89,10 +90,11 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const bool forwarded_writer = child_shape == ChildShape::kForwardedWriter || child_shape == ChildShape::kForwardedThrowWriter;
   const bool forwarding = child_shape == ChildShape::kForwarded || child_shape == ChildShape::kForwardedNormal ||
       child_shape == ChildShape::kForwardedLocal || forwarded_writer;
-  const bool yield_closure = child_shape == ChildShape::kYieldClosure;
-  const bool yield_frame_copy = child_shape == ChildShape::kYieldFrameCopy;
+  const bool yield_parameter_cell = child_shape == ChildShape::kYieldParameterCell || child_shape == ChildShape::kYieldParameterFrameCell;
+  const bool yield_closure = child_shape == ChildShape::kYieldClosure || yield_parameter_cell;
+  const bool yield_frame_copy = child_shape == ChildShape::kYieldFrameCopy || child_shape == ChildShape::kYieldParameterFrameCell;
   const bool yield_lexical = child_shape == ChildShape::kYieldLexical || yield_closure;
-  const bool yield_copy = child_shape == ChildShape::kYieldCopy || yield_closure || yield_frame_copy;
+  const bool yield_copy = child_shape == ChildShape::kYieldCopy || child_shape == ChildShape::kYieldClosure || (yield_frame_copy && !yield_parameter_cell);
   const bool nested = child_shape == ChildShape::kNested || forwarding || child_shape == ChildShape::kAwaitClosure || yield_closure;
   const bool outer_transfer = child_shape == ChildShape::kOuterContinue || child_shape == ChildShape::kOuterBreak;
   const bool shared_finally = child_shape == ChildShape::kSharedFinally || child_shape == ChildShape::kSharedFinallyNested;
@@ -377,7 +379,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     const std::uint8_t state = yield_frame_copy ? 4 : 0, mode = yield_frame_copy ? 5 : 1,
         result = yield_frame_copy ? 6 : 2, value = yield_frame_copy ? 7 : 3, done = yield_frame_copy ? 8 : 4;
     const std::uint8_t function = yield_frame_copy ? 0 : locals, parameter = locals + kImplicitArguments;
-    if (yield_lexical) code.insert(code.end(), {Op(abc::Opcode::kNEWLEXENV_IMM8), 1});
+    if (yield_lexical && missing != MissingCell::kYieldPreludeCellNoEnv) code.insert(code.end(), {Op(abc::Opcode::kNEWLEXENV_IMM8), 1});
     const bool private_copy = missing == MissingCell::kYieldPreludeResult || missing == MissingCell::kYieldPreludeMode;
     const std::uint8_t private_slot = missing == MissingCell::kYieldPreludeResult ? 2 : 1;
     if (private_copy) code.insert(code.end(), {Op(abc::Opcode::kMOV_V8_V8), private_slot, 8});
@@ -403,6 +405,14 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       copy(missing == MissingCell::kYieldPreludeState ? 0 : 3,
           missing == MissingCell::kYieldPreludeLocal ? 4 : parameter);
     if (missing == MissingCell::kYieldPreludeCallee) copy(0, parameter);
+    if (yield_parameter_cell) code.insert(code.end(), {Op(abc::Opcode::kLDA_V8),
+        static_cast<std::uint8_t>(missing == MissingCell::kYieldPreludeCellLocal ? 3 : parameter),
+        Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4),
+        static_cast<std::uint8_t>(missing == MissingCell::kYieldPreludeCellDepth ? 1 :
+            missing == MissingCell::kYieldPreludeCellSlot ? 0x10 : 0)});
+    // A second register copy after the cell pair exercises mixed prefix order;
+    // the callee's final copy must still establish the same function identity.
+    if (child_shape == ChildShape::kYieldParameterFrameCell) copy(0, locals);
     if (missing == MissingCell::kYieldPreludeCall)
       code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), 8, Op(abc::Opcode::kCALLARG0_IMM8), 0});
     const auto entry = static_cast<std::uint32_t>(code.size());
@@ -430,7 +440,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     // The initial handshake overwrites this copy. Keeping it in normalized
     // IR without modeling that handshake would fabricate a source parameter.
     if (private_copy) code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), private_slot, Op(abc::Opcode::kSTA_V8), 3});
-    if (yield_lexical) code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(yield_copy ? 3 : 8),
+    if (yield_lexical && !yield_parameter_cell) code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(yield_copy ? 3 : 8),
         Op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0});
     std::uint32_t first_yield_pc = 0, first_mode_pc = 0;
     const auto yield = [&] {
@@ -449,8 +459,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     };
     for (std::uint32_t occurrence = 0; occurrence < yield_count; ++occurrence) {
       const auto body_pc = code.size();
-      code.insert(code.end(), {Op(child_shape == ChildShape::kYieldLexical ? abc::Opcode::kLDLEXVAR_IMM4_IMM4 : abc::Opcode::kLDA_V8),
-          static_cast<std::uint8_t>(child_shape == ChildShape::kYieldLexical ? 1 : yield_copy ? 3 : parameter)});
+      code.insert(code.end(), {Op(child_shape == ChildShape::kYieldLexical || yield_parameter_cell ? abc::Opcode::kLDLEXVAR_IMM4_IMM4 : abc::Opcode::kLDA_V8),
+          static_cast<std::uint8_t>(yield_parameter_cell ? 0 : child_shape == ChildShape::kYieldLexical ? 1 : yield_copy ? 3 : parameter)});
       if (child_shape == ChildShape::kYieldCall || yield_catch) code.insert(code.end(), {Op(abc::Opcode::kCALLARG0_IMM8), 0});
       yield();
       if (missing == MissingCell::kYieldEntry) {
@@ -792,6 +802,9 @@ int main(int argc, char** argv) {
       Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kYieldFrameCopy,
           MissingCell::kYieldPreludeCallee, false, 1, encoding);
     }
+    for (const auto missing : {MissingCell::kYieldPreludeCellDepth, MissingCell::kYieldPreludeCellSlot,
+                              MissingCell::kYieldPreludeCellLocal, MissingCell::kYieldPreludeCellNoEnv})
+      Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kYieldParameterCell, missing);
     return 0;
   }
   if (argc == 2 && (std::string_view(argv[1]) == "--yield-copy" ||
@@ -799,13 +812,19 @@ int main(int argc, char** argv) {
                    std::string_view(argv[1]) == "--yield-closure4" || std::string_view(argv[1]) == "--yield-closure16" ||
                    std::string_view(argv[1]) == "--yield-frame-copy" || std::string_view(argv[1]) == "--yield-frame-copy4" ||
                    std::string_view(argv[1]) == "--yield-frame-copy16" ||
+                   std::string_view(argv[1]) == "--yield-parameter-cell" ||
+                   std::string_view(argv[1]) == "--yield-parameter-frame-cell" ||
+                   std::string_view(argv[1]) == "--yield-parameter-frame-cell4" ||
+                   std::string_view(argv[1]) == "--yield-parameter-frame-cell16" ||
                    std::string_view(argv[1]) == "--yield-lexical" || std::string_view(argv[1]) == "--yield-closure")) {
     const auto mode = std::string_view(argv[1]);
     const auto encoding = mode.ends_with("4") ? CopyEncoding::kV4 : mode.ends_with("16") ? CopyEncoding::kV16 : CopyEncoding::kV8;
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
-        std::cout << Emit(profile, shape, mode.starts_with("--yield-frame-copy") ? ChildShape::kYieldFrameCopy :
+        std::cout << Emit(profile, shape, mode.starts_with("--yield-parameter-frame-cell") ? ChildShape::kYieldParameterFrameCell :
+            mode == "--yield-parameter-cell" ? ChildShape::kYieldParameterCell :
+            mode.starts_with("--yield-frame-copy") ? ChildShape::kYieldFrameCopy :
             mode.starts_with("--yield-copy") ? ChildShape::kYieldCopy :
             mode == "--yield-lexical" ? ChildShape::kYieldLexical : ChildShape::kYieldClosure, MissingCell::kNone, false, 1, encoding) << ",\n";
     std::cout << "];\n"; return 0;

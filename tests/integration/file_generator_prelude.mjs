@@ -4,9 +4,10 @@ import {execFileSync} from 'node:child_process';
 // Losing the argument copy or attaching the generator's own environment to
 // its parent corrupts payloads, nested reader lifetimes or sibling iterators.
 for (const mode of ['copy', 'copy4', 'copy16', 'copy-many', 'lexical', 'closure', 'closure4', 'closure16',
-  'frame-copy', 'frame-copy4', 'frame-copy16']) {
+  'frame-copy', 'frame-copy4', 'frame-copy16', 'parameter-cell',
+  'parameter-frame-cell', 'parameter-frame-cell4', 'parameter-frame-cell16']) {
   const kind = mode.startsWith('frame-copy') ? 'frame-copy' : mode.startsWith('copy') ? 'copy' :
-    mode.startsWith('closure') ? 'closure' : 'lexical';
+    mode.startsWith('closure') || mode.startsWith('parameter-') ? 'closure' : 'lexical';
   const source = execFileSync(process.argv[2], [`--yield-${mode}`], {encoding: 'utf8', timeout: 60_000});
   assert.ok(!source.includes('INCOMPLETE'));
   const {functions} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);

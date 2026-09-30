@@ -75,12 +75,28 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
     // VM-only environment allocation and frame copies. Retain them in shared
     // IR. Delaying this unobservable prefix until first next is allowed only
     // with allocation failure excluded; no user effects/default evaluation.
-    if (std::holds_alternative<analysis::PushEnvironment>(
-        analysis::LiftLexicalInstruction(code.front().decoded, frame.registers))) ++enter;
+    const auto lexical = analysis::LiftLexicalInstruction(code.front().decoded, frame.registers);
+    const auto* environment = std::get_if<analysis::PushEnvironment>(&lexical);
+    if (environment) ++enter;
     const auto copy_begin = enter;
-    while (enter < code.size() &&
-        (Op(code[enter], Opcode::kMOV_V4_V4) || Op(code[enter], Opcode::kMOV_V8_V8) ||
-         Op(code[enter], Opcode::kMOV_V16_V16))) ++enter;
+    const auto is_frame_copy = [](const auto& site) {
+      return Op(site, Opcode::kMOV_V4_V4) || Op(site, Opcode::kMOV_V8_V8) || Op(site, Opcode::kMOV_V16_V16);
+    };
+    const auto is_cell_copy = [&](std::size_t i) {
+      if (!environment || i + 1 >= code.size() || !Op(code[i], Opcode::kLDA_V8) ||
+          Reg(code[i]).value < frame.locals || Reg(code[i]).value >= frame.registers) return false;
+      const auto lifted = analysis::LiftLexicalInstruction(code[i + 1].decoded, frame.registers);
+      const auto* store = std::get_if<analysis::LexicalStore>(&lifted);
+      // Only a fresh private cell may receive this immutable ABI value. An
+      // outer store would change an observable capture at invocation time.
+      return store && std::holds_alternative<analysis::Accumulator>(store->value) &&
+          store->address.depth.value == 0 && store->address.slot.value < environment->slots;
+    };
+    while (enter < code.size()) {
+      if (is_frame_copy(code[enter])) ++enter;
+      else if (is_cell_copy(enter)) enter += 2;
+      else break;
+    }
     const auto first = enter + kEntryPrefix + kResumeSize;
     Require(code.size() > first + 1 && frame.function &&
         Op(code[enter], Opcode::kCREATEGENERATOROBJ_V8) &&
@@ -89,14 +105,16 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
     const auto initial = Resume(body, enter + kEntryPrefix, state, frame);
     const auto callee = Reg(code[enter]);
     bool same_function = callee == *frame.function;
-    for (std::size_t i = copy_begin; i < enter; ++i) {
+    for (std::size_t i = copy_begin; i < enter;) {
       const auto& copy = code[i];
+      if (!is_frame_copy(copy)) { Require(is_cell_copy(i)); i += 2; continue; }
       Require(copy.decoded.operand_count == 2 && Reg(copy).value < frame.locals && Reg(copy) != state &&
           Reg(copy) != initial.result && Reg(copy) != initial.resume_mode &&
           Reg(copy, 1).value >= frame.locals && Reg(copy, 1).value < frame.registers);
       // FunctionRegScope binds the callee to a copied local. All admitted
       // sources are immutable ABI inputs; the last write decides its identity.
       if (Reg(copy) == callee) same_function = Reg(copy, 1) == *frame.function;
+      ++i;
     }
     Require(same_function);
     const auto handler = code.size() - 1;

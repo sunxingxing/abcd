@@ -12,6 +12,30 @@
 
 ## 当前阶段
 
+### 2026-09-30：generator 捕获参数的入口 cell 初始化
+
+- 同一 NormalizeGenerator 前奏消费增加 LDA ABI 输入→STLEXVAR 的参数 cell
+  初始化，允许与 MOV v4/v8/v16 交错。复用 LiftLexicalInstruction 的类型化
+  address/value，只允许新建环境的 depth=0、有效 slot、Accumulator store；
+  没有新环境的 store、外层 cell 写入、非 ABI 源或任意求值均不被延后。
+  被捕获的参数、暂停后的 cell 写入和逃逸子闭包仍通过共同异常值流/树/Printer。
+- 三 profile × 三父级环境的直接参数 cell 和三种编码完整参数帧组合，新增
+  36 个实际文件解码函数族。完整生成 JS 验证首个 yield 的参数身份、多个
+  迭代器逆序恢复后的独立写入、返回 reader 对动态 cell 的持久捕获、外部 cell
+  写入不串到内部 cell、早期/暂停后的 return/throw 和同步 thenable 不被吸收。
+  交错前奏在 cell 初始化后再次复制 callee，仍核对创建点的最后来源。
+  新增四个反例：外层深度、越界 slot、非 ABI 源、没有新环境的 cell 写入。
+- 红例 `/tmp/abcd-generator-parameter-cell-red-tests.log` 在旧实现失败于入口
+  归一化；新增组合与前奏旧规格共同执行，共 129 个正向函数族及 25 个反例。
+  相关十一个 C++ 目标构建成功，30/30 定向测试通过（18.63 秒）：
+  `/tmp/abcd-generator-parameter-cell-final-build.log`、
+  `/tmp/abcd-generator-parameter-cell-final-tests.log`；`git diff --check` 通过。
+  证据使用真实指令与合成元数据，不冒充真实应用或全部参数签名覆盖。
+- C07/总目标仍开放：用户默认值求值、解构及更复杂入口、finally 注入 RETURN
+  清理、方法 self/super、yield*、async generator、类/record 整合等继续推进。
+  默认 work 阈值继续关闭；没有新增预算准入或 DFX。全量测试/语料/RSS/基准
+  仍暂停，历史两个 base_function 失败未重跑/修复，不宣称全套或 1GB 验收。
+
 ### 2026-09-30：generator 入口词法环境与 ABI 参数复制
 
 - NormalizeGenerator 保留 OH7 PandaGen::InitializeLexEnv 的单个入口环境创建
