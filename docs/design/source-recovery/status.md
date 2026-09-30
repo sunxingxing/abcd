@@ -12,6 +12,27 @@
 
 ## 当前阶段
 
+### 2026-10-01：批量共同 record 路径实际运行全部阶段一输入
+
+- abc_structure --value-source 不再以入口占位 refusal 跳过每个 record。
+  现在建立 source paths/roles，调用与 abc_semantic 相同的 BuildRecordSource
+  required-value 分支并传入真实输入身份。成功才发布 source，失败保留
+  实际 typed failure；所有 value record 显式标记 legacy_writer_used=false，
+  recovery completeness 与可执行验收分离。没有回落到旧 writer。
+- 全部 5 个 ABC 批量运行成功结束，但没有任何完整共同 record 源码：
+  Immersive 45 records（35 恢复失败、10 无模块），MultiCommunityApplication
+  54（45/9），pasteboard 19（10/9），Push Kit modules 24（15/9），
+  Push Kit widgets 10（1/9）。合计 152，恢复失败 106，无模块上下文 46，
+  完整源码 0。不能用工具退出 0、方法草稿或独立夹具替代阶段一完成。
+- 当前逐输入身份、record 路径及失败结果位于
+  build/stage-one/value-record-pass-2/<应用>/<ABC名>/manifest.json，
+  Constants record 8755 真实报告 kValue，嵌套初始化阻断仍未解决。
+  同时 record adapter 的 import/子函数支持仍缺失，需沿通用方案继续。
+- abc_structure 构建成功；source_route_cli_test 和 structure_cli_test
+  两项定向回归通过（4.75 秒）。/tmp/abcd-batch-final-build.log、
+  /tmp/abcd-batch-tests.log；旧 shared 模式在同一 CLI 回归中保留。
+  未运行全量测试、其他语料、RSS 专项/基准或代理。阶段一保持未完成。
+
 ### 2026-10-01：纯 SSA 常量复制传播解除标量晚值阻断
 
 - 原 SimplifyValues 只传播 ValueId 复制代表，数字等 primitive 的

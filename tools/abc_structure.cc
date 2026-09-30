@@ -172,18 +172,12 @@ int Export(const std::filesystem::path& input,
   const auto* header = std::get_if<abc::Header>(&parsed);
   if (!header || header->checksum != hash->adler32)
     return Fail(ExportError::kHeader);
-  // Identity for every receipt this export signs, and the one authoritative
-  // route decision for value mode: the same admission the pipeline entries
-  // consult, never a refusal fabricated here (T00 correction R5).
+  // Bind each record invocation to this input. The entry reports its actual
+  // recovery result; the batch layer does not fabricate route refusals.
   const auto identity = source::MakeRouteInputIdentity(*hash, *header);
   const auto route_policy = route_value
                                 ? source::RoutePolicy::kRequireValueTree
                                 : source::RoutePolicy::kLegacyAllowed;
-  std::optional<source::RouteFailure> route_refusal;
-  if (route_value) {
-    const auto admission = source::AdmitLegacyWriter(route_policy);
-    route_refusal = *admission.value_route_failure;
-  }
   constexpr std::size_t kIndexBytes = 256 * 1024 * 1024;
   const auto indexed = abc::BuildMetadataIndex(file, *header, {kIndexBytes});
   const auto* index = std::get_if<abc::MetadataIndex>(&indexed);
@@ -195,7 +189,7 @@ int Export(const std::filesystem::path& input,
   const auto* packaging = std::get_if<abc::FilePackaging>(&packed);
   if (!packaging) return Fail(ExportError::kPackaging);
   std::optional<analysis::MethodRoleIndex> roles;
-  if (emit_source && !route_value &&
+  if (emit_source &&
       source::SupportsRecordProgramProfile(header->profile)) {
     auto built =
         analysis::MethodRoleIndex::Build(file, *header, *index, *lookup);
@@ -205,7 +199,7 @@ int Export(const std::filesystem::path& input,
       return Fail(ExportError::kRoles);
   }
   std::vector<structure::RecordPath> source_paths;
-  if (emit_source && !route_value) {
+  if (emit_source) {
     auto planned = structure::PlanRecordSourcePaths(file, *header, *index);
     if (const auto* error = std::get_if<structure::PathError>(&planned)) {
       std::cerr << nlohmann::json{{"path_error", static_cast<unsigned>(*error)}}
@@ -221,7 +215,7 @@ int Export(const std::filesystem::path& input,
   std::ofstream manifest(tree.path / "manifest.json", std::ios::binary);
   manifest << "{\"schema\":1,\"view\":\""
            << (mode == SourceMode::kShared ? "declarations_with_incomplete_source"
-               : route_value ? "declarations_with_value_route_receipts"
+               : route_value ? "declarations_with_value_source"
                : emit_source ? "declarations_with_verified_source"
                            : "declarations_only")
            << "\",\"sha256\":\"" << Hex(hash->sha256)
@@ -271,30 +265,14 @@ int Export(const std::filesystem::path& input,
     nlohmann::json record_manifest{{"entity", record.offset.value},
                                    {"metadata", metadata_path},
                                    {"declarations", declaration_path}};
-    if (emit_source && route_value) {
-      // Per-record value-tree route receipt. No route stage ran for this
-      // record and no legacy writer was consulted; the absent stage claim is
-      // the honest state, not a decoded claim (A01/G0). The failure is the
-      // authoritative admission decision, not a per-record fabrication.
-      source::MethodRouteReceipt receipt;
-      receipt.identity = identity;
-      receipt.record = record.offset;
-      receipt.route = source::SourceRoute::kValueTree;
-      receipt.stage = {};
-      receipt.coverage = source::Coverage::kUnsupported;
-      receipt.legacy_writer_used = false;
-      receipt.failure = *route_refusal;
+    if (emit_source) {
+      if (route_value) {
+        record_manifest["source_complete"] = false;
+        record_manifest["executable"] = false;
+        record_manifest["legacy_writer_used"] = false;
+      }
       record_manifest["source_route"] =
-          std::string(source::SourceRouteName(receipt.route));
-      record_manifest["source_status"] =
-          static_cast<unsigned>(SourceStatus::kValueRouteRefused);
-      const auto serialized = source::SerializeRouteReceipt(receipt);
-      const auto* json = std::get_if<std::string>(&serialized);
-      if (!json) return Fail(ExportError::kRouteReceipt, record.offset.value);
-      record_manifest["route_receipt"] = nlohmann::json::parse(*json);
-    } else if (emit_source) {
-      record_manifest["source_route"] =
-          std::string(source::SourceRouteName(source::SourceRoute::kLegacy));
+          std::string(source::SourceRouteName(route_value ? source::SourceRoute::kValueTree : source::SourceRoute::kLegacy));
       const auto source_stem = std::filesystem::path("sources") /
                                source_paths[record_index].stem;
       const auto source_path = source_stem.string() +
@@ -316,10 +294,10 @@ int Export(const std::filesystem::path& input,
           if (!module) {
             record_manifest["source_status"] =
                 static_cast<unsigned>(SourceStatus::kNoModule);
-          } else if (mode == SourceMode::kShared) {
+          } else if (mode == SourceMode::kShared || route_value) {
             const auto built = source::BuildRecordSource(
                 file, *header, *index, *lookup, record, *ready, *roles, {},
-                nullptr, route_policy);
+                nullptr, route_policy, nullptr, nullptr, route_value ? &identity : nullptr);
             if (FatalSharedSource(built))
               return Fail(ExportError::kRecord, record.offset.value);
             record_manifest["source_complete"] = false;
@@ -349,8 +327,9 @@ int Export(const std::filesystem::path& input,
               positions << "]}\n";
               positions.close();
               if (!positions) return Fail(ExportError::kOutput, record.offset.value);
-              record_manifest["source_status"] = static_cast<unsigned>(SourceStatus::kIncomplete);
-              record_manifest["incomplete_source"] = source_path;
+              record_manifest["source_status"] = static_cast<unsigned>(route_value ? SourceStatus::kWritten : SourceStatus::kIncomplete);
+              record_manifest["source_complete"] = route_value;
+              record_manifest[route_value ? "source" : "incomplete_source"] = source_path;
               record_manifest["entry_positions"] = positions_path;
               const auto methods_path = source_stem.string() + ".method-positions.json";
               std::ofstream method_positions(tree.path / methods_path, std::ios::binary);
@@ -377,31 +356,18 @@ int Export(const std::filesystem::path& input,
             } else {
               record_manifest["source_status"] = static_cast<unsigned>(SourceStatus::kProgram);
               record_manifest["shared_failure_variant"] = built.index();
-              bool invalid_receipt = false;
               std::visit([&](const auto& failure) {
                 using T = std::decay_t<decltype(failure)>;
                 if constexpr (std::is_same_v<T, source::RouteRefusal>) {
-                  // Defense in depth: shared mode runs LegacyAllowed, so the
-                  // record entry cannot refuse here. Consume its typed
-                  // failure if it ever does.
-                  source::MethodRouteReceipt receipt;
-                  receipt.identity = identity;
-                  receipt.record = record.offset;
-                  receipt.route = source::SourceRoute::kValueTree;
-                  receipt.coverage = source::Coverage::kUnsupported;
-                  receipt.failure = failure.failure;
-                  const auto serialized = source::SerializeRouteReceipt(receipt);
-                  if (const auto* json = std::get_if<std::string>(&serialized))
-                    record_manifest["route_receipt"] = nlohmann::json::parse(*json);
-                  else
-                    invalid_receipt = true;
+                  record_manifest["source_failure"] = {
+                      {"class", source::RouteFailureClassName(failure.failure.failure_class)},
+                      {"reason", source::ValueRouteErrorName(failure.failure.reason)}};
+                  if (failure.failure.pc) record_manifest["source_failure"]["pc"] = failure.failure.pc->value;
                 } else if constexpr (!std::is_same_v<T, source::PrintedSource>) {
                   record_manifest["source_error"] = static_cast<unsigned>(failure.kind);
                   record_manifest["source_pc"] = failure.pc.value;
                 }
               }, built);
-              if (invalid_receipt)
-                return Fail(ExportError::kRouteReceipt, record.offset.value);
             }
           } else {
             std::filesystem::create_directories(
@@ -488,7 +454,7 @@ int main(int argc, char** argv) {
                       std::string_view(argv[3]) == "--value-source"))) {
     std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR [--source|--shared-source|--value-source]\n"
                  "  --value-source requires the unified value-tree route for every record;\n"
-                 "  unimplemented stages publish typed route receipts without source files\n";
+                 "  unsupported records retain typed failures without source files\n";
     return EXIT_FAILURE;
   }
 #if !defined(__APPLE__)
