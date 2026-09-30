@@ -289,7 +289,8 @@ class StructureCheck {
       } else if constexpr (std::is_same_v<T, BinaryExpr>) {
         RequireTree(ValidBinary(expression.operation), Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, LogicalExpr>) {
-        RequireTree(expression.operation == TreeLogical::kAnd || expression.operation == TreeLogical::kOr,
+        RequireTree(expression.operation == TreeLogical::kAnd || expression.operation == TreeLogical::kOr ||
+                    expression.operation == TreeLogical::kNullish,
                     Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, ArgumentSnapshotExpr>) {
         RequireTree(expression.owner == tree_.owner && tree_.strictness == Strictness::kStrict &&

@@ -44,6 +44,7 @@ std::string_view TreeLogicalToken(TreeLogical operation) {
   switch (operation) {
     case TreeLogical::kAnd: return " && ";
     case TreeLogical::kOr: return " || ";
+    case TreeLogical::kNullish: return " ?? ";
   }
   throw TreePrintError::kUnsupportedContext;
 }

@@ -550,6 +550,8 @@ class TreePrinter {
     Push(node.left);
   }
   void Expression(LogicalExpr node) {
+    // Parenthesize each node: JS forbids bare mixing of ?? with &&/||,
+    // even where precedence alone would make the intended grouping clear.
     Append("("); Push(std::string_view(")")); Push(node.right);
     Push(TreeLogicalToken(node.operation)); Push(node.left);
   }

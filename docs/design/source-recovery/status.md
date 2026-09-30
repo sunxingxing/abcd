@@ -12,6 +12,25 @@
 
 ## 当前阶段
 
+### 2026-10-01：共同源码树支持原生空值回退表达式
+
+- TreeLogical新增kNullish，接入共同结构验证和printer，复用既有表达式所有权、
+  作用域和遍历机制。每个逻辑节点保持括号，满足JS对??与&&/||混用的语法约束。
+  左值仅执行一次，null/undefined才执行右值；不将假值或用户类型转换当作空值。
+- 新增logical_tree_test：1/200/201/402节点链、非法枚举和重复表达式所有权负例。
+  logical_tree_source_test使用共同AST/printer生成五种成员调用参数表达式，与独立
+  手写JS执行对照；10140组覆盖null/undefined、假值、NaN/-0、BigInt/Symbol、
+  对象身份、禁止隐式转换、getter修改参数源以及各执行点抛错。
+- 四项定向测试通过（2.72秒）：logical_tree_test、logical_tree_source_test、
+  tree_structure_test、function_tree_test。红灯为缺失kNullish编译失败，随后实现并
+  构建通过；日志/tmp/abcd-nullish-red-build.log、/tmp/abcd-nullish-green-build.log、
+  /tmp/abcd-nullish-tests.log。未恢复全量/RSS/基准。
+- 本次交付是共同树和原生输出能力，测试fixture不从ABC恢复CFG，不证明10510已
+  完成反编译。10510实际conditional-values仍有46个操作、2个capture、2个child
+  义务；/tmp/abcd-10510-values.json。下一步仍须把空值分支/phi恢复接入共同求值
+  与控制组合，证明callee读取在参数分支之前；现有跨块CallPlan拒绝未放宽。
+  未重跑五输入正式导出，不更新上一轮34/72/46指标；整类继承和阶段一仍未完成。
+
 ### 2026-10-01：按既有cell初始化证明恢复检查与调用组合
 
 - 共同CellEvaluation提供常数时间的IsInitializedCellGuard判定：精确ValueGuard

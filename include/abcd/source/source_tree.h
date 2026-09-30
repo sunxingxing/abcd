@@ -129,7 +129,9 @@ struct AwaitExpr { ExprId operand; };
 enum class YieldForm : std::uint8_t { kDirect, kDelegate };
 struct YieldExpr { ExprId operand; YieldForm form = YieldForm::kDirect; };
 struct BinaryExpr { analysis::BinaryOperator operation; ExprId left; ExprId right; };
-enum class TreeLogical : std::uint8_t { kAnd, kOr };
+// All forms evaluate the left once and conditionally evaluate the right.
+// Nullish tests only null/undefined, never ToBoolean or user coercion.
+enum class TreeLogical : std::uint8_t { kAnd, kOr, kNullish };
 struct LogicalExpr { TreeLogical operation; ExprId left; ExprId right; };
 struct SymbolTarget { SymbolId symbol; };
 struct MemberTarget { ExprId base; MemberKey key; };

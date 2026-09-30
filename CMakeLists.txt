@@ -568,6 +568,9 @@ if(BUILD_TESTING)
   add_executable(module_family_print_test tests/unit/source/module_family_print_test.cc)
   target_link_libraries(module_family_print_test PRIVATE abcd_source)
   add_test(NAME module_family_print_test COMMAND module_family_print_test)
+  add_executable(logical_tree_test tests/unit/source/logical_tree_test.cc)
+  target_link_libraries(logical_tree_test PRIVATE abcd_source)
+  add_test(NAME logical_tree_test COMMAND logical_tree_test)
   add_executable(tree_structure_test tests/unit/source/tree_structure_test.cc)
   target_link_libraries(tree_structure_test PRIVATE abcd_source)
   add_test(NAME tree_structure_test COMMAND tree_structure_test)
@@ -940,6 +943,8 @@ if(BUILD_TESTING)
   target_include_directories(constant_group_fixture PRIVATE tests/support)
   target_link_libraries(constant_group_fixture PRIVATE abcd_source abcd_json)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME logical_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/logical_tree.mjs $<TARGET_FILE:logical_tree_test>)
     add_test(NAME class_accessor_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_accessor_tree.mjs $<TARGET_FILE:class_accessor_tree_test>)
     add_test(NAME array_constants_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
