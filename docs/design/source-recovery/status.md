@@ -13,6 +13,29 @@
 ## 当前阶段
 
 
+### 2026-10-01：构造器守卫映射到共同源码锚点
+
+- FunctionTree 增加有序 constructor_guards；共同构建通过来源适配器的已证明
+  guard 集合将操作保留为原 PC 的 BlockBoundary anchor，不生成执行语句或
+  未初始化 this 读取。存储计量、结构/流/操作数/原始位置核对同步接入；ABI
+  不把这些已消费的协议读取当作 JS receiver 观察。
+- FamilyTrees 在默认参数迁移和重绑定后，对真实 derived owner 调用
+  ProjectDerivedConstructor，保留投影到同步树构建/检查结束，操作数核对要求
+  树中的 guard 集合与来源适配器提供的集合完全一致。普通调用上下文不接受。
+- 合成派生构造器通过共同 BuildFunctionTree 与 VerifyTreeSemantics，两个
+  初始化守卫有锚点且无 ThisExpr；撤掉来源投影后树构建/语义检查均拒绝。
+- 真实9865尝试构建已执行，当前失败为 ExpressionError::kUnsupportedOperation，
+  深层原因 CallPlanError::kReference：仍有成员读取与调用被 guard 求值事件隔开。
+  本次没有放宽成员调用校验；下一步必须在求值调度中消费已证明无作用的守卫，
+  而非仅在树输出中省略。真实派生构造器仍未成功生成。
+- 五项定向回归通过（3.00秒）：tree_structure_test、function_tree_test、
+  class_initializer_file_test、constructor_tree_source_test、record_import_tree_source_test；
+  构建含abc_semantic，日志 /tmp/abcd-guard-anchor-regression-build.log 与
+  /tmp/abcd-guard-anchor-regression-tests.log。未恢复全量/RSS/基准或重导出五输入；
+  阶段一保持开放。
+
+
+
 ### 2026-10-01：默认参数迁移后重新验证派生初始化投影
 
 - 核对实际 FamilyTrees 顺序：默认参数先投影为 DefaultBody 残余图，再建立求值

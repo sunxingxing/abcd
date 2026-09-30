@@ -538,6 +538,11 @@ std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
                 tree.arguments.size() <= kMaxId && tree.properties.size() <= kMaxId &&
                 tree.captures.size() <= kMaxId && tree.closure_captures.size() <= kMaxId &&
                 tree.modules.size() <= kMaxId && tree.labels.size() <= kMaxId, Error::kResourceLimit);
+    for (std::size_t i = 0; i < tree.constructor_guards.size(); ++i) {
+      checked.Step();
+      RequireTree(tree.callable == CallableKind::kDerivedConstructor &&
+          (i == 0 || tree.constructor_guards[i - 1] < tree.constructor_guards[i]), Error::kOwnership);
+    }
     checked.Admit(1, sizeof(TreeStructure));
     TreeStructure result{tree.value_revision, tree.cfg_revision};
     result.maximum_depth = StructureCheck(tree, checked, result.expression_scopes).Run();

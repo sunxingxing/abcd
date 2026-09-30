@@ -178,6 +178,16 @@ int main(int argc, char** argv) {
     Check(VerifyDerivedProjection(derived, context, wrong_call) == DerivedProjectionError::kCoverage);
 
     Check(std::holds_alternative<EvaluationPlan>(BuildEvaluationPlan(derived.values.graph)));
+    auto syntax = std::get<ResolvedSyntax>(ResolveFunctionSyntax(file, header, index, context,
+        derived.body, derived.values.graph, {0}));
+    auto constants = syntax.View(); constants.constructor_guards = current_protocol.guards;
+    const auto control = std::get<ControlPlan>(BuildControlPlan(derived.values.graph));
+    const auto constructor_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(derived.values.graph));
+    const auto built_tree = BuildFunctionTree(derived.values.graph, control, constructor_evaluation,
+        std::move(syntax.syntax), constants);
+    // The original guard event still separates member lookup from invocation.
+    // Scheduling must consume the proved no-op before the real tree can close.
+    Check(std::get<FunctionTreeError>(built_tree) == FunctionTreeError::kExpression);
     const auto projected = ProjectClassDefinitions(graph, parent.values.definitions.sites);
     if (const auto* error = std::get_if<ClassDefinitionError>(&projected))
       std::cerr << "accessor corridor failure " << static_cast<unsigned>(*error) << '\n';

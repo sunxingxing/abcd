@@ -204,6 +204,11 @@ class ForestBuilder {
                     graph_.origins[op.origin.value].disposition == analysis::OriginDisposition::kRetained,
                 Error::kOrigin);
         const TreeOriginId origin{op.origin.value};
+        if (std::binary_search(constants_.constructor_guards.begin(), constants_.constructor_guards.end(),
+            analysis::OpId{static_cast<std::uint32_t>(i)})) {
+          Require(std::holds_alternative<analysis::ValueSuperCheck>(op.operation) && !op.result, Error::kOwnership);
+          continue;
+        }
         if (IsAbsentHeritageTransport(graph_, evaluation_, op)) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
             evaluation_.operations[i].kind == EvaluationKind::kAlias)

@@ -79,6 +79,8 @@ class OperandCheck {
         module_aliases[symbol.value] = i;
       }
     }
+    RequireMeaning(tree_.constructor_guards.size() == constants_.constructor_guards.size() &&
+        std::equal(tree_.constructor_guards.begin(), tree_.constructor_guards.end(), constants_.constructor_guards.begin()), Error::kOperand);
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto& op = graph_.ops[i];
@@ -90,6 +92,12 @@ class OperandCheck {
       if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation)) continue;
       if (std::holds_alternative<analysis::ValueDebugger>(op.operation)) {
         RequireMeaning(!op.result && op.use_count == 0 && !flow_.expressions[i], Error::kOperand);
+        continue;
+      }
+      if (IsConstructorGuard(tree_, current_)) {
+        RequireMeaning(tree_.callable == CallableKind::kDerivedConstructor &&
+            std::holds_alternative<analysis::ValueSuperCheck>(op.operation) && !op.result &&
+            !flow_.expressions[i], Error::kOperand);
         continue;
       }
       RequireMeaning(flow_.expressions[i].has_value(), Error::kOperand);

@@ -1,5 +1,6 @@
 #include "family_tree.h"
 #include "family_cells.h"
+#include "derived_projection.h"
 
 #include <limits>
 #include <new>
@@ -111,7 +112,17 @@ class FamilyTrees {
         Require(parent < trees.size(), FamilyTreeError::kParent);
         incoming.emplace(IncomingCaptureTree{member.incoming->cells, {trees[parent].tree, trees[parent].flow}});
       }
-      const auto constants = syntax.View();
+      std::optional<DerivedProjection> derived;
+      if (context.Callable() == CallableKind::kDerivedConstructor) {
+        Require(!phase, FamilyTreeError::kContext);
+        auto projection = ProjectDerivedConstructor(function.Normal(), context, left_);
+        if (const auto* error = std::get_if<DerivedProjectionError>(&projection))
+          throw FamilyTreeFailure{member_, *error};
+        derived.emplace(std::get<DerivedProjection>(std::move(projection)));
+        Admit(sizeof(DerivedProjection) + derived->guards.capacity() * sizeof(analysis::OpId), 1);
+      }
+      auto constants = syntax.View();
+      if (derived) constants.constructor_guards = derived->guards;
       auto constructed = [&]() -> ConstructedFunction {
         if (phase) {
           auto draft = Take<ExceptionFunctionDraft, FunctionTreeError>(BuildExceptionFunctionDraft(graph,

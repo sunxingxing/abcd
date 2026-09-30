@@ -104,6 +104,17 @@ class TreeBuilder {
     tree_.method = syntax_.method;
     tree_.owner = syntax_.owner;
     tree_.callable = syntax_.callable;
+    if (!constants_.constructor_guards.empty()) {
+      Require(tree_.callable == CallableKind::kDerivedConstructor && !exceptions_, Error::kOwnership);
+      Admit(constants_.constructor_guards.size(), sizeof(analysis::OpId));
+      tree_.constructor_guards.assign(constants_.constructor_guards.begin(), constants_.constructor_guards.end());
+      for (std::size_t i = 0; i < tree_.constructor_guards.size(); ++i) {
+        Step(1); const auto id = tree_.constructor_guards[i];
+        Require((i == 0 || tree_.constructor_guards[i - 1] < id) && id.value < graph_.ops.size() &&
+            std::holds_alternative<analysis::ValueSuperCheck>(graph_.ops[id.value].operation), Error::kOwnership);
+      }
+      Admit(tree_.constructor_guards.capacity() - tree_.constructor_guards.size(), sizeof(analysis::OpId));
+    }
     tree_.strictness = syntax_.strictness;
     tree_.inferred_name = syntax_.inferred_name;
     tree_.value_revision = graph_.revision;
@@ -663,7 +674,7 @@ class TreeBuilder {
       }
       const TreeOriginId origin{op.origin.value};
       const auto expression = forest_.operations[id.value];
-      if (evaluation.kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
+      if (IsConstructorGuard(tree_, id) || evaluation.kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
           evaluation.kind == EvaluationKind::kEnvironment || evaluation.kind == EvaluationKind::kElidedPure ||
           evaluation.kind == EvaluationKind::kAlias) {
         // A projected pure elision keeps its PC at this lexical boundary, not

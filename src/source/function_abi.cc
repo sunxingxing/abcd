@@ -76,6 +76,8 @@ class AbiBuilder {
         if (const auto* owner = std::get_if<analysis::OpId>(&use.owner);
             owner && (evaluation_->operations[owner->value].kind == EvaluationKind::kElidedPure ||
                       evaluation_->operations[owner->value].kind == EvaluationKind::kAlias)) continue;
+      if (const auto* owner = std::get_if<analysis::OpId>(&use.owner);
+          owner && IsConstructorGuard(tree_, *owner)) continue;
       const auto* id = std::get_if<analysis::ValueId>(&use.operand);
       if (!id) continue;
       Require(id->value < graph_.values.size(), Error::kEntry);

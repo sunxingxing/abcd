@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_FAMILY_TREE_H_
 
 #include "family_file.h"
+#include "derived_projection.h"
 #include "cell_defaults.h"
 #include "cell_default_proof.h"
 #include "function_abi.h"
@@ -19,7 +20,7 @@ enum class FamilyTreeError : std::uint8_t {
 };
 struct FamilyTreeFailure {
   FamilyId member;
-  std::variant<FamilyTreeError, SyntaxResolutionFailure, ControlError,
+  std::variant<FamilyTreeError, DerivedProjectionError, SyntaxResolutionFailure, ControlError,
       EvaluationError, FunctionTreeError, TreeFlowError, FunctionAbiError,
       ModuleAliasFailure, ModuleAliasTreeError, FamilyError,
       ParameterPlanError, CellDefaultError, CellDefaultProofError, DefaultBodyError,

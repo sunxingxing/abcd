@@ -29,6 +29,9 @@ struct ExpressionConstants {
   std::size_t text_count = 0;
   std::optional<TextId> number_type_text;
   std::span<const ConstantProperty> properties;
+  // Same-owner ProjectDerivedConstructor result, revalidated after defaults.
+  // Sorted original guard IDs; these become anchors, never JS this reads.
+  std::span<const analysis::OpId> constructor_guards;
 };
 }  // namespace abcd::source
 #endif

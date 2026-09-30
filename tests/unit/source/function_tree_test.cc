@@ -388,6 +388,32 @@ void GlobalTree() {
   std::get<ValueGlobalRead>(fixture.graph.ops[0].operation).lookup = GlobalLookup::kVar;
   Check(std::get<FunctionTreeError>(fixture.Build()) == FunctionTreeError::kExpression);
 }
+void ConstructorGuardAnchors() {
+  using namespace analysis;
+  Fixture fixture;
+  fixture.Add(0, 0, 0, ValueSuperCall{0, {}}, true, {}, LanguageEffect::kUserCode);
+  fixture.Add(0, 1, 4, ValueSuperCheck{SuperCheckKind::kRequireUninitialized}, false,
+      {{OperandRole::kGuardValue, ValueId{1}}}, LanguageEffect::kGuard);
+  fixture.Add(0, 2, 8, ValueSuperCheck{SuperCheckKind::kRequireInitialized}, false,
+      {{OperandRole::kGuardValue, ValueId{2}}}, LanguageEffect::kGuard);
+  for (auto& use : fixture.graph.uses) use.purpose = ReadPurpose::kProtocol;
+  fixture.Add(0, 3, 12, ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{2}}});
+  fixture.graph.blocks = {{{0}, 4, {0}, 0}};
+  const auto control = std::get<ControlPlan>(BuildControlPlan(fixture.graph));
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(fixture.graph));
+  auto syntax = fixture.Syntax(); syntax.callable = CallableKind::kDerivedConstructor;
+  const std::array<OpId, 2> guards{{{1}, {2}}};
+  ExpressionConstants constants{fixture.constants, 2, 0, {}}; constants.constructor_guards = guards;
+  const auto built = BuildFunctionTree(fixture.graph, control, evaluation, syntax, constants);
+  Check(std::holds_alternative<ConstructedFunction>(built));
+  const auto& tree = std::get<ConstructedFunction>(built).tree;
+  Check(tree.constructor_guards.size() == guards.size());
+  Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(fixture.graph, control, evaluation, tree, constants)));
+  for (const auto& expression : tree.expressions) Check(!std::holds_alternative<ThisExpr>(expression.expression));
+  constants.constructor_guards = {};
+  Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(fixture.graph, control, evaluation, tree, constants)));
+  Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(fixture.graph, control, evaluation, syntax, constants)));
+}
 void SuperTree() {
   using namespace analysis;
   for (const unsigned count : {0U, 1U, 200U, 201U, 402U}) {
@@ -734,6 +760,7 @@ void FrameReceiverTree() {
 }  // namespace
 int main() {
   SuperTree();
+  ConstructorGuardAnchors();
   UnprovedTryRefusal();
   for (const analysis::ValueOperation operation : {
       analysis::ValueOperation{analysis::ValueGlobalObject{}},
