@@ -216,8 +216,8 @@ class TreePrinter {
       if ((!IsMethodCallable(root.callable) && root.callable != CallableKind::kBaseConstructor) ||
           root.callable != class_root_->Callable() || root.inferred_name ||
           root.identity != class_root_->Identity() || root.method != class_root_->Target() ||
-          (!class_root_->Constructor() && class_root_->Site().placement != abc::ClassPlacement::kStatic &&
-           class_root_->Site().placement != abc::ClassPlacement::kPrototype)) throw Error::kUnsupportedContext;
+          (!class_root_->Constructor() && class_root_->Placement() != abc::ClassPlacement::kStatic &&
+           class_root_->Placement() != abc::ClassPlacement::kPrototype)) throw Error::kUnsupportedContext;
     }
     Array(draft_.members, family_->members.size()); Array(draft_.functions, family_->members.size());
     Array(locations_, family_->members.size()); Array(owners_, family_->members.size());
@@ -646,9 +646,14 @@ class TreePrinter {
     }
     if (ClassRoot()) {
       Run(Indent{depth_});
-      if (!class_root_->Constructor() && class_root_->Site().placement == abc::ClassPlacement::kStatic) Append("static ");
+      if (!class_root_->Constructor() && class_root_->Placement() == abc::ClassPlacement::kStatic) Append("static ");
       if (Tree().callable == CallableKind::kAsyncMethod) Append("async ");
       if (IsGeneratorCallable(Tree().callable)) Append("*");
+      if (const auto* accessor = class_root_->Accessor()) {
+        if (Tree().callable != CallableKind::kMethod || Tree().parameters.size() !=
+            (accessor->kind == abc::ClassMethodKind::kGetter ? 0U : 1U)) throw Error::kUnsupportedContext;
+        Append(accessor->kind == abc::ClassMethodKind::kGetter ? "get " : "set ");
+      }
       Key(class_root_->Name()); Append("(");
     } else if (Tree().self && Tree().self_form == SelfForm::kNamedFunction) {
       Append(Tree().callable == CallableKind::kAsyncGenerator ? "(async function* " :

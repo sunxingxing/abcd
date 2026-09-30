@@ -12,6 +12,36 @@
 
 ## 当前阶段
 
+### 2026-10-01：真实访问器正文贯通共同成员上下文、函数族与 printer
+
+- ClassTreeContext 新增来自真实后置定义的 accessor owner：按现有有序 occurrence
+  表查找，复核实际 DEFINEMETHOD、pool target、file identity、prototype 名称、
+  属性 key 与运行时名字、getter/setter 参数数量。上下文保留实际函数创建点，
+  没有伪造 class-buffer member ordinal。查找按索引进行，不逐成员重扫全图。
+- PreparedFamily::PrepareAccessor 使用同一个 ReadFunctionFamily、BuildFileFamilyTrees、
+  ABI、来源与目的地检查；共同 printer 按成员上下文输出原生 get/set。
+  修正 FamilyTrees 对 creation site 的名称检查，使其与 ResolveFunctionSyntax
+  一致：方法不要求普通函数的 inferred_name，也不引入 self binding。
+- 依据 pinned OH7 RuntimeDefineGetterSetterByValue 与 JSFunction::NameGetter，
+  安装操作设置 getter/setter function kind，lazy name getter 添加 get/set 前缀。
+  Native accessor 的 name/length/不可构造性须实际检验，不能只凭方法名字猜测。
+- 真实 Index 的四个 accessor 正文均已通过共同链路输出，保存
+  /tmp/abcd-index-accessors.js。测试包装类仅承载这四个实际成员，不冒充原页面类。
+  新 class_accessors_source_test 验证属性顺序、enumerable/configurable、函数
+  name/length、无 prototype、不可 new、get/set receiver 和参数身份，以及 base
+  读取、方法读取、调用各阶段的 Proxy 轨迹和原异常对象传播。此为独立行为
+  契约测试，不是配对整页源码或平台端到端验收。
+- 初次真实 prepare 在 FamilyTreeError::kContext 处拒绝，名称规则对齐后通过。
+  错误文件 identity 和请求不存在的 getter/setter occurrence 仍被拒绝。
+- 八项定向回归全部通过（5.79 秒），日志
+  /tmp/abcd-accessor-context-regression-build.log、
+  /tmp/abcd-accessor-context-regression-tests.log；两项新路径 oracle 亦通过，
+  /tmp/abcd-accessor-context-oracle.log。未恢复全量测试/RSS/其他 corpus。
+- 尚未把后置 accessor definition 投影到外层 ClassTree：仍需 class escape/
+  effect corridor、属性覆盖顺序和来源组合检查。该步骤完成前页面正式输出
+  继续拒绝，不把成员正文成功计作完整 record。最近五输入基线 34/72/46，
+  本轮未重新统计全五输入，阶段一未完成。
+
 ### 2026-10-01：后置访问器的实际 class/home/function 归属贯通
 
 - 新 FindClassAccessors 在共同正常 FunctionValues 恢复流程中运行，以 O(ops+uses)

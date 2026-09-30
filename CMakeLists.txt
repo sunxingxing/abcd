@@ -250,7 +250,7 @@ target_sources(abcd_source PRIVATE src/source/cell_initialization.cc)
 target_sources(abcd_source PRIVATE src/source/cell_evaluation.cc)
 target_sources(abcd_source PRIVATE src/source/tree_constants.cc)
 target_sources(abcd_source PRIVATE src/source/syntax_resolution.cc)
-target_sources(abcd_source PRIVATE src/source/class_accessors.cc src/source/class_initializers.cc src/source/class_initializer_projection.cc src/source/class_initializer_file.cc src/source/class_tree_context.cc src/source/constructor_tree_context.cc src/source/class_tree.cc)
+target_sources(abcd_source PRIVATE src/source/class_accessors.cc src/source/accessor_tree_context.cc src/source/class_initializers.cc src/source/class_initializer_projection.cc src/source/class_initializer_file.cc src/source/class_tree_context.cc src/source/constructor_tree_context.cc src/source/class_tree.cc)
 target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc)
 target_sources(abcd_source PRIVATE src/source/function_input.cc)
 target_sources(abcd_source PRIVATE src/source/function_values.cc)
@@ -948,6 +948,9 @@ if(BUILD_TESTING)
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/static_class_batch.mjs $<TARGET_FILE:abc_structure>
           ${ABCD_PAIRED_CORPUS_ROOT})
       endif()
+      add_test(NAME class_accessors_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_accessors.mjs $<TARGET_FILE:class_initializer_file_test>
+        ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
       add_test(NAME local_model_batch_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/local_model_batch.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive)

@@ -1,4 +1,5 @@
 #include "../../src/source/class_initializer_file.h"
+#include "../../src/source/prepared_family.h"
 #include "abcd/corpus/abc_file.h"
 #include "../../src/source/tree_constants.h"
 #include "../../src/source/syntax_resolution.h"
@@ -43,6 +44,10 @@ int main(int argc, char** argv) {
     const auto& graph = parent.values.graph;
     Check(parent.values.accessors.sites.size() == 4);
     const unsigned pcs[] = {137, 160, 183, 206};
+    std::ostringstream accessors;
+    accessors << "class Accessors {\n";
+    GlobalScope globals{};
+    const FamilyDestination destination{Strictness::kStrict, &globals, FunctionFragment::kClassMember};
     for (std::size_t i = 0; i < 4; ++i) {
       const auto& accessor = parent.values.accessors.sites[i];
       Check(accessor.prototype.has_value());
@@ -50,7 +55,30 @@ int main(int argc, char** argv) {
       Check(accessor.setter.has_value() == (i % 2 != 0));
       Check(graph.origins[graph.ops[accessor.creation.value].origin.value].pc.value == 98);
       Check(graph.origins[graph.ops[accessor.definition.value].origin.value].pc.value == pcs[i]);
+      const auto kind = i % 2 ? abc::ClassMethodKind::kSetter : abc::ClassMethodKind::kGetter;
+      auto prepared = PreparedFamily::PrepareAccessor(file, header, index, lookup, roles, sites,
+          parent, accessor.definition, kind, identity, destination);
+      if (const auto* error = std::get_if<FamilyPrepareFailure>(&prepared)) {
+        std::cerr << "accessor prepare failure " << i << " cause " << error->cause.index() << '\n';
+        if (const auto* tree = std::get_if<FamilyTreeFailure>(&error->cause)) {
+          std::cerr << "member " << tree->member.value << " cause " << tree->cause.index() << '\n';
+          std::visit([](const auto& e) { if constexpr (std::is_enum_v<std::decay_t<decltype(e)>>) std::cerr << "error " << static_cast<unsigned>(e) << '\n'; }, tree->cause);
+        }
+      }
+      Check(std::holds_alternative<PreparedFamily>(prepared));
+      const auto& family = std::get<PreparedFamily>(prepared);
+      const auto emitted = family.PrintDraft(destination, accessors, {}, {}, 1);
+      Check(std::holds_alternative<PrintedFamilyDraft>(emitted));
+      auto wrong_identity = identity; ++wrong_identity.file_size;
+      Check(std::holds_alternative<ClassContextFailure>(ClassTreeContext::ResolveAccessor(
+          file, header, index, lookup, roles, sites, parent, accessor.definition, kind, wrong_identity)));
+      const auto absent = i % 2 ? abc::ClassMethodKind::kGetter : abc::ClassMethodKind::kSetter;
+      Check(std::holds_alternative<ClassContextFailure>(ClassTreeContext::ResolveAccessor(
+          file, header, index, lookup, roles, sites, parent, accessor.definition, absent, identity)));
+
     }
+    accessors << "}\nAccessors;\n";
+    if (argc == 3 && std::string_view(argv[2]) == "--accessors") { std::cout << accessors.str(); return 0; }
   }
   for (const auto entry : {7312U, 16391U}) {
     const auto position = lookup.Find({entry}); Check(position.has_value());

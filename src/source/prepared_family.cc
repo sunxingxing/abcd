@@ -84,6 +84,23 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareClass(
   } catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
 }
+std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareAccessor(
+    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
+    const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& functions, const FileFunction& creator,
+    analysis::OpId definition, abc::ClassMethodKind kind, RouteInputIdentity identity,
+    FamilyDestination destination, analysis::SemanticBudget allowance) {
+  try {
+    Require(allowance.bytes >= sizeof(Storage), Error::kResourceLimit);
+    auto resolution = allowance; resolution.bytes -= sizeof(Storage);
+    auto context = Take<ClassTreeContext, ClassContextFailure>(ClassTreeContext::ResolveAccessor(
+        file, header, index, lookup, roles, functions, creator, definition, kind, identity, resolution));
+    return Prepare(file, header, index, lookup, roles, functions,
+        FunctionContext{std::move(context)}, destination, allowance);
+  } catch (const FamilyPrepareFailure& failure) { return failure; }
+    catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
+    catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
+}
 std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareConstructor(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,

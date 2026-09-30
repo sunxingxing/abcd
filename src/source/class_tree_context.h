@@ -4,6 +4,7 @@
 #include "abcd/abc/call_type.h"
 #include "abcd/analysis/class_method_sites.h"
 #include "abcd/analysis/method_roles.h"
+#include "abcd/analysis/function_creation_sites.h"
 #include "abcd/source/source_tree.h"
 
 namespace abcd::source {
@@ -16,6 +17,12 @@ struct ClassConstructorSite {
   abc::EntityOffset creator;
   abc::CodeOffset pc;
   analysis::ClassCreation creation;
+};
+struct ClassAccessorMember {
+  analysis::FunctionCreationSite function;
+  analysis::OpId definition;
+  abc::ClassPlacement placement;
+  abc::ClassMethodKind kind;
 };
 struct ClassContextFailure {
   std::variant<ClassContextError, abc::MetadataError,
@@ -41,9 +48,21 @@ class ClassTreeContext {
       const abc::MethodLookup&, const analysis::MethodRoleIndex&,
       const FileFunction& creator, analysis::OpId creation, RouteInputIdentity,
       analysis::SemanticBudget budget = {});
+  // Fresh unchanged creator and its occurrence inventory. Recheck the actual
+  // DEFINEMETHOD owner, key/prototype pool strings and native accessor arity.
+  // This prepares a body only; moving the definition into a class expression
+  // still requires the surrounding class escape/effect projection.
+  [[nodiscard]] static std::variant<ClassTreeContext, ClassContextFailure> ResolveAccessor(
+      const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
+      const abc::MethodLookup&, const analysis::MethodRoleIndex&,
+      const analysis::FunctionCreationSites&, const FileFunction& creator,
+      analysis::OpId definition, abc::ClassMethodKind kind, RouteInputIdentity,
+      analysis::SemanticBudget budget = {});
+  const ClassAccessorMember* Accessor() const { return std::get_if<ClassAccessorMember>(&site_); }
+  abc::ClassPlacement Placement() const { return Accessor() ? Accessor()->placement : Site().placement; }
   const ClassConstructorSite* Constructor() const { return std::get_if<ClassConstructorSite>(&site_); }
-  abc::EntityOffset Target() const { return std::visit([](const auto& site) { return site.target; }, site_); }
-  std::uint32_t Length() const { return Constructor() ? Constructor()->creation.length : Site().length; }
+  abc::EntityOffset Target() const { return Constructor() ? Constructor()->target : Accessor() ? Accessor()->function.target : Site().target; }
+  std::uint32_t Length() const { return Constructor() ? Constructor()->creation.length : Accessor() ? Accessor()->function.creation.length.value : Site().length; }
   [[nodiscard]] const RouteInputIdentity& Identity() const { return identity_; }
   [[nodiscard]] const analysis::ClassMethodSite& Site() const { return std::get<analysis::ClassMethodSite>(site_); }
   [[nodiscard]] abc::MethodPosition Position() const { return position_; }
@@ -56,7 +75,7 @@ class ClassTreeContext {
  private:
   ClassTreeContext() = default;
   RouteInputIdentity identity_;
-  std::variant<analysis::ClassMethodSite, ClassConstructorSite> site_;
+  std::variant<analysis::ClassMethodSite, ClassConstructorSite, ClassAccessorMember> site_;
   abc::MethodPosition position_;
   abc::FrameLayout frame_;
   CallableKind callable_ = CallableKind::kMethod;

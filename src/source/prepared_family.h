@@ -52,6 +52,11 @@ class PreparedFamily {
       const analysis::FunctionCreationSites&, const FileFunction& creator,
       analysis::OpId creation, RouteInputIdentity, FamilyDestination,
       analysis::SemanticBudget budget = {});
+  [[nodiscard]] static std::variant<PreparedFamily, FamilyPrepareFailure> PrepareAccessor(
+      const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
+      const abc::MethodLookup&, const analysis::MethodRoleIndex&,
+      const analysis::FunctionCreationSites&, const FileFunction&, analysis::OpId,
+      abc::ClassMethodKind, RouteInputIdentity, FamilyDestination, analysis::SemanticBudget = {});
   [[nodiscard]] const ConstructedFamily& Family() const;
   [[nodiscard]] const RouteInputIdentity& Identity() const;
   [[nodiscard]] const analysis::ClassMethodSite* ClassCreation() const;

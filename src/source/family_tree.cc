@@ -112,7 +112,7 @@ class FamilyTrees {
       // Naming evidence is creation-specific and must survive arena growth and
       // capture/module alias insertion. The runtime name stays creation-proven
       // even when a private self binding has a distinct synthetic spelling.
-      if (context.CreationSite()) {
+      if (context.CreationSite() && !IsMethodCallable(context.Callable())) {
         const auto name = constructed.tree.inferred_name;
         Require(name && name->value < constructed.tree.names.size(), FamilyTreeError::kContext);
         Step(context.Name().size());
