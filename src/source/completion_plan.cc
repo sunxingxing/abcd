@@ -32,8 +32,16 @@ bool CleanupOperation(const ValueOperation& operation) {
         std::is_same_v<T, ValueArrayAllocation> || std::is_same_v<T, ValueObjectAllocation> ||
         std::is_same_v<T, ValueGlobalRead> || std::is_same_v<T, ValueGlobalObject> ||
         std::is_same_v<T, ValueSymbolConstructor> || std::is_same_v<T, ValueFrameThis> ||
-        std::is_same_v<T, ValueFrameFunction> || std::is_same_v<T, ValueDebugger>;
+        std::is_same_v<T, ValueFrameFunction> || std::is_same_v<T, ValueDebugger> ||
+        std::is_same_v<T, ValueYield>;
   }, operation);
+}
+bool SameCleanupOperation(const ValueOperation& a, const ValueOperation& b) {
+  // Yield sites have different protocol PCs/registers, not different language
+  // operators. The owner normalizes each site; Pair below must still match SSA
+  // inputs, effects and throw dispatch. Both origins remain in the tree.
+  if (std::holds_alternative<ValueYield>(a)) return std::holds_alternative<ValueYield>(b);
+  return a == b;
 }
 struct Corridor {
   std::vector<ControlId> nodes;
@@ -132,6 +140,11 @@ class CompletionBuilder {
         if (!binding || !Path(region.body, normal, true) ||
             !Path(region.handler, handler, true) || !normal.transfer ||
             !handler.transfer || !handler.operations.empty()) continue;
+        bool suspended = false;
+        for (const auto op : normal.operations) {
+          quota_.Work(); suspended |= std::holds_alternative<ValueYield>(graph_.ops[op.value].operation);
+        }
+        if (suspended) continue;
         const auto& left = std::get<LoopTransfer>(control_.skeleton.nodes[normal.transfer->value].synthetic);
         const auto& right = std::get<LoopTransfer>(control_.skeleton.nodes[handler.transfer->value].synthetic);
         if (left.loop != right.loop || left.kind != right.kind) continue;
@@ -425,7 +438,11 @@ class CompletionBuilder {
         quota_.Work();
         const auto index = block.first_op.value + o;
         const auto& op = graph_.ops[index];
-        if (std::holds_alternative<ValueReturn>(op.operation)) return {false};
+        // A yield's native RETURN is not a normal/throw edge in this graph.
+        // Until its raw RETURN cleanup is recovered, moving following cleanup
+        // into finally would add effects on a route that originally bypassed it.
+        if (std::holds_alternative<ValueReturn>(op.operation) ||
+            std::holds_alternative<ValueYield>(op.operation)) return {false};
         if (exits_[index]) {
           const auto& exit = graph_.exceptional_exits[*exits_[index]];
           consume({true, !exit.handler, exit.handler ? std::optional{exit.handler->entry} : std::nullopt});
@@ -538,7 +555,7 @@ class CompletionBuilder {
       bool throwing = false;
       for (std::uint32_t o = 0; o < block.op_count; ++o) {
         quota_.Work(); const auto& op = graph_.ops[block.first_op.value + o];
-        if (std::holds_alternative<ValueReturn>(op.operation)) return false;
+        if (std::holds_alternative<ValueReturn>(op.operation) || std::holds_alternative<ValueYield>(op.operation)) return false;
         throwing |= std::holds_alternative<ValueThrow>(op.operation);
       }
       if (node.next) Append(pending, Task{*node.next, task.stop});
@@ -610,7 +627,7 @@ class CompletionBuilder {
     const auto& left = graph_.ops[a.value]; const auto& right = graph_.ops[b.value];
     const bool supported = completion ? (std::holds_alternative<ValueReturn>(left.operation) ||
         std::holds_alternative<ValueThrow>(left.operation)) : CleanupOperation(left.operation);
-    if (!supported || left.operation != right.operation ||
+    if (!supported || !SameCleanupOperation(left.operation, right.operation) ||
         left.normal != right.normal || left.before_throw != right.before_throw ||
         left.exceptional != right.exceptional || left.use_count != right.use_count ||
         left.result.has_value() != right.result.has_value() || exits_[a.value].has_value() != exits_[b.value].has_value()) return false;

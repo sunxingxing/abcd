@@ -12,6 +12,35 @@
 
 ## 当前阶段
 
+### 2026-09-30：generator 清理块暂停与 completion 保留/覆盖
+
+- 共同 CompletionPlan 的清理操作配对支持已归一化 ValueYield：不同暂停点的
+  协议 PC/寄存器不作为语言操作身份，但继续比较 SSA 输入、效果、异常分发
+  和结果对应关系；两个清理副本的来源仍保留。清理块中的 yield 可以跨暂停
+  保留 pending return/throw，也允许清理自己的 return/throw 覆盖它。
+  FunctionTree/共同 Printer 未增加专项输出路线或验证准入。
+- 三 profile × 三父级动态环境，共 63 个真实 opcode/合成元数据函数族：
+  27 个清理暂停/return/throw 正向恢复、18 个调用对象/输入不匹配组合，以及
+  18 个受保护 yield 的 RETURN 路由反例。完整生成 JS 验证 callback 次数、
+  receiver、payload/error 身份、next/return/throw、早期完成、独立迭代器与
+  同步 thenable 不被吸收；不匹配组合仍输出并执行完整 try/catch 源码。
+- 修复既有误恢复：原始 yield 的 RETURN 分支直接退出时，不把后续清理搬入
+  native finally，否则 .return() 会新增可观察调用。普通配对和共享尾部两种
+  反例均用实际生成 JS 验证；临时去掉对应保护分别出现调用次数 1 !== 0，
+  见 `/tmp/abcd-generator-finally-effects-red-tests.log`、
+  `/tmp/abcd-generator-finally-shared-red-tests.log`。此边界保留完整原控制源码，
+  不是用 unsupported/INCOMPLETE 代替新增功能。
+- 相关十一个 C++ 目标构建成功，31/31 定向测试通过（20.06 秒）：
+  `/tmp/abcd-generator-finally-final-build.log`、
+  `/tmp/abcd-generator-finally-final-tests.log`；`git diff --check` 通过。
+  初始功能红例见 `/tmp/abcd-generator-finally-red-tests.log`。
+  夹具不冒充真实应用或完整 OH7 编译器形态覆盖。
+- C07/总目标仍开放：受保护 yield 注入 RETURN 时的内联 finally 清理路由尚未
+  贯通，入口默认值/解构、方法 self/super、yield*、async generator、类/record
+  整合等继续推进。默认 work 阈值继续关闭，不用 work 计数拒绝产出；没有新增
+  DFX。全量测试/语料/RSS/基准仍暂停，历史两个 base_function 失败未重跑/修复，
+  不宣称全套或 1GB 验收。
+
 ### 2026-09-30：generator 捕获参数的入口 cell 初始化
 
 - 同一 NormalizeGenerator 前奏消费增加 LDA ABI 输入→STLEXVAR 的参数 cell

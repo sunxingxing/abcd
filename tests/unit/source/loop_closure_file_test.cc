@@ -68,6 +68,7 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
 }
 enum class ParentShape { kIteration, kCatch, kNormal, kReceiverCapture, kOuterCatchContinue, kOuterCatchBreak };
 enum class CopyEncoding { kV4, kV8, kV16 };
+enum class YieldFinalizer { kPreserve, kReturn, kThrow, kDifferentCallee, kDifferentInput, kBodyYield, kSharedBodyYield };
 enum class ChildShape {
   kPlain, kException, kNested, kForwarded, kForwardedNormal, kForwardedLocal,
   kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally, kSharedFinallyNested,
@@ -75,7 +76,8 @@ enum class ChildShape {
   kAwaitSelf, kAwaitSelfPrivate, kAwaitThis, kAwaitReceiver, kAwaitArguments, kYieldCapture, kYieldResult, kYieldLoop, kYieldCall,
   kYieldCatch, kYieldCatchCapture, kYieldCatchYield, kYieldCatchOverwrite, kYieldCatchLoop,
   kYieldSelf, kYieldSelfPrivate, kYieldThis, kYieldReceiver,
-  kYieldCopy, kYieldLexical, kYieldClosure, kYieldFrameCopy, kYieldParameterCell, kYieldParameterFrameCell
+  kYieldCopy, kYieldLexical, kYieldClosure, kYieldFrameCopy, kYieldParameterCell, kYieldParameterFrameCell,
+  kYieldFinallyReturn
 };
 enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitState,
                          kYieldState, kYieldDone, kYieldReturn, kYieldEntry, kYieldCleanup,
@@ -85,7 +87,8 @@ enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitS
                          kYieldPreludeCellDepth, kYieldPreludeCellSlot, kYieldPreludeCellLocal, kYieldPreludeCellNoEnv };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
                  MissingCell missing = MissingCell::kNone, bool async_arrow = false, std::uint32_t yield_count = 1,
-                 CopyEncoding copy_encoding = CopyEncoding::kV8, std::uint32_t copy_count = 1) {
+                 CopyEncoding copy_encoding = CopyEncoding::kV8, std::uint32_t copy_count = 1,
+                 YieldFinalizer yield_finalizer = YieldFinalizer::kPreserve) {
   const bool exception_child = child_shape != ChildShape::kPlain && child_shape != ChildShape::kForwardedNormal;
   const bool forwarded_writer = child_shape == ChildShape::kForwardedWriter || child_shape == ChildShape::kForwardedThrowWriter;
   const bool forwarding = child_shape == ChildShape::kForwarded || child_shape == ChildShape::kForwardedNormal ||
@@ -111,9 +114,10 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       child_shape == ChildShape::kYieldCatchLoop;
   const bool yield_self = child_shape == ChildShape::kYieldSelf || child_shape == ChildShape::kYieldSelfPrivate;
   const bool yield_frame = yield_self || child_shape == ChildShape::kYieldThis || child_shape == ChildShape::kYieldReceiver;
+  const bool yield_finally = child_shape == ChildShape::kYieldFinallyReturn;
   const bool generator = child_shape == ChildShape::kYieldCapture || child_shape == ChildShape::kYieldResult ||
-      child_shape == ChildShape::kYieldLoop || child_shape == ChildShape::kYieldCall || yield_catch || yield_frame || yield_lexical || yield_copy;
-  const std::uint8_t getter_parameters = await_finally ? 2 : await_capture || generator ? 1 : outer_transfer ? 5 : shared_finally ? 3 : 0;
+      child_shape == ChildShape::kYieldLoop || child_shape == ChildShape::kYieldCall || yield_catch || yield_frame || yield_lexical || yield_copy || yield_finally;
+  const std::uint8_t getter_parameters = await_finally || yield_finally ? 2 : await_capture || generator ? 1 : outer_transfer ? 5 : shared_finally ? 3 : 0;
   const bool outer_catch = shape == ParentShape::kOuterCatchContinue || shape == ParentShape::kOuterCatchBreak;
   const std::uint8_t parent_parameters = outer_catch ? 5 : 3;
   std::vector<std::uint8_t> bytes(kCodeStart);
@@ -375,7 +379,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     std::vector<std::uint8_t> code;
     // FunctionRegScope assigns mandatory/user parameters to v0..v3; the
     // physical ABI inputs follow locals. CopyFunctionArguments connects them.
-    const std::uint8_t locals = yield_frame_copy ? 9 : 5;
+    const bool shared_body_yield = yield_finally && yield_finalizer == YieldFinalizer::kSharedBodyYield;
+    const std::uint8_t locals = yield_frame_copy ? 9 : shared_body_yield ? 8 : yield_finally ? 6 : 5;
     const std::uint8_t state = yield_frame_copy ? 4 : 0, mode = yield_frame_copy ? 5 : 1,
         result = yield_frame_copy ? 6 : 2, value = yield_frame_copy ? 7 : 3, done = yield_frame_copy ? 8 : 4;
     const std::uint8_t function = yield_frame_copy ? 0 : locals, parameter = locals + kImplicitArguments;
@@ -436,6 +441,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
           Op(abc::Opcode::kLDA_V8), result});
     };
     resume(false);
+    if (shared_body_yield) code.insert(code.end(), {Op(abc::Opcode::kLDUNDEFINED), Op(abc::Opcode::kSTA_V8), 6});
     const auto try_begin = static_cast<std::uint32_t>(code.size());
     // The initial handshake overwrites this copy. Keeping it in normalized
     // IR without modeling that handshake would fabricate a source parameter.
@@ -457,6 +463,63 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       }
       resume(true);
     };
+    if (yield_finally) {
+      // Both corridors preserve v5 across cleanup's suspended v1/v2 result.
+      // Original try contains only work(); cleanup is outside its handler.
+      constexpr std::uint8_t kPending = 5;
+      code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), parameter, Op(abc::Opcode::kCALLARG0_IMM8), 0});
+      if (yield_finalizer == YieldFinalizer::kBodyYield || shared_body_yield) yield();
+      if (shared_body_yield) {
+        const auto try_end = static_cast<std::uint32_t>(code.size());
+        // Pinned OH7 shared pending-Hole tail. RETURN injected at the protected
+        // yield bypasses it in this raw protocol; do not add a native finally.
+        code.insert(code.end(), {Op(abc::Opcode::kLDHOLE), Op(abc::Opcode::kSTA_V8), kPending,
+            Op(abc::Opcode::kJMP_IMM8), 4});
+        const auto caught = static_cast<std::uint32_t>(code.size());
+        code.insert(code.end(), {Op(abc::Opcode::kSTA_V8), kPending,
+            Op(abc::Opcode::kLDA_V8), 6, Op(abc::Opcode::kSTA_V8), 7,
+            Op(abc::Opcode::kLDUNDEFINED), Op(abc::Opcode::kEQ_IMM8_V8), 0, 7,
+            Op(abc::Opcode::kJEQZ_IMM8), 8, Op(abc::Opcode::kSTA_V8), 6,
+            Op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(parameter + 1), Op(abc::Opcode::kCALLARG0_IMM8), 0,
+            Op(abc::Opcode::kLDA_V8), kPending, Op(abc::Opcode::kSTA_V8), 7,
+            Op(abc::Opcode::kLDHOLE), Op(abc::Opcode::kSTA_V8), 6,
+            Op(abc::Opcode::kLDA_V8), 7, Op(abc::Opcode::kNOTEQ_IMM8_V8), 0, 6,
+            Op(abc::Opcode::kJEQZ_IMM8), 6, Op(abc::Opcode::kLDA_V8), 7,
+            static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+            Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kRETURN)});
+        const auto handler = static_cast<std::uint32_t>(code.size());
+        code.insert(code.end(), {static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+        std::vector<std::uint8_t> table;
+        for (const auto operand : {try_begin, try_end - try_begin, 1U, 0U, caught, 2U,
+                                  entry, handler - entry, 1U, 0U, handler, 2U}) Uleb(table, operand);
+        return AppendEncodedCode(bytes, locals, getter_parameters, code, table, 2);
+      }
+      code.insert(code.end(), {Op(abc::Opcode::kSTA_V8), kPending});
+      const auto try_end = static_cast<std::uint32_t>(code.size());
+      const auto cleanup = [&](bool exceptional) {
+        code.insert(code.end(), {Op(abc::Opcode::kLDA_V8),
+            static_cast<std::uint8_t>(exceptional && yield_finalizer == YieldFinalizer::kDifferentCallee ? parameter : parameter + 1),
+            Op(abc::Opcode::kCALLARG0_IMM8), 0});
+        if (exceptional && yield_finalizer == YieldFinalizer::kDifferentInput)
+          code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), kPending});
+        if (yield_finalizer != YieldFinalizer::kBodyYield) yield();
+        const bool replace = yield_finalizer == YieldFinalizer::kReturn || yield_finalizer == YieldFinalizer::kThrow;
+        code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(replace ? result : kPending)});
+        if (yield_finalizer == YieldFinalizer::kThrow || (exceptional && yield_finalizer != YieldFinalizer::kReturn))
+          code.insert(code.end(), {static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+        else code.push_back(Op(abc::Opcode::kRETURN));
+      };
+      cleanup(false);
+      const auto catch_begin = static_cast<std::uint32_t>(code.size());
+      code.insert(code.end(), {Op(abc::Opcode::kSTA_V8), kPending});
+      cleanup(true);
+      const auto handler = static_cast<std::uint32_t>(code.size());
+      code.insert(code.end(), {static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+      std::vector<std::uint8_t> table;
+      for (const auto operand : {try_begin, try_end - try_begin, 1U, 0U, catch_begin, handler - catch_begin,
+                                entry, handler - entry, 1U, 0U, handler, 2U}) Uleb(table, operand);
+      return AppendEncodedCode(bytes, locals, getter_parameters, code, table, 2);
+    }
     for (std::uint32_t occurrence = 0; occurrence < yield_count; ++occurrence) {
       const auto body_pc = code.size();
       code.insert(code.end(), {Op(child_shape == ChildShape::kYieldLexical || yield_parameter_cell ? abc::Opcode::kLDLEXVAR_IMM4_IMM4 : abc::Opcode::kLDA_V8),
@@ -758,6 +821,11 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     for (const auto& origin : located["draft_positions"][1]["positions"]["origins"])
       original_yield |= origin.contains("original_pc") && origin["original_pc"] == generator_yield_pc;
     test::Check(original_yield);
+    if (yield_finally && yield_finalizer != YieldFinalizer::kBodyYield && yield_finalizer != YieldFinalizer::kSharedBodyYield) {
+      const bool matched = yield_finalizer != YieldFinalizer::kDifferentCallee && yield_finalizer != YieldFinalizer::kDifferentInput &&
+          yield_finalizer != YieldFinalizer::kBodyYield;
+      test::Check((report.at("draft_source").get<std::string>().find("finally") != std::string::npos) == matched);
+    }
   }
   if (await_capture) {
     const auto& positions = located["draft_positions"][1]["positions"];
@@ -786,6 +854,26 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && (std::string_view(argv[1]) == "--yield-finally-return" ||
+                   std::string_view(argv[1]) == "--yield-finally-override-return" ||
+                   std::string_view(argv[1]) == "--yield-finally-override-throw" ||
+                   std::string_view(argv[1]) == "--yield-finally-different-callee" ||
+                   std::string_view(argv[1]) == "--yield-finally-different-input" ||
+                   std::string_view(argv[1]) == "--yield-finally-body" || std::string_view(argv[1]) == "--yield-finally-shared-body")) {
+    const auto mode = std::string_view(argv[1]);
+    const auto finalizer = mode == "--yield-finally-override-return" ? YieldFinalizer::kReturn :
+        mode == "--yield-finally-override-throw" ? YieldFinalizer::kThrow :
+        mode == "--yield-finally-different-callee" ? YieldFinalizer::kDifferentCallee :
+        mode == "--yield-finally-different-input" ? YieldFinalizer::kDifferentInput :
+        mode == "--yield-finally-shared-body" ? YieldFinalizer::kSharedBodyYield :
+        mode == "--yield-finally-body" ? YieldFinalizer::kBodyYield : YieldFinalizer::kPreserve;
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+        std::cout << Emit(profile, shape, ChildShape::kYieldFinallyReturn, MissingCell::kNone, false, 1,
+            CopyEncoding::kV8, 1, finalizer) << ",\n";
+    std::cout << "];\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--yield-copy-many") {
     std::cout << "export const functions = [\n";
     for (const auto count : {200U, 201U, 402U})

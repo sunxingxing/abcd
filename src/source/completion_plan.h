@@ -51,6 +51,9 @@ enum class CompletionError : std::uint8_t { kInput, kWorkLimit, kResourceLimit }
 // Requires the checked phased graph/control/evaluation. Matches return/rethrow
 // cleanup corridors by typed operations, SSA operands and exceptional dispatch.
 // Unsupported completion shapes remain unchanged, never guessed finalizers.
+// Normalized yield may suspend paired cleanup corridors. Protected-body yield
+// requires its injected RETURN cleanup route before finally composition; without
+// that route, retain the original complete try/catch source rather than add effects.
 // No string/PC-nearness matching. O(V+E+O+U+P), where P is the examined disjoint
 // corridor/body topology; matching internal SSA results uses indexed pairing.
 [[nodiscard]] std::variant<CompletionPlan, CompletionError> BuildCompletionPlan(
