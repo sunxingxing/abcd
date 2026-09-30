@@ -158,7 +158,13 @@ struct EmptyArrayExpr {};
 struct EmptyObjectExpr {};
 struct PropertyRange { std::uint32_t first; std::uint32_t count; };
 enum class AggregateKind : std::uint8_t { kObject, kArray };
-struct ObjectExpr { PropertyRange properties; AggregateKind kind = AggregateKind::kObject; };
+struct ObjectExpr {
+  PropertyRange properties;
+  AggregateKind kind = AggregateKind::kObject;
+  // Original buffer positions remain a prefix. A later own definition may
+  // replace its last matching position only while preserving RHS order.
+  std::uint32_t buffered = 0;
+};
 // Computed string data property, never a colon-style __proto__ setter or method.
 // Array aggregates reuse the ordered property arena with canonical decimal keys;
 // keys must equal element ordinals and are implicit in native array syntax.

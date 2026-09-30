@@ -2,6 +2,7 @@
 #include "phase_evaluation.h"
 
 #include <bit>
+#include <algorithm>
 #include <limits>
 #include <type_traits>
 
@@ -232,8 +233,32 @@ class OperandCheck {
               budget_.Step();
               const auto& source = constants_.properties[expected->first + p];
               const auto& actual = tree_.properties[object.properties.first + p];
-              RequireMeaning(source.key.value < constants_.name_count && actual.key == source.key, Error::kConstant);
-              BufferedLiteral(source.value, actual.value);
+              RequireMeaning(source.key.value < constants_.name_count, Error::kConstant);
+              const auto& source_name = tree_.names[source.key.value];
+              const auto& actual_name = tree_.names[actual.key.value];
+              budget_.Step(source_name.size()); budget_.Step(actual_name.size());
+              RequireMeaning(actual_name == source_name, Error::kConstant);
+              if (!flow_.defined_properties[object.properties.first + p])
+                BufferedLiteral(source.value, actual.value);
+            }
+            // A folded own definition may replace only the last buffered
+            // occurrence of its key. Otherwise a following buffer value would
+            // overwrite it. Check actual keys, not NameId equality or a builder
+            // supplied lookup; distinct pool entries can spell the same name.
+            std::vector<std::uint32_t> order;
+            budget_.Array(order, expected->count);
+            for (std::uint32_t p = 0; p < expected->count; ++p) order[p] = p;
+            const auto key = [&](auto p) -> std::u16string_view {
+              return tree_.names[constants_.properties[expected->first + p].key.value];
+            };
+            std::sort(order.begin(), order.end(), [&](auto a, auto b) {
+              const auto x = key(a), y = key(b); budget_.Step(); budget_.Step(x.size()); budget_.Step(y.size());
+              return x == y ? a < b : x < y;
+            });
+            for (std::size_t p = 1; p < order.size(); ++p) {
+              const auto x = key(order[p - 1]), y = key(order[p]);
+              budget_.Step(); budget_.Step(x.size()); budget_.Step(y.size());
+              if (x == y) RequireMeaning(!flow_.defined_properties[object.properties.first + order[p - 1]], Error::kConstant);
             }
             return;
           }

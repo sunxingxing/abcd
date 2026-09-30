@@ -45,11 +45,12 @@ function compare(a, b) {
   }
 }
 compare(actual, expected);
-// Structural syntax is native, but retained buffer placeholders are still a
-// separate representation-quality gap. This test claims behavioral agreement.
+// Buffer placeholders must disappear independently of behavioral agreement.
+// This does not yet accept the whole record's source representation quality.
 assert.match(report.source, /export \{ ROUTES/);
 assert.ok(!report.source.includes('$acc'));
 assert.match(report.source, /title: /);
 assert.ok(!report.source.includes('["title"]:'), 'ordinary object key should use native syntax');
 const retainedPlaceholders = /(?:\["(?:title|name|children|params)"\]|\b(?:title|name|children|params)): null/.test(report.source);
+assert.equal(retainedPlaceholders, false, 'overwritten buffer placeholders remain');
 console.log(JSON.stringify({semantic: 'passed', retainedBufferPlaceholders: retainedPlaceholders}));

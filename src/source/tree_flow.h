@@ -30,9 +30,10 @@ struct TreeFlow {
   std::vector<std::optional<ExprId>> expressions;
   std::vector<std::optional<StmtId>> statements;
   std::vector<std::optional<PropertyId>> initializers;
-  // Actual buffered prefix length per allocation. Own-write initializers are
-  // a separately checked suffix; constants verify this prefix independently.
+  // Actual original buffer prefix length per allocation. Constants verify the
+  // count/keys; definitions may overwrite prefix positions in RHS order.
   std::vector<std::uint32_t> buffered_properties;
+  std::vector<std::uint8_t> defined_properties; // PropertyId indexed, unique own write.
   std::vector<std::optional<SymbolId>> snapshots;
   // Indexed by CellId; recovered from actual allocation-site declarations.
   // These mutable storage identities are not SSA read snapshots.

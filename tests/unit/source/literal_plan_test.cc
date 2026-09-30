@@ -146,7 +146,7 @@ void SourceTree(bool buffered, bool array = false, bool print = false) {
     const ExpressionConstants resolved{constants, syntax.names.size(), 0, {}, properties};
     const auto built = BuildFunctionTree(graph, control, *evaluation, syntax, resolved);
     const auto* result = std::get_if<ConstructedFunction>(&built);
-    Check(result && result->tree.properties.size() == count + prefix);
+    Check(result && result->tree.properties.size() == count);
     Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(
         graph, control, *evaluation, result->tree, resolved)));
     for (const auto& placement : result->tree.operations) {
@@ -185,7 +185,7 @@ void SourceTree(bool buffered, bool array = false, bool print = false) {
     invalid_plan.operations[1].kind = EvaluationKind::kRoot;
     Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, invalid_plan)));
     auto changed = result->tree;
-    changed.properties[prefix].origin = {0};
+    changed.properties[0].origin = {0};
     Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(
         graph, control, *evaluation, changed, resolved)));
     if (count > 1) {
@@ -196,6 +196,66 @@ void SourceTree(bool buffered, bool array = false, bool print = false) {
       changed = result->tree;
       changed.properties[1].value = changed.properties[0].value;
       Check(std::get<TreeStructureError>(VerifyTreeStructure(changed)) == TreeStructureError::kOwnership);
+    }
+  }
+}
+enum class BufferCase { kAscending, kDescending, kRepeatedKey };
+void BufferedOverwrites(bool print = false) {
+  for (const auto count : {2U, 200U, 201U, 402U})
+      for (const auto mode : {BufferCase::kAscending, BufferCase::kDescending, BufferCase::kRepeatedKey}) {
+    auto graph = Graph(count);
+    std::get<ValueObjectAllocation>(graph.ops[0].operation).literal = abcd::abc::PoolIndex{0};
+    FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction;
+    syntax.strictness = Strictness::kStrict;
+    std::vector<ConstantProperty> properties;
+    std::vector<ExpressionConstant> constants(graph.ops.size());
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const auto key = i == 0 ? std::string("__proto__") : "field" + std::to_string(i);
+      syntax.names.emplace_back(key.begin(), key.end());
+      properties.push_back({NameId{i}, NullLiteral{}});
+    }
+    // Distinct pool entries may spell the same name. Never compare their IDs
+    // as the property identity, including repeated keys inside one buffer.
+    for (std::uint32_t i = 0; i < count; ++i) syntax.names.push_back(syntax.names[i]);
+    if (mode == BufferCase::kRepeatedKey) properties.push_back({NameId{count}, NullLiteral{}});
+    constants[0] = ObjectConstant{0, static_cast<std::uint32_t>(properties.size())};
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const auto key = mode == BufferCase::kDescending ? count - 1 - i : i;
+      constants[i + 1] = NameId{count + key};
+      graph.uses[graph.ops[i + 1].first_use.value + 1].operand = abcd::analysis::IntegerLiteral{static_cast<std::int32_t>(i + 10)};
+    }
+    const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+    const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+    const ExpressionConstants resolved{constants, syntax.names.size(), 0, {}, properties};
+    const auto built = BuildFunctionTree(graph, control, evaluation, syntax, resolved);
+    Check(std::holds_alternative<ConstructedFunction>(built));
+    const auto& tree = std::get<ConstructedFunction>(built).tree;
+    Check(tree.properties.size() == (mode == BufferCase::kAscending ? count : mode == BufferCase::kDescending ? 2 * count - 1 : 2 * count));
+    Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
+    std::ostringstream output;
+    const auto printed = std::get<PrintedFunction>(PrintFunctionTree(tree, output));
+    if (print) std::cout << output.str() << ",\n";
+    Check(printed.properties.size() == tree.properties.size());
+    auto changed = tree;
+    for (auto& expression : changed.expressions)
+      if (auto* object = std::get_if<ObjectExpr>(&expression.expression)) --object->buffered;
+    Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, changed, resolved)));
+    changed = tree;
+    // Relocating the first folded definition across a later equal buffer key
+    // preserves all generic shape/ownership checks but changes the final value.
+    if (mode == BufferCase::kRepeatedKey) {
+      std::swap(changed.properties[0], changed.properties[count]);
+      for (auto& placement : changed.operations)
+        if (placement.operation == OpId{1}) placement.node = PropertyId{0};
+      Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, changed, resolved)));
+    }
+    if (mode == BufferCase::kAscending) {
+      std::swap(changed.properties[0], changed.properties[1]);
+      for (auto& placement : changed.operations) {
+        if (placement.operation == OpId{1}) placement.node = PropertyId{1};
+        if (placement.operation == OpId{2}) placement.node = PropertyId{0};
+      }
+      Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, changed, resolved)));
     }
   }
 }
@@ -289,6 +349,7 @@ void RhsSnapshot() {
   Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
 }
 }  // namespace
-int main(int argc, char**) {
+int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--buffer-source") { BufferedOverwrites(true); return 0; }
   if (argc > 1) { SourceTree(false, true, true); return 0; }
-  NestedLiterals(); SourceTree(false, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }
+  BufferedOverwrites(); NestedLiterals(); SourceTree(false, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }

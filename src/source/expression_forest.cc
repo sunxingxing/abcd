@@ -29,9 +29,10 @@ class ForestBuilder {
   ForestBuilder(const analysis::ValueProgram& graph,
                 const EvaluationPlan& evaluation, FunctionOwnerId owner,
                 ExpressionConstants constants, analysis::SemanticBudget budget,
-                BindingPlan bindings, std::span<const ModuleSymbol> modules, RecoveryMode recovery)
+                BindingPlan bindings, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
+                std::span<const std::u16string> names)
       : graph_(graph), evaluation_(evaluation), owner_(owner), constants_(constants),
-        budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), recovery_(recovery) {
+        budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), recovery_(recovery), names_(names) {
     Require(bindings.allocated_bytes <= bytes_, Error::kResourceLimit);
     bytes_ -= bindings.allocated_bytes;
     Step(bindings.work);
@@ -305,27 +306,78 @@ class ForestBuilder {
     return properties;
   }
   ExprId Object(const ObjectInit& object, TreeOriginId origin) {
-    PropertyRange range{static_cast<std::uint32_t>(forest_.properties.size()), object.count};
     const auto* allocation = std::get_if<analysis::ValueObjectAllocation>(&graph_.ops[object.allocation.value].operation);
     const auto kind = allocation ? AggregateKind::kObject : AggregateKind::kArray;
+    const ObjectConstant* buffer = nullptr;
     if (allocation && allocation->literal) {
-      const auto prefix = BufferedProperties(constants_.operations[object.allocation.value], origin);
-      range.count += prefix.count; // Combined capacity was admitted before construction.
+      buffer = std::get_if<ObjectConstant>(&constants_.operations[object.allocation.value]);
+      Require(buffer != nullptr, Error::kConstant);
     }
+    const auto prefix = buffer ? buffer->count : 0;
+    std::vector<std::optional<analysis::OpId>> writes;
+    std::vector<std::uint32_t> order;
+    Reserve(writes, static_cast<std::size_t>(prefix) + object.count);
+    writes.resize(prefix);
+    Reserve(order, prefix);
+    const auto key = [&](std::uint32_t index) -> std::u16string_view {
+      const auto name = constants_.properties[buffer->first + index].key;
+      Require(name.value < names_.size(), Error::kConstant);
+      return names_[name.value];
+    };
+    if (!names_.empty()) {
+      for (std::uint32_t i = 0; i < prefix; ++i) { Step(); order.push_back(i); }
+      std::sort(order.begin(), order.end(), [&](auto a, auto b) {
+        const auto x = key(a), y = key(b); Step(); Step(x.size()); Step(y.size());
+        return x == y ? a < b : x < y;
+      });
+    }
+    // LiteralPlan proves no observation before initialization finishes. Buffer
+    // values are primitive, so an overwritten buffer value has no effect. Keep
+    // its original key position, but never reorder two own-definition RHSs.
+    // Last duplicate buffer occurrence is essential: a later primitive entry
+    // must not overwrite a relocated RHS. O((P+D) log(P+1)), no per-write scan.
+    std::size_t next = 0;
     for (std::uint32_t i = 0; i < object.count; ++i) {
-      Step();
-      const auto id = evaluation_.literals->definitions[object.first + i];
-      const auto& op = graph_.ops[id.value];
+      Step(); const auto id = evaluation_.literals->definitions[object.first + i];
       const auto* name = std::get_if<NameId>(&constants_.operations[id.value]);
       Require(name && name->value < constants_.name_count, Error::kConstant);
+      std::size_t destination = writes.size();
+      if (!order.empty()) {
+        Require(name->value < names_.size(), Error::kConstant);
+        const std::u16string_view sought = names_[name->value];
+        const auto found = std::upper_bound(order.begin(), order.end(), sought,
+            [&](auto text, auto index) { const auto other = key(index); Step(); Step(text.size()); Step(other.size()); return text < other; });
+        if (found != order.begin()) {
+          const auto index = *(found - 1); const auto text = key(index);
+          Step(sought.size()); Step(text.size());
+          if (text == sought && index >= next) destination = index;
+        }
+      }
+      if (destination == writes.size()) writes.push_back(id);
+      else writes[destination] = id;
+      next = destination + 1;
+    }
+    const PropertyRange range{static_cast<std::uint32_t>(forest_.properties.size()),
+                              static_cast<std::uint32_t>(writes.size())};
+    for (std::size_t i = 0; i < writes.size(); ++i) {
+      Step();
+      if (!writes[i]) {
+        const auto& property = constants_.properties[buffer->first + i];
+        Require(property.key.value < constants_.name_count, Error::kConstant);
+        const auto value = Add(property.value, origin);
+        forest_.properties.push_back({property.key, value, origin});
+        continue;
+      }
+      const auto id = *writes[i]; const auto& op = graph_.ops[id.value];
+      const auto name = std::get<NameId>(constants_.operations[id.value]);
       const TreeOriginId field_origin{op.origin.value};
       const auto value = Operand(graph_.uses[op.first_use.value + 1].operand, field_origin);
       Require(forest_.properties.size() < forest_.properties.capacity(), Error::kResourceLimit);
       const PropertyId property{static_cast<std::uint32_t>(forest_.properties.size())};
-      forest_.properties.push_back({*name, value, field_origin});
+      forest_.properties.push_back({name, value, field_origin});
       forest_.initializers[id.value] = property; forest_.operations[id.value] = value;
     }
-    return Add(ObjectExpr{range, kind}, origin);
+    return Add(ObjectExpr{range, kind, prefix}, origin);
   }
   ExprId Call(const analysis::ValueOp& op, const CallBinding& binding, TreeOriginId origin) {
     const bool member = std::holds_alternative<MemberCall>(binding);
@@ -544,7 +596,8 @@ class ForestBuilder {
         return Add(SymbolConstructorExpr{}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
         if (operation.literal) {
-          return Add(ObjectExpr{BufferedProperties(constant, origin)}, origin);
+          const auto properties = BufferedProperties(constant, origin);
+          return Add(ObjectExpr{properties, AggregateKind::kObject, properties.count}, origin);
         }
         return Add(EmptyObjectExpr{}, origin);
       }
@@ -590,12 +643,13 @@ class ForestBuilder {
   std::vector<std::size_t> module_order_;
   std::size_t next_module_ = 0;
   RecoveryMode recovery_;
+  std::span<const std::u16string> names_;
 };
 std::variant<ExpressionForest, ExpressionError> BuildForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner,
     ExpressionConstants constants, analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules,
-    EvaluationFlow flow, RecoveryMode recovery) {
+    EvaluationFlow flow, RecoveryMode recovery, std::span<const std::u16string> names) {
   auto bindings = flow == EvaluationFlow::kNormal ? BuildBindingPlan(graph, evaluation, parameter_count, budget)
       : BuildPhasedBindingPlan(graph, evaluation, parameter_count, budget);
   if (const auto* error = std::get_if<BindingError>(&bindings)) {
@@ -605,7 +659,7 @@ std::variant<ExpressionForest, ExpressionError> BuildForest(
   }
   try {
     return ForestBuilder(graph, evaluation, owner, constants, budget,
-                         std::get<BindingPlan>(std::move(bindings)), modules, recovery).Build();
+                         std::get<BindingPlan>(std::move(bindings)), modules, recovery, names).Build();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
@@ -614,13 +668,15 @@ std::variant<ExpressionForest, ExpressionError> BuildForest(
 std::variant<ExpressionForest, ExpressionError> BuildExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
-    analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery) {
-  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal, recovery);
+    analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
+    std::span<const std::u16string> names) {
+  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal, recovery, names);
 }
 std::variant<ExpressionForest, ExpressionError> BuildPhasedExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
-    analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery) {
-  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kPhased, recovery);
+    analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
+    std::span<const std::u16string> names) {
+  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kPhased, recovery, names);
 }
 }  // namespace abcd::source

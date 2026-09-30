@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-01：共同树消除可安全合并的缓冲对象占位
+
+- 共同表达式构建按实际 UTF-16 属性名定位缓冲区最后一个同名位置，
+  在保持 own-write RHS 单调求值顺序时将最终值写回该位置。保留原始键
+  插入顺序，不产生先写入后覆盖的占位表达式；逆序和重复 own-write
+  无法合并时保留追加形式，不丢弃 RHS。只消费既有 LiteralPlan 的未观察
+  初始化证明及 primitive 缓冲值，配对源码仍完全在测试侧。
+- ObjectExpr 保留原始缓冲前缀长度；独立树检查验证实际键、每次 own-write
+  的唯一位置、RHS 顺序、最后同名缓冲项和原始 PC。覆写值归属 store，
+  allocation 仍拥有对象及未覆写的缓冲常量；不以 printer 隐藏属性绕过验证。
+  排序/二分代替逐写扫描，名称比较和存储计入现有预算。
+- Immersive Constants entry 8889 的真实输出已无 title/name/children/params
+  的 null 占位，输出 1316 字节；独立配对 oracle 同时验证行为和该项表示要求。
+  2/200/201/402 项覆盖正序、逆序、缓冲重复键、同名不同 NameId，另有
+  篡改缓冲长度、错误覆写位置及 RHS 重排反例。Node 独立执行 12 组生成
+  函数，核验 own keys、descriptor、__proto__ 数据属性及继承 setter 不调用。
+- 9 项定向 CTest 全通过（6.98 秒）：literal plan、缓冲运行时对照、
+  tree structure、function tree、class context、record tree/运行时、
+  Constants 独立对照、phased literal。构建和测试日志分别为
+  /tmp/abcd-buffer-fold-final-build.log、/tmp/abcd-buffer-fold-final-tests.log。
+- 当前批量 Immersive 仍为 45 records：1 完整恢复、34 恢复失败、10 无模块。
+  产物 build/stage-one/Immersive/value-buffer-fold-pass-1，manifest 已核对。
+  Constants 仍有根临时变量、机械括号及单行嵌套表示，完整表示质量未验收；
+  模块 import/子函数贯通及其余阶段一样本仍未完成。未执行全量测试、
+  RSS 专项、基准、其他语料或代理，不以工具成功或单 record 代替整体完成。
+
 ### 2026-10-01：对象属性原生表示与常量传播集成回归修复
 
 - 共同 tree printer 复用 ClassifyObjectKey，将普通 ASCII IdentifierName

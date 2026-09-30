@@ -913,6 +913,8 @@ if(BUILD_TESTING)
   target_include_directories(constant_group_fixture PRIVATE tests/support)
   target_link_libraries(constant_group_fixture PRIVATE abcd_source abcd_json)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME literal_buffer_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_buffer.mjs $<TARGET_FILE:literal_plan_test>)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
       add_test(NAME value_constants_record_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_constants_record.mjs $<TARGET_FILE:abc_semantic>

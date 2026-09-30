@@ -64,6 +64,8 @@ enum class ExpressionError : std::uint8_t {
 // still have to be checked after statement assembly.
 // Module symbols are the caller's conditional alias order. Their local SymbolIds
 // append after bindings.symbols; FunctionTree must retain that exact order.
+// Optional names enable buffered overwrite folding by actual key spelling;
+// without them preserve the original buffer plus ordered definition suffix.
 // AllowPartial can return recovery_stop for a supported straight-line prefix;
 // its expressions are still exclusively owned by the retained root operations.
 [[nodiscard]] std::variant<ExpressionForest, ExpressionError>
@@ -71,12 +73,14 @@ BuildExpressionForest(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, std::uint32_t parameter_count,
     FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget = {}, std::span<const ModuleSymbol> modules = {},
-    RecoveryMode recovery = RecoveryMode::kCompleteOnly);
+    RecoveryMode recovery = RecoveryMode::kCompleteOnly,
+    std::span<const std::u16string> names = {});
 [[nodiscard]] std::variant<ExpressionForest, ExpressionError>
 BuildPhasedExpressionForest(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, std::uint32_t parameter_count,
     FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget = {}, std::span<const ModuleSymbol> modules = {},
-    RecoveryMode recovery = RecoveryMode::kCompleteOnly);
+    RecoveryMode recovery = RecoveryMode::kCompleteOnly,
+    std::span<const std::u16string> names = {});
 }  // namespace abcd::source
 #endif
