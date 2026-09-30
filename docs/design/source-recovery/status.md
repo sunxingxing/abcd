@@ -12,6 +12,31 @@
 
 ## 当前阶段
 
+### 2026-09-30：generator 注入 RETURN 的循环清理纵向验收
+
+- 将 inline RETURN 清理的后向分支带入真实 opcode 文件解码用例，经共同
+  SSA/效果/exception-loop/RegionPlan/FunctionTree/Printer 完整输出并执行。
+  首轮即通过，说明现有共同循环恢复已经能消费这个组合；本项没有新增
+  generator 循环算法、专项 writer、预算计费或输出许可。
+- 新 `file_generator_return_loop_source_test` 消费 24 个完整函数族：三
+  profile × 三父级环境 × 有无用户 catch 的 18 个双暂停点组合，以及
+  200/201/402 个 loop-body 调用 × 16/32 位恢复分支的 6 个组合。真实清理
+  CFG 的 JEQZ/JMP 使用 imm32，来源 PC 仍由共同路径保留；用外部 setter
+  在 callback 中改变捕获 cell，验证每轮重新读取、0/1/2/7 轮的实际调用
+  次数、跳过 RETURN loop 的 NEXT/THROW、callback receiver、原 catch
+  二次清理、先后错误身份和初次 next 前的 return/throw 懒执行。
+- 18 个协议反例覆盖三个恢复分支宽度下的未初始化 accumulator 入口、
+  跳过 payload load、外部进入 loop 清理，以及私有 result/mode/state
+  读取。它们检查真实控制/值边界，不按 loop 条数或 work 计数拒绝产出。
+- `loop_closure_file_test` 重新构建成功，39/39 相关定向测试通过
+  （39.95 秒）：`/tmp/abcd-generator-return-loop-final-build.log`、
+  `/tmp/abcd-generator-return-loop-final-tests.log`；`git diff --check` 通过。
+  夹具为真实 opcode 文件解码及合成元数据，不冒充真实应用验收。
+- C07/总目标仍开放：循环内显式 completion 覆盖、嵌套/多出口清理、
+  RETURN 清理再次暂停、跨块 accumulator 输入、入口默认值/解构、
+  self/super、yield*、async generator 与结构 gate 等继续推进。全量测试、
+  语料、RSS、基准仍暂停；历史两个 base_function 失败未重跑/修复。
+
 ### 2026-09-30：generator 注入 RETURN 的显式 return/throw 覆盖
 
 - 支持 RETURN 内联清理中的实际 return/throw，以及捕获 cell 控制的条件
