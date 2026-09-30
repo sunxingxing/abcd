@@ -504,6 +504,12 @@ class FlowCheck {
       if (op.life != analysis::ValueLife::kLive) continue;
       Require(placements_[i].has_value(), Error::kPlacement);
       const auto& placement = tree_.operations[*placements_[i]].node;
+      // Class member installations retain a PC anchor, not an object-literal
+      // PropertyId. Their class owner/body correspondence is checked separately.
+      if (evaluation_.operations[i].kind == EvaluationKind::kClassProjection) {
+        Require(std::holds_alternative<AnchorId>(placement), Error::kPlacement);
+        continue;
+      }
       if (!IsReceiverField(graph_, op) && (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
         const auto* property = std::get_if<PropertyId>(&placement);
         Require(property != nullptr, Error::kPlacement);
@@ -519,7 +525,7 @@ class FlowCheck {
           std::holds_alternative<analysis::ValueThrow>(op.operation) ||
           std::holds_alternative<analysis::ValueReturn>(op.operation)) {
         Require(std::holds_alternative<StmtId>(placement), Error::kPlacement);
-      } else if (evaluation_.operations[i].kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
+      } else if (IsAbsentHeritageTransport(graph_, evaluation_, op) ||
               std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
           evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
           evaluation_.operations[i].kind == EvaluationKind::kAlias) {

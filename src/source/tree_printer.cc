@@ -649,7 +649,7 @@ class TreePrinter {
       if (!class_root_->Constructor() && class_root_->Placement() == abc::ClassPlacement::kStatic) Append("static ");
       if (Tree().callable == CallableKind::kAsyncMethod) Append("async ");
       if (IsGeneratorCallable(Tree().callable)) Append("*");
-      if (const auto* accessor = class_root_->Accessor()) {
+      if (const auto* accessor = class_root_->DefinedMember(); accessor && accessor->kind != abc::ClassMethodKind::kOrdinary) {
         if (Tree().callable != CallableKind::kMethod || Tree().parameters.size() !=
             (accessor->kind == abc::ClassMethodKind::kGetter ? 0U : 1U)) throw Error::kUnsupportedContext;
         Append(accessor->kind == abc::ClassMethodKind::kGetter ? "get " : "set ");
@@ -1037,9 +1037,9 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassT
       return Failure::kUnsupportedContext;
     PrintedClassTree result;
     auto count = tree.members.size() + 1;
-    for (const auto& accessor : tree.accessors) {
+    for (const auto& accessor : tree.definitions) {
       if (!budget.work) return Failure::kWorkLimit;
-      --budget.work; count += accessor.getter.has_value() + accessor.setter.has_value();
+      --budget.work; count += accessor.bodies[0].has_value() + accessor.bodies[1].has_value();
     }
     if (count > budget.bytes / sizeof(PrintedClassTree::Member)) return Failure::kResourceLimit;
     budget.bytes -= count * sizeof(PrintedClassTree::Member); result.members.reserve(count);
@@ -1089,22 +1089,24 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassT
           site->pc != tree.creation.pc || site->property != i) throw Failure::kUnsupportedContext;
       member(family);
     }
-    std::optional<analysis::OpId> previous_accessor;
-    for (const auto& accessor : tree.accessors) {
-      if (tree.initializer || (previous_accessor && *previous_accessor >= accessor.site.definition) ||
-          accessor.getter.has_value() != accessor.site.getter.has_value() ||
-          accessor.setter.has_value() != accessor.site.setter.has_value()) throw Failure::kUnsupportedContext;
-      previous_accessor = accessor.site.definition;
-      const auto emit_accessor = [&](const PreparedFamily& family, abc::ClassMethodKind kind) {
-        const auto* site = family.AccessorCreation();
+    std::optional<analysis::OpId> previous_definition;
+    for (const auto& accessor : tree.definitions) {
+      if (tree.initializer || (previous_definition && *previous_definition >= accessor.site.definition))
+        throw Failure::kUnsupportedContext;
+      previous_definition = accessor.site.definition;
+      const auto emit_member = [&](const PreparedFamily& family, abc::ClassMethodKind kind) {
+        const auto* site = family.DefinedMemberCreation();
         if (!site || family.Identity() != tree.identity || site->function.creator != tree.creation.creator ||
             site->definition != accessor.site.definition || site->kind != kind ||
             site->placement != (accessor.site.prototype ? abc::ClassPlacement::kPrototype : abc::ClassPlacement::kStatic))
           throw Failure::kUnsupportedContext;
         member(family);
       };
-      if (accessor.getter) emit_accessor(*accessor.getter, abc::ClassMethodKind::kGetter);
-      if (accessor.setter) emit_accessor(*accessor.setter, abc::ClassMethodKind::kSetter);
+      const auto methods = accessor.site.Methods();
+      for (std::size_t i = 0; i < methods.size(); ++i) {
+        if (accessor.bodies[i].has_value() != methods[i].operation.has_value()) throw Failure::kUnsupportedContext;
+        if (accessor.bodies[i]) emit_member(*accessor.bodies[i], methods[i].kind);
+      }
     }
     if (tree.initializer) {
       const auto& initializer = *tree.initializer;

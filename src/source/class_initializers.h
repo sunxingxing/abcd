@@ -2,7 +2,7 @@
 #define ABCD_SOURCE_CLASS_INITIALIZERS_H_
 #include "abcd/analysis/value_ir.h"
 #include <span>
-#include "class_accessors.h"
+#include "class_definitions.h"
 namespace abcd::source {
 struct ClassInitializerCall {
   analysis::OpId creation;
@@ -39,6 +39,6 @@ struct ClassProjection {
 };
 [[nodiscard]] std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
     const analysis::ValueProgram&, std::span<const ClassInitializerCall>, analysis::SemanticBudget = {},
-    std::span<const ClassAccessorSite> = {});
+    std::span<const ClassDefinitionSite> = {});
 }
 #endif

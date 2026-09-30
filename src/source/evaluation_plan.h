@@ -61,7 +61,7 @@ struct EvaluationPlan {
   std::optional<HoleProtocol> holes;
   std::vector<ClassInitializerCall> class_initializers;
   ClassProjection class_projection;
-  std::vector<ClassAccessorSite> class_accessors;
+  std::vector<ClassDefinitionSite> class_definitions;
   analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown;
 };
 inline analysis::ValueId ResolveEvaluationValue(const EvaluationPlan& plan, analysis::ValueId value) {
@@ -153,7 +153,7 @@ struct EvaluationShape {
     std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {},
     std::span<const ClassInitializerCall> initializers = {},
     analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown,
-    std::span<const ClassAccessorSite> accessors = {});
+    std::span<const ClassDefinitionSite> definitions = {});
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and availability. Cross-phase expressions require
 // contiguous effect intervals and equal catch snapshots at their final roots.

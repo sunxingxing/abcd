@@ -5,7 +5,7 @@
 namespace abcd::source {
 std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
     const analysis::ValueProgram& graph, std::span<const ClassInitializerCall> requested,
-    analysis::SemanticBudget budget, std::span<const ClassAccessorSite> accessors) {
+    analysis::SemanticBudget budget, std::span<const ClassDefinitionSite> definitions) {
   using namespace analysis;
   using Error = ClassInitializerError;
   const auto initial = budget;
@@ -18,19 +18,19 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
       require(n <= budget.bytes / width, Error::kResourceLimit); budget.bytes -= n * width;
     };
     ClassProjection result;
-    auto accessor_result = ProjectClassAccessors(graph, accessors, budget);
-    if (const auto* error = std::get_if<ClassAccessorError>(&accessor_result)) {
+    auto member_result = ProjectClassDefinitions(graph, definitions, budget);
+    if (const auto* error = std::get_if<ClassDefinitionError>(&member_result)) {
       switch (*error) {
-        case ClassAccessorError::kInput: return Error::kInput;
-        case ClassAccessorError::kFlow: return Error::kFlow;
-        case ClassAccessorError::kResourceLimit: return Error::kResourceLimit;
-        case ClassAccessorError::kWorkLimit: return Error::kWorkLimit;
+        case ClassDefinitionError::kInput: return Error::kInput;
+        case ClassDefinitionError::kFlow: return Error::kFlow;
+        case ClassDefinitionError::kResourceLimit: return Error::kResourceLimit;
+        case ClassDefinitionError::kWorkLimit: return Error::kWorkLimit;
       }
     }
-    auto accessor_projection = std::get<ClassAccessorProjection>(std::move(accessor_result));
-    admit(accessor_projection.allocated_bytes, 1); step(accessor_projection.work);
-    result.owners = std::move(accessor_projection.owners);
-    result.prototypes = std::move(accessor_projection.prototypes);
+    auto member_projection = std::get<ClassDefinitionProjection>(std::move(member_result));
+    admit(member_projection.allocated_bytes, 1); step(member_projection.work);
+    result.owners = std::move(member_projection.owners);
+    result.prototypes = std::move(member_projection.prototypes);
     if (requested.empty()) {
       result.allocated_bytes = initial.bytes - budget.bytes; result.work = initial.work - budget.work;
       return result;

@@ -81,7 +81,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     std::vector<std::size_t> environment_epochs(graph.ops.size());
     admit(environment_epochs.capacity() - graph.ops.size(), sizeof(std::size_t));
     std::size_t environment_epoch = 0;
-    auto projected = ProjectClassMembers(graph, plan.class_initializers, {bytes, work}, plan.class_accessors);
+    auto projected = ProjectClassMembers(graph, plan.class_initializers, {bytes, work}, plan.class_definitions);
     if (const auto* error = std::get_if<ClassInitializerError>(&projected))
       return *error == ClassInitializerError::kResourceLimit ? Error::kResourceLimit :
           *error == ClassInitializerError::kWorkLimit ? Error::kWorkLimit : Error::kOwnership;
@@ -100,7 +100,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
           std::holds_alternative<analysis::ValueArgumentSnapshot>(op.operation);
       if (op.life == analysis::ValueLife::kLive && IsEnvironmentState(op.operation)) ++environment_epoch;
       environment_epochs[i] = environment_epoch;
-      step(); has_definitions |= op.life == analysis::ValueLife::kLive &&
+      step(); has_definitions |= !projected_op(i) && op.life == analysis::ValueLife::kLive &&
           (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
       if (op.life == analysis::ValueLife::kLive && !projected_op(i) && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
@@ -134,7 +134,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     if (plan.literals) {
       const auto checked = flow == EvaluationFlow::kPhased ?
           VerifyPhasedLiteralPlan(graph, *plan.literals, plan, {bytes, work}) :
-          VerifyLiteralPlan(graph, *plan.literals, {bytes, work}, module_index.peers);
+          VerifyLiteralPlan(graph, *plan.literals, {bytes, work}, module_index.peers, plan.class_projection.owners);
       if (const auto* error = std::get_if<LiteralError>(&checked)) {
         if (*error == LiteralError::kResourceLimit) return Error::kResourceLimit;
         if (*error == LiteralError::kWorkLimit) return Error::kWorkLimit;

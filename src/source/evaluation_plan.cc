@@ -18,7 +18,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
     EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
-    analysis::ClosureWrites closure_writes, std::span<const ClassAccessorSite> accessors) {
+    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions) {
   try {
     Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
     auto work = budget.work;
@@ -50,7 +50,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     plan.flow = flow;
     plan.closure_writes = closure_writes;
     plan.arguments = graph.arguments;
-    auto projected = ProjectClassMembers(graph, initializers, {bytes, work}, accessors);
+    auto projected = ProjectClassMembers(graph, initializers, {bytes, work}, definitions);
     if (const auto* error = std::get_if<ClassInitializerError>(&projected))
       return *error == ClassInitializerError::kResourceLimit ? Error::kResourceLimit :
           *error == ClassInitializerError::kWorkLimit ? Error::kWorkLimit : Error::kOwnership;
@@ -58,9 +58,9 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     admit(plan.class_projection.allocated_bytes, 1); step(plan.class_projection.work);
     admit(initializers.size(), sizeof(ClassInitializerCall));
     plan.class_initializers.assign(initializers.begin(), initializers.end());
-    admit(accessors.size(), sizeof(ClassAccessorSite));
-    plan.class_accessors.assign(accessors.begin(), accessors.end());
-    admit(plan.class_accessors.capacity() - accessors.size(), sizeof(ClassAccessorSite));
+    admit(definitions.size(), sizeof(ClassDefinitionSite));
+    plan.class_definitions.assign(definitions.begin(), definitions.end());
+    admit(plan.class_definitions.capacity() - definitions.size(), sizeof(ClassDefinitionSite));
     admit(plan.class_initializers.capacity() - initializers.size(), sizeof(ClassInitializerCall));
     const auto projected_op = [&](std::size_t i) {
       return !plan.class_projection.owners.empty() && plan.class_projection.owners[i].has_value();
@@ -104,7 +104,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       const auto& op = graph.ops[i];
       has_arguments |= op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueArgumentSnapshot>(op.operation);
-      step(); has_definitions |= op.life == analysis::ValueLife::kLive &&
+      step(); has_definitions |= !projected_op(i) && op.life == analysis::ValueLife::kLive &&
           (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
       if (op.life == analysis::ValueLife::kLive && !projected_op(i) && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
@@ -193,7 +193,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     }
     if (has_definitions) {
       auto built = flow == EvaluationFlow::kPhased ? BuildPhasedLiteralPlan(graph, plan, {bytes, work}) :
-          BuildLiteralPlan(graph, {bytes, work}, module_index.peers);
+          BuildLiteralPlan(graph, {bytes, work}, module_index.peers, plan.class_projection.owners);
       const auto* error = std::get_if<LiteralError>(&built);
       if (error) {
         if (*error == LiteralError::kResourceLimit) return Error::kResourceLimit;
@@ -344,7 +344,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         plan.functions.capacity() * sizeof(FunctionBinding) +
         plan.modules.capacity() * sizeof(ModuleEvaluation) +
         plan.class_initializers.capacity() * sizeof(ClassInitializerCall) + plan.class_projection.allocated_bytes +
-        plan.class_accessors.capacity() * sizeof(ClassAccessorSite) +
+        plan.class_definitions.capacity() * sizeof(ClassDefinitionSite) +
         (plan.phis ? plan.phis->allocated_bytes : 0) +
         (plan.literals ? plan.literals->allocated_bytes : 0);
     if (plan.cells) plan.allocated_bytes += plan.cells->allocated_bytes;
@@ -362,8 +362,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
 std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
-    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, std::span<const ClassAccessorSite> accessors) {
-  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands, initializers, closure_writes, accessors);
+    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions) {
+  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands, initializers, closure_writes, definitions);
 }
 std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,

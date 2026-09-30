@@ -44,27 +44,28 @@ class OperandCheck {
           site->pc == graph_.origins[graph_.ops[call.method.value].origin.value].pc &&
           site->creation.method == method->method, Error::kConstant);
     }
-    for (const auto& accessor : evaluation_.class_accessors) {
+    for (const auto& definition_site : evaluation_.class_definitions) {
       budget_.Step();
-      RequireMeaning(accessor.creation.value < constants_.operations.size(), Error::kConstant);
-      const auto* definition = std::get_if<std::shared_ptr<const ClassTree>>(&constants_.operations[accessor.creation.value]);
+      RequireMeaning(definition_site.creation.value < constants_.operations.size(), Error::kConstant);
+      const auto* definition = std::get_if<std::shared_ptr<const ClassTree>>(&constants_.operations[definition_site.creation.value]);
       RequireMeaning(definition && *definition, Error::kConstant);
-      const auto& members = (*definition)->accessors;
-      const auto found = std::lower_bound(members.begin(), members.end(), accessor.definition,
+      const auto& members = (*definition)->definitions;
+      const auto found = std::lower_bound(members.begin(), members.end(), definition_site.definition,
           [&](const auto& member, auto id) { budget_.Step(); return member.site.definition < id; });
-      RequireMeaning(found != members.end() && found->site == accessor &&
-          found->getter.has_value() == accessor.getter.has_value() &&
-          found->setter.has_value() == accessor.setter.has_value(), Error::kConstant);
+      RequireMeaning(found != members.end() && found->site == definition_site, Error::kConstant);
       const auto check = [&](const PreparedFamily& family, analysis::OpId method_id, abc::ClassMethodKind kind) {
-        budget_.Step(); const auto* site = family.AccessorCreation();
+        budget_.Step(); const auto* site = family.DefinedMemberCreation();
         const auto* method = std::get_if<analysis::ValueFunctionCreation>(&graph_.ops[method_id.value].operation);
         RequireMeaning(site && method && family.Identity() == tree_.identity &&
-            site->function.creator == tree_.method && site->definition == accessor.definition && site->kind == kind &&
+            site->function.creator == tree_.method && site->definition == definition_site.definition && site->kind == kind &&
             site->function.pc == graph_.origins[graph_.ops[method_id.value].origin.value].pc &&
             site->function.creation.method == method->method, Error::kConstant);
       };
-      if (found->getter) check(*found->getter, *accessor.getter, abc::ClassMethodKind::kGetter);
-      if (found->setter) check(*found->setter, *accessor.setter, abc::ClassMethodKind::kSetter);
+      const auto methods = definition_site.Methods();
+      for (std::size_t i = 0; i < methods.size(); ++i) {
+        RequireMeaning(found->bodies[i].has_value() == methods[i].operation.has_value(), Error::kConstant);
+        if (found->bodies[i]) check(*found->bodies[i], *methods[i].operation, methods[i].kind);
+      }
     }
     std::size_t next_function = 0;
     std::size_t next_module = 0;

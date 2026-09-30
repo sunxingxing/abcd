@@ -22,7 +22,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
     const analysis::FunctionCreationSites& functions, const analysis::ClassMethodSites& classes,
     const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
-    const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer, std::span<const ClassAccessorSite> accessors) {
+    const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer, std::span<const ClassDefinitionSite> definitions) {
   const auto initial = budget;
   try {
     const auto admit = [&](std::size_t count, std::size_t width) {
@@ -77,24 +77,25 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     // The enclosing evaluation independently proves these definitions movable.
     // Retain their actual wire order and both halves of each descriptor; never
     // sort by property key or drop a superseded body's preparation obligation.
-    std::vector<ClassAccessorTree> accessor_trees;
-    admit(accessors.size(), sizeof(ClassAccessorTree)); accessor_trees.reserve(accessors.size());
-    admit(accessor_trees.capacity() - accessors.size(), sizeof(ClassAccessorTree));
+    std::vector<ClassDefinitionTree> defined_members;
+    admit(definitions.size(), sizeof(ClassDefinitionTree)); defined_members.reserve(definitions.size());
+    admit(defined_members.capacity() - definitions.size(), sizeof(ClassDefinitionTree));
     std::optional<analysis::OpId> previous;
-    for (const auto& accessor : accessors) {
+    for (const auto& definition_site : definitions) {
       step(1);
-      if (accessor.creation != operation || (previous && *previous >= accessor.definition) || initializer)
+      if (definition_site.creation != operation || (previous && *previous >= definition_site.definition) || initializer)
         return ClassTreeFailure{Error::kCreation};
-      previous = accessor.definition;
-      ClassAccessorTree tree{accessor};
+      previous = definition_site.definition;
+      ClassDefinitionTree tree{definition_site};
       const auto prepare = [&](abc::ClassMethodKind kind) {
-        auto member = Take<PreparedFamily>(PreparedFamily::PrepareAccessor(file, header, index, lookup, roles,
-            functions, creator, accessor.definition, kind, identity, destination, budget));
+        auto member = Take<PreparedFamily>(PreparedFamily::PrepareDefinedMember(file, header, index, lookup, roles,
+            functions, creator, definition_site.definition, kind, identity, destination, budget));
         admit(member.AllocatedBytes(), 1); step(member.Work()); return member;
       };
-      if (accessor.getter) tree.getter = prepare(abc::ClassMethodKind::kGetter);
-      if (accessor.setter) tree.setter = prepare(abc::ClassMethodKind::kSetter);
-      accessor_trees.push_back(std::move(tree));
+      const auto methods = definition_site.Methods();
+      for (std::size_t i = 0; i < methods.size(); ++i)
+        if (methods[i].operation) tree.bodies[i] = prepare(methods[i].kind);
+      defined_members.push_back(std::move(tree));
     }
     std::optional<ClassStaticFields> fields;
     if (initializer) {
@@ -139,7 +140,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       fields = ClassStaticFields{*initializer, std::move(body.context), std::move(built.tree), body.function.input.Record()};
     }
     if (file.CheckUnchanged()) return ClassTreeFailure{abc::MetadataError::kFileChanged};
-    return ClassTree{identity, site, std::move(spelling), std::move(constructor), std::move(members), std::move(accessor_trees), std::move(fields),
+    return ClassTree{identity, site, std::move(spelling), std::move(constructor), std::move(members), std::move(defined_members), std::move(fields),
         initial.bytes - budget.bytes, initial.work - budget.work};
   } catch (const ClassTreeFailure& failure) { return failure; }
     catch (const std::bad_alloc&) { return ClassTreeFailure{Error::kResourceLimit}; }

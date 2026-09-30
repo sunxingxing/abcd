@@ -13,10 +13,10 @@ class FunctionContext {
   const ClassTreeContext* ClassContext() const { return std::get_if<ClassTreeContext>(&context_); }
   const analysis::ClassMethodSite* ClassSite() const {
     const auto* context = std::get_if<ClassTreeContext>(&context_);
-    return context && !context->Constructor() && !context->Accessor() ? &context->Site() : nullptr;
+    return context && !context->Constructor() && !context->DefinedMember() ? &context->Site() : nullptr;
   }
   const analysis::FunctionCreationSite* CreationSite() const {
-    if (const auto* owner = ClassContext(); owner && owner->Accessor()) return &owner->Accessor()->function;
+    if (const auto* owner = ClassContext(); owner && owner->DefinedMember()) return &owner->DefinedMember()->function;
     const auto* context = std::get_if<CreationTreeContext>(&context_);
     return context ? &context->Site() : nullptr;
   }

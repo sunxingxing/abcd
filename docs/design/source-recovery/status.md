@@ -12,6 +12,47 @@
 
 ## 当前阶段
 
+### 2026-10-01：普通后置类方法与访问器按原始顺序共同恢复
+
+- 固定 OH7 RuntimeStOwnByName 证实类/原型上的 STOWNBYNAME 定义 writable、
+  configurable、non-enumerable 的 own data property，不能替换成普通赋值。
+  将访问器专用 occurrence/projection 泛化为 ClassDefinitionSite / FindClassDefinitions /
+  ProjectClassDefinitions，用 variant 区分普通方法和 getter/setter 对。源码文件统一为
+  class_definitions、class_definition_projection、defined_member_context，移除旧内部
+  accessor-only API；没有引入样本旁路或字符串语义分发。
+- 同一有序定义链同时承接普通方法、访问器及其互相覆盖，复用 class/home、唯一消费、
+  无外部观察区间、key/运行时名字、原始创建 PC 和实际 PreparedFamily 检查。
+  ClassTree 的定义正文与 getter/setter 不再分开排序，原生方法仍不可构造；仍不接纳
+  普通 [[Set]]、DefineField 或额外 name-setting 操作。
+- 修复两处贯通冲突：共同 LiteralPlan/独立 verifier 使用已证明的 class projection
+  排除方法安装，保留同一图中真实对象字面量的完整覆盖；TreeFlow 在判断 own-write
+  的 PropertyId 前先核对类投影 AnchorId。混合测试初次在 tree_flow.cc 的 placement
+  检查失败，LLDB 定位后修正，没有删除外层验证。
+- 合成 ABC 外层工厂新增普通方法覆盖访问器、访问器覆盖普通方法、重复定义和
+  同图普通对象字面量。实际生成源码与独立 native class 比较最终属性种类、丢弃的
+  getter/setter 半部、name/length、descriptor、receiver/Proxy 轨迹、异常和身份。
+  三个动态 profile 上普通方法的 1/200/201/402 和逃逸/错误 home/环境屏障等负例通过。
+- 真实 Index entry10009 的九个后置定义均被共同证明：四个 accessor，加上安装 PC
+  218/230/242/254/266 的 go、NavPageMap、initialRender、rerender、getEntryName。
+  共享 prototype 的所有相关使用现均属于投影。新增真实 getEntryName 的共同正文
+  prepare/print/执行对照（返回 Index，原生静态方法 descriptor/不可构造性）；这不等于
+  其余四个普通方法正文或完整页面已完成。
+- 构建成功：/tmp/abcd-class-definition-regression-build.log、
+  /tmp/abcd-class-definition-file-build.log。十六项定向回归全部通过（13.49 秒），
+  /tmp/abcd-class-definition-regression-tests.log；中间失败/修复证据见
+  /tmp/abcd-class-definition-tests.log、/tmp/abcd-class-definition-flow-tests.log。
+- 五输入重新正式导出至 build/stage-one/value-class-definitions-pass-1，仍为
+  34 complete / 72 failure / 46 no-module，无已完整项退化、无 legacy writer，
+  /tmp/abcd-class-definitions-batch-summary.json。未恢复全量测试/RSS/其他 corpus。
+- Index 正式 record 仍 kValue、source_complete=false，
+  /tmp/abcd-class-definition-index.json。精确未绑定创建点现为普通函数 PC77/285
+  （methods9698/9726），测试断言二者仍不得被成员投影丢弃。9698 独立条件函数族
+  及树准备成功；9726 独立根探测为 CaptureEvaluationError::kOuterCapture，需在
+  实际父层绑定捕获，不能将其根探测失败等同函数本身不可恢复。证据为
+  /tmp/abcd-index-function-9698.json、/tmp/abcd-index-function-9726.json。
+  下一步在 record 外层组合真实函数族/捕获，再继续派生构造与 heritage；阶段一未完成。
+
+
 ### 2026-10-01：后置访问器组合进入共同类树与外层求值验证
 
 - 新 ProjectClassAccessors 复核实际 occurrence，使用一次 class/prototype use census、

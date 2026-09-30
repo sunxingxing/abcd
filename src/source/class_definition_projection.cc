@@ -1,14 +1,14 @@
-#include "class_accessors.h"
+#include "class_definitions.h"
 #include "cell_evaluation.h"
 #include "../analysis/value_edits.h"
 #include <new>
 #include <stdexcept>
 namespace abcd::source {
-std::variant<ClassAccessorProjection, ClassAccessorError> ProjectClassAccessors(
-    const analysis::ValueProgram& graph, std::span<const ClassAccessorSite> requested,
+std::variant<ClassDefinitionProjection, ClassDefinitionError> ProjectClassDefinitions(
+    const analysis::ValueProgram& graph, std::span<const ClassDefinitionSite> requested,
     analysis::SemanticBudget budget) {
   using namespace analysis;
-  using Error = ClassAccessorError;
+  using Error = ClassDefinitionError;
   const auto initial = budget;
   try {
     const auto require = [](bool ok, Error error = Error::kInput) { if (!ok) throw error; };
@@ -18,14 +18,14 @@ std::variant<ClassAccessorProjection, ClassAccessorError> ProjectClassAccessors(
     const auto admit = [&](std::size_t n, std::size_t width) {
       require(n <= budget.bytes / width, Error::kResourceLimit); budget.bytes -= n * width;
     };
-    ClassAccessorProjection result;
+    ClassDefinitionProjection result;
     if (requested.empty()) return result;
-    auto discovered = FindClassAccessors(graph, budget);
+    auto discovered = FindClassDefinitions(graph, budget);
     if (const auto* error = std::get_if<Error>(&discovered)) return *error;
-    const auto& candidates = std::get<ClassAccessorSites>(discovered);
+    const auto& candidates = std::get<ClassDefinitionSites>(discovered);
     admit(candidates.allocated_bytes, 1); step(candidates.work);
     // Dense operation indexes and prefix sums make the class use census once
-    // per class, not once per accessor. Shared prototype reads are claimed once.
+    // per class, not once per member. Shared prototype reads are claimed once.
     struct Corridor { std::optional<OpId> last; std::size_t effects = 0; };
     admit(graph.ops.size(), sizeof(Corridor));
     std::vector<Corridor> corridors(graph.ops.size());
@@ -68,12 +68,12 @@ std::variant<ClassAccessorProjection, ClassAccessorError> ProjectClassAccessors(
         if (shared) result.prototypes.push_back(id);
       };
       claim(site.definition);
-      if (site.getter) claim(*site.getter);
-      if (site.setter) claim(*site.setter);
+      for (const auto& method : site.Methods()) if (method.operation) claim(*method.operation);
       if (site.prototype) claim(*site.prototype, true);
-      // The VM returns the home object. Until source alias correspondence is
+      // An accessor definition returns its home object. Until alias correspondence is
       // established, even a later use must not disappear with the definition.
-      require(!graph.values[graph.ops[site.definition.value].result->value].first_use, Error::kFlow);
+      const auto value = graph.ops[site.definition.value].result;
+      require(!value || !graph.values[value->value].first_use, Error::kFlow);
     }
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       step(); const auto& corridor = corridors[i];
@@ -112,7 +112,7 @@ std::variant<ClassAccessorProjection, ClassAccessorError> ProjectClassAccessors(
     }
     // Literal key/name-flag leaves with no remaining consumer belong to the
     // same projection. Keep shared/external leaves; never erase an evaluation
-    // merely because the accessor itself no longer has a source statement.
+    // merely because its member definition no longer has a source statement.
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       step(); const auto& op = graph.ops[i];
       if (op.life != ValueLife::kLive || !op.result || !CanErasePureOp(op)) continue;

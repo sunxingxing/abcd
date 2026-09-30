@@ -44,3 +44,16 @@ for (const key of ['navPageInfos', 'windowUtil']) {
   }
 }
 console.log('Actual ABC accessor bodies preserve native descriptors, names, receiver and abrupt completion');
+
+// A real ordinary static member prepared through the same class owner path.
+const ordinarySource = execFileSync(process.argv[2], [process.argv[3], '--static-method'], {encoding: 'utf8', timeout: 60_000});
+const Ordinary = vm.runInNewContext(ordinarySource);
+assert.equal(Ordinary.getEntryName(), 'Index');
+const ordinary = Object.getOwnPropertyDescriptor(Ordinary, 'getEntryName');
+assert.equal(ordinary.enumerable, false);
+assert.equal(ordinary.configurable, true);
+assert.equal(ordinary.writable, true);
+assert.equal(ordinary.value.name, 'getEntryName');
+assert.equal(ordinary.value.length, 0);
+assert.equal(Object.hasOwn(ordinary.value, 'prototype'), false);
+assert.throws(() => new ordinary.value(), e => e.name === 'TypeError');

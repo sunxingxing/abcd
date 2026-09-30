@@ -52,7 +52,7 @@ class PreparedFamily {
       const analysis::FunctionCreationSites&, const FileFunction& creator,
       analysis::OpId creation, RouteInputIdentity, FamilyDestination,
       analysis::SemanticBudget budget = {});
-  [[nodiscard]] static std::variant<PreparedFamily, FamilyPrepareFailure> PrepareAccessor(
+  [[nodiscard]] static std::variant<PreparedFamily, FamilyPrepareFailure> PrepareDefinedMember(
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       const abc::MethodLookup&, const analysis::MethodRoleIndex&,
       const analysis::FunctionCreationSites&, const FileFunction&, analysis::OpId,
@@ -60,7 +60,7 @@ class PreparedFamily {
   [[nodiscard]] const ConstructedFamily& Family() const;
   [[nodiscard]] const RouteInputIdentity& Identity() const;
   [[nodiscard]] const analysis::ClassMethodSite* ClassCreation() const;
-  [[nodiscard]] const ClassAccessorMember* AccessorCreation() const;
+  [[nodiscard]] const ClassDefinedMember* DefinedMemberCreation() const;
   [[nodiscard]] const analysis::FunctionCreationSite* FunctionCreation() const;
   [[nodiscard]] std::u16string_view Name() const;
   // Occurrence/member order, not deduplicated by method entity. TreeVerified

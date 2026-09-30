@@ -1,5 +1,5 @@
 #include "../../../src/source/class_initializers.h"
-#include "../../../src/source/class_accessors.h"
+#include "../../../src/source/class_definitions.h"
 #include "../../../src/source/evaluation_plan.h"
 #include "abcd/analysis/value_import.h"
 #include "abcd/analysis/value_simplify.h"
@@ -9,7 +9,7 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 enum class AccessorCase { kValid, kWrongHome, kEscape, kNameFlag, kClassEscape, kPrototypeEscape, kBarrier, kUsedResult, kLaterClassUse, kLaterPrototypeUse, kPair, kEnvironment };
-void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool setter, AccessorCase kind = AccessorCase::kValid) {
+void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool setter, AccessorCase kind = AccessorCase::kValid, bool ordinary = false) {
   std::vector<std::uint8_t> bytes;
   const auto op = [&](abc::Opcode code) { bytes.push_back(static_cast<std::uint8_t>(code)); };
   const auto word = [&](std::uint16_t n) { bytes.push_back(n); bytes.push_back(n >> 8); };
@@ -31,6 +31,10 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
     op(abc::Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8); bytes.push_back(0); word(11); bytes.push_back(setter ? 1 : 0);
     save(setter ? 5 : 4);
     if (kind == AccessorCase::kEscape) { op(abc::Opcode::kSTMODULEVAR_IMM8); bytes.push_back(0); }
+    if (ordinary) {
+      op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); bytes.push_back(0); word(15); bytes.push_back(2);
+      continue;
+    }
     if (kind == AccessorCase::kPair) {
       load(2); op(abc::Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8); bytes.push_back(0); word(11); bytes.push_back(1); save(5);
     } else { op(abc::Opcode::kLDUNDEFINED); save(setter ? 4 : 5); }
@@ -49,21 +53,24 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(6, 0, {false, false, false, false}));
   auto graph = std::get<ValueProgram>(ImportNormalValues(body, method, proof, frame));
   test::Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
-  const auto result = std::get<ClassAccessorSites>(FindClassAccessors(graph));
-  const bool candidate = kind != AccessorCase::kWrongHome && kind != AccessorCase::kEscape && kind != AccessorCase::kNameFlag;
+  const auto result = std::get<ClassDefinitionSites>(FindClassDefinitions(graph));
+  const bool candidate = kind != AccessorCase::kWrongHome && kind != AccessorCase::kEscape && kind != AccessorCase::kNameFlag && !(ordinary && kind == AccessorCase::kUsedResult);
   test::Check(result.sites.size() == (candidate ? count : 0));
   for (const auto& site : result.sites) {
     test::Check(site.creation < site.definition && site.prototype.has_value() == prototype && site.key.value == 15);
-    test::Check(site.getter.has_value() == !setter && site.setter.has_value() == (setter || kind == AccessorCase::kPair));
+    test::Check(site.Method(abc::ClassMethodKind::kOrdinary).has_value() == ordinary);
+    test::Check(site.Method(abc::ClassMethodKind::kGetter).has_value() == (!ordinary && !setter));
+    test::Check(site.Method(abc::ClassMethodKind::kSetter).has_value() == (!ordinary && (setter || kind == AccessorCase::kPair)));
   }
   if (candidate) {
-    const auto projected = ProjectClassAccessors(graph, result.sites);
+    const auto projected = ProjectClassDefinitions(graph, result.sites);
     if (kind == AccessorCase::kValid || kind == AccessorCase::kLaterClassUse || kind == AccessorCase::kLaterPrototypeUse || kind == AccessorCase::kPair) {
-      const auto& projection = std::get<ClassAccessorProjection>(projected);
+      const auto& projection = std::get<ClassDefinitionProjection>(projected);
       test::Check(projection.prototypes.size() == (prototype ? count : 0));
       for (const auto& site : result.sites) {
         test::Check(projection.owners[site.definition.value] == site.creation);
-        test::Check(projection.owners[(setter ? *site.setter : *site.getter).value] == site.creation);
+        for (const auto& method : site.Methods())
+          if (method.operation) test::Check(projection.owners[method.operation->value] == site.creation);
         if (site.prototype) test::Check(projection.owners[site.prototype->value] == (kind == AccessorCase::kLaterPrototypeUse ? std::optional<OpId>{} : site.creation));
       }
       auto evaluated = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, ClosureWrites::kUnknown, result.sites);
@@ -73,17 +80,17 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
       evaluation.class_projection.owners[result.sites.front().definition.value].reset();
       test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, evaluation)));
       auto forged = result.sites; ++forged.front().key.value;
-      test::Check(std::get<ClassAccessorError>(ProjectClassAccessors(graph, forged)) == ClassAccessorError::kInput);
+      test::Check(std::get<ClassDefinitionError>(ProjectClassDefinitions(graph, forged)) == ClassDefinitionError::kInput);
       if (count > 1) {
         forged = result.sites; std::swap(forged[0], forged[1]);
-        test::Check(std::get<ClassAccessorError>(ProjectClassAccessors(graph, forged)) == ClassAccessorError::kInput);
+        test::Check(std::get<ClassDefinitionError>(ProjectClassDefinitions(graph, forged)) == ClassDefinitionError::kInput);
       }
-      test::Check(std::get<ClassAccessorError>(ProjectClassAccessors(graph, result.sites, {0})) == ClassAccessorError::kResourceLimit);
-      test::Check(std::get<ClassAccessorError>(ProjectClassAccessors(graph, result.sites, {UINT32_MAX, 0})) == ClassAccessorError::kWorkLimit);
-    } else test::Check(std::get<ClassAccessorError>(projected) == ClassAccessorError::kFlow);
+      test::Check(std::get<ClassDefinitionError>(ProjectClassDefinitions(graph, result.sites, {0})) == ClassDefinitionError::kResourceLimit);
+      test::Check(std::get<ClassDefinitionError>(ProjectClassDefinitions(graph, result.sites, {UINT32_MAX, 0})) == ClassDefinitionError::kWorkLimit);
+    } else test::Check(std::get<ClassDefinitionError>(projected) == ClassDefinitionError::kFlow);
   }
-  test::Check(std::get<ClassAccessorError>(FindClassAccessors(graph, {0})) == ClassAccessorError::kResourceLimit);
-  test::Check(std::get<ClassAccessorError>(FindClassAccessors(graph, {UINT32_MAX, 0})) == ClassAccessorError::kWorkLimit);
+  test::Check(std::get<ClassDefinitionError>(FindClassDefinitions(graph, {0})) == ClassDefinitionError::kResourceLimit);
+  test::Check(std::get<ClassDefinitionError>(FindClassDefinitions(graph, {UINT32_MAX, 0})) == ClassDefinitionError::kWorkLimit);
 }
 enum class Case { kSingle, kRepeated, kEscape, kUsedResult, kWrongReceiver, kClassEscape, kBarrier, kPrototype };
 void Run(abc::ProfileId profile, unsigned count, Case kind) {
@@ -159,10 +166,16 @@ int main() {
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
     for (const auto count : {1U, 200U, 201U, 402U}) {
       Accessors(profile, count, false, false); Accessors(profile, count, true, true);
+      Accessors(profile, count, false, false, AccessorCase::kValid, true);
+      Accessors(profile, count, true, true, AccessorCase::kValid, true);
       Run(profile, count, Case::kSingle); Run(profile, count, Case::kPrototype);
     }
     for (const auto kind : {AccessorCase::kWrongHome, AccessorCase::kEscape, AccessorCase::kNameFlag, AccessorCase::kClassEscape, AccessorCase::kPrototypeEscape, AccessorCase::kBarrier, AccessorCase::kUsedResult, AccessorCase::kLaterClassUse, AccessorCase::kLaterPrototypeUse, AccessorCase::kPair, AccessorCase::kEnvironment})
       Accessors(profile, 1, true, false, kind);
+    for (const auto kind : {AccessorCase::kWrongHome, AccessorCase::kEscape, AccessorCase::kClassEscape,
+        AccessorCase::kPrototypeEscape, AccessorCase::kBarrier, AccessorCase::kUsedResult,
+        AccessorCase::kLaterClassUse, AccessorCase::kLaterPrototypeUse, AccessorCase::kEnvironment})
+      Accessors(profile, 1, true, false, kind, true);
     Run(profile, 1, Case::kClassEscape); Run(profile, 1, Case::kBarrier);
     for (const auto kind : {Case::kRepeated, Case::kEscape, Case::kUsedResult, Case::kWrongReceiver}) Run(profile, 1, kind);
   }

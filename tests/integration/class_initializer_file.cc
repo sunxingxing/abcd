@@ -42,35 +42,42 @@ int main(int argc, char** argv) {
     Check(std::holds_alternative<FileFunction>(caller));
     const auto& parent = std::get<FileFunction>(caller);
     const auto& graph = parent.values.graph;
-    Check(parent.values.accessors.sites.size() == 4);
-    const auto projected = ProjectClassAccessors(graph, parent.values.accessors.sites);
-    if (const auto* error = std::get_if<ClassAccessorError>(&projected))
+    Check(parent.values.definitions.sites.size() == 9);
+    const auto projected = ProjectClassDefinitions(graph, parent.values.definitions.sites);
+    if (const auto* error = std::get_if<ClassDefinitionError>(&projected))
       std::cerr << "accessor corridor failure " << static_cast<unsigned>(*error) << '\n';
-    Check(std::holds_alternative<ClassAccessorProjection>(projected));
-    const auto& projection = std::get<ClassAccessorProjection>(projected);
-    for (const auto& accessor : parent.values.accessors.sites) {
+    Check(std::holds_alternative<ClassDefinitionProjection>(projected));
+    const auto& projection = std::get<ClassDefinitionProjection>(projected);
+    for (const auto& accessor : parent.values.definitions.sites) {
       Check(projection.owners[accessor.definition.value] == accessor.creation);
-      Check(!projection.owners[accessor.prototype->value]);
+      if (accessor.prototype) Check(projection.owners[accessor.prototype->value] == accessor.creation);
     }
-    // Accessor ownership alone cannot discard the remaining ordinary method
-    // creations in this actual page. Its complete outer family is still open.
+    // Member ownership cannot discard the two ordinary function creations
+    // in this actual page. Its complete outer closure family is still open.
+    std::vector<unsigned> unbound;
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      const auto& op = graph.ops[i];
+      if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation) &&
+          !projection.owners[i]) unbound.push_back(graph.origins[op.origin.value].pc.value);
+    }
+    Check(unbound == std::vector<unsigned>({77, 285}));
     const auto evaluation = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {},
-        analysis::ClosureWrites::kUnknown, parent.values.accessors.sites);
+        analysis::ClosureWrites::kUnknown, parent.values.definitions.sites);
     Check(std::get<EvaluationError>(evaluation) == EvaluationError::kOwnership);
     const unsigned pcs[] = {137, 160, 183, 206};
-    std::ostringstream accessors;
-    accessors << "class Accessors {\n";
+    std::ostringstream definitions;
+    definitions << "class Accessors {\n";
     GlobalScope globals{};
     const FamilyDestination destination{Strictness::kStrict, &globals, FunctionFragment::kClassMember};
     for (std::size_t i = 0; i < 4; ++i) {
-      const auto& accessor = parent.values.accessors.sites[i];
+      const auto& accessor = parent.values.definitions.sites[i];
       Check(accessor.prototype.has_value());
-      Check(accessor.getter.has_value() == (i % 2 == 0));
-      Check(accessor.setter.has_value() == (i % 2 != 0));
+      Check(accessor.Method(abc::ClassMethodKind::kGetter).has_value() == (i % 2 == 0));
+      Check(accessor.Method(abc::ClassMethodKind::kSetter).has_value() == (i % 2 != 0));
       Check(graph.origins[graph.ops[accessor.creation.value].origin.value].pc.value == 98);
       Check(graph.origins[graph.ops[accessor.definition.value].origin.value].pc.value == pcs[i]);
       const auto kind = i % 2 ? abc::ClassMethodKind::kSetter : abc::ClassMethodKind::kGetter;
-      auto prepared = PreparedFamily::PrepareAccessor(file, header, index, lookup, roles, sites,
+      auto prepared = PreparedFamily::PrepareDefinedMember(file, header, index, lookup, roles, sites,
           parent, accessor.definition, kind, identity, destination);
       if (const auto* error = std::get_if<FamilyPrepareFailure>(&prepared)) {
         std::cerr << "accessor prepare failure " << i << " cause " << error->cause.index() << '\n';
@@ -81,18 +88,32 @@ int main(int argc, char** argv) {
       }
       Check(std::holds_alternative<PreparedFamily>(prepared));
       const auto& family = std::get<PreparedFamily>(prepared);
-      const auto emitted = family.PrintDraft(destination, accessors, {}, {}, 1);
+      const auto emitted = family.PrintDraft(destination, definitions, {}, {}, 1);
       Check(std::holds_alternative<PrintedFamilyDraft>(emitted));
       auto wrong_identity = identity; ++wrong_identity.file_size;
-      Check(std::holds_alternative<ClassContextFailure>(ClassTreeContext::ResolveAccessor(
+      Check(std::holds_alternative<ClassContextFailure>(ClassTreeContext::ResolveDefinedMember(
           file, header, index, lookup, roles, sites, parent, accessor.definition, kind, wrong_identity)));
       const auto absent = i % 2 ? abc::ClassMethodKind::kGetter : abc::ClassMethodKind::kSetter;
-      Check(std::holds_alternative<ClassContextFailure>(ClassTreeContext::ResolveAccessor(
+      Check(std::holds_alternative<ClassContextFailure>(ClassTreeContext::ResolveDefinedMember(
           file, header, index, lookup, roles, sites, parent, accessor.definition, absent, identity)));
 
     }
-    accessors << "}\nAccessors;\n";
-    if (argc == 3 && std::string_view(argv[2]) == "--accessors") { std::cout << accessors.str(); return 0; }
+    const unsigned installed_pcs[] = {218, 230, 242, 254, 266};
+    for (std::size_t i = 4; i < 9; ++i) {
+      const auto& site = parent.values.definitions.sites[i];
+      Check(site.Method(abc::ClassMethodKind::kOrdinary).has_value());
+      Check(graph.origins[graph.ops[site.definition.value].origin.value].pc.value == installed_pcs[i - 4]);
+      Check(site.prototype.has_value() == (i != 8));
+    }
+    auto ordinary = PreparedFamily::PrepareDefinedMember(file, header, index, lookup, roles, sites,
+        parent, parent.values.definitions.sites.back().definition, abc::ClassMethodKind::kOrdinary, identity, destination);
+    Check(std::holds_alternative<PreparedFamily>(ordinary));
+    std::ostringstream static_method; static_method << "class Member {\n";
+    Check(std::holds_alternative<PrintedFamilyDraft>(std::get<PreparedFamily>(ordinary).PrintDraft(destination, static_method)));
+    static_method << "}\nMember;\n";
+    if (argc == 3 && std::string_view(argv[2]) == "--static-method") { std::cout << static_method.str(); return 0; }
+    definitions << "}\nAccessors;\n";
+    if (argc == 3 && std::string_view(argv[2]) == "--accessors") { std::cout << definitions.str(); return 0; }
   }
   for (const auto entry : {7312U, 16391U}) {
     const auto position = lookup.Find({entry}); Check(position.has_value());

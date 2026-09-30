@@ -12,7 +12,7 @@ using namespace abcd::source;
 void Check(bool ok, const std::source_location& at = std::source_location::current()) {
   if (!ok) { std::cerr << "accessor tree check " << at.line() << '\n'; std::abort(); }
 }
-std::string Recover(bool is_static, bool return_prototype = false) {
+std::string Recover(bool is_static, bool return_prototype = false, int ordinary_parity = -1) {
   constexpr std::uint32_t kPool = 64, kOwner = 128, kLiteral = 160,
       kCreator = 256, kConstructor = 300, kGetter = 340, kSetter = 380,
       kCreatorCode = 512, kConstructorCode = 768, kGetterCode = 800, kSetterCode = 832,
@@ -46,10 +46,19 @@ std::string Recover(bool is_static, bool return_prototype = false) {
     op(abc::Opcode::kLDA_STR_ID16); code.insert(code.end(), {4, 0}); save(3);
     load(2); op(abc::Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8);
     code.insert(code.end(), {0, static_cast<std::uint8_t>(setter ? 3 : 2), 0, static_cast<std::uint8_t>(setter)});
-    save(setter ? 5 : 4); op(abc::Opcode::kLDUNDEFINED); save(setter ? 4 : 5);
-    op(abc::Opcode::kLDFALSE); op(abc::Opcode::kDEFINEGETTERSETTERBYVALUE_V8_V8_V8_V8);
-    code.insert(code.end(), {2, 3, 4, 5});
+    save(setter ? 5 : 4);
+    if (static_cast<int>(i % 2) == ordinary_parity) {
+      op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); code.insert(code.end(), {0, 4, 0, 2});
+    } else {
+      op(abc::Opcode::kLDUNDEFINED); save(setter ? 4 : 5);
+      op(abc::Opcode::kLDFALSE); op(abc::Opcode::kDEFINEGETTERSETTERBYVALUE_V8_V8_V8_V8);
+      code.insert(code.end(), {2, 3, 4, 5});
+    }
   }
+  // A distinct ordinary object literal in the same graph must still be
+  // planned; class method installations must not be claimed as its fields.
+  op(abc::Opcode::kCREATEEMPTYOBJECT); save(0); load(3);
+  op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); code.insert(code.end(), {0, 6, 0, 0});
   load(return_prototype ? 2 : 1); op(abc::Opcode::kRETURN);
   // Compact Panda headers: all fixture bodies stay within one ULEB payload.
   Check(code.size() < 128);
@@ -88,19 +97,19 @@ std::string Recover(bool is_static, bool return_prototype = false) {
   const auto classes = std::get<analysis::ClassMethodSites>(analysis::ClassMethodSites::Build(file, header, index, lookup));
   auto loaded = ReadFunctionValues(file, header, index, {0}, identity, InputCaptureMode::kClosed);
   Check(std::holds_alternative<FileFunction>(loaded)); const auto& creator = std::get<FileFunction>(loaded);
-  const auto& graph = creator.values.graph; const auto& accessors = creator.values.accessors.sites;
-  Check(accessors.size() == 4);
-  auto evaluated = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, accessors);
+  const auto& graph = creator.values.graph; const auto& definitions = creator.values.definitions.sites;
+  Check(definitions.size() == 4);
+  auto evaluated = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, definitions);
   if (const auto* error = std::get_if<EvaluationError>(&evaluated)) std::cerr << "evaluation " << static_cast<unsigned>(*error) << '\n';
   Check(std::holds_alternative<EvaluationPlan>(evaluated)); const auto& evaluation = std::get<EvaluationPlan>(evaluated);
   GlobalScope globals{};
   auto built = BuildClassTree(file, header, index, lookup, roles, functions, classes, creator,
-      accessors.front().creation, identity, &globals, {}, nullptr, accessors);
+      definitions.front().creation, identity, &globals, {}, nullptr, definitions);
   if (const auto* error = std::get_if<ClassTreeFailure>(&built)) std::cerr << "class failure " << error->index() << '\n';
   Check(std::holds_alternative<ClassTree>(built));
   auto definition = std::make_shared<ClassTree>(std::get<ClassTree>(std::move(built)));
   auto constants = std::get<TreeConstants>(ResolveTreeConstants(file, header, index, {kCreator}, graph));
-  constants.operations[accessors.front().creation.value] = definition;
+  constants.operations[definitions.front().creation.value] = definition;
   FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {kCreator}; syntax.owner = {1};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = constants.names; syntax.texts = constants.texts;
@@ -110,9 +119,9 @@ std::string Recover(bool is_static, bool return_prototype = false) {
   Check(std::holds_alternative<ConstructedFunction>(tree));
   // Independent operand checking must reject removal or substitution of the
   // prepared body behind an otherwise well-formed projection certificate.
-  auto missing = std::move(definition->accessors.back()); definition->accessors.pop_back();
+  auto missing = std::move(definition->definitions.back()); definition->definitions.pop_back();
   Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
-  definition->accessors.push_back(std::move(missing));
+  definition->definitions.push_back(std::move(missing));
   std::ostringstream output;
   auto printed = PrintFunctionTree(std::get<ConstructedFunction>(tree).tree, output, {}, {}, &globals);
   Check(std::holds_alternative<PrintedFunction>(printed));
@@ -121,6 +130,7 @@ std::string Recover(bool is_static, bool return_prototype = false) {
 }
 }
 int main(int argc, char** argv) {
-  if (argc == 2) { std::cout << Recover(std::string_view(argv[1]) == "--static", std::string_view(argv[1]) == "--retained"); return 0; }
-  Recover(false); Recover(true); Recover(false, true);
+  if (argc == 2) { std::cout << Recover(std::string_view(argv[1]) == "--static", std::string_view(argv[1]) == "--retained",
+      std::string_view(argv[1]) == "--method-last" ? 1 : std::string_view(argv[1]) == "--accessor-last" ? 0 : -1); return 0; }
+  Recover(false); Recover(true); Recover(false, true); Recover(false, false, 0); Recover(false, false, 1);
 }

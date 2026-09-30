@@ -46,16 +46,20 @@ enum class LiteralError : std::uint8_t {
 // uniquely owned late read chains preserve operand and property effect order.
 // module_guards must be the unchanged IndexModuleEvaluations peer index;
 // standalone calls without it cannot fold late guarded module reads.
+// class_projection must be independently proved by ProjectClassMembers; it
+// excludes class member installations from ordinary object-literal ownership.
 // Direct receiver fields stay ordered statement roots and are excluded from
 // literal ownership. Not AST/publication permission: preserve snapshots and sites.
 [[nodiscard]] std::variant<LiteralPlan, LiteralError> BuildLiteralPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
-    std::span<const std::optional<analysis::OpId>> module_guards = {});
+    std::span<const std::optional<analysis::OpId>> module_guards = {},
+    std::span<const std::optional<analysis::OpId>> class_projection = {});
 // Checks supplied groups against use chains and fresh flow, without regrouping.
 [[nodiscard]] std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan,
     analysis::SemanticBudget budget = {},
-    std::span<const std::optional<analysis::OpId>> module_guards = {});
+    std::span<const std::optional<analysis::OpId>> module_guards = {},
+    std::span<const std::optional<analysis::OpId>> class_projection = {});
 // Same initializer model across unique normal phase corridors. The original
 // phase graph stays intact; copy aliases must have their independent proof.
 // No observations (including exceptional snapshots) before the last define,

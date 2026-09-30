@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <type_traits>
 namespace abcd::source {
-std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveAccessor(
+std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveDefinedMember(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
     const analysis::FunctionCreationSites& functions, const FileFunction& creator,
@@ -24,15 +24,15 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveAcc
     const auto admit = [&](std::size_t count, std::size_t width) {
       if (count > budget.bytes / width) throw fail(Error::kResourceLimit); budget.bytes -= count * width;
     };
-    if (kind != abc::ClassMethodKind::kGetter && kind != abc::ClassMethodKind::kSetter) return fail(Error::kKind);
+    if (kind != abc::ClassMethodKind::kGetter && kind != abc::ClassMethodKind::kSetter && kind != abc::ClassMethodKind::kOrdinary) return fail(Error::kKind);
     if (identity != creator.input.Identity()) return fail(Error::kProfile);
     const auto& graph = creator.values.graph;
-    const auto& inventory = creator.values.accessors;
+    const auto& inventory = creator.values.definitions;
     if (inventory.revision != graph.revision) return fail(Error::kSite);
     const auto found = std::lower_bound(inventory.sites.begin(), inventory.sites.end(), definition,
         [&](const auto& site, auto id) { step(); return site.definition < id; });
     if (found == inventory.sites.end() || found->definition != definition) return fail(Error::kSite);
-    const auto method_id = kind == abc::ClassMethodKind::kGetter ? found->getter : found->setter;
+    const auto method_id = found->Method(kind);
     if (!method_id || method_id->value >= graph.ops.size() || definition.value >= graph.ops.size()) return fail(Error::kSite);
     const auto& operation = graph.ops[method_id->value];
     const auto* method = std::get_if<analysis::ValueFunctionCreation>(&operation.operation);
@@ -63,7 +63,7 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveAcc
     const auto& context = std::get<CreationTreeContext>(resolved);
     admit(context.AllocatedBytes(), 1); step(context.Work());
     const auto length = kind == abc::ClassMethodKind::kGetter ? 0U : 1U;
-    if (context.Frame().parameters != length || context.Site().creation.length.value != length) return fail(Error::kSignature);
+    if (kind != abc::ClassMethodKind::kOrdinary && (context.Frame().parameters != length || context.Site().creation.length.value != length)) return fail(Error::kSignature);
     const auto read = [&](abc::PoolIndex key) -> std::u16string {
       const auto reference = abc::ResolvePoolReference(file, header, index, creator.input.Method(), key, abc::PoolEntityKind::kString);
       if (const auto* error = std::get_if<abc::MetadataError>(&reference)) throw ClassContextFailure{*error};
@@ -78,9 +78,10 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveAcc
       if (!prototype || read(prototype->name) != u"prototype") return fail(Error::kName);
     }
     auto name = read(found->key);
-    // OH7 RuntimeDefineGetterSetterByValue changes the function kind; its
-    // lazy NameGetter supplies the get/set prefix. Native syntax matches only
-    // if the actual method name equals this key, without an element-name trick.
+    // OH7 RuntimeStOwnByName preserves the function name/kind. Accessor
+    // installation instead sets the kind whose lazy NameGetter adds get/set.
+    // Both native forms need the actual method name to equal the property key;
+    // do not infer that equality from an element-name spelling trick.
     if (name != context.Name() || IsElementName(name) || name == u"constructor" ||
         (!found->prototype && (name == u"prototype" || name == u"name" || name == u"length"))) return fail(Error::kName);
     if (file.CheckUnchanged()) return ClassContextFailure{abc::MetadataError::kFileChanged};
@@ -88,7 +89,7 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveAcc
     ClassTreeContext result;
     result.identity_ = identity; result.position_ = context.Position(); result.frame_ = context.Frame();
     result.name_ = std::move(name); result.callable_ = CallableKind::kMethod;
-    result.site_ = ClassAccessorMember{context.Site(), definition,
+    result.site_ = ClassDefinedMember{context.Site(), definition,
         found->prototype ? abc::ClassPlacement::kPrototype : abc::ClassPlacement::kStatic, kind};
     result.work_ = initial.work - budget.work;
     return result;

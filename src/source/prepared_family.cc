@@ -19,9 +19,9 @@ PreparedFamily::~PreparedFamily() = default;
 const ConstructedFamily& PreparedFamily::Family() const { return storage_->family; }
 const RouteInputIdentity& PreparedFamily::Identity() const { return storage_->context.Identity(); }
 const analysis::ClassMethodSite* PreparedFamily::ClassCreation() const { return storage_->context.ClassSite(); }
-const ClassAccessorMember* PreparedFamily::AccessorCreation() const {
+const ClassDefinedMember* PreparedFamily::DefinedMemberCreation() const {
   const auto* context = storage_->context.ClassContext();
-  return context ? context->Accessor() : nullptr;
+  return context ? context->DefinedMember() : nullptr;
 }
 const analysis::FunctionCreationSite* PreparedFamily::FunctionCreation() const { return storage_->context.CreationSite(); }
 std::u16string_view PreparedFamily::Name() const { return storage_->context.Name(); }
@@ -88,7 +88,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareClass(
   } catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
 }
-std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareAccessor(
+std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareDefinedMember(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
     const analysis::FunctionCreationSites& functions, const FileFunction& creator,
@@ -97,7 +97,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareAccess
   try {
     Require(allowance.bytes >= sizeof(Storage), Error::kResourceLimit);
     auto resolution = allowance; resolution.bytes -= sizeof(Storage);
-    auto context = Take<ClassTreeContext, ClassContextFailure>(ClassTreeContext::ResolveAccessor(
+    auto context = Take<ClassTreeContext, ClassContextFailure>(ClassTreeContext::ResolveDefinedMember(
         file, header, index, lookup, roles, functions, creator, definition, kind, identity, resolution));
     return Prepare(file, header, index, lookup, roles, functions,
         FunctionContext{std::move(context)}, destination, allowance);
