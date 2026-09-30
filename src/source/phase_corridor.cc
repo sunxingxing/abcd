@@ -27,6 +27,7 @@ bool PhaseCorridors::Expression(const ValueOperation& operation) {
       std::holds_alternative<ValueUnary>(operation) ||
       std::holds_alternative<ValueBinary>(operation) ||
       std::holds_alternative<ValueModuleRead>(operation) ||
+      std::holds_alternative<ValueGlobalRead>(operation) ||
       std::holds_alternative<ValueNamedRead>(operation) ||
       std::holds_alternative<ValuePropertyRead>(operation) ||
       // Creation remains an ordered event. Fuse only a single-use callback
@@ -112,6 +113,7 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
       // snapshots and every other canonical use still prevent duplication.
       if (kind == EvaluationKind::kModuleGuard && !module_peers_.empty() &&
           module_peers_[owner->value]) continue;
+      if (IsMemberReceiver(graph, plan, use)) continue;
     }
     const auto operand = ResolveEvaluationOperand(plan, use.operand);
     const auto* value = std::get_if<ValueId>(&operand);
@@ -120,6 +122,25 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
     if (occurrence.first) occurrence.multiple = true;
     else occurrence.first = UseId{static_cast<std::uint32_t>(i)};
   }
+}
+bool IsMemberReceiver(const ValueProgram& graph, const EvaluationPlan& plan, const OperandUse& use) {
+  // A native member call consumes its base once; the explicit VM receiver
+  // supplies that same reference, not a second source evaluation. Mismatches
+  // and other uses remain visible; CallPlan and TreeOperands check the syntax.
+  const auto* owner = std::get_if<OpId>(&use.owner);
+  if (!owner || use.role != OperandRole::kReceiver) return false;
+  const auto& operation = graph.ops[owner->value];
+  const auto* invoke = std::get_if<ValueInvoke>(&operation.operation);
+  if (!invoke || invoke->receiver != InvokeReceiver::kExplicit) return false;
+  const auto callee = ResolveEvaluationOperand(plan, graph.uses[operation.first_use.value].operand);
+  const auto* id = std::get_if<ValueId>(&callee);
+  const auto* result = id ? std::get_if<OpResult>(&graph.values[id->value].origin) : nullptr;
+  if (!result) return false;
+  const auto& property = graph.ops[result->op.value];
+  return (std::holds_alternative<ValueNamedRead>(property.operation) ||
+          std::holds_alternative<ValuePropertyRead>(property.operation)) &&
+      SameOperand(ResolveEvaluationOperand(plan, graph.uses[property.first_use.value].operand),
+                  ResolveEvaluationOperand(plan, use.operand));
 }
 std::size_t PhaseCorridors::EffectsBefore(OpId op) const {
   return positions_[graph_.ops[op.value].block.value].effects;

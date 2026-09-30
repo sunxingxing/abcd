@@ -13,7 +13,7 @@ enum class Corridor {
   kClosure, kClosureEnvironment, kClosureHandler, kPureResult, kClosurePureResult
 };
 std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor = Corridor::kPure,
-                  bool computed = false) {
+                  bool computed = false, bool global = false) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr std::uint8_t kCallee = 0, kArgument = 1, kSecondArgument = 2, kThis = 5, kParameter = 6;
   std::vector<std::uint8_t> bytes{op(abc::Opcode::kMOV_V8_V8), kArgument, kParameter,
@@ -27,7 +27,13 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
         op(abc::Opcode::kLDOBJBYVALUE_IMM8_V8), 0, kParameter,
         op(abc::Opcode::kSTA_V8), kCallee};
   }
-  constexpr OpId kProperty{2};
+  if (global) {
+    // The call argument is independent of the effectful receiver base. The
+    // base has one source occurrence despite its second raw VM receiver use.
+    bytes[2] = kThis;
+    bytes.insert(bytes.begin() + 3, {op(abc::Opcode::kTRYLDGLOBALBYNAME_IMM8_ID16), 0, 0, 0,
+        op(abc::Opcode::kSTA_V8), kParameter});
+  }
   for (std::uint32_t i = 0; i < count; ++i)
     bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), kArgument, kArgument});
   switch (corridor) {
@@ -110,6 +116,14 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
   const auto proof = std::get<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, env, values));
   const PhasedValueInput input{flow, ssa, env, values, proof, frame};
   const auto graph = std::get<ValueProgram>(ImportPhasedValues(input));
+  std::optional<OpId> property;
+  for (std::size_t i = 0; i < graph.ops.size(); ++i)
+    if (std::holds_alternative<ValueNamedRead>(graph.ops[i].operation) ||
+        std::holds_alternative<ValuePropertyRead>(graph.ops[i].operation)) {
+      property = OpId{static_cast<std::uint32_t>(i)}; break;
+    }
+  test::Check(property.has_value());
+  const auto kProperty = *property;
   std::vector<FunctionBinding> functions;
   for (std::size_t i = 0; i < graph.ops.size(); ++i)
     if (std::holds_alternative<ValueFunctionCreation>(graph.ops[i].operation))
@@ -197,6 +211,13 @@ int main() {
       prior_retry_work = retry_work;
     }
     Run(2, profile, Corridor::kPure, true);
+    for (const auto count : {1U, 200U, 201U, 402U}) {
+      Run(count, profile, Corridor::kPure, false, true);
+      Run(count, profile, Corridor::kPure, true, true);
+    }
+    for (const auto corridor : {Corridor::kWrongReceiver, Corridor::kDuplicate, Corridor::kEffect,
+        Corridor::kChangedCatch, Corridor::kStableCatch, Corridor::kHandlerChange})
+      Run(2, profile, corridor, false, true);
     for (const auto corridor : {Corridor::kEffect, Corridor::kJump, Corridor::kBranch,
         Corridor::kChangedCatch, Corridor::kStableCatch, Corridor::kWrongReceiver, Corridor::kDuplicate,
         Corridor::kArgument, Corridor::kArguments, Corridor::kReversedArguments, Corridor::kHandlerChange,

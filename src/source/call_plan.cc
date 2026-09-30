@@ -43,7 +43,8 @@ bool SameValue(const ValueOperand& left, const ValueOperand& right) {
     else return value.value == other.value;
   }, left);
 }
-bool StableReceiver(const ValueProgram& graph, const EvaluationPlan& evaluation, const ValueOperand& operand) {
+bool StableReceiver(const ValueProgram& graph, const EvaluationPlan& evaluation,
+                    const ValueOperand& operand, UseId base) {
   const auto* id = std::get_if<ValueId>(&operand);
   if (!id) return true; // Primitive literal, with no property-key coercion here.
   const auto& definition = graph.values[id->value];
@@ -56,8 +57,10 @@ bool StableReceiver(const ValueProgram& graph, const EvaluationPlan& evaluation,
   if (std::holds_alternative<PhiDefinition>(definition.origin))
     return evaluation.phis.has_value();
   const auto* result = std::get_if<OpResult>(&definition.origin);
-  return result && evaluation.operations[result->op.value].kind == EvaluationKind::kRoot &&
-      evaluation.operations[result->op.value].temporary.has_value();
+  if (!result) return false;
+  const auto& placement = evaluation.operations[result->op.value];
+  return (placement.kind == EvaluationKind::kRoot && placement.temporary.has_value()) ||
+      (placement.kind == EvaluationKind::kInline && placement.consumer == base);
 }
 bool Property(const ValueOperation& operation) {
   return std::holds_alternative<ValueNamedRead>(operation) || std::holds_alternative<ValuePropertyRead>(operation);
@@ -141,7 +144,8 @@ std::variant<std::uint64_t, CallPlanError> VerifyCalls(const analysis::ValueProg
           *property.result), Error::kCallee);
       const auto base = ResolveEvaluationOperand(evaluation, graph.uses[property.first_use.value].operand);
       const auto receiver = ResolveEvaluationOperand(evaluation, graph.uses[member->receiver.value].operand);
-      Require(SameValue(base, receiver) && StableReceiver(graph, evaluation, receiver), Error::kReceiver);
+      Require(SameValue(base, receiver) && StableReceiver(graph, evaluation, receiver, property.first_use),
+          Error::kReceiver);
     }
     return checked.Work();
   } catch (Error error) { return error;

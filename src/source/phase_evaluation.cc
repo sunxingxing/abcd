@@ -149,6 +149,7 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
         const auto producer = Producer(graph, plan, use);
         if (!producer || plan.operations[producer->value].kind != EvaluationKind::kInline) continue;
         const auto& occurrence = graph.uses[use.value];
+        if (IsMemberReceiver(graph, plan, occurrence)) continue;
         const auto child = intervals[producer->value];
         Require(plan.operations[producer->value].consumer == use && !consumed[producer->value] &&
             !shape->NeedsSnapshot(occurrence.role) && occurrence.role != OperandRole::kReceiver &&

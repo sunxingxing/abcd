@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-09-30：真实 onRestore 嵌套成员调用贯通
+
+- Pasteboard 5465 的 JSON 全局读取被显式 VM receiver 的第二个 use 固定成
+  临时变量，切断外层 hilog.info 的效果区间。相位表达式现在接纳有序全局
+  读取，并仅在 callee 来自属性读取且 base/receiver 解析为同一 SSA 值时，
+  将 receiver 视为同一原生引用。保留其他 use、连续效果区间、catch 快照
+  和无复制走廊检查；CallPlan 与 TreeOperands 独立要求同一属性 base 节点。
+- Pasteboard 与 Immersive 的真实 onRestore 生成完整共同 async 方法草稿；
+  独立配对行为 oracle 验证全局/getter/调用顺序、receiver、全局重绑定、
+  不错误 await 丢弃结果，以及 undefined/null/Symbol/对象异常身份。
+  三 profile 的命名/计算属性、200/201/402 项及错误 receiver、重复引用、
+  效果间隙、catch/handler 变化均有定向相位测试。输入 SHA 固定在测试侧。
+- 相关生产及 C++ 测试目标构建成功；9 项定向 CTest 全通过（8.46 秒），
+  call_plan/phi_call 两项亦通过（3.63 秒）。证据为
+  /tmp/abcd-restore-regression-build.log、/tmp/abcd-restore-regression-tests.log、
+  /tmp/abcd-restore-call-tests.log；原红例 /tmp/abcd-restore-red.log。
+- 整份 Backup record 在类组装 PC 14 拒绝，已定位为构造器 5493 的
+  kSuperclass：COPYRESTARGS/SUPERCALLSPREAD 路径要求父类在每次构造时
+  始终为 JSFunction，外部 import 本身不能证明，不能解除既有 Proxy-super
+  拒绝。Push Kit onRestore 6865 在相位输入 Values 阶段拒绝；实际方法
+  读取外层 lexical cell，而当前 family root 使用 closed capture mode。
+  后续须接入 record 初始化及创建环境，不能把捕获替换为常量。
+- 共同 record、初始化和源码表示 gate 未完成。未恢复全量测试、其他
+  语料、RSS/基准或代理；继续实际集成阻断。临时诊断代码已移除，CLI
+  再构建成功（/tmp/abcd-restore-clean-build.log）。
+
 ### 2026-09-30：共同 async 方法的迁移桥接与发布
 
 - 真实 onBackup 共同草稿已完整；集成回归暴露 record 方法桥接的

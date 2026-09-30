@@ -16,6 +16,9 @@ struct PhaseEvaluationCost {
 // does not rerun the builder's choice of which operands to retain as snapshots.
 [[nodiscard]] std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget);
+// Source occurrence projection on an already validated graph and alias map.
+[[nodiscard]] bool IsMemberReceiver(const analysis::ValueProgram& graph,
+    const EvaluationPlan& plan, const analysis::OperandUse& use);
 // Only after fresh evaluation verification; lookup, not a certificate.
 [[nodiscard]] bool CrossPhaseInline(const analysis::ValueProgram& graph,
     const EvaluationPlan& plan, analysis::OpId producer);

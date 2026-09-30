@@ -316,6 +316,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
           const auto& op = graph.ops[frame.op.value];
           if (frame.next_operand < op.use_count) {
             const analysis::UseId use_id{op.first_use.value + frame.next_operand++};
+            if (flow == EvaluationFlow::kPhased && IsMemberReceiver(graph, plan, graph.uses[use_id.value]))
+              continue;
             const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use_id.value].operand);
             if (!value) continue;
             const auto& definition = graph.values[ResolveEvaluationValue(plan, *value).value];

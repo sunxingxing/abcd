@@ -307,10 +307,11 @@ class OperandCheck {
     const auto& member = Node<MemberExpr>(call.callee);
     if (const auto* id = std::get_if<analysis::ValueId>(&resolved_receiver)) {
       const auto& definition = graph_.values[id->value];
-      if (const auto* producer = std::get_if<analysis::OpResult>(&definition.origin))
-        RequireMeaning(evaluation_.operations[producer->op.value].kind == EvaluationKind::kRoot &&
-            flow_.snapshots[producer->op.value].has_value(), Error::kOperand);
-      else if (std::holds_alternative<analysis::PhiDefinition>(definition.origin))
+      if (const auto* producer = std::get_if<analysis::OpResult>(&definition.origin)) {
+        const auto& base = evaluation_.operations[producer->op.value];
+        RequireMeaning((base.kind == EvaluationKind::kRoot && flow_.snapshots[producer->op.value].has_value()) ||
+            (base.kind == EvaluationKind::kInline && base.consumer == property.first_use), Error::kOperand);
+      } else if (std::holds_alternative<analysis::PhiDefinition>(definition.origin))
         // TreeFlow derives this symbol from the actual, exclusively owned edge
         // assignments. Same-block/no-copy corridor checks exclude a write to
         // the provisional phi location between reference creation and use.

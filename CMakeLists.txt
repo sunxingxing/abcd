@@ -998,7 +998,17 @@ if(BUILD_TESTING)
       $<TARGET_FILE:computed_store_fixture>)
   endif()
   if(ABCD_NODE_EXECUTABLE AND ABCD_BUILD_TOOLS)
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+      add_test(NAME value_backup_immersive_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_backup_methods.mjs
+        $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        9516 8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a)
+    endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+      add_test(NAME value_backup_pasteboard_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_backup_methods.mjs
+        $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
+        5465 854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e)
       add_test(NAME value_rest_methods_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_rest_methods.mjs
         $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
