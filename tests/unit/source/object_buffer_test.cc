@@ -147,8 +147,8 @@ int main(int argc, char** argv) {
       continue;
     }
     const auto& resolved = std::get<source::TreeConstants>(typed);
-    const auto first = std::get<source::ObjectConstant>(resolved.operations[0]);
-    const auto second = std::get<source::ObjectConstant>(resolved.operations[1]);
+    const auto first = std::get<source::AggregateConstant>(resolved.operations[0]);
+    const auto second = std::get<source::AggregateConstant>(resolved.operations[1]);
     test::Check(first.first == second.first && first.count == second.count && resolved.properties.size() == first.count);
     if (slot >= 4 && slot <= 6) test::Check(first.count == kScaleCounts[slot - 4]);
     if (slot == 3) test::Check(resolved.names[resolved.properties[0].key.value] == u"__proto__");
@@ -210,7 +210,7 @@ int main(int argc, char** argv) {
                                               &constants);
   test::Check(std::holds_alternative<std::size_t>(result));
   test::Check(output.str() ==
-              "acc = ({[\"text\"]: null});\nreturn acc;\n");
+              "acc = ({text: null});\nreturn acc;\n");
   const auto rejection = [&](std::uint8_t slot,
                              source::ObjectBufferError expected) {
     const auto candidate = test::Body({0x07, 0, slot, 0, 0x64});
@@ -234,8 +234,8 @@ int main(int argc, char** argv) {
   test::Check(std::holds_alternative<std::size_t>(source::WriteLinearBody(
       primitive, {"acc", {}}, primitive_source, {}, &constants)));
   test::Check(primitive_source.str() ==
-              "acc = ({[\"bool\"]: true, [\"uint\"]: 4294967295, "
-              "[\"double\"]: (1.5), [\"str\"]: \"hello\"});\nreturn acc;\n");
+              "acc = ({bool: true, uint: 4294967295, "
+              "double: (1.5), str: \"hello\"});\nreturn acc;\n");
   const std::array<std::string_view, 2> fields{"object", "value"};
   const auto field = test::Body({0x07, 0, 0, 0, 0x61, 0, 0x60, 1,
                                  0xdc, 0, 8, 0, 0, 0x60, 0, 0x64});
@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
       source::WriteLocalLexicalBody(field, {"acc", fields}, field_source, {},
                                     &constants)));
   test::Check(field_source.str() ==
-              "acc = ({[\"text\"]: null});\nobject = acc;\nacc = value;\n"
+              "acc = ({text: null});\nobject = acc;\nacc = value;\n"
               "object = ({...object, [\"field\"]: acc});\n"
               "acc = object;\nreturn acc;\n");
   const auto define_field = test::Body({0x04, 0x61, 0, 0x60, 1,
@@ -472,9 +472,9 @@ int main(int argc, char** argv) {
     const auto result = source::WriteLinearBody(
         candidate, {"acc", {}}, rendered, {}, &constants);
     test::Check(std::holds_alternative<std::size_t>(result));
-    test::Check(rendered.str().find("[\"k" +
+    test::Check(rendered.str().find("k" +
                                     std::to_string(kScaleCounts[scale] - 1) +
-                                    "\"]: null") != std::string::npos);
+                                    ": null") != std::string::npos);
   }
   std::ostringstream exhausted;
   const auto limited = source::WriteLinearBody(

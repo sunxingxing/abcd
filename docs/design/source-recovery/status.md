@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-10-01：缓冲数组进入共同常量、AST 和源码输出
+
+- AggregateConstant 显式区分对象和数组，复用现有常量属性存储、ObjectExpr
+  的 array 形式与同一个 TreePrinter。按 kind/pool 排序去重读取；共享的是
+  primitive 常量存储，每次创建仍生成独立数组。没有调用旧 body writer。
+- 数组 literal 直接经 ABC reader 解析，保留元素顺序、字符串、null、boolean、
+  double 位型和 unsigned integer 语义。整数依据 pinned v7
+  LiteralDataExtractor::GetDatasIgnoreType 的 JSTaggedValue(uint32_t)，
+  不沿用旧数组读取器的 signed reinterpretation。方法/其他未支持 tag 拒绝。
+- 构树预留、结构检查、位置/操作数验证共同支持密集缓冲数组；数组仍禁止
+  随后 indexed writes 的合并，避免以空数组初始化规则覆盖已有 buffer。
+  错误 aggregate kind、元素篡改和未支持方法 literal 均有负例。
+- 新测试覆盖三个 dynamic profile、0/1/6/200/201/402 元素及重复池引用。
+  生成 /tmp/abcd-buffered-array.mjs，实际 Node 执行确认 null/boolean/
+  4294967295/负零/字符串/小数、元素 descriptor 及重复调用的独立身份。
+  真实初始化正文常量解析通过：CommonConstants 1 个、HomeConstants
+  20 个缓冲数组；这不等同于整个初始化方法已经输出或行为等价。
+- 10 项定向测试全部通过（6.28 秒），日志 /tmp/abcd-array-final-build.log、
+  /tmp/abcd-array-final-tests.log。旧对象测试中已过时的计算属性文本断言
+  按当前普通属性 printer 输出更新，__proto__ 特殊语义断言继续保留。
+- 五个阶段一输入刷新至 build/stage-one/value-buffered-array-pass-1，
+  结果仍为 15 complete / 91 failure / 46 no-module，legacy writer 为 0；
+  /tmp/abcd-array-batch-summary.json 记录输入身份及逐文件计数。
+  未新增完整 record，未恢复全量测试或 RSS 验收。下一步继续将实际静态
+  初始化的 own-field 定义与调用接入 class，保留效果顺序及 receiver 语义。
+
+
 ### 2026-10-01：实际类初始化调用与正文读取贯通
 
 - 共同 FunctionValues 在简化后的正常图上识别 class → DEFINEMETHOD →

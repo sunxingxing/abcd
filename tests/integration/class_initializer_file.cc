@@ -1,5 +1,6 @@
 #include "../../src/source/class_initializer_file.h"
 #include "abcd/corpus/abc_file.h"
+#include "../../src/source/tree_constants.h"
 #include "abcd/source/source_route.h"
 #include <cstdlib>
 #include <iostream>
@@ -58,6 +59,20 @@ int main(int argc, char** argv) {
         ReadClassInitializerFunction(file, header, index, lookup, roles, sites, parent, wrong)));
     std::size_t fields = 0, object_fields = 0;
     const auto& graph = initializer.function.values.graph;
+    const auto constants = ResolveTreeConstants(file, header, index, site->target, graph);
+    Check(std::holds_alternative<TreeConstants>(constants));
+    const auto& resolved = std::get<TreeConstants>(constants);
+    std::size_t arrays = 0;
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      const auto& op = graph.ops[i];
+      const auto* array = std::get_if<analysis::ValueArrayAllocation>(&op.operation);
+      if (op.life != analysis::ValueLife::kLive || !array || !array->literal) continue;
+      const auto* constant = std::get_if<AggregateConstant>(&resolved.operations[i]);
+      Check(constant && constant->kind == AggregateKind::kArray);
+      if (entry == 7312) Check(constant->count == 4);
+      ++arrays;
+    }
+    if (entry == 7312) Check(arrays == 1);
     for (const auto& op : graph.ops) {
       if (op.life != analysis::ValueLife::kLive) continue;
       if (const auto* field = std::get_if<analysis::ValueOwnWrite>(&op.operation)) {
@@ -78,6 +93,6 @@ int main(int argc, char** argv) {
       }
     }
     Check(fields > 0 && (entry != 7312 || fields == 3));
-    std::cout << "entry=" << entry << " initializer=" << site->target.value << " own_fields=" << fields << " object_fields=" << object_fields << '\n';
+    std::cout << "entry=" << entry << " initializer=" << site->target.value << " own_fields=" << fields << " buffered_arrays=" << arrays << " object_fields=" << object_fields << '\n';
   }
 }

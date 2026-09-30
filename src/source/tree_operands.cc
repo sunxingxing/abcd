@@ -216,17 +216,15 @@ class OperandCheck {
           Input(input(0), construct.constructor);
           constexpr std::uint32_t kConstructorPrefix = 1;
           Arguments(op, construct.arguments, kConstructorPrefix, operation.arguments);
-        } else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>) {
-          RequireMeaning(!operation.literal, Error::kConstant);
-          const auto* aggregate = std::get_if<ObjectExpr>(&tree_.expressions[expression.value].expression);
-          RequireMeaning(aggregate ? aggregate->kind == AggregateKind::kArray :
-              std::holds_alternative<EmptyArrayExpr>(tree_.expressions[expression.value].expression), Error::kOperator);
-        } else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
+        } else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation> ||
+                             std::is_same_v<T, analysis::ValueObjectAllocation>) {
+          constexpr bool array = std::is_same_v<T, analysis::ValueArrayAllocation>;
+          constexpr auto kind = array ? AggregateKind::kArray : AggregateKind::kObject;
           if (operation.literal) {
             const auto& object = Node<ObjectExpr>(expression);
-            RequireMeaning(object.kind == AggregateKind::kObject, Error::kOperator);
-            const auto* expected = std::get_if<ObjectConstant>(&constants_.operations[i]);
-            RequireMeaning(expected && expected->first <= constants_.properties.size() &&
+            RequireMeaning(object.kind == kind, Error::kOperator);
+            const auto* expected = std::get_if<AggregateConstant>(&constants_.operations[i]);
+            RequireMeaning(expected && expected->kind == kind && expected->first <= constants_.properties.size() &&
                 expected->count <= constants_.properties.size() - expected->first &&
                 i < flow_.buffered_properties.size() &&
                 flow_.buffered_properties[i] == expected->count &&
@@ -240,9 +238,11 @@ class OperandCheck {
               const auto& actual_name = tree_.names[actual.key.value];
               budget_.Step(source_name.size()); budget_.Step(actual_name.size());
               RequireMeaning(actual_name == source_name, Error::kConstant);
+              if constexpr (array) RequireMeaning(!flow_.defined_properties[object.properties.first + p], Error::kConstant);
               if (!flow_.defined_properties[object.properties.first + p])
                 BufferedLiteral(source.value, actual.value);
             }
+            if constexpr (array) return;
             // A folded own definition may replace only the last buffered
             // occurrence of its key. Otherwise a following buffer value would
             // overwrite it. Check actual keys, not NameId equality or a builder
@@ -265,8 +265,9 @@ class OperandCheck {
             return;
           }
           const auto* aggregate = std::get_if<ObjectExpr>(&tree_.expressions[expression.value].expression);
-          RequireMeaning(aggregate ? aggregate->kind == AggregateKind::kObject :
-              std::holds_alternative<EmptyObjectExpr>(tree_.expressions[expression.value].expression), Error::kOperator);
+          RequireMeaning(aggregate ? aggregate->kind == kind :
+              (array ? std::holds_alternative<EmptyArrayExpr>(tree_.expressions[expression.value].expression) :
+                       std::holds_alternative<EmptyObjectExpr>(tree_.expressions[expression.value].expression)), Error::kOperator);
         } else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
           RequireMeaning(next_function < evaluation_.functions.size(), Error::kOperand);
           const auto& function = evaluation_.functions[next_function++];

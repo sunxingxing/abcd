@@ -134,7 +134,7 @@ void SourceTree(bool buffered, bool array = false, bool print = false) {
     std::vector<ExpressionConstant> constants(graph.ops.size());
     const std::vector<ConstantProperty> properties{{NameId{0}, NullLiteral{}}};
     const std::uint32_t prefix = buffered ? 1 : 0;
-    if (buffered) constants[0] = ObjectConstant{0, prefix};
+    if (buffered) constants[0] = AggregateConstant{0, prefix};
     for (std::size_t i = 1; i <= count; ++i) constants[i] = NameId{0};
     if (array) {
       syntax.names.clear();
@@ -218,7 +218,7 @@ void BufferedOverwrites(bool print = false) {
     // as the property identity, including repeated keys inside one buffer.
     for (std::uint32_t i = 0; i < count; ++i) syntax.names.push_back(syntax.names[i]);
     if (mode == BufferCase::kRepeatedKey) properties.push_back({NameId{count}, NullLiteral{}});
-    constants[0] = ObjectConstant{0, static_cast<std::uint32_t>(properties.size())};
+    constants[0] = AggregateConstant{0, static_cast<std::uint32_t>(properties.size())};
     for (std::uint32_t i = 0; i < count; ++i) {
       const auto key = mode == BufferCase::kDescending ? count - 1 - i : i;
       constants[i + 1] = NameId{count + key};

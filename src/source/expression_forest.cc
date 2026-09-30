@@ -73,9 +73,11 @@ class ForestBuilder {
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       Step(); const auto& op = graph_.ops[i];
       const auto* object = std::get_if<analysis::ValueObjectAllocation>(&op.operation);
-      if (op.life != analysis::ValueLife::kLive || !object || !object->literal) continue;
-      const auto* constant = std::get_if<ObjectConstant>(&constants_.operations[i]);
-      Require(constant && constant->first <= constants_.properties.size() &&
+      const auto* array = std::get_if<analysis::ValueArrayAllocation>(&op.operation);
+      if (op.life != analysis::ValueLife::kLive || !((object && object->literal) || (array && array->literal))) continue;
+      const auto* constant = std::get_if<AggregateConstant>(&constants_.operations[i]);
+      Require(constant && constant->kind == (array ? AggregateKind::kArray : AggregateKind::kObject) &&
+          constant->first <= constants_.properties.size() &&
           constant->count <= constants_.properties.size() - constant->first, Error::kConstant);
       Require(constant->count <= kMaxId - buffered_properties, Error::kResourceLimit);
       buffered_properties += constant->count;
@@ -310,7 +312,7 @@ class ForestBuilder {
     return true;
   }
   PropertyRange BufferedProperties(const ExpressionConstant& constant, TreeOriginId origin) {
-    const auto* object = std::get_if<ObjectConstant>(&constant);
+    const auto* object = std::get_if<AggregateConstant>(&constant);
     Require(object != nullptr, Error::kConstant);
     const PropertyRange properties{static_cast<std::uint32_t>(forest_.properties.size()), object->count};
     for (std::uint32_t i = 0; i < object->count; ++i) {
@@ -324,10 +326,10 @@ class ForestBuilder {
   ExprId Object(const ObjectInit& object, TreeOriginId origin) {
     const auto* allocation = std::get_if<analysis::ValueObjectAllocation>(&graph_.ops[object.allocation.value].operation);
     const auto kind = allocation ? AggregateKind::kObject : AggregateKind::kArray;
-    const ObjectConstant* buffer = nullptr;
+    const AggregateConstant* buffer = nullptr;
     if (allocation && allocation->literal) {
-      buffer = std::get_if<ObjectConstant>(&constants_.operations[object.allocation.value]);
-      Require(buffer != nullptr, Error::kConstant);
+      buffer = std::get_if<AggregateConstant>(&constants_.operations[object.allocation.value]);
+      Require(buffer && buffer->kind == AggregateKind::kObject, Error::kConstant);
     }
     const auto prefix = buffer ? buffer->count : 0;
     std::vector<std::optional<analysis::OpId>> writes;
@@ -603,7 +605,10 @@ class ForestBuilder {
                          std::is_same_v<T, analysis::ValueDebugger>)
         return {};
       else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>) {
-        Require(!operation.literal, Error::kConstant);
+        if (operation.literal) {
+          const auto properties = BufferedProperties(constant, origin);
+          return Add(ObjectExpr{properties, AggregateKind::kArray, properties.count}, origin);
+        }
         return Add(EmptyArrayExpr{}, origin);
       }
       else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>)

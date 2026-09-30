@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <charconv>
 #include <limits>
 #include <new>
 #include <stdexcept>
@@ -10,7 +11,7 @@
 namespace abcd::source {
 namespace {
 using Error = TreeConstantError;
-struct BufferUse { abc::PoolIndex slot; analysis::OpId operation; };
+struct BufferUse { abc::PoolIndex slot; analysis::OpId operation; AggregateKind kind; };
 constexpr std::size_t kPairEntries = 2; // v7 ExtractObjectDatas key/value pairs.
 class Resolver {
  public:
@@ -38,44 +39,77 @@ class Resolver {
     std::size_t count = 0;
     for (const auto& op : graph.ops) {
       Step(); const auto* object = std::get_if<analysis::ValueObjectAllocation>(&op.operation);
-      count += op.life == analysis::ValueLife::kLive && object && object->literal;
+      const auto* array = std::get_if<analysis::ValueArrayAllocation>(&op.operation);
+      count += op.life == analysis::ValueLife::kLive && ((object && object->literal) || (array && array->literal));
     }
     Grow(uses, count);
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       Step(); const auto& op = graph.ops[i];
       const auto* object = std::get_if<analysis::ValueObjectAllocation>(&op.operation);
       if (op.life == analysis::ValueLife::kLive && object && object->literal)
-        uses.push_back({*object->literal, {static_cast<std::uint32_t>(i)}});
+        uses.push_back({*object->literal, {static_cast<std::uint32_t>(i)}, AggregateKind::kObject});
+      const auto* array = std::get_if<analysis::ValueArrayAllocation>(&op.operation);
+      if (op.life == analysis::ValueLife::kLive && array && array->literal)
+        uses.push_back({*array->literal, {static_cast<std::uint32_t>(i)}, AggregateKind::kArray});
     }
-    std::sort(uses.begin(), uses.end(), [&](const auto& a, const auto& b) { Step(); return a.slot < b.slot; });
+    std::sort(uses.begin(), uses.end(), [&](const auto& a, const auto& b) { Step(); return a.kind == b.kind ? a.slot < b.slot : a.kind < b.kind; });
     for (std::size_t first = 0; first < uses.size();) {
       Step(); auto end = first + 1;
-      while (end < uses.size() && uses[end].slot == uses[first].slot) { Step(); ++end; }
+      while (end < uses.size() && uses[end].slot == uses[first].slot && uses[end].kind == uses[first].kind) { Step(); ++end; }
       const MethodConstants context(file, header, index, method, {left_.bytes});
       const auto origin = graph.ops[uses[first].operation.value].origin;
       if (origin.value >= graph.origins.size()) throw Error::kObjectLiteral;
-      auto read = ReadObjectBuffer({uses[first].slot}, graph.origins[origin.value].pc, context, {left_.bytes, left_.work});
-      const auto* buffer = std::get_if<ObjectBuffer>(&read);
-      if (!buffer) {
-        const auto& failure = std::get<BodyEmitFailure>(read);
-        if (failure.metadata_error) throw *failure.metadata_error;
-        if (failure.object_error == ObjectBufferError::kWorkLimit) throw Error::kWorkLimit;
-        throw failure.kind == BodyEmitError::kResourceLimit ? Error::kResourceLimit : Error::kObjectLiteral;
+      const auto kind = uses[first].kind;
+      ObjectBuffer object_buffer;
+      abc::LiteralArray array_buffer;
+      if (kind == AggregateKind::kObject) {
+        auto read = ReadObjectBuffer({uses[first].slot}, graph.origins[origin.value].pc, context, {left_.bytes, left_.work});
+        const auto* buffer = std::get_if<ObjectBuffer>(&read);
+        if (!buffer) {
+          const auto& failure = std::get<BodyEmitFailure>(read);
+          if (failure.metadata_error) throw *failure.metadata_error;
+          if (failure.object_error == ObjectBufferError::kWorkLimit) throw Error::kWorkLimit;
+          throw failure.kind == BodyEmitError::kResourceLimit ? Error::kResourceLimit : Error::kObjectLiteral;
+        }
+        Admit(buffer->allocated_bytes, 1); Step(buffer->work);
+        object_buffer = std::get<ObjectBuffer>(std::move(read));
+      } else {
+        auto reference = abc::ResolvePoolReference(file, header, index, method,
+            uses[first].slot, abc::PoolEntityKind::kLiteralArray);
+        if (const auto* error = std::get_if<abc::MetadataError>(&reference)) throw *error;
+        auto read = abc::ReadLiteralArray(file, header, std::get<abc::PoolReference>(reference).offset, {left_.bytes});
+        if (const auto* error = std::get_if<abc::LiteralFailure>(&read)) {
+          if (error->kind == abc::LiteralError::kFileChanged) throw abc::MetadataError::kFileChanged;
+          if (error->kind == abc::LiteralError::kRead) throw abc::MetadataError::kRead;
+          throw error->kind == abc::LiteralError::kResourceLimit ? Error::kResourceLimit : Error::kObjectLiteral;
+        }
+        array_buffer = std::get<abc::LiteralArray>(std::move(read));
+        Admit(array_buffer.entries.capacity(), sizeof(abc::LiteralEntry));
       }
-      Admit(buffer->allocated_bytes, 1);
-      Step(buffer->work);
-      const auto fields = buffer->keys.size();
+      const auto fields = kind == AggregateKind::kObject ? object_buffer.keys.size() : array_buffer.entries.size();
       constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
       if (fields > kMaxId - out_.properties.size() || fields > kMaxId - out_.names.size() ||
           fields > kMaxId - out_.texts.size()) throw Error::kResourceLimit;
       Grow(out_.properties, out_.properties.size() + fields);
       Grow(out_.names, out_.names.size() + fields);
       Grow(out_.texts, out_.texts.size() + fields);
-      const ObjectConstant object{static_cast<std::uint32_t>(out_.properties.size()), static_cast<std::uint32_t>(fields)};
+      const AggregateConstant object{static_cast<std::uint32_t>(out_.properties.size()), static_cast<std::uint32_t>(fields), kind};
       for (std::size_t i = 0; i < fields; ++i) {
         Step(); const NameId key{static_cast<std::uint32_t>(out_.names.size())};
-        Text(out_.names, buffer->keys[i]);
-        const auto& entry = buffer->literal.entries[i * kPairEntries + 1];
+        if (kind == AggregateKind::kObject) Text(out_.names, object_buffer.keys[i]);
+        else {
+          // Native array syntax uses dense ordered keys. No holes, methods or
+          // embedded objects are silently converted to primitive elements.
+          constexpr auto kIndexDigits = std::numeric_limits<std::uint32_t>::digits10 + 1;
+          char digits[kIndexDigits];
+          const auto converted = std::to_chars(digits, digits + kIndexDigits, static_cast<std::uint32_t>(i));
+          if (converted.ec != std::errc{}) throw Error::kResourceLimit;
+          char16_t key_text[kIndexDigits];
+          const auto length = static_cast<std::size_t>(converted.ptr - digits);
+          for (std::size_t digit = 0; digit < length; ++digit) key_text[digit] = digits[digit];
+          Text(out_.names, {key_text, length});
+        }
+        const auto& entry = kind == AggregateKind::kObject ? object_buffer.literal.entries[i * kPairEntries + 1] : array_buffer.entries[i];
         TreeLiteral value;
         if (entry.tag == abc::LiteralTag::kString) {
           auto decoded = abc::ReadStringEntity(file, header, std::get<abc::EntityOffset>(entry.value), {left_.bytes});
@@ -84,14 +118,19 @@ class Resolver {
           Admit(text->capacity(), sizeof(char16_t)); Admit(1, sizeof(char16_t));
           value = TextId{static_cast<std::uint32_t>(out_.texts.size())}; Text(out_.texts, *text);
         } else {
-          const auto bits = std::get<abc::LiteralBits>(entry.value).value;
+          const auto* raw = std::get_if<abc::LiteralBits>(&entry.value);
+          if (!raw) throw Error::kObjectLiteral;
+          const auto bits = raw->value;
           switch (entry.tag) {
             case abc::LiteralTag::kNull: value = NullLiteral{}; break;
-            case abc::LiteralTag::kBoolean: value = BooleanLiteral{bits != 0}; break;
+            case abc::LiteralTag::kBoolean:
+              if (bits > 1) throw Error::kObjectLiteral;
+              value = BooleanLiteral{bits != 0}; break;
             case abc::LiteralTag::kDouble: value = NumberLiteral{bits}; break;
             case abc::LiteralTag::kInteger:
-              // v7 LiteralDataExtractor uses JSTaggedValue(uint32_t), not a
+              // v7 ExtractObjectDatas/GetDatasIgnoreType use JSTaggedValue(uint32_t), not a
               // signed reinterpretation. Large u32 values remain exact doubles.
+              if (bits > UINT32_MAX) throw Error::kObjectLiteral;
               value = bits <= static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max())
                   ? TreeLiteral{IntegerLiteral{static_cast<std::int32_t>(bits)}}
                   : TreeLiteral{NumberLiteral{std::bit_cast<std::uint64_t>(static_cast<double>(bits))}};

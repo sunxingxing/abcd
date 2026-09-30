@@ -8,7 +8,11 @@
 namespace abcd::source {
 // Constants are resolved by the ABC adapter before syntax construction. Pool
 // indices never become executable tree operands. Entries are indexed by OpId.
-struct ObjectConstant { std::uint32_t first; std::uint32_t count; };
+struct AggregateConstant {
+  std::uint32_t first;
+  std::uint32_t count;
+  AggregateKind kind = AggregateKind::kObject;
+};
 struct ConstantProperty { NameId key; TreeLiteral value; };
 // Record binding adapter supplies the same metadata slot and native symbol.
 // Initialization is a declaration at this exact store, never an eager `let`.
@@ -17,7 +21,7 @@ struct ModuleStoreConstant {
   ModuleSymbol target;
   bool initialize = false;
 };
-using ExpressionConstant = std::variant<std::monostate, NameId, TextId, ObjectConstant, ModuleStoreConstant,
+using ExpressionConstant = std::variant<std::monostate, NameId, TextId, AggregateConstant, ModuleStoreConstant,
     std::shared_ptr<const ClassTree>>;
 struct ExpressionConstants {
   std::span<const ExpressionConstant> operations;

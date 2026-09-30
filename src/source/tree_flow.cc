@@ -368,10 +368,11 @@ class FlowCheck {
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step(); const auto& op = graph_.ops[i];
       const auto* allocation = std::get_if<analysis::ValueObjectAllocation>(&op.operation);
-      if (op.life != analysis::ValueLife::kLive || !allocation || !allocation->literal) continue;
+      const auto* array = std::get_if<analysis::ValueArrayAllocation>(&op.operation);
+      if (op.life != analysis::ValueLife::kLive || !((allocation && allocation->literal) || (array && array->literal))) continue;
       Require(flow_.expressions[i].has_value(), Error::kPlacement);
       const auto* object = std::get_if<ObjectExpr>(&tree_.expressions[flow_.expressions[i]->value].expression);
-      Require(object != nullptr, Error::kPlacement);
+      Require(object && object->kind == (array ? AggregateKind::kArray : AggregateKind::kObject), Error::kPlacement);
       const auto prefix = object->buffered;
       flow_.buffered_properties[i] = prefix;
       if (!grouped[i]) {
