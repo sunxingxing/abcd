@@ -48,7 +48,13 @@ class AbiBuilder {
     for (std::size_t i = 0; i < tree_.parameters.size(); ++i) {
       Step();
       const auto& parameter = tree_.parameters[i];
-      Require(!parameter.rest && parameter.symbol.value < formals_.size(), Error::kParameter);
+      Require(parameter.symbol.value < formals_.size(), Error::kParameter);
+      if (parameter.rest) {
+        Require(i + 1 == tree_.parameters.size() && !parameter.initializer &&
+            result_.layout == ParameterLayout::kSimple, Error::kParameter);
+        result_.layout = ParameterLayout::kRest;
+        source_length = static_cast<std::uint32_t>(i);
+      }
       if (parameter.initializer) {
         Require(parameter.initializer->value < tree_.expressions.size() &&
             std::holds_alternative<TreeLiteral>(tree_.expressions[parameter.initializer->value].expression), Error::kParameter);
@@ -88,7 +94,14 @@ class AbiBuilder {
       Step();
       std::visit([&](const auto& value) { Expression(value); }, expression.expression);
     }
+    std::uint64_t rest_reads = 0;
     for (const auto& op : graph_.ops) {
+      if (op.life == analysis::ValueLife::kLive)
+        if (const auto* rest = std::get_if<analysis::ValueRestArguments>(&op.operation)) {
+          Require(result_.layout == ParameterLayout::kRest &&
+              rest->first_argument + 1U == tree_.parameters.size() && op.use_count == 0, Error::kParameter);
+          Increment(rest_reads);
+        }
       Step();
       if (op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueFrameThis>(op.operation)) {
@@ -105,10 +118,18 @@ class AbiBuilder {
         result_.callable = AbiObservation::kFrameIdentity;
       }
     }
-    for (const auto& parameter : result_.parameters) {
+    for (std::size_t i = 0; i < result_.parameters.size(); ++i) {
       Step();
-      Require((parameter.reads.operands != 0) == (parameter.reads.references != 0) &&
-          parameter.writes == 0, Error::kParameter);
+      const auto& parameter = result_.parameters[i];
+      if (tree_.parameters[i].rest) {
+        // The physical parameter entry is the first actual rest argument, not
+        // an array. Only the single checked allocation introduces this symbol.
+        Require(parameter.reads.operands == 0 && rest_reads == 1 &&
+            parameter.reads.references == rest_reads && parameter.writes == 0, Error::kParameter);
+      } else {
+        Require((parameter.reads.operands != 0) == (parameter.reads.references != 0) &&
+            parameter.writes == 0, Error::kParameter);
+      }
     }
     Require((result_.receiver.operands != 0 || result_.frame_receiver_reads != 0) ==
         (result_.receiver.references != 0), Error::kReceiver);

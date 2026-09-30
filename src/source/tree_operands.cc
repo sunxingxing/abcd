@@ -66,6 +66,12 @@ class OperandCheck {
           RequireMeaning(op.use_count == 0 && op.result && op.result->value < graph_.values.size() &&
               graph_.values[op.result->value].domain.IsLanguage(), Error::kOperand);
           (void)Node<SymbolConstructorExpr>(expression);
+        } else if constexpr (std::is_same_v<T, analysis::ValueRestArguments>) {
+          RequireMeaning(op.use_count == 0 && op.result && op.result->value < graph_.values.size() &&
+              graph_.values[op.result->value].domain.IsLanguage() &&
+              operation.first_argument < tree_.parameters.size() &&
+              tree_.parameters[operation.first_argument].rest &&
+              Node<SymbolExpr>(expression).symbol == tree_.parameters[operation.first_argument].symbol, Error::kOperand);
         } else if constexpr (std::is_same_v<T, analysis::ValueArgumentSnapshot>) {
           const auto& snapshot = Node<ArgumentSnapshotExpr>(expression);
           RequireMeaning(graph_.arguments && evaluation_.arguments == graph_.arguments &&

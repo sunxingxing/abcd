@@ -57,6 +57,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else if constexpr (std::is_same_v<T, analysis::ValueFrameFunction>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueGlobalObject>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueSymbolConstructor>) return EvaluationShape{kNoOperands, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueRestArguments>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueArgumentSnapshot>) {
       EvaluationShape shape{kNoOperands, true, op.slots};
       shape.inputs = InputEvaluation::kConditionalArgument;
@@ -152,6 +153,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                     std::is_same_v<T, analysis::ValueFrameFunction> ||
                     std::is_same_v<T, analysis::ValueGlobalObject> ||
                     std::is_same_v<T, analysis::ValueSymbolConstructor> ||
+                    std::is_same_v<T, analysis::ValueRestArguments> ||
                     std::is_same_v<T, analysis::ValueArgumentSnapshot> ||
                     std::is_same_v<T, analysis::ValueModuleRead> ||
                     std::is_same_v<T, analysis::ValueModuleWrite> ||

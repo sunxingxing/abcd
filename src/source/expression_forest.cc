@@ -457,6 +457,10 @@ class ForestBuilder {
         Require(forest_.bindings.self.has_value(), Error::kBinding);
         return Add(SymbolExpr{*forest_.bindings.self}, origin);
       }
+      else if constexpr (std::is_same_v<T, analysis::ValueRestArguments>) {
+        Require(operation.first_argument < forest_.bindings.parameter_count && op.use_count == 0 && op.result, Error::kBinding);
+        return Add(SymbolExpr{SymbolId{operation.first_argument}}, origin);
+      }
       else if constexpr (std::is_same_v<T, analysis::ValueLexicalLoad>)
         return Add(SymbolExpr{CellSymbol(id)}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>)

@@ -8,6 +8,7 @@ namespace abcd::source {
 struct ParameterSyntax {
   std::optional<NameId> name;
   NameEvidence evidence = NameEvidence::kSynthesized;
+  bool rest = false;
 };
 struct CaptureSyntax {
   CellId cell;

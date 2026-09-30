@@ -95,9 +95,9 @@ class TreePrinter {
     for (std::size_t i = 0; i < Tree().parameters.size(); ++i) {
       Step();
       const auto& parameter = Tree().parameters[i];
-      if (parameter.rest) throw Error::kUnsupportedContext;
       if (i != 0) Append(", ");
       Result().parameters[i].begin = written_;
+      if (parameter.rest) Append("...");
       Name(parameter.symbol);
       if (parameter.initializer) {
         if (parameter.initializer->value >= Tree().expressions.size() ||
@@ -602,8 +602,9 @@ class TreePrinter {
     if (cursor.index == Tree().parameters.size()) return;
     if (cursor.index) Append(", ");
     const auto& parameter = Tree().parameters[cursor.index];
-    if (parameter.rest) throw Error::kUnsupportedContext;
-    Result().parameters[cursor.index].begin = written_; Name(parameter.symbol);
+    Result().parameters[cursor.index].begin = written_;
+    if (parameter.rest) Append("...");
+    Name(parameter.symbol);
     Push(ParameterCursor{cursor.index + 1}); Push(EndParameter{cursor.index});
     if (parameter.initializer) {
       if (!std::holds_alternative<TreeLiteral>(Tree().expressions[parameter.initializer->value].expression))

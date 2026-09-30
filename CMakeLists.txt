@@ -970,6 +970,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_await_finally.mjs $<TARGET_FILE:loop_closure_file_test> --reuse --arrow)
     add_test(NAME file_async_frame_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_frame.mjs $<TARGET_FILE:loop_closure_file_test>)
+    add_test(NAME file_rest_method_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_rest_method.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME file_async_method_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_method.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME file_await_finally_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
@@ -997,6 +999,9 @@ if(BUILD_TESTING)
   endif()
   if(ABCD_NODE_EXECUTABLE AND ABCD_BUILD_TOOLS)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+      add_test(NAME value_rest_methods_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_rest_methods.mjs
+        $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
       add_test(NAME value_tree_pasteboard_slice_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_tree_slice.mjs
         $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"

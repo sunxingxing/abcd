@@ -111,9 +111,10 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
     }
     groups_[ordered_[i].value] = group;
   }
-  for (const auto& parameter : tree.parameters) {
+  for (std::size_t i = 0; i < tree.parameters.size(); ++i) {
+    const auto& parameter = tree.parameters[i];
     budget.Step();
-    RequireTree(!parameter.rest, Error::kUnsupportedSyntax);
+    RequireTree(!parameter.rest || (i + 1 == tree.parameters.size() && !parameter.initializer), Error::kUnsupportedSyntax);
     RequireTree(parameter.symbol.value < count &&
                 tree.symbols[parameter.symbol.value].kind == BindingKind::kParameter &&
                 !declared_[parameter.symbol.value], Error::kBinding);

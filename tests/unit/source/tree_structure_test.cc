@@ -159,6 +159,14 @@ void ScopesAndBindings() {
   tree.parameters.push_back({{0}, {}, false});
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   tree.parameters[0].rest = true;
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  tree.parameters[0].initializer = ExprId{0};
+  Expect(tree, TreeStructureError::kUnsupportedSyntax);
+  tree.parameters[0].initializer.reset();
+  tree.names.push_back(u"later");
+  tree.symbols.push_back({{0}, {1}, BindingKind::kParameter,
+      DeclarationKind::kParameter, NameEvidence::kMetadata, {}});
+  tree.parameters.push_back({{1}, {}, false});
   Expect(tree, TreeStructureError::kUnsupportedSyntax);
 }
 void OriginsAndAnchors() {

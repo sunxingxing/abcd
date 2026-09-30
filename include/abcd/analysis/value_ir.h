@@ -126,6 +126,13 @@ struct ValueGlobalObject { bool operator==(const ValueGlobalObject&) const = def
 struct ValueSymbolConstructor { bool operator==(const ValueSymbolConstructor&) const = default; };
 // slots counts declared conditional inputs, NOT actual invocation arguments.
 // Actual count/tail come from ValueProgram::arguments; every execution allocates.
+// COPYRESTARGS creates a fresh argument-tail array. Its physical ABI slots
+// are not source parameter bindings; native ...rest substitution needs the
+// original method prologue check in syntax resolution.
+struct ValueRestArguments {
+  std::uint16_t first_argument = 0;
+  bool operator==(const ValueRestArguments&) const = default;
+};
 struct ValueArgumentSnapshot {
   std::uint32_t slots;
   bool operator==(const ValueArgumentSnapshot&) const = default;
@@ -218,7 +225,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHol
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValueDebugger, ValueFrameThis, ValueFrameFunction,
-    ValueGlobalObject, ValueSymbolConstructor, ValueArgumentSnapshot, ValueThrow>;
+    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

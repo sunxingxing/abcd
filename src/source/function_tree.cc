@@ -463,7 +463,7 @@ class TreeBuilder {
       const SymbolId symbol{static_cast<std::uint32_t>(i)};
       tree_.symbols.push_back({kParameterScope, name, BindingKind::kParameter,
           DeclarationKind::kParameter, input.evidence, {}});
-      tree_.parameters.push_back({symbol, {}, false});
+      tree_.parameters.push_back({symbol, {}, input.rest});
     }
     const auto less = [&](NameId left, NameId right) {
       const auto& a = tree_.names[left.value];

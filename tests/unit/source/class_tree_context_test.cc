@@ -40,6 +40,7 @@ static_assert(!std::is_constructible_v<VerifiedFunction, FunctionTree>);
 static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);
 void Check(bool condition) { if (!condition) std::abort(); }
+enum class RestEncoding { kNone, kNarrow, kWide, kLeading, kUnused, kReassigned, kPhysicalRead, kRepeated, kSnapshot, kWrongIndex };
 enum class DefaultEncoding { kNone, kInteger, kNegation };
 enum class GeneratorEncoding { kTagged, kExplicitTagged, kExplicitOrdinary };
 enum class ExceptionShape {
@@ -51,7 +52,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
          ExceptionShape exception = ExceptionShape::kNone,
          abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool static_member = false,
-         GeneratorEncoding generator_encoding = GeneratorEncoding::kTagged) {
+         GeneratorEncoding generator_encoding = GeneratorEncoding::kTagged,
+         RestEncoding rest = RestEncoding::kNone) {
   const bool defaults = encoding != DefaultEncoding::kNone;
   const bool generator = exception == ExceptionShape::kGeneratorYield || exception == ExceptionShape::kGeneratorCatch;
   const bool generator_catch = exception == ExceptionShape::kGeneratorCatch;
@@ -74,7 +76,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       ? abc::LiteralTag::kGeneratorMethod : abc::LiteralTag::kMethod);
   word(kLiteral + 10, kMember);
   bytes[kLiteral + 14] = static_cast<std::uint8_t>(abc::LiteralTag::kMethodAffiliate);
-  const std::uint8_t encoded_length = defaults ? 0 : 1;
+  const bool has_rest = rest != RestEncoding::kNone;
+  const std::uint8_t encoded_length = has_rest ? (rest == RestEncoding::kLeading ? 1 : 0) : (defaults ? 0 : 1);
   bytes[kLiteral + 15] = encoded_length;
   bytes[kLiteral + 17] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
   word(kLiteral + 18, static_member ? 0 : 1);
@@ -353,6 +356,28 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
         catch_begin, static_cast<std::uint8_t>(handler - catch_begin)});
     member.insert(member.end(), {0, handler, 1, 0, handler, 2});
   }
+  if (has_rest) {
+    // OH7 Function::CompileParameters: copy the ABI window, then one rest
+    // allocation and its store. A physical argument is never the rest array.
+    const std::uint8_t slots = encoded_length + 4;
+    std::vector<std::uint8_t> code;
+    for (std::uint8_t i = 0; i < slots; ++i)
+      code.insert(code.end(), {static_cast<std::uint8_t>(abc::Opcode::kMOV_V8_V8), i,
+          static_cast<std::uint8_t>(slots + i)});
+    if (rest == RestEncoding::kWide) code.insert(code.end(), {0xfd, 0x0b, encoded_length, 0});
+    else code.insert(code.end(), {0xcf, static_cast<std::uint8_t>(rest == RestEncoding::kWrongIndex ? 1 : encoded_length)});
+    code.insert(code.end(), {kStore, static_cast<std::uint8_t>(slots - 1)});
+    if (rest == RestEncoding::kRepeated) code.insert(code.end(), {0xcf, encoded_length});
+    if (rest == RestEncoding::kReassigned)
+      code.insert(code.end(), {kInteger, 7, 0, 0, 0, kStore, static_cast<std::uint8_t>(slots - 1)});
+    if (rest == RestEncoding::kSnapshot) code.push_back(static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS));
+    else if (rest == RestEncoding::kUnused) code.push_back(kUndefined);
+    else code.insert(code.end(), {kLoad, static_cast<std::uint8_t>(
+        rest == RestEncoding::kPhysicalRead ? 2 * slots - 1 : slots - 1)});
+    code.push_back(kReturn);
+    member = {slots, slots, static_cast<std::uint8_t>(code.size()), 0};
+    member.insert(member.end(), code.begin(), code.end());
+  }
   std::copy(caller.begin(), caller.end(), bytes.begin() + kCallerCode);
   std::copy(member.begin(), member.end(), bytes.begin() + member_code);
   char path[] = "/tmp/abcd-class-tree-context-XXXXXX";
@@ -378,7 +403,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   index.methods[0].code = abc::CodeInfo{{kCallerCode}, {kCallerCode + 4}, 1, 0, 10, 0};
   index.methods[1].offset = {kConstructor};
   index.methods[2].offset = {kMember};
-  index.methods[2].code = abc::CodeInfo{{member_code}, {member_code + 4}, member[0], 4,
+  index.methods[2].code = abc::CodeInfo{{member_code}, {member_code + 4}, member[0], member[1],
                                       member[kCodeSizeOffset], member[3]};
   index.methods[2].name = "run";
   index.methods[2].name_utf16_length = 3;
@@ -400,10 +425,37 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   auto context = ClassTreeContext::Resolve(file, header, index, lookup, roles, sites, range.first, identity);
   Check(std::holds_alternative<ClassTreeContext>(context));
   const auto& value = std::get<ClassTreeContext>(context);
-  Check(value.Name() == u"run" && value.Frame().parameters == 1);
+  Check(value.Name() == u"run" && value.Frame().parameters == (has_rest ? encoded_length + 1U : 1U));
   Check(value.Callable() == (generator ? CallableKind::kGeneratorMethod :
       exception == ExceptionShape::kAsyncAwait ? CallableKind::kAsyncMethod : CallableKind::kMethod));
   Check(value.Mode() == Strictness::kStrict);
+  if (has_rest) {
+    auto prepared = PreparedFamily::PrepareClass(file, header, index, lookup, roles,
+        functions, sites, range.first, identity, {Strictness::kStrict, nullptr, FunctionFragment::kClassMember});
+    const bool rejected = rest == RestEncoding::kPhysicalRead || rest == RestEncoding::kRepeated ||
+        rest == RestEncoding::kSnapshot || rest == RestEncoding::kWrongIndex;
+    if (rejected) {
+      Check(std::holds_alternative<FamilyPrepareFailure>(prepared));
+    } else {
+      if (const auto* failure = std::get_if<FamilyPrepareFailure>(&prepared))
+        std::cerr << "rest preparation error " << failure->cause.index() << '\n';
+      Check(std::holds_alternative<PreparedFamily>(prepared));
+      const auto& ready = std::get<PreparedFamily>(prepared);
+      const auto& root = ready.Family().members.front();
+      Check(root.tree.parameters.size() == encoded_length + 1U && root.tree.parameters.back().rest);
+      Check(root.tree.recovery_issues.empty() && root.abi && root.abi->length == encoded_length);
+      Check(root.abi->parameters.back().reads.operands == 0);
+      std::ostringstream output;
+      Check(std::holds_alternative<PrintedFamilyDraft>(ready.PrintDraft(
+          {Strictness::kStrict, nullptr, FunctionFragment::kClassMember}, output)));
+      Check(output.view().find("...") != std::string_view::npos);
+      if (evidence) *evidence << nlohmann::json{{"source", output.str()}, {"static", static_member},
+          {"leading", encoded_length}, {"unused", rest == RestEncoding::kUnused},
+          {"reassigned", rest == RestEncoding::kReassigned}}.dump() << '\n';
+    }
+    Check(unlink(path) == 0);
+    return;
+  }
   if (exception == ExceptionShape::kAsyncAwait || generator) {
     const FunctionContext owner{std::get<ClassTreeContext>(ClassTreeContext::Resolve(
         file, header, index, lookup, roles, sites, range.first, identity))};
@@ -922,6 +974,17 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--rest-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const bool placement : {false, true})
+        for (const auto rest : {RestEncoding::kNarrow, RestEncoding::kWide, RestEncoding::kLeading,
+            RestEncoding::kUnused, RestEncoding::kReassigned, RestEncoding::kPhysicalRead,
+            RestEncoding::kRepeated, RestEncoding::kSnapshot, RestEncoding::kWrongIndex})
+          Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kNone,
+              profile, placement, GeneratorEncoding::kTagged, rest);
+    return 0;
+  }
+
   if (argc == 2 && std::string_view(argv[1]) == "--generator-method-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const bool placement : {false, true})

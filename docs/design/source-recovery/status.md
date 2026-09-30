@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-09-30：真实 Logger rest 参数接入共同源码主干
+
+- 阶段一 Pasteboard 的 info/warn/debug/error 在共同值导入 PC 8 的
+  COPYRESTARGS 处失败；现在保留独立 ValueRestArguments 分配及原 PC，
+  经共同参数语法、FunctionTree、ABI 与 printer 恢复原生 ...args。
+  复用原方法 ProveRestPrologue，核对纯 ABI 入口拷贝、唯一分配与 store、
+  length/最后参数；不把第一个物理实参当 rest 数组。保留原槽读取、重复
+  copy、GETUNMAPPEDARGS、回跳和异常入口的拒绝。allocation 的资源失败
+  按现有语言契约排除，未新增证明或发布框架。
+- 30 个完整文件函数族覆盖三 profile、静态/实例、窄/宽编码、前置参数、
+  未使用和重赋值；24 个协议反例均拒绝。生成 JS 验证 length、非可构造
+  method、空/单个/多个/201 个实参、每次调用数组新身份及元素身份。
+  四个真实 Logger 方法均生成不含缺口的共同 class-member 草稿，独立
+  oracle 验证 hilog receiver、四个参数、getter/调用顺序、抛出身份、
+  调用结果不被 await 和 rest 数组独立性；只是完整方法片段，不是 record
+  完成或平台实机验证。
+- abc_semantic、class_tree_context_test、rest_arguments_test、
+  creation_tree_context_test、evaluation_plan_test、tree_structure_test
+  构建成功；9 项相关 CTest 通过（6.39 秒），证据
+  /tmp/abcd-rest-regression-build.log、/tmp/abcd-rest-regression-tests.log。
+  原始红例 /tmp/abcd-stage-one-4604.json；四方法现状
+  /tmp/abcd-rest-{4604,4631,4658,4685}.json。独立实施、自查，无 CC/子代理。
+- 接下来把共同方法能力接入正式 record 输出，并改善剩余的必要性不足
+  的临时变量；默认值与 rest 混合、非纯入口及整份模块/类初始化仍需
+  恢复与验收。阶段一未完成；全量测试、其他语料、RSS/基准继续暂停。
+
 ### 2026-09-30：阶段一配对输入基线与 macOS record 导出入口
 
 - 新 Goal 将本阶段范围固定为 abc_with_code 的全部五个 ABC，复核 SHA-256

@@ -127,6 +127,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueGlobalObject{};
     } else if constexpr (std::is_same_v<T, SymbolConstructorLoad>) {
       return ValueSymbolConstructor{};
+    } else if constexpr (std::is_same_v<T, RestCopy>) {
+      return ValueRestArguments{op.first_argument};
     } else if constexpr (std::is_same_v<T, ArgumentSnapshot>) {
       return ValueArgumentSnapshot{op.window.Count()};
     } else if constexpr (std::is_same_v<T, StringLoad>) {

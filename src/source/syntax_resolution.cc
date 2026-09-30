@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "parameter_names.h"
+#include "abcd/analysis/rest_arguments.h"
 #include "abcd/corpus/abc_file.h"
 
 namespace abcd::source {
@@ -96,6 +97,27 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
           syntax.parameters[i] = {id, NameEvidence::kDebugRange};
         }
       }
+    }
+    std::optional<std::uint16_t> rest_argument;
+    for (const auto& op : graph.ops) {
+      step(1);
+      if (op.life != analysis::ValueLife::kLive) continue;
+      const auto* rest = std::get_if<analysis::ValueRestArguments>(&op.operation);
+      if (!rest) continue;
+      Require(!rest_argument && rest->first_argument == context.Length() &&
+          static_cast<std::uint32_t>(rest->first_argument) + 1 == frame.parameters &&
+          ResourceFailures(identity.contract) == ResourceFailureScope::kExcluded, Error::kParameters);
+      rest_argument = rest->first_argument;
+    }
+    if (rest_argument) {
+      // OH7 CompileParameters/CopyRestArgs and RuntimeCopyRestArgs: move only
+      // a single allocation across pure entry copies. Independent copies,
+      // hidden arguments snapshots and original physical-slot reads cannot
+      // refer to the same native rest binding. Retain that refusal here.
+      step(body.instructions.size());
+      const auto prologue = analysis::ProveRestPrologue(body, frame, *rest_argument);
+      Require(prologue.has_value(), Error::kParameters);
+      syntax.parameters[*rest_argument].rest = true;
     }
     if (file.CheckUnchanged()) return SyntaxResolutionFailure{abc::MetadataError::kFileChanged};
     result.allocated_bytes = budget.bytes - bytes;

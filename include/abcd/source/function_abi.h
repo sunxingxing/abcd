@@ -18,12 +18,13 @@ struct ParameterAbiUse {
   AbiReads reads;
   std::uint64_t writes = 0;
 };
-enum class ParameterLayout : std::uint8_t { kSimple, kLiteralDefaults };
+enum class ParameterLayout : std::uint8_t { kSimple, kLiteralDefaults, kRest };
 enum class AbiObservation : std::uint8_t { kUnobserved, kFrameIdentity };
 constexpr std::string_view ParameterLayoutName(ParameterLayout layout) {
   switch (layout) {
     case ParameterLayout::kSimple: return "simple";
     case ParameterLayout::kLiteralDefaults: return "literal_defaults";
+    case ParameterLayout::kRest: return "rest";
   }
   return {};
 }
