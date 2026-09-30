@@ -67,6 +67,13 @@ struct GlobalScope {
   // Exact native ESM prelude for this destination. Borrowed names alone cannot
   // certify module owner/slot correspondence. Rechecked at tree publication.
   const ModuleEnclosure* module_enclosure = nullptr;
+  // Record adapter proves these native let declarations from actual first
+  // module stores. Indexed after the enclosure imports; reads remain live/TDZ.
+  // No declaration premise is supplied for detached class/function output.
+  std::span<const std::u16string> module_local_names{};
+  // Native record lexical layer, separate from intervening wrappers. Local
+  // module aliases refer into this layer; free globals must still avoid it.
+  std::span<const std::string_view> record_bindings{};
 };
 
 struct RealmBindingView {

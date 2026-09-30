@@ -77,6 +77,7 @@ bool AllowsGlobalReference(std::u16string_view name, GlobalScope scope) {
       (scope.argument_snapshot_binding && name == scope.argument_snapshot_binding->name))
     return false;
   if (ContainsAscii(scope.enclosing_bindings, name) ||
+      ContainsAscii(scope.record_bindings, name) ||
       ContainsAscii(scope.import_names, name) ||
       ContainsAscii(scope.parameter_bindings, name))
     return false;

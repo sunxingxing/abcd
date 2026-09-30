@@ -12,6 +12,37 @@
 
 ## 当前阶段
 
+### 2026-10-01：同 record 本地类绑定贯通，三个模型正式恢复
+
+- 实际阻塞为 FamilyEnclosure 的 module binding：已有模块别名能识别 local slot，
+  但目的地库存仅包含 imports，导致 IconInfoModel/RecommendModel/SectionModel
+  的完整函数族在正式类准备处拒绝。没有绕过该检查。
+- record 先建立实际首次 STMODULEVAR 声明、slot/name 对应和求值规划，再准备类。
+  GlobalScope 借用已证明的本地声明名字；共同目的地检查按 owner/slot/name 校验
+  只读别名，生成代码仍直接读取 native let，保留 live binding 与 TDZ。
+  本地声明所在 record 层与中间 wrapper 分开，global/realm/closure 检查仍将
+  record 名字作为遮蔽；参数、自名、类名及中间层同名继续拒绝。独立方法默认
+  没有本地声明前提，不能仅凭 local-export 元数据授权输出。
+- module_enclosure 定向用例覆盖缺失声明、错误 owner/name、可写别名、四类遮蔽，
+  以及 record 层对 import/global 的遮蔽；沿用 1/200/201/402/804/1608 规模。
+  family_enclosure 增加 record 层遮蔽回归。
+- 新 local_model_batch_source_test 从 ABC-only 正式导出加载三个模型、真实生成的
+  HomeConstants 和 Breakpoint，独立配对 TS 验证列表/getter 结果、常量读取轨迹、
+  原型身份、重复初始化、实例隔离，以及测试钩子替换本地类绑定后的参数与对象
+  身份、构造器抛错传播。钩子仅存在于测试，不进入引擎或正式输出。
+- 该测试尚未证明模型字段的全部 own-key/描述符语义，尤其 SectionProduct 的
+  可选 originalPrice 声明在 Node TS 擦除后与 ABC 可能不同。不能将受控测试
+  宣称为所有可观察行为或平台端到端验收；新增 native local TDZ 无独立运行用例。
+- 构建日志 /tmp/abcd-local-module-build2.log、/tmp/abcd-local-shadow-build.log。
+  五项原模块/模型定向回归全部通过（5.87 秒），新增三模型 oracle 通过（0.58 秒）；
+  最后四项 local/global/family 检查及 oracle 全部通过（2.18 秒）。日志分别为
+  /tmp/abcd-local-module-tests.log、/tmp/abcd-local-model-oracle.log、
+  /tmp/abcd-local-shadow-tests.log。未恢复全量测试/RSS/其他 corpus。
+- 五输入正式输出 build/stage-one/value-local-modules-pass-1：34 完整 /72 失败 /
+  46 无模块上下文，新增 Immersive 16752/17175/17544；相对上一批无完整回退，
+  无 legacy writer。逐输入证据 /tmp/abcd-local-modules-batch-summary.json。
+  class 命名包装、捕获搬运及剩余 UI/异常等失败仍待处理，阶段一保持未完成。
+
 ### 2026-10-01：字面量晚执行读取贯通，HomeModel 正式输出及配对执行通过
 
 - LiteralPlan 支持唯一消费的 named/computed/module read 链进入新建字面量；

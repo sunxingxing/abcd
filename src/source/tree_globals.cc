@@ -62,7 +62,7 @@ class GlobalCheck {
       Step(name.size());
       Require(realm || symbol || snapshot || AllowsGlobalReference(name, {}), Error::kName);
       Require(!Contains(std::span<const std::u16string_view>{locals}, name) &&
-          !Contains(scope->enclosing_bindings, name) && !Contains(scope->import_names, name) &&
+          !Contains(scope->enclosing_bindings, name) && !Contains(scope->record_bindings, name) && !Contains(scope->import_names, name) &&
           (!scope->module_enclosure || !Contains(scope->module_enclosure->SortedNames(), name)) &&
           !Contains(scope->parameter_bindings, name) &&
           !Equal(name, scope->class_binding) && !Equal(name, scope->self_binding) &&

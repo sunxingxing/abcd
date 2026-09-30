@@ -132,6 +132,39 @@ std::uint64_t Run(std::size_t count, abc::ProfileId profile, bool duplicate = fa
     }
     Check(std::get<Error>(verify(tree, &shadowed)) == Error::kShadowed);
   }
+  // A local read requires the record's declaration premise, but remains a
+  // read-only alias to a live let binding. Intervening bindings still shadow it.
+  const std::u16string local_names[] = {u"LocalClass"};
+  const std::string_view record_names[] = {"LocalClass"};
+  auto local = tree; local.names[0] = local_names[0];
+  local.modules[0].target.symbol.value = static_cast<std::uint32_t>(count);
+  Check(std::get<Error>(verify(local, &scope)) == Error::kBinding);
+  auto declared = scope; declared.module_local_names = local_names;
+  declared.record_bindings = record_names;
+  Check(std::holds_alternative<ModuleDestination>(verify(local, &declared)));
+  auto mismatch = local; mismatch.names[0] = u"OtherClass";
+  Check(std::get<Error>(verify(mismatch, &declared)) == Error::kName);
+  mismatch = local; ++mismatch.modules[0].target.owner.value;
+  Check(std::get<Error>(verify(mismatch, &declared)) == Error::kBinding);
+  mismatch = local; mismatch.modules[0].access = ModuleAccess::kMutable;
+  Check(std::get<Error>(verify(mismatch, &declared)) == Error::kBinding);
+  for (const auto select : {Shadow::kClass, Shadow::kSelf, Shadow::kParameters, Shadow::kEnclosing}) {
+    auto shadowed = declared;
+    switch (select) {
+      case Shadow::kClass: shadowed.class_binding = record_names[0]; break;
+      case Shadow::kSelf: shadowed.self_binding = record_names[0]; break;
+      case Shadow::kParameters: shadowed.parameter_bindings = record_names; break;
+      case Shadow::kEnclosing: shadowed.enclosing_bindings = record_names; break;
+    }
+    Check(std::get<Error>(verify(local, &shadowed)) == Error::kShadowed);
+  }
+  auto shadowed_import = scope; shadowed_import.record_bindings = names;
+  Check(std::get<Error>(verify(tree, &shadowed_import)) == Error::kShadowed);
+  Check(!AllowsGlobalReference(u"LocalClass", declared));
+  FunctionTree local_global{}; local_global.identity = identity;
+  local_global.names.push_back(u"LocalClass");
+  local_global.expressions.push_back({GlobalNameExpr{{0}}, {}});
+  Check(std::get<TreeGlobalError>(VerifyTreeGlobals(local_global, &declared)) == TreeGlobalError::kShadowed);
   FunctionTree global{}; global.identity = identity;
   global.names.push_back(u"namespaceBinding");
   global.expressions.push_back({GlobalNameExpr{{0}}, {}});

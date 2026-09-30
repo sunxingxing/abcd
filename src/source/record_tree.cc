@@ -102,46 +102,6 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     for (const auto& call : function->values.initializers.calls) initialization[call.creation.value] = &call;
     GlobalScope class_scope{};
     class_scope.module_enclosure = enclosure;
-    // File-level occurrence indexes are borrowed across records. Never rescan
-    // the whole ABC for every class or use a detached class as a body fallback.
-    for (const auto& occurrence : function->values.classes.classes) {
-      if (!functions || !classes) return fail(Error::kClass);
-      auto built = BuildClassTree(file, header, index, lookup, roles, *functions, *classes,
-          *function, occurrence.operation, identity, &class_scope, {budget.bytes}, initialization[occurrence.operation.value]);
-      if (const auto* failure = std::get_if<ClassTreeFailure>(&built)) {
-        const auto classify = [&](auto&& self, const auto& error) -> RecordSourceResult {
-          using T = std::decay_t<decltype(error)>;
-          if constexpr (std::is_same_v<T, FamilyPrepareFailure>)
-            return RouteRefusal{FamilyRouteFailure(error)};
-          else if constexpr (std::is_same_v<T, ClassContextFailure> || std::is_same_v<T, CreationContextFailure>)
-            return std::visit([&](const auto& nested) { return self(self, nested); }, error.error);
-          else if constexpr (std::is_same_v<T, ClassInitializerReadFailure> || std::is_same_v<T, SyntaxResolutionFailure> || std::is_same_v<T, FunctionFileFailure>)
-            return std::visit([&](const auto& nested) { return self(self, nested); }, error);
-          else if constexpr (std::is_same_v<T, ModuleAliasFailure>)
-            return std::visit([&](const auto& nested) { return self(self, nested); }, error.cause);
-          else if constexpr (std::is_same_v<T, ModuleReadFailure>)
-            return std::visit([&](const auto& nested) { return self(self, nested); }, error.reason);
-          else if constexpr (std::is_same_v<T, FunctionValueFailure>) return RouteRefusal{error.cause};
-          else if constexpr (requires { error.kind; }) return self(self, error.kind);
-          else {
-            if constexpr (requires { T::kResourceLimit; })
-              if (error == T::kResourceLimit) return fail(Error::kResourceLimit);
-            if constexpr (requires { T::kWorkLimit; })
-              if (error == T::kWorkLimit)
-                return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
-            if constexpr (requires { T::kFileChanged; })
-              if (error == T::kFileChanged) return fail(Error::kFileChanged);
-            if constexpr (requires { T::kRead; })
-              if (error == T::kRead) return fail(Error::kRead);
-            return RecordProgramFailure{Error::kClass, graph.origins[graph.ops[occurrence.operation.value].origin.value].pc};
-          }
-        };
-        return std::visit([&](const auto& error) { return classify(classify, error); }, *failure);
-      }
-      auto definition = std::get<ClassTree>(std::move(built));
-      retain(definition.allocated_bytes);
-      constants->operations[occurrence.operation.value] = std::make_shared<ClassTree>(std::move(definition));
-    }
     FunctionSyntax syntax{};
     syntax.identity = identity; syntax.method = index.methods[entry.value].offset; syntax.owner = {1};
     syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
@@ -277,6 +237,49 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     auto* control = std::get_if<ControlPlan>(&controlled);
     if (!control) return fail(Error::kBody);
     retain(control->allocated_bytes);
+    // First-store declarations and slot/name correspondence above establish
+    // the enclosing native record bindings before preparing class descendants.
+    class_scope.module_local_names = std::span<const std::u16string>(names).subspan(external);
+    // File-level occurrence indexes are borrowed across records. Never rescan
+    // the whole ABC for every class or use a detached class as a body fallback.
+    for (const auto& occurrence : function->values.classes.classes) {
+      if (!functions || !classes) return fail(Error::kClass);
+      auto built = BuildClassTree(file, header, index, lookup, roles, *functions, *classes,
+          *function, occurrence.operation, identity, &class_scope, {budget.bytes}, initialization[occurrence.operation.value]);
+      if (const auto* failure = std::get_if<ClassTreeFailure>(&built)) {
+        const auto classify = [&](auto&& self, const auto& error) -> RecordSourceResult {
+          using T = std::decay_t<decltype(error)>;
+          if constexpr (std::is_same_v<T, FamilyPrepareFailure>)
+            return RouteRefusal{FamilyRouteFailure(error)};
+          else if constexpr (std::is_same_v<T, ClassContextFailure> || std::is_same_v<T, CreationContextFailure>)
+            return std::visit([&](const auto& nested) { return self(self, nested); }, error.error);
+          else if constexpr (std::is_same_v<T, ClassInitializerReadFailure> || std::is_same_v<T, SyntaxResolutionFailure> || std::is_same_v<T, FunctionFileFailure>)
+            return std::visit([&](const auto& nested) { return self(self, nested); }, error);
+          else if constexpr (std::is_same_v<T, ModuleAliasFailure>)
+            return std::visit([&](const auto& nested) { return self(self, nested); }, error.cause);
+          else if constexpr (std::is_same_v<T, ModuleReadFailure>)
+            return std::visit([&](const auto& nested) { return self(self, nested); }, error.reason);
+          else if constexpr (std::is_same_v<T, FunctionValueFailure>) return RouteRefusal{error.cause};
+          else if constexpr (requires { error.kind; }) return self(self, error.kind);
+          else {
+            if constexpr (requires { T::kResourceLimit; })
+              if (error == T::kResourceLimit) return fail(Error::kResourceLimit);
+            if constexpr (requires { T::kWorkLimit; })
+              if (error == T::kWorkLimit)
+                return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
+            if constexpr (requires { T::kFileChanged; })
+              if (error == T::kFileChanged) return fail(Error::kFileChanged);
+            if constexpr (requires { T::kRead; })
+              if (error == T::kRead) return fail(Error::kRead);
+            return RecordProgramFailure{Error::kClass, graph.origins[graph.ops[occurrence.operation.value].origin.value].pc};
+          }
+        };
+        return std::visit([&](const auto& error) { return classify(classify, error); }, *failure);
+      }
+      auto definition = std::get<ClassTree>(std::move(built));
+      retain(definition.allocated_bytes);
+      constants->operations[occurrence.operation.value] = std::make_shared<ClassTree>(std::move(definition));
+    }
     const auto view = constants->View();
     syntax.names = std::move(constants->names); syntax.texts = std::move(constants->texts);
     auto constructed = BuildFunctionTree(graph, *control, *evaluation, std::move(syntax), view, {budget.bytes});
@@ -319,7 +322,7 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     }
     for (const auto& name : lexical_names) lexical_views.push_back(name);
     std::sort(lexical_views.begin(), lexical_views.end());
-    class_scope.enclosing_bindings = lexical_views;
+    class_scope.record_bindings = lexical_views;
     // No embedding globals have been established by this record adapter yet.
     const auto globals = VerifyTreeGlobals(result->tree, nullptr, {budget.bytes});
     if (!std::holds_alternative<TreeGlobals>(globals)) return fail(Error::kValue);

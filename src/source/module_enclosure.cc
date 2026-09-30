@@ -115,14 +115,19 @@ std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
         tree.scopes[tree.module_scope->value].kind == ScopeKind::kModule, Error::kBinding);
     for (const auto& alias : tree.modules) {
       budget.Step();
-      Require(alias.target.owner == enclosure.Owner() && alias.target.symbol.value < enclosure.Names().size() &&
+      Require(alias.target.owner == enclosure.Owner() && alias.target.symbol.value < enclosure.Names().size() + scope->module_local_names.size() &&
           alias.symbol.value < tree.symbols.size() && alias.access == ModuleAccess::kReadOnly, Error::kBinding);
       const auto& symbol = tree.symbols[alias.symbol.value];
       Require(symbol.scope == *tree.module_scope && symbol.kind == BindingKind::kModule &&
           symbol.declaration == DeclarationKind::kConst && symbol.evidence == NameEvidence::kMetadata &&
           symbol.name.value < tree.names.size(), Error::kBinding);
       const std::u16string_view name = tree.names[symbol.name.value];
-      Require(budget.Equal(name, std::string_view(enclosure.Names()[alias.target.symbol.value])), Error::kName);
+      const auto slot = alias.target.symbol.value;
+      const bool local = slot >= enclosure.Names().size();
+      if (local) Require(budget.Equal(name, std::u16string_view(
+          scope->module_local_names[slot - enclosure.Names().size()])), Error::kName);
+      else Require(budget.Equal(name, std::string_view(enclosure.Names()[slot])), Error::kName);
+      Require(local || !budget.Contains(scope->record_bindings, name), Error::kShadowed);
       Require(!budget.Contains(scope->enclosing_bindings, name) &&
           !budget.Contains(scope->parameter_bindings, name) &&
           !budget.Equal(name, scope->class_binding) && !budget.Equal(name, scope->self_binding) &&

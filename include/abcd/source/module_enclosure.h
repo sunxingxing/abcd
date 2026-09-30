@@ -49,7 +49,9 @@ class ModuleEnclosure {
   std::uint64_t work_ = 0;
 };
 // Recheck actual aliases and complete intervening lexical bindings at every
-// publication. Input tree must already have passed shared scope validation.
+// publication. Local read aliases additionally require GlobalScope's record
+// declaration premise; it does not authorize writes or early initialization.
+// Input tree must already have passed shared scope validation.
 [[nodiscard]] std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
     const FunctionTree& tree, abc::EntityOffset record, const GlobalScope* scope,
     analysis::SemanticBudget budget = {});

@@ -948,6 +948,9 @@ if(BUILD_TESTING)
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/static_class_batch.mjs $<TARGET_FILE:abc_structure>
           ${ABCD_PAIRED_CORPUS_ROOT})
       endif()
+      add_test(NAME local_model_batch_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/local_model_batch.mjs $<TARGET_FILE:abc_structure>
+        ${ABCD_PAIRED_CORPUS_ROOT}/Immersive)
       add_test(NAME homemodel_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/homemodel_record.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive)

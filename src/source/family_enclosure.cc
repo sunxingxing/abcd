@@ -238,7 +238,7 @@ class EnclosureCheck {
     // VerifyTreeStructure already enforced the shared global-name policy.
     // Borrow record-owned sorted indexes, not a copied union per descendant.
     // Family-local lexical ranges were checked separately at creation scopes.
-    Require(!Contains(scope_->enclosing_bindings, name) && !Contains(scope_->import_names, name) &&
+    Require(!Contains(scope_->enclosing_bindings, name) && !Contains(scope_->record_bindings, name) && !Contains(scope_->import_names, name) &&
         !Contains(scope_->parameter_bindings, name) && !Equal(name, scope_->class_binding) &&
         !Equal(name, scope_->self_binding) &&
         (target == BindingTarget::kRealm || !scope_->realm_binding || !Equal(name, scope_->realm_binding->name)) &&

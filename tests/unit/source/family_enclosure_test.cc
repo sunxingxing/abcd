@@ -146,6 +146,7 @@ void DestinationCases() {
     Check(failure.kind == FamilyEnclosureError::kShadowedGlobal && failure.member == FamilyId{1});
   };
   scope.enclosing_bindings = names; shadowed(); scope = {};
+  scope.record_bindings = names; shadowed(); scope = {};
   scope.import_names = names; shadowed(); scope = {};
   scope.parameter_bindings = names; shadowed(); scope = {};
   scope.class_binding = "target"; shadowed(); scope = {};
