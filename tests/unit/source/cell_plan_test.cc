@@ -169,20 +169,29 @@ void Iteration() {
 void ClosurePremise() {
   constexpr std::uint8_t kPush = 0x09, kLoad = 0x60, kStore = 0x3d,
       kRead = 0x3c, kPop = 0x69, kFunction = 0x33, kReturn = 0x64;
-  const auto body = test::Body({kPush, 1, kLoad, 0, kStore, 0,
-      kFunction, 0, 0, 0, 0, kRead, 0, kPop, kReturn});
-  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {false, false, false, false}));
-  const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, frame.registers));
-  // Conditional input proof is not a validated child or publication permission.
-  const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, input, frame.registers,
-      frame.locals, {}, CapturedValues::kReject, {}, ClosureWrites::kLanguage));
-  const auto graph = std::get<ValueProgram>(ImportNormalValues(body, input, proof, frame));
-  const auto environments = std::get<ValueEnvironments>(BuildValueEnvironments(graph));
-  const auto cells = std::get<CellPlan>(BuildCellPlan(graph, environments));
-  test::Check(std::get<CellInitializationError>(BuildCellInitializations(graph, environments, cells)) == CellInitializationError::kClosure);
-  const auto initialized = std::get<CellInitializations>(BuildCellInitializations(graph, environments, cells, ClosureWrites::kLanguage));
-  test::Check(std::get<CellInitializationError>(VerifyCellInitializations(
-      graph, environments, cells, ClosureWrites::kUnknown, initialized)) == CellInitializationError::kWitness);
+  for (const bool class_creation : {false, true}) {
+    std::vector<std::uint8_t> bytes{kPush, 1, kLoad, 0, kStore, 0};
+    if (class_creation) {
+      // IC, constructor, member buffer, length, parent register from pinned ISA.
+      bytes.insert(bytes.end(), {static_cast<std::uint8_t>(
+          abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8),
+          0, 0, 0, 0, 0, 0, 0, 0});
+    } else bytes.insert(bytes.end(), {kFunction, 0, 0, 0, 0});
+    bytes.insert(bytes.end(), {kRead, 0, kPop, kReturn});
+    const auto body = test::Body(bytes);
+    const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {false, false, false, false}));
+    const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, frame.registers));
+    // Conditional input proof is not a validated child or publication permission.
+    const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, input, frame.registers,
+        frame.locals, {}, CapturedValues::kReject, {}, ClosureWrites::kLanguage));
+    const auto graph = std::get<ValueProgram>(ImportNormalValues(body, input, proof, frame));
+    const auto environments = std::get<ValueEnvironments>(BuildValueEnvironments(graph));
+    const auto cells = std::get<CellPlan>(BuildCellPlan(graph, environments));
+    test::Check(std::get<CellInitializationError>(BuildCellInitializations(graph, environments, cells)) == CellInitializationError::kClosure);
+    const auto initialized = std::get<CellInitializations>(BuildCellInitializations(graph, environments, cells, ClosureWrites::kLanguage));
+    test::Check(std::get<CellInitializationError>(VerifyCellInitializations(
+        graph, environments, cells, ClosureWrites::kUnknown, initialized)) == CellInitializationError::kWitness);
+  }
 }
 void ReadSnapshot() {
   // Read a cell, retain its value, mutate the cell, return the old value.

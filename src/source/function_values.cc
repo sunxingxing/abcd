@@ -72,7 +72,8 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
         std::holds_alternative<analysis::ValueEnvironmentPush>(op.operation) ||
         std::holds_alternative<analysis::ValueEnvironmentPop>(op.operation) ||
         std::holds_alternative<analysis::ValueCurrentEnvironment>(op.operation) ||
-        std::holds_alternative<analysis::ValueFunctionCreation>(op.operation);
+        std::holds_alternative<analysis::ValueFunctionCreation>(op.operation) ||
+        std::holds_alternative<analysis::ValueClassCreation>(op.operation);
   }
   std::optional<analysis::ValueEnvironments> environments;
   std::optional<CellPlan> cells;

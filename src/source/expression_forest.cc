@@ -614,7 +614,8 @@ class ForestBuilder {
         return Add(FunctionExpr{function.child, captures}, origin);
       }
       else {
-        static_assert(std::is_same_v<T, analysis::ValueArgumentSnapshot> ||
+        static_assert(std::is_same_v<T, analysis::ValueClassCreation> ||
+                      std::is_same_v<T, analysis::ValueArgumentSnapshot> ||
                       std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
                       std::is_same_v<T, analysis::ValueModuleRead> ||
                       std::is_same_v<T, analysis::ValueModuleWrite> ||

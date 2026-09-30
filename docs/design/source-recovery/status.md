@@ -12,6 +12,37 @@
 
 ## 当前阶段
 
+### 2026-10-01：类创建进入共同值流，保留继承与闭包义务
+
+- 真实类 record 的首个阻断确定为 DEFINECLASSWITHBUFFER 值导入，而非
+  已有类方法 body writer。现将普通现代类创建接入 ImportNormalValues：
+  ValueClassCreation 保存 constructor/literal pool identity、16 位 length
+  和 IC；独立 kHeritage protocol use 绑定实际 parent SSA，acc 只在正常
+  完成后获得新结果。Hole（无 extends）、null 与 undefined 保持不同值。
+- 沿用 pinned ClassCreation 的环境/module/heap/user-code/allocation
+  效果及异常语义，不把创建当成纯分配或可消除副本。逐 occurrence 结果
+  保持独立；导入 verifier 比对全部元数据、操作数及效果。正常和相位
+  方法均保留类的环境需求，cell 初始化将未验证类成员列入闭包写前提。
+- 构建及 13 项定向 CTest 全通过（9.95 秒），包括两个 IC 宽度、三个
+  dynamic profile、三种 heritage、1/200/201/402 创建规模、篡改元数据
+  和协议用途、消除保护、已有模块与 Constants 输出。补充类闭包前提
+  测试单独通过（0.79 秒）。日志 /tmp/abcd-class-value-final-build.log、
+  /tmp/abcd-class-value-final-tests.log、/tmp/abcd-class-cell-tests.log。
+- value_import_test 中旧 module store 断言曾要求简化后仍为 ValueId，
+  与此前已实现的 primitive copy propagation 不符；已改为明确验证 store
+  与 return 都是同一 JS undefined。类导入自身的新增组合已通过。
+- ABC-only 真实 Immersive 入口 7312、7531、16638、29031 均报告
+  values_prepared=true，操作数分别 21/15/15/15，保留子成员义务
+  2/1/1/1。新增 value_class_record_test 固定输入身份验证此边界。
+  CommonConstants 正式 record 已越过 PC 9 import_stage，仍以 kValue
+  拒绝；/tmp/abcd-class-common-values.json 和
+  /tmp/abcd-class-common-record.json 保留实际检查结果。
+- 未新增完整类源码，不更新 15 个完整 record 为更高覆盖率。共同求值、
+  表达式构建与实际操作数检查明确拒绝尚未绑定的 ValueClassCreation；
+  下一步必须接构造器/成员 occurrence、heritage Hole 消费、捕获和同一
+  class AST 打印，不能仅放宽这些拒绝或使用伪造空 body。阶段一 Goal
+  保持进行中；未运行全量测试、RSS/基准、其他语料或代理。
+
 ### 2026-10-01：共同 record 接入原生模块导入与转导出
 
 - BuildRecordTree 复用 ModuleEnclosure 和 BindModuleAliases，保留全部

@@ -42,7 +42,7 @@ bool CanErasePureOp(const ValueOp& op) {
                     std::is_same_v<T, ValueArgumentSnapshot> ||
                     std::is_same_v<T, ValueModuleRead> ||
                     std::is_same_v<T, ValueModuleWrite> ||
-                    std::is_same_v<T, ValueFunctionCreation> ||
+                    std::is_same_v<T, ValueFunctionCreation> || std::is_same_v<T, ValueClassCreation> ||
                     std::is_same_v<T, ValueLexicalLoad> || std::is_same_v<T, ValueLexicalStore> ||
                     std::is_same_v<T, ValueEnvironmentPush> || std::is_same_v<T, ValueEnvironmentPop> ||
                     std::is_same_v<T, ValueCurrentEnvironment> ||

@@ -47,7 +47,7 @@ struct CfgRevision {
 enum class OperandRole : std::uint8_t {
   kInput, kBase, kKey, kStoredValue, kLeft, kRight, kCondition,
   kReturnValue, kGuardValue, kDiagnosticName, kPhiInput,
-  kCallee, kReceiver, kConstructor, kArgument, kHomeObject, kThrownValue
+  kCallee, kReceiver, kConstructor, kArgument, kHomeObject, kHeritage, kThrownValue
 };
 enum class ReadPurpose : std::uint8_t { kOperand, kProtocol };
 enum class ValueLife : std::uint8_t { kLive, kRemoved };
@@ -191,6 +191,17 @@ struct ValueFunctionCreation {
   std::uint16_t cache_slot;
   bool operator==(const ValueFunctionCreation&) const = default;
 };
+// Each DEFINECLASSWITHBUFFER occurrence creates a fresh constructor/prototype
+// pair and captures the current environment/module. The heritage protocol
+// operand may be the VM Hole sentinel (no extends), never JS undefined.
+// Constructor/member bodies and inheritance still require class-tree binding.
+struct ValueClassCreation {
+  abc::PoolIndex constructor;
+  abc::PoolIndex literal;
+  std::uint16_t length;
+  std::uint16_t cache_slot;
+  bool operator==(const ValueClassCreation&) const = default;
+};
 // Depth/slot stay relative to the ORIGINAL environment state at this origin.
 // They are not register aliases, source variable names or dynamic cell IDs.
 struct ValueLexicalLoad {
@@ -229,7 +240,7 @@ struct ValueHole { bool operator==(const ValueHole&) const = default; };
 using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHole, ValueAwait, ValueYield,
     ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValueIndexedWrite, ValuePropertyRead, ValueBranch, ValueJump,
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation,
-    ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueLexicalLoad, ValueLexicalStore,
+    ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValueDebugger, ValueFrameThis, ValueFrameFunction,
     ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow>;

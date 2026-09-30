@@ -94,6 +94,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return EvaluationShape{kConstruct, true, op.arguments};
     else {
       static_assert(std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
+                    std::is_same_v<T, analysis::ValueClassCreation> ||
                     std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
                     std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                     std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
@@ -159,7 +160,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                     std::is_same_v<T, analysis::ValueArgumentSnapshot> ||
                     std::is_same_v<T, analysis::ValueModuleRead> ||
                     std::is_same_v<T, analysis::ValueModuleWrite> ||
-                    std::is_same_v<T, analysis::ValueFunctionCreation> ||
+                    std::is_same_v<T, analysis::ValueFunctionCreation> || std::is_same_v<T, analysis::ValueClassCreation> ||
                     std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
                     std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                     std::is_same_v<T, analysis::ValueCurrentEnvironment> ||

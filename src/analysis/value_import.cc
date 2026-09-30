@@ -82,6 +82,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueModuleWrite{op.slot};
     } else if constexpr (std::is_same_v<T, BufferedObjectCreation>) {
       return ValueObjectAllocation{op.literal};
+    } else if constexpr (std::is_same_v<T, ClassCreation>) {
+      return ValueClassCreation{op.constructor, op.literal, op.length, op.cache_slot};
     } else if constexpr (std::is_same_v<T, FunctionCreation>) {
       if ((op.kind != CreationKind::kFunction || op.home_object != HomeObjectInput::kCurrentFunction) &&
           (op.kind != CreationKind::kMethod || op.home_object != HomeObjectInput::kAccumulator))

@@ -7,6 +7,78 @@
 int main() {
   using namespace abcd;
   using namespace abcd::analysis;
+  // Class creation retains occurrence identity and the VM heritage protocol.
+  // Both IC widths and every supported dynamic profile share this lowering.
+  for (const auto profile : {abc::ProfileId::kDynamic1202,
+      abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+    for (const bool wide : {false, true}) {
+      for (const auto parent : {abc::Opcode::kLDHOLE, abc::Opcode::kLDNULL,
+          abc::Opcode::kLDUNDEFINED}) {
+        for (const auto count : {1U, 200U, 201U, 402U}) {
+          constexpr unsigned kPrefix = 2;
+          constexpr std::uint16_t kConstructor = 123, kLiteral = 456, kLength = 300;
+          const std::uint16_t cache = wide ? 1000 : 10;
+          std::vector<std::uint8_t> bytes{static_cast<std::uint8_t>(parent),
+              static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), 0};
+          const auto word = [&](std::uint16_t value) {
+            bytes.push_back(static_cast<std::uint8_t>(value));
+            bytes.push_back(static_cast<std::uint8_t>(value >> 8));
+          };
+          for (unsigned n = 0; n < count; ++n) {
+            bytes.push_back(static_cast<std::uint8_t>(wide ?
+                abc::Opcode::kDEFINECLASSWITHBUFFER_IMM16_ID16_ID16_IMM16_V8 :
+                abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8));
+            if (wide) word(cache); else bytes.push_back(static_cast<std::uint8_t>(cache));
+            word(kConstructor); word(kLiteral); word(kLength); bytes.push_back(0);
+          }
+          bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kRETURN));
+          const auto body = test::Body(bytes);
+          const auto method = std::get<SemanticMethod>(BuildSemanticMethod(body, profile, 1));
+          const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, method, 1, 0));
+          const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 0, {false, false, false, false}));
+          auto graph = std::get<ValueProgram>(ImportNormalValues(body, method, proof, frame));
+          test::Check(!VerifyImportedValues(graph, method, proof, frame));
+          for (unsigned n = 0; n < count; ++n) {
+            const auto& op = graph.ops[kPrefix + n];
+            const auto& creation = std::get<ValueClassCreation>(op.operation);
+            test::Check(creation.constructor.value == kConstructor && creation.literal.value == kLiteral &&
+                creation.length == kLength && creation.cache_slot == cache);
+            test::Check(op.result && op.use_count == 1 && !CanErasePureOp(op));
+            if (n) test::Check(op.result != graph.ops[kPrefix + n - 1].result);
+            auto stripped = op;
+            stripped.normal = stripped.before_throw = LanguageEffect::kNone;
+            stripped.exceptional = ExceptionalCompletion::kImpossible;
+            test::Check(!CanErasePureOp(stripped));
+            const auto& use = graph.uses[op.first_use.value];
+            test::Check(use.role == OperandRole::kHeritage && use.purpose == ReadPurpose::kProtocol);
+            test::Check(op.normal == method.instructions[kPrefix + n].effects.normal &&
+                op.before_throw == method.instructions[kPrefix + n].effects.before_throw &&
+                op.exceptional == ExceptionalCompletion::kMayThrow);
+          }
+          auto& first = std::get<ValueClassCreation>(graph.ops[kPrefix].operation);
+          for (unsigned field = 0; field < 4; ++field) {
+            const auto saved = first;
+            switch (field) {
+              case 0: ++first.constructor.value; break;
+              case 1: ++first.literal.value; break;
+              case 2: ++first.length; break;
+              case 3: ++first.cache_slot; break;
+            }
+            test::Check(VerifyImportedValues(graph, method, proof, frame)->kind == ValueImportError::kInputMismatch);
+            first = saved;
+          }
+          auto& use = graph.uses[graph.ops[kPrefix].first_use.value];
+          use.purpose = ReadPurpose::kOperand;
+          test::Check(VerifyImportedValues(graph, method, proof, frame).has_value());
+          use.purpose = ReadPurpose::kProtocol;
+          test::Check(!VerifyImportedValues(graph, method, proof, frame));
+          test::Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
+          for (unsigned n = 0; n < count; ++n)
+            test::Check(graph.ops[kPrefix + n].life == ValueLife::kLive);
+        }
+      }
+    }
+  }
   // Own indexed definitions preserve acc and IC absence. They must neither
   // become [[Set]] nor disappear when their destination is otherwise unused.
   for (const auto profile : {abc::ProfileId::kDynamic1202,
@@ -445,8 +517,11 @@ int main() {
     test::Check(retained.life == ValueLife::kLive && retained.operation == store.operation);
     test::Check(retained.origin == store.origin && retained.normal == store.normal &&
         retained.before_throw == store.before_throw && retained.exceptional == store.exceptional);
-    test::Check(std::get<ValueId>(changed.uses[retained.first_use.value].operand) ==
-        std::get<ValueId>(changed.uses[changed.ops[kReturnIndex].first_use.value].operand));
+    // Primitive copy propagation retains both uses as the same JS undefined,
+    // without requiring the old accumulator SSA copy to survive.
+    test::Check(std::get<SpecialValue>(changed.uses[retained.first_use.value].operand) == SpecialValue::kUndefined);
+    test::Check(std::get<SpecialValue>(changed.uses[changed.ops[kReturnIndex].first_use.value].operand) ==
+        SpecialValue::kUndefined);
     test::Check(!VerifyValueUses(changed, changed.uses.size()));
   }
   for (const bool wide : {false, true}) {

@@ -243,7 +243,8 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
           std::holds_alternative<ValueEnvironmentPop>(op.operation) ||
           std::holds_alternative<ValueLexicalLoad>(op.operation) ||
           std::holds_alternative<ValueLexicalStore>(op.operation) ||
-          std::holds_alternative<ValueFunctionCreation>(op.operation);
+          std::holds_alternative<ValueFunctionCreation>(op.operation) ||
+          std::holds_alternative<ValueClassCreation>(op.operation);
     }
     std::optional<ValueEnvironments> cell_environments;
     std::optional<CellPlan> cells;

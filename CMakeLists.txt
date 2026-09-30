@@ -919,6 +919,9 @@ if(BUILD_TESTING)
     add_test(NAME literal_buffer_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_buffer.mjs $<TARGET_FILE:literal_plan_test>)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+      add_test(NAME value_class_record_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_class_record.mjs $<TARGET_FILE:abc_semantic>
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
       add_test(NAME value_barrel_record_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_barrel_record.mjs $<TARGET_FILE:abc_semantic>
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"

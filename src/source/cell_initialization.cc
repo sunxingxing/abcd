@@ -60,7 +60,8 @@ InitializationFlow Prepare(const analysis::ValueProgram& graph,
     // Pinned RuntimeCreateObjectHavingMethod may clone methods capturing the
     // current environment. An unresolved buffer is not a pure-data literal.
     const auto* object = std::get_if<analysis::ValueObjectAllocation>(&op.operation);
-    if (std::holds_alternative<analysis::ValueFunctionCreation>(op.operation) ||
+    if (std::holds_alternative<analysis::ValueClassCreation>(op.operation) ||
+        std::holds_alternative<analysis::ValueFunctionCreation>(op.operation) ||
         (object && object->literal))
       Require(writes == analysis::ClosureWrites::kLanguage, Error::kClosure);
     if (std::holds_alternative<analysis::ValueLexicalStore>(op.operation))

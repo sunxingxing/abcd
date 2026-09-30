@@ -81,6 +81,11 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       Append(plan, OperandRole::kStoredValue, Accumulator{});
     } else if constexpr (std::is_same_v<T, PopEnvironment>) {
       // The implicit environment changes; the accumulator does not.
+    } else if constexpr (std::is_same_v<T, ClassCreation>) {
+      // The register carries a VM heritage input, including Hole for no extends.
+      // Keep its protocol use distinct from a source constructor call operand.
+      Append(plan, OperandRole::kHeritage, op.parent, ReadPurpose::kProtocol);
+      plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, FunctionCreation>) {
       // DEFINEFUNC obtains its home object from the current function implicitly;
       // DEFINEMETHOD reads acc as a VM creation input, not a JS call argument.
