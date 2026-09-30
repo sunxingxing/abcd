@@ -61,6 +61,19 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     }
     if (plan.phis) Require(plan.phis->domain == (has_holes && flow == EvaluationFlow::kPhased
         ? PhiDomain::kHoleTransport : PhiDomain::kLanguage), Error::kOwnership);
+    Require(plan.constructor_guards.empty() || flow == EvaluationFlow::kNormal, Error::kOwnership);
+    for (std::size_t i = 0; i < plan.constructor_guards.size(); ++i) {
+      step(); const auto id = plan.constructor_guards[i];
+      Require((i == 0 || plan.constructor_guards[i - 1] < id) && id.value < graph.ops.size(), Error::kOwnership);
+      const auto& op = graph.ops[id.value];
+      Require(op.life == analysis::ValueLife::kLive && !op.result && op.use_count == 1 &&
+          std::holds_alternative<analysis::ValueSuperCheck>(op.operation), Error::kOwnership);
+      Require(op.first_use.value < graph.uses.size(), Error::kInvalidGraph);
+      const auto& use = graph.uses[op.first_use.value];
+      Require(use.life == analysis::ValueLife::kLive && use.owner == decltype(use.owner){id} &&
+          use.role == analysis::OperandRole::kGuardValue && use.purpose == analysis::ReadPurpose::kProtocol,
+          Error::kOwnership);
+    }
     const auto aliases = VerifyEvaluationAliases(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&aliases)) return *error;
     step(std::get<std::uint64_t>(aliases));
@@ -220,6 +233,11 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
                 Error::kOwnership);
         continue;
       }
+      if (std::binary_search(plan.constructor_guards.begin(), plan.constructor_guards.end(), analysis::OpId{static_cast<std::uint32_t>(i)})) {
+        Require(placement.kind == EvaluationKind::kConstructorGuard && !placement.consumer && !placement.temporary, Error::kOwnership);
+        visits[i] = EvaluationVisit::kDone; continue;
+      }
+      Require(placement.kind != EvaluationKind::kConstructorGuard, Error::kOwnership);
       if (projected_op(i)) {
         Require(placement.kind == EvaluationKind::kClassProjection && !placement.consumer && !placement.temporary, Error::kOwnership);
         visits[i] = EvaluationVisit::kDone; continue;
@@ -330,6 +348,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         }
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
                                   plan.operations[expected].kind == EvaluationKind::kClassProjection ||
+                                  plan.operations[expected].kind == EvaluationKind::kConstructorGuard ||
                                   plan.operations[expected].kind == EvaluationKind::kElidedPure ||
                                   plan.operations[expected].kind == EvaluationKind::kAlias ||
                                   plan.operations[expected].kind == EvaluationKind::kInitializer ||

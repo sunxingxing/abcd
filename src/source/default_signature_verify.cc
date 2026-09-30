@@ -43,7 +43,12 @@ class SignatureCheck {
     // Literal defaults introduce no function/receiver/arguments references.
     // The owner must still prove the strict enclosing source context; this
     // signature check does not authorize a sloppy standalone wrapper.
-    Require((tree_.callable == CallableKind::kMethod ||
+    const bool constructor = tree_.callable == CallableKind::kBaseConstructor ||
+        tree_.callable == CallableKind::kDerivedConstructor;
+    // Literal initializers are also valid before super: they observe neither
+    // the uninitialized receiver nor invocation state. Owner/ABI proof remains
+    // separate, and nonliteral defaults still fail SameLiteral below.
+    Require((tree_.callable == CallableKind::kMethod || constructor ||
         (body_.Storage() == DefaultStorage::kCell && ordinary)) &&
         tree_.strictness == Strictness::kStrict && !tree_.self,
             Error::kContext);

@@ -42,6 +42,8 @@ class ForestBuilder {
 
   ExpressionForest Build() {
     Require(constants_.operations.size() == graph_.ops.size(), Error::kConstant);
+    Require(evaluation_.constructor_guards.size() == constants_.constructor_guards.size() &&
+        std::equal(evaluation_.constructor_guards.begin(), evaluation_.constructor_guards.end(), constants_.constructor_guards.begin()), Error::kOwnership);
     Admit(1, sizeof(ExpressionForest));
     auto calls = forest_.bindings.flow == EvaluationFlow::kNormal
         ? BuildCallPlan(graph_, evaluation_, {bytes_, work_})

@@ -199,7 +199,7 @@ class TreePrinter {
     if (family_->root.value >= family_->members.size()) throw Error::kUnsupportedContext;
     if (class_root_) {
       const auto& root = family_->members[family_->root.value].tree;
-      if ((!IsMethodCallable(root.callable) && root.callable != CallableKind::kBaseConstructor) ||
+      if ((!IsMethodCallable(root.callable) && root.callable != CallableKind::kBaseConstructor && root.callable != CallableKind::kDerivedConstructor) ||
           root.callable != class_root_->Callable() || root.inferred_name ||
           root.identity != class_root_->Identity() || root.method != class_root_->Target() ||
           (!class_root_->Constructor() && class_root_->Placement() != abc::ClassPlacement::kStatic &&
@@ -222,12 +222,12 @@ class TreePrinter {
       Admit(structure->allocated_bytes, 1); Step(structure->work);
       if (Tree().strictness != Strictness::kStrict ||
           (Tree().callable != CallableKind::kFunction && !IsArrowCallable(Tree().callable) &&
-           !IsMethodCallable(Tree().callable) && Tree().callable != CallableKind::kBaseConstructor && Tree().callable != CallableKind::kAsyncFunction &&
+           !IsMethodCallable(Tree().callable) && Tree().callable != CallableKind::kBaseConstructor && Tree().callable != CallableKind::kDerivedConstructor && Tree().callable != CallableKind::kAsyncFunction &&
            Tree().callable != CallableKind::kGenerator && Tree().callable != CallableKind::kAsyncGenerator))
         throw Error::kUnsupportedContext;
       // Only the actual class root is a class member. An arrow method carrier
       // retains its original callable kind and cannot observe its home object.
-      if ((IsMethodCallable(Tree().callable) || Tree().callable == CallableKind::kBaseConstructor) && !ClassRoot())
+      if ((IsMethodCallable(Tree().callable) || Tree().callable == CallableKind::kBaseConstructor || Tree().callable == CallableKind::kDerivedConstructor) && !ClassRoot())
         throw Error::kUnsupportedContext;
       // Naming adds a fresh, unobservable wrapper object. Its allocation-failure
       // timing is admitted only by the already-versioned resource-failure scope.

@@ -95,6 +95,15 @@ class FamilyTrees {
           syntax.syntax.modules.push_back(alias);
         }
       }
+      std::optional<DerivedProjection> derived;
+      if (context.Callable() == CallableKind::kDerivedConstructor) {
+        Require(!phase, FamilyTreeError::kContext);
+        auto projection = ProjectDerivedConstructor(function.Normal(), context, left_);
+        if (const auto* error = std::get_if<DerivedProjectionError>(&projection))
+          throw FamilyTreeFailure{member_, *error};
+        derived.emplace(std::get<DerivedProjection>(std::move(projection)));
+        Admit(sizeof(DerivedProjection) + derived->guards.capacity() * sizeof(analysis::OpId), 1);
+      }
       std::optional<ControlPlan> normal_control;
       if (!phase) { normal_control.emplace(Take<ControlPlan, ControlError>(BuildControlPlan(graph, left_))); Account(*normal_control); }
       const auto& control = phase ? phase->Phases().Control() : *normal_control;
@@ -104,22 +113,14 @@ class FamilyTrees {
           BuildPhasedEvaluationPlan(graph, left_, i == 0 ? IncomingCells::kReject : IncomingCells::kConditional,
               member.children, module_evaluations, demands) :
           BuildEvaluationPlan(graph, left_, i == 0 ? IncomingCells::kReject : IncomingCells::kConditional,
-              member.children, module_evaluations, demands, {}, analysis::ClosureWrites::kLanguage));
+              member.children, module_evaluations, demands, {}, analysis::ClosureWrites::kLanguage, {},
+              derived ? std::span<const analysis::OpId>(derived->guards) : std::span<const analysis::OpId>{}));
       Account(evaluation);
       std::optional<IncomingCaptureTree> incoming;
       if (member.incoming) {
         const auto parent = member.incoming->parent.value;
         Require(parent < trees.size(), FamilyTreeError::kParent);
         incoming.emplace(IncomingCaptureTree{member.incoming->cells, {trees[parent].tree, trees[parent].flow}});
-      }
-      std::optional<DerivedProjection> derived;
-      if (context.Callable() == CallableKind::kDerivedConstructor) {
-        Require(!phase, FamilyTreeError::kContext);
-        auto projection = ProjectDerivedConstructor(function.Normal(), context, left_);
-        if (const auto* error = std::get_if<DerivedProjectionError>(&projection))
-          throw FamilyTreeFailure{member_, *error};
-        derived.emplace(std::get<DerivedProjection>(std::move(projection)));
-        Admit(sizeof(DerivedProjection) + derived->guards.capacity() * sizeof(analysis::OpId), 1);
       }
       auto constants = syntax.View();
       if (derived) constants.constructor_guards = derived->guards;

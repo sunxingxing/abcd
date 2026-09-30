@@ -13,6 +13,34 @@
 ## 当前阶段
 
 
+### 2026-10-01：真实派生构造器贯通共同函数族与原生执行
+
+- 求值计划新增 kConstructorGuard：仅同 owner 初始化投影列出的 live 守卫不再
+  阻断顺序，普通守卫继续保留。独立验证检查有序集合、操作身份、protocol读取
+  及 placement；源码适配器、求值计划和树必须使用相同集合。无关成员调用规则
+  未放宽，真实9865此前的 CallPlanError::kReference 已解除。
+- FamilyTrees 在默认参数迁移后证明协议，再传入求值与树构建。已证明的字面量
+  默认值现可用于基类/派生构造器，非字面量和 receiver/arguments 引用仍拒绝。
+  真实9865通过完整 BuildFileFamilyTrees、ABI、签名与源码对应检查，并通过
+  PreparedFamily::PrepareConstructor/PrintDraft 生成原生 super(...) 正文。
+- 打印入口仅对实际类根开放派生 callable；PreparedFamily 要求有构造器协议
+  集合。正文保留 super 的对象结果及 return，未替换为普通 new、反射调用或旧writer。
+  临时 receiver 别名与反向条件仍在，尚不是最终源级风格完成证据。
+- 新增 derived_constructor_source_test：C++共同引擎从真实ABC打印正文，Node
+  使用独立行为参考和受控框架替身比较264组场景，覆盖省略/非函数/函数参数、
+  默认id与null/0/42、父构造器返回替代对象、new.target/length、setter效果及
+  父构造器/初始化各步骤异常。配对参考只在测试端，生产不读源码。
+- 八项定向回归通过（5.55秒），/tmp/abcd-derived-native-regression-build.log 与
+  /tmp/abcd-derived-native-regression-tests.log；补充setter/default场景复测通过，
+  /tmp/abcd-derived-native-setters-tests.log。生成正文 /tmp/abcd-derived-constructor.js。
+- 五输入最新正式导出 build/stage-one/value-derived-constructor-pass-1，仍为
+  34 complete / 72 failure / 46 no-module，无完整项退化、无legacy writer；
+  /tmp/abcd-derived-native-batch-summary.json。这是构造器组件验收，未完成整个
+  Index类/页面的继承表达与配对验收；下一步继续类heritage组合及receiver表达。
+  未恢复全量测试、RSS、基准或更大corpus。阶段一保持开放。
+
+
+
 ### 2026-10-01：构造器守卫映射到共同源码锚点
 
 - FunctionTree 增加有序 constructor_guards；共同构建通过来源适配器的已证明

@@ -959,6 +959,9 @@ if(BUILD_TESTING)
       add_test(NAME class_accessors_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_accessors.mjs $<TARGET_FILE:class_initializer_file_test>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
+      add_test(NAME derived_constructor_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_constructor.mjs $<TARGET_FILE:class_initializer_file_test>
+        ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
       add_test(NAME local_model_batch_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/local_model_batch.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive)

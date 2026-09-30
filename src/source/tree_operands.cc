@@ -79,6 +79,7 @@ class OperandCheck {
         module_aliases[symbol.value] = i;
       }
     }
+    RequireMeaning(tree_.constructor_guards == evaluation_.constructor_guards, Error::kOperand);
     RequireMeaning(tree_.constructor_guards.size() == constants_.constructor_guards.size() &&
         std::equal(tree_.constructor_guards.begin(), tree_.constructor_guards.end(), constants_.constructor_guards.begin()), Error::kOperand);
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {

@@ -182,12 +182,44 @@ int main(int argc, char** argv) {
         derived.body, derived.values.graph, {0}));
     auto constants = syntax.View(); constants.constructor_guards = current_protocol.guards;
     const auto control = std::get<ControlPlan>(BuildControlPlan(derived.values.graph));
-    const auto constructor_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(derived.values.graph));
+    const auto constructor_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(derived.values.graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, {}, current_protocol.guards));
     const auto built_tree = BuildFunctionTree(derived.values.graph, control, constructor_evaluation,
         std::move(syntax.syntax), constants);
-    // The original guard event still separates member lookup from invocation.
-    // Scheduling must consume the proved no-op before the real tree can close.
-    Check(std::get<FunctionTreeError>(built_tree) == FunctionTreeError::kExpression);
+    if (const auto* error = std::get_if<FunctionTreeError>(&built_tree))
+      std::cerr << "derived tree failure " << static_cast<unsigned>(*error) << '\n';
+    Check(std::holds_alternative<ConstructedFunction>(built_tree));
+    const auto& constructor_tree = std::get<ConstructedFunction>(built_tree).tree;
+    Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(derived.values.graph, control,
+        constructor_evaluation, constructor_tree, constants)));
+    auto constructor_family_input = ReadFunctionFamily(file, header, index, lookup, roles, sites,
+        context.Position(), identity, {}, nullptr, &context);
+    Check(std::holds_alternative<FileFamily>(constructor_family_input));
+    auto constructor_family = BuildFileFamilyTrees(file, header, index,
+        std::get<FileFamily>(std::move(constructor_family_input)), context, {}, nullptr, {}, &lookup);
+    if (const auto* error = std::get_if<FamilyTreeFailure>(&constructor_family)) {
+      std::cerr << "derived family failure " << error->cause.index() << '\n';
+      std::visit([](const auto& cause) { if constexpr (std::is_enum_v<std::decay_t<decltype(cause)>>)
+        std::cerr << "derived family enum " << static_cast<unsigned>(cause) << '\n'; }, error->cause);
+    }
+    Check(std::holds_alternative<ConstructedFamily>(constructor_family));
+    GlobalScope constructor_globals{};
+    const FamilyDestination constructor_destination{Strictness::kStrict, &constructor_globals, FunctionFragment::kClassMember};
+    auto prepared_constructor = PreparedFamily::PrepareConstructor(file, header, index, lookup, roles, sites,
+        parent, creation, identity, constructor_destination);
+    if (const auto* error = std::get_if<FamilyPrepareFailure>(&prepared_constructor))
+      std::cerr << "derived prepare failure " << error->cause.index() << '\n';
+    Check(std::holds_alternative<PreparedFamily>(prepared_constructor));
+    std::ostringstream constructor_source;
+    const auto printed_constructor = std::get<PreparedFamily>(prepared_constructor).PrintDraft(
+        constructor_destination, constructor_source);
+    if (const auto* error = std::get_if<TreePrintError>(&printed_constructor))
+      std::cerr << "derived print failure " << static_cast<unsigned>(*error) << '\n';
+    Check(std::holds_alternative<PrintedFamilyDraft>(printed_constructor));
+    if (argc == 3 && std::string_view(argv[2]) == "--derived") {
+      std::cout << constructor_source.str(); return 0;
+    }
+
+
     const auto projected = ProjectClassDefinitions(graph, parent.values.definitions.sites);
     if (const auto* error = std::get_if<ClassDefinitionError>(&projected))
       std::cerr << "accessor corridor failure " << static_cast<unsigned>(*error) << '\n';

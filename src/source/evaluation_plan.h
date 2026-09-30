@@ -13,7 +13,7 @@
 
 namespace abcd::source {
 enum class EvaluationKind : std::uint8_t {
-  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection
+  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection, kConstructorGuard
 };
 enum class EvaluationFlow : std::uint8_t { kNormal, kPhased };
 struct OpEvaluation {
@@ -63,6 +63,9 @@ struct EvaluationPlan {
   ClassProjection class_projection;
   std::vector<ClassDefinitionSite> class_definitions;
   analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown;
+  // Conditional same-owner protocol obligation. The source factory must
+  // reprove these guards against the unchanged input after default recovery.
+  std::vector<analysis::OpId> constructor_guards;
 };
 inline analysis::ValueId ResolveEvaluationValue(const EvaluationPlan& plan, analysis::ValueId value) {
   return plan.aliases.empty() ? value : plan.aliases[value.value];
@@ -155,7 +158,8 @@ struct EvaluationShape {
     std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {},
     std::span<const ClassInitializerCall> initializers = {},
     analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown,
-    std::span<const ClassDefinitionSite> definitions = {});
+    std::span<const ClassDefinitionSite> definitions = {},
+    std::span<const analysis::OpId> constructor_guards = {});
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and availability. Cross-phase expressions require
 // contiguous effect intervals and equal catch snapshots at their final roots.

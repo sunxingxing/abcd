@@ -400,9 +400,13 @@ void ConstructorGuardAnchors() {
   fixture.Add(0, 3, 12, ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{2}}});
   fixture.graph.blocks = {{{0}, 4, {0}, 0}};
   const auto control = std::get<ControlPlan>(BuildControlPlan(fixture.graph));
-  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(fixture.graph));
-  auto syntax = fixture.Syntax(); syntax.callable = CallableKind::kDerivedConstructor;
   const std::array<OpId, 2> guards{{{1}, {2}}};
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(fixture.graph, {}, IncomingCells::kReject, {}, {}, {}, {}, ClosureWrites::kUnknown, {}, guards));
+  auto missing = evaluation; missing.constructor_guards.pop_back();
+  Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, missing)));
+  auto unprojected = evaluation; unprojected.operations[guards.front().value].kind = EvaluationKind::kRoot;
+  Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, unprojected)));
+  auto syntax = fixture.Syntax(); syntax.callable = CallableKind::kDerivedConstructor;
   ExpressionConstants constants{fixture.constants, 2, 0, {}}; constants.constructor_guards = guards;
   const auto built = BuildFunctionTree(fixture.graph, control, evaluation, syntax, constants);
   Check(std::holds_alternative<ConstructedFunction>(built));
