@@ -12,6 +12,24 @@
 
 ## 当前阶段
 
+### 2026-10-01：定位整类默认参数阻断，保护继承打印边界
+
+- 实际 Index 10009 的 BuildClassTree 已通过构造器及前序成员，停在
+  NavPageMap 10428：FunctionAbiError::kLength，运行时 length=1，frame参数=2，
+  树的两个参数均无initializer。LLDB证据 /tmp/abcd-class-length-values.log；
+  完整调用链 /tmp/abcd-class-member-failure.log。ABC指令显示默认判断前有
+  环境创建及词法槽初始化，当前直接默认候选要求header仅含比较/分支及undefined，
+  不能接纳该前缀。下一步需共同默认参数证明保留此前缀的归属和效果，而非放宽ABI。
+- 发现PrintClassTree目前仅能输出无extends的类，但PreparedFamily已允许真实
+  派生构造器片段。现整类打印在写任何字节前拒绝非基类构造器，防止super正文被
+  嵌入无继承的类。新增实际9865片段组成最小容器的负例，验证明确拒绝且输出为空；
+  此容器不表示实际整类已恢复。父类表达式组合仍待实现，未用拒绝替代完成目标。
+- 构建class_initializer_file_test及class_tree_sample通过；四项定向测试通过
+  （2.31秒）：class_initializer_file_test、derived_constructor_source_test、
+  class_tree_source_test、constructor_tree_source_test。日志
+  /tmp/abcd-class-heritage-boundary-build.log及/tmp/abcd-class-heritage-boundary-tests.log。
+  未重跑五输入导出、全量测试、RSS或基准；阶段一保持开放。
+
 
 ### 2026-10-01：真实派生构造器贯通共同函数族与原生执行
 

@@ -1063,6 +1063,11 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassT
         tree.constructor.Identity() != tree.identity ||
         tree.constructor.Family().members[tree.constructor.Family().root.value].tree.method != tree.creation.target)
       return Failure::kUnsupportedContext;
+    // A constructor fragment may contain native super(), but this whole-class
+    // representation has no heritage expression yet. Never publish it as a
+    // base class: that loses inheritance and makes super() a syntax error.
+    if (tree.constructor.Family().members[tree.constructor.Family().root.value].tree.callable !=
+        CallableKind::kBaseConstructor) return Failure::kUnsupportedContext;
     PrintedClassTree result;
     auto count = tree.members.size() + 1;
     for (const auto& accessor : tree.definitions) {

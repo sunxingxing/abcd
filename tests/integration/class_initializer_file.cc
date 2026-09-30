@@ -1,5 +1,6 @@
 #include "../../src/source/class_initializer_file.h"
 #include "../../src/source/derived_projection.h"
+#include "../../src/source/class_tree.h"
 #include "../../src/source/default_body.h"
 #include "../../src/source/prepared_family.h"
 #include "abcd/corpus/abc_file.h"
@@ -215,6 +216,15 @@ int main(int argc, char** argv) {
     if (const auto* error = std::get_if<TreePrintError>(&printed_constructor))
       std::cerr << "derived print failure " << static_cast<unsigned>(*error) << '\n';
     Check(std::holds_alternative<PrintedFamilyDraft>(printed_constructor));
+    // Fragment success must not permit a whole class to silently lose extends.
+    // This deliberately minimal container tests the class printer's boundary;
+    // it is not evidence that the actual class's remaining members recovered.
+    ClassTree no_heritage{identity, *context.ConstructorSite(), u"Index",
+        std::move(std::get<PreparedFamily>(prepared_constructor)), {}, {}, {}};
+    std::ostringstream invalid_class;
+    const auto rejected_class = PrintClassTree(no_heritage, invalid_class, {}, {}, &constructor_globals);
+    Check(std::get<TreePrintError>(rejected_class) == TreePrintError::kUnsupportedContext);
+    Check(invalid_class.str().empty());
     if (argc == 3 && std::string_view(argv[2]) == "--derived") {
       std::cout << constructor_source.str(); return 0;
     }
