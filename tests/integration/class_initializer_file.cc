@@ -1,6 +1,7 @@
 #include "../../src/source/class_initializer_file.h"
 #include "../../src/source/derived_projection.h"
 #include "../../src/source/class_tree.h"
+#include "../../src/source/call_plan.h"
 #include "../../src/source/default_body.h"
 #include "../../src/source/prepared_family.h"
 #include "abcd/corpus/abc_file.h"
@@ -38,6 +39,39 @@ int main(int argc, char** argv) {
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(file, header, index, lookup));
   const auto sites = std::get<analysis::FunctionCreationSites>(analysis::FunctionCreationSites::Build(file, header, index, lookup));
+  // Real initialRender callback: builder's bind call occurs after allocation.
+  // Conditional capture admission is evaluation evidence, not publication of
+  // a detached closure or completion of the enclosing rendering family.
+  {
+    const auto position = lookup.Find({9809}); Check(position.has_value());
+    auto read = ReadFunctionValues(file, header, index, *position, identity, InputCaptureMode::kConditional);
+    Check(std::holds_alternative<FileFunction>(read));
+    const auto& function = std::get<FileFunction>(read);
+    const auto owner = std::find_if(index.records.begin(), index.records.end(),
+        [&](const auto& record) { return record.offset == index.methods[position->value].owner_offset; });
+    Check(owner != index.records.end());
+    const auto packaging = std::get<abc::FilePackaging>(abc::DetectFilePackaging(file, header, index));
+    const auto modules = std::get<RecordModuleContext>(ReadRecordModuleContext(file, header, index, *owner, packaging));
+    const auto aliases = std::get<ModuleAliases>(BindModuleAliases(file, header, index, function.input,
+        function.values, modules, {owner->offset.value}));
+    auto planned = BuildEvaluationPlan(function.values.graph, {}, IncomingCells::kConditional, {}, aliases.evaluations,
+        {}, {}, analysis::ClosureWrites::kLanguage);
+    if (const auto* error = std::get_if<EvaluationError>(&planned))
+      std::cerr << "literal callback evaluation failure " << static_cast<unsigned>(*error) << '\n';
+    Check(std::holds_alternative<EvaluationPlan>(planned));
+    const auto& evaluation = std::get<EvaluationPlan>(planned);
+    Check(std::holds_alternative<CallPlan>(BuildCallPlan(function.values.graph, evaluation)));
+    bool nested_call = false;
+    for (std::size_t i = 0; i < function.values.graph.ops.size(); ++i) {
+      const auto& op = function.values.graph.ops[i];
+      if (function.values.graph.origins[op.origin.value].pc.value == 180) {
+        Check(std::holds_alternative<analysis::ValueInvoke>(op.operation));
+        Check(evaluation.operations[i].kind == EvaluationKind::kNestedLiteral);
+        nested_call = true;
+      }
+    }
+    Check(nested_call);
+  }
   // A real derived body now imports through the common value pipeline. Check
   // the original-body initialization proof before any source projection.
   {

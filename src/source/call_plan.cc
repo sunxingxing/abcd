@@ -60,7 +60,7 @@ bool StableReceiver(const ValueProgram& graph, const EvaluationPlan& evaluation,
   if (!result) return false;
   const auto& placement = evaluation.operations[result->op.value];
   return (placement.kind == EvaluationKind::kRoot && placement.temporary.has_value()) ||
-      (placement.kind == EvaluationKind::kInline && placement.consumer == base);
+      ((placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kNestedLiteral) && placement.consumer == base);
 }
 bool Property(const ValueOperation& operation) {
   return std::holds_alternative<ValueNamedRead>(operation) || std::holds_alternative<ValuePropertyRead>(operation);
@@ -139,7 +139,9 @@ std::variant<std::uint64_t, CallPlanError> VerifyCalls(const analysis::ValueProg
       Require(property.life == ValueLife::kLive && Property(property.operation) && property.result &&
           ((property.block == op.block && property.order < op.order) ||
            CrossPhaseInline(graph, evaluation, member->property)), Error::kReference);
-      Require(placement.kind == EvaluationKind::kInline && placement.consumer == op.first_use, Error::kReference);
+      Require((placement.kind == EvaluationKind::kInline ||
+          (placement.kind == EvaluationKind::kNestedLiteral && evaluation.operations[i].kind == EvaluationKind::kNestedLiteral)) &&
+          placement.consumer == op.first_use, Error::kReference);
       Require(SameValue(ResolveEvaluationOperand(evaluation, graph.uses[op.first_use.value].operand),
           *property.result), Error::kCallee);
       const auto base = ResolveEvaluationOperand(evaluation, graph.uses[property.first_use.value].operand);

@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-01：字面量中的成员调用贯通共同树
+
+- LiteralPlan接纳拥有明确消费者的晚读取/调用子树，包括词法读取；对成员调用，
+  仅精确匹配callee属性base与显式receiver的SSA身份时，重复wire receiver才不再
+  作为第二次执行读取。现有单块、属性区间顺序、使用计数及新对象不逃逸检查保留；
+  没有把不匹配receiver或全局读取加入准入。
+- CallPlan与独立TreeOperands接入NestedLiteral对应关系，ExpressionForest在
+  值顺序中使用共同Call构造路径，生成原生value.method.bind(value)而非复制getter。
+  非法receiver仍拒绝。方法调用效果、异常、属性顺序和callee引用均未消除。
+- 新增1/2/200/201/402属性共同树/语义规格、伪造计划和错误receiver负例；
+  literal_call_source_test执行14组getter/get-bind/call逐步抛错及native/custom
+  bind返回场景，对照对象字段顺序、身份、描述符及真正绑定的this。
+- 实际9809在真实RecordModuleContext/ModuleAliases下通过共同EvaluationPlan与
+  CallPlan，PC180确认为NestedLiteral。条件捕获测试仅证明该求值/调用层，不把
+  脱离父owner的closure作为可发布完整源码。整类构建越过member1，停在member6：
+  11202于PC32创建的arrow10400，在order11的ValueGuard(name325)拒绝
+  kUnsupportedOperation。证据/tmp/abcd-literal-call-next-blocker.log；下一步处理
+  该词法初始化检查，不能直接省略异常。
+- 七项定向回归全部通过（1.28秒）：call_plan_test、literal_plan_test、
+  class_initializer_file_test、literal_buffer_source_test、literal_call_source_test、
+  derived_constructor_source_test、navmap_source_test。构建日志
+  /tmp/abcd-literal-call-final-build.log、/tmp/abcd-literal-call-real-build.log，
+  测试/tmp/abcd-literal-call-tests.log。五输入导出build/stage-one/value-literal-call-pass-1
+  仍34 complete/72 failure/46 no-module，无完整项退化、无legacy writer；
+  /tmp/abcd-literal-call-batch-summary.json。整类继承与阶段一验收仍开放；全量/RSS/基准未恢复。
+
 ### 2026-10-01：定位initialRender回调的成员调用字面量组合
 
 - 用当前构建复现Index整类的下一阻断：initialRender10647在PC24创建的arrow9809，

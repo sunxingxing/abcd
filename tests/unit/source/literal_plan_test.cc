@@ -366,6 +366,76 @@ void LiteralConsumers(bool print = false) {
     if (print) std::cout << output.str() << ",\n";
   }
 }
+void LateMemberCalls(bool print = false) {
+  for (const std::uint32_t count : {1U, 2U, 200U, 201U, 402U}) {
+    if (print && count != 2) continue;
+    Fixture fixture;
+    fixture.graph.values.push_back({EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), {}});
+    fixture.Add(ValueObjectAllocation{}, true, {});
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const auto base = static_cast<std::uint32_t>(fixture.graph.values.size());
+      fixture.Add(ValueNamedRead{{0}}, true, {{OperandRole::kBase, ValueId{0}}});
+      fixture.Add(ValueNamedRead{{1}}, true, {{OperandRole::kBase, ValueId{base}}});
+      fixture.Add(ValueInvoke{InvokeReceiver::kExplicit, 1}, true,
+          {{OperandRole::kCallee, ValueId{base + 1}}, {OperandRole::kReceiver, ValueId{base}},
+           {OperandRole::kArgument, ValueId{0}}});
+      fixture.Add(ValueOwnWrite{OwnWriteKind::kDefineField, {i + 2}, 0}, false,
+          {{OperandRole::kBase, ValueId{1}}, {OperandRole::kStoredValue, ValueId{base + 2}}});
+    }
+    fixture.Add(ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{1}}});
+    auto& graph = fixture.graph;
+    graph.blocks = {{{0}, static_cast<std::uint32_t>(graph.ops.size()), {0}, 0}};
+    for (auto& op : graph.ops) {
+      if (std::holds_alternative<ValueReturn>(op.operation)) continue;
+      op.normal = op.before_throw = std::holds_alternative<ValueObjectAllocation>(op.operation) ?
+          LanguageEffect::kAllocation : LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+      op.exceptional = ExceptionalCompletion::kMayThrow;
+    }
+    const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+    const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+    FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+    syntax.parameters.push_back({{}, NameEvidence::kSynthesized});
+    syntax.names = {u"method", u"bind"};
+    std::vector<ExpressionConstant> constants(graph.ops.size());
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const auto name = std::string{"field"} + std::to_string(i);
+      syntax.names.emplace_back(name.begin(), name.end());
+      constants[1 + i * 4] = NameId{0}; constants[2 + i * 4] = NameId{1};
+      constants[4 + i * 4] = NameId{2 + i};
+    }
+    auto built = BuildFunctionTree(graph, control, evaluation, syntax, {constants, count + 2});
+    Check(std::holds_alternative<ConstructedFunction>(built));
+    const auto& tree = std::get<ConstructedFunction>(built).tree;
+    Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, {constants, count + 2})));
+    std::ostringstream source;
+    Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, source)));
+    if (print) std::cout << source.str();
+    auto forged = evaluation;
+    forged.literals->nested[2].reset();
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    if (count == 1) {
+      // An explicit receiver different from the property base cannot become a
+      // native member Reference, even though both values are available.
+      auto changed = graph;
+      changed.uses[changed.ops[3].first_use.value + 1].operand = ValueId{0};
+      for (auto& value : changed.values) value.first_use.reset();
+      for (auto& use : changed.uses) { use.previous.reset(); use.next.reset(); }
+      for (std::size_t u = 0; u < changed.uses.size(); ++u) {
+        auto& use = changed.uses[u];
+        const auto* value = std::get_if<ValueId>(&use.operand);
+        if (!value) continue;
+        auto& definition = changed.values[value->value];
+        use.next = definition.first_use;
+        if (use.next) changed.uses[use.next->value].previous = UseId{static_cast<std::uint32_t>(u)};
+        definition.first_use = UseId{static_cast<std::uint32_t>(u)};
+      }
+      const auto rejected = BuildEvaluationPlan(changed);
+      Check(std::holds_alternative<EvaluationPlan>(rejected));
+      Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(changed, control,
+          std::get<EvaluationPlan>(rejected), syntax, {constants, count + 2})));
+    }
+  }
+}
 void ReadOrderBoundaries() {
   for (const bool reverse : {false, true}) for (const bool barrier : {false, true}) {
     Fixture fixture;
@@ -583,10 +653,11 @@ void RhsSnapshot() {
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--late-call-source") { LateMemberCalls(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--consumer-source") { LiteralConsumers(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--buffer-source") { BufferedOverwrites(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--array-buffer-source") { BufferedArraySuffix(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--late-string-source") { LateStringLeaves(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--late-read-source") { LateModuleProperties(true); return 0; }
   if (argc > 1) { SourceTree(false, true, true); return 0; }
-  ReadOrderBoundaries(); LateModuleProperties(); LateStringLeaves(); LiteralConsumers(); BufferedArraySuffix(); BufferedOverwrites(); NestedLiterals(); SourceTree(false, true); SourceTree(true, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }
+  LateMemberCalls(); ReadOrderBoundaries(); LateModuleProperties(); LateStringLeaves(); LiteralConsumers(); BufferedArraySuffix(); BufferedOverwrites(); NestedLiterals(); SourceTree(false, true); SourceTree(true, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }

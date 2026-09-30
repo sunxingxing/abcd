@@ -153,7 +153,7 @@ class ForestBuilder {
       else
         forest_.origins.emplace_back(OriginalSite{origin.site, origin.pc, origin.original});
     }
-    // Read-expression dependencies point backward; lower them in value order
+    // Read/call dependencies point backward; lower them in value order
     // before assembling forward-owned nested aggregate/property expressions.
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       Step(); if (evaluation_.operations[i].kind != EvaluationKind::kNestedLiteral) continue;
@@ -161,7 +161,9 @@ class ForestBuilder {
       if (std::holds_alternative<analysis::ValueArrayAllocation>(op.operation) ||
           std::holds_alternative<analysis::ValueObjectAllocation>(op.operation)) continue;
       const TreeOriginId origin{op.origin.value};
-      if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) Module(i, op, origin);
+      if (!std::holds_alternative<NoCall>(forest_.calls.operations[i]))
+        forest_.operations[i] = Call(op, forest_.calls.operations[i], origin);
+      else if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) Module(i, op, origin);
       else {
         std::array<ExprId, kFixedExpressionOperands> operands{};
         Require(op.use_count <= operands.size(), Error::kUnsupportedOperation);

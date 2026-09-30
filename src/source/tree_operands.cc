@@ -440,7 +440,8 @@ class OperandCheck {
         std::holds_alternative<analysis::ValuePropertyRead>(property.operation)) &&
         property.life == analysis::ValueLife::kLive &&
         ((property.block == op.block && property.order < op.order) ||
-         CrossPhaseInline(graph_, evaluation_, result->op)) && placement.kind == EvaluationKind::kInline &&
+         CrossPhaseInline(graph_, evaluation_, result->op)) &&
+        (placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kNestedLiteral) &&
         placement.consumer == op.first_use, Error::kOperand);
     const auto& member = Node<MemberExpr>(call.callee);
     if (const auto* id = std::get_if<analysis::ValueId>(&resolved_receiver)) {
@@ -448,7 +449,7 @@ class OperandCheck {
       if (const auto* producer = std::get_if<analysis::OpResult>(&definition.origin)) {
         const auto& base = evaluation_.operations[producer->op.value];
         RequireMeaning((base.kind == EvaluationKind::kRoot && flow_.snapshots[producer->op.value].has_value()) ||
-            (base.kind == EvaluationKind::kInline && base.consumer == property.first_use), Error::kOperand);
+            ((base.kind == EvaluationKind::kInline || base.kind == EvaluationKind::kNestedLiteral) && base.consumer == property.first_use), Error::kOperand);
       } else if (std::holds_alternative<analysis::PhiDefinition>(definition.origin))
         // TreeFlow derives this symbol from the actual, exclusively owned edge
         // assignments. Same-block/no-copy corridor checks exclude a write to

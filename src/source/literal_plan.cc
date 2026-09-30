@@ -185,17 +185,41 @@ bool Aggregate(const analysis::ValueOperation& op) {
   return std::holds_alternative<analysis::ValueArrayAllocation>(op) ||
       std::holds_alternative<analysis::ValueObjectAllocation>(op);
 }
-bool ReadExpression(const analysis::ValueOp& op, std::size_t index, Guards guards) {
-  return PrimitiveLeaf(op) || std::holds_alternative<analysis::ValueNamedRead>(op.operation) ||
+bool LiteralExpression(const analysis::ValueOp& op, std::size_t index, Guards guards) {
+  return PrimitiveLeaf(op) || std::holds_alternative<analysis::ValueInvoke>(op.operation) ||
+      std::holds_alternative<analysis::ValueLexicalLoad>(op.operation) ||
+      std::holds_alternative<analysis::ValueNamedRead>(op.operation) ||
       std::holds_alternative<analysis::ValuePropertyRead>(op.operation) ||
       (std::holds_alternative<analysis::ValueModuleRead>(op.operation) &&
        index < guards.size() && guards[index]);
 }
+// A native member call consumes its base through the callee Reference. The
+// duplicate wire receiver is not a second evaluation. Recognize only the exact
+// SSA base/property pair; CallPlan independently checks the source binding.
+bool ReferenceReceiver(const analysis::ValueProgram& graph, analysis::UseId use) {
+  const auto& occurrence = graph.uses[use.value];
+  const auto* owner = std::get_if<analysis::OpId>(&occurrence.owner);
+  if (!owner || owner->value >= graph.ops.size()) return false;
+  const auto& call = graph.ops[owner->value];
+  const auto* invoke = std::get_if<analysis::ValueInvoke>(&call.operation);
+  if (!invoke || invoke->receiver != analysis::InvokeReceiver::kExplicit ||
+      call.use_count < 2 || use.value != call.first_use.value + 1) return false;
+  const auto* callee = std::get_if<analysis::ValueId>(&graph.uses[call.first_use.value].operand);
+  if (!callee) return false;
+  const auto* result = std::get_if<analysis::OpResult>(&graph.values[callee->value].origin);
+  if (!result) return false;
+  const auto& property = graph.ops[result->op.value];
+  if (!(std::holds_alternative<analysis::ValueNamedRead>(property.operation) ||
+        std::holds_alternative<analysis::ValuePropertyRead>(property.operation)) || !property.use_count) return false;
+  const auto* base = std::get_if<analysis::ValueId>(&graph.uses[property.first_use.value].operand);
+  const auto* receiver = std::get_if<analysis::ValueId>(&occurrence.operand);
+  return base && receiver && *base == *receiver && property.block == call.block && property.order < call.order;
+}
 // Check laminar allocation/initialization intervals with one stack. Nested
 // creation may execute in native literal syntax only when every intervening
 // observable operation is an owned creation, definition, or single-use read
-// expression. Read subtrees stay within their property interval and preserve
-// operand order. No calls, global reads, catch snapshots or escaping receivers.
+// expression. Subtrees stay within their property interval and preserve
+// operand order. No global reads, catch snapshots or escaping allocations.
 void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     const std::vector<std::optional<analysis::OpId>>& owners, LiteralBudget& budget, Guards guards) {
   if (plan.nested.empty()) return;
@@ -222,7 +246,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); if (!plan.nested[i]) continue;
     const auto& op = graph.ops[i]; const auto use = *plan.nested[i];
-    Require(op.life == analysis::ValueLife::kLive && (Aggregate(op.operation) || ReadExpression(op, i, guards)) && op.result &&
+    Require(op.life == analysis::ValueLife::kLive && (Aggregate(op.operation) || LiteralExpression(op, i, guards)) && op.result &&
         use.value < graph.uses.size(), Error::kDefinition);
     const auto& occurrence = graph.uses[use.value];
     const auto* parent = std::get_if<analysis::OpId>(&occurrence.owner);
@@ -235,7 +259,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
       if (read.life != analysis::ValueLife::kLive) continue;
       const auto* user = std::get_if<analysis::OpId>(&read.owner);
       if (user && graph.ops[user->value].life != analysis::ValueLife::kLive) continue;
-      Require(*at == use || (user && i < guards.size() && guards[i] == *user) || (user && owners[user->value] == analysis::OpId{static_cast<std::uint32_t>(i)} &&
+      Require(*at == use || (user && plan.nested[user->value] && ReferenceReceiver(graph, *at)) || (user && i < guards.size() && guards[i] == *user) || (user && owners[user->value] == analysis::OpId{static_cast<std::uint32_t>(i)} &&
           *at == graph.ops[user->value].first_use), Error::kObserved);
     }
   }
@@ -245,6 +269,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     std::optional<analysis::OpId> previous;
     for (std::uint32_t u = 0; u < op.use_count; ++u) {
       budget.Step(); const analysis::UseId use{op.first_use.value + u};
+      if (ReferenceReceiver(graph, use)) continue;
       const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use.value].operand);
       const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
       if (!result) continue;
@@ -284,6 +309,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
         Require(value_owners[i] == stack[depth - 1], Error::kObserved);
         for (std::uint32_t p = 0; p < op.use_count; ++p) {
           budget.Step(); const analysis::UseId use{op.first_use.value + p};
+          if (ReferenceReceiver(graph, use)) continue;
           const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use.value].operand);
           const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
           if (result && plan.nested[result->op.value] != use)
@@ -463,7 +489,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
         const analysis::UseId rhs{definition.first_use.value + 1};
         const auto* value = std::get_if<analysis::ValueId>(&graph.uses[rhs.value].operand);
         const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
-        if (!result || !(Aggregate(graph.ops[result->op.value].operation) || ReadExpression(graph.ops[result->op.value], result->op.value, guards)) ||
+        if (!result || !(Aggregate(graph.ops[result->op.value].operation) || LiteralExpression(graph.ops[result->op.value], result->op.value, guards)) ||
             !path.Before(graph.ops[object.allocation.value], graph.ops[result->op.value])) continue;
         if (plan.nested.empty()) budget.Size(plan.nested, graph.ops.size());
         Require(!plan.nested[result->op.value], Error::kObserved);
@@ -488,10 +514,11 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
         const auto& op = graph.ops[i];
         for (std::uint32_t p = 0; p < op.use_count; ++p) {
           budget.Step(); const analysis::UseId use{op.first_use.value + p};
+          if (ReferenceReceiver(graph, use)) continue;
           const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use.value].operand);
           const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
           if (!result || result->op.value < allocation[i]->value) continue;
-          Require(ReadExpression(graph.ops[result->op.value], result->op.value, guards), Error::kLateValue);
+          Require(LiteralExpression(graph.ops[result->op.value], result->op.value, guards), Error::kLateValue);
           Require(!plan.nested[result->op.value], Error::kObserved);
           plan.nested[result->op.value] = use;
         }

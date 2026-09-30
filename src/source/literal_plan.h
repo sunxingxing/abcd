@@ -43,7 +43,9 @@ enum class LiteralError : std::uint8_t {
 // with dense indexed definitions 0..N-1, or increasing buffered-array writes,
 // in the same block/corridor. Buffered extent/gaps are checked with constants;
 // no observation until initialization completes. RHS snapshots precede allocation;
-// uniquely owned late read chains preserve operand and property effect order.
+// owned late reads/calls preserve operand and property effect order. A member
+// call's duplicate receiver wire use is consumed by its exact callee Reference;
+// CallPlan and tree operand verification independently check that pairing.
 // module_guards must be the unchanged IndexModuleEvaluations peer index;
 // standalone calls without it cannot fold late guarded module reads.
 // class_projection must be independently proved by ProjectClassMembers; it
