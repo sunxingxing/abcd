@@ -12,6 +12,23 @@
 
 ## 当前阶段
 
+### 2026-10-01：定位initialRender回调的成员调用字面量组合
+
+- 用当前构建复现Index整类的下一阻断：initialRender10647在PC24创建的arrow9809，
+  family member=1。LiteralPlan::EarlyValue因allocation order56之后的显式receiver
+  ValueInvoke order69拒绝kLateValue；/tmp/abcd-literal-order-evidence.log。
+- 原ABC PC148创建含builder槽的缓冲对象，PC154读取捕获receiver，PC160读取
+  NavPageMap、PC168读取bind、PC174再次读取receiver，PC180成员调用，PC184定义
+  builder。原指令证据/tmp/abcd-initial-render-callback-instructions.jsonl。
+  此次定位使用ABC和当前代码，未读取配对源码来选择生产行为。
+- 需要共同LiteralPlan与CallPlan接通：既保留对象创建/属性值执行顺序，也验证
+  callee属性读取和显式receiver的对应。当前单消费者late-read树不能直接容纳
+  成员调用的共享base；CallPlan::StableBase当前仅接受已有root快照或inline基值，
+  不接受NestedLiteral。仅放宽ReadExpression或EarlyValue不足以证明完整组合。
+- 本次为精确诊断，没有修改生产准入、重跑全量测试或宣称initialRender成功。
+  下一实现从真实成员调用形态推进，同时保留getter次数、receiver身份、调用异常和
+  多属性顺序的负例；不用删除getter/改成普通函数调用来绕过阻断。
+
 ### 2026-10-01：恢复未使用默认参数并贯通真实NavPageMap函数族
 
 - DefaultCandidate的merged为显式optional，支持无live phi的未使用默认参数。
