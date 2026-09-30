@@ -31,6 +31,6 @@ struct PrintedFamilyDraft {
 [[nodiscard]] std::variant<PrintedFamilyDraft, TreePrintError> PrintClassFamilyDraft(
     const ConstructedFamily& family, const ClassTreeContext& context, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
-    const GlobalScope* scope = nullptr);
+    const GlobalScope* scope = nullptr, std::size_t indent = 0);
 }  // namespace abcd::source
 #endif

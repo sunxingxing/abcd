@@ -420,6 +420,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   Check(range.count == 1 && sites.Find({kConstructor}).count == 0);
   const auto* site = sites.At(range.first);
   Check(site && site->creator == abc::EntityOffset{kCaller} && site->pc.value == 0 && site->length == encoded_length);
+  Check(sites.FindOccurrence({kMember}, {kCaller}, {0}, site->property) == range.first);
+  Check(!sites.FindOccurrence({kMember}, {kCaller}, {1}, site->property));
+  Check(!sites.FindOccurrence({kConstructor}, {kCaller}, {0}, site->property));
+  Check(!sites.FindOccurrence({kMember}, {kCaller}, {0}, site->property + 1));
   auto fingerprint = std::get<corpus::FileFingerprint>(file.Fingerprint());
   const auto identity = MakeRouteInputIdentity(fingerprint, header);
   auto context = ClassTreeContext::Resolve(file, header, index, lookup, roles, sites, range.first, identity);

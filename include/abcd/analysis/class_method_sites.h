@@ -39,6 +39,8 @@ class ClassMethodSites {
       const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
       SemanticBudget budget = {});
   [[nodiscard]] ClassSiteRange Find(abc::EntityOffset method) const;
+  [[nodiscard]] std::optional<ClassSiteId> FindOccurrence(abc::EntityOffset target,
+      abc::EntityOffset creator, abc::CodeOffset pc, std::uint32_t property) const;
   [[nodiscard]] const ClassMethodSite* At(ClassSiteId site) const {
     return site.value < sites_.size() ? &sites_[site.value] : nullptr;
   }

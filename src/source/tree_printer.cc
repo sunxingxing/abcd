@@ -16,6 +16,7 @@
 #include "tree_print_tokens.h"
 #include "tree_globals.h"
 #include "family_print.h"
+#include "class_tree.h"
 #include "family_enclosure.h"
 #include "class_tree_context.h"
 #include "tree_checks.h"
@@ -175,7 +176,7 @@ class TreePrinter {
     Result().work = initial_.work - remaining_.work;
     return std::move(result_);
   }
-  PrintedFamilyDraft Draft() {
+  PrintedFamilyDraft Draft(std::size_t indent = 0) {
     if (family_->root.value >= family_->members.size()) throw Error::kUnsupportedContext;
     if (class_root_) {
       const auto& root = family_->members[family_->root.value].tree;
@@ -252,7 +253,7 @@ class TreePrinter {
       Step(); if (owners_[i - 1].owner == owners_[i].owner) throw Error::kUnsupportedContext;
     }
     PrepareFamilyStatus();
-    current_ = family_->root.value;
+    current_ = family_->root.value; depth_ = indent;
     Push(BeginFunction{}); Drain(); Append("\n");
     for (const auto emitted : printed_) { Step(); if (!emitted) throw Error::kUnsupportedContext; }
     draft_.bytes = written_; draft_.allocated_bytes = initial_.bytes - remaining_.bytes;
@@ -561,6 +562,7 @@ class TreePrinter {
       Append(family_ && current_ != family_->root.value ? " " : "\n");
     }
     if (ClassRoot()) {
+      Run(Indent{depth_});
       if (!class_root_->Constructor() && class_root_->Site().placement == abc::ClassPlacement::kStatic) Append("static ");
       if (Tree().callable == CallableKind::kAsyncMethod) Append("async ");
       if (IsGeneratorCallable(Tree().callable)) Append("*");
@@ -866,8 +868,8 @@ std::variant<PrintedFamilyDraft, TreePrintError> PrintFamilyDraft(const Construc
   } catch (const std::ios_base::failure&) { return Error::kWrite; }
 }
 std::variant<PrintedFamilyDraft, TreePrintError> PrintClassFamilyDraft(const ConstructedFamily& family,
-    const ClassTreeContext& context, std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope) {
-  try { return TreePrinter(family, output, limit, scratch, &context, scope).Draft();
+    const ClassTreeContext& context, std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope, std::size_t indent) {
+  try { return TreePrinter(family, output, limit, scratch, &context, scope).Draft(indent);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit;
@@ -907,3 +909,76 @@ std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
   } catch (const std::ios_base::failure&) { return Error::kWrite; }
 }
 }  // namespace abcd::source
+
+namespace abcd::source {
+std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassTree(
+    const ClassTree& tree, std::ostream& output, EmitBudget limit,
+    analysis::SemanticBudget budget, const GlobalScope* globals) {
+  using Failure = TreePrintError;
+  const auto initial = budget;
+  try {
+    if (ResourceFailures(tree.identity.contract) != ResourceFailureScope::kExcluded ||
+        tree.constructor.Identity() != tree.identity ||
+        tree.constructor.Family().members[tree.constructor.Family().root.value].tree.method != tree.creation.target)
+      return Failure::kUnsupportedContext;
+    PrintedClassTree result;
+    const auto count = tree.members.size() + 1;
+    if (count > budget.bytes / sizeof(PrintedClassTree::Member)) return Failure::kResourceLimit;
+    budget.bytes -= count * sizeof(PrintedClassTree::Member); result.members.reserve(count);
+    const auto excess = result.members.capacity() - count;
+    if (excess > budget.bytes / sizeof(PrintedClassTree::Member)) return Failure::kResourceLimit;
+    budget.bytes -= excess * sizeof(PrintedClassTree::Member);
+    const auto append = [&](std::string_view text) {
+      if (text.size() > limit.bytes - result.bytes) throw Failure::kOutputLimit;
+      if (text.size() > budget.work) throw Failure::kWorkLimit;
+      budget.work -= text.size(); output << text;
+      if (!output) throw Failure::kWrite;
+      result.bytes += text.size();
+    };
+    const auto name = [&] {
+      if (tree.name.size() > budget.work) throw Failure::kWorkLimit;
+      budget.work -= tree.name.size();
+      const auto printed = WriteStringLiteral(tree.name, output, {limit.bytes - result.bytes});
+      if (const auto* bytes = std::get_if<std::size_t>(&printed)) result.bytes += *bytes;
+      else {
+        switch (std::get<EmitError>(printed)) {
+          case EmitError::kOutputLimit: throw Failure::kOutputLimit;
+          case EmitError::kWrite: throw Failure::kWrite;
+          default: throw Failure::kInvalidLiteral;
+        }
+      }
+    };
+    const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember};
+    const auto member = [&](const PreparedFamily& family) {
+      auto printed = family.PrintDraft(destination, output, {limit.bytes - result.bytes}, budget, 1);
+      if (const auto* failure = std::get_if<FamilyPrepareFailure>(&printed)) throw *failure;
+      if (const auto* failure = std::get_if<TreePrintError>(&printed)) throw *failure;
+      auto positions = std::get<PrintedFamilyDraft>(std::move(printed));
+      if (positions.allocated_bytes > budget.bytes) throw Failure::kResourceLimit;
+      if (positions.work > budget.work) throw Failure::kWorkLimit;
+      budget.bytes -= positions.allocated_bytes; budget.work -= positions.work;
+      const auto offset = result.bytes; result.bytes += positions.bytes;
+      result.members.push_back({offset, std::move(positions)});
+    };
+    // Computed-property NamedEvaluation preserves runtime class.name without
+    // inventing an immutable class-name binding that shadows a mutable module
+    // export read inside a method. The wrapper is never exposed to user code.
+    append("({["); name(); append("]: class {\n");
+    member(tree.constructor);
+    for (std::size_t i = 0; i < tree.members.size(); ++i) {
+      const auto& family = tree.members[i]; const auto* site = family.ClassCreation();
+      if (!site || family.Identity() != tree.identity || site->creator != tree.creation.creator ||
+          site->pc != tree.creation.pc || site->property != i) throw Failure::kUnsupportedContext;
+      member(family);
+    }
+    append("}})["); name(); append("]");
+    result.allocated_bytes = initial.bytes - budget.bytes;
+    result.work = initial.work - budget.work;
+    return result;
+  } catch (Failure failure) { return failure; }
+    catch (const FamilyPrepareFailure& failure) { return failure; }
+    catch (const std::bad_alloc&) { return Failure::kResourceLimit; }
+    catch (const std::length_error&) { return Failure::kResourceLimit; }
+    catch (const std::ios_base::failure&) { return Failure::kWrite; }
+}
+}

@@ -192,13 +192,14 @@ std::variant<FamilyEnclosure, FamilyPrepareFailure> PreparedFamily::CheckDestina
 }
 std::variant<PrintedFamilyDraft, FamilyPrepareFailure, TreePrintError> PreparedFamily::PrintDraft(
     FamilyDestination destination, std::ostream& output,
-    EmitBudget output_budget, analysis::SemanticBudget scratch) const {
+    EmitBudget output_budget, analysis::SemanticBudget scratch, std::size_t indent) const {
   auto checked = CheckDestination(destination, scratch);
   if (const auto* failure = std::get_if<FamilyPrepareFailure>(&checked)) return *failure;
   const auto& enclosure = std::get<FamilyEnclosure>(checked);
   scratch.bytes -= enclosure.allocated_bytes; scratch.work -= enclosure.work;
   const auto* member = storage_->context.ClassContext();
-  auto printed = member ? PrintClassFamilyDraft(storage_->family, *member, output, output_budget, scratch, destination.globals)
+  if (!member && indent) return TreePrintError::kUnsupportedContext;
+  auto printed = member ? PrintClassFamilyDraft(storage_->family, *member, output, output_budget, scratch, destination.globals, indent)
                         : PrintFamilyDraft(storage_->family, output, output_budget, scratch, destination.globals);
   if (const auto* failure = std::get_if<TreePrintError>(&printed)) return *failure;
   auto result = std::get<PrintedFamilyDraft>(std::move(printed));

@@ -104,6 +104,17 @@ ClassSiteRange ClassMethodSites::Find(abc::EntityOffset method) const {
       [](auto target, const auto& site) { return target < site.target; });
   return {{static_cast<std::uint32_t>(first - sites_.begin())}, static_cast<std::uint32_t>(end - first)};
 }
+std::optional<ClassSiteId> ClassMethodSites::FindOccurrence(abc::EntityOffset target,
+    abc::EntityOffset creator, abc::CodeOffset pc, std::uint32_t property) const {
+  const auto key = std::tuple{target, creator, pc, property};
+  const auto found = std::lower_bound(sites_.begin(), sites_.end(), key,
+      [](const auto& site, const auto& value) {
+        return std::tuple{site.target, site.creator, site.pc, site.property} < value;
+      });
+  if (found == sites_.end() || std::tuple{found->target, found->creator, found->pc, found->property} != key)
+    return {};
+  return ClassSiteId{static_cast<std::uint32_t>(found - sites_.begin())};
+}
 std::variant<ClassMethodSites, ClassSiteFailure> ClassMethodSites::Build(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,

@@ -12,6 +12,30 @@
 
 ## 当前阶段
 
+### 2026-10-01：共同类创建表达式组装与真实 IconInfo 对照
+
+- BuildClassTree 从父函数真实 class creation、constructor context 和 literal
+  buffer 组装构造器及 wire 顺序的成员，所有正文仍通过 PreparedFamily 和
+  共同树打印器。ClassMethodSites 新增精确 occurrence 二分查询，避免每个
+  成员重复扫描同一 target 的全部引用；不使用配对源码生成正文。
+- PrintClassTree 输出 native class expression，保留各成员相对位置与整体
+  offset，类成员和正文缩进由共同 printer 处理。通过 computed-property
+  NamedEvaluation 保留 class.name，避免引入会遮蔽可变模块绑定的词法类名。
+  该包装及构造器内赋值仍需后续表示质量改进，不宣称最终源码风格验收。
+- 真实 Immersive IconInfo 已输出 constructor(info, icon)、两个实例属性
+  赋值、getInfo/getIcon。独立配对测试检查返回身份、receiver、异常、实例
+  与原型属性描述符、派生实例，以及重复创建的 constructor/prototype/method
+  独立性。测试不证明任意原型 setter 条件下 TS 字段与赋值等价，也不证明
+  完整 IconInfoModel record 或宿主应用通过。
+- 生产及 fixture 构建成功，6 项定向 CTest 全通过（4.88 秒）：类 context、
+  类配对、构造器配对、实际类 record 边界、barrel 和 Constants 回归。
+  日志 /tmp/abcd-class-tree-indent-build.log、
+  /tmp/abcd-class-tree-indent-tests.log；产物 /tmp/abcd-icon-info-class.mjs。
+  未运行全量测试、RSS/基准、其他语料或代理。
+- 本次只组装类创建表达式；静态初始化、捕获和正式 record 的 class value
+  接入仍未完成，完整 record 数保持 15。下一步把类表达式纳入共同求值与
+  AST/record 输出，并保留创建后静态初始化的执行顺序。阶段一 Goal 继续。
+
 ### 2026-10-01：真实基类构造器贯通共同函数族和打印器
 
 - ClassTreeContext 现在以 variant 区分真实 buffer member 与 constructor

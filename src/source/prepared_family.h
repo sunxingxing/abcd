@@ -70,7 +70,7 @@ class PreparedFamily {
   // the caller must discard the partial stream, as with PrintFamilyDraft.
   [[nodiscard]] std::variant<PrintedFamilyDraft, FamilyPrepareFailure, TreePrintError> PrintDraft(
       FamilyDestination destination, std::ostream& output,
-      EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {}) const;
+      EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {}, std::size_t indent = 0) const;
  private:
   struct Storage;
   static std::variant<PreparedFamily, FamilyPrepareFailure> Prepare(
