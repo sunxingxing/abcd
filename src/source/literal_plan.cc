@@ -130,9 +130,10 @@ analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id
   Require(id.value < graph.ops.size(), Error::kDefinition);
   const auto& op = graph.ops[id.value];
   const auto* write = std::get_if<analysis::ValueOwnWrite>(&op.operation);
-  Require(op.life == analysis::ValueLife::kLive && write && !op.result && op.use_count == 2,
+  const auto* indexed = std::get_if<analysis::ValueIndexedWrite>(&op.operation);
+  Require(op.life == analysis::ValueLife::kLive && (write || indexed) && !op.result && op.use_count == 2,
       Error::kDefinition);
-  Require(write->kind == analysis::OwnWriteKind::kStore ||
+  Require(indexed || write->kind == analysis::OwnWriteKind::kStore ||
       write->kind == analysis::OwnWriteKind::kDefineField, Error::kDefinition);
   const auto& base = graph.uses[op.first_use.value];
   const auto& stored = graph.uses[op.first_use.value + 1];
@@ -148,7 +149,8 @@ analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id
   Require(result && result->op.value < graph.ops.size(), Error::kReceiver);
   const auto& allocation = graph.ops[result->op.value];
   Require(allocation.life == analysis::ValueLife::kLive &&
-      std::holds_alternative<analysis::ValueObjectAllocation>(allocation.operation) &&
+      (indexed ? std::holds_alternative<analysis::ValueArrayAllocation>(allocation.operation) :
+                 std::holds_alternative<analysis::ValueObjectAllocation>(allocation.operation)) &&
       allocation.result == *value && allocation.use_count == 0 &&
       path.Before(allocation, op), Error::kReceiver);
   return result->op;
@@ -198,6 +200,8 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
         const auto id = plan.definitions[next++];
         Require(Allocation(graph, id, path) == object.allocation && !owners[id.value], Error::kCoverage);
         const auto& op = graph.ops[id.value];
+        if (const auto* indexed = std::get_if<analysis::ValueIndexedWrite>(&op.operation))
+          Require(indexed->index == i, Error::kDefinition);
         Require(path.Before(graph.ops[prior.value], op), Error::kDefinition); prior = id;
         EarlyValue(graph, allocation, graph.uses[op.first_use.value + 1].operand, path);
         owners[id.value] = object.allocation;
@@ -207,7 +211,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step();
       const bool own = graph.ops[i].life == analysis::ValueLife::kLive &&
-          std::holds_alternative<analysis::ValueOwnWrite>(graph.ops[i].operation);
+          (std::holds_alternative<analysis::ValueOwnWrite>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueIndexedWrite>(graph.ops[i].operation));
       Require(owners[i].has_value() == own, Error::kCoverage);
     }
     if (evaluation) {
@@ -268,7 +272,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
     std::size_t count = 0;
     for (const auto& op : graph.ops) {
       budget.Step();
-      count += op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueOwnWrite>(op.operation);
+      count += op.life == analysis::ValueLife::kLive && (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
     }
     std::vector<FieldOwner> fields;
     LiteralPlan plan{graph.revision, graph.cfg_revision};
@@ -277,7 +281,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step();
       const auto& op = graph.ops[i];
-      if (op.life != analysis::ValueLife::kLive || !std::holds_alternative<analysis::ValueOwnWrite>(op.operation)) continue;
+      if (op.life != analysis::ValueLife::kLive || !(std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
       const analysis::OpId id{static_cast<std::uint32_t>(i)};
       fields[next++] = {Allocation(graph, id, path), id};
     }

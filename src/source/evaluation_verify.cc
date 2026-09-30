@@ -86,7 +86,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       if (op.life == analysis::ValueLife::kLive && IsEnvironmentState(op.operation)) ++environment_epoch;
       environment_epochs[i] = environment_epoch;
       step(); has_definitions |= op.life == analysis::ValueLife::kLive &&
-          std::holds_alternative<analysis::ValueOwnWrite>(op.operation);
+          (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
       if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
         Require(next_function < plan.functions.size() && plan.functions[next_function++].creation.value == i, Error::kOwnership);
@@ -233,7 +233,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       if (const auto error = CheckArgumentSnapshot(graph, op)) return *error;
       Require(shape.has_value(), Error::kUnsupportedOperation);
       Require(shape->Count() == op.use_count && shape->expression == op.result.has_value(), Error::kInvalidGraph);
-      if (std::holds_alternative<analysis::ValueOwnWrite>(op.operation)) {
+      if ((std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
         // Fresh LiteralPlan proved these definitions unobservable until complete.
         // They execute in object syntax, not as ordinary ordered heap writes;
         // producer snapshots remain pinned before allocation, never duplicated.

@@ -303,6 +303,8 @@ class StructureCheck {
                 std::holds_alternative<MemberExpr>(tree_.expressions[expression.callee.value].expression), Error::kUnsupportedSyntax);
         }
       } else if constexpr (std::is_same_v<T, ObjectExpr>) {
+        RequireTree(expression.kind == AggregateKind::kObject || expression.kind == AggregateKind::kArray,
+            Error::kUnsupportedSyntax);
         RequireTree(expression.properties.first <= tree_.properties.size() &&
             expression.properties.count <= tree_.properties.size() - expression.properties.first, Error::kRange);
       } else if constexpr (std::is_same_v<T, EmptyArrayExpr> || std::is_same_v<T, EmptyObjectExpr>) {
@@ -397,6 +399,10 @@ class StructureCheck {
         const auto& property = tree_.properties[slot];
         RequireTree(!properties_[slot], Error::kOwnership); properties_[slot] = 1;
         RequireTree(property.key.value < tree_.names.size() && property.origin.value < tree_.origins.size(), Error::kRange);
+        if (object->kind == AggregateKind::kArray) {
+          const auto index = std::to_string(frame.next_child - 1);
+          RequireTree(tree_.names[property.key.value] == std::u16string(index.begin(), index.end()), Error::kUnsupportedSyntax);
+        }
         return property.value;
       }
       if (const auto* call = std::get_if<CallExpr>(&syntax))

@@ -169,8 +169,13 @@ class OperandCheck {
           Input(input(0), member->base); Input(input(1), key->expression);
           Input(input(2), assignment.value);
         } else if constexpr (std::is_same_v<T, analysis::ValueIndexedWrite>) {
-          // Requires an array/descriptor initialization lowering, never [[Set]].
-          throw Error::kUnsupportedOperation;
+          RequireMeaning(flow_.initializers[i].has_value(), Error::kOperand);
+          const auto& property = tree_.properties[flow_.initializers[i]->value];
+          const auto expected = std::to_string(operation.index);
+          RequireMeaning(property.key.value < tree_.names.size() &&
+              tree_.names[property.key.value] == std::u16string(expected.begin(), expected.end()), Error::kConstant);
+          const auto previous = edge_input_; edge_input_ = true;
+          Input(input(1), property.value); edge_input_ = previous;
         } else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
           RequireMeaning(flow_.initializers[i].has_value(), Error::kOperand);
           const auto& property = tree_.properties[flow_.initializers[i]->value];
@@ -210,10 +215,13 @@ class OperandCheck {
           constexpr std::uint32_t kConstructorPrefix = 1;
           Arguments(op, construct.arguments, kConstructorPrefix, operation.arguments);
         } else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>) {
-          static_cast<void>(Node<EmptyArrayExpr>(expression));
+          const auto* aggregate = std::get_if<ObjectExpr>(&tree_.expressions[expression.value].expression);
+          RequireMeaning(aggregate ? aggregate->kind == AggregateKind::kArray :
+              std::holds_alternative<EmptyArrayExpr>(tree_.expressions[expression.value].expression), Error::kOperator);
         } else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
           if (operation.literal) {
             const auto& object = Node<ObjectExpr>(expression);
+            RequireMeaning(object.kind == AggregateKind::kObject, Error::kOperator);
             const auto* expected = std::get_if<ObjectConstant>(&constants_.operations[i]);
             RequireMeaning(expected && expected->first <= constants_.properties.size() &&
                 expected->count <= constants_.properties.size() - expected->first &&
@@ -229,8 +237,9 @@ class OperandCheck {
             }
             return;
           }
-          RequireMeaning(std::holds_alternative<EmptyObjectExpr>(tree_.expressions[expression.value].expression) ||
-              std::holds_alternative<ObjectExpr>(tree_.expressions[expression.value].expression), Error::kOperator);
+          const auto* aggregate = std::get_if<ObjectExpr>(&tree_.expressions[expression.value].expression);
+          RequireMeaning(aggregate ? aggregate->kind == AggregateKind::kObject :
+              std::holds_alternative<EmptyObjectExpr>(tree_.expressions[expression.value].expression), Error::kOperator);
         } else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
           RequireMeaning(next_function < evaluation_.functions.size(), Error::kOperand);
           const auto& function = evaluation_.functions[next_function++];

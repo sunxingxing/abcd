@@ -82,7 +82,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       has_arguments |= op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueArgumentSnapshot>(op.operation);
       step(); has_definitions |= op.life == analysis::ValueLife::kLive &&
-          std::holds_alternative<analysis::ValueOwnWrite>(op.operation);
+          (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
       if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
         Require(next_function < functions.size() && functions[next_function++].creation.value == i, Error::kOwnership);
@@ -223,7 +223,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         Require(op.use_count == shape->Count() && shape->expression == op.result.has_value(),
                 Error::kInvalidGraph);
         auto& placement = plan.operations[index];
-        if (std::holds_alternative<analysis::ValueOwnWrite>(op.operation)) {
+        if ((std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
           Require(plan.literals.has_value(), Error::kUnsupportedOperation);
           placement.kind = EvaluationKind::kInitializer;
           continue;

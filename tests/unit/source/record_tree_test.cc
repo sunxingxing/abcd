@@ -44,12 +44,21 @@ int main(int argc, char**) {
   Word(bytes, kModule + 16, 1);
   Word(bytes, kModule + 20, kRequest);
   Word(bytes, kModule + 24, kRequest);
+  const bool array = argc > 2;
   bytes[597] = 3; bytes[598] = 8;
   bytes[600] = 0x62; // LDAI_IMM32, pinned dynamic ISA.
   Word(bytes, 601, 42);
   bytes[605] = 0x7c; // STMODULEVAR_IMM8
   bytes[606] = 0;
   bytes[607] = 0x65; // RETURNUNDEFINED
+  if (array) {
+    // Snapshot the RHS before allocation; late RHS remains a separate gate.
+    const std::vector<std::uint8_t> body{0x62, 42, 0, 0, 0, 0x61, 1,
+        0x05, 0, 0x61, 0, 0x60, 1, 0x79, 0, 0, 0, 0,
+        0x60, 0, 0x7c, 0, 0x65};
+    bytes[596] = 2; bytes[598] = static_cast<std::uint8_t>(body.size());
+    std::copy(body.begin(), body.end(), bytes.begin() + 600);
+  }
   char path[] = "/tmp/abcd-record-module-XXXXXX";
   const int fd = mkstemp(path);
   Check(fd >= 0);
@@ -81,7 +90,7 @@ int main(int argc, char**) {
   abc::MethodInfo entry;
   entry.offset = {320}; entry.owner_offset = record.offset;
   entry.name = "func_main_0"; entry.name_utf16_length = entry.name.size();
-  entry.code = abc::CodeInfo{{596}, {600}, 0, 3, 8, 0};
+  entry.code = abc::CodeInfo{{596}, {600}, array ? 2U : 0U, 3, array ? 23U : 8U, 0};
   index.methods.push_back(entry); index.records.push_back(record);
   const auto context = std::get<source::RecordModuleContext>(read());
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
@@ -97,7 +106,7 @@ int main(int argc, char**) {
     std::cerr << "variant " << result.index() << '\n'; return 1;
   }
   const auto& source = std::get<source::PrintedSource>(result).text;
-  Check(source.find("let answer = 42;") != std::string::npos);
+  Check(source.find(array ? "[" : "let answer = 42;") != std::string::npos);
   Check(source.find("export { answer as ") != std::string::npos);
   if (argc > 1) std::cout << source;
   auto invalid_identity = identity; ++invalid_identity.file_size;

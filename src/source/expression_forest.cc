@@ -296,8 +296,9 @@ class ForestBuilder {
   }
   ExprId Object(const ObjectInit& object, TreeOriginId origin) {
     PropertyRange range{static_cast<std::uint32_t>(forest_.properties.size()), object.count};
-    const auto& allocation = std::get<analysis::ValueObjectAllocation>(graph_.ops[object.allocation.value].operation);
-    if (allocation.literal) {
+    const auto* allocation = std::get_if<analysis::ValueObjectAllocation>(&graph_.ops[object.allocation.value].operation);
+    const auto kind = allocation ? AggregateKind::kObject : AggregateKind::kArray;
+    if (allocation && allocation->literal) {
       const auto prefix = BufferedProperties(constants_.operations[object.allocation.value], origin);
       range.count += prefix.count; // Combined capacity was admitted before construction.
     }
@@ -314,7 +315,7 @@ class ForestBuilder {
       forest_.properties.push_back({*name, value, field_origin});
       forest_.initializers[id.value] = property; forest_.operations[id.value] = value;
     }
-    return Add(ObjectExpr{range}, origin);
+    return Add(ObjectExpr{range, kind}, origin);
   }
   ExprId Call(const analysis::ValueOp& op, const CallBinding& binding, TreeOriginId origin) {
     const bool member = std::holds_alternative<MemberCall>(binding);

@@ -5,6 +5,9 @@
 
 #include <cstdlib>
 #include <utility>
+#include <sstream>
+#include <iostream>
+#include "abcd/source/tree_printer.h"
 
 namespace {
 using namespace abcd::analysis;
@@ -86,6 +89,16 @@ void Mutations() {
   std::get<ValueObjectAllocation>(buffered_late.ops[0].operation).literal = abcd::abc::PoolIndex{0};
   Check(std::get<LiteralError>(BuildLiteralPlan(buffered_late)) == LiteralError::kLateValue);
 }
+void ArrayBoundaries() {
+  for (const auto prefix : {Prefix::kObserve, Prefix::kLateValue}) {
+    auto graph = Graph(2, prefix); graph.ops[0].operation = ValueArrayAllocation{};
+    std::uint32_t index = 0;
+    for (auto& op : graph.ops) if (std::holds_alternative<ValueOwnWrite>(op.operation))
+      op.operation = ValueIndexedWrite{index++, 0};
+    const auto expected = prefix == Prefix::kObserve ? LiteralError::kObserved : LiteralError::kLateValue;
+    Check(std::get<LiteralError>(BuildLiteralPlan(graph)) == expected);
+  }
+}
 void Budgets() {
   for (const std::uint32_t count : {0U, 1U, 2U, 200U, 201U, 4096U}) {
     const auto graph = Graph(count);
@@ -101,16 +114,20 @@ void Budgets() {
     Check(std::get<LiteralError>(BuildLiteralPlan(graph, budget)) == LiteralError::kResourceLimit);
   }
 }
-void SourceTree(bool buffered) {
+void SourceTree(bool buffered, bool array = false, bool print = false) {
   for (const std::uint32_t count : {1U, 2U, 200U, 201U}) {
     auto graph = Graph(count);
+    if (array) {
+      graph.ops[0].operation = ValueArrayAllocation{};
+      for (std::uint32_t i = 0; i < count; ++i) graph.ops[i + 1].operation = ValueIndexedWrite{i, 0};
+    }
     if (buffered) std::get<ValueObjectAllocation>(graph.ops[0].operation).literal = abcd::abc::PoolIndex{0};
     const auto evaluated = BuildEvaluationPlan(graph);
     const auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
     Check(evaluation && evaluation->literals);
     const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
     FunctionSyntax syntax{};
-    syntax.callable = CallableKind::kMethod; syntax.strictness = Strictness::kStrict;
+    syntax.callable = array ? CallableKind::kFunction : CallableKind::kMethod; syntax.strictness = Strictness::kStrict;
     // Duplicate computed keys retain their ordered own-data definitions; this
     // spelling must never acquire object-literal prototype-setter semantics.
     syntax.names = {u"__proto__"};
@@ -119,7 +136,14 @@ void SourceTree(bool buffered) {
     const std::uint32_t prefix = buffered ? 1 : 0;
     if (buffered) constants[0] = ObjectConstant{0, prefix};
     for (std::size_t i = 1; i <= count; ++i) constants[i] = NameId{0};
-    const ExpressionConstants resolved{constants, 1, 0, {}, properties};
+    if (array) {
+      syntax.names.clear();
+      for (std::uint32_t i = 0; i < count; ++i) {
+        const auto index = std::to_string(i); syntax.names.emplace_back(index.begin(), index.end());
+        constants[i + 1] = NameId{i};
+      }
+    }
+    const ExpressionConstants resolved{constants, syntax.names.size(), 0, {}, properties};
     const auto built = BuildFunctionTree(graph, control, *evaluation, syntax, resolved);
     const auto* result = std::get_if<ConstructedFunction>(&built);
     Check(result && result->tree.properties.size() == count + prefix);
@@ -130,6 +154,20 @@ void SourceTree(bool buffered) {
       Check(std::holds_alternative<PropertyId>(placement.node));
       const auto& property = result->tree.properties[std::get<PropertyId>(placement.node).value];
       Check(property.origin.value == graph.ops[placement.operation.value].origin.value);
+    }
+    if (array) {
+      std::ostringstream output;
+      Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(result->tree, output)));
+      if (print && count == 2) std::cout << output.str();
+      auto wrong_kind = result->tree;
+      for (auto& expression : wrong_kind.expressions)
+        if (auto* aggregate = std::get_if<ObjectExpr>(&expression.expression)) aggregate->kind = AggregateKind::kObject;
+      Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, *evaluation, wrong_kind, resolved)));
+      auto sparse = graph;
+      ++std::get<ValueIndexedWrite>(sparse.ops[1].operation).index;
+      Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(sparse)));
+      sparse = graph; sparse.ops[0].operation = ValueObjectAllocation{};
+      Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(sparse)));
     }
     auto invalid_plan = *evaluation;
     invalid_plan.literals.reset();
@@ -188,4 +226,6 @@ void RhsSnapshot() {
   Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
 }
 }  // namespace
-int main() { Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }
+int main(int argc, char**) {
+  if (argc > 1) { SourceTree(false, true, true); return 0; }
+  SourceTree(false, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }

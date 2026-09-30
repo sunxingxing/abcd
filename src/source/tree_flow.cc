@@ -340,8 +340,9 @@ class FlowCheck {
       const auto* syntax = std::get_if<ObjectExpr>(&tree_.expressions[expression->value].expression);
       Require(syntax && syntax->properties.count >= object.count, Error::kPlacement);
       const auto prefix = syntax->properties.count - object.count;
-      const auto& allocation = std::get<analysis::ValueObjectAllocation>(graph_.ops[object.allocation.value].operation);
-      Require(allocation.literal || prefix == 0, Error::kPlacement);
+      const auto* allocation = std::get_if<analysis::ValueObjectAllocation>(&graph_.ops[object.allocation.value].operation);
+      Require(syntax->kind == (allocation ? AggregateKind::kObject : AggregateKind::kArray), Error::kPlacement);
+      Require((allocation && allocation->literal) || prefix == 0, Error::kPlacement);
       definitions[object.allocation.value] = object.count;
       for (std::uint32_t i = 0; i < object.count; ++i) {
         budget_.Step(); ++count;
@@ -482,7 +483,7 @@ class FlowCheck {
       if (op.life != analysis::ValueLife::kLive) continue;
       Require(placements_[i].has_value(), Error::kPlacement);
       const auto& placement = tree_.operations[*placements_[i]].node;
-      if (std::holds_alternative<analysis::ValueOwnWrite>(op.operation)) {
+      if ((std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
         const auto* property = std::get_if<PropertyId>(&placement);
         Require(property != nullptr, Error::kPlacement);
         flow_.initializers[i] = *property;

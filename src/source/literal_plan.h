@@ -22,7 +22,8 @@ enum class LiteralError : std::uint8_t {
   kRevision, kFlow, kDefinition, kReceiver, kObserved, kLateValue, kDomain,
   kCoverage, kResourceLimit, kWorkLimit
 };
-// Initial domain: fresh empty ordinary object, same-block named own definitions,
+// Initial domain: fresh ordinary object with named definitions, or fresh array
+// with dense indexed definitions 0..N-1, in the same block/corridor;
 // no observation until initialization completes, RHS available before allocation.
 // Not AST/publication permission: preserve snapshots, computed keys and sites.
 [[nodiscard]] std::variant<LiteralPlan, LiteralError> BuildLiteralPlan(

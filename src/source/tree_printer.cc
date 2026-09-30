@@ -32,7 +32,7 @@ struct PropertyKey { NameId id; };
 struct SymbolName { SymbolId id; };
 struct ArgumentCursor { ArgumentRange range; std::uint32_t index; };
 struct SnapshotCursor { ArgumentRange range; std::uint32_t index; };
-struct ObjectCursor { PropertyRange range; std::uint32_t index; };
+struct ObjectCursor { PropertyRange range; std::uint32_t index; AggregateKind kind = AggregateKind::kObject; };
 struct EndProperty { PropertyId id; };
 struct BeginFunction {};
 struct EndFunction {};
@@ -632,7 +632,9 @@ class TreePrinter {
   }
   void Run(EndParameter end) { Result().parameters[end.index].end = written_; }
   void Expression(ObjectExpr node) {
-    Append("({"); Push(std::string_view("})")); Push(ObjectCursor{node.properties, 0});
+    const bool array = node.kind == AggregateKind::kArray;
+    Append(array ? "[" : "({"); Push(std::string_view(array ? "]" : "})"));
+    Push(ObjectCursor{node.properties, 0, node.kind});
   }
   void Run(ObjectCursor cursor) {
     if (cursor.index == cursor.range.count) return;
@@ -640,8 +642,10 @@ class TreePrinter {
     const PropertyId id{cursor.range.first + cursor.index};
     const auto& property = Tree().properties[id.value];
     Result().properties[id.value].begin = written_;
-    Append("["); Quoted(Tree().names[property.key.value]); Append("]: ");
-    Push(ObjectCursor{cursor.range, cursor.index + 1});
+    if (cursor.kind == AggregateKind::kObject) {
+      Append("["); Quoted(Tree().names[property.key.value]); Append("]: ");
+    }
+    Push(ObjectCursor{cursor.range, cursor.index + 1, cursor.kind});
     Push(EndProperty{id}); Push(property.value);
   }
   void Run(EndProperty property) { Result().properties[property.id.value].end = written_; }

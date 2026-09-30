@@ -32,13 +32,25 @@ class ConstantResolver {
     Reserve(uses_, graph_.ops.size());
     Reserve(result_.operations, graph_.ops.size());
     result_.operations.resize(graph_.ops.size());
+    std::size_t indexed_names = 0;
+    for (const auto& op : graph_.ops) {
+      Step(); indexed_names += op.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::ValueIndexedWrite>(op.operation);
+    }
+    Reserve(result_.names, indexed_names);
     bool needs_number_type = false;
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       Step();
       const auto& op = graph_.ops[i];
       if (op.life != analysis::ValueLife::kLive) continue;
       const analysis::OpId id{static_cast<std::uint32_t>(i)};
-      if (const auto* read = std::get_if<analysis::ValueNamedRead>(&op.operation))
+      if (const auto* indexed = std::get_if<analysis::ValueIndexedWrite>(&op.operation)) {
+        const auto text = std::to_string(indexed->index);
+        Admit(1, sizeof(std::u16string)); Admit(text.size(), sizeof(char16_t));
+        result_.operations[i] = NameId{static_cast<std::uint32_t>(result_.names.size())};
+        result_.names.emplace_back(text.begin(), text.end());
+      }
+      else if (const auto* read = std::get_if<analysis::ValueNamedRead>(&op.operation))
         uses_.push_back({read->name, id, TextUse::kMember});
       else if (const auto* write = std::get_if<analysis::ValueNamedWrite>(&op.operation))
         uses_.push_back({write->name, id, TextUse::kMember});
@@ -85,7 +97,7 @@ class ConstantResolver {
       if (uses_[i].use == TextUse::kMember) ++names;
       else ++texts;
     }
-    Reserve(result_.names, names);
+    Reserve(result_.names, names + indexed_names);
     Reserve(result_.texts, texts);
     for (std::size_t first = 0; first < uses_.size();) {
       Step();

@@ -157,8 +157,11 @@ struct FunctionExpr { FunctionOwnerId child; CaptureRange captures; };
 struct EmptyArrayExpr {};
 struct EmptyObjectExpr {};
 struct PropertyRange { std::uint32_t first; std::uint32_t count; };
-struct ObjectExpr { PropertyRange properties; };
+enum class AggregateKind : std::uint8_t { kObject, kArray };
+struct ObjectExpr { PropertyRange properties; AggregateKind kind = AggregateKind::kObject; };
 // Computed string data property, never a colon-style __proto__ setter or method.
+// Array aggregates reuse the ordered property arena with canonical decimal keys;
+// keys must equal element ordinals and are implicit in native array syntax.
 struct DataProperty { NameId key; ExprId value; TreeOriginId origin; };
 using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, RealmObjectExpr,
     SymbolConstructorExpr, ThisExpr, MemberExpr,

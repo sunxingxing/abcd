@@ -12,6 +12,24 @@
 
 ## 当前阶段
 
+### 2026-10-01：密集数组初始化的共同源码输出
+
+- LiteralPlan 复用现有新分配/不可观察验证，支持 ValueArrayAllocation
+  后从 0 开始的连续 ValueIndexedWrite。共享属性 arena 增加类型化
+  AggregateKind，数组键必须等于元素序号，printer 输出原生数组字面量。
+  流、操作数、结构和常量解析同步验证数组/对象区别，没有生成 [[Set]]。
+- 1/2/200/201 元素经过共同树；拒绝稀疏索引、错误接收者、改成对象、
+  初始化前观察及晚产生值。真实编码 ABC 夹具经正式 record 路径生成
+  数组导出；Node 验证值 42、length、自有属性 descriptor、原型，并在
+  Array.prototype[0] 安装抛错 setter，验证输出不调用继承 setter。
+- 5 项定向 CTest 通过（4.13 秒），最终类型检查调整后重跑 record 与
+  literal 三项通过。日志 /tmp/abcd-array-final-build.log、
+  /tmp/abcd-array-final-tests.log、/tmp/abcd-array-kind-tests.log。
+- 仅支持分配前已可用的元素。后加载数字仍是 SSA copy，也触发
+  EarlyValue；不能借本次数组支持解除晚值/效果顺序检查。真实 Constants
+  的嵌套初始化 kLateValue 尚未解决，后续需处理字面量依赖、分配与
+  RHS 顺序及共同树构建顺序。阶段一未完成；未执行全量/RSS/基准/代理。
+
 ### 2026-10-01：索引自有属性写入进入共同值 IR
 
 - ValueIndexedWrite 独立保存立即数索引与可选 IC 槽位，导入 base/存储值
