@@ -12,6 +12,45 @@
 
 ## 当前阶段
 
+### 2026-09-30：RETURN 清理内再次 yield 的共同源码贯通
+
+- NormalizeGenerator 先识别所有真实同步 generator 握手，再按原 PC
+  统一保留源操作和删除 VM 协议，包括外层 RETURN 清理中的多个 yield。
+  内层只能使用独立 result/mode 槽；state 访问仅授权给已匹配的精确
+  协议指令。保留外层 pending payload、用户 catch 及原始 source PC。
+  依据固定 OH7 FunctionBuilder::HandleCompletion 的 handleReturn_ guard，
+  支持内层无额外 RETURN route 的直接 yield；递归注入新清理仍未支持。
+- 共同 normal CFG 继续证明清理 accumulator 可用性与覆盖后的尾部
+  可达性；共同 ValueProgram/CompletionPlan/FunctionTree/Printer 输出
+  原生 yield/finally，无专项 writer。分支不能进入内层 resume 私有
+  指令；单调 owner 游标保留外层清理归属，不被内层暂停点抢占。
+  清理区间互不嵌套，每条原指令至多属于一段清理和一个握手，新增
+  识别/保留 O(I + Y log I)，存储 O(I+Y)，无按暂停点重复图遍历。
+- shared catch-input 分析为 continuation 单独建立排序索引；内外 yield
+  的创建顺序不等于 continuation 顺序，不能直接对创建序列 lower_bound。
+  现有外部 continuation 入口/旧私有槽读取反例继续保留。
+- 新增真实 opcode 文件解码、合成元数据的 24 个完整函数族，以及三种
+  恢复分支宽度下的 18 个内层协议反例。实际生成 JS 核对清理暂停前后
+  的 NEXT/再次 RETURN/THROW、原 payload 的 Object.is 身份及 thenable
+  不同化、捕获 cell 更新、receiver、效果顺序/次数、原 catch 二次清理、
+  cleanup/suffix 抛出覆盖和尚未启动的 generator。三个 profile、三个
+  父环境、有无用户 catch 的 18 个双原始暂停点组合；另有单原始暂停点
+  的 200/201/402 次清理 yield × 16/32 位分支，共六个规模组合。
+- 首轮新用例在 phase-input kKind 失败，见
+  `/tmp/abcd-return-suspend-red-tests.log`。六个相关 C++ 目标构建成功；
+  最终 16 项定向 CTest 全通过（76.95 秒），包括 generator 全部相关
+  源码目标、async_semantics、共同控制/出口、await finally suspend/reuse；
+  `/tmp/abcd-return-suspend-regression-build.log`、
+  `/tmp/abcd-return-suspend-regression-tests.log`。`git diff --check` 通过；
+  按用户要求独立开发、自查，未调用 CC 或子代理。
+- 未外推完整 generator 域：嵌套的新 RETURN route、yield*、async
+  generator、其他控制组合和结构 gate 继续开放。探索“两段原始 yield
+  各内含 402 次清理 yield”时，函数族树已构建，诊断草稿打印返回
+  TreePrintError::kResourceLimit；尚未定位具体内存消耗，不改配额或隐藏
+  该缺口，六个规模正例明确只含一段 RETURN 清理。下一步先定位这一
+  具体源码贯通限制，再继续 C07/C08 功能。全量测试/语料/RSS/基准保持
+  暂停，不据本轮声明真实应用覆盖或全进程 1GB 达标。
+
 ### 2026-09-30：preserving do/while 清理与恢复方式行为验收
 
 - 在上一项共同 preserving 出口修复上增加不含提前 return/throw 的

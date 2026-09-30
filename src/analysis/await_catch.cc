@@ -141,16 +141,31 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
     // FindAwaitRegions forbids interior entries but deliberately allows entry
     // at the retained continuation load. Such an entry may observe the old
     // result; only protocol-owned continuation edges make that read local.
-    if (regions.size() > budget.bytes) throw std::bad_alloc{};
+    // Creation order differs from continuation order for a yield inside
+    // another yield's RETURN cleanup. Index continuation PCs independently;
+    // lower_bound on creation-ordered certificates would miss external entries
+    // and could incorrectly treat an incoming private result as overwritten.
+    struct Continuation { abc::CodeOffset pc; std::size_t region; };
+    constexpr auto kContinuationStorage = sizeof(Continuation) + sizeof(std::uint8_t);
+    if (regions.size() > budget.bytes / kContinuationStorage) throw std::bad_alloc{};
     std::vector<std::uint8_t> continuation_entries(regions.size());
+    std::vector<Continuation> continuations;
+    continuations.reserve(regions.size());
     retain(continuation_entries.capacity());
+    retain(continuations.capacity() * sizeof(Continuation));
+    for (std::size_t i = 0; i < regions.size(); ++i) {
+      charge(); continuations.push_back({Region(regions[i]).continuation, i});
+    }
+    std::sort(continuations.begin(), continuations.end(), [&](const auto& a, const auto& b) {
+      charge(); return a.pc < b.pc;
+    });
     const auto entry = [&](abc::CodeOffset pc, std::optional<abc::CodeOffset> source) {
-      const auto found = std::lower_bound(regions.begin(), regions.end(), pc,
-          [&](const Certificate& region, abc::CodeOffset target) {
-            charge(); return Region(region).continuation < target;
+      const auto found = std::lower_bound(continuations.begin(), continuations.end(), pc,
+          [&](const Continuation& continuation, abc::CodeOffset target) {
+            charge(); return continuation.pc < target;
           });
-      if (found != regions.end() && Region(*found).continuation == pc && source != Region(*found).branch)
-        continuation_entries[static_cast<std::size_t>(found - regions.begin())] = 1;
+      if (found != continuations.end() && found->pc == pc && source != Region(regions[found->region]).branch)
+        continuation_entries[found->region] = 1;
     };
     for (const auto& site : body.instructions) {
       charge();

@@ -17,11 +17,14 @@ struct GeneratorBody {
 // Preserve inline RETURN cleanup in the common value/control graph;
 // CompletionPlan/FunctionTree route those effects at the native yield without
 // reading its private pending payload. Cleanup may not observe/clobber resume
-// slots or depend on the dispatch accumulator. Each basic block must define
-// its own accumulator input; branch targets stay inside the cleanup/payload
-// boundary. Common CFG/SSA owns branches and register merges. Suspending or
-// overriding cleanup needs further completion analysis; never erase it by
-// schema resemblance.
+// slots or depend on the dispatch accumulator. Common normal CFG proves
+// accumulator availability, including across block boundaries; SSA owns values
+// and merges. Cleanup may suspend at another certified direct yield with
+// independent result/mode slots. OH7 handleReturn_ prevents reinjecting outer
+// cleanup; nested RETURN routes remain unsupported. Branches stay within the
+// cleanup/payload boundary and cannot enter inner resume interiors. Native
+// RETURN/THROW at the inner yield overrides the outer pending completion.
+// Never erase user effects or admit a coroutine by schema resemblance.
 // I instructions,
 // B branches, H handlers, Y yields, R dispatch spans: normalization/rebasing
 // O(I+(Y+B+H) log(I+1)), shared catch analysis O((I+Y+H) log(Y+1)+I log(R+1))

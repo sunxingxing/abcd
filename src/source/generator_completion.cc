@@ -32,10 +32,10 @@ enum ResumeStep : std::size_t {
   kThrowMode, kThrowEqual, kThrowBranch, kThrowValue, kThrow, kContinuation, kResumeSize
 };
 constexpr auto kPreservingTailSize = kReturn - kReturnValue + 1;
+enum class ProtocolPart : std::uint8_t { kSource, kResume, kYieldPrefix };
 struct ResumeRegion {
   analysis::YieldRegion origin;
   std::size_t cleanup, size;
-  std::vector<std::uint8_t> retained;
 };
 // HandleCompletion emits its preserving tail even after Compile(finalizer)
 // returned/threw. Reachability is confined to this owned RETURN corridor;
@@ -91,7 +91,7 @@ std::vector<std::uint8_t> ReachableCleanup(const abc::MethodBody& body,
   return retained;
 }
 ResumeRegion Resume(const abc::MethodBody& body, std::size_t begin,
-    abc::RegisterId state, const abc::FrameLayout& frame, std::size_t bytes) {
+    abc::RegisterId state, const abc::FrameLayout& frame) {
   Require(begin <= body.instructions.size() && kResumeSize <= body.instructions.size() - begin);
   const auto& jump = body.instructions[begin + kReturnBranch];
   Require(jump.branch_target.has_value());
@@ -137,10 +137,18 @@ ResumeRegion Resume(const abc::MethodBody& body, std::size_t begin,
   analysis::YieldRegion region{{}, at(kSuspend).offset, at(kResume).offset, at(kStoreResult).offset,
       at(kMode).offset, at(kStoreMode).offset, at(kContinuation).offset, state, {}, result, mode,
       at(kThrowBranch).offset, at(kThrow).offset};
+  if (cleanup) region.return_route = analysis::YieldReturnRoute{at(kReturnBranch).offset,
+      body.instructions[begin + kReturnValue].offset, at(kReturnValue).offset, at(kReturn).offset};
+  return {region, cleanup, kResumeSize + cleanup};
+}
+std::vector<std::uint8_t> ValidateCleanup(const abc::MethodBody& body, std::size_t begin,
+    ResumeRegion& resume, const abc::FrameLayout& frame,
+    std::span<const ProtocolPart> protocol, std::size_t bytes) {
+  const auto state = resume.origin.state, result = resume.origin.result, mode = resume.origin.resume_mode;
   std::vector<std::uint8_t> retained;
-  if (cleanup) {
-    region.return_route = analysis::YieldReturnRoute{at(kReturnBranch).offset,
-        body.instructions[begin + kReturnValue].offset, at(kReturnValue).offset, at(kReturn).offset};
+  if (resume.cleanup) {
+    const auto cleanup = resume.cleanup;
+    auto& region = resume.origin;
     if (cleanup > bytes / sizeof(abc::CodeOffset)) throw Error::kResourceLimit;
     std::vector<abc::CodeOffset> entries;
     entries.reserve(cleanup);
@@ -151,7 +159,8 @@ ResumeRegion Resume(const abc::MethodBody& body, std::size_t begin,
       const auto control = abc::GetControlTransfer(site.decoded.opcode);
       Require(control && (*control == abc::ControlTransfer::kFallthrough ||
           *control == abc::ControlTransfer::kBranch || *control == abc::ControlTransfer::kJump ||
-          *control == abc::ControlTransfer::kReturn || *control == abc::ControlTransfer::kThrow));
+          *control == abc::ControlTransfer::kReturn || *control == abc::ControlTransfer::kThrow ||
+          (*control == abc::ControlTransfer::kSuspend && protocol[i] == ProtocolPart::kResume)));
       abrupt |= *control == abc::ControlTransfer::kReturn || *control == abc::ControlTransfer::kThrow;
       if (*control == abc::ControlTransfer::kBranch || *control == abc::ControlTransfer::kJump) {
         Require(site.branch_target && *site.branch_target >= region.return_route->cleanup &&
@@ -181,7 +190,8 @@ ResumeRegion Resume(const abc::MethodBody& body, std::size_t begin,
       for (std::size_t w = 0; w < known->count; ++w)
         for (auto slot : {state, result, mode}) {
           const auto& window = known->windows[w];
-          Require(slot.value < window.first.value || slot.value - window.first.value >= window.count);
+          Require((slot == state && protocol[i] == ProtocolPart::kResume) || slot.value < window.first.value ||
+              slot.value - window.first.value >= window.count);
         }
     }
     if (needs_flow) {
@@ -190,7 +200,7 @@ ResumeRegion Resume(const abc::MethodBody& body, std::size_t begin,
       if (!retained.back()) region.return_route->completion.reset();
     }
   }
-  return {region, cleanup, kResumeSize + cleanup, std::move(retained)};
+  return retained;
 }
 }  // namespace
 std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
@@ -235,7 +245,7 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
         Op(code[enter], Opcode::kCREATEGENERATOROBJ_V8) &&
         Op(code[enter + 1], Opcode::kSTA_V8) && Op(code[enter + 2], Opcode::kLDUNDEFINED));
     const auto state = Reg(code[enter + 1]); Require(state.value < frame.locals);
-    const auto entry_resume = Resume(body, enter + kEntryPrefix, state, frame, bytes);
+    const auto entry_resume = Resume(body, enter + kEntryPrefix, state, frame);
     Require(!entry_resume.cleanup);
     const auto& initial = entry_resume.origin;
     const auto callee = Reg(code[enter]);
@@ -258,16 +268,20 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
             std::uint64_t(code.back().offset.value) + code.back().decoded.size));
     // RETURN cleanup stays in the common graph; tree composition must route it
     // on native RETURN. Do not erase it or treat it as a normal resume effect.
-    constexpr auto kPerInstruction = sizeof(abc::BodyInstruction) + sizeof(abc::CodeOffset) + sizeof(std::uint8_t);
+    constexpr auto kPerInstruction = sizeof(abc::BodyInstruction) + sizeof(abc::CodeOffset) + 2 * sizeof(std::uint8_t) + sizeof(ProtocolPart);
+    struct YieldProtocol { std::size_t prefix, suspend; ResumeRegion resume; };
     if (code.size() > bytes / kPerInstruction) return Error::kResourceLimit;
     const auto yield_count = static_cast<std::size_t>(std::count_if(code.begin(), code.end(),
         [](const auto& site) { return Op(site, Opcode::kCREATEITERRESULTOBJ_V8_V8); }));
-    if (yield_count > (bytes - code.size() * kPerInstruction) / sizeof(analysis::YieldSite))
+    if (yield_count > (bytes - code.size() * kPerInstruction) / (sizeof(analysis::YieldSite) + sizeof(YieldProtocol)))
       return Error::kResourceLimit;
     GeneratorBody result;
     result.body.instructions.reserve(code.size()); result.source_pcs.reserve(code.size());
     result.yields.reserve(yield_count);
-    std::vector<std::uint8_t> interior(code.size());
+    std::vector<std::uint8_t> interior(code.size()), retained(code.size(), 1);
+    std::vector<ProtocolPart> protocol(code.size(), ProtocolPart::kSource);
+    std::vector<YieldProtocol> yields;
+    yields.reserve(yield_count);
     const auto storage = [&](std::size_t count, std::size_t width) {
       if (count > bytes / width) throw Error::kResourceLimit;
       bytes -= count * width;
@@ -276,37 +290,67 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
     storage(result.source_pcs.capacity(), sizeof(abc::CodeOffset));
     storage(result.yields.capacity(), sizeof(analysis::YieldSite));
     storage(interior.capacity(), sizeof(std::uint8_t));
+    storage(retained.capacity(), sizeof(std::uint8_t));
+    storage(protocol.capacity(), sizeof(ProtocolPart));
+    storage(yields.capacity(), sizeof(YieldProtocol));
     std::fill(interior.begin(), interior.begin() + first, 1);
     const auto retain = [&](std::size_t i) {
       result.body.instructions.push_back(code[i]); result.source_pcs.push_back(code[i].offset);
     };
-    for (std::size_t i = 0; i < enter; ++i) retain(i);
-    for (std::size_t i = first; i < handler;) {
-      if (i + kYieldPrefix < handler && Op(code[i + kYieldPrefix], Opcode::kCREATEITERRESULTOBJ_V8_V8)) {
-        Require(Op(code[i], Opcode::kSTA_V8) && Op(code[i + 1], Opcode::kLDFALSE) && Op(code[i + 2], Opcode::kSTA_V8));
-        const auto value = Reg(code[i]), done = Reg(code[i + 2]);
-        Require(value != done && value != state && done != state && value.value < frame.locals && done.value < frame.locals &&
-            Reg(code[i + kYieldPrefix]) == value && Reg(code[i + kYieldPrefix], 1) == done);
-        const auto suspend = i + kYieldPrefix + 1;
-        Require(kResumeSize <= handler - suspend);
-        const auto resume = Resume(body, suspend, state, frame, bytes);
-        Require(resume.size <= handler - suspend);
-        auto region = resume.origin;
-        region.create = code[i + kYieldPrefix].offset; region.value = value;
-        result.yields.push_back({region.create, region.mode, region});
-        std::fill(interior.begin() + i + 1, interior.begin() + suspend + resume.size, 1);
-        for (std::size_t prefix = 0; prefix <= kYieldPrefix; ++prefix) retain(i + prefix);
-        for (auto step : {kStoreResult, kMode, kStoreMode}) retain(suspend + step);
-        if (resume.cleanup) {
-          for (std::size_t step = kReturnMode; step < kThrowMode + resume.cleanup; ++step) {
-            if (step >= kReturnValue && !resume.retained.empty() && !resume.retained[step - kReturnValue]) continue;
-            retain(suspend + step);
-            if (step == kReturnBranch) result.body.instructions.back().branch_target = region.continuation;
-          }
+    // Parse exact handshakes first, including yields compiled inside RETURN
+    // cleanup. handleReturn_ suppresses recursive outer cleanup injection in
+    // pinned OH7 FunctionBuilder::HandleCompletion; nested cleanup routes stay
+    // unsupported. Thus each instruction belongs to at most one cleanup and
+    // one handshake: O(I + Y log I), no repeated nested-slice graph walks.
+    std::size_t cleanup_end = 0;
+    for (std::size_t i = first; i + kYieldPrefix < handler; ++i) {
+      if (!Op(code[i + kYieldPrefix], Opcode::kCREATEITERRESULTOBJ_V8_V8)) continue;
+      Require(Op(code[i], Opcode::kSTA_V8) && Op(code[i + 1], Opcode::kLDFALSE) && Op(code[i + 2], Opcode::kSTA_V8));
+      const auto value = Reg(code[i]), done = Reg(code[i + 2]);
+      Require(value != done && value != state && done != state && value.value < frame.locals && done.value < frame.locals &&
+          Reg(code[i + kYieldPrefix]) == value && Reg(code[i + kYieldPrefix], 1) == done);
+      const auto suspend = i + kYieldPrefix + 1;
+      Require(kResumeSize <= handler - suspend);
+      auto resume = Resume(body, suspend, state, frame);
+      Require(resume.size <= handler - suspend);
+      Require(i >= cleanup_end || (!resume.cleanup && suspend + resume.size <= cleanup_end));
+      if (resume.cleanup) cleanup_end = suspend + kReturnValue + resume.cleanup;
+      auto& region = resume.origin;
+      region.create = code[i + kYieldPrefix].offset; region.value = value;
+      // Only validated VM protocol operations may access the state register.
+      // An inner result/mode may never alias an outer pending completion.
+      std::fill(protocol.begin() + i + 1, protocol.begin() + suspend, ProtocolPart::kYieldPrefix);
+      std::fill(protocol.begin() + suspend, protocol.begin() + suspend + kReturnValue, ProtocolPart::kResume);
+      std::fill(protocol.begin() + suspend + kReturnValue + resume.cleanup,
+          protocol.begin() + suspend + resume.size, ProtocolPart::kResume);
+      yields.push_back({i, suspend, std::move(resume)});
+    }
+    std::fill(retained.begin() + enter, retained.begin() + first, 0);
+    retained[handler] = 0;
+    for (auto& parsed : yields) {
+      const auto i = parsed.prefix, suspend = parsed.suspend;
+      auto& resume = parsed.resume;
+      const auto cleanup = ValidateCleanup(body, suspend, resume, frame, protocol, bytes);
+      const bool reachable = retained[i];
+      std::fill(interior.begin() + i + 1, interior.begin() + suspend + resume.size, 1);
+      // Strip protocol, leaving ordinary cleanup instructions in the shared IR.
+      std::fill(retained.begin() + suspend, retained.begin() + suspend + resume.size, 0);
+      if (!reachable) { std::fill(retained.begin() + i, retained.begin() + suspend, 0); continue; }
+      for (auto step : {kStoreResult, kMode, kStoreMode}) retained[suspend + step] = 1;
+      if (resume.cleanup) {
+        for (std::size_t step = kReturnMode; step < kThrowMode + resume.cleanup; ++step) {
+          if (step >= kReturnValue && !cleanup.empty() && !cleanup[step - kReturnValue]) continue;
+          retained[suspend + step] = 1;
         }
-        retain(suspend + kContinuation + resume.cleanup);
-        i = suspend + resume.size;
-      } else {
+      }
+      retained[suspend + kContinuation + resume.cleanup] = 1;
+      const auto& region = resume.origin;
+      result.yields.push_back({region.create, region.mode, region});
+    }
+    std::size_t next_protocol = 0;
+    for (std::size_t i = 0; i < handler; ++i) {
+      if (!retained[i]) continue;
+      if (protocol[i] != ProtocolPart::kResume) {
         const auto access = abc::GetRegisterAccesses(code[i].decoded, frame.registers);
         const auto* known = std::get_if<abc::RegisterAccesses>(&access); Require(known != nullptr);
         for (std::size_t j = 0; j < known->count; ++j) {
@@ -316,9 +360,21 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
         const auto control = abc::GetControlTransfer(code[i].decoded.opcode);
         Require(control && *control != abc::ControlTransfer::kSuspend);
         Require(!Op(code[i], Opcode::kCREATEGENERATOROBJ_V8) && !Op(code[i], Opcode::kRESUMEGENERATOR) &&
-            !Op(code[i], Opcode::kGETRESUMEMODE) && !Op(code[i], Opcode::kCREATEITERRESULTOBJ_V8_V8));
-        retain(i++);
+            !Op(code[i], Opcode::kGETRESUMEMODE));
+        // Only the exact certified create instruction survives as a native yield.
+        if (Op(code[i], Opcode::kCREATEITERRESULTOBJ_V8_V8))
+          Require(next_protocol < result.yields.size() && code[i].offset == result.yields[next_protocol++].origin.create);
       }
+      retain(i);
+    }
+    // Rewritten RETURN dispatch bypasses the erased VM THROW/NEXT handshake.
+    std::size_t next_return = 0;
+    for (auto& site : result.body.instructions) {
+      while (next_return < result.yields.size() && (!result.yields[next_return].origin.return_route ||
+          result.yields[next_return].origin.return_route->branch < site.offset)) ++next_return;
+      if (next_return < result.yields.size() && result.yields[next_return].origin.return_route &&
+          result.yields[next_return].origin.return_route->branch == site.offset)
+        site.branch_target = result.yields[next_return].origin.continuation;
     }
     Require(!result.body.instructions.empty());
     // Selected catch must be identical at the native yield and VM THROW site;
@@ -342,23 +398,29 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
         result.yields[next_mode++].mode_pc = {pc};
       site.offset = {pc}; pc += site.decoded.size;
     }
-    std::size_t active_yield = 0;
+    std::size_t next_owner = 0;
+    const analysis::YieldRegion* owner = nullptr;
     for (std::size_t s = 0; s < result.body.instructions.size(); ++s) {
       auto& site = result.body.instructions[s];
       if (!site.branch_target) continue;
       const auto source = result.source_pcs[s];
-      while (active_yield + 1 < result.yields.size() && result.yields[active_yield + 1].origin.create <= source) ++active_yield;
-      const auto* route = result.yields.empty() || !result.yields[active_yield].origin.return_route ? nullptr :
-          &*result.yields[active_yield].origin.return_route;
-      const bool owned_return = route && route->branch == source &&
-          site.branch_target == result.yields[active_yield].origin.continuation;
+      // Cleanup routes are disjoint. Inner yields have no route and cannot
+      // steal the outer corridor's branch/tail ownership. One monotone cursor
+      // visits each yield once, including arbitrarily many leaf suspensions.
+      while (next_owner < result.yields.size() && result.yields[next_owner].origin.create <= source) {
+        if (result.yields[next_owner].origin.return_route) owner = &result.yields[next_owner].origin;
+        ++next_owner;
+      }
+      const auto* route = owner ? &*owner->return_route : nullptr;
+      const bool owned_return = route && route->branch == source && site.branch_target == owner->continuation;
       const bool owned_cleanup = route && source >= route->cleanup && source < route->payload &&
           *site.branch_target >= route->cleanup && *site.branch_target <= route->payload;
       const auto target = *site.branch_target;
       const auto original = std::lower_bound(code.begin(), code.end(), target,
           [](const auto& instruction, auto offset) { return instruction.offset < offset; });
       Require(original != code.end() && original->offset == target &&
-          (owned_return || owned_cleanup || !interior[original - code.begin()]));
+          (owned_return || (owned_cleanup && (protocol[original - code.begin()] == ProtocolPart::kSource || target == route->payload)) ||
+           !interior[original - code.begin()]));
       const auto found = std::lower_bound(result.source_pcs.begin(), result.source_pcs.end(), target);
       Require(found != result.source_pcs.end() && *found == target);
       const auto destination = result.body.instructions[found - result.source_pcs.begin()].offset;

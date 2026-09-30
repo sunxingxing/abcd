@@ -954,6 +954,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator_branches.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_generator_return_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator_return.mjs $<TARGET_FILE:loop_closure_file_test>)
+    add_test(NAME file_generator_return_suspend_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator_return_suspend.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_generator_return_loop_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator_return_loop.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_async_arrow_finally_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
