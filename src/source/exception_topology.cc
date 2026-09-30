@@ -58,6 +58,15 @@ class Projection {
       auto& projected = result_.blocks[b];
       projected.first_arc = {edge_count_};
       const auto& original = graph_.blocks[b];
+      // A normal try-exit port is not a source return. Preserve terminal kind
+      // across projection so early-exit structuring cannot skip wrapper.next.
+      projected.termination = BlockTermination(graph_, original);
+      const auto operation = graph_.phases[b].operation;
+      // Return/throw may already be emitted in Before; its empty Commit is
+      // still the end of that abrupt corridor, unlike an ordinary exit port.
+      if (operation && (std::holds_alternative<ValueReturn>(graph_.ops[operation->value].operation) ||
+                        std::holds_alternative<ValueThrow>(graph_.ops[operation->value].operation)))
+        projected.termination = ControlTermination::kAbrupt;
       for (std::uint8_t e = 0; e < original.edge_count; ++e) {
         quota_.Work(); const EdgeId id{original.first_edge.value + e};
         if (std::holds_alternative<RaiseTransfer>(regions_.transfers[id.value])) continue;

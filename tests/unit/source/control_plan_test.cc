@@ -15,12 +15,18 @@ struct Targets { std::optional<std::uint32_t> taken; std::optional<std::uint32_t
 analysis::ValueProgram Graph(std::span<const Targets> targets) {
   analysis::ValueProgram graph;
   for (std::size_t i = 0; i < targets.size(); ++i) {
-    analysis::WorkBlock block{{0}, 0, {static_cast<std::uint32_t>(graph.edges.size())}, 0};
+    analysis::WorkBlock block{{static_cast<std::uint32_t>(graph.ops.size())}, 0,
+        {static_cast<std::uint32_t>(graph.edges.size())}, 0};
     const auto edge = [&](std::optional<std::uint32_t> target, analysis::FlowEdgeKind kind) {
       if (target) graph.edges.push_back({{static_cast<std::uint32_t>(i)}, {*target}, kind, block.edge_count++});
     };
     edge(targets[i].taken, analysis::FlowEdgeKind::kTaken);
     edge(targets[i].fallthrough, analysis::FlowEdgeKind::kFallthrough);
+    if (!block.edge_count) {
+      analysis::ValueOp terminal{}; terminal.operation = analysis::ValueReturn{};
+      terminal.block = {static_cast<std::uint32_t>(i)};
+      graph.ops.push_back(terminal); block.op_count = 1;
+    }
     graph.blocks.push_back(block);
   }
   return graph;
@@ -204,6 +210,13 @@ void Scaling() {
   }
 }
 void EarlyExitSequences() {
+  // A zero-arc projection port completes its region normally. Treating it as
+  // abrupt would run the other arm after it and skip the wrapper continuation.
+  const std::array<Targets, 5> normal_port{{{1, 2}, {}, {3, 4}, {}, {}}};
+  auto port_graph = Graph(normal_port); port_graph.blocks[1].op_count = 0;
+  const auto port_built = BuildControlPlan(port_graph);
+  const auto* port_plan = std::get_if<ControlPlan>(&port_built);
+  Check(port_plan && !port_plan->nodes[0].next && port_plan->nodes[0].arms->taken == ControlId{1});
   // Nesting each continuing arm makes indentation/output quadratic even
   // though these guards have a single sequential continuation.
   for (const std::uint32_t count : {2U, 200U, 201U, 402U}) {

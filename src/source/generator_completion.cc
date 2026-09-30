@@ -32,7 +32,7 @@ enum ResumeStep : std::size_t {
 };
 struct ResumeRegion { analysis::YieldRegion origin; std::size_t cleanup, size; };
 ResumeRegion Resume(const abc::MethodBody& body, std::size_t begin,
-    abc::RegisterId state, const abc::FrameLayout& frame) {
+    abc::RegisterId state, const abc::FrameLayout& frame, std::size_t bytes) {
   Require(begin <= body.instructions.size() && kResumeSize <= body.instructions.size() - begin);
   const auto& jump = body.instructions[begin + kReturnBranch];
   Require(jump.branch_target.has_value());
@@ -81,15 +81,38 @@ ResumeRegion Resume(const abc::MethodBody& body, std::size_t begin,
   if (cleanup) {
     region.return_route = analysis::YieldReturnRoute{at(kReturnBranch).offset,
         body.instructions[begin + kReturnValue].offset, at(kReturnValue).offset, at(kReturn).offset};
-    bool accumulator = false;
+    if (cleanup > bytes / sizeof(abc::CodeOffset)) throw Error::kResourceLimit;
+    std::vector<abc::CodeOffset> entries;
+    entries.reserve(cleanup);
     for (std::size_t i = begin + kReturnValue; i < begin + kReturnValue + cleanup; ++i) {
       const auto& site = body.instructions[i];
       const auto control = abc::GetControlTransfer(site.decoded.opcode);
-      Require(control && *control == abc::ControlTransfer::kFallthrough);
+      Require(control && (*control == abc::ControlTransfer::kFallthrough ||
+          *control == abc::ControlTransfer::kBranch || *control == abc::ControlTransfer::kJump));
+      if (*control != abc::ControlTransfer::kFallthrough) {
+        Require(site.branch_target && *site.branch_target >= region.return_route->cleanup &&
+            *site.branch_target <= region.return_route->payload);
+        entries.push_back(*site.branch_target);
+      }
+    }
+    std::sort(entries.begin(), entries.end());
+    entries.erase(std::unique(entries.begin(), entries.end()), entries.end());
+    bool accumulator = false, start = true;
+    std::size_t entry = 0;
+    for (std::size_t i = begin + kReturnValue; i < begin + kReturnValue + cleanup; ++i) {
+      const auto& site = body.instructions[i];
+      const auto control = abc::GetControlTransfer(site.decoded.opcode);
+      // Every basic block must define acc before observing it. This deliberately
+      // does not carry the dispatch accumulator through a join/backedge. The
+      // common CFG/SSA owns branch structure and ordinary register merges.
+      const bool target = entry < entries.size() && entries[entry] == site.offset;
+      if (start || target) accumulator = false;
+      if (target) ++entry;
       const auto access = abc::GetRegisterAccesses(site.decoded, frame.registers);
       const auto* known = std::get_if<abc::RegisterAccesses>(&access); Require(known != nullptr);
       Require(accumulator || !known->accumulator_read);
       accumulator |= known->accumulator_write;
+      start = *control != abc::ControlTransfer::kFallthrough;
       // Native RETURN bypasses the result/mode commits, and its payload cannot
       // be read from JS finally. No private resume slot may escape or be clobbered.
       for (std::size_t w = 0; w < known->count; ++w)
@@ -144,7 +167,7 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
         Op(code[enter], Opcode::kCREATEGENERATOROBJ_V8) &&
         Op(code[enter + 1], Opcode::kSTA_V8) && Op(code[enter + 2], Opcode::kLDUNDEFINED));
     const auto state = Reg(code[enter + 1]); Require(state.value < frame.locals);
-    const auto entry_resume = Resume(body, enter + kEntryPrefix, state, frame);
+    const auto entry_resume = Resume(body, enter + kEntryPrefix, state, frame, bytes);
     Require(!entry_resume.cleanup);
     const auto& initial = entry_resume.origin;
     const auto callee = Reg(code[enter]);
@@ -198,7 +221,7 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
             Reg(code[i + kYieldPrefix]) == value && Reg(code[i + kYieldPrefix], 1) == done);
         const auto suspend = i + kYieldPrefix + 1;
         Require(kResumeSize <= handler - suspend);
-        const auto resume = Resume(body, suspend, state, frame);
+        const auto resume = Resume(body, suspend, state, frame, bytes);
         Require(resume.size <= handler - suspend);
         auto region = resume.origin;
         region.create = code[i + kYieldPrefix].offset; region.value = value;
@@ -260,10 +283,13 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
           &*result.yields[active_yield].origin.return_route;
       const bool owned_return = route && route->branch == source &&
           site.branch_target == result.yields[active_yield].origin.continuation;
+      const bool owned_cleanup = route && source >= route->cleanup && source < route->payload &&
+          *site.branch_target >= route->cleanup && *site.branch_target <= route->payload;
       const auto target = *site.branch_target;
       const auto original = std::lower_bound(code.begin(), code.end(), target,
           [](const auto& instruction, auto offset) { return instruction.offset < offset; });
-      Require(original != code.end() && original->offset == target && (owned_return || !interior[original - code.begin()]));
+      Require(original != code.end() && original->offset == target &&
+          (owned_return || owned_cleanup || !interior[original - code.begin()]));
       const auto found = std::lower_bound(result.source_pcs.begin(), result.source_pcs.end(), target);
       Require(found != result.source_pcs.end() && *found == target);
       const auto destination = result.body.instructions[found - result.source_pcs.begin()].offset;

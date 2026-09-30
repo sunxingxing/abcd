@@ -446,6 +446,7 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
   }
   EditSequences(lists, shared_edits, budget);
   const auto yield_positions = Positions(lists, budget);
+  std::vector<SequenceEdit> yield_edits;
   for (const auto& route : plan.yield_returns) {
     budget.Step();
     const auto yielded = flow.statements[route.yield.value],
@@ -455,15 +456,31 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
     const auto location = *yield_positions[yielded->value], guard_location = *yield_positions[branch->value];
     Require(location.block == guard_location.block && location.index < guard_location.index);
     const auto* guard = std::get_if<IfStmt>(&tree.statements[branch->value].statement);
-    Require(guard && guard->alternate);
-    const auto original_arm = *guard->alternate;
-    auto& arm = lists[original_arm.value];
-    Require(!arm.empty() && arm.back() == *completion);
+    Require(guard != nullptr);
+    auto placement = YieldCleanupPlacement::kBranchArm;
+    std::vector<StmtId> cleanup;
+    if (guard->alternate && !lists[guard->alternate->value].empty() &&
+        lists[guard->alternate->value].back() == *completion) {
+      auto& arm = lists[guard->alternate->value];
+      cleanup.assign(arm.begin(), arm.end() - 1);
+      arm.erase(arm.begin(), arm.end() - 1);
+    } else {
+      // An early-exiting NEXT arm can leave the RETURN corridor as the
+      // following sequence. Consume that existing placement, not a different
+      // control algorithm or an artificial else branch.
+      Require(!guard->alternate || lists[guard->alternate->value].empty());
+      Require(yield_positions[completion->value].has_value());
+      const auto end = *yield_positions[completion->value];
+      Require(end.block == guard_location.block && end.index > guard_location.index);
+      const auto& following = lists[end.block.value];
+      cleanup.assign(following.begin() + guard_location.index + 1, following.begin() + end.index);
+      budget.Admit(1, sizeof(SequenceEdit));
+      yield_edits.push_back({end.block, guard_location.index + 1, end.index, {}});
+      placement = YieldCleanupPlacement::kFollowing;
+    }
     // Keep the certified NEXT-only dispatch/terminal in the AST for SSA audit;
     // it is unreachable for native RETURN. Move its real cleanup roots once,
     // rather than duplicating effects or inventing access to RETURN's payload.
-    std::vector<StmtId> cleanup(arm.begin(), arm.end() - 1);
-    arm.erase(arm.begin(), arm.end() - 1);
     const auto origin = tree.statements[yielded->value].origin;
     const auto enclosure = block(scope(location.block), origin, {});
     const auto protected_body = block(scope(enclosure), origin, {});
@@ -506,8 +523,9 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
     lists[enclosure.value] = {statement(DeclarationStmt{flag, initial}, binding), outer};
     lists[location.block.value][location.index] = enclosure;
     budget.Admit(1, sizeof(YieldReturnComposition));
-    tree.yield_returns.push_back({route.yield, enclosure, *branch});
+    tree.yield_returns.push_back({route.yield, enclosure, *branch, *completion, placement});
   }
+  EditSequences(lists, yield_edits, budget);
   if (tree.finalizers.empty() && tree.yield_returns.empty()) return;
   const auto after = Positions(lists, budget);
   for (auto& anchor : tree.anchors) {
@@ -769,9 +787,12 @@ CompletionTreeView::CompletionTreeView(const FunctionTree& tree,
   // the same SSA/edge checker, without maintaining a second source tree.
   const auto yield_positions = Positions(lists, budget);
   Require(tree.yield_returns.size() == plan.yield_returns.size());
+  std::vector<SequenceEdit> yield_edits;
   for (std::size_t i = 0; i < tree.yield_returns.size(); ++i) {
     budget.Step();
     const auto& recovered = tree.yield_returns[i]; const auto& route = plan.yield_returns[i];
+    Require(recovered.enclosure.value < lists.size() && recovered.branch.value < lists.size() &&
+        recovered.completion.value < lists.size());
     Require(recovered.yield == route.yield && yield_positions[recovered.enclosure.value]);
     const auto enclosure = recovered.enclosure;
     const auto& header = lists[enclosure.value]; Require(header.size() == 2);
@@ -808,18 +829,35 @@ CompletionTreeView::CompletionTreeView(const FunctionTree& tree,
     const auto* test = std::get_if<SymbolExpr>(&tree.expressions[condition->condition.value].expression);
     Require(test && test->symbol == flag);
     const auto* guard = std::get_if<IfStmt>(&tree.statements[recovered.branch.value].statement);
-    Require(guard && guard->alternate);
-    const auto return_body = *guard->alternate;
+    Require(guard && std::holds_alternative<ReturnStmt>(tree.statements[recovered.completion.value].statement));
     const auto& cleanup = lists[condition->consequent.value];
-    auto& arm = lists[return_body.value]; Require(arm.size() == 1);
-    arm.insert(arm.begin(), cleanup.begin(), cleanup.end());
+    switch (recovered.cleanup) {
+      case YieldCleanupPlacement::kBranchArm: {
+        Require(guard->alternate.has_value());
+        auto& arm = lists[guard->alternate->value];
+        Require(arm.size() == 1 && arm.back() == recovered.completion);
+        arm.insert(arm.begin(), cleanup.begin(), cleanup.end());
+        break;
+      }
+      case YieldCleanupPlacement::kFollowing: {
+        Require(!guard->alternate || lists[guard->alternate->value].empty());
+        Require(yield_positions[recovered.branch.value] && yield_positions[recovered.completion.value]);
+        const auto branch = *yield_positions[recovered.branch.value], end = *yield_positions[recovered.completion.value];
+        Require(branch.block == end.block && end.index == branch.index + 1);
+        budget.Admit(1, sizeof(SequenceEdit)); budget.Admit(cleanup.size(), sizeof(StmtId));
+        yield_edits.push_back({end.block, end.index, end.index, cleanup});
+        break;
+      }
+      default: Require(false);
+    }
     const auto location = *yield_positions[enclosure.value]; lists[location.block.value][location.index] = yielded;
     symbols_.push_back(flag); symbols_.push_back(caught_value->symbol);
     expressions_.insert(expressions_.end(), {*declaration->initializer, rethrow->value, condition->condition});
-    yield_routes_.push_back({route, yielded, recovered.branch, arm.back()});
+    yield_routes_.push_back({route, yielded, recovered.branch, recovered.completion});
     for (const auto id : {enclosure, outer->body, inner->body, inner->handler->body, *outer->finalizer, condition->consequent})
       lists[id.value].clear();
   }
+  EditSequences(lists, yield_edits, budget);
   const auto after = Positions(lists, budget);
   budget.Array(anchors_, tree.anchors.size());
   for (std::size_t i = 0; i < tree.anchors.size(); ++i) {

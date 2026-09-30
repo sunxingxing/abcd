@@ -256,6 +256,7 @@ class Composition {
         edges[edge_count] = {id, *remap[target.value], kind, node.arc_count++}; origins[edge_count++] = origin;
       };
       const auto old = t_.blocks[n];
+      node.termination = old.termination;
       for (std::size_t e = 0; e < old.arc_count; ++e) {
         quota_.Work(); const auto index = old.first_arc.value + e;
         add(t_.edges[index].target, t_.edges[index].kind, t_.mapping.arcs[index]);

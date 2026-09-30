@@ -120,7 +120,7 @@ class ControlBuilder {
       const auto id = order_[i - 1];
       const auto& block = graph_.Node({id});
       terminal_corridor_[id] = indegree_[id] == 1 &&
-          (block.arc_count == 0 || (block.arc_count == 1 &&
+          ((block.arc_count == 0 && block.termination == ControlTermination::kAbrupt) || (block.arc_count == 1 &&
            terminal_corridor_[graph_.Arc(block.first_arc).target.value]));
       std::uint32_t join = exit_;
       for (std::uint8_t e = 0; e < block.arc_count; ++e) {

@@ -7,7 +7,23 @@ namespace abcd::source {
 struct ControlNodeId { std::uint32_t value = 0; auto operator<=>(const ControlNodeId&) const = default; };
 struct ControlArcId { std::uint32_t value = 0; auto operator<=>(const ControlArcId&) const = default; };
 enum class ControlViewKind : std::uint8_t { kNormal, kProjection };
-struct ControlVertex { ControlArcId first_arc; std::uint8_t arc_count; };
+enum class ControlTermination : std::uint8_t { kNormal, kAbrupt };
+// Zero arcs do not prove source termination: a projected normal try-exit
+// port emits no transfer and continues at its wrapper. Only the owning
+// projection may mark an actual return/throw/loop transfer as abrupt.
+struct ControlVertex {
+  ControlArcId first_arc;
+  std::uint8_t arc_count;
+  ControlTermination termination = ControlTermination::kNormal;
+};
+// Like the adjacency view, this borrows an already-checked ValueProgram.
+inline ControlTermination BlockTermination(const analysis::ValueProgram& graph,
+                                           const analysis::WorkBlock& block) {
+  if (!block.op_count) return ControlTermination::kNormal;
+  const auto& op = graph.ops[block.first_op.value + block.op_count - 1].operation;
+  return std::holds_alternative<analysis::ValueReturn>(op) || std::holds_alternative<analysis::ValueThrow>(op) ?
+      ControlTermination::kAbrupt : ControlTermination::kNormal;
+}
 struct ControlLink {
   ControlNodeId source;
   ControlNodeId target;
@@ -52,7 +68,7 @@ class ControlGraphView {
   ControlVertex Node(ControlNodeId id) const {
     if (const auto* graph = std::get_if<const analysis::ValueProgram*>(&source_)) {
       const auto& block = (*graph)->blocks[id.value];
-      return {{block.first_edge.value}, block.edge_count};
+      return {{block.first_edge.value}, block.edge_count, BlockTermination(**graph, block)};
     }
     return std::get<ControlProjection>(source_).nodes[id.value];
   }

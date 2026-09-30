@@ -249,9 +249,11 @@ struct FinalizerComposition {
   analysis::TryId region;
   StmtId enclosure;
 };
+enum class YieldCleanupPlacement : std::uint8_t { kBranchArm, kFollowing };
 struct YieldReturnComposition {
   analysis::OpId yield;
-  StmtId enclosure, branch;
+  StmtId enclosure, branch, completion;
+  YieldCleanupPlacement cleanup;
 };
 struct FunctionTree {
   RouteInputIdentity identity;

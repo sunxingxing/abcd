@@ -12,6 +12,44 @@
 
 ## 当前阶段
 
+### 2026-09-30：generator 注入 RETURN 的条件清理与正常出口区分
+
+- 在上一项内联 RETURN 路由上支持清理内部条件分支：目标只能位于该清理
+  与保留 payload load 的边界内，外部进入协议内部仍不允许。按基本块
+  重置 accumulator 可用性，每块必须先定义再读取；不把分发 accumulator
+  跨分支/回边当作源码输入。普通寄存器合流和控制结构复用共同 CFG/SSA/
+  RegionPlan，不另建 generator 控制算法或专项 printer。
+- 共同 CompletionTree 消费两种已有树布局：RETURN 清理位于分支 arm，
+  或 NEXT 真正提前退出后位于 following sequence。批量搬移/还原已有
+  语句根，保留 RETURN terminal 身份和来源，不逐次移动完整兄弟后缀。
+  FunctionTree 仅增加类型化 placement/terminal 关联，不新增输出许可。
+- 实际生成 JS 抓到共同提前退出组织的语义错误：投影中的正常 try-exit
+  port 也是零后继，却不发射 return；将它当 abrupt 会让 NEXT 跳过正常
+  清理，调用次数 0 !== 1。共同 ControlGraphView 增加 Normal/Abrupt
+  termination，由真实 return/throw、其 Before/Commit 相位和真实 loop
+  transfer 构造；异常投影压缩与循环投影保留该属性。正常 port 不因此
+  获得终止语义。控制单元和实际源码均覆盖这一边界，不靠调额度修复。
+- 新增 24 个完整源码函数族：三 profile × 三父级环境 × 有/无用户 catch
+  的 18 个双暂停点条件清理，以及 200/201/402 条条件 × 16/32 位恢复
+  分支的 6 个组合。验证 RETURN 时读取暂停后的 cell 更新、false/0 跳过、
+  callback receiver/次数及异常身份、NEXT/THROW 分流；清理回调修改 cell
+  后，后续 guard 必须重新读取，不能复用副作用前的值。新增 9 个反例
+  检查 branch-entry accumulator、越过清理边界及外部进入清理。
+  file_generator_return_source_test 现消费 213 个完整文件解码/合成元数据
+  函数族和 30 个协议反例，不宣称真实应用或任意清理形态覆盖。
+- 功能红例 `/tmp/abcd-generator-return-conditional-red-tests.log`；布局定位
+  `/tmp/abcd-generator-return-conditional-placement.log`；正常出口语义红例
+  `/tmp/abcd-generator-return-conditional-behavior-tests.log`。相关十五个
+  C++ 目标构建成功，38/38 定向测试通过（37.19 秒）：
+  `/tmp/abcd-generator-return-conditional-final-build.log`、
+  `/tmp/abcd-generator-return-conditional-final-tests.log`；`git diff --check`
+  通过。构建和行为证据只覆盖所列定向范围。
+- 总目标/C07 仍开放：清理再次暂停、显式 completion 覆盖、循环清理的
+  完整组合验收、跨块 accumulator 输入、入口默认值/解构、self/super、
+  yield*、async generator、类/record/全局/完整签名及函数体整合仍待推进。
+  默认 work 截止继续关闭，无新 DFX/发布准入；全量测试/语料/RSS/基准
+  仍暂停，两个历史 base_function 失败未重跑/修复，不宣称全套或 1GB 验收。
+
 ### 2026-09-30：generator 注入 RETURN 的内联清理贯通
 
 - NormalizeGenerator 保留 OH7 HandleCompletion 中 RETURN 分支的直线内联

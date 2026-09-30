@@ -139,6 +139,7 @@ class LoopControlBuilder {
     Require(unit_count_ < synthetic_.size(), Error::kResourceLimit);
     const ControlId id{unit_count_++};
     synthetic_[id.value] = LoopTransfer{loop, kind, source};
+    vertices_[id.value].termination = ControlTermination::kAbrupt;
     return id;
   }
   ControlId Target(ControlNodeId block, std::optional<LoopId> scope,
@@ -173,6 +174,7 @@ class LoopControlBuilder {
       const auto& original = graph_.Node({b});
       auto& block = vertices_[b];
       block.first_arc = {edge_count}; block.arc_count = original.arc_count;
+      block.termination = original.termination;
       for (std::uint8_t e = 0; e < original.arc_count; ++e) {
         quota_.Work();
         const auto& edge = graph_.Arc({edge_count});
