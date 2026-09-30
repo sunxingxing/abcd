@@ -12,6 +12,38 @@
 
 ## 当前阶段
 
+### 2026-10-01：真实基类构造器贯通共同函数族和打印器
+
+- ClassTreeContext 现在以 variant 区分真实 buffer member 与 constructor
+  occurrence。构造器从父 record 已准备且未修改的 FileFunction 绑定，
+  检查原始创建与工作操作、heritage use、definite Hole、目标/角色/ABI。
+  每次仅做 O(log M + log R) 查找及目标 annotation 读取，不按每个类
+  重新解码和扫描父 record。null/普通继承值仍不冒充 base constructor。
+- 按 pinned OH7 runtime_stubs-inl.h RuntimeSetClassInheritanceRelationship，
+  Hole 会设置 CLASS_CONSTRUCTOR，因此允许目标初始 NONE 或 BASE。
+  owner 向共同 FunctionInput 提供已初始化 this；PreparedFamily 和现有
+  迭代类成员 printer 输出 constructor，仍执行 family/ABI/source census
+  与实际 destination 检查，不能把 constructor 片段放进普通函数位置。
+- ABC-only 真实 CommonConstants 构造器 7340 经共同路径输出
+  constructor() { return this; }。HomeModel 构造器 16666 也输出真实实例
+  初始化 this.tabBarList = []、this.initTabBarList() 和 return this。
+  产物 /tmp/abcd-common-constructor.mjs、/tmp/abcd-home-constructor.mjs。
+  没有复制配对源码、伪造空 body 或调用旧 constructor writer。
+- 独立配对测试分别验证 native constructor 不可普通调用、newTarget
+  prototype 读取、派生调用、实例身份、prototype.constructor descriptor；
+  HomeModel 检查数组逐实例身份、字段初始化先于方法 getter/call、receiver
+  和异常传播。两边替换 initTabBarList 方法来隔离构造器行为，不能据此
+  宣称该方法或完整类通过。输出目前仍是赋值形式，未验收高层字段声明。
+- 新增错误创建/长度篡改/null heritage/预算及 destination 负例。
+  9 项定向 CTest 全通过（5.10 秒）。构建日志
+  /tmp/abcd-constructor-accept-build.log，fixture 另见
+  /tmp/abcd-constructor-instance-build.log，测试日志
+  /tmp/abcd-constructor-accept-tests.log。未运行全量测试、RSS/基准或其他语料。
+- 正式 record 尚未接 class expression 组装，因此完整 record 数仍为 15。
+  下一步将已恢复 constructor、buffer methods 和静态初始化纳入同一个
+  class expression 的创建、捕获与求值顺序；derived/super 保持原有义务。
+  Goal 仍进行中，构造器片段通过不等于整个类或阶段一通过。
+
 ### 2026-10-01：简化后值流的类继承分类接入
 
 - 原 ProveClassHeritage 只处理 decoded register 流，无法直接为共同 SSA

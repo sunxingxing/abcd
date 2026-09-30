@@ -45,6 +45,8 @@ FunctionInput::FunctionInput(RouteInputIdentity identity, abc::EntityOffset meth
 FunctionInput::Owner FunctionInput::DescribeOwner(const FunctionContext& owner) {
   if (const auto* site = owner.ClassSite())
     return {site->creator, site->pc, site->property, owner.Callable(), owner.Mode(), owner.Frame()};
+  if (const auto* site = owner.ConstructorSite())
+    return {site->creator, site->pc, {}, owner.Callable(), owner.Mode(), owner.Frame()};
   const auto* site = owner.CreationSite();
   return {site->creator, site->pc, {}, owner.Callable(), owner.Mode(), owner.Frame()};
 }

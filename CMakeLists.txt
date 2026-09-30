@@ -250,7 +250,7 @@ target_sources(abcd_source PRIVATE src/source/cell_initialization.cc)
 target_sources(abcd_source PRIVATE src/source/cell_evaluation.cc)
 target_sources(abcd_source PRIVATE src/source/tree_constants.cc)
 target_sources(abcd_source PRIVATE src/source/syntax_resolution.cc)
-target_sources(abcd_source PRIVATE src/source/class_tree_context.cc)
+target_sources(abcd_source PRIVATE src/source/class_tree_context.cc src/source/constructor_tree_context.cc)
 target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc)
 target_sources(abcd_source PRIVATE src/source/function_input.cc)
 target_sources(abcd_source PRIVATE src/source/function_values.cc)
@@ -859,6 +859,8 @@ if(BUILD_TESTING)
   target_include_directories(created_members_scale_test PRIVATE tests/support)
   target_link_libraries(created_members_scale_test PRIVATE abcd_source)
   add_test(NAME created_members_scale_test COMMAND created_members_scale_test)
+  add_executable(constructor_tree_sample tests/integration/constructor_tree_sample.cc)
+  target_link_libraries(constructor_tree_sample PRIVATE abcd_source abcd_corpus)
   add_executable(class_sample_fixture tests/integration/class_sample.cc)
   target_include_directories(class_sample_fixture PRIVATE tests/support)
   target_link_libraries(class_sample_fixture PRIVATE abcd_source abcd_corpus)
@@ -919,6 +921,11 @@ if(BUILD_TESTING)
     add_test(NAME literal_buffer_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_buffer.mjs $<TARGET_FILE:literal_plan_test>)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+      add_test(NAME constructor_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/constructor_tree.mjs $<TARGET_FILE:constructor_tree_sample>
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/commons/src/main/ets/constants/CommonConstants.ts"
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/shopping/src/main/ets/model/HomeModel.ts")
       add_test(NAME value_class_record_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_class_record.mjs $<TARGET_FILE:abc_semantic>
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")

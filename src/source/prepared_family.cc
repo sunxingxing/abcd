@@ -28,7 +28,7 @@ namespace {
 using Error = FamilyPrepareError;
 void Require(bool ok, Error error) { if (!ok) throw FamilyPrepareFailure{error}; }
 void CheckPlacement(const FunctionContext& root, FamilyDestination destination) {
-  const auto expected = root.ClassSite() ? FunctionFragment::kClassMember : FunctionFragment::kFunctionExpression;
+  const auto expected = root.ClassContext() ? FunctionFragment::kClassMember : FunctionFragment::kFunctionExpression;
   Require(destination.fragment == expected, Error::kPlacement);
 }
 template<class T, class E> T Take(std::variant<T, E> result) {
@@ -84,6 +84,24 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareClass(
   } catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
 }
+std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareConstructor(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& functions,
+    const FileFunction& creator, analysis::OpId creation, RouteInputIdentity identity,
+    FamilyDestination destination, analysis::SemanticBudget allowance) {
+  try {
+    Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
+    Require(allowance.bytes >= sizeof(Storage), Error::kResourceLimit);
+    auto resolution = allowance; resolution.bytes -= sizeof(Storage);
+    auto context = Take<ClassTreeContext, ClassContextFailure>(ClassTreeContext::ResolveConstructor(
+        file, header, index, lookup, roles, creator, creation, identity, resolution));
+    return Prepare(file, header, index, lookup, roles, functions,
+        FunctionContext{std::move(context)}, destination, allowance);
+  } catch (const FamilyPrepareFailure& failure) { return failure; }
+    catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
+    catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
+}
 std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
@@ -134,8 +152,8 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
           member.tree.callable == CallableKind::kGenerator ||
           member.tree.callable == CallableKind::kAsyncGenerator ||
           IsArrowCallable(member.tree.callable) ||
-          (&member == &family.members[family.root.value] && root.ClassSite() &&
-           IsMethodCallable(member.tree.callable)), Error::kCallable);
+          (&member == &family.members[family.root.value] && root.ClassContext() &&
+           (IsMethodCallable(member.tree.callable) || member.tree.callable == CallableKind::kBaseConstructor)), Error::kCallable);
       Require(member.abi.has_value(), Error::kAbi);
       Require(member.sources.has_value(), Error::kSources);
     }
@@ -165,7 +183,7 @@ std::variant<FamilyEnclosure, FamilyPrepareFailure> PreparedFamily::CheckDestina
     FamilyDestination destination, analysis::SemanticBudget budget) const {
   if (destination.strictness != Strictness::kStrict)
     return FamilyPrepareFailure{Error::kStrictness};
-  const auto expected = storage_->context.ClassSite() ? FunctionFragment::kClassMember : FunctionFragment::kFunctionExpression;
+  const auto expected = storage_->context.ClassContext() ? FunctionFragment::kClassMember : FunctionFragment::kFunctionExpression;
   if (destination.fragment != expected) return FamilyPrepareFailure{Error::kPlacement};
   auto result = VerifyFamilyDestination(storage_->family, destination.globals, budget);
   if (const auto* failure = std::get_if<FamilyEnclosureFailure>(&result))

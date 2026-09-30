@@ -7,8 +7,15 @@
 #include "abcd/source/source_tree.h"
 
 namespace abcd::source {
+struct FileFunction;
 enum class ClassContextError : std::uint8_t {
   kSite, kProfile, kRole, kKind, kName, kSignature, kResourceLimit, kWorkLimit
+};
+struct ClassConstructorSite {
+  abc::EntityOffset target;
+  abc::EntityOffset creator;
+  abc::CodeOffset pc;
+  analysis::ClassCreation creation;
 };
 struct ClassContextFailure {
   std::variant<ClassContextError, abc::MetadataError,
@@ -27,8 +34,18 @@ class ClassTreeContext {
       const analysis::MethodRoleIndex& roles, const analysis::ClassMethodSites& sites,
       analysis::ClassSiteId site, RouteInputIdentity identity,
       analysis::SemanticBudget budget = {});
+  // Fresh unchanged ReadFunctionValues caller and same file indexes. The class
+  // operation must retain its original occurrence and definite no-extends input.
+  [[nodiscard]] static std::variant<ClassTreeContext, ClassContextFailure> ResolveConstructor(
+      const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
+      const abc::MethodLookup&, const analysis::MethodRoleIndex&,
+      const FileFunction& creator, analysis::OpId creation, RouteInputIdentity,
+      analysis::SemanticBudget budget = {});
+  const ClassConstructorSite* Constructor() const { return std::get_if<ClassConstructorSite>(&site_); }
+  abc::EntityOffset Target() const { return std::visit([](const auto& site) { return site.target; }, site_); }
+  std::uint32_t Length() const { return Constructor() ? Constructor()->creation.length : Site().length; }
   [[nodiscard]] const RouteInputIdentity& Identity() const { return identity_; }
-  [[nodiscard]] const analysis::ClassMethodSite& Site() const { return site_; }
+  [[nodiscard]] const analysis::ClassMethodSite& Site() const { return std::get<analysis::ClassMethodSite>(site_); }
   [[nodiscard]] abc::MethodPosition Position() const { return position_; }
   [[nodiscard]] const abc::FrameLayout& Frame() const { return frame_; }
   [[nodiscard]] std::u16string_view Name() const { return name_; }
@@ -39,7 +56,7 @@ class ClassTreeContext {
  private:
   ClassTreeContext() = default;
   RouteInputIdentity identity_;
-  analysis::ClassMethodSite site_{};
+  std::variant<analysis::ClassMethodSite, ClassConstructorSite> site_;
   abc::MethodPosition position_;
   abc::FrameLayout frame_;
   CallableKind callable_ = CallableKind::kMethod;

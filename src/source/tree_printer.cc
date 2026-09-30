@@ -179,10 +179,10 @@ class TreePrinter {
     if (family_->root.value >= family_->members.size()) throw Error::kUnsupportedContext;
     if (class_root_) {
       const auto& root = family_->members[family_->root.value].tree;
-      if (!IsMethodCallable(root.callable) ||
+      if ((!IsMethodCallable(root.callable) && root.callable != CallableKind::kBaseConstructor) ||
           root.callable != class_root_->Callable() || root.inferred_name ||
-          root.identity != class_root_->Identity() || root.method != class_root_->Site().target ||
-          (class_root_->Site().placement != abc::ClassPlacement::kStatic &&
+          root.identity != class_root_->Identity() || root.method != class_root_->Target() ||
+          (!class_root_->Constructor() && class_root_->Site().placement != abc::ClassPlacement::kStatic &&
            class_root_->Site().placement != abc::ClassPlacement::kPrototype)) throw Error::kUnsupportedContext;
     }
     Array(draft_.members, family_->members.size()); Array(draft_.functions, family_->members.size());
@@ -202,12 +202,12 @@ class TreePrinter {
       Admit(structure->allocated_bytes, 1); Step(structure->work);
       if (Tree().strictness != Strictness::kStrict ||
           (Tree().callable != CallableKind::kFunction && !IsArrowCallable(Tree().callable) &&
-           !IsMethodCallable(Tree().callable) && Tree().callable != CallableKind::kAsyncFunction &&
+           !IsMethodCallable(Tree().callable) && Tree().callable != CallableKind::kBaseConstructor && Tree().callable != CallableKind::kAsyncFunction &&
            Tree().callable != CallableKind::kGenerator && Tree().callable != CallableKind::kAsyncGenerator))
         throw Error::kUnsupportedContext;
       // Only the actual class root is a class member. An arrow method carrier
       // retains its original callable kind and cannot observe its home object.
-      if (IsMethodCallable(Tree().callable) && !ClassRoot())
+      if ((IsMethodCallable(Tree().callable) || Tree().callable == CallableKind::kBaseConstructor) && !ClassRoot())
         throw Error::kUnsupportedContext;
       // Naming adds a fresh, unobservable wrapper object. Its allocation-failure
       // timing is admitted only by the already-versioned resource-failure scope.
@@ -561,7 +561,7 @@ class TreePrinter {
       Append(family_ && current_ != family_->root.value ? " " : "\n");
     }
     if (ClassRoot()) {
-      if (class_root_->Site().placement == abc::ClassPlacement::kStatic) Append("static ");
+      if (!class_root_->Constructor() && class_root_->Site().placement == abc::ClassPlacement::kStatic) Append("static ");
       if (Tree().callable == CallableKind::kAsyncMethod) Append("async ");
       if (IsGeneratorCallable(Tree().callable)) Append("*");
       Key(class_root_->Name()); Append("(");

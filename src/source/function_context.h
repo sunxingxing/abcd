@@ -13,17 +13,21 @@ class FunctionContext {
   const ClassTreeContext* ClassContext() const { return std::get_if<ClassTreeContext>(&context_); }
   const analysis::ClassMethodSite* ClassSite() const {
     const auto* context = std::get_if<ClassTreeContext>(&context_);
-    return context ? &context->Site() : nullptr;
+    return context && !context->Constructor() ? &context->Site() : nullptr;
   }
   const analysis::FunctionCreationSite* CreationSite() const {
     const auto* context = std::get_if<CreationTreeContext>(&context_);
     return context ? &context->Site() : nullptr;
   }
+  const ClassConstructorSite* ConstructorSite() const {
+    const auto* context = ClassContext(); return context ? context->Constructor() : nullptr;
+  }
   abc::EntityOffset Target() const {
+    if (const auto* context = ClassContext()) return context->Target();
     return std::visit([](const auto& context) { return context.Site().target; }, context_);
   }
   std::uint32_t Length() const {
-    if (const auto* site = ClassSite()) return site->length;
+    if (const auto* context = ClassContext()) return context->Length();
     return CreationSite()->creation.length.value;
   }
   const RouteInputIdentity& Identity() const {
