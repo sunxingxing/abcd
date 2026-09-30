@@ -4,6 +4,7 @@
 #include "../../../src/source/tree_structure.h"
 
 #include <cstdlib>
+#include <source_location>
 #include <utility>
 #include <sstream>
 #include <iostream>
@@ -12,7 +13,7 @@
 namespace {
 using namespace abcd::analysis;
 using namespace abcd::source;
-void Check(bool value) { if (!value) std::abort(); }
+void Check(bool value, const std::source_location& where = std::source_location::current()) { if (!value) { std::cerr << "check failed at " << where.line() << '\n'; std::abort(); } }
 enum class Prefix { kNone, kObserve, kLateValue };
 class Fixture {
  public:
@@ -365,6 +366,85 @@ void LiteralConsumers(bool print = false) {
     if (print) std::cout << output.str() << ",\n";
   }
 }
+void ReadOrderBoundaries() {
+  for (const bool reverse : {false, true}) for (const bool barrier : {false, true}) {
+    Fixture fixture;
+    fixture.Add(ValueObjectAllocation{}, true, {});
+    fixture.Add(ValueNamedRead{abcd::abc::PoolIndex{0}}, true,
+        {{OperandRole::kBase, abcd::analysis::IntegerLiteral{1}}});
+    if (barrier) fixture.Add(ValueDebugger{}, false, {});
+    fixture.Add(ValueNamedRead{abcd::abc::PoolIndex{0}}, true,
+        {{OperandRole::kBase, abcd::analysis::IntegerLiteral{2}}});
+    fixture.Add(ValuePropertyRead{}, true,
+        {{OperandRole::kBase, ValueId{reverse ? 2U : 1U}}, {OperandRole::kKey, ValueId{reverse ? 1U : 2U}}});
+    fixture.Add(ValueOwnWrite{OwnWriteKind::kDefineField, {0}, 0}, false,
+        {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue, ValueId{3}}});
+    fixture.Add(ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{0}}});
+    auto& graph = fixture.graph;
+    graph.blocks = {{{0}, static_cast<std::uint32_t>(graph.ops.size()), {0}, 0}};
+    const auto plan = BuildLiteralPlan(graph);
+    Check(std::holds_alternative<LiteralPlan>(plan) == (!reverse && !barrier));
+  }
+}
+void LateModuleProperties(bool print = false) {
+  for (const std::uint32_t count : {1U, 200U, 201U}) {
+    Fixture fixture;
+    fixture.Add(ValueObjectAllocation{}, true, {});
+    std::vector<ModuleEvaluation> modules;
+    std::vector<ExpressionConstant> constants(1);
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const auto read = static_cast<std::uint32_t>(fixture.graph.ops.size());
+      const auto value = static_cast<std::uint32_t>(fixture.graph.values.size());
+      fixture.Add(ValueModuleRead{ModuleSpace::kExternal, ModuleSlot{0}}, true, {});
+      fixture.Add(ValueGuard{abcd::abc::PoolIndex{0}}, false, {{OperandRole::kGuardValue, ValueId{value}}});
+      fixture.Add(ValueNamedRead{abcd::abc::PoolIndex{0}}, true, {{OperandRole::kBase, ValueId{value}}});
+      fixture.Add(ValuePropertyRead{}, true, {{OperandRole::kBase, ValueId{value + 1}},
+          {OperandRole::kKey, abcd::analysis::IntegerLiteral{static_cast<std::int32_t>(i)}}});
+      fixture.Add(ValueOwnWrite{OwnWriteKind::kDefineField, {i}, 0}, false,
+          {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue, ValueId{value + 2}}});
+      modules.push_back({{{read}, {read + 1}}, {ModuleSpace::kExternal, ModuleSlot{0}}, {{7}, {0}}});
+      for (std::uint32_t j = 0; j < 5; ++j) {
+        auto& op = fixture.graph.ops[read + j];
+        op.normal = op.before_throw = j == 0 ? LanguageEffect::kModuleRead : j == 1 ?
+            LanguageEffect::kGuard : j == 4 ? LanguageEffect::kHeapWrite : LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
+        op.exceptional = ExceptionalCompletion::kMayThrow;
+      }
+      constants.resize(fixture.graph.ops.size());
+      constants[read + 2] = NameId{0}; constants[read + 4] = NameId{i + 2};
+    }
+    fixture.Add(ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{0}}});
+    auto& graph = fixture.graph; constants.resize(graph.ops.size());
+    graph.blocks = {{{0}, static_cast<std::uint32_t>(graph.ops.size()), {0}, 0}};
+    graph.ops[0].normal = graph.ops[0].before_throw = LanguageEffect::kAllocation;
+    graph.ops[0].exceptional = ExceptionalCompletion::kMayThrow;
+    FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+    syntax.names = {u"items", u"input"};
+    syntax.modules.push_back({{{7}, {0}}, {1}, ModuleAccess::kReadOnly, NameEvidence::kMetadata});
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const auto key = "field" + std::to_string(i); syntax.names.emplace_back(key.begin(), key.end());
+    }
+    const ExpressionConstants resolved{constants, syntax.names.size(), 0};
+    const auto planned = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, modules);
+    Check(std::holds_alternative<EvaluationPlan>(planned));
+    const auto& evaluation = std::get<EvaluationPlan>(planned);
+    const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+    const auto built = BuildFunctionTree(graph, control, evaluation, syntax, resolved);
+    Check(std::holds_alternative<ConstructedFunction>(built));
+    const auto& tree = std::get<ConstructedFunction>(built).tree;
+    std::ostringstream output;
+    Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
+    Check(output.str().find("$value") == std::string::npos);
+    if (print) std::cout << output.str() << ",\n";
+    auto forged = evaluation;
+    forged.literals->nested[1].reset();
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    if (count > 1) {
+      forged = evaluation;
+      std::swap(forged.literals->definitions[0], forged.literals->definitions[1]);
+      Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    }
+  }
+}
 void LateStringLeaves(bool print = false) {
   for (const auto count : {1U, 200U, 201U, 402U}) {
     Fixture fixture;
@@ -507,5 +587,6 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--buffer-source") { BufferedOverwrites(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--array-buffer-source") { BufferedArraySuffix(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--late-string-source") { LateStringLeaves(true); return 0; }
+  if (argc == 2 && std::string_view(argv[1]) == "--late-read-source") { LateModuleProperties(true); return 0; }
   if (argc > 1) { SourceTree(false, true, true); return 0; }
-  LateStringLeaves(); LiteralConsumers(); BufferedArraySuffix(); BufferedOverwrites(); NestedLiterals(); SourceTree(false, true); SourceTree(true, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }
+  ReadOrderBoundaries(); LateModuleProperties(); LateStringLeaves(); LiteralConsumers(); BufferedArraySuffix(); BufferedOverwrites(); NestedLiterals(); SourceTree(false, true); SourceTree(true, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }

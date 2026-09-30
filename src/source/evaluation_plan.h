@@ -61,6 +61,7 @@ struct EvaluationPlan {
   std::optional<HoleProtocol> holes;
   std::vector<ClassInitializerCall> class_initializers;
   ClassInitializerProjection class_projection;
+  analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown;
 };
 inline analysis::ValueId ResolveEvaluationValue(const EvaluationPlan& plan, analysis::ValueId value) {
   return plan.aliases.empty() ? value : plan.aliases[value.value];
@@ -140,6 +141,8 @@ struct EvaluationShape {
 // kConditional incoming cells retain external-binding obligations. It does not
 // authorize standalone source publication. Supplying all FunctionBindings adds
 // an explicit Language child-write premise; every child must discharge it.
+// A non-Unknown closure_writes premise requires complete family write validation,
+// including primitive buffered objects without actual child functions.
 // Family demands retain forwarded storage even without local lexical accesses;
 // they must come from these actual child occurrences, not arbitrary slots.
 [[nodiscard]] std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
@@ -147,7 +150,8 @@ struct EvaluationShape {
     IncomingCells incoming = IncomingCells::kReject,
     std::span<const FunctionBinding> functions = {},
     std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {},
-    std::span<const ClassInitializerCall> initializers = {});
+    std::span<const ClassInitializerCall> initializers = {},
+    analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown);
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and availability. Cross-phase expressions require
 // contiguous effect intervals and equal catch snapshots at their final roots.

@@ -115,7 +115,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     Require(has_cells == plan.cells.has_value(), Error::kOwnership);
     if (plan.cells) {
       Require(plan.cells->initialization.closure_writes == (plan.functions.empty()
-          ? analysis::ClosureWrites::kUnknown : analysis::ClosureWrites::kLanguage), Error::kOwnership);
+          ? plan.closure_writes : analysis::ClosureWrites::kLanguage), Error::kOwnership);
       const auto verify_cells = flow == EvaluationFlow::kPhased ? VerifyPhasedCellEvaluation : VerifyCellEvaluation;
       const auto checked = verify_cells(graph, *plan.cells, {bytes, work});
       if (const auto* error = std::get_if<CellEvaluationError>(&checked)) {
@@ -134,7 +134,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     if (plan.literals) {
       const auto checked = flow == EvaluationFlow::kPhased ?
           VerifyPhasedLiteralPlan(graph, *plan.literals, plan, {bytes, work}) :
-          VerifyLiteralPlan(graph, *plan.literals, {bytes, work});
+          VerifyLiteralPlan(graph, *plan.literals, {bytes, work}, module_index.peers);
       if (const auto* error = std::get_if<LiteralError>(&checked)) {
         if (*error == LiteralError::kResourceLimit) return Error::kResourceLimit;
         if (*error == LiteralError::kWorkLimit) return Error::kWorkLimit;
@@ -337,7 +337,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
                                   plan.operations[expected].kind == EvaluationKind::kEnvironment ||
                                   (plan.operations[expected].kind == EvaluationKind::kModuleGuard &&
                                    !module_index.peers.empty() && module_index.peers[expected] &&
-                                   cross(module_index.peers[expected]->value)) ||
+                                   (cross(module_index.peers[expected]->value) ||
+                                    plan.operations[module_index.peers[expected]->value].kind == EvaluationKind::kNestedLiteral)) ||
                                   cross(expected) ||
                                   !OrderedEvaluation(graph.ops[expected]))) { step(); ++expected; }
       };

@@ -151,12 +151,31 @@ class ForestBuilder {
       else
         forest_.origins.emplace_back(OriginalSite{origin.site, origin.pc, origin.original});
     }
+    // Read-expression dependencies point backward; lower them in value order
+    // before assembling forward-owned nested aggregate/property expressions.
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      Step(); if (evaluation_.operations[i].kind != EvaluationKind::kNestedLiteral) continue;
+      const auto& op = graph_.ops[i];
+      if (std::holds_alternative<analysis::ValueArrayAllocation>(op.operation) ||
+          std::holds_alternative<analysis::ValueObjectAllocation>(op.operation)) continue;
+      const TreeOriginId origin{op.origin.value};
+      if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) Module(i, op, origin);
+      else {
+        std::array<ExprId, kFixedExpressionOperands> operands{};
+        Require(op.use_count <= operands.size(), Error::kUnsupportedOperation);
+        for (std::uint32_t j = 0; j < op.use_count; ++j) {
+          Step(); operands[j] = Operand(graph_.uses[op.first_use.value + j].operand, origin);
+        }
+        forest_.operations[i] = Lower({static_cast<std::uint32_t>(i)}, op, operands, origin, constants_.operations[i]);
+      }
+    }
     // Nested allocation edges point forward in the original operation order.
     // Reverse construction is therefore iterative postorder, without recursion
     // or changing the evaluation order of the resulting native literal.
     for (std::size_t i = graph_.ops.size(); i-- > 0;) {
       Step(); if (evaluation_.operations[i].kind != EvaluationKind::kNestedLiteral) continue;
       const auto& op = graph_.ops[i]; const TreeOriginId origin{op.origin.value};
+      if (forest_.operations[i]) continue;
       if (objects_[i]) forest_.operations[i] = Object(evaluation_.literals->objects[*objects_[i]], origin);
       else forest_.operations[i] = Lower({static_cast<std::uint32_t>(i)}, op, {}, origin, constants_.operations[i]);
     }
@@ -195,22 +214,7 @@ class ForestBuilder {
             evaluation_.operations[i].kind == EvaluationKind::kClassInitializer) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kModuleGuard) continue;
         if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) {
-          Require(next_module_ < evaluation_.modules.size(), Error::kBinding);
-          const auto& module = evaluation_.modules[next_module_++];
-          Require(module.pair.read.value == i, Error::kBinding);
-          const auto found = std::lower_bound(module_order_.begin(), module_order_.end(), module.target,
-                                              [&](auto index, auto target) {
-                                                Step();
-                                                return modules_[index] < target;
-                                              });
-          Require(found != module_order_.end() && modules_[*found] == module.target, Error::kBinding);
-          // FunctionTree appends module aliases in this supplied order after the
-          // shared IR bindings. This is a source SymbolId, never an ABC slot.
-          const SymbolId symbol{static_cast<std::uint32_t>(forest_.bindings.symbols.size() + *found)};
-          const auto expression =
-              Combine(Add(SymbolExpr{symbol}, origin), {graph_.ops[module.pair.guard.value].origin.value});
-          forest_.operations[i] = expression;
-          forest_.operations[module.pair.guard.value] = expression;
+          Module(i, op, origin);
           continue;
         }
         if (const auto* store = std::get_if<analysis::ValueModuleWrite>(&op.operation)) {
@@ -293,6 +297,26 @@ class ForestBuilder {
   }
 
  private:
+  void Module(std::size_t i, const analysis::ValueOp&, TreeOriginId origin) {
+    const auto found_module = std::lower_bound(evaluation_.modules.begin(), evaluation_.modules.end(), i,
+        [&](const auto& entry, auto index) { Step(); return entry.pair.read.value < index; });
+    Require(found_module != evaluation_.modules.end() && found_module->pair.read.value == i, Error::kBinding);
+    ++next_module_;
+    const auto& module = *found_module;
+    const auto found = std::lower_bound(module_order_.begin(), module_order_.end(), module.target,
+                      [&](auto index, auto target) {
+                        Step();
+                        return modules_[index] < target;
+                      });
+    Require(found != module_order_.end() && modules_[*found] == module.target, Error::kBinding);
+    // FunctionTree appends module aliases in this supplied order after the
+    // shared IR bindings. This is a source SymbolId, never an ABC slot.
+    const SymbolId symbol{static_cast<std::uint32_t>(forest_.bindings.symbols.size() + *found)};
+    const auto expression =
+        Combine(Add(SymbolExpr{symbol}, origin), {graph_.ops[module.pair.guard.value].origin.value});
+    forest_.operations[i] = expression;
+    forest_.operations[module.pair.guard.value] = expression;
+  }
   bool CanRetainPrefix() {
     // Initial partial construction handles one normal straight-line region.
     // Other topologies still use the full builder until their region ownership

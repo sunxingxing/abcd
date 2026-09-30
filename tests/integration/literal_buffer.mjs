@@ -87,3 +87,38 @@ for (const count of [1, 200, 201, 402]) {
   assert.equal(b[0][0], 'late');
 }
 assert.equal(lateArrays.length, index);
+
+const readSource = execFileSync(process.argv[2], ['--late-read-source'], {encoding: 'utf8'});
+for (const throws of [false, true]) {
+  const trace = [];
+  const fixture = { get items() {
+    trace.push('items');
+    return new Proxy({}, { get(_target, key) {
+      trace.push(`index:${key}`);
+      if (throws && key === '0') throw new Error('getter sentinel');
+      return trace.length;
+    } });
+  } };
+  const readContext = vm.createContext({fixture});
+  const functions = vm.runInContext(`let input = fixture; [${readSource}]`, readContext);
+  let at = 0;
+  for (const count of [1, 200, 201]) {
+    trace.length = 0;
+    if (throws) {
+      assert.throws(() => functions[at++](), {message: 'getter sentinel'});
+      assert.deepEqual(trace, ['items', 'index:0']);
+      continue;
+    }
+    const actual = functions[at++]();
+    const actualTrace = [...trace];
+    trace.length = 0;
+    const expected = {};
+    for (let i = 0; i < count; ++i) Object.defineProperty(expected, `field${i}`, {
+      value: fixture.items[i], enumerable: true, writable: true, configurable: true,
+    });
+    assert.deepEqual(actualTrace, trace);
+    assert.deepEqual(Reflect.ownKeys(actual), Reflect.ownKeys(expected));
+    for (const key of Reflect.ownKeys(expected)) assert.deepEqual(
+      Object.getOwnPropertyDescriptor(actual, key), Object.getOwnPropertyDescriptor(expected, key));
+  }
+}

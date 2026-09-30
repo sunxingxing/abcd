@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_LITERAL_PLAN_H_
 
 #include "abcd/analysis/value_ir.h"
+#include <span>
 
 namespace abcd::source {
 struct EvaluationPlan;
@@ -27,8 +28,8 @@ struct LiteralPlan {
   analysis::CfgRevision cfg_revision;
   std::vector<ObjectInit> objects;
   std::vector<analysis::OpId> definitions;
-  // Per allocation or primitive string leaf, the unique enclosing initializer
-  // RHS occurrence. String leaves have no operands, effects or mutable identity. Empty
+  // Per nested allocation/read expression, the unique immediate consumer use.
+  // Read chains preserve operand and property order; module guards are paired. Empty
   // for roots. Only normal single-block, unobserved nesting is admitted.
   std::vector<std::optional<analysis::UseId>> nested;
   std::size_t allocated_bytes = 0;
@@ -41,15 +42,20 @@ enum class LiteralError : std::uint8_t {
 // Initial domain: fresh ordinary object with named definitions, or fresh array
 // with dense indexed definitions 0..N-1, or increasing buffered-array writes,
 // in the same block/corridor. Buffered extent/gaps are checked with constants;
-// no observation until initialization completes, RHS available before allocation.
+// no observation until initialization completes. RHS snapshots precede allocation;
+// uniquely owned late read chains preserve operand and property effect order.
+// module_guards must be the unchanged IndexModuleEvaluations peer index;
+// standalone calls without it cannot fold late guarded module reads.
 // Direct receiver fields stay ordered statement roots and are excluded from
 // literal ownership. Not AST/publication permission: preserve snapshots and sites.
 [[nodiscard]] std::variant<LiteralPlan, LiteralError> BuildLiteralPlan(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {});
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
+    std::span<const std::optional<analysis::OpId>> module_guards = {});
 // Checks supplied groups against use chains and fresh flow, without regrouping.
 [[nodiscard]] std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {},
+    std::span<const std::optional<analysis::OpId>> module_guards = {});
 // Same initializer model across unique normal phase corridors. The original
 // phase graph stays intact; copy aliases must have their independent proof.
 // No observations (including exceptional snapshots) before the last define,

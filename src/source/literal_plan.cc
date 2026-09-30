@@ -12,6 +12,7 @@
 namespace abcd::source {
 namespace {
 using Error = LiteralError;
+using Guards = std::span<const std::optional<analysis::OpId>>;
 void Require(bool condition, Error error) { if (!condition) throw error; }
 class LiteralBudget {
  public:
@@ -184,38 +185,76 @@ bool Aggregate(const analysis::ValueOperation& op) {
   return std::holds_alternative<analysis::ValueArrayAllocation>(op) ||
       std::holds_alternative<analysis::ValueObjectAllocation>(op);
 }
+bool ReadExpression(const analysis::ValueOp& op, std::size_t index, Guards guards) {
+  return PrimitiveLeaf(op) || std::holds_alternative<analysis::ValueNamedRead>(op.operation) ||
+      std::holds_alternative<analysis::ValuePropertyRead>(op.operation) ||
+      (std::holds_alternative<analysis::ValueModuleRead>(op.operation) &&
+       index < guards.size() && guards[index]);
+}
 // Check laminar allocation/initialization intervals with one stack. Nested
 // creation may execute in native literal syntax only when every intervening
-// observable operation is another owned creation or owned definition. No calls,
-// global reads, catch snapshots, shared child identities or escaping receivers.
+// observable operation is an owned creation, definition, or single-use read
+// expression. Read subtrees stay within their property interval and preserve
+// operand order. No calls, global reads, catch snapshots or escaping receivers.
 void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
-    const std::vector<std::optional<analysis::OpId>>& owners, LiteralBudget& budget) {
+    const std::vector<std::optional<analysis::OpId>>& owners, LiteralBudget& budget, Guards guards) {
   if (plan.nested.empty()) return;
   Require(plan.nested.size() == graph.ops.size() && graph.blocks.size() == 1 && graph.edges.empty(), Error::kFlow);
   std::vector<std::optional<analysis::OpId>> ends;
   std::vector<analysis::OpId> stack;
+  std::vector<std::size_t> first_read, last_write;
+  budget.Size(first_read, graph.ops.size()); budget.Size(last_write, graph.ops.size());
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) { budget.Step(); first_read[i] = last_write[i] = i; }
+  std::vector<std::optional<analysis::OpId>> value_owners;
+  budget.Size(value_owners, graph.ops.size());
   budget.Size(ends, graph.ops.size()); budget.Size(stack, graph.ops.size());
   for (const auto& object : plan.objects) {
     budget.Step(); ends[object.allocation.value] = plan.definitions[object.first + object.count - 1];
   }
+  for (std::size_t i = graph.ops.size(); i-- > 0;) {
+    budget.Step(); if (!plan.nested[i]) continue;
+    Require(plan.nested[i]->value < graph.uses.size(), Error::kDefinition);
+    const auto* parent = std::get_if<analysis::OpId>(&graph.uses[plan.nested[i]->value].owner);
+    Require(parent && parent->value > i && parent->value < graph.ops.size(), Error::kDefinition);
+    value_owners[i] = owners[parent->value] ? owners[parent->value] : value_owners[parent->value];
+    Require(value_owners[i] && value_owners[i]->value < i, Error::kDefinition);
+  }
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); if (!plan.nested[i]) continue;
     const auto& op = graph.ops[i]; const auto use = *plan.nested[i];
-    Require(op.life == analysis::ValueLife::kLive && (Aggregate(op.operation) || PrimitiveLeaf(op)) && op.result && op.use_count == 0 &&
+    Require(op.life == analysis::ValueLife::kLive && (Aggregate(op.operation) || ReadExpression(op, i, guards)) && op.result &&
         use.value < graph.uses.size(), Error::kDefinition);
     const auto& occurrence = graph.uses[use.value];
     const auto* parent = std::get_if<analysis::OpId>(&occurrence.owner);
-    Require(parent && owners[parent->value] && occurrence.role == analysis::OperandRole::kStoredValue &&
+    Require(parent && value_owners[i] && (owners[parent->value] || plan.nested[parent->value]) &&
         occurrence.operand.index() == analysis::ValueOperand{*op.result}.index() &&
         std::get<analysis::ValueId>(occurrence.operand) == *op.result &&
-        owners[parent->value]->value < i && parent->value > i, Error::kDefinition);
+        value_owners[i]->value < i && parent->value > i, Error::kDefinition);
     for (auto at = graph.values[op.result->value].first_use; at; at = graph.uses[at->value].next) {
       budget.Step(); const auto& read = graph.uses[at->value];
       if (read.life != analysis::ValueLife::kLive) continue;
       const auto* user = std::get_if<analysis::OpId>(&read.owner);
       if (user && graph.ops[user->value].life != analysis::ValueLife::kLive) continue;
-      Require(*at == use || (user && owners[user->value] == analysis::OpId{static_cast<std::uint32_t>(i)} &&
+      Require(*at == use || (user && i < guards.size() && guards[i] == *user) || (user && owners[user->value] == analysis::OpId{static_cast<std::uint32_t>(i)} &&
           *at == graph.ops[user->value].first_use), Error::kObserved);
+    }
+  }
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    budget.Step(); if (!plan.nested[i] || Aggregate(graph.ops[i].operation)) continue;
+    const auto& op = graph.ops[i];
+    std::optional<analysis::OpId> previous;
+    for (std::uint32_t u = 0; u < op.use_count; ++u) {
+      budget.Step(); const analysis::UseId use{op.first_use.value + u};
+      const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use.value].operand);
+      const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
+      if (!result) continue;
+      if (plan.nested[result->op.value] == use) {
+        Require(!Aggregate(graph.ops[result->op.value].operation) && result->op.value < i &&
+            value_owners[result->op.value] == value_owners[i] &&
+            (!previous || previous->value < first_read[result->op.value]), Error::kDefinition);
+        first_read[i] = std::min(first_read[i], first_read[result->op.value]);
+        previous = result->op;
+      } else Require(result->op.value < value_owners[i]->value, Error::kLateValue);
     }
   }
   std::size_t depth = 0;
@@ -237,6 +276,22 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
         const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
         if (result && plan.nested[result->op.value] != rhs)
           Require(result->op.value < stack[0].value, Error::kLateValue);
+        if (result && plan.nested[result->op.value] == rhs &&
+            !Aggregate(graph.ops[result->op.value].operation))
+          Require(first_read[result->op.value] > last_write[stack[depth - 1].value], Error::kDefinition);
+        last_write[stack[depth - 1].value] = i;
+      } else if (plan.nested[i]) {
+        Require(value_owners[i] == stack[depth - 1], Error::kObserved);
+        for (std::uint32_t p = 0; p < op.use_count; ++p) {
+          budget.Step(); const analysis::UseId use{op.first_use.value + p};
+          const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use.value].operand);
+          const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
+          if (result && plan.nested[result->op.value] != use)
+            Require(result->op.value < stack[0].value, Error::kLateValue);
+        }
+      } else if (i < guards.size() && guards[i] &&
+          std::holds_alternative<analysis::ValueGuard>(op.operation) && plan.nested[guards[i]->value]) {
+        Require(value_owners[guards[i]->value] == stack[depth - 1], Error::kObserved);
       } else Require(analysis::CanErasePureOp(op), Error::kObserved);
     }
     if (depth && ends[stack[depth - 1].value] == analysis::OpId{static_cast<std::uint32_t>(i)}) --depth;
@@ -246,11 +301,17 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
 struct FieldOwner { analysis::OpId allocation; analysis::OpId definition; };
 std::variant<std::uint64_t, LiteralError> VerifyLiterals(
     const analysis::ValueProgram& graph, const LiteralPlan& plan, const EvaluationPlan* evaluation,
-    analysis::SemanticBudget allowance) {
+    analysis::SemanticBudget allowance, Guards guards) {
   try {
     LiteralBudget budget(allowance);
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
     Flow(graph, budget, evaluation);
+    Require(guards.empty() || guards.size() == graph.ops.size(), Error::kDefinition);
+    for (std::size_t i = 0; i < guards.size(); ++i) {
+      budget.Step();
+      if (guards[i]) Require(guards[i]->value < graph.ops.size() &&
+          guards[guards[i]->value] == analysis::OpId{static_cast<std::uint32_t>(i)}, Error::kDefinition);
+    }
     LiteralPath path(graph, evaluation, budget);
     Require(plan.objects.size() <= graph.ops.size() && plan.definitions.size() <= graph.ops.size(), Error::kCoverage);
     Require(plan.nested.empty() || plan.nested.size() == graph.ops.size(), Error::kCoverage);
@@ -299,7 +360,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
           (std::holds_alternative<analysis::ValueOwnWrite>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueIndexedWrite>(graph.ops[i].operation));
       Require(owners[i].has_value() == own, Error::kCoverage);
     }
-    VerifyNesting(graph, plan, owners, budget);
+    VerifyNesting(graph, plan, owners, budget, guards);
     if (evaluation) {
       std::vector<std::optional<std::size_t>> objects;
       budget.Size(objects, graph.values.size());
@@ -349,10 +410,16 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
 }
 
 std::variant<LiteralPlan, LiteralError> BuildLiterals(
-    const analysis::ValueProgram& graph, const EvaluationPlan* evaluation, analysis::SemanticBudget allowance) {
+    const analysis::ValueProgram& graph, const EvaluationPlan* evaluation, analysis::SemanticBudget allowance, Guards guards) {
   try {
     LiteralBudget budget(allowance);
     Flow(graph, budget, evaluation);
+    Require(guards.empty() || guards.size() == graph.ops.size(), Error::kDefinition);
+    for (std::size_t i = 0; i < guards.size(); ++i) {
+      budget.Step();
+      if (guards[i]) Require(guards[i]->value < graph.ops.size() &&
+          guards[guards[i]->value] == analysis::OpId{static_cast<std::uint32_t>(i)}, Error::kDefinition);
+    }
     LiteralPath path(graph, evaluation, budget);
     Require(graph.ops.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
     std::size_t count = 0;
@@ -394,14 +461,41 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
         const analysis::UseId rhs{definition.first_use.value + 1};
         const auto* value = std::get_if<analysis::ValueId>(&graph.uses[rhs.value].operand);
         const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
-        if (!result || !(Aggregate(graph.ops[result->op.value].operation) || PrimitiveLeaf(graph.ops[result->op.value])) ||
+        if (!result || !(Aggregate(graph.ops[result->op.value].operation) || ReadExpression(graph.ops[result->op.value], result->op.value, guards)) ||
             !path.Before(graph.ops[object.allocation.value], graph.ops[result->op.value])) continue;
         if (plan.nested.empty()) budget.Size(plan.nested, graph.ops.size());
         Require(!plan.nested[result->op.value], Error::kObserved);
         plan.nested[result->op.value] = rhs;
       }
     }
-    const auto verified = VerifyLiterals(graph, plan, evaluation, budget.Remaining());
+    if (!evaluation && !plan.nested.empty()) {
+      // Consumers follow their inputs in SSA order; a reverse scan visits each
+      // late read tree once. Shared values and aggregate receiver observations
+      // are rejected by the independent use census below.
+      std::vector<std::optional<analysis::OpId>> allocation;
+      budget.Size(allocation, graph.ops.size());
+      for (const auto& object : plan.objects) for (std::uint32_t p = 0; p < object.count; ++p) {
+        budget.Step(); allocation[plan.definitions[object.first + p].value] = object.allocation;
+      }
+      for (std::size_t i = graph.ops.size(); i-- > 0;) {
+        budget.Step(); if (!plan.nested[i]) continue;
+        const auto parent = std::get<analysis::OpId>(graph.uses[plan.nested[i]->value].owner);
+        Require(allocation[parent.value].has_value(), Error::kDefinition);
+        allocation[i] = allocation[parent.value];
+        if (Aggregate(graph.ops[i].operation)) continue;
+        const auto& op = graph.ops[i];
+        for (std::uint32_t p = 0; p < op.use_count; ++p) {
+          budget.Step(); const analysis::UseId use{op.first_use.value + p};
+          const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use.value].operand);
+          const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
+          if (!result || result->op.value < allocation[i]->value) continue;
+          Require(ReadExpression(graph.ops[result->op.value], result->op.value, guards), Error::kLateValue);
+          Require(!plan.nested[result->op.value], Error::kObserved);
+          plan.nested[result->op.value] = use;
+        }
+      }
+    }
+    const auto verified = VerifyLiterals(graph, plan, evaluation, budget.Remaining(), guards);
     if (const auto* error = std::get_if<Error>(&verified)) return *error;
     budget.Step(std::get<std::uint64_t>(verified));
     plan.allocated_bytes = sizeof(plan) + plan.objects.capacity() * sizeof(ObjectInit) +
@@ -415,20 +509,20 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
 }
 }  // namespace
 std::variant<LiteralPlan, LiteralError> BuildLiteralPlan(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget) {
-  return BuildLiterals(graph, nullptr, budget);
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, Guards guards) {
+  return BuildLiterals(graph, nullptr, budget, guards);
 }
 std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
-    const analysis::ValueProgram& graph, const LiteralPlan& plan, analysis::SemanticBudget budget) {
-  return VerifyLiterals(graph, plan, nullptr, budget);
+    const analysis::ValueProgram& graph, const LiteralPlan& plan, analysis::SemanticBudget budget, Guards guards) {
+  return VerifyLiterals(graph, plan, nullptr, budget, guards);
 }
 std::variant<LiteralPlan, LiteralError> BuildPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, analysis::SemanticBudget budget) {
-  return BuildLiterals(graph, &evaluation, budget);
+  return BuildLiterals(graph, &evaluation, budget, {});
 }
 std::variant<std::uint64_t, LiteralError> VerifyPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan, const EvaluationPlan& evaluation,
     analysis::SemanticBudget budget) {
-  return VerifyLiterals(graph, plan, &evaluation, budget);
+  return VerifyLiterals(graph, plan, &evaluation, budget, {});
 }
 }  // namespace abcd::source

@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-10-01：字面量晚执行读取贯通，HomeModel 正式输出及配对执行通过
+
+- LiteralPlan 支持唯一消费的 named/computed/module read 链进入新建字面量；
+  使用已验证的模块 read/guard 配对，独立检查操作数顺序、属性区间、所有权、
+  共享使用及外部副作用。提前求值的快照必须位于最外层分配之前；不搬移任意调用。
+- 共同 expression forest 按依赖顺序构造读取，再组合嵌套字面量；模块符号和
+  guard 来源复用现有绑定路径。完整 family 显式传递 Language 写入前提，
+  后续仍用真实 primitive-object 证据和 VerifyFamilyWrites 验证，不能由无子函数
+  推断缓冲对象没有捕获屏障。未改变 phased 路径的前提。
+- literal_plan/buffer 测试覆盖 1/200/201 条模块读取、getter 次序、异常身份、
+  属性描述符，以及乱序输入、外部 debugger 和伪造所有权的拒绝。
+- 新增 homemodel_record_source_test：仅给正式引擎 ABC，在独立测试中将实际生成
+  的 Breakpoint、HomeConstants、HomeModel、HomeViewModel 四模块链接；对照配对 TS
+  验证字段值/描述符/顺序、对象身份、getter 轨迹、重复初始化、实例隔离和异常传播。
+  该受控模块链通过不代表整个应用或 HarmonyOS 平台端到端验收。
+- 构建成功：/tmp/abcd-home-build.log。五项基础定向测试通过，记录于
+  /tmp/abcd-home-tests.log；该轮新增集成测试因目标目录已存在失败，修正测试
+  使用临时目录下的新输出子目录后，八项集成/闭包/函数树回归全部通过（6.86 秒），
+  日志 /tmp/abcd-home-integration.log。未恢复全量测试、RSS 或其他 corpus。
+- 五输入 ABC-only 正式输出位于 build/stage-one/value-literal-reads-pass-1，
+  计数为 31 完整 / 75 失败 / 46 无模块上下文，新增 Immersive record16474。
+  相比 value-initializer-modules-pass-1 无完整 record 回退，无 legacy writer；
+  逐输入证据 /tmp/abcd-literal-reads-batch-summary.json。
+- 实际 HomeModel 已恢复 map 回调中的对象字面量及两条导入常量数组读取；
+  class/function 命名包装、this 捕获搬运及部分临时变量仍是表达质量缺口。
+  此次只完成该通用读取集成与模块链验证，阶段一 Goal 继续保持未完成。
+
 ### 2026-10-01：补充六个 viewmodel 的独立配对行为测试
 
 - 新增 viewmodel_batch_source_test，在临时目录对 Immersive 和 Multi 的 ABC-only

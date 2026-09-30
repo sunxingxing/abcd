@@ -88,7 +88,7 @@ class FamilyTrees {
           BuildPhasedEvaluationPlan(graph, left_, i == 0 ? IncomingCells::kReject : IncomingCells::kConditional,
               member.children, module_evaluations, demands) :
           BuildEvaluationPlan(graph, left_, i == 0 ? IncomingCells::kReject : IncomingCells::kConditional,
-              member.children, module_evaluations, demands));
+              member.children, module_evaluations, demands, {}, analysis::ClosureWrites::kLanguage));
       Account(evaluation);
       std::optional<IncomingCaptureTree> incoming;
       if (member.incoming) {
