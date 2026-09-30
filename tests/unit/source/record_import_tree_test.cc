@@ -15,7 +15,7 @@
 namespace {
 using namespace abcd;
 void Check(bool value) { if (!value) std::abort(); }
-enum class FixtureCase { kValid, kBindingCollision, kExportCollision };
+enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore };
 std::string Recover(FixtureCase mode) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kModule = 1024, kCode = 4096, kFileBytes = 8192;
@@ -73,6 +73,13 @@ std::string Recover(FixtureCase mode) {
     body.push_back(static_cast<std::uint8_t>(guard)); body.push_back(static_cast<std::uint8_t>(guard >> kByteBits));
   };
   const auto store = [&](std::uint8_t slot) { op(abc::Opcode::kSTMODULEVAR_IMM8); body.push_back(slot); };
+  if (mode == FixtureCase::kBranch || mode == FixtureCase::kArmStore) {
+    load(false, 0, 0);
+    op(abc::Opcode::kJEQZ_IMM8); const auto branch = body.size(); body.push_back(0);
+    if (mode == FixtureCase::kArmStore) store(0);
+    else { load(false, 1, 3); op(abc::Opcode::kCALLARG0_IMM8); body.push_back(0); }
+    body[branch] = static_cast<std::uint8_t>(body.size() - branch + 1);
+  }
   load(false, 0, 0); store(0);
   load(false, 3, 1); store(1); // Namespace follows all three ordinary import slots.
   load(true, 0, 2); store(0);
@@ -108,7 +115,11 @@ std::string Recover(FixtureCase mode) {
         budget, nullptr, source::RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity);
   };
   auto result = build();
-  if (mode != FixtureCase::kValid) {
+  if (mode == FixtureCase::kArmStore) {
+    Check(std::get<source::RecordProgramFailure>(result).kind == source::RecordProgramError::kInitializer);
+    Check(unlink(path) == 0); return {};
+  }
+  if (mode == FixtureCase::kBindingCollision || mode == FixtureCase::kExportCollision) {
     Check(std::get<source::RecordProgramFailure>(result).kind == source::RecordProgramError::kExport);
     Check(unlink(path) == 0); return {};
   }
@@ -124,7 +135,8 @@ std::string Recover(FixtureCase mode) {
 }
 }
 int main(int argc, char**) {
-  const auto source = Recover(FixtureCase::kValid);
+  const auto source = Recover(argc > 2 ? FixtureCase::kBranch : FixtureCase::kValid);
+  Recover(FixtureCase::kBranch); Recover(FixtureCase::kArmStore);
   Recover(FixtureCase::kBindingCollision); Recover(FixtureCase::kExportCollision);
   if (argc > 1) std::cout << source;
 }

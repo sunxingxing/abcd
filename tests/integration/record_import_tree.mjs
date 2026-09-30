@@ -21,14 +21,14 @@ mutate();
 answer = input;
 export {answer, answer as answerAlias, snapshot};
 `;
-async function setup(source, {cycle = false, defaultExport = true} = {}) {
+async function setup(source, {cycle = false, defaultExport = true, initial = 42} = {}) {
   const trace = [];
   const context = vm.createContext({trace});
   const create = (body, identifier) => new vm.SourceTextModule(body, {context, identifier});
   const root = create(source, './root.mjs');
   const dependency = create(`
     ${cycle ? "import {answer} from './root.mjs'; trace.push(answer);" : ''}
-    trace.push('dep'); export let value = 42;
+    trace.push('dep'); export let value = ${initial};
     export function mutate() {
       if (this !== undefined) throw new Error('receiver changed');
       trace.push('mutate'); ++value;
@@ -46,21 +46,23 @@ async function setup(source, {cycle = false, defaultExport = true} = {}) {
   });
   return {root, dependency, trace};
 }
-async function observe(source) {
-  const {root, dependency, trace} = await setup(source);
+async function observe(source, conditional = false, initial = 42) {
+  const {root, dependency, trace} = await setup(source, {initial});
+  const mutations = 1 + Number(conditional && initial !== 0);
+  const final = initial + mutations;
   assert.throws(() => root.namespace.answer, {name: 'ReferenceError'});
   await root.evaluate();
   const ns = root.namespace;
-  assert.deepEqual(trace, ['side', 'dep', 'star', 'mutate']);
+  assert.deepEqual(trace, ['side', 'dep', 'star', ...Array(mutations).fill('mutate')]);
   assert.deepEqual(Object.keys(ns), ['answer', 'answerAlias', 'depNamespace', 'live', 'snapshot', 'starValue']);
-  assert.equal(ns.answer, 43); assert.equal(ns.answerAlias, 43); assert.equal(ns.live, 43);
+  assert.equal(ns.answer, final); assert.equal(ns.answerAlias, final); assert.equal(ns.live, final);
   assert.equal(ns.starValue, 9);
   assert.equal(ns.snapshot, dependency.namespace);
   assert.equal(ns.depNamespace, dependency.namespace);
   assert.equal(Reflect.set(ns, 'answer', 0), false);
   Reflect.apply(dependency.namespace.mutate, undefined, []);
-  assert.equal(ns.live, 44); assert.equal(ns.snapshot.value, 44);
-  assert.equal(ns.answer, 43); assert.equal(ns.answerAlias, 43);
+  assert.equal(ns.live, final + 1); assert.equal(ns.snapshot.value, final + 1);
+  assert.equal(ns.answer, final); assert.equal(ns.answerAlias, final);
   return {trace, answer: ns.answer, live: ns.live, keys: Object.keys(ns)};
 }
 assert.deepEqual(await observe(recovered), await observe(reference));
@@ -70,3 +72,10 @@ for (const source of [recovered, reference]) {
   // Even unused imports retain their link-time export obligation.
   await assert.rejects(setup(source, {defaultExport: false}), {name: 'SyntaxError'});
 }
+
+const conditional = execFileSync(process.argv[2], ['source', 'branch'], {encoding: 'utf8'});
+const conditionalReference = reference.replace('let answer = input;', 'if (input !== 0) mutate();\nlet answer = input;');
+for (const initial of [0, 42])
+  assert.deepEqual(await observe(conditional, true, initial), await observe(conditionalReference, true, initial));
+const cyclic = await setup(conditional, {cycle: true});
+await assert.rejects(cyclic.root.evaluate(), {name: 'ReferenceError'});

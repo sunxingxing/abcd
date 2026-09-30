@@ -12,6 +12,27 @@
 
 ## 当前阶段
 
+### 2026-10-01：record 入口允许前置分支及汇合后的本地声明
+
+- BuildRecordTree 复用共同 ControlPlan，按顶层 next 链的源码顺序识别首次
+  STMODULEVAR，支持前置条件逻辑后在汇合处声明。没有无条件提升 let；所有
+  模块 store 必须属于该顶层序列，分支臂/循环内的初始化及更新仍明确拒绝。
+  首次声明身份不再依赖物理 SSA block 编号。后续 TreeFlow 继续核对实际声明
+  位于 body scope；模块 printer 保留只允许最终 return 的约束。
+- 合成 ABC 正式入口增加条件调用后初始化的正例和分支内 store 的拒绝用例。
+  独立 ESM oracle 对照条件执行/跳过、依赖 value 变更、调用 receiver、导出别名、
+  namespace 身份、live export、链接义务及循环依赖 TDZ。引擎不读取 oracle。
+- 构建成功：/tmp/abcd-record-control-build.log 和
+  /tmp/abcd-record-control-regression-build.log。六项 record/import/真实模型链
+  定向回归全部通过（2.89 秒），/tmp/abcd-record-control-regression-tests.log。
+- 真实 Index entry10009 已越过 kFrame，正式输出当前返回 kValue（后续求值
+  规划），/tmp/abcd-record-control-index.json。仍需访问器 class/home-object
+  组合及派生类支持，不能把入口控制流进展声称为完整页面恢复。
+- 五输入正式重跑保存 build/stage-one/value-record-control-pass-1，计数仍为
+  34/72/46，无旧完整 record 回退、无 legacy writer。逐输入证据
+  /tmp/abcd-record-control-batch-summary.json。未恢复全量测试/RSS/其他 corpus，
+  阶段一 Goal 继续未完成。
+
 ### 2026-10-01：访问器定义接入共同 Value IR，真实页面入口完成值导入
 
 - DEFINEGETTERSETTERBYVALUE 通过 ValueDefineAccessor 导入共同 IR；五个有序输入

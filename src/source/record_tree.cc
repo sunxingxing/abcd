@@ -73,10 +73,11 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     }
     retain(function->allocated_bytes);
     const auto& graph = function->values.graph;
-    // First-store lexical declarations require a single unconditional entry
-    // region. Control-dependent module initialization needs a separate binding
-    // lifetime analysis; never hoist a let to make such input appear supported.
-    if (function->frame.parameters || graph.blocks.size() != 1) return fail(Error::kFrame);
+    if (function->frame.parameters) return fail(Error::kFrame);
+    auto controlled = BuildControlPlan(graph, {budget.bytes});
+    auto* control = std::get_if<ControlPlan>(&controlled);
+    if (!control) return fail(Error::kBody);
+    retain(control->allocated_bytes);
     auto resolved = ResolveTreeConstants(file, header, index, index.methods[entry.value].offset, graph, {budget.bytes});
     auto* constants = std::get_if<TreeConstants>(&resolved);
     if (!constants) return fail(Error::kValue);
@@ -217,26 +218,36 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     }
     retain(slots->slot_count());
     std::vector<bool> initialized(slots->slot_count());
-    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-      const auto& op = graph.ops[i];
-      if (op.life != analysis::ValueLife::kLive) continue;
-      if (const auto* store = std::get_if<analysis::ValueModuleWrite>(&op.operation)) {
-        if (store->slot.value >= initialized.size()) return fail(Error::kExport);
-        constants->operations[i] = ModuleStoreConstant{store->slot,
-            {owner, {static_cast<std::uint32_t>(external + store->slot.value)}}, !initialized[store->slot.value]};
-        initialized[store->slot.value] = true;
+    std::size_t stores = 0, placed = 0;
+    for (const auto& op : graph.ops)
+      if (op.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::ValueModuleWrite>(op.operation)) ++stores;
+    // Only the root control sequence owns native record declarations. Branch
+    // joins may precede them, but arm/loop stores cannot become a root let.
+    // Traverse source order, not physical SSA block numbering, for first-store
+    // identity. Existing tree-flow checks revalidate root declaration placement.
+    for (std::optional<ControlId> at = control->entry; at; at = control->nodes[at->value].next) {
+      const auto& node = control->nodes[at->value];
+      if (!std::holds_alternative<std::monostate>(node.synthetic)) continue;
+      const auto& block = graph.blocks[node.block.value];
+      for (std::size_t i = block.first_op.value; i < block.first_op.value + block.op_count; ++i) {
+        const auto& op = graph.ops[i];
+        if (op.life != analysis::ValueLife::kLive) continue;
+        if (const auto* store = std::get_if<analysis::ValueModuleWrite>(&op.operation)) {
+          if (store->slot.value >= initialized.size()) return fail(Error::kExport);
+          constants->operations[i] = ModuleStoreConstant{store->slot,
+              {owner, {static_cast<std::uint32_t>(external + store->slot.value)}}, !initialized[store->slot.value]};
+          initialized[store->slot.value] = true; ++placed;
+        }
       }
     }
+    if (placed != stores) return fail(Error::kInitializer);
     if (std::find(initialized.begin(), initialized.end(), false) != initialized.end())
       return fail(Error::kInitializer);
     auto evaluated = BuildEvaluationPlan(graph, {budget.bytes}, IncomingCells::kReject, {}, bindings->evaluations, {}, function->values.initializers.calls);
     auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
     if (!evaluation) return fail(Error::kValue);
     retain(evaluation->allocated_bytes);
-    auto controlled = BuildControlPlan(graph, {budget.bytes});
-    auto* control = std::get_if<ControlPlan>(&controlled);
-    if (!control) return fail(Error::kBody);
-    retain(control->allocated_bytes);
     // First-store declarations and slot/name correspondence above establish
     // the enclosing native record bindings before preparing class descendants.
     class_scope.module_local_names = std::span<const std::u16string>(names).subspan(external);
