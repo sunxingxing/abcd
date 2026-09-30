@@ -72,7 +72,8 @@ enum class ChildShape {
   kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally, kSharedFinallyNested,
   kAwaitCapture, kAwaitClosure, kAwaitCatch, kAwaitFinally, kAwaitFinallySuspend, kAwaitFinallyReuse,
   kAwaitSelf, kAwaitSelfPrivate, kAwaitThis, kAwaitReceiver, kAwaitArguments, kYieldCapture, kYieldResult, kYieldLoop, kYieldCall,
-  kYieldCatch, kYieldCatchCapture, kYieldCatchYield, kYieldCatchOverwrite, kYieldCatchLoop
+  kYieldCatch, kYieldCatchCapture, kYieldCatchYield, kYieldCatchOverwrite, kYieldCatchLoop,
+  kYieldSelf, kYieldSelfPrivate, kYieldThis, kYieldReceiver
 };
 enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitState,
                          kYieldState, kYieldDone, kYieldReturn, kYieldEntry, kYieldCleanup,
@@ -97,8 +98,10 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const bool yield_catch = child_shape == ChildShape::kYieldCatch || child_shape == ChildShape::kYieldCatchCapture ||
       child_shape == ChildShape::kYieldCatchYield || child_shape == ChildShape::kYieldCatchOverwrite ||
       child_shape == ChildShape::kYieldCatchLoop;
+  const bool yield_self = child_shape == ChildShape::kYieldSelf || child_shape == ChildShape::kYieldSelfPrivate;
+  const bool yield_frame = yield_self || child_shape == ChildShape::kYieldThis || child_shape == ChildShape::kYieldReceiver;
   const bool generator = child_shape == ChildShape::kYieldCapture || child_shape == ChildShape::kYieldResult ||
-      child_shape == ChildShape::kYieldLoop || child_shape == ChildShape::kYieldCall || yield_catch;
+      child_shape == ChildShape::kYieldLoop || child_shape == ChildShape::kYieldCall || yield_catch || yield_frame;
   const std::uint8_t getter_parameters = await_finally ? 2 : await_capture || generator ? 1 : outer_transfer ? 5 : shared_finally ? 3 : 0;
   const bool outer_catch = shape == ParentShape::kOuterCatchContinue || shape == ParentShape::kOuterCatchBreak;
   const std::uint8_t parent_parameters = outer_catch ? 5 : 3;
@@ -411,8 +414,13 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
             static_cast<std::uint8_t>(delta)});
       }
     }
-    code.insert(code.end(), {Op(child_shape == ChildShape::kYieldResult ? abc::Opcode::kLDA_V8 : abc::Opcode::kLDLEXVAR_IMM4_IMM4),
-        static_cast<std::uint8_t>(child_shape == ChildShape::kYieldResult ? 2 : 0), Op(abc::Opcode::kRETURN)});
+    if (yield_self || child_shape == ChildShape::kYieldThis)
+      code.push_back(Op(yield_self ? abc::Opcode::kLDFUNCTION : abc::Opcode::kLDTHIS));
+    else if (child_shape == ChildShape::kYieldReceiver)
+      code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), 7});
+    else code.insert(code.end(), {Op(child_shape == ChildShape::kYieldResult ? abc::Opcode::kLDA_V8 : abc::Opcode::kLDLEXVAR_IMM4_IMM4),
+        static_cast<std::uint8_t>(child_shape == ChildShape::kYieldResult ? 2 : 0)});
+    code.push_back(Op(abc::Opcode::kRETURN));
     const auto catch_begin = static_cast<std::uint32_t>(code.size());
     if (yield_catch) {
       const bool overwrite = child_shape == ChildShape::kYieldCatchOverwrite;
@@ -598,8 +606,9 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       static_cast<std::uint32_t>(abc::FunctionKind::kGenerator) << kFunctionKindShift;
   index.methods[1].name = "capture";
   index.methods[1].name_utf16_length = 7;
-  index.methods[2].name = child_shape == ChildShape::kAwaitSelfPrivate ? "get value" : "get";
-  index.methods[2].name_utf16_length = child_shape == ChildShape::kAwaitSelfPrivate ? 9 : 3;
+  const bool private_self = child_shape == ChildShape::kAwaitSelfPrivate || child_shape == ChildShape::kYieldSelfPrivate;
+  index.methods[2].name = private_self ? "get value" : "get";
+  index.methods[2].name_utf16_length = private_self ? 9 : 3;
   index.methods[3].name = "set";
   index.methods[3].name_utf16_length = 3;
   const auto lookup =
@@ -724,7 +733,9 @@ int main(int argc, char** argv) {
                    std::string_view(argv[1]) == "--yield-loop" || std::string_view(argv[1]) == "--yield-call" ||
                    std::string_view(argv[1]) == "--yield-catch" || std::string_view(argv[1]) == "--yield-catch-capture" ||
                    std::string_view(argv[1]) == "--yield-catch-yield" || std::string_view(argv[1]) == "--yield-catch-overwrite" ||
-                   std::string_view(argv[1]) == "--yield-catch-loop")) {
+                   std::string_view(argv[1]) == "--yield-catch-loop" ||
+                   std::string_view(argv[1]) == "--yield-self" || std::string_view(argv[1]) == "--yield-self-private" ||
+                   std::string_view(argv[1]) == "--yield-this" || std::string_view(argv[1]) == "--yield-receiver")) {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
@@ -736,6 +747,10 @@ int main(int argc, char** argv) {
             std::string_view(argv[1]) == "--yield-catch-yield" ? ChildShape::kYieldCatchYield :
             std::string_view(argv[1]) == "--yield-catch-overwrite" ? ChildShape::kYieldCatchOverwrite :
             std::string_view(argv[1]) == "--yield-catch-loop" ? ChildShape::kYieldCatchLoop :
+            std::string_view(argv[1]) == "--yield-self" ? ChildShape::kYieldSelf :
+            std::string_view(argv[1]) == "--yield-self-private" ? ChildShape::kYieldSelfPrivate :
+            std::string_view(argv[1]) == "--yield-this" ? ChildShape::kYieldThis :
+            std::string_view(argv[1]) == "--yield-receiver" ? ChildShape::kYieldReceiver :
             ChildShape::kYieldCapture) << ",\n";
     std::cout << "];\n"; return 0;
   }

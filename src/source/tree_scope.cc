@@ -41,8 +41,7 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
   budget.Array(entered_, tree.scopes.size());
   if (tree.self) {
     RequireTree(tree.self->value < count &&
-        (tree.callable == CallableKind::kFunction || IsArrowCallable(tree.callable) ||
-         tree.callable == CallableKind::kAsyncFunction) &&
+        (AllowsNamedSelf(tree.callable) || IsArrowCallable(tree.callable)) &&
         tree.symbols[tree.self->value].kind == BindingKind::kFunctionSelf, Error::kBinding);
     declared_[tree.self->value] = 1;
   }

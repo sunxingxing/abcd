@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-09-30：generator 自身身份与暂停帧 receiver
+
+- 将 generator 的原生具名 self 绑定接入现有共同树；AllowsNamedSelf 统一树构建、
+  结构、词法 scope 和 ABI 的 callable 约定，避免新增类型只在其中一层可用。
+  元数据名称合法且无遮蔽时输出 function* name；非标识符或参数等同名时沿用
+  既有私有 const 创建绑定。Printer 只读取已选定的 self form，不推断绑定关系。
+- LDFUNCTION 返回实际 generator callable；LDTHIS 和原始 receiver 参数槽沿用
+  已有相位 FrameReceiver 与共同 ThisExpr。三 profile × 三父级环境的四类文件
+  解码组合共 36 个函数族，生成完整 JS 验证 name/length、GeneratorFunction
+  原型、各创建实例独立的 prototype、不可构造性、thenable 不被吸收、严格
+  primitive/null/undefined receiver、bind 调用保留原 callable、两个迭代器
+  逆序恢复，以及 throw/return/完成后调用。未用 callback 或 forwarding writer
+  替代 generator 本体；恢复的父级/子级源码均经共同函数族 Printer。
+- 手工树补充 generator 的参数名/self 名冲突正例，并沿用误绑名称、可写 self、
+  缺失名字和资源语义契约的反例。红例 `/tmp/abcd-generator-frame-red-tests.log`
+  在旧实现上失败于 self binding；后续定向定位并补齐 shared scope/ABI 约定。
+- 相关十个 C++ 目标构建成功，27/27 定向测试通过（16.41 秒），包括新增
+  file_generator_frame_source_test 与 generator catch、async frame、await/finally、
+  树及值流回归：`/tmp/abcd-generator-frame-final-build.log`、
+  `/tmp/abcd-generator-frame-final-tests.log`；`git diff --check` 通过。
+  仍为真实指令/合成元数据夹具，不据此声称真实应用或所有 frame/闭包组合覆盖。
+- C07 仍开放：finally 注入 RETURN 清理、入口词法/参数前奏、generator 方法
+  与更多 frame/闭包组合仍待推进；yield*、async generator 及其余总目标未完成。
+  默认 work 阈值保持关闭；全量测试、全语料、RSS 和基准仍暂停，历史两个
+  base_function 失败未重跑/修复，未宣称全套通过或 1GB 实测达标。
+
 ### 2026-09-30：generator 用户 catch 与注入 THROW 贯通
 
 - NormalizeGenerator 保留用户异常表，复用既有边界重定位，仅移除编译器外层

@@ -578,7 +578,7 @@ void DebuggerTree() {
 void CreationSelfTree() {
   using namespace analysis;
   for (const auto kind : {CallableKind::kFunction, CallableKind::kArrow, CallableKind::kAsyncFunction,
-                          CallableKind::kAsyncArrow}) {
+                          CallableKind::kAsyncArrow, CallableKind::kGenerator}) {
     Fixture fixture;
     fixture.Add(0, 0, 0, ValueFrameFunction{}, true, {});
     fixture.Add(0, 1, 1, ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{2}}});

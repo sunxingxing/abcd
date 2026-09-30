@@ -29,6 +29,12 @@ enum class CallableKind : std::uint8_t {
 constexpr bool IsArrowCallable(CallableKind kind) {
   return kind == CallableKind::kArrow || kind == CallableKind::kAsyncArrow;
 }
+// Native named function expressions provide immutable lexical self bindings.
+// Methods do not; arrows use a separately checked creation-time binding.
+constexpr bool AllowsNamedSelf(CallableKind kind) {
+  return kind == CallableKind::kFunction || kind == CallableKind::kAsyncFunction ||
+         kind == CallableKind::kGenerator;
+}
 constexpr bool IsAsyncCallable(CallableKind kind) {
   return kind == CallableKind::kAsyncFunction || kind == CallableKind::kAsyncMethod || kind == CallableKind::kAsyncArrow;
 }

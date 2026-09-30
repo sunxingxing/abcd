@@ -125,7 +125,7 @@ class StructureCheck {
           tree_.scopes[self.scope.value].kind == ScopeKind::kFunctionSelf, Error::kScope);
       switch (tree_.self_form) {
         case SelfForm::kNamedFunction:
-          RequireTree((tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kAsyncFunction) &&
+          RequireTree(AllowsNamedSelf(tree_.callable) &&
               tree_.inferred_name == self.name &&
               self.evidence == NameEvidence::kMetadata, Error::kBinding);
           break;

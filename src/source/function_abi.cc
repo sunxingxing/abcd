@@ -37,7 +37,7 @@ class AbiBuilder {
     }
     Require(tree_.parameters.size() == frame_.parameters, Error::kParameter);
     if (tree_.self)
-      Require((tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kAsyncFunction ||
+      Require((AllowsNamedSelf(tree_.callable) ||
           (IsArrowCallable(tree_.callable) && tree_.self_form == SelfForm::kCreationBinding)) &&
           tree_.self->value < tree_.symbols.size() &&
           tree_.symbols[tree_.self->value].kind == BindingKind::kFunctionSelf, Error::kSyntax);

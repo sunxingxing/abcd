@@ -541,7 +541,8 @@ class TreePrinter {
       if (Tree().callable == CallableKind::kAsyncMethod) Append("async ");
       Key(class_root_->Name()); Append("(");
     } else if (Tree().self && Tree().self_form == SelfForm::kNamedFunction) {
-      Append(Tree().callable == CallableKind::kAsyncFunction ? "(async function " : "(function ");
+      Append(Tree().callable == CallableKind::kGenerator ? "(function* " :
+          Tree().callable == CallableKind::kAsyncFunction ? "(async function " : "(function ");
       Name(*Tree().self); Append("(");
     } else if (Tree().inferred_name) {
       if (Tree().self) {
