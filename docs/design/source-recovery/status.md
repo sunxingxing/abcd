@@ -12,6 +12,31 @@
 
 ## 当前阶段
 
+### 2026-10-01：后置访问器的实际 class/home/function 归属贯通
+
+- 新 FindClassAccessors 在共同正常 FunctionValues 恢复流程中运行，以 O(ops+uses)
+  扫描实际 SSA：匹配类创建、静态或 prototype 候选 home、字符串池 key、
+  DEFINEGETTERSETTER 的 getter/setter 方法 occurrence；不按方法名称推断身份。
+  方法须同 block、同 home、正确 length，且仅供该定义消费。逃逸、错误 home、
+  启用额外命名副作用或未知形状不产生可组合候选。
+- 命名标志属于 protocol read，SimplifyValues 刻意保留其 SSA literal copy。
+  初始用例发现直接查看字面量会漏掉所有真实候选，现只读取保留的纯定义，
+  不改写协议 use，也不放宽简化器的输入规则。
+- 分析结果保存在 FunctionValues.accessors，已接入生产读入流程；它只证明
+  occurrence 对应，不授权移动定义。prototype 名称解析、descriptor 语义、
+  class escape/effect corridor 及实际 accessor body 仍须在 ClassTree 组合时闭合。
+  当前未改变源码 printer，也不把发现结果计作完整访问器源码。
+- 单元规格覆盖三个动态 profile、1/200/201/402 个访问器、静态 getter、
+  prototype setter、错误 home、方法逃逸、name flag 与资源限制。
+  真实 Immersive entry10009 四个定义 PC137/160/183/206 均关联 class PC98，
+  两对 getter/setter occurrence 正确，测试没有读取配对源码。
+- 构建日志 /tmp/abcd-class-accessors-final-build.log、
+  /tmp/abcd-class-accessors-file-build.log。四项类/模型/模块定向回归通过（4.09 秒），
+  真实文件测试通过（1.14 秒），日志 /tmp/abcd-class-accessors-final-tests.log、
+  /tmp/abcd-class-accessors-file-test.log。未恢复全量测试/RSS/其他 corpus。
+- 下一步必须把这些已定位的 occurrence 与共享成员上下文和副作用投影集成，
+  不能停在候选表。五输入完整输出最近基线仍为 34/72/46，阶段一未完成。
+
 ### 2026-10-01：record 入口允许前置分支及汇合后的本地声明
 
 - BuildRecordTree 复用共同 ControlPlan，按顶层 next 链的源码顺序识别首次

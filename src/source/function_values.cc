@@ -127,6 +127,15 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
   auto initializers = std::get<ClassInitializerCalls>(std::move(initializer_calls));
   if (!admit(initializers.allocated_bytes, 1)) return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kTransformStage);
   work -= initializers.work;
+  auto accessor_sites = FindClassAccessors(*graph, {remaining, work});
+  if (const auto* error = std::get_if<ClassAccessorError>(&accessor_sites)) {
+    const auto kind = *error == ClassAccessorError::kResourceLimit ? RouteFailureClass::kMemoryLimit :
+        *error == ClassAccessorError::kWorkLimit ? RouteFailureClass::kWorkLimit : RouteFailureClass::kInvariantViolation;
+    return fail(kind, ValueRouteError::kTransformStage);
+  }
+  auto accessors = std::get<ClassAccessorSites>(std::move(accessor_sites));
+  if (!admit(accessors.allocated_bytes, 1)) return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kTransformStage);
+  work -= accessors.work;
   if (needs_environments) {
     auto built = analysis::BuildValueEnvironments(*graph, {remaining, work});
     if (const auto* error = std::get_if<analysis::ValueEnvironmentError>(&built)) {
@@ -167,6 +176,6 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
     return fail(RouteFailureClass::kInvariantViolation, ValueRouteError::kTransformStage);
   }
   return FunctionValues{std::move(*graph), std::move(environments), owner.Mode(),
-      owner.Identity(), owner.Method(), owner.Record(), std::move(cells), std::move(modules), std::move(classes), std::move(initializers)};
+      owner.Identity(), owner.Method(), owner.Record(), std::move(cells), std::move(modules), std::move(classes), std::move(initializers), std::move(accessors)};
 }
 }  // namespace abcd::source

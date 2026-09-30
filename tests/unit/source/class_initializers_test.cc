@@ -1,4 +1,5 @@
 #include "../../../src/source/class_initializers.h"
+#include "../../../src/source/class_accessors.h"
 #include "../../../src/source/evaluation_plan.h"
 #include "abcd/analysis/value_import.h"
 #include "abcd/analysis/value_simplify.h"
@@ -7,6 +8,46 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
+enum class AccessorCase { kValid, kWrongHome, kEscape, kNameFlag };
+void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool setter, AccessorCase kind = AccessorCase::kValid) {
+  std::vector<std::uint8_t> bytes;
+  const auto op = [&](abc::Opcode code) { bytes.push_back(static_cast<std::uint8_t>(code)); };
+  const auto word = [&](std::uint16_t n) { bytes.push_back(n); bytes.push_back(n >> 8); };
+  const auto load = [&](std::uint8_t r) { op(abc::Opcode::kLDA_V8); bytes.push_back(r); };
+  const auto save = [&](std::uint8_t r) { op(abc::Opcode::kSTA_V8); bytes.push_back(r); };
+  op(abc::Opcode::kLDHOLE); save(0);
+  op(abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8);
+  bytes.push_back(0); word(7); word(9); word(0); bytes.push_back(0); save(1);
+  for (unsigned i = 0; i < count; ++i) {
+    load(1);
+    if (prototype) { op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16); bytes.push_back(0); word(13); }
+    save(2);
+    op(abc::Opcode::kLDA_STR_ID16); word(15); save(3);
+    load(kind == AccessorCase::kWrongHome ? 3 : 2);
+    op(abc::Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8); bytes.push_back(0); word(11); bytes.push_back(setter ? 1 : 0);
+    save(setter ? 5 : 4);
+    if (kind == AccessorCase::kEscape) { op(abc::Opcode::kSTMODULEVAR_IMM8); bytes.push_back(0); }
+    op(abc::Opcode::kLDUNDEFINED); save(setter ? 4 : 5);
+    op(kind == AccessorCase::kNameFlag ? abc::Opcode::kLDTRUE : abc::Opcode::kLDFALSE);
+    op(abc::Opcode::kDEFINEGETTERSETTERBYVALUE_V8_V8_V8_V8);
+    bytes.insert(bytes.end(), {2, 3, 4, 5});
+  }
+  op(abc::Opcode::kRETURNUNDEFINED);
+  const auto body = test::Body(bytes);
+  const auto method = std::get<SemanticMethod>(BuildSemanticMethod(body, profile, 6));
+  const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, method, 6, 0));
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(6, 0, {false, false, false, false}));
+  auto graph = std::get<ValueProgram>(ImportNormalValues(body, method, proof, frame));
+  test::Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
+  const auto result = std::get<ClassAccessorSites>(FindClassAccessors(graph));
+  test::Check(result.sites.size() == (kind == AccessorCase::kValid ? count : 0));
+  for (const auto& site : result.sites) {
+    test::Check(site.creation < site.definition && site.prototype.has_value() == prototype && site.key.value == 15);
+    test::Check(site.getter.has_value() == !setter && site.setter.has_value() == setter);
+  }
+  test::Check(std::get<ClassAccessorError>(FindClassAccessors(graph, {0})) == ClassAccessorError::kResourceLimit);
+  test::Check(std::get<ClassAccessorError>(FindClassAccessors(graph, {UINT32_MAX, 0})) == ClassAccessorError::kWorkLimit);
+}
 enum class Case { kSingle, kRepeated, kEscape, kUsedResult, kWrongReceiver, kClassEscape, kBarrier, kPrototype };
 void Run(abc::ProfileId profile, unsigned count, Case kind) {
   std::vector<std::uint8_t> bytes;
@@ -80,8 +121,11 @@ void Run(abc::ProfileId profile, unsigned count, Case kind) {
 int main() {
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
     for (const auto count : {1U, 200U, 201U, 402U}) {
+      Accessors(profile, count, false, false); Accessors(profile, count, true, true);
       Run(profile, count, Case::kSingle); Run(profile, count, Case::kPrototype);
     }
+    for (const auto kind : {AccessorCase::kWrongHome, AccessorCase::kEscape, AccessorCase::kNameFlag})
+      Accessors(profile, 1, true, false, kind);
     Run(profile, 1, Case::kClassEscape); Run(profile, 1, Case::kBarrier);
     for (const auto kind : {Case::kRepeated, Case::kEscape, Case::kUsedResult, Case::kWrongReceiver}) Run(profile, 1, kind);
   }

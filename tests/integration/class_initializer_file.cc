@@ -34,6 +34,24 @@ int main(int argc, char** argv) {
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(file, header, index, lookup));
   const auto sites = std::get<analysis::FunctionCreationSites>(analysis::FunctionCreationSites::Build(file, header, index, lookup));
+  // Actual post-class getter/setter definitions, separate from buffer members.
+  {
+    const auto position = lookup.Find({10009}); Check(position.has_value());
+    auto caller = ReadFunctionValues(file, header, index, *position, identity, InputCaptureMode::kClosed);
+    Check(std::holds_alternative<FileFunction>(caller));
+    const auto& parent = std::get<FileFunction>(caller);
+    const auto& graph = parent.values.graph;
+    Check(parent.values.accessors.sites.size() == 4);
+    const unsigned pcs[] = {137, 160, 183, 206};
+    for (std::size_t i = 0; i < 4; ++i) {
+      const auto& accessor = parent.values.accessors.sites[i];
+      Check(accessor.prototype.has_value());
+      Check(accessor.getter.has_value() == (i % 2 == 0));
+      Check(accessor.setter.has_value() == (i % 2 != 0));
+      Check(graph.origins[graph.ops[accessor.creation.value].origin.value].pc.value == 98);
+      Check(graph.origins[graph.ops[accessor.definition.value].origin.value].pc.value == pcs[i]);
+    }
+  }
   for (const auto entry : {7312U, 16391U}) {
     const auto position = lookup.Find({entry}); Check(position.has_value());
     const auto& method = index.methods[position->value];
