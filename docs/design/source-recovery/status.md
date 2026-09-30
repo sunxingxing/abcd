@@ -12,6 +12,26 @@
 
 ## 当前阶段
 
+### 2026-10-01：纯 SSA 常量复制传播解除标量晚值阻断
+
+- 原 SimplifyValues 只传播 ValueId 复制代表，数字等 primitive 的
+  ValueCopy 仍占用 SSA 节点，导致分配后 LDAI 被 LiteralPlan 拒绝。
+  现在在复制/phi 代表压缩后单次遍历使用点，以原始 primitive 替换
+  纯复制根；复用批次的原子提交、使用链维护、死代码及来源处理。
+  没有移动分配/副作用，也没有放宽 LiteralPlan 的 EarlyValue。
+- 独立 VerifyValueRewrite 从变换前固定代表读取常量，逐位核对替换，
+  不相信变换后的根操作数。1/200/201/4096 复制链覆盖整数、null、
+  undefined、负零及带 payload 的 NaN，错误常量与 effectful copy 拒绝。
+- 正式 record 的 ABC 编码夹具增加分配后加载 42 的数组路径；与原
+  分配前快照路径一起通过原生 ESM 的值、descriptor、prototype 和
+  继承 setter 验证。7 项定向测试全通过（3.17 秒），构建/测试日志
+  /tmp/abcd-literal-regression-build.log、/tmp/abcd-literal-regression-tests.log。
+- 真实 Constants 仍未生成源码；调用栈进一步确定当前 kLateValue 为
+  数组分配后创建的 buffered ValueObjectAllocation（literal slot 216），
+  不是标量复制。必须接入嵌套分配依赖及构建顺序，不得以常量复制规则
+  处理对象身份。证据 /tmp/abcd-literal-nested-debug.log。阶段一仍未完成，
+  未执行暂停的全量测试、RSS/基准、其他语料和代理。
+
 ### 2026-10-01：密集数组初始化的共同源码输出
 
 - LiteralPlan 复用现有新分配/不可观察验证，支持 ValueArrayAllocation

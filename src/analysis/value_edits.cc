@@ -87,6 +87,16 @@ std::optional<ValueEditError> ReplaceUse(
   return {};
 }
 
+std::optional<ValueEditError> ReplaceLiteralUse(
+    ValueProgram& graph, UseId id, ValueOperand literal) {
+  if (id.value >= graph.uses.size() || graph.uses[id.value].life != ValueLife::kLive)
+    return ValueEditError::kInvalidUse;
+  if (std::holds_alternative<ValueId>(literal)) return ValueEditError::kInvalidValue;
+  Unlink(graph, id);
+  graph.uses[id.value].operand = literal;
+  return {};
+}
+
 std::optional<ValueEditError> ErasePureOp(ValueProgram& graph, OpId id) {
   if (id.value >= graph.ops.size() ||
       graph.ops[id.value].life != ValueLife::kLive)

@@ -45,6 +45,7 @@ int main(int argc, char**) {
   Word(bytes, kModule + 20, kRequest);
   Word(bytes, kModule + 24, kRequest);
   const bool array = argc > 2;
+  const bool late = argc > 3;
   bytes[597] = 3; bytes[598] = 8;
   bytes[600] = 0x62; // LDAI_IMM32, pinned dynamic ISA.
   Word(bytes, 601, 42);
@@ -57,6 +58,14 @@ int main(int argc, char**) {
         0x05, 0, 0x61, 0, 0x60, 1, 0x79, 0, 0, 0, 0,
         0x60, 0, 0x7c, 0, 0x65};
     bytes[596] = 2; bytes[598] = static_cast<std::uint8_t>(body.size());
+    std::copy(body.begin(), body.end(), bytes.begin() + 600);
+  }
+  if (late) {
+    // Same result with a scalar loaded after allocation: pure SSA literal
+    // propagation must remove the false late-value dependency.
+    const std::vector<std::uint8_t> body{0x05, 0, 0x61, 0, 0x62, 42, 0, 0, 0,
+        0x79, 0, 0, 0, 0, 0x60, 0, 0x7c, 0, 0x65};
+    bytes[596] = 1; bytes[598] = static_cast<std::uint8_t>(body.size());
     std::copy(body.begin(), body.end(), bytes.begin() + 600);
   }
   char path[] = "/tmp/abcd-record-module-XXXXXX";
@@ -90,7 +99,7 @@ int main(int argc, char**) {
   abc::MethodInfo entry;
   entry.offset = {320}; entry.owner_offset = record.offset;
   entry.name = "func_main_0"; entry.name_utf16_length = entry.name.size();
-  entry.code = abc::CodeInfo{{596}, {600}, array ? 2U : 0U, 3, array ? 23U : 8U, 0};
+  entry.code = abc::CodeInfo{{596}, {600}, late ? 1U : array ? 2U : 0U, 3, late ? 19U : array ? 23U : 8U, 0};
   index.methods.push_back(entry); index.records.push_back(record);
   const auto context = std::get<source::RecordModuleContext>(read());
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));

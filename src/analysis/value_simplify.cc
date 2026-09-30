@@ -186,6 +186,27 @@ void Canonicalize(ValueProgram& graph, BatchScratch& scratch,
   }
 }
 
+// Copy canonicalization already compressed all alias paths. A single use scan
+// can now substitute primitive roots, without per-use walks or moving effects.
+void PropagateLiterals(ValueProgram& graph, BatchBudget& quota, ValueSimplifyStats& stats) {
+  for (std::size_t i = 0; i < graph.uses.size(); ++i) {
+    quota.Work();
+    const auto& use = graph.uses[i];
+    const auto* value = std::get_if<ValueId>(&use.operand);
+    if (use.life != ValueLife::kLive || !value) continue;
+    const auto* result = std::get_if<OpResult>(&graph.values[value->value].origin);
+    if (!result) continue;
+    const auto& root = graph.ops[result->op.value];
+    if (root.life != ValueLife::kLive || !CanErasePureOp(root) ||
+        !std::holds_alternative<ValueCopy>(root.operation) || root.use_count != 1) continue;
+    const auto& input = graph.uses[root.first_use.value];
+    if (input.role != OperandRole::kInput || input.purpose != ReadPurpose::kOperand ||
+        std::holds_alternative<ValueId>(input.operand)) continue;
+    Require(!ReplaceLiteralUse(graph, UseId{static_cast<std::uint32_t>(i)}, input.operand), Error::kInvalidGraph);
+    ++stats.replaced_uses;
+  }
+}
+
 void MarkLive(const ValueProgram& graph, BatchScratch& scratch, BatchBudget& quota) {
   scratch.pending.clear();
   for (std::size_t i = 0; i < graph.uses.size(); ++i) {
@@ -260,6 +281,7 @@ std::variant<ValueSimplifyStats, ValueSimplifyError> SimplifyValues(
     const auto& collapsed = std::get<PhiSimplifyStats>(phis);
     quota.Work(collapsed.work);
     stats.replaced_uses += collapsed.replaced_uses;
+    PropagateLiterals(candidate, quota, stats);
     MarkLive(candidate, scratch, quota);
     for (std::size_t i = 0; i < candidate.ops.size(); ++i) {
       quota.Work();

@@ -192,7 +192,21 @@ std::variant<ValueRewriteProof, ValueRewriteError> VerifyValueRewrite(
       }
       if (const auto* value = std::get_if<ValueId>(&a.operand)) {
         const auto* rewritten = std::get_if<ValueId>(&b.operand);
-        Require(rewritten && *rewritten == representatives[value->value], Error::kOperand);
+        const auto root = representatives[value->value];
+        if (rewritten) Require(*rewritten == root, Error::kOperand);
+        else {
+          // Inspect the original fixed representative, not the optimizer's
+          // edited operands. Pure primitive copying is exact, including -0 and
+          // NaN payload bits; allocations and reads never acquire this rule.
+          const auto* result = std::get_if<OpResult>(&before.values[root.value].origin);
+          Require(result != nullptr, Error::kOperand);
+          const auto& producer = before.ops[result->op.value];
+          Require(producer.life == ValueLife::kLive && CanErasePureOp(producer) &&
+              std::holds_alternative<ValueCopy>(producer.operation) && producer.use_count == 1, Error::kOperand);
+          const auto& literal = before.uses[producer.first_use.value];
+          Require(literal.role == OperandRole::kInput && literal.purpose == ReadPurpose::kOperand &&
+              !std::holds_alternative<ValueId>(literal.operand) && SameLiteral(literal.operand, b.operand), Error::kOperand);
+        }
         if (const auto* phi = std::get_if<ValueId>(&a.owner);
             phi && representatives[phi->value] != *phi)
           Require(representatives[value->value] == representatives[phi->value], Error::kAlias);

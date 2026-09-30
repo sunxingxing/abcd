@@ -14,6 +14,10 @@ enum class ValueEditError : std::uint8_t {
 };
 [[nodiscard]] std::optional<ValueEditError> ReplaceUse(
     ValueProgram& candidate, UseId use, ValueId replacement);
+// Literal substitution unlinks the occurrence without inventing a ValueId.
+// The caller's batch proof must establish the exact primitive, including bits.
+[[nodiscard]] std::optional<ValueEditError> ReplaceLiteralUse(
+    ValueProgram& candidate, UseId use, ValueOperand literal);
 [[nodiscard]] std::optional<ValueEditError> ErasePureOp(
     ValueProgram& candidate, OpId op);
 [[nodiscard]] bool CanErasePureOp(const ValueOp& op);

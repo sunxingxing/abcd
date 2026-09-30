@@ -61,6 +61,40 @@ void ChainsAndRevision() {
   }
 }
 
+void LiteralRoots() {
+  const std::array<ValueOperand, 5> literals{IntegerLiteral{-7}, SpecialValue::kNull,
+      SpecialValue::kUndefined, Float64Bits{UINT64_C(0x8000000000000000)},
+      Float64Bits{UINT64_C(0x7ff8000000000042)}};
+  for (const auto length : {1U, 200U, 201U, 4096U}) for (const auto& literal : literals) {
+    auto before = CopyChain(length);
+    Check(!ReplaceLiteralUse(before, UseId{0}, literal));
+    auto after = before;
+    const auto simplified = SimplifyValues(after, after.revision);
+    const auto* stats = std::get_if<ValueSimplifyStats>(&simplified);
+    Check(stats && stats->removed_ops == length);
+    Check(after.uses[length].operand.index() == literal.index());
+    std::visit([&](const auto& expected) {
+      using T = std::decay_t<decltype(expected)>;
+      const auto& actual = std::get<T>(after.uses[length].operand);
+      if constexpr (std::is_same_v<T, SpecialValue>) Check(actual == expected);
+      else Check(actual.value == expected.value);
+    }, literal);
+    Check(!VerifyValueUses(after, after.uses.size()));
+    after.revision = before.revision;
+    std::vector<ValueId> roots(length + 1, ValueId{1}); roots[0] = {0};
+    Check(std::holds_alternative<ValueRewriteProof>(VerifyValueRewrite(before, after, roots)));
+    after.uses[length].operand = IntegerLiteral{99};
+    Check(std::holds_alternative<ValueRewriteError>(VerifyValueRewrite(before, after, roots)));
+  }
+  auto effectful = CopyChain(2);
+  Check(!ReplaceLiteralUse(effectful, UseId{0}, IntegerLiteral{7}));
+  effectful.ops[0].normal = LanguageEffect::kHeapWrite;
+  const auto result = SimplifyValues(effectful, effectful.revision);
+  Check(std::holds_alternative<ValueSimplifyStats>(result));
+  Check(effectful.ops[0].life == ValueLife::kLive &&
+      std::holds_alternative<ValueId>(effectful.uses.back().operand));
+}
+
 void FailureRollback() {
   constexpr std::uint32_t kLength = 201;
   auto graph = CopyChain(kLength);
@@ -176,6 +210,7 @@ void RewriteCertificate() {
 }  // namespace
 
 int main() {
+  LiteralRoots();
   ChainsAndRevision();
   FailureRollback();
   KeepObservable();
