@@ -5,20 +5,25 @@
 #include <iostream>
 #include <memory>
 #include <string_view>
+#include <source_location>
 #include <vector>
 #include "abcd/abc/instruction.h"
 #include "abcd/corpus/abc_file.h"
 #include "abcd/source/record_module_context.h"
 #include "abcd/source/record_source.h"
 #include "abcd/analysis/method_roles.h"
+#include "abcd/analysis/function_creation_sites.h"
 
 namespace {
 using namespace abcd;
-void Check(bool value) { if (!value) std::abort(); }
-enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore };
+void Check(bool value, std::source_location at = std::source_location::current()) {
+  if (!value) { std::cerr << "check failed at " << at.line() << '\n'; std::abort(); }
+}
+enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kLocalFunction };
 std::string Recover(FixtureCase mode) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
-      kMethod = 600, kModule = 1024, kCode = 4096, kFileBytes = 8192;
+      kMethod = 600, kChild = 640, kModule = 1024, kCode = 4096, kChildCode = 5000, kFileBytes = 8192;
+  const bool family = mode == FixtureCase::kFunction || mode == FixtureCase::kCapture || mode == FixtureCase::kLocalFunction;
   constexpr unsigned kByteBits = 8;
   const std::array<std::string_view, 12> texts{"input", "value", "mutate", "ns", "answer",
       "answerAlias", "snapshot", "live", "*", "depNamespace", "default", "unused"};
@@ -41,6 +46,7 @@ std::string Recover(FixtureCase mode) {
   bytes[kTypes] = 5; // Pinned dynamic i32 record field type.
   const std::array<Name, 4> guards{Name::kInput, Name::kNamespace, Name::kAnswer, Name::kMutate};
   for (std::size_t i = 0; i < guards.size(); ++i) word(kPool + i * sizeof(std::uint32_t), name(guards[i]));
+  if (family) word(kPool + guards.size() * sizeof(std::uint32_t), kChild);
   std::size_t cursor = kModule;
   const auto emit = [&](std::uint32_t value) { word(cursor, value); cursor += sizeof(value); };
   const auto request = [&](std::uint16_t value) {
@@ -85,10 +91,34 @@ std::string Recover(FixtureCase mode) {
   load(true, 0, 2); store(0);
   load(false, 1, 3); op(abc::Opcode::kCALLARG0_IMM8); body.push_back(0);
   load(false, 0, 0); store(0); // Fresh live read after the dependency mutates it.
+  if (family) {
+    if (mode == FixtureCase::kCapture) {
+      op(abc::Opcode::kNEWLEXENV_IMM8); body.push_back(1);
+      op(abc::Opcode::kLDAI_IMM32); body.insert(body.end(), {1, 0, 0, 0});
+      op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); body.push_back(0);
+    }
+    op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8);
+    body.insert(body.end(), {0, static_cast<std::uint8_t>(guards.size()), 0, 0}); store(0);
+    if (mode == FixtureCase::kCapture) {
+      op(abc::Opcode::kLDAI_IMM32); body.insert(body.end(), {42, 0, 0, 0});
+      op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); body.push_back(0);
+    }
+  }
   op(abc::Opcode::kRETURNUNDEFINED);
   Check(body.size() < 128);
   bytes[kCode - 3] = 3; bytes[kCode - 2] = static_cast<std::uint8_t>(body.size());
   std::copy(body.begin(), body.end(), bytes.begin() + kCode);
+  std::vector<std::uint8_t> child_body;
+  if (family) {
+    body.swap(child_body);
+    if (mode == FixtureCase::kCapture) { op(abc::Opcode::kLDLEXVAR_IMM4_IMM4); body.push_back(0); }
+    else if (mode == FixtureCase::kLocalFunction) load(true, 0, 2);
+    else load(false, 0, 0);
+    op(abc::Opcode::kRETURN);
+    body.swap(child_body);
+    bytes[kChildCode - 3] = 3; bytes[kChildCode - 2] = static_cast<std::uint8_t>(child_body.size());
+    std::copy(child_body.begin(), child_body.end(), bytes.begin() + kChildCode);
+  }
   char path[] = "/tmp/abcd-record-import-XXXXXX";
   const int fd = mkstemp(path); Check(fd >= 0);
   Check(write(fd, bytes.data(), bytes.size()) == static_cast<ssize_t>(bytes.size())); Check(close(fd) == 0);
@@ -96,23 +126,32 @@ std::string Recover(FixtureCase mode) {
   abc::Header header; header.kind = abc::AbcKind::kDynamic; header.profile = abc::ProfileId::kDynamic1206;
   header.version = {12, 0, 6, 0}; header.layout = abc::DynamicLayout{}; header.file_size = bytes.size();
   abc::MetadataIndex index;
-  index.regions.push_back({400, 1000, {1, kTypes}, {static_cast<std::uint32_t>(guards.size()), kPool}, {}, {}});
-  abc::RecordInfo record; record.offset = {kRecord}; record.field_count = 1; record.method_count = 1;
+  index.regions.push_back({400, 1000, {1, kTypes}, {static_cast<std::uint32_t>(guards.size() + family), kPool}, {}, {}});
+  abc::RecordInfo record; record.offset = {kRecord}; record.field_count = 1; record.method_count = family ? 2 : 1;
   index.fields.push_back({{700}, record.offset, {abc::kDynamicHeaderSize}, {}, 0,
       abc::FieldValue{abc::FieldValueEncoding::kSignedLeb, kModule}});
   abc::MethodInfo entry; entry.offset = {kMethod}; entry.owner_offset = record.offset;
   entry.name = "func_main_0"; entry.name_utf16_length = entry.name.size();
   entry.code = abc::CodeInfo{{kCode - 4}, {kCode}, 0, 3, static_cast<std::uint32_t>(body.size()), 0};
-  index.methods.push_back(entry); index.records.push_back(record);
+  index.methods.push_back(entry);
+  if (family) {
+    auto child = entry; child.offset = {kChild}; child.name = "reader"; child.name_utf16_length = child.name.size();
+    constexpr unsigned kFunctionKindShift = 8; // Pinned dynamic method access flags.
+    child.access_flags = static_cast<std::uint32_t>(abc::FunctionKind::kBaseConstructor) << kFunctionKindShift;
+    child.code = abc::CodeInfo{{kChildCode - 4}, {kChildCode}, 0, 3, static_cast<std::uint32_t>(child_body.size()), 0};
+    index.methods.push_back(child);
+  }
+  index.records.push_back(record);
   const auto context = std::get<source::RecordModuleContext>(source::ReadRecordModuleContext(
       *file, header, index, record, abc::FilePackaging::kMerged));
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(*file, header, index, lookup));
+  const auto creations = std::get<analysis::FunctionCreationSites>(analysis::FunctionCreationSites::Build(*file, header, index, lookup));
   source::RouteInputIdentity identity; identity.profile = header.profile;
   identity.abc_version = header.version; identity.file_size = header.file_size;
   const auto build = [&](source::RecordProgramBudget budget = {}) {
     return source::BuildRecordSource(*file, header, index, lookup, record, context, roles,
-        budget, nullptr, source::RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity);
+        budget, nullptr, source::RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity, family ? &creations : nullptr);
   };
   auto result = build();
   if (mode == FixtureCase::kArmStore) {
@@ -125,6 +164,8 @@ std::string Recover(FixtureCase mode) {
   }
   if (const auto* error = std::get_if<source::RecordProgramFailure>(&result))
     std::cerr << "record error " << static_cast<unsigned>(error->kind) << '\n';
+  if (const auto* error = std::get_if<source::RouteRefusal>(&result))
+    std::cerr << "route refusal " << unsigned(error->failure.reason) << '\n';
   Check(std::holds_alternative<source::PrintedSource>(result));
   source::RecordProgramBudget small; small.output.bytes = 1;
   Check(std::get<source::RecordProgramFailure>(build(small)).kind == source::RecordProgramError::kOutputLimit);
@@ -134,8 +175,11 @@ std::string Recover(FixtureCase mode) {
   return std::get<source::PrintedSource>(std::move(result)).text;
 }
 }
-int main(int argc, char**) {
-  const auto source = Recover(argc > 2 ? FixtureCase::kBranch : FixtureCase::kValid);
+int main(int argc, char** argv) {
+  const std::string_view mode = argc > 1 ? argv[1] : "";
+  const auto source = Recover(mode == "--local-function" ? FixtureCase::kLocalFunction : mode == "--function" ? FixtureCase::kFunction : mode == "--capture" ?
+      FixtureCase::kCapture : argc > 2 ? FixtureCase::kBranch : FixtureCase::kValid);
+  Recover(FixtureCase::kFunction); Recover(FixtureCase::kCapture); Recover(FixtureCase::kLocalFunction);
   Recover(FixtureCase::kBranch); Recover(FixtureCase::kArmStore);
   Recover(FixtureCase::kBindingCollision); Recover(FixtureCase::kExportCollision);
   if (argc > 1) std::cout << source;

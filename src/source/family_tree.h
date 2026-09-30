@@ -50,5 +50,14 @@ struct FamilyTreeFailure {
     analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
     ModuleOwnerId module_owner = {}, const abc::MethodLookup* lookup = nullptr,
     RecoveryMode recovery = RecoveryMode::kCompleteOnly);
+// Reuse a record adapter's root tree and checked flow, then construct all actual
+// children with the same defaults/capture/ABI pipeline. No fictional creation
+// context or function parameters are supplied for the module entry. Input and
+// seed storage are caller-admitted. Retained class obligations remain unsupported.
+[[nodiscard]] std::variant<ConstructedFamily, FamilyTreeFailure> BuildRecordFamilyTrees(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, FileFamily family, FamilyMember entry,
+    analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
+    ModuleOwnerId module_owner = {}, const abc::MethodLookup* lookup = nullptr);
 }  // namespace abcd::source
 #endif

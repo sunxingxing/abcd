@@ -101,7 +101,7 @@ ModuleImportResult ModuleEnclosure::WriteImports(const corpus::AbcFile& file,
 
 std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
     const FunctionTree& tree, abc::EntityOffset record, const GlobalScope* scope,
-    analysis::SemanticBudget allowance) {
+    analysis::SemanticBudget allowance, ModuleRole role) {
   try {
     Budget budget(allowance); budget.Step();
     if (tree.modules.empty()) {
@@ -116,11 +116,17 @@ std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
     for (const auto& alias : tree.modules) {
       budget.Step();
       Require(alias.target.owner == enclosure.Owner() && alias.target.symbol.value < enclosure.Names().size() + scope->module_local_names.size() &&
-          alias.symbol.value < tree.symbols.size() && alias.access == ModuleAccess::kReadOnly, Error::kBinding);
+          alias.symbol.value < tree.symbols.size(), Error::kBinding);
       const auto& symbol = tree.symbols[alias.symbol.value];
-      Require(symbol.scope == *tree.module_scope && symbol.kind == BindingKind::kModule &&
-          symbol.declaration == DeclarationKind::kConst && symbol.evidence == NameEvidence::kMetadata &&
-          symbol.name.value < tree.names.size(), Error::kBinding);
+      Require(symbol.evidence == NameEvidence::kMetadata && symbol.name.value < tree.names.size(), Error::kBinding);
+      if (alias.local) {
+        Require(role == ModuleRole::kInitializer && alias.access == ModuleAccess::kMutable &&
+            alias.target.symbol.value >= enclosure.Names().size() && symbol.scope == tree.body_scope &&
+            symbol.kind == BindingKind::kLocal && symbol.declaration == DeclarationKind::kLet, Error::kBinding);
+      } else {
+        Require(alias.access == ModuleAccess::kReadOnly && symbol.scope == *tree.module_scope &&
+            symbol.kind == BindingKind::kModule && symbol.declaration == DeclarationKind::kConst, Error::kBinding);
+      }
       const std::u16string_view name = tree.names[symbol.name.value];
       const auto slot = alias.target.symbol.value;
       const bool local = slot >= enclosure.Names().size();

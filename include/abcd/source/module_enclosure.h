@@ -11,6 +11,7 @@ enum class ModuleEnclosureError : std::uint8_t {
   kIdentity, kMissingModule, kName, kDuplicate, kBinding, kShadowed,
   kResourceLimit, kWorkLimit, kFileChanged, kMetadata
 };
+enum class ModuleRole : std::uint8_t { kReader, kInitializer };
 struct ModuleDestination { std::uint64_t work; };
 
 // Native ESM import inventory, not a promise that imports are initialized.
@@ -51,9 +52,12 @@ class ModuleEnclosure {
 // Recheck actual aliases and complete intervening lexical bindings at every
 // publication. Local read aliases additionally require GlobalScope's record
 // declaration premise; it does not authorize writes or early initialization.
+// The initializer role additionally admits its own mutable local declarations;
+// callers must establish their original first-store and slot/name correspondence.
+// It never grants that role to nested functions.
 // Input tree must already have passed shared scope validation.
 [[nodiscard]] std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
     const FunctionTree& tree, abc::EntityOffset record, const GlobalScope* scope,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {}, ModuleRole role = ModuleRole::kReader);
 }  // namespace abcd::source
 #endif

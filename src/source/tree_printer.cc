@@ -258,7 +258,8 @@ class TreePrinter {
       }
     }
     if (has_external_binding_) {
-      const auto check = VerifyFamilyDestination(*family_, scope_, remaining_);
+      const auto check = VerifyFamilyDestination(*family_, scope_, remaining_,
+          module_body_ ? ModuleRole::kInitializer : ModuleRole::kReader);
       const auto* enclosure = std::get_if<FamilyEnclosure>(&check);
       if (!enclosure) {
         switch (std::get<FamilyEnclosureFailure>(check).kind) {

@@ -214,6 +214,19 @@ void ModuleScopes() {
   changed = family;
   changed.members[0].tree.names.back() = u"other";
   Expect(changed, FamilyEnclosureError::kModuleBinding); // Same slot, different name.
+  // A module initializer's own let binding is the descendant's module target,
+  // not an unrelated local hiding it. The old bindings-minus-aliases allocation
+  // overran its local table when this kLocal symbol was counted a second time.
+  auto initialized = Chain(2);
+  ModuleAlias(initialized.members[1].tree, true);
+  auto& entry = initialized.members[0].tree;
+  Local(entry, {1});
+  entry.symbols[0].evidence = NameEvidence::kMetadata;
+  entry.scopes.push_back({ScopeKind::kModule, {}});
+  entry.module_scope = ScopeId{2}; entry.scopes[0].parent = ScopeId{2};
+  entry.modules.push_back({{0}, {{0}, {0}}, ModuleAccess::kMutable, true});
+  entry.statements[0].statement = BlockStmt{{1}, 0, 2}; entry.children = {{2}, {1}};
+  Check(std::get<FamilyEnclosure>(VerifyFamilyEnclosure(initialized)).module_reads == 1);
   std::uint64_t previous = 0;
   for (const auto count : {200U, 201U, 402U, 804U}) {
     auto nested = Chain(count);

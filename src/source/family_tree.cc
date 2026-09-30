@@ -16,9 +16,9 @@ class FamilyTrees {
       RecoveryMode recovery)
       : file_(file), header_(header), index_(index), initial_(budget), left_(budget),
         modules_(modules), module_owner_(owner), lookup_(lookup), recovery_(recovery) {}
-  ConstructedFamily Build(FileFamily& family, const FunctionContext& root) {
+  ConstructedFamily Build(FileFamily& family, const FunctionContext* root, std::optional<FamilyMember> entry = {}) {
     Admit(1, sizeof(FamilyTrees));
-    Require(!family.members.empty(), FamilyTreeError::kContext);
+    Require(!family.members.empty() && (root != nullptr) != entry.has_value(), FamilyTreeError::kContext);
     Require(family.members.size() < std::numeric_limits<std::uint32_t>::max(), FamilyTreeError::kResourceLimit);
     // Class obligations are not function-family receipts. They require the
     // record/class composition path before a complete family can publish.
@@ -28,7 +28,15 @@ class FamilyTrees {
     std::vector<FamilyMember> trees;
     bool incomplete = false;
     Reserve(trees, family.members.size());
-    for (std::size_t i = 0; i < family.members.size(); ++i) {
+    if (entry) {
+      const auto& function = family.members.front().function;
+      Require(!function.Phase() && !family.members.front().incoming && !entry->incoming &&
+          entry->tree.owner.value == FileFamily::kRoot.value &&
+          entry->tree.identity == function.Identity() && entry->tree.method == function.Method() &&
+          entry->record == function.Record(), FamilyTreeError::kContext);
+      trees.push_back(std::move(*entry));
+    }
+    for (std::size_t i = entry ? 1 : 0; i < family.members.size(); ++i) {
       member_ = {static_cast<std::uint32_t>(i)};
       default_candidates_.reset();
       defaults_proved_ = false;
@@ -41,7 +49,7 @@ class FamilyTrees {
       if (i != 0) {
         Require(member.context.has_value() && member.incoming.has_value(), FamilyTreeError::kContext);
       } else Require(!member.incoming && !member.context, FamilyTreeError::kContext);
-      const auto& context = i ? *member.context : root;
+      const auto& context = i ? *member.context : *root;
       const auto& function = member.function;
       const auto* phase = function.Phase();
       if (!phase) {
@@ -182,15 +190,18 @@ class FamilyTrees {
     return result;
   }
  private:
-  void ProjectDefaults(FileFamily& family, const FunctionContext& root) {
+  void ProjectDefaults(FileFamily& family, const FunctionContext* root) {
     Reserve(defaults_, family.members.size()); defaults_.resize(family.members.size());
     for (std::size_t i = 0; i < family.members.size(); ++i) {
       Step(1); member_ = {static_cast<std::uint32_t>(i)};
       default_candidates_.reset(); defaults_proved_ = false;
       auto& member = family.members[i];
       Require(i == 0 || member.context.has_value(), FamilyTreeError::kContext);
-      const auto length = i == 0 ? root.Length() : member.context->Length();
-      const auto& frame = i == 0 ? root.Frame() : member.context->Frame();
+      // A module entry has no callable signature to project. Its supplied tree
+      // retains the original graph; children still use the same default pass.
+      if (i == 0 && !root) continue;
+      const auto length = i == 0 ? root->Length() : member.context->Length();
+      const auto& frame = i == 0 ? root->Frame() : member.context->Frame();
       if (member.function.Phase()) continue;
       auto& values = member.function.Normal().values;
       if (length >= frame.parameters) continue;
@@ -308,7 +319,18 @@ std::variant<ConstructedFamily, FamilyTreeFailure> BuildFileFamilyTrees(
     const abc::MetadataIndex& index, FileFamily family, const FunctionContext& root,
     analysis::SemanticBudget budget, const RecordModuleContext* modules, ModuleOwnerId module_owner,
     const abc::MethodLookup* lookup, RecoveryMode recovery) {
-  try { return FamilyTrees(file, header, index, budget, modules, module_owner, lookup, recovery).Build(family, root);
+  try { return FamilyTrees(file, header, index, budget, modules, module_owner, lookup, recovery).Build(family, &root);
+  } catch (const FamilyTreeFailure& error) { return error;
+  } catch (const std::bad_alloc&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit};
+  } catch (const std::length_error&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit}; }
+}
+std::variant<ConstructedFamily, FamilyTreeFailure> BuildRecordFamilyTrees(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, FileFamily family, FamilyMember entry,
+    analysis::SemanticBudget budget, const RecordModuleContext* modules, ModuleOwnerId module_owner,
+    const abc::MethodLookup* lookup) {
+  try { return FamilyTrees(file, header, index, budget, modules, module_owner, lookup,
+      RecoveryMode::kCompleteOnly).Build(family, nullptr, std::move(entry));
   } catch (const FamilyTreeFailure& error) { return error;
   } catch (const std::bad_alloc&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit};
   } catch (const std::length_error&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit}; }

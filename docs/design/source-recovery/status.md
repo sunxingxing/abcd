@@ -12,6 +12,38 @@
 
 ## 当前阶段
 
+### 2026-10-01：普通子函数与模块入口正式组合输出
+
+- BuildRecordTree 不再因普通 children 非空直接拒绝。入口按真实模块绑定构建根树和
+  flow，然后 BuildRecordFamilyTrees 复用现有 FamilyTrees 的默认参数、捕获重绑定、
+  子树、ABI、原始写入及作用域检查；模块入口不伪造 FunctionContext 或函数参数。
+  正式输出接入 PrintModuleFamilyDraft，导入/导出仍由原 record 适配器组织。
+- 函数族目的地新增明确 ModuleRole，只有实际根可作为 initializer，子函数始终是
+  reader。入口模块自有 let 与可变 alias 通过 slot/name/scope 检查；子函数读这些
+  绑定仍为只读 alias，不扩大子函数模块写入权限。
+- 文件级测试发现并修复 family_enclosure 的局部区间表越界：旧容量按
+  bindings - modules 计算，却仅按 BindingKind::kModule 排除符号，模块自有 kLocal
+  被重复写入。现按已检查 alias 表构建线性索引，排除同一模块绑定，并保留真正
+  lexical shadow/TDZ 检查。LLDB 证据 /tmp/abcd-record-children-crash.log；没有
+  绕过 scope 检查，新增 own-local+descendant-alias 定向回归。
+- record_import_tree 的真实文件字节码 fixture 新增普通 DEFINEFUNC：子函数读取
+  外部模块活绑定、读取入口共享词法变量、读取本模块导出绑定三种场景，经正式
+  BuildRecordSource 输出。Node ESM 与独立源码对照函数 name/length/identity、
+  dependency mutate 后的读取、创建后 cell 更新、初始化顺序与循环依赖 TDZ。
+  配对参考只在测试端；生产未读取源码、未增加样本路径/PC 特判。
+- 初次 fixture 的目标缺少普通函数 kind 标志已修正。随后捕获路径暴露上述越界及
+  root initializer 被 reader 限制拒绝，两者均通过共同层修复。最终构建日志
+  /tmp/abcd-record-children-final-build.log；十五项定向回归全部通过（10.62 秒），
+  /tmp/abcd-record-children-final-tests.log，涵盖创建上下文、捕获/模块作用域、类、
+  module printer、真实 model/static-class 输出；未恢复全量测试/RSS/基准。
+- 五输入以最新构建正式导出至 build/stage-one/value-record-children-pass-2，仍为
+  34 complete / 72 failure / 46 no-module，无完整项退化、无 legacy writer；
+  /tmp/abcd-record-children-batch-summary.json。fixture 贯通不等于真实页面已完成。
+- 剩余：含保留 ClassTree 义务的混合入口尚未进入完整函数族组合；PC98 派生类
+  仍需 heritage/super/constructor 共同恢复。下一步完成类与函数族组合，不能
+  通过跳过类正文、伪造函数体或只放宽 callable 检查增加覆盖。阶段一未完成。
+
+
 ### 2026-10-01：共同 printer 支持模块入口与嵌套函数族
 
 - 新 PrintModuleFamilyDraft 复用 TreePrinter 的迭代 owner 事件栈和完整函数位置表。

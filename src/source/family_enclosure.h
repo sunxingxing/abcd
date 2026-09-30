@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_FAMILY_ENCLOSURE_H_
 
 #include "function_family.h"
+#include "abcd/source/module_enclosure.h"
 #include "abcd/source/global_reference.h"
 
 namespace abcd::source {
@@ -39,8 +40,9 @@ struct FamilyEnclosure {
 // This does not establish module initialization, strictness or publication.
 // Module reads require each member's file-backed record and a matching native
 // ModuleEnclosure; import spellings alone never authorize a binding.
+// Initializer role applies only to the actual family root; children remain readers.
 [[nodiscard]] std::variant<FamilyEnclosure, FamilyEnclosureFailure> VerifyFamilyDestination(
     const ConstructedFamily& family, const GlobalScope* scope,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {}, ModuleRole root_role = ModuleRole::kReader);
 }  // namespace abcd::source
 #endif

@@ -7,6 +7,7 @@
 #include "function_file.h"
 #include "class_tree.h"
 #include "family_route_failure.h"
+#include "family_print.h"
 #include "function_tree.h"
 #include "module_aliases.h"
 #include "abcd/source/module_enclosure.h"
@@ -320,10 +321,6 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
       retain(definition.allocated_bytes);
       constants->operations[occurrence.operation.value] = std::make_shared<ClassTree>(std::move(definition));
     }
-    // The entry graph now has actual child/capture bindings. Until its child
-    // trees and complete family write/enclosure checks join module publication,
-    // do not let a standalone module printer silently discard those children.
-    if (!children.empty()) return fail(Error::kValue);
     const auto view = constants->View();
     syntax.names = std::move(constants->names); syntax.texts = std::move(constants->texts);
     auto constructed = BuildFunctionTree(graph, *control, *evaluation, std::move(syntax), view, {budget.bytes});
@@ -370,6 +367,24 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     // No embedding globals have been established by this record adapter yet.
     const auto globals = VerifyTreeGlobals(result->tree, nullptr, {budget.bytes});
     if (!std::holds_alternative<TreeGlobals>(globals)) return fail(Error::kValue);
+    std::optional<ConstructedFamily> module_family;
+    if (!children.empty()) {
+      auto checked_flow = VerifyTreeFlow(graph, *control, *evaluation, result->tree, {budget.bytes});
+      auto* flow = std::get_if<TreeFlow>(&checked_flow);
+      if (!flow) return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{
+          FamilyTreeFailure{FileFamily::kRoot, std::get<TreeFlowError>(checked_flow)}})};
+      retain(flow->allocated_bytes);
+      FamilyMember entry_tree{std::move(result->tree), std::move(*flow), {}, {}, {}, record.offset};
+      auto assembled = BuildRecordFamilyTrees(file, header, index, std::move(*family), std::move(entry_tree),
+          {budget.bytes}, &context, owner, &lookup);
+      if (const auto* error = std::get_if<FamilyTreeFailure>(&assembled))
+        return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{*error})};
+      module_family.emplace(std::get<ConstructedFamily>(std::move(assembled)));
+      retain(module_family->allocated_bytes);
+      auto destination = VerifyFamilyDestination(*module_family, &class_scope, {budget.bytes}, ModuleRole::kInitializer);
+      if (const auto* error = std::get_if<FamilyEnclosureFailure>(&destination))
+        return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{*error})};
+    }
     // Bound retained stream capacity and the returned string alongside the
     // still-live graph/tree; the printer retains its own scratch allowance.
     budget.output.bytes = std::min(budget.output.bytes, budget.bytes / 6);
@@ -387,9 +402,19 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
         case ModuleImportError::kString: return fail(Error::kModule);
       }
     }
-    auto printed = PrintModuleTree(result->tree, output,
-        {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope);
-    const auto* body = std::get_if<PrintedFunction>(&printed);
+    auto printed = [&]() -> std::variant<std::size_t, TreePrintError> {
+      if (!module_family) {
+        auto emitted = PrintModuleTree(result->tree, output,
+            {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope);
+        if (const auto* error = std::get_if<TreePrintError>(&emitted)) return *error;
+        return std::get<PrintedFunction>(emitted).bytes;
+      }
+      auto emitted = PrintModuleFamilyDraft(*module_family, output,
+          {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope);
+      if (const auto* error = std::get_if<TreePrintError>(&emitted)) return *error;
+      return std::get<PrintedFamilyDraft>(emitted).bytes;
+    }();
+    const auto* body = std::get_if<std::size_t>(&printed);
     if (!body) {
       switch (std::get<TreePrintError>(printed)) {
         case TreePrintError::kResourceLimit: return fail(Error::kResourceLimit);
@@ -401,7 +426,7 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
           return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kPrintStage, {}}};
       }
     }
-    std::size_t remaining = budget.output.bytes - *prelude_bytes - body->bytes;
+    std::size_t remaining = budget.output.bytes - *prelude_bytes - *body;
     const auto append = [&](std::string_view text) {
       if (text.size() > remaining) throw fail(Error::kOutputLimit);
       output << text; remaining -= text.size();

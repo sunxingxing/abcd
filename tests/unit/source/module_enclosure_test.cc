@@ -142,6 +142,13 @@ std::uint64_t Run(std::size_t count, abc::ProfileId profile, bool duplicate = fa
   auto declared = scope; declared.module_local_names = local_names;
   declared.record_bindings = record_names;
   Check(std::holds_alternative<ModuleDestination>(verify(local, &declared)));
+  auto initializer = local;
+  initializer.modules[0].local = true; initializer.modules[0].access = ModuleAccess::kMutable;
+  initializer.symbols[0].scope = initializer.body_scope;
+  initializer.symbols[0].kind = BindingKind::kLocal; initializer.symbols[0].declaration = DeclarationKind::kLet;
+  Check(std::get<Error>(verify(initializer, &declared)) == Error::kBinding);
+  Check(std::holds_alternative<ModuleDestination>(VerifyModuleDestination(initializer,
+      enclosure.Context().record(), &declared, {}, ModuleRole::kInitializer)));
   auto mismatch = local; mismatch.names[0] = u"OtherClass";
   Check(std::get<Error>(verify(mismatch, &declared)) == Error::kName);
   mismatch = local; ++mismatch.modules[0].target.owner.value;

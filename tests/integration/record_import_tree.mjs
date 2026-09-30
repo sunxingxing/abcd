@@ -79,3 +79,30 @@ for (const initial of [0, 42])
   assert.deepEqual(await observe(conditional, true, initial), await observe(conditionalReference, true, initial));
 const cyclic = await setup(conditional, {cycle: true});
 await assert.rejects(cyclic.root.evaluate(), {name: 'ReferenceError'});
+
+for (const mode of ['--function', '--capture', '--local-function']) {
+  const generated = execFileSync(process.argv[2], [mode], {encoding: 'utf8'});
+  const tail = mode === '--capture' ? `
+    let captured = 1;
+    answer = function reader() { return captured; };
+    captured = 42;
+  ` : mode === '--local-function' ? 'answer = function reader() { return answer; };' :
+      'answer = function reader() { return input; };';
+  const expected = reference + tail;
+  for (const source of [generated, expected]) {
+    const {root, dependency, trace} = await setup(source);
+    assert.throws(() => root.namespace.answer, {name: 'ReferenceError'});
+    await root.evaluate();
+    const fn = root.namespace.answer;
+    assert.equal(fn, root.namespace.answerAlias);
+    assert.equal(fn.name, 'reader'); assert.equal(fn.length, 0);
+    assert.equal(fn(), mode === '--local-function' ? fn : mode === '--capture' ? 42 : 43);
+    Reflect.apply(dependency.namespace.mutate, undefined, []);
+    assert.equal(fn(), mode === '--local-function' ? fn : mode === '--capture' ? 42 : 44);
+    assert.equal(root.namespace.answer, fn);
+    assert.equal(root.namespace.snapshot, dependency.namespace);
+    assert.deepEqual(trace, ['side', 'dep', 'star', 'mutate', 'mutate']);
+    const cyclic = await setup(source, {cycle: true});
+    await assert.rejects(cyclic.root.evaluate(), {name: 'ReferenceError'});
+  }
+}

@@ -21,8 +21,8 @@ enum class BindingTarget : std::uint8_t { kGlobal, kRealm, kSymbolConstructor, k
 class EnclosureCheck {
  public:
   EnclosureCheck(const ConstructedFamily& family, analysis::SemanticBudget budget,
-      EnclosureExtent extent = EnclosureExtent::kFamily, const GlobalScope* scope = nullptr)
-      : family_(family), initial_(budget), left_(budget), extent_(extent), scope_(scope) {}
+      EnclosureExtent extent = EnclosureExtent::kFamily, const GlobalScope* scope = nullptr, ModuleRole root_role = ModuleRole::kReader)
+      : family_(family), initial_(budget), left_(budget), extent_(extent), scope_(scope), root_role_(root_role) {}
   FamilyEnclosure Run() {
     Admit(1, sizeof(EnclosureCheck));
     const auto count = family_.members.size();
@@ -47,7 +47,8 @@ class EnclosureCheck {
       if (extent_ == EnclosureExtent::kDestination && (!tree.modules.empty() || tree.module_scope)) {
         Require(family_.members[i].record.has_value() && scope_ && scope_->module_enclosure,
             Error::kMissingModuleContext);
-        const auto destination = VerifyModuleDestination(tree, *family_.members[i].record, scope_, left_);
+        const auto destination = VerifyModuleDestination(tree, *family_.members[i].record, scope_, left_,
+            i == family_.root.value ? root_role_ : ModuleRole::kReader);
         if (const auto* error = std::get_if<ModuleEnclosureError>(&destination)) {
           if (*error == ModuleEnclosureError::kResourceLimit) Fail(Error::kResourceLimit);
           if (*error == ModuleEnclosureError::kWorkLimit) Fail(Error::kWorkLimit);
@@ -96,10 +97,21 @@ class EnclosureCheck {
     for (std::size_t i = 0; i < count; ++i) {
       member_ = FamilyId{static_cast<std::uint32_t>(i)};
       const auto& tree = family_.members[i].tree;
+      // Module-owned locals are declarations of the same binding referenced by
+      // descendant module aliases, not unrelated lexical shadowing. Classify by
+      // the checked alias table, not BindingKind: local aliases use kLocal.
+      std::vector<std::uint8_t> module_symbols;
+      Array(module_symbols, tree.symbols.size());
+      for (const auto& alias : tree.modules) { Step(); module_symbols[alias.symbol.value] = 1; }
+      std::size_t symbol_index = 0;
       for (const auto& symbol : tree.symbols) {
         Step(); const auto& interval = intervals_[offsets_[i] + symbol.scope.value];
         bindings_[next++] = {tree.names[symbol.name.value], *interval.begin, interval.end};
-        if (modules && symbol.kind != BindingKind::kModule) locals_[local++] = bindings_[next - 1];
+        if (modules && !module_symbols[symbol_index]) {
+          Require(local < locals_.size(), Error::kStructure);
+          locals_[local++] = bindings_[next - 1];
+        }
+        ++symbol_index;
       }
       for (const auto& alias : tree.modules) {
         Step(); const auto& symbol = tree.symbols[alias.symbol.value];
@@ -295,6 +307,7 @@ class EnclosureCheck {
   analysis::SemanticBudget initial_, left_;
   EnclosureExtent extent_;
   const GlobalScope* scope_;
+  ModuleRole root_role_;
   FamilyId member_{0};
   std::optional<NameId> name_;
   std::vector<TreeStructure> structures_;
@@ -314,8 +327,8 @@ std::variant<FamilyEnclosure, FamilyEnclosureFailure> VerifyFamilyEnclosure(
   } catch (const std::length_error&) { return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}}; }
 }
 std::variant<FamilyEnclosure, FamilyEnclosureFailure> VerifyFamilyDestination(
-    const ConstructedFamily& family, const GlobalScope* scope, analysis::SemanticBudget budget) {
-  try { return EnclosureCheck(family, budget, EnclosureExtent::kDestination, scope).Run();
+    const ConstructedFamily& family, const GlobalScope* scope, analysis::SemanticBudget budget, ModuleRole root_role) {
+  try { return EnclosureCheck(family, budget, EnclosureExtent::kDestination, scope, root_role).Run();
   } catch (const FamilyEnclosureFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}};
   } catch (const std::length_error&) { return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}}; }
