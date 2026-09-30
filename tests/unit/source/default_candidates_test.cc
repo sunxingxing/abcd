@@ -135,6 +135,49 @@ void EnvironmentPrefix() {
     Check(Find(graph).values.empty());
   }
 }
+void UnusedDefault() {
+  auto graph = DefaultDiamond();
+  graph.ops[2].life = ValueLife::kRemoved;
+  graph.origins[2].disposition = OriginDisposition::kElidedPure;
+  graph.values[2].life = ValueLife::kRemoved;
+  graph.values[3].life = ValueLife::kRemoved;
+  for (const auto i : {3U, 4U, 6U}) graph.uses[i].life = ValueLife::kRemoved;
+  graph.uses[5].operand = SpecialValue::kUndefined;
+  Relink(graph);
+  const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(graph, 1));
+  const auto candidates = Find(graph);
+  Check(candidates.values.size() == 1 && !candidates.values[0].merged);
+  auto projected = DefaultBody::Build(graph, parameters, candidates, 0);
+  Check(std::holds_alternative<DefaultBody>(projected));
+  const auto& body = std::get<DefaultBody>(projected);
+  Check(body.Signature().Operations().size() == 3);
+  Check(body.Graph().origins[2].disposition == OriginDisposition::kRetained);
+  Check(body.Graph().ops[2].life == ValueLife::kRemoved);
+  Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(body.Graph())));
+  const auto control = std::get<ControlPlan>(BuildControlPlan(body.Graph()));
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(body.Graph()));
+  FunctionSyntax syntax{{}, {1}, {0}, CallableKind::kMethod, Strictness::kStrict,
+      {{{}, NameEvidence::kSynthesized}}, {}, {}};
+  std::vector<ExpressionConstant> constants(graph.ops.size());
+  auto built = BuildFunctionTree(body.Graph(), control, evaluation, std::move(syntax), {constants});
+  Check(std::holds_alternative<ConstructedFunction>(built));
+  auto& tree = std::get<ConstructedFunction>(built).tree;
+  Check(std::holds_alternative<DefaultSignatureProof>(BuildDefaultSignature(body, tree)));
+  Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(body.Graph(), control, evaluation, tree, {constants})));
+  auto forged = candidates;
+  forged.values[0].fallback = SpecialValue::kNull;
+  Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, forged, 0)) == DefaultProofError::kLiteral);
+  graph.origins[2].disposition = OriginDisposition::kRetained;
+  Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0)) == DefaultProofError::kLiteral);
+  graph.origins[2].disposition = OriginDisposition::kElidedPure;
+  graph.uses[6].input = InputRead{{2}, 0};
+  Check(Find(graph).values.empty()); // A propagated register copy is not a literal source.
+  Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0)) == DefaultProofError::kLiteral);
+  graph.uses[6].input.reset();
+  graph.uses[5].operand = ValueId{0};
+  Relink(graph);
+  Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0)) == DefaultProofError::kEscapedValue);
+}
 void ProofAndEscapes() {
   auto graph = DefaultDiamond();
   const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(graph, 1));
@@ -417,4 +460,4 @@ void MaterializedNumber() {
         DefaultProofError::kEscapedValue);
 }
 }  // namespace
-int main() { EnvironmentPrefix(); MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); SnapshotDefault(); UndefinedProducer(); MaterializedNumber(); }
+int main() { UnusedDefault(); EnvironmentPrefix(); MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); SnapshotDefault(); UndefinedProducer(); MaterializedNumber(); }

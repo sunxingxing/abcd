@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-01：恢复未使用默认参数并贯通真实NavPageMap函数族
+
+- DefaultCandidate的merged为显式optional，支持无live phi的未使用默认参数。
+  仅识别缺参arm中唯一的原始字面量来源；带InputRead的寄存器传播副本不充当
+  原始字面量。独立证明核对比较/分支/边、纯效果、Removed状态、ElidedPure来源、
+  无结果使用、参数入口不逃逸及精确fallback。未按length猜默认值。
+- DefaultBody仅将已证明的删除字面量来源重新归属signature，指令继续Removed；
+  已有live操作的来源不重写。共同AST、签名、语义与instruction来源验证继续执行。
+  新增无phi规格及伪造fallback/来源、传播副本、原始参数逃逸负例。
+- 真实NavPageMap10428的原PC28恢复为第二参数null默认值；环境初始化保持body归属。
+  在实际ModuleEnclosure下PreparedFamily与PrintDraft成功，包含全部嵌套闭包；
+  输出/tmp/abcd-navmap.js。新增--navmap测试入口及navmap_source_test，从配对
+  Index.ts独立提取参考方法（仅测试端去除一个参数类型标注），不向引擎提供源码。
+- 756组受控框架行为对照通过：四路由及未匹配/undefined/对象、三种parent、
+  首次渲染/更新、同步/延迟回调、receiver捕获、构造元数据、paramsGenerator名字/
+  新对象结果，以及observe/create/pop/branch/constructor/view/setter/update异常。
+  这是方法族行为验证，不是真实平台整应用或最终表示质量验收；仍有合成参数名和临时变量。
+- 构建及四项定向测试通过（2.41秒）：default_candidates_test、class_initializer_file_test、
+  derived_constructor_source_test、navmap_source_test。日志/tmp/abcd-unused-default-final-build.log、
+  /tmp/abcd-unused-default-final-tests.log。五输入正式导出
+  build/stage-one/value-unused-default-pass-1仍34 complete/72 failure/46 no-module，
+  无完整项退化、无legacy writer；/tmp/abcd-unused-default-batch-summary.json。
+- 整类已越过原definition op83，下一处definition op86在LiteralPlan::EarlyValue
+  报kLateValue；调用链/tmp/abcd-unused-default-next-blocker.log。下一步处理后续成员
+  对象字面量的求值顺序组合，继承表达式和整类验收仍开放。未恢复全量/RSS/基准。
+
 ### 2026-10-01：默认参数迁移保留入口环境初始化
 
 - 共同DefaultCandidates现识别首次默认判断前连续的环境创建/词法存储前缀。

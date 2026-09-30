@@ -229,6 +229,46 @@ int main(int argc, char** argv) {
       std::cout << constructor_source.str(); return 0;
     }
 
+    // The real unused default survives as an elided original literal, not a
+    // live phi. Prove and migrate that exact PC while retaining closure setup.
+    {
+      const auto nav_position = lookup.Find({10428}); Check(nav_position.has_value());
+      auto read = ReadFunctionValues(file, header, index, *nav_position, identity, InputCaptureMode::kClosed);
+      Check(std::holds_alternative<FileFunction>(read));
+      const auto& nav = std::get<FileFunction>(read);
+      const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(nav.values.graph, nav.frame.parameters));
+      const auto candidates = std::get<DefaultCandidates>(FindDefaultCandidates(nav.values.graph, parameters, 1));
+      Check(candidates.values.size() == 1 && !candidates.values[0].merged);
+      Check(std::get<analysis::SpecialValue>(candidates.values[0].fallback) == analysis::SpecialValue::kNull);
+      const auto initializer = candidates.values[0].initializer;
+      Check(nav.values.graph.origins[nav.values.graph.ops[initializer.value].origin.value].pc.value == 28);
+      auto body = DefaultBody::Build(nav.values.graph, parameters, candidates, 1);
+      Check(std::holds_alternative<DefaultBody>(body));
+      const auto& residual = std::get<DefaultBody>(body).Graph();
+      Check(residual.ops[0].life == analysis::ValueLife::kLive);
+      Check(residual.ops[0].operation == nav.values.graph.ops[0].operation);
+      Check(residual.origins[residual.ops[initializer.value].origin.value].disposition ==
+          analysis::OriginDisposition::kRetained);
+      const auto owner = std::find_if(index.records.begin(), index.records.end(),
+          [&](const auto& record) { return record.offset == index.methods[nav_position->value].owner_offset; });
+      Check(owner != index.records.end());
+      const auto packaging = std::get<abc::FilePackaging>(abc::DetectFilePackaging(file, header, index));
+      auto modules = std::get<RecordModuleContext>(ReadRecordModuleContext(file, header, index, *owner, packaging));
+      auto enclosure = std::get<ModuleEnclosure>(ModuleEnclosure::Build(file, header, modules, identity, {owner->offset.value}));
+      GlobalScope scope{}; scope.module_enclosure = &enclosure;
+      const FamilyDestination destination{Strictness::kStrict, &scope, FunctionFragment::kClassMember};
+      auto prepared = PreparedFamily::PrepareDefinedMember(file, header, index, lookup, roles, sites,
+          parent, parent.values.definitions.sites[5].definition, abc::ClassMethodKind::kOrdinary, identity, destination);
+      Check(std::holds_alternative<PreparedFamily>(prepared));
+      const auto& family = std::get<PreparedFamily>(prepared);
+      Check(family.Family().members[family.Family().root.value].tree.method.value == 10428);
+      std::ostringstream source;
+      Check(std::holds_alternative<PrintedFamilyDraft>(family.PrintDraft(destination, source)));
+      if (argc == 3 && std::string_view(argv[2]) == "--navmap") {
+        std::cout << source.str(); return 0;
+      }
+    }
+
 
     const auto projected = ProjectClassDefinitions(graph, parent.values.definitions.sites);
     if (const auto* error = std::get_if<ClassDefinitionError>(&projected))

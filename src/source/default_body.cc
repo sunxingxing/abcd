@@ -34,8 +34,10 @@ template<class Proof> class Projection {
       Require(parameter.header.value < paths_.size() && parameter.arm.value < paths_.size());
       Require(!paths_[parameter.header.value] && !paths_[parameter.arm.value]);
       if constexpr (std::is_same_v<Proof, DefaultValueProof>) {
-        Require(parameter.merged.value < aliases_.size() && parameter.entry.value < aliases_.size() && !aliases_[parameter.merged.value]);
-        aliases_[parameter.merged.value] = parameter.entry;
+        if (parameter.merged) {
+          Require(parameter.merged->value < aliases_.size() && parameter.entry.value < aliases_.size() && !aliases_[parameter.merged->value]);
+          aliases_[parameter.merged->value] = parameter.entry;
+        }
       }
       paths_[parameter.header.value] = parameter.missing;
       paths_[parameter.arm.value] = parameter.merge;
@@ -68,7 +70,13 @@ template<class Proof> class Projection {
     for (std::size_t i = 0; i < body.ops.size(); ++i) {
       Step(); if (!removed_[i]) continue;
       auto& op = body.ops[i];
-      Require(op.life == ValueLife::kLive && op.origin.value < body.origins.size(), Error::kOrigin);
+      Require(op.origin.value < body.origins.size(), Error::kOrigin);
+      // The sealed proof can reclaim an elided, unused literal for the native
+      // signature. It stays removed from execution; its PC now belongs there.
+      if (op.life == ValueLife::kRemoved) {
+        Require(body.origins[op.origin.value].disposition == OriginDisposition::kElidedPure, Error::kOrigin);
+        body.origins[op.origin.value].disposition = OriginDisposition::kRetained;
+      }
       op.life = ValueLife::kRemoved;
       if (op.result) body.values[op.result->value].life = ValueLife::kRemoved;
       {

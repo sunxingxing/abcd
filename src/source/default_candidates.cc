@@ -17,6 +17,8 @@ struct BlockFacts {
   std::uint32_t predecessors = 0;
   std::uint32_t operations = 0;
   std::uint32_t environment_prefix = 0;
+  std::optional<OpId> unused_literal;
+  bool ambiguous_literal = false;
   std::uint32_t phis = 0;
   std::optional<OpId> last;
   std::uint32_t value_operations = 0;
@@ -92,6 +94,14 @@ class Finder {
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       Step(); const auto& op = graph_.ops[i];
       Require(op.block.value < blocks_.size());
+      if (op.life == ValueLife::kRemoved && std::holds_alternative<ValueCopy>(op.operation) &&
+          op.use_count == 1 && op.first_use.value < graph_.uses.size() &&
+          !graph_.uses[op.first_use.value].input &&
+          !std::holds_alternative<ValueId>(graph_.uses[op.first_use.value].operand)) {
+        auto& facts = blocks_[op.block.value];
+        if (facts.unused_literal) facts.ambiguous_literal = true;
+        else facts.unused_literal = OpId{static_cast<std::uint32_t>(i)};
+      }
       if (op.life != ValueLife::kLive || std::holds_alternative<ValueNop>(op.operation)) continue;
       auto& block = blocks_[op.block.value];
       Require(i <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
@@ -201,7 +211,7 @@ class Finder {
     const auto join = graph_.edges[present.value].target;
     if (arm == join || arm == header || join == header || blocks_[arm.value].predecessors != 1 ||
         blocks_[join.value].predecessors != 2 || blocks_[arm.value].phis != 0 ||
-        blocks_[join.value].phis != 1) return {};
+        blocks_[join.value].phis > 1) return {};
     const auto& arm_block = graph_.blocks[arm.value];
     if (arm_block.edge_count != 1 || Edge(arm_block, 0).target != join) return {};
     // Register copies were removed, but literal-producing copies stay live.
@@ -210,6 +220,17 @@ class Finder {
     constexpr std::uint32_t kLiteralAndNegation = 2;
     if (arm_facts.value_operations > kLiteralAndNegation ||
         arm_facts.operations > arm_facts.value_operations + 1) return {};
+    if (blocks_[join.value].phis == 0) {
+      // Dead default assignments still carry their original literal operation.
+      // Do not invent an initializer from length, or pick between several literals.
+      if (arm_facts.value_operations != 0 || !arm_facts.unused_literal ||
+          arm_facts.ambiguous_literal) return {};
+      const auto initializer = *arm_facts.unused_literal;
+      const auto& value = graph_.uses[graph_.ops[initializer.value].first_use.value].operand;
+      return DefaultCandidate{parameter->index, *entry, {}, value, initializer,
+          producer->op, *facts.last, header, arm, join, present, missing, arm_block.first_edge,
+          undefined_op, {}};
+    }
     const auto merged = *blocks_[join.value].phi;
     const auto& phi = phis_[merged.value];
     if (phi.count != 2) return {};

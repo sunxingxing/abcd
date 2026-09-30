@@ -65,7 +65,9 @@ class Checker {
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       Step(); const auto& op = graph_.ops[i];
       Require(op.block.value < blocks_.size());
-      if (op.life != ValueLife::kLive || !blocks_[op.block.value]) continue;
+      if (!blocks_[op.block.value]) continue;
+      const auto& proposed = candidates_.values[blocks_[op.block.value]->candidate];
+      if (op.life != ValueLife::kLive && (proposed.merged || proposed.initializer.value != i)) continue;
       const auto owner = *blocks_[op.block.value];
       const auto& candidate = candidates_.values[owner.candidate];
       const OpId id{static_cast<std::uint32_t>(i)};
@@ -102,7 +104,9 @@ class Checker {
       operations.push_back({id, candidate.parameter});
     }
     for (const auto& use : graph_.uses) { Step(); if (use.life == ValueLife::kLive) CheckUse(use); }
-    for (const auto count : phi_counts_) { Step(); Require(count.present && count.missing); }
+    for (std::size_t i = 0; i < phi_counts_.size(); ++i) {
+      Step(); if (candidates_.values[i].merged) Require(phi_counts_[i].present && phi_counts_[i].missing);
+    }
     return operations;
   }
   void Step(std::uint64_t count = 1) { Require(count <= budget_.work, Error::kWorkLimit); budget_.work -= count; }
@@ -125,7 +129,7 @@ class Checker {
     Require(op.first_use.value < graph_.uses.size() && ordinal < op.use_count &&
         ordinal < graph_.uses.size() - op.first_use.value);
     const auto& use = graph_.uses[op.first_use.value + ordinal];
-    Require(use.life == ValueLife::kLive && use.role == role && use.purpose == ReadPurpose::kOperand);
+    Require(use.life == op.life && use.role == role && use.purpose == ReadPurpose::kOperand);
     return use.operand;
   }
   void Restrict(ValueId id, std::uint32_t candidate, ValueRole role) {
@@ -156,12 +160,15 @@ class Checker {
     Require(graph_.blocks[c.header.value].edge_count == 2 && graph_.blocks[c.arm.value].edge_count == 1, Error::kControl);
     Require(c.present != c.missing, Error::kControl);
     Edge(c.present, c.header, c.join); Edge(c.missing, c.header, c.arm); Edge(c.merge, c.arm, c.join);
-    Restrict(c.entry, i, ValueRole::kEntry); Restrict(c.merged, i, ValueRole::kMerged);
+    Restrict(c.entry, i, ValueRole::kEntry);
+    if (c.merged) Restrict(*c.merged, i, ValueRole::kMerged);
     const auto* entry = std::get_if<EntryDefinition>(&graph_.values[c.entry.value].origin);
     const auto* parameter = entry ? std::get_if<ParameterEntry>(entry) : nullptr;
     Require(parameter && parameter->index == c.parameter, Error::kParameter);
-    const auto* phi = std::get_if<PhiDefinition>(&graph_.values[c.merged.value].origin);
-    Require(phi && phi->block == c.join);
+    if (c.merged) {
+      const auto* phi = std::get_if<PhiDefinition>(&graph_.values[c.merged->value].origin);
+      Require(phi && phi->block == c.join);
+    }
     const auto& comparison = Op(c.comparison, c.header);
     const auto* binary = std::get_if<ValueBinary>(&comparison.operation);
     Require(binary && (binary->op == BinaryOperator::kStrictEqual || binary->op == BinaryOperator::kStrictNotEqual) &&
@@ -195,10 +202,20 @@ class Checker {
       Require(*special == SpecialValue::kUndefined || *special == SpecialValue::kNull ||
           *special == SpecialValue::kTrue || *special == SpecialValue::kFalse, Error::kLiteral);
     {
-      const auto& initializer = Op(c.initializer, c.arm);
+      Require(c.initializer.value < graph_.ops.size());
+      const auto& initializer = graph_.ops[c.initializer.value];
+      Require(initializer.block == c.arm && initializer.life ==
+          (c.merged ? ValueLife::kLive : ValueLife::kRemoved));
+      if (!c.merged) {
+        Require(!c.number && std::holds_alternative<ValueCopy>(initializer.operation) &&
+            initializer.origin.value < graph_.origins.size() &&
+            graph_.origins[initializer.origin.value].disposition == OriginDisposition::kElidedPure,
+            Error::kLiteral);
+      }
       const auto* unary = std::get_if<ValueUnary>(&initializer.operation);
       Require(initializer.use_count == 1 && initializer.result, Error::kLiteral);
       const auto& input = Operand(initializer, 0, OperandRole::kInput);
+      if (!c.merged) Require(!graph_.uses[initializer.first_use.value].input, Error::kLiteral);
       if (std::holds_alternative<ValueCopy>(initializer.operation)) {
         Require(!c.number && !std::holds_alternative<ValueId>(input) && SameLiteral(c.fallback, input), Error::kLiteral);
         Pure(initializer);
@@ -221,7 +238,15 @@ class Checker {
         Require((initializer.normal == LanguageEffect::kNone || initializer.normal == LanguageEffect::kUserCode) &&
             initializer.before_throw == initializer.normal && initializer.exceptional != ExceptionalCompletion::kAlwaysThrow, Error::kEffect);
       }
-      Restrict(*initializer.result, i, ValueRole::kInitializer);
+      if (c.merged) Restrict(*initializer.result, i, ValueRole::kInitializer);
+      else {
+        const auto id = *initializer.result;
+        Require(id.value < values_.size() && !values_[id.value] &&
+            graph_.values[id.value].life == ValueLife::kRemoved && !graph_.values[id.value].first_use);
+        const auto* result = std::get_if<OpResult>(&graph_.values[id.value].origin);
+        Require(result && result->op == c.initializer);
+        values_[id.value] = RestrictedValue{i, ValueRole::kInitializer};
+      }
     }
   }
   void CheckValues() {
