@@ -119,4 +119,16 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
     catch (const std::bad_alloc&) { return Error::kResourceLimit; }
     catch (const std::length_error&) { return Error::kResourceLimit; }
 }
+std::optional<DerivedProjectionError> VerifyDerivedProjection(
+    const FileFunction& function, const FunctionContext& owner, const DerivedProjection& projection,
+    analysis::SemanticBudget budget) {
+  if (projection.revision != function.values.graph.revision ||
+      projection.cfg_revision != function.values.graph.cfg_revision) return Error::kRevision;
+  const auto checked = ProjectDerivedConstructor(function, owner, budget);
+  if (const auto* error = std::get_if<Error>(&checked)) return *error;
+  const auto& expected = std::get<DerivedProjection>(checked);
+  if (expected.call != projection.call || expected.guards != projection.guards) return Error::kCoverage;
+  return {};
+}
+
 }

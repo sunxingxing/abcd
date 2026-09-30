@@ -9,7 +9,7 @@ struct DerivedProjection {
   std::vector<analysis::OpId> guards;
 };
 enum class DerivedProjectionError : std::uint8_t {
-  kOwner, kProtocol, kOrigin, kOperand, kResourceLimit, kWorkLimit
+  kOwner, kProtocol, kOrigin, kOperand, kResourceLimit, kWorkLimit, kRevision, kCoverage
 };
 // Same verified input/work pair, with a genuine derived creation owner. Reprove
 // original initialization and check actual working guard inputs before allowing
@@ -19,5 +19,11 @@ enum class DerivedProjectionError : std::uint8_t {
 // passes with disjoint scratch and the supplied per-pass work limit.
 [[nodiscard]] std::variant<DerivedProjection, DerivedProjectionError> ProjectDerivedConstructor(
     const FileFunction&, const FunctionContext&, analysis::SemanticBudget = {});
+// Recheck against the current same-owner body/working graph before consuming a
+// cached projection. Revision equality alone is insufficient: IDs and complete
+// guard coverage must match a fresh protocol proof.
+[[nodiscard]] std::optional<DerivedProjectionError> VerifyDerivedProjection(
+    const FileFunction&, const FunctionContext&, const DerivedProjection&,
+    analysis::SemanticBudget = {});
 }
 #endif

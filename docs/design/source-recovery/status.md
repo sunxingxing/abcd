@@ -13,6 +13,22 @@
 ## 当前阶段
 
 
+### 2026-10-01：默认参数迁移后重新验证派生初始化投影
+
+- 核对实际 FamilyTrees 顺序：默认参数先投影为 DefaultBody 残余图，再建立求值
+  与源码树，因此构造器投影不能从迁移前缓存直接消费。
+- 新增 VerifyDerivedProjection：同时检查 IR/CFG revision，基于当前同 owner 的
+  body/工作图重建原始协议及输入证明，再比较 super 身份和完整守卫集合。
+  相同版本号不替代覆盖检查，少一个守卫或换成错误 call 均拒绝。
+- 真实9865先 FindDefaultCandidates→DefaultBody，再更新工作图；新初始化投影
+  与求值计划均通过。旧投影按 kRevision 拒绝，缺守卫/错call按 kCoverage 拒绝。
+  只变换测试内存图，原始ABC与配对源码不变。
+- class_initializer_file_test 通过（1.11秒），/tmp/abcd-derived-defaults-build.log、
+  /tmp/abcd-derived-defaults-tests.log。本次未完成守卫到AST锚点的消费，下一步
+  继续接入这一环节及 receiver/返回协议；阶段一未完成，未恢复暂停的验证项目。
+
+
+
 ### 2026-10-01：共同源码树新增原生 super 调用
 
 - SuperCallExpr 独立表达隐式父构造器/newTarget 的调用，不复用普通 CallExpr 或

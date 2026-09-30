@@ -1,5 +1,6 @@
 #include "../../src/source/class_initializer_file.h"
 #include "../../src/source/derived_projection.h"
+#include "../../src/source/default_body.h"
 #include "../../src/source/prepared_family.h"
 #include "abcd/corpus/abc_file.h"
 #include "../../src/source/tree_constants.h"
@@ -152,6 +153,31 @@ int main(int argc, char** argv) {
 
 
 
+    // Family construction projects defaults before deriving source bindings.
+    // Rebase the constructor protocol against that residual graph, not a
+    // cached proof for the pre-signature revision.
+    const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(derived.values.graph, derived.frame.parameters));
+    const auto candidates = std::get<DefaultCandidates>(FindDefaultCandidates(derived.values.graph, parameters, context.Length()));
+    Check(!candidates.values.empty());
+    auto residual_result = DefaultBody::Build(derived.values.graph, parameters, candidates, context.Length());
+    Check(std::holds_alternative<DefaultBody>(residual_result));
+    const auto& residual = std::get<DefaultBody>(residual_result);
+    derived.values.graph = residual.Graph();
+    const auto rebased = ProjectDerivedConstructor(derived, context);
+    if (const auto* error = std::get_if<DerivedProjectionError>(&rebased))
+      std::cerr << "residual derived projection failure " << static_cast<unsigned>(*error) << '\n';
+    Check(std::holds_alternative<DerivedProjection>(rebased));
+    Check(std::get<DerivedProjection>(rebased).revision == derived.values.graph.revision);
+    Check(protocol.revision != derived.values.graph.revision);
+    Check(VerifyDerivedProjection(derived, context, protocol) == DerivedProjectionError::kRevision);
+    const auto& current_protocol = std::get<DerivedProjection>(rebased);
+    Check(!VerifyDerivedProjection(derived, context, current_protocol));
+    auto missing_guard = current_protocol; missing_guard.guards.pop_back();
+    Check(VerifyDerivedProjection(derived, context, missing_guard) == DerivedProjectionError::kCoverage);
+    auto wrong_call = current_protocol; wrong_call.call = wrong_call.guards.front();
+    Check(VerifyDerivedProjection(derived, context, wrong_call) == DerivedProjectionError::kCoverage);
+
+    Check(std::holds_alternative<EvaluationPlan>(BuildEvaluationPlan(derived.values.graph)));
     const auto projected = ProjectClassDefinitions(graph, parent.values.definitions.sites);
     if (const auto* error = std::get_if<ClassDefinitionError>(&projected))
       std::cerr << "accessor corridor failure " << static_cast<unsigned>(*error) << '\n';
