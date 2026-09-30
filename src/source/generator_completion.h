@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_GENERATOR_COMPLETION_H_
 
 #include "abcd/analysis/yield_region.h"
+#include "generator_delegate.h"
 #include "abcd/source/async_completion.h"
 
 namespace abcd::source {
@@ -10,7 +11,7 @@ struct GeneratorBody {
   std::vector<abc::CodeOffset> source_pcs;
   std::vector<analysis::YieldSite> yields;
 };
-// Normalize decoded OH7 synchronous generator entry and direct resume exits.
+// Normalize decoded OH7 synchronous generator entry and direct/delegated exits.
 // Resume dispatch uses the common typed JEQZ predicate, independent of encoding
 // width; destinations must still skip exactly the RETURN and THROW routes.
 // Keep user handlers through shared catch-input analysis and exact PC rebasing.
@@ -25,12 +26,16 @@ struct GeneratorBody {
 // cleanup/payload boundary and cannot enter inner resume interiors. Native
 // RETURN/THROW at the inner yield overrides the outer pending completion.
 // Never erase user effects or admit a coroutine by schema resemblance.
+// Exact synchronous YieldStar folds to ValueYield(kDelegate) at GetIterator;
+// only its matched Iterator.Close handler is removed. All private slots must
+// be dead at continuation/user catch, and no user boundary/interior entry may
+// bisect delegation. Injected RETURN cleanup in yield* remains unsupported.
 // I instructions,
 // B branches, H handlers, Y yields, R dispatch spans: normalization/rebasing
 // O(I+(Y+B+H) log(I+1)), shared catch analysis O((I+Y+H) log(Y+1)+I log(R+1))
 // after dispatch construction; O(I+Y+R) storage.
-[[nodiscard]] std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
+[[nodiscard]] std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGenerator(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
-    abc::ProfileId profile, ResourceFailureScope resources, std::size_t bytes);
+    abc::ProfileId profile, ResourceFailureScope resources, std::size_t bytes, const GeneratorNames* names = nullptr);
 }  // namespace abcd::source
 #endif

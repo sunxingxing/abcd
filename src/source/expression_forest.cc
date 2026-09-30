@@ -16,6 +16,13 @@ using Error = ExpressionError;
 // their separately budgeted variable-arity argument storage.
 constexpr std::size_t kFixedExpressionOperands = 3;
 void Require(bool condition, Error error) { if (!condition) throw error; }
+YieldForm TreeYieldForm(analysis::YieldForm form) {
+  switch (form) {
+    case analysis::YieldForm::kDirect: return YieldForm::kDirect;
+    case analysis::YieldForm::kDelegate: return YieldForm::kDelegate;
+  }
+  throw Error::kUnsupportedOperation;
+}
 
 class ForestBuilder {
  public:
@@ -459,7 +466,7 @@ class ForestBuilder {
       else if constexpr (std::is_same_v<T, analysis::ValueAwait>)
         return Add(AwaitExpr{operands[0]}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueYield>)
-        return Add(YieldExpr{operands[0]}, origin);
+        return Add(YieldExpr{operands[0], TreeYieldForm(operation.origin.form)}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueBranch>)
         return Unary(operation.predicate, operands[0], graph_.uses[op.first_use.value].operand, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueBinary>)

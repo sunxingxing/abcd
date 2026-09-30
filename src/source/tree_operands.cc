@@ -85,7 +85,10 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValueAwait>) {
           Input(input(0), Node<AwaitExpr>(expression).operand);
         } else if constexpr (std::is_same_v<T, analysis::ValueYield>) {
-          Input(input(0), Node<YieldExpr>(expression).operand);
+          const auto& yielded = Node<YieldExpr>(expression);
+          RequireMeaning((yielded.form == YieldForm::kDirect && operation.origin.form == analysis::YieldForm::kDirect) ||
+              (yielded.form == YieldForm::kDelegate && operation.origin.form == analysis::YieldForm::kDelegate), Error::kOperator);
+          Input(input(0), yielded.operand);
         } else if constexpr (std::is_same_v<T, analysis::ValueBranch>) {
           Unary(operation.predicate, input(0), expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueBinary>) {

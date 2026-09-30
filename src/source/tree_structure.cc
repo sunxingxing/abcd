@@ -278,7 +278,8 @@ class StructureCheck {
         RequireTree(IsAsyncCallable(tree_.callable),
             Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, YieldExpr>) {
-        RequireTree(IsGeneratorCallable(tree_.callable), Error::kUnsupportedSyntax);
+        RequireTree(IsGeneratorCallable(tree_.callable) &&
+            (expression.form == YieldForm::kDirect || expression.form == YieldForm::kDelegate), Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, BinaryExpr>) {
         RequireTree(ValidBinary(expression.operation), Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, LogicalExpr>) {

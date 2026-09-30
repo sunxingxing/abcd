@@ -92,10 +92,16 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
       budget.bytes -= bytes;
     };
     retain(dispatch->spans.capacity() * sizeof(DispatchSpan));
-    if (regions.size() > budget.bytes / kResumeRegisters / sizeof(CatchProbe))
-      throw std::bad_alloc{};
-    std::vector<CatchProbe> probes;
-    probes.reserve(regions.size() * kResumeRegisters);
+    std::size_t probe_count = 0;
+    for (const auto& certificate : regions) {
+      auto count = kResumeRegisters;
+      if constexpr (std::is_same_v<Certificate, YieldSite>) {
+        if (Region(certificate).delegate_registers) count = 2 * std::size_t(Region(certificate).delegate_registers->count);
+      }
+      if (count > budget.bytes / sizeof(CatchProbe) - probe_count) throw std::bad_alloc{};
+      probe_count += count;
+    }
+    std::vector<CatchProbe> probes; probes.reserve(probe_count);
     retain(probes.capacity() * sizeof(CatchProbe));
     const auto target_at = [&](abc::CodeOffset pc) {
       Charge(work, 1 + std::bit_width(dispatch->spans.size()));
@@ -112,6 +118,19 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
       if (target != target_at(region.reject) ||
           region.result.value >= frame_size || region.resume_mode.value >= frame_size)
         return fail(AwaitCatchError::kRegion, Start(region));
+      if constexpr (std::is_same_v<Certificate, YieldSite>) {
+        if (region.delegate_registers) {
+          const auto& window = *region.delegate_registers;
+          if (window.first.value >= frame_size || window.count > frame_size - window.first.value)
+            return fail(AwaitCatchError::kRegion, Start(region));
+          for (std::uint32_t i = 0; i < window.count; ++i) {
+            charge(); const abc::RegisterId slot{window.first.value + i};
+            probes.push_back({region.continuation, slot, Start(region)});
+            if (target && target->handler_pc != completion_handler) probes.push_back({target->handler_pc, slot, Start(region)});
+          }
+          continue;
+        }
+      }
       if (!target || target->handler_pc == completion_handler) continue;
       probes.push_back({target->handler_pc, region.result, Start(region)});
       probes.push_back({target->handler_pc, region.resume_mode, Start(region)});
@@ -202,11 +221,28 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
       const auto target = [&](abc::CodeOffset pc) {
         if (!suffix_target || pc < *suffix_target) suffix_target = pc;
       };
-      if (site->branch_target) target(*site->branch_target);
-      if (const auto dispatch_target = target_at(site->offset)) target(dispatch_target->handler_pc);
+      bool delegate_protocol = false;
+      if constexpr (std::is_same_v<Certificate, YieldSite>)
+        delegate_protocol = region && region->form == YieldForm::kDelegate &&
+            site->offset < region->continuation;
+      // Exact YieldStar/Iterator.Close matching proves every private read is
+      // reached from its own definition. Its internal loop/catch is native
+      // delegation control, not a suffix entry into the prior delegation.
+      // External entries and user handler boundaries are checked by the owner.
+      // Only the retained GetIterator's user exception edge survives folding.
+      if (!delegate_protocol) {
+        if (site->branch_target) target(*site->branch_target);
+        if (const auto dispatch_target = target_at(site->offset)) target(dispatch_target->handler_pc);
+      } else if (site->offset == Start(*region)) {
+        if (const auto dispatch_target = target_at(site->offset)) target(dispatch_target->handler_pc);
+      }
       // Raw operand effects can omit hidden frame windows (arguments). Only
       // full semantic lifting may declare the suffix's read set complete.
-      if (instruction) {
+      if (delegate_protocol) {
+        // Native yield* observes the incoming accumulator and private state,
+        // neither of which is a probed local. Do not count recycled registers
+        // in later exact delegates as reads of an earlier delegate's values.
+      } else if (instruction) {
         const auto& effect = instruction->effects.normal_registers;
         for (std::size_t i = 0; i < effect.read_count; ++i) {
           if (const auto* reg = std::get_if<abc::RegisterId>(&effect.reads[i])) {

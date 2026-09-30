@@ -38,11 +38,18 @@ void YieldContext() {
                     CallableKind::kAsyncArrow, CallableKind::kAsyncMethod}) {
     tree.callable = kind;
     Expect(tree, TreeStructureError::kUnsupportedSyntax);
+    tree.expressions[1].expression = YieldExpr{{0}, YieldForm::kDelegate};
+    Expect(tree, TreeStructureError::kUnsupportedSyntax);
+    tree.expressions[1].expression = YieldExpr{{0}};
   }
   for (auto kind : {CallableKind::kGenerator, CallableKind::kGeneratorMethod}) {
     tree.callable = kind;
     tree.expressions[1].expression = YieldExpr{{0}};
     Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+    tree.expressions[1].expression = YieldExpr{{0}, YieldForm::kDelegate};
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+    tree.expressions[1].expression = YieldExpr{{0}, static_cast<YieldForm>(255)};
+    Expect(tree, TreeStructureError::kUnsupportedSyntax);
     tree.expressions[1].expression = AwaitExpr{{0}};
     Expect(tree, TreeStructureError::kUnsupportedSyntax);
   }

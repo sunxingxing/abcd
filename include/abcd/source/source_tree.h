@@ -116,7 +116,8 @@ enum class TreeUnary : std::uint8_t { kNot, kNegate, kBitNot, kPlus, kTypeof };
 // must perform GetValue (including a possible global lookup failure) first.
 struct UnaryExpr { TreeUnary operation; ExprId operand; };
 struct AwaitExpr { ExprId operand; };
-struct YieldExpr { ExprId operand; };
+enum class YieldForm : std::uint8_t { kDirect, kDelegate };
+struct YieldExpr { ExprId operand; YieldForm form = YieldForm::kDirect; };
 struct BinaryExpr { analysis::BinaryOperator operation; ExprId left; ExprId right; };
 enum class TreeLogical : std::uint8_t { kAnd, kOr };
 struct LogicalExpr { TreeLogical operation; ExprId left; ExprId right; };

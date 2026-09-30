@@ -15,17 +15,28 @@ struct YieldReturnRoute {
   std::optional<abc::CodeOffset> completion;
   bool operator==(const YieldReturnRoute&) const = default;
 };
-// Original OH7 iterator-result/suspend/resume protocol, owned by a generator.
+struct YieldDelegateRegisters {
+  abc::RegisterId first;
+  std::uint32_t count;
+  bool operator==(const YieldDelegateRegisters&) const = default;
+};
+enum class YieldForm : std::uint8_t { kDirect, kDelegate };
+// Original OH7 direct/delegated suspend protocol, owned by a generator.
+// Delegate create names GetIterator, value its private iterator register; the
+// native delegation operand is the incoming accumulator at that instruction.
 // NEXT commits the resumed value; THROW and RETURN leave the native yield.
 struct YieldRegion {
   abc::CodeOffset create, suspend, resume, result_store, mode, mode_store, continuation;
   abc::RegisterId state, value, result, resume_mode;
   abc::CodeOffset branch, reject;
   std::optional<YieldReturnRoute> return_route;
+  YieldForm form = YieldForm::kDirect;
+  std::optional<YieldDelegateRegisters> delegate_registers;
   bool operator==(const YieldRegion&) const = default;
 };
 struct YieldSite {
-  abc::CodeOffset pc, mode_pc;
+  abc::CodeOffset pc;
+  std::optional<abc::CodeOffset> mode_pc;
   YieldRegion origin;
 };
 }  // namespace abcd::analysis

@@ -12,6 +12,43 @@
 
 ## 当前阶段
 
+### 2026-09-30：同步 yield* 的共同源码贯通
+
+- 依据锁定 OH7 `FunctionBuilder::YieldStar`、`Iterator::Close` 和 PandaGen
+  的真实字节码，精确验证寄存器分配、属性池名称、NEXT/THROW/RETURN
+  分支、调用 receiver/参数、对象检查和内部 close catch。保留 GetIterator
+  原 PC 为共同 ValueYield 的委托操作，经共同 FunctionTree/Printer 输出
+  原生 `(yield* operand)`；仅移除完全匹配的私有 close handler，其他
+  用户 handler 继续按原边界重定位。无专项 body writer 或新发布准入。
+- 共同 catch-input 分析检查十三个私有槽在 continuation/user catch
+  不被观察；精确委托内部已定义的槽读取和控制边不污染后续委托的
+  旧值检查。连续两次委托复用同一窗口的红例已修复，新增分析沿原
+  逆序扫描和索引执行，无逐暂停点遍历。类型化 AST 区分直接/委托
+  yield，operand 检查、cleanup 等价和语法检查均保留这一差异。
+- 新增 44 个完整文件解码/合成元数据函数族：三 profile × 三父环境 ×
+  有无用户 catch × 16/32 位分支的 36 个组合，及 2/200/201/402 个
+  连续委托 × 两种分支的 8 个组合。Node 消费实际完整生成 JS，验证
+  done:false 结果对象身份、next 缓存、首次 undefined 参数、方法查找/
+  receiver/次数、return/throw 完成或继续、缺少 throw 的无参 close、
+  getter/call 错误、无效结果/方法、未启动请求及连续委托的惰性启动。
+- 26 个真实协议反例检查属性名称/池、缓存、receiver、state、mode、
+  分支、外部入口、continuation/catch 私有值泄漏、close/user handler
+  边界和缺失 close catch。损坏池引用保留 MetadataError，不转为普通
+  unsupported。额外树单元检查委托 callable 约束与非法 form。
+- 有效协议在原基线上的红例见 `/tmp/abcd-yield-delegate-valid-red.log`；
+  连续委托红例见 `/tmp/abcd-yield-delegate-scaling-red.log`。八个相关
+  C++ 目标构建成功，22 项定向 CTest 全通过（93.99 秒），见
+  `/tmp/abcd-yield-delegate-regression-build.log`、
+  `/tmp/abcd-yield-delegate-regression-tests.log`。最终 enum 边界映射与
+  树反例调整后重新构建 abc_semantic/loop_closure_file/tree_structure，
+  两项受影响测试通过，见 `/tmp/abcd-yield-delegate-final-build.log`、
+  `/tmp/abcd-yield-delegate-final-tests.log`。`git diff --check` 通过；独立
+  开发、自查，未调用 CC 或子代理。
+- 支持域为精确同步模板；非默认 API 的 callruntime truth-test、注入
+  RETURN finally 的委托、async generator/async yield* 与更多控制组合
+  仍开放，下一步继续功能实现。未据合成元数据 fixture 声称实际应用
+  覆盖；结构整合 gate/总目标未完成。全量测试/语料/RSS/基准保持暂停。
+
 ### 2026-09-30：RETURN 清理中循环再次 yield 的源码行为贯通
 
 - 在已提交的嵌套暂停规范化和共同 preserving 出口上，加入真实 opcode

@@ -461,7 +461,11 @@ class TreePrinter {
     Append("(await "); Push(std::string_view(")")); Push(node.operand);
   }
   void Expression(YieldExpr node) {
-    Append("(yield "); Push(std::string_view(")")); Push(node.operand);
+    switch (node.form) {
+      case YieldForm::kDirect: Append("(yield "); break;
+      case YieldForm::kDelegate: Append("(yield* "); break;
+    }
+    Push(std::string_view(")")); Push(node.operand);
   }
   void Expression(UnaryExpr node) {
     Append("("); Append(TreeUnaryToken(node.operation));

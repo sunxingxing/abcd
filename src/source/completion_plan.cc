@@ -41,7 +41,10 @@ bool SameCleanupOperation(const ValueOperation& a, const ValueOperation& b) {
   // Yield sites have different protocol PCs/registers, not different language
   // operators. The owner normalizes each site; Pair below must still match SSA
   // inputs, effects and throw dispatch. Both origins remain in the tree.
-  if (std::holds_alternative<ValueYield>(a)) return std::holds_alternative<ValueYield>(b);
+  if (const auto* yield = std::get_if<ValueYield>(&a)) {
+    const auto* other = std::get_if<ValueYield>(&b);
+    return other && yield->origin.form == other->origin.form;
+  }
   return a == b;
 }
 struct Corridor {

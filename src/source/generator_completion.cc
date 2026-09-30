@@ -203,9 +203,9 @@ std::vector<std::uint8_t> ValidateCleanup(const abc::MethodBody& body, std::size
   return retained;
 }
 }  // namespace
-std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
+std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGenerator(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
-    abc::ProfileId profile, ResourceFailureScope resources, std::size_t bytes) {
+    abc::ProfileId profile, ResourceFailureScope resources, std::size_t bytes, const GeneratorNames* names) {
   try {
     Require(resources == ResourceFailureScope::kExcluded &&
         (profile == abc::ProfileId::kDynamic1202 || profile == abc::ProfileId::kDynamic1206 ||
@@ -272,8 +272,9 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
     struct YieldProtocol { std::size_t prefix, suspend; ResumeRegion resume; };
     if (code.size() > bytes / kPerInstruction) return Error::kResourceLimit;
     const auto yield_count = static_cast<std::size_t>(std::count_if(code.begin(), code.end(),
-        [](const auto& site) { return Op(site, Opcode::kCREATEITERRESULTOBJ_V8_V8); }));
-    if (yield_count > (bytes - code.size() * kPerInstruction) / (sizeof(analysis::YieldSite) + sizeof(YieldProtocol)))
+        [](const auto& site) { return Op(site, Opcode::kCREATEITERRESULTOBJ_V8_V8) ||
+            Op(site, Opcode::kGETITERATOR_IMM8) || Op(site, Opcode::kGETITERATOR_IMM16); }));
+    if (yield_count > (bytes - code.size() * kPerInstruction) / (sizeof(analysis::YieldSite) + sizeof(YieldProtocol) + sizeof(GeneratorDelegate)))
       return Error::kResourceLimit;
     GeneratorBody result;
     result.body.instructions.reserve(code.size()); result.source_pcs.reserve(code.size());
@@ -282,6 +283,7 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
     std::vector<ProtocolPart> protocol(code.size(), ProtocolPart::kSource);
     std::vector<YieldProtocol> yields;
     yields.reserve(yield_count);
+    std::vector<GeneratorDelegate> delegates; delegates.reserve(yield_count);
     const auto storage = [&](std::size_t count, std::size_t width) {
       if (count > bytes / width) throw Error::kResourceLimit;
       bytes -= count * width;
@@ -293,6 +295,7 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
     storage(retained.capacity(), sizeof(std::uint8_t));
     storage(protocol.capacity(), sizeof(ProtocolPart));
     storage(yields.capacity(), sizeof(YieldProtocol));
+    storage(delegates.capacity(), sizeof(GeneratorDelegate));
     std::fill(interior.begin(), interior.begin() + first, 1);
     const auto retain = [&](std::size_t i) {
       result.body.instructions.push_back(code[i]); result.source_pcs.push_back(code[i].offset);
@@ -302,9 +305,24 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
     // pinned OH7 FunctionBuilder::HandleCompletion; nested cleanup routes stay
     // unsupported. Thus each instruction belongs to at most one cleanup and
     // one handshake: O(I + Y log I), no repeated nested-slice graph walks.
+    if (names) for (std::size_t i = first; i < handler; ++i) {
+      if (!Op(code[i], Opcode::kGETITERATOR_IMM8) && !Op(code[i], Opcode::kGETITERATOR_IMM16)) continue;
+      auto parsed = ParseGeneratorDelegate(body, i, state, frame, *names, bytes);
+      if (const auto* error = std::get_if<abc::MetadataError>(&parsed)) return *error;
+      if (const auto* error = std::get_if<Error>(&parsed)) {
+        if (*error == Error::kResourceLimit) return *error;
+        continue;
+      }
+      auto delegate = std::get<GeneratorDelegate>(std::move(parsed));
+      Require(delegate.end < handler);
+      std::fill(interior.begin() + i + 1, interior.begin() + delegate.end, 1);
+      std::fill(retained.begin() + i + 1, retained.begin() + delegate.end, 0);
+      std::fill(protocol.begin() + i, protocol.begin() + delegate.end, ProtocolPart::kResume);
+      delegates.push_back(std::move(delegate)); i = delegates.back().end - 1;
+    }
     std::size_t cleanup_end = 0;
     for (std::size_t i = first; i + kYieldPrefix < handler; ++i) {
-      if (!Op(code[i + kYieldPrefix], Opcode::kCREATEITERRESULTOBJ_V8_V8)) continue;
+      if (protocol[i] == ProtocolPart::kResume || !Op(code[i + kYieldPrefix], Opcode::kCREATEITERRESULTOBJ_V8_V8)) continue;
       Require(Op(code[i], Opcode::kSTA_V8) && Op(code[i + 1], Opcode::kLDFALSE) && Op(code[i + 2], Opcode::kSTA_V8));
       const auto value = Reg(code[i]), done = Reg(code[i + 2]);
       Require(value != done && value != state && done != state && value.value < frame.locals && done.value < frame.locals &&
@@ -330,6 +348,11 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
     for (auto& parsed : yields) {
       const auto i = parsed.prefix, suspend = parsed.suspend;
       auto& resume = parsed.resume;
+      if (resume.cleanup) {
+        const auto nested = std::lower_bound(delegates.begin(), delegates.end(), parsed.prefix,
+            [](const auto& delegate, auto index) { return delegate.begin < index; });
+        Require(nested == delegates.end() || nested->begin >= suspend + kReturnValue + resume.cleanup);
+      }
       const auto cleanup = ValidateCleanup(body, suspend, resume, frame, protocol, bytes);
       const bool reachable = retained[i];
       std::fill(interior.begin() + i + 1, interior.begin() + suspend + resume.size, 1);
@@ -347,9 +370,16 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
       const auto& region = resume.origin;
       result.yields.push_back({region.create, region.mode, region});
     }
+    for (const auto& delegate : delegates) {
+      Require(retained[delegate.begin]);
+      result.yields.push_back({delegate.origin.create, {}, delegate.origin});
+    }
+    std::sort(result.yields.begin(), result.yields.end(), [](const auto& a, const auto& b) { return a.origin.create < b.origin.create; });
     std::size_t next_protocol = 0;
     for (std::size_t i = 0; i < handler; ++i) {
       if (!retained[i]) continue;
+      const bool yield = next_protocol < result.yields.size() && code[i].offset == result.yields[next_protocol].origin.create;
+      if (yield) ++next_protocol;
       if (protocol[i] != ProtocolPart::kResume) {
         const auto access = abc::GetRegisterAccesses(code[i].decoded, frame.registers);
         const auto* known = std::get_if<abc::RegisterAccesses>(&access); Require(known != nullptr);
@@ -363,7 +393,7 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
             !Op(code[i], Opcode::kGETRESUMEMODE));
         // Only the exact certified create instruction survives as a native yield.
         if (Op(code[i], Opcode::kCREATEITERRESULTOBJ_V8_V8))
-          Require(next_protocol < result.yields.size() && code[i].offset == result.yields[next_protocol++].origin.create);
+          Require(yield);
       }
       retain(i);
     }
@@ -383,8 +413,48 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
         body, result.yields, profile, frame.registers, code.back().offset, {bytes});
     if (const auto* error = std::get_if<analysis::AwaitCatchFailure>(&catch_inputs))
       return error->kind == analysis::AwaitCatchError::kResourceLimit ? Error::kResourceLimit : Error::kKind;
-    for (std::size_t i = 0; i + 1 < body.handlers.size(); ++i) {
-      const auto target = body.handlers[i].offset;
+    abc::MethodBody handler_body;
+    const abc::MethodBody* handler_input = &body;
+    if (!delegates.empty()) {
+      // Native yield* owns only the exact Iterator.Close catch. Every other
+      // user handler remains; its boundaries cannot bisect a folded protocol.
+      std::vector<std::uint8_t> internal(body.handlers.size());
+      storage(internal.capacity(), sizeof(std::uint8_t));
+      handler_body.tries.reserve(body.tries.size()); handler_body.handlers.reserve(body.handlers.size());
+      storage(handler_body.tries.capacity(), sizeof(abc::TryRegion));
+      storage(handler_body.handlers.capacity(), sizeof(abc::CatchHandler));
+      for (const auto& region : body.tries) {
+        const auto found = std::lower_bound(delegates.begin(), delegates.end(), region.offset,
+            [](const auto& delegate, auto pc) { return delegate.close_begin < pc; });
+        if (found != delegates.end() && found->close_begin == region.offset) {
+          Require(region.length == found->close_end.value - found->close_begin.value && region.handler_count == 1 &&
+              region.first_handler < body.handlers.size());
+          const auto& caught = body.handlers[region.first_handler];
+          Require(!caught.type && caught.offset == found->close_catch &&
+              caught.length == found->close_catch_end.value - found->close_catch.value);
+          internal[region.first_handler] = 1;
+        }
+      }
+      const auto marked = std::count(internal.begin(), internal.end(), 1);
+      Require(static_cast<std::size_t>(marked) == delegates.size());
+      std::vector<std::uint32_t> removed(body.handlers.size() + 1);
+      storage(removed.capacity(), sizeof(std::uint32_t));
+      for (std::size_t i = 0; i < body.handlers.size(); ++i) {
+        removed[i + 1] = removed[i] + internal[i];
+        if (!internal[i]) handler_body.handlers.push_back(body.handlers[i]);
+      }
+      for (const auto& original : body.tries) {
+        if (original.handler_count == 1 && internal[original.first_handler]) continue;
+        Require(removed[original.first_handler] == removed[original.first_handler + original.handler_count]);
+        auto region = original; region.first_handler -= removed[region.first_handler];
+        handler_body.tries.push_back(region);
+      }
+      handler_body.instructions = body.instructions;
+      storage(handler_body.instructions.capacity(), sizeof(abc::BodyInstruction));
+      handler_input = &handler_body;
+    }
+    for (std::size_t i = 0; i + 1 < handler_input->handlers.size(); ++i) {
+      const auto target = handler_input->handlers[i].offset;
       const auto site = std::lower_bound(code.begin(), code.end(), target,
           [](const auto& instruction, auto offset) { return instruction.offset < offset; });
       Require(site != code.end() && site->offset == target && !interior[site - code.begin()]);
@@ -394,6 +464,7 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
     for (auto& site : result.body.instructions) {
       if (next_yield < result.yields.size() && site.offset == result.yields[next_yield].origin.create)
         result.yields[next_yield++].pc = {pc};
+      while (next_mode < result.yields.size() && !result.yields[next_mode].mode_pc) ++next_mode;
       if (next_mode < result.yields.size() && site.offset == result.yields[next_mode].origin.mode)
         result.yields[next_mode++].mode_pc = {pc};
       site.offset = {pc}; pc += site.decoded.size;
@@ -433,8 +504,9 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
       operand.raw_bits = static_cast<std::uint64_t>(delta) & ((std::uint64_t{1} << operand.width_bits) - 1);
       site.decoded.branch_delta = delta; site.branch_target = destination;
     }
-    if (const auto error = RebaseAsyncHandlers(body, result.source_pcs, result.body, bytes)) return *error;
+    if (const auto error = RebaseAsyncHandlers(*handler_input, result.source_pcs, result.body, bytes)) return *error;
     return result;
+  } catch (abc::MetadataError error) { return error;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
