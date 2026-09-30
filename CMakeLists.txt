@@ -691,6 +691,9 @@ if(BUILD_TESTING)
   target_link_libraries(module_scope_test PRIVATE abcd_source)
   add_test(NAME module_scope_test COMMAND module_scope_test)
   add_executable(record_tree_test tests/unit/source/record_tree_test.cc)
+  add_executable(record_import_tree_test tests/unit/source/record_import_tree_test.cc)
+  target_link_libraries(record_import_tree_test PRIVATE abcd_source)
+  add_test(NAME record_import_tree_test COMMAND record_import_tree_test)
   target_link_libraries(record_tree_test PRIVATE abcd_source)
   add_test(NAME record_tree_test COMMAND record_tree_test)
   add_executable(module_store_tree_test tests/unit/source/module_store_tree_test.cc)
@@ -916,6 +919,10 @@ if(BUILD_TESTING)
     add_test(NAME literal_buffer_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_buffer.mjs $<TARGET_FILE:literal_plan_test>)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+      add_test(NAME value_barrel_record_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_barrel_record.mjs $<TARGET_FILE:abc_semantic>
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src")
       add_test(NAME value_constants_record_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_constants_record.mjs $<TARGET_FILE:abc_semantic>
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
@@ -923,6 +930,8 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME record_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_tree.mjs $<TARGET_FILE:record_tree_test>)
+    add_test(NAME record_import_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_import_tree.mjs $<TARGET_FILE:record_import_tree_test>)
     add_test(NAME module_store_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_store_tree.mjs $<TARGET_FILE:module_store_tree_test>)
     add_test(NAME phased_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

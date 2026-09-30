@@ -12,6 +12,40 @@
 
 ## 当前阶段
 
+### 2026-10-01：共同 record 接入原生模块导入与转导出
+
+- BuildRecordTree 复用 ModuleEnclosure 和 BindModuleAliases，保留全部
+  ordinary/namespace/未使用导入、请求顺序、间接与 star exports。导入和
+  本地槽位使用统一 inventory；首次本地写仍在原位置声明，后续读写共享
+  binding，不复制 import，也不把本地读错误声明为外部导入。重复 scope
+  名及显式 export 名在输出前拒绝。仍只接受单一无条件入口区域。
+- inventory 排序检查 O(N log N)，逐 read/实际树校验线性；名字 arena
+  扩容、seen 表和输出 staging 纳入现有预算。资源、工作量、文件变化
+  错误保留类型。未放宽 detached-method 的只读模块校验器。
+- 新 fixture 实际经共同 record 生成 ESM，独立 reference 比较副作用顺序、
+  调用 receiver、live binding、namespace 身份、local alias、循环 TDZ、
+  未使用 default import 的链接失败、star 默认排除和显式导出优先。
+  冲突/输出预算/资源耗尽负例通过。真实 Immersive 三个 Index 的配对
+  oracle 同时验证原生 reexport 表示、导出集合、身份、变更传播、依赖
+  顺序和缺失导出拒绝；依赖使用测试替身，不能当作其函数体或应用验收。
+- 构建成功，10 项定向 CTest 全通过（8.10 秒）。日志：
+  /tmp/abcd-record-import-verified-build.log、
+  /tmp/abcd-record-import-verified-tests.log。首次测试曾发现未编译的
+  module_aliases 目标及 oracle 用 Object.keys 提前触发 TDZ；已补编译，
+  改用属性名枚举并独立检查 TDZ，再执行上述完整定向集合。
+- 阶段一五个输入已实际刷新：Immersive 4 完整恢复/31 恢复失败/10 无模块；
+  MultiCommunityApplication 11/34/9；pasteboard 0/10/9；Push modules
+  0/15/9；Push widgets 0/1/9。共 152 records，15/91/46。
+  所有产物走 value_tree、未用 legacy writer；executable 仍为 false。
+  Multi 的 11 个包括 5 个转导出模块和 6 个字面量初始化模块，本轮未做
+  它们的独立配对验收，不能把 source_complete 数当成阶段一通过数。
+- 产物：build/stage-one/Immersive/value-import-pass-1，以及
+  build/stage-one/value-record-import-pass-1/<应用>/<ABC名>；批量日志
+  /tmp/abcd-record-import-batch.log、/tmp/abcd-record-import-all-batch.log。
+- 下一阻断是共同 record 的子函数/类及其捕获、初始化和宿主绑定贯通。
+  冗余 bare import、机械括号和末尾 discard 表示仍待改善，整体源码风格
+  尚未验收。未运行全量测试、RSS 专项、基准、其他语料或代理；Goal 保持进行中。
+
 ### 2026-10-01：唯一外部使用的字面量直接进入模块初始化
 
 - 正常流的共同求值规划不再把已验证初始化组的 own-write 接收者计为
