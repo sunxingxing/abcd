@@ -903,7 +903,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     Check(printed.properties.size() == 1);
     const auto property = printed.properties[0];
     Check(property.begin < property.end && property.end <= printed.bytes);
-    Check(output.view().substr(property.begin, property.end - property.begin) == "[\"run\"]: $arg0");
+    Check(output.view().substr(property.begin, property.end - property.begin) == "run: $arg0");
     const auto origin = function.Tree().properties[0].origin;
     const auto* site = std::get_if<OriginalSite>(&function.Tree().origins[origin.value]);
     constexpr std::uint32_t kDefinitionPc = 5;

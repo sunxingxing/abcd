@@ -12,6 +12,27 @@
 
 ## 当前阶段
 
+### 2026-10-01：对象属性原生表示与常量传播集成回归修复
+
+- 共同 tree printer 复用 ClassifyObjectKey，将普通 ASCII IdentifierName
+  属性输出为 title: 等原生写法；__proto__ 和需引用的名称仍保留计算属性，
+  不引入对象原型 setter 语义。属性顺序、重复定义和 origin/字节范围保留。
+  现有类属性范围回归同步更新，__proto__ 的 1/2/200/201 属性规格通过。
+- 定向回归发现此前 primitive copy 传播会把 phi 输入和条件 arguments
+  snapshot 的 protocol 输入替换为字面量，分别破坏默认参数前的 SSA
+  流验证和快照求值形状。现只替换普通操作数，保留两类 SSA 输入及其
+  定义；独立 rewrite verifier 也拒绝这两类字面量替换。未放宽验证器。
+- abc_semantic、class_tree_context_test、creation_tree_context_test、
+  literal_plan_test、value_simplify_test 构建成功。6 项定向 CTest 全通过
+  （8.66 秒）：类上下文、literal plan、SSA simplify、真实 Constants
+  独立行为对照、phased literal 和 51 案例 arguments snapshot 运行时对照。
+  日志 /tmp/abcd-object-key-build.log、/tmp/abcd-object-key-tests.log。
+- Constants 的普通属性拼写改善，独立 oracle 仍检查值、顺序、descriptor
+  和对象身份；占位 null/重复键检测兼容新拼写，缺口仍如实保留。
+  本次没有消除缓冲占位、没有宣称整体表示质量达标，也未刷新批量覆盖。
+  完整模块 import/子函数贯通及阶段一整体验收仍未完成；未运行全量、
+  RSS、基准、其他语料或代理。
+
 ### 2026-10-01：真实 Constants 嵌套初始化首次贯通共同 record
 
 - LiteralPlan 记录内部 allocation 到唯一外层 initializer RHS 的依赖，

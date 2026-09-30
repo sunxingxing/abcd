@@ -19,6 +19,7 @@
 #include "family_enclosure.h"
 #include "class_tree_context.h"
 #include "tree_checks.h"
+#include "member_key.h"
 
 namespace abcd::source {
 namespace {
@@ -643,7 +644,15 @@ class TreePrinter {
     const auto& property = Tree().properties[id.value];
     Result().properties[id.value].begin = written_;
     if (cursor.kind == AggregateKind::kObject) {
-      Append("["); Quoted(Tree().names[property.key.value]); Append("]: ");
+      const auto& name = Tree().names[property.key.value];
+      Step(name.size());
+      // Ordinary IdentifierName keys keep native object syntax. __proto__ must
+      // remain computed: a colon definition otherwise mutates the prototype.
+      if (ClassifyObjectKey(name) == MemberKeySyntax::kIdentifier) {
+        Identifier(name); Append(": ");
+      } else {
+        Append("["); Quoted(name); Append("]: ");
+      }
     }
     Push(ObjectCursor{cursor.range, cursor.index + 1, cursor.kind});
     Push(EndProperty{id}); Push(property.value);

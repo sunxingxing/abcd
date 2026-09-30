@@ -155,6 +155,15 @@ void SourceTree(bool buffered, bool array = false, bool print = false) {
       const auto& property = result->tree.properties[std::get<PropertyId>(placement.node).value];
       Check(property.origin.value == graph.ops[placement.operation.value].origin.value);
     }
+    if (!array) {
+      auto printable = result->tree;
+      printable.callable = CallableKind::kFunction;
+      std::ostringstream output;
+      const auto printed = std::get<PrintedFunction>(PrintFunctionTree(printable, output));
+      const auto source = output.str();
+      for (const auto range : printed.properties)
+        Check(std::string_view(source).substr(range.begin, range.end - range.begin).starts_with("[\"__proto__\"]: "));
+    }
     if (array) {
       std::ostringstream output;
       Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(result->tree, output)));

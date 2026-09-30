@@ -194,6 +194,10 @@ void PropagateLiterals(ValueProgram& graph, BatchBudget& quota, ValueSimplifySta
     const auto& use = graph.uses[i];
     const auto* value = std::get_if<ValueId>(&use.operand);
     if (use.life != ValueLife::kLive || !value) continue;
+    // Phi selection/default recovery and conditional argument snapshots retain
+    // SSA inputs. Keep their defining copy alive; substitute only ordinary
+    // operation operands, not merge inputs or protocol reads.
+    if (!std::holds_alternative<OpId>(use.owner) || use.purpose != ReadPurpose::kOperand) continue;
     const auto* result = std::get_if<OpResult>(&graph.values[value->value].origin);
     if (!result) continue;
     const auto& root = graph.ops[result->op.value];

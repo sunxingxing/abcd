@@ -49,5 +49,7 @@ compare(actual, expected);
 // separate representation-quality gap. This test claims behavioral agreement.
 assert.match(report.source, /export \{ ROUTES/);
 assert.ok(!report.source.includes('$acc'));
-const retainedPlaceholders = /\["(?:title|name|children|params)"\]: null/.test(report.source);
+assert.match(report.source, /title: /);
+assert.ok(!report.source.includes('["title"]:'), 'ordinary object key should use native syntax');
+const retainedPlaceholders = /(?:\["(?:title|name|children|params)"\]|\b(?:title|name|children|params)): null/.test(report.source);
 console.log(JSON.stringify({semantic: 'passed', retainedBufferPlaceholders: retainedPlaceholders}));

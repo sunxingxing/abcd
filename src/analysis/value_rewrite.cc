@@ -195,6 +195,8 @@ std::variant<ValueRewriteProof, ValueRewriteError> VerifyValueRewrite(
         const auto root = representatives[value->value];
         if (rewritten) Require(*rewritten == root, Error::kOperand);
         else {
+          Require(std::holds_alternative<OpId>(a.owner) && a.purpose == ReadPurpose::kOperand,
+                  Error::kOperand);
           // Inspect the original fixed representative, not the optimizer's
           // edited operands. Pure primitive copying is exact, including -0 and
           // NaN payload bits; allocations and reads never acquire this rule.
