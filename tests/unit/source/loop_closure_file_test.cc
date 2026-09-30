@@ -75,7 +75,7 @@ struct ResumeEncoding {
 };
 enum class YieldFinalizer { kPreserve, kReturn, kThrow, kDifferentCallee, kDifferentInput, kBodyYield, kSharedBodyYield, kInjectedReturn, kInjectedDifferentCallee, kInjectedCellRead, kInjectedUncaught, kInjectedConditional, kInjectedConditionalUncaught };
 enum class YieldOverride { kNone, kReturn, kThrow };
-enum class CleanupControl { kSequence, kLoop };
+enum class CleanupControl { kSequence, kLoop, kSelect, kConditionCall, kLoopConditionCall, kLoopOverride };
 enum class ChildShape {
   kPlain, kException, kNested, kForwarded, kForwardedNormal, kForwardedLocal,
   kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally, kSharedFinallyNested,
@@ -95,7 +95,7 @@ enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitS
                          kYieldReturnBranch, kYieldThrowBranch, kYieldReturnTarget, kYieldThrowTarget,
                          kYieldReturnReadResult, kYieldReturnWriteResult, kYieldReturnReadMode, kYieldReturnWriteMode,
                          kYieldReturnReadState, kYieldReturnWriteState, kYieldReturnReadAccumulator,
-                         kYieldCleanupEntryAccumulator, kYieldCleanupEscape, kYieldCleanupExternalEntry, kYieldCleanupDeadEntry };
+                         kYieldCleanupEscape, kYieldCleanupExternalEntry, kYieldCleanupDeadEntry };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
                  MissingCell missing = MissingCell::kNone, bool async_arrow = false, std::uint32_t yield_count = 1,
                  CopyEncoding copy_encoding = CopyEncoding::kV8, std::uint32_t copy_count = 1,
@@ -135,8 +135,12 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const bool conditional_return = yield_finalizer == YieldFinalizer::kInjectedConditional ||
       yield_finalizer == YieldFinalizer::kInjectedConditionalUncaught;
   const unsigned override_bytes = yield_override == YieldOverride::kReturn ? 1U : yield_override == YieldOverride::kThrow ? 2U : 0U;
-  const bool loop_cleanup = cleanup_control == CleanupControl::kLoop;
-  test::Check(!loop_cleanup || (!conditional_return && yield_override == YieldOverride::kNone));
+  const bool loop_override = cleanup_control == CleanupControl::kLoopOverride;
+  const bool loop_cleanup = cleanup_control == CleanupControl::kLoop || cleanup_control == CleanupControl::kLoopConditionCall || loop_override;
+  const bool condition_call = cleanup_control == CleanupControl::kConditionCall || cleanup_control == CleanupControl::kLoopConditionCall;
+  const bool select_cleanup = cleanup_control == CleanupControl::kSelect;
+  test::Check(!loop_cleanup || (!conditional_return && (loop_override ? yield_override != YieldOverride::kNone : yield_override == YieldOverride::kNone)));
+  test::Check(!select_cleanup || (!conditional_return && yield_override != YieldOverride::kNone));
   // OH7 LDLEXVAR imm4/imm4; JEQZ imm32; JMP imm32.
   constexpr unsigned kLoopGuardBytes = 7, kLoopBackBytes = 5;
   const bool generator = child_shape == ChildShape::kYieldCapture || child_shape == ChildShape::kYieldResult ||
@@ -465,8 +469,10 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
         constexpr unsigned kConditionalBytes = 4; // LDLEXVAR; JEQZ imm8.
         const auto cleanup = source_yield && returning && injected_return ? (kCallCleanupBytes +
             (yield_finalizer == YieldFinalizer::kInjectedCellRead ? kCellArgumentBytes :
-             conditional_return ? kConditionalBytes : 0U) + override_bytes) * return_cleanup_count +
+             conditional_return ? kConditionalBytes : 0U) +
+            (select_cleanup ? kConditionalBytes + kCallCleanupBytes + 2U : override_bytes + (loop_override ? 2U : 0U))) * return_cleanup_count +
             (loop_cleanup ? kLoopGuardBytes + kLoopBackBytes : 0U) +
+            (select_cleanup ? override_bytes : 0U) +
             (missing == MissingCell::kYieldReturnReadAccumulator ? kLoadBytes : 0U) : 0U;
         const auto delta = kOpcodeBytes + width + cleanup + kLoadBytes + (wrong_target ? 0 : returning ? kReturnBytes : kThrowBytes);
         code.push_back(Op(opcode));
@@ -488,16 +494,18 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
           code.insert(code.end(), {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kJEQZ_IMM32)});
           constexpr unsigned kLoadCellBytes = 2, kCallBytes = 4;
           constexpr unsigned kBranchBytes = kLoopGuardBytes - kLoadCellBytes;
-          const auto delta = missing == MissingCell::kYieldCleanupEntryAccumulator ? kBranchBytes + 2 :
-              kBranchBytes + kCallBytes * return_cleanup_count + kLoopBackBytes +
+          const auto delta = condition_call ? kBranchBytes + 2 :
+              kBranchBytes + (kCallBytes + (loop_override ? 2U + override_bytes : 0U)) * return_cleanup_count + kLoopBackBytes +
               (missing == MissingCell::kYieldCleanupEscape ? 2U : 0U);
           for (unsigned i = 0; i < sizeof(delta); ++i) code.push_back(static_cast<std::uint8_t>(delta >> (i * kByteBits)));
         }
         if (missing == MissingCell::kYieldReturnReadAccumulator) code.insert(code.end(), {Op(abc::Opcode::kSTA_V8), value});
         for (std::uint32_t i = 0; i < return_cleanup_count; ++i) {
+          if (select_cleanup)
+            code.insert(code.end(), {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kJEQZ_IMM8), 8});
           if (conditional_return)
             code.insert(code.end(), {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kJEQZ_IMM8),
-                static_cast<std::uint8_t>(missing == MissingCell::kYieldCleanupEntryAccumulator ? 4 :
+                static_cast<std::uint8_t>(condition_call ? 4 :
                     missing == MissingCell::kYieldCleanupEscape ? 9 : 6 + override_bytes)});
           if (yield_finalizer == YieldFinalizer::kInjectedCellRead)
             code.insert(code.end(), {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kSTA_V8), 5});
@@ -511,9 +519,16 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
                 missing == MissingCell::kYieldReturnWriteMode ? mode : state)});
           else if (yield_finalizer == YieldFinalizer::kInjectedCellRead) code.insert(code.end(), {Op(abc::Opcode::kCALLARG1_IMM8_V8), 0, 5});
           else code.insert(code.end(), {Op(abc::Opcode::kCALLARG0_IMM8), 0});
-          if (yield_override == YieldOverride::kReturn) code.push_back(Op(abc::Opcode::kRETURN));
-          else if (yield_override == YieldOverride::kThrow)
-            code.insert(code.end(), {static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+          if (select_cleanup)
+            code.insert(code.end(), {Op(abc::Opcode::kJMP_IMM8), 6, Op(abc::Opcode::kLDA_V8), parameter,
+                Op(abc::Opcode::kCALLARG0_IMM8), 0});
+          if (loop_override)
+            code.insert(code.end(), {Op(abc::Opcode::kJEQZ_IMM8), static_cast<std::uint8_t>(2U + override_bytes)});
+          if (!select_cleanup || i + 1 == return_cleanup_count) {
+            if (yield_override == YieldOverride::kReturn) code.push_back(Op(abc::Opcode::kRETURN));
+            else if (yield_override == YieldOverride::kThrow)
+              code.insert(code.end(), {static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+          }
         }
         if (loop_cleanup) {
           const auto delta = static_cast<std::uint32_t>(std::int64_t(loop_begin) - std::int64_t(code.size()));
@@ -962,9 +977,53 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--yield-return-loop-override-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+        for (const bool caught : {false, true}) for (const auto overriding : {YieldOverride::kReturn, YieldOverride::kThrow})
+          std::cout << nlohmann::json{{"source", Emit(profile, shape, ChildShape::kYieldFinallyReturn, MissingCell::kNone, false, 2,
+              CopyEncoding::kV8, 1, caught ? YieldFinalizer::kInjectedReturn : YieldFinalizer::kInjectedUncaught,
+              {}, 1, overriding, CleanupControl::kLoopOverride)}, {"catch_parent", shape == ParentShape::kCatch},
+              {"caught", caught}, {"throwing", overriding == YieldOverride::kThrow}, {"count", 1}}.dump() << '\n';
+    for (const auto count : {200U, 201U, 402U}) for (const auto encoding : {BranchEncoding::k16, BranchEncoding::k32})
+      for (const auto overriding : {YieldOverride::kReturn, YieldOverride::kThrow})
+        std::cout << nlohmann::json{{"source", Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kYieldFinallyReturn,
+            MissingCell::kNone, false, 2, CopyEncoding::kV8, 1, YieldFinalizer::kInjectedReturn, {encoding, encoding}, count,
+            overriding, CleanupControl::kLoopOverride)}, {"catch_parent", false}, {"caught", true},
+            {"throwing", overriding == YieldOverride::kThrow}, {"count", count}}.dump() << '\n';
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--yield-return-select-many-json") {
+    for (const auto count : {200U, 201U, 402U}) for (const auto encoding : {BranchEncoding::k16, BranchEncoding::k32})
+      for (const auto overriding : {YieldOverride::kReturn, YieldOverride::kThrow})
+        std::cout << nlohmann::json{{"source", Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kYieldFinallyReturn,
+            MissingCell::kNone, false, 2, CopyEncoding::kV8, 1, YieldFinalizer::kInjectedReturn, {encoding, encoding}, count,
+            overriding, CleanupControl::kSelect)}, {"throwing", overriding == YieldOverride::kThrow}, {"count", count}}.dump() << '\n';
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--yield-return-condition-call-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+        for (const bool loop : {false, true})
+          std::cout << nlohmann::json{{"source", Emit(profile, shape, ChildShape::kYieldFinallyReturn, MissingCell::kNone, false, 2,
+              CopyEncoding::kV8, 1, loop ? YieldFinalizer::kInjectedReturn : YieldFinalizer::kInjectedConditional,
+              {}, 1, YieldOverride::kNone, loop ? CleanupControl::kLoopConditionCall : CleanupControl::kConditionCall)},
+              {"catch_parent", shape == ParentShape::kCatch}, {"loop", loop}}.dump() << '\n';
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--yield-return-select-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+        for (const bool caught : {false, true}) for (const auto overriding : {YieldOverride::kReturn, YieldOverride::kThrow})
+          std::cout << nlohmann::json{{"source", Emit(profile, shape, ChildShape::kYieldFinallyReturn, MissingCell::kNone, false, 2,
+              CopyEncoding::kV8, 1, caught ? YieldFinalizer::kInjectedReturn : YieldFinalizer::kInjectedUncaught,
+              {}, 1, overriding, CleanupControl::kSelect)}, {"catch_parent", shape == ParentShape::kCatch},
+              {"caught", caught}, {"throwing", overriding == YieldOverride::kThrow}}.dump() << '\n';
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--yield-return-loop-negative") {
     for (const auto encoding : {BranchEncoding::k8, BranchEncoding::k16, BranchEncoding::k32})
-      for (const auto missing : {MissingCell::kYieldCleanupEntryAccumulator, MissingCell::kYieldCleanupEscape,
+      for (const auto missing : {MissingCell::kYieldReturnWriteResult, MissingCell::kYieldCleanupEscape,
                                 MissingCell::kYieldCleanupExternalEntry, MissingCell::kYieldReturnReadResult,
                                 MissingCell::kYieldReturnReadMode, MissingCell::kYieldReturnReadState})
         Emit(abc::ProfileId::kDynamic1206, ParentShape::kIteration, ChildShape::kYieldFinallyReturn,
@@ -1076,7 +1135,7 @@ int main(int argc, char** argv) {
         Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kYieldFinallyReturn, missing, false, 1,
             CopyEncoding::kV8, 1, YieldFinalizer::kInjectedReturn, {encoding, encoding});
     for (const auto encoding : {BranchEncoding::k8, BranchEncoding::k16, BranchEncoding::k32})
-      for (const auto missing : {MissingCell::kYieldCleanupEntryAccumulator, MissingCell::kYieldCleanupEscape, MissingCell::kYieldCleanupExternalEntry})
+      for (const auto missing : {MissingCell::kYieldReturnReadAccumulator, MissingCell::kYieldCleanupEscape, MissingCell::kYieldCleanupExternalEntry})
         Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kYieldFinallyReturn, missing, false, 1,
             CopyEncoding::kV8, 1, YieldFinalizer::kInjectedConditional, {encoding, encoding});
     return 0;

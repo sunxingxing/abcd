@@ -68,6 +68,9 @@ class Composition {
       };
       if (n < t_.blocks.size()) {
         const auto& block = t_.blocks[n];
+        // Discovery adds try summaries, not new completion semantics. Preserve
+        // abrupt terminals so shared exit-arm ownership includes return/throw.
+        nodes[n].termination = block.termination;
         for (std::uint8_t e = 0; e < block.arc_count; ++e) {
           quota_.Work(); const auto& original = t_.edges[block.first_arc.value + e];
           add(original.target, original.kind);

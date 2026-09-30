@@ -2,6 +2,36 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
 execFileSync(process.argv[2], ['--yield-return-loop-negative'], {timeout: 60_000});
+const overrides = execFileSync(process.argv[2], ['--yield-return-loop-override-json'],
+  {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000}).trim().split('\n').map(line => JSON.parse(line));
+assert.equal(overrides.length, 48);
+for (const fixture of overrides) {
+  assert.ok(!fixture.source.includes('INCOMPLETE'));
+  const {capture} = await import(`data:text/javascript;base64,${Buffer.from(`export const capture = ${fixture.source};`).toString('base64')}`);
+  let entered = false, get, set;
+  capture(() => !entered && (entered = true), () => { if (fixture.catch_parent) throw false; return false; },
+    (child, setter) => { get = child; set = setter; });
+  for (const stop of [1, 2]) for (const finishAt of [0, 1, 2, fixture.count + 1])
+    for (const exiting of [false, true]) for (const failure of [0, 1, 2]) {
+      let calls = 0; const payload = {}, replacement = {}, firstError = {}, secondError = {};
+      const iterator = get(() => payload, function () {
+        assert.equal(this, undefined);
+        ++calls;
+        if (calls <= failure) throw calls === 1 ? firstError : secondError;
+        if (exiting && calls === finishAt) set(false);
+        return exiting || calls < finishAt ? calls % 2 ? false : 0 : replacement;
+      });
+      set(false);
+      for (let i = 0; i < stop; ++i) assert.deepEqual(iterator.next(payload), {value: payload, done: false});
+      set(finishAt > 0);
+      if (finishAt && (failure || (!exiting && fixture.throwing))) assert.throws(() => iterator.return(payload),
+        error => error === (failure ? failure === 2 && fixture.caught ? secondError : firstError : replacement));
+      else assert.deepEqual(iterator.return(payload), {value: !finishAt || exiting ? payload : replacement, done: true});
+      assert.equal(calls, !finishAt ? 0 : failure ? 1 + Number(fixture.caught) : exiting ?
+        Math.ceil(finishAt / fixture.count) * fixture.count : finishAt + Number(fixture.throwing && fixture.caught));
+      assert.deepEqual(iterator.next(), {value: undefined, done: true});
+    }
+}
 const fixtures = execFileSync(process.argv[2], ['--yield-return-loop-json'],
   {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000}).trim().split('\n').map(line => JSON.parse(line));
 assert.equal(fixtures.length, 24);

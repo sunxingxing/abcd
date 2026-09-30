@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 
 const source = execFileSync(process.argv[2], ['--emit'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!source.includes('INCOMPLETE'));
-const {functions} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {functions, terminals} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 assert.equal(functions.length, 12);
 for (const [index, fn] of functions.entries()) {
   const stops = index % 2 === 1;
@@ -42,4 +42,27 @@ for (const [index, fn] of functions.entries()) {
       [...full, ...full, ...full, 'outer'];
     assert.deepEqual(log, expected);
   }
+}
+assert.equal(terminals.length, 6);
+for (const [index, fn] of terminals.entries()) {
+  for (const finish of [0, 1, 2, 7]) {
+    const payload = Symbol('pending');
+    const replacement = {replacement: finish};
+    const log = [];
+    let calls = 0;
+    const condition = function() {
+      assert.equal(this, undefined);
+      assert.ok(log.length < 30, 'early terminal must not re-enter the loop');
+      log.push('condition'); return finish ? true : false;
+    };
+    const callback = function() {
+      assert.equal(this, undefined);
+      log.push('callback'); return ++calls === finish ? replacement : 0;
+    };
+    if (finish && index % 2) assert.throws(() => fn(condition, callback, payload), error => error === replacement);
+    else assert.equal(fn(condition, callback, payload), finish ? replacement : payload);
+    assert.deepEqual(log, finish ? Array.from({length: finish}, () => ['condition', 'callback']).flat() : ['condition']);
+  }
+  const failure = new Error('callback');
+  assert.throws(() => fn(() => true, () => { throw failure; }, null), error => error === failure);
 }

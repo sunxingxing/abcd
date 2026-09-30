@@ -16,11 +16,16 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
   // A natural loop contains nodes on backedge paths, not necessarily the
   // single-entry code between a side exit and its shared destination. Absorb
   // only single-predecessor exit arms; never move code across a join,
-  // independent entry, sibling/child loop, or terminal. Only ancestor-owned
+  // independent entry or sibling/child loop. Private abrupt corridors can be
+  // lexical early returns/throws; normal zero-arc ports must stay outside.
+  // Only ancestor-owned
   // (or unowned) corridors can enter this lexical loop. No CFG edges change.
   // O(V+E+L), each newly owned node queues each outgoing edge once.
   std::vector<std::size_t> incoming, exits;
   std::vector<bool> root;
+  std::vector<bool> abrupt;
+  std::vector<std::optional<ControlNodeId>> predecessor;
+  std::vector<ControlNodeId> terminals;
   std::vector<ControlArcId> pending;
   std::vector<std::optional<ControlArcId>> seeds, next;
   std::vector<std::optional<LoopId>> children, sibling;
@@ -28,6 +33,9 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
   std::vector<Visit> visits;
   quota.Size(incoming, graph.NodeCount());
   quota.Size(root, graph.NodeCount());
+  quota.Size(abrupt, graph.NodeCount());
+  quota.Size(predecessor, graph.NodeCount());
+  quota.Size(terminals, graph.NodeCount());
   quota.Size(exits, loops.loops.size());
   quota.Size(pending, graph.ArcCount() * 2);
   const auto loop_count = loops.loops.size();
@@ -80,6 +88,7 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
     const ControlArcId id{e};
     const auto edge = graph.Arc(id);
     ++incoming[edge.target.value];
+    predecessor[edge.target.value] = edge.source;
     const auto owner = loops.owners[edge.source.value];
     if (owner && outside(*owner, loops.owners[edge.target.value])) {
       ++exits[owner->value];
@@ -87,14 +96,49 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
       seeds[owner->value] = id;
     }
   }
+  // Summarize private linear terminal arms once, backwards. A shared join,
+  // root, branch, or normal region port stops the summary. No per-loop walks.
+  std::size_t terminal_count = 0;
+  for (std::uint32_t b = 0; b < graph.NodeCount(); ++b) {
+    quota.Work();
+    const auto& node = graph.Node({b});
+    if (!root[b] && incoming[b] == 1 && node.arc_count == 0 &&
+        node.termination == ControlTermination::kAbrupt) {
+      abrupt[b] = true;
+      terminals[terminal_count++] = {b};
+    }
+  }
+  for (std::size_t first = 0; first < terminal_count; ++first) {
+    quota.Work();
+    const auto parent = predecessor[terminals[first].value];
+    if (!parent || root[parent->value] || incoming[parent->value] != 1 ||
+        abrupt[parent->value] || graph.Node(*parent).arc_count != 1) continue;
+    abrupt[parent->value] = true;
+    terminals[terminal_count++] = *parent;
+  }
   // Child-before-parent prevents an outer pass from claiming a corridor first
   // and then replaying it once per nested loop. Each node changes owner once.
   for (std::uint32_t l = 0; l < loop_count; ++l) {
     quota.Work();
     const LoopId loop{l};
     const auto begin = count;
-    for (auto seed = seeds[l]; seed; seed = next[seed->value])
+    // If every exit ends privately in return/throw, retain one whole arm as
+    // the loop's following continuation; the others belong inside the loop.
+    // Stable arc order chooses layout only, not semantics: CFG edges remain
+    // identical. With an ordinary continuation, absorb every private abrupt
+    // arm instead. Never split the retained arm at its empty phased Commit.
+    std::optional<ControlArcId> following;
+    bool all_abrupt = true;
+    for (auto seed = seeds[l]; seed; seed = next[seed->value]) {
+      quota.Work();
+      all_abrupt &= abrupt[graph.Arc(*seed).target.value];
+      if (!following || seed->value < following->value) following = seed;
+    }
+    if (!all_abrupt) following.reset();
+    for (auto seed = seeds[l]; seed; seed = next[seed->value]) {
+      if (seed == following) continue;
       pending[count++] = *seed;
+    }
     for (std::size_t first = begin; first < count; ++first) {
       quota.Work();
       const auto edge = graph.Arc(pending[first]);
@@ -103,7 +147,8 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
       const auto& node = graph.Node(target);
       if (owner != loop || exits[l] < 2 ||
           !outside(loop, loops.owners[target.value]) || root[target.value] ||
-          incoming[target.value] != 1 || node.arc_count == 0)
+          incoming[target.value] != 1 ||
+          (node.arc_count == 0 && node.termination != ControlTermination::kAbrupt))
         continue;
       loops.owners[target.value] = owner;
       for (std::uint8_t e = 0; e < node.arc_count; ++e)

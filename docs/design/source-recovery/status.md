@@ -12,6 +12,44 @@
 
 ## 当前阶段
 
+### 2026-09-30：RETURN 清理跨块值与循环内 completion 覆盖
+
+- RETURN 清理不再要求每个 basic block 单独初始化 accumulator。仅在跨块
+  读取或 abrupt 清理需要时，对不相交的拥有切片复用共同 normal CFG 做
+  must-availability；入口仍无协议 accumulator，正常 call 后继可用其结果，
+  分支合流必须所有可达前驱均已定义。每块最多处理两次，实际值/phi 和
+  handler 仍由共同 phased SSA 处理，不引入 work 截止或输出准入。
+- 共同 loop exit corridor 扩展支持私有 return/throw 尾路径，包括已在
+  Before 发射、结束于空 Commit 的路径。一次反向索引私有线性 abrupt
+  corridor；全部出口为私有 abrupt 时保留一条完整 following corridor，
+  其他路径归入循环，避免将 preserving payload Return 错分为循环内尾部。
+  CFG 边不变；独立入口、共享 join、兄弟/子循环、正常零弧 try port 不被
+  吸收。异常循环发现图现保留原 termination 类型，与普通循环共用该算法。
+- 新增 114 个完整文件解码/合成元数据函数族：18 个公共条件值进入 call，
+  36 个条件选择后 return/throw，12 个 200/201/402 连续选择，48 个循环内
+  条件 return/throw（含 200/201/402 条 guard、16/32 位恢复分支）。实际
+  生成 JS 验证 callback receiver、顺序/次数、合流结果身份、捕获 cell
+  更新、原 RETURN payload 保留/覆盖、异常及用户 catch 二次清理。
+  return/loop 两个集成目标分别消费 375/72 个完整函数族；不冒充真实应用
+  或任意 generator 形态覆盖。未初始化入口与协议私有寄存器反例保留。
+- 普通函数新增三 profile × return/throw 的六个实际源码行为用例，验证
+  0/1/2/7 次循环、提前终结与 callback 抛错。图级反例确认正常出口、
+  独立入口和共享 terminal 的边界。旧 control_plan 用例曾把两个真实
+  return 当成不支持的多出口；现分别检查私有 return 成功和两个普通
+  continuation 仍拒绝，不删除原安全边界。
+- 相关 C++ 目标构建成功；42/42 定向测试通过（59.08 秒），包括普通/
+  异常控制组合、try、finally、闭包、await 和 generator 的完整源码执行。
+  构建日志：`/tmp/abcd-generator-return-flow-final-build.log`、
+  `/tmp/abcd-generator-return-flow-consumer-build.log`、
+  `/tmp/abcd-loop-abrupt-control-build.log`；最终测试：
+  `/tmp/abcd-generator-return-flow-verified-tests.log`；`git diff --check`
+  通过。循环红例定位：`/tmp/abcd-generator-return-loop-override-location.log`，
+  临时投影丢失 terminal 类型定位：`/tmp/abcd-loop-abrupt-new-location.log`。
+- C07/总目标仍开放：嵌套/多出口清理、RETURN 清理再次暂停、入口默认值/
+  解构、self/super、yield*、async generator，以及字段/全局/签名/函数体
+  结构 gate。全量测试/语料/RSS/基准仍暂停，两个历史 base_function 失败
+  未重跑/修复；不宣称全套通过或 1GB 验收。
+
 ### 2026-09-30：generator 注入 RETURN 的循环清理纵向验收
 
 - 将 inline RETURN 清理的后向分支带入真实 opcode 文件解码用例，经共同

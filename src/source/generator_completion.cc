@@ -42,8 +42,11 @@ struct ResumeRegion {
 // external entries are rejected separately, never silently pruned. The common
 // normal CFG owns transfer semantics. Disjoint slices cost O(I + B log I).
 std::vector<std::uint8_t> ReachableCleanup(const abc::MethodBody& body,
-    std::size_t begin, std::size_t count, std::size_t bytes) {
-  constexpr auto kScratch = sizeof(abc::BodyInstruction) + 2 * sizeof(std::uint8_t) + sizeof(analysis::BlockId);
+    std::size_t begin, std::size_t count, std::uint64_t registers, std::size_t bytes) {
+  enum class Accumulator : std::uint8_t { kUnseen, kDefined, kUndefined };
+  constexpr std::size_t kVisits = 2; // Unseen -> Defined -> Undefined, never back.
+  constexpr auto kScratch = sizeof(abc::BodyInstruction) + sizeof(std::uint8_t) +
+      sizeof(Accumulator) + kVisits * sizeof(analysis::BlockId);
   if (count > bytes / kScratch) throw Error::kResourceLimit;
   bytes -= count * kScratch;
   abc::MethodBody slice;
@@ -57,16 +60,32 @@ std::vector<std::uint8_t> ReachableCleanup(const abc::MethodBody& body,
   if (const auto* failure = std::get_if<analysis::FlowFailure>(&built))
     throw failure->kind == analysis::FlowError::kResourceLimit ? Error::kResourceLimit : Error::kKind;
   const auto& graph = std::get<analysis::NormalFlow>(built);
-  std::vector<std::uint8_t> retained(count), seen(graph.blocks.size());
+  std::vector<std::uint8_t> retained(count);
+  std::vector<Accumulator> incoming(graph.blocks.size(), Accumulator::kUnseen);
   std::vector<analysis::BlockId> queue;
-  queue.reserve(graph.blocks.size()); queue.push_back({0}); seen.front() = true;
+  queue.reserve(kVisits * graph.blocks.size()); queue.push_back({0}); incoming.front() = Accumulator::kUndefined;
+  // Must-availability on normal Commit edges: a throwing call never reaches
+  // its normal successor. Native RETURN has no dispatch acc at slice entry.
+  // A later undefined predecessor invalidates an earlier defined input. Each
+  // block/edge is processed at most twice; SSA still owns values/phi copies.
   for (std::size_t head = 0; head < queue.size(); ++head) {
-    const auto& block = graph.blocks[queue[head].value];
+    const auto id = queue[head]; const auto& block = graph.blocks[id.value];
+    bool accumulator = incoming[id.value] == Accumulator::kDefined;
+    for (std::size_t i = block.first_instruction; i < block.first_instruction + block.instruction_count; ++i) {
+      const auto access = abc::GetRegisterAccesses(slice.instructions[i].decoded, registers);
+      const auto* known = std::get_if<abc::RegisterAccesses>(&access); Require(known != nullptr);
+      Require(accumulator || !known->accumulator_read);
+      accumulator |= known->accumulator_write;
+    }
     std::fill(retained.begin() + block.first_instruction,
         retained.begin() + block.first_instruction + block.instruction_count, 1);
     for (std::size_t i = 0; i < block.successor_count; ++i) {
       const auto target = block.successors[i].target;
-      if (!seen[target.value]) { seen[target.value] = true; queue.push_back(target); }
+      auto& state = incoming[target.value];
+      const auto out = accumulator ? Accumulator::kDefined : Accumulator::kUndefined;
+      if (state == Accumulator::kUnseen || (state == Accumulator::kDefined && out == Accumulator::kUndefined)) {
+        state = out; queue.push_back(target);
+      }
     }
   }
   return retained;
@@ -142,20 +161,19 @@ ResumeRegion Resume(const abc::MethodBody& body, std::size_t begin,
     }
     std::sort(entries.begin(), entries.end());
     entries.erase(std::unique(entries.begin(), entries.end()), entries.end());
-    bool accumulator = false, start = true;
+    bool accumulator = false, start = true, needs_flow = abrupt;
     std::size_t entry = 0;
     for (std::size_t i = begin + kReturnValue; i < begin + kReturnValue + cleanup; ++i) {
       const auto& site = body.instructions[i];
       const auto control = abc::GetControlTransfer(site.decoded.opcode);
-      // Every basic block must define acc before observing it. This deliberately
-      // does not carry the dispatch accumulator through a join/backedge. The
-      // common CFG/SSA owns branch structure and ordinary register merges.
+      // Fast path for block-local acc. Cross-block reads need the owned CFG's
+      // must-availability check, not rejection or a dispatch-derived input.
       const bool target = entry < entries.size() && entries[entry] == site.offset;
       if (start || target) accumulator = false;
       if (target) ++entry;
       const auto access = abc::GetRegisterAccesses(site.decoded, frame.registers);
       const auto* known = std::get_if<abc::RegisterAccesses>(&access); Require(known != nullptr);
-      Require(accumulator || !known->accumulator_read);
+      needs_flow |= !accumulator && known->accumulator_read;
       accumulator |= known->accumulator_write;
       start = *control != abc::ControlTransfer::kFallthrough;
       // Native RETURN bypasses the result/mode commits, and its payload cannot
@@ -166,9 +184,9 @@ ResumeRegion Resume(const abc::MethodBody& body, std::size_t begin,
           Require(slot.value < window.first.value || slot.value - window.first.value >= window.count);
         }
     }
-    if (abrupt) {
+    if (needs_flow) {
       retained = ReachableCleanup(body, begin + kReturnValue, cleanup + kPreservingTailSize,
-          bytes - entries.capacity() * sizeof(abc::CodeOffset));
+          frame.registers, bytes - entries.capacity() * sizeof(abc::CodeOffset));
       if (!retained.back()) region.return_route->completion.reset();
     }
   }

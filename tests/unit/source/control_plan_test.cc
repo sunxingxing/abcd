@@ -134,7 +134,14 @@ void Loops() {
   }
   Check(crossed);
   const std::array<Targets, 4> multi_exit{{{1, 2}, {0, 3}, {}, {}}};
-  Check(std::get<ControlError>(BuildControlPlan(Graph(multi_exit))) == ControlError::kLoopExits);
+  // Separate private return arms are lexical early exits, not two normal
+  // continuation ports. Keep the latter rejection independently covered.
+  auto exit_graph = Graph(multi_exit);
+  const auto exit_built = BuildControlPlan(exit_graph);
+  const auto* exit_plan = std::get_if<ControlPlan>(&exit_built);
+  Check(exit_plan && std::holds_alternative<std::uint64_t>(VerifyControlPlan(exit_graph, *exit_plan)));
+  exit_graph.blocks[2].op_count = 0; exit_graph.blocks[3].op_count = 0;
+  Check(std::get<ControlError>(BuildControlPlan(exit_graph)) == ControlError::kLoopExits);
   for (const std::uint32_t depth : {1U, 2U, 200U, 201U, 4096U}) {
     // Each child exits to its parent's latch/header; only the outer loop exits
     // the function region. Compact ownership must not expand ancestor bodies.

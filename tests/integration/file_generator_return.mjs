@@ -5,6 +5,86 @@ import {execFileSync} from 'node:child_process';
 // user catch as the yield. Retain that dispatch, including a second cleanup
 // on that catch path, rather than claiming this is a canonical try/finally.
 execFileSync(process.argv[2], ['--yield-return-negative'], {timeout: 60_000});
+const conditionCalls = execFileSync(process.argv[2], ['--yield-return-condition-call-json'],
+  {encoding: 'utf8', timeout: 60_000, maxBuffer: 8_000_000}).trim().split('\n').map(line => JSON.parse(line));
+assert.equal(conditionCalls.length, 18);
+for (const fixture of conditionCalls) {
+  assert.ok(!fixture.source.includes('INCOMPLETE'));
+  const {capture} = await import(`data:text/javascript;base64,${Buffer.from(`export const capture = ${fixture.source};`).toString('base64')}`);
+  let entered = false, get, set;
+  capture(() => !entered && (entered = true), () => { if (fixture.catch_parent) throw false; return false; },
+    (child, setter) => { get = child; set = setter; });
+  for (const stop of [1, 2]) for (const cell of [false, 0, true, {}]) {
+    let calls = 0; const payload = {}, iterator = get(() => payload, () => { ++calls; set(false); });
+    for (let i = 0; i < stop; ++i) assert.deepEqual(iterator.next(payload), {value: payload, done: false});
+    set(cell);
+    const enabled = cell !== false && cell !== 0;
+    if (fixture.loop || !enabled) assert.throws(() => iterator.return(payload), TypeError);
+    else assert.deepEqual(iterator.return(payload), {value: payload, done: true});
+    assert.equal(calls, fixture.loop && enabled ? 2 : 1);
+    assert.deepEqual(iterator.next(), {value: undefined, done: true});
+  }
+}
+const selected = execFileSync(process.argv[2], ['--yield-return-select-json'],
+  {encoding: 'utf8', timeout: 60_000, maxBuffer: 8_000_000}).trim().split('\n').map(line => JSON.parse(line));
+assert.equal(selected.length, 36);
+for (const fixture of selected) {
+  assert.ok(!fixture.source.includes('INCOMPLETE'));
+  const {capture} = await import(`data:text/javascript;base64,${Buffer.from(`export const capture = ${fixture.source};`).toString('base64')}`);
+  let entered = false, get, set;
+  capture(() => !entered && (entered = true), () => { if (fixture.catch_parent) throw false; return false; },
+    (child, setter) => { get = child; set = setter; });
+  for (const stop of [1, 2]) for (const enabled of [false, true]) for (const fail of [false, true]) {
+    const yielded = {}, payload = {}, a = {}, b = {}, firstError = {};
+    let work = 0, calls = 0;
+    const iterator = get(function () {
+      assert.equal(this, undefined);
+      if (++work === 1) return yielded;
+      if (fail) throw firstError;
+      return b;
+    }, function () { assert.equal(this, undefined); ++calls; if (fail) throw firstError; return a; });
+    set(!enabled);
+    for (let i = 0; i < stop; ++i) assert.deepEqual(iterator.next(yielded), {value: yielded, done: false});
+    set(enabled);
+    const value = enabled ? a : b;
+    if (fail || fixture.throwing) assert.throws(() => iterator.return(payload), error => error === (fail ? firstError : value));
+    else assert.deepEqual(iterator.return(payload), {value, done: true});
+    assert.equal(work, enabled ? 1 : 2);
+    assert.equal(calls, Number(enabled) + Number(fixture.caught && (fail || fixture.throwing)));
+    assert.deepEqual(iterator.next(), {value: undefined, done: true});
+  }
+}
+const selectMany = execFileSync(process.argv[2], ['--yield-return-select-many-json'],
+  {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000}).trim().split('\n').map(line => JSON.parse(line));
+assert.equal(selectMany.length, 12);
+for (const fixture of selectMany) {
+  assert.ok(!fixture.source.includes('INCOMPLETE'));
+  const {capture} = await import(`data:text/javascript;base64,${Buffer.from(`export const capture = ${fixture.source};`).toString('base64')}`);
+  let entered = false, get, set;
+  capture(() => !entered && (entered = true), () => false, (child, setter) => { get = child; set = setter; });
+  for (const stop of [1, 2]) for (const initial of [false, true]) for (const failAt of [0, 1, 17, fixture.count]) {
+    let active = false, calls = 0; const trace = [], payload = {}, error = {}, lastError = {}, a = {}, b = {};
+    const step = branch => {
+      trace.push(branch);
+      set(branch === 'b');
+      if (++calls === failAt) throw error;
+      if (fixture.throwing && !failAt && calls === fixture.count + 1) throw lastError;
+      return branch === 'a' ? a : b;
+    };
+    const iterator = get(() => active ? step('b') : payload, () => step('a'));
+    for (let i = 0; i < stop; ++i) assert.deepEqual(iterator.next(payload), {value: payload, done: false});
+    active = true; set(initial);
+    const lastA = initial !== (fixture.count % 2 === 0);
+    const expected = lastA ? a : b;
+    if (failAt || fixture.throwing) assert.throws(() => iterator.return(payload),
+      caught => caught === (failAt ? error : lastError));
+    else assert.deepEqual(iterator.return(payload), {value: expected, done: true});
+    const count = failAt || fixture.count;
+    assert.equal(calls, count + Number(Boolean(failAt) || fixture.throwing));
+    assert.deepEqual(trace.slice(0, count), Array.from({length: count}, (_, i) => initial !== (i % 2 === 1) ? 'a' : 'b'));
+    if (failAt || fixture.throwing) assert.equal(trace.at(-1), 'a');
+  }
+}
 const overrides = execFileSync(process.argv[2], ['--yield-return-override-json'],
   {encoding: 'utf8', timeout: 60_000, maxBuffer: 8_000_000}).trim().split('\n').map(line => JSON.parse(line));
 assert.equal(overrides.length, 72);
