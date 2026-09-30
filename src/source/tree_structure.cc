@@ -313,9 +313,7 @@ class StructureCheck {
             Error::kUnsupportedSyntax);
         RequireTree(expression.properties.first <= tree_.properties.size() &&
             expression.properties.count <= tree_.properties.size() - expression.properties.first, Error::kRange);
-        RequireTree(expression.buffered <= expression.properties.count &&
-            (expression.kind == AggregateKind::kObject || expression.buffered == 0 ||
-             expression.buffered == expression.properties.count), Error::kRange);
+        RequireTree(expression.buffered <= expression.properties.count, Error::kRange);
       } else if constexpr (std::is_same_v<T, EmptyArrayExpr> || std::is_same_v<T, EmptyObjectExpr>) {
         // Each allocation occurrence has unique syntax ownership. Identity and
         // execution order are proved separately against its Value IR operation.

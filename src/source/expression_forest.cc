@@ -328,9 +328,10 @@ class ForestBuilder {
     const auto* allocation = std::get_if<analysis::ValueObjectAllocation>(&graph_.ops[object.allocation.value].operation);
     const auto kind = allocation ? AggregateKind::kObject : AggregateKind::kArray;
     const AggregateConstant* buffer = nullptr;
-    if (allocation && allocation->literal) {
+    const auto* array = std::get_if<analysis::ValueArrayAllocation>(&graph_.ops[object.allocation.value].operation);
+    if ((allocation && allocation->literal) || (array && array->literal)) {
       buffer = std::get_if<AggregateConstant>(&constants_.operations[object.allocation.value]);
-      Require(buffer && buffer->kind == AggregateKind::kObject, Error::kConstant);
+      Require(buffer && buffer->kind == kind, Error::kConstant);
     }
     const auto prefix = buffer ? buffer->count : 0;
     std::vector<std::optional<analysis::OpId>> writes;
@@ -361,7 +362,11 @@ class ForestBuilder {
       const auto* name = std::get_if<NameId>(&constants_.operations[id.value]);
       Require(name && name->value < constants_.name_count, Error::kConstant);
       std::size_t destination = writes.size();
-      if (!order.empty()) {
+      if (array) {
+        const auto* indexed = std::get_if<analysis::ValueIndexedWrite>(&graph_.ops[id.value].operation);
+        Require(indexed && indexed->index >= next && indexed->index <= writes.size(), Error::kConstant);
+        destination = indexed->index;
+      } else if (!order.empty()) {
         Require(name->value < names_.size(), Error::kConstant);
         const std::u16string_view sought = names_[name->value];
         const auto found = std::upper_bound(order.begin(), order.end(), sought,

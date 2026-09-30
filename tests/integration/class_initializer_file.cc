@@ -98,6 +98,10 @@ int main(int argc, char** argv) {
       }
     }
     Check(fields > 0 && (entry != 7312 || fields == 3));
+    // Buffered array writes now pass receiver admission. HomeConstants still
+    // needs late RHS expression integration before its full body can publish.
+    if (entry == 16391)
+      Check(std::get<LiteralError>(BuildLiteralPlan(graph)) == LiteralError::kLateValue);
     if (entry == 7312) {
       auto syntax = std::get<ResolvedSyntax>(ResolveFunctionSyntax(file, header, index,
           initializer.context, initializer.function.body, graph, {1}));

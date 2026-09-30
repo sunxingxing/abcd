@@ -154,8 +154,6 @@ analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id
                  std::holds_alternative<analysis::ValueObjectAllocation>(allocation.operation)) &&
       allocation.result == *value && allocation.use_count == 0 &&
       path.Before(allocation, op), Error::kReceiver);
-  if (const auto* array = std::get_if<analysis::ValueArrayAllocation>(&allocation.operation))
-    Require(!array->literal, Error::kReceiver);
   return result->op;
 }
 void EarlyValue(const analysis::ValueProgram& graph, const analysis::ValueOp& allocation,
@@ -262,13 +260,20 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
       allocations[object.allocation.value] = 1;
       const auto& allocation = graph.ops[object.allocation.value];
       auto prior = object.allocation;
+      std::optional<std::uint32_t> previous_index;
       for (std::uint32_t i = 0; i < object.count; ++i) {
         budget.Step();
         const auto id = plan.definitions[next++];
         Require(Allocation(graph, id, path) == object.allocation && !owners[id.value], Error::kCoverage);
         const auto& op = graph.ops[id.value];
-        if (const auto* indexed = std::get_if<analysis::ValueIndexedWrite>(&op.operation))
-          Require(indexed->index == i, Error::kDefinition);
+        if (const auto* indexed = std::get_if<analysis::ValueIndexedWrite>(&op.operation)) {
+          const auto& array = std::get<analysis::ValueArrayAllocation>(allocation.operation);
+          // Buffered primitives may be replaced, but RHS evaluations must stay
+          // in increasing element order. Constants/AST validation checks gaps.
+          Require(array.literal ? (!previous_index || indexed->index > *previous_index) :
+              indexed->index == i, Error::kDefinition);
+          previous_index = indexed->index;
+        }
         Require(path.Before(graph.ops[prior.value], op), Error::kDefinition); prior = id;
         const analysis::UseId rhs{op.first_use.value + 1};
         const auto operand = path.Resolve(graph.uses[rhs.value].operand);

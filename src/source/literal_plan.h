@@ -38,7 +38,8 @@ enum class LiteralError : std::uint8_t {
   kCoverage, kResourceLimit, kWorkLimit
 };
 // Initial domain: fresh ordinary object with named definitions, or fresh array
-// with dense indexed definitions 0..N-1, in the same block/corridor;
+// with dense indexed definitions 0..N-1, or increasing buffered-array writes,
+// in the same block/corridor. Buffered extent/gaps are checked with constants;
 // no observation until initialization completes, RHS available before allocation.
 // Direct receiver fields stay ordered statement roots and are excluded from
 // literal ownership. Not AST/publication permission: preserve snapshots and sites.

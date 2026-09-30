@@ -47,3 +47,24 @@ for (const array of [false, true]) for (const count of [1, 200, 201, 402]) {
   }
 }
 assert.equal(consumers.length, index);
+
+const arraySource = execFileSync(process.argv[2], ['--array-buffer-source'], {encoding: 'utf8'});
+const arrays = vm.runInContext(`[${arraySource}]`, context);
+index = 0;
+for (const count of [1, 200, 201, 402]) {
+  const create = arrays[index++];
+  const expected = [null, null];
+  for (let i = 1; i <= count; ++i) Object.defineProperty(expected, i, {
+    value: 1, enumerable: true, configurable: true, writable: true,
+  });
+  const actual = create(), other = create();
+  assert.ok(Array.isArray(actual));
+  assert.notEqual(actual, other);
+  assert.deepEqual(Reflect.ownKeys(actual), Reflect.ownKeys(expected));
+  for (const key of Reflect.ownKeys(expected))
+    assert.deepEqual(Object.getOwnPropertyDescriptor(actual, key),
+      Object.getOwnPropertyDescriptor(expected, key));
+  actual[0] = 'changed';
+  assert.equal(other[0], null);
+}
+assert.equal(arrays.length, index);

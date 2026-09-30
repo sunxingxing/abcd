@@ -265,7 +265,6 @@ class OperandCheck {
               const auto& actual_name = tree_.names[actual.key.value];
               budget_.Step(source_name.size()); budget_.Step(actual_name.size());
               RequireMeaning(actual_name == source_name, Error::kConstant);
-              if constexpr (array) RequireMeaning(!flow_.defined_properties[object.properties.first + p], Error::kConstant);
               if (!flow_.defined_properties[object.properties.first + p])
                 BufferedLiteral(source.value, actual.value);
             }

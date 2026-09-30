@@ -12,6 +12,28 @@
 
 ## 当前阶段
 
+### 2026-10-01：缓冲数组的后续元素定义进入共同字面量恢复
+
+- 从 HomeConstants initializer 16447 的真实字节码确认缓冲数组创建后仍有
+  indexed own definitions，例如 PC1744 创建后 PC1770 写入 index1，
+  PC2068 创建后 PC2094/2103/2128/2153 写入 index1..4。
+- LiteralPlan 接受严格递增的缓冲数组定义，保持现有无提前观察、嵌套归属和
+  RHS 顺序约束；常量感知的表达式构造保留原前缀、替换已有项并连续追加，
+  拒绝会产生 hole 的跳跃。共同 tree flow/operands/structure 核对具体位置、
+  保留项常量、定义来源及数组 dense keys。没有新增生产样本特例或旧 writer。
+- 测试覆盖从 index0 覆盖/追加、保留 index0 后从 index1 覆盖/追加，
+  1/200/201/402 大小、逆序/重复下标、缺口及保留常量篡改拒绝。
+  独立 Node oracle 从缓冲数组和 DefineOwnProperty 序列计算期望，比较
+  全部 own keys、length、属性描述符和两次调用的数组身份隔离。
+- 构建日志 /tmp/abcd-buffer-writes-final-build.log；六项定向测试全部通过
+  （4.91 秒），日志 /tmp/abcd-buffer-writes-final-tests.log，包含现有七个
+  静态类 record 的配对执行回归。未运行全量测试、RSS 或其他 corpus。
+- HomeConstants 已越过 kReceiver，但仍在 kLateValue 处失败；实际指令含
+  数组创建后的字符串加载（例如 PC2100），下一步处理晚产生 RHS 的共同
+  求值位置。新增真实文件测试固定此未完成边界，不把它当作完整正文。
+  本次未刷新全部五输入计数；前次 22/84/46 仍是最近完整批次证据，
+  不宣称本次新增完整 record，阶段一保持未完成。
+
 ### 2026-10-01：静态初始化贯通正式 record，新增七个完整导出
 
 - 实际 initializer 正文进入 ClassTree，沿共享语法解析、控制/求值规划、

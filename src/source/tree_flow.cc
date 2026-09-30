@@ -345,7 +345,8 @@ class FlowCheck {
       Require(syntax && syntax->properties.count >= object.count, Error::kPlacement);
       const auto* allocation = std::get_if<analysis::ValueObjectAllocation>(&graph_.ops[object.allocation.value].operation);
       Require(syntax->kind == (allocation ? AggregateKind::kObject : AggregateKind::kArray), Error::kPlacement);
-      Require((allocation && allocation->literal) || syntax->buffered == 0, Error::kPlacement);
+      const auto* array = std::get_if<analysis::ValueArrayAllocation>(&graph_.ops[object.allocation.value].operation);
+      Require((allocation && allocation->literal) || (array && array->literal) || syntax->buffered == 0, Error::kPlacement);
       Require(!grouped[object.allocation.value], Error::kPlacement);
       grouped[object.allocation.value] = 1;
       std::uint32_t next = syntax->properties.first;

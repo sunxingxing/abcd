@@ -114,6 +114,43 @@ void Budgets() {
     Check(std::get<LiteralError>(BuildLiteralPlan(graph, budget)) == LiteralError::kResourceLimit);
   }
 }
+void BufferedArraySuffix(bool print = false) {
+  for (const std::uint32_t count : {1U, 200U, 201U, 402U}) {
+    auto graph = Graph(count);
+    graph.ops[0].operation = ValueArrayAllocation{abcd::abc::PoolIndex{0}};
+    FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction;
+    syntax.strictness = Strictness::kStrict;
+    std::vector<ExpressionConstant> constants(graph.ops.size());
+    constants[0] = AggregateConstant{0, 2, AggregateKind::kArray};
+    for (std::uint32_t i = 0; i <= count; ++i) {
+      const auto key = std::to_string(i); syntax.names.emplace_back(key.begin(), key.end());
+      if (i) {
+        graph.ops[i].operation = ValueIndexedWrite{i, 0};
+        constants[i] = NameId{i};
+      }
+    }
+    const std::vector<ConstantProperty> properties{{NameId{0}, NullLiteral{}}, {NameId{1}, NullLiteral{}}};
+    const ExpressionConstants resolved{constants, syntax.names.size(), 0, {}, properties};
+    const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+    const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+    const auto built = BuildFunctionTree(graph, control, evaluation, syntax, resolved);
+    const auto* result = std::get_if<ConstructedFunction>(&built);
+    Check(result && result->tree.properties.size() == count + 1);
+    std::ostringstream output;
+    Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(result->tree, output)));
+    Check(output.str().find("[null, 1") != std::string::npos);
+    if (print) std::cout << output.str() << ",\n";
+    auto changed = result->tree;
+    changed.expressions[changed.properties.front().value.value].expression = TreeLiteral{UndefinedLiteral{}};
+    Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control,
+        evaluation, changed, resolved)));
+    if (count > 1) {
+      auto descending = graph;
+      std::get<ValueIndexedWrite>(descending.ops[2].operation).index = 0;
+      Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(descending)));
+    }
+  }
+}
 void SourceTree(bool buffered, bool array = false, bool print = false) {
   for (const std::uint32_t count : {1U, 2U, 200U, 201U}) {
     auto graph = Graph(count);
@@ -121,7 +158,10 @@ void SourceTree(bool buffered, bool array = false, bool print = false) {
       graph.ops[0].operation = ValueArrayAllocation{};
       for (std::uint32_t i = 0; i < count; ++i) graph.ops[i + 1].operation = ValueIndexedWrite{i, 0};
     }
-    if (buffered) std::get<ValueObjectAllocation>(graph.ops[0].operation).literal = abcd::abc::PoolIndex{0};
+    if (buffered) {
+      if (array) std::get<ValueArrayAllocation>(graph.ops[0].operation).literal = abcd::abc::PoolIndex{0};
+      else std::get<ValueObjectAllocation>(graph.ops[0].operation).literal = abcd::abc::PoolIndex{0};
+    }
     const auto evaluated = BuildEvaluationPlan(graph);
     const auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
     Check(evaluation && evaluation->literals);
@@ -134,7 +174,7 @@ void SourceTree(bool buffered, bool array = false, bool print = false) {
     std::vector<ExpressionConstant> constants(graph.ops.size());
     const std::vector<ConstantProperty> properties{{NameId{0}, NullLiteral{}}};
     const std::uint32_t prefix = buffered ? 1 : 0;
-    if (buffered) constants[0] = AggregateConstant{0, prefix};
+    if (buffered) constants[0] = AggregateConstant{0, prefix, array ? AggregateKind::kArray : AggregateKind::kObject};
     for (std::size_t i = 1; i <= count; ++i) constants[i] = NameId{0};
     if (array) {
       syntax.names.clear();
@@ -174,7 +214,18 @@ void SourceTree(bool buffered, bool array = false, bool print = false) {
       Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, *evaluation, wrong_kind, resolved)));
       auto sparse = graph;
       ++std::get<ValueIndexedWrite>(sparse.ops[1].operation).index;
-      Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(sparse)));
+      if (buffered && count == 1) {
+        // Index beyond the buffered prefix would introduce a hole; reject at
+        // the constant-aware AST boundary, even though ordering alone is valid.
+        std::get<ValueIndexedWrite>(sparse.ops[1].operation).index = 2;
+        auto gap_constants = constants;
+        auto gap_syntax = syntax; gap_syntax.names.push_back(u"2");
+        gap_constants[1] = NameId{static_cast<std::uint32_t>(gap_syntax.names.size() - 1)};
+        const ExpressionConstants gap_resolved{gap_constants, gap_syntax.names.size(), 0, {}, properties};
+        const auto gap_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(sparse));
+        Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(sparse, control,
+            gap_evaluation, gap_syntax, gap_resolved)));
+      } else Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(sparse)));
       sparse = graph; sparse.ops[0].operation = ValueObjectAllocation{};
       Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(sparse)));
     }
@@ -407,5 +458,6 @@ void RhsSnapshot() {
 int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--consumer-source") { LiteralConsumers(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--buffer-source") { BufferedOverwrites(true); return 0; }
+  if (argc == 2 && std::string_view(argv[1]) == "--array-buffer-source") { BufferedArraySuffix(true); return 0; }
   if (argc > 1) { SourceTree(false, true, true); return 0; }
-  LiteralConsumers(); BufferedOverwrites(); NestedLiterals(); SourceTree(false, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }
+  LiteralConsumers(); BufferedArraySuffix(); BufferedOverwrites(); NestedLiterals(); SourceTree(false, true); SourceTree(true, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }
