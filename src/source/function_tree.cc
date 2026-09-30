@@ -674,7 +674,7 @@ class TreeBuilder {
       }
       const TreeOriginId origin{op.origin.value};
       const auto expression = forest_.operations[id.value];
-      if (IsConstructorGuard(tree_, id) || evaluation.kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
+      if (IsConstructorGuard(tree_, id) || evaluation.kind == EvaluationKind::kCellGuard || evaluation.kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
           evaluation.kind == EvaluationKind::kEnvironment || evaluation.kind == EvaluationKind::kElidedPure ||
           evaluation.kind == EvaluationKind::kAlias) {
         // A projected pure elision keeps its PC at this lexical boundary, not

@@ -124,7 +124,7 @@ class FlowCheck {
               evaluation_.operations[id.value].kind == EvaluationKind::kClassProjection ||
               evaluation_.operations[id.value].kind == EvaluationKind::kModuleGuard) continue;
           const auto& placement = tree_.operations[*placements_[id.value]].node;
-          if (IsConstructorGuard(tree_, id) || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
+          if (IsConstructorGuard(tree_, id) || evaluation_.operations[id.value].kind == EvaluationKind::kCellGuard || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
               std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
               evaluation_.operations[id.value].kind == EvaluationKind::kElidedPure ||
               evaluation_.operations[id.value].kind == EvaluationKind::kAlias) {
@@ -506,6 +506,11 @@ class FlowCheck {
       const auto& placement = tree_.operations[*placements_[i]].node;
       // Class member installations retain a PC anchor, not an object-literal
       // PropertyId. Their class owner/body correspondence is checked separately.
+      if (evaluation_.operations[i].kind == EvaluationKind::kCellGuard) {
+        Require(evaluation_.cells && IsInitializedCellGuard(graph_, *evaluation_.cells,
+            analysis::OpId{static_cast<std::uint32_t>(i)}) && std::holds_alternative<AnchorId>(placement), Error::kPlacement);
+        continue;
+      }
       if (IsConstructorGuard(tree_, analysis::OpId{static_cast<std::uint32_t>(i)})) {
         Require(tree_.callable == CallableKind::kDerivedConstructor &&
             std::holds_alternative<analysis::ValueSuperCheck>(op.operation) &&

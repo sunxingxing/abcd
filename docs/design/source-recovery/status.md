@@ -12,6 +12,30 @@
 
 ## 当前阶段
 
+### 2026-10-01：按既有cell初始化证明恢复检查与调用组合
+
+- 共同CellEvaluation提供常数时间的IsInitializedCellGuard判定：精确ValueGuard
+  读取实际live ValueLexicalLoad的Language结果，且同revision的初始化表必须有
+  StoredInitialization或明确Conditional incoming义务。没有新建父作用域假设；
+  完整CellEvaluation验证及父捕获/传递写入验证继续负责解除义务。
+- normal求值新增kCellGuard，验证器独立复核对应关系；来源树保留原PC的
+  BlockBoundary锚点，操作数/流/来源对应同步检查。已证明守卫的use也从可见
+  使用计数投影掉，避免虚假多用途快照阻断成员调用。未开放phased路径或删去未知守卫。
+- 新增1/200/201/402守卫共同树规格：保留锚点，单守卫的读取可以正确内联；
+  Hole域、撤销初始化见证、伪造placement均拒绝。真实initialRender完整读取族
+  中10400（父11202）在实际children绑定下通过EvaluationPlan和CallPlan，PC26
+  为kCellGuard；改为IncomingCells::kReject仍拒绝，不授予独立闭包发布权限。
+- 七项定向回归通过（3.80秒）：evaluation_plan_test、function_tree_test、
+  tree_structure_test、cell_tree_test、class_initializer_file_test、
+  derived_constructor_source_test、navmap_source_test。构建/测试日志
+  /tmp/abcd-cell-guard-regression-build.log及/tmp/abcd-cell-guard-regression-tests.log。
+- 五输入正式导出build/stage-one/value-cell-guard-pass-1仍34 complete/72 failure/
+  46 no-module，无完整项退化、无legacy writer；/tmp/abcd-cell-guard-batch-summary.json。
+  整类已越过member6，当前member8（10510，父11202，创建PC115）在CallPlan
+  属性引用上下文检查拒绝kReference；/tmp/abcd-cell-guard-projection-probe.log及
+  /tmp/abcd-render-family-after-cell-guard.json。下一步处理该调用引用的控制流组合。
+  整类继承和阶段一仍未完成，未恢复全量/RSS/基准。
+
 ### 2026-10-01：字面量中的成员调用贯通共同树
 
 - LiteralPlan接纳拥有明确消费者的晚读取/调用子树，包括词法读取；对成员调用，

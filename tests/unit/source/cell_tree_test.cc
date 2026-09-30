@@ -86,6 +86,42 @@ void AllocationSites(std::uint32_t count) {
   }
 }
 
+void InitializedGuards() {
+  for (const std::uint32_t count : {1U, 200U, 201U, 402U}) {
+    std::vector<std::uint8_t> code{kPush, 1, kLoad, 0, kStore, 0};
+    for (std::uint32_t i = 0; i < count; ++i)
+      code.insert(code.end(), {kRead, 0, 0xfe, 9, 0, 0}); // throw.undefinedifhole
+    code.push_back(kReturn);
+    Fixture fixture(std::move(code));
+    test::Check(fixture.Valid(fixture.tree));
+    std::size_t guards = 0;
+    for (std::size_t i = 0; i < fixture.graph.ops.size(); ++i) {
+      if (!std::holds_alternative<ValueGuard>(fixture.graph.ops[i].operation)) continue;
+      ++guards;
+      test::Check(fixture.evaluation.operations[i].kind == EvaluationKind::kCellGuard);
+      test::Check(IsInitializedCellGuard(fixture.graph, *fixture.evaluation.cells, OpId{static_cast<std::uint32_t>(i)}));
+      auto forged = fixture.evaluation;
+      forged.operations[i].kind = EvaluationKind::kRoot;
+      test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, forged)));
+      if (guards == 1) {
+        const auto& use = fixture.graph.uses[fixture.graph.ops[i].first_use.value];
+        const auto load = std::get<OpResult>(fixture.graph.values[std::get<ValueId>(use.operand).value].origin).op;
+        if (count == 1) test::Check(fixture.evaluation.operations[load.value].kind == EvaluationKind::kInline);
+        auto uninitialized = fixture.graph;
+        uninitialized.values[std::get<ValueId>(use.operand).value].domain = ValueKinds::Hole();
+        test::Check(!IsInitializedCellGuard(uninitialized, *fixture.evaluation.cells,
+            OpId{static_cast<std::uint32_t>(i)}));
+        test::Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(uninitialized)));
+        forged = fixture.evaluation;
+        forged.cells->initialization.reads[load.value] = NotCellRead{};
+        test::Check(!IsInitializedCellGuard(fixture.graph, *forged.cells, OpId{static_cast<std::uint32_t>(i)}));
+        test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, forged)));
+      }
+    }
+    test::Check(guards == count);
+  }
+}
+
 void MultipleSlots() {
   // Compact lexical address packs depth in the low nibble and slot in high.
   constexpr std::uint8_t kSlotOneDepthZero = 0x10;
@@ -131,6 +167,7 @@ void IterationScope() {
 }  // namespace
 int main() {
   for (const auto count : {0U, 1U, 2U, 200U, 201U}) AllocationSites(count);
+  InitializedGuards();
   MultipleSlots();
   IterationScope();
 }

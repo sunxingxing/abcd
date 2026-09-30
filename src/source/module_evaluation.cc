@@ -6,7 +6,7 @@
 namespace abcd::source {
 EvaluationUses ProjectEvaluationUses(const analysis::ValueProgram& graph,
     analysis::OpId operation, const ModuleEvaluationIndex& modules, bool project_initializers,
-    std::span<const std::optional<analysis::OpId>> class_projection) {
+    std::span<const std::optional<analysis::OpId>> class_projection, const CellEvaluation* initialized_cells) {
   const auto& op = graph.ops[operation.value];
   if (!op.result) return {};
   std::optional<analysis::UseId> consumed;
@@ -16,8 +16,10 @@ EvaluationUses ProjectEvaluationUses(const analysis::ValueProgram& graph,
   for (auto id = graph.values[op.result->value].first_use; id; id = graph.uses[id->value].next) {
     if (id == consumed) continue;
     const auto& use = graph.uses[id->value];
-    if (const auto* owner = std::get_if<analysis::OpId>(&use.owner))
+    if (const auto* owner = std::get_if<analysis::OpId>(&use.owner)) {
       if (!class_projection.empty() && class_projection[owner->value]) continue;
+      if (initialized_cells && IsInitializedCellGuard(graph, *initialized_cells, *owner)) continue;
+    }
     if (project_initializers && use.role == analysis::OperandRole::kBase) {
       if (const auto* owner = std::get_if<analysis::OpId>(&use.owner)) {
         const auto& operation = graph.ops[owner->value].operation;

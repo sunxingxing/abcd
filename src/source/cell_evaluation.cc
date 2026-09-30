@@ -45,6 +45,29 @@ void Identities(const analysis::ValueProgram& graph, const CellPlan& cells, Inco
   }
 }
 }  // namespace
+bool IsInitializedCellGuard(const analysis::ValueProgram& graph, const CellEvaluation& cells, analysis::OpId id) {
+  if (id.value >= graph.ops.size() || cells.initialization.revision != graph.revision ||
+      cells.initialization.cfg_revision != graph.cfg_revision) return false;
+  const auto& guard = graph.ops[id.value];
+  if (guard.life != analysis::ValueLife::kLive || !std::holds_alternative<analysis::ValueGuard>(guard.operation) ||
+      guard.result || guard.use_count != 1 || guard.first_use.value >= graph.uses.size()) return false;
+  const auto& use = graph.uses[guard.first_use.value];
+  const auto* owner = std::get_if<analysis::OpId>(&use.owner);
+  const auto* value = std::get_if<analysis::ValueId>(&use.operand);
+  if (!owner || *owner != id || use.life != analysis::ValueLife::kLive ||
+      use.role != analysis::OperandRole::kGuardValue || use.purpose != analysis::ReadPurpose::kOperand ||
+      !value || value->value >= graph.values.size()) return false;
+  const auto& definition = graph.values[value->value];
+  const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
+  if (!result || definition.life != analysis::ValueLife::kLive || !definition.domain.IsLanguage() ||
+      result->op.value >= graph.ops.size() || result->op.value >= cells.initialization.reads.size()) return false;
+  const auto& load = graph.ops[result->op.value];
+  if (load.life != analysis::ValueLife::kLive || load.result != *value ||
+      !std::holds_alternative<analysis::ValueLexicalLoad>(load.operation)) return false;
+  const auto& witness = cells.initialization.reads[result->op.value];
+  return std::holds_alternative<StoredInitialization>(witness) ||
+      (cells.incoming == IncomingCells::kConditional && std::holds_alternative<IncomingInitialization>(witness));
+}
 bool IsEnvironmentState(const analysis::ValueOperation& operation) {
   return std::holds_alternative<analysis::ValueEnvironmentPush>(operation) ||
       std::holds_alternative<analysis::ValueEnvironmentPop>(operation) ||

@@ -95,6 +95,11 @@ class OperandCheck {
         RequireMeaning(!op.result && op.use_count == 0 && !flow_.expressions[i], Error::kOperand);
         continue;
       }
+      if (evaluation_.operations[i].kind == EvaluationKind::kCellGuard) {
+        RequireMeaning(evaluation_.cells && IsInitializedCellGuard(graph_, *evaluation_.cells, current_) &&
+            !flow_.expressions[i], Error::kOperand);
+        continue;
+      }
       if (IsConstructorGuard(tree_, current_)) {
         RequireMeaning(tree_.callable == CallableKind::kDerivedConstructor &&
             std::holds_alternative<analysis::ValueSuperCheck>(op.operation) && !op.result &&

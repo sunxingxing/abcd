@@ -174,7 +174,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       step();
       if (graph.ops[i].life == analysis::ValueLife::kLive)
         visible[i] = ProjectEvaluationUses(graph, {static_cast<std::uint32_t>(i)}, module_index,
-            literal_allocations[i] != 0, plan.class_projection.owners);
+            literal_allocations[i] != 0, plan.class_projection.owners,
+            flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr);
     }
     bool has_phi = false;
     for (const auto& value : graph.values) {
@@ -238,6 +239,13 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         visits[i] = EvaluationVisit::kDone; continue;
       }
       Require(placement.kind != EvaluationKind::kConstructorGuard, Error::kOwnership);
+      const bool cell_guard = flow == EvaluationFlow::kNormal && plan.cells &&
+          IsInitializedCellGuard(graph, *plan.cells, analysis::OpId{static_cast<std::uint32_t>(i)});
+      Require(cell_guard == (placement.kind == EvaluationKind::kCellGuard), Error::kOwnership);
+      if (cell_guard) {
+        Require(!placement.consumer && !placement.temporary, Error::kOwnership);
+        visits[i] = EvaluationVisit::kDone; continue;
+      }
       if (projected_op(i)) {
         Require(placement.kind == EvaluationKind::kClassProjection && !placement.consumer && !placement.temporary, Error::kOwnership);
         visits[i] = EvaluationVisit::kDone; continue;
@@ -349,6 +357,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
                                   plan.operations[expected].kind == EvaluationKind::kClassProjection ||
                                   plan.operations[expected].kind == EvaluationKind::kConstructorGuard ||
+                                  plan.operations[expected].kind == EvaluationKind::kCellGuard ||
                                   plan.operations[expected].kind == EvaluationKind::kElidedPure ||
                                   plan.operations[expected].kind == EvaluationKind::kAlias ||
                                   plan.operations[expected].kind == EvaluationKind::kInitializer ||

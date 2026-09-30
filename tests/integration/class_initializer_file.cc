@@ -301,6 +301,38 @@ int main(int argc, char** argv) {
       if (argc == 3 && std::string_view(argv[2]) == "--navmap") {
         std::cout << source.str(); return 0;
       }
+      // Preserve the actual initialRender occurrence and complete child binding
+      // inventory when checking the guarded capture in its descendant 10400.
+      auto render_context = ClassTreeContext::ResolveDefinedMember(file, header, index, lookup,
+          roles, sites, parent, parent.values.definitions.sites[6].definition,
+          abc::ClassMethodKind::kOrdinary, identity);
+      Check(std::holds_alternative<ClassTreeContext>(render_context));
+      const FunctionContext render_owner{std::get<ClassTreeContext>(std::move(render_context))};
+      auto render_family = ReadFunctionFamily(file, header, index, lookup, roles, sites,
+          render_owner.Position(), identity, {}, &modules, &render_owner, {owner->offset.value});
+      Check(std::holds_alternative<FileFamily>(render_family));
+      bool guarded_child = false;
+      for (const auto& child : std::get<FileFamily>(render_family).members) {
+        if (child.function.Method().value != 10400) continue;
+        guarded_child = true;
+        const auto& function = child.function.Normal();
+        const auto evaluation = BuildEvaluationPlan(function.values.graph, {}, IncomingCells::kConditional,
+            child.children, {}, {}, {}, analysis::ClosureWrites::kLanguage);
+        Check(std::holds_alternative<EvaluationPlan>(evaluation));
+        const auto& planned = std::get<EvaluationPlan>(evaluation);
+        Check(std::holds_alternative<CallPlan>(BuildCallPlan(function.values.graph, planned)));
+        bool projected = false;
+        for (std::size_t i = 0; i < function.values.graph.ops.size(); ++i) {
+          const auto& op = function.values.graph.ops[i];
+          if (function.values.graph.origins[op.origin.value].pc.value != 26) continue;
+          Check(planned.operations[i].kind == EvaluationKind::kCellGuard);
+          projected = true;
+        }
+        Check(projected);
+        Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(function.values.graph, {},
+            IncomingCells::kReject, child.children, {}, {}, {}, analysis::ClosureWrites::kLanguage)));
+      }
+      Check(guarded_child);
     }
 
 

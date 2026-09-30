@@ -245,7 +245,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       step();
       if (graph.ops[i].life == analysis::ValueLife::kLive)
         visible[i] = ProjectEvaluationUses(graph, {static_cast<std::uint32_t>(i)}, module_index,
-            literal_allocations[i] != 0, plan.class_projection.owners);
+            literal_allocations[i] != 0, plan.class_projection.owners,
+            flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr);
     }
     std::size_t next_op = 0;
     for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
@@ -265,6 +266,11 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
             plan.operations[index].kind == EvaluationKind::kNestedLiteral) continue;
         if (std::binary_search(plan.constructor_guards.begin(), plan.constructor_guards.end(), analysis::OpId{static_cast<std::uint32_t>(index)})) {
           plan.operations[index].kind = EvaluationKind::kConstructorGuard;
+          continue;
+        }
+        if (flow == EvaluationFlow::kNormal && plan.cells &&
+            IsInitializedCellGuard(graph, *plan.cells, analysis::OpId{static_cast<std::uint32_t>(index)})) {
+          plan.operations[index].kind = EvaluationKind::kCellGuard;
           continue;
         }
         if (IsEnvironmentState(op.operation)) {

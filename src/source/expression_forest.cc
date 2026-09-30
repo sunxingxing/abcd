@@ -221,7 +221,8 @@ class ForestBuilder {
             evaluation_.operations[i].kind == EvaluationKind::kNestedLiteral) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kEnvironment ||
             evaluation_.operations[i].kind == EvaluationKind::kClassProjection) continue;
-        if (evaluation_.operations[i].kind == EvaluationKind::kModuleGuard) continue;
+        if (evaluation_.operations[i].kind == EvaluationKind::kModuleGuard ||
+            evaluation_.operations[i].kind == EvaluationKind::kCellGuard) continue;
         if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) {
           Module(i, op, origin);
           continue;

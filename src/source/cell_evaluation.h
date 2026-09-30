@@ -15,6 +15,9 @@ struct CellEvaluation {
 enum class CellEvaluationError : std::uint8_t {
   kEnvironment, kCells, kInitialization, kInternalIdentity, kResourceLimit, kWorkLimit
 };
+// O(1) after fresh CellEvaluation verification. Incoming witnesses retain the
+// existing enclosing-owner obligation; they never authorize standalone output.
+[[nodiscard]] bool IsInitializedCellGuard(const analysis::ValueProgram&, const CellEvaluation&, analysis::OpId);
 [[nodiscard]] bool IsEnvironmentState(const analysis::ValueOperation& operation);
 [[nodiscard]] bool NeedsCellEvaluation(const analysis::ValueOperation& operation);
 // Incoming cells default to rejection. Conditional mode retains their owner
