@@ -5,18 +5,27 @@
 
 namespace abcd::source {
 EvaluationUses ProjectEvaluationUses(const analysis::ValueProgram& graph,
-    analysis::OpId operation, const ModuleEvaluationIndex& modules) {
+    analysis::OpId operation, const ModuleEvaluationIndex& modules, bool project_initializers) {
   const auto& op = graph.ops[operation.value];
   if (!op.result) return {};
   std::optional<analysis::UseId> consumed;
   if (std::holds_alternative<analysis::ValueModuleRead>(op.operation) && !modules.peers.empty())
     if (const auto guard = modules.peers[operation.value]) consumed = graph.ops[guard->value].first_use;
-  auto first = graph.values[op.result->value].first_use;
-  if (first && first == consumed) first = graph.uses[first->value].next;
-  if (!first) return {};
-  auto next = graph.uses[first->value].next;
-  if (next && next == consumed) next = graph.uses[next->value].next;
-  return {first, next.has_value()};
+  EvaluationUses result;
+  for (auto id = graph.values[op.result->value].first_use; id; id = graph.uses[id->value].next) {
+    if (id == consumed) continue;
+    const auto& use = graph.uses[id->value];
+    if (project_initializers && use.role == analysis::OperandRole::kBase) {
+      if (const auto* owner = std::get_if<analysis::OpId>(&use.owner)) {
+        const auto& operation = graph.ops[owner->value].operation;
+        if (std::holds_alternative<analysis::ValueOwnWrite>(operation) ||
+            std::holds_alternative<analysis::ValueIndexedWrite>(operation)) continue;
+      }
+    }
+    if (result.first) { result.multiple = true; break; }
+    result.first = id;
+  }
+  return result;
 }
 std::variant<ModuleEvaluationIndex, EvaluationError> IndexModuleEvaluations(
     const analysis::ValueProgram& graph, std::span<const ModuleEvaluation> modules,

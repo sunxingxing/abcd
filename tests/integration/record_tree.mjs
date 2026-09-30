@@ -12,6 +12,8 @@ assert.deepEqual(Object.keys(module.namespace), ['answer']);
 
 for (const args of [['source', 'array'], ['source', 'array', 'late']]) {
 const arraySource = execFileSync(process.argv[2], args, {encoding: 'utf8'});
+assert.match(arraySource, /let answer = \[42\];/);
+assert.ok(!arraySource.includes('$value'));
 const arrayContext = vm.createContext({});
 vm.runInContext('Object.defineProperty(Array.prototype, "0", {set() { throw new Error("inherited setter"); }, configurable: true});', arrayContext);
 const arrayModule = new vm.SourceTextModule(arraySource, {context: arrayContext});

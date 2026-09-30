@@ -71,6 +71,12 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     admit(graph.ops.size(), sizeof(std::uint8_t)); step(graph.ops.size());
     std::vector<std::uint8_t> pinned(graph.ops.size());
     admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
+    admit(graph.ops.size(), sizeof(std::uint8_t) + sizeof(EvaluationUses));
+    step(graph.ops.size()); step(graph.ops.size());
+    std::vector<std::uint8_t> literal_allocations(graph.ops.size());
+    std::vector<EvaluationUses> visible(graph.ops.size());
+    admit(literal_allocations.capacity() - graph.ops.size(), sizeof(std::uint8_t));
+    admit(visible.capacity() - graph.ops.size(), sizeof(EvaluationUses));
     admit(graph.ops.size(), sizeof(std::size_t));
     std::vector<std::size_t> environment_epochs(graph.ops.size());
     admit(environment_epochs.capacity() - graph.ops.size(), sizeof(std::size_t));
@@ -127,7 +133,9 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       }
       step(std::get<std::uint64_t>(checked));
       for (const auto& object : plan.literals->objects) {
-        step(); pinned[object.allocation.value] = 1;
+        step();
+        if (flow == EvaluationFlow::kNormal) literal_allocations[object.allocation.value] = 1;
+        else pinned[object.allocation.value] = 1;
       }
       for (const auto id : plan.literals->definitions) {
         step();
@@ -136,6 +144,15 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
           if (const auto* result = std::get_if<analysis::OpResult>(&graph.values[value->value].origin))
             pinned[result->op.value] = 1;
       }
+    }
+    // Producer use chains are disjoint. Charge their total once, and cache the
+    // projection so even a shared aggregate with many consumers stays linear.
+    step(graph.uses.size());
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      step();
+      if (graph.ops[i].life == analysis::ValueLife::kLive)
+        visible[i] = ProjectEvaluationUses(graph, {static_cast<std::uint32_t>(i)}, module_index,
+            literal_allocations[i] != 0);
     }
     bool has_phi = false;
     for (const auto& value : graph.values) {
@@ -251,12 +268,11 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         Require(!pinned[i] || (cross(i) &&
             std::holds_alternative<analysis::ValueModuleRead>(op.operation)), Error::kOwnership);
         Require(op.result && placement.consumer && !placement.temporary, Error::kOwnership);
-        const auto& value = graph.values[op.result->value];
         Require(placement.consumer->value < graph.uses.size(), Error::kOwnership);
         const auto& use = graph.uses[placement.consumer->value];
         const auto* owner = std::get_if<analysis::OpId>(&use.owner);
         if (!cross(i)) {
-          Require(value.first_use == placement.consumer && !use.next && owner &&
+          Require(visible[i].first == placement.consumer && !visible[i].multiple && owner &&
               graph.ops[owner->value].block == op.block && graph.ops[owner->value].order > op.order,
               Error::kOwnership);
         }
@@ -265,7 +281,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         Require(consumer_shape && !consumer_shape->NeedsSnapshot(use.role), Error::kOrder);
       } else {
         Require(placement.kind == EvaluationKind::kRoot && !placement.consumer, Error::kOwnership);
-        const auto visible_uses = ProjectEvaluationUses(graph, {static_cast<std::uint32_t>(i)}, module_index);
+        const auto visible_uses = visible[i];
         const bool used = visible_uses.first.has_value();
         Require(used == placement.temporary.has_value(), Error::kOwnership);
         if (used) {

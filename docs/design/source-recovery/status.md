@@ -12,6 +12,31 @@
 
 ## 当前阶段
 
+### 2026-10-01：唯一外部使用的字面量直接进入模块初始化
+
+- 正常流的共同求值规划不再把已验证初始化组的 own-write 接收者计为
+  外部值使用。每个 producer 的投影缓存一次；唯一外部使用沿用效果区间
+  与独立求值顺序检查后可以内联，多外部使用、观察屏障、跨区域仍保留
+  快照。异常相位的初始化仍固定，未放松其异常或别名约束。
+- Constants 正式 record 输出从根 $value0 搬运变为 let ROUTES = [...]，
+  独立配对 oracle 新增无根临时值断言，原有 TDZ、对象身份、属性顺序、
+  descriptor 和继承 setter 检查继续通过；标量早载/晚载数组模块也直接
+  输出 let answer = [42]。配对源码不进入生产路径。
+- 对象/数组 1/200/201/402 项分别覆盖唯一使用、共享身份和观察屏障。
+  伪造唯一 consumer 或越过屏障的内联会被拒绝；Node 执行 24 个生成函数，
+  共享对象严格相等仍为 true。模块读取、phased literal、arguments 快照
+  等共用路径一并验证，11 项定向 CTest 全通过（8.77 秒）。构建/测试日志：
+  /tmp/abcd-literal-use-final-build.log、/tmp/abcd-literal-use-final-tests.log；
+  初始目标构建另见 /tmp/abcd-literal-use-build.log。
+- 已刷新批量产物 build/stage-one/Immersive/value-root-literal-pass-1：
+  Constants 1282 字节，无根快照；manifest 仍为 1 完整恢复、34 恢复失败、
+  10 无模块上下文。其他四个输入本轮未刷新，不能外推新的阶段一覆盖率。
+- 模块集成的实际阻断仍存在：BuildRecordTree 入口拒绝 requests/imports/
+  namespace/间接及 star exports，尚未连接已有 BindModuleAliases 与
+  ModuleEnclosure；子函数也未贯通。Constants 的机械括号和模块末尾
+  丢弃表达式仍保留，不能宣称整体表示质量或阶段一完成。未运行全量测试、
+  RSS 专项、基准、其他语料或代理。
+
 ### 2026-10-01：共同树消除可安全合并的缓冲对象占位
 
 - 共同表达式构建按实际 UTF-16 属性名定位缓冲区最后一个同名位置，

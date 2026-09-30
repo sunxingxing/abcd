@@ -27,3 +27,23 @@ for (const count of [2, 200, 201, 402]) for (const mode of [0, 1, 2]) {
       Object.getOwnPropertyDescriptor(expected, name));
 }
 assert.equal(recovered.length, index);
+
+const consumerSource = execFileSync(process.argv[2], ['--consumer-source'], {encoding: 'utf8'});
+const consumers = vm.runInContext(`[${consumerSource}]`, context);
+index = 0;
+for (const array of [false, true]) for (const count of [1, 200, 201, 402]) {
+  const unique = consumers[index++]();
+  // A shared producer must still allocate once: inlining each use would make
+  // the recovered identity comparison false despite equal property values.
+  assert.equal(consumers[index++](), true);
+  const barrier = consumers[index++]();
+  for (const actual of [unique, barrier]) {
+    assert.equal(Array.isArray(actual), array);
+    const keys = Array.from({length: count}, (_, i) => array ? String(i) : `field${i}`);
+    assert.deepEqual(Reflect.ownKeys(actual), array ? [...keys, 'length'] : keys);
+    for (const key of keys) assert.deepEqual(Object.getOwnPropertyDescriptor(actual, key), {
+      value: 1, enumerable: true, writable: true, configurable: true,
+    });
+  }
+}
+assert.equal(consumers.length, index);

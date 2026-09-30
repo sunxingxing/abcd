@@ -49,6 +49,8 @@ compare(actual, expected);
 // This does not yet accept the whole record's source representation quality.
 assert.match(report.source, /export \{ ROUTES/);
 assert.ok(!report.source.includes('$acc'));
+assert.match(report.source, /let ROUTES = \[/);
+assert.ok(!report.source.includes('$value'), 'single-use initialization should not retain a root snapshot');
 assert.match(report.source, /title: /);
 assert.ok(!report.source.includes('["title"]:'), 'ordinary object key should use native syntax');
 const retainedPlaceholders = /(?:\["(?:title|name|children|params)"\]|\b(?:title|name|children|params)): null/.test(report.source);

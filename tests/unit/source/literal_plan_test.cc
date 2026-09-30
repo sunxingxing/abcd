@@ -259,6 +259,61 @@ void BufferedOverwrites(bool print = false) {
     }
   }
 }
+enum class ConsumerCase { kUnique, kShared, kBarrier };
+void LiteralConsumers(bool print = false) {
+  for (const bool array : {false, true}) for (const auto count : {1U, 200U, 201U, 402U})
+      for (const auto mode : {ConsumerCase::kUnique, ConsumerCase::kShared, ConsumerCase::kBarrier}) {
+    Fixture fixture;
+    fixture.Add(array ? ValueOperation{ValueArrayAllocation{}} : ValueOperation{ValueObjectAllocation{}}, true, {});
+    fixture.graph.ops[0].normal = fixture.graph.ops[0].before_throw = LanguageEffect::kAllocation;
+    fixture.graph.ops[0].exceptional = ExceptionalCompletion::kMayThrow;
+    for (std::uint32_t i = 0; i < count; ++i) {
+      fixture.Add(array ? ValueOperation{ValueIndexedWrite{i, 0}} :
+          ValueOperation{ValueOwnWrite{OwnWriteKind::kDefineField, {i}, 0}}, false,
+          {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue, abcd::analysis::IntegerLiteral{1}}});
+      auto& op = fixture.graph.ops.back();
+      op.normal = op.before_throw = LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+      op.exceptional = ExceptionalCompletion::kMayThrow;
+    }
+    if (mode == ConsumerCase::kBarrier) fixture.Add(ValueDebugger{}, false, {});
+    if (mode == ConsumerCase::kShared)
+      fixture.Add(ValueBinary{BinaryOperator::kStrictEqual}, true,
+          {{OperandRole::kLeft, ValueId{0}}, {OperandRole::kRight, ValueId{0}}});
+    fixture.Add(ValueReturn{}, false, {{OperandRole::kReturnValue,
+        ValueId{mode == ConsumerCase::kShared ? 1U : 0U}}});
+    auto& graph = fixture.graph;
+    graph.blocks = {{{0}, static_cast<std::uint32_t>(graph.ops.size()), {0}, 0}};
+    const auto evaluated = BuildEvaluationPlan(graph);
+    Check(std::holds_alternative<EvaluationPlan>(evaluated));
+    const auto& evaluation = std::get<EvaluationPlan>(evaluated);
+    const auto& allocation = evaluation.operations[0];
+    Check(allocation.kind == (mode == ConsumerCase::kUnique ? EvaluationKind::kInline : EvaluationKind::kRoot));
+    if (mode == ConsumerCase::kUnique) Check(!allocation.temporary);
+    else Check(allocation.temporary == (mode == ConsumerCase::kShared ?
+        TemporaryReason::kMultipleUses : TemporaryReason::kEffectSnapshot));
+    auto forged = evaluation;
+    const auto consumer = mode == ConsumerCase::kShared ? graph.ops[count + 1].first_use : graph.ops.back().first_use;
+    forged.operations[0] = {EvaluationKind::kInline, consumer, {}};
+    if (mode != ConsumerCase::kUnique)
+      Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    forged.operations[0].consumer = graph.ops[1].first_use; // Internal receiver is never the escaping value.
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+    FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction;
+    syntax.strictness = Strictness::kStrict;
+    std::vector<ExpressionConstant> constants(graph.ops.size());
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const auto key = (array ? std::string{} : std::string{"field"}) + std::to_string(i);
+      syntax.names.emplace_back(key.begin(), key.end()); constants[i + 1] = NameId{i};
+    }
+    const auto built = BuildFunctionTree(graph, control, evaluation, syntax, {constants, count});
+    Check(std::holds_alternative<ConstructedFunction>(built));
+    const auto& tree = std::get<ConstructedFunction>(built).tree;
+    std::ostringstream output;
+    Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
+    if (print) std::cout << output.str() << ",\n";
+  }
+}
 void NestedLiterals() {
   for (const auto depth : {1U, 2U, 200U, 201U, 402U}) {
     Fixture fixture;
@@ -350,6 +405,7 @@ void RhsSnapshot() {
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--consumer-source") { LiteralConsumers(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--buffer-source") { BufferedOverwrites(true); return 0; }
   if (argc > 1) { SourceTree(false, true, true); return 0; }
-  BufferedOverwrites(); NestedLiterals(); SourceTree(false, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }
+  LiteralConsumers(); BufferedOverwrites(); NestedLiterals(); SourceTree(false, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }

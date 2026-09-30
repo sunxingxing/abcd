@@ -73,6 +73,12 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     admit(graph.ops.size(), sizeof(std::uint8_t)); step(graph.ops.size());
     std::vector<std::uint8_t> pinned(graph.ops.size());
     admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
+    admit(graph.ops.size(), sizeof(std::uint8_t) + sizeof(EvaluationUses));
+    step(graph.ops.size()); step(graph.ops.size());
+    std::vector<std::uint8_t> literal_allocations(graph.ops.size());
+    std::vector<EvaluationUses> visible(graph.ops.size());
+    admit(literal_allocations.capacity() - graph.ops.size(), sizeof(std::uint8_t));
+    admit(visible.capacity() - graph.ops.size(), sizeof(EvaluationUses));
     bool has_definitions = false;
     bool has_cells = !demands.empty();
     bool has_arguments = false;
@@ -178,7 +184,9 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       plan.literals = std::get<LiteralPlan>(std::move(built));
       admit(plan.literals->allocated_bytes, 1); step(plan.literals->work);
       for (const auto& object : plan.literals->objects) {
-        step(); pinned[object.allocation.value] = 1;
+        step();
+        if (flow == EvaluationFlow::kNormal) literal_allocations[object.allocation.value] = 1;
+        else pinned[object.allocation.value] = 1;
       }
       for (const auto id : plan.literals->definitions) {
         step();
@@ -193,6 +201,15 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         step(); if (plan.literals->nested[i])
           plan.operations[i] = {EvaluationKind::kNestedLiteral, plan.literals->nested[i], {}};
       }
+    }
+    // Producer use chains are disjoint. Charge their total once, and cache the
+    // projection so even a shared aggregate with many consumers stays linear.
+    step(graph.uses.size());
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      step();
+      if (graph.ops[i].life == analysis::ValueLife::kLive)
+        visible[i] = ProjectEvaluationUses(graph, {static_cast<std::uint32_t>(i)}, module_index,
+            literal_allocations[i] != 0);
     }
     std::size_t next_op = 0;
     for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
@@ -236,7 +253,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
           continue;
         }
         placement.kind = EvaluationKind::kRoot;
-        const auto visible_uses = ProjectEvaluationUses(graph, {static_cast<std::uint32_t>(index)}, module_index);
+        const auto visible_uses = visible[index];
         if (visible_uses.first) {
           const auto use = *visible_uses.first;
           const auto& occurrence = graph.uses[use.value];
@@ -265,7 +282,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
           if (!value) continue;
           const auto& definition = graph.values[value->value];
           const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
-          if (!result || definition.first_use != use || occurrence.next) continue;
+          if (!result || visible[result->op.value].first != use || visible[result->op.value].multiple) continue;
           if (pinned[result->op.value]) continue;
           // STOBJBYVALUE receives an already evaluated RHS. JS computes its
           // Reference (including key coercion) before evaluating RHS syntax.
