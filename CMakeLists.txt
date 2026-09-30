@@ -941,6 +941,9 @@ if(BUILD_TESTING)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
          EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+        add_test(NAME viewmodel_batch_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/viewmodel_batch.mjs $<TARGET_FILE:abc_structure>
+          ${ABCD_PAIRED_CORPUS_ROOT})
         add_test(NAME static_class_batch_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/static_class_batch.mjs $<TARGET_FILE:abc_structure>
           ${ABCD_PAIRED_CORPUS_ROOT})

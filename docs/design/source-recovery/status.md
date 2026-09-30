@@ -12,6 +12,29 @@
 
 ## 当前阶段
 
+### 2026-10-01：补充六个 viewmodel 的独立配对行为测试
+
+- 新增 viewmodel_batch_source_test，在临时目录对 Immersive 和 Multi 的 ABC-only
+  正式导出重新生成源码，再独立读取配对 TS。覆盖 record
+  28887/29119/29382/29619/44106/30839，生产引擎不读取 oracle。
+- 四个购物 viewmodel 验证构造依赖、方法 receiver、返回对象身份、slice 的
+  undefined/负数/零/正数/越界/NaN/带 valueOf 参数、getter/调用/强制转换顺序、
+  抛错传播及更新导入构造器后的新实例。TabBar 验证旧实例保留旧数组、
+  新实例读取更新后的 live import，以及数组变更可见性。
+- CardItem 验证 card 属性读取顺序、index coercion、pictureArray 共享身份、
+  callback 捕获 this、CommentItem 构造顺序/异常、commentList 实例隔离，
+  以及各字段的值和描述符。依赖均为两边相同的显式受控测试输入，
+  不代表真实模型依赖或整个应用的端到端验收。
+- CardItem 字段枚举顺序仍未验收：Node stripTypeScriptTypes 保留配对 TS
+  的无初始化字段声明，而 ABC 实际属性创建顺序受编译语义影响。
+  本测试按字段名比较描述符，不能把这一结果声称为完整语义等价。
+- CMake 已注册。配置日志 /tmp/abcd-viewmodel-configure.log；测试通过
+  （1.46 秒），日志 /tmp/abcd-viewmodel-test.log。未改生产实现，
+  最近五输入正式计数仍为 30/76/46，未恢复全量测试/RSS/其他 corpus。
+- 下一处实际阻塞：Immersive HomeModel record16474（entry16638）为 tree_stage；
+  callback16610 已读入，含一个 capture、两条 HomeConstants guarded module
+  read（op17/op28），应继续沿共同 family/literal 路径定位，不能复制配对函数体。
+
 ### 2026-10-01：类初始化模块绑定贯通，正式完整 record 增至 30
 
 - ClassTree 复用 record 的 ModuleEnclosure 读取真实 initializer，BindModuleAliases
