@@ -480,14 +480,34 @@ InstructionLift detail::SemanticLifter::Lift(const abc::BodyInstruction& site) {
   if (!SupportsSemantics(profile_))
     return Fail(SemanticError::kUnsupportedProfile, site.offset);
   if (!yields_.empty()) {
-    // Synchronous generator certificates never coexist with async awaits.
-    if (!awaits_.empty() || (next_yield_ < yields_.size() && yields_[next_yield_].pc < site.offset) ||
+    // Async generator source awaits and intrinsic yields share this lifter.
+    // Certificates cannot claim the same normalized instruction.
+    if ((next_yield_ < yields_.size() && yields_[next_yield_].pc < site.offset) ||
         (next_yield_mode_ < yields_.size() && yields_[next_yield_mode_].mode_pc && *yields_[next_yield_mode_].mode_pc < site.offset))
       return Fail(SemanticError::kMalformedInstruction, site.offset);
     if (next_yield_ < yields_.size() && yields_[next_yield_].pc == site.offset) {
       const auto& yielded = yields_[next_yield_];
+      if ((next_await_ < awaits_.size() && awaits_[next_await_].pc == site.offset) ||
+          (next_mode_ < awaits_.size() && awaits_[next_mode_].mode_pc == site.offset))
+        return Fail(SemanticError::kMalformedInstruction, site.offset);
+      if (yielded.origin.execution == YieldExecution::kAsynchronous) {
+        if (yielded.origin.form != YieldForm::kDirect || !yielded.origin.private_registers || !yielded.origin.awaited_rejections ||
+            yielded.origin.return_route || next_yield_ != next_yield_mode_ || !yielded.mode_pc || *yielded.mode_pc <= yielded.pc ||
+            (next_yield_ + 1 < yields_.size() && yields_[next_yield_ + 1].pc <= *yielded.mode_pc) ||
+            site.decoded.opcode != abc::Opcode::kASYNCFUNCTIONAWAITUNCAUGHT_V8 || site.decoded.operand_count != 1 ||
+            site.decoded.operands[0].kind != abc::OperandKind::kRegister ||
+            site.decoded.operands[0].raw_bits != yielded.origin.state.value || yielded.origin.state.value >= frame_size_)
+          return Fail(SemanticError::kMalformedInstruction, site.offset);
+        ++next_yield_;
+        SemanticOperation operation = YieldValue{Accumulator{}, yielded.origin};
+        RegisterEffect registers; registers.reads[registers.read_count++] = Accumulator{}; registers.write = Accumulator{};
+        const auto effects = Effects(operation, registers);
+        return SemanticInstruction{site.offset, std::move(operation), effects};
+      }
+      if (yielded.origin.execution != YieldExecution::kSynchronous || yielded.origin.awaited_rejections)
+        return Fail(SemanticError::kMalformedInstruction, site.offset);
       if (yielded.origin.form == YieldForm::kDelegate) {
-        if (next_yield_ != next_yield_mode_ || yielded.mode_pc || !yielded.origin.delegate_registers ||
+        if (next_yield_ != next_yield_mode_ || yielded.mode_pc || !yielded.origin.private_registers ||
             yielded.origin.return_route ||
             (site.decoded.opcode != abc::Opcode::kGETITERATOR_IMM8 && site.decoded.opcode != abc::Opcode::kGETITERATOR_IMM16))
           return Fail(SemanticError::kMalformedInstruction, site.offset);
@@ -497,7 +517,7 @@ InstructionLift detail::SemanticLifter::Lift(const abc::BodyInstruction& site) {
         const auto effects = Effects(operation, registers);
         return SemanticInstruction{site.offset, std::move(operation), effects};
       }
-      if (yielded.origin.form != YieldForm::kDirect || yielded.origin.delegate_registers ||
+      if (yielded.origin.form != YieldForm::kDirect || yielded.origin.private_registers ||
           next_yield_ != next_yield_mode_ || (!yielded.mode_pc || *yielded.mode_pc <= yielded.pc) ||
           (next_yield_ + 1 < yields_.size() && yields_[next_yield_ + 1].pc <= *yielded.mode_pc) ||
           site.decoded.opcode != abc::Opcode::kCREATEITERRESULTOBJ_V8_V8 || site.decoded.operand_count != 2 ||
@@ -512,7 +532,9 @@ InstructionLift detail::SemanticLifter::Lift(const abc::BodyInstruction& site) {
       return SemanticInstruction{site.offset, std::move(operation), effects};
     }
     if (next_yield_mode_ < yields_.size() && yields_[next_yield_mode_].mode_pc == site.offset) {
-      if (next_yield_mode_ >= next_yield_ || site.decoded.opcode != abc::Opcode::kGETRESUMEMODE)
+      if (next_yield_mode_ >= next_yield_ || site.decoded.opcode != abc::Opcode::kGETRESUMEMODE ||
+          (next_await_ < awaits_.size() && awaits_[next_await_].pc == site.offset) ||
+          (next_mode_ < awaits_.size() && awaits_[next_mode_].mode_pc == site.offset))
         return Fail(SemanticError::kMalformedInstruction, site.offset);
       ++next_yield_mode_;
       SemanticOperation operation = ScalarAssignment{Accumulator{}, ScalarValue{IntegerLiteral{

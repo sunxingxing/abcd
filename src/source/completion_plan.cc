@@ -43,7 +43,7 @@ bool SameCleanupOperation(const ValueOperation& a, const ValueOperation& b) {
   // inputs, effects and throw dispatch. Both origins remain in the tree.
   if (const auto* yield = std::get_if<ValueYield>(&a)) {
     const auto* other = std::get_if<ValueYield>(&b);
-    return other && yield->origin.form == other->origin.form;
+    return other && yield->origin.form == other->origin.form && yield->origin.execution == other->origin.execution;
   }
   return a == b;
 }

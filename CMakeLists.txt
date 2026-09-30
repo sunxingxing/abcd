@@ -198,7 +198,7 @@ target_sources(abcd_source PRIVATE src/source/argument_region.cc src/source/sema
   src/source/binding_receivers.cc
   src/source/class_assembly.cc src/source/assembled_class.cc)
 target_sources(abcd_source PRIVATE src/source/async_completion.cc src/source/async_handlers.cc)
-target_sources(abcd_source PRIVATE src/source/generator_completion.cc src/source/generator_delegate.cc)
+target_sources(abcd_source PRIVATE src/source/generator_completion.cc src/source/generator_delegate.cc src/source/generator_async_yield.cc)
 target_sources(abcd_source PRIVATE src/source/exception_source.cc)
 target_sources(abcd_source PRIVATE src/source/exception_body.cc)
 target_sources(abcd_source PRIVATE src/source/module_read_snapshot.cc)
@@ -960,6 +960,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_generator_prefix.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_async_generator_await_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_generator_await.mjs $<TARGET_FILE:loop_closure_file_test>)
+    add_test(NAME file_async_generator_yield_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_generator_yield.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_generator_return_suspend_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator_return_suspend.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_generator_return_loop_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

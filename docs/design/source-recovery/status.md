@@ -12,6 +12,38 @@
 
 ## 当前阶段
 
+### 2026-09-30：async generator 实际 yield 与普通 await 共同贯通
+
+- 精确匹配锁定 OH7 AsyncGeneratorFunctionBuilder::Yield 与
+  FunctionBuilder::AsyncYield 的五个私有槽、SUSPENDED_YIELD/COMPLETED、
+  done false/true、resolve 操作数、NEXT/THROW/RETURN 分支及返回等待。
+  两个 intrinsic await 折叠为一个共同 ValueYield，以原出站 await PC 和
+  incoming accumulator 为 operand；共同 FunctionTree/Printer 输出原生
+  yield，普通源码 await 保留独立 AwaitSite。无专用 writer 或请求调度器。
+- NEXT 的结果/模式提交保留，其余私有槽须在 continuation 不被观察；
+  三条异常路由必须选择同一用户 catch，catch 不得读取原生路径跳过的
+  五槽写入。共享逆序 catch-input 分析同时认识未来的 exact yield、普通
+  await 与已由 owner 验证的隐式 undefined/外层 reject 尾部；不把这些
+  VM 内部的新定义当成前一次暂停槽的读取。外部跳转与用户 try/handler
+  边界不能进入或切开被折叠的协议，包括保留的 VM store/continuation。
+- 新集成消费 120 个完整文件解码/合成元数据函数族及 39 个协议反例：
+  三 profile × 三父环境 × catch × 普通 await 混用 × 8/16/32 位分支，
+  以及 200/201/402 个连续 yield。实际生成 JS 验证 outbound thenable
+  次数/receiver、暂停后动态 cell 重读、NEXT payload 不被 await、被
+  丢弃的回调结果不被 await、排队 return 的等待及后续 next/throw、
+  callback/then getter/then call/注入 THROW/RETURN reject 的 catch 选择、
+  异常身份和 catch 覆盖，以及未启动 return/throw 不运行函数体。
+- 有效模板红例 `/tmp/abcd-async-generator-yield-red.log`；生产及相关
+  八个 C++ 目标构建成功，15 项定向 CTest 全通过（85.62 秒），新
+  yield 集成为 12.72 秒。证据为
+  `/tmp/abcd-async-generator-yield-regression-build.log`、
+  `/tmp/abcd-async-generator-yield-regression-tests.log`；`git diff --check`
+  通过。独立开发、自查，未调用 CC/子代理。
+- async generator 的显式 return、yield*、method、注入 finally 及更广
+  控制组合仍开放；普通 await 与直接 yield 的这项贯通不代表 C08 或
+  总目标完成。下一步推进显式返回及组合；全量测试/语料/RSS/基准仍
+  暂停，未宣称实际应用覆盖或 1GB 实测。
+
 ### 2026-09-30：async generator 源 await 的共同源码贯通
 
 - 复用现有 AwaitRegion 与 catch-input 分析，核对真实 await state、resume

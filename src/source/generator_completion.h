@@ -33,9 +33,11 @@ struct GeneratorBody {
 // be dead at continuation/user catch, and no user boundary/interior entry may
 // bisect delegation. Injected RETURN cleanup in yield* remains unsupported.
 // Async execution currently admits exact Prepare + ImplicitReturn/CleanUp
-// with ordinary source effects and shared AwaitRegion continuations between
-// them. Entry result/mode slots may be defined by certified awaits; other
-// source reuse, raw yield and explicit return remain unsupported. Native
+// with ordinary source effects, shared AwaitRegion continuations and exact
+// direct AsyncGenerator::Yield between them. Both intrinsic waits fold into
+// one native yield; NEXT result/mode commits survive, the other private slots
+// must be dead. Entry result/mode slots may be defined by certified pauses;
+// other source reuse, injected finally and explicit return remain unsupported. Native
 // async generator owns its request queue and settlement, never an async writer.
 // I instructions,
 // B branches, H handlers, Y yields, R dispatch spans: normalization/rebasing

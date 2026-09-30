@@ -26,21 +26,31 @@ struct AwaitCatchProof {
 // Shared compressed range-assignment index: O((I+A+H) log(A+1) + I log(R+1))
 // after dispatch construction, R dispatch spans, H handlers; O(A) extra storage excluding
 // dispatch. No per-await walk through the handler body.
+// Optional implicit_exit is the owner's exact async-generator implicit return
+// plus outer rejection wrapper. Neither observes incoming local temporaries.
 [[nodiscard]] std::variant<AwaitCatchProof, AwaitCatchFailure>
 ProveAwaitCatchInputs(const abc::MethodBody& body,
                      std::span<const AwaitRegion> regions,
                      abc::ProfileId profile, std::uint64_t frame_size,
                      abc::CodeOffset completion_handler,
-                     SemanticBudget budget = {});
-// Same catch-input analysis for exact single-entry synchronous yield regions.
+                     SemanticBudget budget = {},
+                     std::optional<abc::CodeOffset> implicit_exit = std::nullopt);
+// Same catch-input analysis for exact single-entry synchronous/async yields.
 // Native yield throws before committing result/mode, whereas the VM's THROW
 // route commits both. Admit that projection only when a selected user handler
 // cannot observe either incoming temporary; keep its other frame values intact.
+// Optional implicit_exit starts the owner's proved async-generator undefined
+// return/settlement tail. Its recycled VM slots are not source reads. Never
+// supply an explicit source return or unverified settlement as this boundary.
+// Shared awaits are original single-entry certificates checked by that owner;
+// their private reads do not observe earlier yield temporaries.
 [[nodiscard]] std::variant<AwaitCatchProof, AwaitCatchFailure>
 ProveYieldCatchInputs(const abc::MethodBody& body,
                      std::span<const YieldSite> regions,
                      abc::ProfileId profile, std::uint64_t frame_size,
                      abc::CodeOffset completion_handler,
-                     SemanticBudget budget = {});
+                     SemanticBudget budget = {},
+                     std::optional<abc::CodeOffset> implicit_exit = std::nullopt,
+                     std::span<const AwaitRegion> awaits = {});
 }  // namespace abcd::analysis
 #endif

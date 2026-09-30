@@ -72,11 +72,21 @@ template <class Certificate>
 std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
     const abc::MethodBody& body, std::span<const Certificate> regions,
     abc::ProfileId profile, std::uint64_t frame_size,
-    abc::CodeOffset completion_handler, SemanticBudget budget) {
+    abc::CodeOffset completion_handler, SemanticBudget budget,
+    std::optional<abc::CodeOffset> implicit_exit = std::nullopt,
+    std::span<const AwaitRegion> awaits = {}) {
   const auto fail = [](AwaitCatchError kind, abc::CodeOffset pc = {}) {
     return AwaitCatchFailure{kind, pc};
   };
   if (regions.empty()) return AwaitCatchProof{};
+  if (implicit_exit) {
+    if constexpr (std::is_same_v<Certificate, YieldSite>) {
+      for (const auto& region : regions)
+        if (region.origin.execution != YieldExecution::kAsynchronous)
+          return fail(AwaitCatchError::kRegion, *implicit_exit);
+    }
+    if (*implicit_exit >= completion_handler) return fail(AwaitCatchError::kRegion, *implicit_exit);
+  }
   try {
     auto work = budget.work;
     const auto charge = [&] { Charge(work); };
@@ -96,7 +106,7 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
     for (const auto& certificate : regions) {
       auto count = kResumeRegisters;
       if constexpr (std::is_same_v<Certificate, YieldSite>) {
-        if (Region(certificate).delegate_registers) count = 2 * std::size_t(Region(certificate).delegate_registers->count);
+        if (Region(certificate).private_registers) count = 2 * std::size_t(Region(certificate).private_registers->count);
       }
       if (count > budget.bytes / sizeof(CatchProbe) - probe_count) throw std::bad_alloc{};
       probe_count += count;
@@ -119,13 +129,20 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
           region.result.value >= frame_size || region.resume_mode.value >= frame_size)
         return fail(AwaitCatchError::kRegion, Start(region));
       if constexpr (std::is_same_v<Certificate, YieldSite>) {
-        if (region.delegate_registers) {
-          const auto& window = *region.delegate_registers;
+        if (region.awaited_rejections &&
+            (target != target_at(region.awaited_rejections->value) || target != target_at(region.awaited_rejections->returned)))
+          return fail(AwaitCatchError::kRegion, Start(region));
+        if (region.private_registers) {
+          const auto& window = *region.private_registers;
           if (window.first.value >= frame_size || window.count > frame_size - window.first.value)
             return fail(AwaitCatchError::kRegion, Start(region));
           for (std::uint32_t i = 0; i < window.count; ++i) {
             charge(); const abc::RegisterId slot{window.first.value + i};
-            probes.push_back({region.continuation, slot, Start(region)});
+            // Async NEXT commits result/mode in retained operations. The
+            // other three recycled slots have no source definitions. THROW
+            // and return rejection bypass all five VM writes at user catch.
+            if (region.execution != YieldExecution::kAsynchronous || (slot != region.result && slot != region.resume_mode))
+              probes.push_back({region.continuation, slot, Start(region)});
             if (target && target->handler_pc != completion_handler) probes.push_back({target->handler_pc, slot, Start(region)});
           }
           continue;
@@ -203,13 +220,15 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
       if (const auto* reg = std::get_if<abc::RegisterId>(&slot))
         uses.Assign(position(reg->value), position(std::uint64_t(reg->value) + 1), use);
     };
-    std::size_t next_probe = 0, suffix_region = regions.size();
+    std::size_t next_probe = 0, suffix_region = regions.size(), suffix_await = awaits.size();
     for (auto site = body.instructions.rbegin(); site != body.instructions.rend(); ++site) {
       charge();
       while (suffix_region && site->offset < Start(Region(regions[suffix_region - 1]))) {
         charge(); --suffix_region;
       }
       const auto* region = suffix_region ? &Region(regions[suffix_region - 1]) : nullptr;
+      while (suffix_await && site->offset < awaits[suffix_await - 1].await) { charge(); --suffix_await; }
+      const auto* awaited = suffix_await ? &awaits[suffix_await - 1] : nullptr;
       const auto lifted = LiftSemanticInstruction(*site, profile, frame_size);
       const auto* instruction = std::get_if<SemanticInstruction>(&lifted);
       // A closed suffix with no possible reads proves a register dead even
@@ -221,25 +240,26 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
       const auto target = [&](abc::CodeOffset pc) {
         if (!suffix_target || pc < *suffix_target) suffix_target = pc;
       };
-      bool delegate_protocol = false;
+      bool folded_protocol = awaited && site->offset <= awaited->continuation;
+      const bool native_exit = implicit_exit && site->offset >= *implicit_exit;
       if constexpr (std::is_same_v<Certificate, YieldSite>)
-        delegate_protocol = region && region->form == YieldForm::kDelegate &&
+        folded_protocol |= region && (region->form == YieldForm::kDelegate || region->execution == YieldExecution::kAsynchronous) &&
             site->offset < region->continuation;
-      // Exact YieldStar/Iterator.Close matching proves every private read is
-      // reached from its own definition. Its internal loop/catch is native
-      // delegation control, not a suffix entry into the prior delegation.
+      // Exact YieldStar/Iterator.Close, async yield and shared awaits prove
+      // private reads reached from their own definitions. Their internal
+      // control cannot enter an earlier suspension's continuation.
       // External entries and user handler boundaries are checked by the owner.
-      // Only the retained GetIterator's user exception edge survives folding.
-      if (!delegate_protocol) {
+      // Only the retained native await/yield anchor's exception edge survives.
+      if (!folded_protocol && !native_exit) {
         if (site->branch_target) target(*site->branch_target);
         if (const auto dispatch_target = target_at(site->offset)) target(dispatch_target->handler_pc);
-      } else if (site->offset == Start(*region)) {
+      } else if (folded_protocol && ((region && site->offset == Start(*region)) || (awaited && site->offset == awaited->await))) {
         if (const auto dispatch_target = target_at(site->offset)) target(dispatch_target->handler_pc);
       }
       // Raw operand effects can omit hidden frame windows (arguments). Only
       // full semantic lifting may declare the suffix's read set complete.
-      if (delegate_protocol) {
-        // Native yield* observes the incoming accumulator and private state,
+      if (folded_protocol || native_exit) {
+        // Native await/yield observes the incoming accumulator and private state,
         // neither of which is a probed local. Do not count recycled registers
         // in later exact delegates as reads of an earlier delegate's values.
       } else if (instruction) {
@@ -286,7 +306,12 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
           } else suffix_known = false;
         } else suffix_known = false;
       }
-      if (!instruction) {
+      if (native_exit) {
+        // Exact implicit undefined completion and outer rejection wrapper:
+        // neither observes an incoming local. VM value/flag/exception loads
+        // only observe this tail's own definitions; state is owner-private.
+        uses.Reset(FirstUse::kExit);
+      } else if (!instruction) {
         const auto coroutine = LiftCoroutineInstruction(site->decoded, frame_size);
         const auto* transfer = std::get_if<CoroutineTransfer>(&coroutine);
         const auto next = site.base();
@@ -351,13 +376,14 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
 std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
     const abc::MethodBody& body, std::span<const AwaitRegion> regions,
     abc::ProfileId profile, std::uint64_t frame_size,
-    abc::CodeOffset completion_handler, SemanticBudget budget) {
-  return ProveCatchInputs(body, regions, profile, frame_size, completion_handler, budget);
+    abc::CodeOffset completion_handler, SemanticBudget budget, std::optional<abc::CodeOffset> implicit_exit) {
+  return ProveCatchInputs(body, regions, profile, frame_size, completion_handler, budget, implicit_exit);
 }
 std::variant<AwaitCatchProof, AwaitCatchFailure> ProveYieldCatchInputs(
     const abc::MethodBody& body, std::span<const YieldSite> regions,
     abc::ProfileId profile, std::uint64_t frame_size,
-    abc::CodeOffset completion_handler, SemanticBudget budget) {
-  return ProveCatchInputs(body, regions, profile, frame_size, completion_handler, budget);
+    abc::CodeOffset completion_handler, SemanticBudget budget, std::optional<abc::CodeOffset> implicit_exit,
+    std::span<const AwaitRegion> awaits) {
+  return ProveCatchInputs(body, regions, profile, frame_size, completion_handler, budget, implicit_exit, awaits);
 }
 }  // namespace abcd::analysis

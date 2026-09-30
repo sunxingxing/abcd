@@ -77,7 +77,7 @@ class DelegateParser {
     analysis::YieldRegion origin{create.offset, suspend, resume, result_store, mode, mode_store,
         continuation, state_, Reg(kIterator), Reg(kResult), Reg(kMode), branch, reject};
     origin.form = analysis::YieldForm::kDelegate;
-    origin.delegate_registers = analysis::YieldDelegateRegisters{first_, kSlotCount};
+    origin.private_registers = analysis::YieldPrivateRegisters{first_, kSlotCount};
     return {origin, begin_, next_, close_begin, close_end, close_catch, close_catch_end};
   }
  private:

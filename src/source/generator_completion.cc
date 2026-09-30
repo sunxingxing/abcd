@@ -11,6 +11,7 @@
 #include "abcd/analysis/lexical.h"
 #include "abcd/analysis/normal_flow.h"
 #include "async_handlers.h"
+#include "generator_async_yield.h"
 
 namespace abcd::source {
 namespace {
@@ -321,8 +322,8 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
     if (code.size() > bytes / kPerInstruction) return Error::kResourceLimit;
     const auto yield_count = static_cast<std::size_t>(std::count_if(code.begin(), code.end(),
         [](const auto& site) { return Op(site, Opcode::kCREATEITERRESULTOBJ_V8_V8) ||
-            Op(site, Opcode::kGETITERATOR_IMM8) || Op(site, Opcode::kGETITERATOR_IMM16); }));
-    Require(!asynchronous || !yield_count);
+            Op(site, Opcode::kGETITERATOR_IMM8) || Op(site, Opcode::kGETITERATOR_IMM16) ||
+            Op(site, Opcode::kASYNCGENERATORRESOLVE_V8_V8_V8); }));
     if (yield_count > (bytes - code.size() * kPerInstruction) / (sizeof(analysis::YieldSite) + sizeof(YieldProtocol) + sizeof(GeneratorDelegate)))
       return Error::kResourceLimit;
     GeneratorBody result;
@@ -357,7 +358,9 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
       // Retain the same await/result/mode/continuation operations used by async
       // functions. Native rejection skips the VM commits; catch-input analysis
       // must prove those lost writes unobserved by each user catch.
-      for (const auto& region : await_regions) {
+      std::size_t ordinary = 0;
+      for (std::size_t r = 0; r < await_regions.size(); ++r) {
+        const auto region = await_regions[r];
         Require(region.state == state && region.result.value < frame.locals && region.resume_mode.value < frame.locals &&
             region.await >= code[first].offset && region.continuation < code[handler - kAsyncExitSize].offset);
         const auto begin = std::lower_bound(code.begin() + first, code.begin() + handler, region.await,
@@ -365,6 +368,28 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
         Require(begin != code.begin() + handler && begin->offset == region.await && region.instructions);
         const auto index = static_cast<std::size_t>(begin - code.begin());
         Require(analysis::kAwaitProtocolInstructions <= handler - index);
+        // An intrinsic outbound wait is followed by AsyncYield settlement.
+        // Its injected RETURN wait belongs to the same native yield. Keep
+        // explicit source awaits in the common AwaitSite list independently.
+        constexpr auto kAsyncYieldResolve = analysis::kAwaitProtocolInstructions + 5;
+        if (kAsyncYieldResolve < handler - index && Op(code[index + kAsyncYieldResolve], Opcode::kASYNCGENERATORRESOLVE_V8_V8_V8)) {
+          Require(r + 1 < await_regions.size() && kAsyncYieldReturnAwait < handler - index &&
+              await_regions[r + 1].await == code[index + kAsyncYieldReturnAwait].offset);
+          auto parsed = ParseAsyncGeneratorYield(body, index, state, frame, region, await_regions[r + 1]);
+          if (const auto* error = std::get_if<Error>(&parsed)) return *error;
+          const auto& yielded = std::get<AsyncGeneratorYield>(parsed);
+          Require(yielded.end <= handler - kAsyncExitSize);
+          const auto& origin = yielded.origin;
+          for (std::size_t i = yielded.begin; i < yielded.end; ++i) {
+            const auto pc = code[i].offset;
+            interior[i] = i != yielded.begin;
+            retained[i] = pc == origin.create || pc == origin.result_store || pc == origin.mode ||
+                pc == origin.mode_store || pc == origin.continuation;
+            protocol[i] = ProtocolPart::kResume;
+          }
+          result.yields.push_back({origin.create, origin.mode, origin});
+          ++r; continue;
+        }
         for (std::size_t step = 0; step < analysis::kAwaitProtocolInstructions; ++step) {
           const auto pc = code[index + step].offset;
           Require((*region.instructions)[step] == pc);
@@ -376,9 +401,11 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
           protocol[index + step] = ProtocolPart::kResume;
         }
         result.awaits.push_back({region.await, region, region.mode});
+        await_regions[ordinary++] = region;
       }
+      await_regions.resize(ordinary);
       const auto catch_inputs = analysis::ProveAwaitCatchInputs(body, await_regions, profile, frame.registers,
-          code[handler].offset, {bytes});
+          code[handler].offset, {bytes}, code[handler - kAsyncExitSize].offset);
       if (const auto* error = std::get_if<analysis::AwaitCatchFailure>(&catch_inputs))
         return error->kind == analysis::AwaitCatchError::kResourceLimit ? Error::kResourceLimit : Error::kKind;
     }
@@ -415,7 +442,7 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
       delegates.push_back(std::move(delegate)); i = delegates.back().end - 1;
     }
     std::size_t cleanup_end = 0;
-    for (std::size_t i = first; i + kYieldPrefix < handler; ++i) {
+    if (!asynchronous) for (std::size_t i = first; i + kYieldPrefix < handler; ++i) {
       if (protocol[i] == ProtocolPart::kResume || !Op(code[i + kYieldPrefix], Opcode::kCREATEITERRESULTOBJ_V8_V8)) continue;
       Require(Op(code[i], Opcode::kSTA_V8) && Op(code[i + 1], Opcode::kLDFALSE) && Op(code[i + 2], Opcode::kSTA_V8));
       const auto value = Reg(code[i]), done = Reg(code[i + 2]);
@@ -469,6 +496,24 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
       result.yields.push_back({delegate.origin.create, {}, delegate.origin});
     }
     std::sort(result.yields.begin(), result.yields.end(), [](const auto& a, const auto& b) { return a.origin.create < b.origin.create; });
+    if (asynchronous) {
+      // A user boundary cannot split intrinsic waits, NEXT commits or return
+      // settlement, even at a retained VM store. Completion wrapper is owned
+      // separately and intentionally starts inside Prepare.
+      const auto boundary = [&](std::uint64_t pc) {
+        const auto found = std::lower_bound(code.begin(), code.end(), pc,
+            [](const auto& site, auto value) { return site.offset.value < value; });
+        Require(found != code.end() && found->offset.value == pc && !interior[found - code.begin()]);
+      };
+      for (std::size_t t = 0; t + 1 < body.tries.size(); ++t) {
+        boundary(body.tries[t].offset.value);
+        boundary(std::uint64_t(body.tries[t].offset.value) + body.tries[t].length);
+      }
+      for (std::size_t h = 0; h + 1 < body.handlers.size(); ++h) {
+        boundary(body.handlers[h].offset.value);
+        boundary(std::uint64_t(body.handlers[h].offset.value) + body.handlers[h].length);
+      }
+    }
     std::size_t next_protocol = 0;
     for (std::size_t i = 0; i < handler; ++i) {
       if (!retained[i]) continue;
@@ -512,7 +557,8 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
     // Selected catch must be identical at the native yield and VM THROW site;
     // result/mode writes lost on native THROW must be dead at handler entry.
     const auto catch_inputs = analysis::ProveYieldCatchInputs(
-        body, result.yields, profile, frame.registers, code[handler].offset, {bytes});
+        body, result.yields, profile, frame.registers, code[handler].offset, {bytes},
+        asynchronous ? std::optional{code[handler - kAsyncExitSize].offset} : std::nullopt, await_regions);
     if (const auto* error = std::get_if<analysis::AwaitCatchFailure>(&catch_inputs))
       return error->kind == analysis::AwaitCatchError::kResourceLimit ? Error::kResourceLimit : Error::kKind;
     abc::MethodBody handler_body;

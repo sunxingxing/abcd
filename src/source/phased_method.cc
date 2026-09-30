@@ -135,6 +135,10 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
          source_pcs.size() != body.instructions.size())) return Error::kInput;
     if ((!awaits.empty() && !IsAsyncCallable(context.Callable())) ||
         (!yields.empty() && !IsGeneratorCallable(context.Callable()))) return Error::kInput;
+    for (const auto& yield : yields) {
+      const auto execution = IsAsyncCallable(context.Callable()) ? YieldExecution::kAsynchronous : YieldExecution::kSynchronous;
+      if (yield.origin.execution != execution) return Error::kInput;
+    }
     auto flow = PhaseResult<ExceptionFlow>(BuildExceptionFlow(body, context.Identity().profile,
         frame.registers, {quota.Remaining().bytes, quota.Remaining().work}, awaits, &frame, yields), Error::kInput);
     for (std::size_t i = 0; i < source_pcs.size(); ++i) {
