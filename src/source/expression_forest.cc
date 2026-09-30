@@ -31,9 +31,9 @@ class ForestBuilder {
                 const EvaluationPlan& evaluation, FunctionOwnerId owner,
                 ExpressionConstants constants, analysis::SemanticBudget budget,
                 BindingPlan bindings, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
-                std::span<const std::u16string> names)
+                std::span<const std::u16string> names, std::span<const LogicalRegion> logicals)
       : graph_(graph), evaluation_(evaluation), owner_(owner), constants_(constants),
-        budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), recovery_(recovery), names_(names) {
+        budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), recovery_(recovery), names_(names), logicals_(logicals) {
     Require(bindings.allocated_bytes <= bytes_, Error::kResourceLimit);
     bytes_ -= bindings.allocated_bytes;
     Step(bindings.work);
@@ -41,6 +41,28 @@ class ForestBuilder {
   }
 
   ExpressionForest Build() {
+    std::vector<std::uint8_t> predicates;
+    std::vector<std::uint8_t> selected_edges;
+    if (!logicals_.empty()) {
+      Reserve(predicates, graph_.ops.size()); predicates.resize(graph_.ops.size());
+      Reserve(selected_edges, graph_.edges.size()); selected_edges.resize(graph_.edges.size());
+      for (const auto& region : logicals_) {
+        Step();
+        Require(evaluation_.flow == EvaluationFlow::kNormal &&
+            region.boolean.value < graph_.ops.size() && region.branch.value < graph_.ops.size() &&
+            region.boolean != region.branch && region.left.value < graph_.values.size() &&
+            region.merged.value < graph_.values.size() && region.keep_input.value < graph_.edges.size() &&
+            region.evaluate_input.value < graph_.edges.size() && region.keep_input != region.evaluate_input &&
+            (region.operation == TreeLogical::kAnd || region.operation == TreeLogical::kOr), Error::kOwnership);
+        const auto* right = std::get_if<analysis::ValueId>(&region.right);
+        Require(right && right->value < graph_.values.size() &&
+            std::holds_alternative<analysis::OpResult>(graph_.values[right->value].origin) &&
+            !predicates[region.boolean.value] && !predicates[region.branch.value] &&
+            !selected_edges[region.keep_input.value] && !selected_edges[region.evaluate_input.value], Error::kOwnership);
+        predicates[region.boolean.value] = predicates[region.branch.value] = 1;
+        selected_edges[region.keep_input.value] = selected_edges[region.evaluate_input.value] = 1;
+      }
+    }
     Require(constants_.operations.size() == graph_.ops.size(), Error::kConstant);
     Require(evaluation_.constructor_guards.size() == constants_.constructor_guards.size() &&
         std::equal(evaluation_.constructor_guards.begin(), evaluation_.constructor_guards.end(), constants_.constructor_guards.begin()), Error::kOwnership);
@@ -203,7 +225,7 @@ class ForestBuilder {
       }
       try {
         const auto& op = graph_.ops[i];
-        if (op.life != analysis::ValueLife::kLive) continue;
+        if (op.life != analysis::ValueLife::kLive || (!predicates.empty() && predicates[i])) continue;
         Require(op.origin.value < graph_.origins.size() &&
                     graph_.origins[op.origin.value].disposition == analysis::OriginDisposition::kRetained,
                 Error::kOrigin);
@@ -309,7 +331,21 @@ class ForestBuilder {
     }
     Require(next_function_ == evaluation_.functions.size(), Error::kOwnership);
     Require(next_module_ == evaluation_.modules.size(), Error::kOwnership);
-    const auto copied = AppendCopyExpressions(graph_, evaluation_, forest_, owner_, work_);
+    for (const auto& region : logicals_) {
+      Step();
+      const TreeOriginId boolean_origin{graph_.ops[region.boolean.value].origin.value};
+      const TreeOriginId branch_origin{graph_.ops[region.branch.value].origin.value};
+      const auto left = Operand(region.left, boolean_origin);
+      const auto right = std::get<analysis::ValueId>(region.right);
+      const auto producer = std::get<analysis::OpResult>(graph_.values[right.value].origin).op;
+      Require(forest_.operations[producer.value].has_value(), Error::kOwnership);
+      const auto expression = Combine(Add(LogicalExpr{region.operation, left, *forest_.operations[producer.value]}, boolean_origin), branch_origin);
+      forest_.operations[region.boolean.value] = expression;
+      const auto* symbol = std::get_if<SymbolId>(&forest_.bindings.values[region.merged.value]);
+      Require(symbol != nullptr, Error::kBinding);
+      forest_.operations[region.branch.value] = Add(AssignmentExpr{SymbolTarget{*symbol}, expression}, branch_origin);
+    }
+    const auto copied = AppendCopyExpressions(graph_, evaluation_, forest_, owner_, work_, selected_edges);
     if (const auto* error = std::get_if<Error>(&copied)) throw *error;
     Step(std::get<std::uint64_t>(copied));
     forest_.allocated_bytes = budget_.bytes - bytes_;
@@ -725,12 +761,13 @@ class ForestBuilder {
   std::size_t next_module_ = 0;
   RecoveryMode recovery_;
   std::span<const std::u16string> names_;
+  std::span<const LogicalRegion> logicals_;
 };
 std::variant<ExpressionForest, ExpressionError> BuildForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner,
     ExpressionConstants constants, analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules,
-    EvaluationFlow flow, RecoveryMode recovery, std::span<const std::u16string> names) {
+    EvaluationFlow flow, RecoveryMode recovery, std::span<const std::u16string> names, std::span<const LogicalRegion> logicals) {
   auto bindings = flow == EvaluationFlow::kNormal ? BuildBindingPlan(graph, evaluation, parameter_count, budget)
       : BuildPhasedBindingPlan(graph, evaluation, parameter_count, budget);
   if (const auto* error = std::get_if<BindingError>(&bindings)) {
@@ -740,7 +777,7 @@ std::variant<ExpressionForest, ExpressionError> BuildForest(
   }
   try {
     return ForestBuilder(graph, evaluation, owner, constants, budget,
-                         std::get<BindingPlan>(std::move(bindings)), modules, recovery, names).Build();
+                         std::get<BindingPlan>(std::move(bindings)), modules, recovery, names, logicals).Build();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
@@ -750,14 +787,14 @@ std::variant<ExpressionForest, ExpressionError> BuildExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
-    std::span<const std::u16string> names) {
-  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal, recovery, names);
+    std::span<const std::u16string> names, std::span<const LogicalRegion> logicals) {
+  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal, recovery, names, logicals);
 }
 std::variant<ExpressionForest, ExpressionError> BuildPhasedExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
-    std::span<const std::u16string> names) {
-  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kPhased, recovery, names);
+    std::span<const std::u16string> names, std::span<const LogicalRegion> logicals) {
+  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kPhased, recovery, names, logicals);
 }
 }  // namespace abcd::source

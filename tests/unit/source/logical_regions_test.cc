@@ -2,6 +2,7 @@
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/family_print.h"
+#include "../../../src/source/tree_checks.h"
 #include <sstream>
 #include "../../support/analysis/ssa_fixture.h"
 #include "abcd/analysis/value_import.h"
@@ -48,11 +49,11 @@ analysis::ValueProgram Diamond(bool negate, unsigned count = 1, bool direct = fa
   return graph;
 }
 }
-std::string Source(const analysis::ValueProgram& graph) {
+std::string Source(const analysis::ValueProgram& graph, bool compose = true) {
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
   const auto regions = FindLogicalRegions(graph, control);
-  for (const auto& region : regions) {
+  if (compose) for (const auto& region : regions) {
     const auto value = std::get<analysis::ValueId>(region.right);
     const auto producer = std::get<analysis::OpResult>(graph.values[value.value].origin).op;
     Check(evaluation.operations[producer.value].kind == EvaluationKind::kPhiInput);
@@ -70,6 +71,14 @@ std::string Source(const analysis::ValueProgram& graph) {
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, view)));
   if (!regions.empty()) {
+    auto wrong_operator = tree;
+    bool composed = false;
+    for (auto& node : wrong_operator.expressions) if (auto* logical = std::get_if<LogicalExpr>(&node.expression)) {
+      logical->operation = logical->operation == TreeLogical::kOr ? TreeLogical::kAnd : TreeLogical::kOr;
+      composed = true; break;
+    }
+    Check(composed == compose);
+    if (compose) Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong_operator, view)));
     auto wrong = tree;
     const auto value = std::get<analysis::ValueId>(regions.front().right);
     const auto producer = std::get<analysis::OpResult>(graph.values[value.value].origin).op;
@@ -83,6 +92,26 @@ std::string Source(const analysis::ValueProgram& graph) {
   std::ostringstream output;
   Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family, output)));
   return output.str();
+}
+void SelectionBudget() {
+  const auto graph = Diamond(false, 201);
+  const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+  auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+  TreeCheckBudget budget({});
+  Check(FindLogicalExpressions(graph, control, evaluation, budget).size() == 201);
+  for (const bool bytes : {false, true}) {
+    TreeCheckBudget limited({budget.Bytes() - (bytes ? 1 : 0), budget.Work() - (bytes ? 0 : 1)});
+    bool rejected = false;
+    try { static_cast<void>(FindLogicalExpressions(graph, control, evaluation, limited)); }
+    catch (TreeStructureError error) {
+      rejected = true;
+      Check(error == (bytes ? TreeStructureError::kResourceLimit : TreeStructureError::kWorkLimit));
+    }
+    Check(rejected);
+  }
+  evaluation.operations.clear();
+  TreeCheckBudget fresh({});
+  Check(FindLogicalExpressions(graph, control, evaluation, fresh).empty());
 }
 void PhiInputs() {
   using namespace analysis;
@@ -167,6 +196,12 @@ int main(int argc, char** argv) {
   for (const unsigned count : {200U, 201U, 402U}) Check(!Source(Diamond(false, count)).empty());
   Check(!Source(Diamond(true, 1, false, true)).empty());
   Check(!Source(Diamond(true, 1, false, true, false, true)).empty());
+  Check(Source(Diamond(false)).find(" || ") != std::string::npos);
+  Check(Source(Diamond(true)).find(" && ") != std::string::npos);
+  const auto uncomposed = Source(Diamond(false, 1, true, false, true), false);
+  Check(uncomposed.find("if (") != std::string::npos && uncomposed.find("debugger;") != std::string::npos);
+  Check(uncomposed.find(" || ") == std::string::npos);
+  SelectionBudget();
   PhiInputs();
   Negatives();
 }

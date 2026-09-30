@@ -15,6 +15,7 @@ class TreeEdgeFlow {
       std::vector<std::uint8_t>& assigned, TreeCheckBudget& budget,
       const CompletionTreeView& sequences);
   void Consume(analysis::IncomingKey incoming, const BlockStmt& block, std::uint32_t& child);
+  void Select(analysis::EdgeId incoming, SymbolId target, ExprId value);
   void Stage(analysis::OpId operation, const BlockStmt& block, std::uint32_t& child);
   void Catch(analysis::WorkBlockId handler, const BlockStmt& block, std::uint32_t& child);
   [[nodiscard]] bool HasCopies(analysis::EdgeId edge) const;

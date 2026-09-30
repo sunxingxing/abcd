@@ -118,6 +118,20 @@ void TreeEdgeFlow::Consume(analysis::IncomingKey incoming, const BlockStmt& bloc
   }
 }
 
+void TreeEdgeFlow::Select(analysis::EdgeId incoming, SymbolId target, ExprId value) {
+  budget_.Step();
+  Require(incoming.value < bundles_.size() && bundles_[incoming.value], TreeFlowError::kControl);
+  const auto id = *bundles_[incoming.value];
+  const auto& bundle = evaluation_.phis->bundles[id];
+  Require(!visited_[id] && !evaluation_.exceptions && bundle.count == 1 &&
+      bundle.schedule.steps.size() == 1 && bundle.schedule.temporaries == 0, TreeFlowError::kSequence);
+  const auto* phi = std::get_if<analysis::ValueId>(&bundle.schedule.steps[0].destination);
+  Require(phi != nullptr, TreeFlowError::kSnapshot);
+  Bind(flow_.phis[phi->value], target, TemporaryReason::kPhiJoin);
+  visited_[id] = 1;
+  auto& copies = flow_.copies[id]; copies.expressions.clear(); copies.selected = value;
+}
+
 bool TreeEdgeFlow::HasCopies(analysis::EdgeId edge) const {
   if (bundles_.empty() || !bundles_[edge.value]) return false;
   return !flow_.copies[*bundles_[edge.value]].expressions.empty();

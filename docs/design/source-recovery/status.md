@@ -12,6 +12,37 @@
 
 ## 当前阶段
 
+### 2026-10-01：正常控制分支贯通原生逻辑表达式输出
+
+- FindLogicalExpressions将现有区域识别与已验证求值森林接通：只选择ToBoolean
+  单一分支消费者、同一保留值、单phi以及完整且独占的RHS子树；独立根、debugger、
+  环境变化和非空保留臂不合并。原检测索引/选择数组接入调用者现有存储和工作计费，
+  无新增DFX或证明收据。输入求值表尺寸/revision不匹配时不进入索引。
+- ExpressionForest直接构造共同LogicalExpr和原phi赋值，省去两个分支copy语句及
+  独立布尔谓词表达式，不在printer推断CFG。共同TreeFlow重新检查实际语法、
+  两条输入边及phi目标，TreeOperands检查左右真实值与操作，来源验证保留布尔/
+  分支的CombinedOrigin、RHS原PC和jump边界锚点。异常相位路线仍保持原处理。
+- 动态ABC fixture经完整导入、简化、求值、共同树语义检查与打印后，实际输出
+  $phi = (value || [])、$phi = (value && value.probe())等原生表达式；仍保留合流
+  临时变量，尚未将逻辑值内联到后续调用。182组JS行为对照通过，包括假值、对象
+  身份、getter/成员调用receiver、异常和短路；200/201/402连续区域继续通过。
+- 新增错误逻辑运算符/错误RHS负例、带真实DEBUGGER字节码的拒绝合并用例（保持
+  if及debugger）、201区域的有限存储/工作边界及损坏求值表负例。实际10510在
+  完整FileFamily的children/capture前提下确认唯一可组合kOr区域；完整方法仍在
+  森林构造之前受到成员callee跨块引用检查阻断，没有宣称该方法已经打印成功。
+- 十项定向回归通过（5.17秒）：logical_regions_test、logical_regions_source_test、
+  evaluation_plan_test、phi_copies_test、phi_call_test、phi_placement_test、
+  function_tree_test、class_initializer_file_test、derived_constructor_source_test、
+  navmap_source_test。日志/tmp/abcd-logical-compose-tests.log，构建日志
+  /tmp/abcd-logical-compose-export-build.log；abc_structure/abc_semantic已重建。
+- 五输入正式导出build/stage-one/value-logical-compose-pass-1仍34 complete/
+  72 failure/46 no-module，无完整项退化、无legacy writer；对比上一轮生成的mjs
+  文件，实际差异数为0，不能用fixture进展冒充整个样本集覆盖提升。汇总
+  /tmp/abcd-logical-compose-batch-summary.json。
+- 下一步接通逻辑phi值作为后续调用参数的求值组合，同时保留callee getter先于
+  参数的顺序；不能仅放宽CallPlan的跨块限制。整类继承、阶段一及配对源码最终
+  表示质量验收仍未完成，全量/RSS/基准仍暂停。
+
 ### 2026-10-01：phi右值表达式进入正式求值与源码通路
 
 - normal EvaluationPlan新增kPhiInput：已验证的单copy/无cycle临时量bundle、唯一

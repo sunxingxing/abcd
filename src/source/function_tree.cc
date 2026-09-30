@@ -83,6 +83,19 @@ class TreeBuilder {
       }
       Step(std::get<std::uint64_t>(control));
     }
+    if (!exceptions_ && evaluation_.phis) {
+      TreeCheckBudget logical_budget({bytes_, work_});
+      try {
+        logicals_ = FindLogicalExpressions(graph_, control_, evaluation_, logical_budget);
+        if (!logicals_.empty()) {
+          logical_budget.Array(logical_branches_, graph_.ops.size());
+          for (std::size_t i = 0; i < logicals_.size(); ++i) logical_branches_[logicals_[i].branch.value] = i;
+        }
+      } catch (TreeStructureError error) {
+        throw error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
+      }
+      Admit(logical_budget.Bytes(), 1); Step(logical_budget.Work());
+    }
     std::vector<ModuleSymbol> modules;
     Grow(modules, syntax_.modules.size());
     for (const auto& alias : syntax_.modules) { Step(); modules.push_back(alias.target); }
@@ -91,7 +104,7 @@ class TreeBuilder {
         static_cast<std::uint32_t>(syntax_.parameters.size()), syntax_.owner,
         constants_, {bytes_, work_}, modules,
         (incoming_ && !incoming_->cells.targets.empty()) || exceptions_ || !syntax_.captures.empty()
-            ? RecoveryMode::kCompleteOnly : recovery_, syntax_.names);
+            ? RecoveryMode::kCompleteOnly : recovery_, syntax_.names, logicals_);
     if (const auto* error = std::get_if<ExpressionError>(&expressions)) {
       if (*error == ExpressionError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == ExpressionError::kWorkLimit) throw Error::kWorkLimit;
@@ -763,6 +776,14 @@ class TreeBuilder {
     const TreeOriginId origin{graph_.ops[op.value].origin.value};
     const auto expression = forest_.operations[op.value];
     Require(expression.has_value(), Error::kOwnership);
+    if (!logical_branches_.empty() && logical_branches_[op.value]) {
+      const auto& logical = logicals_[*logical_branches_[op.value]];
+      if (logical.keep) EmitBlock(ControlNode{*logical.keep, {}, {}, {}}, draft);
+      EmitBlock(ControlNode{logical.evaluate, {}, {}, {}}, draft);
+      const auto statement = Statement(ExpressionStmt{*expression}, origin);
+      Append(draft, statement); tree_.operations.push_back({op, statement});
+      return;
+    }
     const auto taken = Arm(draft, origin, node.arms->taken, first_edge);
     const analysis::EdgeId fallthrough{first_edge.value + 1};
     std::optional<StmtId> alternate;
@@ -964,6 +985,8 @@ class TreeBuilder {
 
   const analysis::ValueProgram& graph_;
   const ControlPlan& control_;
+  std::vector<LogicalRegion> logicals_;
+  std::vector<std::optional<std::size_t>> logical_branches_;
   const EvaluationPlan& evaluation_;
   FunctionSyntax syntax_;
   ExpressionConstants constants_;

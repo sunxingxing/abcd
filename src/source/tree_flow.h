@@ -20,6 +20,8 @@ struct TreeEdgeCopies {
   // original PhiBundle copy order and target private staging slots instead.
   std::vector<ExprId> expressions;
   std::vector<std::optional<SymbolId>> temporaries;
+  // A native logical expression selects this incoming value without a copy statement.
+  std::optional<ExprId> selected;
 };
 struct TreeFlow {
   analysis::IrRevision value_revision;
@@ -28,6 +30,8 @@ struct TreeFlow {
   // jumps and removed operations have no expression. Snapshot symbols come
   // from actual assignment targets, never from regenerated binding decisions.
   std::vector<std::optional<ExprId>> expressions;
+  // Original ToBoolean/branch operations composed into one native logical node.
+  std::vector<std::optional<TreeLogical>> logical_operations;
   std::vector<std::optional<StmtId>> statements;
   std::vector<std::optional<PropertyId>> initializers;
   // Actual original buffer prefix length per allocation. Constants verify the

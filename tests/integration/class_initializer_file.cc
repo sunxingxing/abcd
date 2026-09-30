@@ -3,6 +3,7 @@
 #include "../../src/source/class_tree.h"
 #include "../../src/source/call_plan.h"
 #include "../../src/source/logical_regions.h"
+#include "../../src/source/tree_checks.h"
 #include "../../src/source/default_body.h"
 #include "../../src/source/prepared_family.h"
 #include "abcd/corpus/abc_file.h"
@@ -334,6 +335,9 @@ int main(int argc, char** argv) {
               child.children, {}, {}, {}, analysis::ClosureWrites::kLanguage));
           Check(evaluation.operations[allocation.value].kind == EvaluationKind::kPhiInput);
           Check(!evaluation.operations[allocation.value].temporary);
+          TreeCheckBudget logical_budget({});
+          const auto expressions = FindLogicalExpressions(graph, control, evaluation, logical_budget);
+          Check(expressions.size() == 1 && expressions.front().operation == TreeLogical::kOr);
         }
         if (child.function.Method().value != 10400) continue;
         guarded_child = true;

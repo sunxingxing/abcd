@@ -5,6 +5,8 @@
 #include "abcd/source/source_tree.h"
 
 namespace abcd::source {
+class TreeCheckBudget;
+struct EvaluationPlan;
 // A value-selection diamond, not permission to move effects across its header.
 // The expression planner must still own the RHS subtree, remove its phi copies,
 // and preserve the order of every surrounding call/reference before emission.
@@ -27,6 +29,10 @@ struct LogicalRegion {
 // O(operations + values + uses + control nodes), with indexed block summaries;
 // never scans the whole graph separately for each branch or phi.
 [[nodiscard]] std::vector<LogicalRegion> FindLogicalRegions(
-    const analysis::ValueProgram& graph, const ControlPlan& control);
+    const analysis::ValueProgram& graph, const ControlPlan& control, TreeCheckBudget* budget = nullptr);
+// Select only regions whose entire RHS is one owned evaluation subtree.
+[[nodiscard]] std::vector<LogicalRegion> FindLogicalExpressions(
+    const analysis::ValueProgram& graph, const ControlPlan& control,
+    const EvaluationPlan& evaluation, TreeCheckBudget& budget);
 }  // namespace abcd::source
 #endif

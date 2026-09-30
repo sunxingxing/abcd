@@ -1,4 +1,6 @@
 #include "logical_regions.h"
+#include "evaluation_plan.h"
+#include "tree_checks.h"
 
 #include <array>
 
@@ -44,13 +46,24 @@ std::optional<Arm> ReadArm(const ValueProgram& graph, const ControlPlan& control
   return Arm{node.block, block.first_edge};
 }
 }  // namespace
-std::vector<LogicalRegion> FindLogicalRegions(const ValueProgram& graph, const ControlPlan& control) {
+std::vector<LogicalRegion> FindLogicalRegions(const ValueProgram& graph, const ControlPlan& control, TreeCheckBudget* budget) {
   std::vector<LogicalRegion> result;
   if (!graph.phases.empty() || control.view != ControlViewKind::kNormal ||
       graph.revision != control.revision || graph.cfg_revision != control.cfg_revision) return result;
-  std::vector<BlockSummary> blocks(graph.blocks.size());
-  std::vector<PhiInputs> phis(graph.values.size());
-  std::vector<unsigned> use_counts(graph.values.size());
+  std::vector<BlockSummary> blocks;
+  std::vector<PhiInputs> phis;
+  std::vector<unsigned> use_counts;
+  if (budget) {
+    budget->Array(blocks, graph.blocks.size()); budget->Array(phis, graph.values.size());
+    budget->Array(use_counts, graph.values.size()); budget->Admit(control.nodes.size(), sizeof(LogicalRegion));
+  } else {
+    blocks.resize(graph.blocks.size()); phis.resize(graph.values.size()); use_counts.resize(graph.values.size());
+  }
+  result.reserve(control.nodes.size());
+  if (budget) {
+    budget->Admit(result.capacity() - control.nodes.size(), sizeof(LogicalRegion));
+    budget->Step(graph.ops.size()); budget->Step(graph.values.size()); budget->Step(graph.uses.size());
+  }
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     const auto& op = graph.ops[i];
     if (op.life != ValueLife::kLive) continue;
@@ -82,6 +95,7 @@ std::vector<LogicalRegion> FindLogicalRegions(const ValueProgram& graph, const C
     }
   }
   for (const auto& node : control.nodes) {
+    if (budget) budget->Step();
     if (!node.arms || !node.next || !std::holds_alternative<std::monostate>(node.synthetic)) continue;
     const auto& header = graph.blocks[node.block.value];
     const auto& summary = blocks[node.block.value];
@@ -132,5 +146,38 @@ std::vector<LogicalRegion> FindLogicalRegions(const ValueProgram& graph, const C
     }
   }
   return result;
+}
+std::vector<LogicalRegion> FindLogicalExpressions(const ValueProgram& graph, const ControlPlan& control,
+    const EvaluationPlan& evaluation, TreeCheckBudget& budget) {
+  if (evaluation.flow != EvaluationFlow::kNormal || evaluation.operations.size() != graph.ops.size() ||
+      evaluation.revision != graph.revision || evaluation.cfg_revision != graph.cfg_revision) return {};
+  auto regions = FindLogicalRegions(graph, control, &budget);
+  std::size_t count = 0;
+  for (const auto& region : regions) {
+    budget.Step();
+    const auto& boolean = evaluation.operations[region.boolean.value];
+    if (boolean.kind != EvaluationKind::kInline ||
+        boolean.consumer != graph.ops[region.branch.value].first_use) continue;
+    const auto* right = std::get_if<ValueId>(&region.right);
+    const auto* producer = right ? std::get_if<OpResult>(&graph.values[right->value].origin) : nullptr;
+    if (!producer || graph.ops[producer->op.value].block != region.evaluate ||
+        evaluation.operations[producer->op.value].kind != EvaluationKind::kPhiInput) continue;
+    const auto& block = graph.blocks[region.evaluate.value];
+    bool closed = true;
+    for (std::uint32_t j = 0; j < block.op_count; ++j) {
+      budget.Step(); const auto id = block.first_op.value + j; const auto& op = graph.ops[id];
+      if (op.life != ValueLife::kLive || std::holds_alternative<ValueJump>(op.operation)) continue;
+      if (evaluation.operations[id].kind != EvaluationKind::kInline && id != producer->op.value) closed = false;
+    }
+    if (region.keep) {
+      const auto& keep = graph.blocks[region.keep->value];
+      for (std::uint32_t j = 0; j < keep.op_count; ++j) {
+        budget.Step(); const auto& op = graph.ops[keep.first_op.value + j];
+        if (op.life == ValueLife::kLive && !std::holds_alternative<ValueJump>(op.operation)) closed = false;
+      }
+    }
+    if (closed) regions[count++] = region;
+  }
+  regions.resize(count); return regions;
 }
 }  // namespace abcd::source

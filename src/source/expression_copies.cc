@@ -11,14 +11,15 @@ void Require(bool valid, Error error) { if (!valid) throw error; }
 class CopyExpressions {
  public:
   CopyExpressions(const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-                  ExpressionForest& forest, FunctionOwnerId owner, std::uint64_t work)
-      : graph_(graph), evaluation_(evaluation), forest_(forest), owner_(owner), work_(work) {}
+                  ExpressionForest& forest, FunctionOwnerId owner, std::uint64_t work, std::span<const std::uint8_t> selected_edges)
+      : graph_(graph), evaluation_(evaluation), forest_(forest), owner_(owner), work_(work), selected_edges_(selected_edges) {}
   void Append() {
     if (!evaluation_.phis) return;
     for (std::size_t b = 0; b < evaluation_.phis->bundles.size(); ++b) {
       Step();
       const auto& bundle = evaluation_.phis->bundles[b];
       const auto* edge = std::get_if<analysis::EdgeId>(&bundle.incoming);
+      if (edge && !selected_edges_.empty() && selected_edges_[edge->value]) continue;
       if (evaluation_.exceptions) {
         if (const auto* placement = std::get_if<ThrowCopies>(&evaluation_.exceptions->placements[b])) {
           const auto origin = Origin(edge ? TreeOrigin{EdgeOrigin{*edge}} : TreeOrigin{EntryOrigin{}});
@@ -169,13 +170,14 @@ class CopyExpressions {
   ExpressionForest& forest_;
   FunctionOwnerId owner_;
   std::uint64_t work_;
+  std::span<const std::uint8_t> selected_edges_;
 };
 }  // namespace
 std::variant<std::uint64_t, ExpressionError> AppendCopyExpressions(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    ExpressionForest& forest, FunctionOwnerId owner, std::uint64_t work) {
+    ExpressionForest& forest, FunctionOwnerId owner, std::uint64_t work, std::span<const std::uint8_t> selected_edges) {
   try {
-    CopyExpressions builder(graph, evaluation, forest, owner, work);
+    CopyExpressions builder(graph, evaluation, forest, owner, work, selected_edges);
     builder.Append();
     return work - builder.Remaining();
   } catch (Error error) { return error; }

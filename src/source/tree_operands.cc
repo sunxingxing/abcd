@@ -108,6 +108,14 @@ class OperandCheck {
       }
       RequireMeaning(flow_.expressions[i].has_value(), Error::kOperand);
       const auto expression = *flow_.expressions[i];
+      if (!flow_.logical_operations.empty() && flow_.logical_operations[i]) {
+        const auto& logical = Node<LogicalExpr>(expression);
+        RequireMeaning(logical.operation == *flow_.logical_operations[i], Error::kOperand);
+        if (std::holds_alternative<analysis::ValueUnary>(op.operation))
+          Input(graph_.uses[op.first_use.value].operand, logical.left);
+        else RequireMeaning(std::holds_alternative<analysis::ValueBranch>(op.operation), Error::kOperand);
+        continue;
+      }
       const auto input = [&](std::uint32_t ordinal) -> const analysis::ValueOperand& {
         return graph_.uses[op.first_use.value + ordinal].operand;
       };
@@ -405,6 +413,12 @@ class OperandCheck {
         continue;
       }
       const auto& schedule = evaluation_.phis->bundles[i].schedule;
+      if (copies.selected) {
+        RequireMeaning(copies.expressions.empty() && copies.temporaries.empty() && schedule.steps.size() == 1, Error::kOperand);
+        origin_ = tree_.expressions[copies.selected->value].origin;
+        Input(std::get<analysis::ValueOperand>(schedule.steps[0].source), *copies.selected);
+        continue;
+      }
       RequireMeaning(copies.expressions.size() == schedule.steps.size(), Error::kOperand);
       for (std::size_t j = 0; j < copies.expressions.size(); ++j) {
         budget_.Step();

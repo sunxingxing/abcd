@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_EXPRESSION_FOREST_H_
 
 #include "binding_plan.h"
+#include "logical_regions.h"
 #include "call_plan.h"
 #include "expression_constants.h"
 
@@ -66,6 +67,8 @@ enum class ExpressionError : std::uint8_t {
 // append after bindings.symbols; FunctionTree must retain that exact order.
 // Optional names enable buffered overwrite folding by actual key spelling;
 // without them preserve the original buffer plus ordered definition suffix.
+// Logical selections come from FindLogicalExpressions for the same graph and
+// plans; final TreeFlow independently checks their actual syntax/edge ownership.
 // AllowPartial can return recovery_stop for a supported straight-line prefix;
 // its expressions are still exclusively owned by the retained root operations.
 [[nodiscard]] std::variant<ExpressionForest, ExpressionError>
@@ -74,13 +77,13 @@ BuildExpressionForest(const analysis::ValueProgram& graph,
     FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget = {}, std::span<const ModuleSymbol> modules = {},
     RecoveryMode recovery = RecoveryMode::kCompleteOnly,
-    std::span<const std::u16string> names = {});
+    std::span<const std::u16string> names = {}, std::span<const LogicalRegion> logicals = {});
 [[nodiscard]] std::variant<ExpressionForest, ExpressionError>
 BuildPhasedExpressionForest(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, std::uint32_t parameter_count,
     FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget = {}, std::span<const ModuleSymbol> modules = {},
     RecoveryMode recovery = RecoveryMode::kCompleteOnly,
-    std::span<const std::u16string> names = {});
+    std::span<const std::u16string> names = {}, std::span<const LogicalRegion> logicals = {});
 }  // namespace abcd::source
 #endif
