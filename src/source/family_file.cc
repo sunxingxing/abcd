@@ -24,7 +24,8 @@ class FamilyReader {
       : file_(file), header_(header), index_(index), lookup_(lookup), roles_(roles), sites_(sites),
         identity_(identity), budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), module_owner_(module_owner) {}
 
-  FileFamily Read(abc::MethodPosition root, const FunctionContext* owner) {
+  FileFamily Read(abc::MethodPosition root, const FunctionContext* owner, FamilyClassMode classes) {
+    class_mode_ = classes;
     Require(root.value < index_.methods.size(), Error::kMethod);
     method_ = index_.methods[root.value].offset;
     Admit(1, sizeof(FamilyReader));
@@ -47,6 +48,27 @@ class FamilyReader {
       Require(site.value < parent.Instructions().size(), Error::kCreation);
       pc_ = parent.Instructions()[site.value].origin.value_or(*pc_);
       const auto& operation = parent.Instructions()[site.value].operation;
+      auto& member = result_.members[cursor.member.value];
+      if (member.class_projection) {
+        const auto& graph = parent.Graph();
+        Require(site.value < graph.input.sites.size() && graph.input.sites[site.value], Error::kCreation);
+        const auto current = *graph.input.sites[site.value];
+        Require(current.value < graph.ops.size(), Error::kCreation);
+        const auto& op = graph.ops[current.value];
+        Require(op.life == analysis::ValueLife::kLive, Error::kCreation);
+        auto creation = std::holds_alternative<analysis::ClassCreation>(operation) ?
+            std::optional<analysis::OpId>{current} : std::nullopt;
+        if (!creation && !member.class_projection->owners.empty()) creation = member.class_projection->owners[current.value];
+        if (creation) {
+          Require(creation->value < graph.ops.size() &&
+              std::holds_alternative<analysis::ValueClassCreation>(graph.ops[creation->value].operation), Error::kCreation);
+          Require(std::holds_alternative<analysis::ClassCreation>(operation) ||
+              (std::holds_alternative<analysis::FunctionCreation>(operation) &&
+               std::get<analysis::FunctionCreation>(operation).kind == analysis::CreationKind::kMethod), Error::kCreation);
+          AppendRoom(member.classes); member.classes.push_back({site, current, *creation});
+          continue;
+        }
+      }
       if (const auto* object = std::get_if<analysis::BufferedObjectCreation>(&operation)) {
         // Capture barriers are not all function edges. The shared literal
         // reader refuses methods/accessors and validates every key/value.
@@ -217,6 +239,14 @@ class FamilyReader {
     const FamilyId id{static_cast<std::uint32_t>(result_.members.size())};
     FileFamilyMember member{std::move(function), std::move(context), std::move(incoming)};
     Grow(member.children, member.function.Children().size());
+    if (id == FileFamily::kRoot && class_mode_ == FamilyClassMode::kRetainRoot) {
+      Require(!member.function.Phase(), Error::kUnsupportedFlow);
+      const auto& values = member.function.Normal().values;
+      auto projected = ProjectClassMembers(values.graph, values.initializers.calls, Remaining(), values.definitions.sites);
+      if (const auto* error = std::get_if<ClassInitializerError>(&projected)) Fail(*error);
+      member.class_projection.emplace(std::get<ClassProjection>(std::move(projected)));
+      Admit(member.class_projection->allocated_bytes, 1); Step(member.class_projection->work);
+    }
     if (const auto* phase = member.function.Phase()) {
       auto created = BindPhasedCreations(file_, header_, index_, lookup_, roles_, sites_, phase->Phases(), phase->Body(), Remaining());
       if (const auto* error = std::get_if<PhasedCreationFailure>(&created)) Fail(*error);
@@ -239,6 +269,7 @@ class FamilyReader {
   const RecordModuleContext* modules_;
   ModuleOwnerId module_owner_;
   FileFamily result_;
+  FamilyClassMode class_mode_ = FamilyClassMode::kReject;
   std::vector<FamilyCursor> stack_;
   std::vector<std::uint8_t> active_;
   std::optional<abc::EntityOffset> method_;
@@ -251,8 +282,8 @@ std::variant<FileFamily, FamilyFileFailure> ReadFunctionFamily(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
     abc::MethodPosition root, RouteInputIdentity identity,
-    analysis::SemanticBudget budget, const RecordModuleContext* modules, const FunctionContext* owner, ModuleOwnerId module_owner) {
-  try { return FamilyReader(file, header, index, lookup, roles, sites, identity, budget, modules, module_owner).Read(root, owner);
+    analysis::SemanticBudget budget, const RecordModuleContext* modules, const FunctionContext* owner, ModuleOwnerId module_owner, FamilyClassMode classes) {
+  try { return FamilyReader(file, header, index, lookup, roles, sites, identity, budget, modules, module_owner).Read(root, owner, classes);
   } catch (const FamilyFileFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyFileFailure{FamilyFileError::kResourceLimit, {}, {}, {}};
   } catch (const std::length_error&) { return FamilyFileFailure{FamilyFileError::kResourceLimit, {}, {}, {}}; }

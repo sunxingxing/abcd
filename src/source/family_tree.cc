@@ -20,6 +20,9 @@ class FamilyTrees {
     Admit(1, sizeof(FamilyTrees));
     Require(!family.members.empty(), FamilyTreeError::kContext);
     Require(family.members.size() < std::numeric_limits<std::uint32_t>::max(), FamilyTreeError::kResourceLimit);
+    // Class obligations are not function-family receipts. They require the
+    // record/class composition path before a complete family can publish.
+    for (const auto& member : family.members) { Step(1); Require(member.classes.empty(), FamilyTreeError::kContext); }
     ProjectDefaults(family, root);
     Rebind(family);
     std::vector<FamilyMember> trees;

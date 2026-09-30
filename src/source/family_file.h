@@ -24,6 +24,14 @@ struct FamilyObject {
   // its input barrier. AST construction must still account for this operation.
   ObjectBuffer buffer;
 };
+// An original class barrier delegated to the class tree, not a discharged
+// closure edge. Normal family publication still rejects these obligations.
+struct FamilyClassObligation {
+  analysis::InstructionId site;
+  analysis::OpId operation;
+  analysis::OpId creation;
+};
+enum class FamilyClassMode : std::uint8_t { kReject, kRetainRoot };
 struct FileFamilyMember {
   FamilyFunction function;
   // The root context is owned by PreparedFamily; input retains its occurrence
@@ -33,6 +41,8 @@ struct FileFamilyMember {
   std::vector<FunctionBinding> children;
   std::vector<FamilyObject> objects;
   std::optional<PhasedCreations> phase_creations;
+  std::optional<ClassProjection> class_projection;
+  std::vector<FamilyClassObligation> classes;
 };
 struct FileFamily {
   // Preorder, root at kRoot. Occurrence owners equal these stable member IDs;
@@ -49,7 +59,8 @@ enum class FamilyFileError : std::uint8_t {
 };
 struct FamilyFileFailure {
   std::variant<FamilyFileError, FunctionFileFailure, CreationContextFailure,
-      CaptureCellError, CaptureEvaluationFailure, BodyEmitFailure, PhasedFileFailure, PhasedCreationFailure> cause;
+      CaptureCellError, CaptureEvaluationFailure, BodyEmitFailure, PhasedFileFailure, PhasedCreationFailure,
+      ClassInitializerError> cause;
   std::optional<abc::EntityOffset> method;
   std::optional<abc::EntityOffset> parent;
   std::optional<abc::CodeOffset> creation_pc;
@@ -75,6 +86,7 @@ struct FamilyFileFailure {
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
     abc::MethodPosition root, RouteInputIdentity identity,
     analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
-    const FunctionContext* owner = nullptr, ModuleOwnerId module_owner = {});
+    const FunctionContext* owner = nullptr, ModuleOwnerId module_owner = {},
+    FamilyClassMode classes = FamilyClassMode::kReject);
 }  // namespace abcd::source
 #endif

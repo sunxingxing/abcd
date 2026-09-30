@@ -61,6 +61,47 @@ int main(int argc, char** argv) {
           !projection.owners[i]) unbound.push_back(graph.origins[op.origin.value].pc.value);
     }
     Check(unbound == std::vector<unsigned>({77, 285}));
+    auto read_family = ReadFunctionFamily(file, header, index, lookup, roles, sites, *position,
+        identity, {}, nullptr, nullptr, {}, FamilyClassMode::kRetainRoot);
+    if (const auto* error = std::get_if<FamilyFileFailure>(&read_family)) {
+      std::cerr << "record family failure " << error->cause.index();
+      if (error->method) std::cerr << " method " << error->method->value;
+      if (error->creation_pc) std::cerr << " pc " << error->creation_pc->value;
+      std::cerr << '\n';
+    }
+    Check(std::holds_alternative<FileFamily>(read_family));
+    const auto& entry_family = std::get<FileFamily>(read_family);
+    Check(entry_family.members.front().children.size() == 2);
+    Check(entry_family.members.front().classes.size() == 10);
+    Check(entry_family.members.front().function.Cells() != nullptr);
+    const auto& entry_values = entry_family.members.front().function.Normal().values;
+    const auto& entry_graph = entry_values.graph;
+    std::vector<unsigned> bound_pcs;
+    for (const auto& binding : entry_family.members.front().children) {
+      bound_pcs.push_back(entry_graph.origins[entry_graph.ops[binding.creation.value].origin.value].pc.value);
+      Check(binding.child.value < entry_family.members.size());
+      const auto& child = entry_family.members[binding.child.value];
+      Check(child.incoming && child.incoming->parent == FileFamily::kRoot);
+      Check(child.function.Method().value == (bound_pcs.back() == 77 ? 9698U : 9726U));
+      if (bound_pcs.back() == 285) {
+        Check(!binding.captures.empty());
+        Check(binding.captures.size() == child.incoming->cells.targets.size());
+        for (const auto& target : child.incoming->cells.targets)
+          Check(std::holds_alternative<ParentCell>(target.target));
+      } else Check(binding.captures.empty());
+    }
+    Check(bound_pcs == unbound);
+    for (const auto& obligation : entry_family.members.front().classes) {
+      Check(entry_graph.origins[entry_graph.ops[obligation.creation.value].origin.value].pc.value == 98);
+      Check(entry_graph.input.sites[obligation.site.value] == obligation.operation);
+    }
+    // Retention is explicit and does not change ordinary family acceptance.
+    Check(std::holds_alternative<FamilyFileFailure>(ReadFunctionFamily(file, header, index, lookup,
+        roles, sites, *position, identity)));
+    const auto bound_evaluation = BuildEvaluationPlan(entry_values.graph, {}, IncomingCells::kReject,
+        entry_family.members.front().children, {}, entry_family.members.front().function.Cells()->demands,
+        entry_values.initializers.calls, analysis::ClosureWrites::kUnknown, entry_values.definitions.sites);
+    Check(std::holds_alternative<EvaluationPlan>(bound_evaluation));
     const auto evaluation = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {},
         analysis::ClosureWrites::kUnknown, parent.values.definitions.sites);
     Check(std::get<EvaluationError>(evaluation) == EvaluationError::kOwnership);

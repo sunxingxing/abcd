@@ -51,27 +51,42 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     auto exports = BuildModuleExports(file, header, *module, {budget.export_bytes, budget.strings});
     const auto* slots = std::get_if<ModuleExports>(&exports);
     if (!slots) return fail(Error::kExport);
-    auto loaded = ReadFunctionValues(file, header, index, entry, identity,
-        InputCaptureMode::kClosed, {budget.bytes}, &context);
-    auto* function = std::get_if<FileFunction>(&loaded);
-    if (!function) {
-      const auto& error = std::get<FunctionFileFailure>(loaded);
-      if (const auto* values = std::get_if<FunctionValueFailure>(&error))
-        return RouteRefusal{values->cause};
-      return std::visit([&](const auto& failure) -> RecordSourceResult {
-        using T = std::decay_t<decltype(failure)>;
-        if constexpr (std::is_same_v<T, FunctionFileError>) {
-          if (failure == FunctionFileError::kResourceLimit) return fail(Error::kResourceLimit);
-          if (failure == FunctionFileError::kChanged) return fail(Error::kFileChanged);
-        } else if constexpr (std::is_same_v<T, abc::MetadataError>) {
-          if (failure == abc::MetadataError::kResourceLimit) return fail(Error::kResourceLimit);
-          if (failure == abc::MetadataError::kFileChanged) return fail(Error::kFileChanged);
-          if (failure == abc::MetadataError::kRead) return fail(Error::kRead);
-        }
-        return fail(Error::kBody);
-      }, error);
+    std::optional<FileFunction> standalone;
+    std::optional<FileFamily> family;
+    FileFunction* function = nullptr;
+    if (functions) {
+      auto read = ReadFunctionFamily(file, header, index, lookup, roles, *functions, entry, identity,
+          {budget.bytes}, &context, nullptr, owner, FamilyClassMode::kRetainRoot);
+      if (const auto* error = std::get_if<FamilyFileFailure>(&read))
+        return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{*error})};
+      family.emplace(std::get<FileFamily>(std::move(read)));
+      retain(family->allocated_bytes);
+      if (family->members.empty() || family->members.front().function.Phase()) return fail(Error::kBody);
+      function = &family->members.front().function.Normal();
+    } else {
+      auto loaded = ReadFunctionValues(file, header, index, entry, identity,
+          InputCaptureMode::kClosed, {budget.bytes}, &context);
+      function = std::get_if<FileFunction>(&loaded);
+      if (!function) {
+        const auto& error = std::get<FunctionFileFailure>(loaded);
+        if (const auto* values = std::get_if<FunctionValueFailure>(&error))
+          return RouteRefusal{values->cause};
+        return std::visit([&](const auto& failure) -> RecordSourceResult {
+          using T = std::decay_t<decltype(failure)>;
+          if constexpr (std::is_same_v<T, FunctionFileError>) {
+            if (failure == FunctionFileError::kResourceLimit) return fail(Error::kResourceLimit);
+            if (failure == FunctionFileError::kChanged) return fail(Error::kFileChanged);
+          } else if constexpr (std::is_same_v<T, abc::MetadataError>) {
+            if (failure == abc::MetadataError::kResourceLimit) return fail(Error::kResourceLimit);
+            if (failure == abc::MetadataError::kFileChanged) return fail(Error::kFileChanged);
+            if (failure == abc::MetadataError::kRead) return fail(Error::kRead);
+          }
+          return fail(Error::kBody);
+        }, error);
+      }
+      standalone.emplace(std::move(*function)); function = &*standalone;
+      retain(function->allocated_bytes);
     }
-    retain(function->allocated_bytes);
     const auto& graph = function->values.graph;
     if (function->frame.parameters) return fail(Error::kFrame);
     auto controlled = BuildControlPlan(graph, {budget.bytes});
@@ -104,7 +119,7 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     GlobalScope class_scope{};
     class_scope.module_enclosure = enclosure;
     FunctionSyntax syntax{};
-    syntax.identity = identity; syntax.method = index.methods[entry.value].offset; syntax.owner = {1};
+    syntax.identity = identity; syntax.method = index.methods[entry.value].offset; syntax.owner = {family ? 0U : 1U};
     syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
     std::vector<std::u16string> names;
     std::vector<std::u16string> aliases;
@@ -244,7 +259,11 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     if (placed != stores) return fail(Error::kInitializer);
     if (std::find(initialized.begin(), initialized.end(), false) != initialized.end())
       return fail(Error::kInitializer);
-    auto evaluated = BuildEvaluationPlan(graph, {budget.bytes}, IncomingCells::kReject, {}, bindings->evaluations, {}, function->values.initializers.calls, analysis::ClosureWrites::kUnknown, function->values.definitions.sites);
+    const auto children = family ? std::span<const FunctionBinding>(family->members.front().children) : std::span<const FunctionBinding>{};
+    const auto* cells = family ? family->members.front().function.Cells() : nullptr;
+    const auto demands = cells ? std::span<const CellDemand>(cells->demands) : std::span<const CellDemand>{};
+    auto evaluated = BuildEvaluationPlan(graph, {budget.bytes}, IncomingCells::kReject, children, bindings->evaluations, demands,
+        function->values.initializers.calls, analysis::ClosureWrites::kUnknown, function->values.definitions.sites);
     auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
     if (!evaluation) return fail(Error::kValue);
     retain(evaluation->allocated_bytes);
@@ -301,6 +320,10 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
       retain(definition.allocated_bytes);
       constants->operations[occurrence.operation.value] = std::make_shared<ClassTree>(std::move(definition));
     }
+    // The entry graph now has actual child/capture bindings. Until its child
+    // trees and complete family write/enclosure checks join module publication,
+    // do not let a standalone module printer silently discard those children.
+    if (!children.empty()) return fail(Error::kValue);
     const auto view = constants->View();
     syntax.names = std::move(constants->names); syntax.texts = std::move(constants->texts);
     auto constructed = BuildFunctionTree(graph, *control, *evaluation, std::move(syntax), view, {budget.bytes});

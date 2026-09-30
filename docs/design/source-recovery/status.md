@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-10-01：record 入口普通函数族与真实父层捕获绑定
+
+- ReadFunctionFamily 新增显式根类保留模式：共同 ProjectClassMembers 证明归属的
+  类创建及后置方法创建保留原始 instruction/operation/class 对应，不再误作普通
+  DEFINEFUNC 边。类正文仍由 ClassTree 处理；普通函数族树入口拒绝未处理类义务。
+  普通诊断模式的接受域保持不变，没有按样本名称或 PC 分发生产逻辑。
+- record 入口使用实际函数族发现、后代 cell demand 及捕获绑定，向共同
+  BuildEvaluationPlan 传入真实子函数和共享词法单元。保留无文件级函数索引调用的
+  原路径；类处理和已有模块绑定继续走同一输出链路。普通子树尚未接入模块打印，
+  因此含这些子树的 record 仍明确不完整，不能静默省略函数。
+- 真实 Index entry10009 新增定向断言：PC77/285 分别连接9698/9726；9726 的
+  非空捕获均绑定实际 ParentCell，根求值规划通过；10 个类创建/成员创建义务
+  保持原始位置并归属 PC98。默认普通函数族模式仍拒绝该混合入口。
+- 正式 Index record 的失败从 kValue 推进到 kClass、PC98，证据
+  /tmp/abcd-record-family-index.json；这不证明类正文或完整页面已完成。
+- 初次构建暴露诊断 visitor 未处理新增 ClassInitializerError，已补齐类型分支。
+  构建日志 /tmp/abcd-record-family-build.log、
+  /tmp/abcd-record-family-regression-build.log。十一项定向回归通过（7.77 秒），
+  /tmp/abcd-record-family-regression-tests.log；包括真实入口、模块 import、类成员
+  执行、model 与静态类批次。未恢复全量测试、RSS、基准或更大 corpus。
+- 五输入正式导出 build/stage-one/value-record-family-pass-1：
+  34 complete / 72 failure / 46 no-module，无完整项退化、无 legacy writer，
+  /tmp/abcd-record-family-batch-summary.json。该数量仅为输出状态，不是语义验收。
+- 下一步：组合入口父树、普通子函数树及共同模块 printer，继续处理真实类的
+  constructor/heritage 阻塞；阶段一 Goal 保持未完成。
+
+
 ### 2026-10-01：普通后置类方法与访问器按原始顺序共同恢复
 
 - 固定 OH7 RuntimeStOwnByName 证实类/原型上的 STOWNBYNAME 定义 writable、

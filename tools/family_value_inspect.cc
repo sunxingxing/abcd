@@ -93,6 +93,8 @@ void Failure(nlohmann::json& report, const FamilyFileFailure& failure) {
     using T = std::decay_t<decltype(error)>;
     if constexpr (std::is_same_v<T, FamilyFileError> || std::is_same_v<T, CaptureCellError>) {
       report["family_error"] = Code(error);
+    } else if constexpr (std::is_same_v<T, ClassInitializerError>) {
+      report["class_projection_error"] = Code(error);
     } else if constexpr (std::is_same_v<T, CreationContextFailure>) {
       report["context_failure"] = error.error.index();
       std::visit([&](const auto& reason) { report["context_error"] = Code(reason); }, error.error);
