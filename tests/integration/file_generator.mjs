@@ -2,6 +2,138 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
 execFileSync(process.argv[2], ['--yield-negative'], {timeout: 60_000});
+// Dropping user tables, routing injected THROW outside the catch, or using
+// pre-suspend cells makes these actual emitted-code comparisons fail.
+for (const mode of ['catch', 'catch-capture', 'catch-yield', 'catch-overwrite', 'catch-loop']) {
+  const source = execFileSync(process.argv[2], [`--yield-${mode}`], {encoding: 'utf8', timeout: 60_000});
+  assert.ok(!source.includes('INCOMPLETE'));
+  const {functions} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  assert.equal(functions.length, 9);
+  for (const [index, parent] of functions.entries()) {
+    const saved = [], cells = [{}, {}]; let iteration = 0;
+    parent(() => iteration < cells.length, () => {
+      const cell = cells[iteration++];
+      if (index % 3 === 1) throw cell;
+      return cell;
+    }, (get, set) => saved.push({get, set}));
+    assert.equal(saved.length, 2);
+    const captured = mode === 'catch-capture', catchYield = mode === 'catch-yield';
+    for (const payload of [undefined, null, false, 0, NaN, Symbol('injected'), {}]) {
+      const yielded = {};
+      for (const callbackThrows of [false, true]) {
+        const updated = {};
+        let calls = 0, expectedCalls = 0;
+        saved[0].set(cells[0]);
+        const actual = saved[0].get(function () {
+          assert.equal(this, undefined); ++calls; saved[0].set(updated);
+          if (callbackThrows) throw payload;
+          return yielded;
+        });
+        let expectedCell = cells[0];
+        const expected = (function* () {
+          try {
+            yield (() => {
+              ++expectedCalls; expectedCell = updated;
+              if (callbackThrows) throw payload;
+              return yielded;
+            })();
+            return expectedCell;
+          } catch (error) {
+            if (catchYield) yield error;
+            return captured || catchYield ? expectedCell : error;
+          }
+        })();
+        const observe = (iterator, op, value) => {
+          try { return {threw: false, result: iterator[op](value)}; }
+          catch (error) { return {threw: true, error}; }
+        };
+        for (const [op, value] of [['next', 'ignored'], ['throw', payload], ['next', 'resumed'], ['next']]) {
+          const want = observe(expected, op, value), got = observe(actual, op, value);
+          assert.equal(got.threw, want.threw);
+          if (want.threw) assert.ok(Object.is(got.error, want.error));
+          else {
+            assert.equal(got.result.done, want.result.done);
+            assert.ok(Object.is(got.result.value, want.result.value));
+          }
+          assert.equal(calls, expectedCalls);
+          if (op === 'next' && !got.threw && !got.result.done) {
+            const changedWhileSuspended = {};
+            saved[0].set(changedWhileSuspended); expectedCell = changedWhileSuspended;
+          }
+        }
+        assert.equal(calls, 1);
+        // A sibling activation must not receive the other catch's updated cell.
+        const sibling = saved[1].get(() => yielded);
+        assert.deepEqual(sibling.next(), {value: yielded, done: false});
+        assert.deepEqual(sibling.next(false), {value: cells[1], done: true});
+      }
+      for (const op of ['return', 'throw']) {
+        const early = saved[0].get(() => assert.fail('initial completion entered user try'));
+        if (op === 'return') assert.deepEqual(early.return(payload), {value: payload, done: true});
+        else {
+          let thrown = false;
+          try { early.throw(payload); } catch (error) { thrown = true; assert.ok(Object.is(error, payload)); }
+          assert.equal(thrown, true);
+        }
+      }
+      const returning = saved[0].get(() => yielded);
+      assert.deepEqual(returning.next(), {value: yielded, done: false});
+      assert.deepEqual(returning.return(payload), {value: payload, done: true});
+      assert.deepEqual(returning.next(), {value: undefined, done: true});
+      if (mode === 'catch-loop') {
+        for (const terminate of ['next', 'throw', 'return']) {
+          let calls = 0;
+          const loop = saved[0].get(() => { ++calls; return yielded; });
+          assert.deepEqual(loop.next(), {value: yielded, done: false});
+          for (let i = 0; i < 3; ++i) assert.deepEqual(loop.next(true), {value: yielded, done: false});
+          const changed = {}; saved[0].set(changed);
+          const value = terminate === 'next' ? false : payload;
+          const result = loop[terminate](value);
+          assert.equal(result.done, true);
+          assert.ok(Object.is(result.value, terminate === 'next' ? changed : payload));
+          assert.equal(calls, 4);
+          assert.deepEqual(loop.next(), {value: undefined, done: true});
+        }
+      }
+      if (catchYield) {
+        for (const completion of ['return', 'throw']) {
+          const inCatch = saved[0].get(() => yielded), second = {};
+          assert.deepEqual(inCatch.next(), {value: yielded, done: false});
+          const caught = inCatch.throw(payload);
+          assert.equal(caught.done, false); assert.ok(Object.is(caught.value, payload));
+          if (completion === 'return') assert.deepEqual(inCatch.return(second), {value: second, done: true});
+          else assert.throws(() => inCatch.throw(second), error => error === second);
+          assert.deepEqual(inCatch.next(), {value: undefined, done: true});
+        }
+      }
+    }
+  }
+}
+const catchManySource = execFileSync(process.argv[2], ['--yield-catch-many'], {encoding: 'utf8', timeout: 60_000});
+assert.ok(!catchManySource.includes('INCOMPLETE'));
+const {functions: catchMany} = await import(`data:text/javascript;base64,${Buffer.from(catchManySource).toString('base64')}`);
+assert.equal(catchMany.length, 3);
+for (const [index, parent] of catchMany.entries()) {
+  let entered = false, get, set;
+  const cell = {}, changed = {}, yielded = {}, error = {}, count = [200, 201, 402][index];
+  parent(() => !entered && (entered = true), () => cell, (read, write) => { get = read; set = write; });
+  for (const stop of [1, 17, count]) {
+    let calls = 0;
+    const iterator = get(() => { ++calls; set(changed); return yielded; });
+    for (let i = 0; i < stop; ++i) assert.deepEqual(iterator.next(), {value: yielded, done: false});
+    assert.deepEqual(iterator.throw(error), {value: error, done: true});
+    assert.equal(calls, stop);
+    assert.deepEqual(iterator.next(), {value: undefined, done: true});
+  }
+  let calls = 0;
+  const throwing = get(() => { if (++calls === 17) throw error; return yielded; });
+  for (let i = 1; i < 17; ++i) assert.deepEqual(throwing.next(), {value: yielded, done: false});
+  assert.deepEqual(throwing.next(), {value: error, done: true});
+  assert.equal(calls, 17);
+  const normal = get(() => yielded);
+  for (let i = 0; i < count; ++i) assert.deepEqual(normal.next(), {value: yielded, done: false});
+  assert.deepEqual(normal.next(), {value: changed, done: true});
+}
 const callSource = execFileSync(process.argv[2], ['--yield-call'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!callSource.includes('INCOMPLETE'));
 const {functions: calls} = await import(`data:text/javascript;base64,${Buffer.from(callSource).toString('base64')}`);

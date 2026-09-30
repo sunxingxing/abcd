@@ -12,6 +12,36 @@
 
 ## 当前阶段
 
+### 2026-09-30：generator 用户 catch 与注入 THROW 贯通
+
+- NormalizeGenerator 保留用户异常表，复用既有边界重定位，仅移除编译器外层
+  原样 rethrow。YieldRegion 记录原始 THROW/分支点；原 yield 与 THROW 必须
+  选中同一异常目标，handler 不得进入被折叠的恢复协议内部。
+- await/yield 通过同一首用/闭合后缀分析内核检查 result/mode 临时寄存器。
+  VM THROW 先写恢复值和 mode，原生 yield 的异常边不会执行这两次写入；
+  handler 只能读取已覆写的新值，或证明旧临时值从未被观察。没有另建异常 CFG、
+  generator writer、发布证明或 work 准入，FunctionTree/Printer 路线不变。
+- 三 profile × 三父级环境的五类实际文件解码组合共 45 个函数族，生成完整 JS
+  执行：catch 返回异常原值、catch 读取共享 cell、catch 内再次 yield、catch
+  覆写恢复寄存器、try 内 yield 循环。覆盖 callback 的惰性/次数/receiver、暂停
+  前副作用、暂停期间外部 cell 更新、兄弟闭包实例隔离、首次 throw/return、
+  try/catch 内 return/throw 和完成后调用；undefined/null/false/0/NaN/Symbol/object
+  的异常身份保持。200/201/402 个受保护 yield 在首段、中段和末段注入 THROW，
+  并执行 callback 中途抛错及正常结束路径；参考源码仅作测试 oracle，不进入引擎输入。
+- 新增四个文件反例：catch 观察尚未覆写的 result/mode、异常域在恢复协议中
+  分裂、handler 指向保留但属于协议内部的 mode 点；保留之前五个协议反例。
+  红例 `/tmp/abcd-yield-catch-red.log` 在旧实现上失败于 phase 输入构建。
+  扩展测试时发现两处用例问题（变量作用域、循环应以 false 而非 undefined
+  退出），已修正并重跑完整定向集合。
+- 相关十个 C++ 目标构建成功，26/26 定向测试通过（12.35 秒），含生成 JS
+  generator 测试及共享 await/async/finally/值流回归：
+  `/tmp/abcd-yield-catch-final-build.log`、`/tmp/abcd-yield-catch-final-tests.log`。
+  `git diff --check` 通过。夹具使用真实指令与合成元数据，不声称真实应用验收。
+- C07 仍未完成：finally 注入 RETURN 清理、入口词法/参数前奏、generator
+  方法/self 等组合仍待推进；yield*、async generator 与其余目标保持开放。
+  默认 work 阈值继续关闭；全量测试/语料/RSS/基准仍暂停，历史两个
+  base_function 失败未在本轮修复或重跑，不宣称全套测试或 1GB 验收完成。
+
 ### 2026-09-30：同步 generator/yield 首段共同源码贯通
 
 - 按锁定 OH7 GeneratorFunctionBuilder::Prepare/Yield 和 FunctionBuilder 的

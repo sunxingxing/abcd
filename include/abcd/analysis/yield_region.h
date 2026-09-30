@@ -10,6 +10,7 @@ namespace abcd::analysis {
 struct YieldRegion {
   abc::CodeOffset create, suspend, resume, result_store, mode, mode_store, continuation;
   abc::RegisterId state, value, result, resume_mode;
+  abc::CodeOffset branch, reject;
   bool operator==(const YieldRegion&) const = default;
 };
 struct YieldSite {

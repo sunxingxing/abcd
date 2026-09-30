@@ -4,6 +4,7 @@
 #include <bit>
 #include <new>
 #include <stdexcept>
+#include <type_traits>
 
 #include "abcd/analysis/exception_dispatch.h"
 #include "abcd/analysis/coroutine.h"
@@ -19,7 +20,7 @@ void Charge(std::uint64_t& remaining, std::uint64_t units = 1) {
 struct CatchProbe {
   abc::CodeOffset handler;
   abc::RegisterId slot;
-  abc::CodeOffset await;
+  abc::CodeOffset suspension;
 };
 constexpr std::size_t kResumeRegisters = 2;
 // Standard lazy binary segment tree uses fewer than 4*N nodes for N leaves.
@@ -62,10 +63,14 @@ class FirstUseIndex {
   std::size_t slots_;
   std::uint64_t& work_;
 };
-}  // namespace
+const AwaitRegion& Region(const AwaitRegion& region) { return region; }
+const YieldRegion& Region(const YieldSite& site) { return site.origin; }
+abc::CodeOffset Start(const AwaitRegion& region) { return region.await; }
+abc::CodeOffset Start(const YieldRegion& region) { return region.create; }
 
-std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
-    const abc::MethodBody& body, std::span<const AwaitRegion> regions,
+template <class Certificate>
+std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
+    const abc::MethodBody& body, std::span<const Certificate> regions,
     abc::ProfileId profile, std::uint64_t frame_size,
     abc::CodeOffset completion_handler, SemanticBudget budget) {
   const auto fail = [](AwaitCatchError kind, abc::CodeOffset pc = {}) {
@@ -100,15 +105,16 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
       const auto target = target_at(pc);
       return target && target->handler_pc != completion_handler;
     };
-    for (const auto& region : regions) {
+    for (const auto& certificate : regions) {
+      const auto& region = Region(certificate);
       charge();
-      const auto target = target_at(region.await);
+      const auto target = target_at(Start(region));
       if (target != target_at(region.reject) ||
           region.result.value >= frame_size || region.resume_mode.value >= frame_size)
-        return fail(AwaitCatchError::kRegion, region.await);
+        return fail(AwaitCatchError::kRegion, Start(region));
       if (!target || target->handler_pc == completion_handler) continue;
-      probes.push_back({target->handler_pc, region.result, region.await});
-      probes.push_back({target->handler_pc, region.resume_mode, region.await});
+      probes.push_back({target->handler_pc, region.result, Start(region)});
+      probes.push_back({target->handler_pc, region.resume_mode, Start(region)});
     }
     if (probes.empty()) return AwaitCatchProof{budget.work - work};
     std::sort(probes.begin(), probes.end(), [&](const auto& a, const auto& b) {
@@ -140,10 +146,10 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
     retain(continuation_entries.capacity());
     const auto entry = [&](abc::CodeOffset pc, std::optional<abc::CodeOffset> source) {
       const auto found = std::lower_bound(regions.begin(), regions.end(), pc,
-          [&](const AwaitRegion& region, abc::CodeOffset target) {
-            charge(); return region.continuation < target;
+          [&](const Certificate& region, abc::CodeOffset target) {
+            charge(); return Region(region).continuation < target;
           });
-      if (found != regions.end() && found->continuation == pc && source != found->branch)
+      if (found != regions.end() && Region(*found).continuation == pc && source != Region(*found).branch)
         continuation_entries[static_cast<std::size_t>(found - regions.begin())] = 1;
     };
     for (const auto& site : body.instructions) {
@@ -166,10 +172,10 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
     std::size_t next_probe = 0, suffix_region = regions.size();
     for (auto site = body.instructions.rbegin(); site != body.instructions.rend(); ++site) {
       charge();
-      while (suffix_region && site->offset < regions[suffix_region - 1].await) {
+      while (suffix_region && site->offset < Start(Region(regions[suffix_region - 1]))) {
         charge(); --suffix_region;
       }
-      const auto* region = suffix_region ? &regions[suffix_region - 1] : nullptr;
+      const auto* region = suffix_region ? &Region(regions[suffix_region - 1]) : nullptr;
       const auto lifted = LiftSemanticInstruction(*site, profile, frame_size);
       const auto* instruction = std::get_if<SemanticInstruction>(&lifted);
       // A closed suffix with no possible reads proves a register dead even
@@ -189,7 +195,7 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
         const auto& effect = instruction->effects.normal_registers;
         for (std::size_t i = 0; i < effect.read_count; ++i) {
           if (const auto* reg = std::get_if<abc::RegisterId>(&effect.reads[i])) {
-            // Await's exact single-entry protocol defines result/mode before
+            // A certified single-entry resume protocol defines result/mode before
             // reading them. This is a local def-use fact, not a kill of reads
             // elsewhere in the suffix. External continuation entries disable it.
             const bool local_read = region && site->offset <= region->continuation &&
@@ -204,11 +210,11 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
           suffix_reads.Assign(position(effect.range->first.value),
               position(std::uint64_t(effect.range->first.value) + effect.range->count), FirstUse::kRead);
       } else {
-        // Only the exact await protocol certified on this unchanged body has
+        // Only the exact resume protocol certified on this unchanged body has
         // complete coroutine reads here. Suspend preserves frame values but
         // does not observe arbitrary locals; subsequent reads still accumulate.
         // Never use generic raw effects: arguments can hide frame-wide reads.
-        const bool protocol = region && (site->offset == region->await ||
+        const bool protocol = region && (site->offset == Start(*region) ||
             site->offset == region->suspend || site->offset == region->resume ||
             site->offset == region->mode);
         const auto coroutine = LiftCoroutineInstruction(site->decoded, frame_size);
@@ -220,6 +226,13 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
           read(transfer->state); read(transfer->value);
         } else if (const auto* value = std::get_if<CoroutineRead>(&coroutine); protocol && value) {
           read(value->state);
+        } else if constexpr (std::is_same_v<Certificate, YieldSite>) {
+          // The owner has checked both explicit iterator-result operands.
+          // This local certificate does not authorize generic raw effects.
+          if (region && site->offset == region->create) {
+            for (std::size_t operand = 0; operand < site->decoded.operand_count; ++operand)
+              read(abc::RegisterId{static_cast<std::uint32_t>(site->decoded.operands[operand].raw_bits)});
+          } else suffix_known = false;
         } else suffix_known = false;
       }
       if (!instruction) {
@@ -266,14 +279,14 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
               FirstUse::kRead);
       }
       if (next_probe < probes.size() && probes[next_probe].handler > site->offset)
-        return fail(AwaitCatchError::kRegion, probes[next_probe].await);
+        return fail(AwaitCatchError::kRegion, probes[next_probe].suspension);
       while (next_probe < probes.size() && probes[next_probe].handler == site->offset) {
         const auto& probe = probes[next_probe++];
         const auto use = uses.At(position(probe.slot.value));
         const bool unread_suffix = suffix_known && (!suffix_target || *suffix_target >= probe.handler) &&
             suffix_reads.At(position(probe.slot.value)) == FirstUse::kExit;
         if (use != FirstUse::kWrite && use != FirstUse::kExit && !unread_suffix)
-          return fail(AwaitCatchError::kObservedRegister, probe.await);
+          return fail(AwaitCatchError::kObservedRegister, probe.suspension);
       }
       if (next_probe == probes.size()) return AwaitCatchProof{budget.work - work};
     }
@@ -281,5 +294,19 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
   } catch (const WorkLimit&) { return fail(AwaitCatchError::kResourceLimit);
   } catch (const std::bad_alloc&) { return fail(AwaitCatchError::kResourceLimit);
   } catch (const std::length_error&) { return fail(AwaitCatchError::kResourceLimit); }
+}
+}  // namespace
+
+std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
+    const abc::MethodBody& body, std::span<const AwaitRegion> regions,
+    abc::ProfileId profile, std::uint64_t frame_size,
+    abc::CodeOffset completion_handler, SemanticBudget budget) {
+  return ProveCatchInputs(body, regions, profile, frame_size, completion_handler, budget);
+}
+std::variant<AwaitCatchProof, AwaitCatchFailure> ProveYieldCatchInputs(
+    const abc::MethodBody& body, std::span<const YieldSite> regions,
+    abc::ProfileId profile, std::uint64_t frame_size,
+    abc::CodeOffset completion_handler, SemanticBudget budget) {
+  return ProveCatchInputs(body, regions, profile, frame_size, completion_handler, budget);
 }
 }  // namespace abcd::analysis

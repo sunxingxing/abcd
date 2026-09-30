@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_AWAIT_CATCH_H_
 
 #include "abcd/analysis/semantic_ir.h"
+#include "abcd/analysis/yield_region.h"
 
 namespace abcd::analysis {
 enum class AwaitCatchError { kRegion, kObservedRegister, kResourceLimit };
@@ -28,6 +29,16 @@ struct AwaitCatchProof {
 [[nodiscard]] std::variant<AwaitCatchProof, AwaitCatchFailure>
 ProveAwaitCatchInputs(const abc::MethodBody& body,
                      std::span<const AwaitRegion> regions,
+                     abc::ProfileId profile, std::uint64_t frame_size,
+                     abc::CodeOffset completion_handler,
+                     SemanticBudget budget = {});
+// Same catch-input analysis for exact single-entry synchronous yield regions.
+// Native yield throws before committing result/mode, whereas the VM's THROW
+// route commits both. Admit that projection only when a selected user handler
+// cannot observe either incoming temporary; keep its other frame values intact.
+[[nodiscard]] std::variant<AwaitCatchProof, AwaitCatchFailure>
+ProveYieldCatchInputs(const abc::MethodBody& body,
+                     std::span<const YieldSite> regions,
                      abc::ProfileId profile, std::uint64_t frame_size,
                      abc::CodeOffset completion_handler,
                      SemanticBudget budget = {});

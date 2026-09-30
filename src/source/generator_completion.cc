@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include "abcd/abc/control_transfer.h"
 #include "abcd/analysis/coroutine.h"
+#include "abcd/analysis/await_catch.h"
 #include "async_handlers.h"
 
 namespace abcd::source {
@@ -54,7 +55,8 @@ analysis::YieldRegion Resume(const abc::MethodBody& body, std::size_t begin,
   Require(Op(at(kReturnBranch), Opcode::kJEQZ_IMM8) && at(kReturnBranch).branch_target == at(kThrowMode).offset &&
       Op(at(kThrowBranch), Opcode::kJEQZ_IMM8) && at(kThrowBranch).branch_target == at(kContinuation).offset);
   return {{}, at(kSuspend).offset, at(kResume).offset, at(kStoreResult).offset,
-      at(kMode).offset, at(kStoreMode).offset, at(kContinuation).offset, state, {}, result, mode};
+      at(kMode).offset, at(kStoreMode).offset, at(kContinuation).offset, state, {}, result, mode,
+      at(kThrowBranch).offset, at(kThrow).offset};
 }
 }  // namespace
 std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
@@ -73,7 +75,7 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
     const auto state = Reg(code[1]); Require(state.value < frame.locals);
     Resume(body, kEntryPrefix, state, frame);
     const auto handler = code.size() - 1;
-    Require(Op(code.back(), Opcode::kTHROW_PREF_NONE) && body.tries.size() == 1 && body.handlers.size() == 1 &&
+    Require(Op(code.back(), Opcode::kTHROW_PREF_NONE) &&
         HasAsyncCompletionCatch(body, code[0].offset, code.back().offset,
             std::uint64_t(code.back().offset.value) + code.back().decoded.size));
     // Only direct-return resume protocols are collapsed here. In particular,
@@ -130,6 +132,18 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
       }
     }
     Require(!result.body.instructions.empty());
+    // Selected catch must be identical at the native yield and VM THROW site;
+    // result/mode writes lost on native THROW must be dead at handler entry.
+    const auto catch_inputs = analysis::ProveYieldCatchInputs(
+        body, result.yields, profile, frame.registers, code.back().offset, {bytes});
+    if (const auto* error = std::get_if<analysis::AwaitCatchFailure>(&catch_inputs))
+      return error->kind == analysis::AwaitCatchError::kResourceLimit ? Error::kResourceLimit : Error::kKind;
+    for (std::size_t i = 0; i + 1 < body.handlers.size(); ++i) {
+      const auto target = body.handlers[i].offset;
+      const auto site = std::lower_bound(code.begin(), code.end(), target,
+          [](const auto& instruction, auto offset) { return instruction.offset < offset; });
+      Require(site != code.end() && site->offset == target && !interior[site - code.begin()]);
+    }
     std::uint32_t pc = 0;
     std::size_t next_yield = 0, next_mode = 0;
     for (auto& site : result.body.instructions) {
@@ -157,6 +171,7 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
       operand.raw_bits = static_cast<std::uint64_t>(delta) & ((std::uint64_t{1} << operand.width_bits) - 1);
       site.decoded.branch_delta = delta; site.branch_target = destination;
     }
+    if (const auto error = RebaseAsyncHandlers(body, result.source_pcs, result.body, bytes)) return *error;
     return result;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

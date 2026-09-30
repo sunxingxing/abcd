@@ -71,10 +71,12 @@ enum class ChildShape {
   kPlain, kException, kNested, kForwarded, kForwardedNormal, kForwardedLocal,
   kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally, kSharedFinallyNested,
   kAwaitCapture, kAwaitClosure, kAwaitCatch, kAwaitFinally, kAwaitFinallySuspend, kAwaitFinallyReuse,
-  kAwaitSelf, kAwaitSelfPrivate, kAwaitThis, kAwaitReceiver, kAwaitArguments, kYieldCapture, kYieldResult, kYieldLoop, kYieldCall
+  kAwaitSelf, kAwaitSelfPrivate, kAwaitThis, kAwaitReceiver, kAwaitArguments, kYieldCapture, kYieldResult, kYieldLoop, kYieldCall,
+  kYieldCatch, kYieldCatchCapture, kYieldCatchYield, kYieldCatchOverwrite, kYieldCatchLoop
 };
 enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitState,
-                         kYieldState, kYieldDone, kYieldReturn, kYieldEntry, kYieldCleanup };
+                         kYieldState, kYieldDone, kYieldReturn, kYieldEntry, kYieldCleanup,
+                         kYieldCatchResult, kYieldCatchMode, kYieldCatchBoundary, kYieldCatchEntry };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
                  MissingCell missing = MissingCell::kNone, bool async_arrow = false, std::uint32_t yield_count = 1) {
   const bool exception_child = child_shape != ChildShape::kPlain && child_shape != ChildShape::kForwardedNormal;
@@ -92,8 +94,11 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       child_shape == ChildShape::kAwaitReceiver || child_shape == ChildShape::kAwaitArguments;
   const bool await_capture = child_shape == ChildShape::kAwaitCapture || child_shape == ChildShape::kAwaitClosure ||
       child_shape == ChildShape::kAwaitCatch || await_finally || await_frame;
+  const bool yield_catch = child_shape == ChildShape::kYieldCatch || child_shape == ChildShape::kYieldCatchCapture ||
+      child_shape == ChildShape::kYieldCatchYield || child_shape == ChildShape::kYieldCatchOverwrite ||
+      child_shape == ChildShape::kYieldCatchLoop;
   const bool generator = child_shape == ChildShape::kYieldCapture || child_shape == ChildShape::kYieldResult ||
-      child_shape == ChildShape::kYieldLoop || child_shape == ChildShape::kYieldCall;
+      child_shape == ChildShape::kYieldLoop || child_shape == ChildShape::kYieldCall || yield_catch;
   const std::uint8_t getter_parameters = await_finally ? 2 : await_capture || generator ? 1 : outer_transfer ? 5 : shared_finally ? 3 : 0;
   const bool outer_catch = shape == ParentShape::kOuterCatchContinue || shape == ParentShape::kOuterCatchBreak;
   const std::uint8_t parent_parameters = outer_catch ? 5 : 3;
@@ -373,23 +378,34 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
           Op(abc::Opcode::kLDA_V8), 2});
     };
     resume(false);
-    for (std::uint32_t occurrence = 0; occurrence < yield_count; ++occurrence) {
-      const auto body_pc = code.size();
-      code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), 8});
-      if (child_shape == ChildShape::kYieldCall) code.insert(code.end(), {Op(abc::Opcode::kCALLARG0_IMM8), 0});
+    const auto try_begin = static_cast<std::uint32_t>(code.size());
+    std::uint32_t first_yield_pc = 0, first_mode_pc = 0;
+    const auto yield = [&] {
       code.insert(code.end(), {Op(abc::Opcode::kSTA_V8), 3,
           Op(missing == MissingCell::kYieldDone ? abc::Opcode::kLDTRUE : abc::Opcode::kLDFALSE),
           Op(abc::Opcode::kSTA_V8), 4});
       generator_yield_pc = static_cast<std::uint32_t>(code.size());
       code.insert(code.end(), {Op(abc::Opcode::kCREATEITERRESULTOBJ_V8_V8), 3, 4});
+      if (!first_yield_pc) {
+        first_yield_pc = generator_yield_pc;
+        // suspend(2), lda(2), resume(1), sta(2), lda(2) precede mode.
+        constexpr std::uint32_t kModeFromSuspend = 9;
+        first_mode_pc = static_cast<std::uint32_t>(code.size()) + kModeFromSuspend;
+      }
+      resume(true);
+    };
+    for (std::uint32_t occurrence = 0; occurrence < yield_count; ++occurrence) {
+      const auto body_pc = code.size();
+      code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), 8});
+      if (child_shape == ChildShape::kYieldCall || yield_catch) code.insert(code.end(), {Op(abc::Opcode::kCALLARG0_IMM8), 0});
+      yield();
       if (missing == MissingCell::kYieldEntry) {
         // Enter the retained resume-result store, bypassing the suspension.
         constexpr std::size_t kResultStoreFromSuspend = 5;
         code[body_pc] = Op(abc::Opcode::kJMP_IMM8);
-        code[body_pc + 1] = static_cast<std::uint8_t>(code.size() + kResultStoreFromSuspend - body_pc);
+        code[body_pc + 1] = static_cast<std::uint8_t>(generator_yield_pc + 3 + kResultStoreFromSuspend - body_pc);
       }
-      resume(true);
-      if (child_shape == ChildShape::kYieldLoop) {
+      if (child_shape == ChildShape::kYieldLoop || child_shape == ChildShape::kYieldCatchLoop) {
         const auto delta = static_cast<std::int32_t>(body_pc) - static_cast<std::int32_t>(code.size() + 2);
         code.insert(code.end(), {Op(abc::Opcode::kJEQZ_IMM8), 4, Op(abc::Opcode::kJMP_IMM8),
             static_cast<std::uint8_t>(delta)});
@@ -397,11 +413,30 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     }
     code.insert(code.end(), {Op(child_shape == ChildShape::kYieldResult ? abc::Opcode::kLDA_V8 : abc::Opcode::kLDLEXVAR_IMM4_IMM4),
         static_cast<std::uint8_t>(child_shape == ChildShape::kYieldResult ? 2 : 0), Op(abc::Opcode::kRETURN)});
+    const auto catch_begin = static_cast<std::uint32_t>(code.size());
+    if (yield_catch) {
+      const bool overwrite = child_shape == ChildShape::kYieldCatchOverwrite;
+      code.insert(code.end(), {Op(abc::Opcode::kSTA_V8), static_cast<std::uint8_t>(overwrite ? 2 : 3)});
+      if (child_shape == ChildShape::kYieldCatchYield) {
+        code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), 3});
+        yield();
+      }
+      const bool capture = child_shape == ChildShape::kYieldCatchCapture || child_shape == ChildShape::kYieldCatchYield;
+      const auto catch_slot = missing == MissingCell::kYieldCatchResult ? 2 :
+          missing == MissingCell::kYieldCatchMode ? 1 : overwrite ? 2 : 3;
+      code.insert(code.end(), {Op(capture ? abc::Opcode::kLDLEXVAR_IMM4_IMM4 : abc::Opcode::kLDA_V8),
+          static_cast<std::uint8_t>(capture ? 0 : catch_slot), Op(abc::Opcode::kRETURN)});
+    }
     const auto handler = static_cast<std::uint32_t>(code.size());
     code.insert(code.end(), {static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
     std::vector<std::uint8_t> table;
+    if (yield_catch) {
+      const auto try_end = missing == MissingCell::kYieldCatchBoundary ? first_mode_pc : catch_begin;
+      const auto catch_entry = missing == MissingCell::kYieldCatchEntry ? first_mode_pc : catch_begin;
+      for (const auto value : {try_begin, try_end - try_begin, 1U, 0U, catch_entry, handler - catch_entry}) Uleb(table, value);
+    }
     for (const auto value : {0U, handler, 1U, 0U, handler, 2U}) Uleb(table, value);
-    return AppendEncodedCode(bytes, 5, getter_parameters, code, table);
+    return AppendEncodedCode(bytes, 5, getter_parameters, code, table, yield_catch ? 2 : 1);
   };
   const auto getter = generator ? generator_getter() : await_finally ? finally_getter() :
       await_capture ? async_getter() :
@@ -677,21 +712,30 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
-  if (argc == 2 && std::string_view(argv[1]) == "--yield-many") {
+  if (argc == 2 && (std::string_view(argv[1]) == "--yield-many" || std::string_view(argv[1]) == "--yield-catch-many")) {
     std::cout << "export const functions = [\n";
     for (const auto count : {200U, 201U, 402U})
       std::cout << Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal,
-          ChildShape::kYieldCapture, MissingCell::kNone, false, count) << ",\n";
+          std::string_view(argv[1]) == "--yield-catch-many" ? ChildShape::kYieldCatch : ChildShape::kYieldCapture,
+          MissingCell::kNone, false, count) << ",\n";
     std::cout << "];\n"; return 0;
   }
   if (argc == 2 && (std::string_view(argv[1]) == "--yield-capture" || std::string_view(argv[1]) == "--yield-result" ||
-                   std::string_view(argv[1]) == "--yield-loop" || std::string_view(argv[1]) == "--yield-call")) {
+                   std::string_view(argv[1]) == "--yield-loop" || std::string_view(argv[1]) == "--yield-call" ||
+                   std::string_view(argv[1]) == "--yield-catch" || std::string_view(argv[1]) == "--yield-catch-capture" ||
+                   std::string_view(argv[1]) == "--yield-catch-yield" || std::string_view(argv[1]) == "--yield-catch-overwrite" ||
+                   std::string_view(argv[1]) == "--yield-catch-loop")) {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
         std::cout << Emit(profile, shape, std::string_view(argv[1]) == "--yield-result" ?
             ChildShape::kYieldResult : std::string_view(argv[1]) == "--yield-call" ? ChildShape::kYieldCall :
             std::string_view(argv[1]) == "--yield-loop" ? ChildShape::kYieldLoop :
+            std::string_view(argv[1]) == "--yield-catch" ? ChildShape::kYieldCatch :
+            std::string_view(argv[1]) == "--yield-catch-capture" ? ChildShape::kYieldCatchCapture :
+            std::string_view(argv[1]) == "--yield-catch-yield" ? ChildShape::kYieldCatchYield :
+            std::string_view(argv[1]) == "--yield-catch-overwrite" ? ChildShape::kYieldCatchOverwrite :
+            std::string_view(argv[1]) == "--yield-catch-loop" ? ChildShape::kYieldCatchLoop :
             ChildShape::kYieldCapture) << ",\n";
     std::cout << "];\n"; return 0;
   }
@@ -699,6 +743,9 @@ int main(int argc, char** argv) {
     for (const auto missing : {MissingCell::kYieldState, MissingCell::kYieldDone,
                               MissingCell::kYieldReturn, MissingCell::kYieldEntry, MissingCell::kYieldCleanup})
       Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kYieldCapture, missing);
+    for (const auto missing : {MissingCell::kYieldCatchResult, MissingCell::kYieldCatchMode,
+                              MissingCell::kYieldCatchBoundary, MissingCell::kYieldCatchEntry})
+      Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kYieldCatch, missing);
     return 0;
   }
   if (argc == 2 && std::string_view(argv[1]) == "--arrow-arguments") {
