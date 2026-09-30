@@ -220,7 +220,8 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
   }
   report["family_tree_prepared"] = false;
   if (family->allocated_bytes > budget.bytes || family->work > budget.work) return report;
-  budget.bytes -= family->allocated_bytes; budget.work -= family->work;
+  const auto input_bytes = family->allocated_bytes;
+  budget.bytes -= input_bytes; budget.work -= family->work;
   // Ambiguous/unproved root owners are not guessed from method attributes.
   if (!context) return report;
   const auto constructed = BuildFileFamilyTrees(file, header, index, std::move(*family), *context,
@@ -248,7 +249,25 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
       }
       report["family_tree_signatures"].push_back(std::move(signature));
     }
-    if (mode == FamilyInspectMode::kSourceDraft) Draft(report, *tree, *context, budget, output);
+    if (mode == FamilyInspectMode::kSourceDraft) {
+      // BuildFileFamilyTrees consumed and destroyed the decoded/value family.
+      // Only incoming cell bindings move into the independent AST family;
+      // retain their original charge, release the dead IR allowance before
+      // printing. Keeping both lifetimes charged falsely exhausts scratch on
+      // two large RETURN cleanup corridors (generator suspend-pair regression).
+      std::size_t moved_bytes = 0;
+      for (const auto& member : tree->members) if (member.incoming) {
+        const auto bytes = member.incoming->allocated_bytes;
+        if (bytes > input_bytes - moved_bytes) {
+          report["draft_prepared"] = false;
+          report["draft_error"] = static_cast<unsigned>(TreePrintError::kResourceLimit);
+          return report;
+        }
+        moved_bytes += bytes;
+      }
+      budget.bytes += input_bytes - moved_bytes;
+      Draft(report, *tree, *context, budget, output);
+    }
   } else {
     const auto& failure = std::get<FamilyTreeFailure>(constructed);
     report["family_tree_member"] = failure.member.value;

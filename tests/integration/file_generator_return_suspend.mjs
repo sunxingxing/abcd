@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
 execFileSync(process.argv[2], ['--yield-return-suspend-negative'], {timeout: 60_000});
-const fixtures = execFileSync(process.argv[2], ['--yield-return-suspend-json'],
-  {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000}).trim().split('\n').map(JSON.parse);
-assert.equal(fixtures.length, 24);
+const fixtures = ['--yield-return-suspend-json', '--yield-return-suspend-pair-json'].flatMap(mode =>
+  execFileSync(process.argv[2], [mode], {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000})
+    .trim().split('\n').map(JSON.parse));
+assert.equal(fixtures.length, 30);
 for (const fixture of fixtures) {
   assert.ok(!fixture.source.includes('INCOMPLETE'));
   const {capture} = await import(`data:text/javascript;base64,${Buffer.from(`export const capture = ${fixture.source};`).toString('base64')}`);

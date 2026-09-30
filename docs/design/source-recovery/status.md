@@ -12,6 +12,29 @@
 
 ## 当前阶段
 
+### 2026-09-30：双清理暂停走廊的诊断草稿内存生命周期修复
+
+- 定位上一项两段清理各含 402 个 yield 的失败：树构建成功，但打印
+  仅剩约 7.8MB scratch；诊断工具在 BuildFileFamilyTrees 消耗并销毁
+  FileFamily 后仍保留原解码/值图的内存费用。调用返回后的实际 owner
+  已只有 AST/flow/source 和移入的 incoming CaptureCells，原图不再存在。
+- 工具在打印前释放已销毁图的额度，继续保留移入 cell 的原费用；树的
+  保守构建费用、输入/上下文、输出缓冲仍照旧计入。不提高默认配额、
+  不增加预算系统、不开启全量资源测试，也不改变源码或通用 Printer。
+- 保留双走廊红例并新增六个完整函数族：两个原始暂停点 × 每段
+  200/201/402 个清理 yield × 16/32 位分支。集成目标现消费 30 个完整
+  函数族和 18 个内层协议反例；同一行为 oracle 验证任一原始暂停点、
+  清理第一个/最后一个暂停点的 NEXT/RETURN/THROW、payload、cell 和
+  效果身份。双 402 个暂停点现正常生成并执行完整 JS。
+- 红例 `/tmp/abcd-return-suspend-pair-red.log`；abc_semantic、partial_file、
+  class_tree_context 和 loop_closure_file 构建成功。七项相关定向回归
+  全通过（68.63 秒），含 partial_file、类/函数族、generator method、
+  RETURN、循环及暂停清理：
+  `/tmp/abcd-return-suspend-pair-regression-build.log`、
+  `/tmp/abcd-return-suspend-pair-regression-tests.log`。`git diff --check`
+  通过；独立自查。上一项双 402 打印缺口已解决；剩余 C07/C08、ISA/
+  结构整合 gate 未关闭，全量测试/语料/RSS/基准继续暂停。
+
 ### 2026-09-30：RETURN 清理内再次 yield 的共同源码贯通
 
 - NormalizeGenerator 先识别所有真实同步 generator 握手，再按原 PC

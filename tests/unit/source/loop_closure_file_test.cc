@@ -1078,6 +1078,14 @@ int main(int argc, char** argv) {
           {"catch_parent", false}, {"caught", true}, {"count", count}, {"stops", 1}}.dump() << '\n';
     return 0;
   }
+  if (argc == 2 && std::string_view(argv[1]) == "--yield-return-suspend-pair-json") {
+    for (const auto count : {200U, 201U, 402U}) for (const auto encoding : {BranchEncoding::k16, BranchEncoding::k32})
+      std::cout << nlohmann::json{{"source", Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal,
+          ChildShape::kYieldFinallyReturn, MissingCell::kNone, false, 2, CopyEncoding::kV8, 1,
+          YieldFinalizer::kInjectedSuspend, {encoding, encoding}, count)},
+          {"catch_parent", false}, {"caught", true}, {"count", count}, {"stops", 2}}.dump() << '\n';
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--yield-return-suspend-negative") {
     for (const auto encoding : {BranchEncoding::k8, BranchEncoding::k16, BranchEncoding::k32})
       for (const auto missing : {MissingCell::kYieldInnerState, MissingCell::kYieldInnerResult, MissingCell::kYieldInnerMode,
