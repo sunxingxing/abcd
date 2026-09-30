@@ -25,7 +25,8 @@ std::variant<OperandView, OperandViewError> OperandView::Build(
   }
   if (std::holds_alternative<OrdinaryCall>(instruction.operation) ||
       std::holds_alternative<ReceiverCall>(instruction.operation) ||
-      std::holds_alternative<ConstructorCall>(instruction.operation)) {
+      std::holds_alternative<ConstructorCall>(instruction.operation) ||
+      std::holds_alternative<SuperRange>(instruction.operation)) {
     auto result = CallOperands::Build(instruction, budget);
     if (auto* call = std::get_if<CallOperands>(&result)) return OperandView{std::move(*call)};
     switch (std::get<CallOperandError>(result)) {

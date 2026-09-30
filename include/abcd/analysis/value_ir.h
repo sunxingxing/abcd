@@ -243,6 +243,14 @@ struct ValueConstruct {
   std::uint32_t arguments;
   bool operator==(const ValueConstruct&) const = default;
 };
+// Pinned range super call: parent and newTarget come from the invocation,
+// not from an explicit constructor operand. Only normal completion writes acc;
+// initializing/checking this remains a separate constructor protocol obligation.
+struct ValueSuperCall {
+  std::uint16_t arguments;
+  std::optional<std::uint16_t> cache_slot;
+  bool operator==(const ValueSuperCall&) const = default;
+};
 // VM sentinel, not a JS literal. A source lowering must consume the closed
 // protocol before evaluation/printing; never substitute undefined or null.
 struct ValueHole { bool operator==(const ValueHole&) const = default; };
@@ -252,7 +260,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHol
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValueDebugger, ValueFrameThis, ValueFrameFunction,
-    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow>;
+    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

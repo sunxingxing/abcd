@@ -75,6 +75,24 @@ void Ranges() {
   Check(std::get<CallOperandError>(CallOperands::Build(receiver)) ==
         CallOperandError::kCount);
 }
+void SuperCalls() {
+  for (const std::uint16_t count : {0, 1, 200, 201, 402, 65535}) {
+    SemanticInstruction instruction{{0}, SuperRange{{1}, count, 7}, {}};
+    auto& effect = instruction.effects.normal_registers;
+    effect.range = RegisterRange{{1}, count}; effect.write = Accumulator{};
+    const auto plan = std::get<CallOperands>(CallOperands::Build(instruction));
+    Check(plan.Count() == count && plan.Work() == count && !plan.At(count));
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const auto operand = *plan.At(i);
+      Check(operand.role == OperandRole::kArgument && operand.read_ordinal == i);
+      Check(std::get<abc::RegisterId>(operand.value).value == i + 1);
+    }
+    effect.write.reset();
+    Check(std::get<CallOperandError>(CallOperands::Build(instruction)) == CallOperandError::kWrite);
+    effect.write = Accumulator{}; effect.range->count++;
+    Check(std::get<CallOperandError>(CallOperands::Build(instruction)) == CallOperandError::kCount);
+  }
+}
 void Construction() {
   SemanticInstruction instruction{{0}, ConstructorCall{CallRange{{10}, 3}, {}}, {}};
   auto& effects = instruction.effects.normal_registers;
@@ -91,4 +109,4 @@ void Construction() {
   Check(std::get<CallOperandError>(CallOperands::Build(instruction)) == CallOperandError::kCount);
 }
 }  // namespace
-int main() { FixedCalls(); Ranges(); Construction(); }
+int main() { FixedCalls(); Ranges(); Construction(); SuperCalls(); }

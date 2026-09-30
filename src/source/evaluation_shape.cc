@@ -100,7 +100,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return EvaluationShape{kConstruct, true, op.arguments};
     else {
       // Accessors require class/descriptor composition before source evaluation.
-      static_assert(std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
+      static_assert(std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
                     std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
                     std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                     std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
@@ -187,7 +187,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                     std::is_same_v<T, analysis::ValueNamedWrite> ||
                     std::is_same_v<T, analysis::ValueOwnWrite> ||
                     std::is_same_v<T, analysis::ValueIndexedWrite> ||
-                    std::is_same_v<T, analysis::ValueDefineAccessor> ||
+                    std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueDefineAccessor> ||
                     std::is_same_v<T, analysis::ValueBranch> ||
                     std::is_same_v<T, analysis::ValueReturn> ||
                     std::is_same_v<T, analysis::ValueThrow> || std::is_same_v<T, analysis::ValueHole> ||

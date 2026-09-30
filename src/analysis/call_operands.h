@@ -18,7 +18,7 @@ class CallOperands {
   [[nodiscard]] std::optional<InputOperand> At(std::uint32_t index) const;
   [[nodiscard]] std::uint64_t Work() const { return work_; }
  private:
-  using Call = std::variant<OrdinaryCall, ReceiverCall, ConstructorCall>;
+  using Call = std::variant<OrdinaryCall, ReceiverCall, ConstructorCall, SuperRange>;
   explicit CallOperands(Call call) : call_(std::move(call)) {}
   Call call_;
   std::uint64_t work_ = 0;

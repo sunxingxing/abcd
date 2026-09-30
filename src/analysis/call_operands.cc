@@ -26,7 +26,8 @@ bool ValidArguments(const std::variant<CallRegisters, CallRange>& arguments) {
 std::uint32_t CallOperands::Count() const {
   return std::visit([](const auto& call) -> std::uint32_t {
     using T = std::decay_t<decltype(call)>;
-    if constexpr (std::is_same_v<T, ConstructorCall>) return call.inputs.count;
+    if constexpr (std::is_same_v<T, SuperRange>) return call.count;
+    else if constexpr (std::is_same_v<T, ConstructorCall>) return call.inputs.count;
     else if constexpr (std::is_same_v<T, ReceiverCall>) return call.Count() + kReceiverPrefix;
     else return call.Count() + kCalleeOperands;
   }, call_);
@@ -38,7 +39,9 @@ std::optional<InputOperand> CallOperands::At(std::uint32_t index) const {
     const auto operand = [&](OperandRole role, ScalarValue value) {
       return InputOperand{role, value, ReadPurpose::kOperand, index};
     };
-    if constexpr (std::is_same_v<T, ConstructorCall>) {
+    if constexpr (std::is_same_v<T, SuperRange>) {
+      return operand(OperandRole::kArgument, abc::RegisterId{call.first.value + index});
+    } else if constexpr (std::is_same_v<T, ConstructorCall>) {
       if (index == 0) return operand(OperandRole::kConstructor, call.inputs.first);
       const auto argument = call.ArgumentAt(index - kCalleeOperands);
       if (argument) return operand(OperandRole::kArgument, *argument);
@@ -69,6 +72,9 @@ std::variant<CallOperands, CallOperandError> CallOperands::Build(
     plan = CallOperands{*call};
   } else if (const auto* call = std::get_if<ConstructorCall>(&instruction.operation)) {
     if (call->inputs.count == 0 || !ValidArguments(call->inputs)) return Error::kCount;
+    plan = CallOperands{*call};
+  } else if (const auto* call = std::get_if<SuperRange>(&instruction.operation)) {
+    if (!ValidArguments(CallRange{call->first, call->count})) return Error::kCount;
     plan = CallOperands{*call};
   } else return Error::kUnsupported;
   const auto count = plan->Count();

@@ -8,6 +8,46 @@
 int main() {
   using namespace abcd;
   using namespace abcd::analysis;
+  // Range super arguments are all arguments: the parent/newTarget are implicit
+  // invocation inputs, never a fabricated first constructor operand.
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+    for (const bool wide : {false, true}) for (const unsigned count : {0U, 1U, 200U, 201U, 402U}) {
+      if (!wide && count > UINT8_MAX) continue;
+      std::vector<std::uint8_t> bytes;
+      const auto opcode = wide ? abc::Opcode::kWIDE_SUPERCALLTHISRANGE_PREF_IMM16_V8 :
+          abc::Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8;
+      const auto wire = static_cast<std::uint16_t>(opcode);
+      bytes.push_back(static_cast<std::uint8_t>(wire));
+      if (wide) bytes.push_back(static_cast<std::uint8_t>(wire >> 8));
+      if (!wide) bytes.push_back(7); // IC slot, not an argument.
+      bytes.push_back(static_cast<std::uint8_t>(count));
+      if (wide) bytes.push_back(static_cast<std::uint8_t>(count >> 8));
+      bytes.push_back(1);
+      bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kRETURNUNDEFINED));
+      const auto body = test::Body(bytes);
+      const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, count + 2, {false, false, false, false}));
+      const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body, profile, frame.registers));
+      const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, input, frame.registers, frame.locals));
+      auto graph = std::get<ValueProgram>(ImportNormalValues(body, input, proof, frame));
+      test::Check(!VerifyImportedValues(graph, input, proof, frame));
+      const auto& operation = graph.ops[0];
+      const auto& call = std::get<ValueSuperCall>(operation.operation);
+      test::Check(call.arguments == count && call.cache_slot == (wide ? std::nullopt : std::optional<std::uint16_t>{7}));
+      test::Check(operation.use_count == count && operation.result && operation.exceptional == ExceptionalCompletion::kMayThrow);
+      test::Check(operation.normal == input.instructions[0].effects.normal &&
+          operation.before_throw == input.instructions[0].effects.before_throw);
+      for (unsigned i = 0; i < count; ++i) {
+        const auto& use = graph.uses[operation.first_use.value + i];
+        test::Check(use.role == OperandRole::kArgument);
+      }
+      auto changed = graph; ++std::get<ValueSuperCall>(changed.ops[0].operation).arguments;
+      test::Check(VerifyImportedValues(changed, input, proof, frame).has_value());
+      changed = graph; changed.ops[0].operation = ValueConstruct{count};
+      test::Check(VerifyImportedValues(changed, input, proof, frame).has_value());
+      test::Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
+      test::Check(std::holds_alternative<ValueSuperCall>(graph.ops[0].operation));
+    }
+  }
   // Accessor definition is an effectful five-input operation, not assignment.
   // Repeated register occurrences remain independently owned SSA uses.
   for (const auto profile : {abc::ProfileId::kDynamic1202,

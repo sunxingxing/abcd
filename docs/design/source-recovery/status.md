@@ -12,6 +12,28 @@
 
 ## 当前阶段
 
+
+### 2026-10-01：范围式 super 调用进入共同 Value IR
+
+- 新增独立 ValueSuperCall，保留参数数和 IC 槽；父构造器/newTarget 仍是调用上下文
+  的隐式输入，不伪装成普通 new 的显式 constructor 操作数。紧凑 CallOperands
+  视图按原顺序提供参数，校验寄存器效果与预算，保留正常结果及异常/语言效果。
+- ImportNormalValues 和导入验证支持 SuperRange；简化器保留该效果操作。源码树
+  尚未接入派生构造器初始化协议，因此源码层继续显式拒绝，未放宽基类检查。
+- 覆盖三个动态 profile、普通/宽编码、0/1/200/201/402 参数，以及视图 65535
+  参数边界；篡改参数数、替换为普通构造操作、缺失 accumulator 写入等负例被拒绝。
+  零参数 fixture 的起始寄存器仍须在帧内，已修正测试帧范围。
+- 构建 /tmp/abcd-super-regression-build.log；四项定向测试通过（2.45 秒）：
+  call_operands_test、value_import_test、class_accessor_tree_source_test、
+  record_import_tree_source_test。日志 /tmp/abcd-super-regression-tests.log。
+- 真实 Immersive 构造器 9865 的 --conditional-values 已越过 PC79 范围 super，
+  现在停在 PC87 的 super 初始化检查导入，证据
+  /tmp/abcd-index-constructor-values-super.json。仍为 source_complete=false，
+  不是派生类或页面源码完成；后续继续贯通 SuperCheck、receiver 初始化和 heritage。
+- 未重跑五输入正式导出，最新完成率仍以此前 mixed-class-family-pass-1 为准；
+  未恢复全套测试、RSS、基准或更大 corpus。阶段一 Goal 保持未完成。
+
+
 ### 2026-10-01：类与普通函数混合入口贯通共同模块输出
 
 - record 根已构建的 ClassTree 现可进入 BuildRecordFamilyTrees，普通后代仍走

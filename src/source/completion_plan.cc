@@ -29,7 +29,7 @@ bool CleanupOperation(const ValueOperation& operation) {
         std::is_same_v<T, ValueBinary> || std::is_same_v<T, ValueString> ||
         std::is_same_v<T, ValueNamedRead> || std::is_same_v<T, ValueNamedWrite> ||
         std::is_same_v<T, ValuePropertyRead> || std::is_same_v<T, ValuePropertyWrite> ||
-        std::is_same_v<T, ValueInvoke> || std::is_same_v<T, ValueConstruct> ||
+        std::is_same_v<T, ValueInvoke> || std::is_same_v<T, ValueSuperCall> || std::is_same_v<T, ValueConstruct> ||
         std::is_same_v<T, ValueArrayAllocation> || std::is_same_v<T, ValueObjectAllocation> ||
         std::is_same_v<T, ValueGlobalRead> || std::is_same_v<T, ValueGlobalObject> ||
         std::is_same_v<T, ValueSymbolConstructor> || std::is_same_v<T, ValueFrameThis> ||
