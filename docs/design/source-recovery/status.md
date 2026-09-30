@@ -13,6 +13,24 @@
 ## 当前阶段
 
 
+### 2026-10-01：真实派生构造器的初始化证明回归
+
+- class_initializer_file_test 现从实际 Immersive ABC 读取构造器9865，经正式
+  ReadFunctionValues 完成导入，再对同一原始 body/frame/profile 调用现有通用
+  ProveRangeDerivedConstructor，成功定位 super PC79。证明检查正常返回支配关系
+  和原始检查输入；尚未授权共同 AST 消费该证明。
+- 对每个 super 调用和检查验证简化后仍为 live、输入站点映射、原始 PC、效果、
+  参数数/IC、protocol 读取及无伪造结果。只在内存副本中把首次未初始化检查
+  改为已初始化检查，证明按 kGuard 拒绝；未修改 ABC 或读取配对源码正文。
+- 构建 /tmp/abcd-derived-protocol-build.log；class_initializer_file_test 通过，
+  日志 /tmp/abcd-derived-protocol-tests.log。该回归证明真实输入及拒绝边界，
+  不等于生成源码行为验收。下一接入点是带创建上下文的构造器投影：共同
+  EvaluationPlan 当前仍拒绝 ValueSuperCall/ValueSuperCheck，必须把同输入证明
+  与工作图对应，并保留 receiver/heritage/构造器返回协议；不能直接放宽形状检查。
+- 未执行全套测试、RSS、基准或五输入重新导出；阶段一仍未完成。
+
+
+
 ### 2026-10-01：super 初始化检查贯通共同导入
 
 - ValueSuperCheck 保存 RequireInitialized/RequireUninitialized/Noop 模式，保留

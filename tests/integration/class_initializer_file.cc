@@ -35,6 +35,62 @@ int main(int argc, char** argv) {
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(file, header, index, lookup));
   const auto sites = std::get<analysis::FunctionCreationSites>(analysis::FunctionCreationSites::Build(file, header, index, lookup));
+  // A real derived body now imports through the common value pipeline. Check
+  // the original-body initialization proof before any source projection.
+  {
+    const auto position = lookup.Find({9865}); Check(position.has_value());
+    auto loaded = ReadFunctionValues(file, header, index, *position, identity, InputCaptureMode::kClosed);
+    Check(std::holds_alternative<FileFunction>(loaded));
+    const auto& constructor = std::get<FileFunction>(loaded);
+    const auto proof = analysis::ProveRangeDerivedConstructor(constructor.body, constructor.frame, {}, header.profile);
+    if (const auto* error = std::get_if<analysis::DerivedConstructorError>(&proof))
+      std::cerr << "derived protocol failure " << static_cast<unsigned>(*error) << '\n';
+    Check(std::holds_alternative<analysis::RangeDerivedConstructor>(proof));
+    Check(std::get<analysis::RangeDerivedConstructor>(proof).super_pc.value == 79);
+    std::size_t checks = 0, calls = 0;
+    const auto& graph = constructor.values.graph;
+    for (std::size_t i = 0; i < constructor.input.Input().instructions.size(); ++i) {
+      const auto& original = constructor.input.Input().instructions[i];
+      const auto* check = std::get_if<analysis::SuperCheck>(&original.operation);
+      const auto* call = std::get_if<analysis::SuperRange>(&original.operation);
+      if (!check && !call) continue;
+      Check(i < graph.input.sites.size() && graph.input.sites[i].has_value());
+      const auto operation = *graph.input.sites[i];
+      Check(operation.value < graph.ops.size());
+      const auto& op = graph.ops[operation.value];
+      Check(op.life == analysis::ValueLife::kLive);
+      Check(op.normal == original.effects.normal && op.before_throw == original.effects.before_throw &&
+          op.exceptional == original.effects.exceptional);
+      Check(graph.origins[op.origin.value].pc == original.pc);
+      if (check) {
+        ++checks;
+        Check(std::get<analysis::ValueSuperCheck>(op.operation).kind == check->kind);
+        Check(!op.result && op.use_count == 1);
+        const auto& use = graph.uses[op.first_use.value];
+        Check(use.role == analysis::OperandRole::kGuardValue && use.purpose == analysis::ReadPurpose::kProtocol);
+      } else {
+        ++calls;
+        const auto& imported = std::get<analysis::ValueSuperCall>(op.operation);
+        Check(imported.arguments == call->count && imported.cache_slot == call->cache_slot);
+        Check(op.result.has_value() && op.use_count == call->count);
+      }
+    }
+    Check(calls == 1 && checks > 1);
+    // In-memory mutation only: after the parent call the first guard still
+    // checks the OLD receiver. Requiring an initialized receiver here is wrong.
+    auto changed = constructor.body;
+    bool mutated = false;
+    for (auto& site : changed.instructions) {
+      const auto lifted = analysis::LiftSuperInstruction(site.decoded, constructor.frame.registers);
+      const auto* check = std::get_if<analysis::SuperCheck>(&lifted);
+      if (!check || check->kind != analysis::SuperCheckKind::kRequireUninitialized) continue;
+      site.decoded.operands[0].raw_bits = 0; mutated = true; break;
+    }
+    Check(mutated);
+    const auto rejected = analysis::ProveRangeDerivedConstructor(changed, constructor.frame, {}, header.profile);
+    Check(std::get<analysis::DerivedConstructorError>(rejected) == analysis::DerivedConstructorError::kGuard);
+
+  }
   // Actual post-class getter/setter definitions, separate from buffer members.
   {
     const auto position = lookup.Find({10009}); Check(position.has_value());
