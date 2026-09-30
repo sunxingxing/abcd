@@ -24,6 +24,27 @@ mac 开发环境路径使用复数 `samples`，该目录由根 `.gitignore` 排�
 
 ## 持久记录文件
 
+### 阶段一配对输入快照（2026-09-30）
+
+本次重新枚举 abc_with_code 并流式校验全部五份内容，SHA-256 与
+abc-index.json 中对应的 paired 记录完全一致；以下 SHA 列为该完整身份的
+前 12 位，完整值仍由现有清单保存。源码目录仅供独立 oracle，未传入引擎。
+表内路径均相对 `/Users/sun/abcd/samples/abc_with_code`。
+
+| ABC | SHA 前缀 | profile | 配对源码目录 | 当前 shared 导出 |
+|---|---|---|---|---|
+| Immersive/modules.abc | 8de95a4c6579 | 13.0.1 | Immersive/Immersive_src | 45 record / 644 方法；22 个部分源码 |
+| MultiCommunityApplication/modules.abc | 45ffdc7d5075 | 12.0.2 | MultiCommunityApplication/src | 54 record / 936 方法；21 个部分源码 |
+| pasteboard/modules.abc | 854fb0d9bbc1 | 12.0.6 | pasteboard/pasteboard_src | 19 record / 219 方法；8 个部分源码 |
+| push-kit-sample-code-clientdemo-arkts/modules.abc | b2074425e0e2 | 12.0.6 | push-kit-sample-code-clientdemo-arkts/src | 24 record / 281 方法；5 个部分源码 |
+| push-kit-sample-code-clientdemo-arkts/widgets.abc | ea57a51cb1c6 | 12.0.6 | push-kit-sample-code-clientdemo-arkts/src_widget | 10 record / 31 方法；1 个部分源码 |
+
+当前命令为 `build/abc_structure INPUT OUTPUT --shared-source`，五次退出 0；
+产物按应用及 ABC stem 放在未跟踪的 `build/stage-one/`。该命令成功表示
+部分产物/失败信息已导出，不表示 record 完整恢复。旧 shared record 路径
+仍待接入共同 FunctionTree；尚无阶段一完整 record 的语义/表示质量验收。
+本快照未运行其他 batch 语料、RSS 或基准。
+
 首次执行验证时创建并维护 `tests/corpus/abc-index.json`，对每个文件记录：
 
 | 字段 | 含义 |

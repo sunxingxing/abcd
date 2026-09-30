@@ -12,6 +12,27 @@
 
 ## 当前阶段
 
+### 2026-09-30：阶段一配对输入基线与 macOS record 导出入口
+
+- 新 Goal 将本阶段范围固定为 abc_with_code 的全部五个 ABC，复核 SHA-256
+  与现有 abc-index 的五条 paired 记录完全一致，均为动态 12.0.2/12.0.6/
+  13.0.1；配对源码位置及逐输入结果见 tests/corpus/README.md 的阶段一表。
+  本阶段必要批量反编译已授权；其他全语料、全量测试、RSS/基准仍暂停。
+- 首次构建发现 abc_structure 的 Linux RENAME_NOREPLACE 无法在 macOS
+  编译；改为 Darwin renamex_np/RENAME_EXCL，保留原子且不覆盖目的目录
+  的语义。Darwin 还拒绝 Linux RLIMIT_AS 设置，现限 Linux 使用该保护，
+  保留跨平台已有 stage 内存限制，不宣称 RSS 达标。现有非 shared 报告
+  中 getrusage 的 Darwin 字节单位也已修正，未新增 RSS 测量任务。
+- abc_structure/index_fixture 构建成功；structure_cli_test 通过（3.50 秒），
+  包含正常发布、已有目录拒绝、静态输入、非法路径与 staging 清理。
+  五份 --shared-source 当前运行均退出 0，产物在 build/stage-one/；合计
+  152 record、2111 方法，57 record 产生标记的不完整源码。这只是旧
+  shared record 入口的当前基线，不是共同 FunctionTree 或完整行为验收。
+- 发现实际集成阻断：默认 BuildRecordSource 仍经 SemanticMethod/
+  BuildEntrySource/SourceAst，近期共同函数族能力未成为 record 默认输出。
+  下一步围绕真实 record 的创建点与方法集成推进，不能继续用合成协程
+  fixture 代替阶段一样本贯通。阶段一未完成。
+
 ### 2026-09-30：async generator 实际 yield 与普通 await 共同贯通
 
 - 精确匹配锁定 OH7 AsyncGeneratorFunctionBuilder::Yield 与

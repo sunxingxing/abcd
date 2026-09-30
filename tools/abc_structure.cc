@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <stdio.h>
 #include <sys/resource.h>
 #include <unistd.h>
 
@@ -121,10 +122,14 @@ class StagedTree {
     }
   }
   bool Publish(const std::filesystem::path& destination) {
-    // Linux no-replace rename: a racing pre-existing destination, including a
+    // Host no-replace rename: a racing pre-existing destination, including a
     // symlink, cannot be overwritten. All children were made in our fresh tree.
+#if defined(__APPLE__)
+    if (renamex_np(path.c_str(), destination.c_str(), RENAME_EXCL) != 0)
+#else
     if (renameat2(AT_FDCWD, path.c_str(), AT_FDCWD, destination.c_str(),
                   RENAME_NOREPLACE) != 0)
+#endif
       return false;
     path.clear();
     return true;
@@ -461,9 +466,14 @@ int Export(const std::filesystem::path& input,
   if (mode != SourceMode::kShared) {
     rusage usage{};
     getrusage(RUSAGE_SELF, &usage);
-    constexpr std::uint64_t kBytesPerKiB = 1024;
+#if defined(__APPLE__)
+    // Darwin getrusage reports bytes; Linux reports KiB.
+    constexpr std::uint64_t kRssUnitBytes = 1;
+#else
+    constexpr std::uint64_t kRssUnitBytes = 1024;
+#endif
     report_fields["peak_rss_bytes"] =
-        static_cast<std::uint64_t>(usage.ru_maxrss) * kBytesPerKiB;
+        static_cast<std::uint64_t>(usage.ru_maxrss) * kRssUnitBytes;
   }
   const auto report = report_fields.dump();
   if (!tree.Publish(output)) return Fail(ExportError::kDestination);
@@ -481,11 +491,16 @@ int main(int argc, char** argv) {
                  "  unimplemented stages publish typed route receipts without source files\n";
     return EXIT_FAILURE;
   }
+#if !defined(__APPLE__)
+  // Darwin rejects this Linux virtual-address-space limit; it also cannot
+  // establish the process RSS contract. Existing bounded stage allocations
+  // remain active on both hosts. Do not claim a measured 1 GB RSS guarantee.
   constexpr rlim_t kProcessBytes = 1000000000;
   rlimit limit{};
   if (getrlimit(RLIMIT_AS, &limit) != 0) return EXIT_FAILURE;
   limit.rlim_cur = std::min(limit.rlim_cur, kProcessBytes);
   if (setrlimit(RLIMIT_AS, &limit) != 0) return EXIT_FAILURE;
+#endif
   try {
     const auto mode = argc == 3 ? SourceMode::kNone
         : std::string_view(argv[3]) == "--shared-source" ? SourceMode::kShared
