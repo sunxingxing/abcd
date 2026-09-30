@@ -3,6 +3,7 @@
 
 #include "abcd/analysis/value_environment.h"
 #include "function_input.h"
+#include "../analysis/value_heritage.h"
 #include "cell_plan.h"
 #include "module_guards.h"
 
@@ -20,6 +21,8 @@ struct FunctionValues {
   // function. Rebuild it after graph edits; never rescan a graph per capture.
   std::optional<CellPlan> cells;
   ModuleGuards modules;
+  // Bound to graph.revision; recompute after edits before class-tree lowering.
+  analysis::ValueHeritages classes;
 };
 struct FunctionValueFailure {
   SourceStage stage;

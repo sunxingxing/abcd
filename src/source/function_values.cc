@@ -107,7 +107,17 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
   auto modules = std::get<ModuleGuards>(std::move(guarded));
   if (!admit(modules.allocated_bytes, 1))
     return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kTransformStage);
-  const auto work = budget.work - graph->ops.size() - modules.work;
+  auto work = budget.work - graph->ops.size() - modules.work;
+  auto heritage = analysis::AnalyzeValueHeritage(*graph, {remaining, work});
+  if (const auto* error = std::get_if<analysis::ValueHeritageError>(&heritage)) {
+    const auto kind = *error == analysis::ValueHeritageError::kResourceLimit ? RouteFailureClass::kMemoryLimit :
+        *error == analysis::ValueHeritageError::kWorkLimit ? RouteFailureClass::kWorkLimit :
+        *error == analysis::ValueHeritageError::kDomain ? RouteFailureClass::kUnsupported : RouteFailureClass::kInvariantViolation;
+    return fail(kind, ValueRouteError::kTransformStage);
+  }
+  auto classes = std::get<analysis::ValueHeritages>(std::move(heritage));
+  if (!admit(classes.allocated_bytes, 1)) return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kTransformStage);
+  work -= classes.work;
   if (needs_environments) {
     auto built = analysis::BuildValueEnvironments(*graph, {remaining, work});
     if (const auto* error = std::get_if<analysis::ValueEnvironmentError>(&built)) {
@@ -148,6 +158,6 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
     return fail(RouteFailureClass::kInvariantViolation, ValueRouteError::kTransformStage);
   }
   return FunctionValues{std::move(*graph), std::move(environments), owner.Mode(),
-      owner.Identity(), owner.Method(), owner.Record(), std::move(cells), std::move(modules)};
+      owner.Identity(), owner.Method(), owner.Record(), std::move(cells), std::move(modules), std::move(classes)};
 }
 }  // namespace abcd::source

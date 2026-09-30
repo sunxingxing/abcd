@@ -368,6 +368,19 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
       report["capture_occurrences"] = function->input.Captures().size();
       report["child_obligations"] = function->input.Children().size();
       report["operations"] = function->values.graph.ops.size();
+      report["class_heritage"] = nlohmann::json::array();
+      for (const auto& heritage : function->values.classes.classes) {
+        const auto& op = function->values.graph.ops[heritage.operation.value];
+        const char* kind = nullptr;
+        switch (heritage.kind) {
+          case analysis::HeritageKind::kAbsent: kind = "absent"; break;
+          case analysis::HeritageKind::kNull: kind = "null"; break;
+          case analysis::HeritageKind::kUnknown: kind = "unknown"; break;
+        }
+        report["class_heritage"].push_back({{"operation", heritage.operation.value},
+            {"input", heritage.input.value}, {"kind", kind},
+            {"pc", function->values.graph.origins[op.origin.value].pc.value}});
+      }
       report["cells"] = function->values.cells ? function->values.cells->cells.size() : 0;
       report["work_revision"] = function->values.graph.revision.value;
       report["guarded_module_pairs"] = function->values.modules.pairs.size();

@@ -47,6 +47,7 @@ std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
     if (values.environments) admit(values.environments->allocated_bytes, 1);
     if (values.cells) admit(values.cells->allocated_bytes, 1);
     admit(values.modules.allocated_bytes, 1);
+    admit(values.classes.allocated_bytes, 1);
     std::optional<ModuleReads> module_reads;
     if (modules) {
       if (modules->record() != method.owner_offset) throw Error::kIdentity;

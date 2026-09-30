@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-01：简化后值流的类继承分类接入
+
+- 原 ProveClassHeritage 只处理 decoded register 流，无法直接为共同 SSA
+  类创建提供继承输入。新增 AnalyzeValueHeritage 并实际接入正常函数
+  BuildFunctionValues：保存工作 revision、类操作和真实 heritage use，
+  识别 definite Hole 为无 extends、纯副本链上的 null 为 derived-null；
+  其他语言值保留 unknown 及其运行时失败可能，undefined 不视为无继承。
+  混合 Hole/语言值、environment 等内部域拒绝，不能伪造 source operand。
+- 逐值缓存纯副本链，显式 path 栈检查环；全体类合计 O(O+V) 时间和
+  O(V+C) 空间，不按每个类重走共享链。工作量、数组及扩容容量进入现有
+  预算，FileFunction 同步计入继承分析 charge。产物仅适用于 unchanged
+  graph，后续重写需重建，不是删除 Hole 或发布 class body 的凭证。
+- 两种 IC、三个 profile、Hole/null/undefined、1/200/201/402 的既有类
+  导入组合新增继承结果检查、错误 role/混合域/资源及 work limit 负例。
+  8 项定向 CTest 全通过（5.09 秒），包含真实四个类入口和既有模块、
+  Constants 行为对照。日志 /tmp/abcd-value-heritage-final-build.log、
+  /tmp/abcd-value-heritage-tests.log；本轮未跑全量测试或 RSS/基准。
+- 真实入口 7312、7531、16638、29031 的 PC 9 均解析为 absent；已有
+  conditional-values 输出现在报告该输入绑定，仍 source_complete=false。
+  CommonConstants 原始入口还包含 DEFINEMETHOD 静态初始化及其调用；
+  class buffer 为空不代表整个类无 body。共同 ClassTreeContext 当前只
+  覆盖 buffer method，缺 constructor owner 及完整 class expression。
+  下一步需要贯通 constructor/member/static initialization，不能把空
+  buffer 当成可省略构造器和初始化的依据。完整 record 数仍不增加，
+  阶段一 Goal 保持进行中。
+
 ### 2026-10-01：类创建进入共同值流，保留继承与闭包义务
 
 - 真实类 record 的首个阻断确定为 DEFINECLASSWITHBUFFER 值导入，而非

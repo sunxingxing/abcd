@@ -1,6 +1,7 @@
 #include "abcd/analysis/value_import.h"
 #include "abcd/analysis/value_simplify.h"
 #include "../../../src/analysis/value_edits.h"
+#include "../../../src/analysis/value_heritage.h"
 
 #include "analysis/ssa_fixture.h"
 
@@ -75,6 +76,29 @@ int main() {
           test::Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
           for (unsigned n = 0; n < count; ++n)
             test::Check(graph.ops[kPrefix + n].life == ValueLife::kLive);
+          auto heritages = std::get<ValueHeritages>(AnalyzeValueHeritage(graph));
+          test::Check(heritages.revision == graph.revision && heritages.classes.size() == count);
+          for (unsigned n = 0; n < count; ++n) {
+            const auto& heritage = heritages.classes[n];
+            test::Check(heritage.operation == OpId{kPrefix + n} &&
+                heritage.input == graph.ops[kPrefix + n].first_use);
+            test::Check(heritage.kind == (parent == abc::Opcode::kLDHOLE ? HeritageKind::kAbsent :
+                parent == abc::Opcode::kLDNULL ? HeritageKind::kNull : HeritageKind::kUnknown));
+          }
+          test::Check(std::get<ValueHeritageError>(AnalyzeValueHeritage(graph, {0})) ==
+              ValueHeritageError::kResourceLimit);
+          test::Check(std::get<ValueHeritageError>(AnalyzeValueHeritage(graph, {UINT32_MAX, 0})) ==
+              ValueHeritageError::kWorkLimit);
+          auto& heritage_use = graph.uses[graph.ops[kPrefix].first_use.value];
+          const auto old_role = heritage_use.role;
+          heritage_use.role = OperandRole::kInput;
+          test::Check(std::get<ValueHeritageError>(AnalyzeValueHeritage(graph)) == ValueHeritageError::kInput);
+          heritage_use.role = old_role;
+          const auto id = std::get<ValueId>(heritage_use.operand);
+          const auto old_domain = graph.values[id.value].domain;
+          graph.values[id.value].domain = ValueKinds::Language().Join(ValueKinds::Hole());
+          test::Check(std::get<ValueHeritageError>(AnalyzeValueHeritage(graph)) == ValueHeritageError::kDomain);
+          graph.values[id.value].domain = old_domain;
         }
       }
     }

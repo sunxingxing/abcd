@@ -18,6 +18,9 @@ for (const entry of [7312, 7531, 16638, 29031]) {
   assert.equal(report.module_context_ready, true);
   assert.ok(report.operations > 0);
   assert.ok(report.child_obligations > 0);
+  assert.equal(report.class_heritage.length, 1);
+  assert.equal(report.class_heritage[0].kind, 'absent');
+  assert.equal(report.class_heritage[0].pc, 9);
   assert.equal(report.source_complete, false);
   assert.equal(report.executable, false);
 }
