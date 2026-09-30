@@ -53,6 +53,11 @@ void YieldContext() {
     tree.expressions[1].expression = AwaitExpr{{0}};
     Expect(tree, TreeStructureError::kUnsupportedSyntax);
   }
+  tree.callable = CallableKind::kAsyncGenerator;
+  tree.expressions[1].expression = YieldExpr{{0}, YieldForm::kDirect};
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  tree.expressions[1].expression = AwaitExpr{{0}};
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
 }
 void InferredNames() {
   for (const auto callable : {CallableKind::kFunction, CallableKind::kArrow}) {

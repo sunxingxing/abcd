@@ -110,15 +110,15 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     if (IsGeneratorCallable(context.Callable())) {
       const GeneratorNames names{file, header, index, method.offset};
       auto normalization = NormalizeGenerator(body, frame, header.profile,
-          ResourceFailures(identity.contract), left.bytes, &names);
+          ResourceFailures(identity.contract), left.bytes, &names,
+          context.Callable() == CallableKind::kAsyncGenerator ? GeneratorExecution::kAsynchronous : GeneratorExecution::kSynchronous);
       if (const auto* error = std::get_if<FunctionEmitError>(&normalization)) throw PhasedFileFailure{*error};
       if (const auto* error = std::get_if<abc::MetadataError>(&normalization)) throw PhasedFileFailure{*error};
       auto normalized = std::get<GeneratorBody>(std::move(normalization));
       arena(normalized.body.instructions); arena(normalized.source_pcs); arena(normalized.yields);
       source_pcs = std::move(normalized.source_pcs); yields = std::move(normalized.yields);
       original.emplace(std::move(body)); body = std::move(normalized.body);
-    }
-    if (IsAsyncCallable(context.Callable())) {
+    } else if (IsAsyncCallable(context.Callable())) {
       Require(identity.contract == SourceContract::kLanguageAndHostV2 ||
           identity.contract == SourceContract::kLanguageAndHostV3, Error::kIdentity);
       auto normalized = Take<abc::MethodBody>(ProveAsyncCompletion(body, frame,

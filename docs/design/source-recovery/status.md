@@ -12,6 +12,39 @@
 
 ## 当前阶段
 
+### 2026-09-30：async generator 入口与隐式结束的共同源码贯通
+
+- 创建上下文保留 ASYNC_GENERATOR callable kind，共同 FunctionTree/Printer
+  输出原生 async function*；复用 NormalizeGenerator 的入口寄存器检查、
+  原 PC 保留、分支和 handler 重定位。锁定 OH7 Prepare、ImplicitReturn/
+  DirectReturn、CleanUp：验证首次 suspend/resume、COMPLETED 状态、true
+  canSuspend、resolve 的三个槽和 catch/reject 身份，仅删除这些确定的
+  VM 操作，保留真实隐式 undefined load/return 与函数体效果。无 async
+  body writer、额外请求调度器或新发布准入。
+- 12 个完整文件解码/合成元数据函数族：三 profile × 三父环境的九个
+  双回调组合，以及 200/201/402 个回调的三个组合。实际生成 JS 验证
+  native prototype/name/length、调用前无效果、动态 cell 读取和 sibling
+  更新、receiver/参数/次数、被丢弃的 thenable 回调结果不被 await、
+  隐式结束、return 的 pending thenable 阻塞后续 next/throw 请求、抛出
+  身份、未启动 return/throw 以及独立捕获环境。首轮 harness 使用
+  assert.rejects 的 async 返回会探测带 then getter 的抛出理由；改为
+  返回 undefined 的 rejection observer，生成源码无需改动。
+- 十个协议反例检查 callee、私有 state/result/mode 读取、false done、
+  错误 complete 状态、resolve/reject 槽，以及进入删除入口/直接进入
+  return 绕过 settlement 的跳转。入口 slots 的源级复用仍保守拒绝；
+  支持范围不包括源 await/yield、显式 return 或 async generator method。
+- 中断恢复后原 PTY handle 已不存在，重新运行当前构建与相关验证。
+  `cmake --build build --target abc_semantic loop_closure_file_test
+  tree_structure_test class_tree_context_test control_composition_test
+  async_semantics_test -j 4` 成功；11 项定向 CTest 全通过（13.73 秒），
+  含新 prefix、同步 generator/delegate、await、共同控制和树约束。
+  `/tmp/abcd-async-generator-prefix-final-build.log`、
+  `/tmp/abcd-async-generator-prefix-final-tests.log`；`git diff --check`
+  通过，独立开发与自查，未调用 CC/子代理。
+- C08/总目标未完成。下一步复用现有 AwaitRegion/共同 ValueProgram
+  贯通 async generator 的实际 await，再推进 yield、显式返回及组合。
+  未宣称真实应用覆盖或 1GB 实测，全量测试/语料/RSS/基准继续暂停。
+
 ### 2026-09-30：yield* 非默认 API truth-test 编码贯通
 
 - 锁定 OH7 PandaGen::{IsTrue,BranchIfFalse} 对非默认 API 发出

@@ -32,11 +32,35 @@ enum ResumeStep : std::size_t {
   kThrowMode, kThrowEqual, kThrowBranch, kThrowValue, kThrow, kContinuation, kResumeSize
 };
 constexpr auto kPreservingTailSize = kReturn - kReturnValue + 1;
+// Pinned AsyncGeneratorFunctionBuilder::{ImplicitReturn,DirectReturn,CleanUp}:
+// instruction positions, not encoded byte widths or guessed source returns.
+enum AsyncExitStep : std::size_t {
+  kImplicitValue, kSaveExitValue, kCanSuspend, kSaveCanSuspend, kExitState,
+  kExitComplete, kResolveExit, kExitReturn, kAsyncExitSize
+};
+enum AsyncCatchStep : std::size_t {
+  kSaveException, kCatchState, kCatchComplete, kExceptionValue, kRejectExit,
+  kCatchReturn, kAsyncCatchSize
+};
 enum class ProtocolPart : std::uint8_t { kSource, kResume, kYieldPrefix };
 struct ResumeRegion {
   analysis::YieldRegion origin;
   std::size_t cleanup, size;
 };
+struct ResumeSlots { abc::RegisterId result, mode; };
+ResumeSlots ResumePrefix(const abc::MethodBody& body, std::size_t begin,
+    abc::RegisterId state, const abc::FrameLayout& frame) {
+  Require(begin <= body.instructions.size() && kReturnMode <= body.instructions.size() - begin);
+  const auto at = [&](ResumeStep step) -> const auto& { return body.instructions[begin + step]; };
+  Require(Op(at(kSuspend), Opcode::kSUSPENDGENERATOR_V8) && Reg(at(kSuspend)) == state);
+  for (auto step : {kStateForValue, kStateForMode})
+    Require(Op(at(step), Opcode::kLDA_V8) && Reg(at(step)) == state);
+  Require(Op(at(kResume), Opcode::kRESUMEGENERATOR) && Op(at(kMode), Opcode::kGETRESUMEMODE) &&
+      Op(at(kStoreResult), Opcode::kSTA_V8) && Op(at(kStoreMode), Opcode::kSTA_V8));
+  const auto result = Reg(at(kStoreResult)), mode = Reg(at(kStoreMode));
+  Require(result != mode && result != state && mode != state && result.value < frame.locals && mode.value < frame.locals);
+  return {result, mode};
+}
 // HandleCompletion emits its preserving tail even after Compile(finalizer)
 // returned/threw. Reachability is confined to this owned RETURN corridor;
 // external entries are rejected separately, never silently pruned. The common
@@ -105,13 +129,7 @@ ResumeRegion Resume(const abc::MethodBody& body, std::size_t begin,
   const auto at = [&](ResumeStep step) -> const auto& {
     return body.instructions[begin + step + (step >= kReturnValue ? cleanup : 0)];
   };
-  Require(Op(at(kSuspend), Opcode::kSUSPENDGENERATOR_V8) && Reg(at(kSuspend)) == state);
-  for (auto step : {kStateForValue, kStateForMode})
-    Require(Op(at(step), Opcode::kLDA_V8) && Reg(at(step)) == state);
-  Require(Op(at(kResume), Opcode::kRESUMEGENERATOR) && Op(at(kMode), Opcode::kGETRESUMEMODE) &&
-      Op(at(kStoreResult), Opcode::kSTA_V8) && Op(at(kStoreMode), Opcode::kSTA_V8));
-  const auto result = Reg(at(kStoreResult)), mode = Reg(at(kStoreMode));
-  Require(result != mode && result != state && mode != state && result.value < frame.locals && mode.value < frame.locals);
+  const auto [result, mode] = ResumePrefix(body, begin, state, frame);
   for (auto step : {kReturnValue, kThrowValue, kContinuation})
     Require(Op(at(step), Opcode::kLDA_V8) && Reg(at(step)) == result);
   Require(Op(at(kReturn), Opcode::kRETURN) && Op(at(kThrow), Opcode::kTHROW_PREF_NONE));
@@ -205,12 +223,15 @@ std::vector<std::uint8_t> ValidateCleanup(const abc::MethodBody& body, std::size
 }  // namespace
 std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGenerator(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
-    abc::ProfileId profile, ResourceFailureScope resources, std::size_t bytes, const GeneratorNames* names) {
+    abc::ProfileId profile, ResourceFailureScope resources, std::size_t bytes, const GeneratorNames* names,
+    GeneratorExecution execution) {
   try {
     Require(resources == ResourceFailureScope::kExcluded &&
         (profile == abc::ProfileId::kDynamic1202 || profile == abc::ProfileId::kDynamic1206 ||
          profile == abc::ProfileId::kDynamic1301));
     const auto& code = body.instructions;
+    Require(execution == GeneratorExecution::kSynchronous || execution == GeneratorExecution::kAsynchronous);
+    const bool asynchronous = execution == GeneratorExecution::kAsynchronous;
     constexpr std::size_t kEntryPrefix = 3, kYieldPrefix = 3;
     Require(!code.empty());
     std::size_t enter = 0;
@@ -240,21 +261,26 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
       else if (is_cell_copy(enter)) enter += 2;
       else break;
     }
-    const auto first = enter + kEntryPrefix + kResumeSize;
+    const auto first = enter + kEntryPrefix + (asynchronous ? kReturnMode : kResumeSize);
     Require(code.size() > first + 1 && frame.function &&
-        Op(code[enter], Opcode::kCREATEGENERATOROBJ_V8) &&
+        Op(code[enter], asynchronous ? Opcode::kCREATEASYNCGENERATOROBJ_V8 : Opcode::kCREATEGENERATOROBJ_V8) &&
         Op(code[enter + 1], Opcode::kSTA_V8) && Op(code[enter + 2], Opcode::kLDUNDEFINED));
     const auto state = Reg(code[enter + 1]); Require(state.value < frame.locals);
-    const auto entry_resume = Resume(body, enter + kEntryPrefix, state, frame);
-    Require(!entry_resume.cleanup);
-    const auto& initial = entry_resume.origin;
+    ResumeSlots initial{};
+    if (asynchronous) {
+      const auto slots = ResumePrefix(body, enter + kEntryPrefix, state, frame);
+      initial = slots;
+    } else {
+      const auto entry_resume = Resume(body, enter + kEntryPrefix, state, frame);
+      Require(!entry_resume.cleanup); initial = {entry_resume.origin.result, entry_resume.origin.resume_mode};
+    }
     const auto callee = Reg(code[enter]);
     bool same_function = callee == *frame.function;
     for (std::size_t i = copy_begin; i < enter;) {
       const auto& copy = code[i];
       if (!is_frame_copy(copy)) { Require(is_cell_copy(i)); i += 2; continue; }
       Require(copy.decoded.operand_count == 2 && Reg(copy).value < frame.locals && Reg(copy) != state &&
-          Reg(copy) != initial.result && Reg(copy) != initial.resume_mode &&
+          Reg(copy) != initial.result && Reg(copy) != initial.mode &&
           Reg(copy, 1).value >= frame.locals && Reg(copy, 1).value < frame.registers);
       // FunctionRegScope binds the callee to a copied local. All admitted
       // sources are immutable ABI inputs; the last write decides its identity.
@@ -262,9 +288,31 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
       ++i;
     }
     Require(same_function);
-    const auto handler = code.size() - 1;
-    Require(Op(code.back(), Opcode::kTHROW_PREF_NONE) &&
-        HasAsyncCompletionCatch(body, code[enter].offset, code.back().offset,
+    const auto handler = code.size() - (asynchronous ? kAsyncCatchSize : 1);
+    const auto complete = [&](std::size_t load) {
+      Require(Op(code[load], Opcode::kLDA_V8) && Reg(code[load]) == state);
+      const auto& site = code[load + 1].decoded;
+      Require(site.opcode == Opcode::kSETGENERATORSTATE_IMM8 && site.operand_count == 1 &&
+          site.operands[0].kind == abc::OperandKind::kImmediate &&
+          site.operands[0].raw_bits == static_cast<std::uint8_t>(analysis::GeneratorState::kCompleted));
+    };
+    if (asynchronous) {
+      Require(handler >= first + kAsyncExitSize && Op(code[handler], Opcode::kSTA_V8));
+      const auto caught = Reg(code[handler]); Require(caught != state && caught.value < frame.locals);
+      complete(handler + kCatchState);
+      Require(Op(code[handler + kExceptionValue], Opcode::kLDA_V8) && Reg(code[handler + kExceptionValue]) == caught &&
+          Op(code[handler + kRejectExit], Opcode::kASYNCGENERATORREJECT_V8) && Reg(code[handler + kRejectExit]) == state &&
+          Op(code[handler + kCatchReturn], Opcode::kRETURN));
+      const auto exit = handler - kAsyncExitSize;
+      Require(Op(code[exit + kImplicitValue], Opcode::kLDUNDEFINED) && Op(code[exit + kSaveExitValue], Opcode::kSTA_V8) &&
+          Op(code[exit + kCanSuspend], Opcode::kLDTRUE) && Op(code[exit + kSaveCanSuspend], Opcode::kSTA_V8));
+      const auto value = Reg(code[exit + kSaveExitValue]), flag = Reg(code[exit + kSaveCanSuspend]);
+      Require(value != flag && value != state && flag != state && value.value < frame.locals && flag.value < frame.locals);
+      complete(exit + kExitState);
+      Require(Op(code[exit + kResolveExit], Opcode::kASYNCGENERATORRESOLVE_V8_V8_V8) && Reg(code[exit + kResolveExit]) == state &&
+          Reg(code[exit + kResolveExit], 1) == value && Reg(code[exit + kResolveExit], 2) == flag && Op(code[exit + kExitReturn], Opcode::kRETURN));
+    } else Require(Op(code.back(), Opcode::kTHROW_PREF_NONE));
+    Require(HasAsyncCompletionCatch(body, code[enter + (asynchronous ? 2 : 0)].offset, code[handler].offset,
             std::uint64_t(code.back().offset.value) + code.back().decoded.size));
     // RETURN cleanup stays in the common graph; tree composition must route it
     // on native RETURN. Do not erase it or treat it as a normal resume effect.
@@ -274,6 +322,7 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
     const auto yield_count = static_cast<std::size_t>(std::count_if(code.begin(), code.end(),
         [](const auto& site) { return Op(site, Opcode::kCREATEITERRESULTOBJ_V8_V8) ||
             Op(site, Opcode::kGETITERATOR_IMM8) || Op(site, Opcode::kGETITERATOR_IMM16); }));
+    Require(!asynchronous || !yield_count);
     if (yield_count > (bytes - code.size() * kPerInstruction) / (sizeof(analysis::YieldSite) + sizeof(YieldProtocol) + sizeof(GeneratorDelegate)))
       return Error::kResourceLimit;
     GeneratorBody result;
@@ -297,6 +346,14 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
     storage(yields.capacity(), sizeof(YieldProtocol));
     storage(delegates.capacity(), sizeof(GeneratorDelegate));
     std::fill(interior.begin(), interior.begin() + first, 1);
+    if (asynchronous) {
+      // First C08 slice: exact Prepare and implicit return/catch settlement;
+      // source await/yield/explicit returns remain unsupported. Erase only VM
+      // operations, keeping the actual implicit undefined load and Return.
+      const auto exit = handler - kAsyncExitSize;
+      std::fill(retained.begin() + exit + kSaveExitValue, retained.begin() + exit + kExitReturn, 0);
+      std::fill(interior.begin() + exit + kSaveExitValue, interior.begin() + handler, 1);
+    }
     const auto retain = [&](std::size_t i) {
       result.body.instructions.push_back(code[i]); result.source_pcs.push_back(code[i].offset);
     };
@@ -305,7 +362,7 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
     // pinned OH7 FunctionBuilder::HandleCompletion; nested cleanup routes stay
     // unsupported. Thus each instruction belongs to at most one cleanup and
     // one handshake: O(I + Y log I), no repeated nested-slice graph walks.
-    if (names) for (std::size_t i = first; i < handler; ++i) {
+    if (names && !asynchronous) for (std::size_t i = first; i < handler; ++i) {
       if (!Op(code[i], Opcode::kGETITERATOR_IMM8) && !Op(code[i], Opcode::kGETITERATOR_IMM16)) continue;
       auto parsed = ParseGeneratorDelegate(body, i, state, frame, *names, bytes);
       if (const auto* error = std::get_if<abc::MetadataError>(&parsed)) return *error;
@@ -386,9 +443,17 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
         for (std::size_t j = 0; j < known->count; ++j) {
           const auto& window = known->windows[j];
           Require(state.value < window.first.value || state.value - window.first.value >= window.count);
+          if (asynchronous && i >= first && i < handler - kAsyncExitSize) {
+            // Initial resumed values/mode have no source counterpart. Reuse
+            // of these locals needs a proved overwrite before observation;
+            // that later capability is not silently admitted in this slice.
+            for (const auto slot : {initial.result, initial.mode})
+              Require(slot.value < window.first.value || slot.value - window.first.value >= window.count);
+          }
         }
         const auto control = abc::GetControlTransfer(code[i].decoded.opcode);
         Require(control && *control != abc::ControlTransfer::kSuspend);
+        if (asynchronous && *control == abc::ControlTransfer::kReturn) Require(i == handler - 1);
         Require(!Op(code[i], Opcode::kCREATEGENERATOROBJ_V8) && !Op(code[i], Opcode::kRESUMEGENERATOR) &&
             !Op(code[i], Opcode::kGETRESUMEMODE));
         // Only the exact certified create instruction survives as a native yield.
@@ -410,7 +475,7 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
     // Selected catch must be identical at the native yield and VM THROW site;
     // result/mode writes lost on native THROW must be dead at handler entry.
     const auto catch_inputs = analysis::ProveYieldCatchInputs(
-        body, result.yields, profile, frame.registers, code.back().offset, {bytes});
+        body, result.yields, profile, frame.registers, code[handler].offset, {bytes});
     if (const auto* error = std::get_if<analysis::AwaitCatchFailure>(&catch_inputs))
       return error->kind == analysis::AwaitCatchError::kResourceLimit ? Error::kResourceLimit : Error::kKind;
     abc::MethodBody handler_body;

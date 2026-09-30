@@ -52,7 +52,7 @@ void CheckCallable(const FunctionTree& tree) {
     case CallableKind::kArrow: case CallableKind::kBaseConstructor:
     case CallableKind::kDerivedConstructor: case CallableKind::kAsyncFunction:
     case CallableKind::kAsyncMethod: case CallableKind::kAsyncArrow: case CallableKind::kGenerator:
-    case CallableKind::kGeneratorMethod: return;
+    case CallableKind::kGeneratorMethod: case CallableKind::kAsyncGenerator: return;
   }
   throw Error::kUnsupportedSyntax;
 }
@@ -109,7 +109,7 @@ class StructureCheck {
       RequireTree(tree_.inferred_name->value < tree_.names.size(), Error::kName);
       RequireTree((tree_.callable == CallableKind::kFunction ||
           IsArrowCallable(tree_.callable) || tree_.callable == CallableKind::kAsyncFunction ||
-          tree_.callable == CallableKind::kGenerator), Error::kUnsupportedSyntax);
+          tree_.callable == CallableKind::kGenerator || tree_.callable == CallableKind::kAsyncGenerator), Error::kUnsupportedSyntax);
     }
     RequireTree(tree_.parameter_scope.value < tree_.scopes.size() &&
                 tree_.body_scope.value < tree_.scopes.size() &&

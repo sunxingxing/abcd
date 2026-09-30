@@ -161,6 +161,7 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
       case CallableKind::kAsyncMethod:
       case CallableKind::kGenerator:
       case CallableKind::kGeneratorMethod:
+      case CallableKind::kAsyncGenerator:
         receiver = FrameReceiver::kInitialized;
         break;
       case CallableKind::kArrow:

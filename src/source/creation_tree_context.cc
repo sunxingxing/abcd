@@ -47,8 +47,8 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
       // Keep lexical receiver semantics; ordinary async function syntax differs.
       case abc::FunctionKind::kAsyncArrow: callable = CallableKind::kAsyncArrow; break;
       case abc::FunctionKind::kGenerator: callable = CallableKind::kGenerator; break;
+      case abc::FunctionKind::kAsyncGenerator: callable = CallableKind::kAsyncGenerator; break;
       case abc::FunctionKind::kNone:
-      case abc::FunctionKind::kAsyncGenerator:
       case abc::FunctionKind::kConcurrent:
       default: throw CreationContextFailure{Error::kKind};
     }

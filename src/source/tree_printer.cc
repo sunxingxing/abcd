@@ -133,7 +133,8 @@ class TreePrinter {
     const auto& structure = std::get<TreeStructure>(checked);
     Admit(structure.allocated_bytes, 1); Step(structure.work);
     if (Tree().callable != CallableKind::kFunction && !IsArrowCallable(Tree().callable) &&
-        Tree().callable != CallableKind::kAsyncFunction && Tree().callable != CallableKind::kGenerator)
+        Tree().callable != CallableKind::kAsyncFunction && Tree().callable != CallableKind::kGenerator &&
+        Tree().callable != CallableKind::kAsyncGenerator)
       throw Error::kUnsupportedContext;
     for (const auto& node : Tree().expressions) {
       Step();
@@ -183,7 +184,7 @@ class TreePrinter {
       if (Tree().strictness != Strictness::kStrict ||
           (Tree().callable != CallableKind::kFunction && !IsArrowCallable(Tree().callable) &&
            !IsMethodCallable(Tree().callable) && Tree().callable != CallableKind::kAsyncFunction &&
-           Tree().callable != CallableKind::kGenerator))
+           Tree().callable != CallableKind::kGenerator && Tree().callable != CallableKind::kAsyncGenerator))
         throw Error::kUnsupportedContext;
       // Only the actual class root is a class member. An arrow method carrier
       // retains its original callable kind and cannot observe its home object.
@@ -546,7 +547,8 @@ class TreePrinter {
       if (IsGeneratorCallable(Tree().callable)) Append("*");
       Key(class_root_->Name()); Append("(");
     } else if (Tree().self && Tree().self_form == SelfForm::kNamedFunction) {
-      Append(Tree().callable == CallableKind::kGenerator ? "(function* " :
+      Append(Tree().callable == CallableKind::kAsyncGenerator ? "(async function* " :
+          Tree().callable == CallableKind::kGenerator ? "(function* " :
           Tree().callable == CallableKind::kAsyncFunction ? "(async function " : "(function ");
       Name(*Tree().self); Append("(");
     } else if (Tree().inferred_name) {
@@ -567,10 +569,12 @@ class TreePrinter {
       else {
         Append("]: ");
         Append(Tree().callable == CallableKind::kAsyncArrow ? "async (" : Tree().callable == CallableKind::kArrow ? "(" :
+            Tree().callable == CallableKind::kAsyncGenerator ? "async function*(" :
             Tree().callable == CallableKind::kGenerator ? "function*(" :
             Tree().callable == CallableKind::kAsyncFunction ? "async function(" : "function(");
       }
     } else Append(Tree().callable == CallableKind::kAsyncArrow ? "(async (" : Tree().callable == CallableKind::kArrow ? "((" :
+        Tree().callable == CallableKind::kAsyncGenerator ? "(async function*(" :
         Tree().callable == CallableKind::kGenerator ? "(function*(" :
         Tree().callable == CallableKind::kAsyncFunction ? "(async function(" : "(function(");
     Push(EndFunction{}); Push(Statement{Tree().body, depth_});

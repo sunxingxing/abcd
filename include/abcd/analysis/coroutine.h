@@ -12,6 +12,11 @@ namespace abcd::analysis {
 enum class CoroutineResumeMode : std::int32_t {
   kReturn = 0, kThrow = 1, kNext = 2, kUndefined = 3
 };
+// Pinned es2panda generatorFunctionBuilder.h / js_async_generator_object.h ABI.
+enum class GeneratorState : std::uint8_t {
+  kUndefined = 0, kSuspendedStart = 1, kSuspendedYield = 2, kExecuting = 3,
+  kCompleted = 4, kAwaitingReturn = 5
+};
 enum class CoroutineTransferKind { kAwait, kSuspend, kResolve, kReject };
 struct CoroutineTransfer {
   CoroutineTransferKind kind;

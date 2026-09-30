@@ -24,7 +24,7 @@ struct FunctionOwnerId { std::uint32_t value = 0; auto operator<=>(const Functio
 struct ModuleOwnerId { std::uint32_t value = 0; auto operator<=>(const ModuleOwnerId&) const = default; };
 enum class CallableKind : std::uint8_t {
   kFunction, kMethod, kArrow, kBaseConstructor, kDerivedConstructor,
-  kAsyncFunction, kAsyncMethod, kAsyncArrow, kGenerator, kGeneratorMethod
+  kAsyncFunction, kAsyncMethod, kAsyncArrow, kGenerator, kGeneratorMethod, kAsyncGenerator
 };
 constexpr bool IsArrowCallable(CallableKind kind) {
   return kind == CallableKind::kArrow || kind == CallableKind::kAsyncArrow;
@@ -33,13 +33,14 @@ constexpr bool IsArrowCallable(CallableKind kind) {
 // Methods do not; arrows use a separately checked creation-time binding.
 constexpr bool AllowsNamedSelf(CallableKind kind) {
   return kind == CallableKind::kFunction || kind == CallableKind::kAsyncFunction ||
-         kind == CallableKind::kGenerator;
+         kind == CallableKind::kGenerator || kind == CallableKind::kAsyncGenerator;
 }
 constexpr bool IsAsyncCallable(CallableKind kind) {
-  return kind == CallableKind::kAsyncFunction || kind == CallableKind::kAsyncMethod || kind == CallableKind::kAsyncArrow;
+  return kind == CallableKind::kAsyncFunction || kind == CallableKind::kAsyncMethod || kind == CallableKind::kAsyncArrow ||
+      kind == CallableKind::kAsyncGenerator;
 }
 constexpr bool IsGeneratorCallable(CallableKind kind) {
-  return kind == CallableKind::kGenerator || kind == CallableKind::kGeneratorMethod;
+  return kind == CallableKind::kGenerator || kind == CallableKind::kGeneratorMethod || kind == CallableKind::kAsyncGenerator;
 }
 constexpr bool IsMethodCallable(CallableKind kind) {
   return kind == CallableKind::kMethod || kind == CallableKind::kAsyncMethod || kind == CallableKind::kGeneratorMethod;

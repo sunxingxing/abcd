@@ -6,6 +6,7 @@
 #include "abcd/source/async_completion.h"
 
 namespace abcd::source {
+enum class GeneratorExecution : std::uint8_t { kSynchronous, kAsynchronous };
 struct GeneratorBody {
   abc::MethodBody body;
   std::vector<abc::CodeOffset> source_pcs;
@@ -30,12 +31,17 @@ struct GeneratorBody {
 // only its matched Iterator.Close handler is removed. All private slots must
 // be dead at continuation/user catch, and no user boundary/interior entry may
 // bisect delegation. Injected RETURN cleanup in yield* remains unsupported.
+// Async execution currently admits exact Prepare + ImplicitReturn/CleanUp
+// with ordinary source effects between them. Entry result/mode slots cannot
+// be reused yet; raw await/yield/explicit return remain unsupported. Native
+// async generator owns its request queue and settlement, never an async writer.
 // I instructions,
 // B branches, H handlers, Y yields, R dispatch spans: normalization/rebasing
 // O(I+(Y+B+H) log(I+1)), shared catch analysis O((I+Y+H) log(Y+1)+I log(R+1))
 // after dispatch construction; O(I+Y+R) storage.
 [[nodiscard]] std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGenerator(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
-    abc::ProfileId profile, ResourceFailureScope resources, std::size_t bytes, const GeneratorNames* names = nullptr);
+    abc::ProfileId profile, ResourceFailureScope resources, std::size_t bytes, const GeneratorNames* names = nullptr,
+    GeneratorExecution execution = GeneratorExecution::kSynchronous);
 }  // namespace abcd::source
 #endif

@@ -85,7 +85,7 @@ enum class ChildShape {
   kYieldCatch, kYieldCatchCapture, kYieldCatchYield, kYieldCatchOverwrite, kYieldCatchLoop,
   kYieldSelf, kYieldSelfPrivate, kYieldThis, kYieldReceiver,
   kYieldCopy, kYieldLexical, kYieldClosure, kYieldFrameCopy, kYieldParameterCell, kYieldParameterFrameCell,
-  kYieldFinallyReturn, kYieldDelegate, kYieldDelegateCatch
+  kYieldFinallyReturn, kYieldDelegate, kYieldDelegateCatch, kAsyncGeneratorPrefix
 };
 enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitState,
                          kYieldState, kYieldDone, kYieldReturn, kYieldEntry, kYieldCleanup,
@@ -100,7 +100,9 @@ enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitS
                          kYieldInnerReturnBranch, kYieldInnerThrowBranch, kYieldInnerEntry,
                          kDelegateName, kDelegatePool, kDelegateNext, kDelegateReceiver, kDelegateState,
                          kDelegateMode, kDelegateBranch, kDelegateEntry, kDelegateResultLeak,
-                         kDelegateCatchLeak, kDelegateCloseBoundary, kDelegateUserBoundary, kDelegateCloseMissing, kDelegateTruth };
+                         kDelegateCatchLeak, kDelegateCloseBoundary, kDelegateUserBoundary, kDelegateCloseMissing, kDelegateTruth,
+                         kAsyncGenCallee, kAsyncGenState, kAsyncGenDone, kAsyncGenComplete, kAsyncGenResolve, kAsyncGenReject,
+                         kAsyncGenResult, kAsyncGenMode, kAsyncGenEntry, kAsyncGenReturnEntry };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
                  MissingCell missing = MissingCell::kNone, bool async_arrow = false, std::uint32_t yield_count = 1,
                  CopyEncoding copy_encoding = CopyEncoding::kV8, std::uint32_t copy_count = 1,
@@ -135,6 +137,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const bool yield_frame = yield_self || child_shape == ChildShape::kYieldThis || child_shape == ChildShape::kYieldReceiver;
   const bool yield_delegate = child_shape == ChildShape::kYieldDelegate || child_shape == ChildShape::kYieldDelegateCatch;
   const bool yield_finally = child_shape == ChildShape::kYieldFinallyReturn;
+  const bool async_generator = child_shape == ChildShape::kAsyncGeneratorPrefix;
   const bool suspended_return = yield_finalizer == YieldFinalizer::kInjectedSuspend ||
       yield_finalizer == YieldFinalizer::kInjectedSuspendUncaught;
   const bool injected_return = yield_finally && (yield_finalizer == YieldFinalizer::kInjectedReturn ||
@@ -160,7 +163,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   constexpr unsigned kNestedLoopBytes = kLoopGuardBytes + kLoopBackBytes + kLoopWorkBytes;
   const bool generator = child_shape == ChildShape::kYieldCapture || child_shape == ChildShape::kYieldResult ||
       child_shape == ChildShape::kYieldLoop || child_shape == ChildShape::kYieldCall || yield_catch || yield_frame || yield_lexical || yield_copy || yield_finally || yield_delegate;
-  const std::uint8_t getter_parameters = await_finally || yield_finally ? 2 : await_capture || generator ? 1 : outer_transfer ? 5 : shared_finally ? 3 : 0;
+  const std::uint8_t getter_parameters = await_finally || yield_finally ? 2 : await_capture || generator || async_generator ? 1 : outer_transfer ? 5 : shared_finally ? 3 : 0;
   const bool outer_catch = shape == ParentShape::kOuterCatchContinue || shape == ParentShape::kOuterCatchBreak;
   const std::uint8_t parent_parameters = outer_catch ? 5 : 3;
   std::vector<std::uint8_t> bytes(kCodeStart);
@@ -869,7 +872,51 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     for (const auto value : {entry, handler - entry, 1U, 0U, handler, 2U}) Uleb(table, value);
     return AppendEncodedCode(bytes, locals, getter_parameters, code, table, yield_catch ? 2 : 1);
   };
-  const auto getter = generator ? generator_getter() : await_finally ? finally_getter() :
+  const auto async_generator_getter = [&] {
+    // Pinned AsyncGeneratorFunctionBuilder::{Prepare,ImplicitReturn,CleanUp}.
+    // This first vertical slice has actual callback/cell effects but no source
+    // await/yield. Neither the initial VM handshake nor settlement is source.
+    constexpr std::uint8_t kLocals = 6, kCallback = 4, kCell = 3;
+    const auto completed = static_cast<std::uint8_t>(analysis::GeneratorState::kCompleted);
+    std::vector<std::uint8_t> code{
+      Op(abc::Opcode::kCREATEASYNCGENERATOROBJ_V8), static_cast<std::uint8_t>(missing == MissingCell::kAsyncGenCallee ? kLocals + 1 : kLocals),
+      Op(abc::Opcode::kSTA_V8), 0, Op(abc::Opcode::kLDUNDEFINED),
+      Op(abc::Opcode::kSUSPENDGENERATOR_V8), 0, Op(abc::Opcode::kLDA_V8), 0,
+      Op(abc::Opcode::kRESUMEGENERATOR), Op(abc::Opcode::kSTA_V8), 1,
+      Op(abc::Opcode::kLDA_V8), 0, Op(abc::Opcode::kGETRESUMEMODE), Op(abc::Opcode::kSTA_V8), 2,
+      Op(abc::Opcode::kLDA_V8), kLocals + kImplicitArguments, Op(abc::Opcode::kSTA_V8), kCallback};
+    const bool private_read = missing == MissingCell::kAsyncGenState || missing == MissingCell::kAsyncGenResult || missing == MissingCell::kAsyncGenMode;
+    for (std::uint32_t i = 0; i < yield_count; ++i) code.insert(code.end(), {
+      Op(private_read ? abc::Opcode::kLDA_V8 : abc::Opcode::kLDLEXVAR_IMM4_IMM4),
+      static_cast<std::uint8_t>(missing == MissingCell::kAsyncGenResult ? 1 : missing == MissingCell::kAsyncGenMode ? 2 : 0),
+      Op(abc::Opcode::kSTA_V8), kCell, Op(abc::Opcode::kLDA_V8), kCallback,
+      Op(abc::Opcode::kCALLARG1_IMM8_V8), 0, kCell});
+    code.insert(code.end(), {Op(abc::Opcode::kLDUNDEFINED), Op(abc::Opcode::kSTA_V8), 1,
+      Op(missing == MissingCell::kAsyncGenDone ? abc::Opcode::kLDFALSE : abc::Opcode::kLDTRUE), Op(abc::Opcode::kSTA_V8), 2,
+      Op(abc::Opcode::kLDA_V8), 0, Op(abc::Opcode::kSETGENERATORSTATE_IMM8),
+      static_cast<std::uint8_t>(missing == MissingCell::kAsyncGenComplete ? analysis::GeneratorState::kExecuting : analysis::GeneratorState::kCompleted),
+      Op(abc::Opcode::kASYNCGENERATORRESOLVE_V8_V8_V8), 0,
+      static_cast<std::uint8_t>(missing == MissingCell::kAsyncGenResolve ? 3 : 1), 2, Op(abc::Opcode::kRETURN)});
+    const auto handler = static_cast<std::uint32_t>(code.size());
+    constexpr std::uint32_t kFirstSource = 17, kInitialValueStore = 10; // Encoded Prepare widths above.
+    if (missing == MissingCell::kAsyncGenEntry || missing == MissingCell::kAsyncGenReturnEntry) {
+      code[kFirstSource] = Op(abc::Opcode::kJMP_IMM8);
+      const auto target = missing == MissingCell::kAsyncGenEntry ? kInitialValueStore : handler - 1;
+      const auto delta = std::int64_t(target) - kFirstSource;
+      test::Check(delta >= INT8_MIN && delta <= INT8_MAX);
+      code[kFirstSource + 1] = static_cast<std::uint8_t>(delta);
+    }
+    code.insert(code.end(), {Op(abc::Opcode::kSTA_V8), 1, Op(abc::Opcode::kLDA_V8), 0,
+      Op(abc::Opcode::kSETGENERATORSTATE_IMM8), completed, Op(abc::Opcode::kLDA_V8), 1,
+      Op(abc::Opcode::kASYNCGENERATORREJECT_V8), static_cast<std::uint8_t>(missing == MissingCell::kAsyncGenReject ? 1 : 0),
+      Op(abc::Opcode::kRETURN)});
+    std::vector<std::uint8_t> table;
+    constexpr std::uint32_t kTryBegin = 4; // Label before initial LDUNDEFINED.
+    for (const auto operand : {kTryBegin, handler - kTryBegin, 1U, 0U, handler,
+                              static_cast<std::uint32_t>(code.size()) - handler}) Uleb(table, operand);
+    return AppendEncodedCode(bytes, kLocals, getter_parameters, code, table);
+  };
+  const auto getter = async_generator ? async_generator_getter() : generator ? generator_getter() : await_finally ? finally_getter() :
       await_capture ? async_getter() :
       child_shape == ChildShape::kSharedFinallyNested ? Append(bytes, 3, getter_parameters,
       {Op(abc::Opcode::kLDUNDEFINED), Op(abc::Opcode::kSTA_V8), 0,
@@ -1027,6 +1074,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       static_cast<std::uint32_t>(async_arrow ? abc::FunctionKind::kAsyncArrow : abc::FunctionKind::kAsync) << kFunctionKindShift;
   if (generator) index.methods[2].access_flags =
       static_cast<std::uint32_t>(abc::FunctionKind::kGenerator) << kFunctionKindShift;
+  if (async_generator) index.methods[2].access_flags =
+      static_cast<std::uint32_t>(abc::FunctionKind::kAsyncGenerator) << kFunctionKindShift;
   index.methods[1].name = "capture";
   index.methods[1].name_utf16_length = 7;
   const bool private_self = child_shape == ChildShape::kAwaitSelfPrivate || child_shape == ChildShape::kYieldSelfPrivate;
@@ -1082,6 +1131,12 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       // Corrupt pool metadata must retain its typed metadata failure.
       test::Check(report.at("phase_input_failure") == source::PhasedFileFailure{abc::MetadataError::kBadString}.index());
     } else test::Check(report.at("phase_input_error") == static_cast<unsigned>(source::FunctionEmitError::kKind));
+    return {};
+  }
+  if (async_generator && missing != MissingCell::kNone) {
+    test::Check(!report.value("draft_prepared", false) && !report.contains("draft_source"));
+    test::Check(report.at("failed_method") == kGetter);
+    test::Check(report.at("phase_input_error") == static_cast<unsigned>(source::FunctionEmitError::kKind));
     return {};
   }
   if (missing == MissingCell::kAwaitState) {
@@ -1152,6 +1207,22 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--async-generator-prefix-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+        std::cout << nlohmann::json{{"source", Emit(profile, shape, ChildShape::kAsyncGeneratorPrefix,
+            MissingCell::kNone, false, 2)}, {"catch_parent", shape == ParentShape::kCatch}, {"count", 2}}.dump() << '\n';
+    for (const auto count : {200U, 201U, 402U})
+      std::cout << nlohmann::json{{"source", Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal,
+          ChildShape::kAsyncGeneratorPrefix, MissingCell::kNone, false, count)}, {"catch_parent", false}, {"count", count}}.dump() << '\n';
+    for (const auto missing : {MissingCell::kAsyncGenCallee, MissingCell::kAsyncGenState, MissingCell::kAsyncGenDone,
+        MissingCell::kAsyncGenComplete, MissingCell::kAsyncGenResolve, MissingCell::kAsyncGenReject,
+        MissingCell::kAsyncGenResult, MissingCell::kAsyncGenMode, MissingCell::kAsyncGenEntry, MissingCell::kAsyncGenReturnEntry}) {
+      Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kAsyncGeneratorPrefix, missing);
+      std::cout << nlohmann::json{{"rejected", true}}.dump() << '\n';
+    }
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--yield-delegate-truth-json") {
     for (const auto truth : {test::DelegateTruth::kRuntime, test::DelegateTruth::kRuntimeTrue, test::DelegateTruth::kRuntimeFalse})
       for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
