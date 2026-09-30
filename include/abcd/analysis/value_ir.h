@@ -47,7 +47,7 @@ struct CfgRevision {
 enum class OperandRole : std::uint8_t {
   kInput, kBase, kKey, kStoredValue, kLeft, kRight, kCondition,
   kReturnValue, kGuardValue, kDiagnosticName, kPhiInput,
-  kCallee, kReceiver, kConstructor, kArgument, kHomeObject, kHeritage, kThrownValue
+  kCallee, kReceiver, kConstructor, kArgument, kHomeObject, kHeritage, kThrownValue, kGetter, kSetter, kNameFlag
 };
 enum class ReadPurpose : std::uint8_t { kOperand, kProtocol };
 enum class ValueLife : std::uint8_t { kLive, kRemoved };
@@ -119,6 +119,10 @@ struct ValueIndexedWrite {
   std::optional<std::uint16_t> cache_slot;
   bool operator==(const ValueIndexedWrite&) const = default;
 };
+// DEFINEGETTERSETTERBYVALUE retains five ordered inputs and its accumulator
+// result. Name assignment is a protocol flag, never descriptor enumerability.
+// Native class folding needs separate ownership/descriptor evidence.
+struct ValueDefineAccessor { bool operator==(const ValueDefineAccessor&) const = default; };
 struct ValuePropertyRead { bool operator==(const ValuePropertyRead&) const = default; };
 struct ValueBranch { UnaryOperator predicate; bool operator==(const ValueBranch&) const = default; };
 struct ValueJump { bool operator==(const ValueJump&) const = default; };
@@ -243,7 +247,7 @@ struct ValueConstruct {
 // protocol before evaluation/printing; never substitute undefined or null.
 struct ValueHole { bool operator==(const ValueHole&) const = default; };
 using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHole, ValueAwait, ValueYield,
-    ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValueIndexedWrite, ValuePropertyRead, ValueBranch, ValueJump,
+    ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValueIndexedWrite, ValueDefineAccessor, ValuePropertyRead, ValueBranch, ValueJump,
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation,
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,

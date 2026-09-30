@@ -8,6 +8,60 @@
 int main() {
   using namespace abcd;
   using namespace abcd::analysis;
+  // Accessor definition is an effectful five-input operation, not assignment.
+  // Repeated register occurrences remain independently owned SSA uses.
+  for (const auto profile : {abc::ProfileId::kDynamic1202,
+      abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+    for (const bool shared : {false, true}) {
+      for (const auto count : {1U, 200U, 201U, 402U}) {
+        std::vector<std::uint8_t> bytes;
+        for (std::uint8_t reg = 0; reg < 4; ++reg) {
+          bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kLDUNDEFINED));
+          bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kSTA_V8)); bytes.push_back(reg);
+        }
+        constexpr unsigned kPrefix = 8, kStride = 2;
+        for (unsigned n = 0; n < count; ++n) {
+          bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kLDFALSE));
+          bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kDEFINEGETTERSETTERBYVALUE_V8_V8_V8_V8));
+          for (std::uint8_t reg = 0; reg < 4; ++reg) bytes.push_back(shared ? 0 : reg);
+        }
+        bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kRETURN));
+        const auto body = test::Body(bytes);
+        const auto method = std::get<SemanticMethod>(BuildSemanticMethod(body, profile, 4));
+        const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, method, 4, 0));
+        const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(4, 0, {false, false, false, false}));
+        auto graph = std::get<ValueProgram>(ImportNormalValues(body, method, proof, frame));
+        test::Check(!VerifyImportedValues(graph, method, proof, frame));
+        const OperandRole roles[] = {OperandRole::kBase, OperandRole::kKey, OperandRole::kGetter,
+          OperandRole::kSetter, OperandRole::kNameFlag};
+        for (unsigned n = 0; n < count; ++n) {
+          const auto at = kPrefix + n * kStride + 1;
+          const auto& op = graph.ops[at];
+          test::Check(std::holds_alternative<ValueDefineAccessor>(op.operation));
+          test::Check(op.result && op.use_count == std::size(roles) && !CanErasePureOp(op));
+          test::Check(op.normal == method.instructions[at].effects.normal &&
+              op.before_throw == method.instructions[at].effects.before_throw &&
+              op.exceptional == ExceptionalCompletion::kMayThrow);
+          for (unsigned u = 0; u < std::size(roles); ++u) {
+            auto& use = graph.uses[op.first_use.value + u];
+            test::Check(use.role == roles[u]);
+            test::Check(use.purpose == (roles[u] == OperandRole::kNameFlag ? ReadPurpose::kProtocol : ReadPurpose::kOperand));
+          }
+          auto stripped = op; stripped.normal = stripped.before_throw = LanguageEffect::kNone;
+          stripped.exceptional = ExceptionalCompletion::kImpossible;
+          test::Check(!CanErasePureOp(stripped));
+        }
+        auto& use = graph.uses[graph.ops[kPrefix + 1].first_use.value + 2];
+        use.role = OperandRole::kSetter;
+        test::Check(VerifyImportedValues(graph, method, proof, frame).has_value());
+        use.role = OperandRole::kGetter;
+        test::Check(!VerifyImportedValues(graph, method, proof, frame));
+        test::Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
+        for (unsigned n = 0; n < count; ++n)
+          test::Check(graph.ops[kPrefix + n * kStride + 1].life == ValueLife::kLive);
+      }
+    }
+  }
   // Class creation retains occurrence identity and the VM heritage protocol.
   // Both IC widths and every supported dynamic profile share this lowering.
   for (const auto profile : {abc::ProfileId::kDynamic1202,

@@ -323,6 +323,11 @@ void ClassCreation(unsigned count, bool absent, bool barrier) {
   Check(std::get<HoleProtocolError>(AnalyzeHoleProtocol(fixture.graph)) == HoleProtocolError::kEscape);
 }
 int main() {
+  // Import support must not authorize a made-up ordinary write expression.
+  Check(!DescribeEvaluation(analysis::ValueDefineAccessor{}));
+  analysis::ValueOp accessor{}; accessor.operation = analysis::ValueDefineAccessor{};
+  Check(OrderedEvaluation(accessor));
+
   DecodedClassCreation();
   for (const auto count : {1U, 200U, 201U, 402U})
     for (const bool absent : {false, true})

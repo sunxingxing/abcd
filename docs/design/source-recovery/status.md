@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-10-01：访问器定义接入共同 Value IR，真实页面入口完成值导入
+
+- DEFINEGETTERSETTERBYVALUE 通过 ValueDefineAccessor 导入共同 IR；五个有序输入
+  保留 base/key/getter/setter/name flag 独立 use，最后一个为协议输入，accumulator
+  结果仍来自原定义。normal/before-throw/exceptional 效果完整沿用语义层，
+  没有把命名标志误作 enumerable，也没有把访问器定义转为普通赋值。
+- 简化器明确保留该操作，即使被伪造为空效果也不允许擦除。源码求值/表达式/
+  operand 检查穷尽处理该新 variant；类及 descriptor 组合尚未实现时继续拒绝，
+  不生成 Object.defineProperty 替身或伪造 getter/setter 正文。
+- value_import_test 覆盖三个动态 profile、1/200/201/402 个操作、同一寄存器
+  的重复输入、五类 operand role、acc 结果、效果保持、错误 role 拒绝及简化后
+  操作存活。evaluation_plan_test 明确检查尚不能直接生成源码且操作有序。
+- 实际 Immersive Index entry10009 的 --conditional-values 已 values_prepared=true，
+  111 ops、1 cell、13 child obligations、class heritage unknown。证据
+  /tmp/abcd-accessor-index-values.json。原 PC137 import_stage 阻塞消除；正式
+  record9572 目前返回 kFrame（单块模块初始化限制），证据
+  /tmp/abcd-accessor-index-record.json。完整页面仍未恢复。
+- abc_semantic/value_import_test 构建成功，日志 /tmp/abcd-accessor-import-build5.log；
+  abc_structure 构建成功，/tmp/abcd-accessor-structure-build.log。
+  四项 import/phased-import/simplify/evaluation 定向回归通过（2.37 秒），
+  两项真实模型链回归通过（1.98 秒），日志 /tmp/abcd-accessor-regression-tests.log
+  和 /tmp/abcd-accessor-model-regression.log。未恢复全量测试/RSS/其他 corpus。
+- 下一步需沿现有控制组合处理 record 入口分支与模块声明生命周期，且将实际
+  后置 accessor 定义按 class/home-object/descriptor 证据合入共同 ClassTree。
+  不能简单删除 single-block 检查或绕过 derived constructor 限制。最近五输入
+  完整计数基线仍为 34/72/46，本轮没有重新统计五输入完整数，阶段一未完成。
+
 ### 2026-10-01：补充本地类 TDZ、显式字段及 getter receiver 验证
 
 - local_model_batch_source_test 在 SourceTextModule 完成 link、尚未 evaluate 时，

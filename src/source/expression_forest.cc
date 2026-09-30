@@ -679,6 +679,7 @@ class ForestBuilder {
                       std::is_same_v<T, analysis::ValueModuleRead> ||
                       std::is_same_v<T, analysis::ValueModuleWrite> ||
                       std::is_same_v<T, analysis::ValueIndexedWrite> ||
+                      std::is_same_v<T, analysis::ValueDefineAccessor> ||
                       std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                       std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                       std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
