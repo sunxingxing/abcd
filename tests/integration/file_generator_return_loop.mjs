@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
 execFileSync(process.argv[2], ['--yield-return-loop-negative'], {timeout: 60_000});
-const overrides = execFileSync(process.argv[2], ['--yield-return-loop-override-json'],
-  {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000}).trim().split('\n').map(line => JSON.parse(line));
-assert.equal(overrides.length, 48);
+const overrides = ['--yield-return-loop-override-json', '--yield-return-nested-loop-override-json'].flatMap(mode => {
+  const result = execFileSync(process.argv[2], [mode],
+    {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000}).trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(result.length, 48);
+  return result;
+});
 for (const fixture of overrides) {
   assert.ok(!fixture.source.includes('INCOMPLETE'));
   const {capture} = await import(`data:text/javascript;base64,${Buffer.from(`export const capture = ${fixture.source};`).toString('base64')}`);
@@ -13,8 +16,8 @@ for (const fixture of overrides) {
     (child, setter) => { get = child; set = setter; });
   for (const stop of [1, 2]) for (const finishAt of [0, 1, 2, fixture.count + 1])
     for (const exiting of [false, true]) for (const failure of [0, 1, 2]) {
-      let calls = 0; const payload = {}, replacement = {}, firstError = {}, secondError = {};
-      const iterator = get(() => payload, function () {
+      let calls = 0, work = 0; const payload = {}, replacement = {}, firstError = {}, secondError = {};
+      const iterator = get(() => { ++work; return payload; }, function () {
         assert.equal(this, undefined);
         ++calls;
         if (calls <= failure) throw calls === 1 ? firstError : secondError;
@@ -29,8 +32,47 @@ for (const fixture of overrides) {
       else assert.deepEqual(iterator.return(payload), {value: !finishAt || exiting ? payload : replacement, done: true});
       assert.equal(calls, !finishAt ? 0 : failure ? 1 + Number(fixture.caught) : exiting ?
         Math.ceil(finishAt / fixture.count) * fixture.count : finishAt + Number(fixture.throwing && fixture.caught));
+      assert.equal(work, 1 + Number(fixture.nested && exiting && finishAt > 0 && failure === 0));
       assert.deepEqual(iterator.next(), {value: undefined, done: true});
     }
+  if (fixture.nested) {
+    for (const stop of [1, 2]) for (const rounds of [1, 2, 7]) {
+      let work = 0, calls = 0; const payload = {};
+      const iterator = get(function() {
+        assert.equal(this, undefined);
+        if (++work > 1 && work <= rounds) set(true);
+        return payload;
+      }, function() {
+        assert.equal(this, undefined);
+        assert.ok(calls < rounds * fixture.count, 'wrong nested break/continue target must not spin');
+        if (++calls % fixture.count === 0) set(false);
+        return 0;
+      });
+      set(false);
+      for (let i = 0; i < stop; ++i) assert.deepEqual(iterator.next(payload), {value: payload, done: false});
+      set(true);
+      assert.deepEqual(iterator.return(payload), {value: payload, done: true});
+      assert.equal(calls, rounds * fixture.count);
+      assert.equal(work, rounds + 1);
+    }
+    for (const stop of [1, 2]) for (const cleanupFailure of [false, true]) {
+      let work = 0, calls = 0; const payload = {}, workError = {}, cleanupError = {};
+      const iterator = get(() => {
+        if (++work === 2) throw workError;
+        return payload;
+      }, () => {
+        if (++calls === fixture.count) set(false);
+        if (cleanupFailure && calls === fixture.count + 1) throw cleanupError;
+        return 0;
+      });
+      set(false);
+      for (let i = 0; i < stop; ++i) assert.deepEqual(iterator.next(payload), {value: payload, done: false});
+      set(true);
+      assert.throws(() => iterator.return(payload), error => error === (fixture.caught && cleanupFailure ? cleanupError : workError));
+      assert.equal(work, 2);
+      assert.equal(calls, fixture.count + Number(fixture.caught));
+    }
+  }
 }
 const fixtures = execFileSync(process.argv[2], ['--yield-return-loop-json'],
   {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000}).trim().split('\n').map(line => JSON.parse(line));

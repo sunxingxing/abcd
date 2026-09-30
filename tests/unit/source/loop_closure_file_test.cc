@@ -75,7 +75,7 @@ struct ResumeEncoding {
 };
 enum class YieldFinalizer { kPreserve, kReturn, kThrow, kDifferentCallee, kDifferentInput, kBodyYield, kSharedBodyYield, kInjectedReturn, kInjectedDifferentCallee, kInjectedCellRead, kInjectedUncaught, kInjectedConditional, kInjectedConditionalUncaught };
 enum class YieldOverride { kNone, kReturn, kThrow };
-enum class CleanupControl { kSequence, kLoop, kSelect, kConditionCall, kLoopConditionCall, kLoopOverride };
+enum class CleanupControl { kSequence, kLoop, kSelect, kConditionCall, kLoopConditionCall, kLoopOverride, kNestedLoopOverride };
 enum class ChildShape {
   kPlain, kException, kNested, kForwarded, kForwardedNormal, kForwardedLocal,
   kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally, kSharedFinallyNested,
@@ -135,7 +135,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   const bool conditional_return = yield_finalizer == YieldFinalizer::kInjectedConditional ||
       yield_finalizer == YieldFinalizer::kInjectedConditionalUncaught;
   const unsigned override_bytes = yield_override == YieldOverride::kReturn ? 1U : yield_override == YieldOverride::kThrow ? 2U : 0U;
-  const bool loop_override = cleanup_control == CleanupControl::kLoopOverride;
+  const bool nested_loop = cleanup_control == CleanupControl::kNestedLoopOverride;
+  const bool loop_override = cleanup_control == CleanupControl::kLoopOverride || nested_loop;
   const bool loop_cleanup = cleanup_control == CleanupControl::kLoop || cleanup_control == CleanupControl::kLoopConditionCall || loop_override;
   const bool condition_call = cleanup_control == CleanupControl::kConditionCall || cleanup_control == CleanupControl::kLoopConditionCall;
   const bool select_cleanup = cleanup_control == CleanupControl::kSelect;
@@ -143,6 +144,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   test::Check(!select_cleanup || (!conditional_return && yield_override != YieldOverride::kNone));
   // OH7 LDLEXVAR imm4/imm4; JEQZ imm32; JMP imm32.
   constexpr unsigned kLoopGuardBytes = 7, kLoopBackBytes = 5;
+  constexpr unsigned kLoopWorkBytes = 4; // LDA v8; CALLARG0 imm8 after inner exit.
+  constexpr unsigned kNestedLoopBytes = kLoopGuardBytes + kLoopBackBytes + kLoopWorkBytes;
   const bool generator = child_shape == ChildShape::kYieldCapture || child_shape == ChildShape::kYieldResult ||
       child_shape == ChildShape::kYieldLoop || child_shape == ChildShape::kYieldCall || yield_catch || yield_frame || yield_lexical || yield_copy || yield_finally;
   const std::uint8_t getter_parameters = await_finally || yield_finally ? 2 : await_capture || generator ? 1 : outer_transfer ? 5 : shared_finally ? 3 : 0;
@@ -472,6 +475,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
              conditional_return ? kConditionalBytes : 0U) +
             (select_cleanup ? kConditionalBytes + kCallCleanupBytes + 2U : override_bytes + (loop_override ? 2U : 0U))) * return_cleanup_count +
             (loop_cleanup ? kLoopGuardBytes + kLoopBackBytes : 0U) +
+            (nested_loop ? kNestedLoopBytes : 0U) +
             (select_cleanup ? override_bytes : 0U) +
             (missing == MissingCell::kYieldReturnReadAccumulator ? kLoadBytes : 0U) : 0U;
         const auto delta = kOpcodeBytes + width + cleanup + kLoadBytes + (wrong_target ? 0 : returning ? kReturnBytes : kThrowBytes);
@@ -496,7 +500,17 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
           constexpr unsigned kBranchBytes = kLoopGuardBytes - kLoadCellBytes;
           const auto delta = condition_call ? kBranchBytes + 2 :
               kBranchBytes + (kCallBytes + (loop_override ? 2U + override_bytes : 0U)) * return_cleanup_count + kLoopBackBytes +
+              (nested_loop ? kNestedLoopBytes : 0U) +
               (missing == MissingCell::kYieldCleanupEscape ? 2U : 0U);
+          for (unsigned i = 0; i < sizeof(delta); ++i) code.push_back(static_cast<std::uint8_t>(delta >> (i * kByteBits)));
+        }
+        const auto inner_begin = static_cast<std::uint32_t>(code.size());
+        if (nested_loop) {
+          // The inner loop's normal exit runs work once before outer continue.
+          // Its return/throw leaves both loops without duplicating that effect.
+          code.insert(code.end(), {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kJEQZ_IMM32)});
+          constexpr unsigned kBranchBytes = 5, kCallBytes = 4;
+          const auto delta = kBranchBytes + (kCallBytes + 2U + override_bytes) * return_cleanup_count + kLoopBackBytes;
           for (unsigned i = 0; i < sizeof(delta); ++i) code.push_back(static_cast<std::uint8_t>(delta >> (i * kByteBits)));
         }
         if (missing == MissingCell::kYieldReturnReadAccumulator) code.insert(code.end(), {Op(abc::Opcode::kSTA_V8), value});
@@ -529,6 +543,12 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
             else if (yield_override == YieldOverride::kThrow)
               code.insert(code.end(), {static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
           }
+        }
+        if (nested_loop) {
+          const auto delta = static_cast<std::uint32_t>(std::int64_t(inner_begin) - std::int64_t(code.size()));
+          code.push_back(Op(abc::Opcode::kJMP_IMM32));
+          for (unsigned i = 0; i < sizeof(delta); ++i) code.push_back(static_cast<std::uint8_t>(delta >> (i * kByteBits)));
+          code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), parameter, Op(abc::Opcode::kCALLARG0_IMM8), 0});
         }
         if (loop_cleanup) {
           const auto delta = static_cast<std::uint32_t>(std::int64_t(loop_begin) - std::int64_t(code.size()));
@@ -977,20 +997,23 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
-  if (argc == 2 && std::string_view(argv[1]) == "--yield-return-loop-override-json") {
+  if (argc == 2 && (std::string_view(argv[1]) == "--yield-return-loop-override-json" ||
+                   std::string_view(argv[1]) == "--yield-return-nested-loop-override-json")) {
+    const bool nested = std::string_view(argv[1]) == "--yield-return-nested-loop-override-json";
+    const auto cleanup = nested ? CleanupControl::kNestedLoopOverride : CleanupControl::kLoopOverride;
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
         for (const bool caught : {false, true}) for (const auto overriding : {YieldOverride::kReturn, YieldOverride::kThrow})
           std::cout << nlohmann::json{{"source", Emit(profile, shape, ChildShape::kYieldFinallyReturn, MissingCell::kNone, false, 2,
               CopyEncoding::kV8, 1, caught ? YieldFinalizer::kInjectedReturn : YieldFinalizer::kInjectedUncaught,
-              {}, 1, overriding, CleanupControl::kLoopOverride)}, {"catch_parent", shape == ParentShape::kCatch},
-              {"caught", caught}, {"throwing", overriding == YieldOverride::kThrow}, {"count", 1}}.dump() << '\n';
+              {}, 1, overriding, cleanup)}, {"catch_parent", shape == ParentShape::kCatch},
+              {"caught", caught}, {"throwing", overriding == YieldOverride::kThrow}, {"count", 1}, {"nested", nested}}.dump() << '\n';
     for (const auto count : {200U, 201U, 402U}) for (const auto encoding : {BranchEncoding::k16, BranchEncoding::k32})
       for (const auto overriding : {YieldOverride::kReturn, YieldOverride::kThrow})
         std::cout << nlohmann::json{{"source", Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kYieldFinallyReturn,
             MissingCell::kNone, false, 2, CopyEncoding::kV8, 1, YieldFinalizer::kInjectedReturn, {encoding, encoding}, count,
-            overriding, CleanupControl::kLoopOverride)}, {"catch_parent", false}, {"caught", true},
-            {"throwing", overriding == YieldOverride::kThrow}, {"count", count}}.dump() << '\n';
+            overriding, cleanup)}, {"catch_parent", false}, {"caught", true},
+            {"throwing", overriding == YieldOverride::kThrow}, {"count", count}, {"nested", nested}}.dump() << '\n';
     return 0;
   }
   if (argc == 2 && std::string_view(argv[1]) == "--yield-return-select-many-json") {

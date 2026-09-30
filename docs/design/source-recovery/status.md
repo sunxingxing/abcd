@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-09-30：RETURN 清理嵌套循环纵向验收
+
+- 在上一项共同控制/值流实现上增加嵌套循环组合，首轮完整生成 JS 即
+  通过；本项仅扩展真实 opcode 文件解码/合成元数据 fixture 和行为测试，
+  没有新增生产算法、专项 writer 或输出许可。内层正常退出后执行外层
+  callback 再回到外层 header；内层 return/throw 则终结整个清理路径。
+- 新增 48 个完整函数族：三 profile × 三父环境 × 有无用户 catch ×
+  return/throw 的 36 个双暂停点组合，以及 200/201/402 条内层 guard ×
+  16/32 位恢复分支 × return/throw 的 12 个组合。循环集成目标现消费
+  120 个完整函数族和原 18 个协议反例。验证 pending payload、覆盖结果、
+  receiver、内外层 callback 次数，以及原 handler 的二次清理/错误身份。
+- 外层 callback 可重新开启捕获 cell，再进入内层，实际执行 1/2/7 轮；
+  同时验证外层 callback 抛错后用户 catch 是否执行、二次清理是否覆盖
+  错误。检查真实生成源码完整且不含 INCOMPLETE，不用部分输出冒充成功。
+- `loop_closure_file_test` 构建成功；七项相关定向测试通过（57.50 秒）：
+  `/tmp/abcd-generator-return-nested-loop-verified-tests.log`。补充外层
+  callback 异常断言后重新构建并重跑整个循环集成目标，通过（17.36 秒）：
+  `/tmp/abcd-generator-return-nested-loop-final-build.log`、
+  `/tmp/abcd-generator-return-nested-loop-final-tests.log`；
+  `git diff --check` 通过。这些是解码 fixture 的标准 JS 行为证据，
+  不是实际应用、任意循环布局或全语料支持证明。
+- C07/总目标仍开放：RETURN 清理再次暂停、其他循环/多出口布局、嵌套
+  finally completion、入口默认值/解构、self/super、yield*、async
+  generator 和结构 gate。全量测试/语料/RSS/基准仍暂停，两个历史
+  base_function 失败未重跑/修复；没有全套通过或 1GB 验收结论。
+
 ### 2026-09-30：RETURN 清理跨块值与循环内 completion 覆盖
 
 - RETURN 清理不再要求每个 basic block 单独初始化 accumulator。仅在跨块
