@@ -121,6 +121,7 @@ class FlowCheck {
               evaluation_.operations[id.value].kind == EvaluationKind::kInline ||
               evaluation_.operations[id.value].kind == EvaluationKind::kNestedLiteral ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInitializer ||
+              evaluation_.operations[id.value].kind == EvaluationKind::kClassInitializer ||
               evaluation_.operations[id.value].kind == EvaluationKind::kModuleGuard) continue;
           const auto& placement = tree_.operations[*placements_[id.value]].node;
           if (IsAbsentHeritageTransport(graph_, evaluation_, op) ||
@@ -517,7 +518,7 @@ class FlowCheck {
           std::holds_alternative<analysis::ValueThrow>(op.operation) ||
           std::holds_alternative<analysis::ValueReturn>(op.operation)) {
         Require(std::holds_alternative<StmtId>(placement), Error::kPlacement);
-      } else if (IsAbsentHeritageTransport(graph_, evaluation_, op) ||
+      } else if (evaluation_.operations[i].kind == EvaluationKind::kClassInitializer || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
               std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
           evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
           evaluation_.operations[i].kind == EvaluationKind::kAlias) {

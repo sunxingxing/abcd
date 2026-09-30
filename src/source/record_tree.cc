@@ -81,19 +81,41 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     auto* constants = std::get_if<TreeConstants>(&resolved);
     if (!constants) return fail(Error::kValue);
     retain(constants->allocated_bytes);
+    auto projected = ProjectClassInitializers(graph, function->values.initializers.calls, {budget.bytes});
+    const auto* projection = std::get_if<ClassInitializerProjection>(&projected);
+    if (!projection) {
+      const auto error = std::get<ClassInitializerError>(projected);
+      if (error == ClassInitializerError::kResourceLimit) return fail(Error::kResourceLimit);
+      if (error == ClassInitializerError::kWorkLimit)
+        return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
+      return fail(Error::kInitializer);
+    }
+    retain(projection->allocated_bytes);
+    for (const auto read : projection->prototypes) {
+      const auto* name = std::get_if<NameId>(&constants->operations[read.value]);
+      if (!name || name->value >= constants->names.size() || constants->names[name->value] != u"prototype")
+        return fail(Error::kInitializer);
+    }
+    retain(graph.ops.size() * sizeof(const ClassInitializerCall*));
+    std::vector<const ClassInitializerCall*> initialization(graph.ops.size());
+    retain((initialization.capacity() - initialization.size()) * sizeof(const ClassInitializerCall*));
+    for (const auto& call : function->values.initializers.calls) initialization[call.creation.value] = &call;
     // File-level occurrence indexes are borrowed across records. Never rescan
     // the whole ABC for every class or use a detached class as a body fallback.
     for (const auto& occurrence : function->values.classes.classes) {
       if (!functions || !classes) return fail(Error::kClass);
       auto built = BuildClassTree(file, header, index, lookup, roles, *functions, *classes,
-          *function, occurrence.operation, identity, nullptr, {budget.bytes});
+          *function, occurrence.operation, identity, nullptr, {budget.bytes}, initialization[occurrence.operation.value]);
       if (const auto* failure = std::get_if<ClassTreeFailure>(&built)) {
         const auto classify = [&](auto&& self, const auto& error) -> RecordSourceResult {
           using T = std::decay_t<decltype(error)>;
           if constexpr (std::is_same_v<T, FamilyPrepareFailure>)
             return RouteRefusal{FamilyRouteFailure(error)};
-          else if constexpr (std::is_same_v<T, ClassContextFailure>)
+          else if constexpr (std::is_same_v<T, ClassContextFailure> || std::is_same_v<T, CreationContextFailure>)
             return std::visit([&](const auto& nested) { return self(self, nested); }, error.error);
+          else if constexpr (std::is_same_v<T, ClassInitializerReadFailure> || std::is_same_v<T, SyntaxResolutionFailure> || std::is_same_v<T, FunctionFileFailure>)
+            return std::visit([&](const auto& nested) { return self(self, nested); }, error);
+          else if constexpr (std::is_same_v<T, FunctionValueFailure>) return RouteRefusal{error.cause};
           else if constexpr (requires { error.kind; }) return self(self, error.kind);
           else {
             if constexpr (requires { T::kResourceLimit; })
@@ -241,7 +263,7 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     }
     if (std::find(initialized.begin(), initialized.end(), false) != initialized.end())
       return fail(Error::kInitializer);
-    auto evaluated = BuildEvaluationPlan(graph, {budget.bytes}, IncomingCells::kReject, {}, bindings->evaluations);
+    auto evaluated = BuildEvaluationPlan(graph, {budget.bytes}, IncomingCells::kReject, {}, bindings->evaluations, {}, function->values.initializers.calls);
     auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
     if (!evaluation) return fail(Error::kValue);
     retain(evaluation->allocated_bytes);

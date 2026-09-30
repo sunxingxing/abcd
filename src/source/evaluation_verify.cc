@@ -81,6 +81,15 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     std::vector<std::size_t> environment_epochs(graph.ops.size());
     admit(environment_epochs.capacity() - graph.ops.size(), sizeof(std::size_t));
     std::size_t environment_epoch = 0;
+    auto projected = ProjectClassInitializers(graph, plan.class_initializers, {bytes, work});
+    if (const auto* error = std::get_if<ClassInitializerError>(&projected))
+      return *error == ClassInitializerError::kResourceLimit ? Error::kResourceLimit :
+          *error == ClassInitializerError::kWorkLimit ? Error::kWorkLimit : Error::kOwnership;
+    const auto& projection = std::get<ClassInitializerProjection>(projected);
+    admit(projection.allocated_bytes, 1); step(projection.work);
+    Require(projection.owners == plan.class_projection.owners && projection.prototypes == plan.class_projection.prototypes,
+        Error::kOwnership);
+    const auto projected_op = [&](std::size_t i) { return !projection.owners.empty() && projection.owners[i].has_value(); };
     bool has_definitions = false;
     bool has_cells = plan.cells && !plan.cells->cells.demands.empty();
     bool has_arguments = false;
@@ -94,7 +103,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       step(); has_definitions |= op.life == analysis::ValueLife::kLive &&
           (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
-      if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
+      if (op.life == analysis::ValueLife::kLive && !projected_op(i) && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
         Require(next_function < plan.functions.size() && plan.functions[next_function++].creation.value == i, Error::kOwnership);
       }
       if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueModuleRead>(op.operation))
@@ -152,7 +161,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       step();
       if (graph.ops[i].life == analysis::ValueLife::kLive)
         visible[i] = ProjectEvaluationUses(graph, {static_cast<std::uint32_t>(i)}, module_index,
-            literal_allocations[i] != 0);
+            literal_allocations[i] != 0, plan.class_projection.owners);
     }
     bool has_phi = false;
     for (const auto& value : graph.values) {
@@ -211,6 +220,11 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
                 Error::kOwnership);
         continue;
       }
+      if (projected_op(i)) {
+        Require(placement.kind == EvaluationKind::kClassInitializer && !placement.consumer && !placement.temporary, Error::kOwnership);
+        visits[i] = EvaluationVisit::kDone; continue;
+      }
+      Require(placement.kind != EvaluationKind::kClassInitializer, Error::kOwnership);
       if (placement.kind == EvaluationKind::kElidedPure) {
         Require(flow == EvaluationFlow::kPhased && analysis::CanErasePureOp(op) &&
             !placement.consumer && !placement.temporary, Error::kOwnership);
@@ -315,6 +329,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
           step(); ++expected; fused_guard.reset();
         }
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
+                                  plan.operations[expected].kind == EvaluationKind::kClassInitializer ||
                                   plan.operations[expected].kind == EvaluationKind::kElidedPure ||
                                   plan.operations[expected].kind == EvaluationKind::kAlias ||
                                   plan.operations[expected].kind == EvaluationKind::kInitializer ||

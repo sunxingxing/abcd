@@ -191,7 +191,8 @@ class ForestBuilder {
           continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kInitializer ||
             evaluation_.operations[i].kind == EvaluationKind::kNestedLiteral) continue;
-        if (evaluation_.operations[i].kind == EvaluationKind::kEnvironment) continue;
+        if (evaluation_.operations[i].kind == EvaluationKind::kEnvironment ||
+            evaluation_.operations[i].kind == EvaluationKind::kClassInitializer) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kModuleGuard) continue;
         if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) {
           Require(next_module_ < evaluation_.modules.size(), Error::kBinding);

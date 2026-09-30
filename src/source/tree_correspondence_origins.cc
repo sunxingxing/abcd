@@ -91,7 +91,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step();
     const auto& op = graph.ops[i];
-    if (IsAbsentHeritageTransport(graph, evaluation, op) || op.life != analysis::ValueLife::kLive ||
+    if (evaluation.operations[i].kind == EvaluationKind::kClassInitializer || IsAbsentHeritageTransport(graph, evaluation, op) || op.life != analysis::ValueLife::kLive ||
         evaluation.operations[i].kind == EvaluationKind::kElidedPure ||
         evaluation.operations[i].kind == EvaluationKind::kAlias) continue;
     RequireMeaning(op.origin.value < graph.origins.size(), Error::kOrigin);

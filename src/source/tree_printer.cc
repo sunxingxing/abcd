@@ -126,7 +126,7 @@ class TreePrinter {
     Result().work = initial_.work - remaining_.work;
     return std::move(result_);
   }
-  PrintedFunction Direct(bool module = false, bool fields = false) {
+  PrintedFunction Direct(bool module = false, bool fields = false, std::size_t indent = 0) {
     module_body_ = module || fields;
     static_fields_ = fields;
     const auto checked = VerifyTreeStructure(Tree(), remaining_);
@@ -199,7 +199,7 @@ class TreePrinter {
     Array(Result().parameters, Tree().parameters.size()); Array(Result().expressions, Tree().expressions.size());
     Array(Result().properties, Tree().properties.size()); Array(Result().statements, Tree().statements.size());
     Array(Result().anchors, Tree().anchors.size()); PrepareAnchors();
-    if (module || fields) Push(Statement{Tree().body, 0}); else Push(BeginFunction{});
+    if (module || fields) Push(Statement{Tree().body, indent}); else Push(BeginFunction{});
     Drain(); Append("\n");
     Result().bytes = written_;
     Result().allocated_bytes = initial_.bytes - remaining_.bytes;
@@ -602,19 +602,23 @@ class TreePrinter {
     }
     auto positions = std::get<PrintedClassTree>(std::move(emitted));
     Admit(positions.allocated_bytes, 1); Step(positions.work);
-    for (auto& member : positions.members) {
-      for (auto& function : member.positions.members) {
-        auto& retained = Result().class_members;
-        if (retained.size() == retained.capacity()) {
-          const auto capacity = retained.capacity();
-          if (capacity > std::numeric_limits<std::size_t>::max() / 2) throw Error::kResourceLimit;
-          const auto next = capacity ? capacity * 2 : 1;
-          Admit(next, sizeof(PrintedFunction)); retained.reserve(next);
-          Admit(retained.capacity() - next, sizeof(PrintedFunction));
-        }
-        function.enclosing_offset = written_ + member.offset;
-        retained.push_back(std::move(function));
+    const auto retain = [&](PrintedFunction function, std::size_t offset) {
+      auto& retained = Result().class_members;
+      if (retained.size() == retained.capacity()) {
+        const auto capacity = retained.capacity();
+        if (capacity > std::numeric_limits<std::size_t>::max() / 2) throw Error::kResourceLimit;
+        const auto next = capacity ? capacity * 2 : 1;
+        Admit(next, sizeof(PrintedFunction)); retained.reserve(next);
+        Admit(retained.capacity() - next, sizeof(PrintedFunction));
       }
+      function.enclosing_offset = written_ + offset;
+      retained.push_back(std::move(function));
+    };
+    for (auto& member : positions.members)
+      for (auto& function : member.positions.members) retain(std::move(function), member.offset);
+    if (positions.initializer) {
+      const auto offset = positions.initializer->enclosing_offset;
+      retain(std::move(*positions.initializer), offset);
     }
     written_ += positions.bytes;
   }
@@ -918,8 +922,8 @@ class TreePrinter {
 }  // namespace
 
 std::variant<PrintedFunction, TreePrintError> PrintStaticFields(
-    const FunctionTree& tree, std::ostream& output, EmitBudget limit, analysis::SemanticBudget budget) {
-  try { return TreePrinter(tree, output, limit, budget, nullptr).Direct(false, true);
+    const FunctionTree& tree, std::ostream& output, EmitBudget limit, analysis::SemanticBudget budget, std::size_t indent) {
+  try { return TreePrinter(tree, output, limit, budget, nullptr).Direct(false, true, indent);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit;
@@ -1057,6 +1061,32 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassT
       if (!site || family.Identity() != tree.identity || site->creator != tree.creation.creator ||
           site->pc != tree.creation.pc || site->property != i) throw Failure::kUnsupportedContext;
       member(family);
+    }
+    if (tree.initializer) {
+      const auto& initializer = *tree.initializer;
+      const auto* site = initializer.context.CreationSite();
+      if (!site || initializer.tree.identity != tree.identity || initializer.tree.method != site->target ||
+          site->creator != tree.creation.creator || initializer.context.Callable() != CallableKind::kMethod)
+        throw Failure::kUnsupportedContext;
+      const auto globals_check = VerifyTreeGlobals(initializer.tree, globals, budget);
+      const auto* checked = std::get_if<TreeGlobals>(&globals_check);
+      if (!checked) {
+        const auto error = std::get<TreeGlobalError>(globals_check);
+        if (error == TreeGlobalError::kResourceLimit) throw Failure::kResourceLimit;
+        if (error == TreeGlobalError::kWorkLimit) throw Failure::kWorkLimit;
+        throw Failure::kUnsupportedContext;
+      }
+      if (checked->allocated_bytes > budget.bytes) throw Failure::kResourceLimit;
+      if (checked->work > budget.work) throw Failure::kWorkLimit;
+      budget.bytes -= checked->allocated_bytes; budget.work -= checked->work;
+      auto printed = PrintStaticFields(initializer.tree, output, {limit.bytes - result.bytes}, budget, indent + 1);
+      if (const auto* error = std::get_if<TreePrintError>(&printed)) throw *error;
+      auto positions = std::get<PrintedFunction>(std::move(printed));
+      if (positions.allocated_bytes > budget.bytes) throw Failure::kResourceLimit;
+      if (positions.work > budget.work) throw Failure::kWorkLimit;
+      budget.bytes -= positions.allocated_bytes; budget.work -= positions.work;
+      positions.enclosing_offset = result.bytes; result.bytes += positions.bytes;
+      result.initializer = std::move(positions);
     }
     for (std::size_t i = 0; i < indent; ++i) append("  ");
     append("}})["); name(); append("]");

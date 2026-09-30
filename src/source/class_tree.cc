@@ -20,7 +20,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
     const analysis::FunctionCreationSites& functions, const analysis::ClassMethodSites& classes,
     const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
-    const GlobalScope* globals, analysis::SemanticBudget budget) {
+    const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer) {
   const auto initial = budget;
   try {
     const auto admit = [&](std::size_t count, std::size_t width) {
@@ -72,8 +72,27 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       admit(member.AllocatedBytes(), 1); step(member.Work());
       members.push_back(std::move(member));
     }
+    std::optional<ClassStaticFields> fields;
+    if (initializer) {
+      if (initializer->creation != operation) return ClassTreeFailure{Error::kCreation};
+      auto body = Take<ClassInitializerFunction>(ReadClassInitializerFunction(file, header, index, lookup,
+          roles, functions, creator, *initializer, budget));
+      admit(body.function.allocated_bytes, 1); admit(body.context.AllocatedBytes(), 1); step(body.context.Work());
+      auto syntax = Take<ResolvedSyntax>(ResolveFunctionSyntax(file, header, index, body.context,
+          body.function.body, body.function.values.graph, {1}, budget));
+      admit(syntax.allocated_bytes, 1); step(syntax.work);
+      const auto constants = syntax.View();
+      auto control = Take<ControlPlan>(BuildControlPlan(body.function.values.graph, budget));
+      admit(control.allocated_bytes, 1); step(control.work);
+      auto evaluation = Take<EvaluationPlan>(BuildEvaluationPlan(body.function.values.graph, budget));
+      admit(evaluation.allocated_bytes, 1); step(evaluation.work);
+      auto built = Take<ConstructedFunction>(BuildFunctionTree(body.function.values.graph, control,
+          evaluation, std::move(syntax.syntax), constants, budget));
+      admit(built.allocated_bytes, 1); step(built.work);
+      fields = ClassStaticFields{*initializer, std::move(body.context), std::move(built.tree)};
+    }
     if (file.CheckUnchanged()) return ClassTreeFailure{abc::MetadataError::kFileChanged};
-    return ClassTree{identity, site, std::move(spelling), std::move(constructor), std::move(members),
+    return ClassTree{identity, site, std::move(spelling), std::move(constructor), std::move(members), std::move(fields),
         initial.bytes - budget.bytes, initial.work - budget.work};
   } catch (const ClassTreeFailure& failure) { return failure; }
     catch (const std::bad_alloc&) { return ClassTreeFailure{Error::kResourceLimit}; }

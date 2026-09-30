@@ -250,7 +250,7 @@ target_sources(abcd_source PRIVATE src/source/cell_initialization.cc)
 target_sources(abcd_source PRIVATE src/source/cell_evaluation.cc)
 target_sources(abcd_source PRIVATE src/source/tree_constants.cc)
 target_sources(abcd_source PRIVATE src/source/syntax_resolution.cc)
-target_sources(abcd_source PRIVATE src/source/class_initializers.cc src/source/class_initializer_file.cc src/source/class_tree_context.cc src/source/constructor_tree_context.cc src/source/class_tree.cc)
+target_sources(abcd_source PRIVATE src/source/class_initializers.cc src/source/class_initializer_projection.cc src/source/class_initializer_file.cc src/source/class_tree_context.cc src/source/constructor_tree_context.cc src/source/class_tree.cc)
 target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc)
 target_sources(abcd_source PRIVATE src/source/function_input.cc)
 target_sources(abcd_source PRIVATE src/source/function_values.cc)
@@ -939,6 +939,16 @@ if(BUILD_TESTING)
     add_test(NAME literal_buffer_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_buffer.mjs $<TARGET_FILE:literal_plan_test>)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+      if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
+         EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+        add_test(NAME static_class_batch_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/static_class_batch.mjs $<TARGET_FILE:abc_structure>
+          ${ABCD_PAIRED_CORPUS_ROOT})
+      endif()
+      add_test(NAME value_static_class_record_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_static_class_record.mjs $<TARGET_FILE:abc_semantic>
+        ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc
+        ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/commons/src/main/ets/constants/CommonConstants.ts)
       add_test(NAME static_fields_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/static_fields.mjs $<TARGET_FILE:class_initializer_file_test>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc

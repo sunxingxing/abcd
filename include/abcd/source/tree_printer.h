@@ -64,7 +64,7 @@ struct PrintedFunction {
 // caller separately establishes the actual class receiver and placement.
 [[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintStaticFields(
     const FunctionTree& tree, std::ostream& output,
-    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {});
+    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {}, std::size_t indent = 0);
 
 // Direct syntax output, including marked partial trees. No CFG/SSA or publication
 // owner is required. Structural safety is checked before writing; callers retain

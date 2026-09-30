@@ -9,10 +9,11 @@
 #include "cell_evaluation.h"
 #include "module_guards.h"
 #include "hole_protocol.h"
+#include "class_initializers.h"
 
 namespace abcd::source {
 enum class EvaluationKind : std::uint8_t {
-  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral
+  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassInitializer
 };
 enum class EvaluationFlow : std::uint8_t { kNormal, kPhased };
 struct OpEvaluation {
@@ -58,6 +59,8 @@ struct EvaluationPlan {
   // whose IR is already simplified. Never aliases a phi or catch binding.
   std::vector<analysis::ValueId> aliases;
   std::optional<HoleProtocol> holes;
+  std::vector<ClassInitializerCall> class_initializers;
+  ClassInitializerProjection class_projection;
 };
 inline analysis::ValueId ResolveEvaluationValue(const EvaluationPlan& plan, analysis::ValueId value) {
   return plan.aliases.empty() ? value : plan.aliases[value.value];
@@ -143,7 +146,8 @@ struct EvaluationShape {
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     IncomingCells incoming = IncomingCells::kReject,
     std::span<const FunctionBinding> functions = {},
-    std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {});
+    std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {},
+    std::span<const ClassInitializerCall> initializers = {});
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and availability. Cross-phase expressions require
 // contiguous effect intervals and equal catch snapshots at their final roots.
@@ -158,7 +162,8 @@ struct EvaluationShape {
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     IncomingCells incoming = IncomingCells::kReject,
     std::span<const FunctionBinding> functions = {},
-    std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {});
+    std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {},
+    std::span<const ClassInitializerCall> initializers = {});
 [[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget = {});

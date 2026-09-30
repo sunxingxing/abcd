@@ -663,7 +663,7 @@ class TreeBuilder {
       }
       const TreeOriginId origin{op.origin.value};
       const auto expression = forest_.operations[id.value];
-      if (IsAbsentHeritageTransport(graph_, evaluation_, op) ||
+      if (evaluation.kind == EvaluationKind::kClassInitializer || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
           evaluation.kind == EvaluationKind::kEnvironment || evaluation.kind == EvaluationKind::kElidedPure ||
           evaluation.kind == EvaluationKind::kAlias) {
         // A projected pure elision keeps its PC at this lexical boundary, not

@@ -12,6 +12,43 @@
 
 ## 当前阶段
 
+### 2026-10-01：静态初始化贯通正式 record，新增七个完整导出
+
+- 实际 initializer 正文进入 ClassTree，沿共享语法解析、控制/求值规划、
+  FunctionTree 和 PrintStaticFields 输出，原 method/call 及未使用 prototype
+  读取保留来源 anchor。字段方法的全局引用仍需目的地作用域证明。
+- ClassInitializerProjection 用效果前缀和 def/use 索引核对创建到调用之间的
+  顺序，拒绝类提前发布、额外可观察效果、重复归属和伪造调用。名字无关的
+  调用/receiver 检查与源常量中实际 "prototype" 的核对分开；任意属性读取
+  不能被删去。O(ops + uses + calls log calls)，覆盖 1/200/201/402 和三个 profile。
+- 共同调用规划、求值可见使用、表达式构树、语句位置和操作数检查同步消费
+  初始化投影。真实 class initializer 绑定必须存在于对应类定义中，不能仅凭
+  标志省略调用。类合并后的无效额外 use 不再强制产生 $value 临时变量。
+- 正式 ABC-only record 导出现在恢复 CommonConstants 的类、构造器、静态
+  字段和模块导出。独立测试对照 CommonConstants.ts，验证初始化前 TDZ、
+  class name/length、构造器及 prototype 身份、字段描述符、继承 setter 不触发、
+  重复模块求值的数组隔离；旧 writer 未参与。
+- 五个阶段一输入刷新至 build/stage-one/value-static-class-pass-1：
+  Immersive 5/30/10，MultiCommunityApplication 16/29/9，pasteboard 1/9/9，
+  Push modules 0/15/9，widgets 0/1/9（完整/失败/无模块上下文）。
+  合计 22/84/46，较前次新增 7 个完整 record，无旧完整记录退回失败。
+  /tmp/abcd-static-class-batch-summary.json 保存输入身份和逐文件计数。
+- 新增独立三应用批量 oracle，重新以 ABC-only 模式导出并执行七个新 record，
+  与配对 TS 比较全部导出类、静态值/嵌套对象和数组的属性描述符、对象隔离；
+  pasteboard 额外比较 BreakpointType 构造及 GetValue 的 sm/md/lg、未知值、
+  undefined、禁止 coercion 的对象输入与实例字段变更。
+  七个记录 7167/19020/19442/20830/31170/47487/4182 全部通过。
+- 12 项定向测试通过（6.45 秒），日志 /tmp/abcd-init-integration-build.log、
+  /tmp/abcd-init-integration-tests.log；批量 oracle 通过（1.62 秒），日志
+  /tmp/abcd-static-batch-tests.log。完善资源失败分类后，两项正式导出测试
+  再次通过（3.62 秒），日志 /tmp/abcd-init-classify-build.log、
+  /tmp/abcd-init-classify-tests.log。未恢复全量测试、RSS 或其他 corpus。
+- 阶段一仍未完成：HomeConstants 在静态正文的 LiteralPlan kReceiver 受阻；
+  其他类的 module/capture/derived 与未恢复函数体继续开放。源码仍有用于保持
+  name/binding 语义的类名包装及部分控制结构风格差距；本次测试不是整个应用
+  或 HarmonyOS 平台验收，22 个完整导出计数不能替代阶段一整体完成。
+
+
 ### 2026-10-01：真实初始化正文进入原生静态字段片段
 
 - 共同求值与 LiteralPlan 区分直接 receiver 的 DEFINEFIELDBYNAME 和

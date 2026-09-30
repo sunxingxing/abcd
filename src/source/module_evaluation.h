@@ -34,10 +34,12 @@ struct EvaluationUses {
 };
 // Project a verified use chain: absorb the indexed guard dependency and, for
 // a freshly verified normal LiteralPlan allocation, its initializer receivers.
-// O(1) without initializer projection; otherwise O(number of allocation uses).
+// Class projections consume the checked method/call/prototype uses as well.
+// O(1) without projections; otherwise O(number of producer uses).
 // Cache once per producer, never rescan a shared producer for every consumer.
 [[nodiscard]] EvaluationUses ProjectEvaluationUses(const analysis::ValueProgram& graph,
     analysis::OpId operation, const ModuleEvaluationIndex& modules,
-    bool project_initializers = false);
+    bool project_initializers = false,
+    std::span<const std::optional<analysis::OpId>> class_projection = {});
 }  // namespace abcd::source
 #endif

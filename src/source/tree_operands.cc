@@ -24,6 +24,26 @@ class OperandCheck {
     if (constants_.number_type_text)
       RequireMeaning(constants_.number_type_text->value < constants_.text_count &&
                      tree_.texts[constants_.number_type_text->value] == u"number", Error::kConstant);
+    for (const auto read : evaluation_.class_projection.prototypes) {
+      budget_.Step();
+      RequireMeaning(read.value < constants_.operations.size(), Error::kConstant);
+      const auto* name = std::get_if<NameId>(&constants_.operations[read.value]);
+      RequireMeaning(name && name->value < tree_.names.size() && tree_.names[name->value] == u"prototype", Error::kConstant);
+    }
+    for (const auto& call : evaluation_.class_initializers) {
+      budget_.Step();
+      RequireMeaning(call.creation.value < constants_.operations.size(), Error::kConstant);
+      const auto* definition = std::get_if<std::shared_ptr<const ClassTree>>(&constants_.operations[call.creation.value]);
+      RequireMeaning(definition && *definition && (*definition)->initializer &&
+          (*definition)->initializer->call == call, Error::kConstant);
+      const auto& fields = *(*definition)->initializer;
+      const auto* site = fields.context.CreationSite();
+      const auto* method = std::get_if<analysis::ValueFunctionCreation>(&graph_.ops[call.method.value].operation);
+      RequireMeaning(site && method && fields.tree.identity == tree_.identity &&
+          fields.tree.method == site->target && site->creator == tree_.method &&
+          site->pc == graph_.origins[graph_.ops[call.method.value].origin.value].pc &&
+          site->creation.method == method->method, Error::kConstant);
+    }
     std::size_t next_function = 0;
     std::size_t next_module = 0;
     std::vector<std::optional<std::size_t>> module_aliases;
@@ -39,7 +59,7 @@ class OperandCheck {
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto& op = graph_.ops[i];
-      if (IsAbsentHeritageTransport(graph_, evaluation_, op) || op.life != analysis::ValueLife::kLive ||
+      if (evaluation_.operations[i].kind == EvaluationKind::kClassInitializer || IsAbsentHeritageTransport(graph_, evaluation_, op) || op.life != analysis::ValueLife::kLive ||
           evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
           evaluation_.operations[i].kind == EvaluationKind::kAlias) continue;
       current_ = {static_cast<std::uint32_t>(i)};

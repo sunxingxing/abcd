@@ -1,4 +1,5 @@
 #include "../../../src/source/class_initializers.h"
+#include "../../../src/source/evaluation_plan.h"
 #include "abcd/analysis/value_import.h"
 #include "abcd/analysis/value_simplify.h"
 #include "analysis/ssa_fixture.h"
@@ -6,7 +7,7 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
-enum class Case { kSingle, kRepeated, kEscape, kUsedResult, kWrongReceiver };
+enum class Case { kSingle, kRepeated, kEscape, kUsedResult, kWrongReceiver, kClassEscape, kBarrier, kPrototype };
 void Run(abc::ProfileId profile, unsigned count, Case kind) {
   std::vector<std::uint8_t> bytes;
   const auto op = [&](abc::Opcode code) { bytes.push_back(static_cast<std::uint8_t>(code)); };
@@ -16,6 +17,12 @@ void Run(abc::ProfileId profile, unsigned count, Case kind) {
     op(abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8);
     bytes.push_back(0); word(7); word(9); word(0); bytes.push_back(0);
     op(abc::Opcode::kSTA_V8); bytes.push_back(1);
+    if (kind == Case::kClassEscape) { op(abc::Opcode::kSTMODULEVAR_IMM8); bytes.push_back(0); }
+    if (kind == Case::kBarrier) op(abc::Opcode::kDEBUGGER);
+    if (kind == Case::kPrototype) {
+      op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16); bytes.push_back(0); word(13);
+      op(abc::Opcode::kLDA_V8); bytes.push_back(1);
+    }
     op(abc::Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8); bytes.push_back(1); word(11); bytes.push_back(0);
     op(abc::Opcode::kSTA_V8); bytes.push_back(2);
     if (kind == Case::kEscape) { op(abc::Opcode::kSTMODULEVAR_IMM8); bytes.push_back(0); }
@@ -36,13 +43,31 @@ void Run(abc::ProfileId profile, unsigned count, Case kind) {
   test::Check(std::holds_alternative<ClassInitializerCalls>(found));
   const auto& calls = std::get<ClassInitializerCalls>(found);
   test::Check(calls.revision == graph.revision);
-  test::Check(calls.calls.size() == (kind == Case::kSingle ? count : 0));
+  test::Check(calls.calls.size() == ((kind == Case::kSingle || kind == Case::kClassEscape || kind == Case::kBarrier || kind == Case::kPrototype) ? count : 0));
   for (const auto& call : calls.calls) {
     test::Check(call.creation < call.method && call.method < call.call);
     test::Check(graph.ops[call.creation.value].result == call.receiver);
     test::Check(std::holds_alternative<ValueClassCreation>(graph.ops[call.creation.value].operation));
   }
   if (calls.calls.empty()) return;
+  const auto projected = ProjectClassInitializers(graph, calls.calls);
+  if (kind == Case::kClassEscape || kind == Case::kBarrier) {
+    test::Check(std::get<ClassInitializerError>(projected) == ClassInitializerError::kFlow);
+    return;
+  }
+  const auto& projection = std::get<ClassInitializerProjection>(projected);
+  test::Check(projection.prototypes.size() == (kind == Case::kPrototype ? count : 0));
+  for (const auto& call : calls.calls) {
+    test::Check(projection.owners[call.method.value] == call.creation);
+    test::Check(projection.owners[call.call.value] == call.creation);
+  }
+  auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, calls.calls));
+  test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, evaluation)));
+  evaluation.class_projection.owners[calls.calls.front().call.value].reset();
+  test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, evaluation)));
+  auto forged = calls.calls; ++forged.front().call.value;
+  test::Check(std::holds_alternative<ClassInitializerError>(ProjectClassInitializers(graph, forged)));
+
   auto& creation = std::get<ValueFunctionCreation>(graph.ops[calls.calls[0].method.value].operation);
   creation.length = 1;
   test::Check(std::get<ClassInitializerCalls>(FindClassInitializerCalls(graph)).calls.size() == count - 1);
@@ -54,7 +79,10 @@ void Run(abc::ProfileId profile, unsigned count, Case kind) {
 }
 int main() {
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
-    for (const auto count : {1U, 200U, 201U, 402U}) Run(profile, count, Case::kSingle);
+    for (const auto count : {1U, 200U, 201U, 402U}) {
+      Run(profile, count, Case::kSingle); Run(profile, count, Case::kPrototype);
+    }
+    Run(profile, 1, Case::kClassEscape); Run(profile, 1, Case::kBarrier);
     for (const auto kind : {Case::kRepeated, Case::kEscape, Case::kUsedResult, Case::kWrongReceiver}) Run(profile, 1, kind);
   }
 }
