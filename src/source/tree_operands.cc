@@ -179,6 +179,13 @@ class OperandCheck {
           const auto previous = edge_input_; edge_input_ = true;
           Input(input(1), property.value); edge_input_ = previous;
         } else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
+          if (IsReceiverField(graph_, op)) {
+            const auto& field = Node<FieldDefinitionExpr>(expression);
+            const auto* name = std::get_if<NameId>(&constants_.operations[i]);
+            RequireMeaning(name && field.name == *name, Error::kConstant);
+            Input(input(0), field.receiver); Input(input(1), field.value);
+            return;
+          }
           RequireMeaning(flow_.initializers[i].has_value(), Error::kOperand);
           const auto& property = tree_.properties[flow_.initializers[i]->value];
           const auto* name = std::get_if<NameId>(&constants_.operations[i]);

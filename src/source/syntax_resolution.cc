@@ -54,7 +54,8 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
     syntax.callable = context.Callable(); syntax.strictness = context.Mode();
     syntax.names = std::move(constants.names);
     syntax.texts = std::move(constants.texts);
-    if (context.CreationSite()) {
+    // Method runtime names do not introduce a named-function self binding.
+    if (context.CreationSite() && !IsMethodCallable(context.Callable())) {
       Require(syntax.names.size() < std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
       reserve(syntax.names, syntax.names.size() + 1);
       const auto name = context.Name();

@@ -636,13 +636,18 @@ class ForestBuilder {
         }
         return Add(FunctionExpr{function.child, captures}, origin);
       }
+      else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
+        Require(IsReceiverField(graph_, op), Error::kUnsupportedOperation);
+        const auto* name = std::get_if<NameId>(&constant);
+        Require(name && name->value < constants_.name_count, Error::kConstant);
+        return Add(FieldDefinitionExpr{operands[0], *name, operands[1]}, origin);
+      }
       else {
         static_assert(std::is_same_v<T, analysis::ValueClassCreation> ||
                       std::is_same_v<T, analysis::ValueArgumentSnapshot> ||
                       std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
                       std::is_same_v<T, analysis::ValueModuleRead> ||
                       std::is_same_v<T, analysis::ValueModuleWrite> ||
-                      std::is_same_v<T, analysis::ValueOwnWrite> ||
                       std::is_same_v<T, analysis::ValueIndexedWrite> ||
                       std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                       std::is_same_v<T, analysis::ValueCurrentEnvironment> ||

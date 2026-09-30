@@ -246,7 +246,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         Require(op.use_count == shape->Count() && shape->expression == op.result.has_value(),
                 Error::kInvalidGraph);
         auto& placement = plan.operations[index];
-        if ((std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
+        if (!IsReceiverField(graph, op) && (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
           Require(plan.literals.has_value(), Error::kUnsupportedOperation);
           placement.kind = EvaluationKind::kInitializer;
           continue;

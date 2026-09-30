@@ -272,6 +272,10 @@ class StructureCheck {
           RequireTree(tree_.symbols[symbol.value].kind == BindingKind::kLocal ||
               tree_.symbols[symbol.value].kind == BindingKind::kCapture, Error::kBinding);
         }
+      } else if constexpr (std::is_same_v<T, FieldDefinitionExpr>) {
+        RequireTree(expression.name.value < tree_.names.size(), Error::kName);
+        RequireTree(expression.receiver.value < tree_.expressions.size() &&
+            std::holds_alternative<ThisExpr>(tree_.expressions[expression.receiver.value].expression), Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, MemberExpr>) {
         Key(expression.key);
       } else if constexpr (std::is_same_v<T, UnaryExpr>) {
@@ -431,6 +435,8 @@ class StructureCheck {
         else if constexpr (std::is_same_v<T, UnaryExpr> || std::is_same_v<T, AwaitExpr> || std::is_same_v<T, YieldExpr>) add(node.operand);
         else if constexpr (std::is_same_v<T, BinaryExpr> || std::is_same_v<T, LogicalExpr>) {
           add(node.left); add(node.right);
+        } else if constexpr (std::is_same_v<T, FieldDefinitionExpr>) {
+          add(node.receiver); add(node.value);
         } else if constexpr (std::is_same_v<T, AssignmentExpr>) {
           if (const auto* member = std::get_if<MemberTarget>(&node.target)) { add(member->base); key(member->key); }
           add(node.value);

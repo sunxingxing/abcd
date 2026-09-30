@@ -502,7 +502,7 @@ class FlowCheck {
       if (op.life != analysis::ValueLife::kLive) continue;
       Require(placements_[i].has_value(), Error::kPlacement);
       const auto& placement = tree_.operations[*placements_[i]].node;
-      if ((std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
+      if (!IsReceiverField(graph_, op) && (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
         const auto* property = std::get_if<PropertyId>(&placement);
         Require(property != nullptr, Error::kPlacement);
         Require(!flow_.defined_properties[property->value], Error::kPlacement);

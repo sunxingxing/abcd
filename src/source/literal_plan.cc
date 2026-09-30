@@ -283,7 +283,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
     Require(next == plan.definitions.size(), Error::kCoverage);
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step();
-      const bool own = graph.ops[i].life == analysis::ValueLife::kLive &&
+      const bool own = graph.ops[i].life == analysis::ValueLife::kLive && !IsReceiverField(graph, graph.ops[i]) &&
           (std::holds_alternative<analysis::ValueOwnWrite>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueIndexedWrite>(graph.ops[i].operation));
       Require(owners[i].has_value() == own, Error::kCoverage);
     }
@@ -346,7 +346,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
     std::size_t count = 0;
     for (const auto& op : graph.ops) {
       budget.Step();
-      count += op.life == analysis::ValueLife::kLive && (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
+      count += op.life == analysis::ValueLife::kLive && !IsReceiverField(graph, op) && (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
     }
     std::vector<FieldOwner> fields;
     LiteralPlan plan{graph.revision, graph.cfg_revision};
@@ -355,7 +355,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step();
       const auto& op = graph.ops[i];
-      if (op.life != analysis::ValueLife::kLive || !(std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
+      if (op.life != analysis::ValueLife::kLive || IsReceiverField(graph, op) || !(std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
       const analysis::OpId id{static_cast<std::uint32_t>(i)};
       fields[next++] = {Allocation(graph, id, path), id};
     }

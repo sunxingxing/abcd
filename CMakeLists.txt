@@ -939,6 +939,10 @@ if(BUILD_TESTING)
     add_test(NAME literal_buffer_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_buffer.mjs $<TARGET_FILE:literal_plan_test>)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+      add_test(NAME static_fields_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/static_fields.mjs $<TARGET_FILE:class_initializer_file_test>
+        ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc
+        ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/commons/src/main/ets/constants/CommonConstants.ts)
       add_test(NAME class_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_tree.mjs $<TARGET_FILE:class_tree_sample>
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"

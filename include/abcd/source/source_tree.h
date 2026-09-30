@@ -174,11 +174,14 @@ struct ObjectExpr {
 // Array aggregates reuse the ordered property arena with canonical decimal keys;
 // keys must equal element ordinals and are implicit in native array syntax.
 struct DataProperty { NameId key; ExprId value; TreeOriginId origin; };
+// This operation is not [[Set]]. Only a field-definition destination may
+// print it; ordinary function expression output must refuse it.
+struct FieldDefinitionExpr { ExprId receiver; NameId name; ExprId value; };
 using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, RealmObjectExpr,
     SymbolConstructorExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
-                                    ArgumentSnapshotExpr, ClassExpr>;
+                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct BlockStmt { ScopeId scope; std::uint32_t first_child; std::uint32_t child_count; };
 struct DeclarationStmt { SymbolId symbol; std::optional<ExprId> initializer; };

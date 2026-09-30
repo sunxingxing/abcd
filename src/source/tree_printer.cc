@@ -126,8 +126,9 @@ class TreePrinter {
     Result().work = initial_.work - remaining_.work;
     return std::move(result_);
   }
-  PrintedFunction Direct(bool module = false) {
-    module_body_ = module;
+  PrintedFunction Direct(bool module = false, bool fields = false) {
+    module_body_ = module || fields;
+    static_fields_ = fields;
     const auto checked = VerifyTreeStructure(Tree(), remaining_);
     if (const auto* error = std::get_if<TreeStructureError>(&checked)) {
       if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
@@ -138,8 +139,35 @@ class TreePrinter {
     Admit(structure.allocated_bytes, 1); Step(structure.work);
     if (Tree().callable != CallableKind::kFunction && !IsArrowCallable(Tree().callable) &&
         Tree().callable != CallableKind::kAsyncFunction && Tree().callable != CallableKind::kGenerator &&
-        Tree().callable != CallableKind::kAsyncGenerator)
+        Tree().callable != CallableKind::kAsyncGenerator && !(fields && Tree().callable == CallableKind::kMethod))
       throw Error::kUnsupportedContext;
+    if (fields) {
+      const auto* body = std::get_if<BlockStmt>(&Tree().statements[Tree().body.value].statement);
+      if (!body || !body->child_count || !Tree().parameters.empty() || !Tree().symbols.empty() ||
+          !Tree().captures.empty() || !Tree().modules.empty() || Tree().inferred_name || Tree().self ||
+          !Tree().recovery_issues.empty() || Tree().callable != CallableKind::kMethod ||
+          Tree().strictness != Strictness::kStrict) throw Error::kUnsupportedContext;
+      std::size_t field_count = 0;
+      for (const auto& expression : Tree().expressions) {
+        Step(); field_count += std::holds_alternative<FieldDefinitionExpr>(expression.expression);
+      }
+      if (field_count != body->child_count - 1) throw Error::kUnsupportedContext;
+      for (std::uint32_t i = 0; i < body->child_count; ++i) {
+        Step(); const auto& node = Tree().statements[Tree().children[body->first_child + i].value].statement;
+        if (i + 1 == body->child_count) {
+          const auto* returned = std::get_if<ReturnStmt>(&node);
+          if (!returned) throw Error::kUnsupportedContext;
+          if (returned->value) {
+            const auto* literal = std::get_if<TreeLiteral>(&Tree().expressions[returned->value->value].expression);
+            if (!literal || !std::holds_alternative<UndefinedLiteral>(*literal)) throw Error::kUnsupportedContext;
+          }
+        } else {
+          const auto* statement = std::get_if<ExpressionStmt>(&node);
+          if (!statement || !std::holds_alternative<FieldDefinitionExpr>(Tree().expressions[statement->expression.value].expression))
+            throw Error::kUnsupportedContext;
+        }
+      }
+    }
     if (module) {
       const auto* body = std::get_if<BlockStmt>(&Tree().statements[Tree().body.value].statement);
       if (!body || !body->child_count || !Tree().parameters.empty() || !Tree().captures.empty() ||
@@ -165,12 +193,13 @@ class TreePrinter {
     }
     Result().identity = Tree().identity; Result().method = Tree().method;
     Result().value_revision = Tree().value_revision; Result().cfg_revision = Tree().cfg_revision;
-    Result().fragment = module ? FunctionFragment::kModuleBody : FunctionFragment::kConditionalExpression;
+    Result().fragment = fields ? FunctionFragment::kStaticFields :
+        module ? FunctionFragment::kModuleBody : FunctionFragment::kConditionalExpression;
     Result().incomplete = !Tree().recovery_issues.empty();
     Array(Result().parameters, Tree().parameters.size()); Array(Result().expressions, Tree().expressions.size());
     Array(Result().properties, Tree().properties.size()); Array(Result().statements, Tree().statements.size());
     Array(Result().anchors, Tree().anchors.size()); PrepareAnchors();
-    if (module) Push(Statement{Tree().body, 0}); else Push(BeginFunction{});
+    if (module || fields) Push(Statement{Tree().body, 0}); else Push(BeginFunction{});
     Drain(); Append("\n");
     Result().bytes = written_;
     Result().allocated_bytes = initial_.bytes - remaining_.bytes;
@@ -511,6 +540,16 @@ class TreePrinter {
     Append("("); Push(std::string_view(")")); Push(node.right);
     Push(TreeLogicalToken(node.operation)); Push(node.left);
   }
+  void Expression(const FieldDefinitionExpr& node) {
+    if (!static_fields_) throw Error::kUnsupportedContext;
+    const auto& name = Tree().names[node.name.value];
+    Append("static ");
+    if (ClassifyObjectKey(name) == MemberKeySyntax::kIdentifier && name != u"prototype" && name != u"constructor")
+      Identifier(name);
+    else { Append("["); Quoted(name); Append("]"); }
+    Append(" = ");
+    Push(node.value);
+  }
   void Expression(const AssignmentExpr& node) {
     Append("("); Push(std::string_view(")")); Push(node.value);
     Push(std::string_view(" = "));
@@ -755,6 +794,7 @@ class TreePrinter {
     Push(node.condition);
   }
   void StatementNode(ReturnStmt node, Statement) {
+    if (static_fields_) return;
     if (!module_body_) Append("return");
     Push(std::string_view(";"));
     if (node.value) {
@@ -869,12 +909,22 @@ class TreePrinter {
   std::size_t written_ = 0;
   std::vector<OwnedAction> actions_;
   bool module_body_ = false;
+  bool static_fields_ = false;
   std::vector<LocatedAnchor> located_;
   std::vector<std::vector<LocatedAnchor>> locations_;
   std::vector<OwnerTree> owners_;
   std::vector<std::uint8_t> printed_;
 };
 }  // namespace
+
+std::variant<PrintedFunction, TreePrintError> PrintStaticFields(
+    const FunctionTree& tree, std::ostream& output, EmitBudget limit, analysis::SemanticBudget budget) {
+  try { return TreePrinter(tree, output, limit, budget, nullptr).Direct(false, true);
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit;
+  } catch (const std::ios_base::failure&) { return Error::kWrite; }
+}
 
 std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
     const FunctionTree& tree, std::ostream& output,

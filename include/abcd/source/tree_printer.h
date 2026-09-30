@@ -13,7 +13,7 @@ struct GeneratedRange {
   std::size_t end = 0;
   auto operator<=>(const GeneratedRange&) const = default;
 };
-enum class FunctionFragment : std::uint8_t { kClassMember, kConditionalExpression, kFunctionExpression, kModuleBody };
+enum class FunctionFragment : std::uint8_t { kClassMember, kConditionalExpression, kFunctionExpression, kModuleBody, kStaticFields };
 enum class TreePrintError : std::uint8_t {
   kUnsupportedContext, kOutputLimit, kWrite, kResourceLimit, kWorkLimit,
   kInvalidLiteral
@@ -59,6 +59,13 @@ struct PrintedFunction {
   std::optional<ArgumentSnapshotBinding> argument_snapshot_binding;
   std::optional<ModuleBinding> module_binding;
 };
+// A class-body fragment from a closed straight-line initializer. Every root
+// must be a receiver field definition, followed by an undefined return. The
+// caller separately establishes the actual class receiver and placement.
+[[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintStaticFields(
+    const FunctionTree& tree, std::ostream& output,
+    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {});
+
 // Direct syntax output, including marked partial trees. No CFG/SSA or publication
 // owner is required. Structural safety is checked before writing; callers retain
 // ownership and must not mutate the tree during printing. Standalone function/

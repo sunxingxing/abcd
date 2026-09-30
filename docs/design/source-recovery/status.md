@@ -12,6 +12,34 @@
 
 ## 当前阶段
 
+### 2026-10-01：真实初始化正文进入原生静态字段片段
+
+- 共同求值与 LiteralPlan 区分直接 receiver 的 DEFINEFIELDBYNAME 和
+  fresh object/array 字面量字段：前者保留原顺序的语句根，不合并到新建对象。
+  FieldDefinitionExpr 显式保留 receiver/name/value，与 AssignmentExpr 分离；
+  构树、树结构、操作数与 ABI 检查同步支持。没有将 DefineOwnProperty 降为 Set。
+- 同一 TreePrinter 新增 PrintStaticFields 目的地，只接受 closed、strict method
+  的平直字段定义及最终 undefined return；拒绝普通赋值、局部符号、控制流、
+  不完整语句和嵌套字段定义。普通函数输出仍拒绝此节点。名字使用正常字段形式，
+  特殊键保留 computed；实际方法 runtime name 不引入 named-function self binding。
+- CommonConstants 7368 的未改写实际值图，经实际创建上下文、共同语法解析、
+  求值/控制规划和 FunctionTree 输出三条静态字段：FULL_PERCENT、FONT_WEIGHT_500、
+  TEXT_OPACITY。产物 /tmp/abcd-common-static-fields.txt，未读取配对源码参与生成。
+- 独立 Node oracle 读取配对 CommonConstants.ts 比较字段值、顺序与 descriptor，
+  验证继承 setter 不触发、重复 class 创建的数组不共享。该测试外层 class/extends
+  是明确的行为夹具，不是完整 record 导出。把字段节点改为 AssignmentExpr 的
+  负例同时被共同语义检查和静态字段 printer 拒绝。
+- 13 项定向测试通过（8.24 秒），日志 /tmp/abcd-static-final-build.log、
+  /tmp/abcd-static-final-tests.log。补充嵌套字段拒绝和赋值篡改后，2 项相关
+  集成测试再次通过，日志 /tmp/abcd-static-negative-build.log、
+  /tmp/abcd-static-negative-tests.log。未运行全量测试或 RSS 验收。
+- HomeConstants 正文读取及常量解析仍成功，但 BuildLiteralPlan 返回 kReceiver，
+  BuildEvaluationPlan 返回 kUnsupportedOperation，尚未输出其全部静态字段。
+  正式 record 尚未消费初始化字段片段：下一步证明 class 创建到 method 调用之间
+  的使用/效果顺序并接入类 AST，随后处理 HomeConstants 的字面量组合。
+  本次不增加完整 record 计数，阶段一目标继续进行。
+
+
 ### 2026-10-01：缓冲数组进入共同常量、AST 和源码输出
 
 - AggregateConstant 显式区分对象和数组，复用现有常量属性存储、ObjectExpr
