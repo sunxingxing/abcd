@@ -1,4 +1,5 @@
 #include "../../src/source/class_initializer_file.h"
+#include "../../src/source/derived_projection.h"
 #include "../../src/source/prepared_family.h"
 #include "abcd/corpus/abc_file.h"
 #include "../../src/source/tree_constants.h"
@@ -116,6 +117,33 @@ int main(int argc, char** argv) {
     Check(std::holds_alternative<FileFunction>(owned));
     Check(std::get<FileFunction>(owned).input.MatchesOwner(context));
     Check(std::get<FileFunction>(owned).input.Proof().receiver == analysis::FrameReceiver::kUnknown);
+    auto& derived = std::get<FileFunction>(owned);
+    const auto projected_constructor = ProjectDerivedConstructor(derived, context);
+    if (const auto* error = std::get_if<DerivedProjectionError>(&projected_constructor))
+      std::cerr << "derived projection failure " << static_cast<unsigned>(*error) << '\n';
+    Check(std::holds_alternative<DerivedProjection>(projected_constructor));
+    const auto& protocol = std::get<DerivedProjection>(projected_constructor);
+    Check(protocol.revision == derived.values.graph.revision && !protocol.guards.empty());
+    auto& guard = derived.values.graph.ops[protocol.guards.front().value];
+    auto& guard_input = derived.values.graph.uses[guard.first_use.value];
+    const auto saved = guard_input.operand;
+    guard_input.operand = analysis::SpecialValue::kNull;
+    Check(std::get<DerivedProjectionError>(ProjectDerivedConstructor(derived, context)) == DerivedProjectionError::kOperand);
+    guard_input.operand = saved;
+    Check(std::holds_alternative<DerivedProjection>(ProjectDerivedConstructor(derived, context)));
+    auto& current_call = std::get<analysis::ValueSuperCall>(derived.values.graph.ops[protocol.call.value].operation);
+    ++current_call.arguments;
+    Check(std::get<DerivedProjectionError>(ProjectDerivedConstructor(derived, context)) == DerivedProjectionError::kOrigin);
+    --current_call.arguments;
+    auto& current_guard = std::get<analysis::ValueSuperCheck>(guard.operation);
+    const auto saved_kind = current_guard.kind;
+    current_guard.kind = analysis::SuperCheckKind::kNoop;
+    Check(std::get<DerivedProjectionError>(ProjectDerivedConstructor(derived, context)) == DerivedProjectionError::kOrigin);
+    current_guard.kind = saved_kind;
+    Check(std::holds_alternative<DerivedProjectionError>(ProjectDerivedConstructor(derived, context, {0})));
+    Check(std::holds_alternative<DerivedProjectionError>(ProjectDerivedConstructor(derived, context, {64 * 1024 * 1024, 0})));
+
+
 
     const auto projected = ProjectClassDefinitions(graph, parent.values.definitions.sites);
     if (const auto* error = std::get_if<ClassDefinitionError>(&projected))

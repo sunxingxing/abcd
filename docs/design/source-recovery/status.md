@@ -13,6 +13,25 @@
 ## 当前阶段
 
 
+### 2026-10-01：派生构造器初始化证明映射到工作图
+
+- 新增 ProjectDerivedConstructor，要求真实 derived owner 与同一 FunctionInput
+  归属匹配，重跑原始 body/frame/profile 的范围 super 证明，再核对工作图每个
+  super/guard 的原始位置、效果、模式、参数和存活状态。结果绑定 IR/CFG revision。
+- 守卫实际输入必须仍满足证明：未初始化检查接受该 derived invocation 的入口
+  ReceiverEntry 或 undefined，已初始化检查只接受同一次 super 的结果；共享纯
+  copy 链以缓存的有界迭代遍历解析，不按每个守卫重复扫描，不接受环。
+- 原始证明与工作图投影是使用同一上限的独立有界 pass，scratch 生命周期分离；
+  该约束已写入接口。投影不授权 heritage 发射、this 替换或构造器 return 改写。
+- 真实9865投影通过，改守卫输入为null、改检查模式或super参数数均被拒绝；
+  零字节/工作预算亦拒绝。两项定向回归通过（1.44秒），包括既有基类源码输出；
+  /tmp/abcd-derived-projection-build.log 和 /tmp/abcd-derived-projection-tests.log。
+- 尚未将投影交给 EvaluationPlan/AST 消费，派生类源码仍未完成；下一步须将
+  原生 super 表达、已证明守卫省略与 receiver 使用作为共同构造器投影接入。
+  未执行全量、RSS、基准或重新导出五输入，阶段一保持开放。
+
+
+
 ### 2026-10-01：真实类创建绑定派生构造器上下文
 
 - ClassTreeContext::ResolveConstructor 不再一律要求 heritage 为 Hole；对同一
