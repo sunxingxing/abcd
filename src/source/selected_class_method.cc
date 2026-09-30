@@ -24,7 +24,12 @@ std::size_t WriteSelectedClassMethod(
       index.methods[target.position.value].offset != site->target)
     throw ClassFailure{FunctionEmitError::kCreation};
   if (target.attributes.sendable) throw ClassFailure{FunctionEmitError::kSendable};
-  if (target.attributes.kind != abc::FunctionKind::kNone || site->kind != abc::ClassMethodKind::kOrdinary)
+  // This bridge does not normalize async bodies. The actual creation context
+  // and PreparedFamily own the shared async protocol checks and native syntax.
+  // Do not retain the earlier NONE-only restriction after that integration.
+  if ((target.attributes.kind != abc::FunctionKind::kNone &&
+       target.attributes.kind != abc::FunctionKind::kAsync) ||
+      site->kind != abc::ClassMethodKind::kOrdinary)
     throw ClassFailure{FunctionEmitError::kKind};
   ExpansionFrame admission(expansion, site->target, budget);
   if (const auto error = admission.error())

@@ -126,10 +126,16 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     for (const auto& member : family.members) {
       budget.Account(0, 1);
       Require(member.tree.strictness == Strictness::kStrict, Error::kStrictness);
+      // Creation/phase owners already checked the actual coroutine protocol.
+      // Publication preserves those callable kinds; the original plain-only
+      // allowlist must not reject a complete shared async/generator tree.
       Require(member.tree.callable == CallableKind::kFunction ||
-          member.tree.callable == CallableKind::kArrow ||
+          member.tree.callable == CallableKind::kAsyncFunction ||
+          member.tree.callable == CallableKind::kGenerator ||
+          member.tree.callable == CallableKind::kAsyncGenerator ||
+          IsArrowCallable(member.tree.callable) ||
           (&member == &family.members[family.root.value] && root.ClassSite() &&
-           member.tree.callable == CallableKind::kMethod), Error::kCallable);
+           IsMethodCallable(member.tree.callable)), Error::kCallable);
       Require(member.abi.has_value(), Error::kAbi);
       Require(member.sources.has_value(), Error::kSources);
     }

@@ -12,6 +12,28 @@
 
 ## 当前阶段
 
+### 2026-09-30：共同 async 方法的迁移桥接与发布
+
+- 真实 onBackup 共同草稿已完整；集成回归暴露 record 方法桥接的
+  NONE-only 限制、1202 async class member 拒绝和 PreparedFamily 的
+  plain-only callable 列表。现在入口接受已支持 profile 的 async，
+  PreparedFamily 保留实际 creation/phase owner 已验证的 async/generator
+  callable；原始协议、类型、strictness、ABI 和 destination 校验继续执行。
+  不另建协程 writer，未解除尚不支持的 generator class 旧组装限制。
+- 六个三 profile × 静态/实例 async 方法通过实际选中方法桥接，比较
+  输出并核对保留 segment/receipt；全部 async/generator method fixture
+  也经过 PreparedFamily 与 FamilyEmission，再执行原独立生成 JS oracle。
+  实际 onBackup 草稿仍不能令整体 record 成功：其余类组装/同 record
+  方法继续阻断。pasteboard onRestore 5465 已定位为共同表达式构建缺口，
+  配对源码含嵌套 JSON.stringify(bundleVersion)，待继续修复，不算完成。
+- abc_semantic、abc_structure、class_tree_context_test、creation_tree_context_test
+  构建成功；8 项相关 CTest 全通过（4.52 秒），含 async/generator methods、
+  snapshots、真实 rest record slice 和 structure CLI。红例
+  /tmp/abcd-async-bridge-red.log；最终证据
+  /tmp/abcd-async-bridge-regression-build.log 与
+  /tmp/abcd-async-bridge-regression-tests.log。独立实施、自查，无 CC/子代理。
+- 阶段一及默认共同 record 迁移仍未完成；继续真实 onRestore 阻断。
+
 ### 2026-09-30：共同 Logger 方法的 record 模块上下文集成
 
 - 完整 rest 方法草稿进入 --record-value-slice 时仍在 record 类创建

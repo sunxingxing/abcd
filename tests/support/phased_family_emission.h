@@ -2,15 +2,59 @@
 #define ABCD_TESTS_PHASED_FAMILY_EMISSION_H_
 
 #include <cstdlib>
+#include <iostream>
 #include <sstream>
 #include <string_view>
+#include <source_location>
 
 #include "../../src/source/family_emission.h"
+#include "../../src/source/selected_class_method.h"
+#include "function_segments.h"
 #include "abcd/source/module_enclosure.h"
 #include "instruction_positions.h"
 #include "function_segments.h"
 
 namespace abcd::test {
+// Exercise the actual record-to-common-family bridge, including retained
+// segment coordinates. A direct family draft alone cannot expose old bridge
+// callable restrictions or dropped receipts.
+inline void CheckSelectedClassBridge(const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles, const analysis::ClassMethodSites& classes,
+    analysis::ClassSiteId site, source::RouteInputIdentity identity,
+    std::u16string_view name, std::string_view expected) {
+  const auto check = [](bool value, std::source_location at = std::source_location::current()) {
+    if (!value) { std::cerr << at.file_name() << ':' << at.line() << '\n'; std::abort(); }
+  };
+  using namespace source;
+  const auto* occurrence = classes.At(site);
+  check(occurrence != nullptr);
+  const abc::ClassProperty property{occurrence->placement, occurrence->key,
+      abc::ClassMethod{occurrence->target, occurrence->kind, occurrence->length}};
+  const auto target = ResolveClassMember(header, index, lookup, property, &roles);
+  BoundSegmentSink sink;
+  std::ostream output(&sink);
+  CreationExpansion expansion(occurrence->creator, LocalLexicalBudget{}.bytes, kDefaultMethodWork);
+  const ClassMethodSelection selection{classes, site, identity};
+  try {
+    const auto bytes = WriteSelectedClassMethod(selection, file, header, index,
+        lookup, roles, property, target, name, expansion, output, {}, nullptr);
+    check(bytes == expected.size() && sink.text == expected && sink.segments.size() == 1);
+    const auto& segment = sink.segments.front();
+    check(segment.begin.byte == 0 && segment.end.byte == bytes);
+    const auto view = ViewFunctionSegment(segment);
+    check(view.receipt.method == occurrence->target && !view.receipt.legacy_writer_used &&
+        view.receipt.coverage == Coverage::kComplete && view.receipt.stage == SourceStage::kPrinted);
+  } catch (const ClassFailure& error) {
+    std::visit([](const auto& failure) {
+      if constexpr (std::is_enum_v<std::decay_t<decltype(failure)>>)
+        std::cerr << "selected class error " << static_cast<unsigned>(failure) << '\n';
+      else if constexpr (std::is_same_v<std::decay_t<decltype(failure)>, RouteRefusal>)
+        std::cerr << "selected family error " << static_cast<unsigned>(failure.failure.reason) << '\n';
+    }, error.result);
+    check(false);
+  }
+}
 inline void CheckPhasedFamilyEmission(const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& functions,

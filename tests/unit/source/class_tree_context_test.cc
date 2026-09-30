@@ -471,6 +471,11 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     auto printed = PrintClassFamilyDraft(family, *owner.ClassContext(), output);
     Check(std::holds_alternative<PrintedFamilyDraft>(printed));
     Check(!std::get<PrintedFamilyDraft>(printed).members[0].incomplete);
+    test::CheckPhasedFamilyEmission(file, header, index, lookup, roles, functions,
+        sites, range.first, identity, output.str());
+    if (exception == ExceptionShape::kAsyncAwait)
+      test::CheckSelectedClassBridge(file, header, index, lookup, roles, sites,
+          range.first, identity, owner.Name(), output.str());
     std::ostringstream unowned;
     Check(std::get<TreePrintError>(PrintFamilyDraft(family, unowned)) == TreePrintError::kUnsupportedContext);
     Check(unowned.str().empty());

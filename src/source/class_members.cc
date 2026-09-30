@@ -29,10 +29,11 @@ ClassMemberTarget ResolveClassMember(const abc::Header& header,
       (attributes.kind != abc::FunctionKind::kNone &&
        attributes.kind != abc::FunctionKind::kAsync))
     throw ClassFailure{CreatedClassError::kMembers};
-  // Both admitted dynamic containers execute the pinned v7 async enter /
-  // resolve / reject handlers; body-level normalization still proves the
-  // exact no-await promise/exception template before source publication.
+  // All three admitted dynamic profiles share the pinned async protocol.
+  // The owning body normalizer must still check actual entry/await/settlement
+  // operations; a profile tag alone never grants a source body.
   if (attributes.kind == abc::FunctionKind::kAsync &&
+      header.profile != abc::ProfileId::kDynamic1202 &&
       header.profile != abc::ProfileId::kDynamic1206 &&
       header.profile != abc::ProfileId::kDynamic1301)
     throw ClassFailure{CreatedClassError::kMembers};
