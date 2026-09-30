@@ -144,6 +144,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueHole{};
     } else if constexpr (std::is_same_v<T, AwaitValue>) {
       return ValueAwait{op.origin};
+    } else if constexpr (std::is_same_v<T, YieldValue>) {
+      return ValueYield{op.origin};
     } else if constexpr (std::is_same_v<T, HoleGuard>) {
       const auto* name = std::get_if<HoleNameSlot>(&op.name);
       return ValueGuard{name ? std::optional{ name->slot } : std::nullopt};

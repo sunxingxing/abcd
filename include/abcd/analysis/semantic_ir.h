@@ -11,6 +11,7 @@
 #include "abcd/analysis/argument_window.h"
 #include "abcd/analysis/array_creation.h"
 #include "abcd/analysis/await_region.h"
+#include "abcd/analysis/yield_region.h"
 #include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/class_creation.h"
 #include "abcd/analysis/define_instruction.h"
@@ -117,6 +118,10 @@ struct AwaitValue {
   ScalarValue input;
   AwaitRegion origin;
 };
+struct YieldValue {
+  ScalarValue input;
+  YieldRegion origin;
+};
 using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        NamedRead, NamedWrite, OwnWrite,
                                        ValueWrite, ModuleLoad, HoleGuard,
@@ -129,7 +134,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        PushEnvironment, PopEnvironment,
                                        CurrentEnvironment, FunctionCreation,
                                        LoadHole, SuperCheck, RestCopy,
-                                       BufferedArrayCreation, AwaitValue,
+                                       BufferedArrayCreation, AwaitValue, YieldValue,
                                        ThrowOperation, SuperRange, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
                                        FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad,

@@ -198,6 +198,7 @@ target_sources(abcd_source PRIVATE src/source/argument_region.cc src/source/sema
   src/source/binding_receivers.cc
   src/source/class_assembly.cc src/source/assembled_class.cc)
 target_sources(abcd_source PRIVATE src/source/async_completion.cc src/source/async_handlers.cc)
+target_sources(abcd_source PRIVATE src/source/generator_completion.cc)
 target_sources(abcd_source PRIVATE src/source/exception_source.cc)
 target_sources(abcd_source PRIVATE src/source/exception_body.cc)
 target_sources(abcd_source PRIVATE src/source/module_read_snapshot.cc)
@@ -939,6 +940,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_await_captures.mjs $<TARGET_FILE:loop_closure_file_test> --arrow)
     add_test(NAME file_async_arguments_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_arguments.mjs $<TARGET_FILE:loop_closure_file_test>)
+    add_test(NAME file_generator_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_async_arrow_finally_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_await_finally.mjs $<TARGET_FILE:loop_closure_file_test> --reuse --arrow)
     add_test(NAME file_async_frame_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

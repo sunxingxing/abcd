@@ -26,18 +26,26 @@ constexpr unsigned kByteBits = 8, kFunctionKindShift = 8;
 std::uint8_t Op(abc::Opcode opcode) {
   return static_cast<std::uint8_t>(opcode);
 }
-abc::CodeInfo AppendCode(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
+// Code headers and exception tables use Panda ULEB128, including large bodies.
+void Uleb(std::vector<std::uint8_t>& bytes, std::uint32_t value) {
+  constexpr unsigned kPayloadBits = 7;
+  constexpr std::uint8_t kMore = 0x80, kPayload = 0x7f;
+  do {
+    const auto part = static_cast<std::uint8_t>(value & kPayload);
+    value >>= kPayloadBits;
+    bytes.push_back(part | (value ? kMore : 0));
+  } while (value);
+}
+abc::CodeInfo AppendEncodedCode(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
                      std::uint8_t parameters,
                      std::span<const std::uint8_t> code,
-                     std::initializer_list<std::uint8_t> table = {}, std::uint8_t try_count = 1) {
-  constexpr std::size_t kSingleByteUlebLimit = 128;
-  test::Check(code.size() < kSingleByteUlebLimit);
+                     std::span<const std::uint8_t> table = {}, std::uint8_t try_count = 1) {
+  test::Check(code.size() <= UINT32_MAX);
   const auto offset = static_cast<std::uint32_t>(bytes.size());
   const auto arguments =
       static_cast<std::uint8_t>(parameters + kImplicitArguments);
   const auto tries = static_cast<std::uint8_t>(table.size() == 0 ? 0 : try_count);
-  bytes.insert(bytes.end(), {locals, arguments,
-                             static_cast<std::uint8_t>(code.size()), tries});
+  Uleb(bytes, locals); Uleb(bytes, arguments); Uleb(bytes, static_cast<std::uint32_t>(code.size())); Uleb(bytes, tries);
   const auto start = static_cast<std::uint32_t>(bytes.size());
   bytes.insert(bytes.end(), code.begin(), code.end());
   bytes.insert(bytes.end(), table.begin(), table.end());
@@ -47,6 +55,11 @@ abc::CodeInfo AppendCode(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
           arguments,
           static_cast<std::uint32_t>(code.size()),
           tries};
+}
+abc::CodeInfo AppendCode(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
+                     std::uint8_t parameters, std::span<const std::uint8_t> code,
+                     std::initializer_list<std::uint8_t> table = {}, std::uint8_t try_count = 1) {
+  return AppendEncodedCode(bytes, locals, parameters, code, {table.begin(), table.size()}, try_count);
 }
 abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::uint8_t locals,
                      std::uint8_t parameters, std::initializer_list<std::uint8_t> code,
@@ -58,11 +71,12 @@ enum class ChildShape {
   kPlain, kException, kNested, kForwarded, kForwardedNormal, kForwardedLocal,
   kForwardedWriter, kForwardedThrowWriter, kOuterContinue, kOuterBreak, kSharedFinally, kSharedFinallyNested,
   kAwaitCapture, kAwaitClosure, kAwaitCatch, kAwaitFinally, kAwaitFinallySuspend, kAwaitFinallyReuse,
-  kAwaitSelf, kAwaitSelfPrivate, kAwaitThis, kAwaitReceiver, kAwaitArguments
+  kAwaitSelf, kAwaitSelfPrivate, kAwaitThis, kAwaitReceiver, kAwaitArguments, kYieldCapture, kYieldResult, kYieldLoop, kYieldCall
 };
-enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitState };
+enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitState,
+                         kYieldState, kYieldDone, kYieldReturn, kYieldEntry, kYieldCleanup };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
-                 MissingCell missing = MissingCell::kNone, bool async_arrow = false) {
+                 MissingCell missing = MissingCell::kNone, bool async_arrow = false, std::uint32_t yield_count = 1) {
   const bool exception_child = child_shape != ChildShape::kPlain && child_shape != ChildShape::kForwardedNormal;
   const bool forwarded_writer = child_shape == ChildShape::kForwardedWriter || child_shape == ChildShape::kForwardedThrowWriter;
   const bool forwarding = child_shape == ChildShape::kForwarded || child_shape == ChildShape::kForwardedNormal ||
@@ -78,7 +92,9 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       child_shape == ChildShape::kAwaitReceiver || child_shape == ChildShape::kAwaitArguments;
   const bool await_capture = child_shape == ChildShape::kAwaitCapture || child_shape == ChildShape::kAwaitClosure ||
       child_shape == ChildShape::kAwaitCatch || await_finally || await_frame;
-  const std::uint8_t getter_parameters = await_finally ? 2 : await_capture ? 1 : outer_transfer ? 5 : shared_finally ? 3 : 0;
+  const bool generator = child_shape == ChildShape::kYieldCapture || child_shape == ChildShape::kYieldResult ||
+      child_shape == ChildShape::kYieldLoop || child_shape == ChildShape::kYieldCall;
+  const std::uint8_t getter_parameters = await_finally ? 2 : await_capture || generator ? 1 : outer_transfer ? 5 : shared_finally ? 3 : 0;
   const bool outer_catch = shape == ParentShape::kOuterCatchContinue || shape == ParentShape::kOuterCatchBreak;
   const std::uint8_t parent_parameters = outer_catch ? 5 : 3;
   std::vector<std::uint8_t> bytes(kCodeStart);
@@ -333,7 +349,61 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     return AppendCode(bytes, 6, getter_parameters, code,
         {6, 32, 1, 0, 43, 2, 3, 86, 1, 0, 89, 5}, 2);
   };
-  const auto getter = await_finally ? finally_getter() :
+  std::uint32_t generator_yield_pc = 0;
+  const auto generator_getter = [&] {
+    // OH7 GeneratorFunctionBuilder: initial suspend, then one source yield.
+    // Both handshakes distinguish RETURN, THROW and NEXT with the same slots.
+    std::vector<std::uint8_t> code{Op(abc::Opcode::kCREATEGENERATOROBJ_V8), 5,
+        Op(abc::Opcode::kSTA_V8), 0, Op(abc::Opcode::kLDUNDEFINED)};
+    const auto resume = [&](bool source_yield) {
+      code.insert(code.end(), {Op(abc::Opcode::kSUSPENDGENERATOR_V8),
+          static_cast<std::uint8_t>(source_yield && missing == MissingCell::kYieldState ? 1 : 0),
+          Op(abc::Opcode::kLDA_V8), 0, Op(abc::Opcode::kRESUMEGENERATOR),
+          Op(abc::Opcode::kSTA_V8), 2, Op(abc::Opcode::kLDA_V8), 0,
+          Op(abc::Opcode::kGETRESUMEMODE), Op(abc::Opcode::kSTA_V8), 1,
+          Op(abc::Opcode::kLDAI_IMM32), static_cast<std::uint8_t>(source_yield && missing == MissingCell::kYieldReturn ?
+              analysis::CoroutineResumeMode::kThrow : analysis::CoroutineResumeMode::kReturn), 0, 0, 0,
+          Op(abc::Opcode::kEQ_IMM8_V8), 0, 1, Op(abc::Opcode::kJEQZ_IMM8), 5,
+          Op(source_yield && missing == MissingCell::kYieldCleanup ? abc::Opcode::kCALLARG0_IMM8 : abc::Opcode::kLDA_V8),
+          2, Op(abc::Opcode::kRETURN),
+          Op(abc::Opcode::kLDAI_IMM32), static_cast<std::uint8_t>(analysis::CoroutineResumeMode::kThrow), 0, 0, 0,
+          Op(abc::Opcode::kEQ_IMM8_V8), 0, 1, Op(abc::Opcode::kJEQZ_IMM8), 6,
+          Op(abc::Opcode::kLDA_V8), 2,
+          static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+          Op(abc::Opcode::kLDA_V8), 2});
+    };
+    resume(false);
+    for (std::uint32_t occurrence = 0; occurrence < yield_count; ++occurrence) {
+      const auto body_pc = code.size();
+      code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), 8});
+      if (child_shape == ChildShape::kYieldCall) code.insert(code.end(), {Op(abc::Opcode::kCALLARG0_IMM8), 0});
+      code.insert(code.end(), {Op(abc::Opcode::kSTA_V8), 3,
+          Op(missing == MissingCell::kYieldDone ? abc::Opcode::kLDTRUE : abc::Opcode::kLDFALSE),
+          Op(abc::Opcode::kSTA_V8), 4});
+      generator_yield_pc = static_cast<std::uint32_t>(code.size());
+      code.insert(code.end(), {Op(abc::Opcode::kCREATEITERRESULTOBJ_V8_V8), 3, 4});
+      if (missing == MissingCell::kYieldEntry) {
+        // Enter the retained resume-result store, bypassing the suspension.
+        constexpr std::size_t kResultStoreFromSuspend = 5;
+        code[body_pc] = Op(abc::Opcode::kJMP_IMM8);
+        code[body_pc + 1] = static_cast<std::uint8_t>(code.size() + kResultStoreFromSuspend - body_pc);
+      }
+      resume(true);
+      if (child_shape == ChildShape::kYieldLoop) {
+        const auto delta = static_cast<std::int32_t>(body_pc) - static_cast<std::int32_t>(code.size() + 2);
+        code.insert(code.end(), {Op(abc::Opcode::kJEQZ_IMM8), 4, Op(abc::Opcode::kJMP_IMM8),
+            static_cast<std::uint8_t>(delta)});
+      }
+    }
+    code.insert(code.end(), {Op(child_shape == ChildShape::kYieldResult ? abc::Opcode::kLDA_V8 : abc::Opcode::kLDLEXVAR_IMM4_IMM4),
+        static_cast<std::uint8_t>(child_shape == ChildShape::kYieldResult ? 2 : 0), Op(abc::Opcode::kRETURN)});
+    const auto handler = static_cast<std::uint32_t>(code.size());
+    code.insert(code.end(), {static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+    std::vector<std::uint8_t> table;
+    for (const auto value : {0U, handler, 1U, 0U, handler, 2U}) Uleb(table, value);
+    return AppendEncodedCode(bytes, 5, getter_parameters, code, table);
+  };
+  const auto getter = generator ? generator_getter() : await_finally ? finally_getter() :
       await_capture ? async_getter() :
       child_shape == ChildShape::kSharedFinallyNested ? Append(bytes, 3, getter_parameters,
       {Op(abc::Opcode::kLDUNDEFINED), Op(abc::Opcode::kSTA_V8), 0,
@@ -489,6 +559,8 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   }
   if (await_capture) index.methods[2].access_flags =
       static_cast<std::uint32_t>(async_arrow ? abc::FunctionKind::kAsyncArrow : abc::FunctionKind::kAsync) << kFunctionKindShift;
+  if (generator) index.methods[2].access_flags =
+      static_cast<std::uint32_t>(abc::FunctionKind::kGenerator) << kFunctionKindShift;
   index.methods[1].name = "capture";
   index.methods[1].name_utf16_length = 7;
   index.methods[2].name = child_shape == ChildShape::kAwaitSelfPrivate ? "get value" : "get";
@@ -536,6 +608,12 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       InspectFamilyValues(file, header, index, lookup, {1}, identity, nullptr,
                           positions, FamilyInspectMode::kSourceDraft);
   test::Check(unlink(path) == 0);
+  if (generator && missing != MissingCell::kNone) {
+    test::Check(!report.value("draft_prepared", false) && !report.contains("draft_source"));
+    test::Check(report.at("failed_method") == kGetter);
+    test::Check(report.at("phase_input_error") == static_cast<unsigned>(source::FunctionEmitError::kKind));
+    return {};
+  }
   if (missing == MissingCell::kAwaitState) {
     test::Check(!report.value("draft_prepared", false) && !report.contains("draft_source"));
     test::Check(report.at("failed_method") == kGetter);
@@ -566,6 +644,12 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
   test::Check(located["draft_positions"].size() == (forwarded_writer ? 5 : nested ? 4 : 3));
   for (const auto& member : located["draft_positions"])
     test::Check(member["incomplete"] == false);
+  if (generator) {
+    bool original_yield = false;
+    for (const auto& origin : located["draft_positions"][1]["positions"]["origins"])
+      original_yield |= origin.contains("original_pc") && origin["original_pc"] == generator_yield_pc;
+    test::Check(original_yield);
+  }
   if (await_capture) {
     const auto& positions = located["draft_positions"][1]["positions"];
     std::vector<std::uint32_t> original_pcs;
@@ -593,6 +677,30 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--yield-many") {
+    std::cout << "export const functions = [\n";
+    for (const auto count : {200U, 201U, 402U})
+      std::cout << Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal,
+          ChildShape::kYieldCapture, MissingCell::kNone, false, count) << ",\n";
+    std::cout << "];\n"; return 0;
+  }
+  if (argc == 2 && (std::string_view(argv[1]) == "--yield-capture" || std::string_view(argv[1]) == "--yield-result" ||
+                   std::string_view(argv[1]) == "--yield-loop" || std::string_view(argv[1]) == "--yield-call")) {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+        std::cout << Emit(profile, shape, std::string_view(argv[1]) == "--yield-result" ?
+            ChildShape::kYieldResult : std::string_view(argv[1]) == "--yield-call" ? ChildShape::kYieldCall :
+            std::string_view(argv[1]) == "--yield-loop" ? ChildShape::kYieldLoop :
+            ChildShape::kYieldCapture) << ",\n";
+    std::cout << "];\n"; return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--yield-negative") {
+    for (const auto missing : {MissingCell::kYieldState, MissingCell::kYieldDone,
+                              MissingCell::kYieldReturn, MissingCell::kYieldEntry, MissingCell::kYieldCleanup})
+      Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kYieldCapture, missing);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--arrow-arguments") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})

@@ -26,7 +26,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
   return std::visit([](const auto& op) -> std::optional<EvaluationShape> {
     using T = std::decay_t<decltype(op)>;
     if constexpr (std::is_same_v<T, analysis::ValueCopy> || std::is_same_v<T, analysis::ValueUnary> ||
-                  std::is_same_v<T, analysis::ValueAwait>)
+                  std::is_same_v<T, analysis::ValueAwait> || std::is_same_v<T, analysis::ValueYield>)
       return EvaluationShape{kInput, true};
     else if constexpr (std::is_same_v<T, analysis::ValueBinary>) return EvaluationShape{kBinary, true};
     else if constexpr (std::is_same_v<T, analysis::ValueNamedRead>) return EvaluationShape{kNamedRead, true};
@@ -146,7 +146,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                   std::is_same_v<T, analysis::ValueBinary> ||
                   std::is_same_v<T, analysis::ValueString> || std::is_same_v<T, analysis::ValueHole>) return false;
     else {
-      static_assert(std::is_same_v<T, analysis::ValueAwait> || std::is_same_v<T, analysis::ValueNamedRead> ||
+      static_assert(std::is_same_v<T, analysis::ValueAwait> || std::is_same_v<T, analysis::ValueYield> || std::is_same_v<T, analysis::ValueNamedRead> ||
                     std::is_same_v<T, analysis::ValueDebugger> ||
                     std::is_same_v<T, analysis::ValueFrameThis> ||
                     std::is_same_v<T, analysis::ValueFrameFunction> ||

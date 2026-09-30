@@ -114,7 +114,7 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     const FunctionContext& context, const abc::MethodBody& body, analysis::SemanticBudget budget,
     const PhasedModuleBinding* binding, analysis::CapturedValues capture_mode,
     analysis::ClosureWrites writes, std::span<const analysis::AwaitSite> awaits,
-    std::span<const abc::CodeOffset> source_pcs) {
+    std::span<const abc::CodeOffset> source_pcs, std::span<const analysis::YieldSite> yields) {
   using namespace analysis;
   try {
     // Recovered scopes/snapshots can allocate at different VM locations.
@@ -128,13 +128,15 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     PhaseBudget quota(budget);
     quota.Admit(sizeof(Storage));
     const auto frame = context.Frame();
-    // Normalized async facts come from the same file owner's completion
+    // Normalized suspension facts come from the same file owner's completion
     // normalization, not from opcode resemblance or provenance alone.
-    if ((!source_pcs.empty() || !awaits.empty()) &&
-        (!IsAsyncCallable(context.Callable()) ||
+    if ((!source_pcs.empty() || !awaits.empty() || !yields.empty()) &&
+        ((!IsAsyncCallable(context.Callable()) && context.Callable() != CallableKind::kGenerator) ||
          source_pcs.size() != body.instructions.size())) return Error::kInput;
+    if ((!awaits.empty() && !IsAsyncCallable(context.Callable())) ||
+        (!yields.empty() && context.Callable() != CallableKind::kGenerator)) return Error::kInput;
     auto flow = PhaseResult<ExceptionFlow>(BuildExceptionFlow(body, context.Identity().profile,
-        frame.registers, {quota.Remaining().bytes, quota.Remaining().work}, awaits, &frame), Error::kInput);
+        frame.registers, {quota.Remaining().bytes, quota.Remaining().work}, awaits, &frame, yields), Error::kInput);
     for (std::size_t i = 0; i < source_pcs.size(); ++i) {
       if (i && source_pcs[i] <= source_pcs[i - 1]) return Error::kInput;
       flow.instructions[i].origin = source_pcs[i];
@@ -157,6 +159,7 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
       case CallableKind::kBaseConstructor:
       case CallableKind::kAsyncFunction:
       case CallableKind::kAsyncMethod:
+      case CallableKind::kGenerator:
         receiver = FrameReceiver::kInitialized;
         break;
       case CallableKind::kArrow:

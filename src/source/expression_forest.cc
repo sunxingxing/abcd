@@ -458,6 +458,8 @@ class ForestBuilder {
         return Unary(operation.op, operands[0], graph_.uses[op.first_use.value].operand, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueAwait>)
         return Add(AwaitExpr{operands[0]}, origin);
+      else if constexpr (std::is_same_v<T, analysis::ValueYield>)
+        return Add(YieldExpr{operands[0]}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueBranch>)
         return Unary(operation.predicate, operands[0], graph_.uses[op.first_use.value].operand, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueBinary>)

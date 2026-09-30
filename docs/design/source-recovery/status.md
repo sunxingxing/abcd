@@ -1,6 +1,6 @@
 # 项目进展与设计审查
 
-更新时间：2026-09-28。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
+更新时间：2026-09-30。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
 本页是当前状态入口；[progress.md](progress.md) 保留历史证据，不覆盖本页结论。
 
 ## 更新规则
@@ -11,6 +11,32 @@
 - 不按文件数、提交数或接口数量宣布完成；必须以原计划的端到端验收为准。
 
 ## 当前阶段
+
+### 2026-09-30：同步 generator/yield 首段共同源码贯通
+
+- 按锁定 OH7 GeneratorFunctionBuilder::Prepare/Yield 和 FunctionBuilder 的
+  SuspendResumeExecution/HandleCompletion，区分初始挂起与源码 yield，检查
+  RETURN/THROW/NEXT 分发、私有 state、done=false 和协议单入口；只移除外层
+  原样 rethrow，不擦除用户 catch/finally 或夹带清理操作的 RETURN 路由。
+- 新增类型化 YieldSite/YieldValue/ValueYield/YieldExpr，经现有异常相位值图、
+  effects、环境/cell、求值安排、FunctionTree 和共同 Printer 输出 function*/yield。
+  没有专项 generator writer，暂停不作为源码函数退出；恢复 mode 的正常值为 NEXT，
+  THROW/RETURN 由原生 yield 执行。原始 yield PC 保留到树来源中。
+- 三种 profile（12.0.2/12.0.6/13.0.1）与三类父级环境的实际文件解码夹具，验证
+  捕获变量在暂停后的共享/隔离、恢复值返回、循环回边、首次 next 忽略参数、
+  next/throw/return 与完成后调用、同步 yield 不吸收 thenable。补充 yield callback()
+  的惰性执行、次数、receiver、异常原值和提前 return/throw 不执行 callback。
+  200/201/402 个连续 yield 的生成 JS 也完整执行，重复使用恢复寄存器且中途更新 cell。
+- 五个文件反例覆盖错误 state/done/RETURN mode、外部进入协议内部、RETURN
+  路由夹有调用；树反例排除非 generator 的 yield 和同步 generator 的 await。
+  红例 `/tmp/abcd-yield-red.log` 原先失败于创建身份；现已生成并执行完整源码。
+  相关十个 C++ 目标构建成功，26/26 定向测试通过（10.40 秒）：
+  `/tmp/abcd-generator-final-build.log`、`/tmp/abcd-generator-final-tests.log`。
+  `git diff --check` 通过；使用真实指令与合成元数据夹具，不冒充真实应用验收。
+- C07 未完成：用户 try/catch/finally、入口词法/参数前奏、generator 方法与 self
+  等组合仍待推进；yield*、async generator 和其余 C06–C09/ISA/结构整合目标保持开放。
+  默认 work 阈值保持关闭；未恢复全量测试、语料、RSS 或基准。历史两个
+  base_function 失败未在本轮修复或重跑，不宣称全套测试或 1GB 验收完成。
 
 ### 2026-09-28：默认源码产出不再受 work 配额截断
 

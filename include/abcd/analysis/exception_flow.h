@@ -58,10 +58,14 @@ struct ExceptionFlowBudget {
 // Optional frame is borrowed during construction and copied into the result.
 // It enables the same implicit argument reads as normal lifting, but supplies
 // no count/tail ownership premise to subsequent source-input verification.
+// YieldSite models NEXT/THROW source effects after generator normalization.
+// RETURN leaves the native yield; this API alone does not prove the original
+// completion routing. The current owner normalizer excludes user finalizers.
 [[nodiscard]] ExceptionFlowResult BuildExceptionFlow(
     const abc::MethodBody& body, abc::ProfileId profile,
     std::uint64_t frame_size, ExceptionFlowBudget budget = {},
     std::span<const AwaitSite> awaits = {},
-    const abc::FrameLayout* frame = nullptr);
+    const abc::FrameLayout* frame = nullptr,
+    std::span<const YieldSite> yields = {});
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_EXCEPTION_FLOW_H_

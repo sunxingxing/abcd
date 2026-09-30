@@ -133,7 +133,7 @@ class TreePrinter {
     const auto& structure = std::get<TreeStructure>(checked);
     Admit(structure.allocated_bytes, 1); Step(structure.work);
     if (Tree().callable != CallableKind::kFunction && !IsArrowCallable(Tree().callable) &&
-        Tree().callable != CallableKind::kAsyncFunction)
+        Tree().callable != CallableKind::kAsyncFunction && Tree().callable != CallableKind::kGenerator)
       throw Error::kUnsupportedContext;
     for (const auto& node : Tree().expressions) {
       Step();
@@ -183,7 +183,7 @@ class TreePrinter {
       if (Tree().strictness != Strictness::kStrict ||
           (Tree().callable != CallableKind::kFunction && !IsArrowCallable(Tree().callable) &&
            Tree().callable != CallableKind::kMethod && Tree().callable != CallableKind::kAsyncFunction &&
-           Tree().callable != CallableKind::kAsyncMethod))
+           Tree().callable != CallableKind::kAsyncMethod && Tree().callable != CallableKind::kGenerator))
         throw Error::kUnsupportedContext;
       // Only the actual class root is a class member. An arrow method carrier
       // retains its original callable kind and cannot observe its home object.
@@ -460,6 +460,9 @@ class TreePrinter {
   void Expression(AwaitExpr node) {
     Append("(await "); Push(std::string_view(")")); Push(node.operand);
   }
+  void Expression(YieldExpr node) {
+    Append("(yield "); Push(std::string_view(")")); Push(node.operand);
+  }
   void Expression(UnaryExpr node) {
     Append("("); Append(TreeUnaryToken(node.operation));
     // Lifted typeof consumes an already obtained value. JS typeof Identifier
@@ -558,9 +561,11 @@ class TreePrinter {
       else {
         Append("]: ");
         Append(Tree().callable == CallableKind::kAsyncArrow ? "async (" : Tree().callable == CallableKind::kArrow ? "(" :
+            Tree().callable == CallableKind::kGenerator ? "function*(" :
             Tree().callable == CallableKind::kAsyncFunction ? "async function(" : "function(");
       }
     } else Append(Tree().callable == CallableKind::kAsyncArrow ? "(async (" : Tree().callable == CallableKind::kArrow ? "((" :
+        Tree().callable == CallableKind::kGenerator ? "(function*(" :
         Tree().callable == CallableKind::kAsyncFunction ? "(async function(" : "(function(");
     Push(EndFunction{}); Push(Statement{Tree().body, depth_});
     Push(std::string_view(IsArrowCallable(Tree().callable) &&

@@ -356,7 +356,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
           // directly to exception dispatch. No coercion, normal destination,
           // or fallthrough may be invented; SSA still checks the value read.
           effects.exceptional = ExceptionalCompletion::kAlwaysThrow;
-        } else if constexpr (std::is_same_v<T, AwaitValue>) {
+        } else if constexpr (std::is_same_v<T, AwaitValue> || std::is_same_v<T, YieldValue>) {
           effects.normal = LanguageEffect::kSuspension |
                            LanguageEffect::kUserCode |
                            LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite;
@@ -479,6 +479,37 @@ InstructionLift LiftSemanticInstruction(const abc::BodyInstruction& site,
 InstructionLift detail::SemanticLifter::Lift(const abc::BodyInstruction& site) {
   if (!SupportsSemantics(profile_))
     return Fail(SemanticError::kUnsupportedProfile, site.offset);
+  if (!yields_.empty()) {
+    // Synchronous generator certificates never coexist with async awaits.
+    if (!awaits_.empty() || (next_yield_ < yields_.size() && yields_[next_yield_].pc < site.offset) ||
+        (next_yield_mode_ < yields_.size() && yields_[next_yield_mode_].mode_pc < site.offset))
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    if (next_yield_ < yields_.size() && yields_[next_yield_].pc == site.offset) {
+      const auto& yielded = yields_[next_yield_];
+      if (next_yield_ != next_yield_mode_ || yielded.mode_pc <= yielded.pc ||
+          (next_yield_ + 1 < yields_.size() && yields_[next_yield_ + 1].pc <= yielded.mode_pc) ||
+          site.decoded.opcode != abc::Opcode::kCREATEITERRESULTOBJ_V8_V8 || site.decoded.operand_count != 2 ||
+          site.decoded.operands[0].kind != abc::OperandKind::kRegister ||
+          site.decoded.operands[0].raw_bits != yielded.origin.value.value || yielded.origin.value.value >= frame_size_)
+        return Fail(SemanticError::kMalformedInstruction, site.offset);
+      ++next_yield_;
+      SemanticOperation operation = YieldValue{yielded.origin.value, yielded.origin};
+      RegisterEffect registers;
+      registers.reads[registers.read_count++] = yielded.origin.value; registers.write = Accumulator{};
+      const auto effects = Effects(operation, registers);
+      return SemanticInstruction{site.offset, std::move(operation), effects};
+    }
+    if (next_yield_mode_ < yields_.size() && yields_[next_yield_mode_].mode_pc == site.offset) {
+      if (next_yield_mode_ >= next_yield_ || site.decoded.opcode != abc::Opcode::kGETRESUMEMODE)
+        return Fail(SemanticError::kMalformedInstruction, site.offset);
+      ++next_yield_mode_;
+      SemanticOperation operation = ScalarAssignment{Accumulator{}, ScalarValue{IntegerLiteral{
+          static_cast<std::int32_t>(CoroutineResumeMode::kNext)}}};
+      RegisterEffect registers; registers.write = Accumulator{};
+      const auto effects = Effects(operation, registers);
+      return SemanticInstruction{site.offset, std::move(operation), effects};
+    }
+  }
   if ((next_mode_ < awaits_.size() &&
        awaits_[next_mode_].mode_pc < site.offset) ||
       (next_await_ < awaits_.size() &&

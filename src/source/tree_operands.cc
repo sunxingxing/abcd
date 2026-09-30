@@ -84,6 +84,8 @@ class OperandCheck {
           Unary(operation.op, input(0), expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueAwait>) {
           Input(input(0), Node<AwaitExpr>(expression).operand);
+        } else if constexpr (std::is_same_v<T, analysis::ValueYield>) {
+          Input(input(0), Node<YieldExpr>(expression).operand);
         } else if constexpr (std::is_same_v<T, analysis::ValueBranch>) {
           Unary(operation.predicate, input(0), expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueBinary>) {

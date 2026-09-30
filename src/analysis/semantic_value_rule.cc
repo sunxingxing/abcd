@@ -18,7 +18,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     if constexpr (std::is_same_v<T, ScalarAssignment>) {
       return DescribeScalarValue(operation);
     } else if constexpr (std::is_same_v<T, NamedRead> ||
-                         std::is_same_v<T, AwaitValue>) {
+                         std::is_same_v<T, AwaitValue> || std::is_same_v<T, YieldValue>) {
       return ValueRule{ValueRuleKind::kLanguageOperation, {}};
     } else if constexpr (std::is_same_v<T, AsyncEnter> ||
                          std::is_same_v<T, AsyncSettle>) {

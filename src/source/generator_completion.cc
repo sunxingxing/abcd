@@ -1,0 +1,165 @@
+#include "generator_completion.h"
+
+#include <algorithm>
+#include <limits>
+#include <new>
+#include <stdexcept>
+#include "abcd/abc/control_transfer.h"
+#include "abcd/analysis/coroutine.h"
+#include "async_handlers.h"
+
+namespace abcd::source {
+namespace {
+using abc::Opcode;
+using Error = FunctionEmitError;
+void Require(bool value) { if (!value) throw Error::kKind; }
+bool Op(const abc::BodyInstruction& site, Opcode op) { return site.decoded.opcode == op; }
+abc::RegisterId Reg(const abc::BodyInstruction& site, std::size_t operand = 0) {
+  Require(operand < site.decoded.operand_count &&
+      site.decoded.operands[operand].kind == abc::OperandKind::kRegister &&
+      site.decoded.operands[operand].raw_bits <= std::numeric_limits<std::uint32_t>::max());
+  return {static_cast<std::uint32_t>(site.decoded.operands[operand].raw_bits)};
+}
+// Schema indices are instruction positions, not byte widths. Pinned:
+// FunctionBuilder::{SuspendResumeExecution,HandleCompletion}, OH7 frontend.
+enum ResumeStep : std::size_t {
+  kSuspend, kStateForValue, kResume, kStoreResult, kStateForMode, kMode, kStoreMode,
+  kReturnMode, kReturnEqual, kReturnBranch, kReturnValue, kReturn,
+  kThrowMode, kThrowEqual, kThrowBranch, kThrowValue, kThrow, kContinuation, kResumeSize
+};
+analysis::YieldRegion Resume(const abc::MethodBody& body, std::size_t begin,
+    abc::RegisterId state, const abc::FrameLayout& frame) {
+  Require(begin <= body.instructions.size() && kResumeSize <= body.instructions.size() - begin);
+  const auto at = [&](ResumeStep step) -> const auto& { return body.instructions[begin + step]; };
+  Require(Op(at(kSuspend), Opcode::kSUSPENDGENERATOR_V8) && Reg(at(kSuspend)) == state);
+  for (auto step : {kStateForValue, kStateForMode})
+    Require(Op(at(step), Opcode::kLDA_V8) && Reg(at(step)) == state);
+  Require(Op(at(kResume), Opcode::kRESUMEGENERATOR) && Op(at(kMode), Opcode::kGETRESUMEMODE) &&
+      Op(at(kStoreResult), Opcode::kSTA_V8) && Op(at(kStoreMode), Opcode::kSTA_V8));
+  const auto result = Reg(at(kStoreResult)), mode = Reg(at(kStoreMode));
+  Require(result != mode && result != state && mode != state && result.value < frame.locals && mode.value < frame.locals);
+  for (auto step : {kReturnValue, kThrowValue, kContinuation})
+    Require(Op(at(step), Opcode::kLDA_V8) && Reg(at(step)) == result);
+  Require(Op(at(kReturn), Opcode::kRETURN) && Op(at(kThrow), Opcode::kTHROW_PREF_NONE));
+  for (auto step : {kReturnEqual, kThrowEqual})
+    Require(Op(at(step), Opcode::kEQ_IMM8_V8) && Reg(at(step), 1) == mode);
+  const auto is_mode = [&](ResumeStep step, analysis::CoroutineResumeMode expected) {
+    const auto& site = at(step);
+    return Op(site, Opcode::kLDAI_IMM32) && site.decoded.operand_count == 1 &&
+        site.decoded.operands[0].kind == abc::OperandKind::kImmediate &&
+        site.decoded.operands[0].raw_bits == static_cast<std::uint32_t>(expected);
+  };
+  Require(is_mode(kReturnMode, analysis::CoroutineResumeMode::kReturn) &&
+      is_mode(kThrowMode, analysis::CoroutineResumeMode::kThrow));
+  Require(Op(at(kReturnBranch), Opcode::kJEQZ_IMM8) && at(kReturnBranch).branch_target == at(kThrowMode).offset &&
+      Op(at(kThrowBranch), Opcode::kJEQZ_IMM8) && at(kThrowBranch).branch_target == at(kContinuation).offset);
+  return {{}, at(kSuspend).offset, at(kResume).offset, at(kStoreResult).offset,
+      at(kMode).offset, at(kStoreMode).offset, at(kContinuation).offset, state, {}, result, mode};
+}
+}  // namespace
+std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
+    const abc::MethodBody& body, const abc::FrameLayout& frame,
+    abc::ProfileId profile, ResourceFailureScope resources, std::size_t bytes) {
+  try {
+    Require(resources == ResourceFailureScope::kExcluded &&
+        (profile == abc::ProfileId::kDynamic1202 || profile == abc::ProfileId::kDynamic1206 ||
+         profile == abc::ProfileId::kDynamic1301));
+    const auto& code = body.instructions;
+    constexpr std::size_t kEntryPrefix = 3, kYieldPrefix = 3;
+    const auto first = kEntryPrefix + kResumeSize;
+    Require(code.size() > first + 1 && frame.function &&
+        Op(code[0], Opcode::kCREATEGENERATOROBJ_V8) && Reg(code[0]) == *frame.function &&
+        Op(code[1], Opcode::kSTA_V8) && Op(code[2], Opcode::kLDUNDEFINED));
+    const auto state = Reg(code[1]); Require(state.value < frame.locals);
+    Resume(body, kEntryPrefix, state, frame);
+    const auto handler = code.size() - 1;
+    Require(Op(code.back(), Opcode::kTHROW_PREF_NONE) && body.tries.size() == 1 && body.handlers.size() == 1 &&
+        HasAsyncCompletionCatch(body, code[0].offset, code.back().offset,
+            std::uint64_t(code.back().offset.value) + code.back().decoded.size));
+    // Only direct-return resume protocols are collapsed here. In particular,
+    // an injected finalizer between ReturnBranch and ReturnValue fails Resume.
+    constexpr auto kPerInstruction = sizeof(abc::BodyInstruction) + sizeof(abc::CodeOffset) + sizeof(std::uint8_t);
+    if (code.size() > bytes / kPerInstruction) return Error::kResourceLimit;
+    const auto yield_count = static_cast<std::size_t>(std::count_if(code.begin(), code.end(),
+        [](const auto& site) { return Op(site, Opcode::kCREATEITERRESULTOBJ_V8_V8); }));
+    if (yield_count > (bytes - code.size() * kPerInstruction) / sizeof(analysis::YieldSite))
+      return Error::kResourceLimit;
+    GeneratorBody result;
+    result.body.instructions.reserve(code.size()); result.source_pcs.reserve(code.size());
+    result.yields.reserve(yield_count);
+    std::vector<std::uint8_t> interior(code.size());
+    const auto storage = [&](std::size_t count, std::size_t width) {
+      if (count > bytes / width) throw Error::kResourceLimit;
+      bytes -= count * width;
+    };
+    storage(result.body.instructions.capacity(), sizeof(abc::BodyInstruction));
+    storage(result.source_pcs.capacity(), sizeof(abc::CodeOffset));
+    storage(result.yields.capacity(), sizeof(analysis::YieldSite));
+    storage(interior.capacity(), sizeof(std::uint8_t));
+    std::fill(interior.begin(), interior.begin() + first, 1);
+    const auto retain = [&](std::size_t i) {
+      result.body.instructions.push_back(code[i]); result.source_pcs.push_back(code[i].offset);
+    };
+    for (std::size_t i = first; i < handler;) {
+      if (i + kYieldPrefix < handler && Op(code[i + kYieldPrefix], Opcode::kCREATEITERRESULTOBJ_V8_V8)) {
+        Require(Op(code[i], Opcode::kSTA_V8) && Op(code[i + 1], Opcode::kLDFALSE) && Op(code[i + 2], Opcode::kSTA_V8));
+        const auto value = Reg(code[i]), done = Reg(code[i + 2]);
+        Require(value != done && value != state && done != state && value.value < frame.locals && done.value < frame.locals &&
+            Reg(code[i + kYieldPrefix]) == value && Reg(code[i + kYieldPrefix], 1) == done);
+        const auto suspend = i + kYieldPrefix + 1;
+        Require(kResumeSize <= handler - suspend);
+        auto region = Resume(body, suspend, state, frame);
+        region.create = code[i + kYieldPrefix].offset; region.value = value;
+        result.yields.push_back({region.create, region.mode, region});
+        std::fill(interior.begin() + i + 1, interior.begin() + suspend + kResumeSize, 1);
+        for (std::size_t prefix = 0; prefix <= kYieldPrefix; ++prefix) retain(i + prefix);
+        for (auto step : {kStoreResult, kMode, kStoreMode, kContinuation}) retain(suspend + step);
+        i = suspend + kResumeSize;
+      } else {
+        const auto access = abc::GetRegisterAccesses(code[i].decoded, frame.registers);
+        const auto* known = std::get_if<abc::RegisterAccesses>(&access); Require(known != nullptr);
+        for (std::size_t j = 0; j < known->count; ++j) {
+          const auto& window = known->windows[j];
+          Require(state.value < window.first.value || state.value - window.first.value >= window.count);
+        }
+        const auto control = abc::GetControlTransfer(code[i].decoded.opcode);
+        Require(control && *control != abc::ControlTransfer::kSuspend);
+        Require(!Op(code[i], Opcode::kCREATEGENERATOROBJ_V8) && !Op(code[i], Opcode::kRESUMEGENERATOR) &&
+            !Op(code[i], Opcode::kGETRESUMEMODE) && !Op(code[i], Opcode::kCREATEITERRESULTOBJ_V8_V8));
+        retain(i++);
+      }
+    }
+    Require(!result.body.instructions.empty());
+    std::uint32_t pc = 0;
+    std::size_t next_yield = 0, next_mode = 0;
+    for (auto& site : result.body.instructions) {
+      if (next_yield < result.yields.size() && site.offset == result.yields[next_yield].origin.create)
+        result.yields[next_yield++].pc = {pc};
+      if (next_mode < result.yields.size() && site.offset == result.yields[next_mode].origin.mode)
+        result.yields[next_mode++].mode_pc = {pc};
+      site.offset = {pc}; pc += site.decoded.size;
+    }
+    for (auto& site : result.body.instructions) {
+      if (!site.branch_target) continue;
+      const auto target = *site.branch_target;
+      const auto original = std::lower_bound(code.begin(), code.end(), target,
+          [](const auto& instruction, auto offset) { return instruction.offset < offset; });
+      Require(original != code.end() && original->offset == target && !interior[original - code.begin()]);
+      const auto found = std::lower_bound(result.source_pcs.begin(), result.source_pcs.end(), target);
+      Require(found != result.source_pcs.end() && *found == target);
+      const auto destination = result.body.instructions[found - result.source_pcs.begin()].offset;
+      const auto delta = std::int64_t(destination.value) - site.offset.value;
+      Require(site.decoded.operand_count == 1);
+      auto& operand = site.decoded.operands[0];
+      Require(operand.kind == abc::OperandKind::kImmediate && operand.width_bits > 0 && operand.width_bits <= 32);
+      const auto magnitude = std::int64_t{1} << (operand.width_bits - 1);
+      Require(delta >= -magnitude && delta < magnitude);
+      operand.raw_bits = static_cast<std::uint64_t>(delta) & ((std::uint64_t{1} << operand.width_bits) - 1);
+      site.decoded.branch_delta = delta; site.branch_target = destination;
+    }
+    return result;
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+}  // namespace abcd::source

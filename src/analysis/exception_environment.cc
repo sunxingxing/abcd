@@ -33,15 +33,16 @@ AnalyzeExceptionEnvironments(const ExceptionFlow& flow, EnvironmentBudget budget
       const auto& effects = instruction.effects;
       const auto* push = std::get_if<PushEnvironment>(&instruction.operation);
       const bool pop = std::holds_alternative<PopEnvironment>(instruction.operation);
-      const bool native_await = std::holds_alternative<AwaitValue>(instruction.operation);
+      const bool native_suspension = std::holds_alternative<AwaitValue>(instruction.operation) ||
+          std::holds_alternative<YieldValue>(instruction.operation);
       // Pinned interpreter EXCEPTION retains the selected frame's env. NEWLEXENV
       // installs it only after abrupt-completion checks; POPLEXENV is normal-only.
       // v7 SaveFrameToContext saves the lexenv; GeneratorReEnter restores it.
-      // Only owner-normalized AwaitValue preserves this identity on resume or
-      // rejection. This says nothing about mutation of captured cell values.
+      // Only owner-normalized await/yield preserves this identity on resume or
+      // injected throw. This says nothing about mutation of captured cell values.
       if (HasEffect(effects.before_throw, LanguageEffect::kEnvironmentWrite) ||
           HasEffect(effects.normal, LanguageEffect::kEnvironmentWrite) != (push || pop) ||
-          (!native_await &&
+          (!native_suspension &&
            (HasEffect(effects.normal, LanguageEffect::kSuspension) ||
             HasEffect(effects.before_throw, LanguageEffect::kSuspension))))
         return EnvironmentFlowFailure{EnvironmentFlowError::kUnsupportedEffect, instruction.pc};

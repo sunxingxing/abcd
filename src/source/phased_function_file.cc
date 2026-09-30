@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include "module_aliases.h"
+#include "generator_completion.h"
 
 namespace abcd::source {
 namespace {
@@ -105,6 +106,14 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     std::optional<abc::MethodBody> original;
     std::vector<abc::CodeOffset> source_pcs;
     std::vector<analysis::AwaitSite> awaits;
+    std::vector<analysis::YieldSite> yields;
+    if (context.Callable() == CallableKind::kGenerator) {
+      auto normalized = Take<GeneratorBody>(NormalizeGenerator(body, frame, header.profile,
+          ResourceFailures(identity.contract), left.bytes));
+      arena(normalized.body.instructions); arena(normalized.source_pcs); arena(normalized.yields);
+      source_pcs = std::move(normalized.source_pcs); yields = std::move(normalized.yields);
+      original.emplace(std::move(body)); body = std::move(normalized.body);
+    }
     if (IsAsyncCallable(context.Callable())) {
       Require(identity.contract == SourceContract::kLanguageAndHostV2 ||
           identity.contract == SourceContract::kLanguageAndHostV3, Error::kIdentity);
@@ -120,7 +129,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     // standalone builder keeps Unknown, and no cell read becomes a snapshot.
     auto phases = Take<PhasedBody>(PhasedBody::Build(context, body, left, modules,
         mode == InputCaptureMode::kConditional ? analysis::CapturedValues::kLanguage : analysis::CapturedValues::kReject,
-        analysis::ClosureWrites::kLanguage, awaits, source_pcs));
+        analysis::ClosureWrites::kLanguage, awaits, source_pcs, yields));
     admit(phases.AllocatedBytes()); step(phases.Work());
     const auto input = phases.TreeInput(body).input;
     // Retain the conditional scope proof once per method. This does NOT

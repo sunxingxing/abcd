@@ -30,6 +30,20 @@ void Expect(const FunctionTree& tree, TreeStructureError expected) {
   Check(std::holds_alternative<TreeStructureError>(checked));
   Check(std::get<TreeStructureError>(checked) == expected);
 }
+void YieldContext() {
+  auto tree = Minimal();
+  tree.expressions.push_back({YieldExpr{{0}}, {0}});
+  tree.statements[1].statement = ReturnStmt{ExprId{1}};
+  for (auto kind : {CallableKind::kFunction, CallableKind::kArrow, CallableKind::kAsyncFunction,
+                    CallableKind::kAsyncArrow, CallableKind::kAsyncMethod}) {
+    tree.callable = kind;
+    Expect(tree, TreeStructureError::kUnsupportedSyntax);
+  }
+  tree.callable = CallableKind::kGenerator;
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  tree.expressions[1].expression = AwaitExpr{{0}};
+  Expect(tree, TreeStructureError::kUnsupportedSyntax);
+}
 void InferredNames() {
   for (const auto callable : {CallableKind::kFunction, CallableKind::kArrow}) {
     for (const auto* name : {u"", u"__proto__", u"run", u"not an identifier"}) {
@@ -277,6 +291,7 @@ void DeepLoops() {
 }
 }  // namespace
 int main() {
+  YieldContext();
   InferredNames();
   Ownership();
   ScopesAndBindings();

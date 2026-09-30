@@ -46,8 +46,8 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
       // OH7 PandaGen::SetFunctionKind emits ASYNC_NC_FUNCTION for async arrows.
       // Keep lexical receiver semantics; ordinary async function syntax differs.
       case abc::FunctionKind::kAsyncArrow: callable = CallableKind::kAsyncArrow; break;
+      case abc::FunctionKind::kGenerator: callable = CallableKind::kGenerator; break;
       case abc::FunctionKind::kNone:
-      case abc::FunctionKind::kGenerator:
       case abc::FunctionKind::kAsyncGenerator:
       case abc::FunctionKind::kConcurrent:
       default: throw CreationContextFailure{Error::kKind};

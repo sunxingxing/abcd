@@ -24,7 +24,7 @@ struct FunctionOwnerId { std::uint32_t value = 0; auto operator<=>(const Functio
 struct ModuleOwnerId { std::uint32_t value = 0; auto operator<=>(const ModuleOwnerId&) const = default; };
 enum class CallableKind : std::uint8_t {
   kFunction, kMethod, kArrow, kBaseConstructor, kDerivedConstructor,
-  kAsyncFunction, kAsyncMethod, kAsyncArrow
+  kAsyncFunction, kAsyncMethod, kAsyncArrow, kGenerator
 };
 constexpr bool IsArrowCallable(CallableKind kind) {
   return kind == CallableKind::kArrow || kind == CallableKind::kAsyncArrow;
@@ -104,6 +104,7 @@ enum class TreeUnary : std::uint8_t { kNot, kNegate, kBitNot, kPlus, kTypeof };
 // must perform GetValue (including a possible global lookup failure) first.
 struct UnaryExpr { TreeUnary operation; ExprId operand; };
 struct AwaitExpr { ExprId operand; };
+struct YieldExpr { ExprId operand; };
 struct BinaryExpr { analysis::BinaryOperator operation; ExprId left; ExprId right; };
 enum class TreeLogical : std::uint8_t { kAnd, kOr };
 struct LogicalExpr { TreeLogical operation; ExprId left; ExprId right; };
@@ -140,7 +141,7 @@ struct ObjectExpr { PropertyRange properties; };
 struct DataProperty { NameId key; ExprId value; TreeOriginId origin; };
 using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, RealmObjectExpr,
     SymbolConstructorExpr, ThisExpr, MemberExpr,
-                                    UnaryExpr, AwaitExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
+                                    UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
                                     ArgumentSnapshotExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };

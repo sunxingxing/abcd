@@ -98,6 +98,7 @@ struct ValueCopy { bool operator==(const ValueCopy&) const = default; };
 // Only owner-normalized AwaitValue imports here; raw VM state/resume opcodes
 // remain unsupported. Keep the protocol PCs for operand/origin correspondence.
 struct ValueAwait { AwaitRegion origin; bool operator==(const ValueAwait&) const = default; };
+struct ValueYield { YieldRegion origin; bool operator==(const ValueYield&) const = default; };
 struct ValueUnary { UnaryOperator op; bool operator==(const ValueUnary&) const = default; };
 struct ValueBinary { BinaryOperator op; bool operator==(const ValueBinary&) const = default; };
 struct ValueNamedRead { abc::PoolIndex name; bool operator==(const ValueNamedRead&) const = default; };
@@ -211,7 +212,7 @@ struct ValueConstruct {
 // VM sentinel, not a JS literal. A source lowering must consume the closed
 // protocol before evaluation/printing; never substitute undefined or null.
 struct ValueHole { bool operator==(const ValueHole&) const = default; };
-using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHole, ValueAwait,
+using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHole, ValueAwait, ValueYield,
     ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValuePropertyRead, ValueBranch, ValueJump,
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation,
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueLexicalLoad, ValueLexicalStore,

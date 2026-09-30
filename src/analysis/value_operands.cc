@@ -45,7 +45,7 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
     if constexpr (std::is_same_v<T, ScalarAssignment>) {
       Expression(plan, op.expression);
       plan.write = op.destination;
-    } else if constexpr (std::is_same_v<T, AwaitValue>) {
+    } else if constexpr (std::is_same_v<T, AwaitValue> || std::is_same_v<T, YieldValue>) {
       Append(plan, OperandRole::kInput, op.input);
       plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, NamedRead>) {
