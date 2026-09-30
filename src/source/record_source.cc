@@ -11,6 +11,7 @@
 #include "abcd/source/function_creation_selection.h"
 #include "family_emission.h"
 #include "abcd/source/function_emission.h"
+#include "abcd/source/module_enclosure.h"
 #include "function_segments.h"
 
 namespace abcd::source {
@@ -131,6 +132,25 @@ RecordSourceResult BuildRecordSource(
       return fail(std::get<ModuleExportError>(planned) == ModuleExportError::kResourceLimit
           ? Error::kResourceLimit : Error::kExport);
     }
+    std::optional<ModuleEnclosure> enclosure;
+    if (selection || function_selection) {
+      const auto& identity = selection ? selection->identity : function_selection->identity;
+      auto built = ModuleEnclosure::Build(file, header, context, identity, {}, {budget.bytes, kDefaultMethodWork});
+      auto* ready = std::get_if<ModuleEnclosure>(&built);
+      if (!ready) {
+        const auto error = std::get<ModuleEnclosureError>(built);
+        if (error == ModuleEnclosureError::kResourceLimit) return fail(Error::kResourceLimit);
+        if (error == ModuleEnclosureError::kFileChanged) return fail(Error::kFileChanged);
+        return fail(Error::kModule);
+      }
+      retain(ready->AllocatedBytes(), 1);
+      // The common family must read the very imports emitted by this record.
+      // RecoverImportNames may rename colliding legacy imports; that requires
+      // coordinated tree aliases, never an unverified alternative enclosure.
+      if (!std::equal(ready->Names().begin(), ready->Names().end(),
+                      imports->slots.begin(), imports->slots.end())) return fail(Error::kModule);
+      enclosure.emplace(std::move(*ready));
+    }
     const auto lifted = analysis::BuildSemanticMethod(*body, header.profile,
                                                      frame->registers, {budget.bytes});
     const auto* method = std::get_if<analysis::SemanticMethod>(&lifted);
@@ -147,6 +167,7 @@ RecordSourceResult BuildRecordSource(
     constants.global_scope->realm_binding = realm_binding;
     constants.global_scope->import_bindings = imports->slots;
     constants.global_scope->import_names = imports->sorted;
+    constants.global_scope->module_enclosure = enclosure ? &*enclosure : nullptr;
     auto result = BuildEntrySource(*body, *method, *frame, SourceForm::kRecord,
         entry->name, constants, exports, {budget.bytes}, budget.output.bytes,
         policy);

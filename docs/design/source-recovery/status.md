@@ -12,6 +12,26 @@
 
 ## 当前阶段
 
+### 2026-09-30：共同 Logger 方法的 record 模块上下文集成
+
+- 完整 rest 方法草稿进入 --record-value-slice 时仍在 record 类创建
+  PC 9 失败。根因是 BuildRecordSource 只传旧 import 名单，未将现有
+  ModuleEnclosure 交给共同函数族；现在为显式迁移创建同一输入/record
+  的 enclosure，核对其名字与实际 record import 输出一致，沿已有
+  GlobalScope 传递。名字冲突或无法对应仍拒绝，不试旧方法体。
+- 四个真实 Logger 方法均在 record 中保留完整 value_tree segment、
+  receipt、方法位置和原 PC；与独立共同草稿逐字对应，导入仍为 hilog。
+  其余 record entry/constructor/方法仍是旧路径，整份 record 继续明确
+  incomplete；此项不是默认共同 record 迁移或完整应用验收。
+- abc_semantic、abc_structure、module_enclosure_test、class_tree_context_test、
+  creation_tree_context_test 构建成功；8 项相关 CTest 全通过（5.23 秒），
+  含四真实方法及其行为 oracle、原 record slice、module enclosure、
+  参数快照、rest 与 structure CLI。红例 /tmp/abcd-rest-record-red.log，
+  /tmp/abcd-rest-record-regression-build.log 与
+  /tmp/abcd-rest-record-regression-tests.log 为最终证据。独立实施、自查。
+- 接下来清除共同方法进入 record 时的旧 callable 限制，并推进整份
+  record 的共同输出；默认迁移、初始化与源码表达质量 gate 仍开放。
+
 ### 2026-09-30：真实 Logger rest 参数接入共同源码主干
 
 - 阶段一 Pasteboard 的 info/warn/debug/error 在共同值导入 PC 8 的
