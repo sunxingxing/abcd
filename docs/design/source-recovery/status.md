@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-01：依据真实IR识别逻辑短路值选择区域
+
+- 更正上一条交接对10510的判断：PC72的5115是固定ISA中的CALLRUNTIME_ISTRUE，
+  导入为ValueUnary::kToBoolean；PC75为JNEZ/TrueOrNonzeroNumber。真分支保留
+  PC66读取的原值，假分支执行PC77数组创建，合流phi20。因此这里是||，不是??。
+  原始IR定位记录/tmp/abcd-short-circuit-ir.txt；上一轮??共同树能力保留，但不作为
+  此真实分支的恢复依据。定位过程未使用配对源码。
+- 新增FindLogicalRegions，直接消费已验证normal ValueProgram与ControlPlan，
+  通过块摘要、单phi与输入边索引发现&&/||值选择菱形。支持直接保留边及空保留块，
+  根据实际分支极性选择运算符；要求ToBoolean单一消费者、纯谓词、Language左值/
+  合流值、精确保持同一SSA输入，拒绝含效果的保留分支、其他谓词及额外phi。
+  时间O(ops+values+uses+control nodes)，无逐分支全图扫描；没有改动原CFG。
+- 真实initialRender完整FileFamily中的10510现在由集成规格确认唯一kOr区域，
+  对照原PC66/72/75/77及实际phi输入。合成规格从动态ABC字节码导入/简化，覆盖
+  &&/||、三块/四块形式、1/200/201/402连续区域；负例覆盖typeof替代、非空保留臂、
+  不同保留值、Hole、谓词逃逸及过期revision。
+- 七项定向测试通过（3.96秒）：logical_regions_test、logical_tree_test、
+  control_plan_test、class_initializer_file_test、logical_tree_source_test、
+  derived_constructor_source_test、navmap_source_test。构建/测试日志
+  /tmp/abcd-logical-region-final-build.log及/tmp/abcd-logical-region-tests.log。
+- 这是实际IR上的区域识别算法，尚未把区域纳入EvaluationPlan/ExpressionForest、
+  消除phi copies或改变正式源码。下一步必须接入RHS表达式所有权、控制边消费和
+  跨区间效果顺序；在此之前不能把识别结果当作callee跨块内联权限。
+  新识别器目前只由规格调用，生产接入时须随owner一起计入临时索引/输出存储。
+  未重跑五输入导出，未更新34/72/46统计；全量/RSS/基准仍暂停，阶段一仍开放。
+
 ### 2026-10-01：共同源码树支持原生空值回退表达式
 
 - TreeLogical新增kNullish，接入共同结构验证和printer，复用既有表达式所有权、

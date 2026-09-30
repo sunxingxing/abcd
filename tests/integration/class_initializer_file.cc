@@ -2,6 +2,7 @@
 #include "../../src/source/derived_projection.h"
 #include "../../src/source/class_tree.h"
 #include "../../src/source/call_plan.h"
+#include "../../src/source/logical_regions.h"
 #include "../../src/source/default_body.h"
 #include "../../src/source/prepared_family.h"
 #include "abcd/corpus/abc_file.h"
@@ -311,8 +312,25 @@ int main(int argc, char** argv) {
       auto render_family = ReadFunctionFamily(file, header, index, lookup, roles, sites,
           render_owner.Position(), identity, {}, &modules, &render_owner, {owner->offset.value});
       Check(std::holds_alternative<FileFamily>(render_family));
-      bool guarded_child = false;
+      bool guarded_child = false, logical_child = false;
       for (const auto& child : std::get<FileFamily>(render_family).members) {
+        if (child.function.Method().value == 10510) {
+          logical_child = true;
+          const auto& graph = child.function.Normal().values.graph;
+          const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+          const auto regions = FindLogicalRegions(graph, control);
+          Check(regions.size() == 1);
+          const auto& region = regions.front();
+          Check(region.operation == TreeLogical::kOr);
+          Check(graph.origins[graph.ops[region.boolean.value].origin.value].pc.value == 72);
+          Check(graph.origins[graph.ops[region.branch.value].origin.value].pc.value == 75);
+          const auto* left = std::get_if<analysis::OpResult>(&graph.values[region.left.value].origin);
+          Check(left && graph.origins[graph.ops[left->op.value].origin.value].pc.value == 66);
+          const auto right = std::get<analysis::ValueId>(region.right);
+          const auto allocation = std::get<analysis::OpResult>(graph.values[right.value].origin).op;
+          Check(std::holds_alternative<analysis::ValueArrayAllocation>(graph.ops[allocation.value].operation));
+          Check(graph.origins[graph.ops[allocation.value].origin.value].pc.value == 77);
+        }
         if (child.function.Method().value != 10400) continue;
         guarded_child = true;
         const auto& function = child.function.Normal();
@@ -332,7 +350,7 @@ int main(int argc, char** argv) {
         Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(function.values.graph, {},
             IncomingCells::kReject, child.children, {}, {}, {}, analysis::ClosureWrites::kLanguage)));
       }
-      Check(guarded_child);
+      Check(guarded_child && logical_child);
     }
 
 
