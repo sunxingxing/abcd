@@ -32,6 +32,10 @@ struct PrintedFunction {
   analysis::CfgRevision cfg_revision;
   FunctionFragment fragment = FunctionFragment::kClassMember;
   std::size_t bytes = 0;
+  // Nested class members retain their own identities and local ranges. Add
+  // enclosing_offset to locate them in this fragment; no origin DAG expansion.
+  std::size_t enclosing_offset = 0;
+  std::vector<PrintedFunction> class_members;
   // Recovery completeness only, not a claim of behavioral verification.
   bool incomplete = false;
   // Formal ordinal indexes complete parameter syntax (name and initializer),

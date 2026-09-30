@@ -5,6 +5,8 @@
 #include <sstream>
 #include <type_traits>
 #include "function_file.h"
+#include "class_tree.h"
+#include "family_route_failure.h"
 #include "function_tree.h"
 #include "module_aliases.h"
 #include "abcd/source/module_enclosure.h"
@@ -18,7 +20,9 @@ namespace abcd::source {
 RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::RecordInfo& record,
     const RecordModuleContext& context, abc::MethodPosition entry,
-    RouteInputIdentity identity, RecordProgramBudget budget) {
+    RouteInputIdentity identity, RecordProgramBudget budget, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites* functions,
+    const analysis::ClassMethodSites* classes) {
   using Error = RecordProgramError;
   const auto fail = [](Error kind) { return RecordProgramFailure{kind, {}}; };
   try {
@@ -77,6 +81,39 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     auto* constants = std::get_if<TreeConstants>(&resolved);
     if (!constants) return fail(Error::kValue);
     retain(constants->allocated_bytes);
+    // File-level occurrence indexes are borrowed across records. Never rescan
+    // the whole ABC for every class or use a detached class as a body fallback.
+    for (const auto& occurrence : function->values.classes.classes) {
+      if (!functions || !classes) return fail(Error::kClass);
+      auto built = BuildClassTree(file, header, index, lookup, roles, *functions, *classes,
+          *function, occurrence.operation, identity, nullptr, {budget.bytes});
+      if (const auto* failure = std::get_if<ClassTreeFailure>(&built)) {
+        const auto classify = [&](auto&& self, const auto& error) -> RecordSourceResult {
+          using T = std::decay_t<decltype(error)>;
+          if constexpr (std::is_same_v<T, FamilyPrepareFailure>)
+            return RouteRefusal{FamilyRouteFailure(error)};
+          else if constexpr (std::is_same_v<T, ClassContextFailure>)
+            return std::visit([&](const auto& nested) { return self(self, nested); }, error.error);
+          else if constexpr (requires { error.kind; }) return self(self, error.kind);
+          else {
+            if constexpr (requires { T::kResourceLimit; })
+              if (error == T::kResourceLimit) return fail(Error::kResourceLimit);
+            if constexpr (requires { T::kWorkLimit; })
+              if (error == T::kWorkLimit)
+                return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
+            if constexpr (requires { T::kFileChanged; })
+              if (error == T::kFileChanged) return fail(Error::kFileChanged);
+            if constexpr (requires { T::kRead; })
+              if (error == T::kRead) return fail(Error::kRead);
+            return RecordProgramFailure{Error::kClass, graph.origins[graph.ops[occurrence.operation.value].origin.value].pc};
+          }
+        };
+        return std::visit([&](const auto& error) { return classify(classify, error); }, *failure);
+      }
+      auto definition = std::get<ClassTree>(std::move(built));
+      retain(definition.allocated_bytes);
+      constants->operations[occurrence.operation.value] = std::make_shared<ClassTree>(std::move(definition));
+    }
     FunctionSyntax syntax{};
     syntax.identity = identity; syntax.method = index.methods[entry.value].offset; syntax.owner = {1};
     syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;

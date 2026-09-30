@@ -18,6 +18,7 @@
 #include "family_print.h"
 #include "class_tree.h"
 #include "family_enclosure.h"
+#include "family_route_failure.h"
 #include "class_tree_context.h"
 #include "tree_checks.h"
 #include "member_key.h"
@@ -542,6 +543,42 @@ class TreePrinter {
   }
   void Expression(EmptyArrayExpr) { Append("[]"); }
   void Expression(EmptyObjectExpr) { Append("({})"); }
+  void Expression(const ClassExpr& node) {
+    // Closed class definitions are currently admitted at direct/record roots.
+    // Nested family capture rebasing must be integrated before opening that
+    // route; rejecting it here also keeps this composition non-recursive.
+    if (family_ || !node.definition || node.definition->identity != Tree().identity ||
+        node.definition->creation.creator != Tree().method) throw Error::kUnsupportedContext;
+    auto emitted = PrintClassTree(*node.definition, output_, {limit_ - written_}, remaining_, scope_, depth_);
+    if (const auto* error = std::get_if<TreePrintError>(&emitted)) throw *error;
+    if (const auto* failure = std::get_if<FamilyPrepareFailure>(&emitted)) {
+      switch (FamilyRouteFailure(*failure).failure_class) {
+        case RouteFailureClass::kMemoryLimit: throw Error::kResourceLimit;
+        case RouteFailureClass::kWorkLimit: throw Error::kWorkLimit;
+        case RouteFailureClass::kOutputFailure: throw Error::kWrite;
+        case RouteFailureClass::kUnsupported: case RouteFailureClass::kUnproved:
+        case RouteFailureClass::kInvalidInput: case RouteFailureClass::kInvariantViolation:
+          throw Error::kUnsupportedContext;
+      }
+    }
+    auto positions = std::get<PrintedClassTree>(std::move(emitted));
+    Admit(positions.allocated_bytes, 1); Step(positions.work);
+    for (auto& member : positions.members) {
+      for (auto& function : member.positions.members) {
+        auto& retained = Result().class_members;
+        if (retained.size() == retained.capacity()) {
+          const auto capacity = retained.capacity();
+          if (capacity > std::numeric_limits<std::size_t>::max() / 2) throw Error::kResourceLimit;
+          const auto next = capacity ? capacity * 2 : 1;
+          Admit(next, sizeof(PrintedFunction)); retained.reserve(next);
+          Admit(retained.capacity() - next, sizeof(PrintedFunction));
+        }
+        function.enclosing_offset = written_ + member.offset;
+        retained.push_back(std::move(function));
+      }
+    }
+    written_ += positions.bytes;
+  }
   void Expression(FunctionExpr node) {
     if (!family_) throw Error::kUnsupportedContext;
     const auto child = std::lower_bound(owners_.begin(), owners_.end(), node.child,
@@ -913,7 +950,7 @@ std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
 namespace abcd::source {
 std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassTree(
     const ClassTree& tree, std::ostream& output, EmitBudget limit,
-    analysis::SemanticBudget budget, const GlobalScope* globals) {
+    analysis::SemanticBudget budget, const GlobalScope* globals, std::size_t indent) {
   using Failure = TreePrintError;
   const auto initial = budget;
   try {
@@ -950,7 +987,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassT
     };
     const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember};
     const auto member = [&](const PreparedFamily& family) {
-      auto printed = family.PrintDraft(destination, output, {limit.bytes - result.bytes}, budget, 1);
+      auto printed = family.PrintDraft(destination, output, {limit.bytes - result.bytes}, budget, indent + 1);
       if (const auto* failure = std::get_if<FamilyPrepareFailure>(&printed)) throw *failure;
       if (const auto* failure = std::get_if<TreePrintError>(&printed)) throw *failure;
       auto positions = std::get<PrintedFamilyDraft>(std::move(printed));
@@ -971,6 +1008,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassT
           site->pc != tree.creation.pc || site->property != i) throw Failure::kUnsupportedContext;
       member(family);
     }
+    for (std::size_t i = 0; i < indent; ++i) append("  ");
     append("}})["); name(); append("]");
     result.allocated_bytes = initial.bytes - budget.bytes;
     result.work = initial.work - budget.work;

@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_SOURCE_TREE_H_
 
 #include <string>
+#include <memory>
 #include <optional>
 #include <variant>
 #include <vector>
@@ -151,6 +152,10 @@ struct ArgumentSnapshotExpr { FunctionOwnerId owner; ArgumentRange slots; };
 // arguments. Moving this node requires a separate capture-lifetime proof.
 struct CaptureRange { std::uint32_t first; std::uint32_t count; };
 struct FunctionExpr { FunctionOwnerId child; CaptureRange captures; };
+struct ClassTree;
+// An owned source class definition, bound to this exact creation occurrence.
+// Initial base classes consume absent heritage in the adapter, not as JS Hole.
+struct ClassExpr { std::shared_ptr<const ClassTree> definition; };
 // Fresh empty aggregates are expression occurrences, never TreeLiteral values.
 // Buffered elements, descriptors and own-defines need a separate initializer
 // proof before being folded into either node.
@@ -173,7 +178,7 @@ using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, Rea
     SymbolConstructorExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
-                                    ArgumentSnapshotExpr>;
+                                    ArgumentSnapshotExpr, ClassExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct BlockStmt { ScopeId scope; std::uint32_t first_child; std::uint32_t child_count; };
 struct DeclarationStmt { SymbolId symbol; std::optional<ExprId> initializer; };

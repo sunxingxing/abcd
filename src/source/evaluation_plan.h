@@ -62,6 +62,20 @@ struct EvaluationPlan {
 inline analysis::ValueId ResolveEvaluationValue(const EvaluationPlan& plan, analysis::ValueId value) {
   return plan.aliases.empty() ? value : plan.aliases[value.value];
 }
+// After VerifyEvaluationPlan: normal Hole transport is closed over copies and
+// absent class heritage only. It has source positions, but no JS value/binding.
+inline bool IsAbsentHeritageTransport(const analysis::ValueProgram& graph,
+    const EvaluationPlan& plan, const analysis::ValueOp& op) {
+  return plan.flow == EvaluationFlow::kNormal && plan.holes && op.result &&
+      op.normal == analysis::LanguageEffect::kNone && op.before_throw == analysis::LanguageEffect::kNone &&
+      op.exceptional == analysis::ExceptionalCompletion::kImpossible &&
+      graph.values[op.result->value].domain == analysis::ValueKinds::Hole() &&
+      (std::holds_alternative<analysis::ValueHole>(op.operation) ||
+       std::holds_alternative<analysis::ValueCopy>(op.operation));
+}
+inline bool NeedsHoleToken(const EvaluationPlan& plan) {
+  return plan.holes && plan.flow == EvaluationFlow::kPhased;
+}
 inline analysis::ValueOperand ResolveEvaluationOperand(
     const EvaluationPlan& plan, const analysis::ValueOperand& operand) {
   if (const auto* value = std::get_if<analysis::ValueId>(&operand)) return ResolveEvaluationValue(plan, *value);

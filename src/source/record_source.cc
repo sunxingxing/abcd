@@ -23,7 +23,8 @@ RecordSourceResult BuildRecordSource(
     const analysis::MethodRoleIndex& roles, RecordProgramBudget budget,
     const HostRealmBinding* realm_binding, RoutePolicy policy,
     const ClassMethodSelection* selection,
-    const FunctionCreationSelection* function_selection, const RouteInputIdentity* identity) {
+    const FunctionCreationSelection* function_selection, const RouteInputIdentity* identity,
+    const analysis::FunctionCreationSites* functions, const analysis::ClassMethodSites* classes) {
   using Error = RecordProgramError;
   const auto fail = [](Error kind) { return RecordProgramFailure{kind, {}}; };
   const auto metadata = [&](abc::MetadataError kind) {
@@ -76,7 +77,7 @@ RecordSourceResult BuildRecordSource(
       if (selection || function_selection) return fail(Error::kEntry);
       const auto position = lookup.Find(entry->offset);
       if (!position) return fail(Error::kEntry);
-      return BuildRecordTree(file, header, index, record, context, *position, *identity, budget);
+      return BuildRecordTree(file, header, index, record, context, *position, *identity, budget, lookup, roles, functions, classes);
     }
     if (selection) {
       const auto* site = selection->sites.At(selection->site);

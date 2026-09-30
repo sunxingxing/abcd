@@ -123,7 +123,8 @@ class FlowCheck {
               evaluation_.operations[id.value].kind == EvaluationKind::kInitializer ||
               evaluation_.operations[id.value].kind == EvaluationKind::kModuleGuard) continue;
           const auto& placement = tree_.operations[*placements_[id.value]].node;
-          if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
+          if (IsAbsentHeritageTransport(graph_, evaluation_, op) ||
+              std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
               evaluation_.operations[id.value].kind == EvaluationKind::kElidedPure ||
               evaluation_.operations[id.value].kind == EvaluationKind::kAlias) {
             const auto* anchor = std::get_if<AnchorId>(&placement);
@@ -515,7 +516,8 @@ class FlowCheck {
           std::holds_alternative<analysis::ValueThrow>(op.operation) ||
           std::holds_alternative<analysis::ValueReturn>(op.operation)) {
         Require(std::holds_alternative<StmtId>(placement), Error::kPlacement);
-      } else if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
+      } else if (IsAbsentHeritageTransport(graph_, evaluation_, op) ||
+              std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
           evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
           evaluation_.operations[i].kind == EvaluationKind::kAlias) {
         Require(std::holds_alternative<AnchorId>(placement), Error::kPlacement);
@@ -527,7 +529,7 @@ class FlowCheck {
     }
   }
   std::uint32_t Declarations() {
-    Require(tree_.hole.has_value() == evaluation_.holes.has_value(), Error::kSnapshot);
+    Require(tree_.hole.has_value() == NeedsHoleToken(evaluation_), Error::kSnapshot);
     if (tree_.hole) Require(tree_.hole->value < tree_.symbols.size(), Error::kSnapshot);
     const auto& block = sequences_.Block(tree_.body);
     std::uint32_t count = 0;

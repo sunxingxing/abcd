@@ -2,6 +2,8 @@
 #define ABCD_SOURCE_RECORD_SOURCE_H_
 
 #include "abcd/source/record_module_context.h"
+#include "abcd/analysis/function_creation_sites.h"
+#include "abcd/analysis/class_method_sites.h"
 #include "abcd/source/record_program.h"
 #include "abcd/source/semantic_entry.h"
 
@@ -22,8 +24,10 @@ using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure,
 // policy has no default (invocation-context rule in source_route.h): the
 // required value-tree route uses the merged record entry and same-file identity
 // supplied below. Missing identity refuses before analysis. Neither case falls
-// back to the legacy writer. Current module-tree support is straight-line and
-// has no imported bindings or child functions; unsupported input stays explicit.
+// back to the legacy writer. Current module-tree support is straight-line with
+// native imports/exports and closed base classes; unsupported input stays explicit.
+// Optional creation indexes are built once per file and borrowed across records.
+// A record containing classes requires both; absence is never an empty body.
 // Optional selection requires that exact class occurrence to use the verified
 // value-tree member route. Other code remains legacy; this mixed artifact is
 // not a complete value-tree record. A missing selected segment refuses output.
@@ -37,6 +41,8 @@ using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure,
     const HostRealmBinding* realm_binding, RoutePolicy policy,
     const ClassMethodSelection* selection = nullptr,
     const FunctionCreationSelection* function_selection = nullptr,
-    const RouteInputIdentity* identity = nullptr);
+    const RouteInputIdentity* identity = nullptr,
+    const analysis::FunctionCreationSites* functions = nullptr,
+    const analysis::ClassMethodSites* classes = nullptr);
 }  // namespace abcd::source
 #endif

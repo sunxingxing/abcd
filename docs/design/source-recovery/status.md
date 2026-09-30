@@ -12,6 +12,40 @@
 
 ## 当前阶段
 
+### 2026-10-01：类创建贯通表达式 AST 与正式 record 适配器
+
+- FunctionTree 新增持有已恢复 ClassTree 的 ClassExpr；表达式常量绑定、
+  实际操作数检查共同核对输入身份、creator、PC、constructor/literal pool、
+  length/IC 和 definite Hole。缺失或错误定义拒绝，不以空类替代。
+  当前接入 closed base class；family 内嵌类、捕获 rebase 和 derived/super
+  尚未开放，不把已有独立类表达式测试扩称为这些能力通过。
+- 正常图中经 HoleProtocol 检查的无继承 Hole/纯 copy 仅映射到原始位置
+  anchor，不创建 JS sentinel、临时绑定或 extends 值。构树、绑定、语句位置
+  和操作数检查共同消费这一协议；有副作用的伪造 transport 不允许省略。
+- 同一个 TreePrinter 直接打印 ClassExpr，构造器和方法仍由共享 family
+  printer 输出。嵌套成员保留自己的身份、局部位置和 enclosing_offset；
+  资源/工作/写入失败保留分类。没有添加 raw source body 或专项 body writer。
+- BuildRecordTree 现在为真实入口的 class occurrence 构建定义并接入 AST。
+  abc_structure 每文件构建一次 function/class creation 索引，跨 record
+  借用；abc_semantic 的正式 record 路径也传递同样索引，避免逐类全文件扫描。
+  静态初始化、模块/捕获依赖及不支持的成员仍可能阻断完整 record。
+- IconInfo 配对测试新增 FunctionTree 创建包装器：类定义来自实际 ABC，
+  外围创建/return 图为明确的合成测试夹具，不冒充原始完整 record。检查
+  每次调用产生独立 class/prototype/method、既有行为及无 $hole/$value/extends，
+  并检查错误 owner、错误 constructor、缺失定义拒绝和嵌套成员位置范围。
+  产物 /tmp/abcd-icon-info-class-ast.mjs；类名包装/字段表示仍未最终风格验收。
+- 8 项定向测试通过（5.76 秒），日志 /tmp/abcd-class-ast-verified-build.log、
+  /tmp/abcd-class-ast-verified-tests.log。补全 literal I/O 失败分类后再次构建，
+  3 项相关集成测试通过（2.17 秒），日志
+  /tmp/abcd-class-ast-record-final-build.log、
+  /tmp/abcd-class-ast-record-final-tests.log。未运行全量测试或 RSS 专用验收。
+- 五个阶段一输入实际刷新至 build/stage-one/value-class-ast-pass-2：
+  Immersive 4/31/10，MultiCommunityApplication 11/34/9，pasteboard 0/10/9，
+  Push modules 0/15/9，widgets 0/1/9（完整/失败/无模块），合计 15/91/46。
+  均无 legacy writer；汇总 /tmp/abcd-class-ast-batch-summary.json。
+  没有新增完整 record，阶段一未完成。下一步处理创建后的静态初始化和
+  类成员的模块/捕获绑定；CommonConstants/HomeConstants 仍在前者受阻。
+
 ### 2026-10-01：类创建进入共同求值规划
 
 - DescribeEvaluation 现在按显式 kClassHeritage 输入处理 ValueClassCreation，

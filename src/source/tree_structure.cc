@@ -256,6 +256,8 @@ class StructureCheck {
       } else if constexpr (std::is_same_v<T, ThisExpr>) {
         RequireTree(expression.owner == tree_.owner && tree_.invocation != InvocationForm::kArrowMethod,
             Error::kBinding);
+      } else if constexpr (std::is_same_v<T, ClassExpr>) {
+        RequireTree(expression.definition != nullptr, Error::kOwnership);
       } else if constexpr (std::is_same_v<T, FunctionExpr>) {
         RequireTree(expression.child != tree_.owner && next_function_ < functions_.size(), Error::kOwnership);
         functions_[next_function_++] = expression.child;
@@ -439,7 +441,7 @@ class StructureCheck {
                         std::is_same_v<T, ArgumentSnapshotExpr> ||
                         std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
                         std::is_same_v<T, ConstructExpr> || std::is_same_v<T, EmptyArrayExpr> ||
-                        std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, FunctionExpr>);
+                        std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, FunctionExpr> || std::is_same_v<T, ClassExpr>);
         }
       }, tree_.expressions[expression->value].expression);
     } else {

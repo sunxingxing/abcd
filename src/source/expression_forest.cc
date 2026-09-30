@@ -1,5 +1,6 @@
 #include "expression_forest.h"
 #include "expression_copies.h"
+#include "class_tree.h"
 
 #include <array>
 #include <algorithm>
@@ -182,6 +183,7 @@ class ForestBuilder {
                     graph_.origins[op.origin.value].disposition == analysis::OriginDisposition::kRetained,
                 Error::kOrigin);
         const TreeOriginId origin{op.origin.value};
+        if (IsAbsentHeritageTransport(graph_, evaluation_, op)) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
             evaluation_.operations[i].kind == EvaluationKind::kAlias)
           continue;
@@ -238,6 +240,20 @@ class ForestBuilder {
             forest_.arguments.push_back(Operand(graph_.uses[op.first_use.value + j].operand, origin));
           }
           forest_.operations[i] = Add(ArgumentSnapshotExpr{owner_, slots}, origin);
+          continue;
+        }
+        if (const auto* creation = std::get_if<analysis::ValueClassCreation>(&op.operation)) {
+          const auto* definition = std::get_if<std::shared_ptr<const ClassTree>>(&constants_.operations[i]);
+          if (!definition || !*definition) throw Error::kUnsupportedOperation;
+          Require(op.use_count == 1 && evaluation_.flow == EvaluationFlow::kNormal, Error::kOwnership);
+          const auto* heritage = std::get_if<analysis::ValueId>(&graph_.uses[op.first_use.value].operand);
+          Require(heritage && graph_.values[heritage->value].domain == analysis::ValueKinds::Hole(), Error::kOwnership);
+          const auto& site = (*definition)->creation;
+          Require(site.creation.constructor == creation->constructor && site.creation.literal == creation->literal &&
+              site.creation.length == creation->length && site.creation.cache_slot == creation->cache_slot &&
+              site.pc == graph_.origins[op.origin.value].pc,
+              Error::kConstant);
+          forest_.operations[i] = Add(ClassExpr{*definition}, origin);
           continue;
         }
         std::array<ExprId, kFixedExpressionOperands> operands{};

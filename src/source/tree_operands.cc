@@ -1,4 +1,5 @@
 #include "tree_correspondence.h"
+#include "class_tree.h"
 #include "phase_evaluation.h"
 
 #include <bit>
@@ -38,7 +39,7 @@ class OperandCheck {
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto& op = graph_.ops[i];
-      if (op.life != analysis::ValueLife::kLive ||
+      if (IsAbsentHeritageTransport(graph_, evaluation_, op) || op.life != analysis::ValueLife::kLive ||
           evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
           evaluation_.operations[i].kind == EvaluationKind::kAlias) continue;
       current_ = {static_cast<std::uint32_t>(i)};
@@ -276,8 +277,22 @@ class OperandCheck {
             RequireMeaning(cell.value < flow_.cells.size() && flow_.cells[cell.value] &&
                 tree_.closure_captures[created.captures.first + c] == *flow_.cells[cell.value], Error::kOperand);
           }
+        } else if constexpr (std::is_same_v<T, analysis::ValueClassCreation>) {
+          const auto& created = Node<ClassExpr>(expression);
+          const auto* bound = std::get_if<std::shared_ptr<const ClassTree>>(&constants_.operations[i]);
+          RequireMeaning(bound && *bound && created.definition == *bound, Error::kConstant);
+          const auto& definition = *created.definition;
+          RequireMeaning(definition.identity == tree_.identity && definition.creation.creator == tree_.method &&
+              definition.creation.pc == graph_.origins[op.origin.value].pc &&
+              definition.creation.creation.constructor == operation.constructor &&
+              definition.creation.creation.literal == operation.literal &&
+              definition.creation.creation.length == operation.length &&
+              definition.creation.creation.cache_slot == operation.cache_slot && op.use_count == 1, Error::kOperand);
+          const auto* heritage = std::get_if<analysis::ValueId>(&input(0));
+          RequireMeaning(evaluation_.flow == EvaluationFlow::kNormal && heritage &&
+              graph_.values[heritage->value].domain == analysis::ValueKinds::Hole(), Error::kOperand);
         } else {
-          static_assert(std::is_same_v<T, analysis::ValueClassCreation> ||
+          static_assert(
                         std::is_same_v<T, analysis::ValueHole> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||

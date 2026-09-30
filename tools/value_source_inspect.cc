@@ -298,8 +298,13 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
     const auto roles = analysis::MethodRoleIndex::Build(file, header, index, *lookup);
     const auto* role_index = std::get_if<analysis::MethodRoleIndex>(&roles);
     if (!role_index) return Refused(output, receipt, InspectionError::kLookup);
+    const auto functions = analysis::FunctionCreationSites::Build(file, header, index, *lookup);
+    const auto classes = analysis::ClassMethodSites::Build(file, header, index, *lookup);
+    const auto* function_sites = std::get_if<analysis::FunctionCreationSites>(&functions);
+    const auto* class_sites = std::get_if<analysis::ClassMethodSites>(&classes);
+    if (!function_sites || !class_sites) return Refused(output, receipt, InspectionError::kSites);
     auto built = BuildRecordSource(file, header, index, *lookup, *owner, *ready, *role_index,
-        {}, nullptr, RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity);
+        {}, nullptr, RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity, function_sites, class_sites);
     if (const auto* source = std::get_if<PrintedSource>(&built)) {
       output << nlohmann::json{{"route", "value_tree"}, {"source", source->text},
           {"record", owner->offset.value}, {"source_complete", true}, {"executable", false},

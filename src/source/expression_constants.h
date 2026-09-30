@@ -17,7 +17,8 @@ struct ModuleStoreConstant {
   ModuleSymbol target;
   bool initialize = false;
 };
-using ExpressionConstant = std::variant<std::monostate, NameId, TextId, ObjectConstant, ModuleStoreConstant>;
+using ExpressionConstant = std::variant<std::monostate, NameId, TextId, ObjectConstant, ModuleStoreConstant,
+    std::shared_ptr<const ClassTree>>;
 struct ExpressionConstants {
   std::span<const ExpressionConstant> operations;
   std::size_t name_count = 0;

@@ -198,6 +198,16 @@ int Export(const std::filesystem::path& input,
     else
       return Fail(ExportError::kRoles);
   }
+  std::optional<analysis::FunctionCreationSites> functions;
+  std::optional<analysis::ClassMethodSites> classes;
+  if (route_value && roles) {
+    auto indexed_functions = analysis::FunctionCreationSites::Build(file, *header, *index, *lookup);
+    auto indexed_classes = analysis::ClassMethodSites::Build(file, *header, *index, *lookup);
+    if (!std::holds_alternative<analysis::FunctionCreationSites>(indexed_functions) ||
+        !std::holds_alternative<analysis::ClassMethodSites>(indexed_classes)) return Fail(ExportError::kIndex);
+    functions = std::get<analysis::FunctionCreationSites>(std::move(indexed_functions));
+    classes = std::get<analysis::ClassMethodSites>(std::move(indexed_classes));
+  }
   std::vector<structure::RecordPath> source_paths;
   if (emit_source) {
     auto planned = structure::PlanRecordSourcePaths(file, *header, *index);
@@ -297,7 +307,8 @@ int Export(const std::filesystem::path& input,
           } else if (mode == SourceMode::kShared || route_value) {
             const auto built = source::BuildRecordSource(
                 file, *header, *index, *lookup, record, *ready, *roles, {},
-                nullptr, route_policy, nullptr, nullptr, route_value ? &identity : nullptr);
+                nullptr, route_policy, nullptr, nullptr, route_value ? &identity : nullptr,
+                functions ? &*functions : nullptr, classes ? &*classes : nullptr);
             if (FatalSharedSource(built))
               return Fail(ExportError::kRecord, record.offset.value);
             record_manifest["source_complete"] = false;

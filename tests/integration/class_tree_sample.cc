@@ -1,6 +1,7 @@
 #include "../../src/source/class_tree.h"
 #include "../../src/source/family_route_failure.h"
 #include "../../src/source/evaluation_plan.h"
+#include "../../src/source/function_tree.h"
 #include "abcd/corpus/abc_file.h"
 #include <charconv>
 #include <cstdlib>
@@ -20,7 +21,7 @@ std::uint32_t Number(const char* value) {
 int main(int argc, char** argv) {
   using namespace abcd;
   using namespace abcd::source;
-  Check(argc == 4);
+  Check(argc == 4 || (argc == 5 && std::string_view(argv[4]) == "--tree"));
   auto opened = corpus::AbcFile::Open(argv[1]);
   const auto& file = *std::get<std::unique_ptr<corpus::AbcFile>>(opened);
   const auto hash = std::get<corpus::FileFingerprint>(file.Fingerprint());
@@ -59,6 +60,60 @@ int main(int argc, char** argv) {
     std::cerr << '\n'; return 1;
   }
   const auto& tree = std::get<ClassTree>(built);
+  if (argc == 5) {
+    // A synthetic creation-only callable exercises AST composition using the
+    // actual ABC-derived definition. It is not the original complete record.
+    analysis::ValueProgram graph;
+    const auto effects = analysis::LanguageEffect::kAllocation | analysis::LanguageEffect::kUserCode;
+    const auto creation = function.values.graph.ops[operation.value].operation;
+    graph.values = {{analysis::OpResult{{0}}, analysis::ValueKinds::Hole(), analysis::UseId{0}},
+        {analysis::OpResult{{1}}, analysis::ValueKinds::Language(), analysis::UseId{1}}};
+    graph.origins = {{{0}, {0}, {}}, {{1}, tree.creation.pc, {}}, {{2}, {tree.creation.pc.value + 1}, {}}};
+    graph.ops = {
+        {analysis::ValueHole{}, {0}, 0, {0}, 0, analysis::ValueId{0}, {}, {}, analysis::ExceptionalCompletion::kImpossible, {0}},
+        {creation, {0}, 1, {0}, 1, analysis::ValueId{1}, effects, effects, analysis::ExceptionalCompletion::kMayThrow, {1}},
+        {analysis::ValueReturn{}, {0}, 2, {1}, 1, {}, {}, {}, analysis::ExceptionalCompletion::kImpossible, {2}}};
+    graph.uses = {{analysis::OpId{1}, analysis::OperandRole::kHeritage, analysis::ReadPurpose::kProtocol, analysis::ValueId{0}},
+        {analysis::OpId{2}, analysis::OperandRole::kReturnValue, analysis::ReadPurpose::kOperand, analysis::ValueId{1}}};
+    graph.blocks = {{{0}, 3, {0}, 0}};
+    std::vector<ExpressionConstant> constants(3);
+    constants[1] = std::make_shared<ClassTree>(std::get<ClassTree>(std::move(built)));
+    const auto plan = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+    const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+    FunctionSyntax syntax{};
+    syntax.identity = identity; syntax.method = index.methods[creator->value].offset;
+    syntax.owner = {1}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+    auto constructed = BuildFunctionTree(graph, control, plan, syntax, {constants});
+    if (const auto* error = std::get_if<FunctionTreeError>(&constructed)) {
+      std::cerr << "creation AST failure " << static_cast<unsigned>(*error) << '\n'; return 1;
+    }
+    const auto& root = std::get<ConstructedFunction>(constructed).tree;
+    Check(!root.hole);
+    auto wrong_owner = root;
+    ++wrong_owner.method.value;
+    std::ostringstream rejected;
+    Check(std::get<TreePrintError>(PrintFunctionTree(wrong_owner, rejected)) == TreePrintError::kUnsupportedContext);
+    auto missing = constants;
+    missing[1] = std::monostate{};
+    Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, plan, syntax, {missing})));
+    auto wrong_creation = graph;
+    ++std::get<analysis::ValueClassCreation>(wrong_creation.ops[1].operation).constructor.value;
+    Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(wrong_creation, control, plan, syntax, {constants})));
+    const auto printed = PrintFunctionTree(root, std::cout);
+    if (const auto* error = std::get_if<TreePrintError>(&printed)) {
+      std::cerr << "creation AST print failure " << static_cast<unsigned>(*error) << '\n'; return 1;
+    }
+    const auto& positions = std::get<PrintedFunction>(printed);
+    Check(positions.class_members.size() == 3);
+    for (const auto& member : positions.class_members) {
+      Check(member.enclosing_offset < positions.bytes);
+      for (const auto& range : member.expressions)
+        Check(range.begin <= range.end && member.enclosing_offset + range.end <= positions.bytes);
+      for (const auto& range : member.statements)
+        Check(range.begin <= range.end && member.enclosing_offset + range.end <= positions.bytes);
+    }
+    return 0;
+  }
   std::ostringstream output;
   const auto printed = PrintClassTree(tree, output);
   if (!std::holds_alternative<PrintedClassTree>(printed)) {

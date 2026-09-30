@@ -43,7 +43,7 @@ std::variant<BindingPlan, BindingError> BuildBindings(
     needs_self |= op.life == ValueLife::kLive && std::holds_alternative<ValueFrameFunction>(op.operation);
   }
   const std::size_t self_count = needs_self ? 1 : 0;
-  const std::size_t hole_count = evaluation.holes ? 1 : 0;
+  const std::size_t hole_count = NeedsHoleToken(evaluation) ? 1 : 0;
   const auto cell_count = evaluation.cells ? evaluation.cells->cells.cells.size() : 0;
   const auto slot_count = evaluation.exceptions ? evaluation.exceptions->slots.size() : 0;
   for (const auto& value : graph.values) {
@@ -118,7 +118,7 @@ std::variant<BindingPlan, BindingError> BuildBindings(
       plan.self = SymbolId{static_cast<std::uint32_t>(plan.symbols.size())};
       plan.symbols.emplace_back(FunctionSelfBinding{});
     }
-    if (evaluation.holes) {
+    if (NeedsHoleToken(evaluation)) {
       plan.hole = SymbolId{static_cast<std::uint32_t>(plan.symbols.size())};
       plan.symbols.emplace_back(HoleTokenBinding{});
     }
@@ -171,7 +171,7 @@ std::variant<BindingPlan, BindingError> BuildBindings(
           graph.ops[producer.value].result != ValueId{static_cast<std::uint32_t>(i)})
         return Error::kDefinition;
       const auto& placement = evaluation.operations[producer.value];
-      if (!placement.temporary) continue;
+      if (!placement.temporary || IsAbsentHeritageTransport(graph, evaluation, graph.ops[producer.value])) continue;
       const SymbolId symbol{static_cast<std::uint32_t>(plan.symbols.size())};
       plan.symbols.emplace_back(SnapshotBinding{
           ValueId{static_cast<std::uint32_t>(i)}, producer, *placement.temporary});
