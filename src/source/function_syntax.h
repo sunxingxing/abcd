@@ -21,6 +21,7 @@ struct ModuleSyntax {
   NameId name;
   ModuleAccess access;
   NameEvidence evidence = NameEvidence::kSynthesized;
+  bool local = false;
 };
 struct FunctionSyntax {
   RouteInputIdentity identity;

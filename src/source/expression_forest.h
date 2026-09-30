@@ -35,6 +35,7 @@ struct ExpressionForest {
   // Jumps, environment placements and removed operations have no expression. Statement assembly owns
   // control-operation placements, not this expression-only construction step.
   std::vector<std::optional<ExprId>> operations;
+  std::vector<std::optional<SymbolId>> module_initializations;
   // Flat, exclusively owned assignment roots, in each verified copy schedule's
   // order. These are not operation expressions: statement assembly places them
   // on the exact edge (including empty arms), or once at MethodEntry before the

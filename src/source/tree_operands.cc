@@ -25,7 +25,7 @@ class OperandCheck {
     std::size_t next_function = 0;
     std::size_t next_module = 0;
     std::vector<std::optional<std::size_t>> module_aliases;
-    if (!evaluation_.modules.empty()) {
+    if (!tree_.modules.empty()) {
       budget_.Array(module_aliases, tree_.symbols.size());
       for (std::size_t i = 0; i < tree_.modules.size(); ++i) {
         budget_.Step();
@@ -112,6 +112,27 @@ class OperandCheck {
           RequireMeaning(module.pair.read == current_ && module.read == operation &&
               symbol.value < module_aliases.size() && module_aliases[symbol.value] &&
               tree_.modules[*module_aliases[symbol.value]].target == module.target, Error::kOperand);
+        } else if constexpr (std::is_same_v<T, analysis::ValueModuleWrite>) {
+          const auto* binding = std::get_if<ModuleStoreConstant>(&constants_.operations[i]);
+          RequireMeaning(binding && binding->slot == operation.slot, Error::kConstant);
+          SymbolId symbol;
+          if (binding->initialize) {
+            RequireMeaning(flow_.statements[i].has_value(), Error::kOperand);
+            const auto* declaration = std::get_if<DeclarationStmt>(&tree_.statements[flow_.statements[i]->value].statement);
+            RequireMeaning(declaration && declaration->initializer == expression, Error::kOperand);
+            symbol = declaration->symbol;
+            Input(input(0), expression);
+          } else {
+            const auto& assignment = Node<AssignmentExpr>(expression);
+            const auto* target = std::get_if<SymbolTarget>(&assignment.target);
+            RequireMeaning(target != nullptr, Error::kOperand);
+            symbol = target->symbol;
+            Input(input(0), assignment.value);
+          }
+          RequireMeaning(symbol.value < module_aliases.size() && module_aliases[symbol.value], Error::kOperand);
+          const auto& alias = tree_.modules[*module_aliases[symbol.value]];
+          RequireMeaning(alias.target == binding->target && alias.access == ModuleAccess::kMutable &&
+              (!binding->initialize || alias.local), Error::kOperand);
         } else if constexpr (std::is_same_v<T, analysis::ValueGuard>) {
           // Flow independently proved this placement is the checked read's
           // same expression; combined-origin checking covers both original PCs.
@@ -219,7 +240,7 @@ class OperandCheck {
                 tree_.closure_captures[created.captures.first + c] == *flow_.cells[cell.value], Error::kOperand);
           }
         } else {
-          static_assert(std::is_same_v<T, analysis::ValueModuleWrite> || std::is_same_v<T, analysis::ValueHole> ||
+          static_assert(std::is_same_v<T, analysis::ValueHole> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueDebugger> ||

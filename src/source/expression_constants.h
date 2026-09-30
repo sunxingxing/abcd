@@ -10,7 +10,14 @@ namespace abcd::source {
 // indices never become executable tree operands. Entries are indexed by OpId.
 struct ObjectConstant { std::uint32_t first; std::uint32_t count; };
 struct ConstantProperty { NameId key; TreeLiteral value; };
-using ExpressionConstant = std::variant<std::monostate, NameId, TextId, ObjectConstant>;
+// Record binding adapter supplies the same metadata slot and native symbol.
+// Initialization is a declaration at this exact store, never an eager `let`.
+struct ModuleStoreConstant {
+  analysis::ModuleSlot slot;
+  ModuleSymbol target;
+  bool initialize = false;
+};
+using ExpressionConstant = std::variant<std::monostate, NameId, TextId, ObjectConstant, ModuleStoreConstant>;
 struct ExpressionConstants {
   std::span<const ExpressionConstant> operations;
   std::size_t name_count = 0;

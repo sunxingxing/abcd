@@ -123,7 +123,8 @@ class TreePrinter {
     Result().work = initial_.work - remaining_.work;
     return std::move(result_);
   }
-  PrintedFunction Direct() {
+  PrintedFunction Direct(bool module = false) {
+    module_body_ = module;
     const auto checked = VerifyTreeStructure(Tree(), remaining_);
     if (const auto* error = std::get_if<TreeStructureError>(&checked)) {
       if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
@@ -136,8 +137,24 @@ class TreePrinter {
         Tree().callable != CallableKind::kAsyncFunction && Tree().callable != CallableKind::kGenerator &&
         Tree().callable != CallableKind::kAsyncGenerator)
       throw Error::kUnsupportedContext;
+    if (module) {
+      const auto* body = std::get_if<BlockStmt>(&Tree().statements[Tree().body.value].statement);
+      if (!body || !body->child_count || !Tree().parameters.empty() || !Tree().captures.empty() ||
+          Tree().self || Tree().callable != CallableKind::kFunction || Tree().strictness != Strictness::kStrict)
+        throw Error::kUnsupportedContext;
+      const auto last = Tree().children[body->first_child + body->child_count - 1];
+      if (!std::holds_alternative<ReturnStmt>(Tree().statements[last.value].statement)) throw Error::kUnsupportedContext;
+      for (std::size_t i = 0; i < Tree().statements.size(); ++i) {
+        Step();
+        if (std::holds_alternative<ReturnStmt>(Tree().statements[i].statement) && i != last.value)
+          throw Error::kUnsupportedContext;
+      }
+    }
     for (const auto& node : Tree().expressions) {
       Step();
+      if (module && (std::holds_alternative<ThisExpr>(node.expression) ||
+          std::holds_alternative<AwaitExpr>(node.expression) || std::holds_alternative<YieldExpr>(node.expression) ||
+          std::holds_alternative<ArgumentSnapshotExpr>(node.expression))) throw Error::kUnsupportedContext;
       if (std::holds_alternative<FunctionExpr>(node.expression)) throw Error::kUnsupportedContext;
       if (std::holds_alternative<RealmObjectExpr>(node.expression)) RecordRealm();
       if (std::holds_alternative<SymbolConstructorExpr>(node.expression)) RecordSymbol();
@@ -145,12 +162,13 @@ class TreePrinter {
     }
     Result().identity = Tree().identity; Result().method = Tree().method;
     Result().value_revision = Tree().value_revision; Result().cfg_revision = Tree().cfg_revision;
-    Result().fragment = FunctionFragment::kConditionalExpression;
+    Result().fragment = module ? FunctionFragment::kModuleBody : FunctionFragment::kConditionalExpression;
     Result().incomplete = !Tree().recovery_issues.empty();
     Array(Result().parameters, Tree().parameters.size()); Array(Result().expressions, Tree().expressions.size());
     Array(Result().properties, Tree().properties.size()); Array(Result().statements, Tree().statements.size());
     Array(Result().anchors, Tree().anchors.size()); PrepareAnchors();
-    Push(BeginFunction{}); Drain(); Append("\n");
+    if (module) Push(Statement{Tree().body, 0}); else Push(BeginFunction{});
+    Drain(); Append("\n");
     Result().bytes = written_;
     Result().allocated_bytes = initial_.bytes - remaining_.bytes;
     Result().work = initial_.work - remaining_.work;
@@ -660,7 +678,8 @@ class TreePrinter {
     for (std::size_t i = 0; i < indent.depth; ++i) Append(kIndent);
   }
   void StatementNode(const BlockStmt&, Statement at) {
-    Append("{\n"); Push(BlockCursor{at.id, 0, at.depth});
+    if (!module_body_ || at.id != Tree().body) Append("{\n");
+    Push(BlockCursor{at.id, 0, at.depth});
   }
   void StatementNode(const DeclarationStmt& node, Statement) {
     switch (Tree().symbols[node.symbol.value].declaration) {
@@ -684,8 +703,16 @@ class TreePrinter {
     Push(node.condition);
   }
   void StatementNode(ReturnStmt node, Statement) {
-    Append("return"); Push(std::string_view(";"));
-    if (node.value) { Append(" "); Push(*node.value); }
+    if (!module_body_) Append("return");
+    Push(std::string_view(";"));
+    if (node.value) {
+      if (module_body_) {
+        // A discarded entry completion is an expression statement. Parentheses
+        // keep object literals and other leading tokens out of statement grammar.
+        Append("("); Push(std::string_view(")"));
+      } else Append(" ");
+      Push(*node.value);
+    }
   }
   void StatementNode(ThrowStmt node, Statement) {
     Append("throw "); Push(std::string_view(";")); Push(node.value);
@@ -741,11 +768,13 @@ class TreePrinter {
   void Run(BlockCursor at) {
     const auto& block = std::get<BlockStmt>(Tree().statements[at.id.value].statement);
     Boundary({at.id, at.index});
-    if (at.index == block.child_count) { Run(Indent{at.depth}); Append("}"); return; }
+    const bool root = module_body_ && at.id == Tree().body;
+    if (at.index == block.child_count) { if (!root) { Run(Indent{at.depth}); Append("}"); } return; }
     Push(BlockCursor{at.id, at.index + 1, at.depth});
     Push(std::string_view("\n"));
-    Push(Statement{Tree().children[block.first_child + at.index], at.depth + 1});
-    Push(Indent{at.depth + 1});
+    const auto depth = root ? at.depth : at.depth + 1;
+    Push(Statement{Tree().children[block.first_child + at.index], depth});
+    Push(Indent{depth});
   }
   void PrepareAnchors() {
     Array(Located(), Tree().anchors.size());
@@ -787,6 +816,7 @@ class TreePrinter {
   std::size_t depth_ = 0;
   std::size_t written_ = 0;
   std::vector<OwnedAction> actions_;
+  bool module_body_ = false;
   std::vector<LocatedAnchor> located_;
   std::vector<std::vector<LocatedAnchor>> locations_;
   std::vector<OwnerTree> owners_;
@@ -798,6 +828,16 @@ std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
     const FunctionTree& tree, std::ostream& output,
     EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope) {
   try { return TreePrinter(tree, output, limit, scratch, scope).Direct();
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit;
+  } catch (const std::ios_base::failure&) { return Error::kWrite; }
+}
+
+std::variant<PrintedFunction, TreePrintError> PrintModuleTree(
+    const FunctionTree& tree, std::ostream& output,
+    EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope) {
+  try { return TreePrinter(tree, output, limit, scratch, scope).Direct(true);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit;

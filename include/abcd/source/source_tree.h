@@ -93,7 +93,14 @@ enum class ModuleAccess : std::uint8_t { kReadOnly, kMutable };
 // Alias to an enclosing source module symbol, not an ABC slot, declaration or
 // snapshot. ReadOnly forbids assignment through an import; its value stays live.
 // A record proof must bind owner/target/name/access before source publication.
-struct TreeModuleAlias { SymbolId symbol; ModuleSymbol target; ModuleAccess access; };
+struct TreeModuleAlias {
+  SymbolId symbol;
+  ModuleSymbol target;
+  ModuleAccess access;
+  // Owned by this module initializer; its declaration occurs at the first
+  // original store. Imported/enclosing aliases never become local declarations.
+  bool local = false;
+};
 struct UndefinedLiteral {};
 struct NullLiteral {};
 struct BooleanLiteral { bool value; };

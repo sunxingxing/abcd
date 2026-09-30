@@ -13,7 +13,7 @@ struct GeneratedRange {
   std::size_t end = 0;
   auto operator<=>(const GeneratedRange&) const = default;
 };
-enum class FunctionFragment : std::uint8_t { kClassMember, kConditionalExpression, kFunctionExpression };
+enum class FunctionFragment : std::uint8_t { kClassMember, kConditionalExpression, kFunctionExpression, kModuleBody };
 enum class TreePrintError : std::uint8_t {
   kUnsupportedContext, kOutputLimit, kWrite, kResourceLimit, kWorkLimit,
   kInvalidLiteral
@@ -60,6 +60,14 @@ struct PrintedFunction {
 // ownership and must not mutate the tree during printing. Standalone function/
 // arrow expressions have no child lookup; use the shared family entry for those.
 [[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
+    const FunctionTree& tree, std::ostream& output,
+    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
+    const GlobalScope* scope = nullptr);
+
+// Same AST printer for a module initializer. No callable envelope is emitted;
+// only a final top-level return is allowed and its value is evaluated/discarded.
+// The record adapter owns entry identity, declarations, imports and exports.
+[[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintModuleTree(
     const FunctionTree& tree, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
     const GlobalScope* scope = nullptr);

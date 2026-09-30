@@ -160,6 +160,14 @@ class FlowCheck {
             const auto* returned = std::get_if<ReturnStmt>(&syntax);
             Require(returned && returned->value, Error::kPlacement);
             flow_.expressions[id.value] = *returned->value;
+          } else if (std::holds_alternative<analysis::ValueModuleWrite>(op.operation) &&
+                     std::holds_alternative<StmtId>(placement)) {
+            Require(std::get<StmtId>(placement) == statement && region.block == tree_.body, Error::kPlacement);
+            const auto* declaration = std::get_if<DeclarationStmt>(&syntax);
+            Require(declaration && declaration->initializer && !declared_[declaration->symbol.value] &&
+                tree_.symbols[declaration->symbol.value].kind == BindingKind::kLocal, Error::kPlacement);
+            declared_[declaration->symbol.value] = 1;
+            flow_.expressions[id.value] = *declaration->initializer;
           } else if (std::holds_alternative<analysis::ValueThrow>(op.operation)) {
             Require(std::get_if<StmtId>(&placement) && std::get<StmtId>(placement) == statement, Error::kPlacement);
             const auto* thrown = std::get_if<ThrowStmt>(&syntax);
@@ -286,9 +294,9 @@ class FlowCheck {
     for (const auto& alias : tree_.modules) {
       budget_.Step();
       Require(alias.symbol.value < tree_.symbols.size() && !declared_[alias.symbol.value] &&
-          tree_.symbols[alias.symbol.value].kind == BindingKind::kModule &&
-          tree_.symbols[alias.symbol.value].scope == tree_.module_scope, Error::kPlacement);
-      declared_[alias.symbol.value] = 1;
+          tree_.symbols[alias.symbol.value].kind == (alias.local ? BindingKind::kLocal : BindingKind::kModule) &&
+          tree_.symbols[alias.symbol.value].scope == (alias.local ? tree_.body_scope : *tree_.module_scope), Error::kPlacement);
+      if (!alias.local) declared_[alias.symbol.value] = 1;
     }
   }
   void CellDeclarations(analysis::OpId allocation, const BlockStmt& block, std::uint32_t& child) {
@@ -479,6 +487,9 @@ class FlowCheck {
         Require(property != nullptr, Error::kPlacement);
         flow_.initializers[i] = *property;
         flow_.expressions[i] = tree_.properties[property->value].value;
+      } else if (std::holds_alternative<analysis::ValueModuleWrite>(op.operation) &&
+                 std::holds_alternative<StmtId>(placement)) {
+        // Initializations own a declaration statement; updates own assignments.
       } else if (std::holds_alternative<analysis::ValueBranch>(op.operation) ||
           std::holds_alternative<analysis::ValueDebugger>(op.operation) ||
           std::holds_alternative<analysis::ValueThrow>(op.operation) ||

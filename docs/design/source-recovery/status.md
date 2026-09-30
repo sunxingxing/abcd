@@ -1,6 +1,6 @@
 # 项目进展与设计审查
 
-更新时间：2026-09-30。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
+更新时间：2026-10-01。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
 本页是当前状态入口；[progress.md](progress.md) 保留历史证据，不覆盖本页结论。
 
 ## 更新规则
@@ -11,6 +11,25 @@
 - 不按文件数、提交数或接口数量宣布完成；必须以原计划的端到端验收为准。
 
 ## 当前阶段
+
+### 2026-10-01：共同树的模块槽位初始化与更新
+
+- ValueModuleWrite 现在通过类型化 ModuleStoreConstant 绑定模块槽位与源码
+  符号；首次初始化在原操作位置形成 let 声明，后续写入形成赋值。
+  共同作用域、执行流、操作数和来源检查区分本地模块声明与外部模块别名，
+  不把所有模块槽位预先初始化。当前初始化声明仅支持根块位置。
+- 共享 printer 增加模块体片段，不打印函数外壳，将唯一尾部 entry return
+  转为带括号的丢弃值表达式。参数、捕获、this、await/yield 和嵌套函数等
+  尚未具备模块上下文的组合仍拒绝；正式 record 适配尚未接入此入口。
+- 新增三 profile、1/200/201/402 次写入测试，覆盖槽位/目标篡改、重复
+  初始化、首次写入缺少声明和只读绑定等反例。独立 Node 原生模块测试
+  验证链接后执行前 TDZ、执行后导出值及与参考模块结果一致。
+- module_store_tree_test、module_store_tree_source_test、module_evaluation_test、
+  tree_structure_test 四项通过（4.51 秒）；补充反例后重跑新增两项通过。
+  构建日志 /tmp/abcd-module-build.log、/tmp/abcd-module-final-build.log。
+- 这是模块共同树能力，尚非真实 record 完成证据。下一步在正式入口
+  从模块元数据绑定槽位、初始化及导出，贯通真实 Constants record 8889；
+  阶段一、整 record 与源码表示验收仍未完成。未执行全量测试/RSS/基准。
 
 ### 2026-09-30：真实 onRestore 嵌套成员调用贯通
 

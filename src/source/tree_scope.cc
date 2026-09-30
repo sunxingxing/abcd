@@ -133,7 +133,8 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
     budget.Step();
     const auto& alias = tree.modules[i];
     RequireTree(alias.symbol.value < count && !declared_[alias.symbol.value] &&
-        tree.symbols[alias.symbol.value].kind == BindingKind::kModule &&
+        tree.symbols[alias.symbol.value].kind == (alias.local ? BindingKind::kLocal : BindingKind::kModule) &&
+        (!alias.local || (tree.symbols[alias.symbol.value].scope == tree.body_scope && alias.access == ModuleAccess::kMutable)) &&
         alias.target.owner == tree.modules.front().target.owner, Error::kBinding);
     const auto declaration = tree.symbols[alias.symbol.value].declaration;
     switch (alias.access) {
@@ -141,7 +142,7 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
       case ModuleAccess::kMutable: RequireTree(declaration == DeclarationKind::kLet, Error::kBinding); break;
       default: throw Error::kBinding;
     }
-    declared_[alias.symbol.value] = 1;
+    if (!alias.local) declared_[alias.symbol.value] = 1;
     targets[i] = alias.target;
   }
   std::sort(targets.begin(), targets.end(), [&](auto a, auto b) { budget.Step(); return a < b; });

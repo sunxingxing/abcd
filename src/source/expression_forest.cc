@@ -125,6 +125,8 @@ class ForestBuilder {
     Reserve(forest_.origin_parts, graph_.ops.size() * kOriginPartsPerOperation);
     Reserve(forest_.operations, graph_.ops.size());
     forest_.operations.resize(graph_.ops.size());
+    Reserve(forest_.module_initializations, graph_.ops.size());
+    forest_.module_initializations.resize(graph_.ops.size());
     Reserve(forest_.initializers, graph_.ops.size());
     Reserve(objects_, graph_.ops.size());
     Step(graph_.ops.size()); Step(graph_.ops.size());
@@ -193,6 +195,20 @@ class ForestBuilder {
               Combine(Add(SymbolExpr{symbol}, origin), {graph_.ops[module.pair.guard.value].origin.value});
           forest_.operations[i] = expression;
           forest_.operations[module.pair.guard.value] = expression;
+          continue;
+        }
+        if (const auto* store = std::get_if<analysis::ValueModuleWrite>(&op.operation)) {
+          const auto* binding = std::get_if<ModuleStoreConstant>(&constants_.operations[i]);
+          Require(binding && binding->slot == store->slot && op.use_count == 1, Error::kConstant);
+          const auto found = std::lower_bound(module_order_.begin(), module_order_.end(), binding->target,
+              [&](auto index, auto target) { Step(); return modules_[index] < target; });
+          Require(found != module_order_.end() && modules_[*found] == binding->target, Error::kBinding);
+          const SymbolId symbol{static_cast<std::uint32_t>(forest_.bindings.symbols.size() + *found)};
+          const auto value = Operand(graph_.uses[op.first_use.value].operand, origin);
+          if (binding->initialize) {
+            forest_.module_initializations[i] = symbol;
+            forest_.operations[i] = value;
+          } else forest_.operations[i] = Add(AssignmentExpr{SymbolTarget{symbol}, value}, origin);
           continue;
         }
         if (objects_[i]) {

@@ -544,8 +544,10 @@ class TreeBuilder {
         default: throw Error::kBinding;
       }
       const SymbolId symbol{static_cast<std::uint32_t>(tree_.symbols.size())};
-      tree_.symbols.push_back({*tree_.module_scope, alias.name, BindingKind::kModule, declaration, alias.evidence, {}});
-      tree_.modules.push_back({symbol, alias.target, alias.access});
+      Require(!alias.local || alias.access == ModuleAccess::kMutable, Error::kBinding);
+      tree_.symbols.push_back({alias.local ? kBodyScope : *tree_.module_scope, alias.name,
+          alias.local ? BindingKind::kLocal : BindingKind::kModule, declaration, alias.evidence, {}});
+      tree_.modules.push_back({symbol, alias.target, alias.access, alias.local});
     }
   }
   TreeOriginId BodyOrigin() {
@@ -695,7 +697,11 @@ class TreeBuilder {
         continue;
       }
       Require(expression.has_value(), Error::kOwnership);
-      if (std::holds_alternative<analysis::ValueBranch>(op.operation)) {
+      if (forest_.module_initializations[id.value]) {
+        const auto statement = Statement(DeclarationStmt{*forest_.module_initializations[id.value], expression}, origin);
+        Append(draft, statement);
+        tree_.operations.push_back({id, statement});
+      } else if (std::holds_alternative<analysis::ValueBranch>(op.operation)) {
         EmitBranch(id, region, block.first_edge, draft);
       } else if (std::holds_alternative<analysis::ValueReturn>(op.operation)) {
         const auto statement = Statement(ReturnStmt{expression}, origin);
