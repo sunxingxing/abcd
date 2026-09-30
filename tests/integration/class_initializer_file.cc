@@ -123,6 +123,13 @@ int main(int argc, char** argv) {
       std::cerr << "derived projection failure " << static_cast<unsigned>(*error) << '\n';
     Check(std::holds_alternative<DerivedProjection>(projected_constructor));
     const auto& protocol = std::get<DerivedProjection>(projected_constructor);
+    const auto scheduled_constructor = BuildEvaluationPlan(derived.values.graph);
+    if (const auto* error = std::get_if<EvaluationError>(&scheduled_constructor))
+      std::cerr << "derived evaluation failure " << static_cast<unsigned>(*error) << '\n';
+    Check(std::holds_alternative<EvaluationPlan>(scheduled_constructor));
+    Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(derived.values.graph,
+        std::get<EvaluationPlan>(scheduled_constructor))));
+
     Check(protocol.revision == derived.values.graph.revision && !protocol.guards.empty());
     auto& guard = derived.values.graph.ops[protocol.guards.front().value];
     auto& guard_input = derived.values.graph.uses[guard.first_use.value];

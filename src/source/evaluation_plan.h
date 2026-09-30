@@ -97,7 +97,9 @@ enum class ReferenceBoundary : std::uint8_t { kNone, kBeforeStoredValue };
 // ClassHeritage preserves the class-creation protocol occurrence and evaluates
 // language heritage in order; definite Hole means absent extends. Scheduling
 // does not establish constructor/member bodies, captures or inheritance syntax.
-enum class InputEvaluation : std::uint8_t { kEager, kConditionalArgument, kClassHeritage };
+// ConstructorGuard retains the VM check as an ordered event and snapshots its
+// input. It does not authorize guard elision or reading uninitialized JS this.
+enum class InputEvaluation : std::uint8_t { kEager, kConditionalArgument, kClassHeritage, kConstructorGuard };
 struct EvaluationShape {
   // Fixed prefix followed by argument occurrences. No array proportional to
   // range-call arity is allocated merely to describe their roles.
@@ -109,7 +111,7 @@ struct EvaluationShape {
   ReferenceBoundary reference = ReferenceBoundary::kNone;
   InputEvaluation inputs = InputEvaluation::kEager;
   [[nodiscard]] bool NeedsSnapshot(analysis::OperandRole role) const {
-    return inputs == InputEvaluation::kConditionalArgument ||
+    return inputs == InputEvaluation::kConditionalArgument || inputs == InputEvaluation::kConstructorGuard ||
         (reference == ReferenceBoundary::kBeforeStoredValue &&
          role == analysis::OperandRole::kStoredValue);
   }

@@ -69,6 +69,33 @@ class Fixture {
   analysis::ValueProgram graph;
 };
 
+void ConstructorProtocol() {
+  using namespace analysis;
+  for (const auto count : {0U, 1U, 200U, 201U, 402U}) {
+    Fixture fixture;
+    std::vector<std::pair<OperandRole, ValueOperand>> args;
+    for (unsigned i = 0; i < count; ++i) {
+      fixture.Read();
+      args.emplace_back(OperandRole::kArgument, *fixture.graph.ops.back().result);
+    }
+    const auto call = fixture.Add(ValueSuperCall{static_cast<std::uint16_t>(count), {}}, true,
+        args, LanguageEffect::kUserCode | LanguageEffect::kAllocation);
+    const auto result = *fixture.graph.ops[call.value].result;
+    const auto guard = fixture.Add(ValueSuperCheck{SuperCheckKind::kRequireInitialized}, false,
+        {{OperandRole::kGuardValue, result}}, LanguageEffect::kGuard);
+    fixture.graph.uses[fixture.graph.ops[guard.value].first_use.value].purpose = ReadPurpose::kProtocol;
+    fixture.Return(result);
+    auto plan = fixture.Plan();
+    Check(plan.operations[guard.value].kind == EvaluationKind::kRoot);
+    Check(plan.operations[call.value].kind == EvaluationKind::kRoot);
+    Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(fixture.graph, plan)));
+    auto erased = plan; erased.operations[guard.value].kind = EvaluationKind::kElidedPure;
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, erased)));
+    fixture.graph.uses[fixture.graph.ops[guard.value].first_use.value].purpose = ReadPurpose::kOperand;
+    Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(fixture.graph)));
+  }
+}
+
 void OrderedOperands(bool reverse) {
   Fixture fixture;
   fixture.Read(); fixture.Read();
@@ -323,6 +350,7 @@ void ClassCreation(unsigned count, bool absent, bool barrier) {
   Check(std::get<HoleProtocolError>(AnalyzeHoleProtocol(fixture.graph)) == HoleProtocolError::kEscape);
 }
 int main() {
+  ConstructorProtocol();
   // Import support must not authorize a made-up ordinary write expression.
   Check(!DescribeEvaluation(analysis::ValueDefineAccessor{}));
   analysis::ValueOp accessor{}; accessor.operation = analysis::ValueDefineAccessor{};

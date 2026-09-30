@@ -13,6 +13,24 @@
 ## 当前阶段
 
 
+### 2026-10-01：super 协议进入共同求值计划
+
+- DescribeEvaluation 新增范围 super 的有序参数形状和独立构造器守卫输入模式。
+  super 保留结果、异常及效果；守卫保持独立 root 事件，protocol 输入必须取已
+  计算值，禁止把其 producer 融入检查。独立 VerifyEvaluationPlan 同样验证这些
+  约束；本次没有省略守卫，没有把未初始化 receiver 变成 JS this 读取。
+- 真实9865现在通过 BuildEvaluationPlan 与 VerifyEvaluationPlan，初始化投影
+  回归仍独立通过。这证明共同表达式调度已贯通，不是共同 AST/源码已经完成。
+- 新增0/1/200/201/402参数测试，每个参数由具有用户代码/堆读取效果的操作产生，
+  验证完整调度；把守卫改为 ElidedPure 或把 protocol 读取改为普通读取均拒绝。
+- 四项定向回归通过（2.63秒）：evaluation_plan_test、class_initializer_file_test、
+  constructor_tree_source_test、record_import_tree_source_test。构建与测试日志
+  /tmp/abcd-super-evaluation-regression-build.log、/tmp/abcd-super-evaluation-regression-tests.log。
+- 下一步原生 super AST、构造器 receiver 和已证明守卫的源码消费；上下文/投影
+  尚未闭合源码发射。未恢复全量、RSS、基准或重新导出五输入，阶段一保持开放。
+
+
+
 ### 2026-10-01：派生构造器初始化证明映射到工作图
 
 - 新增 ProjectDerivedConstructor，要求真实 derived owner 与同一 FunctionInput

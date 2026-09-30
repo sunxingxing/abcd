@@ -21,6 +21,7 @@ constexpr std::array kReceiverCall{Role::kCallee, Role::kReceiver};
 constexpr std::array kConstruct{Role::kConstructor};
 constexpr std::array kCellStore{Role::kStoredValue};
 constexpr std::array kHeritage{Role::kHeritage};
+constexpr std::array kConstructorGuard{Role::kGuardValue};
 }  // namespace
 
 std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation& operation) {
@@ -96,11 +97,17 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
         case analysis::InvokeReceiver::kExplicit: return EvaluationShape{kReceiverCall, true, op.arguments};
       }
       return {};
+    } else if constexpr (std::is_same_v<T, analysis::ValueSuperCall>) {
+      return EvaluationShape{kNoOperands, true, op.arguments};
+    } else if constexpr (std::is_same_v<T, analysis::ValueSuperCheck>) {
+      EvaluationShape shape{kConstructorGuard, false};
+      shape.inputs = InputEvaluation::kConstructorGuard;
+      return shape;
     } else if constexpr (std::is_same_v<T, analysis::ValueConstruct>)
       return EvaluationShape{kConstruct, true, op.arguments};
     else {
       // Accessors require class/descriptor composition before source evaluation.
-      static_assert(std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
+      static_assert(std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
                     std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
                     std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                     std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
@@ -131,7 +138,8 @@ std::optional<EvaluationError> CheckEvaluationUse(
     const EvaluationShape& shape, std::uint32_t ordinal) {
   const bool conditional = shape.inputs == InputEvaluation::kConditionalArgument;
   const bool heritage = shape.inputs == InputEvaluation::kClassHeritage;
-  const auto purpose = conditional || heritage ? analysis::ReadPurpose::kProtocol : analysis::ReadPurpose::kOperand;
+  const bool constructor_guard = shape.inputs == InputEvaluation::kConstructorGuard;
+  const auto purpose = conditional || heritage || constructor_guard ? analysis::ReadPurpose::kProtocol : analysis::ReadPurpose::kOperand;
   if (use.purpose != purpose) return EvaluationError::kProtocolOperand;
   if (use.role != shape.Role(ordinal)) return EvaluationError::kInvalidGraph;
   // Hole is absence of extends, never a source value or undefined. Mixed
