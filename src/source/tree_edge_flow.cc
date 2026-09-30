@@ -95,7 +95,7 @@ void TreeEdgeFlow::Consume(analysis::IncomingKey incoming, const BlockStmt& bloc
   auto& copies = flow_.copies[*bundle];
   for (std::size_t i = 0; i < schedule.steps.size(); ++i) {
     budget_.Step();
-    const auto expression = Assignment(incoming, block, child);
+    const auto expression = Assignment(incoming, block, child, true);
     const auto& assignment = std::get<AssignmentExpr>(tree_.expressions[expression.value].expression);
     const auto& target = std::get<SymbolTarget>(assignment.target);
     const auto& destination = schedule.steps[i].destination;
@@ -107,6 +107,13 @@ void TreeEdgeFlow::Consume(analysis::IncomingKey incoming, const BlockStmt& bloc
       Require(temporary.value < copies.temporaries.size(), TreeFlowError::kSnapshot);
       Bind(copies.temporaries[temporary.value], target.symbol, TemporaryReason::kParallelCopyCycle);
     }
+    if (tree_.expressions[assignment.value.value].origin != tree_.expressions[expression.value].origin) {
+      const auto* operand = std::get_if<analysis::ValueOperand>(&schedule.steps[i].source);
+      const auto* value = operand ? std::get_if<analysis::ValueId>(operand) : nullptr;
+      const auto* producer = value ? std::get_if<analysis::OpResult>(&graph_.values[value->value].origin) : nullptr;
+      Require(producer && evaluation_.operations[producer->op.value].kind == EvaluationKind::kPhiInput &&
+          flow_.expressions[producer->op.value] == assignment.value, TreeFlowError::kPlacement);
+    }
     copies.expressions[i] = expression;
   }
 }
@@ -117,7 +124,7 @@ bool TreeEdgeFlow::HasCopies(analysis::EdgeId edge) const {
 }
 
 ExprId TreeEdgeFlow::Assignment(analysis::IncomingKey incoming, const BlockStmt& block,
-    std::uint32_t& child) {
+    std::uint32_t& child, bool allow_phi_expression) {
   Require(child < block.child_count, TreeFlowError::kSequence);
   const auto& statement = tree_.statements[sequences_.Child(block.first_child + child++).value];
   const auto* expression = std::get_if<ExpressionStmt>(&statement.statement);
@@ -131,7 +138,8 @@ ExprId TreeEdgeFlow::Assignment(analysis::IncomingKey incoming, const BlockStmt&
   Require(statement.origin == node.origin, TreeFlowError::kPlacement);
   const auto* assignment = std::get_if<AssignmentExpr>(&node.expression);
   Require(assignment && std::holds_alternative<SymbolTarget>(assignment->target) &&
-      tree_.expressions[assignment->value.value].origin == node.origin, TreeFlowError::kPlacement);
+      (allow_phi_expression || tree_.expressions[assignment->value.value].origin == node.origin),
+      TreeFlowError::kPlacement);
   return expression->expression;
 }
 

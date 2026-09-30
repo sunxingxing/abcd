@@ -12,8 +12,10 @@
 #include "class_initializers.h"
 
 namespace abcd::source {
+// kPhiInput owns a sole incoming-copy RHS at the same block exit. It is
+// neither a value snapshot nor permission to cross a branch/exception edge.
 enum class EvaluationKind : std::uint8_t {
-  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection, kConstructorGuard, kCellGuard
+  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection, kConstructorGuard, kCellGuard, kPhiInput
 };
 enum class EvaluationFlow : std::uint8_t { kNormal, kPhased };
 struct OpEvaluation {

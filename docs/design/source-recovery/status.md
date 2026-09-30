@@ -12,6 +12,35 @@
 
 ## 当前阶段
 
+### 2026-10-01：phi右值表达式进入正式求值与源码通路
+
+- normal EvaluationPlan新增kPhiInput：已验证的单copy/无cycle临时量bundle、唯一
+  值消费者、同一单出口块，并且producer之后只有无效果jump/nop，才能把末尾
+  表达式直接移入phi赋值。后续getter、store、环境变更、debugger等仍是屏障。
+  各候选源块唯一，尾部检查总量线性；phased/异常拷贝路径未开放此变换。
+- 求值验证复核producer/consumer及尾部条件，仍展开原子树检查全部效果顺序。
+  ExpressionCopies直接接收表达式所有权；共同树省去额外快照/声明。TreeFlow、
+  TreeOperands独立核对赋值边、producer表达式与来源，原PC继续保留；catch/stage
+  仍要求原有边来源叶值。没有合并控制边，也没有放宽跨块成员调用。
+- 从动态ABC字节码导入的逻辑分支现在实际输出$phi = []或$phi = value.probe()
+  等表达式，省去$value中转；已通过共同树语义检查、打印及182组JS执行对照：
+  &&/||、假值、NaN/-0、BigInt/Symbol、对象/数组身份、getter/成员call的receiver、
+  异常与短路。树构造覆盖200/201/402连续区域；错误consumer、删除实际RHS和
+  在数组创建后加入真实DEBUGGER字节码的强行融合负例均拒绝。
+- 真实10510的PC77数组在完整FileFamily/实际children绑定下确认为kPhiInput，
+  没有临时快照。十项定向回归通过（4.38秒）：logical_regions_test、
+  logical_regions_source_test、evaluation_plan_test、phi_copies_test、phi_call_test、
+  phi_placement_test、function_tree_test、class_initializer_file_test、
+  derived_constructor_source_test、navmap_source_test。新增成员call规格后两项逻辑
+  区域测试再通过（1.56秒）。日志/tmp/abcd-phi-expression-tests.log及
+  /tmp/abcd-phi-expression-call-tests.log；最新构建含abc_structure/abc_semantic。
+- 五输入正式导出build/stage-one/value-phi-expression-pass-1仍34 complete/
+  72 failure/46 no-module，无完整项退化、无legacy writer；汇总
+  /tmp/abcd-phi-expression-batch-summary.json。没有将manifest指标当作语义验收。
+- 下一步把LogicalRegion保留边与已内联RHS组合为共同LogicalExpr，接通phi/control
+  消费，再处理原callee在参数分支之前读取的跨区域调用。当前仍输出if及phi变量，
+  10510完整恢复、整类继承和阶段一仍未完成；未恢复全量/RSS/基准。
+
 ### 2026-10-01：依据真实IR识别逻辑短路值选择区域
 
 - 更正上一条交接对10510的判断：PC72的5115是固定ISA中的CALLRUNTIME_ISTRUE，

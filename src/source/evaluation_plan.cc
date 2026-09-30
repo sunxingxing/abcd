@@ -359,6 +359,18 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       next_op += block.op_count;
     }
     Require(next_op == graph.ops.size(), Error::kInvalidGraph);
+    if (flow == EvaluationFlow::kNormal && plan.phis) {
+      // One eligible bundle per single-exit source block; suffix scans are disjoint.
+      step(graph.ops.size());
+      for (const auto& bundle : plan.phis->bundles) {
+        step();
+        const auto producer = PhiExpressionProducer(graph, *plan.phis, bundle);
+        if (!producer || pinned[producer->value]) continue;
+        auto& placement = plan.operations[producer->value];
+        if (placement.kind != EvaluationKind::kRoot) continue;
+        placement = {EvaluationKind::kPhiInput, plan.phis->inputs[bundle.first], {}};
+      }
+    }
     const auto expressions = BuildPhaseExpressions(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&expressions)) return *error;
     const auto& phase_cost = std::get<PhaseEvaluationCost>(expressions);

@@ -1,0 +1,74 @@
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import vm from 'node:vm';
+// These functions originate in decoded ABC fixtures, through common evaluation,
+// tree and semantic checks. No source text supplies the engine's expression.
+const source = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8'});
+const generated = vm.runInNewContext(source, {Array() { throw new Error('mutable Array binding'); }});
+const reference = [value => value || [], value => value && []];
+const object = {[Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }};
+const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), object];
+let scenarios = 0;
+for (let i = 0; i < reference.length; ++i) for (const value of values) {
+  const expected = reference[i](value);
+  const actual = generated[i](value);
+  if (Array.isArray(expected)) {
+    assert.ok(Array.isArray(actual));
+    assert.equal(actual.length, 0);
+    assert.notEqual(generated[i](value), actual, 'allocation must stay fresh');
+  } else assert.ok(Object.is(actual, expected));
+  ++scenarios;
+}
+const getterReference = [value => value || value.probe, value => value && value.probe];
+function read(fn, primitive, payload, throwing, withGetter) {
+  const events = [], failure = {};
+  const value = withGetter ? {get probe() {
+    assert.equal(this, value); events.push('get');
+    if (throwing) throw failure;
+    return payload;
+  }} : primitive;
+  try {
+    const result = fn(value);
+    return {events, result: result === value && withGetter ? 'same receiver' : result};
+  } catch (error) {
+    return {events, error: error === failure ? 'same exception' : error.name};
+  }
+}
+for (let i = 0; i < getterReference.length; ++i) {
+  for (const value of values) {
+    assert.deepEqual(read(generated[i + 2], value, undefined, false, false),
+                     read(getterReference[i], value, undefined, false, false));
+    ++scenarios;
+  }
+  for (const payload of values) for (const throwing of [false, true]) {
+    assert.deepEqual(read(generated[i + 2], undefined, payload, throwing, true),
+                     read(getterReference[i], undefined, payload, throwing, true));
+    ++scenarios;
+  }
+}
+const callReference = [value => value || value.probe(), value => value && value.probe()];
+function invoke(fn, payload, fail) {
+  const events = [], failure = {};
+  const value = {get probe() {
+    assert.equal(this, value); events.push('get');
+    if (fail === 'get') throw failure;
+    return function() {
+      assert.equal(this, value); events.push('call');
+      if (fail === 'call') throw failure;
+      return payload;
+    };
+  }};
+  try {
+    const result = fn(value);
+    return {events, result: result === value ? 'same receiver' : result};
+  } catch (error) {
+    assert.equal(error, failure); return {events, error: 'same exception'};
+  }
+}
+for (let i = 0; i < callReference.length; ++i) {
+  for (const payload of values) for (const fail of [undefined, 'get', 'call']) {
+    assert.deepEqual(invoke(generated[i + 4], payload, fail), invoke(callReference[i], payload, fail));
+    ++scenarios;
+  }
+}
+console.log(`Decoded logical branch values, getters and calls: ${scenarios} behavior scenarios passed`);

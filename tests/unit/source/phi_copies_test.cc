@@ -341,19 +341,21 @@ void DiamondSyntax() {
   const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, tree));
   Check(flow.copies.size() == 2 && std::get<EdgeId>(flow.copies[0].incoming) == EdgeId{2} &&
       std::get<EdgeId>(flow.copies[1].incoming) == EdgeId{3});
-  Check(flow.snapshots[1] && flow.snapshots[3] && flow.phis[3]);
+  Check(!flow.snapshots[1] && !flow.snapshots[3] && flow.phis[3]);
   for (std::size_t i = 0; i < flow.copies.size(); ++i) {
     const auto root = flow.copies[i].expressions[0];
     const auto& assignment = std::get<AssignmentExpr>(tree.expressions[root.value].expression);
     Check(std::get<SymbolTarget>(assignment.target).symbol == *flow.phis[3]);
     const auto producer = i == 0 ? 1U : 3U;
-    Check(std::get<SymbolExpr>(tree.expressions[assignment.value.value].expression).symbol == *flow.snapshots[producer]);
+    Check(flow.expressions[producer] == assignment.value);
+    const auto& literal = std::get<TreeLiteral>(tree.expressions[assignment.value.value].expression);
+    Check(std::get<abcd::source::IntegerLiteral>(literal).value == (i == 0 ? 11 : 22));
   }
   auto changed = tree;
-  const auto& boundary = std::get<BlockBoundary>(changed.anchors[0].position);
+  auto& boundary = std::get<BlockBoundary>(changed.anchors[0].position);
   const auto& arm = std::get<BlockStmt>(changed.statements[boundary.block.value].statement);
-  Check(arm.child_count == 2 && boundary.index == 1);
-  std::swap(changed.children[arm.first_child], changed.children[arm.first_child + 1]);
+  Check(arm.child_count == 1 && boundary.index == 0);
+  ++boundary.index; // The jump anchor must still precede the incoming copy.
   Check(std::get<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation,
       changed, {constants, 2})) == TreeSemanticError::kFlow);
 }

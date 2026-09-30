@@ -204,6 +204,18 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       }
       step(std::get<std::uint64_t>(checked));
     }
+    std::vector<std::optional<analysis::UseId>> phi_inputs;
+    if (flow == EvaluationFlow::kNormal && plan.phis) {
+      admit(graph.ops.size(), sizeof(std::optional<analysis::UseId>)); step(graph.ops.size());
+      phi_inputs.resize(graph.ops.size());
+      admit(phi_inputs.capacity() - graph.ops.size(), sizeof(std::optional<analysis::UseId>));
+      step(graph.ops.size());
+      for (const auto& bundle : plan.phis->bundles) {
+        step();
+        if (const auto producer = PhiExpressionProducer(graph, *plan.phis, bundle))
+          phi_inputs[producer->value] = plan.phis->inputs[bundle.first];
+      }
+    }
     const auto module_copies = VerifyModuleCatchCopies(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&module_copies)) return *error;
     step(std::get<std::uint64_t>(module_copies));
@@ -304,6 +316,10 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
             plan.literals->nested[i] && placement.consumer == plan.literals->nested[i] &&
             !placement.temporary && op.result, Error::kOwnership);
         visits[i] = EvaluationVisit::kDone;
+      } else if (placement.kind == EvaluationKind::kPhiInput) {
+        Require(!pinned[i] && op.result && !placement.temporary && placement.consumer &&
+            !phi_inputs.empty() && phi_inputs[i] == placement.consumer && visible[i].first == placement.consumer &&
+            !visible[i].multiple, Error::kOwnership);
       } else if (placement.kind == EvaluationKind::kInline) {
         Require(!pinned[i] || (cross(i) &&
             std::holds_alternative<analysis::ValueModuleRead>(op.operation)), Error::kOwnership);
@@ -373,7 +389,10 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       for (auto i = next_op; i < end; ++i) {
         step();
         Require(graph.ops[i].block.value == b && graph.ops[i].order == i - next_op, Error::kInvalidGraph);
-        if (plan.operations[i].kind != EvaluationKind::kRoot) continue;
+        // The phi root moves only across inert trailing control, proved above.
+        // Expanding it here checks its subtree's original effect order exactly.
+        if (plan.operations[i].kind != EvaluationKind::kRoot &&
+            plan.operations[i].kind != EvaluationKind::kPhiInput) continue;
         Require(visits[i] == EvaluationVisit::kUnseen, Error::kOwnership);
         std::size_t depth = 1;
         stack[0] = {{static_cast<std::uint32_t>(i)}, 0};

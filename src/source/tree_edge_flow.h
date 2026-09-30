@@ -21,7 +21,8 @@ class TreeEdgeFlow {
   void Finish();
  private:
   void Bind(std::optional<SymbolId>& binding, SymbolId symbol, TemporaryReason reason);
-  ExprId Assignment(analysis::IncomingKey incoming, const BlockStmt& block, std::uint32_t& child);
+  ExprId Assignment(analysis::IncomingKey incoming, const BlockStmt& block, std::uint32_t& child,
+      bool allow_phi_expression = false);
   const analysis::ValueProgram& graph_;
   const EvaluationPlan& evaluation_;
   const FunctionTree& tree_;

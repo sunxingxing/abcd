@@ -330,6 +330,10 @@ int main(int argc, char** argv) {
           const auto allocation = std::get<analysis::OpResult>(graph.values[right.value].origin).op;
           Check(std::holds_alternative<analysis::ValueArrayAllocation>(graph.ops[allocation.value].operation));
           Check(graph.origins[graph.ops[allocation.value].origin.value].pc.value == 77);
+          const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph, {}, IncomingCells::kConditional,
+              child.children, {}, {}, {}, analysis::ClosureWrites::kLanguage));
+          Check(evaluation.operations[allocation.value].kind == EvaluationKind::kPhiInput);
+          Check(!evaluation.operations[allocation.value].temporary);
         }
         if (child.function.Method().value != 10400) continue;
         guarded_child = true;

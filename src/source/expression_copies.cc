@@ -97,14 +97,19 @@ class CopyExpressions {
     return symbol;
   }
   ExprId Operand(const analysis::ValueOperand& operand, TreeOriginId origin) {
-    // Every value read is a previously materialized binding, never a re-used
-    // getter/call subtree. Each copy owns a fresh, side-effect-free RHS leaf.
+    // Most inputs read existing bindings. A checked sole-use tail expression
+    // instead transfers ownership to this assignment without a snapshot.
     return std::visit([&](const auto& value) -> ExprId {
       using T = std::decay_t<decltype(value)>;
       if constexpr (std::is_same_v<T, analysis::ValueId>) {
         Require(value.value < forest_.bindings.values.size(), Error::kBinding);
         const auto& binding = forest_.bindings.values[value.value];
         if (const auto* symbol = std::get_if<SymbolId>(&binding)) return Add(SymbolExpr{*symbol}, origin);
+        const auto* producer = std::get_if<analysis::OpResult>(&graph_.values[value.value].origin);
+        if (producer && evaluation_.operations[producer->op.value].kind == EvaluationKind::kPhiInput) {
+          Require(forest_.operations[producer->op.value].has_value(), Error::kUnavailableValue);
+          return *forest_.operations[producer->op.value];
+        }
         Require(std::holds_alternative<ReceiverEntryBinding>(binding), Error::kUnavailableValue);
         return Add(ThisExpr{owner_}, origin);
       } else if constexpr (std::is_same_v<T, analysis::IntegerLiteral>) {

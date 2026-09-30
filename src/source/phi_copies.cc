@@ -77,4 +77,33 @@ std::variant<PhiCopies, PhiCopyError> BuildPhasedPhiCopies(
     const analysis::ValueProgram& graph, analysis::SemanticBudget allowance, PhiDomain domain) {
   return BuildCopies(graph, allowance, PhiFlow::kPhased, domain);
 }
+std::optional<analysis::OpId> PhiExpressionProducer(
+    const analysis::ValueProgram& graph, const PhiCopies& copies, const PhiBundle& bundle) {
+  using namespace analysis;
+  if (copies.flow != PhiFlow::kNormal || bundle.count != 1 ||
+      bundle.schedule.steps.size() != 1 || bundle.schedule.temporaries != 0) return {};
+  const auto* edge = std::get_if<EdgeId>(&bundle.incoming);
+  if (!edge) return {};
+  const auto input = copies.inputs[bundle.first];
+  const auto& use = graph.uses[input.value];
+  const auto* value = std::get_if<ValueId>(&use.operand);
+  if (!value || graph.values[value->value].first_use != input || use.next) return {};
+  const auto* producer = std::get_if<OpResult>(&graph.values[value->value].origin);
+  if (!producer) return {};
+  const auto& op = graph.ops[producer->op.value];
+  const auto& block = graph.blocks[op.block.value];
+  if (op.life != ValueLife::kLive || block.edge_count != 1 || block.first_edge != *edge ||
+      graph.edges[edge->value].source != op.block) return {};
+  // Only inert control may follow. In particular environment changes, getters,
+  // stores and additional roots remain barriers even if the result is unused.
+  for (std::uint32_t order = op.order + 1; order < block.op_count; ++order) {
+    const auto& later = graph.ops[block.first_op.value + order];
+    if (later.life != ValueLife::kLive) continue;
+    if ((!std::holds_alternative<ValueJump>(later.operation) &&
+         !std::holds_alternative<ValueNop>(later.operation)) || later.result || later.use_count ||
+        later.normal != LanguageEffect::kNone || later.before_throw != LanguageEffect::kNone ||
+        later.exceptional != ExceptionalCompletion::kImpossible) return {};
+  }
+  return producer->op;
+}
 }  // namespace abcd::source
