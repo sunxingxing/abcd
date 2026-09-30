@@ -12,6 +12,31 @@
 
 ## 当前阶段
 
+### 2026-09-30：yield* 非默认 API truth-test 编码贯通
+
+- 锁定 OH7 PandaGen::{IsTrue,BranchIfFalse} 对非默认 API 发出
+  callruntime.istrue/isfalse。精确委托解析现在同时接受这两个编码与
+  原生 istrue/isfalse，并复用已检查的 ScalarAssignment/UnaryExpression
+  映射；IC slot 保持缓存边界数据，不解释成寄存器或源码操作数。
+  InterpreterAssembly 四种 handler 均调用 ToBoolean，compiler stub
+  的 profiling 变体保留同一真假转换语义。无新控制/输出路径。
+- 新增三个 truth 编码组合 × 三 profile × 三父环境 × 有无用户 catch ×
+  16/32 位分支的 108 个完整族，以及 2/201 个连续委托 × 三种编码 ×
+  两种分支的 12 个完整族；六个反例用相反谓词保持编码长度不变。
+  委托集成目标总计消费 164 个完整族、32 个协议反例。追加 done 的
+  undefined/null/false/0/-0/NaN/空字符串/0n 及 true/数字/字符串/bigint/
+  symbol/object/array 行为，保留原返回对象身份及 value getter 次数。
+- 新编码首轮红例 `/tmp/abcd-yield-delegate-truth-red.log`；
+  `cmake --build build --target abc_semantic loop_closure_file_test -j 4`
+  成功，delegate、generator branches、async_semantics 三项定向测试
+  全通过（7.28 秒），见 `/tmp/abcd-yield-delegate-truth-final-build.log`、
+  `/tmp/abcd-yield-delegate-truth-final-tests.log`；`git diff --check` 通过。
+  独立自查，原生模板的 200/201/402 规模用例继续通过。
+- 上一项非默认 API 缺口已关闭；委托 finally 注入、async generator/
+  async yield* 和整体结构 gate 继续开放。下一步推进 async generator
+  的真实 entry/await/yield/settlement，经共同 ValueProgram/FunctionTree
+  输出并验证请求顺序；全量测试/语料/RSS/基准仍暂停。
+
 ### 2026-09-30：同步 yield* 的共同源码贯通
 
 - 依据锁定 OH7 `FunctionBuilder::YieldStar`、`Iterator::Close` 和 PandaGen

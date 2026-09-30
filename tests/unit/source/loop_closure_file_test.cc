@@ -100,13 +100,14 @@ enum class MissingCell { kNone, kRead, kWrite, kHoleWriter, kHoleSetter, kAwaitS
                          kYieldInnerReturnBranch, kYieldInnerThrowBranch, kYieldInnerEntry,
                          kDelegateName, kDelegatePool, kDelegateNext, kDelegateReceiver, kDelegateState,
                          kDelegateMode, kDelegateBranch, kDelegateEntry, kDelegateResultLeak,
-                         kDelegateCatchLeak, kDelegateCloseBoundary, kDelegateUserBoundary, kDelegateCloseMissing };
+                         kDelegateCatchLeak, kDelegateCloseBoundary, kDelegateUserBoundary, kDelegateCloseMissing, kDelegateTruth };
 std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_shape,
                  MissingCell missing = MissingCell::kNone, bool async_arrow = false, std::uint32_t yield_count = 1,
                  CopyEncoding copy_encoding = CopyEncoding::kV8, std::uint32_t copy_count = 1,
                  YieldFinalizer yield_finalizer = YieldFinalizer::kPreserve, ResumeEncoding resume_encoding = {},
                  std::uint32_t return_cleanup_count = 1, YieldOverride yield_override = YieldOverride::kNone,
-                 CleanupControl cleanup_control = CleanupControl::kSequence) {
+                 CleanupControl cleanup_control = CleanupControl::kSequence,
+                 test::DelegateTruth delegate_truth = test::DelegateTruth::kNative) {
   const bool exception_child = child_shape != ChildShape::kPlain && child_shape != ChildShape::kForwardedNormal;
   const bool forwarded_writer = child_shape == ChildShape::kForwardedWriter || child_shape == ChildShape::kForwardedThrowWriter;
   const bool forwarding = child_shape == ChildShape::kForwarded || child_shape == ChildShape::kForwardedNormal ||
@@ -680,13 +681,20 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       std::vector<test::DelegateFixture> delegates;
       for (std::uint32_t i = 0; i < yield_count; ++i)
         delegates.push_back(test::AppendGeneratorDelegate(code,
-            resume_encoding.return_mode == BranchEncoding::k32));
+            resume_encoding.return_mode == BranchEncoding::k32, delegate_truth));
       generator_yield_pc = delegates.front().create;
       auto& first_delegate = delegates.front();
       if (missing == MissingCell::kDelegateNext) code[first_delegate.next_copy + 2] = 6;
       if (missing == MissingCell::kDelegateReceiver) code[first_delegate.call + 2] = 6;
       if (missing == MissingCell::kDelegateState) code[first_delegate.suspend + 1] = 1;
       if (missing == MissingCell::kDelegateMode) code[first_delegate.mode + 2] = 9;
+      if (missing == MissingCell::kDelegateTruth) {
+        if (delegate_truth == test::DelegateTruth::kRuntime || delegate_truth == test::DelegateTruth::kRuntimeTrue) {
+          constexpr auto opposite = static_cast<std::uint16_t>(abc::Opcode::kCALLRUNTIME_ISFALSE_PREF_IMM8);
+          code[first_delegate.closed_truth] = static_cast<std::uint8_t>(opposite);
+          code[first_delegate.closed_truth + 1] = static_cast<std::uint8_t>(opposite >> kByteBits);
+        } else code[first_delegate.closed_truth] = Op(abc::Opcode::kISFALSE);
+      }
       if (missing == MissingCell::kDelegateBranch) code[first_delegate.loop_branch + 1] += 1;
       if (missing == MissingCell::kDelegateEntry) {
         code[first_delegate.create - 2] = Op(abc::Opcode::kJMP_IMM8);
@@ -1144,6 +1152,31 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--yield-delegate-truth-json") {
+    for (const auto truth : {test::DelegateTruth::kRuntime, test::DelegateTruth::kRuntimeTrue, test::DelegateTruth::kRuntimeFalse})
+      for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+        for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+          for (const bool caught : {false, true}) for (const auto encoding : {BranchEncoding::k16, BranchEncoding::k32})
+            std::cout << nlohmann::json{{"source", Emit(profile, shape,
+                caught ? ChildShape::kYieldDelegateCatch : ChildShape::kYieldDelegate, MissingCell::kNone,
+                false, 1, CopyEncoding::kV8, 1, YieldFinalizer::kPreserve, {encoding, encoding}, 1,
+                YieldOverride::kNone, CleanupControl::kSequence, truth)},
+                {"catch_parent", shape == ParentShape::kCatch}, {"caught", caught}}.dump() << '\n';
+    for (const auto truth : {test::DelegateTruth::kRuntime, test::DelegateTruth::kRuntimeTrue, test::DelegateTruth::kRuntimeFalse})
+      for (const auto count : {2U, 201U}) for (const auto encoding : {BranchEncoding::k16, BranchEncoding::k32})
+        std::cout << nlohmann::json{{"source", Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal,
+            ChildShape::kYieldDelegateCatch, MissingCell::kNone, false, count, CopyEncoding::kV8, 1,
+            YieldFinalizer::kPreserve, {encoding, encoding}, 1, YieldOverride::kNone, CleanupControl::kSequence, truth)},
+            {"catch_parent", false}, {"caught", true}, {"count", count}}.dump() << '\n';
+    for (const auto truth : {test::DelegateTruth::kRuntime, test::DelegateTruth::kRuntimeTrue, test::DelegateTruth::kRuntimeFalse})
+      for (const auto encoding : {BranchEncoding::k16, BranchEncoding::k32}) {
+        Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal, ChildShape::kYieldDelegateCatch,
+            MissingCell::kDelegateTruth, false, 1, CopyEncoding::kV8, 1, YieldFinalizer::kPreserve, {encoding, encoding},
+            1, YieldOverride::kNone, CleanupControl::kSequence, truth);
+        std::cout << nlohmann::json{{"rejected", true}}.dump() << '\n';
+      }
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--yield-delegate-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})

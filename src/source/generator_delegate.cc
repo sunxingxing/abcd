@@ -7,6 +7,7 @@
 #include "abcd/abc/pool_reference.h"
 #include "abcd/abc/string_entity.h"
 #include "abcd/analysis/coroutine.h"
+#include "abcd/analysis/scalar.h"
 
 namespace abcd::source {
 namespace {
@@ -48,7 +49,7 @@ class DelegateParser {
     Mark(Label::kThrow); Mode(analysis::CoroutineResumeMode::kThrow); Equal(true, kMode); Branch(Route::kThrow, Label::kReturn);
     Name(kIterator, u"throw"); Store(kMethod); Store(kCompletion); Expect(Opcode::kLDUNDEFINED); Equal(false, kCompletion);
     Branch(Route::kCallThrow, Label::kCall);
-    Store(kCompletion); Load(kClosed); Expect(Opcode::kISTRUE); Branch(Route::kClosed, Label::kNoClose, true);
+    Store(kCompletion); Load(kClosed); Boolean(true); Branch(Route::kClosed, Label::kNoClose, true);
     Constant(Opcode::kLDTRUE, kClosed); Constant(Opcode::kLDUNDEFINED, kInnerResult); Constant(Opcode::kLDHOLE, kInnerException);
     const auto close_begin = Pc(); Name(kIterator, u"return"); Store(kMethod); Store(kException);
     Expect(Opcode::kLDUNDEFINED); Equal(false, kException); Branch(Route::kNoReturn, Label::kNoClose, true);
@@ -63,13 +64,13 @@ class DelegateParser {
     Mark(Label::kReturn); Constant(Opcode::kLDTRUE, kExitReturn); Name(kIterator, u"return"); Store(kMethod); Store(kCompletion);
     Expect(Opcode::kLDUNDEFINED); Equal(false, kCompletion); Branch(Route::kCallReturn, Label::kCall);
     Load(kResult); Expect(Opcode::kRETURN);
-    Mark(Label::kCall); Call(true); Store(kResult); Guard(kResult); Name(kResult, u"done"); Expect(Opcode::kISTRUE);
+    Mark(Label::kCall); Call(true); Store(kResult); Guard(kResult); Name(kResult, u"done"); Boolean(true);
     Branch(Route::kComplete, Label::kComplete, true); Load(kResult);
     const auto suspend = Pc(); Register(Opcode::kSUSPENDGENERATOR_V8, state_); Register(Opcode::kLDA_V8, state_);
     const auto resume = Pc(); Expect(Opcode::kRESUMEGENERATOR); const auto result_store = Pc(); Store(kResult);
     Register(Opcode::kLDA_V8, state_); const auto mode = Pc(); Expect(Opcode::kGETRESUMEMODE);
     const auto mode_store = Pc(); Store(kMode); const auto branch = Pc(); Jump(Route::kResume, Label::kLoop);
-    Mark(Label::kComplete); Load(kExitReturn); Expect(Opcode::kISFALSE); Branch(Route::kNormal, Label::kNormal, true);
+    Mark(Label::kComplete); Load(kExitReturn); Boolean(false); Branch(Route::kNormal, Label::kNormal, true);
     Name(kResult, u"value"); Expect(Opcode::kRETURN); Mark(Label::kNormal); Name(kResult, u"value");
     const auto continuation = Pc();
     for (const auto& edge : edges_) Require(edge.destination == labels_[static_cast<std::size_t>(edge.label)]);
@@ -105,6 +106,20 @@ class DelegateParser {
   }
   void Binary(Opcode opcode, Slot slot) { Require(Operand(Expect(opcode), 1) == Reg(slot)); }
   void Equal(bool strict, Slot slot) { Binary(strict ? Opcode::kSTRICTEQ_IMM8_V8 : Opcode::kEQ_IMM8_V8, slot); }
+  void Boolean(bool positive) {
+    // Pinned PandaGen::{IsTrue,BranchIfFalse}: non-default API targets emit
+    // callruntime truth tests. Reuse their checked scalar mapping; the IC slot
+    // is opaque, never a register or source operand. Do not accept other unary
+    // operations just because their printed expression looks like a condition.
+    const auto& site = Next();
+    Require(site.decoded.opcode == (positive ? Opcode::kISTRUE : Opcode::kISFALSE) ||
+        site.decoded.opcode == (positive ? Opcode::kCALLRUNTIME_ISTRUE_PREF_IMM8 : Opcode::kCALLRUNTIME_ISFALSE_PREF_IMM8));
+    const auto lifted = analysis::LiftScalarInstruction(site.decoded, frame_.registers);
+    const auto* assignment = std::get_if<analysis::ScalarAssignment>(&lifted); Require(assignment != nullptr);
+    const auto* unary = std::get_if<analysis::UnaryExpression>(&assignment->expression);
+    Require(unary && unary->op == (positive ? analysis::UnaryOperator::kToBoolean : analysis::UnaryOperator::kLogicalNot) &&
+        std::holds_alternative<analysis::Accumulator>(unary->input));
+  }
   void Name(Slot object, std::u16string_view expected) {
     Load(object); const auto& site = Next();
     Require((site.decoded.opcode == Opcode::kLDOBJBYNAME_IMM8_ID16 || site.decoded.opcode == Opcode::kLDOBJBYNAME_IMM16_ID16) &&

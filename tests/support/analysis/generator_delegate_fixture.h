@@ -11,12 +11,13 @@ namespace abcd::test {
 // Register scopes deliberately reuse comparison/close/rethrow temporaries.
 // This is decoded bytecode, never a reference-source emitter.
 inline constexpr std::uint8_t kDelegateLocals = 18;
+enum class DelegateTruth { kNative, kRuntime, kRuntimeTrue, kRuntimeFalse };
 struct DelegateFixture {
   std::uint32_t create, close_begin, close_end, close_catch, close_catch_end,
-      end, next_copy, call, suspend, mode, loop_branch;
+      end, next_copy, call, suspend, mode, loop_branch, closed_truth;
 };
 inline DelegateFixture AppendGeneratorDelegate(std::vector<std::uint8_t>& code,
-    bool wide) {
+    bool wide, DelegateTruth truth = DelegateTruth::kNative) {
   using abc::Opcode;
   enum class Label { kLoop, kThrow, kReturn, kCall, kComplete, kNormal,
                      kNoClose, kCloseEnd, kRethrowSkip, kCount };
@@ -37,6 +38,15 @@ inline DelegateFixture AppendGeneratorDelegate(std::vector<std::uint8_t>& code,
   const auto store = [&](std::uint8_t reg) { emit({op(Opcode::kSTA_V8), reg}); };
   const auto move = [&](std::uint8_t to, std::uint8_t from) { emit({op(Opcode::kMOV_V8_V8), to, from}); };
   const auto constant = [&](Opcode value, std::uint8_t reg) { emit({op(value)}); store(reg); };
+  const auto boolean = [&](bool positive) {
+    const bool runtime = truth == DelegateTruth::kRuntime ||
+        (positive ? truth == DelegateTruth::kRuntimeTrue : truth == DelegateTruth::kRuntimeFalse);
+    if (runtime) {
+      const auto instruction = static_cast<std::uint16_t>(positive ?
+          Opcode::kCALLRUNTIME_ISTRUE_PREF_IMM8 : Opcode::kCALLRUNTIME_ISFALSE_PREF_IMM8);
+      emit({static_cast<std::uint8_t>(instruction), static_cast<std::uint8_t>(instruction >> 8), 0});
+    } else emit({op(positive ? Opcode::kISTRUE : Opcode::kISFALSE)});
+  };
   const auto name = [&](std::uint8_t object, std::uint8_t slot) {
     load(object); emit({op(Opcode::kLDOBJBYNAME_IMM8_ID16), 0, slot, 0});
   };
@@ -63,7 +73,7 @@ inline DelegateFixture AppendGeneratorDelegate(std::vector<std::uint8_t>& code,
   move(4, 8); branch(false, false, Label::kCall);
   label(Label::kThrow); mode(analysis::CoroutineResumeMode::kThrow); equal(true, 7); branch(true, false, Label::kReturn);
   name(5, 4); store(4); store(11); emit({op(Opcode::kLDUNDEFINED)}); equal(false, 11); branch(true, false, Label::kCall);
-  store(11); load(3); emit({op(Opcode::kISTRUE)}); branch(true, true, Label::kNoClose);
+  store(11); load(3); result.closed_truth = pc(); boolean(true); branch(true, true, Label::kNoClose);
   constant(Opcode::kLDTRUE, 3); constant(Opcode::kLDUNDEFINED, 12); constant(Opcode::kLDHOLE, 13);
   result.close_begin = pc(); name(5, 5); store(4); store(14); emit({op(Opcode::kLDUNDEFINED)}); equal(false, 14);
   branch(true, true, Label::kNoClose); load(4); emit({op(Opcode::kCALLTHIS0_IMM8_V8), 0, 5}); store(12);
@@ -78,11 +88,11 @@ inline DelegateFixture AppendGeneratorDelegate(std::vector<std::uint8_t>& code,
   emit({op(Opcode::kLDUNDEFINED)}); equal(false, 11); branch(true, false, Label::kCall);
   load(6); emit({op(Opcode::kRETURN)});
   label(Label::kCall); load(4); result.call = pc(); emit({op(Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 5, 6}); store(6); guard(6);
-  name(6, 6); emit({op(Opcode::kISTRUE)}); branch(true, true, Label::kComplete);
+  name(6, 6); boolean(true); branch(true, true, Label::kComplete);
   load(6); result.suspend = pc(); emit({op(Opcode::kSUSPENDGENERATOR_V8), 0}); load(0); emit({op(Opcode::kRESUMEGENERATOR)}); store(6);
   load(0); result.mode = pc(); emit({op(Opcode::kGETRESUMEMODE)}); store(7);
   result.loop_branch = pc(); branch(false, false, Label::kLoop);
-  label(Label::kComplete); load(9); emit({op(Opcode::kISFALSE)}); branch(true, true, Label::kNormal);
+  label(Label::kComplete); load(9); boolean(false); branch(true, true, Label::kNormal);
   name(6, 7); emit({op(Opcode::kRETURN)}); label(Label::kNormal); name(6, 7);
   result.end = pc();
   for (const auto& jump : jumps) {
