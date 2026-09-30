@@ -159,7 +159,7 @@ class TreePrinter {
     if (family_->root.value >= family_->members.size()) throw Error::kUnsupportedContext;
     if (class_root_) {
       const auto& root = family_->members[family_->root.value].tree;
-      if ((root.callable != CallableKind::kMethod && root.callable != CallableKind::kAsyncMethod) ||
+      if (!IsMethodCallable(root.callable) ||
           root.callable != class_root_->Callable() || root.inferred_name ||
           root.identity != class_root_->Identity() || root.method != class_root_->Site().target ||
           (class_root_->Site().placement != abc::ClassPlacement::kStatic &&
@@ -182,12 +182,12 @@ class TreePrinter {
       Admit(structure->allocated_bytes, 1); Step(structure->work);
       if (Tree().strictness != Strictness::kStrict ||
           (Tree().callable != CallableKind::kFunction && !IsArrowCallable(Tree().callable) &&
-           Tree().callable != CallableKind::kMethod && Tree().callable != CallableKind::kAsyncFunction &&
-           Tree().callable != CallableKind::kAsyncMethod && Tree().callable != CallableKind::kGenerator))
+           !IsMethodCallable(Tree().callable) && Tree().callable != CallableKind::kAsyncFunction &&
+           Tree().callable != CallableKind::kGenerator))
         throw Error::kUnsupportedContext;
       // Only the actual class root is a class member. An arrow method carrier
       // retains its original callable kind and cannot observe its home object.
-      if ((Tree().callable == CallableKind::kMethod || Tree().callable == CallableKind::kAsyncMethod) && !ClassRoot())
+      if (IsMethodCallable(Tree().callable) && !ClassRoot())
         throw Error::kUnsupportedContext;
       // Naming adds a fresh, unobservable wrapper object. Its allocation-failure
       // timing is admitted only by the already-versioned resource-failure scope.
@@ -539,6 +539,7 @@ class TreePrinter {
     if (ClassRoot()) {
       if (class_root_->Site().placement == abc::ClassPlacement::kStatic) Append("static ");
       if (Tree().callable == CallableKind::kAsyncMethod) Append("async ");
+      if (IsGeneratorCallable(Tree().callable)) Append("*");
       Key(class_root_->Name()); Append("(");
     } else if (Tree().self && Tree().self_form == SelfForm::kNamedFunction) {
       Append(Tree().callable == CallableKind::kGenerator ? "(function* " :

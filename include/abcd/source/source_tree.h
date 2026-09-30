@@ -24,7 +24,7 @@ struct FunctionOwnerId { std::uint32_t value = 0; auto operator<=>(const Functio
 struct ModuleOwnerId { std::uint32_t value = 0; auto operator<=>(const ModuleOwnerId&) const = default; };
 enum class CallableKind : std::uint8_t {
   kFunction, kMethod, kArrow, kBaseConstructor, kDerivedConstructor,
-  kAsyncFunction, kAsyncMethod, kAsyncArrow, kGenerator
+  kAsyncFunction, kAsyncMethod, kAsyncArrow, kGenerator, kGeneratorMethod
 };
 constexpr bool IsArrowCallable(CallableKind kind) {
   return kind == CallableKind::kArrow || kind == CallableKind::kAsyncArrow;
@@ -37,6 +37,12 @@ constexpr bool AllowsNamedSelf(CallableKind kind) {
 }
 constexpr bool IsAsyncCallable(CallableKind kind) {
   return kind == CallableKind::kAsyncFunction || kind == CallableKind::kAsyncMethod || kind == CallableKind::kAsyncArrow;
+}
+constexpr bool IsGeneratorCallable(CallableKind kind) {
+  return kind == CallableKind::kGenerator || kind == CallableKind::kGeneratorMethod;
+}
+constexpr bool IsMethodCallable(CallableKind kind) {
+  return kind == CallableKind::kMethod || kind == CallableKind::kAsyncMethod || kind == CallableKind::kGeneratorMethod;
 }
 enum class Strictness : std::uint8_t { kStrict, kSloppy };
 enum class ScopeKind : std::uint8_t { kParameters, kFunctionBody, kBlock, kCaptures, kModule, kFunctionSelf, kCatch };

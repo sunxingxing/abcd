@@ -131,10 +131,10 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
     // Normalized suspension facts come from the same file owner's completion
     // normalization, not from opcode resemblance or provenance alone.
     if ((!source_pcs.empty() || !awaits.empty() || !yields.empty()) &&
-        ((!IsAsyncCallable(context.Callable()) && context.Callable() != CallableKind::kGenerator) ||
+        ((!IsAsyncCallable(context.Callable()) && !IsGeneratorCallable(context.Callable())) ||
          source_pcs.size() != body.instructions.size())) return Error::kInput;
     if ((!awaits.empty() && !IsAsyncCallable(context.Callable())) ||
-        (!yields.empty() && context.Callable() != CallableKind::kGenerator)) return Error::kInput;
+        (!yields.empty() && !IsGeneratorCallable(context.Callable()))) return Error::kInput;
     auto flow = PhaseResult<ExceptionFlow>(BuildExceptionFlow(body, context.Identity().profile,
         frame.registers, {quota.Remaining().bytes, quota.Remaining().work}, awaits, &frame, yields), Error::kInput);
     for (std::size_t i = 0; i < source_pcs.size(); ++i) {
@@ -160,6 +160,7 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
       case CallableKind::kAsyncFunction:
       case CallableKind::kAsyncMethod:
       case CallableKind::kGenerator:
+      case CallableKind::kGeneratorMethod:
         receiver = FrameReceiver::kInitialized;
         break;
       case CallableKind::kArrow:

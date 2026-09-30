@@ -193,7 +193,7 @@ class FamilyReader {
       InputCaptureMode mode = InputCaptureMode::kClosed) {
     Require(position.value < index_.methods.size() && index_.methods[position.value].code, Error::kMethod);
     if (index_.methods[position.value].code->try_count ||
-        (owner && owner->Callable() == CallableKind::kGenerator)) {
+        (owner && IsGeneratorCallable(owner->Callable()))) {
       Require(owner != nullptr, Error::kOccurrence);
       Require(owner->Position() == position && owner->Target() == index_.methods[position.value].offset &&
           owner->Identity() == identity_, Error::kOccurrence);

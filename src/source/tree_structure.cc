@@ -51,7 +51,8 @@ void CheckCallable(const FunctionTree& tree) {
     case CallableKind::kFunction: case CallableKind::kMethod:
     case CallableKind::kArrow: case CallableKind::kBaseConstructor:
     case CallableKind::kDerivedConstructor: case CallableKind::kAsyncFunction:
-    case CallableKind::kAsyncMethod: case CallableKind::kAsyncArrow: case CallableKind::kGenerator: return;
+    case CallableKind::kAsyncMethod: case CallableKind::kAsyncArrow: case CallableKind::kGenerator:
+    case CallableKind::kGeneratorMethod: return;
   }
   throw Error::kUnsupportedSyntax;
 }
@@ -277,7 +278,7 @@ class StructureCheck {
         RequireTree(IsAsyncCallable(tree_.callable),
             Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, YieldExpr>) {
-        RequireTree(tree_.callable == CallableKind::kGenerator, Error::kUnsupportedSyntax);
+        RequireTree(IsGeneratorCallable(tree_.callable), Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, BinaryExpr>) {
         RequireTree(ValidBinary(expression.operation), Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, LogicalExpr>) {

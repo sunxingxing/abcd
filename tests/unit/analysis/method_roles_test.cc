@@ -6,7 +6,7 @@
 #include "analysis/ssa_fixture.h"
 
 namespace {
-void Scale(std::uint32_t count) {
+void Scale(std::uint32_t count, abcd::abc::LiteralTag tag = abcd::abc::LiteralTag::kMethod) {
   using namespace abcd;
   constexpr std::uint32_t kPool = 64, kCaller = 80, kTarget = 100,
                           kLiteral = 128;
@@ -21,7 +21,7 @@ void Scale(std::uint32_t count) {
   word(kLiteral, count * kEntriesPerPair * kCountUnits);
   for (std::uint32_t i = 0; i < count; ++i) {
     const auto at = kLiteral + sizeof(std::uint32_t) + i * kPairBytes;
-    bytes[at] = static_cast<std::uint8_t>(abc::LiteralTag::kMethod);
+    bytes[at] = static_cast<std::uint8_t>(tag);
     word(at + 1, kTarget);
     bytes[at + 5] =
         static_cast<std::uint8_t>(abc::LiteralTag::kMethodAffiliate);
@@ -70,7 +70,7 @@ void Scale(std::uint32_t count) {
       std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<analysis::MethodRoleIndex>(
       analysis::MethodRoleIndex::Build(file, header, index, lookup));
-  test::Check(roles.At({1}) == analysis::MethodRole::kOrdinary);
+  test::Check(roles.At({1}) == (tag == abc::LiteralTag::kGeneratorMethod ? analysis::MethodRole::kGenerator : analysis::MethodRole::kOrdinary));
   test::Check(unlink(path) == 0);
 }
 }  // namespace
@@ -78,6 +78,7 @@ void Scale(std::uint32_t count) {
 int main() {
   using namespace abcd;
   for (const std::uint32_t count : {200, 201, 400, 800, 1600}) Scale(count);
+  for (const std::uint32_t count : {200, 201, 402}) Scale(count, abc::LiteralTag::kGeneratorMethod);
   constexpr std::uint32_t kCaller = 200, kTarget = 240, kPool = 64,
                           kOrdinary = 128, kGenerator = 160, kCode = 300;
   std::vector<std::uint8_t> bytes(512);
@@ -162,7 +163,7 @@ int main() {
   auto nonordinary =
       analysis::MethodRoleIndex::Build(file, header, index, lookup);
   test::Check(std::get<analysis::MethodRoleIndex>(nonordinary).At({1}) ==
-              analysis::MethodRole::kOther);
+              analysis::MethodRole::kGenerator);
   index.methods[0].code =
       abc::CodeInfo{{kLegacyCode}, {kLegacyCode + 4}, 0, 0, 5, 0};
   const auto refused =

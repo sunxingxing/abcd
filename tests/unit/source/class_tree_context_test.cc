@@ -41,20 +41,26 @@ static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);
 void Check(bool condition) { if (!condition) std::abort(); }
 enum class DefaultEncoding { kNone, kInteger, kNegation };
+enum class GeneratorEncoding { kTagged, kExplicitTagged, kExplicitOrdinary };
 enum class ExceptionShape {
   kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies, kReceiver, kReceiverCatch,
   kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof, kLiteral, kLexical,
-  kReceiverResult, kAsyncAwait
+  kReceiverResult, kAsyncAwait, kGeneratorYield, kGeneratorCatch
 };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
          ExceptionShape exception = ExceptionShape::kNone,
-         abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool static_member = false) {
+         abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool static_member = false,
+         GeneratorEncoding generator_encoding = GeneratorEncoding::kTagged) {
   const bool defaults = encoding != DefaultEncoding::kNone;
+  const bool generator = exception == ExceptionShape::kGeneratorYield || exception == ExceptionShape::kGeneratorCatch;
+  const bool generator_catch = exception == ExceptionShape::kGeneratorCatch;
   constexpr unsigned kFunctionKindShift = 8, kByteBits = 8;
   constexpr std::uint32_t kPool = 64, kOwner = 80, kLiteral = 128, kCaller = 256,
       kConstructor = 300, kMember = 350, kCallerCode = 400, kMemberCode = 430, kName = 500;
-  std::vector<std::uint8_t> bytes(640);
+  constexpr std::uint32_t kGeneratorCode = 600;
+  const auto member_code = generator ? kGeneratorCode : kMemberCode;
+  std::vector<std::uint8_t> bytes(800);
   const auto word = [&](std::size_t at, std::uint32_t value) {
     for (std::size_t i = 0; i < sizeof(value); ++i) bytes[at + i] = value >> (8 * i);
   };
@@ -64,7 +70,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   word(kLiteral, 8);  // Four tag/value entries, including prototype split.
   bytes[kLiteral + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kString);
   word(kLiteral + 5, kName);
-  bytes[kLiteral + 9] = static_cast<std::uint8_t>(abc::LiteralTag::kMethod);
+  bytes[kLiteral + 9] = static_cast<std::uint8_t>(generator && generator_encoding != GeneratorEncoding::kExplicitOrdinary
+      ? abc::LiteralTag::kGeneratorMethod : abc::LiteralTag::kMethod);
   word(kLiteral + 10, kMember);
   bytes[kLiteral + 14] = static_cast<std::uint8_t>(abc::LiteralTag::kMethodAffiliate);
   const std::uint8_t encoded_length = defaults ? 0 : 1;
@@ -311,8 +318,43 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
         kStore, 1, op(abc::Opcode::kASYNCFUNCTIONREJECT_V8), 0, kReturn,
         3, 37, 1, 0, 40, 5};
   }
+  if (generator) {
+    const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+    constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+    std::vector<std::uint8_t> code{op(abc::Opcode::kCREATEGENERATOROBJ_V8), 5, kStore, 0, kUndefined};
+    const auto resume = [&] {
+      code.insert(code.end(), {op(abc::Opcode::kSUSPENDGENERATOR_V8), 0,
+          kLoad, 0, op(abc::Opcode::kRESUMEGENERATOR), kStore, 2, kLoad, 0,
+          op(abc::Opcode::kGETRESUMEMODE), kStore, 1,
+          kInteger, static_cast<std::uint8_t>(analysis::CoroutineResumeMode::kReturn), 0, 0, 0,
+          op(abc::Opcode::kEQ_IMM8_V8), 0, 1, op(abc::Opcode::kJEQZ_IMM8), 5, kLoad, 2, kReturn,
+          kInteger, static_cast<std::uint8_t>(analysis::CoroutineResumeMode::kThrow), 0, 0, 0,
+          op(abc::Opcode::kEQ_IMM8_V8), 0, 1, op(abc::Opcode::kJEQZ_IMM8), 6, kLoad, 2,
+          static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits), kLoad, 2});
+    };
+    resume();
+    const auto try_begin = static_cast<std::uint8_t>(code.size());
+    code.insert(code.end(), {kLoad, 8});
+    if (generator_catch) code.insert(code.end(), {op(abc::Opcode::kCALLARG0_IMM8), 0});
+    code.insert(code.end(), {kStore, 3, op(abc::Opcode::kLDFALSE), kStore, 4,
+        op(abc::Opcode::kCREATEITERRESULTOBJ_V8_V8), 3, 4});
+    resume();
+    code.insert(code.end(), {op(abc::Opcode::kLDTHIS), kReturn});
+    const auto catch_begin = static_cast<std::uint8_t>(code.size());
+    if (generator_catch) code.insert(code.end(), {kStore, 3, kLoad, 3, kReturn});
+    const auto handler = static_cast<std::uint8_t>(code.size());
+    code.insert(code.end(), {static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits)});
+    // All lengths/PCs fit one Panda ULEB128 payload byte in this fixture.
+    constexpr std::uint8_t kUlebPayloadLimit = 1U << 7;
+    Check(code.size() < kUlebPayloadLimit);
+    member = {5, 4, static_cast<std::uint8_t>(code.size()), static_cast<std::uint8_t>(generator_catch ? 2 : 1)};
+    member.insert(member.end(), code.begin(), code.end());
+    if (generator_catch) member.insert(member.end(), {try_begin, static_cast<std::uint8_t>(catch_begin - try_begin), 1, 0,
+        catch_begin, static_cast<std::uint8_t>(handler - catch_begin)});
+    member.insert(member.end(), {0, handler, 1, 0, handler, 2});
+  }
   std::copy(caller.begin(), caller.end(), bytes.begin() + kCallerCode);
-  std::copy(member.begin(), member.end(), bytes.begin() + kMemberCode);
+  std::copy(member.begin(), member.end(), bytes.begin() + member_code);
   char path[] = "/tmp/abcd-class-tree-context-XXXXXX";
   const int fd = mkstemp(path);
   Check(fd >= 0);
@@ -336,12 +378,14 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   index.methods[0].code = abc::CodeInfo{{kCallerCode}, {kCallerCode + 4}, 1, 0, 10, 0};
   index.methods[1].offset = {kConstructor};
   index.methods[2].offset = {kMember};
-  index.methods[2].code = abc::CodeInfo{{kMemberCode}, {kMemberCode + 4}, member[0], 4,
+  index.methods[2].code = abc::CodeInfo{{member_code}, {member_code + 4}, member[0], 4,
                                       member[kCodeSizeOffset], member[3]};
   index.methods[2].name = "run";
   index.methods[2].name_utf16_length = 3;
   if (exception == ExceptionShape::kAsyncAwait)
     index.methods[2].access_flags = static_cast<std::uint32_t>(abc::FunctionKind::kAsync) << kFunctionKindShift;
+  if (generator && generator_encoding != GeneratorEncoding::kTagged)
+    index.methods[2].access_flags = static_cast<std::uint32_t>(abc::FunctionKind::kGenerator) << kFunctionKindShift;
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(file, header, index, lookup));
   const auto sites = std::get<analysis::ClassMethodSites>(analysis::ClassMethodSites::Build(file, header, index, lookup));
@@ -357,9 +401,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   Check(std::holds_alternative<ClassTreeContext>(context));
   const auto& value = std::get<ClassTreeContext>(context);
   Check(value.Name() == u"run" && value.Frame().parameters == 1);
-  Check(value.Callable() == (exception == ExceptionShape::kAsyncAwait ? CallableKind::kAsyncMethod : CallableKind::kMethod) &&
-      value.Mode() == Strictness::kStrict);
-  if (exception == ExceptionShape::kAsyncAwait) {
+  Check(value.Callable() == (generator ? CallableKind::kGeneratorMethod :
+      exception == ExceptionShape::kAsyncAwait ? CallableKind::kAsyncMethod : CallableKind::kMethod));
+  Check(value.Mode() == Strictness::kStrict);
+  if (exception == ExceptionShape::kAsyncAwait || generator) {
     const FunctionContext owner{std::get<ClassTreeContext>(ClassTreeContext::Resolve(
         file, header, index, lookup, roles, sites, range.first, identity))};
     auto input = ReadFunctionFamily(file, header, index, lookup, roles, functions,
@@ -377,19 +422,27 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     std::ostringstream unowned;
     Check(std::get<TreePrintError>(PrintFamilyDraft(family, unowned)) == TreePrintError::kUnsupportedContext);
     Check(unowned.str().empty());
-    auto changed = index;
-    changed.methods[2].access_flags = 0;
-    auto sync = std::get<ClassTreeContext>(ClassTreeContext::Resolve(file, header, changed, lookup,
-        roles, sites, range.first, identity));
-    Check(std::get<TreePrintError>(PrintClassFamilyDraft(family, sync, unowned)) == TreePrintError::kUnsupportedContext);
+    auto mismatched = family;
+    mismatched.members[0].tree.callable = CallableKind::kMethod;
+    Check(std::get<TreePrintError>(PrintClassFamilyDraft(mismatched, value, unowned)) == TreePrintError::kUnsupportedContext);
     Check(unowned.str().empty());
-    for (const auto kind : {abc::FunctionKind::kAsyncArrow, abc::FunctionKind::kGenerator,
-                            abc::FunctionKind::kAsyncGenerator}) {
+    auto changed = index;
+    for (const auto kind : {abc::FunctionKind::kAsyncArrow, abc::FunctionKind::kAsyncGenerator}) {
       changed.methods[2].access_flags = static_cast<std::uint32_t>(kind) << kFunctionKindShift;
       const auto refused = ClassTreeContext::Resolve(file, header, changed, lookup, roles, sites, range.first, identity);
       Check(std::get<ClassContextError>(std::get<ClassContextFailure>(refused).error) == ClassContextError::kKind);
     }
-    if (evidence) *evidence << nlohmann::json{{"source", output.str()}, {"static", static_member}}.dump() << '\n';
+    if (!generator) {
+      // A valid generator identity cannot turn this async wrapper into yield.
+      changed.methods[2].access_flags = static_cast<std::uint32_t>(abc::FunctionKind::kGenerator) << kFunctionKindShift;
+      const FunctionContext wrong_owner{std::get<ClassTreeContext>(ClassTreeContext::Resolve(
+          file, header, changed, lookup, roles, sites, range.first, identity))};
+      const auto wrong_body = ReadFunctionFamily(file, header, changed, lookup, roles, functions,
+          wrong_owner.Position(), identity, {}, nullptr, &wrong_owner);
+      const auto& failure = std::get<FamilyFileFailure>(wrong_body);
+      Check(std::get<FunctionEmitError>(std::get<PhasedFileFailure>(failure.cause)) == FunctionEmitError::kKind);
+    }
+    if (evidence) *evidence << nlohmann::json{{"source", output.str()}, {"static", static_member}, {"catch", generator_catch}}.dump() << '\n';
     Check(unlink(path) == 0);
     return;
   }
@@ -869,6 +922,14 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--generator-method-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const bool placement : {false, true})
+        for (const auto encoding : {GeneratorEncoding::kTagged, GeneratorEncoding::kExplicitTagged, GeneratorEncoding::kExplicitOrdinary})
+          for (const auto shape : {ExceptionShape::kGeneratorYield, ExceptionShape::kGeneratorCatch})
+            Run(DefaultEncoding::kNone, false, false, false, &std::cout, shape, profile, placement, encoding);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--async-method-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const bool placement : {false, true})

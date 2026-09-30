@@ -75,6 +75,7 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
         case CallableKind::kAsyncFunction:
         case CallableKind::kAsyncMethod:
         case CallableKind::kGenerator:
+        case CallableKind::kGeneratorMethod:
           break;
       }
     }

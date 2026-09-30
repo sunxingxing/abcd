@@ -93,8 +93,8 @@ class AbiBuilder {
       if (op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueFrameThis>(op.operation)) {
         Require(tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kAsyncFunction ||
-            tree_.callable == CallableKind::kMethod || tree_.callable == CallableKind::kAsyncMethod ||
-            tree_.callable == CallableKind::kBaseConstructor || tree_.callable == CallableKind::kGenerator,
+            IsMethodCallable(tree_.callable) ||
+            tree_.callable == CallableKind::kBaseConstructor || IsGeneratorCallable(tree_.callable),
             Error::kReceiver);
         Increment(result_.frame_receiver_reads);
       }

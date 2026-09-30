@@ -5,7 +5,7 @@
 #include "abcd/abc/method_target.h"
 
 namespace abcd::analysis {
-enum class MethodRole : std::uint8_t { kUnseen, kOrdinary, kOther, kConflict };
+enum class MethodRole : std::uint8_t { kUnseen, kOrdinary, kOther, kConflict, kGenerator };
 enum class MethodRoleError { kResourceLimit, kLegacyLiteral, kNestedLiteral };
 struct MethodRoleFailure {
   std::variant<MethodRoleError, abc::MetadataError, abc::BodyFailure,
@@ -17,7 +17,7 @@ struct MethodRoleBudget {
 };
 // Whole-file, immutable index of constructor uses and method-bearing literal
 // tags referenced by decoded methods, including object/array/class buffers.
-// kOrdinary excludes all other template kinds AND constructor/JIT roles,
+// kOrdinary/kGenerator each exclude competing template and constructor/JIT roles,
 // independent of materialization order. Does not prove initial attributes,
 // class membership, historical runtime equivalence or name. Requires complete
 // same-file metadata/lookup and pinned modern 7.0 semantics;

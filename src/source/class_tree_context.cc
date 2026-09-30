@@ -47,18 +47,32 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::Resolve(
     const auto position = lookup.Find(occurrence->target);
     Require(position && position->value < index.methods.size() &&
             index.methods[position->value].offset == occurrence->target, Error::kSite);
-    Require(roles.At(*position) == analysis::MethodRole::kOrdinary, Error::kRole);
+    const bool generator_tag = occurrence->kind == abc::ClassMethodKind::kGenerator;
+    Require(roles.At(*position) == (generator_tag ? analysis::MethodRole::kGenerator : analysis::MethodRole::kOrdinary), Error::kRole);
     const auto& method = index.methods[position->value];
     Require(method.code.has_value(), Error::kSite);
     const auto attributes = Take<abc::MethodAttributes>(abc::DecodeMethodAttributes(method.access_flags, header.profile));
     // OpenHarmony-v7.0-Release LiteralDataExtractor::DefineFunctionTemplate
     // refines NONE using the class-buffer tag. MethodRoleIndex excludes all
     // competing template/constructor roles; initial NONE alone is insufficient.
-    // The runtime preserves an explicit ASYNC kind on an ordinary METHOD tag;
-    // its body still needs the common async completion/await normalization.
-    Require(!attributes.sendable &&
-            (attributes.kind == abc::FunctionKind::kNone || attributes.kind == abc::FunctionKind::kAsync) &&
-            occurrence->kind == abc::ClassMethodKind::kOrdinary, Error::kKind);
+    // NONE is refined by METHOD/GENERATORMETHOD; an explicit runtime kind is
+    // preserved. Require one consistent file-wide template role before using
+    // that refinement. Body normalization remains shared with non-method owners.
+    Require(!attributes.sendable && (generator_tag || occurrence->kind == abc::ClassMethodKind::kOrdinary), Error::kKind);
+    CallableKind callable;
+    switch (attributes.kind) {
+      case abc::FunctionKind::kNone:
+        callable = generator_tag ? CallableKind::kGeneratorMethod : CallableKind::kMethod;
+        break;
+      case abc::FunctionKind::kAsync:
+        Require(!generator_tag, Error::kKind);
+        callable = CallableKind::kAsyncMethod;
+        break;
+      case abc::FunctionKind::kGenerator:
+        callable = CallableKind::kGeneratorMethod;
+        break;
+      default: throw ClassContextFailure{Error::kKind};
+    }
     Require(sizeof(ClassTreeContext) <= budget.bytes, Error::kResourceLimit);
     auto bytes = budget.bytes - sizeof(ClassTreeContext);
     const auto* key = std::get_if<abc::EntityOffset>(&occurrence->key.value);
@@ -87,7 +101,7 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::Resolve(
     result.site_ = *occurrence;
     result.position_ = *position;
     result.frame_ = frame;
-    result.callable_ = attributes.kind == abc::FunctionKind::kAsync ? CallableKind::kAsyncMethod : CallableKind::kMethod;
+    result.callable_ = callable;
     result.name_ = std::move(name);
     result.work_ = budget.work - work;
     return result;

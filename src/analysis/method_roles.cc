@@ -65,6 +65,7 @@ std::optional<MethodRole> Role(abc::LiteralTag tag) {
     case abc::LiteralTag::kMethod:
       return MethodRole::kOrdinary;
     case abc::LiteralTag::kGeneratorMethod:
+      return MethodRole::kGenerator;
     case abc::LiteralTag::kAsyncGeneratorMethod:
     case abc::LiteralTag::kGetter:
     case abc::LiteralTag::kSetter:

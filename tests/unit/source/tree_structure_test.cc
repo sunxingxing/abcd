@@ -39,10 +39,13 @@ void YieldContext() {
     tree.callable = kind;
     Expect(tree, TreeStructureError::kUnsupportedSyntax);
   }
-  tree.callable = CallableKind::kGenerator;
-  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
-  tree.expressions[1].expression = AwaitExpr{{0}};
-  Expect(tree, TreeStructureError::kUnsupportedSyntax);
+  for (auto kind : {CallableKind::kGenerator, CallableKind::kGeneratorMethod}) {
+    tree.callable = kind;
+    tree.expressions[1].expression = YieldExpr{{0}};
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+    tree.expressions[1].expression = AwaitExpr{{0}};
+    Expect(tree, TreeStructureError::kUnsupportedSyntax);
+  }
 }
 void InferredNames() {
   for (const auto callable : {CallableKind::kFunction, CallableKind::kArrow}) {
@@ -72,6 +75,8 @@ void InferredNames() {
   auto tree = Minimal(); tree.inferred_name = NameId{0};
   Expect(tree, TreeStructureError::kName);
   tree.names.emplace_back(u"run"); tree.callable = CallableKind::kMethod;
+  Expect(tree, TreeStructureError::kUnsupportedSyntax);
+  tree.callable = CallableKind::kGeneratorMethod;
   Expect(tree, TreeStructureError::kUnsupportedSyntax);
   tree.callable = CallableKind::kFunction; tree.self = SymbolId{0};
   Expect(tree, TreeStructureError::kBinding); // Self still requires an actual immutable symbol/scope.

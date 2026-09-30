@@ -107,7 +107,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     std::vector<abc::CodeOffset> source_pcs;
     std::vector<analysis::AwaitSite> awaits;
     std::vector<analysis::YieldSite> yields;
-    if (context.Callable() == CallableKind::kGenerator) {
+    if (IsGeneratorCallable(context.Callable())) {
       auto normalized = Take<GeneratorBody>(NormalizeGenerator(body, frame, header.profile,
           ResourceFailures(identity.contract), left.bytes));
       arena(normalized.body.instructions); arena(normalized.source_pcs); arena(normalized.yields);

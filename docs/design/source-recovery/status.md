@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-09-30：generator 类方法贯通共同函数族
+
+- MethodRoleIndex 区分 GENERATORMETHOD 与普通 METHOD；类创建上下文按锁定
+  OH7 LiteralDataExtractor::DefineFunctionTemplate 处理 NONE 的 tag 细化及显式
+  GENERATOR kind 的保留。竞争 template/constructor 角色仍不能混用；异步
+  generator 未按同步 generator 处理。新增 GeneratorMethod callable，经原有
+  NormalizeGenerator、异常相位值流、FunctionTree 和共同 Printer 输出
+  `*run(...)` / `static *run(...)`，没有独立方法 body writer。
+- 三 profile × 实例/静态 × 三种身份来源 × 普通/用户 catch，共 36 个真实
+  opcode/合成元数据文件夹具，完整生成并执行方法源码。覆盖 name/length、
+  GeneratorFunction/iterator prototype、不可构造性、类成员 descriptor、严格
+  primitive/null/undefined receiver、bind、两迭代器逆序恢复、同步 thenable
+  不被吸收、首次/暂停后 return/throw、catch 捕获注入异常及 callback 抛错身份。
+  测试只提供类外壳，方法语法和正文由解码→共同树→Printer 生成。
+- 新增 AST 方法 yield 正例/await 反例、不带实际类上下文打印的反例，以及
+  generator 元数据配 async 正文的归一化反例；generator literal 角色索引
+  覆盖 200/201/402 条引用。红例在旧实现失败于 ClassContextError::kRole
+  （`/tmp/abcd-generator-method-red-tests.log`、`/tmp/abcd-generator-method-red-debug.log`）。
+- 相关十一个 C++ 目标构建成功，29/29 定向测试通过（18.99 秒），包括
+  file_generator_method_source_test：`/tmp/abcd-generator-method-final-build.log`、
+  `/tmp/abcd-generator-method-final-tests.log`；`git diff --check` 通过。
+  此证据不代表真实应用、整个类/record 装配或全部 generator 语义的验收。
+- C07 仍开放：finally 注入 RETURN 清理、入口词法/参数前奏、方法 self/super
+  和更多 frame/闭包组合仍待推进；yield*、async generator 及其余总目标未完成。
+  默认 work 阈值保持关闭；全量测试/语料/RSS/基准仍暂停，历史两个
+  base_function 失败未重跑/修复，未宣称全套通过或 1GB 实测达标。
+
 ### 2026-09-30：generator 自身身份与暂停帧 receiver
 
 - 将 generator 的原生具名 self 绑定接入现有共同树；AllowsNamedSelf 统一树构建、
