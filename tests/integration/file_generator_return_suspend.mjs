@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
 execFileSync(process.argv[2], ['--yield-return-suspend-negative'], {timeout: 60_000});
-const fixtures = ['--yield-return-suspend-json', '--yield-return-suspend-pair-json'].flatMap(mode =>
+const fixtures = ['--yield-return-suspend-json', '--yield-return-suspend-pair-json',
+  '--yield-return-suspend-loop-json', '--yield-return-suspend-post-loop-json'].flatMap(mode =>
   execFileSync(process.argv[2], [mode], {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000})
     .trim().split('\n').map(JSON.parse));
-assert.equal(fixtures.length, 30);
+assert.equal(fixtures.length, 78);
 for (const fixture of fixtures) {
   assert.ok(!fixture.source.includes('INCOMPLETE'));
   const {capture} = await import(`data:text/javascript;base64,${Buffer.from(`export const capture = ${fixture.source};`).toString('base64')}`);
@@ -25,16 +26,17 @@ for (const fixture of fixtures) {
     });
     set(false);
     for (let i = 0; i < stop; ++i) assert.deepEqual(iterator.next(yielded), {value: yielded, done: false});
+    if (fixture.loop) set(true);
     assert.deepEqual(iterator.return(payload), {value: cleanupYield, done: false});
     for (let i = 1; i < cut; ++i) assert.deepEqual(iterator.next(replacement), {value: cleanupYield, done: false});
     const cleanupEvents = Array.from({length: cut}, () => ['cleanup']);
     assert.deepEqual(events, [['work'], ...cleanupEvents]);
-    set(resumed);
+    set(fixture.loop ? false : resumed);
     if (request === 'next') for (let i = cut; i < fixture.count; ++i)
       assert.deepEqual(iterator.next(replacement), {value: cleanupYield, done: false});
     if (request === 'throw') assert.throws(() => iterator.throw(replacement), error => error === replacement);
     else assert.deepEqual(iterator[request](replacement), {value: request === 'return' ? replacement : payload, done: true});
-    assert.deepEqual(events, request === 'next' ? [['work'], ...Array.from({length: fixture.count}, () => ['cleanup']), ['work', resumed]] :
+    assert.deepEqual(events, request === 'next' ? [['work'], ...Array.from({length: fixture.count}, () => ['cleanup']), ['work', fixture.loop ? false : resumed]] :
       request === 'throw' && fixture.caught ? [['work'], ...cleanupEvents, ['cleanup']] : [['work'], ...cleanupEvents]);
     assert.deepEqual(iterator.next(), {value: undefined, done: true});
   }
@@ -53,7 +55,9 @@ for (const fixture of fixtures) {
     {then() { assert.fail('synchronous RETURN must not assimilate a thenable'); }}]) {
     const iterator = get(() => 1, () => 2);
     assert.deepEqual(iterator.next(), {value: 1, done: false});
+    if (fixture.loop) set(true);
     assert.deepEqual(iterator.return(payload), {value: 2, done: false});
+    if (fixture.loop) set(false);
     for (let i = 1; i < fixture.count; ++i) assert.deepEqual(iterator.next({}), {value: 2, done: false});
     const completion = iterator.next({});
     assert.equal(completion.done, true);
@@ -73,12 +77,43 @@ for (const fixture of fixtures) {
       return 2;
     });
     assert.deepEqual(iterator.next(), {value: 1, done: false});
+    if (fixture.loop) set(true);
     if (failure === 'suffix') {
       assert.deepEqual(iterator.return({}), {value: 2, done: false});
+      if (fixture.loop) set(false);
       for (let i = 1; i < fixture.count; ++i) assert.deepEqual(iterator.next(), {value: 2, done: false});
       assert.throws(() => iterator.next(), error => error === (fixture.caught && catchFailure ? second : first));
     } else assert.throws(() => iterator.return({}), error => error === (fixture.caught && catchFailure ? second : first));
     assert.deepEqual(events, ['work', ...Array(failure === 'suffix' ? fixture.count : 1).fill('cleanup'), ...(failure === 'suffix' ? ['work'] : []), ...(fixture.caught ? ['cleanup'] : [])]);
+  }
+  if (fixture.loop) {
+    for (let stop = 1; stop <= fixture.stops; ++stop) for (const rounds of [0, 1, 2, 7]) {
+      const payload = {}, yielded = {}, cleanupYield = {}; let work = 0, calls = 0;
+      const iterator = get(function(...args) {
+        assert.equal(this, undefined);
+        ++work;
+        if (args.length) assert.deepEqual(args, [false]);
+        return yielded;
+      }, function() {
+        assert.equal(this, undefined);
+        assert.ok(calls < Math.max(1, rounds) * fixture.count, 'cleanup backedge must stop after the changed cell');
+        if (++calls === Math.max(1, rounds) * fixture.count) set(false);
+        return cleanupYield;
+      });
+      set(false);
+      for (let i = 0; i < stop; ++i) assert.deepEqual(iterator.next(yielded), {value: yielded, done: false});
+      set(rounds > 0);
+      const expected = (fixture.post ? Math.max(1, rounds) : rounds) * fixture.count;
+      let result = iterator.return(payload);
+      for (let i = 0; i < expected; ++i) {
+        assert.deepEqual(result, {value: cleanupYield, done: false});
+        assert.equal(calls, i + 1);
+        result = iterator.next({});
+      }
+      assert.deepEqual(result, {value: payload, done: true});
+      assert.equal(calls, expected);
+      assert.equal(work, 2);
+    }
   }
   for (const request of ['return', 'throw']) {
     let effects = 0; const payload = {};

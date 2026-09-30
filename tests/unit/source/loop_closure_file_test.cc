@@ -478,6 +478,9 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
         const auto delta = 1U + width + 2U + (returning ? 1U : 2U);
         for (unsigned byte = 0; byte < width; ++byte) cleanup.push_back(static_cast<std::uint8_t>(delta >> (byte * kByteBits)));
       };
+      const bool suspended_loop = cleanup_control == CleanupControl::kLoop || cleanup_control == CleanupControl::kPostLoop;
+      if (suspended_loop && !post_loop)
+        cleanup.insert(cleanup.end(), {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kJEQZ_IMM32), 0, 0, 0, 0});
       for (std::uint32_t i = 0; i < return_cleanup_count; ++i) {
         cleanup.insert(cleanup.end(), {Op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(parameter + 1),
             Op(abc::Opcode::kCALLARG0_IMM8), 0,
@@ -495,6 +498,24 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
         branch(resume_encoding.throw_mode, false);
         cleanup.insert(cleanup.end(), {Op(abc::Opcode::kLDA_V8), inner_result,
             static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits), Op(abc::Opcode::kLDA_V8), inner_result});
+      }
+      if (suspended_loop) {
+        if (post_loop) {
+          cleanup.insert(cleanup.end(), {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kJEQZ_IMM32)});
+          constexpr std::uint32_t kExitDelta = sizeof(std::uint8_t) + sizeof(std::uint32_t) + kLoopBackBytes;
+          for (unsigned byte = 0; byte < sizeof(kExitDelta); ++byte)
+            cleanup.push_back(static_cast<std::uint8_t>(kExitDelta >> (byte * kByteBits)));
+        }
+        const auto back = static_cast<std::uint32_t>(-std::int64_t(cleanup.size()));
+        cleanup.push_back(Op(abc::Opcode::kJMP_IMM32));
+        for (unsigned byte = 0; byte < sizeof(back); ++byte)
+          cleanup.push_back(static_cast<std::uint8_t>(back >> (byte * kByteBits)));
+        if (!post_loop) {
+          constexpr std::size_t kConditionPc = 2, kBranchOperand = 3;
+          const auto forward = static_cast<std::uint32_t>(cleanup.size() - kConditionPc);
+          for (unsigned byte = 0; byte < sizeof(forward); ++byte)
+            cleanup[kBranchOperand + byte] = static_cast<std::uint8_t>(forward >> (byte * kByteBits));
+        }
       }
       cleanup.insert(cleanup.end(), {Op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, Op(abc::Opcode::kSTA_V8), 10,
           Op(abc::Opcode::kLDA_V8), parameter, Op(abc::Opcode::kCALLARG1_IMM8_V8), 0, 10});
@@ -1084,6 +1105,26 @@ int main(int argc, char** argv) {
           ChildShape::kYieldFinallyReturn, MissingCell::kNone, false, 2, CopyEncoding::kV8, 1,
           YieldFinalizer::kInjectedSuspend, {encoding, encoding}, count)},
           {"catch_parent", false}, {"caught", true}, {"count", count}, {"stops", 2}}.dump() << '\n';
+    return 0;
+  }
+  if (argc == 2 && (std::string_view(argv[1]) == "--yield-return-suspend-loop-json" ||
+                   std::string_view(argv[1]) == "--yield-return-suspend-post-loop-json")) {
+    const bool post = std::string_view(argv[1]) == "--yield-return-suspend-post-loop-json";
+    const auto control = post ? CleanupControl::kPostLoop : CleanupControl::kLoop;
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})
+        for (const bool caught : {false, true})
+          std::cout << nlohmann::json{{"source", Emit(profile, shape, ChildShape::kYieldFinallyReturn,
+              MissingCell::kNone, false, 2, CopyEncoding::kV8, 1,
+              caught ? YieldFinalizer::kInjectedSuspend : YieldFinalizer::kInjectedSuspendUncaught,
+              {}, 1, YieldOverride::kNone, control)},
+              {"catch_parent", shape == ParentShape::kCatch}, {"caught", caught}, {"count", 1}, {"stops", 2},
+              {"loop", true}, {"post", post}}.dump() << '\n';
+    for (const auto count : {200U, 201U, 402U}) for (const auto encoding : {BranchEncoding::k16, BranchEncoding::k32})
+      std::cout << nlohmann::json{{"source", Emit(abc::ProfileId::kDynamic1206, ParentShape::kNormal,
+          ChildShape::kYieldFinallyReturn, MissingCell::kNone, false, 1, CopyEncoding::kV8, 1,
+          YieldFinalizer::kInjectedSuspend, {encoding, encoding}, count, YieldOverride::kNone, control)},
+          {"catch_parent", false}, {"caught", true}, {"count", count}, {"stops", 1}, {"loop", true}, {"post", post}}.dump() << '\n';
     return 0;
   }
   if (argc == 2 && std::string_view(argv[1]) == "--yield-return-suspend-negative") {

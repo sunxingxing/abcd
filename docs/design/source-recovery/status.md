@@ -12,6 +12,29 @@
 
 ## 当前阶段
 
+### 2026-09-30：RETURN 清理中循环再次 yield 的源码行为贯通
+
+- 在已提交的嵌套暂停规范化和共同 preserving 出口上，加入真实 opcode
+  while/do-while 清理：循环体每轮包含直接 yield，回边重读捕获 cell，
+  循环后执行 work(cell) 并保留 caller 的原 RETURN payload。新增的
+  48 个完整函数族首轮通过，无需新增生产算法或专项输出路径。
+- 三 profile × 三父环境 × 有无用户 catch × 两种循环形式的 36 个
+  双原始暂停点组合，及 200/201/402 个每轮暂停点 × 16/32 位分支 ×
+  两种循环形式的 12 个组合。暂停清理集成目标现消费 78 个完整函数族
+  和 18 个内层协议反例，仍只执行完整生成 JS，不执行 INCOMPLETE。
+- 检查原始第 1/2 暂停点及清理第一个/最后一个暂停点的 NEXT、再次
+  RETURN、THROW；循环 0/1/2/7 轮、while 零轮退出与 do/while mandatory
+  iteration、每轮动态 cell 更新、suffix callback 参数/receiver/次数、
+  原 catch 二次清理/抛出覆盖、Object.is payload 和未启动 generator。
+- `cmake --build build --target loop_closure_file_test -j 4` 成功；扩展后的
+  集成首轮通过（18.99 秒），
+  `/tmp/abcd-return-suspend-loop-build.log`、
+  `/tmp/abcd-return-suspend-loop-tests.log`。七项共同控制/出口、函数族及
+  generator RETURN/循环/暂停清理定向回归全通过（75.82 秒），
+  `/tmp/abcd-return-suspend-loop-regression-tests.log`；`git diff --check`
+  通过，独立自查。yield*、async generator 及结构整合 gate 继续开放；
+  全量测试/语料/RSS/基准保持暂停，不外推全域完成或 1GB 实测。
+
 ### 2026-09-30：双清理暂停走廊的诊断草稿内存生命周期修复
 
 - 定位上一项两段清理各含 402 个 yield 的失败：树构建成功，但打印
