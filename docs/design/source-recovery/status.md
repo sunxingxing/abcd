@@ -12,6 +12,29 @@
 
 ## 当前阶段
 
+### 2026-10-01：补充本地类 TDZ、显式字段及 getter receiver 验证
+
+- local_model_batch_source_test 在 SourceTextModule 完成 link、尚未 evaluate 时，
+  通过测试专用函数读取实际本地类绑定，三个生成模块与独立配对 TS 均抛出
+  ReferenceError；evaluate 后读取返回实际导出类。覆盖 native 模块绑定 TDZ，
+  不将其扩大为所有循环依赖或中途调用时机的证明。
+- 显式给三个值类的每个构造参数传入不同对象，检查 getter 返回相同对象，
+  并对照 own-key 顺序、字段值及 writable/enumerable/configurable 描述符。
+  SectionProduct 此处显式提供 originalPrice；缺省 optional 字段在 Node TS
+  转换后的差异仍未解决，不能据此宣称所有构造分支的描述符已验收。
+- 借用全部 getter 的 receiver，比较 Proxy 属性读取轨迹及返回身份；Proxy
+  读取抛出 sentinel 时，两边都传播原异常对象。测试仅增加独立 oracle，
+  没有更改生产引擎、样本或正式输出。测试通过（日志
+  /tmp/abcd-local-model-fields-test.log），未恢复全量测试/RSS。
+- 下一处集中阻塞已核对真实 ABC：Immersive Index record9572 的 entry10009，
+  PC137 为 accessor_definition（opcode188），语义解码已给出 object/key/getter/
+  setter/name_flag，但 ImportValueOperation 尚无该操作的 Value IR 映射，
+  导致 import_stage 拒绝。证据 /tmp/abcd-index-entry-instructions.jsonl。
+  需要沿共同 IR/类成员集成实现访问器定义，不能省略指令或以普通赋值替代。
+- 另一个独立缺口：EntryBackupAbility record9308 entry9460 在类创建 PC14
+  拒绝，constructor9544 的实际输入在 PC12 失败。不得将两个缺口混为同一修复。
+  最近正式五输入计数仍为 34/72/46，阶段一未完成。
+
 ### 2026-10-01：同 record 本地类绑定贯通，三个模型正式恢复
 
 - 实际阻塞为 FamilyEnclosure 的 module binding：已有模块别名能识别 local slot，

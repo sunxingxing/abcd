@@ -22,20 +22,34 @@ async function exercise(source, constantsSource, breakpointSource, test) {
   const context = vm.createContext({});
   // Test-only hooks mutate the actual lexical constructor binding. Production
   // never receives the paired sources or these evaluation hooks.
-  const model = new vm.SourceTextModule(source + `\nexport function replace(next) { ${itemName} = next; }`, {context});
+  const model = new vm.SourceTextModule(source + `\nexport function replace(next) { ${itemName} = next; }\nexport function readItem() { return ${itemName}; }`, {context});
   const constants = new vm.SourceTextModule(constantsSource, {context});
   const breakpoint = new vm.SourceTextModule(breakpointSource, {context});
   await model.link(specifier => {
     if (specifier === '@normalized:N&&&shopping/src/main/ets/constants/HomeConstants&1.0.0') return constants;
     assert.equal(specifier, '@normalized:N&&&commons/Index&1.0.0'); return breakpoint;
   });
+  // Function declarations are initialized during linking, while class/let
+  // bindings are still in TDZ. Both independently built modules must throw.
+  assert.throws(() => model.namespace.readItem(), {name: 'ReferenceError'});
   await model.evaluate();
+  assert.equal(model.namespace.readItem(), model.namespace[itemName]);
   const trace = [];
   for (const key of Object.keys(constants.namespace.HomeConstants)) {
     const value = constants.namespace.HomeConstants[key];
     Object.defineProperty(constants.namespace.HomeConstants, key, {configurable: true, get() { trace.push(key); return value; }});
   }
   const Model = model.namespace[modelName], Item = model.namespace[itemName];
+  const argumentsByGetter = getters.map((_, i) => ({ordinal: i}));
+  const explicit = new Item(...argumentsByGetter);
+  getters.forEach((name, i) => assert.equal(explicit[name](), argumentsByGetter[i]));
+  const explicitFields = snapshot(explicit);
+  const receiverReads = [], markerValue = {};
+  const receiver = new Proxy({}, {get(_target, key) { receiverReads.push(key); return markerValue; }});
+  for (const name of getters) assert.equal(Item.prototype[name].call(receiver), markerValue);
+  const getterFailure = new Error('receiver getter sentinel');
+  const throwingReceiver = new Proxy({}, {get() { throw getterFailure; }});
+  for (const name of getters) assert.throws(() => Item.prototype[name].call(throwingReceiver), error => error === getterFailure);
   const instance = new Model();
   const arrays = lists.map(name => instance[name]());
   const initialTrace = [...trace];
@@ -57,7 +71,7 @@ async function exercise(source, constantsSource, breakpointSource, test) {
   const failure = new Error('constructor sentinel');
   model.namespace.replace(function() { throw failure; });
   assert.throws(() => new Model(), error => error === failure);
-  return {values, trace: initialTrace, args, name: Model.name, length: Model.length};
+  return {values, explicitFields, receiverReads, trace: initialTrace, args, name: Model.name, length: Model.length};
 }
 const temporary = mkdtempSync(join(tmpdir(), 'abcd-local-models-'));
 try {
