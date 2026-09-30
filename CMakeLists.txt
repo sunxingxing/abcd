@@ -565,6 +565,9 @@ if(BUILD_TESTING)
   add_test(NAME phase_reference_test COMMAND phase_reference_test)
   target_link_libraries(class_tree_context_test PRIVATE abcd_source abcd_json)
   add_test(NAME class_tree_context_test COMMAND class_tree_context_test)
+  add_executable(module_family_print_test tests/unit/source/module_family_print_test.cc)
+  target_link_libraries(module_family_print_test PRIVATE abcd_source)
+  add_test(NAME module_family_print_test COMMAND module_family_print_test)
   add_executable(tree_structure_test tests/unit/source/tree_structure_test.cc)
   target_link_libraries(tree_structure_test PRIVATE abcd_source)
   add_test(NAME tree_structure_test COMMAND tree_structure_test)
@@ -993,6 +996,8 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME record_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_tree.mjs $<TARGET_FILE:record_tree_test>)
+    add_test(NAME module_family_print_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_family_print.mjs $<TARGET_FILE:module_family_print_test>)
     add_test(NAME record_import_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_import_tree.mjs $<TARGET_FILE:record_import_tree_test>)
     add_test(NAME module_store_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

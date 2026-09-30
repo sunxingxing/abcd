@@ -171,24 +171,9 @@ class TreePrinter {
         }
       }
     }
-    if (module) {
-      const auto* body = std::get_if<BlockStmt>(&Tree().statements[Tree().body.value].statement);
-      if (!body || !body->child_count || !Tree().parameters.empty() || !Tree().captures.empty() ||
-          Tree().self || Tree().callable != CallableKind::kFunction || Tree().strictness != Strictness::kStrict)
-        throw Error::kUnsupportedContext;
-      const auto last = Tree().children[body->first_child + body->child_count - 1];
-      if (!std::holds_alternative<ReturnStmt>(Tree().statements[last.value].statement)) throw Error::kUnsupportedContext;
-      for (std::size_t i = 0; i < Tree().statements.size(); ++i) {
-        Step();
-        if (std::holds_alternative<ReturnStmt>(Tree().statements[i].statement) && i != last.value)
-          throw Error::kUnsupportedContext;
-      }
-    }
+    if (module) CheckModuleBody();
     for (const auto& node : Tree().expressions) {
       Step();
-      if (module && (std::holds_alternative<ThisExpr>(node.expression) ||
-          std::holds_alternative<AwaitExpr>(node.expression) || std::holds_alternative<YieldExpr>(node.expression) ||
-          std::holds_alternative<ArgumentSnapshotExpr>(node.expression))) throw Error::kUnsupportedContext;
       if (std::holds_alternative<FunctionExpr>(node.expression)) throw Error::kUnsupportedContext;
       if (std::holds_alternative<RealmObjectExpr>(node.expression)) RecordRealm();
       if (std::holds_alternative<SymbolConstructorExpr>(node.expression)) RecordSymbol();
@@ -209,7 +194,8 @@ class TreePrinter {
     Result().work = initial_.work - remaining_.work;
     return std::move(result_);
   }
-  PrintedFamilyDraft Draft(std::size_t indent = 0) {
+  PrintedFamilyDraft Draft(std::size_t indent = 0, bool module = false) {
+    module_body_ = module;
     if (family_->root.value >= family_->members.size()) throw Error::kUnsupportedContext;
     if (class_root_) {
       const auto& root = family_->members[family_->root.value].tree;
@@ -251,7 +237,9 @@ class TreePrinter {
       owners_[i] = {Tree().owner, i};
       Result().identity = Tree().identity; Result().method = Tree().method;
       Result().value_revision = Tree().value_revision; Result().cfg_revision = Tree().cfg_revision;
-      Result().fragment = ClassRoot() ? FunctionFragment::kClassMember : FunctionFragment::kConditionalExpression;
+      if (ModuleBody()) CheckModuleBody();
+      Result().fragment = ModuleBody() ? FunctionFragment::kModuleBody :
+          ClassRoot() ? FunctionFragment::kClassMember : FunctionFragment::kConditionalExpression;
       Result().incomplete = !Tree().recovery_issues.empty();
       if (!Tree().modules.empty() && scope_ && scope_->module_enclosure) {
         if (!family_->members[i].record) throw Error::kUnsupportedContext;
@@ -294,6 +282,27 @@ class TreePrinter {
     return std::move(draft_);
   }
  private:
+  bool ModuleBody() const { return module_body_ && (!family_ || current_ == family_->root.value); }
+  void CheckModuleBody() {
+    const auto* body = std::get_if<BlockStmt>(&Tree().statements[Tree().body.value].statement);
+    if (!body || !body->child_count || !Tree().parameters.empty() || !Tree().captures.empty() ||
+        Tree().self || Tree().callable != CallableKind::kFunction || Tree().strictness != Strictness::kStrict)
+      throw Error::kUnsupportedContext;
+    const auto last = Tree().children[body->first_child + body->child_count - 1];
+    if (!std::holds_alternative<ReturnStmt>(Tree().statements[last.value].statement)) throw Error::kUnsupportedContext;
+    for (std::size_t i = 0; i < Tree().statements.size(); ++i) {
+      Step();
+      if (std::holds_alternative<ReturnStmt>(Tree().statements[i].statement) && i != last.value)
+        throw Error::kUnsupportedContext;
+    }
+    for (const auto& node : Tree().expressions) {
+      Step();
+      if (std::holds_alternative<ThisExpr>(node.expression) ||
+          std::holds_alternative<AwaitExpr>(node.expression) ||
+          std::holds_alternative<YieldExpr>(node.expression) ||
+          std::holds_alternative<ArgumentSnapshotExpr>(node.expression)) throw Error::kUnsupportedContext;
+    }
+  }
   void PrepareFamilyStatus() {
     // Follow the actual syntax ownership, not a possibly stale construction
     // order. A gap affects every enclosing function, never its siblings.
@@ -644,6 +653,9 @@ class TreePrinter {
       // this annotation would insert a semicolon before the recovered value.
       Append(family_ && current_ != family_->root.value ? " " : "\n");
     }
+    if (ModuleBody()) {
+      Push(EndFunction{}); Push(Statement{Tree().body, depth_}); return;
+    }
     if (ClassRoot()) {
       Run(Indent{depth_});
       if (!class_root_->Constructor() && class_root_->Placement() == abc::ClassPlacement::kStatic) Append("static ");
@@ -696,7 +708,7 @@ class TreePrinter {
       Step(); if (std::holds_alternative<FunctionExit>(Tree().anchors[i].position)) Result().anchors[i] = written_;
     }
     // Class-body syntax closes with the block itself, not an expression wrap.
-    if (!ClassRoot()) {
+    if (!ClassRoot() && !ModuleBody()) {
       if (Tree().inferred_name && (!Tree().self || Tree().self_form == SelfForm::kCreationBinding)) {
         Append("})["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]");
         if (Tree().self) { Append("; return "); Name(*Tree().self); Append("; })()"); }
@@ -781,7 +793,7 @@ class TreePrinter {
     for (std::size_t i = 0; i < indent.depth; ++i) Append(kIndent);
   }
   void StatementNode(const BlockStmt&, Statement at) {
-    if (!module_body_ || at.id != Tree().body) Append("{\n");
+    if (!ModuleBody() || at.id != Tree().body) Append("{\n");
     Push(BlockCursor{at.id, 0, at.depth});
   }
   void StatementNode(const DeclarationStmt& node, Statement) {
@@ -807,10 +819,10 @@ class TreePrinter {
   }
   void StatementNode(ReturnStmt node, Statement) {
     if (static_fields_) return;
-    if (!module_body_) Append("return");
+    if (!ModuleBody()) Append("return");
     Push(std::string_view(";"));
     if (node.value) {
-      if (module_body_) {
+      if (ModuleBody()) {
         // A discarded entry completion is an expression statement. Parentheses
         // keep object literals and other leading tokens out of statement grammar.
         Append("("); Push(std::string_view(")"));
@@ -872,7 +884,7 @@ class TreePrinter {
   void Run(BlockCursor at) {
     const auto& block = std::get<BlockStmt>(Tree().statements[at.id.value].statement);
     Boundary({at.id, at.index});
-    const bool root = module_body_ && at.id == Tree().body;
+    const bool root = ModuleBody() && at.id == Tree().body;
     if (at.index == block.child_count) { if (!root) { Run(Indent{at.depth}); Append("}"); } return; }
     Push(BlockCursor{at.id, at.index + 1, at.depth});
     Push(std::string_view("\n"));
@@ -976,6 +988,14 @@ std::variant<PrintedFunction, TreePrintError> PrintModuleTree(
 std::variant<PrintedFamilyDraft, TreePrintError> PrintFamilyDraft(const ConstructedFamily& family,
     std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope) {
   try { return TreePrinter(family, output, limit, scratch, nullptr, scope).Draft();
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit;
+  } catch (const std::ios_base::failure&) { return Error::kWrite; }
+}
+std::variant<PrintedFamilyDraft, TreePrintError> PrintModuleFamilyDraft(const ConstructedFamily& family,
+    std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope) {
+  try { return TreePrinter(family, output, limit, scratch, nullptr, scope).Draft(0, true);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit;

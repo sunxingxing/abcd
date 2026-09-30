@@ -12,6 +12,30 @@
 
 ## 当前阶段
 
+### 2026-10-01：共同 printer 支持模块入口与嵌套函数族
+
+- 新 PrintModuleFamilyDraft 复用 TreePrinter 的迭代 owner 事件栈和完整函数位置表。
+  模块模式只作用于 family.root：省去入口外壳及终止 return 关键字，保留返回值
+  表达式的副作用；子函数的 block、return、receiver、await/yield 语法照常保留。
+  模块根按 FamilyId 判断，不假定存储下标为0；没有第二套文本 writer。
+- 原 PrintModuleTree 与新路径共用根限制检查。缺失子树、模块入口 this、非末尾
+  return、输出预算耗尽等仍拒绝。源码片段类型分别标记 ModuleBody 和普通子函数，
+  FunctionExpr 范围与对应子函数范围一致；仍不赋予输入/capture/class 完成收据。
+- 新 AST printer fixture 将根存于最后，以模块变量、捕获读取和两个兄弟函数覆盖
+  owner 切换。Node 原生 ESM 执行确认入口终止表达式更新变量为42，闭包读到更新，
+  普通子函数正确返回调用 receiver。额外 async/generator 变体验证 await 结果与
+  rejection 身份、yield/next 恢复值和 throw 异常身份。fixture 是输出层验证，
+  不是 ABC 解码或完整页面验收；正式 record 的父子树组合尚待接入。
+- 构建日志 /tmp/abcd-module-family-regression-build.log；九项定向回归通过
+  （5.81 秒），/tmp/abcd-module-family-regression-tests.log。未运行全量测试、
+  RSS、基准及更大 corpus；本次未重新导出五输入，不宣称 complete 数量增加。
+- 已核实 PC98 类阻塞：ResolveConstructor 仅接受 Hole heritage / base constructor，
+  expression_forest 和 tree_operands 也仅接受无继承类。派生类需要真正连接 heritage
+  表达式与 super/receiver 语义，不能只放宽 callable allowlist。
+- 下一步将 record 的已构建父树与共同函数族子树组合，接入上述模块 printer；
+  继续处理派生构造器。阶段一 Goal 保持未完成。
+
+
 ### 2026-10-01：record 入口普通函数族与真实父层捕获绑定
 
 - ReadFunctionFamily 新增显式根类保留模式：共同 ProjectClassMembers 证明归属的
