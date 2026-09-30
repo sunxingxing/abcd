@@ -388,6 +388,40 @@ void GlobalTree() {
   std::get<ValueGlobalRead>(fixture.graph.ops[0].operation).lookup = GlobalLookup::kVar;
   Check(std::get<FunctionTreeError>(fixture.Build()) == FunctionTreeError::kExpression);
 }
+void SuperTree() {
+  using namespace analysis;
+  for (const unsigned count : {0U, 1U, 200U, 201U, 402U}) {
+    Fixture fixture;
+    std::vector<std::pair<OperandRole, ValueOperand>> inputs;
+    for (unsigned i = 0; i < count; ++i)
+      inputs.emplace_back(OperandRole::kArgument, analysis::IntegerLiteral{static_cast<std::int32_t>(i)});
+    fixture.Add(0, 0, 0, ValueSuperCall{static_cast<std::uint16_t>(count), {}}, true, inputs, LanguageEffect::kUserCode);
+    fixture.Add(0, 1, 4, ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{2}}});
+    fixture.graph.blocks = {{{0}, 2, {0}, 0}};
+    auto syntax = fixture.Syntax(); syntax.callable = CallableKind::kDerivedConstructor;
+    const auto control = std::get<ControlPlan>(BuildControlPlan(fixture.graph));
+    const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(fixture.graph));
+    const auto built = BuildFunctionTree(fixture.graph, control, evaluation, syntax, {fixture.constants, 2, 0, {}});
+    Check(std::holds_alternative<ConstructedFunction>(built));
+    auto tree = std::get<ConstructedFunction>(built).tree;
+    Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+    Check(tree.arguments.size() == count);
+    if (count > 1) {
+      std::swap(tree.arguments.front(), tree.arguments.back());
+      Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+      Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
+      std::swap(tree.arguments.front(), tree.arguments.back());
+    }
+    bool found = false;
+    for (auto& node : tree.expressions) {
+      if (auto* call = std::get_if<SuperCallExpr>(&node.expression)) {
+        Check(call->arguments.count == count); found = true;
+        ++call->arguments.count;
+      }
+    }
+    Check(found && std::holds_alternative<TreeStructureError>(VerifyTreeStructure(tree)));
+  }
+}
 void CallTree(CallCase kind, std::uint32_t count, bool computed) {
   using namespace analysis;
   Fixture fixture;
@@ -699,6 +733,7 @@ void FrameReceiverTree() {
 }
 }  // namespace
 int main() {
+  SuperTree();
   UnprovedTryRefusal();
   for (const analysis::ValueOperation operation : {
       analysis::ValueOperation{analysis::ValueGlobalObject{}},

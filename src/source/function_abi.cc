@@ -216,7 +216,7 @@ class AbiBuilder {
         std::is_same_v<T, SymbolConstructorExpr> ||
         std::is_same_v<T, UnaryExpr> || std::is_same_v<T, AwaitExpr> || std::is_same_v<T, YieldExpr> || std::is_same_v<T, BinaryExpr> ||
         std::is_same_v<T, LogicalExpr> || std::is_same_v<T, CallExpr> ||
-        std::is_same_v<T, ConstructExpr> || std::is_same_v<T, EmptyArrayExpr> ||
+        std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr> || std::is_same_v<T, EmptyArrayExpr> ||
         std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, FunctionExpr> || std::is_same_v<T, ClassExpr> || std::is_same_v<T, FieldDefinitionExpr>);
     // Child expressions are counted once by their arena entries, not recursively.
   }

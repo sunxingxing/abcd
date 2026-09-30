@@ -298,9 +298,11 @@ class StructureCheck {
         RequireTree(expression.slots.first <= tree_.arguments.size() &&
             expression.slots.count <= tree_.arguments.size() - expression.slots.first &&
             expression.slots.count == tree_.parameters.size(), Error::kRange);
-      } else if constexpr (std::is_same_v<T, CallExpr> || std::is_same_v<T, ConstructExpr>) {
+      } else if constexpr (std::is_same_v<T, CallExpr> || std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr>) {
         RequireTree(expression.arguments.first <= tree_.arguments.size() &&
             expression.arguments.count <= tree_.arguments.size() - expression.arguments.first, Error::kRange);
+        if constexpr (std::is_same_v<T, SuperCallExpr>)
+          RequireTree(tree_.callable == CallableKind::kDerivedConstructor, Error::kUnsupportedSyntax);
         if constexpr (std::is_same_v<T, CallExpr>) {
           RequireTree(expression.reference == CallReference::kValue ||
               expression.reference == CallReference::kMember, Error::kUnsupportedSyntax);
@@ -416,6 +418,12 @@ class StructureCheck {
         return NextCall(frame, call->callee, call->arguments);
       if (const auto* construct = std::get_if<ConstructExpr>(&syntax))
         return NextCall(frame, construct->constructor, construct->arguments);
+      if (const auto* super = std::get_if<SuperCallExpr>(&syntax)) {
+        if (frame.next_child == super->arguments.count) return {};
+        const auto slot = super->arguments.first + frame.next_child++;
+        RequireTree(!arguments_[slot], Error::kOwnership); arguments_[slot] = 1;
+        return tree_.arguments[slot];
+      }
       if (const auto* snapshot = std::get_if<ArgumentSnapshotExpr>(&syntax)) {
         if (frame.next_child == snapshot->slots.count) return {};
         const auto slot = snapshot->slots.first + frame.next_child++;
@@ -445,7 +453,7 @@ class StructureCheck {
                         std::is_same_v<T, SymbolConstructorExpr> ||
                         std::is_same_v<T, ArgumentSnapshotExpr> ||
                         std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
-                        std::is_same_v<T, ConstructExpr> || std::is_same_v<T, EmptyArrayExpr> ||
+                        std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr> || std::is_same_v<T, EmptyArrayExpr> ||
                         std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, FunctionExpr> || std::is_same_v<T, ClassExpr>);
         }
       }, tree_.expressions[expression->value].expression);

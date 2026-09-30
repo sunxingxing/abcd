@@ -593,6 +593,13 @@ class TreePrinter {
     Push(std::string_view(")("));
     Push(node.constructor);
   }
+  void Expression(const SuperCallExpr& node) {
+    if (Tree().callable != CallableKind::kDerivedConstructor || !ClassRoot())
+      throw Error::kUnsupportedContext;
+    Append("super(");
+    Push(std::string_view(")"));
+    Push(ArgumentCursor{node.arguments, 0});
+  }
   void Expression(EmptyArrayExpr) { Append("[]"); }
   void Expression(EmptyObjectExpr) { Append("({})"); }
   void Expression(const ClassExpr& node) {

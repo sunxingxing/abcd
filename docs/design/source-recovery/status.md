@@ -13,6 +13,26 @@
 ## 当前阶段
 
 
+### 2026-10-01：共同源码树新增原生 super 调用
+
+- SuperCallExpr 独立表达隐式父构造器/newTarget 的调用，不复用普通 CallExpr 或
+  ConstructExpr。共同 ExpressionForest 按原参数顺序构建无 callee 前缀的参数区间，
+  TreeOperands 与原 ValueSuperCall 逐参数核对；结构遍历保持独占节点/参数所有权。
+- VerifyTreeStructure 只允许 derived callable 中的 SuperCallExpr；打印器新增
+  原生 super(...) 分支，并要求 derived + class-root 上下文。现有发布入口仍未
+  开放派生构造器，因此这里不是已生成/执行派生源码的证据。
+- 0/1/200/201/402参数共同 BuildFunctionTree→VerifyTreeSemantics 回归通过；
+  普通函数/方法/基类中的super及越界区间被拒绝。交换参数后的结构仍合法，但
+  独立语义核对拒绝，防止将语法正确误当语义正确。
+- 四项定向回归通过（3.65秒）：tree_structure_test、function_tree_test、
+  class_initializer_file_test、constructor_tree_source_test。日志
+  /tmp/abcd-super-ast-build.log、/tmp/abcd-super-ast-tests.log；参数顺序负例补测
+  function_tree_test 通过（0.89秒），/tmp/abcd-super-ast-order-tests.log。
+- 下一步真实构造器中的守卫消费、this/返回协议与发布入口；未恢复全套测试、
+  RSS、基准或重新导出五输入。阶段一保持开放。
+
+
+
 ### 2026-10-01：super 协议进入共同求值计划
 
 - DescribeEvaluation 新增范围 super 的有序参数形状和独立构造器守卫输入模式。

@@ -141,6 +141,8 @@ struct ArgumentRange { std::uint32_t first; std::uint32_t count; };
 enum class CallReference : std::uint8_t { kValue, kMember };
 struct CallExpr { ExprId callee; ArgumentRange arguments; CallReference reference; };
 struct ConstructExpr { ExprId constructor; ArgumentRange arguments; };
+// The parent constructor and newTarget are supplied by the derived invocation.
+struct SuperCallExpr { ArgumentRange arguments; };
 // Fresh pinned arguments object. Slots are conditional current-value leaves;
 // count and extra tail belong to this owner's unexposed native invocation.
 // Publication requires an explicit exact factory, not a mutable global helper.
@@ -181,7 +183,7 @@ using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, Rea
     SymbolConstructorExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
-                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr>;
+                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct BlockStmt { ScopeId scope; std::uint32_t first_child; std::uint32_t child_count; };
 struct DeclarationStmt { SymbolId symbol; std::optional<ExprId> initializer; };

@@ -261,6 +261,10 @@ class OperandCheck {
                 call.reference == CallReference::kValue, Error::kOperand);
             Arguments(op, call.arguments, kValuePrefix, operation.arguments);
           }
+        } else if constexpr (std::is_same_v<T, analysis::ValueSuperCall>) {
+          RequireMeaning(tree_.callable == CallableKind::kDerivedConstructor, Error::kOperand);
+          const auto& call = Node<SuperCallExpr>(expression);
+          Arguments(op, call.arguments, 0, operation.arguments);
         } else if constexpr (std::is_same_v<T, analysis::ValueConstruct>) {
           const auto& construct = Node<ConstructExpr>(expression);
           Input(input(0), construct.constructor);

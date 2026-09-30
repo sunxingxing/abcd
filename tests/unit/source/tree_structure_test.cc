@@ -30,6 +30,24 @@ void Expect(const FunctionTree& tree, TreeStructureError expected) {
   Check(std::holds_alternative<TreeStructureError>(checked));
   Check(std::get<TreeStructureError>(checked) == expected);
 }
+void SuperContext() {
+  for (const unsigned count : {0U, 1U, 200U, 201U, 402U}) {
+    auto tree = Minimal(); tree.expressions.clear();
+    for (unsigned i = 0; i < count; ++i) {
+      tree.expressions.push_back({TreeLiteral{IntegerLiteral{static_cast<std::int32_t>(i)}}, {0}});
+      tree.arguments.push_back({i});
+    }
+    tree.expressions.push_back({SuperCallExpr{{0, count}}, {0}});
+    tree.statements[1].statement = ReturnStmt{ExprId{count}};
+    for (const auto callable : {CallableKind::kFunction, CallableKind::kBaseConstructor, CallableKind::kMethod}) {
+      tree.callable = callable; Expect(tree, TreeStructureError::kUnsupportedSyntax);
+    }
+    tree.callable = CallableKind::kDerivedConstructor;
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+    std::get<SuperCallExpr>(tree.expressions.back().expression).arguments.count++;
+    Expect(tree, TreeStructureError::kRange);
+  }
+}
 void YieldContext() {
   auto tree = Minimal();
   tree.expressions.push_back({YieldExpr{{0}}, {0}});
@@ -316,6 +334,7 @@ void DeepLoops() {
 }
 }  // namespace
 int main() {
+  SuperContext();
   YieldContext();
   InferredNames();
   Ownership();
