@@ -285,6 +285,39 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
   const auto* lookup = std::get_if<abc::MethodLookup>(&looked_up);
   if (!lookup) return Refused(output, receipt, InspectionError::kLookup,
       IndexClass(std::get<abc::MethodLookupError>(looked_up)));
+  if (scope == ValueSourceScope::kRecordTree) {
+    const auto owner = std::find_if(index.records.begin(), index.records.end(),
+        [&](const abc::RecordInfo& record) { return record.offset == method.owner_offset; });
+    if (owner == index.records.end()) return Refused(output, receipt, InspectionError::kLookup);
+    const auto packaging = abc::DetectFilePackaging(file, header, index);
+    const auto* packed = std::get_if<abc::FilePackaging>(&packaging);
+    if (!packed) return Refused(output, receipt, InspectionError::kLookup);
+    const auto context = ReadRecordModuleContext(file, header, index, *owner, *packed);
+    const auto* ready = std::get_if<RecordModuleContext>(&context);
+    if (!ready) return Refused(output, receipt, InspectionError::kLookup);
+    const auto roles = analysis::MethodRoleIndex::Build(file, header, index, *lookup);
+    const auto* role_index = std::get_if<analysis::MethodRoleIndex>(&roles);
+    if (!role_index) return Refused(output, receipt, InspectionError::kLookup);
+    auto built = BuildRecordSource(file, header, index, *lookup, *owner, *ready, *role_index,
+        {}, nullptr, RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity);
+    if (const auto* source = std::get_if<PrintedSource>(&built)) {
+      output << nlohmann::json{{"route", "value_tree"}, {"source", source->text},
+          {"record", owner->offset.value}, {"source_complete", true}, {"executable", false},
+          {"legacy_writer_used", false}} << '\n';
+      return EXIT_SUCCESS;
+    }
+    nlohmann::json report{{"route", "value_tree"}, {"record", owner->offset.value},
+        {"source_complete", false}, {"executable", false}, {"legacy_writer_used", false}};
+    if (const auto* error = std::get_if<RecordProgramFailure>(&built)) {
+      report["error"] = static_cast<unsigned>(error->kind); report["pc"] = error->pc.value;
+    } else if (const auto* error = std::get_if<RouteRefusal>(&built)) {
+      report["failure_class"] = RouteFailureClassName(error->failure.failure_class);
+      report["reason"] = ValueRouteErrorName(error->failure.reason);
+      if (error->failure.pc) report["pc"] = error->failure.pc->value;
+    } else report["error_variant"] = built.index();
+    output << report << '\n';
+    return EXIT_FAILURE;
+  }
   if (scope == ValueSourceScope::kConditionalValues || scope == ValueSourceScope::kConditionalFamily ||
       scope == ValueSourceScope::kFamilyDraft) {
     const auto position = lookup->Find(method.offset);

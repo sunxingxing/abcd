@@ -13,6 +13,7 @@
 #include "abcd/source/function_emission.h"
 #include "abcd/source/module_enclosure.h"
 #include "function_segments.h"
+#include "record_tree.h"
 
 namespace abcd::source {
 RecordSourceResult BuildRecordSource(
@@ -22,7 +23,7 @@ RecordSourceResult BuildRecordSource(
     const analysis::MethodRoleIndex& roles, RecordProgramBudget budget,
     const HostRealmBinding* realm_binding, RoutePolicy policy,
     const ClassMethodSelection* selection,
-    const FunctionCreationSelection* function_selection) {
+    const FunctionCreationSelection* function_selection, const RouteInputIdentity* identity) {
   using Error = RecordProgramError;
   const auto fail = [](Error kind) { return RecordProgramFailure{kind, {}}; };
   const auto metadata = [&](abc::MetadataError kind) {
@@ -37,7 +38,7 @@ RecordSourceResult BuildRecordSource(
   // abc_structure consumes this decision instead of fabricating its own
   // refusal (T00 correction R5).
   const auto admission = AdmitLegacyWriter(policy);
-  if (!admission.legacy_permitted)
+  if (!admission.legacy_permitted && !identity)
     return RouteRefusal{*admission.value_route_failure};
   try {
     if (selection && function_selection) return fail(Error::kEntry);
@@ -71,6 +72,12 @@ RecordSourceResult BuildRecordSource(
       entry = &method;
     }
     if (!entry || !entry->code) return fail(Error::kEntry);
+    if (!admission.legacy_permitted) {
+      if (selection || function_selection) return fail(Error::kEntry);
+      const auto position = lookup.Find(entry->offset);
+      if (!position) return fail(Error::kEntry);
+      return BuildRecordTree(file, header, index, record, context, *position, *identity, budget);
+    }
     if (selection) {
       const auto* site = selection->sites.At(selection->site);
       const auto creator = site ? lookup.Find(site->creator) : std::nullopt;

@@ -6,7 +6,7 @@
 #include "abcd/abc/metadata_index.h"
 #include "abcd/source/source_route.h"
 
-enum class ValueSourceScope { kMember, kRecordSlice, kConditionalValues, kConditionalFamily, kFamilyDraft };
+enum class ValueSourceScope { kMember, kRecordTree, kRecordSlice, kConditionalValues, kConditionalFamily, kFamilyDraft };
 int InspectValueSource(const abcd::corpus::AbcFile& file,
     const abcd::abc::Header& header, const abcd::abc::MetadataIndex& index,
     const abcd::abc::MethodInfo& method, abcd::source::RouteInputIdentity identity,

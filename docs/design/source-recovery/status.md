@@ -12,6 +12,28 @@
 
 ## 当前阶段
 
+### 2026-10-01：正式 record 入口的模块共同树分支
+
+- BuildRecordSource 在 RequireValueTree 且提供输入身份时，复用 record
+  flags/唯一入口检查，调用共同 FunctionInput/Values/Evaluation/FunctionTree
+  与模块 printer；不会回落旧 writer。导出名来自 ABC 模块元数据，保留
+  相邻同名槽位规则，首次写入声明与后续赋值沿用共同树。现阶段明确拒绝
+  imports/子函数及非单块初始化；没有推断未经建立的全局环境。
+- abc_semantic 的 --record-source --value-source 已调用这一正式分支；
+  abc_structure 的批量 required-value 分支尚未接入。独立 ABC 夹具生成
+  answer 声明/导出，原生 ESM 验证执行前 TDZ 和执行后 answer=42；错误
+  输入身份及不足输出额度拒绝。保留 source_complete 与可执行验收的区分。
+- 真实 Immersive Constants entry 8889 经新入口到达值导入 PC 94：
+  STOWNBYINDEX（对象寄存器 7、索引 0）尚未表示，返回 typed import_stage
+  失败，而非旧入口的 context 拒绝。不能将自有属性定义直接改为 [[Set]]。
+  尚未生成真实 Constants 源码，语义及源码风格验收没有完成。
+- abc_semantic 和相关测试构建成功；5 项相关 CTest 通过（1.14 秒）；
+  最后名字索引调整后两项 record 测试再通过（3.31 秒）。日志：
+  /tmp/abcd-record-final-build.log、/tmp/abcd-record-tests.log、
+  /tmp/abcd-record-final-tests.log、/tmp/abcd-record-constants-refusal.json。
+  后续接通索引自有属性及数组字面量恢复，并接入批量入口；未恢复暂停的
+  全量测试、RSS/基准、其他语料或代理。阶段一仍未完成。
+
 ### 2026-10-01：共同树的模块槽位初始化与更新
 
 - ValueModuleWrite 现在通过类型化 ModuleStoreConstant 绑定模块槽位与源码

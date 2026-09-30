@@ -20,8 +20,10 @@ using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure,
 // Optional realm_binding is an explicit embedding-host trust capability; it
 // is never fabricated from an import, free identifier or mutable property.
 // policy has no default (invocation-context rule in source_route.h): the
-// record entry refuses before any stage when the legacy writer is not
-// permitted, so callers never receive a legacy fallback here.
+// required value-tree route uses the merged record entry and same-file identity
+// supplied below. Missing identity refuses before analysis. Neither case falls
+// back to the legacy writer. Current module-tree support is straight-line and
+// has no imported bindings or child functions; unsupported input stays explicit.
 // Optional selection requires that exact class occurrence to use the verified
 // value-tree member route. Other code remains legacy; this mixed artifact is
 // not a complete value-tree record. A missing selected segment refuses output.
@@ -34,6 +36,7 @@ using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure,
     const analysis::MethodRoleIndex& roles, RecordProgramBudget budget,
     const HostRealmBinding* realm_binding, RoutePolicy policy,
     const ClassMethodSelection* selection = nullptr,
-    const FunctionCreationSelection* function_selection = nullptr);
+    const FunctionCreationSelection* function_selection = nullptr,
+    const RouteInputIdentity* identity = nullptr);
 }  // namespace abcd::source
 #endif

@@ -195,6 +195,9 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     return InspectValueSource(file, *header, *index, *method,
         source::MakeRouteInputIdentity(*hash, *header), std::cout, scope);
   if (policy == source::RoutePolicy::kRequireValueTree) {
+    if (form && *form == source::SourceForm::kRecord)
+      return InspectValueSource(file, *header, *index, *method,
+          source::MakeRouteInputIdentity(*hash, *header), std::cout, ValueSourceScope::kRecordTree);
     if (form && *form != source::SourceForm::kFunction) {
       return ReportRouteReceipt(ValueRouteReceipt(
           source::MakeRouteInputIdentity(*hash, *header),
