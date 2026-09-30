@@ -13,6 +13,26 @@
 ## 当前阶段
 
 
+### 2026-10-01：真实类创建绑定派生构造器上下文
+
+- ClassTreeContext::ResolveConstructor 不再一律要求 heritage 为 Hole；对同一
+  原始类创建保留的 live ValueId，Hole 解析为基类，language domain 解析为派生类。
+  依据固定 OH7 RuntimeSetClassInheritanceRelationship：序列化方法属性仍仅接受
+  NONE/BASE，DERIVED 是父类输入决定的运行时类别，不能虚构 ABC 枚举。
+- 此变化仅解析实际创建归属；父类表达式、null/Proxy、抛出行为和构造器协议
+  仍由后续类树证明负责。未开放 printer、未丢弃 heritage，也未给派生 this
+  添加已初始化前提。非 language/Hole 输入和不对应的创建操作继续拒绝。
+- 真实 Index 的类创建解析到派生构造器9865，再以该 owner 通过正式
+  ReadFunctionValues；回归检查 MatchesOwner 和 FrameReceiver::kUnknown。
+- 三项定向测试通过（1.13秒）：class_tree_context_test、class_initializer_file_test、
+  constructor_tree_source_test，覆盖原基类输出和拒绝边界。日志
+  /tmp/abcd-derived-context-regression-tests.log；构建同前缀 regression-build.log
+  与 /tmp/abcd-derived-context-owner-build.log。
+- 尚未输出派生构造器源码；下一步同输入初始化证明到工作图的投影、super 原生
+  表达及 receiver 使用。未执行全量/RSS/基准或重新导出五输入；阶段一保持开放。
+
+
+
 ### 2026-10-01：真实派生构造器的初始化证明回归
 
 - class_initializer_file_test 现从实际 Immersive ABC 读取构造器9865，经正式

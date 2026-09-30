@@ -99,6 +99,24 @@ int main(int argc, char** argv) {
     const auto& parent = std::get<FileFunction>(caller);
     const auto& graph = parent.values.graph;
     Check(parent.values.definitions.sites.size() == 9);
+    // Derive the callable owner from the actual DEFINECLASS occurrence. The
+    // same body read in isolation cannot supply a fabricated class owner.
+    const auto creation = parent.values.definitions.sites.front().creation;
+    auto resolved_constructor = ClassTreeContext::ResolveConstructor(file, header, index, lookup,
+        roles, parent, creation, identity);
+    if (const auto* failure = std::get_if<ClassContextFailure>(&resolved_constructor))
+      std::cerr << "constructor context failure " << failure->error.index() << '\n';
+    Check(std::holds_alternative<ClassTreeContext>(resolved_constructor));
+    auto context = FunctionContext{std::get<ClassTreeContext>(std::move(resolved_constructor))};
+    Check(context.Callable() == CallableKind::kDerivedConstructor);
+    Check(context.Target().value == 9865);
+    const auto constructor_position = lookup.Find(context.Target()); Check(constructor_position.has_value());
+    auto owned = ReadFunctionValues(file, header, index, *constructor_position, identity,
+        InputCaptureMode::kClosed, {}, nullptr, &context);
+    Check(std::holds_alternative<FileFunction>(owned));
+    Check(std::get<FileFunction>(owned).input.MatchesOwner(context));
+    Check(std::get<FileFunction>(owned).input.Proof().receiver == analysis::FrameReceiver::kUnknown);
+
     const auto projected = ProjectClassDefinitions(graph, parent.values.definitions.sites);
     if (const auto* error = std::get_if<ClassDefinitionError>(&projected))
       std::cerr << "accessor corridor failure " << static_cast<unsigned>(*error) << '\n';

@@ -42,7 +42,9 @@ class ClassTreeContext {
       analysis::ClassSiteId site, RouteInputIdentity identity,
       analysis::SemanticBudget budget = {});
   // Fresh unchanged ReadFunctionValues caller and same file indexes. The class
-  // operation must retain its original occurrence and definite no-extends input.
+  // operation must retain its original occurrence and typed heritage input.
+  // Resolving a derived owner does not prove the constructor protocol or
+  // authorize class emission; actual heritage evaluation remains obligatory.
   [[nodiscard]] static std::variant<ClassTreeContext, ClassContextFailure> ResolveConstructor(
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       const abc::MethodLookup&, const analysis::MethodRoleIndex&,

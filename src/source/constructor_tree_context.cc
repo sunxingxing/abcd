@@ -54,8 +54,14 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveCon
     if (use.life != analysis::ValueLife::kLive || use.owner != decltype(use.owner){operation} ||
         use.role != analysis::OperandRole::kHeritage || use.purpose != analysis::ReadPurpose::kProtocol ||
         !parent || parent->value >= graph.values.size() ||
-        graph.values[parent->value].life != analysis::ValueLife::kLive ||
-        graph.values[parent->value].domain != analysis::ValueKinds::Hole()) return fail(Error::kKind);
+        graph.values[parent->value].life != analysis::ValueLife::kLive) return fail(Error::kKind);
+    const auto domain = graph.values[parent->value].domain;
+    const bool derived = domain != analysis::ValueKinds::Hole();
+    // OH7 class inheritance distinguishes the absent-heritage Hole from a
+    // language-valued extends operand. This resolves callable context only;
+    // retaining/evaluating the actual parent and its possible throw remains
+    // the enclosing class tree's obligation (including null/Proxy parents).
+    if (derived && !domain.IsLanguage()) return fail(Error::kKind);
     const auto pc = original.pc;
     const auto method = creator.input.Method();
     step(1);
@@ -73,7 +79,8 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveCon
     const auto* flags = std::get_if<abc::MethodAttributes>(&attributes);
     if (!flags) return ClassContextFailure{std::get<abc::MethodAttributeError>(attributes)};
     // OH7 RuntimeSetClassInheritanceRelationship (runtime_stubs-inl.h):
-    // definite Hole sets CLASS_CONSTRUCTOR, including templates initially NONE.
+    // Hole sets CLASS_CONSTRUCTOR; null/non-Hole sets DERIVED_CONSTRUCTOR.
+    // DERIVED is a runtime kind, not a distinct serialized method attribute.
     if (flags->sendable || (flags->kind != abc::FunctionKind::kBaseConstructor &&
         flags->kind != abc::FunctionKind::kNone)) return fail(Error::kKind);
     const auto call = abc::ReadCallType(file, header, index, constructor.annotations, {budget.bytes});
@@ -85,7 +92,8 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveCon
     ClassTreeContext context;
     context.identity_ = identity; context.position_ = *position;
     context.site_ = ClassConstructorSite{target->offset, method, pc, *creation};
-    context.frame_ = std::get<abc::FrameLayout>(frame); context.callable_ = CallableKind::kBaseConstructor;
+    context.frame_ = std::get<abc::FrameLayout>(frame);
+    context.callable_ = derived ? CallableKind::kDerivedConstructor : CallableKind::kBaseConstructor;
     context.name_ = u"constructor";
     admit(context.name_.capacity() + 1, sizeof(char16_t));
     context.work_ = initial.work - budget.work;
