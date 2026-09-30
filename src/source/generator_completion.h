@@ -11,6 +11,8 @@ struct GeneratorBody {
   std::vector<analysis::YieldSite> yields;
 };
 // Normalize decoded OH7 synchronous generator entry and direct resume exits.
+// Resume dispatch uses the common typed JEQZ predicate, independent of encoding
+// width; destinations must still skip exactly the RETURN and THROW routes.
 // Keep user handlers through shared catch-input analysis and exact PC rebasing.
 // Finalizer-injected RETURN routes require further completion analysis; never
 // erase them merely because a suspend resembles this schema. I instructions,

@@ -7,6 +7,7 @@
 #include "abcd/abc/control_transfer.h"
 #include "abcd/analysis/coroutine.h"
 #include "abcd/analysis/await_catch.h"
+#include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/lexical.h"
 #include "async_handlers.h"
 
@@ -53,8 +54,15 @@ analysis::YieldRegion Resume(const abc::MethodBody& body, std::size_t begin,
   };
   Require(is_mode(kReturnMode, analysis::CoroutineResumeMode::kReturn) &&
       is_mode(kThrowMode, analysis::CoroutineResumeMode::kThrow));
-  Require(Op(at(kReturnBranch), Opcode::kJEQZ_IMM8) && at(kReturnBranch).branch_target == at(kThrowMode).offset &&
-      Op(at(kThrowBranch), Opcode::kJEQZ_IMM8) && at(kThrowBranch).branch_target == at(kContinuation).offset);
+  for (auto step : {kReturnBranch, kThrowBranch}) {
+    // Reuse the common decoded predicate across OH7 op_imm_8/16/32 widths.
+    // A same-target JNEZ is not interchangeable: it reverses completion dispatch.
+    const auto condition = analysis::LiftBranchCondition(at(step).decoded);
+    const auto* predicate = std::get_if<analysis::UnaryExpression>(&condition);
+    Require(predicate && predicate->op == analysis::UnaryOperator::kFalseOrZero);
+  }
+  Require(at(kReturnBranch).branch_target == at(kThrowMode).offset &&
+      at(kThrowBranch).branch_target == at(kContinuation).offset);
   return {{}, at(kSuspend).offset, at(kResume).offset, at(kStoreResult).offset,
       at(kMode).offset, at(kStoreMode).offset, at(kContinuation).offset, state, {}, result, mode,
       at(kThrowBranch).offset, at(kThrow).offset};

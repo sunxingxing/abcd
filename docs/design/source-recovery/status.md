@@ -12,6 +12,30 @@
 
 ## 当前阶段
 
+### 2026-09-30：generator 恢复分支的 8/16/32 位编码贯通
+
+- NormalizeGenerator 的 RETURN/THROW 分发复用 LiftBranchCondition 的类型化
+  FalseOrZero predicate，支持锁定 OH7 ISA 的 JEQZ op_imm_8/16/32，而不是只
+  接受短分支 opcode。两个目标仍必须精确跳过各自的完成路径；反向 JNEZ
+  或目标错误不被等价处理。来源 PC、用户 handler 重映射及 SSA 消费不变。
+- 三 profile × 三父级环境 × 两个分支各三种宽度 × 五种正文，共 405 个
+  真实 opcode/合成元数据函数族完整输出并执行。覆盖 yield 恢复值、catch
+  再次 yield、catch 内循环、复制帧参数 cell/逃逸 reader、清理 yield；检查
+  懒执行、callback receiver/次数、next/return/throw、暂停中的外部 cell
+  更新、独立参数 cell 及同步 thenable。另 36 个反例覆盖各宽度下反向条件
+  和偏离完成目标的分发。反例是语义边界检查，不是 work 或覆盖数限制。
+- 功能红例 `/tmp/abcd-generator-branches-red-tests.log` 在旧短分支识别处
+  报 FunctionEmitError::kKind；相关十一个 C++ 目标构建成功，32/32 定向
+  测试通过（23.68 秒），包括新 file_generator_branches_source_test：
+  `/tmp/abcd-generator-branches-final-build.log`、
+  `/tmp/abcd-generator-branches-final-tests.log`；`git diff --check` 通过。
+  此证据不代表真实应用或完整 ISA/函数语义覆盖。
+- C07/总目标仍开放：finally 注入 RETURN 内联清理、入口默认值/解构、方法
+  self/super、yield*、async generator 和类/record 等继续推进。默认 work
+  截止继续关闭；保留兼容计数接口，不为新功能增加工作量拒绝或 DFX。
+  全量测试/语料/RSS/基准仍暂停，历史两个 base_function 失败未重跑/修复，
+  不宣称全套或 1GB 验收。
+
 ### 2026-09-30：generator 清理块暂停与 completion 保留/覆盖
 
 - 共同 CompletionPlan 的清理操作配对支持已归一化 ValueYield：不同暂停点的
