@@ -75,9 +75,12 @@ for (const fixture of overrides) {
     }
   }
 }
-const fixtures = execFileSync(process.argv[2], ['--yield-return-loop-json'],
-  {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000}).trim().split('\n').map(line => JSON.parse(line));
-assert.equal(fixtures.length, 24);
+const fixtures = ['--yield-return-loop-json', '--yield-return-post-loop-json'].flatMap(mode => {
+  const result = execFileSync(process.argv[2], [mode],
+    {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000}).trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(result.length, 24);
+  return result;
+});
 for (const fixture of fixtures) {
   assert.ok(!fixture.source.includes('INCOMPLETE'));
   const {capture} = await import(`data:text/javascript;base64,${Buffer.from(`export const capture = ${fixture.source};`).toString('base64')}`);
@@ -100,13 +103,31 @@ for (const fixture of fixtures) {
         assert.deepEqual(iterator.next(payload), {value: payload, done: false});
         assert.equal(calls, 0); continue;
       }
-      const runs = request === 'return' ? rounds > 0 : request === 'throw' ? fixture.caught : true;
+      const runs = request === 'return' ? rounds > 0 || fixture.post : request === 'throw' ? fixture.caught : true;
       if (request === 'throw' || (failure && runs)) assert.throws(() => iterator[request](payload),
         error => error === (!failure || !runs ? payload : failure === 2 && request === 'return' && fixture.caught ? secondError : firstError));
       else assert.deepEqual(iterator[request](payload), {value: payload, done: true});
-      assert.equal(calls, !runs ? 0 : request !== 'return' ? 1 : failure ? 1 + Number(fixture.caught) : rounds * fixture.count);
+      assert.equal(calls, !runs ? 0 : request !== 'return' ? 1 : failure ? 1 + Number(fixture.caught) :
+        Math.max(Number(fixture.post), rounds) * fixture.count);
       assert.deepEqual(iterator.next(), {value: undefined, done: true});
-    }
+  }
+  // Preserve Object.is identity through the native pending RETURN. A thenable
+  // remains a plain payload; synchronous generators must not assimilate it.
+  for (const payload of [undefined, null, false, 0, -0, NaN, 1n, Symbol('payload'), {},
+                        {then() { assert.fail('generator assimilated payload'); }}]) {
+    let calls = 0;
+    const iterator = get(() => payload, function () {
+      assert.equal(this, undefined); ++calls; set(false);
+    });
+    set(false);
+    assert.deepEqual(iterator.next(), {value: payload, done: false});
+    set(true);
+    const completed = iterator.return(payload);
+    assert.equal(completed.done, true);
+    assert.ok(Object.is(completed.value, payload));
+    assert.equal(calls, fixture.count);
+    assert.deepEqual(iterator.next(), {value: undefined, done: true});
+  }
   for (const request of ['return', 'throw']) {
     const payload = {}, iterator = get(() => assert.fail('early request ran work'), () => assert.fail('early request ran cleanup'));
     if (request === 'return') assert.deepEqual(iterator.return(payload), {value: payload, done: true});

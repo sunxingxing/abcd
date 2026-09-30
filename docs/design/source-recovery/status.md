@@ -12,6 +12,38 @@
 
 ## 当前阶段
 
+### 2026-09-30：preserving do/while 清理与恢复方式行为验收
+
+- 在上一项共同 preserving 出口修复上增加不含提前 return/throw 的
+  do/while 清理，首轮完整生成 JS 即通过；只扩展真实 opcode 文件解码/
+  合成元数据 fixture 和行为 oracle，没有新增生产算法或专项 writer。
+  新增 24 个完整函数族：三 profile × 三父环境 × 有无用户 catch 的
+  18 个双暂停点组合，以及 200/201/402 条清理 × 16/32 位恢复分支的
+  6 个组合。循环集成目标现消费 192 个完整函数族及 36 个协议反例。
+- 检查暂停 1/2 次后的 NEXT/RETURN/THROW 分流、0/1/2/7 轮清理、初始
+  false 条件下 do/while 的 mandatory iteration、每轮捕获 cell 更新、
+  callback receiver/次数、原 catch 二次清理和抛出身份。正常 NEXT 的
+  第二次 yield 不运行 RETURN 清理，THROW 只执行原 handler 路径；
+  尚未启动的 generator 的 return/throw 不运行 work 或 cleanup。
+- 对普通 while 和新增 do/while 均用 Object.is 核对 pending RETURN 的
+  undefined/null/false/0/-0/NaN/bigint/symbol/object/同步 thenable payload，
+  thenable 不被 assimilate。新增 18 个三恢复分支宽度协议反例，检查
+  未初始化 accumulator、外部清理入口和私有 result/mode/state 槽。
+- `cmake --build build --target loop_closure_file_test -j 4` 成功；完整
+  循环集成目标首轮通过（26.19 秒），见
+  `/tmp/abcd-resume-post-loop-preserve-build.log`、
+  `/tmp/abcd-resume-post-loop-preserve-tests.log`。随后七项定向回归通过
+  （58.32 秒）：control_plan、loop_exit、control_composition 单元及源码、
+  loop_closure_file、generator_return 与 generator_return_loop 源码目标；
+  `/tmp/abcd-resume-post-loop-preserve-regression-tests.log`。
+  `git diff --check` 通过；仅作者自查，按用户要求未调用子代理。
+- C07 下一项仍为 RETURN 清理内再次 yield：NormalizeGenerator::Resume
+  当前禁止清理读取协议私有槽，外层扫描又跳过整段恢复协议，嵌套暂停
+  不能只放开 opcode 或控制出口检查，需归一化嵌套 owner、活 payload 和
+  THROW/RETURN dispatch 后经共同树贯通。尚未实现，不算本轮支持域。
+  yield*、async generator、其他控制组合与结构 gate 继续开放；全量测试/
+  语料/RSS/基准保持暂停，不外推真实应用覆盖或 1GB 达标。
+
 ### 2026-09-30：RETURN 清理后测试循环与 preserving 出口归属
 
 - 恢复 CLI session `01a0e5c6-2009-7403-9768-aec3d50a3587` 留下的
