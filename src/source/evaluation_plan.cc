@@ -107,8 +107,11 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         // Creation is ordered, not intrinsically a statement. Environment
         // fences below prevent its subtree from crossing implicit scope state.
       }
-      if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueModuleRead>(op.operation))
-        pinned[i] = 1;
+      // Normal-flow guarded reads may fuse only through the ordinary ordered
+      // suffix algorithm; the verifier still consumes both read and guard.
+      // Intervening effects and multiple uses retain the original snapshot.
+      if (flow == EvaluationFlow::kPhased && op.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::ValueModuleRead>(op.operation)) pinned[i] = 1;
     }
     Require(next_function == functions.size(), Error::kOwnership);
     Require(has_arguments == graph.arguments.has_value(), Error::kOwnership);

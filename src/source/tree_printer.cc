@@ -143,10 +143,13 @@ class TreePrinter {
       throw Error::kUnsupportedContext;
     if (fields) {
       const auto* body = std::get_if<BlockStmt>(&Tree().statements[Tree().body.value].statement);
-      if (!body || !body->child_count || !Tree().parameters.empty() || !Tree().symbols.empty() ||
-          !Tree().captures.empty() || !Tree().modules.empty() || Tree().inferred_name || Tree().self ||
+      if (!body || !body->child_count || !Tree().parameters.empty() ||
+          !Tree().captures.empty() || Tree().inferred_name || Tree().self ||
           !Tree().recovery_issues.empty() || Tree().callable != CallableKind::kMethod ||
           Tree().strictness != Strictness::kStrict) throw Error::kUnsupportedContext;
+      for (const auto& symbol : Tree().symbols) {
+        Step(); if (symbol.kind != BindingKind::kModule) throw Error::kUnsupportedContext;
+      }
       std::size_t field_count = 0;
       for (const auto& expression : Tree().expressions) {
         Step(); field_count += std::holds_alternative<FieldDefinitionExpr>(expression.expression);
@@ -922,8 +925,23 @@ class TreePrinter {
 }  // namespace
 
 std::variant<PrintedFunction, TreePrintError> PrintStaticFields(
-    const FunctionTree& tree, std::ostream& output, EmitBudget limit, analysis::SemanticBudget budget, std::size_t indent) {
-  try { return TreePrinter(tree, output, limit, budget, nullptr).Direct(false, true, indent);
+    const FunctionTree& tree, std::ostream& output, EmitBudget limit, analysis::SemanticBudget budget, std::size_t indent,
+    const GlobalScope* scope, std::optional<abc::EntityOffset> record) {
+  try {
+    if (!tree.modules.empty() && !record) return Error::kUnsupportedContext;
+    const auto destination = VerifyModuleDestination(tree, record.value_or(abc::EntityOffset{}), scope, budget);
+    const auto* verified = std::get_if<ModuleDestination>(&destination);
+    if (!verified) {
+      const auto error = std::get<ModuleEnclosureError>(destination);
+      if (error == ModuleEnclosureError::kResourceLimit) return Error::kResourceLimit;
+      if (error == ModuleEnclosureError::kWorkLimit) return Error::kWorkLimit;
+      return Error::kUnsupportedContext;
+    }
+    budget.work -= verified->work;
+    auto result = TreePrinter(tree, output, limit, budget, scope).Direct(false, true, indent);
+    result.work += verified->work;
+    if (!tree.modules.empty()) result.module_binding = PrintedFunction::ModuleBinding{*record, scope->module_enclosure->Owner()};
+    return result;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit;
@@ -1079,7 +1097,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassT
       if (checked->allocated_bytes > budget.bytes) throw Failure::kResourceLimit;
       if (checked->work > budget.work) throw Failure::kWorkLimit;
       budget.bytes -= checked->allocated_bytes; budget.work -= checked->work;
-      auto printed = PrintStaticFields(initializer.tree, output, {limit.bytes - result.bytes}, budget, indent + 1);
+      auto printed = PrintStaticFields(initializer.tree, output, {limit.bytes - result.bytes}, budget, indent + 1, globals, initializer.record);
       if (const auto* error = std::get_if<TreePrintError>(&printed)) throw *error;
       auto positions = std::get<PrintedFunction>(std::move(printed));
       if (positions.allocated_bytes > budget.bytes) throw Failure::kResourceLimit;

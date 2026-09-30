@@ -12,6 +12,37 @@
 
 ## 当前阶段
 
+### 2026-10-01：类初始化模块绑定贯通，正式完整 record 增至 30
+
+- ClassTree 复用 record 的 ModuleEnclosure 读取真实 initializer，BindModuleAliases
+  绑定规范 slot/name/owner，构树后 VerifyModuleAliasTree 再核对实际别名。
+  PrintStaticFields 允许经目的地核验的 module symbols，拒绝缺失目的地、
+  错误 record 和遮蔽；仍禁止任意 locals/captures 或伪造字段正文。
+- 正常流的 guarded module read 进入已有 ordered suffix 合并算法；消费读和
+  相邻 guard 两个原事件，存在插入副作用或多次使用时保留快照。phased 路径
+  保留原有限制。模块测试覆盖 local/external、0/1/2/200/201/4096 及调用屏障。
+- 正式 record 为类创建和打印传递同一模块目的地，并建立完整非 import 词法
+  名字清单防止子类正文全局引用被外层绑定捕获。资源与工作量失败继续分类。
+- HomeConstants 16247 正式输出 31 个静态字段，含 20 个缓冲数组和导入类构造；
+  BreakpointType 7395 同时完整导出。独立 oracle 以实际生成的 Breakpoint 模块
+  链接生成的 HomeConstants，对照独立配对 TS：静态值/递归描述符、字段顺序、
+  对象隔离、类身份/构造器属性、Breakpoint 方法输入/状态变更、构造器抛错，
+  以及循环 ESM 依赖的 TDZ。Host WidthBreakpoint 是测试的显式共同输入。
+- 12 项定向回归全部通过（12.53 秒），日志
+  /tmp/abcd-init-modules-regression-build.log、/tmp/abcd-init-modules-regression-tests.log。
+  扩展为实际生成模块链接后批量 oracle 通过（1.67 秒），日志
+  /tmp/abcd-init-modules-linked-test.log；共九个 record 有这批配对执行证据。
+- 五输入正式导出保存 build/stage-one/value-initializer-modules-pass-1：
+  Immersive 11/24/10，Multi 18/27/9，pasteboard 1/9/9，Push modules 0/15/9，
+  widgets 0/1/9（完整/失败/无模块上下文），总计 30/76/46。
+  对比 value-static-class-pass-1 没有旧完整 record 回退、没有 legacy writer。
+  /tmp/abcd-initializer-modules-batch-summary.json 保存逐输入计数及新增 ID。
+- 新增八个：Immersive 7395/16247/28887/29119/29382/29619，Multi 30839/44106。
+  其中 HomeConstants 与 BreakpointType 已独立配对；其余六个 viewmodel 的
+  独立行为验收待补。class-name 包装和部分方法临时变量/控制表示仍有质量缺口。
+  source_complete 不等于整应用可执行或端到端验收，executable 标志仍为 false。
+  未运行全量测试、RSS 或其他 corpus；阶段一未完成。
+
 ### 2026-10-01：晚加载字符串进入初始化表达式，HomeConstants 字面量规划通过
 
 - 将无输入、无效果、无异常的 ValueString 作为原生字面量 primitive leaf，

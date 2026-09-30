@@ -106,8 +106,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       if (op.life == analysis::ValueLife::kLive && !projected_op(i) && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
         Require(next_function < plan.functions.size() && plan.functions[next_function++].creation.value == i, Error::kOwnership);
       }
-      if (op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueModuleRead>(op.operation))
-        pinned[i] = 1;
+      if (flow == EvaluationFlow::kPhased && op.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::ValueModuleRead>(op.operation)) pinned[i] = 1;
     }
     Require(next_function == plan.functions.size(), Error::kOwnership);
     Require(has_arguments == graph.arguments.has_value(), Error::kOwnership);

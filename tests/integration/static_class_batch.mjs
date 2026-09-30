@@ -8,6 +8,8 @@ import vm from 'node:vm';
 const [tool, root] = process.argv.slice(2);
 // Evaluation fixtures only. Production receives the ABC path, never these sources.
 const cases = [
+  ['Immersive', 7395, 'Immersive_src/commons/src/main/ets/utils/Breakpoint.ts'],
+  ['Immersive', 16247, 'Immersive_src/shopping/src/main/ets/constants/HomeConstants.ts'],
   ['Immersive', 7167, 'Immersive_src/commons/src/main/ets/constants/CommonConstants.ts'],
   ['MultiCommunityApplication', 19020, 'src/base/src/main/ets/constants/BreakpointConstants.ts'],
   ['MultiCommunityApplication', 19442, 'src/base/src/main/ets/constants/CommonConstants.ts'],
@@ -16,9 +18,14 @@ const cases = [
   ['MultiCommunityApplication', 47487, 'src/rank/src/main/ets/constants/CommonConstants.ts'],
   ['pasteboard', 4182, 'pasteboard_src/src/main/ets/common/CommonConstants.ts'],
 ];
-async function load(source) {
-  const module = new vm.SourceTextModule(source);
-  await module.link(() => { throw new Error('unexpected import'); });
+async function load(source, dependency) {
+  const context = vm.createContext({ WidthBreakpoint: Object.freeze({ WIDTH_SM: 'sm', WIDTH_MD: 'md', WIDTH_LG: 'lg' }) });
+  const module = new vm.SourceTextModule(source, { context });
+  await module.link(specifier => {
+    assert.equal(specifier, '@normalized:N&&&commons/Index&1.0.0');
+    assert.ok(dependency, 'missing independent dependency fixture');
+    return new vm.SourceTextModule(dependency, { context });
+  });
   const names = Reflect.ownKeys(module.namespace).filter(key => typeof key === 'string');
   for (const name of names) assert.throws(() => module.namespace[name], { name: 'ReferenceError' });
   await module.evaluate();
@@ -55,8 +62,29 @@ try {
     assert.equal(record.legacy_writer_used, false);
     const source = readFileSync(join(temporary, app, record.source), 'utf8');
     assert.doesNotMatch(source, /INCOMPLETE/);
-    const actual = await load(source), other = await load(source);
-    const expected = await load(stripTypeScriptTypes(readFileSync(join(root, app, paired), 'utf8')));
+    const dependency = entity === 16247 ? stripTypeScriptTypes(readFileSync(join(root, app,
+      'Immersive_src/commons/src/main/ets/utils/Breakpoint.ts'), 'utf8')) : undefined;
+    const dependencyRecord = entity === 16247 ? manifests.get(app).records.find(row => row.entity === 7395) : null;
+    const actualDependency = dependencyRecord ? readFileSync(join(temporary, app, dependencyRecord.source), 'utf8') : dependency;
+    const actual = await load(source, actualDependency), other = await load(source, actualDependency);
+    const pairedSource = stripTypeScriptTypes(readFileSync(join(root, app, paired), 'utf8'));
+    const expected = await load(pairedSource, dependency);
+    if (entity === 16247) {
+      assert.doesNotMatch(source, /\$value|\.call\(/);
+      assert.match(source, /static PAGE_COL_PADDING = .*new .*BreakpointType/);
+      assert.equal(actual.HomeConstants.PAGE_COL_PADDING.constructor.name, 'BreakpointType');
+      for (const candidate of [source, pairedSource]) {
+        await assert.rejects(load(candidate,
+          'export class BreakpointType { constructor() { throw new Error("constructor sentinel"); } }'),
+          { message: 'constructor sentinel' });
+        // A cyclic dependency evaluates HomeConstants before the imported let
+        // initializes. Native module read must preserve its ReferenceError.
+        const module = new vm.SourceTextModule(candidate, { identifier: 'home' });
+        const cycle = new vm.SourceTextModule('import "home"; export let BreakpointType = class {};');
+        await module.link(specifier => specifier === 'home' ? module : cycle);
+        await assert.rejects(cycle.evaluate(), { name: 'ReferenceError' });
+      }
+    }
     assert.deepEqual(Object.keys(actual), Object.keys(expected));
     for (const name of Object.keys(expected)) {
       const a = actual[name], b = expected[name];
@@ -70,6 +98,13 @@ try {
       assert.deepEqual(Reflect.ownKeys(a.prototype), Reflect.ownKeys(b.prototype));
       assert.equal(a.prototype.constructor, a);
       assert.equal(Object.getPrototypeOf(new a()), a.prototype);
+    }
+    if (entity === 7395) {
+      const values = [{value: 1}, {value: 2}, {value: 3}, {value: 4}];
+      const a = new actual.BreakpointType(...values), b = new expected.BreakpointType(...values);
+      for (const key of ['sm', 'md', 'lg', 'xl', 'unknown', undefined, {toString() { throw new Error('coercion'); }}])
+        assert.equal(a.getValue(key), b.getValue(key));
+      a.md = b.md = {changed: true}; assert.equal(a.getValue('md'), b.getValue('md'));
     }
     if (app === 'pasteboard') {
       const values = [{value: 1}, {value: 2}, {value: 3}];

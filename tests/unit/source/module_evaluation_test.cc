@@ -11,7 +11,7 @@ namespace {
 using namespace abcd;
 using namespace abcd::source;
 using namespace abcd::analysis;
-void Run(std::uint32_t count, bool external) {
+void Run(std::uint32_t count, bool external, bool barrier = true) {
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 1, {false, false, false, false}));
   RouteInputIdentity identity;
   identity.profile = abc::ProfileId::kDynamic1206;
@@ -26,8 +26,8 @@ void Run(std::uint32_t count, bool external) {
     // binding. The return must retain the earlier snapshot, not reread it.
     bytes.insert(bytes.end(), {static_cast<std::uint8_t>(load), kSlot,
         static_cast<std::uint8_t>(kGuard), static_cast<std::uint8_t>(static_cast<std::uint16_t>(kGuard) >> kByteBits),
-        kSlot, kSlot, static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), kSaved,
-        static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), kCallee,
+        kSlot, kSlot, static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), kSaved});
+    if (barrier) bytes.insert(bytes.end(), {static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), kCallee,
         static_cast<std::uint8_t>(abc::Opcode::kCALLARG0_IMM8), kCache});
   }
   if (count) bytes.insert(bytes.end(), {static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), kSaved,
@@ -51,9 +51,10 @@ void Run(std::uint32_t count, bool external) {
   const auto checked = VerifyEvaluationPlan(graph, plan, fixture_budget);
   test::Check(std::holds_alternative<std::uint64_t>(checked));
   for (const auto& module : modules) {
-    test::Check(plan.operations[module.pair.read.value].kind == EvaluationKind::kRoot);
+    test::Check(plan.operations[module.pair.read.value].kind ==
+        (!barrier && module.pair.read == modules.back().pair.read ? EvaluationKind::kInline : EvaluationKind::kRoot));
     test::Check(plan.operations[module.pair.read.value].temporary.has_value() ==
-        (module.pair.read == modules.back().pair.read));
+        (barrier && module.pair.read == modules.back().pair.read));
     test::Check(plan.operations[module.pair.guard.value].kind == EvaluationKind::kModuleGuard);
     test::Check(!plan.operations[module.pair.guard.value].temporary);
   }
@@ -79,7 +80,7 @@ void Run(std::uint32_t count, bool external) {
     const auto combined = std::get<CombinedOrigin>(tree.origins[tree.expressions[expression.value].origin.value]);
     test::Check(combined.part_count == 2 && tree.origin_parts[combined.first_part].value == graph.ops[read].origin.value &&
         tree.origin_parts[combined.first_part + 1].value == graph.ops[guard].origin.value);
-    test::Check(flow.snapshots[read].has_value() == (read == modules.back().pair.read.value));
+    test::Check(flow.snapshots[read].has_value() == (barrier && read == modules.back().pair.read.value));
   }
   SemanticBudget budget = fixture_budget;
   budget.work = std::get<std::uint64_t>(checked);
@@ -128,5 +129,5 @@ void Run(std::uint32_t count, bool external) {
 }  // namespace
 int main() {
   for (auto count : {0U, 1U, 2U, 200U, 201U, 4096U})
-    for (bool external : {false, true}) Run(count, external);
+    for (bool external : {false, true}) { Run(count, external); Run(count, external, false); }
 }

@@ -100,12 +100,14 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     std::vector<const ClassInitializerCall*> initialization(graph.ops.size());
     retain((initialization.capacity() - initialization.size()) * sizeof(const ClassInitializerCall*));
     for (const auto& call : function->values.initializers.calls) initialization[call.creation.value] = &call;
+    GlobalScope class_scope{};
+    class_scope.module_enclosure = enclosure;
     // File-level occurrence indexes are borrowed across records. Never rescan
     // the whole ABC for every class or use a detached class as a body fallback.
     for (const auto& occurrence : function->values.classes.classes) {
       if (!functions || !classes) return fail(Error::kClass);
       auto built = BuildClassTree(file, header, index, lookup, roles, *functions, *classes,
-          *function, occurrence.operation, identity, nullptr, {budget.bytes}, initialization[occurrence.operation.value]);
+          *function, occurrence.operation, identity, &class_scope, {budget.bytes}, initialization[occurrence.operation.value]);
       if (const auto* failure = std::get_if<ClassTreeFailure>(&built)) {
         const auto classify = [&](auto&& self, const auto& error) -> RecordSourceResult {
           using T = std::decay_t<decltype(error)>;
@@ -115,6 +117,10 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
             return std::visit([&](const auto& nested) { return self(self, nested); }, error.error);
           else if constexpr (std::is_same_v<T, ClassInitializerReadFailure> || std::is_same_v<T, SyntaxResolutionFailure> || std::is_same_v<T, FunctionFileFailure>)
             return std::visit([&](const auto& nested) { return self(self, nested); }, error);
+          else if constexpr (std::is_same_v<T, ModuleAliasFailure>)
+            return std::visit([&](const auto& nested) { return self(self, nested); }, error.cause);
+          else if constexpr (std::is_same_v<T, ModuleReadFailure>)
+            return std::visit([&](const auto& nested) { return self(self, nested); }, error.reason);
           else if constexpr (std::is_same_v<T, FunctionValueFailure>) return RouteRefusal{error.cause};
           else if constexpr (requires { error.kind; }) return self(self, error.kind);
           else {
@@ -295,6 +301,25 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
           symbol.evidence != NameEvidence::kMetadata || symbol.name.value >= result->tree.names.size() ||
           result->tree.names[symbol.name.value] != names[slot]) return fail(Error::kModule);
     }
+    std::vector<std::string> lexical_names;
+    std::vector<std::string_view> lexical_views;
+    retain(result->tree.symbols.size() * (sizeof(std::string) + sizeof(std::string_view)));
+    lexical_names.reserve(result->tree.symbols.size()); lexical_views.reserve(result->tree.symbols.size());
+    retain((lexical_names.capacity() - result->tree.symbols.size()) * sizeof(std::string));
+    retain((lexical_views.capacity() - result->tree.symbols.size()) * sizeof(std::string_view));
+    for (const auto& symbol : result->tree.symbols) {
+      if (symbol.kind == BindingKind::kModule) continue;
+      const auto& name = result->tree.names[symbol.name.value];
+      // All admitted module/global identifiers are ASCII; non-ASCII locals
+      // cannot shadow them. Generated wrappers introduce no named class scope.
+      if (std::any_of(name.begin(), name.end(), [](char16_t c) { return c > u'\x7f'; })) continue;
+      retain(name.size() + 1);
+      lexical_names.emplace_back(name.begin(), name.end());
+      retain(lexical_names.back().capacity() - name.size());
+    }
+    for (const auto& name : lexical_names) lexical_views.push_back(name);
+    std::sort(lexical_views.begin(), lexical_views.end());
+    class_scope.enclosing_bindings = lexical_views;
     // No embedding globals have been established by this record adapter yet.
     const auto globals = VerifyTreeGlobals(result->tree, nullptr, {budget.bytes});
     if (!std::holds_alternative<TreeGlobals>(globals)) return fail(Error::kValue);
@@ -316,7 +341,7 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
       }
     }
     auto printed = PrintModuleTree(result->tree, output,
-        {budget.output.bytes - *prelude_bytes}, {budget.bytes});
+        {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope);
     const auto* body = std::get_if<PrintedFunction>(&printed);
     if (!body) {
       switch (std::get<TreePrintError>(printed)) {

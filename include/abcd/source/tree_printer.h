@@ -59,12 +59,14 @@ struct PrintedFunction {
   std::optional<ArgumentSnapshotBinding> argument_snapshot_binding;
   std::optional<ModuleBinding> module_binding;
 };
-// A class-body fragment from a closed straight-line initializer. Every root
+// A class-body fragment from a straight-line initializer. Native module imports
+// require an exact record destination and are checked before writing. Every root
 // must be a receiver field definition, followed by an undefined return. The
 // caller separately establishes the actual class receiver and placement.
 [[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintStaticFields(
     const FunctionTree& tree, std::ostream& output,
-    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {}, std::size_t indent = 0);
+    EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {}, std::size_t indent = 0,
+    const GlobalScope* scope = nullptr, std::optional<abc::EntityOffset> record = {});
 
 // Direct syntax output, including marked partial trees. No CFG/SSA or publication
 // owner is required. Structural safety is checked before writing; callers retain

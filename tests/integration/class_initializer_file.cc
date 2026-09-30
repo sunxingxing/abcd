@@ -6,6 +6,9 @@
 #include "../../src/source/tree_semantics.h"
 #include "abcd/source/tree_printer.h"
 #include <sstream>
+#include "../../src/source/module_aliases.h"
+#include "abcd/source/module_enclosure.h"
+#include "abcd/source/global_reference.h"
 #include "abcd/source/source_route.h"
 #include <cstdlib>
 #include <iostream>
@@ -33,12 +36,20 @@ int main(int argc, char** argv) {
   const auto sites = std::get<analysis::FunctionCreationSites>(analysis::FunctionCreationSites::Build(file, header, index, lookup));
   for (const auto entry : {7312U, 16391U}) {
     const auto position = lookup.Find({entry}); Check(position.has_value());
+    const auto& method = index.methods[position->value];
+    const auto owner = std::find_if(index.records.begin(), index.records.end(),
+        [&](const auto& record) { return record.offset == method.owner_offset; });
+    Check(owner != index.records.end());
+    const auto packaging = std::get<abc::FilePackaging>(abc::DetectFilePackaging(file, header, index));
+    auto modules = std::get<RecordModuleContext>(ReadRecordModuleContext(file, header, index, *owner, packaging));
+    auto enclosure = std::get<ModuleEnclosure>(ModuleEnclosure::Build(file, header, modules, identity, {owner->offset.value}));
+    GlobalScope scope{}; scope.module_enclosure = &enclosure;
     auto caller = ReadFunctionValues(file, header, index, *position, identity, InputCaptureMode::kClosed);
     Check(std::holds_alternative<FileFunction>(caller));
     const auto& parent = std::get<FileFunction>(caller);
     Check(parent.values.initializers.calls.size() == 1);
     const auto& call = parent.values.initializers.calls.front();
-    auto loaded = ReadClassInitializerFunction(file, header, index, lookup, roles, sites, parent, call);
+    auto loaded = ReadClassInitializerFunction(file, header, index, lookup, roles, sites, parent, call, {}, &modules);
     if (const auto* failure = std::get_if<ClassInitializerReadFailure>(&loaded)) {
       std::cerr << "initializer read failure " << failure->index();
       if (const auto* body = std::get_if<FunctionFileFailure>(failure)) {
@@ -98,17 +109,17 @@ int main(int argc, char** argv) {
       }
     }
     Check(fields > 0 && (entry != 7312 || fields == 3));
-    if (entry == 16391) {
-      Check(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(graph)));
-      // Module guard/binding integration remains a separate body obligation.
-      Check(std::get<EvaluationError>(BuildEvaluationPlan(graph)) == EvaluationError::kUnsupportedOperation);
-    }
-    if (entry == 7312) {
+    {
       auto syntax = std::get<ResolvedSyntax>(ResolveFunctionSyntax(file, header, index,
           initializer.context, initializer.function.body, graph, {1}));
+      auto bound = std::get<ModuleAliases>(BindModuleAliases(file, header, index, initializer.function.input,
+          initializer.function.values, modules, {owner->offset.value},
+          {static_cast<std::uint32_t>(syntax.syntax.names.size())}));
+      syntax.syntax.modules = bound.aliases;
+      for (const auto& name : bound.names) syntax.syntax.names.push_back(name);
       const auto constants_view = syntax.View();
       const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
-      const auto evaluated = BuildEvaluationPlan(graph);
+      const auto evaluated = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, bound.evaluations);
       if (const auto* error = std::get_if<EvaluationError>(&evaluated)) {
         const auto literal = BuildLiteralPlan(graph);
         if (const auto* error = std::get_if<LiteralError>(&literal)) std::cerr << "literal failure=" << static_cast<unsigned>(*error) << '\n';
@@ -135,10 +146,21 @@ int main(int argc, char** argv) {
       Check(std::get<TreePrintError>(PrintStaticFields(wrong_tree, wrong_output)) == TreePrintError::kUnsupportedContext);
       Check(wrong_output.str().empty());
       std::ostringstream printed;
-      const auto result = PrintStaticFields(tree, printed);
+      if (!tree.modules.empty()) {
+        std::ostringstream missing, wrong_record, shadowed;
+        Check(std::get<TreePrintError>(PrintStaticFields(tree, missing)) == TreePrintError::kUnsupportedContext);
+        Check(std::get<TreePrintError>(PrintStaticFields(tree, wrong_record, {}, {}, 0, &scope,
+            abc::EntityOffset{owner->offset.value + 1})) == TreePrintError::kUnsupportedContext);
+        auto shadow = scope; shadow.class_binding = "BreakpointType";
+        Check(std::get<TreePrintError>(PrintStaticFields(tree, shadowed, {}, {}, 0, &shadow,
+            owner->offset)) == TreePrintError::kUnsupportedContext);
+        Check(missing.str().empty() && wrong_record.str().empty() && shadowed.str().empty());
+      }
+      const auto result = PrintStaticFields(tree, printed, {}, {}, 0, &scope, owner->offset);
       if (const auto* error = std::get_if<TreePrintError>(&result)) {
         std::cerr << "print failure=" << static_cast<unsigned>(*error) << '\n'; return 1;
       }
+      Check(tree.modules.empty() || std::get<PrintedFunction>(result).module_binding.has_value());
       if (argc == 3) { std::cout << printed.str(); return 0; }
     }
     std::cout << "entry=" << entry << " initializer=" << site->target.value << " own_fields=" << fields << " buffered_arrays=" << arrays << " object_fields=" << object_fields << '\n';

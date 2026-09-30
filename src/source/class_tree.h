@@ -4,6 +4,7 @@
 #include "class_initializer_file.h"
 #include "syntax_resolution.h"
 #include "function_tree.h"
+#include "module_aliases.h"
 #include "abcd/abc/class_buffer.h"
 namespace abcd::source {
 // One class-creation expression, with optional native static fields whose
@@ -13,6 +14,7 @@ struct ClassStaticFields {
   ClassInitializerCall call;
   FunctionContext context;
   FunctionTree tree;
+  abc::EntityOffset record;
 };
 struct ClassTree {
   RouteInputIdentity identity;
@@ -27,7 +29,7 @@ struct ClassTree {
 enum class ClassTreeError : std::uint8_t { kCreation, kMember, kName, kResourceLimit, kWorkLimit };
 using ClassTreeFailure = std::variant<ClassTreeError, ClassContextFailure, FamilyPrepareFailure,
     abc::MetadataError, abc::LiteralFailure, abc::ClassBufferError, ClassInitializerReadFailure,
-    SyntaxResolutionFailure, EvaluationError, ControlError, FunctionTreeError>;
+    SyntaxResolutionFailure, EvaluationError, ControlError, FunctionTreeError, ModuleAliasFailure, ModuleAliasTreeError>;
 // Fresh unchanged caller and same-file indexes are admitted by the caller.
 // Constructor and every member use the shared family pipeline. Refusal of any
 // member refuses this creation; no old writer or fabricated body substitutes.

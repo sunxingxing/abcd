@@ -4,6 +4,8 @@
 #include <stdexcept>
 #include <type_traits>
 #include "runtime_name.h"
+#include "abcd/source/module_enclosure.h"
+#include "abcd/source/global_reference.h"
 namespace abcd::source {
 namespace {
 using Error = ClassTreeError;
@@ -76,20 +78,43 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     if (initializer) {
       if (initializer->creation != operation) return ClassTreeFailure{Error::kCreation};
       auto body = Take<ClassInitializerFunction>(ReadClassInitializerFunction(file, header, index, lookup,
-          roles, functions, creator, *initializer, budget));
+          roles, functions, creator, *initializer, budget,
+          globals && globals->module_enclosure ? &globals->module_enclosure->Context() : nullptr));
       admit(body.function.allocated_bytes, 1); admit(body.context.AllocatedBytes(), 1); step(body.context.Work());
       auto syntax = Take<ResolvedSyntax>(ResolveFunctionSyntax(file, header, index, body.context,
           body.function.body, body.function.values.graph, {1}, budget));
       admit(syntax.allocated_bytes, 1); step(syntax.work);
+      std::optional<ModuleAliases> aliases;
+      if (globals && globals->module_enclosure) {
+        const auto& enclosure = *globals->module_enclosure;
+        aliases = Take<ModuleAliases>(BindModuleAliases(file, header, index, body.function.input,
+            body.function.values, enclosure.Context(), enclosure.Owner(),
+            {static_cast<std::uint32_t>(syntax.syntax.names.size())}, budget));
+        admit(aliases->allocated_bytes, 1); step(aliases->work);
+        admit(aliases->aliases.size(), sizeof(ModuleSyntax));
+        syntax.syntax.modules = aliases->aliases;
+        admit(syntax.syntax.modules.capacity() - aliases->aliases.size(), sizeof(ModuleSyntax));
+        const auto name_count = syntax.syntax.names.size() + aliases->names.size();
+        admit(name_count, sizeof(std::u16string));
+        syntax.syntax.names.reserve(name_count);
+        admit(syntax.syntax.names.capacity() - name_count, sizeof(std::u16string));
+        for (const auto& name : aliases->names) {
+          admit(name.size() + 1, sizeof(char16_t));
+          syntax.syntax.names.push_back(name);
+          admit(syntax.syntax.names.back().capacity() - name.size(), sizeof(char16_t));
+        }
+      }
       const auto constants = syntax.View();
       auto control = Take<ControlPlan>(BuildControlPlan(body.function.values.graph, budget));
       admit(control.allocated_bytes, 1); step(control.work);
-      auto evaluation = Take<EvaluationPlan>(BuildEvaluationPlan(body.function.values.graph, budget));
+      auto evaluation = Take<EvaluationPlan>(BuildEvaluationPlan(body.function.values.graph, budget, IncomingCells::kReject, {},
+          aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{}));
       admit(evaluation.allocated_bytes, 1); step(evaluation.work);
       auto built = Take<ConstructedFunction>(BuildFunctionTree(body.function.values.graph, control,
           evaluation, std::move(syntax.syntax), constants, budget));
       admit(built.allocated_bytes, 1); step(built.work);
-      fields = ClassStaticFields{*initializer, std::move(body.context), std::move(built.tree)};
+      if (aliases) step(Take<std::uint64_t>(VerifyModuleAliasTree(*aliases, evaluation, built.tree, budget)));
+      fields = ClassStaticFields{*initializer, std::move(body.context), std::move(built.tree), body.function.input.Record()};
     }
     if (file.CheckUnchanged()) return ClassTreeFailure{abc::MetadataError::kFileChanged};
     return ClassTree{identity, site, std::move(spelling), std::move(constructor), std::move(members), std::move(fields),
