@@ -53,7 +53,8 @@ struct FamilyTreeFailure {
 // Reuse a record adapter's root tree and checked flow, then construct all actual
 // children with the same defaults/capture/ABI pipeline. No fictional creation
 // context or function parameters are supplied for the module entry. Input and
-// seed storage are caller-admitted. Retained class obligations remain unsupported.
+// seed storage are caller-admitted. Root class obligations require actual ClassExpr
+// bodies; nested class families still require their own capture composition.
 [[nodiscard]] std::variant<ConstructedFamily, FamilyTreeFailure> BuildRecordFamilyTrees(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, FileFamily family, FamilyMember entry,

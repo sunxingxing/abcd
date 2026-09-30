@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-01：类与普通函数混合入口贯通共同模块输出
+
+- record 根已构建的 ClassTree 现可进入 BuildRecordFamilyTrees，普通后代仍走
+  原函数族路径。FamilyWrites 使用实际 ClassExpr/flow 与原始 instruction/operation
+  归属索引，覆盖 class 创建及后置成员创建；缺失原始成员归属仍拒绝。索引按
+  ops + class/member occurrences 线性构建，不逐成员扫描全部类，不丢弃创建屏障。
+- 共同 printer 仅对模块 family.root 开放已组合 ClassExpr，类正文继续由既有
+  PreparedFamily 打印并保留源码位置；普通嵌套函数里的类仍需显式捕获组合，
+  没有无界类/函数 printer 递归，也未扩大派生类接受域。
+- 文件级 record fixture 新增类+普通函数共同导出，以及普通闭包捕获刚创建的
+  class 对象。正式 BuildRecordSource 生成原生 class/constructor 和闭包；独立
+  Node ESM 对照验证同一构造函数身份、类名/length、prototype/constructor 关系、
+  新实例身份、类不可普通调用，以及原有导入活绑定和循环依赖 TDZ。
+- 后置访问器/普通方法 fixture 经模块根函数族再组合，五种模式保留5个类正文
+  位置；删除一个原始成员归属的负例被拒绝。原独立操作数检查的缺失类正文负例
+  继续通过。这些是合成 ABC 的通路验证，不等于真实 Index 页面验收。
+- 构建 /tmp/abcd-mixed-class-regression-build.log；十四项定向回归通过（9.94 秒），
+  /tmp/abcd-mixed-class-regression-tests.log。补充类捕获后的两项复测通过（1.35 秒），
+  /tmp/abcd-mixed-class-capture-tests.log，构建日志同前缀 capture-build。
+- 五输入最新正式导出 build/stage-one/value-mixed-class-family-pass-1，仍为
+  34 complete / 72 failure / 46 no-module，无完整项退化、无 legacy writer；
+  /tmp/abcd-mixed-class-batch-summary.json。未恢复全量测试、RSS、基准或更大 corpus。
+- 下一步直接处理 PC98 的派生类 heritage/super/constructor 语义与相应源级表达。
+  不能只放宽基类检查、忽略未初始化 this 或伪造父类。阶段一 Goal 未完成。
+
+
 ### 2026-10-01：普通子函数与模块入口正式组合输出
 
 - BuildRecordTree 不再因普通 children 非空直接拒绝。入口按真实模块绑定构建根树和

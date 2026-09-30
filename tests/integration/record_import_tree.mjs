@@ -80,15 +80,16 @@ for (const initial of [0, 42])
 const cyclic = await setup(conditional, {cycle: true});
 await assert.rejects(cyclic.root.evaluate(), {name: 'ReferenceError'});
 
-for (const mode of ['--function', '--capture', '--local-function']) {
+for (const mode of ['--function', '--capture', '--local-function', '--class-function', '--class-capture']) {
   const generated = execFileSync(process.argv[2], [mode], {encoding: 'utf8'});
-  const tail = mode === '--capture' ? `
+  const mixed = mode === '--class-function' || mode === '--class-capture';
+  const tail = mode === '--class-capture' ? 'let captured = snapshot; answer = function reader() { return captured; };' : mode === '--capture' ? `
     let captured = 1;
     answer = function reader() { return captured; };
     captured = 42;
   ` : mode === '--local-function' ? 'answer = function reader() { return answer; };' :
       'answer = function reader() { return input; };';
-  const expected = reference + tail;
+  const expected = reference + (mixed ? 'snapshot = class Box {};' : '') + tail;
   for (const source of [generated, expected]) {
     const {root, dependency, trace} = await setup(source);
     assert.throws(() => root.namespace.answer, {name: 'ReferenceError'});
@@ -96,11 +97,20 @@ for (const mode of ['--function', '--capture', '--local-function']) {
     const fn = root.namespace.answer;
     assert.equal(fn, root.namespace.answerAlias);
     assert.equal(fn.name, 'reader'); assert.equal(fn.length, 0);
-    assert.equal(fn(), mode === '--local-function' ? fn : mode === '--capture' ? 42 : 43);
+    assert.equal(fn(), mode === '--class-capture' ? root.namespace.snapshot : mode === '--local-function' ? fn : mode === '--capture' ? 42 : 43);
     Reflect.apply(dependency.namespace.mutate, undefined, []);
-    assert.equal(fn(), mode === '--local-function' ? fn : mode === '--capture' ? 42 : 44);
+    assert.equal(fn(), mode === '--class-capture' ? root.namespace.snapshot : mode === '--local-function' ? fn : mode === '--capture' ? 42 : 44);
     assert.equal(root.namespace.answer, fn);
-    assert.equal(root.namespace.snapshot, dependency.namespace);
+    if (mixed) {
+      const Box = root.namespace.snapshot;
+      assert.equal(Box.name, 'Box'); assert.equal(Box.length, 0);
+      const first = new Box(), second = new Box();
+      assert.notEqual(first, second); assert.equal(Object.getPrototypeOf(first), Box.prototype);
+      assert.equal(Box.prototype.constructor, Box);
+      assert.equal(Object.getOwnPropertyDescriptor(Box, 'prototype').writable, false);
+      assert.throws(() => Box(), {name: 'TypeError'});
+      assert.equal(root.namespace.snapshot, Box);
+    } else assert.equal(root.namespace.snapshot, dependency.namespace);
     assert.deepEqual(trace, ['side', 'dep', 'star', 'mutate', 'mutate']);
     const cyclic = await setup(source, {cycle: true});
     await assert.rejects(cyclic.root.evaluate(), {name: 'ReferenceError'});

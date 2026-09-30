@@ -20,9 +20,13 @@ class FamilyTrees {
     Admit(1, sizeof(FamilyTrees));
     Require(!family.members.empty() && (root != nullptr) != entry.has_value(), FamilyTreeError::kContext);
     Require(family.members.size() < std::numeric_limits<std::uint32_t>::max(), FamilyTreeError::kResourceLimit);
-    // Class obligations are not function-family receipts. They require the
-    // record/class composition path before a complete family can publish.
-    for (const auto& member : family.members) { Step(1); Require(member.classes.empty(), FamilyTreeError::kContext); }
+    // Only a supplied record root has already composed its ClassTree bodies.
+    // Their original barriers are checked against those bodies by FamilyWrites;
+    // ordinary child families cannot silently inherit this permission.
+    for (std::size_t i = 0; i < family.members.size(); ++i) {
+      Step(1);
+      Require(family.members[i].classes.empty() || (entry && i == FileFamily::kRoot.value), FamilyTreeError::kContext);
+    }
     ProjectDefaults(family, root);
     Rebind(family);
     std::vector<FamilyMember> trees;

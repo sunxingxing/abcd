@@ -1,5 +1,6 @@
 #include "../../../src/source/class_tree.h"
 #include "../../../src/source/tree_constants.h"
+#include "../../../src/source/family_print.h"
 #include "abcd/source/global_reference.h"
 #include <unistd.h>
 #include <algorithm>
@@ -110,7 +111,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   auto definition = std::make_shared<ClassTree>(std::get<ClassTree>(std::move(built)));
   auto constants = std::get<TreeConstants>(ResolveTreeConstants(file, header, index, {kCreator}, graph));
   constants.operations[definitions.front().creation.value] = definition;
-  FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {kCreator}; syntax.owner = {1};
+  FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {kCreator}; syntax.owner = {0};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = constants.names; syntax.texts = constants.texts;
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
@@ -126,6 +127,24 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   auto printed = PrintFunctionTree(std::get<ConstructedFunction>(tree).tree, output, {}, {}, &globals);
   Check(std::holds_alternative<PrintedFunction>(printed));
   Check(std::get<PrintedFunction>(printed).class_members.size() == 5);
+  const auto read_family = [&] {
+    return std::get<FileFamily>(ReadFunctionFamily(file, header, index, lookup, roles, functions, {0}, identity,
+        {}, nullptr, nullptr, {}, FamilyClassMode::kRetainRoot));
+  };
+  const auto& root_tree = std::get<ConstructedFunction>(tree).tree;
+  const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, root_tree));
+  auto incomplete = read_family(); incomplete.members[0].classes.pop_back();
+  const auto denied_family = BuildRecordFamilyTrees(file, header, index, std::move(incomplete),
+      {root_tree, flow, {}, {}, {}, abc::EntityOffset{kOwner}});
+  Check(std::holds_alternative<FamilyTreeFailure>(denied_family));
+  auto composed = BuildRecordFamilyTrees(file, header, index, read_family(),
+      {root_tree, flow, {}, {}, {}, abc::EntityOffset{kOwner}});
+  if (const auto* error = std::get_if<FamilyTreeFailure>(&composed)) std::cerr << "family failure " << error->cause.index() << '\n';
+  Check(std::holds_alternative<ConstructedFamily>(composed));
+  std::ostringstream module;
+  auto module_print = PrintModuleFamilyDraft(std::get<ConstructedFamily>(composed), module, {}, {}, &globals);
+  Check(std::holds_alternative<PrintedFamilyDraft>(module_print));
+  Check(std::get<PrintedFamilyDraft>(module_print).members[0].class_members.size() == 5);
   Check(unlink(path) == 0); return output.str();
 }
 }

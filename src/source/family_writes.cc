@@ -1,5 +1,6 @@
 #include "family_writes.h"
 #include "lexical_stores.h"
+#include "class_tree.h"
 
 #include <limits>
 #include <new>
@@ -9,7 +10,7 @@
 namespace abcd::source {
 namespace {
 using Error = FamilyWriteError;
-enum class Barrier : std::uint8_t { kMissing, kFunction, kPrimitiveObject, kConsumed };
+enum class Barrier : std::uint8_t { kMissing, kFunction, kPrimitiveObject, kClass, kConsumed };
 using Inputs = std::variant<const FileFamily*, std::span<const FamilyWriteInput>>;
 class WriteCheck {
  public:
@@ -79,6 +80,7 @@ class WriteCheck {
         // it is consumed unchanged, not permission to erase this allocation.
         ++facts_.primitive_objects;
       }
+      Classes(i, source);
       for (const auto& placement : target.tree.signature) {
         Require(std::holds_alternative<CaptureFunction>(source.function), Error::kStore);
         Step(); Require(placement.origin.value < target.tree.origins.size(), Error::kStore);
@@ -101,6 +103,55 @@ class WriteCheck {
     return {facts_, initial_.bytes - left_.bytes, initial_.work - left_.work};
   }
  private:
+  void Classes(std::size_t owner, const FamilyWriteInput& source) {
+    if (source.classes.empty()) return;
+    Require(owner == FileFamily::kRoot.value && std::holds_alternative<CaptureFunction>(source.function), Error::kCoverage);
+    const auto& graph = Graph(source);
+    const auto& target = trees_.members[owner];
+    // Build one operation-owner index from actual composed ClassExpr bodies.
+    // No per-method scan over all class definitions and no detached class receipt.
+    std::vector<std::optional<analysis::OpId>> owners;
+    Array(owners, graph.ops.size());
+    for (const auto& obligation : source.classes) {
+      Step();
+      if (obligation.operation != obligation.creation) continue;
+      const auto creation = obligation.creation;
+      Require(creation.value < graph.ops.size() && creation.value < target.flow.expressions.size() &&
+          target.flow.expressions[creation.value], Error::kCoverage);
+      const auto expression = *target.flow.expressions[creation.value];
+      Require(expression.value < target.tree.expressions.size(), Error::kCoverage);
+      const auto* node = std::get_if<ClassExpr>(&target.tree.expressions[expression.value].expression);
+      Require(node && node->definition, Error::kCoverage);
+      const auto& definition = *node->definition;
+      Require(definition.identity == target.tree.identity && definition.creation.creator == target.tree.method &&
+          definition.creation.pc == graph.origins[graph.ops[creation.value].origin.value].pc &&
+          std::holds_alternative<analysis::ValueClassCreation>(graph.ops[creation.value].operation), Error::kCoverage);
+      Require(!owners[creation.value], Error::kCoverage); owners[creation.value] = creation;
+      for (const auto& member : definition.definitions) {
+        Require(member.site.creation == creation, Error::kCoverage);
+        const auto methods = member.site.Methods();
+        for (std::size_t k = 0; k < methods.size(); ++k) {
+          Step();
+          if (!methods[k].operation) continue;
+          const auto operation = *methods[k].operation;
+          Require(operation.value < owners.size() && !owners[operation.value] && member.bodies[k], Error::kCoverage);
+          owners[operation.value] = creation;
+        }
+      }
+    }
+    for (const auto& obligation : source.classes) {
+      Step();
+      Require(obligation.site.value < graph.input.sites.size() &&
+          graph.input.sites[obligation.site.value] == obligation.operation &&
+          obligation.operation.value < owners.size() && owners[obligation.operation.value] == obligation.creation,
+          Error::kCoverage);
+      if (obligation.operation != obligation.creation) {
+        const auto* method = std::get_if<analysis::ValueFunctionCreation>(&graph.ops[obligation.operation.value].operation);
+        Require(method && method->kind == analysis::CreationKind::kMethod, Error::kCoverage);
+      }
+      Mark(owner, obligation.site, Barrier::kClass);
+    }
+  }
   FamilyWriteInput Member(std::size_t i) const {
     if (const auto* file = std::get_if<const FileFamily*>(&inputs_)) {
       const auto& member = (*file)->members[i];
@@ -117,7 +168,7 @@ class WriteCheck {
         Require(lookup_ != nullptr, Error::kOwner);
         return {PhasedFamilyInput{phase->Phases(), phase->Body(), phase->Locals(), *lookup_, phase, member.function.Storage()}, edge, member.objects};
       }
-      return {member.function.NormalCapture(), edge, member.objects};
+      return {member.function.NormalCapture(), edge, member.objects, member.classes};
     }
     return std::get<std::span<const FamilyWriteInput>>(inputs_)[i];
   }
@@ -177,7 +228,7 @@ class WriteCheck {
     Step(); const auto instructions = Instructions(Member(owner));
     Require(site.value < instructions.size(), Error::kCoverage); pc_ = instructions[site.value].pc;
     auto& barrier = barriers_[offsets_[owner] + site.value];
-    Require(barrier == Barrier::kFunction || barrier == Barrier::kPrimitiveObject, Error::kCoverage);
+    Require(barrier == Barrier::kFunction || barrier == Barrier::kPrimitiveObject || barrier == Barrier::kClass, Error::kCoverage);
     barrier = Barrier::kConsumed;
   }
   void Barriers(CaptureFunction source, std::size_t owner) {

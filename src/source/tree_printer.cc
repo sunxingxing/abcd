@@ -596,10 +596,10 @@ class TreePrinter {
   void Expression(EmptyArrayExpr) { Append("[]"); }
   void Expression(EmptyObjectExpr) { Append("({})"); }
   void Expression(const ClassExpr& node) {
-    // Closed class definitions are currently admitted at direct/record roots.
-    // Nested family capture rebasing must be integrated before opening that
-    // route; rejecting it here also keeps this composition non-recursive.
-    if (family_ || !node.definition || node.definition->identity != Tree().identity ||
+    // Only the already composed module root admits class definitions here.
+    // Member bodies use their own closed families; nested captures still need
+    // explicit composition. This keeps class/family printer nesting bounded.
+    if ((family_ && !ModuleBody()) || !node.definition || node.definition->identity != Tree().identity ||
         node.definition->creation.creator != Tree().method) throw Error::kUnsupportedContext;
     auto emitted = PrintClassTree(*node.definition, output_, {limit_ - written_}, remaining_, scope_, depth_);
     if (const auto* error = std::get_if<TreePrintError>(&emitted)) throw *error;

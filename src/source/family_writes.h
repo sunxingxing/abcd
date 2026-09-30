@@ -46,6 +46,7 @@ struct FamilyWriteInput {
   std::variant<CaptureFunction, PhasedFamilyInput> function;
   std::optional<FamilyWriteEdge> incoming;
   std::span<const FamilyObject> objects;
+  std::span<const FamilyClassObligation> classes;
 };
 // Requires unchanged, complete file-family inputs and freshly verified semantic
 // trees/default signatures/flows/capture layout. Rechecks every original store's
