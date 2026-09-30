@@ -48,7 +48,8 @@ class FlowCheck {
     edges_.emplace(graph, evaluation, tree, flow_, declared_, assigned_, budget, sequences);
     for (const auto symbol : sequences.Symbols()) {
       Require(!declared_[symbol.value], Error::kPlacement);
-      declared_[symbol.value] = assigned_[symbol.value] = 1;
+      declared_[symbol.value] = 1;
+      assigned_[symbol.value] = tree.symbols[symbol.value].kind != BindingKind::kCatchParameter;
     }
   }
   TreeFlow Run() {
@@ -632,7 +633,7 @@ std::variant<TreeFlow, TreeFlowError> VerifyFlow(
     checked.Step(std::get<std::uint64_t>(effects));
     checked.Admit(1, sizeof(FlowCheck));
     CompletionPlan completions;
-    if (!tree.finalizers.empty()) {
+    if (!tree.finalizers.empty() || !tree.yield_returns.empty()) {
       Require(exceptions != nullptr, Error::kControl);
       auto result = BuildCompletionPlan(graph, exceptions->regions, exceptions->control,
           evaluation, checked.Remaining());

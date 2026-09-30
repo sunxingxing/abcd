@@ -208,8 +208,8 @@ bool SnapshotCopies(std::span<const StmtId> copies,
 
 void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
                        FunctionTree& tree, TreeCheckBudget& budget) {
-  if (plan.finalizers.empty()) return;
-  Require(tree.finalizers.empty());
+  if (plan.finalizers.empty() && plan.yield_returns.empty()) return;
+  Require(tree.finalizers.empty() && tree.yield_returns.empty());
   const auto before = Children(tree, budget);
   auto lists = Children(tree, budget);
   const auto positions = Positions(before, budget);
@@ -218,9 +218,10 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
   // Reserve before taking views: moving an SSO string invalidates its view.
   // Monotone suffixes keep generated names unique; only input names need an
   // index. Sorted lookup has no attacker-controlled hash collision behavior.
-  budget.Admit(tree.names.size() + plan.finalizers.size(),
+  const auto new_names = plan.finalizers.size() + 2 * plan.yield_returns.size();
+  budget.Admit(tree.names.size() + new_names,
                sizeof(std::u16string));
-  tree.names.reserve(tree.names.size() + plan.finalizers.size());
+  tree.names.reserve(tree.names.size() + new_names);
   std::vector<std::u16string_view> names;
   budget.Array(names, tree.names.size());
   for (std::size_t i = 0; i < names.size(); ++i) names[i] = tree.names[i];
@@ -444,7 +445,70 @@ void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
     }
   }
   EditSequences(lists, shared_edits, budget);
-  if (tree.finalizers.empty()) return;
+  const auto yield_positions = Positions(lists, budget);
+  for (const auto& route : plan.yield_returns) {
+    budget.Step();
+    const auto yielded = flow.statements[route.yield.value],
+               branch = flow.statements[route.branch.value],
+               completion = flow.statements[route.completion.value];
+    Require(yielded && branch && completion && yield_positions[yielded->value] && yield_positions[branch->value]);
+    const auto location = *yield_positions[yielded->value], guard_location = *yield_positions[branch->value];
+    Require(location.block == guard_location.block && location.index < guard_location.index);
+    const auto* guard = std::get_if<IfStmt>(&tree.statements[branch->value].statement);
+    Require(guard && guard->alternate);
+    const auto original_arm = *guard->alternate;
+    auto& arm = lists[original_arm.value];
+    Require(!arm.empty() && arm.back() == *completion);
+    // Keep the certified NEXT-only dispatch/terminal in the AST for SSA audit;
+    // it is unreachable for native RETURN. Move its real cleanup roots once,
+    // rather than duplicating effects or inventing access to RETURN's payload.
+    std::vector<StmtId> cleanup(arm.begin(), arm.end() - 1);
+    arm.erase(arm.begin(), arm.end() - 1);
+    const auto origin = tree.statements[yielded->value].origin;
+    const auto enclosure = block(scope(location.block), origin, {});
+    const auto protected_body = block(scope(enclosure), origin, {});
+    const auto yield_body = block(scope(protected_body), origin, {*yielded});
+    const auto catch_body = block(scope(protected_body), origin, {});
+    tree.scopes[scope(catch_body).value].kind = ScopeKind::kCatch;
+    const auto finalizer = block(scope(enclosure), origin, {});
+    const auto cleanup_body = block(scope(finalizer), origin, std::move(cleanup));
+    for (const auto child : lists[cleanup_body.value]) { budget.Step(); Reparent(tree, child, scope(cleanup_body)); }
+    const auto symbol = [&](ScopeId owner, bool caught) {
+      std::u16string name;
+      do {
+        name = caught ? u"$resumeError" : u"$return";
+        const auto digits = std::to_string(suffix++); name.append(digits.begin(), digits.end()); budget.Step();
+      } while (std::binary_search(names.begin(), names.end(), name));
+      const NameId name_id{static_cast<std::uint32_t>(tree.names.size())};
+      const SymbolId id{static_cast<std::uint32_t>(tree.symbols.size())};
+      budget.Admit(1, sizeof(TreeSymbol)); budget.Admit(name.size(), sizeof(char16_t));
+      tree.names.push_back(std::move(name));
+      tree.symbols.push_back({owner, name_id, caught ? BindingKind::kCatchParameter : BindingKind::kCompilerTemporary,
+          caught ? DeclarationKind::kCatchParameter : DeclarationKind::kLet, NameEvidence::kSynthesized,
+          caught ? std::nullopt : std::optional{TemporaryReason::kPendingCompletion}});
+      return id;
+    };
+    const auto flag = symbol(scope(enclosure), false), caught = symbol(scope(catch_body), true);
+    const auto clear = [&] {
+      const auto value = expression(TreeLiteral{BooleanLiteral{false}}, origin);
+      return statement(ExpressionStmt{expression(AssignmentExpr{SymbolTarget{flag}, value}, origin)}, origin);
+    };
+    const auto caught_value = expression(SymbolExpr{caught}, origin);
+    lists[catch_body.value] = {clear(), statement(ThrowStmt{caught_value}, origin)};
+    const auto inner = statement(TryStmt{yield_body, CatchClause{caught, catch_body}, {}}, origin);
+    lists[protected_body.value] = {inner, clear()};
+    const auto condition = expression(SymbolExpr{flag}, origin);
+    lists[finalizer.value] = {statement(IfStmt{condition, cleanup_body, {}}, origin)};
+    const auto outer = statement(TryStmt{protected_body, {}, finalizer}, origin);
+    const auto initial = expression(TreeLiteral{BooleanLiteral{true}}, origin);
+    const TreeOriginId binding{static_cast<std::uint32_t>(tree.origins.size())};
+    budget.Admit(1, sizeof(TreeOrigin)); tree.origins.push_back(BindingOrigin{flag});
+    lists[enclosure.value] = {statement(DeclarationStmt{flag, initial}, binding), outer};
+    lists[location.block.value][location.index] = enclosure;
+    budget.Admit(1, sizeof(YieldReturnComposition));
+    tree.yield_returns.push_back({route.yield, enclosure, *branch});
+  }
+  if (tree.finalizers.empty() && tree.yield_returns.empty()) return;
   const auto after = Positions(lists, budget);
   for (auto& anchor : tree.anchors) {
     budget.Step();
@@ -466,7 +530,7 @@ CompletionTreeView::CompletionTreeView(const FunctionTree& tree,
                                        const CompletionPlan& plan,
                                        TreeCheckBudget& budget)
     : tree_(tree) {
-  if (tree.finalizers.empty()) return;
+  if (tree.finalizers.empty() && tree.yield_returns.empty()) return;
   auto lists = Children(tree, budget);
   const auto before = Children(tree, budget);
   const auto positions = Positions(lists, budget);
@@ -474,13 +538,21 @@ CompletionTreeView::CompletionTreeView(const FunctionTree& tree,
   budget.Array(parents_, tree.statements.size());
   budget.Admit(tree.children.size(), sizeof(StmtId));
   children_.reserve(tree.children.size());
-  budget.Admit(tree.finalizers.size(), sizeof(SymbolId) + sizeof(Corridor));
-  symbols_.reserve(tree.finalizers.size());
+  const auto symbol_count = tree.finalizers.size() + 2 * tree.yield_returns.size();
+  budget.Admit(symbol_count, sizeof(SymbolId));
+  budget.Admit(tree.finalizers.size(), sizeof(Corridor));
+  symbols_.reserve(symbol_count);
   corridors_.reserve(tree.finalizers.size());
   constexpr std::size_t kRoutingExpressions =
       4;  // reset, set, assignment, condition
-  budget.Admit(tree.finalizers.size(), kRoutingExpressions * sizeof(ExprId));
-  expressions_.reserve(tree.finalizers.size() * kRoutingExpressions);
+  constexpr std::size_t kYieldRoutingExpressions =
+      7;  // initial flag, two clears/assignments, caught value, condition
+  const auto expression_count = tree.finalizers.size() * kRoutingExpressions +
+      tree.yield_returns.size() * kYieldRoutingExpressions;
+  budget.Admit(expression_count, sizeof(ExprId));
+  expressions_.reserve(expression_count);
+  budget.Admit(tree.yield_returns.size(), sizeof(YieldCorridor));
+  yield_routes_.reserve(tree.yield_returns.size());
   std::vector<const FinalizerRegion*> regions;
   std::size_t region_count = 0;
   for (const auto& region : plan.finalizers)
@@ -692,6 +764,62 @@ CompletionTreeView::CompletionTreeView(const FunctionTree& tree,
     }
   }
   EditSequences(lists, shared_edits, budget);
+  // Reverse only the checked syntax routing around native yield. The original
+  // RETURN guard/terminal remain owned nodes; restore their cleanup prefix for
+  // the same SSA/edge checker, without maintaining a second source tree.
+  const auto yield_positions = Positions(lists, budget);
+  Require(tree.yield_returns.size() == plan.yield_returns.size());
+  for (std::size_t i = 0; i < tree.yield_returns.size(); ++i) {
+    budget.Step();
+    const auto& recovered = tree.yield_returns[i]; const auto& route = plan.yield_returns[i];
+    Require(recovered.yield == route.yield && yield_positions[recovered.enclosure.value]);
+    const auto enclosure = recovered.enclosure;
+    const auto& header = lists[enclosure.value]; Require(header.size() == 2);
+    const auto* declaration = std::get_if<DeclarationStmt>(&tree.statements[header[0].value].statement);
+    const auto* outer = std::get_if<TryStmt>(&tree.statements[header[1].value].statement);
+    Require(declaration && declaration->initializer && outer && !outer->handler && outer->finalizer);
+    const auto flag = declaration->symbol;
+    Require(tree.symbols[flag.value].scope == block(enclosure).scope &&
+        tree.symbols[flag.value].kind == BindingKind::kCompilerTemporary &&
+        tree.symbols[flag.value].temporary == TemporaryReason::kPendingCompletion);
+    const auto& body = lists[outer->body.value]; Require(body.size() == 2);
+    const auto* inner = std::get_if<TryStmt>(&tree.statements[body.front().value].statement);
+    Require(inner && inner->handler && !inner->finalizer && lists[inner->body.value].size() == 1);
+    const auto yielded = lists[inner->body.value].front();
+    const auto origin = tree.statements[yielded.value].origin;
+    boolean(*declaration->initializer, true, origin);
+    const auto clear = [&](StmtId id) {
+      const auto* root = std::get_if<ExpressionStmt>(&tree.statements[id.value].statement); Require(root != nullptr);
+      const auto* assign = std::get_if<AssignmentExpr>(&tree.expressions[root->expression.value].expression);
+      Require(assign && std::holds_alternative<SymbolTarget>(assign->target) && std::get<SymbolTarget>(assign->target).symbol == flag);
+      boolean(assign->value, false, origin);
+      expressions_.push_back(assign->value); expressions_.push_back(root->expression);
+    };
+    clear(body.back());
+    const auto& caught = lists[inner->handler->body.value]; Require(caught.size() == 2); clear(caught.front());
+    const auto* rethrow = std::get_if<ThrowStmt>(&tree.statements[caught.back().value].statement); Require(rethrow != nullptr);
+    const auto* caught_value = std::get_if<SymbolExpr>(&tree.expressions[rethrow->value.value].expression);
+    Require(caught_value && caught_value->symbol == inner->handler->parameter);
+    const auto& catch_symbol = tree.symbols[caught_value->symbol.value];
+    Require(catch_symbol.kind == BindingKind::kCatchParameter && catch_symbol.scope == block(inner->handler->body).scope);
+    const auto& finalizer = lists[outer->finalizer->value]; Require(finalizer.size() == 1);
+    const auto* condition = std::get_if<IfStmt>(&tree.statements[finalizer.front().value].statement);
+    Require(condition && !condition->alternate);
+    const auto* test = std::get_if<SymbolExpr>(&tree.expressions[condition->condition.value].expression);
+    Require(test && test->symbol == flag);
+    const auto* guard = std::get_if<IfStmt>(&tree.statements[recovered.branch.value].statement);
+    Require(guard && guard->alternate);
+    const auto return_body = *guard->alternate;
+    const auto& cleanup = lists[condition->consequent.value];
+    auto& arm = lists[return_body.value]; Require(arm.size() == 1);
+    arm.insert(arm.begin(), cleanup.begin(), cleanup.end());
+    const auto location = *yield_positions[enclosure.value]; lists[location.block.value][location.index] = yielded;
+    symbols_.push_back(flag); symbols_.push_back(caught_value->symbol);
+    expressions_.insert(expressions_.end(), {*declaration->initializer, rethrow->value, condition->condition});
+    yield_routes_.push_back({route, yielded, recovered.branch, arm.back()});
+    for (const auto id : {enclosure, outer->body, inner->body, inner->handler->body, *outer->finalizer, condition->consequent})
+      lists[id.value].clear();
+  }
   const auto after = Positions(lists, budget);
   budget.Array(anchors_, tree.anchors.size());
   for (std::size_t i = 0; i < tree.anchors.size(); ++i) {
@@ -724,6 +852,12 @@ ScopeId CompletionTreeView::TryParent(StmtId id, ScopeId parent) const {
   return parents_.empty() ? parent : parents_[id.value].value_or(parent);
 }
 void CompletionTreeView::Finish(TreeFlow& flow, TreeCheckBudget& budget) const {
+  for (const auto& route : yield_routes_) {
+    budget.Step();
+    Require(flow.statements[route.plan.yield.value] == route.yielded &&
+        flow.statements[route.plan.branch.value] == route.branch &&
+        flow.statements[route.plan.completion.value] == route.completion);
+  }
   for (const auto& shared : shared_) {
     budget.Step();
     Require(flow.statements[shared.guard.value] == shared.branch &&

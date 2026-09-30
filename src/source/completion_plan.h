@@ -46,6 +46,12 @@ struct CompletionPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   std::vector<FinalizerRegion> finalizers;
+  struct YieldReturn {
+    analysis::OpId yield, branch, completion;
+  };
+  // These corridors are not presumed equivalent to normal/throw cleanup.
+  // Native RETURN executes precisely their already-lifted effects and dispatch.
+  std::vector<YieldReturn> yield_returns;
 };
 enum class CompletionError : std::uint8_t { kInput, kWorkLimit, kResourceLimit };
 // Requires the checked phased graph/control/evaluation. Matches return/rethrow
@@ -56,6 +62,7 @@ enum class CompletionError : std::uint8_t { kInput, kWorkLimit, kResourceLimit }
 // that route, retain the original complete try/catch source rather than add effects.
 // No string/PC-nearness matching. O(V+E+O+U+P), where P is the examined disjoint
 // corridor/body topology; matching internal SSA results uses indexed pairing.
+// Inline yield RETURN routes add O(O log(O+1)+Y log(O+1)) exact-origin lookup.
 [[nodiscard]] std::variant<CompletionPlan, CompletionError> BuildCompletionPlan(
     const analysis::ValueProgram& graph, const ExceptionPlan& exceptions,
     const ExceptionControl& control, const EvaluationPlan& evaluation,

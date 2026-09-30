@@ -60,7 +60,8 @@ struct ExceptionFlowBudget {
 // no count/tail ownership premise to subsequent source-input verification.
 // YieldSite models NEXT/THROW source effects after generator normalization.
 // RETURN leaves the native yield; this API alone does not prove the original
-// completion routing. The current owner normalizer excludes user finalizers.
+// completion routing. Retained inline RETURN cleanup is ordinary value/effect
+// flow; CompletionPlan and FunctionTree separately route it at native yield.
 [[nodiscard]] ExceptionFlowResult BuildExceptionFlow(
     const abc::MethodBody& body, abc::ProfileId profile,
     std::uint64_t frame_size, ExceptionFlowBudget budget = {},

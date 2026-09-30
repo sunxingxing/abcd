@@ -12,6 +12,47 @@
 
 ## 当前阶段
 
+### 2026-09-30：generator 注入 RETURN 的内联清理贯通
+
+- NormalizeGenerator 保留 OH7 HandleCompletion 中 RETURN 分支的直线内联
+  清理，不假定它与 NEXT/THROW 清理等价。清理仍经共同 ValueProgram 的
+  SSA、效果和 handler 分发恢复；原始协议 PC、RETURN branch/terminal 来源
+  保留。私有 state/result/mode 槽读写，以及未初始化的分发 accumulator
+  依赖不被误当作 native yield 的可用值。
+- CompletionPlan/FunctionTree 在 yield 点构造普通 JS try/catch/finally：
+  NEXT 和注入 THROW 清除局部 RETURN 标志，只有 native RETURN 执行真实
+  清理根；caller payload 由 JS pending completion 保留，不伪造或读取
+  不可见 payload。清理仍处于原外层保护下；清理抛错可进入原用户 catch，
+  包括该原始 catch 自己再次执行清理的行为。无用户 catch 时，清理异常
+  直接传播，注入 THROW 不误执行 RETURN 或正常尾部清理。
+- 本轮 189 个真实 opcode/合成元数据函数族完整生成并执行 JS：162 个
+  三 profile/三父级环境/两个分支 8/16/32 宽度/相同及不同回调；9 个无
+  用户 catch；6 个 200/201/402 次清理与长分支；9 个双暂停点捕获 cell；
+  3 个 200/201/402 暂停点。核对 callback receiver/次数、payload/error
+  身份、next/return/throw、早期完成、独立迭代器、暂停中 cell 更新和
+  同步 thenable。21 个私有槽/accumulator 反例检查真实协议语义边界。
+  这些是文件解码夹具，不冒充真实应用或全部 OH7 编译器形态覆盖。
+- 多暂停点红例暴露共同区域构建将继续路径逐层嵌套，402 点触及诊断输出
+  上限，见 `/tmp/abcd-generator-return-composition-tests.log`。共同
+  ControlBuilder 增加一次反向拓扑的单入口直线终止路径摘要，提前退出
+  分支留在条件内，继续路径成为同级 sequence；不逐分支遍历、不改变
+  受限区域 join、不复制共享节点。2/200/201/402 个两种方向的 guard
+  通过控制检查，实际源码另检查 201→402 输出不发生平方膨胀。
+  未提高输出、work 或内存限额，未新增 generator 专项 printer。
+- 原功能红例 `/tmp/abcd-generator-return-red-tests.log`；控制紧凑性红例
+  `/tmp/abcd-early-exit-red-tests.log`。临时把 native RETURN 标志置 false
+  并同步其检查时，实际源码清理调用 0 !== 1，见
+  `/tmp/abcd-generator-return-mutant-tests.log`；已恢复正确实现。
+  相关十二个 C++ 目标构建成功，34/34 定向测试通过（23.97 秒）：
+  `/tmp/abcd-generator-return-final-build.log`、
+  `/tmp/abcd-generator-return-uncaught-build.log`、
+  `/tmp/abcd-generator-return-final-tests.log`；`git diff --check` 通过。
+- C07/总目标仍开放：带分支、再次暂停或显式覆盖 completion 的注入 RETURN
+  清理、入口默认值/解构、self/super、yield*、async generator、类/record
+  与完整结构 gate 继续推进。默认 work 截止保持关闭，不因计数拒绝默认
+  产出；没有新增输出准入或 DFX。全量测试/语料/RSS/基准仍暂停，历史
+  两个 base_function 失败未重跑/修复，不宣称全套或 1GB 验收。
+
 ### 2026-09-30：generator 恢复分支的 8/16/32 位编码贯通
 
 - NormalizeGenerator 的 RETURN/THROW 分发复用 LiftBranchCondition 的类型化

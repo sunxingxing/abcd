@@ -30,10 +30,22 @@ enum ResumeStep : std::size_t {
   kReturnMode, kReturnEqual, kReturnBranch, kReturnValue, kReturn,
   kThrowMode, kThrowEqual, kThrowBranch, kThrowValue, kThrow, kContinuation, kResumeSize
 };
-analysis::YieldRegion Resume(const abc::MethodBody& body, std::size_t begin,
+struct ResumeRegion { analysis::YieldRegion origin; std::size_t cleanup, size; };
+ResumeRegion Resume(const abc::MethodBody& body, std::size_t begin,
     abc::RegisterId state, const abc::FrameLayout& frame) {
   Require(begin <= body.instructions.size() && kResumeSize <= body.instructions.size() - begin);
-  const auto at = [&](ResumeStep step) -> const auto& { return body.instructions[begin + step]; };
+  const auto& jump = body.instructions[begin + kReturnBranch];
+  Require(jump.branch_target.has_value());
+  const auto target = std::lower_bound(body.instructions.begin() + begin, body.instructions.end(), *jump.branch_target,
+      [](const auto& site, auto pc) { return site.offset < pc; });
+  Require(target != body.instructions.end() && target->offset == *jump.branch_target);
+  const auto next_mode = static_cast<std::size_t>(target - body.instructions.begin()) - begin;
+  Require(next_mode >= kThrowMode);
+  const auto cleanup = next_mode - kThrowMode;
+  Require(cleanup <= body.instructions.size() - begin - kResumeSize);
+  const auto at = [&](ResumeStep step) -> const auto& {
+    return body.instructions[begin + step + (step >= kReturnValue ? cleanup : 0)];
+  };
   Require(Op(at(kSuspend), Opcode::kSUSPENDGENERATOR_V8) && Reg(at(kSuspend)) == state);
   for (auto step : {kStateForValue, kStateForMode})
     Require(Op(at(step), Opcode::kLDA_V8) && Reg(at(step)) == state);
@@ -63,9 +75,31 @@ analysis::YieldRegion Resume(const abc::MethodBody& body, std::size_t begin,
   }
   Require(at(kReturnBranch).branch_target == at(kThrowMode).offset &&
       at(kThrowBranch).branch_target == at(kContinuation).offset);
-  return {{}, at(kSuspend).offset, at(kResume).offset, at(kStoreResult).offset,
+  analysis::YieldRegion region{{}, at(kSuspend).offset, at(kResume).offset, at(kStoreResult).offset,
       at(kMode).offset, at(kStoreMode).offset, at(kContinuation).offset, state, {}, result, mode,
       at(kThrowBranch).offset, at(kThrow).offset};
+  if (cleanup) {
+    region.return_route = analysis::YieldReturnRoute{at(kReturnBranch).offset,
+        body.instructions[begin + kReturnValue].offset, at(kReturnValue).offset, at(kReturn).offset};
+    bool accumulator = false;
+    for (std::size_t i = begin + kReturnValue; i < begin + kReturnValue + cleanup; ++i) {
+      const auto& site = body.instructions[i];
+      const auto control = abc::GetControlTransfer(site.decoded.opcode);
+      Require(control && *control == abc::ControlTransfer::kFallthrough);
+      const auto access = abc::GetRegisterAccesses(site.decoded, frame.registers);
+      const auto* known = std::get_if<abc::RegisterAccesses>(&access); Require(known != nullptr);
+      Require(accumulator || !known->accumulator_read);
+      accumulator |= known->accumulator_write;
+      // Native RETURN bypasses the result/mode commits, and its payload cannot
+      // be read from JS finally. No private resume slot may escape or be clobbered.
+      for (std::size_t w = 0; w < known->count; ++w)
+        for (auto slot : {state, result, mode}) {
+          const auto& window = known->windows[w];
+          Require(slot.value < window.first.value || slot.value - window.first.value >= window.count);
+        }
+    }
+  }
+  return {region, cleanup, kResumeSize + cleanup};
 }
 }  // namespace
 std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
@@ -110,7 +144,9 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
         Op(code[enter], Opcode::kCREATEGENERATOROBJ_V8) &&
         Op(code[enter + 1], Opcode::kSTA_V8) && Op(code[enter + 2], Opcode::kLDUNDEFINED));
     const auto state = Reg(code[enter + 1]); Require(state.value < frame.locals);
-    const auto initial = Resume(body, enter + kEntryPrefix, state, frame);
+    const auto entry_resume = Resume(body, enter + kEntryPrefix, state, frame);
+    Require(!entry_resume.cleanup);
+    const auto& initial = entry_resume.origin;
     const auto callee = Reg(code[enter]);
     bool same_function = callee == *frame.function;
     for (std::size_t i = copy_begin; i < enter;) {
@@ -129,8 +165,8 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
     Require(Op(code.back(), Opcode::kTHROW_PREF_NONE) &&
         HasAsyncCompletionCatch(body, code[enter].offset, code.back().offset,
             std::uint64_t(code.back().offset.value) + code.back().decoded.size));
-    // Only direct-return resume protocols are collapsed here. In particular,
-    // an injected finalizer between ReturnBranch and ReturnValue fails Resume.
+    // RETURN cleanup stays in the common graph; tree composition must route it
+    // on native RETURN. Do not erase it or treat it as a normal resume effect.
     constexpr auto kPerInstruction = sizeof(abc::BodyInstruction) + sizeof(abc::CodeOffset) + sizeof(std::uint8_t);
     if (code.size() > bytes / kPerInstruction) return Error::kResourceLimit;
     const auto yield_count = static_cast<std::size_t>(std::count_if(code.begin(), code.end(),
@@ -162,13 +198,22 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
             Reg(code[i + kYieldPrefix]) == value && Reg(code[i + kYieldPrefix], 1) == done);
         const auto suspend = i + kYieldPrefix + 1;
         Require(kResumeSize <= handler - suspend);
-        auto region = Resume(body, suspend, state, frame);
+        const auto resume = Resume(body, suspend, state, frame);
+        Require(resume.size <= handler - suspend);
+        auto region = resume.origin;
         region.create = code[i + kYieldPrefix].offset; region.value = value;
         result.yields.push_back({region.create, region.mode, region});
-        std::fill(interior.begin() + i + 1, interior.begin() + suspend + kResumeSize, 1);
+        std::fill(interior.begin() + i + 1, interior.begin() + suspend + resume.size, 1);
         for (std::size_t prefix = 0; prefix <= kYieldPrefix; ++prefix) retain(i + prefix);
-        for (auto step : {kStoreResult, kMode, kStoreMode, kContinuation}) retain(suspend + step);
-        i = suspend + kResumeSize;
+        for (auto step : {kStoreResult, kMode, kStoreMode}) retain(suspend + step);
+        if (resume.cleanup) {
+          for (std::size_t step = kReturnMode; step < kThrowMode + resume.cleanup; ++step) {
+            retain(suspend + step);
+            if (step == kReturnBranch) result.body.instructions.back().branch_target = region.continuation;
+          }
+        }
+        retain(suspend + kContinuation + resume.cleanup);
+        i = suspend + resume.size;
       } else {
         const auto access = abc::GetRegisterAccesses(code[i].decoded, frame.registers);
         const auto* known = std::get_if<abc::RegisterAccesses>(&access); Require(known != nullptr);
@@ -205,12 +250,20 @@ std::variant<GeneratorBody, FunctionEmitError> NormalizeGenerator(
         result.yields[next_mode++].mode_pc = {pc};
       site.offset = {pc}; pc += site.decoded.size;
     }
-    for (auto& site : result.body.instructions) {
+    std::size_t active_yield = 0;
+    for (std::size_t s = 0; s < result.body.instructions.size(); ++s) {
+      auto& site = result.body.instructions[s];
       if (!site.branch_target) continue;
+      const auto source = result.source_pcs[s];
+      while (active_yield + 1 < result.yields.size() && result.yields[active_yield + 1].origin.create <= source) ++active_yield;
+      const auto* route = result.yields.empty() || !result.yields[active_yield].origin.return_route ? nullptr :
+          &*result.yields[active_yield].origin.return_route;
+      const bool owned_return = route && route->branch == source &&
+          site.branch_target == result.yields[active_yield].origin.continuation;
       const auto target = *site.branch_target;
       const auto original = std::lower_bound(code.begin(), code.end(), target,
           [](const auto& instruction, auto offset) { return instruction.offset < offset; });
-      Require(original != code.end() && original->offset == target && !interior[original - code.begin()]);
+      Require(original != code.end() && original->offset == target && (owned_return || !interior[original - code.begin()]));
       const auto found = std::lower_bound(result.source_pcs.begin(), result.source_pcs.end(), target);
       Require(found != result.source_pcs.end() && *found == target);
       const auto destination = result.body.instructions[found - result.source_pcs.begin()].offset;

@@ -197,7 +197,7 @@ class TreeBuilder {
       throw Error::kControl;
     }
     const auto& plan = std::get<CompletionPlan>(result);
-    if (plan.finalizers.empty()) return;
+    if (plan.finalizers.empty() && plan.yield_returns.empty()) return;
     const auto measured = MeasureTreeStorage(tree_, {budget_.bytes, work_});
     const auto* storage = std::get_if<TreeStorage>(&measured);
     if (!storage)

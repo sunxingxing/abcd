@@ -14,6 +14,9 @@ namespace abcd::source {
 // the exceptional copy. Normal cleanup preserves the pending completion; its
 // throw replaces it. No cleanup is moved inside the original catch protection.
 // This first projection intentionally does not deduplicate the two SSA trees.
+// Inline generator RETURN uses a yield-local flag: NEXT and caught THROW clear
+// it, while native RETURN executes its original cleanup under the original
+// surrounding protection. No pending RETURN payload is synthesized/read.
 void RecoverFinalizers(const CompletionPlan& plan, const TreeFlow& flow,
                        FunctionTree& tree, TreeCheckBudget& budget);
 
@@ -53,6 +56,11 @@ class CompletionTreeView {
     StmtId original;
   };
   std::vector<SharedCorridor> shared_;
+  struct YieldCorridor {
+    CompletionPlan::YieldReturn plan;
+    StmtId yielded, branch, completion;
+  };
+  std::vector<YieldCorridor> yield_routes_;
 };
 }  // namespace abcd::source
 #endif

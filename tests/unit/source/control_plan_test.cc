@@ -203,6 +203,31 @@ void Scaling() {
     Check(std::holds_alternative<ControlPlan>(BuildControlPlan(graph, budget)));
   }
 }
+void EarlyExitSequences() {
+  // Nesting each continuing arm makes indentation/output quadratic even
+  // though these guards have a single sequential continuation.
+  for (const std::uint32_t count : {2U, 200U, 201U, 402U}) {
+    for (const bool taken_exit : {false, true}) {
+      std::vector<Targets> targets(2 * count + 1);
+      for (std::uint32_t i = 0; i < count; ++i)
+        targets[2 * i] = taken_exit ? Targets{2 * i + 1, 2 * i + 2} :
+                                     Targets{2 * i + 2, 2 * i + 1};
+      const auto graph = Graph(targets);
+      const auto built = BuildControlPlan(graph);
+      const auto* plan = std::get_if<ControlPlan>(&built);
+      Check(plan && std::holds_alternative<std::uint64_t>(VerifyControlPlan(graph, *plan)));
+      for (std::uint32_t i = 0; i + 1 < count; ++i) {
+        const auto& node = plan->nodes[2 * i];
+        Check(node.next == ControlId{2 * i + 2});
+        Check((taken_exit ? node.arms->taken : node.arms->fallthrough) == ControlId{2 * i + 1});
+        Check(!(taken_exit ? node.arms->fallthrough : node.arms->taken));
+      }
+      auto changed = *plan;
+      changed.nodes[0].next = ControlId{1};
+      Check(std::holds_alternative<ControlError>(VerifyControlPlan(graph, changed)));
+    }
+  }
+}
 }  // namespace
 
 int main() {
@@ -232,4 +257,5 @@ int main() {
   Loops();
   LinearExitCorridors();
   Scaling();
+  EarlyExitSequences();
 }

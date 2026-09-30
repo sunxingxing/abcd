@@ -249,6 +249,10 @@ struct FinalizerComposition {
   analysis::TryId region;
   StmtId enclosure;
 };
+struct YieldReturnComposition {
+  analysis::OpId yield;
+  StmtId enclosure, branch;
+};
 struct FunctionTree {
   RouteInputIdentity identity;
   abc::EntityOffset method;
@@ -297,6 +301,7 @@ struct FunctionTree {
   // LabelId -> loop statement, function-local and separate from variable names.
   std::vector<StmtId> labels;
   std::vector<FinalizerComposition> finalizers;
+  std::vector<YieldReturnComposition> yield_returns;
   // Invocation-private identity used only by a closed VM Hole protocol.
   std::optional<SymbolId> hole;
 };

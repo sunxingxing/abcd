@@ -1,5 +1,6 @@
 #include "completion_plan.h"
 
+#include <algorithm>
 #include <limits>
 #include <new>
 #include <stdexcept>
@@ -253,9 +254,44 @@ class CompletionBuilder {
       Append(plan.finalizers, FinalizerRegion{{r}, incoming, ThrowCompletion{binding->value},
           returned, thrown, std::move(normal.nodes), std::move(handler.nodes), std::move(pairs), replacement});
     }
+    YieldReturns(plan);
     return plan;
   }
  private:
+  void YieldReturns(CompletionPlan& plan) {
+    bool needed = false;
+    for (const auto& op : graph_.ops) {
+      quota_.Work();
+      const auto* yield = std::get_if<ValueYield>(&op.operation);
+      needed |= yield && yield->origin.return_route.has_value();
+    }
+    if (!needed) return;
+    struct Site { abc::CodeOffset pc; OpId operation; };
+    std::vector<Site> sites;
+    quota_.Size(sites, graph_.ops.size());
+    for (std::uint32_t i = 0; i < graph_.ops.size(); ++i) {
+      quota_.Work(); const auto& origin = graph_.origins[graph_.ops[i].origin.value];
+      sites[i] = {origin.original.value_or(origin.pc), {i}};
+    }
+    std::sort(sites.begin(), sites.end(), [&](const auto& a, const auto& b) {
+      quota_.Work(); return a.pc < b.pc;
+    });
+    const auto find = [&](abc::CodeOffset pc) {
+      const auto at = std::lower_bound(sites.begin(), sites.end(), pc, [&](const auto& site, auto target) {
+        quota_.Work(); return site.pc < target;
+      });
+      Require(at != sites.end() && at->pc == pc); return at->operation;
+    };
+    for (std::uint32_t i = 0; i < graph_.ops.size(); ++i) {
+      quota_.Work(); const auto* yield = std::get_if<ValueYield>(&graph_.ops[i].operation);
+      if (!yield || !yield->origin.return_route) continue;
+      const auto& route = *yield->origin.return_route;
+      const auto branch = find(route.branch), completion = find(route.completion);
+      Require(std::holds_alternative<ValueBranch>(graph_.ops[branch.value].operation) &&
+          std::holds_alternative<ValueReturn>(graph_.ops[completion.value].operation));
+      Append(plan.yield_returns, CompletionPlan::YieldReturn{{i}, branch, completion});
+    }
+  }
   void SharedGuards() {
     quota_.Size(shared_guards_, exceptions_.regions.size());
     quota_.Size(shared_visits_, control_.skeleton.nodes.size());

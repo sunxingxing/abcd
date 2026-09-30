@@ -30,6 +30,7 @@ class ControlBuilder {
             Error::kResourceLimit);
     quota_.Size(up_, (exit_ + 1) * levels_);
     quota_.Size(owned_, exit_);
+    quota_.Size(terminal_corridor_, exit_);
     quota_.Size(tasks_, exit_);
     plan_.view = graph_.Kind();
     plan_.revision = graph_.Revision();
@@ -104,6 +105,12 @@ class ControlBuilder {
     // pass. Binary-lifted LCA avoids iterative dominance sets / per-block walks.
     // The virtual exit is a real additional tree node, not an absent-ID sentinel.
     parent_[exit_] = exit_;
+    // Kahn consumed the counts. Restore them once, so a terminal corridor
+    // cannot absorb a shared/cross-entry block while choosing an early exit.
+    for (std::size_t e = 0; e < graph_.ArcCount(); ++e) {
+      quota_.Work();
+      ++indegree_[graph_.Arc({static_cast<std::uint32_t>(e)}).target.value];
+    }
     for (std::size_t level = 0; level < levels_; ++level) {
       quota_.Work();
       up_[exit_ * levels_ + level] = exit_;
@@ -112,6 +119,9 @@ class ControlBuilder {
       quota_.Work();
       const auto id = order_[i - 1];
       const auto& block = graph_.Node({id});
+      terminal_corridor_[id] = indegree_[id] == 1 &&
+          (block.arc_count == 0 || (block.arc_count == 1 &&
+           terminal_corridor_[graph_.Arc(block.first_arc).target.value]));
       std::uint32_t join = exit_;
       for (std::uint8_t e = 0; e < block.arc_count; ++e) {
         quota_.Work();
@@ -148,7 +158,17 @@ class ControlBuilder {
         auto& node = plan_.nodes[cursor];
         const auto& block = graph_.Node({cursor});
         if (block.arc_count == analysis::kMaxNormalSuccessors) {
-          const auto join = parent_[cursor];
+          auto join = parent_[cursor];
+          // Early-exit structuring: a private straight terminal arm does not
+          // force the continuing arm under another if. Compute this summary
+          // once in reverse order, not with a graph walk at each guard. Keep
+          // bounded-region joins and two terminal arms unchanged.
+          if (join == exit_ && task.stop == exit_) {
+            const auto a = graph_.Arc(block.first_arc).target.value;
+            const auto b = graph_.Arc({block.first_arc.value + 1}).target.value;
+            if (terminal_corridor_[a] != terminal_corridor_[b])
+              join = terminal_corridor_[a] ? b : a;
+          }
           ControlArms arms;
           for (std::uint8_t e = 0; e < block.arc_count; ++e) {
             quota_.Work();
@@ -185,7 +205,7 @@ class ControlBuilder {
   std::size_t levels_;
   ControlPlan plan_;
   std::vector<std::uint32_t> indegree_, order_, parent_, depth_, up_;
-  std::vector<std::uint8_t> owned_;
+  std::vector<std::uint8_t> owned_, terminal_corridor_;
   std::vector<RegionTask> tasks_;
 };
 }  // namespace
