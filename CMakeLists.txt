@@ -1075,6 +1075,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_nested_literal.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_unary_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_unary_literal.mjs $<TARGET_FILE:class_tree_context_test>)
+    add_test(NAME phased_literal_arguments_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_literal_arguments.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_buffered_lexical_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_buffered_lexical.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME module_enclosure_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

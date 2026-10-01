@@ -277,7 +277,9 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
   budget.Size(ends, graph.ops.size()); budget.Size(stack, graph.ops.size());
   PhaseBudget phase_budget(budget.Remaining());
   std::optional<PhaseCorridors> phases;
-  if (evaluation) phases.emplace(graph, *evaluation, phase_budget);
+  // This pass proves literal intervals; it needs catch indexing, not a second
+  // interval index derived from a candidate EvaluationPlan::literals witness.
+  if (evaluation) phases.emplace(graph, *evaluation, phase_budget, PhaseLiteralIntervals::kExclude);
   for (const auto& object : plan.objects) {
     budget.Step(); if (object.form == LiteralForm::kStatements) continue;
     ends[object.allocation.value] = plan.definitions[object.first + object.count - 1];

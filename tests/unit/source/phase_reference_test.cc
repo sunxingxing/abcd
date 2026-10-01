@@ -10,7 +10,8 @@ using namespace abcd::source;
 enum class Corridor {
   kPure, kEffect, kJump, kBranch, kChangedCatch, kStableCatch, kWrongReceiver, kDuplicate,
   kArgument, kArguments, kReversedArguments, kHandlerChange, kTypeofArgument,
-  kClosure, kClosureEnvironment, kClosureHandler, kPureResult, kClosurePureResult
+  kClosure, kClosureEnvironment, kClosureHandler, kPureResult, kClosurePureResult,
+  kLiteral, kNestedLiteral, kLiteralArguments, kLiteralReversed, kLiteralHandler
 };
 std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor = Corridor::kPure,
                   bool computed = false, bool global = false) {
@@ -37,6 +38,31 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
   for (std::uint32_t i = 0; i < count; ++i)
     bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), kArgument, kArgument});
   switch (corridor) {
+    case Corridor::kLiteral: case Corridor::kNestedLiteral: case Corridor::kLiteralArguments:
+    case Corridor::kLiteralReversed: case Corridor::kLiteralHandler: {
+      const auto create = [&](std::uint8_t object) {
+        bytes.insert(bytes.end(), {op(abc::Opcode::kCREATEEMPTYOBJECT), op(abc::Opcode::kSTA_V8), object});
+      };
+      const auto field = [&](std::uint8_t object) {
+        bytes.insert(bytes.end(), {op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, 1, 0, object});
+      };
+      create(kArgument);
+      if (corridor == Corridor::kNestedLiteral) create(kSecondArgument);
+      for (std::uint32_t i = 0; i < count; ++i) {
+        bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kParameter,
+            op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0});
+        field(corridor == Corridor::kNestedLiteral ? kSecondArgument : kArgument);
+      }
+      if (corridor == Corridor::kNestedLiteral) {
+        bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kSecondArgument}); field(kArgument);
+      }
+      if (corridor == Corridor::kLiteralArguments || corridor == Corridor::kLiteralReversed) {
+        create(kSecondArgument);
+        bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kParameter,
+            op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0}); field(kSecondArgument);
+      }
+      break;
+    }
     case Corridor::kClosure: case Corridor::kClosureEnvironment: case Corridor::kClosureHandler:
     case Corridor::kClosurePureResult:
       bytes.insert(bytes.end(), {op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 0, 0, 0,
@@ -73,8 +99,9 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
     case Corridor::kHandlerChange: case Corridor::kPureResult: break;
   }
   const auto before_call = static_cast<std::uint32_t>(bytes.size());
-  if (corridor == Corridor::kArguments || corridor == Corridor::kReversedArguments) {
-    const bool reversed = corridor == Corridor::kReversedArguments;
+  if (corridor == Corridor::kArguments || corridor == Corridor::kReversedArguments ||
+      corridor == Corridor::kLiteralArguments || corridor == Corridor::kLiteralReversed) {
+    const bool reversed = corridor == Corridor::kReversedArguments || corridor == Corridor::kLiteralReversed;
     bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kCallee,
         op(abc::Opcode::kCALLTHIS2_IMM8_V8_V8_V8), 0, kParameter,
         reversed ? kSecondArgument : kArgument, reversed ? kArgument : kSecondArgument,
@@ -95,7 +122,8 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
   bytes.push_back(op(abc::Opcode::kRETURN));
   auto body = test::Body(bytes);
   abc::TryRegion region; region.length = handler_pc; region.handler_count = 1;
-  if (corridor == Corridor::kHandlerChange || corridor == Corridor::kClosureHandler) region.length = before_call;
+  if (corridor == Corridor::kHandlerChange || corridor == Corridor::kClosureHandler || corridor == Corridor::kLiteralHandler)
+    region.length = before_call;
   abc::CatchHandler handler; handler.offset = {handler_pc}; handler.length = snapshot ? 3 : 1;
   body.tries.push_back(region); body.handlers.push_back(handler);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, 4, {true, true, false, true}));
@@ -131,7 +159,8 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kReject, functions));
   const bool accepted = corridor == Corridor::kPure || corridor == Corridor::kStableCatch ||
       corridor == Corridor::kArgument || corridor == Corridor::kArguments || corridor == Corridor::kTypeofArgument ||
-      corridor == Corridor::kClosure || pure_result;
+      corridor == Corridor::kClosure || pure_result || corridor == Corridor::kLiteral ||
+      corridor == Corridor::kNestedLiteral || corridor == Corridor::kLiteralArguments;
   const bool fused = accepted || corridor == Corridor::kWrongReceiver;
   test::Check((evaluation.operations[kProperty.value].kind == EvaluationKind::kInline) == fused);
   for (const auto& function : functions)
@@ -221,7 +250,17 @@ int main() {
     for (const auto corridor : {Corridor::kEffect, Corridor::kJump, Corridor::kBranch,
         Corridor::kChangedCatch, Corridor::kStableCatch, Corridor::kWrongReceiver, Corridor::kDuplicate,
         Corridor::kArgument, Corridor::kArguments, Corridor::kReversedArguments, Corridor::kHandlerChange,
-        Corridor::kTypeofArgument, Corridor::kClosure, Corridor::kClosureEnvironment, Corridor::kClosureHandler})
+        Corridor::kTypeofArgument, Corridor::kClosure, Corridor::kClosureEnvironment, Corridor::kClosureHandler,
+        Corridor::kLiteral, Corridor::kNestedLiteral, Corridor::kLiteralArguments, Corridor::kLiteralReversed,
+        Corridor::kLiteralHandler})
       Run(2, profile, corridor);
+    for (const auto corridor : {Corridor::kLiteral, Corridor::kNestedLiteral, Corridor::kLiteralArguments}) {
+      std::uint64_t previous = 0;
+      for (const auto count : {1U, 200U, 201U, 400U, 800U}) {
+        const auto work = Run(count, profile, corridor);
+        if (count > 201) test::Check(work < 3 * previous);
+        previous = work;
+      }
+    }
   }
 }

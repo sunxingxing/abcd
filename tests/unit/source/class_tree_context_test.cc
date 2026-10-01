@@ -48,7 +48,8 @@ enum class ExceptionShape {
   kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies, kReceiver, kReceiverCatch,
   kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof, kLiteral, kLexical,
   kReceiverResult, kAsyncAwait, kGeneratorYield, kGeneratorCatch, kBufferedLexical, kNestedLiteral, kNestedCall,
-  kNestedNegate, kNestedBitNot, kNestedDeadRead, kNestedDeadArray
+  kNestedNegate, kNestedBitNot, kNestedDeadRead, kNestedDeadArray,
+  kLiteralArgument, kLiteralArrayArgument, kLiteralArguments
 };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
@@ -273,6 +274,43 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
         member[kCodeSizeOffset] += kGrowth;
         const auto table = kHeaderBytes + member[kCodeSizeOffset];
         member[table + 1] += kGrowth; member[table + 4] += kGrowth;
+      }
+    }
+    if (exception == ExceptionShape::kLiteralArgument || exception == ExceptionShape::kLiteralArrayArgument ||
+        exception == ExceptionShape::kLiteralArguments) {
+      constexpr std::uint8_t kLocals = 3, kCallee = 0, kOuter = 1, kInner = 2, kInput = 6,
+          kBytes = 40, kProtected = 39;
+      member = {kLocals, 4, kBytes, kSingleTry,
+          kLoad, kInput, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0, kStore, kCallee,
+          op(abc::Opcode::kCREATEEMPTYOBJECT), kStore, kOuter,
+          op(abc::Opcode::kCREATEEMPTYOBJECT), kStore, kInner,
+          kLoad, kInput, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0,
+          op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, kNamePool, 0, kInner,
+          kLoad, kInner, op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, kNamePool, 0, kOuter,
+          kLoad, kCallee, op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, kInput, kOuter, kReturn, kReturn,
+          0, kProtected, kSingleTry, kCatchAll, kProtected, 1};
+      if (exception == ExceptionShape::kLiteralArrayArgument) {
+        constexpr std::uint8_t kReadPc = 14, kReadBytes = 6, kArrayBytes = 2;
+        member.erase(member.begin() + kHeaderBytes + kReadPc,
+            member.begin() + kHeaderBytes + kReadPc + kReadBytes);
+        member.insert(member.begin() + kHeaderBytes + kReadPc, {op(abc::Opcode::kCREATEEMPTYARRAY_IMM8), 0});
+        member[kCodeSizeOffset] -= kReadBytes - kArrayBytes;
+        const auto table = kHeaderBytes + member[kCodeSizeOffset];
+        member[table + 1] -= kReadBytes - kArrayBytes; member[table + 4] -= kReadBytes - kArrayBytes;
+      }
+      if (exception == ExceptionShape::kLiteralArguments) {
+        // Two complete arguments retain getter order before native invocation.
+        constexpr std::uint8_t kBytes = 45, kProtected = 44;
+        member = {kLocals, 4, kBytes, kSingleTry,
+          kLoad, kInput, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0, kStore, kCallee,
+          op(abc::Opcode::kCREATEEMPTYOBJECT), kStore, kOuter,
+          kLoad, kInput, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0,
+          op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, kNamePool, 0, kOuter,
+          op(abc::Opcode::kCREATEEMPTYOBJECT), kStore, kInner,
+          kLoad, kInput, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0,
+          op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, kNamePool, 0, kInner,
+          kLoad, kCallee, op(abc::Opcode::kCALLTHIS2_IMM8_V8_V8_V8), 0, kInput, kOuter, kInner, kReturn, kReturn,
+          0, kProtected, kSingleTry, kCatchAll, kProtected, 1};
       }
     }
     if (exception == ExceptionShape::kLexical) {
@@ -1169,6 +1207,16 @@ int main(int argc, char** argv) {
       Run(DefaultEncoding::kNone, false, false, false, &std::cout, shape, profile);
     return 0;
   }
+  if (argc == 2 && (std::string_view(argv[1]) == "--literal-argument-json" ||
+      std::string_view(argv[1]) == "--literal-array-argument-json" ||
+      std::string_view(argv[1]) == "--literal-arguments-json")) {
+    const auto shape = std::string_view(argv[1]) == "--literal-argument-json" ? ExceptionShape::kLiteralArgument :
+        std::string_view(argv[1]) == "--literal-array-argument-json" ? ExceptionShape::kLiteralArrayArgument :
+        ExceptionShape::kLiteralArguments;
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      Run(DefaultEncoding::kNone, false, false, false, &std::cout, shape, profile);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--literal-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kLiteral);
     return 0;
@@ -1229,6 +1277,9 @@ int main(int argc, char** argv) {
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedBitNot);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedDeadRead);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedDeadArray);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLiteralArgument);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLiteralArrayArgument);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLiteralArguments);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverTypeof);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverNumericPair);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverPair);

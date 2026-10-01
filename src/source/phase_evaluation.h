@@ -8,7 +8,7 @@ struct PhaseEvaluationCost {
   std::size_t bytes = 0;
   std::uint64_t work = 0;
 };
-// Requires fresh availability, aliases and exceptional copy validation.
+// Requires fresh availability, aliases, LiteralPlan and exceptional copy validation.
 // Discard the candidate plan on failure; original phases/SSA are never edited.
 [[nodiscard]] std::variant<PhaseEvaluationCost, EvaluationError> BuildPhaseExpressions(
     const analysis::ValueProgram& graph, EvaluationPlan& plan, analysis::SemanticBudget budget);

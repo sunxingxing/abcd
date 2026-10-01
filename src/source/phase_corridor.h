@@ -25,15 +25,20 @@ struct PhasePosition {
   std::size_t order = 0, effects = 0, copies = 0;
 };
 struct PhaseUse { std::optional<analysis::UseId> first; bool multiple = false; };
+struct PhaseEffectInterval { std::size_t count = 0, end = 0; };
+enum class PhaseLiteralIntervals : std::uint8_t { kExclude, kInclude };
 // O(B+E+I+V+U+P+S) indexing. Slot comparisons are charged to uniquely consumed
 // producers; never perform a fresh graph walk per expression or operand.
 class PhaseCorridors {
  public:
-  PhaseCorridors(const analysis::ValueProgram& graph, const EvaluationPlan& plan, PhaseBudget& budget);
+  PhaseCorridors(const analysis::ValueProgram& graph, const EvaluationPlan& plan, PhaseBudget& budget,
+      PhaseLiteralIntervals literals = PhaseLiteralIntervals::kInclude);
   bool CanFuse(analysis::OpId producer, analysis::OpId consumer, analysis::UseId use) const;
   bool SameCatch(analysis::OpId producer, analysis::OpId root);
   std::size_t EffectsBefore(analysis::OpId op) const;
   std::size_t EffectCount(analysis::OpId op) const;
+  PhaseEffectInterval Interval(analysis::OpId op) const;
+  static bool Aggregate(const analysis::ValueOperation& operation);
   static bool Expression(const analysis::ValueOperation& operation);
   static bool Event(const analysis::ValueOp& op, const OpEvaluation& placement);
  private:
@@ -44,6 +49,7 @@ class PhaseCorridors {
   std::vector<PhaseUse> uses_;
   std::vector<std::optional<std::size_t>> exits_, throws_, staged_;
   std::vector<std::optional<analysis::OpId>> module_peers_;
+  std::vector<std::optional<analysis::OpId>> literal_ends_;
 };
 }  // namespace abcd::source
 #endif

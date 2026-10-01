@@ -12,6 +12,39 @@
 
 ## 当前阶段
 
+### 2026-10-01：原生成员引用贯通完整相位字面量参数
+
+- PhaseCorridors一次索引已由LiteralPlan证明的完整initializer区间；native call
+  组合消费allocation至最后own definition的全部原始效果，而不是只消费创建点。
+  隐式initializer base从canonical source-value census分离，仍由LiteralPlan
+  独立核对ownership。getter、嵌套读/调用、创建身份、参数顺序和receiver保留；
+  不新增writer，不删SSA/phase/PC，不改用可篡改.call/.apply。
+- 可能抛异常的inline event仍核对最终root的handler和staged catch-copy source；
+  非抛异常allocation只承担身份/顺序义务。共享、反向参数、改变handler和catch
+  可见快照继续拒绝。LiteralPlan重验只需要catch索引，明确排除候选literal区间
+  再索引；实际exact-budget回归发现并修复了重复计费，未删除预算边界检查。
+  新增O(operations+definitions+uses)工作和O(operations)受计费索引，无新依赖。
+- 真正解码的相位参数在旧实现RED，
+  /tmp/abcd-phase-literal-arguments-red-tests.log。三profile的1/200/201/400/800
+  属性，nested object、empty array、两个参数通过独立evaluation/exception tree
+  检查，几何work增长和负例通过。序列化file/class/family、ABI、instruction
+  sources与共同printer产生原生member call；完整函数独立行为对照通过
+  **2646个场景**，含getter先于参数、non-callable仍先求参数、Proxy/receiver、
+  throw身份、fresh object/array、prototype/descriptor及继承setter。
+  /tmp/abcd-phase-literal-arguments-behavior.log。最终相关构建退出0，
+  /tmp/abcd-phase-literal-arguments-final-build.log；**21/21定向回归通过29.90秒**，
+  /tmp/abcd-phase-literal-arguments-final-tests.log。全量/RSS/基准仍暂停，无代理。
+- 真实PageA record6897现经共同树路线生成完整源码，包含async child7421；
+  /tmp/abcd-phase-literal-arguments-pagea.json为source_complete=true、
+  executable=false、legacy_writer_used=false。这不是平台执行或配对语义验收。
+  五输入build/stage-one/value-phase-literal-arguments-pass-1均退出0，现为
+  **50 complete / 3 incomplete / 53 failure / 46 no-module**；新完整record为
+  pasteboard6897及7640，无完整项退化、无legacy writer，
+  /tmp/abcd-phase-literal-arguments-batch-summary.json。
+- 下一项是对PageA完整生成record与独立配对源码核对module、constructor、
+  生命周期、render创建族及async click的暂停/恢复、效果与异常身份；同时单独
+  检查高层表示。不得将source_complete升级为阶段一Accepted或Goal完成。
+
 ### 2026-10-01：纯搬运消除与非抛异常数组贯通相位字面量
 
 - 两个canonical use census不再把独立证明为dead的纯操作输入当作对象观察。

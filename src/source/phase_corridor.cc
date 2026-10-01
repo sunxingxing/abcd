@@ -22,7 +22,7 @@ void PhaseBudget::Step(std::size_t count) {
 bool PhaseCorridors::Expression(const ValueOperation& operation) {
   // Guarded modules are paired by the caller's independently checked module
   // index; their two original effects form one subtree, never a pure name read.
-  return std::holds_alternative<ValueCopy>(operation) ||
+  return Aggregate(operation) || std::holds_alternative<ValueCopy>(operation) ||
       std::holds_alternative<ValueString>(operation) ||
       std::holds_alternative<ValueUnary>(operation) ||
       std::holds_alternative<ValueBinary>(operation) ||
@@ -37,11 +37,16 @@ bool PhaseCorridors::Expression(const ValueOperation& operation) {
       std::holds_alternative<ValueInvoke>(operation) ||
       std::holds_alternative<ValueConstruct>(operation);
 }
+bool PhaseCorridors::Aggregate(const ValueOperation& operation) {
+  return std::holds_alternative<ValueObjectAllocation>(operation) ||
+      std::holds_alternative<ValueArrayAllocation>(operation);
+}
 bool PhaseCorridors::Event(const ValueOp& op, const OpEvaluation& placement) {
   return op.life == ValueLife::kLive && placement.kind != EvaluationKind::kAlias &&
       placement.kind != EvaluationKind::kElidedPure && OrderedEvaluation(op);
 }
-PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& plan, PhaseBudget& budget)
+PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& plan, PhaseBudget& budget,
+    PhaseLiteralIntervals literals)
     : graph_(graph), plan_(plan), budget_(budget) {
   std::vector<std::size_t> incoming;
   std::vector<std::optional<EdgeId>> next;
@@ -51,6 +56,23 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
   budget.Array(copied, graph.edges.size()); budget.Array(uses_, graph.values.size());
   budget.Array(exits_, graph.ops.size()); budget.Array(throws_, graph.ops.size());
   budget.Array(staged_, plan.exceptions ? plan.exceptions->slots.size() : 0);
+  if (literals == PhaseLiteralIntervals::kInclude && plan.literals) {
+    budget.Array(literal_ends_, graph.ops.size());
+    // LiteralPlan already checked each complete laminar initializer interval.
+    // Index once; native call arguments consume the entire creation subtree.
+    for (const auto& literal : plan.literals->objects) {
+      budget.Step(); if (literal.form != LiteralForm::kExpression) continue;
+      // This index is also constructed while independently checking a proposed
+      // LiteralPlan. Validate bounds before using any of its supplied IDs.
+      if (literal.allocation.value >= graph.ops.size() || literal.count == 0 ||
+          literal.first > plan.literals->definitions.size() ||
+          literal.count > plan.literals->definitions.size() - literal.first)
+        throw EvaluationError::kOwnership;
+      const auto last = plan.literals->definitions[std::size_t(literal.first) + literal.count - 1];
+      if (last.value >= graph.ops.size()) throw EvaluationError::kOwnership;
+      literal_ends_[literal.allocation.value] = last;
+    }
+  }
   if (!plan.modules.empty()) {
     budget.Array(module_peers_, graph.ops.size());
     for (const auto& module : plan.modules) {
@@ -115,6 +137,11 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
       if (kind == EvaluationKind::kModuleGuard && !module_peers_.empty() &&
           module_peers_[owner->value]) continue;
       if (IsMemberReceiver(graph, plan, use)) continue;
+      // Owned definitions consume the allocation as their implicit literal
+      // base, not as a second source value. LiteralPlan proved that ownership.
+      if (kind == EvaluationKind::kInitializer && use.role == OperandRole::kBase &&
+          (std::holds_alternative<ValueOwnWrite>(graph.ops[owner->value].operation) ||
+           std::holds_alternative<ValueIndexedWrite>(graph.ops[owner->value].operation))) continue;
     }
     const auto operand = ResolveEvaluationOperand(plan, use.operand);
     const auto* value = std::get_if<ValueId>(&operand);
@@ -145,6 +172,12 @@ bool IsMemberReceiver(const ValueProgram& graph, const EvaluationPlan& plan, con
 }
 std::size_t PhaseCorridors::EffectsBefore(OpId op) const {
   return positions_[graph_.ops[op.value].block.value].effects;
+}
+PhaseEffectInterval PhaseCorridors::Interval(OpId op) const {
+  const auto last = !literal_ends_.empty() && literal_ends_[op.value] ? *literal_ends_[op.value] : op;
+  const auto end = EffectsBefore(last) + EffectCount(last), begin = EffectsBefore(op);
+  if (end < begin) throw EvaluationError::kOrder;
+  return {end - begin, end};
 }
 std::size_t PhaseCorridors::EffectCount(OpId op) const {
   const bool event = Event(graph_.ops[op.value], plan_.operations[op.value]);

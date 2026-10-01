@@ -9,7 +9,7 @@ namespace {
 using namespace analysis;
 using Error = EvaluationError;
 void Require(bool condition, Error error) { if (!condition) throw error; }
-struct EffectInterval { std::size_t count = 0, end = 0; };
+using EffectInterval = PhaseEffectInterval;
 std::optional<OpId> Producer(const ValueProgram& graph, const EvaluationPlan& plan, UseId use) {
   const auto operand = ResolveEvaluationOperand(plan, graph.uses[use.value].operand);
   const auto* value = std::get_if<ValueId>(&operand);
@@ -49,8 +49,7 @@ void Schedule(const ValueProgram& graph, EvaluationPlan& plan, PhaseCorridors& c
     if (retry && !retry->rejected[retry->roots[i].value]) continue;
     const auto& op = graph.ops[i];
     auto expected = corridors.EffectsBefore(id);
-    const auto effects = corridors.EffectCount(id);
-    intervals[i] = {effects, expected + effects};
+    intervals[i] = corridors.Interval(id);
     if (!Inputs(op, plan.operations[i])) continue;
     const auto shape = DescribeEvaluation(op.operation);
     Require(shape && shape->Count() == op.use_count, Error::kInvalidGraph);
@@ -71,7 +70,8 @@ void Schedule(const ValueProgram& graph, EvaluationPlan& plan, PhaseCorridors& c
       // its root's catch signature by induction; require the same signature at
       // each new parent. Pure roots lacking dispatch evidence keep snapshots.
       // Single-use producers bound these comparisons by original copy volume.
-      if (retry && child.count && !corridors.SameCatch(*producer, id)) continue;
+      if (retry && child.count && graph.ops[producer->value].exceptional == ExceptionalCompletion::kMayThrow &&
+          !corridors.SameCatch(*producer, id)) continue;
       Require(child.count <= expected, Error::kInvalidGraph);
       expected -= child.count; intervals[i].count += child.count;
       plan.operations[producer->value] = {EvaluationKind::kInline, use, {}};
@@ -108,6 +108,7 @@ std::variant<PhaseEvaluationCost, EvaluationError> BuildPhaseExpressions(
       budget.Step(); const OpId id{static_cast<std::uint32_t>(i)};
       if (plan.operations[i].kind == EvaluationKind::kInline &&
           PhaseCorridors::Event(graph.ops[i], plan.operations[i]) &&
+          graph.ops[i].exceptional == ExceptionalCompletion::kMayThrow &&
           !corridors.SameCatch(id, roots[i])) rejected[roots[i].value] = 1;
     }
     // Restore only rejected trees, then partition them in one constrained pass.
@@ -137,8 +138,7 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
       budget.Step(); const OpId id{static_cast<std::uint32_t>(i)};
       const auto& op = graph.ops[i];
       const auto end = corridors.EffectsBefore(id);
-      const auto effects = corridors.EffectCount(id);
-      intervals[i] = {effects, end + effects};
+      intervals[i] = corridors.Interval(id);
       if (!Inputs(op, plan.operations[i])) continue;
       const auto shape = DescribeEvaluation(op.operation);
       Require(shape && shape->Count() == op.use_count, Error::kInvalidGraph);
@@ -174,7 +174,8 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
       budget.Step();
       Require(plan.operations[i].kind != EvaluationKind::kInline || consumed[i], Error::kOwnership);
       if (plan.operations[i].kind == EvaluationKind::kInline &&
-          PhaseCorridors::Event(graph.ops[i], plan.operations[i]))
+          PhaseCorridors::Event(graph.ops[i], plan.operations[i]) &&
+          graph.ops[i].exceptional == ExceptionalCompletion::kMayThrow)
         Require(corridors.SameCatch(OpId{static_cast<std::uint32_t>(i)}, roots[i]), Error::kOrder);
     }
     return budget.Cost();

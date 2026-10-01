@@ -3,6 +3,7 @@
 #include "evaluation_aliases.h"
 #include "module_evaluation.h"
 #include "phase_evaluation.h"
+#include "phase_corridor.h"
 #include "logical_regions.h"
 #include "logical_evaluation.h"
 #include "tree_checks.h"
@@ -336,7 +337,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
             !logical_inputs.empty() && logical_inputs[i] == placement.consumer, Error::kOwnership);
       } else if (placement.kind == EvaluationKind::kInline) {
         Require(!pinned[i] || (cross(i) &&
-            std::holds_alternative<analysis::ValueModuleRead>(op.operation)), Error::kOwnership);
+            (std::holds_alternative<analysis::ValueModuleRead>(op.operation) ||
+             PhaseCorridors::Aggregate(op.operation))), Error::kOwnership);
         Require(op.result && placement.consumer && !placement.temporary, Error::kOwnership);
         Require(placement.consumer->value < graph.uses.size(), Error::kOwnership);
         const auto& use = graph.uses[placement.consumer->value];
