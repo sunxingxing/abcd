@@ -12,6 +12,23 @@
 
 ## 当前阶段
 
+### 2026-10-01：Categories 延迟初始化捕获的真实边界
+
+- 当前HEAD上重新定位Categories record18101：父方法19017在指令9/PC20创建
+  子方法18906；环境0的slot0直到指令18/PC47才首次写入。slot1、slot2分别在
+  指令12、8写入。实际LocalInitialization也指向18，故不是区间索引丢失。
+  证据 /tmp/abcd-categories-initialization-detail.log 和
+  /tmp/abcd-categories-parent-instructions.json（逐行JSON）。
+- 子方法18906在PC48读取depth0/slot0，PC50有原始检查，随后作为调用参数使用；
+  /tmp/abcd-categories-child-instructions.json。必须保留读取和检查的实际执行
+  时点；不能把未来初始化当作创建点的Language值证明。下一实现边界是捕获cell
+  身份与调用时值域义务的区分，而不是删除ScopeFacts初始化条件。
+- capture_plan_test新增未来store和同site store反例，即使给定覆盖当前块的
+  initialization区间也拒绝；将store改回创建前后正例通过。构建
+  /tmp/abcd-capture-future-build.log，定向测试通过，0.85秒，
+  /tmp/abcd-capture-future-tests.log。本项仅固定回归边界，没有新增完整record，
+  不声称已解决Categories；47/59/46导出基线未重跑。阶段一Goal继续开放。
+
 ### 2026-10-01：快照与逻辑组合的依赖范围修复
 
 - MiniGame 方法12784的前置字面量调用不属于后续快照/逻辑对象参数的表达式树，
