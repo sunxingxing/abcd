@@ -690,6 +690,53 @@ void NestedLiterals() {
     Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(fixture.graph)));
   }
 }
+void MixedNestedTrees() {
+  // Alternate forward object/property ownership and backward construct
+  // operands. Neither one forward scan nor one reverse scan can lower this.
+  for (const auto depth : {1U, 2U, 200U, 201U, 400U, 800U}) {
+    Fixture fixture;
+    fixture.graph.values.push_back({EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), {}});
+    for (std::uint32_t i = 0; i <= depth; ++i) {
+      fixture.Add(ValueObjectAllocation{}, true, {});
+      auto& op = fixture.graph.ops.back();
+      op.normal = op.before_throw = LanguageEffect::kAllocation;
+      op.exceptional = ExceptionalCompletion::kMayThrow;
+    }
+    for (std::uint32_t i = depth; i-- > 0;) {
+      fixture.Add(ValueConstruct{1}, true,
+          {{OperandRole::kConstructor, ValueId{0}}, {OperandRole::kArgument, ValueId{i + 2}}});
+      auto& construct = fixture.graph.ops.back();
+      construct.normal = construct.before_throw = LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+      construct.exceptional = ExceptionalCompletion::kMayThrow;
+      fixture.Add(ValueOwnWrite{OwnWriteKind::kDefineField, {0}, 0}, false,
+          {{OperandRole::kBase, ValueId{i + 1}}, {OperandRole::kStoredValue, *construct.result}});
+      auto& define = fixture.graph.ops.back();
+      define.normal = define.before_throw = LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+      define.exceptional = ExceptionalCompletion::kMayThrow;
+    }
+    fixture.Add(ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{1}}});
+    auto& graph = fixture.graph;
+    graph.blocks = {{{0}, static_cast<std::uint32_t>(graph.ops.size()), {0}, 0}};
+    const auto evaluated = BuildEvaluationPlan(graph);
+    Check(std::holds_alternative<EvaluationPlan>(evaluated));
+    const auto& evaluation = std::get<EvaluationPlan>(evaluated);
+    const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+    FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction;
+    syntax.strictness = Strictness::kStrict; syntax.names = {u"Ctor", u"value"};
+    syntax.parameters = {{NameId{0}, NameEvidence::kDebugRange}};
+    std::vector<ExpressionConstant> constants(graph.ops.size());
+    for (std::size_t i = 0; i < graph.ops.size(); ++i)
+      if (std::holds_alternative<ValueOwnWrite>(graph.ops[i].operation)) constants[i] = NameId{1};
+    const ExpressionConstants resolved{constants, 2};
+    const auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), resolved);
+    Check(std::holds_alternative<ConstructedFunction>(built));
+    const auto& tree = std::get<ConstructedFunction>(built).tree;
+    Check(tree.recovery_issues.empty());
+    Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
+    std::ostringstream output;
+    Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
+  }
+}
 void RhsSnapshot() {
   Fixture fixture;
   fixture.Add(ValueCopy{}, true, {{OperandRole::kInput, abcd::analysis::IntegerLiteral{1}}});
@@ -736,4 +783,4 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--late-string-source") { LateStringLeaves(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--late-read-source") { LateModuleProperties(true); return 0; }
   if (argc > 1) { SourceTree(false, true, true); return 0; }
-  LateMemberCalls(); ReadOrderBoundaries(); LateModuleProperties(); LateStringLeaves(); LiteralConsumers(); BufferedArraySuffix(); BufferedOverwrites(); NestedLiterals(); SourceTree(false, true); SourceTree(true, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }
+  LateMemberCalls(); ReadOrderBoundaries(); LateModuleProperties(); LateStringLeaves(); LiteralConsumers(); BufferedArraySuffix(); BufferedOverwrites(); NestedLiterals(); MixedNestedTrees(); SourceTree(false, true); SourceTree(true, true); ArrayBoundaries(); Mutations(); Budgets(); SourceTree(false); SourceTree(true); RhsSnapshot(); }

@@ -12,6 +12,44 @@
 
 ## 当前阶段
 
+### 2026-10-01：嵌套聚合参数与混合表达式依赖贯通
+
+- LiteralPlan现在接纳正常同块表达式中的fresh object/array参数，包括primitive
+  buffer及已有own initialization。独立检查以最终definition作为参数区间末端，
+  要求在consumer和下一参数之前完成；enclosing owner通过表达式消费者传播。
+  单次用途、未完成对象不逃逸、laminar初始化和原始效果顺序继续核对，未放宽
+  arbitrary late value或phased nesting。
+- ExpressionForest以有界Kahn工作表构建混合依赖，将initializer的语法父节点
+  指向真实allocation；每个nested node一条parent edge。替换不能处理交替
+  aggregate/call依赖的正反两遍扫描；额外O(operations+nodes)时间/O(operations)
+  scratch，沿用byte/work预算，不递归或反复全图扫描。完整源码保留
+  new Ctor({value: arg.value}, [9], {})，无新writer/依赖/样本分支。
+- 新真实解码夹具在旧实现确实于EvaluationPlan失败，
+  /tmp/abcd-literal-argument-red-source.log。修复后宽度1/2/200/201/400/800
+  贯通共同树、TreeFlow、semantics及printer；独立流有效的参数重排、聚合
+  共享和对象逃逸仍被拒绝，匹配重排operand的伪造nested proof也被拒绝。
+  另有1/2/200/201/400/800层object/construct交替嵌套通过共同树和printer。
+- 独立JS完整函数对照通过288个参数getter、构造器/Proxy、异常、替代对象、
+  prototype/descriptor、参数身份及保留修改用例，加6种argument-before-TypeError
+  检查，/tmp/abcd-literal-argument-behavior.log。生产和相关目标构建退出0，
+  /tmp/abcd-literal-argument-final-build.log；最终12/12定向测试通过15.03秒，
+  /tmp/abcd-literal-argument-final-tests.log。全量、RSS及基准保持暂停。
+- 真实PageA子函数7255现为完整tree、零recovery issue，已检查TreeFlow、ABI及
+  instruction sources，/tmp/abcd-literal-argument-pagea-7255-tree.log；其父family
+  尚未完成。当前下一子函数7366的CallPlan返回kReference，PC135显式receiver
+  call的callee为跨region root snapshot，原读取在PC84/block0、调用在block3，
+  /tmp/abcd-literal-argument-pagea-call-reference.log及
+  /tmp/abcd-literal-argument-pagea-callee-origin.log；
+  ExpressionForest因此拒绝kUnsupportedOperation，
+  /tmp/abcd-literal-argument-pagea-expression-error.log。先前catch/返回行的
+  无效局部变量曾被误读为kControl，已在真正FamilyTrees::Fail入口核正。
+- 最终五输入build/stage-one/value-literal-argument-pass-2均退出0，维持
+  **47 complete / 2 incomplete / 57 failure / 46 no-module**，无完整项退化、
+  无legacy writer，/tmp/abcd-literal-argument-final-batch-summary.json。
+  不以子函数通过替代record发布、配对语义或表示验收；Goal仍active且未完成。
+- 下一步恢复跨控制region的native member reference及其参数求值，不猜测receiver
+  或改写为依赖可变Function.prototype.call的调用。输入ABC和配对源码未修改。
+
 ### 2026-10-01：对象初始化中的单次构造表达式贯通共同源码路径
 
 - 正常同块LiteralPlan接纳ValueConstruct作为受检的late value expression；

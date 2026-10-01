@@ -20,10 +20,40 @@ through 28 constructor/getter/Proxy effect and throw scenarios, object identity
 and property descriptors, plus six non-constructible values. This is focused
 source behavior evidence, not full-record or paired-corpus acceptance.
 
-The real PageA 7255 construction at PC327 now passes this expression admission.
-Its buffered-object argument produced later than the enclosing allocation still
-refuses. Moving such arguments into nested syntax requires an additional checked
-aggregate-operand proof, rather than admitting arbitrary late values.
+## Aggregate operands of late expressions
+
+Normal block-local expression operands may now be nested fresh objects or arrays,
+including primitive literal buffers and owned initialization writes. The same
+unique-consumer census forbids sharing or escape. The laminar stack checks their
+enclosing literal owner through the expression consumer, rather than requiring
+an immediate own-write consumer. An operand's interval ends at its final owned
+definition, or allocation for a buffer/empty leaf; it must finish before the
+consumer and before the next operand begins. Property intervals still preserve
+their original effects. Arbitrary late values and phased nesting remain outside
+this extension.
+
+ExpressionForest constructs mixed read/call and aggregate/property dependencies
+with a bounded Kahn worklist. Each checked nested node has one syntax parent;
+initializer consumers point to the actual allocation. Pending child counts and
+one parent edge per node give O(O+N) additional time and O(O) storage for O
+operations and N nested nodes. This orders AST construction, while LiteralPlan,
+TreeFlow and operand checks preserve runtime order. Cycles or unresolved nodes
+are typed failures. No recursive lowering, repeated scans, third-party code or
+new dependencies are added; buffer-property assembly keeps its existing cost.
+
+The decoded constructor fixture now includes `{value: arg.value}`, `[9]` and
+`{}` as three arguments at 1/2/200/201/400/800 properties. Reordered arguments
+and shared aggregate results refuse, including a forged LiteralPlan whose
+consumer edges match the reordered graph. An additional unit fixture alternates
+aggregate/property and constructor edges at 1/2/200/201/400/800 nesting depth.
+The complete generated argument function passes 288 independent JS cases for
+effect/throw order, replacement objects, Proxy construction, exact argument
+identity, retained mutations, prototypes and descriptors, plus six checks that
+arguments evaluate before a non-constructible callee throws TypeError.
+
+Real PageA 7255 now reaches a complete tree, TreeFlow, ABI and instruction-source
+checks. The enclosing family still fails in later child 7366; this remains
+component evidence, not complete record publication or paired-source acceptance.
 
 This implements the first proof component of T07, not permission to replace an
 arbitrary own-definition with assignment. The working IR must already have

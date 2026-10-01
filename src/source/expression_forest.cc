@@ -196,36 +196,7 @@ class ForestBuilder {
       else
         forest_.origins.emplace_back(OriginalSite{origin.site, origin.pc, origin.original});
     }
-    // Read/call dependencies point backward; lower them in value order
-    // before assembling forward-owned nested aggregate/property expressions.
-    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
-      Step(); if (evaluation_.operations[i].kind != EvaluationKind::kNestedLiteral) continue;
-      const auto& op = graph_.ops[i];
-      if (std::holds_alternative<analysis::ValueArrayAllocation>(op.operation) ||
-          std::holds_alternative<analysis::ValueObjectAllocation>(op.operation)) continue;
-      const TreeOriginId origin{op.origin.value};
-      if (!std::holds_alternative<NoCall>(forest_.calls.operations[i]))
-        forest_.operations[i] = Call(op, forest_.calls.operations[i], origin);
-      else if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) Module(i, op, origin);
-      else {
-        std::array<ExprId, kFixedExpressionOperands> operands{};
-        Require(op.use_count <= operands.size(), Error::kUnsupportedOperation);
-        for (std::uint32_t j = 0; j < op.use_count; ++j) {
-          Step(); operands[j] = Use(analysis::UseId{op.first_use.value + j}, origin);
-        }
-        forest_.operations[i] = Lower({static_cast<std::uint32_t>(i)}, op, operands, origin, constants_.operations[i]);
-      }
-    }
-    // Nested allocation edges point forward in the original operation order.
-    // Reverse construction is therefore iterative postorder, without recursion
-    // or changing the evaluation order of the resulting native literal.
-    for (std::size_t i = graph_.ops.size(); i-- > 0;) {
-      Step(); if (evaluation_.operations[i].kind != EvaluationKind::kNestedLiteral) continue;
-      const auto& op = graph_.ops[i]; const TreeOriginId origin{op.origin.value};
-      if (forest_.operations[i]) continue;
-      if (objects_[i]) forest_.operations[i] = Object(evaluation_.literals->objects[*objects_[i]], origin);
-      else forest_.operations[i] = Lower({static_cast<std::uint32_t>(i)}, op, {}, origin, constants_.operations[i]);
-    }
+    NestedTrees();
     const bool partial = CanRetainPrefix();
     struct Boundary {
       std::size_t operation = 0, expressions = 0, arguments = 0, origins = 0, parts = 0;
@@ -480,6 +451,69 @@ class ForestBuilder {
           std::holds_alternative<analysis::ValueObjectAllocation>(op.operation)) return false;
     }
     return true;
+  }
+  void NestedTrees() {
+    if (!evaluation_.literals || evaluation_.literals->nested.empty()) return;
+    // Each checked nested value has one syntax consumer. Redirect own-write
+    // consumers to their allocation, then use Kahn's worklist over these
+    // ownership edges. Read/call edges and aggregate/property edges may point
+    // in opposite IR directions; two scans cannot order their mixed trees.
+    // O(operations + nested edges), bounded storage, no recursive lowering or
+    // repeated dependency scans. This schedules construction, not execution.
+    std::vector<std::optional<analysis::OpId>> parents;
+    std::vector<std::size_t> pending;
+    std::vector<analysis::OpId> ready;
+    Reserve(parents, graph_.ops.size()); parents.resize(graph_.ops.size());
+    Reserve(pending, graph_.ops.size()); pending.resize(graph_.ops.size());
+    Step(graph_.ops.size()); Step(graph_.ops.size());
+    Reserve(ready, graph_.ops.size());
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      Step(); if (evaluation_.operations[i].kind != EvaluationKind::kNestedLiteral) continue;
+      ++count;
+      const auto use = evaluation_.operations[i].consumer;
+      Require(use && use->value < graph_.uses.size(), Error::kOwnership);
+      const auto* parent = std::get_if<analysis::OpId>(&graph_.uses[use->value].owner);
+      Require(parent && parent->value < graph_.ops.size(), Error::kOwnership);
+      auto target = *parent;
+      if (evaluation_.operations[target.value].kind == EvaluationKind::kInitializer) {
+        const auto& definition = graph_.ops[target.value];
+        Require(definition.use_count == 2, Error::kOwnership);
+        const auto* base = std::get_if<analysis::ValueId>(&graph_.uses[definition.first_use.value].operand);
+        const auto* allocation = base ? std::get_if<analysis::OpResult>(&graph_.values[base->value].origin) : nullptr;
+        Require(allocation && objects_[allocation->op.value], Error::kOwnership);
+        target = allocation->op;
+      }
+      if (evaluation_.operations[target.value].kind != EvaluationKind::kNestedLiteral) continue;
+      parents[i] = target; ++pending[target.value];
+    }
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      Step(); if (evaluation_.operations[i].kind == EvaluationKind::kNestedLiteral && !pending[i])
+        ready.push_back({static_cast<std::uint32_t>(i)});
+    }
+    for (std::size_t at = 0; at < ready.size(); ++at) {
+      Step(); const auto id = ready[at]; const auto i = id.value;
+      const auto& op = graph_.ops[i]; const TreeOriginId origin{op.origin.value};
+      Require(!forest_.operations[i], Error::kOwnership);
+      if (objects_[i]) forest_.operations[i] = Object(evaluation_.literals->objects[*objects_[i]], origin);
+      else if (!std::holds_alternative<NoCall>(forest_.calls.operations[i]))
+        forest_.operations[i] = Call(op, forest_.calls.operations[i], origin);
+      else if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) Module(i, op, origin);
+      else {
+        std::array<ExprId, kFixedExpressionOperands> operands{};
+        Require(op.use_count <= operands.size(), Error::kUnsupportedOperation);
+        for (std::uint32_t j = 0; j < op.use_count; ++j) {
+          Step(); operands[j] = Use(analysis::UseId{op.first_use.value + j}, origin);
+        }
+        forest_.operations[i] = Lower(id, op, operands, origin, constants_.operations[i]);
+      }
+      if (parents[i]) {
+        const auto parent = *parents[i];
+        Require(pending[parent.value] != 0, Error::kOwnership);
+        if (--pending[parent.value] == 0) ready.push_back(parent);
+      }
+    }
+    Require(ready.size() == count, Error::kOwnership);
   }
   PropertyRange BufferedProperties(const ExpressionConstant& constant, TreeOriginId origin) {
     const auto* object = std::get_if<AggregateConstant>(&constant);

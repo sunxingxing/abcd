@@ -273,7 +273,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); if (!plan.nested[i] || Aggregate(graph.ops[i].operation)) continue;
     const auto& op = graph.ops[i];
-    std::optional<analysis::OpId> previous;
+    std::optional<std::size_t> previous;
     for (std::uint32_t u = 0; u < op.use_count; ++u) {
       budget.Step(); const analysis::UseId use{op.first_use.value + u};
       if (ReferenceReceiver(graph, use)) continue;
@@ -281,11 +281,15 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
       const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
       if (!result) continue;
       if (plan.nested[result->op.value] == use) {
-        Require(!Aggregate(graph.ops[result->op.value].operation) && result->op.value < i &&
+        // An aggregate operand occupies its entire initialization interval,
+        // not just its allocation site. Arguments must be complete, disjoint
+        // and in source operand order before their consuming expression.
+        const auto finish = ends[result->op.value] ? ends[result->op.value]->value : result->op.value;
+        Require(finish < i &&
             value_owners[result->op.value] == value_owners[i] &&
-            (!previous || previous->value < first_read[result->op.value]), Error::kDefinition);
+            (!previous || *previous < first_read[result->op.value]), Error::kDefinition);
         first_read[i] = std::min(first_read[i], first_read[result->op.value]);
-        previous = result->op;
+        previous = finish;
       } else Require(result->op.value < value_owners[i]->value, Error::kLateValue);
     }
   }
@@ -297,8 +301,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     if (Aggregate(op.operation) && (ends[i] || plan.nested[i])) {
       if (depth) {
         Require(plan.nested[i].has_value(), Error::kObserved);
-        const auto parent = std::get<analysis::OpId>(graph.uses[plan.nested[i]->value].owner);
-        Require(owners[parent.value] == stack[depth - 1], Error::kDefinition);
+        Require(value_owners[i] == stack[depth - 1], Error::kDefinition);
       } else Require(!plan.nested[i], Error::kDefinition);
       if (ends[i]) stack[depth++] = {static_cast<std::uint32_t>(i)};
     } else if (depth) {
@@ -614,7 +617,8 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
           const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use.value].operand);
           const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
           if (!result || result->op.value < allocation[i]->value) continue;
-          Require(LiteralExpression(graph.ops[result->op.value], result->op.value, guards), Error::kLateValue);
+          Require(Aggregate(graph.ops[result->op.value].operation) ||
+              LiteralExpression(graph.ops[result->op.value], result->op.value, guards), Error::kLateValue);
           Require(!plan.nested[result->op.value], Error::kObserved);
           plan.nested[result->op.value] = use;
         }

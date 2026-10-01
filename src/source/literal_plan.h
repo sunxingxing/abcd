@@ -32,7 +32,7 @@ struct LiteralPlan {
   std::vector<analysis::OpId> definitions;
   std::vector<std::uint8_t> staged;
   // Per nested allocation/value expression, the unique immediate consumer use.
-  // Read chains preserve operand and property order; module guards are paired. Empty
+  // Operand trees preserve initialization/operand/property order; module guards are paired. Empty
   // for roots. Only normal, block-local, unobserved nesting is admitted.
   std::vector<std::optional<analysis::UseId>> nested;
   std::size_t allocated_bytes = 0;

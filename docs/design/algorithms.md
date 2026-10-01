@@ -189,6 +189,28 @@ O(B + E + P) beyond existing plans. No pairwise field scan is used. Both express
 construction and operand verification require each target key to exist as a
 writable own data property in the original buffer. This permits native assignment
 without inherited-setter behavior. No external dependency or license is added.
+
+### Mixed nested expression construction (2026-10-01)
+
+ExpressionForest::NestedTrees uses this project's implementation of Kahn's
+indegree worklist algorithm over verified literal syntax ownership. Read/call
+operand dependencies point backward in IR, while aggregate/property ownership
+can point forward. A forward pass followed by a reverse aggregate pass cannot
+construct arbitrary alternating trees. Each nested node has one parent edge;
+an initializer's syntax parent is its exact allocation, not the own-write op.
+Use a pending-child count and a bounded ready list, release the parent after
+constructing its child, and refuse any unprocessed cycle. Never change runtime
+operand/property order to obtain a topological construction order.
+
+For O IR operations and N nested nodes, dependency construction costs O(O+N)
+time and O(O) scratch storage, with N <= O. Normal literal use/interval checks
+and per-object buffer-property assembly retain their separate costs; the bound
+does not claim the whole decompiler is linear. Initializations, scans, capacity
+and child releases are charged to the existing byte/work grant. No external
+code, license or dependency is introduced. Keep the unique-parent and interval
+prerequisites when maintaining this pass. Width and mixed nesting depth tests
+cover 200/201/400/800; no full RSS or benchmark work was resumed, so this is
+algorithmic and focused test evidence rather than process performance acceptance.
 Evidence: literal_plan_test and decoded logical_regions source behavior tests;
 this is not a peak-RSS or benchmark claim.
 
