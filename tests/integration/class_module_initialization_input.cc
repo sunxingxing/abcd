@@ -71,13 +71,16 @@ int main(int argc, char** argv) {
   test::Check(record != index.records.end());
   const auto packaging = std::get<abc::FilePackaging>(abc::DetectFilePackaging(file, header, index));
   const auto modules = std::get<RecordModuleContext>(ReadRecordModuleContext(file, header, index, *record, packaging));
-  const auto family = std::get<FileFamily>(ReadFunctionFamily(file, header, index, lookup, roles, sites,
+  auto family = std::get<FileFamily>(ReadFunctionFamily(file, header, index, lookup, roles, sites,
       context.Position(), identity, {}, &modules, &context, {record->offset.value}, FamilyClassMode::kReject, &module_input));
   const auto actual = std::find_if(family.members.begin(), family.members.end(),
       [](const auto& member) { return member.function.Method() == abc::EntityOffset{7754}; });
   test::Check(actual != family.members.end() && actual->incoming && !actual->function.Phase());
   test::Check(actual->function.Normal().input.InitializedModuleReads().size() == 2);
   for (const auto& read : actual->function.Normal().input.InitializedModuleReads()) test::Check(!read.store);
+  const auto actual_trees = BuildFileFamilyTrees(file, header, index, std::move(family), context,
+      {}, &modules, {record->offset.value}, &lookup);
+  test::Check(std::holds_alternative<ConstructedFamily>(actual_trees));
 
   // Keep the exact real owners but isolate decoded read lowering from the
   // unrelated call-reference failure in this constructor's full callback.

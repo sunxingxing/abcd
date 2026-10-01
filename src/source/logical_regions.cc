@@ -4,6 +4,8 @@
 #include "module_evaluation.h"
 
 #include <array>
+#include <algorithm>
+#include <iterator>
 
 namespace abcd::source {
 namespace {
@@ -215,6 +217,17 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
   budget.Array(stack, control.nodes.size()); budget.Array(order, control.nodes.size());
   budget.Array(visited, control.nodes.size()); budget.Array(selected, control.nodes.size());
   budget.Array(leaf_counts, control.nodes.size());
+  std::vector<std::uint8_t> decision_owned;
+  std::vector<SelectionCondition> conditions;
+  std::vector<ControlId> condition_blocks;
+  budget.Array(decision_owned, control.nodes.size());
+  budget.Array(conditions, control.nodes.size());
+  budget.Array(condition_blocks, control.nodes.size());
+  for (const auto& node : control.nodes) {
+    budget.Step();
+    if (node.decision)
+      decision_owned[node.decision->predicate.value_or(node.decision->evaluate).value] = 1;
+  }
   std::size_t ordered = 0;
   for (std::size_t root = 0; root < control.nodes.size(); ++root) {
     budget.Step(); if (visited[root]) continue;
@@ -264,7 +277,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
   budget.Admit(result.capacity() - control.nodes.size(), sizeof(SelectionRegion));
   for (const auto control_id : order) {
     const auto& node = control.nodes[control_id.value];
-    budget.Step(); if (node.decision || !node.arms || !std::holds_alternative<std::monostate>(node.synthetic)) continue;
+    budget.Step(); if (decision_owned[control_id.value] || !node.arms || !std::holds_alternative<std::monostate>(node.synthetic)) continue;
     const auto& block = graph.blocks[node.block.value];
     if (block.edge_count != 2 || !block.op_count) continue;
     const OpId branch_id{block.first_op.value + block.op_count - 1};
@@ -282,8 +295,60 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     const auto* binary = std::get_if<ValueBinary>(&condition);
     if (!(unary && (unary->op == UnaryOperator::kToBoolean || unary->op == UnaryOperator::kLogicalNot)) &&
         !(binary && (binary->op == BinaryOperator::kStrictEqual || binary->op == BinaryOperator::kStrictNotEqual))) continue;
-    const auto taken = path(node.arms->taken, block.first_edge);
-    const auto other = path(node.arms->fallthrough, {block.first_edge.value + 1});
+    std::size_t condition_count = 0, condition_block_count = 0;
+    const auto* tail = &node;
+    bool shared_taken = node.arms->taken.has_value();
+    bool decision_closed = true;
+    if (node.decision) {
+      // Only the maximal decision owns its path. Control verification already
+      // establishes single entry/shared arm; require a closed local expression
+      // forest at every conditional RHS, without retained roots or phi copies.
+      conditions[condition_count++] = {branch_id, shared_taken};
+      while (tail->decision && decision_closed) {
+        budget.Step();
+        const auto& decision = *tail->decision;
+        auto next = decision.evaluate;
+        const auto terminal = decision.predicate.value_or(next);
+        while (true) {
+          budget.Step(); const auto& part = control.nodes[next.value];
+          if (phis[part.block.value] || !std::holds_alternative<std::monostate>(part.synthetic)) { decision_closed = false; break; }
+          const auto& source = graph.blocks[part.block.value];
+          const bool predicate = next == terminal;
+          if ((predicate && (!part.arms || source.edge_count != 2 || !source.op_count)) ||
+              (!predicate && (part.arms || part.decision || !part.next || source.edge_count != 1))) { decision_closed = false; break; }
+          for (std::uint32_t j = 0; j < source.op_count; ++j) {
+            budget.Step(); const auto id = source.first_op.value + j; const auto& operation = graph.ops[id];
+            if (operation.life != ValueLife::kLive || (predicate && j + 1 == source.op_count) ||
+                std::holds_alternative<ValueJump>(operation.operation)) continue;
+            const auto kind = evaluation.operations[id].kind;
+            if (kind != EvaluationKind::kInline && kind != EvaluationKind::kAlias &&
+                kind != EvaluationKind::kElidedPure && !OwnedModuleGuard(graph, evaluation, modules, id)) decision_closed = false;
+          }
+          if (!decision_closed) break;
+          condition_blocks[condition_block_count++] = next;
+          if (predicate) {
+            const OpId at{source.first_op.value + source.op_count - 1};
+            const auto& last = graph.ops[at.value];
+            const auto* test = std::get_if<ValueBranch>(&last.operation);
+            if (!test || last.life != ValueLife::kLive || !Pure(last) || last.use_count != 1 ||
+                (test->predicate != UnaryOperator::kTrueOrNonzeroNumber && test->predicate != UnaryOperator::kFalseOrZero)) { decision_closed = false; break; }
+            conditions[condition_count++] = {at, decision.shared_on_taken};
+            shared_taken = decision.shared_on_taken; tail = &part; break;
+          }
+          next = *part.next;
+        }
+      }
+      if (!decision_closed) continue;
+    }
+    const auto& last = graph.blocks[tail->block.value];
+    const auto taken = node.decision
+        ? path(node.arms->taken ? node.arms->taken : node.arms->fallthrough,
+            {block.first_edge.value + (node.arms->taken ? 0U : 1U)})
+        : path(node.arms->taken, block.first_edge);
+    const auto other = node.decision
+        ? path(shared_taken ? tail->arms->fallthrough : tail->arms->taken,
+            {last.first_edge.value + (shared_taken ? 1U : 0U)})
+        : path(node.arms->fallthrough, {block.first_edge.value + 1});
     if (!taken || !other) continue;
     const auto join = taken->join;
     if (other->join != join || !phis[join.value] || multiple[join.value]) continue;
@@ -291,7 +356,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
         !std::holds_alternative<std::monostate>(control.nodes[node.next->value].synthetic))) continue;
     const auto merged = *phis[join.value];
     if (inputs[merged.value] < 2 || !graph.values[merged.value].domain.IsLanguage()) continue;
-    const auto yes = positive ? *taken : *other, no = positive ? *other : *taken;
+    const auto yes = (node.decision || positive) ? *taken : *other, no = (node.decision || positive) ? *other : *taken;
     const auto operand = [&](const Path& arm) -> std::optional<SelectionOperand> {
       if (arm.child) {
         const auto& nested = result[*arm.child];
@@ -320,9 +385,17 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     if (no.child) result[*no.child].parent = branch_id;
     result.push_back({TreeLogical::kOr, producer->op, branch_id, merged, *predicate, *alternate,
         node.block, yes.block, no.block, join, yes.incoming, no.incoming, *consequent,
-        positive ? node.arms->taken : node.arms->fallthrough,
-        positive ? node.arms->fallthrough : node.arms->taken,
+        node.decision ? (node.arms->taken ? node.arms->taken : node.arms->fallthrough) : positive ? node.arms->taken : node.arms->fallthrough,
+        node.decision ? (shared_taken ? tail->arms->fallthrough : tail->arms->taken) : positive ? node.arms->fallthrough : node.arms->taken,
         leaves == inputs[merged.value] && node.next.has_value(), {}, dependency});
+    if (node.decision) {
+      auto& region = result.back();
+      budget.Array(region.conditions, condition_count);
+      budget.Array(region.condition_blocks, condition_block_count);
+      std::copy_n(conditions.begin(), condition_count, region.conditions.begin());
+      std::copy_n(condition_blocks.begin(), condition_block_count, region.condition_blocks.begin());
+      region.last_dependency = std::max(*region.last_dependency, conditions[condition_count - 1].branch);
+    }
   }
   return result;
 }
@@ -373,9 +446,9 @@ std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph,
     if (closed) regions[count++] = region;
   }
   regions.resize(count);
-  const auto conditional = FindConditionalExpressions(graph, control, evaluation, *modules, budget);
+  auto conditional = FindConditionalExpressions(graph, control, evaluation, *modules, budget);
   budget.Admit(conditional.size(), sizeof(SelectionRegion));
-  regions.insert(regions.end(), conditional.begin(), conditional.end());
+  regions.insert(regions.end(), std::make_move_iterator(conditional.begin()), std::make_move_iterator(conditional.end()));
   return regions;
 }
 std::vector<std::optional<UseId>> FindLogicalLeftInputs(const ValueProgram& graph,

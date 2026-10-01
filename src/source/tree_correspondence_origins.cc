@@ -125,8 +125,12 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
     }
     RequireMeaning(flow.expressions[i].has_value(), Error::kOrigin);
     auto& owner = expected[op.origin.value];
-    RequireMeaning(!owner || owner == flow.expressions[i], Error::kOrigin);
-    owner = flow.expressions[i];
+    // A decision-selection branch owns its original scalar test. The selected
+    // value is separately checked by TreeFlow against the conditional syntax.
+    const auto expression = !flow.branch_predicates.empty() && flow.branch_predicates[i]
+        ? flow.branch_predicates[i] : flow.expressions[i];
+    RequireMeaning(!owner || owner == expression, Error::kOrigin);
+    owner = expression;
   }
   for (const auto& placement : tree.operations) {
     budget.Step();

@@ -33,6 +33,10 @@ struct TreeFlow {
   // Original ToBoolean/branch operations composed into one native logical node.
   std::vector<std::optional<TreeLogical>> logical_operations;
   std::vector<std::uint8_t> conditional_operations;
+  // A decision-selection root also produces a complete conditional value.
+  // Keep its independently reconstructed scalar predicate separate, so the
+  // original branch is checked without confusing it with the selected value.
+  std::vector<std::optional<ExprId>> branch_predicates;
   // Derived from actual statement arms; expression verification checks the
   // corresponding original or complemented predicate without repeating reads.
   std::vector<BranchPolarity> branch_polarity;

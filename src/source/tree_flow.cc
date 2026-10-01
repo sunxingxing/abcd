@@ -61,6 +61,7 @@ class FlowCheck {
         budget.Array(logical_branches_, graph.ops.size());
         budget.Array(flow_.logical_operations, graph.ops.size());
         budget.Array(flow_.conditional_operations, graph.ops.size());
+        budget.Array(flow_.branch_predicates, graph.ops.size());
         budget.Array(conditional_tasks_, logicals_.size());
         for (std::size_t i = 0; i < logicals_.size(); ++i) logical_branches_[logicals_[i].branch.value] = i;
       }
@@ -451,7 +452,38 @@ class FlowCheck {
     while (pending) {
       budget_.Step(); const auto task = conditional_tasks_[--pending]; const auto& current = logicals_[task.region];
       const auto* conditional = std::get_if<ConditionalExpr>(&tree_.expressions[task.expression.value].expression);
-      Require(conditional && flow_.expressions[current.boolean.value] == conditional->condition, Error::kPlacement);
+      Require(conditional && tree_.expressions[task.expression.value].origin.value ==
+          graph_.ops[current.branch.value].origin.value, Error::kPlacement);
+      if (current.conditions.empty()) {
+        Require(flow_.expressions[current.boolean.value] == conditional->condition, Error::kPlacement);
+      } else {
+        auto condition = conditional->condition;
+        for (std::size_t i = 0; i < current.conditions.size(); ++i) {
+          budget_.Step(); const auto& scalar = current.conditions[i];
+          auto expression = condition;
+          if (i + 1 != current.conditions.size()) {
+            const auto* logical = std::get_if<LogicalExpr>(&tree_.expressions[condition.value].expression);
+            Require(logical && logical->operation == TreeLogical::kOr, Error::kControl);
+            expression = logical->left; condition = logical->right;
+          }
+          flow_.branch_polarity[scalar.branch.value] = scalar.shared_on_taken ? BranchPolarity::kTaken : BranchPolarity::kFallthrough;
+          if (i == 0) flow_.branch_predicates[scalar.branch.value] = expression;
+          else Require(flow_.expressions[scalar.branch.value] == expression, Error::kPlacement);
+        }
+        for (const auto id : current.condition_blocks) {
+          budget_.Step(); const auto& block = graph_.blocks[control_.nodes[id.value].block.value];
+          for (std::uint32_t i = 0; i < block.op_count; ++i) {
+            budget_.Step(); const analysis::OpId op{block.first_op.value + i};
+            if (std::holds_alternative<analysis::ValueBranch>(graph_.ops[op.value].operation) ||
+                evaluation_.operations[op.value].kind == EvaluationKind::kModuleGuard) continue;
+            DecisionOperation(op, parent, child);
+          }
+          for (std::uint8_t i = 0; i < block.edge_count; ++i) {
+            budget_.Step(); std::uint32_t empty = 0;
+            edges_->Consume(analysis::EdgeId{block.first_edge.value + i}, BlockStmt{}, empty);
+          }
+        }
+      }
       const auto arm = [&](const SelectionOperand& input, ExprId actual) {
         if (const auto* nested = std::get_if<SelectionChild>(&input)) {
           Require(nested->branch.value < logical_branches_.size() && logical_branches_[nested->branch.value], Error::kPlacement);

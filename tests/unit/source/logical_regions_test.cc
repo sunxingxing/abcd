@@ -15,10 +15,11 @@ using namespace abcd;
 using namespace abcd::source;
 using abcd::test::Check;
 namespace {
-analysis::ValueProgram Import(const std::vector<std::uint8_t>& bytes, std::uint32_t locals, std::optional<FunctionInput>* input = nullptr) {
+analysis::ValueProgram Import(const std::vector<std::uint8_t>& bytes, std::uint32_t locals, std::optional<FunctionInput>* input = nullptr,
+    abcd::abc::ProfileId profile = abcd::abc::ProfileId::kDynamic1206) {
   const auto body = test::Body(bytes);
   using namespace analysis;
-  const auto method_result = BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, locals + 1);
+  const auto method_result = BuildSemanticMethod(body, profile, locals + 1);
   Check(std::holds_alternative<SemanticMethod>(method_result));
   const auto& method = std::get<SemanticMethod>(method_result);
   const auto proof_result = VerifySemanticSource(body, method, locals, 1);
@@ -26,7 +27,7 @@ analysis::ValueProgram Import(const std::vector<std::uint8_t>& bytes, std::uint3
   const auto& proof = std::get<SemanticProof>(proof_result);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(locals, 1, {false, false, false, false}));
   if (input) {
-    RouteInputIdentity identity{}; identity.profile = abc::ProfileId::kDynamic1206;
+    RouteInputIdentity identity{}; identity.profile = profile;
     *input = std::get<FunctionInput>(FunctionInput::Build(identity, {}, {}, body, frame, InputCaptureMode::kClosed));
   }
   auto imported = ImportNormalValues(body, method, proof, frame);
@@ -117,6 +118,31 @@ analysis::ValueProgram ConditionalCall(bool method_first) {
   if (!method_first) bytes.insert(bytes.end(), method.begin(), method.end());
   bytes.insert(bytes.end(), {0x60, 0, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 1, 0x64});
   return Import(bytes, 3);
+}
+analysis::ValueProgram DecisionCall(unsigned count = 1, bool barrier = false,
+    abcd::abc::ProfileId profile = abcd::abc::ProfileId::kDynamic1206,
+    std::optional<FunctionInput>* input = nullptr) {
+  // The getter precedes a short-circuit predicate and a shared fallback arm:
+  // value.items(value.probe && value.other ? value.probe : value.other).
+  std::vector<std::uint8_t> code;
+  for (unsigned i = 0; i < count; ++i) {
+    code.insert(code.end(), {0x60, 3, 0x42, 0, 1, 0, 0x61, 0,
+        0x60, 3, 0x42, 0, 0, 0, 0xfb, 0x13, 0});
+    const auto first = code.size(); code.insert(code.end(), {0x4f, 0});
+    if (barrier) code.push_back(static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER));
+    code.insert(code.end(), {0x60, 3, 0x42, 0, 2, 0, 0xfb, 0x13, 0});
+    const auto second = code.size(); code.insert(code.end(), {0x4f, 0});
+    code.insert(code.end(), {0x60, 3, 0x42, 0, 0, 0, 0x61, 1});
+    const auto jump = code.size(); code.insert(code.end(), {0x4d, 0});
+    const auto fallback = code.size();
+    code.insert(code.end(), {0x60, 3, 0x42, 0, 2, 0, 0x61, 1});
+    code[first + 1] = static_cast<std::uint8_t>(fallback - first);
+    code[second + 1] = static_cast<std::uint8_t>(fallback - second);
+    code[jump + 1] = static_cast<std::uint8_t>(code.size() - jump);
+    code.insert(code.end(), {0x60, 0, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 1});
+  }
+  code.push_back(0x64);
+  return Import(code, 3, input, profile);
 }
 analysis::ValueProgram OptionalCall(bool method_first) {
   const std::vector<std::uint8_t> method{0x60, 3, 0x42, 0, 1, 0, 0x61, 0};
@@ -339,6 +365,25 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true, con
   Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, view)));
+  TreeCheckBudget decision_budget({});
+  for (const auto& region : FindSelectionExpressions(graph, control, evaluation, decision_budget)) {
+    if (region.conditions.empty()) continue;
+    for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
+      if (!std::holds_alternative<ConditionalExpr>(tree.expressions[i].expression)) continue;
+      auto wrong = tree;
+      const auto condition = std::get<ConditionalExpr>(wrong.expressions[i].expression).condition;
+      const auto* logical = std::get_if<LogicalExpr>(&wrong.expressions[condition.value].expression);
+      if (!logical) continue;
+      std::get<LogicalExpr>(wrong.expressions[condition.value].expression).operation = TreeLogical::kAnd;
+      Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, view)));
+      wrong = tree;
+      auto& changed = std::get<LogicalExpr>(wrong.expressions[condition.value].expression);
+      std::swap(changed.left, changed.right);
+      Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, view)));
+      break;
+    }
+    break;
+  }
   for (const auto& placement : tree.operations) {
     if (evaluation.operations[placement.operation.value].kind != EvaluationKind::kPredicateSnapshot) continue;
     const auto raw = std::get<ExprId>(placement.node);
@@ -369,7 +414,8 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true, con
     std::swap(conditional.consequent, conditional.alternate);
     Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, view)));
     wrong = tree;
-    wrong.expressions[i].origin = wrong.expressions[std::get<ConditionalExpr>(wrong.expressions[i].expression).condition.value].origin;
+    Check(wrong.expressions[i].origin.value != graph.ops.front().origin.value);
+    wrong.expressions[i].origin = TreeOriginId{graph.ops.front().origin.value};
     Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, view)));
     break;
   }
@@ -624,6 +670,33 @@ std::string BooleanConversions(unsigned count, bool comparison) {
   return Source(graph, true, &*input, false);
 }
 int main(int argc, char** argv) {
+  const auto decision_call = DecisionCall();
+  const auto decision_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(decision_call));
+  Check(std::holds_alternative<CallPlan>(BuildCallPlan(decision_call, decision_evaluation)));
+  const auto decision_source = Source(decision_call);
+  Check(decision_source.find("if (") == std::string::npos && decision_source.find(" ? ") != std::string::npos);
+  if (argc == 2 && std::string_view(argv[1]) == "--decision-source") {
+    std::cout << decision_source << '\n'; return 0;
+  }
+  if (argc == 1 || (argc == 2 && std::string_view(argv[1]) == "--decision-sources")) {
+    const bool emit = argc == 2;
+    if (emit) std::cout << '[';
+    bool first = true;
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+      for (const auto count : {1U, 200U, 201U, 400U}) {
+        std::optional<FunctionInput> input;
+        const auto graph = DecisionCall(count, false, profile, &input);
+        const auto source = Source(graph, true, &*input, false);
+        Check(source.find("if (") == std::string::npos && source.find("$phi") == std::string::npos &&
+            source.find(".call(") == std::string::npos);
+        if (emit) { if (!first) std::cout << ','; first = false; std::cout << source; }
+      }
+      const auto interrupted = DecisionCall(1, true, profile);
+      const auto plan = std::get<EvaluationPlan>(BuildEvaluationPlan(interrupted));
+      Check(std::get<CallPlanError>(BuildCallPlan(interrupted, plan)) == CallPlanError::kReference);
+    }
+    if (emit) { std::cout << "]\n"; return 0; }
+  }
   for (const auto count : {1U, 2U, 16U, 200U, 201U}) {
     const auto raw = BooleanConversions(count, false);
     const auto compared = BooleanConversions(count, true);

@@ -114,8 +114,9 @@ class OperandCheck {
         continue;
       }
       RequireMeaning(flow_.expressions[i].has_value(), Error::kOperand);
-      const auto expression = *flow_.expressions[i];
-      if (!flow_.conditional_operations.empty() && flow_.conditional_operations[i]) {
+      const auto predicate = !flow_.branch_predicates.empty() ? flow_.branch_predicates[i] : std::nullopt;
+      const auto expression = predicate.value_or(*flow_.expressions[i]);
+      if (!predicate && !flow_.conditional_operations.empty() && flow_.conditional_operations[i]) {
         const auto& conditional = Node<ConditionalExpr>(expression);
         RequireMeaning(std::holds_alternative<analysis::ValueBranch>(op.operation) && op.use_count == 1, Error::kOperand);
         Input(graph_.uses[op.first_use.value].operand, conditional.condition);

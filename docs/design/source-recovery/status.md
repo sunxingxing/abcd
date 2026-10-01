@@ -12,6 +12,54 @@
 
 ## 当前阶段
 
+### 2026-10-02：共享条件分支与成员调用参数贯通
+
+- 真实 WindowUtil 箭头7754 的 getter op14 在 block0，调用 op50 在
+  block4；callee 被保留为 kCrossRegionValue。参数条件拥有共享 fallback
+  与 ControlDecision，旧 selection 跳过 decision 根，仅留下不完整子
+  selection，无法融合调用。最小同形 decoded 回归成功构建后在 CallPlan
+  RED：/tmp/abcd-decision-selection-red-{build,test}.log；原始 getter/
+  receiver/控制证据见 member-conditional-call-real-{detail,full}.log 与
+  member-conditional-call-tree-control.log。
+- selection 现在保留最大 decision 根的 flat 条件与路径，逐一检查原
+  inline/guarded-module 所有权与原共享边极性。保留根、phi、独立入口
+  或 DEBUGGER 路径不融合；normal/phase 边界不变。共同效果区间证明
+  将完整短路条件作为有条件事件，callee/getter 仍先于参数，最后通过
+  原 MemberCall/稳定 receiver 检查。输出共同 LogicalExpr/ConditionalExpr
+  与原生成员调用，没有 `.call` 或样本专用 writer。
+- 原分支既有 scalar 表达式不能代表完整 selection 已构造；新增 built
+  索引区分两者。最初接通后实际 tree_structure 拒绝未归属条件表达式，
+  修正后继续在 origin 对应拒绝。TreeFlow 分别恢复原 scalar 判断和
+  最终选值，operand/origin 使用已核对 scalar，选值用途保留 conditional；
+  独立检查原根 branch origin。没有放宽结构/来源义务。
+- 三 profile、1/200/201/400 次 decoded 调用，经共同完整 FunctionTree、
+  TreeSemantics、InstructionSources 和打印范围验证。条件 operator/顺序、
+  选值 arm 和根来源变异拒绝；原测试将来源改为条件来源在新组合中会
+  成为无变化，改为明确不同的原始来源，保留变异拒绝义务。
+  已有定向单元通过7.18秒，expanded-test.log。
+- 新 decision_selection_source_test 独立执行12份生成源码，1092个 getter
+  顺序、truth conversion、实时状态、对象身份、receiver 和异常场景，
+  包含 hostile coercion 与可变 function.call；三个合法语法 mutation 被
+  检测。注册定向3/3通过3.94秒，oracle-registered-tests.log。这是完整
+  decoded fixture 的独立 oracle，不是配对 WindowUtil 或真实 Ark/宿主验收。
+- 实际 ReadFunctionFamily 构造器8339/箭头7754 的完整函数族现在通过
+  BuildFileFamilyTrees；新增实际回归。初次测试试图复制 move-only family
+  的构建错误已修正，不算生产语义 RED。真实 record 仍不完整：下一
+  首次拒绝是 updateAvoidPadding8620 / class property0 的异常输入
+  kInternalValue PC127 / node106 / value210，next-phase-detail.log。
+  不能把 normal 初始化前提直接套到异常成功/失败通路。
+- 五输入 fresh `build/stage-one/value-decision-selection-pass-1` 顺序导出
+  全退出0，仍为56 complete / 3 incomplete / 47 failure / 46 no-module，
+  无新增 complete、原完整项回退或 legacy writer，native default 三个
+  record 断言保留。证据 final-batch.log、final-batch-summary.json。
+  内部 complete 不代替配对语义与表示 Accepted。
+- 最终关联75 targets build退出0，125/125 tests通过241.88秒，范围见
+  selected.json。上述日志均位于
+  /tmp/abcd-decision-selection-*（原 getter/control 为 /tmp/abcd-member-*）。
+  Goal仍active；完整阶段一配对语义/源码表示验收未完成。全库、扩大
+  语料、RSS/基准、DFX、调度器、代理及定期审视仍暂停，super spread
+  的运行环境前提不变。
+
 ### 2026-10-02：类创建与嵌套函数的模块初始化贯通
 
 - 实际 WindowUtil record7618 / entry8202 在 PC45 创建类，其构造器8339

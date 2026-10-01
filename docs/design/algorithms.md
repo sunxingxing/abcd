@@ -5,6 +5,33 @@
 
 ## 输入规模与成本
 
+### 共享分支谓词与原生条件调用参数（2026-10-02）
+
+正常 selection 使用已验证 ControlDecision 的单入口、共享 arm 与原边归属，
+保留完整条件链。一次标记被父 decision 拥有的 predicate 节点，仅最大根
+形成 selection；flat condition/block 列表保留每个原分支及其共享边极性，
+不复制 CFG。条件路径要求局部闭合 inline forest、已有 guarded-module 对
+或纯别名/跳转；保留 root、phi、异常相位和独立入口不能按该路径融合。
+既有 selection 的逆序选择与正序效果区间方程，将整个已独立检查的条件
+链视作一个有条件执行的事件，继续核对 getter/callee、参数及消费顺序。
+
+每个 decision path 的节点由一个最大根拥有，新增 `O(N+D+I)` 工作、
+`O(N+D)` 存储，N 为控制节点数、D 为实际条件路径条目数，I 为这些
+互不重叠路径的操作数。scratch 索引按 N 一次分配，保留列表按实际 D
+admission，源码 AST 每个条件增加常数个节点；无逐分支 CFG 搜索或
+祖先集合复制。原 control/SSA/evaluation prerequisites 成本另计。
+ExpressionForest 的 selection-built 索引区分原标量谓词和最终选值，
+不能以“原分支已有表达式”跳过完整 conditional 构造。
+
+TreeFlow 独立从实际 conditional/OR 语法恢复各原标量判断、极性及路径
+归属；原分支的 scalar predicate 与选值表达式分别保存。operand/origin
+对应检查使用原 scalar，选值用途继续检查完整 conditional，根 origin
+必须为原始分支。callee 仍经共同 MemberCall/稳定 receiver 验证，不调用
+可变 `.call` 属性。采用已有控制所有权和表达式区间算法，本项目自有
+实现，无新增依赖、外部代码或许可证。三 profile、1/200/201/400 次调用、
+DEBUGGER 路径拒绝、类型化语法/来源变异、真实构造器函数族及 Node
+执行为定向证据；不是 RSS/性能实测或完整 WindowUtil 配对验收。
+
 ### 经类与函数创建链共享模块初始化依据（2026-10-02）
 
 正常 `FunctionInput` 将已证明 Language 的首次入口 store 按原始指令排序，

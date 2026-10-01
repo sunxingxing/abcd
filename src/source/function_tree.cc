@@ -680,7 +680,7 @@ class TreeBuilder {
     block.last = next;
     ++block.count;
   }
-  void EmitBlock(const ControlNode& region, std::size_t draft) {
+  void EmitBlock(const ControlNode& region, std::size_t draft, bool selected_condition = false) {
     const auto& block = graph_.blocks[region.block.value];
     for (std::uint32_t j = 0; j < block.op_count; ++j) {
       Step();
@@ -695,6 +695,10 @@ class TreeBuilder {
       }
       const auto& evaluation = evaluation_.operations[id.value];
       if (op.life != analysis::ValueLife::kLive) continue;
+      if (selected_condition && std::holds_alternative<analysis::ValueBranch>(op.operation)) {
+        Require(forest_.operations[id.value].has_value(), Error::kOwnership);
+        tree_.operations.push_back({id, *forest_.operations[id.value]}); continue;
+      }
       if (exceptions_ && std::holds_alternative<analysis::ValueBranch>(op.operation)) {
         // Branch successors belong to Commit. Its condition may be emitted
         // there only across an empty Before->Commit boundary, never phi writes.
@@ -987,10 +991,10 @@ class TreeBuilder {
     const TreeOriginId origin{graph_.ops[op.value].origin.value};
     const auto expression = forest_.operations[op.value];
     Require(expression.has_value(), Error::kOwnership);
-    if (node.decision) { EmitDecision(op, node, draft); return; }
     if (!logical_branches_.empty() && logical_branches_[op.value]) {
       const auto& logical = logicals_[*logical_branches_[op.value]];
       if (logical.parent) { tree_.operations.push_back({op, *expression}); return; }
+      for (const auto part : logical.condition_blocks) { Step(); EmitBlock(control_.nodes[part.value], draft, true); }
       const auto schedule = [&](const SelectionRegion& selection) {
         if (selection.keep) selection_paths_.push_back({selection.keep_path, *selection.keep});
         selection_paths_.push_back({selection.evaluate_path, selection.evaluate});
@@ -1017,6 +1021,7 @@ class TreeBuilder {
       }
       return;
     }
+    if (node.decision) { EmitDecision(op, node, draft); return; }
     if (!branch_polarity_.empty() && branch_polarity_[op.value] == BranchPolarity::kFallthrough) {
       Require(!node.arms->taken && node.arms->fallthrough && !HasCopies(first_edge), Error::kControl);
       const auto body = Arm(draft, origin, node.arms->fallthrough, analysis::EdgeId{first_edge.value + 1});

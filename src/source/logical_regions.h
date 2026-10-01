@@ -11,6 +11,10 @@ struct EvaluationPlan;
 // The expression planner must still own the RHS subtree, remove its phi copies,
 // and preserve the order of every surrounding call/reference before emission.
 struct SelectionChild { analysis::OpId branch; };
+struct SelectionCondition {
+  analysis::OpId branch;
+  bool shared_on_taken;
+};
 using SelectionOperand = std::variant<analysis::ValueId, analysis::SpecialValue,
     analysis::IntegerLiteral, analysis::Float64Bits, SelectionChild>;
 inline SelectionOperand SelectionLeaf(const analysis::ValueOperand& value) {
@@ -41,6 +45,11 @@ struct SelectionRegion {
   std::optional<analysis::OpId> parent;
   // Latest nonconstant dependency needed before a fused join consumer.
   std::optional<analysis::OpId> last_dependency;
+  // A shared-arm decision retains every original scalar predicate and its
+  // conditional evaluation path. These are disjoint, flat ownership lists,
+  // never a copied CFG or an unconditional evaluation of the RHS.
+  std::vector<SelectionCondition> conditions;
+  std::vector<ControlId> condition_blocks;
 };
 inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::OpId id) {
   if (id.value >= graph.ops.size()) return false;

@@ -1045,6 +1045,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/branch_polarity.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME logical_regions_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/logical_regions.mjs $<TARGET_FILE:logical_regions_test>)
+    add_test(NAME decision_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_selection.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME logical_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/logical_tree.mjs $<TARGET_FILE:logical_tree_test>)
     add_test(NAME defined_async_method_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
