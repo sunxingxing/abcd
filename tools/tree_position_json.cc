@@ -154,6 +154,8 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
         using T = decltype(node);
         if constexpr (std::is_same_v<T, ElidedInstruction>) {
           entry["kind"] = "elided_pure"; entry["range"] = nullptr;
+        } else if constexpr (std::is_same_v<T, UnreachableInstruction>) {
+          entry["kind"] = "unreachable"; entry["range"] = nullptr;
         } else {
           GeneratedRange range;
           if constexpr (std::is_same_v<T, ExprId>) {

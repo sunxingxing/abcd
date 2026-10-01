@@ -12,6 +12,55 @@
 
 ## 当前阶段
 
+### 2026-10-02：正常流不可达指令与 SSA/源码贯通
+
+- Community BreakpointType record19234 / getValue19360 在 PC88 已返回，仍有
+  PC89 LDUNDEFINED / PC90 RETURNUNDEFINED 死尾。原 SemanticSource 对每个
+  物理指令要求 SSA write，错误以 kSsaMismatch 拒绝。最小真实解码回归在
+  成功构建后 RED：/tmp/abcd-reachable-ssa-red-{build,test}.log。
+  共同验证现在沿用原 EnvironmentFlow.before 的正常 entry-reachable 域，
+  逐指令保留 PC 对应；活 write 与不可达 read/write 仍严格检查。
+- 顺次接通原 argument snapshot ABI、normal importer、独立 input
+  correspondence、rewrite origins 和 instruction sources。GETUNMAPPEDARGS
+  死槽仍核对编码/frame/effects；不制造 SSA。物理 OpId/PC 不变，工作 CFG
+  只纳入可达块/边，死槽以 Removed 保留在前一活块的存储区间；正常边、
+  phi 定义及 incoming 同时按原始到工作块映射。既有 handler/resume 拒绝
+  边界不变，不将异常图套入本次 normal reachability。
+- 独立 verifier 的块映射 scratch 使用原始块数，而非压缩后的块数；修复
+  真实方法接线时的 memory_limit。rewrite 只为新增的活操作删除要求纯消除，
+  原已 Removed 的死槽保持 Retained。共同来源清单区分 UnreachableInstruction
+  和 ElidedInstruction / recovery gap；死槽保留 OriginalSite，生成范围为空，
+  不以 fake anchor/语句完成 coverage。经历 importer、rewrite 和 coverage 的
+  真实阶段失败后贯通，不是绕开校验或将失败标记改成 complete。
+- 三 profile、1/200/201/400 死尾及 argument snapshots，共24个 analysis
+  fixture；另3个中间死前驱/phi join fixture验证原块4→工作块3、原块3的
+  incoming→工作块2，保留两条实际 incoming。死槽激活、origin 伪装、错 PC、
+  活 write 缺失、snapshot 范围、phi/边/存储区间及 scratch 下界负例均拒绝。
+  15个真实解码→共同 FunctionTree→printer/位置 fixture核对死槽原 PC、
+  无语法位置、无 INCOMPLETE；伪位置、改 PC、漏活位置与假纯消除拒绝。
+- 新增配对 BreakpointType 独立 oracle：引擎只消费 ABC 和 entry19387。
+  360个严格比较、动态常量 getter、实际 Proxy receiver、字段读取、状态修改、
+  任意 Symbol throw 和截止轨迹场景；另验 ESM live import replacement、
+  参数/方法签名、字段 descriptor/顺序及构造器 prototype setter/异常截止。
+  3个合法语法 mutation 可被检测。参考只按此样本 assignment-field 前提
+  擦除3个未初始化 TS 类型字段，避免Node stripper引入 native field define；
+  不推广为所有 Ark profile。证据 /tmp/abcd-reachable-ssa-paired-test.log。
+  这不是Ark VM/真实宿主差分；整record类carrier、快照别名和表示仍未Accepted。
+- 最终64个相关targets build退出0，108/108 tests通过234.90秒，
+  /tmp/abcd-reachable-ssa-final-verified-{build,tests}.log；选择清单
+  /tmp/abcd-reachable-ssa-selected.json。作者核验稳定物理OpId、块与phi remap、
+  死槽无effects/SSA/语法事件及活路径拒绝边界；算法新增成本见algorithms.md。
+  不是全库/RSS/性能验证，不恢复代理、DFX、scheduler或定期审视。
+- 五输入 fresh `build/stage-one/value-reachable-ssa-pass-1` 顺序导出均退出0，
+  56 complete / 3 incomplete / 47 failure / 46 no-module，新增19234，
+  无原完整项回退、无legacy writer。/tmp/abcd-reachable-ssa-final-batch.log
+  和 final-batch-summary.json。complete仅表示当前恢复闭合，不证明整应用
+  语义/风格通过；no-module分类亦不作为阶段一完成的依据。
+- Goal仍active。WindowUtil record7618 / entry8202 复核仍 tree_stage / unproved
+  PC21：/tmp/abcd-reachable-ssa-window-next.json。继续真实阻断和共同类/字段/
+  绑定表示；super spread 运行环境前提未改变。全库、扩大语料、RSS/基准、
+  DFX、调度器和代理仍暂停。
+
 ### 2026-10-02：原生匿名默认导出表达式
 
 - 最小实际解码匿名默认模块在构建成功后 RED，因输出仍是合成 let +

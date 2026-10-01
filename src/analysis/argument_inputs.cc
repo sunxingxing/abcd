@@ -21,7 +21,8 @@ bool MatchesArgumentSnapshot(const SemanticInstruction& instruction,
 std::variant<ArgumentInputCheck, SemanticProofFailure> VerifyArgumentInputs(
     const abc::MethodBody& body, const SemanticMethod& method,
     std::uint64_t frame_size, std::uint32_t first_abi_register,
-    const ArgumentFrameFact* arguments, SemanticBudget budget) {
+    const ArgumentFrameFact* arguments,
+    std::span<const std::optional<EnvironmentRef>> before, SemanticBudget budget) {
   ArgumentInputCheck checked;
   const auto charge = [&](std::uint64_t count = 1) {
     if (count > budget.work - checked.work) return false;
@@ -29,7 +30,7 @@ std::variant<ArgumentInputCheck, SemanticProofFailure> VerifyArgumentInputs(
     return true;
   };
   using Error = SemanticProofError;
-  if (body.instructions.size() != method.instructions.size())
+  if (body.instructions.size() != method.instructions.size() || before.size() != body.instructions.size())
     return SemanticProofFailure{Error::kSsaMismatch, {}};
   std::optional<ArgumentWindow> window;
   const auto reads = method.ssa.AllReads();
@@ -62,6 +63,11 @@ std::variant<ArgumentInputCheck, SemanticProofFailure> VerifyArgumentInputs(
     while (cursor < reads.size() && reads[cursor].instruction < id) {
       if (!charge()) return fail(Error::kResourceLimit);
       ++cursor;
+    }
+    if (!before[i]) {
+      if ((cursor < reads.size() && reads[cursor].instruction == id) || method.ssa.Write(id))
+        return fail(Error::kSsaMismatch);
+      continue;
     }
     std::uint32_t ordinal = 0;
     while (cursor < reads.size() && reads[cursor].instruction == id) {

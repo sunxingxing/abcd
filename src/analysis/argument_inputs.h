@@ -13,12 +13,15 @@ struct ArgumentInputCheck {
 [[nodiscard]] bool MatchesArgumentSnapshot(
     const SemanticInstruction& instruction, const ArgumentWindow& window);
 // Immutable same-body SSA required. Rechecks original opcode, frame, effects
-// and read/write correspondence; value domains remain the verifier's job.
+// and live read/write correspondence; value domains remain the verifier's job.
+// before is the unchanged same-body EnvironmentFlow reachability domain. Dead
+// snapshots still match their encoding/frame/effects but have no SSA events.
 // No allocation. O(I + R + S log V), with one monotone read cursor; S snapshots
 // use the existing indexed SSA write lookup. All work shares the method budget.
 [[nodiscard]] std::variant<ArgumentInputCheck, SemanticProofFailure>
 VerifyArgumentInputs(const abc::MethodBody& body, const SemanticMethod& method,
     std::uint64_t frame_size, std::uint32_t first_abi_register,
-    const ArgumentFrameFact* arguments, SemanticBudget budget);
+    const ArgumentFrameFact* arguments,
+    std::span<const std::optional<EnvironmentRef>> before, SemanticBudget budget);
 }  // namespace abcd::analysis
 #endif

@@ -227,7 +227,7 @@ std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
             Error::kInputMismatch);
     ImportBudget quota{budget};
     const auto checked = VerifyArgumentInputs(body, method, frame.registers,
-        frame.locals, proof.arguments ? &*proof.arguments : nullptr, quota.Remaining());
+        frame.locals, proof.arguments ? &*proof.arguments : nullptr, proof.environments.before, quota.Remaining());
     if (const auto* failure = std::get_if<SemanticProofFailure>(&checked))
       throw ValueImportFailure{failure->kind == SemanticProofError::kResourceLimit
           ? Error::kWorkLimit : Error::kInputMismatch, failure->pc};
@@ -264,25 +264,48 @@ std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
     const auto use_capacity = operands + method.ssa.AllInputs().size();
     quota.Reserve(graph.uses, use_capacity);
     quota.Admit(use_capacity, sizeof(std::uint8_t));  // VerifyValueUses scratch.
+    // Preserve physical instruction/OpId identity, including dead arena slots.
+    // Only executable blocks/edges enter the work CFG. Dead storage following
+    // a live block belongs to that block as removed slots, never as effects or
+    // fabricated SSA results; all origin PCs and source occurrence IDs survive.
+    std::vector<WorkBlockId> block_map;
+    quota.Reserve(block_map, method.flow.blocks.size());
+    block_map.resize(method.flow.blocks.size());
+    Require(proof.environments.before.size() == count, Error::kInputMismatch);
     std::size_t next_instruction = 0;
     for (std::size_t b = 0; b < method.flow.blocks.size(); ++b) {
       quota.Work();
       const auto& block = method.flow.blocks[b];
-      Require(block.first_instruction == next_instruction &&
+      Require(block.first_instruction == next_instruction && block.instruction_count != 0 &&
               block.instruction_count <= count - next_instruction, Error::kInvalidGraph);
-      graph.blocks.push_back({{block.first_instruction}, block.instruction_count,
-          {static_cast<std::uint32_t>(graph.edges.size())}, block.successor_count});
+      const bool reachable = proof.environments.before[block.first_instruction].has_value();
+      for (std::size_t i = next_instruction; i < next_instruction + block.instruction_count; ++i) {
+        quota.Work(); Require(proof.environments.before[i].has_value() == reachable, Error::kInputMismatch);
+      }
       next_instruction += block.instruction_count;
-      for (std::uint8_t e = 0; e < block.successor_count; ++e) {
-        quota.Work();
-        const auto& edge = block.successors[e];
-        Require(edge.kind != FlowEdgeKind::kResume, Error::kResumeFlow);
-        Require(edge.target.value < method.flow.blocks.size(), Error::kInvalidGraph);
-        graph.edges.push_back({{static_cast<std::uint32_t>(b)}, {edge.target.value},
-                               edge.kind, e});
+      if (reachable) {
+        const WorkBlockId id{static_cast<std::uint32_t>(graph.blocks.size())};
+        block_map[b] = id;
+        graph.blocks.push_back({{block.first_instruction}, block.instruction_count,
+            {static_cast<std::uint32_t>(graph.edges.size())}, block.successor_count});
+        for (std::uint8_t e = 0; e < block.successor_count; ++e) {
+          quota.Work();
+          const auto& edge = block.successors[e];
+          Require(edge.kind != FlowEdgeKind::kResume, Error::kResumeFlow);
+          Require(edge.target.value < method.flow.blocks.size(), Error::kInvalidGraph);
+          const auto& target = method.flow.blocks[edge.target.value];
+          Require(target.first_instruction < count && proof.environments.before[target.first_instruction].has_value(), Error::kInvalidGraph);
+          // Targets remain original until the complete block map exists.
+          graph.edges.push_back({id, {edge.target.value}, edge.kind, e});
+        }
+      } else {
+        Require(!graph.blocks.empty(), Error::kInvalidGraph);
+        block_map[b] = {static_cast<std::uint32_t>(graph.blocks.size() - 1)};
+        graph.blocks.back().op_count += block.instruction_count;
       }
     }
     Require(next_instruction == count, Error::kInvalidGraph);
+    for (auto& edge : graph.edges) { quota.Work(); edge.target = block_map[edge.target.value]; }
     for (std::size_t v = 0; v < values.size(); ++v) {
       quota.Work();
       const auto& value = values[v];
@@ -291,8 +314,9 @@ std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
         Require(result->instruction.value < count, Error::kInputMismatch);
         definition.origin = OpResult{{result->instruction.value}};
       } else if (const auto* phi = std::get_if<PhiValue>(&value.origin)) {
-        Require(phi->block.value < graph.blocks.size(), Error::kInvalidPhi);
-        definition.origin = PhiDefinition{{phi->block.value}};
+        Require(phi->block.value < block_map.size() &&
+            proof.environments.before[method.flow.blocks[phi->block.value].first_instruction].has_value(), Error::kInvalidPhi);
+        definition.origin = PhiDefinition{block_map[phi->block.value]};
       }
       graph.values.push_back(definition);
       graph.input.values.push_back({static_cast<std::uint32_t>(v)});
@@ -313,8 +337,9 @@ std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
         graph.ops.push_back({Operation(instruction.operation),
             {static_cast<std::uint32_t>(b)}, order, {}, 0, {},
             instruction.effects.normal, instruction.effects.before_throw,
-            instruction.effects.exceptional, {index}});
-        if (instruction.effects.exceptional != ExceptionalCompletion::kImpossible)
+            instruction.effects.exceptional, {index},
+            proof.environments.before[index] ? ValueLife::kLive : ValueLife::kRemoved});
+        if (proof.environments.before[index] && instruction.effects.exceptional != ExceptionalCompletion::kImpossible)
           graph.exceptional_exits.push_back({{index}, {index}, instruction.effects.before_throw});
       }
     }
@@ -331,8 +356,13 @@ std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
     for (std::size_t i = 0; i < count; ++i) {
       quota.Work();
       const auto& instruction = method.instructions[i];
-      const auto plan = Operands(instruction, quota);
       auto& op = graph.ops[i];
+      op.first_use = UseId{static_cast<std::uint32_t>(graph.uses.size())};
+      if (op.life == ValueLife::kRemoved) {
+        Require(!op.result && (read_index == reads.size() || reads[read_index].instruction.value != i), Error::kInputMismatch, instruction.pc);
+        continue;
+      }
+      const auto plan = Operands(instruction, quota);
       Require(plan.Write().has_value() == op.result.has_value(), Error::kInputMismatch, instruction.pc);
       if (op.result)
         Require(SameSlot(*plan.Write(), values[op.result->value].slot), Error::kInputMismatch, instruction.pc);
@@ -379,8 +409,9 @@ std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
                        values[incoming.value.value].slot), Error::kInvalidPhi);
       IncomingKey key = MethodEntryKey{};
       if (const auto* edge = std::get_if<SsaEdge>(&incoming.edge)) {
-        Require(edge->source.value < graph.blocks.size(), Error::kInvalidPhi);
-        const auto& source = graph.blocks[edge->source.value];
+        Require(edge->source.value < block_map.size() &&
+            proof.environments.before[method.flow.blocks[edge->source.value].first_instruction].has_value(), Error::kInvalidPhi);
+        const auto& source = graph.blocks[block_map[edge->source.value].value];
         Require(edge->successor < source.edge_count, Error::kInvalidPhi);
         const EdgeId id{source.first_edge.value + edge->successor};
         Require(graph.edges[id.value].target == phi->block, Error::kInvalidPhi);

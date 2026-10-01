@@ -13,7 +13,9 @@ class SourceIndex {
   explicit SourceIndex(analysis::SemanticBudget budget) : initial_(budget), left_(budget) {}
   InstructionSources Build(const RouteInputIdentity& identity, abc::EntityOffset method,
       std::span<const analysis::SemanticInstruction> instructions, const analysis::ValueProgram& graph,
-      const FunctionTree& tree) {
+      const FunctionTree& tree,
+      std::span<const std::optional<analysis::EnvironmentRef>> before = {}) {
+    Require(before.empty() || before.size() == instructions.size(), Error::kCoverage);
     Require(identity == tree.identity && method == tree.method, Error::kIdentity);
     Require(graph.revision == tree.value_revision && graph.cfg_revision == tree.cfg_revision, Error::kRevision);
     Require(graph.origins.size() == graph.ops.size() && tree.origins.size() >= graph.origins.size(), Error::kOrigin);
@@ -51,7 +53,15 @@ class SourceIndex {
       Require(origin.pc == instruction.pc && origin.original == instruction.origin, Error::kOrigin);
       auto& target = targets[i];
       const auto& tree_origin = tree.origins[op.origin.value];
-      if (origin.disposition == analysis::OriginDisposition::kElidedPure) {
+      if (!before.empty() && !before[origin.site.value]) {
+        // Normal input reachability, not optimizer purity or a recovery gap.
+        // Its original PC remains evidence without any generated syntax range.
+        Require(origin.disposition == analysis::OriginDisposition::kRetained &&
+            op.life == analysis::ValueLife::kRemoved && !target, Error::kPlacement);
+        const auto* source = std::get_if<OriginalSite>(&tree_origin);
+        Require(source && Same(*source, origin), Error::kOrigin);
+        target = UnreachableInstruction{};
+      } else if (origin.disposition == analysis::OriginDisposition::kElidedPure) {
         Require(op.life == analysis::ValueLife::kRemoved && !target, Error::kPlacement);
         const auto* source = std::get_if<ElidedOrigin>(&tree_origin);
         Require(source && Same(*source, origin), Error::kOrigin);
@@ -98,7 +108,8 @@ class SourceIndex {
 std::variant<InstructionSources, InstructionSourceError> BuildInstructionSources(
     const FunctionInput& input, const analysis::ValueProgram& graph,
     const FunctionTree& tree, analysis::SemanticBudget budget) {
-  try { return SourceIndex(budget).Build(input.Identity(), input.Method(), input.Input().instructions, graph, tree);
+  try { return SourceIndex(budget).Build(input.Identity(), input.Method(), input.Input().instructions, graph, tree,
+        input.Proof().environments.before);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

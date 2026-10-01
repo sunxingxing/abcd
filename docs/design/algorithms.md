@@ -120,6 +120,26 @@ I 为原始指令、O 为工作操作、P 为 AST 操作及签名放置数。pha
 原始指令 span，不按 PC 数值大小分配，不为每条指令扫描相位图或生成文本。
 原始指令到 AST ID 的清单与 printer 事件位置相连，复制消除仍保留边界锚点。
 
+正常输入的可达域沿用 `AnalyzeEnvironments` 的逐指令 before 表，与正常 SSA 的
+entry-reachable 重命名域一致。保留全部物理指令的 OpId/原 PC/typed operation；
+不可达槽为 Removed + Retained origin，没有 SSA 结果、use、异常出口或源码语句。
+工作 CFG 只含可达块；不可达存储范围并入前一个可达块的 arena 区间，原始到工作
+块映射同时用于正常边、phi 定义和 phi incoming。不是将死块出口接到活块，也不
+改变原解码图。导入与独立 correspondence 新增 O(B+I+E+V+U) 遍历及 O(B) 映射，
+保留既有 operand/use/可用性验证的成本。连续死块区间各扫描一次，不逐活块扫全图。
+语义 read-domain 检查为 O(I+R) 顺序扫描；既有逐指令 SSA Write 查询仍为
+O(I log W)，不声称整条证明或反编译严格线性。I/R/W 是指令/read/write 数。
+correspondence 的 use-chain scratch 先释放，块映射与 OperandView 共用后一阶段，
+峰值为两阶段的较大值，使用原始块数计入已存在的内存额度。
+共同源码清单为死槽输出 UnreachableInstruction，原始来源仍为 OriginalSite；
+printer 没有语法事件，JSON 边界标记 unreachable/null range，区别于纯消除和恢复
+缺口。phased 输入规则保持独立，不借普通可达域删除 handler/resume。
+这是项目既有可达性/SSA 与 arena tombstone 表示的接线，无新增外部依赖或许可。
+三 profile 的中间死前驱/phi remap、1/200/201/400 死尾、不可达 argument snapshot
+及真正解码到共同树/位置的正反例见 semantic_reachability_test 和
+source_reachability_test；配对 BreakpointType 的效果轨迹单独验证实际生成代码。
+这些测试不构成 RSS、Ark VM 或整应用风格证明。
+
 文件异常方法 owner 在既有 decode/phase/local 分析之外做常数次元数据定位、
 ABI 比较、vector capacity 统计和 O(I) 原始创建屏障 census；不复制 body/IR，
 不按创建点重复计算捕获作用域。共享 FileFamily 显式 DFS 保留 normal/phase

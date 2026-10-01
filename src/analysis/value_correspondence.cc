@@ -1,6 +1,9 @@
 #include "abcd/analysis/value_import.h"
 
 #include <algorithm>
+#include <limits>
+#include <new>
+#include <stdexcept>
 
 #include "value_operands.h"
 #include "operand_view.h"
@@ -37,8 +40,10 @@ bool MatchesValueLiteral(const ScalarValue& expected, const ValueOperand& actual
     } else return false;
   }, expected);
 }
-std::size_t ImportedValueScratch(std::size_t uses) {
-  return std::max(uses, sizeof(OperandView));
+std::size_t ImportedValueScratch(std::size_t uses, std::size_t blocks) {
+  constexpr auto kMaxBytes = std::numeric_limits<std::size_t>::max();
+  if (blocks > (kMaxBytes - sizeof(OperandView)) / sizeof(WorkBlockId)) return kMaxBytes;
+  return std::max(uses, sizeof(OperandView) + blocks * sizeof(WorkBlockId));
 }
 
 std::optional<ValueImportFailure> VerifyImportedValues(
@@ -50,7 +55,7 @@ std::optional<ValueImportFailure> VerifyImportedValues(
     return std::optional<ValueImportFailure>{{kind, pc}};
   };
   if (!graph.phases.empty()) return fail(Error::kExceptionFlow);
-  if (budget.bytes < ImportedValueScratch(graph.uses.size())) return fail(Error::kResourceLimit);
+  if (budget.bytes < ImportedValueScratch(graph.uses.size(), method.flow.blocks.size())) return fail(Error::kResourceLimit);
   std::uint64_t work = budget.work;
   const auto take = [&](std::size_t count) {
     if (count > work) return false;
@@ -73,22 +78,55 @@ std::optional<ValueImportFailure> VerifyImportedValues(
       graph.values.size() != method.ssa.Values().size() ||
       graph.input.values.size() != graph.values.size() ||
       proof.values.Facts().size() != graph.values.size() ||
-      graph.blocks.size() != method.flow.blocks.size()) return fail(Error::kInputMismatch);
-  std::size_t edge_index = 0;
-  for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
+      proof.environments.before.size() != graph.ops.size()) return fail(Error::kInputMismatch);
+  std::vector<WorkBlockId> block_map;
+  try { block_map.resize(method.flow.blocks.size()); }
+  catch (const std::bad_alloc&) { return fail(Error::kResourceLimit); }
+  catch (const std::length_error&) { return fail(Error::kResourceLimit); }
+  if (block_map.capacity() > (budget.bytes - sizeof(OperandView)) / sizeof(WorkBlockId)) return fail(Error::kResourceLimit);
+  std::size_t live_blocks = 0, original_site = 0;
+  for (std::size_t b = 0; b < method.flow.blocks.size(); ++b) {
     if (!take(1)) return fail(Error::kWorkLimit);
-    const auto& block = graph.blocks[b];
     const auto& input = method.flow.blocks[b];
-    if (block.first_op.value != input.first_instruction || block.op_count != input.instruction_count ||
+    if (input.first_instruction != original_site || input.instruction_count == 0 ||
+        input.instruction_count > graph.ops.size() - original_site) return fail(Error::kInvalidGraph);
+    const bool live = proof.environments.before[original_site].has_value();
+    for (std::size_t i = original_site; i < original_site + input.instruction_count; ++i) {
+      if (!take(1)) return fail(Error::kWorkLimit);
+      if (proof.environments.before[i].has_value() != live) return fail(Error::kInputMismatch);
+    }
+    original_site += input.instruction_count;
+    if (live) block_map[b] = {static_cast<std::uint32_t>(live_blocks++)};
+    else {
+      if (!live_blocks) return fail(Error::kInvalidGraph);
+      block_map[b] = {static_cast<std::uint32_t>(live_blocks - 1)};
+    }
+  }
+  if (original_site != graph.ops.size() || live_blocks != graph.blocks.size()) return fail(Error::kInvalidGraph);
+  std::size_t edge_index = 0;
+  for (std::size_t b = 0; b < method.flow.blocks.size(); ++b) {
+    if (!take(1)) return fail(Error::kWorkLimit);
+    const auto& input = method.flow.blocks[b];
+    if (!proof.environments.before[input.first_instruction]) continue;
+    const auto mapped = block_map[b];
+    const auto& block = graph.blocks[mapped.value];
+    std::size_t end = input.first_instruction + input.instruction_count;
+    for (std::size_t next = b + 1; next < method.flow.blocks.size() &&
+        !proof.environments.before[method.flow.blocks[next].first_instruction]; ++next) {
+      if (!take(1)) return fail(Error::kWorkLimit);
+      end += method.flow.blocks[next].instruction_count;
+    }
+    if (block.first_op.value != input.first_instruction || block.op_count != end - input.first_instruction ||
         block.first_edge.value != edge_index || block.edge_count != input.successor_count ||
         input.successor_count > input.successors.size()) return fail(Error::kInvalidGraph);
     for (std::uint8_t e = 0; e < input.successor_count; ++e) {
       if (!take(1)) return fail(Error::kWorkLimit);
       if (edge_index >= graph.edges.size()) return fail(Error::kInvalidGraph);
       const auto& edge = graph.edges[edge_index++];
-      if (edge.source.value != b || edge.successor != e ||
-          edge.target.value != input.successors[e].target.value ||
-          edge.kind != input.successors[e].kind) return fail(Error::kInvalidGraph);
+      const auto target = input.successors[e].target.value;
+      if (target >= block_map.size() || !proof.environments.before[method.flow.blocks[target].first_instruction] ||
+          edge.source != mapped || edge.successor != e ||
+          edge.target != block_map[target] || edge.kind != input.successors[e].kind) return fail(Error::kInvalidGraph);
     }
   }
   if (edge_index != graph.edges.size()) return fail(Error::kInvalidGraph);
@@ -103,7 +141,9 @@ std::optional<ValueImportFailure> VerifyImportedValues(
       if (!result || result->op.value != origin->instruction.value) return fail(Error::kInputMismatch);
     } else if (const auto* origin = std::get_if<PhiValue>(&input.origin)) {
       const auto* phi = std::get_if<PhiDefinition>(&graph.values[v].origin);
-      if (!phi || phi->block.value != origin->block.value) return fail(Error::kInvalidPhi);
+      if (origin->block.value >= block_map.size() ||
+          !proof.environments.before[method.flow.blocks[origin->block.value].first_instruction] ||
+          !phi || phi->block != block_map[origin->block.value]) return fail(Error::kInvalidPhi);
     } else {
       const auto* entry = std::get_if<EntryDefinition>(&graph.values[v].origin);
       if (!entry || !MatchesEntryValue(*entry, input.slot, frame)) return fail(Error::kInputMismatch);
@@ -128,7 +168,7 @@ std::optional<ValueImportFailure> VerifyImportedValues(
         op.origin.value != i || graph.origins[i].site.value != i ||
         graph.origins[i].pc != input.pc || graph.origins[i].original != input.origin ||
         graph.origins[i].disposition != OriginDisposition::kRetained ||
-        op.life != ValueLife::kLive || op.normal != input.effects.normal ||
+        op.life != (proof.environments.before[i] ? ValueLife::kLive : ValueLife::kRemoved) || op.normal != input.effects.normal ||
         op.before_throw != input.effects.before_throw ||
         op.exceptional != input.effects.exceptional || op.first_use.value != use_index)
       return fail(Error::kInputMismatch, input.pc);
@@ -139,6 +179,11 @@ std::optional<ValueImportFailure> VerifyImportedValues(
     try {
       if (op.operation != ImportValueOperation(input.operation)) return fail(Error::kInputMismatch, input.pc);
     } catch (const ValueImportFailure& error) { return error; }
+    if (op.life == ValueLife::kRemoved) {
+      if (op.result || op.use_count != 0 || (read_index < reads.size() && reads[read_index].instruction.value == i))
+        return fail(Error::kInputMismatch, input.pc);
+      continue;
+    }
     if (op.exceptional != ExceptionalCompletion::kImpossible) {
       if (exit_index >= graph.exceptional_exits.size()) return fail(Error::kInputMismatch, input.pc);
       const auto& exit = graph.exceptional_exits[exit_index++];
@@ -193,7 +238,9 @@ std::optional<ValueImportFailure> VerifyImportedValues(
       const auto* key = std::get_if<EdgeId>(&*use.incoming);
       if (!key || key->value >= graph.edges.size()) return fail(Error::kInvalidPhi);
       const auto& actual = graph.edges[key->value];
-      if (actual.source.value != edge->source.value || actual.successor != edge->successor)
+      if (edge->source.value >= block_map.size() ||
+          !proof.environments.before[method.flow.blocks[edge->source.value].first_instruction] ||
+          actual.source != block_map[edge->source.value] || actual.successor != edge->successor)
         return fail(Error::kInvalidPhi);
     } else if (!std::holds_alternative<MethodEntryKey>(*use.incoming)) return fail(Error::kInvalidPhi);
   }

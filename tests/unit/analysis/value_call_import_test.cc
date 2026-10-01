@@ -24,7 +24,7 @@ void Import(Form form, std::uint8_t arguments) {
   const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, method, frame.registers, frame.locals));
   const auto graph = std::get<ValueProgram>(ImportNormalValues(body, method, proof, frame));
   test::Check(!VerifyImportedValues(graph, method, proof, frame));
-  const auto scratch = ImportedValueScratch(graph.uses.size());
+  const auto scratch = ImportedValueScratch(graph.uses.size(), method.flow.blocks.size());
   test::Check(!VerifyImportedValues(graph, method, proof, frame, {scratch, 1000000}));
   test::Check(VerifyImportedValues(graph, method, proof, frame, {scratch - 1, 1000000})->kind ==
               ValueImportError::kResourceLimit);

@@ -365,6 +365,14 @@ if(BUILD_TESTING)
   target_include_directories(snapshot_operands_test PRIVATE src/analysis tests/support)
   target_link_libraries(snapshot_operands_test PRIVATE abcd_analysis)
   add_test(NAME snapshot_operands_test COMMAND snapshot_operands_test)
+  add_executable(source_reachability_test tests/unit/source/source_reachability_test.cc)
+  target_include_directories(source_reachability_test PRIVATE tests/support)
+  target_link_libraries(source_reachability_test PRIVATE abcd_source)
+  add_test(NAME source_reachability_test COMMAND source_reachability_test)
+  add_executable(semantic_reachability_test tests/unit/analysis/semantic_reachability_test.cc)
+  target_include_directories(semantic_reachability_test PRIVATE tests/support)
+  target_link_libraries(semantic_reachability_test PRIVATE abcd_analysis)
+  add_test(NAME semantic_reachability_test COMMAND semantic_reachability_test)
   add_executable(argument_snapshot_test tests/unit/analysis/argument_snapshot_test.cc)
   target_include_directories(argument_snapshot_test PRIVATE tests/support)
   target_link_libraries(argument_snapshot_test PRIVATE abcd_analysis)
@@ -1247,6 +1255,12 @@ if(BUILD_TESTING)
           $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc"
           "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/base/src/main/ets/utils/Logger.ts"
           20495 45ffdc7d5075b4de3f1c6860dcbc929bae048097af4478d09136afbec1b6c5a8 CommunityApplication)
+      endif()
+      if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/base/src/main/ets/constants/BreakpointType.ts")
+        add_test(NAME value_breakpoint_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_breakpoint_record.mjs
+          $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc"
+          "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/base/src/main/ets/constants/BreakpointType.ts")
       endif()
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/detail/src/main/ets/viewmodel/CardArrayViewModel.ts")
         add_test(NAME value_card_array_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

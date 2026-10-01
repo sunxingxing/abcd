@@ -7,7 +7,8 @@
 namespace abcd::source {
 class PhasedBody;
 struct ElidedInstruction {};
-using InstructionTarget = std::variant<ExprId, StmtId, AnchorId, PropertyId, ParameterId, ElidedInstruction>;
+struct UnreachableInstruction {};
+using InstructionTarget = std::variant<ExprId, StmtId, AnchorId, PropertyId, ParameterId, ElidedInstruction, UnreachableInstruction>;
 struct InstructionSource {
   analysis::InputSiteId site;
   TreeOriginId origin;

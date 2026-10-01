@@ -35,10 +35,10 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
     }
     return fail(kind, ValueRouteError::kImportStage, error.pc);
   }
-  // Import admitted both use-chain and operand-view scratch with disjoint
-  // lifetimes. Preserve its fixed view minimum even for tiny methods.
+  // Import admitted normal block-map storage and the use/view scratch. The
+  // independent consumer needs original block cardinality after compaction.
   const auto verified = analysis::VerifyImportedValues(*graph, input, proof, frame,
-      {analysis::ImportedValueScratch(graph->uses.size()), budget.work});
+      {analysis::ImportedValueScratch(graph->uses.size(), input.flow.blocks.size()), budget.work});
   if (verified)
     return fail(verified->kind == analysis::ValueImportError::kWorkLimit
                     ? RouteFailureClass::kWorkLimit :

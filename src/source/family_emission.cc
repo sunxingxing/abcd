@@ -47,6 +47,8 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
         using T = decltype(target);
         if constexpr (std::is_same_v<T, ElidedInstruction>) {
           Require(std::holds_alternative<ElidedOrigin>(tree.origins[source.origin.value]), Error::kPositions);
+        } else if constexpr (std::is_same_v<T, UnreachableInstruction>) {
+          Require(std::holds_alternative<OriginalSite>(tree.origins[source.origin.value]), Error::kPositions);
         } else if constexpr (std::is_same_v<T, AnchorId>) {
           const auto byte = positions.anchors[target.value];
           Require(owner.begin <= byte && byte <= owner.end, Error::kPositions);

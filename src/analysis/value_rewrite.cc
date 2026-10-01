@@ -178,7 +178,11 @@ std::variant<ValueRewriteProof, ValueRewriteError> VerifyValueRewrite(
         Require(CanErasePureOp(a), Error::kEffect);
       Require(a.origin.value < origins.size() && origins[a.origin.value] == OriginUse::kUnused,
               Error::kOrigin);
-      origins[a.origin.value] = b.life == ValueLife::kRemoved ? OriginUse::kElided : OriginUse::kRetained;
+      // A removed input slot can originate from unreachable bytecode, rather
+      // than a pure-expression rewrite. Preserve its original disposition;
+      // only newly removed live operations require the pure-erasure proof.
+      origins[a.origin.value] = a.life == ValueLife::kLive && b.life == ValueLife::kRemoved
+          ? OriginUse::kElided : OriginUse::kRetained;
     }
     for (std::size_t i = 0; i < before.uses.size(); ++i) {
       quota.Work();

@@ -46,19 +46,6 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
       method.instructions.size() != body.instructions.size() ||
       method.allocated_bytes > budget.bytes)
     return Fail(SemanticProofError::kResourceLimit);
-  const auto argument_check = VerifyArgumentInputs(body, method, frame_size,
-      first_abi_register, arguments, budget);
-  if (const auto* failure = std::get_if<SemanticProofFailure>(&argument_check)) return *failure;
-  const auto& argument_inputs = std::get<ArgumentInputCheck>(argument_check);
-  budget.work -= argument_inputs.work;
-  for (std::size_t i = 0; i < body.instructions.size(); ++i) {
-    if (method.instructions[i].pc != body.instructions[i].offset ||
-        method.ssa.Write(InstructionId{static_cast<std::uint32_t>(i)})
-            .has_value() !=
-            method.instructions[i].effects.normal_registers.write.has_value())
-      return Fail(SemanticProofError::kSsaMismatch,
-                  body.instructions[i].offset);
-  }
   auto remaining = budget.bytes - method.allocated_bytes;
   auto environments = AnalyzeEnvironments(
       body, method.flow, frame_size, {remaining});
@@ -73,6 +60,35 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
   if (bound->allocated_bytes > remaining)
     return Fail(SemanticProofError::kResourceLimit);
   remaining -= bound->allocated_bytes;
+  // Normal SSA renames only entry-reachable instructions. The existing lexical
+  // flow retains that same per-site domain; dead decoded tails still require
+  // PC correspondence and must not acquire SSA reads/writes. Do not invent
+  // definitions merely to satisfy a check over physical bytecode positions.
+  if (bound->before.size() != body.instructions.size())
+    return Fail(SemanticProofError::kSsaMismatch);
+  const auto reads = method.ssa.AllReads();
+  std::size_t read_cursor = 0;
+  for (std::size_t i = 0; i < body.instructions.size(); ++i) {
+    const InstructionId site{static_cast<std::uint32_t>(i)};
+    const bool reachable = bound->before[i].has_value();
+    if (method.instructions[i].pc != body.instructions[i].offset ||
+        method.ssa.Write(site).has_value() !=
+            (reachable && method.instructions[i].effects.normal_registers.write.has_value()))
+      return Fail(SemanticProofError::kSsaMismatch, body.instructions[i].offset);
+    while (read_cursor < reads.size() && reads[read_cursor].instruction == site) {
+      if (!reachable) return Fail(SemanticProofError::kSsaMismatch, body.instructions[i].offset);
+      ++read_cursor;
+    }
+    if (read_cursor < reads.size() && reads[read_cursor].instruction < site)
+      return Fail(SemanticProofError::kSsaMismatch, body.instructions[i].offset);
+  }
+  if (read_cursor != reads.size()) return Fail(SemanticProofError::kSsaMismatch);
+  const auto argument_check = VerifyArgumentInputs(body, method, frame_size,
+      first_abi_register, arguments, bound->before, budget);
+  if (const auto* failure = std::get_if<SemanticProofFailure>(&argument_check)) return *failure;
+  const auto& argument_inputs = std::get<ArgumentInputCheck>(argument_check);
+  budget.work -= argument_inputs.work;
+
   auto local_result = ProveLocalAccesses(method, *bound, {remaining, budget.work},
                                         closure_writes, preserved);
   auto* locals = std::get_if<LocalAccessPlan>(&local_result);
