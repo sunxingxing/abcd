@@ -28,6 +28,26 @@ analysis::ValueProgram Import(const std::vector<std::uint8_t>& bytes, std::uint3
   Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
   return graph;
 }
+analysis::ValueProgram OptionalAccess(bool observable_fallback = false, unsigned count = 1) {
+  // Two strict nullish checks share one undefined-producing arm. This is the
+  // real optional-access CFG shape, independent of UI classes/captures.
+  std::vector<std::uint8_t> bytes{0x01, 0x27, 0, 1, 0x4f, 0,
+      0x00, 0x27, 0, 1, 0x4f, 0, 0x4d, 0};
+  const auto fallback = bytes.size();
+  bytes.push_back(0x00);
+  if (observable_fallback) bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER));
+  const auto skip = bytes.size(); bytes.insert(bytes.end(), {0x4d, 0});
+  const auto read = bytes.size(); bytes.insert(bytes.end(), {0x60, 1, 0x42, 0, 0, 0});
+  const auto join = bytes.size(); bytes.insert(bytes.end(), {0x61, 1});
+  bytes[5] = static_cast<std::uint8_t>(fallback - 4);
+  bytes[11] = static_cast<std::uint8_t>(fallback - 10);
+  bytes[13] = static_cast<std::uint8_t>(read - 12);
+  bytes[skip + 1] = static_cast<std::uint8_t>(join - skip);
+  std::vector<std::uint8_t> chain;
+  for (unsigned i = 0; i < count; ++i) chain.insert(chain.end(), bytes.begin(), bytes.end());
+  chain.insert(chain.end(), {0x60, 1, 0x64});
+  return Import(chain, 1);
+}
 analysis::ValueProgram Diamond(bool negate, unsigned count = 1, bool direct = false, bool getter = false, bool barrier = false, bool invoke = false, bool left_getter = false) {
   // return arg || [] (or arg && []), retaining the compiler's empty keep arm.
   std::vector<std::uint8_t> bytes;
@@ -301,6 +321,18 @@ void Negatives() {
   Check(FindLogicalRegions(wrong, control).empty());
 }
 int main(int argc, char** argv) {
+  const auto optional = OptionalAccess();
+  Check(optional.cfg_revision.value == 1);
+  Check(!Source(optional).empty());
+  auto repeated = optional;
+  const auto revision = repeated.revision;
+  const auto again = std::get<analysis::ValueSimplifyStats>(analysis::SimplifyValues(repeated, revision));
+  Check(again.specialized_edges == 0 && repeated.revision == revision);
+  for (unsigned count : {2U, 3U, 200U, 201U}) Check(!Source(OptionalAccess(false, count)).empty());
+  const auto observable = OptionalAccess(true);
+  Check(observable.cfg_revision.value == 0);
+  Check(std::get<ControlError>(BuildControlPlan(observable)) == ControlError::kCrossEntry);
+
   if (argc == 2 && std::string_view(argv[1]) == "--sources") {
     std::cout << "[" << Source(Diamond(false)) << "," << Source(Diamond(true)) << "," << Source(Diamond(false, 1, false, true))
               << "," << Source(Diamond(true, 1, false, true))
@@ -309,7 +341,7 @@ int main(int argc, char** argv) {
               << "," << Source(CallDiamond(false, false)) << "," << Source(CallDiamond(true, false))
               << "," << Source(CallDiamond(false, false, false, true))
               << "," << Source(CallDiamond(true, false, false, true))
-              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "]\n";
+              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "]\n";
     return 0;
   }
   for (const bool negate : {false, true}) for (const bool direct : {false, true}) {

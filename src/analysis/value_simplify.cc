@@ -257,6 +257,143 @@ void MarkLive(const ValueProgram& graph, BatchScratch& scratch, BatchBudget& quo
     }
   }
 }
+
+// Selective tail duplication for shared literal-producing exits. Unlike general
+// node splitting, each admitted block has exactly one primitive copy and one
+// jump, no phi/environment/effect, and its result only feeds the outgoing phi.
+// Every original incoming path still executes that same literal once. This
+// removes cross-entry diamonds without moving or duplicating property reads.
+void SpecializeConstantJoins(ValueProgram& graph, BatchBudget& quota, ValueSimplifyStats& stats) {
+  struct Candidate { OpId literal; OpId jump; };
+  std::vector<std::optional<Candidate>> candidates;
+  std::vector<std::optional<EdgeId>> first, next;
+  std::vector<std::optional<UseId>> phi_first, phi_next;
+  std::vector<bool> phi_blocks;
+  const auto size = [&](auto& values, std::size_t count) {
+    quota.Reserve(values, count); quota.Work(count); values.resize(count);
+  };
+  const auto blocks = graph.blocks.size(), edges = graph.edges.size(), uses = graph.uses.size();
+  size(candidates, blocks); size(first, blocks); size(next, edges);
+  size(phi_first, edges); size(phi_next, uses); size(phi_blocks, blocks);
+  for (const auto& value : graph.values) {
+    quota.Work();
+    if (value.life == ValueLife::kLive)
+      if (const auto* phi = std::get_if<PhiDefinition>(&value.origin)) phi_blocks[phi->block.value] = true;
+  }
+  for (std::size_t i = 0; i < edges; ++i) {
+    quota.Work(); const auto target = graph.edges[i].target.value;
+    next[i] = first[target]; first[target] = EdgeId{static_cast<std::uint32_t>(i)};
+  }
+  for (std::size_t i = 0; i < uses; ++i) {
+    quota.Work(); const auto& use = graph.uses[i];
+    if (use.life != ValueLife::kLive || !std::holds_alternative<ValueId>(use.owner) || !use.incoming) continue;
+    const auto* edge = std::get_if<EdgeId>(&*use.incoming);
+    if (!edge) continue;
+    phi_next[i] = phi_first[edge->value]; phi_first[edge->value] = UseId{static_cast<std::uint32_t>(i)};
+  }
+  std::size_t copies = 0, extra_uses = 0;
+  const auto add = [&](std::size_t& count, std::size_t amount) {
+    Require(amount <= std::numeric_limits<std::uint32_t>::max() - count, Error::kResourceLimit);
+    count += amount;
+  };
+  for (std::size_t b = 1; b < blocks; ++b) {
+    quota.Work(); const auto& block = graph.blocks[b];
+    if (phi_blocks[b] || block.edge_count != 1 || !first[b] || !next[first[b]->value]) continue;
+    std::optional<OpId> literal, jump;
+    bool valid = true;
+    for (std::size_t i = block.first_op.value; i < block.first_op.value + block.op_count; ++i) {
+      quota.Work(); const auto& op = graph.ops[i];
+      if (op.life != ValueLife::kLive) continue;
+      if (!literal && std::holds_alternative<ValueCopy>(op.operation) && CanErasePureOp(op) && op.result && op.use_count == 1 &&
+          !std::holds_alternative<ValueId>(graph.uses[op.first_use.value].operand) &&
+          graph.values[op.result->value].domain.Join(ValueKinds::Language()) == ValueKinds::Language()) {
+        literal = OpId{static_cast<std::uint32_t>(i)};
+      } else if (literal && !jump && std::holds_alternative<ValueJump>(op.operation) && op.use_count == 0 && !op.result &&
+          op.normal == LanguageEffect::kNone && op.before_throw == LanguageEffect::kNone &&
+          op.exceptional == ExceptionalCompletion::kImpossible) jump = OpId{static_cast<std::uint32_t>(i)};
+      else { valid = false; break; }
+    }
+    if (!valid || !literal || !jump) continue;
+    const auto value = *graph.ops[literal->value].result;
+    for (auto use = graph.values[value.value].first_use; use; use = graph.uses[use->value].next) {
+      quota.Work(); const auto& input = graph.uses[use->value];
+      if (!std::holds_alternative<ValueId>(input.owner) || !input.incoming ||
+          !std::holds_alternative<EdgeId>(*input.incoming) || std::get<EdgeId>(*input.incoming) != block.first_edge) {
+        valid = false; break;
+      }
+    }
+    if (!valid) continue;
+    std::size_t count = 0, phi_count = 0;
+    for (auto edge = first[b]; edge; edge = next[edge->value]) { quota.Work(); ++count; }
+    for (auto use = phi_first[block.first_edge.value]; use; use = phi_next[use->value]) { quota.Work(); ++phi_count; }
+    const auto duplicates = count - 1;
+    Require(phi_count < std::numeric_limits<std::uint32_t>::max() &&
+        duplicates <= std::numeric_limits<std::uint32_t>::max() / (phi_count + 1), Error::kResourceLimit);
+    add(copies, duplicates); add(extra_uses, duplicates * (phi_count + 1));
+    candidates[b] = Candidate{*literal, *jump};
+  }
+  if (!copies) return;
+  const auto grow = [&](auto& values, std::size_t count) {
+    Require(count <= std::numeric_limits<std::uint32_t>::max() - values.size(), Error::kResourceLimit);
+    quota.Reserve(values, values.size() + count);
+  };
+  Require(copies <= std::numeric_limits<std::uint32_t>::max() / 2, Error::kResourceLimit);
+  grow(graph.blocks, copies); grow(graph.edges, copies); grow(graph.ops, copies * 2);
+  grow(graph.origins, copies * 2); grow(graph.values, copies); grow(graph.uses, extra_uses);
+  for (std::size_t b = 1; b < blocks; ++b) {
+    quota.Work(); if (!candidates[b]) continue;
+    const auto candidate = *candidates[b];
+    const auto original_edge = graph.blocks[b].first_edge;
+    const auto original_value = *graph.ops[candidate.literal.value].result;
+    // Keep one incoming edge on the original block, so no original block or
+    // source PC becomes unreachable. Each remaining path gets a private copy.
+    for (auto incoming = next[first[b]->value]; incoming; incoming = next[incoming->value]) {
+      quota.Work();
+      const WorkBlockId block{static_cast<std::uint32_t>(graph.blocks.size())};
+      const EdgeId edge{static_cast<std::uint32_t>(graph.edges.size())};
+      const OpId op{static_cast<std::uint32_t>(graph.ops.size())};
+      const ValueId value{static_cast<std::uint32_t>(graph.values.size())};
+      auto definition = graph.values[original_value.value];
+      definition.origin = OpResult{op, {}}; definition.first_use.reset(); graph.values.push_back(definition);
+      auto constant = graph.ops[candidate.literal.value];
+      auto input = graph.uses[constant.first_use.value];
+      input.owner = op; input.previous.reset(); input.next.reset();
+      constant.block = block; constant.order = 0; constant.result = value;
+      constant.first_use = UseId{static_cast<std::uint32_t>(graph.uses.size())};
+      graph.uses.push_back(input);
+      const auto constant_origin = graph.origins[constant.origin.value];
+      constant.origin = OriginId{static_cast<std::uint32_t>(graph.origins.size())};
+      graph.origins.push_back(constant_origin); graph.ops.push_back(constant);
+      auto jump = graph.ops[candidate.jump.value];
+      jump.block = block; jump.order = 1; jump.first_use = UseId{static_cast<std::uint32_t>(graph.uses.size())};
+      const auto jump_origin = graph.origins[jump.origin.value];
+      jump.origin = OriginId{static_cast<std::uint32_t>(graph.origins.size())};
+      graph.origins.push_back(jump_origin); graph.ops.push_back(jump);
+      auto outgoing = graph.edges[original_edge.value]; outgoing.source = block;
+      graph.edges.push_back(outgoing); graph.blocks.push_back({op, 2, edge, 1});
+      graph.edges[incoming->value].target = block;
+      for (auto use = phi_first[original_edge.value]; use; use = phi_next[use->value]) {
+        quota.Work(); auto copied = graph.uses[use->value];
+        copied.incoming = IncomingKey{edge}; copied.previous.reset(); copied.next.reset();
+        if (std::get<ValueId>(copied.operand) == original_value) copied.operand = value;
+        graph.uses.push_back(copied);
+      }
+    }
+  }
+  // Rebuild occurrence links once after the batch, never per new phi input.
+  for (auto& value : graph.values) { quota.Work(); value.first_use.reset(); }
+  for (std::size_t i = 0; i < graph.uses.size(); ++i) {
+    quota.Work(); auto& use = graph.uses[i]; use.previous.reset(); use.next.reset();
+    const auto* id = std::get_if<ValueId>(&use.operand);
+    if (use.life != ValueLife::kLive || !id) continue;
+    auto& value = graph.values[id->value]; use.next = value.first_use;
+    if (use.next) graph.uses[use.next->value].previous = UseId{static_cast<std::uint32_t>(i)};
+    value.first_use = UseId{static_cast<std::uint32_t>(i)};
+  }
+  quota.CheckUses(graph); quota.CheckFlow(graph);
+  stats.specialized_edges = copies;
+}
+
 }  // namespace
 
 std::variant<ValueSimplifyStats, ValueSimplifyError> SimplifyValues(
@@ -317,7 +454,12 @@ std::variant<ValueSimplifyStats, ValueSimplifyError> SimplifyValues(
       throw Error::kInvalidGraph;
     }
     quota.Work(std::get<ValueRewriteProof>(rewritten).work);
-    if (stats.replaced_uses == 0 && stats.removed_ops == 0 && stats.removed_phis == 0)
+    SpecializeConstantJoins(candidate, quota, stats);
+    if (stats.specialized_edges) {
+      Require(candidate.cfg_revision.value != std::numeric_limits<std::uint64_t>::max(), Error::kRevisionLimit);
+      ++candidate.cfg_revision.value;
+    }
+    if (stats.replaced_uses == 0 && stats.removed_ops == 0 && stats.removed_phis == 0 && stats.specialized_edges == 0)
       return stats;
     Require(expected.value != std::numeric_limits<std::uint64_t>::max(),
             Error::kRevisionLimit);

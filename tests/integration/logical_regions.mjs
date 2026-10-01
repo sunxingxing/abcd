@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // tree and semantic checks. No source text supplies the engine's expression.
 const source = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8'});
 const generated = vm.runInNewContext(source, {Array() { throw new Error('mutable Array binding'); }});
-assert.equal(generated.length, 12);
+assert.equal(generated.length, 14);
 const reference = [value => value || [], value => value && []];
 const object = {[Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }};
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), object];
@@ -156,4 +156,29 @@ for (let i = 0; i < earlyReference.length; ++i) {
     }
   }
 }
+const optionalReference = value => value?.probe;
+for (const value of values) {
+  assert.ok(Object.is(generated[12](value), optionalReference(value)));
+  ++scenarios;
+}
+for (const payload of values) for (const throwing of [false, true]) {
+  assert.deepEqual(read(generated[12], undefined, payload, throwing, true),
+    read(optionalReference, undefined, payload, throwing, true));
+  ++scenarios;
+}
+function chain(fn, first, second, fail) {
+  const events = [], failure = {};
+  const value = {get probe() {
+    events.push('first'); if (fail === 'first') throw failure;
+    if (!first) return first;
+    return {get probe() { events.push('second'); if (fail === 'second') throw failure; return second; }};
+  }};
+  try { const result = fn(value); return {events, result}; }
+  catch (error) { assert.equal(error, failure); return {events, threw: true}; }
+}
+for (const first of [undefined, null, false, 0, true]) for (const second of values)
+  for (const fail of ['', 'first', 'second']) {
+    assert.deepEqual(chain(generated[13], first, second, fail), chain(value => value?.probe?.probe, first, second, fail));
+    ++scenarios;
+  }
 console.log(`Decoded logical branch values, getters and calls: ${scenarios} behavior scenarios passed`);

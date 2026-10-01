@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-01：共享常量出口拆分，贯通可选访问的控制图
+
+- ShoppingAvoid的真实12139包含连续严格null/undefined判断，共享undefined出口。
+  原BuildControlPlan在Regions报kCrossEntry（/tmp/abcd-shopping-avoid-block.log）。
+  新增不依赖类/捕获/配对源码的动态ABC最小可选访问规格，先观察共同Source构造
+  的红例（/tmp/abcd-optional-red-test.log）。
+- SimplifyValues在已有别名/常量/phi验证后，对共享常量出口进行受限tail duplication：
+  仅接纳无phi、恰好一个language primitive copy及一个无效果jump的块，定义只能
+  供该出口的phi输入使用。保留一条原入边，其余入边各自拥有常量/jump副本，并为
+  后继每个phi复制对应输入；原始块/操作/PC不删除，副本保留来源。统一重建用途链，
+  验证SSA可用性与用途，原子提交并推进IR/CFG revision。getter/call/environment
+  不复制；含debugger的共享出口继续拒绝。只实现正常图，未扩大异常/恢复域。
+- 源码现在可通过共同控制、求值、树语义和printer生成单层/两层可选读取的等价
+  条件结构；尚未恢复原生?.语法，不能视为表示质量验收完成。保留所有非空值，
+  getter的receiver、读取次数、返回身份及异常对象与独立?.参考一致；通用JS
+  行为对照扩展至942场景。2/3/200/201段、重复简化幂等性与效果负例通过。
+- 7项相关定向测试通过（6.36秒）：logical_regions及JS、value_simplify、control_plan、
+  phi_copies、index_record及initial_render。日志/tmp/abcd-optional-final-tests.log；
+  构建/tmp/abcd-optional-final-build.log。前一组六项也包含class_initializer_file。
+- 五输入正式导出build/stage-one/value-constant-joins-pass-1仍41 complete/
+  65 failure/46 no-module，无完整项退化/legacy writer；汇总
+  /tmp/abcd-constant-joins-batch-summary.json。ShoppingAvoid已越过控制图构建，
+  后续在LiteralPlan::Allocation拒绝经phi传递的buffered object接收者（op77，
+  /tmp/abcd-optional-next-block.log）。接着处理这一共同字面量集成缺口。
+- 阶段一未完成。全量测试、RSS/基准和更大corpus仍暂停；未声称资源实测或平台验收。
+
 ### 2026-10-01：模块入口全局上下文贯通，新增七个完整 record
 
 - BuildRecordTree 对入口自由全局名复用已建立的完整模块作用域：imports、模块

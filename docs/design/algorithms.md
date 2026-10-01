@@ -152,3 +152,21 @@ byte budget 约束，不将该计数声称为所有底层解析操作的总成�
 - 循环算法采用 [Ramalingam 的修正工作](https://research.ibm.com/publications/identifying-loops-in-almost-linear-time)：该文指出原 Havlak 算法最坏情况可达平方，并给出近线性修正，因此不能直接给未经核对的 Havlak 实现贴上近线性标签。
 
 实现时进一步固定所参考的源码版本或论文版本，并保留许可证和复杂度论证。
+
+### 2026-10-01：共享原始常量出口的受限节点拆分
+
+实现位于 value_simplify.cc 的 SpecializeConstantJoins，采用 CFG tail duplication
+的受限形式；这是本项目实现，无新增第三方依赖或许可证变化。目的为解除编译器
+null/undefined短路判断共用常量出口造成的cross-entry，不能泛化为复制任意基本块。
+前提：已验证的normal ValueProgram；非入口、无phi，活操作恰好是language primitive
+copy和无效果jump；常量结果的所有用途均为唯一出边上的phi输入。每条原路径仍只
+执行一次相同常量，没有复制读取、分配、coercion、环境或异常效果。保留原块的一条
+入边保证其可达；副本的出边phi同时重映射常量结果，其他输入由SSA流验证保证可用。
+
+设B/E/O/V/U为原图块、边、操作、值和用途数，D为新增私有出口数，P为输出新增phi
+输入数。建立入边及出边phi索引，各常量结果的用途链互不重叠，额外时间与存储为
+O(B+E+O+V+U+D+P)，另有原有用途/SSA流验证成本。P可为出度所需的稠密输出，明确
+按实际输出容量计费；不对每条入边重扫全部phi或全图。整批仍在独立candidate上，
+失败不修改原图。原来的别名/效果对应验证先执行，新增变换由局部类型前提及精确
+副本构造约束，再核验最终用途和流；不声称只凭CFG可用性证明了任意图改写正确。
+2/3/200/201串接可选访问及942组共同逻辑行为通过定向测试；没有恢复RSS/基准。

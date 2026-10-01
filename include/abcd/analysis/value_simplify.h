@@ -13,11 +13,14 @@ struct ValueSimplifyStats {
   std::size_t replaced_uses = 0;
   std::size_t removed_ops = 0;
   std::size_t removed_phis = 0;
+  std::size_t specialized_edges = 0;
 };
 // One owned candidate per batch, never one clone per value. Budget includes
 // both graphs plus simultaneous scratch. Failure leaves the original unchanged.
 // Requires verified input effects/identity. Checks flow, anchored identity
-// equations, effects and origins before committing. No motion or load CSE.
+// equations, effects and origins before committing. Shared primitive-copy/jump
+// tails may be specialized per incoming edge with matching outgoing phi inputs;
+// this advances CFG revision. No effect motion, load duplication or load CSE.
 [[nodiscard]] std::variant<ValueSimplifyStats, ValueSimplifyError> SimplifyValues(
     ValueProgram& graph, IrRevision expected, SemanticBudget budget = {});
 }  // namespace abcd::analysis
