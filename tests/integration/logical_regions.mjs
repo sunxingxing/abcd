@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // tree and semantic checks. No source text supplies the engine's expression.
 const source = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8'});
 const generated = vm.runInNewContext(source, {Array() { throw new Error('mutable Array binding'); }});
-assert.equal(generated.length, 10);
+assert.equal(generated.length, 12);
 const reference = [value => value || [], value => value && []];
 const object = {[Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }};
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), object];
@@ -73,7 +73,7 @@ for (let i = 0; i < callReference.length; ++i) {
   }
 }
 // These bytecode forms evaluate the argument before looking up the method.
-// The paired earlier-getter form is still rejected by the C++ integration gate.
+// The paired earlier-getter form is separately generated and checked below.
 // Inlining its phi argument without moving/owning all preceding effects would
 // accidentally swap these two programs, even when ordinary return values agree.
 const argumentReference = [
@@ -145,6 +145,15 @@ for (let i = 0; i < sharedReference.length; ++i) {
     assert.deepEqual(argumentCall(generated[i + 8], payload, fail, true, true),
       argumentCall(sharedReference[i], payload, fail, true, true));
     ++scenarios;
+  }
+}
+for (let i = 0; i < earlyReference.length; ++i) {
+  for (const payload of values) for (const fail of [undefined, 'items', 'method', 'call']) {
+    for (const mutate of [false, true]) {
+      assert.deepEqual(argumentCall(generated[i + 10], payload, fail, mutate),
+        argumentCall(earlyReference[i], payload, fail, mutate));
+      ++scenarios;
+    }
   }
 }
 console.log(`Decoded logical branch values, getters and calls: ${scenarios} behavior scenarios passed`);

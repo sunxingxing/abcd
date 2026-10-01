@@ -780,8 +780,12 @@ class TreeBuilder {
       const auto& logical = logicals_[*logical_branches_[op.value]];
       if (logical.keep) EmitBlock(ControlNode{*logical.keep, {}, {}, {}}, draft);
       EmitBlock(ControlNode{logical.evaluate, {}, {}, {}}, draft);
-      const auto statement = Statement(ExpressionStmt{*expression}, origin);
-      Append(draft, statement); tree_.operations.push_back({op, statement});
+      if (evaluation_.operations[op.value].kind == EvaluationKind::kLogicalValue) {
+        tree_.operations.push_back({op, *expression});
+      } else {
+        const auto statement = Statement(ExpressionStmt{*expression}, origin);
+        Append(draft, statement); tree_.operations.push_back({op, statement});
+      }
       return;
     }
     const auto taken = Arm(draft, origin, node.arms->taken, first_edge);

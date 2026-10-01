@@ -151,6 +151,7 @@ std::variant<BindingPlan, BindingError> BuildBindings(
         continue;
       }
       if (const auto* phi = std::get_if<PhiDefinition>(&value.origin)) {
+        if (!evaluation.logical_values.empty() && evaluation.logical_values[i]) continue;
         if (!evaluation.phis) return Error::kLivePhi;
         const SymbolId symbol{static_cast<std::uint32_t>(plan.symbols.size())};
         plan.symbols.emplace_back(PhiBinding{ValueId{static_cast<std::uint32_t>(i)}, phi->block});

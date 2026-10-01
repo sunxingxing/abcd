@@ -118,7 +118,7 @@ void TreeEdgeFlow::Consume(analysis::IncomingKey incoming, const BlockStmt& bloc
   }
 }
 
-void TreeEdgeFlow::Select(analysis::EdgeId incoming, SymbolId target, ExprId value) {
+void TreeEdgeFlow::Select(analysis::EdgeId incoming, analysis::ValueId expected, std::optional<SymbolId> target, ExprId value) {
   budget_.Step();
   Require(incoming.value < bundles_.size() && bundles_[incoming.value], TreeFlowError::kControl);
   const auto id = *bundles_[incoming.value];
@@ -126,8 +126,10 @@ void TreeEdgeFlow::Select(analysis::EdgeId incoming, SymbolId target, ExprId val
   Require(!visited_[id] && !evaluation_.exceptions && bundle.count == 1 &&
       bundle.schedule.steps.size() == 1 && bundle.schedule.temporaries == 0, TreeFlowError::kSequence);
   const auto* phi = std::get_if<analysis::ValueId>(&bundle.schedule.steps[0].destination);
-  Require(phi != nullptr, TreeFlowError::kSnapshot);
-  Bind(flow_.phis[phi->value], target, TemporaryReason::kPhiJoin);
+  Require(phi && *phi == expected, TreeFlowError::kSnapshot);
+  const bool fused = !evaluation_.logical_values.empty() && evaluation_.logical_values[phi->value].has_value();
+  Require(target.has_value() != fused, TreeFlowError::kSnapshot);
+  if (target) Bind(flow_.phis[phi->value], *target, TemporaryReason::kPhiJoin);
   visited_[id] = 1;
   auto& copies = flow_.copies[id]; copies.expressions.clear(); copies.selected = value;
 }
@@ -219,7 +221,7 @@ void TreeEdgeFlow::Finish() {
     const auto& value = graph_.values[i];
     const bool phi = value.life == analysis::ValueLife::kLive &&
         std::holds_alternative<analysis::PhiDefinition>(value.origin);
-    Require(flow_.phis[i].has_value() == phi, TreeFlowError::kSnapshot);
+    Require(flow_.phis[i].has_value() == (phi && (evaluation_.logical_values.empty() || !evaluation_.logical_values[i])), TreeFlowError::kSnapshot);
   }
 }
 }  // namespace abcd::source

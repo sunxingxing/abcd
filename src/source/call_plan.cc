@@ -1,5 +1,6 @@
 #include "call_plan.h"
 #include "phase_evaluation.h"
+#include "logical_evaluation.h"
 
 #include <new>
 #include <stdexcept>
@@ -52,7 +53,7 @@ bool StableReceiver(const ValueProgram& graph, const EvaluationPlan& evaluation,
     return std::holds_alternative<ParameterEntry>(*entry) || std::holds_alternative<ReceiverEntry>(*entry);
   // Fresh evaluation verification proves phi availability and edge copies.
   // This is a private provisional location, not a captured/mutable source cell.
-  // The caller requires the same block or a certified no-copy phase corridor,
+  // The caller requires the same block, a checked logical diamond, or a no-copy phase corridor,
   // so no incoming-edge assignment can intervene between them.
   if (std::holds_alternative<PhiDefinition>(definition.origin))
     return evaluation.phis.has_value();
@@ -138,7 +139,7 @@ std::variant<std::uint64_t, CallPlanError> VerifyCalls(const analysis::ValueProg
       const auto& placement = evaluation.operations[member->property.value];
       Require(property.life == ValueLife::kLive && Property(property.operation) && property.result &&
           ((property.block == op.block && property.order < op.order) ||
-           CrossPhaseInline(graph, evaluation, member->property)), Error::kReference);
+           (CrossPhaseInline(graph, evaluation, member->property) || CrossLogicalInline(graph, evaluation, member->property))), Error::kReference);
       Require((placement.kind == EvaluationKind::kInline ||
           (placement.kind == EvaluationKind::kNestedLiteral && evaluation.operations[i].kind == EvaluationKind::kNestedLiteral)) &&
           placement.consumer == op.first_use, Error::kReference);

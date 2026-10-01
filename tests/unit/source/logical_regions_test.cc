@@ -130,19 +130,41 @@ void CallArguments() {
     const auto logicals = FindLogicalExpressions(graph, control, evaluation, budget);
     Check(logicals.size() == 1);
     Check(logicals.front().operation == (negate ? TreeLogical::kAnd : TreeLogical::kOr));
-    // A fully composable argument alone does not license moving the callee.
-    // This is an explicit current integration gap, not an accepted final output.
-    Check(std::get<CallPlanError>(BuildCallPlan(graph, evaluation)) == CallPlanError::kReference);
+    // The native argument and the earlier callee now share a verified effect
+    // interval; moving the callee alone remains an invalid plan.
+    Check(std::holds_alternative<CallPlan>(BuildCallPlan(graph, evaluation)));
+    Check(Source(graph).find("$phi") == std::string::npos);
     for (const auto& op : graph.ops) if (std::holds_alternative<ValueInvoke>(op.operation)) {
       const auto callee = std::get<ValueId>(graph.uses[op.first_use.value].operand);
       const auto producer = std::get<OpResult>(graph.values[callee.value].origin).op;
       Check(graph.ops[producer.value].block == logicals.front().header);
       Check(op.block == logicals.front().join);
-      Check(evaluation.operations[producer.value].temporary == TemporaryReason::kCrossRegionValue);
+      Check(evaluation.operations[producer.value].kind == EvaluationKind::kInline);
       auto forged = evaluation;
-      forged.operations[producer.value] = {EvaluationKind::kInline, op.first_use, {}};
+      forged.operations[producer.value].consumer = graph.ops[logicals.front().boolean.value].first_use;
       Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
     }
+    SemanticBudget allowance{}; allowance.work = evaluation.work;
+    Check(std::holds_alternative<EvaluationPlan>(BuildEvaluationPlan(graph, allowance)));
+    --allowance.work;
+    Check(std::get<EvaluationError>(BuildEvaluationPlan(graph, allowance)) == EvaluationError::kWorkLimit);
+    allowance = {}; allowance.bytes = 0;
+    Check(std::get<EvaluationError>(BuildEvaluationPlan(graph, allowance)) == EvaluationError::kResourceLimit);
+    auto wrong_value = evaluation;
+    wrong_value.logical_values[logicals.front().left.value] = logicals.front().branch;
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, wrong_value)));
+    auto missing = evaluation; missing.logical_values.clear();
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, missing)));
+    const auto late_graph = CallDiamond(negate, false);
+    const auto late_control = std::get<ControlPlan>(BuildControlPlan(late_graph));
+    const auto late_region = FindLogicalRegions(late_graph, late_control).front();
+    auto late = std::get<EvaluationPlan>(BuildEvaluationPlan(late_graph));
+    Check(late.logical_values.empty());
+    late.logical_values.resize(late_graph.values.size());
+    late.logical_values[late_region.merged.value] = late_region.branch;
+    late.operations[late_region.branch.value] = {EvaluationKind::kLogicalValue,
+        late_graph.values[late_region.merged.value].first_use, {}};
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(late_graph, late)));
     // The later member getter already has a legal same-block reference; retain
     // the logical argument snapshot so its effects still precede that getter.
     Check(Source(CallDiamond(negate, false)).find("$value") == std::string::npos);
@@ -286,7 +308,8 @@ int main(int argc, char** argv) {
               << "," << Source(Diamond(true, 1, false, true, false, true))
               << "," << Source(CallDiamond(false, false)) << "," << Source(CallDiamond(true, false))
               << "," << Source(CallDiamond(false, false, false, true))
-              << "," << Source(CallDiamond(true, false, false, true)) << "]\n";
+              << "," << Source(CallDiamond(true, false, false, true))
+              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "]\n";
     return 0;
   }
   for (const bool negate : {false, true}) for (const bool direct : {false, true}) {

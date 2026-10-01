@@ -218,7 +218,7 @@ target_sources(abcd_source PRIVATE src/source/leaf_sources.cc
   src/source/semantic_binding.cc src/source/semantic_capture.cc)
 target_sources(abcd_source PRIVATE src/source/source_route.cc)
 target_sources(abcd_source PRIVATE src/source/value_stage.cc)
-target_sources(abcd_source PRIVATE src/source/control_plan.cc src/source/control_verify.cc src/source/logical_regions.cc)
+target_sources(abcd_source PRIVATE src/source/control_plan.cc src/source/control_verify.cc src/source/logical_regions.cc src/source/logical_evaluation.cc)
 target_sources(abcd_source PRIVATE src/source/control_skeleton_verify.cc)
 target_sources(abcd_source PRIVATE src/source/exception_plan.cc)
 target_sources(abcd_source PRIVATE src/source/phased_method.cc)
@@ -976,6 +976,9 @@ if(BUILD_TESTING)
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
       add_test(NAME navmap_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/navmap.mjs $<TARGET_FILE:class_initializer_file_test>
+        ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
+      add_test(NAME initial_render_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/initial_render.mjs $<TARGET_FILE:class_initializer_file_test>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
       add_test(NAME local_model_batch_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/local_model_batch.mjs $<TARGET_FILE:abc_structure>

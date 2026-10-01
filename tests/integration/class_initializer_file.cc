@@ -333,6 +333,9 @@ int main(int argc, char** argv) {
           Check(graph.origins[graph.ops[allocation.value].origin.value].pc.value == 77);
           const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph, {}, IncomingCells::kConditional,
               child.children, {}, {}, {}, analysis::ClosureWrites::kLanguage));
+          Check(std::holds_alternative<CallPlan>(BuildCallPlan(graph, evaluation)));
+          Check(evaluation.logical_values[region.merged.value] == region.branch);
+          Check(evaluation.operations[region.branch.value].kind == EvaluationKind::kLogicalValue);
           Check(evaluation.operations[left->op.value].kind == EvaluationKind::kLogicalLeft);
           Check(!evaluation.operations[left->op.value].temporary);
           Check(evaluation.operations[allocation.value].kind == EvaluationKind::kPhiInput);
@@ -361,6 +364,20 @@ int main(int argc, char** argv) {
             IncomingCells::kReject, child.children, {}, {}, {}, analysis::ClosureWrites::kLanguage)));
       }
       Check(guarded_child && logical_child);
+      if (argc == 3 && std::string_view(argv[2]) == "--render") {
+        auto render_prepared = PreparedFamily::PrepareDefinedMember(file, header, index, lookup, roles, sites,
+            parent, parent.values.definitions.sites[6].definition, abc::ClassMethodKind::kOrdinary, identity, destination);
+        if (const auto* failure = std::get_if<FamilyPrepareFailure>(&render_prepared)) {
+          std::cerr << "render prepare cause " << failure->cause.index();
+          if (const auto* tree = std::get_if<FamilyTreeFailure>(&failure->cause)) {
+            std::cerr << " member " << tree->member.value << " cause " << tree->cause.index();
+            if (const auto* error = std::get_if<FunctionTreeError>(&tree->cause)) std::cerr << " tree " << static_cast<unsigned>(*error);
+          }
+          std::cerr << '\n'; return 1;
+        }
+        Check(std::holds_alternative<PrintedFamilyDraft>(std::get<PreparedFamily>(render_prepared).PrintDraft(destination, std::cout)));
+        return 0;
+      }
     }
 
 

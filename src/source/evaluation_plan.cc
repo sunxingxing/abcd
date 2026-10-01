@@ -5,6 +5,7 @@
 #include "module_evaluation.h"
 #include "phase_evaluation.h"
 #include "logical_regions.h"
+#include "logical_evaluation.h"
 #include "tree_checks.h"
 
 #include <limits>
@@ -382,6 +383,11 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
           plan.operations[i] = {EvaluationKind::kLogicalLeft, inputs[i], {}};
       }
     }
+    if (flow == EvaluationFlow::kNormal && plan.phis) {
+      TreeCheckBudget logical_budget({bytes, work});
+      BuildLogicalValues(graph, plan, logical_budget);
+      admit(logical_budget.Bytes(), 1); step(logical_budget.Work());
+    }
     const auto expressions = BuildPhaseExpressions(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&expressions)) return *error;
     const auto& phase_cost = std::get<PhaseEvaluationCost>(expressions);
@@ -390,6 +396,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     if (const auto* error = std::get_if<EvaluationError>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = plan.operations.capacity() * sizeof(OpEvaluation) +
+        plan.logical_values.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.aliases.capacity() * sizeof(analysis::ValueId) +
         plan.functions.capacity() * sizeof(FunctionBinding) +
         plan.modules.capacity() * sizeof(ModuleEvaluation) +

@@ -1,6 +1,7 @@
 #include "tree_correspondence.h"
 #include "class_tree.h"
 #include "phase_evaluation.h"
+#include "logical_evaluation.h"
 
 #include <bit>
 #include <algorithm>
@@ -459,7 +460,7 @@ class OperandCheck {
         std::holds_alternative<analysis::ValuePropertyRead>(property.operation)) &&
         property.life == analysis::ValueLife::kLive &&
         ((property.block == op.block && property.order < op.order) ||
-         CrossPhaseInline(graph_, evaluation_, result->op)) &&
+         (CrossPhaseInline(graph_, evaluation_, result->op) || CrossLogicalInline(graph_, evaluation_, result->op))) &&
         (placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kNestedLiteral) &&
         placement.consumer == op.first_use, Error::kOperand);
     const auto& member = Node<MemberExpr>(call.callee);
@@ -520,6 +521,10 @@ class OperandCheck {
           return;
         }
         if (std::holds_alternative<analysis::PhiDefinition>(definition.origin)) {
+          if (!evaluation_.logical_values.empty() && evaluation_.logical_values[value.value]) {
+            RequireMeaning(!edge_input_ && flow_.expressions[evaluation_.logical_values[value.value]->value] == expression, Error::kOperand);
+            return;
+          }
           LeafOrigin(expression);
           RequireMeaning(value.value < flow_.phis.size() && flow_.phis[value.value] &&
               Node<SymbolExpr>(expression).symbol == *flow_.phis[value.value], Error::kOperand);

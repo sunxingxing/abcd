@@ -12,6 +12,41 @@
 
 ## 当前阶段
 
+### 2026-10-01：逻辑参数与前置成员callee贯通，initialRender完整函数族生成
+
+- 新增normal逻辑值求值组合：已验证单入口菱形的RHS仍由原条件控制，将其作为
+  一个条件事件与header/join效果序列一起规划。只消费单一join用途的逻辑phi；
+  逆序选择连续效果后缀，独立验证正序子区间无缺口/重叠。原局部森林按融合前
+  位置重新验证，原RHS、scope/environment边界、cell guard和copy证明均保留。
+  不借助call/apply/bind替代成员引用，也没有仅放宽跨块callee检查。
+- kLogicalValue及ValueId索引接通共同绑定、森林、控制、边输入和操作数校验；
+  合流值不再声明phi变量，LogicalExpr在join消费者构造前生成，条件分支仍保留
+  原PC来源和jump锚点。后置getter不能把逻辑参数后移；错误consumer、缺失/
+  错误phi映射、强制后置getter融合及工作/资源欠额规格均拒绝。
+- 当前选择非重叠header/join区域，依赖位于join之前的已有定义布局；其他布局、
+  相邻重叠组合仍走原phi路径，尚未宣称任意嵌套逻辑表达式均已恢复。每区域块/
+  用途互不重叠或受控制结构约束，额外扫描/存储线性并计费，另含现有ControlPlan
+  构造/验证成本；没有逐callee重复扫描参数或全图。
+- 真实10510的PC46成员callee、PC66左值、PC72/75条件及PC77数组现在共同进入
+  PC106调用；完整initialRender(10647)及全部子函数经PreparedFamily和实际模块
+  enclosure成功构造/打印。输出证据/tmp/abcd-logical-value-render-source.txt，
+  约9.5KB。新增initial_render_source_test仅在独立Node进程读取配对Index.ts，
+  引擎输入始终仅ABC；720组受控框架对照通过，覆盖children假值/数组/对象、
+  同步/延迟回调、index分支、getter修改方法选择、JSON key、点击闭包后续字段
+  变化、bound builder、receiver及异常。此为完整方法族的受控验收，不是设备/整App验收。
+- 通用动态ABC逻辑用例扩展至708行为场景。13项定向回归全部通过（12.77秒），
+  含原十项、call_plan_test、phase_reference_test及initial_render_source_test；
+  日志/tmp/abcd-logical-value-verified-tests.log，构建日志
+  /tmp/abcd-logical-value-verified-build.log。真实guard重复输入曾在新的独立区间
+  校验中暴露并修正，原guard/cell证明未放宽。
+- 五输入正式导出build/stage-one/value-logical-value-pass-1仍34 complete/
+  72 failure/46 no-module，无完整项退化/legacy writer，mjs最终文件差异为0；
+  汇总/tmp/abcd-logical-value-batch-summary.json。整record仍未完成。
+- 最新实际阻断已越过函数族：Index入口10009在ExpressionForest的class creation
+  分支拒绝非Hole heritage（/tmp/abcd-logical-value-next-block.log）。下一步须给
+  共同ClassExpr接通真实extends表达式及其求值/receiver/来源校验，再处理派生类
+  打印约束，不能直接删除Derived打印保护。阶段一继续；全量/RSS/基准仍暂停。
+
 ### 2026-10-01：逻辑左值消除重复SSA观察快照
 
 - 正常EvaluationPlan新增kLogicalLeft：只有同一header中的真实producer，其全部

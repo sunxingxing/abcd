@@ -1,0 +1,20 @@
+#ifndef ABCD_SOURCE_LOGICAL_EVALUATION_H_
+#define ABCD_SOURCE_LOGICAL_EVALUATION_H_
+
+#include "evaluation_plan.h"
+#include "tree_checks.h"
+
+namespace abcd::source {
+// The builder starts from a freshly constructed local forest. Its backwards
+// choices are checked by independent forward interval equations; the original
+// local forest, conditional RHS and all incoming copies remain checked too.
+void BuildLogicalValues(const analysis::ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget);
+void VerifyLogicalValues(const analysis::ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget);
+// Only after fresh evaluation verification, which checks the contracted
+// diamond's effect intervals and its exclusively owned incoming values.
+bool CrossLogicalInline(const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::OpId producer);
+// Local verification still checks the original forest at original block sites.
+// The separate forward interval proof checks the proposed cross-region edges.
+OpEvaluation BeforeLogicalFusion(const analysis::ValueProgram& graph, const EvaluationPlan& plan, std::size_t operation);
+}  // namespace abcd::source
+#endif

@@ -4,6 +4,7 @@
 #include "module_evaluation.h"
 #include "phase_evaluation.h"
 #include "logical_regions.h"
+#include "logical_evaluation.h"
 #include "tree_checks.h"
 #include "../analysis/value_edits.h"
 
@@ -221,6 +222,9 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     TreeCheckBudget logical_budget({bytes, work});
     const auto logical_inputs = FindLogicalLeftInputs(graph, plan, logical_budget);
     admit(logical_budget.Bytes(), 1); step(logical_budget.Work());
+    TreeCheckBudget fusion_budget({bytes, work});
+    VerifyLogicalValues(graph, plan, fusion_budget);
+    admit(fusion_budget.Bytes(), 1); step(fusion_budget.Work());
     const auto module_copies = VerifyModuleCatchCopies(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&module_copies)) return *error;
     step(std::get<std::uint64_t>(module_copies));
@@ -243,7 +247,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       step();
       const auto& op = graph.ops[i];
-      const auto& placement = plan.operations[i];
+      const auto placement = BeforeLogicalFusion(graph, plan, i);
       const bool nested = plan.literals && !plan.literals->nested.empty() && plan.literals->nested[i].has_value();
       Require(nested == (placement.kind == EvaluationKind::kNestedLiteral), Error::kOwnership);
       if (op.life != analysis::ValueLife::kLive) {
@@ -278,7 +282,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
                use = graph.uses[use->value].next) {
             step();
             const auto* owner = std::get_if<analysis::OpId>(&graph.uses[use->value].owner);
-            Require(owner && plan.operations[owner->value].kind == EvaluationKind::kElidedPure,
+            Require(owner && BeforeLogicalFusion(graph, plan, owner->value).kind == EvaluationKind::kElidedPure,
                 Error::kOwnership);
           }
         }
@@ -375,22 +379,22 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       auto expected = next_op;
       const auto skip_pure = [&] {
         if (expected < end && fused_guard && fused_guard->value == expected) {
-          Require(plan.operations[expected].kind == EvaluationKind::kModuleGuard, Error::kOrder);
+          Require(BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kModuleGuard, Error::kOrder);
           step(); ++expected; fused_guard.reset();
         }
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
-                                  plan.operations[expected].kind == EvaluationKind::kClassProjection ||
-                                  plan.operations[expected].kind == EvaluationKind::kConstructorGuard ||
-                                  plan.operations[expected].kind == EvaluationKind::kCellGuard ||
-                                  plan.operations[expected].kind == EvaluationKind::kElidedPure ||
-                                  plan.operations[expected].kind == EvaluationKind::kAlias ||
-                                  plan.operations[expected].kind == EvaluationKind::kInitializer ||
-                                  plan.operations[expected].kind == EvaluationKind::kNestedLiteral ||
-                                  plan.operations[expected].kind == EvaluationKind::kEnvironment ||
-                                  (plan.operations[expected].kind == EvaluationKind::kModuleGuard &&
+                                  BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kClassProjection ||
+                                  BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kConstructorGuard ||
+                                  BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kCellGuard ||
+                                  BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kElidedPure ||
+                                  BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kAlias ||
+                                  BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kInitializer ||
+                                  BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kNestedLiteral ||
+                                  BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kEnvironment ||
+                                  (BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kModuleGuard &&
                                    !module_index.peers.empty() && module_index.peers[expected] &&
                                    (cross(module_index.peers[expected]->value) ||
-                                    plan.operations[module_index.peers[expected]->value].kind == EvaluationKind::kNestedLiteral)) ||
+                                    BeforeLogicalFusion(graph, plan, module_index.peers[expected]->value).kind == EvaluationKind::kNestedLiteral)) ||
                                   cross(expected) ||
                                   !OrderedEvaluation(graph.ops[expected]))) { step(); ++expected; }
       };
@@ -399,8 +403,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         Require(graph.ops[i].block.value == b && graph.ops[i].order == i - next_op, Error::kInvalidGraph);
         // The phi root moves only across inert trailing control, proved above.
         // Expanding it here checks its subtree's original effect order exactly.
-        if (plan.operations[i].kind != EvaluationKind::kRoot &&
-            plan.operations[i].kind != EvaluationKind::kPhiInput) continue;
+        if (BeforeLogicalFusion(graph, plan, i).kind != EvaluationKind::kRoot &&
+            BeforeLogicalFusion(graph, plan, i).kind != EvaluationKind::kPhiInput) continue;
         Require(visits[i] == EvaluationVisit::kUnseen, Error::kOwnership);
         std::size_t depth = 1;
         stack[0] = {{static_cast<std::uint32_t>(i)}, 0};
@@ -421,7 +425,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
             const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
             if (!result) continue;
             const auto& producer = graph.ops[result->op.value];
-            const auto& placement = plan.operations[result->op.value];
+            const auto placement = BeforeLogicalFusion(graph, plan, result->op.value);
             if (placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kLogicalLeft) {
               Require(placement.consumer == use_id && (producer.block == op.block || cross(result->op.value)) &&
                       visits[result->op.value] == EvaluationVisit::kUnseen, Error::kOwnership);
@@ -453,7 +457,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
                   // trusting a Language result domain or skipping arbitrary guards.
                   Require(expected < end && !module_index.peers.empty() &&
                       module_index.peers[frame.op.value] == analysis::OpId{static_cast<std::uint32_t>(expected)} &&
-                      plan.operations[expected].kind == EvaluationKind::kModuleGuard, Error::kOrder);
+                      BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kModuleGuard, Error::kOrder);
                   ++expected;
                 }
               }

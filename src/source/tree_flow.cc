@@ -146,6 +146,11 @@ class FlowCheck {
             if (IsEnvironmentState(op.operation)) CellDeclarations(id, block, child);
             continue;
           }
+          if (evaluation_.operations[id.value].kind == EvaluationKind::kLogicalValue) {
+            Require(!logical_branches_.empty() && logical_branches_[id.value], Error::kPlacement);
+            LogicalValue(logicals_[*logical_branches_[id.value]], region.block, child);
+            continue;
+          }
           Require(child < block.child_count, Error::kSequence);
           const auto statement = sequences_.Child(block.first_child + child++);
           flow_.statements[id.value] = statement;
@@ -261,8 +266,22 @@ class FlowCheck {
     Require(flow_.expressions[producer.value] == logical->right, Error::kPlacement);
     flow_.expressions[region.branch.value] = assignment->value;
     flow_.logical_operations[region.boolean.value] = flow_.logical_operations[region.branch.value] = region.operation;
-    edges_->Select(region.keep_input, target->symbol, logical->left);
-    edges_->Select(region.evaluate_input, target->symbol, logical->right);
+    LogicalEdges(region, target->symbol, *logical, parent, child);
+  }
+  void LogicalValue(const LogicalRegion& region, StmtId parent, std::uint32_t child) {
+    const auto root = flow_.expressions[region.branch.value];
+    Require(root && flow_.expressions[region.boolean.value] == root, Error::kPlacement);
+    const auto* logical = std::get_if<LogicalExpr>(&tree_.expressions[root->value].expression);
+    const auto rhs = std::get<analysis::ValueId>(region.right);
+    const auto producer = std::get<analysis::OpResult>(graph_.values[rhs.value].origin).op;
+    Require(logical && logical->operation == region.operation && flow_.expressions[producer.value] == logical->right, Error::kPlacement);
+    flow_.logical_operations[region.boolean.value] = flow_.logical_operations[region.branch.value] = region.operation;
+    LogicalEdges(region, {}, *logical, parent, child);
+  }
+  void LogicalEdges(const LogicalRegion& region, std::optional<SymbolId> target, const LogicalExpr& logical,
+      StmtId parent, std::uint32_t child) {
+    edges_->Select(region.keep_input, region.merged, target, logical.left);
+    edges_->Select(region.evaluate_input, region.merged, target, logical.right);
     const auto anchors = [&](analysis::WorkBlockId id) {
       const auto& block = graph_.blocks[id.value];
       for (std::uint32_t j = 0; j < block.op_count; ++j) {
@@ -578,6 +597,9 @@ class FlowCheck {
       } else if (std::holds_alternative<analysis::ValueModuleWrite>(op.operation) &&
                  std::holds_alternative<StmtId>(placement)) {
         // Initializations own a declaration statement; updates own assignments.
+      } else if (evaluation_.operations[i].kind == EvaluationKind::kLogicalValue) {
+        const auto* expression = std::get_if<ExprId>(&placement);
+        Require(expression != nullptr, Error::kPlacement); flow_.expressions[i] = *expression;
       } else if (std::holds_alternative<analysis::ValueBranch>(op.operation) ||
           std::holds_alternative<analysis::ValueDebugger>(op.operation) ||
           std::holds_alternative<analysis::ValueThrow>(op.operation) ||
