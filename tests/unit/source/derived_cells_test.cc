@@ -23,7 +23,7 @@ enum class CaptureScenario { kReceiver, kUndefined, kForwarded, kUninitializedGu
   kInitialUndefined, kEarlyCreation, kBranchInitialization };
 std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool print,
     CellBranch branch = CellBranch::kNone, bool literal = false, bool reference = false,
-    CaptureScenario scenario = CaptureScenario::kReceiver) {
+    CaptureScenario scenario = CaptureScenario::kReceiver, bool receiver_literal = false) {
   // Pinned dynamic ISA fixture: actual derived class occurrence and closure,
   // receiver saved into local cell after super, read again after DEFINEFUNC.
   constexpr std::uint32_t kPool = 64, kOwner = 80, kLiteral = 128,
@@ -74,9 +74,21 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
       kStore, 2});
   if (scenario == CaptureScenario::kEarlyCreation) constructor.insert(constructor.end(), {kLoad, 2});
   else constructor.insert(constructor.end(), {kDefine, 0, 2, 0, 0});
-  if (literal) constructor.insert(constructor.end(), {
-      static_cast<std::uint8_t>(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, 3, 0, 2,
-      kLoad, 2});
+  if (literal) {
+    constructor.insert(constructor.end(), {
+        static_cast<std::uint8_t>(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, 3, 0, 2});
+    if (receiver_literal) {
+      // A proved initialized receiver check sits inside the literal interval,
+      // immediately before the getter used by its second property. It must
+      // keep its PC anchor without becoming an extra observable effect.
+      for (std::size_t i = 0; i < copies; ++i)
+        constructor.insert(constructor.end(), {kLoad, kReceiver, kCheckPrefix, kSuperCheck, 0});
+      constructor.insert(constructor.end(), {
+          static_cast<std::uint8_t>(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 5, 0,
+          static_cast<std::uint8_t>(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, 5, 0, 2});
+    }
+    constructor.insert(constructor.end(), {kLoad, 2});
+  }
   constructor.insert(constructor.end(), {
       static_cast<std::uint8_t>(abc::Opcode::kSTOBJBYNAME_IMM8_ID16_V8), 0, 3, 0, kReceiver});
   for (std::size_t i = 0; i < copies; ++i) constructor.insert(constructor.end(), {kLexLoad, 0, kStore, 3});
@@ -115,7 +127,7 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
   constexpr std::string_view kMemberName = "callback";
   bytes[kName] = (kMemberName.size() << 1) | 1;
   std::copy(kMemberName.begin(), kMemberName.end(), bytes.begin() + kName + 1);
-  if (reference) {
+  if (reference || receiver_literal) {
     constexpr std::uint32_t kActionName = 520, kArgumentName = 540;
     word(kPool + 16, kActionName); word(kPool + 20, kArgumentName);
     for (const auto [at, name] : {std::pair{kActionName, std::string_view{"action"}},
@@ -158,7 +170,7 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
   header.version = profile == abc::ProfileId::kDynamic1202 ? abc::AbcVersion{12, 0, 2, 0} :
       profile == abc::ProfileId::kDynamic1301 ? abc::AbcVersion{13, 0, 1, 0} : abc::AbcVersion{12, 0, 6, 0};
   header.layout = abc::DynamicLayout{}; header.file_size = bytes.size();
-  abc::MetadataIndex index; index.regions.push_back({kCaller, kCallerCode, {}, {forwarded ? 7U : reference ? 6U : literal ? 5U : 4U, kPool}, {}, {}});
+  abc::MetadataIndex index; index.regions.push_back({kCaller, kCallerCode, {}, {forwarded ? 7U : reference || receiver_literal ? 6U : literal ? 5U : 4U, kPool}, {}, {}});
   index.methods.resize(forwarded ? 4 : 3);
   for (auto& method : index.methods) method.owner_offset = {kOwner};
   index.methods[0].offset = {kCaller}; index.methods[0].code = caller_info;
@@ -267,6 +279,16 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
   if (const auto* error = std::get_if<FamilyPrepareFailure>(&prepared)) std::cerr << "family failure " << error->cause.index() << '\n';
   Check(std::holds_alternative<PreparedFamily>(prepared));
   const auto family_work = std::get<PreparedFamily>(prepared).Work();
+  if (receiver_literal) {
+    const auto& tree = std::get<PreparedFamily>(prepared).Family().members.front().tree;
+    Check(tree.receiver_guards.size() == copies + 2);
+    std::size_t anchors = 0;
+    for (const auto& placement : tree.operations)
+      if (std::binary_search(tree.receiver_guards.begin(), tree.receiver_guards.end(), placement.operation)) {
+        Check(std::holds_alternative<AnchorId>(placement.node)); ++anchors;
+      }
+    Check(anchors == tree.receiver_guards.size());
+  }
   if (reference) {
     const auto& family = std::get<PreparedFamily>(prepared).Family();
     Check(family.members.back().tree.receiver_guards.size() == copies * 2);
@@ -276,22 +298,29 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
       {Strictness::kStrict, nullptr, FunctionFragment::kClassMember}, output, {});
   Check(std::holds_alternative<FamilyEmission>(emitted));
   if (print) std::cout << nlohmann::json{{"source", output.str()}}.dump() << '\n';
-  Check(!file.CheckUnchanged()); Check(unlink(path) == 0); return reference ? family_work : work;
+  Check(!file.CheckUnchanged()); Check(unlink(path) == 0); return reference || receiver_literal ? family_work : work;
 }
 }
 int main(int argc, char** argv) {
   Check(argc == 1 || (argc == 2 && (std::string_view(argv[1]) == "--source" ||
       std::string_view(argv[1]) == "--literal-source" || std::string_view(argv[1]) == "--reference-source" ||
-      std::string_view(argv[1]) == "--forward-reference-source")));
+      std::string_view(argv[1]) == "--forward-reference-source" || std::string_view(argv[1]) == "--receiver-literal-source")));
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
     if (argc == 2) { Run(profile, 1, Child::kReadOnly, true, CellBranch::kNone,
-        std::string_view(argv[1]) == "--literal-source", std::string_view(argv[1]) == "--reference-source" ||
+        (std::string_view(argv[1]) == "--literal-source" || std::string_view(argv[1]) == "--receiver-literal-source"), std::string_view(argv[1]) == "--reference-source" ||
         std::string_view(argv[1]) == "--forward-reference-source",
         std::string_view(argv[1]) == "--forward-reference-source" ? CaptureScenario::kForwarded :
-        std::string_view(argv[1]) == "--reference-source" ? CaptureScenario::kInitialUndefined : CaptureScenario::kReceiver); continue; }
+        std::string_view(argv[1]) == "--reference-source" ? CaptureScenario::kInitialUndefined : CaptureScenario::kReceiver,
+        std::string_view(argv[1]) == "--receiver-literal-source"); continue; }
     std::uint64_t previous = 0;
     for (const auto count : {1U, 200U, 201U, 400U, 800U}) {
       const auto work = Run(profile, count, Child::kReadOnly, false);
+      if (count > 201) Check(work < previous * 3); previous = work;
+    }
+    previous = 0;
+    for (const auto count : {1U, 200U, 201U, 400U, 800U}) {
+      const auto work = Run(profile, count, Child::kReadOnly, false, CellBranch::kNone, true, false,
+          CaptureScenario::kReceiver, true);
       if (count > 201) Check(work < previous * 3); previous = work;
     }
     Run(profile, 1, Child::kWrite, false); Run(profile, 1, Child::kEscape, false);

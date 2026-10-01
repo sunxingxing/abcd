@@ -12,6 +12,42 @@
 
 ## 当前阶段
 
+### 2026-10-01：已证明 receiver 检查贯通原生字面量初始化
+
+- normal LiteralPlan 接收既有 derived/captured receiver 的原始有序检查清单。
+  独立 VerifyLiteralPlan 同样消费该清单，一次 O(O+G) 初始化索引供 use/interval
+  census 使用；仅 RequireInitialized 能位于 native initializer 内。重复、乱序、
+  非检查、越界及非 protocol 读拒绝；RequireUninitialized 不获该许可。
+  receiver 来源仍由实际 family projection 独立闭合，不从 Language 域猜测，
+  不改原始 op、分配或 guard。EvaluationBuild/Verify 传递同一证明，TreeFlow
+  保留原 PC 的 AnchorId，未新增 writer 或放宽相位捕获。
+- 三 profile 的真实序列化派生构造器 fixture 在 buffered object 内恢复
+  callback 与 receiver.argument；1/200/201/400/800 guard/捕获读取及几何 work
+  验证，逐检查锚点保留。新用例先实际 RED：LiteralError::kObserved，op15
+  RequireInitialized；/tmp/abcd-literal-receiver-red-build.log、red-test.log 与
+  red-cause.log。缺失 receiver proof 和错误重复 super 检查仍拒绝。
+- 独立完整构造器 oracle 通过 **1890 场景**，每场两次构造，覆盖 getter
+  单次/状态变更/抛出、父 constructor 普通/替换对象/primitive/null/throw、
+  Proxy、setter 中调用新闭包、native own descriptor/prototype/fresh identity
+  及跨调用 receiver 捕获；Object.prototype setter 和 call/apply/bind 毒化。
+  重复 getter 与错误属性值的语法合法 mutation 均被拒绝，
+  derived_literal_receiver_source_test，/tmp/abcd-literal-receiver-final-tests.log。
+- 相关构建退出0，最终 **36/36 定向回归通过52.42秒**；上述 final-build/tests
+  日志。补充锚点断言后重建并复跑 derived_cells_test 与新 oracle **2/2通过
+  14.90秒**，/tmp/abcd-literal-receiver-anchor-build.log 与 anchor-tests.log。
+  无关全库/RSS/基准/DFX/代理保持暂停。
+- 五输入 build/stage-one/value-literal-receiver-pass-1 顺序导出均退出0，保持
+  **51 complete / 3 incomplete / 52 failure / 46 no-module**；没有 complete
+  回退或 legacy writer，/tmp/abcd-literal-receiver-batch-summary.json。
+  真实 PasteBoard 构造器不再触发先前 op86 的 literal guard 拒绝，但整 record
+  仍未完成，不能授予配对语义或源码表示 Accepted，阶段一 Goal 继续 active。
+- 下一拒绝已定位：PasteBoard entry8831/PC182 创建 async method9468，
+  DEFINE METHOD 的 accumulator home 与 kAsync attrs 被 CreationTreeContext
+  kMethodBody 的 NONE-only 前提拒绝，随后映射为 ClassContextError::kSite。
+  /tmp/abcd-literal-receiver-defined-kind.log 与 defined-kind-fields.log。
+  下一步核对 pinned factory 语义并贯通共同 async method context/body、实际
+  home/receiver 与独立行为验证，不能将它改成普通同步方法或跳过正文。
+
 ### 2026-10-01：primitive 数组屏障贯通完整 Home record
 
 - FamilyReader 复用 ReadBufferedArray，保留每个原始 BufferedArrayCreation

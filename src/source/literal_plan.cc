@@ -35,6 +35,33 @@ class LiteralBudget {
  private:
   analysis::SemanticBudget initial_, remaining_;
 };
+// This conditional proof is discharged by the family receiver projection, not
+// inferred from a Language operand here. Index it once for both use and interval
+// censuses; an uninitialized/repeated-super check never becomes a literal elision.
+std::vector<std::uint8_t> InitializedReceiverChecks(const analysis::ValueProgram& graph,
+    std::span<const analysis::OpId> guards, LiteralBudget& budget, const EvaluationPlan* evaluation) {
+  std::vector<std::uint8_t> initialized;
+  if (guards.empty()) return initialized;
+  Require(!evaluation && graph.phases.empty(), Error::kReceiver);
+  budget.Size(initialized, graph.ops.size());
+  for (std::size_t i = 0; i < guards.size(); ++i) {
+    budget.Step(); const auto id = guards[i];
+    Require((i == 0 || guards[i - 1] < id) && id.value < graph.ops.size(), Error::kReceiver);
+    const auto& op = graph.ops[id.value];
+    const auto* check = std::get_if<analysis::ValueSuperCheck>(&op.operation);
+    Require(check && op.life == analysis::ValueLife::kLive && !op.result && op.use_count == 1 &&
+        op.first_use.value < graph.uses.size(), Error::kReceiver);
+    const auto& use = graph.uses[op.first_use.value];
+    Require(use.life == analysis::ValueLife::kLive && use.owner == decltype(use.owner){id} &&
+        use.role == analysis::OperandRole::kGuardValue && use.purpose == analysis::ReadPurpose::kProtocol,
+        Error::kReceiver);
+    switch (check->kind) {
+      case analysis::SuperCheckKind::kRequireInitialized: initialized[id.value] = 1; break;
+      case analysis::SuperCheckKind::kRequireUninitialized: break;
+    }
+  }
+  return initialized;
+}
 void Flow(const analysis::ValueProgram& graph, LiteralBudget& budget, const EvaluationPlan* evaluation) {
   if (evaluation) {
     Require(evaluation->flow == EvaluationFlow::kPhased && !graph.phases.empty() &&
@@ -271,7 +298,8 @@ bool ReferenceReceiver(const analysis::ValueProgram& graph, analysis::UseId use,
 // operand order. No global reads, catch snapshots or escaping allocations.
 void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     const std::vector<std::optional<analysis::OpId>>& owners, LiteralBudget& budget, Guards guards,
-    const LiteralPath& path, const EvaluationPlan* evaluation) {
+    const LiteralPath& path, const EvaluationPlan* evaluation,
+    std::span<const std::uint8_t> initialized_receivers) {
   if (plan.nested.empty()) return;
   Require(plan.nested.size() == graph.ops.size(), Error::kFlow);
   std::vector<std::optional<analysis::OpId>> ends;
@@ -321,7 +349,8 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     const auto* user = std::get_if<analysis::OpId>(&read.owner);
     // Flow independently certified dead closure before this census. Its
     // original operands/PCs remain in the graph and later source anchors.
-    if (user && (graph.ops[user->value].life != analysis::ValueLife::kLive || path.Alias(*user) || path.Elided(*user))) continue;
+    if (user && (graph.ops[user->value].life != analysis::ValueLife::kLive || path.Alias(*user) || path.Elided(*user) ||
+        (!initialized_receivers.empty() && initialized_receivers[user->value]))) continue;
     const auto operand = path.Resolve(read.operand);
     const auto* value = std::get_if<analysis::ValueId>(&operand);
     const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
@@ -402,7 +431,8 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
       } else if (i < guards.size() && guards[i] &&
           std::holds_alternative<analysis::ValueGuard>(op.operation) && plan.nested[guards[i]->value]) {
         Require(value_owners[guards[i]->value] == stack[depth - 1], Error::kObserved);
-      } else Require(analysis::CanErasePureOp(op), Error::kObserved);
+      } else Require((!initialized_receivers.empty() && initialized_receivers[i]) ||
+          analysis::CanErasePureOp(op), Error::kObserved);
     }
     if (depth && ends[stack[depth - 1].value] == analysis::OpId{static_cast<std::uint32_t>(i)}) --depth;
   }
@@ -480,7 +510,8 @@ void VerifyStaged(const analysis::ValueProgram& graph, const LiteralPlan& plan,
 struct FieldOwner { analysis::OpId allocation; analysis::OpId definition; };
 std::variant<std::uint64_t, LiteralError> VerifyLiterals(
     const analysis::ValueProgram& graph, const LiteralPlan& plan, const EvaluationPlan* evaluation,
-    analysis::SemanticBudget allowance, Guards guards, Guards projected) {
+    analysis::SemanticBudget allowance, Guards guards, Guards projected,
+    std::span<const analysis::OpId> receiver_guards) {
   try {
     LiteralBudget budget(allowance);
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
@@ -548,7 +579,8 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
       Require(owners[i].has_value() == own && (!IsStagedLiteral(&plan, {static_cast<std::uint32_t>(i)}) || own), Error::kCoverage);
     }
     VerifyStaged(graph, plan, owners, budget);
-    VerifyNesting(graph, plan, owners, budget, guards, path, evaluation);
+    const auto initialized_receivers = InitializedReceiverChecks(graph, receiver_guards, budget, evaluation);
+    VerifyNesting(graph, plan, owners, budget, guards, path, evaluation, initialized_receivers);
     if (evaluation) {
       std::vector<std::optional<std::size_t>> objects;
       budget.Size(objects, graph.values.size());
@@ -602,7 +634,8 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
 }
 
 std::variant<LiteralPlan, LiteralError> BuildLiterals(
-    const analysis::ValueProgram& graph, const EvaluationPlan* evaluation, analysis::SemanticBudget allowance, Guards guards, Guards projected) {
+    const analysis::ValueProgram& graph, const EvaluationPlan* evaluation, analysis::SemanticBudget allowance, Guards guards, Guards projected,
+    std::span<const analysis::OpId> receiver_guards) {
   try {
     LiteralBudget budget(allowance);
     Flow(graph, budget, evaluation);
@@ -703,7 +736,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
         }
       }
     }
-    const auto verified = VerifyLiterals(graph, plan, evaluation, budget.Remaining(), guards, projected);
+    const auto verified = VerifyLiterals(graph, plan, evaluation, budget.Remaining(), guards, projected, receiver_guards);
     if (const auto* error = std::get_if<Error>(&verified)) return *error;
     budget.Step(std::get<std::uint64_t>(verified));
     plan.allocated_bytes = sizeof(plan) + plan.objects.capacity() * sizeof(ObjectInit) +
@@ -720,20 +753,22 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
 }
 }  // namespace
 std::variant<LiteralPlan, LiteralError> BuildLiteralPlan(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, Guards guards, Guards projected) {
-  return BuildLiterals(graph, nullptr, budget, guards, projected);
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, Guards guards, Guards projected,
+    std::span<const analysis::OpId> receiver_guards) {
+  return BuildLiterals(graph, nullptr, budget, guards, projected, receiver_guards);
 }
 std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
-    const analysis::ValueProgram& graph, const LiteralPlan& plan, analysis::SemanticBudget budget, Guards guards, Guards projected) {
-  return VerifyLiterals(graph, plan, nullptr, budget, guards, projected);
+    const analysis::ValueProgram& graph, const LiteralPlan& plan, analysis::SemanticBudget budget, Guards guards, Guards projected,
+    std::span<const analysis::OpId> receiver_guards) {
+  return VerifyLiterals(graph, plan, nullptr, budget, guards, projected, receiver_guards);
 }
 std::variant<LiteralPlan, LiteralError> BuildPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, analysis::SemanticBudget budget) {
-  return BuildLiterals(graph, &evaluation, budget, {}, {});
+  return BuildLiterals(graph, &evaluation, budget, {}, {}, {});
 }
 std::variant<std::uint64_t, LiteralError> VerifyPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan, const EvaluationPlan& evaluation,
     analysis::SemanticBudget budget) {
-  return VerifyLiterals(graph, plan, &evaluation, budget, {}, {});
+  return VerifyLiterals(graph, plan, &evaluation, budget, {}, {}, {});
 }
 }  // namespace abcd::source

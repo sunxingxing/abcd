@@ -62,18 +62,23 @@ enum class LiteralError : std::uint8_t {
 // standalone calls without it cannot fold late guarded module reads.
 // class_projection must be independently proved by ProjectClassMembers; it
 // excludes class member installations from ordinary object-literal ownership.
+// receiver_guards is the unchanged derived/captured receiver protocol proof.
+// Only its initialized checks can lie inside a native initializer interval;
+// the caller independently discharges their receiver origins and keeps PC anchors.
 // Direct receiver fields stay ordered statement roots and are excluded from
 // literal ownership. Not AST/publication permission: preserve snapshots and sites.
 [[nodiscard]] std::variant<LiteralPlan, LiteralError> BuildLiteralPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     std::span<const std::optional<analysis::OpId>> module_guards = {},
-    std::span<const std::optional<analysis::OpId>> class_projection = {});
+    std::span<const std::optional<analysis::OpId>> class_projection = {},
+    std::span<const analysis::OpId> receiver_guards = {});
 // Checks supplied groups against use chains and fresh flow, without regrouping.
 [[nodiscard]] std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan,
     analysis::SemanticBudget budget = {},
     std::span<const std::optional<analysis::OpId>> module_guards = {},
-    std::span<const std::optional<analysis::OpId>> class_projection = {});
+    std::span<const std::optional<analysis::OpId>> class_projection = {},
+    std::span<const analysis::OpId> receiver_guards = {});
 // Same initializer model across unique normal phase corridors. The original
 // phase graph stays intact; copy aliases must have their independent proof.
 // No observations (including exceptional snapshots) before the last define,

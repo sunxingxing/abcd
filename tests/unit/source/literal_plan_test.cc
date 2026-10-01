@@ -798,6 +798,49 @@ void MixedNestedTrees() {
     Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
   }
 }
+void ReceiverGuardBoundaries() {
+  Fixture fixture;
+  fixture.graph.values.push_back({EntryDefinition{ReceiverEntry{}}, ValueKinds::Language(), {}});
+  fixture.Add(ValueObjectAllocation{}, true, {});
+  fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kAllocation;
+  fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  fixture.Add(ValueSuperCheck{SuperCheckKind::kRequireInitialized}, false,
+      {{OperandRole::kGuardValue, ValueId{0}}});
+  fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kGuard;
+  fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  fixture.graph.uses.back().purpose = ReadPurpose::kProtocol;
+  fixture.Add(ValueNamedRead{{0}}, true, {{OperandRole::kBase, ValueId{0}}});
+  fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
+  fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  fixture.Add(ValueOwnWrite{OwnWriteKind::kDefineField, {0}, 0}, false,
+      {{OperandRole::kBase, ValueId{1}}, {OperandRole::kStoredValue, ValueId{2}}});
+  fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+  fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  fixture.Add(ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{1}}});
+  auto& graph = fixture.graph;
+  graph.blocks = {{{0}, static_cast<std::uint32_t>(graph.ops.size()), {0}, 0}};
+  const std::vector<OpId> guards{{1}};
+  Check(std::get<LiteralError>(BuildLiteralPlan(graph)) == LiteralError::kObserved);
+  const auto built = BuildLiteralPlan(graph, {}, {}, {}, guards);
+  Check(std::holds_alternative<LiteralPlan>(built));
+  const auto& plan = std::get<LiteralPlan>(built);
+  Check(std::holds_alternative<std::uint64_t>(VerifyLiteralPlan(graph, plan, {}, {}, {}, guards)));
+  Check(std::get<LiteralError>(VerifyLiteralPlan(graph, plan)) == LiteralError::kObserved);
+  const auto evaluated = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {},
+      ClosureWrites::kUnknown, {}, guards);
+  Check(std::holds_alternative<EvaluationPlan>(evaluated));
+  auto evaluation = std::get<EvaluationPlan>(evaluated);
+  Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, evaluation)));
+  evaluation.receiver_guards.clear();
+  Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, evaluation)));
+  for (const std::vector<OpId> invalid : {std::vector<OpId>{{1}, {1}}, {{2}}, {{99}}, {{2}, {1}}})
+    Check(std::get<LiteralError>(BuildLiteralPlan(graph, {}, {}, {}, invalid)) == LiteralError::kReceiver);
+  std::get<ValueSuperCheck>(graph.ops[1].operation).kind = SuperCheckKind::kRequireUninitialized;
+  Check(std::get<LiteralError>(BuildLiteralPlan(graph, {}, {}, {}, guards)) == LiteralError::kObserved);
+  std::get<ValueSuperCheck>(graph.ops[1].operation).kind = SuperCheckKind::kRequireInitialized;
+  graph.uses[graph.ops[1].first_use.value].purpose = ReadPurpose::kOperand;
+  Check(std::get<LiteralError>(BuildLiteralPlan(graph, {}, {}, {}, guards)) == LiteralError::kReceiver);
+}
 void RhsSnapshot() {
   Fixture fixture;
   fixture.Add(ValueCopy{}, true, {{OperandRole::kInput, abcd::analysis::IntegerLiteral{1}}});
@@ -836,7 +879,7 @@ void RhsSnapshot() {
 }  // namespace
 int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--staged-source") { StagedBuffer(true); return 0; }
-  StagedBuffer(); ClosureBoundaries();
+  StagedBuffer(); ClosureBoundaries(); ReceiverGuardBoundaries();
   if (argc == 2 && std::string_view(argv[1]) == "--late-call-source") { LateMemberCalls(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--consumer-source") { LiteralConsumers(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--buffer-source") { BufferedOverwrites(true); return 0; }
