@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <bit>
 #include <limits>
+#include <map>
+#include <memory_resource>
 #include <new>
 #include <stdexcept>
 #include <type_traits>
@@ -15,7 +17,7 @@
 
 namespace abcd::source {
 namespace {
-enum class State : std::uint8_t { kUnseen, kQueued, kReadOnly, kUnknown };
+enum class State : std::uint8_t { kQueued, kReadOnly, kUnknown };
 struct Dependency { abc::MethodPosition parent; abc::MethodPosition child; };
 struct Root {
   abc::CodeOffset pc;
@@ -49,17 +51,41 @@ class CaptureScratch {
   std::size_t used_ = 0;
 };
 
+// Sparse reachable targets only. A constructor must not allocate or scan a
+// full-file method table for each small closure family. PMR admits the actual
+// balanced-tree node allocations; comparisons consume the same work budget.
+class CaptureStateMemory final : public std::pmr::memory_resource {
+ public:
+  explicit CaptureStateMemory(std::size_t& bytes) : bytes_(bytes) {}
+ private:
+  void* do_allocate(std::size_t bytes, std::size_t alignment) override {
+    if (bytes > bytes_) throw Resource();
+    auto* result = std::pmr::new_delete_resource()->allocate(bytes, alignment);
+    bytes_ -= bytes; return result;
+  }
+  void do_deallocate(void* pointer, std::size_t bytes, std::size_t alignment) override {
+    std::pmr::new_delete_resource()->deallocate(pointer, bytes, alignment); bytes_ += bytes;
+  }
+  bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override { return this == &other; }
+  std::size_t& bytes_;
+};
+struct CaptureTargetOrder {
+  std::uint64_t* work;
+  bool operator()(abc::MethodPosition left, abc::MethodPosition right) const {
+    if (*work == 0) throw Resource();
+    --*work; return left < right;
+  }
+};
+
 class CaptureProof {
  public:
   CaptureProof(const MethodConstants& constants, const abc::MethodLookup* methods,
                analysis::SemanticBudget budget)
       : constants_(constants), methods_(methods), bytes_(budget.bytes),
-        work_(budget.work), initial_work_(budget.work) {}
+        work_(budget.work), initial_work_(budget.work), state_memory_(bytes_),
+        states_(CaptureTargetOrder{&work_}, &state_memory_) {}
 
   CapturePreservations Build(const abc::MethodBody& body) {
-    Reserve(states_, constants_.index.methods.size());
-    states_.resize(constants_.index.methods.size());
-    Reserve(pending_, states_.size());
     Reserve(roots_, body.instructions.size());
     for (const auto& instruction : body.instructions) {
       Charge();
@@ -84,7 +110,7 @@ class CaptureProof {
     }
     for (std::size_t cursor = 0; cursor < pending_.size(); ++cursor) {
       const auto target = pending_[cursor];
-      states_[target.value] = Inspect(target) ? State::kReadOnly : State::kUnknown;
+      states_.at(target) = Inspect(target) ? State::kReadOnly : State::kUnknown;
     }
     // A may-write fixed point. Read-only cycles need no recursion or optimistic
     // publication; any unsupported/writing node poisons all its dependants.
@@ -93,10 +119,8 @@ class CaptureProof {
       return a.child < b.child;
     });
     pending_.clear();
-    for (std::size_t i = 0; i < states_.size(); ++i) {
-      Charge();
-      if (states_[i] == State::kUnknown)
-        pending_.push_back({static_cast<std::uint32_t>(i)});
+    for (const auto& [target, state] : states_) {
+      Charge(); if (state == State::kUnknown) Append(pending_, target);
     }
     for (std::size_t cursor = 0; cursor < pending_.size(); ++cursor) {
       const auto child = pending_[cursor];
@@ -104,10 +128,10 @@ class CaptureProof {
           [&](auto item, auto key) { Charge(); return item.child < key; });
       for (; edge != edges_.end() && edge->child == child; ++edge) {
         Charge();
-        auto& state = states_[edge->parent.value];
+        auto& state = states_.at(edge->parent);
         if (state == State::kUnknown) continue;
         state = State::kUnknown;
-        pending_.push_back(edge->parent);
+        Append(pending_, edge->parent);
       }
     }
     CapturePreservations result;
@@ -117,7 +141,7 @@ class CaptureProof {
       bool read_only = true;
       for (auto i = root.begin; i < root.end; ++i) {
         Charge();
-        if (states_[root_targets_[i].value] != State::kReadOnly) read_only = false;
+        if (states_.at(root_targets_[i]) != State::kReadOnly) read_only = false;
       }
       if (read_only)
         result.sites.push_back({root.pc});
@@ -136,9 +160,20 @@ class CaptureProof {
     if (count <= storage.capacity()) return;
     if (count > bytes_ / sizeof(T)) throw Resource();
     const auto old = storage.capacity();
+    Charge(storage.size()); // Existing entries move once per geometric growth.
     storage.reserve(count);
     if (storage.capacity() > bytes_ / sizeof(T)) throw Resource();
     bytes_ -= (storage.capacity() - old) * sizeof(T);
+  }
+  template<class T> void Append(std::vector<T>& values, T value) {
+    if (values.size() == values.capacity()) {
+      constexpr auto kInitialCapacity = std::size_t{4};
+      const auto available = bytes_ / sizeof(T), size = values.size();
+      if (size == SIZE_MAX || size + 1 > available) throw Resource();
+      Reserve(values, size == 0 ? std::min(kInitialCapacity, available) :
+          size > available / 2 ? available : size * 2);
+    }
+    values.push_back(std::move(value));
   }
   void Edge(abc::MethodPosition parent, abc::MethodPosition child) {
     if (edges_.size() == edges_.capacity()) {
@@ -179,11 +214,9 @@ class CaptureProof {
     return Queue(target->position);
   }
   std::optional<abc::MethodPosition> Queue(abc::MethodPosition position) {
-    if (position.value >= states_.size()) return {};
-    if (states_[position.value] == State::kUnseen) {
-      states_[position.value] = State::kQueued;
-      pending_.push_back(position);
-    }
+    if (position.value >= constants_.index.methods.size()) return {};
+    const auto [at, inserted] = states_.try_emplace(position, State::kQueued);
+    if (inserted) Append(pending_, position);
     return position;
   }
   void RootTarget(abc::MethodPosition target) {
@@ -235,7 +268,7 @@ class CaptureProof {
       if (!member) continue;
       Charge(std::bit_width(methods_->Size()) + 1);
       const auto position = methods_->Find(member->target);
-      if (!position || position->value >= states_.size()) return false;
+      if (!position || position->value >= constants_.index.methods.size()) return false;
       const auto& info = constants_.index.methods[position->value];
       if (info.offset != member->target) return false;
       const auto attributes = abc::DecodeMethodAttributes(info.access_flags,
@@ -443,7 +476,8 @@ class CaptureProof {
   std::size_t bytes_;
   std::uint64_t work_;
   std::uint64_t initial_work_;
-  std::vector<State> states_;
+  CaptureStateMemory state_memory_;
+  std::pmr::map<abc::MethodPosition, State, CaptureTargetOrder> states_;
   std::vector<abc::MethodPosition> pending_;
   std::vector<Dependency> edges_;
   std::vector<Root> roots_;

@@ -14,6 +14,8 @@ struct CapturePreservations {
 };
 // Inspect reachable child templates once per target, then propagate unknown
 // effects through reverse dependencies. No source text or sidecar evidence.
+// State storage indexes reachable targets only; unrelated file methods do not
+// induce a per-constructor census. Target queries use a bounded balanced index.
 // Unsupported children yield no certificate; resource exhaustion is explicit.
 std::variant<CapturePreservations, SourceFailure> ProveCapturePreservation(
     const abc::MethodBody& body, const MethodConstants& constants,

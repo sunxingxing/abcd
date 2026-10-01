@@ -98,7 +98,11 @@ class FamilyTrees {
       std::optional<DerivedProjection> derived;
       if (context.Callable() == CallableKind::kDerivedConstructor) {
         Require(!phase, FamilyTreeError::kContext);
-        auto projection = ProjectDerivedConstructor(function.Normal(), context, left_);
+        // Reuse the existing same-file transitive preservation proof. A child
+        // write or unsupported descendant never becomes an immutable cell.
+        std::optional<DerivedCaptureInput> captures;
+        if (lookup_) captures.emplace(DerivedCaptureInput{file_, header_, index_, *lookup_});
+        auto projection = ProjectDerivedConstructor(function.Normal(), context, left_, captures ? &*captures : nullptr);
         if (const auto* error = std::get_if<DerivedProjectionError>(&projection))
           throw FamilyTreeFailure{member_, *error};
         derived.emplace(std::get<DerivedProjection>(std::move(projection)));

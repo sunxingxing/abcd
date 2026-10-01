@@ -1,18 +1,38 @@
 #include "derived_projection.h"
+#include "derived_value_states.h"
+#include "abcd/source/capture_preservation.h"
 #include <new>
 #include <stdexcept>
 namespace abcd::source {
 namespace {
 using Error = DerivedProjectionError;
 void Require(bool condition, Error error) { if (!condition) throw error; }
-enum class State : std::uint8_t { kUnseen, kActive, kOther, kUndefined, kSuper, kConstructor };
+using State = DerivedValueState;
 }
 std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
-    const FileFunction& function, const FunctionContext& owner, analysis::SemanticBudget budget) {
+    const FileFunction& function, const FunctionContext& owner, analysis::SemanticBudget budget,
+    const DerivedCaptureInput* captures) {
   using namespace analysis;
   try {
     Require(owner.Callable() == CallableKind::kDerivedConstructor && owner.ConstructorSite() &&
         function.input.MatchesOwner(owner) && function.frame == owner.Frame(), Error::kOwner);
+    CapturePreservations preserved;
+    if (captures) {
+      Require(captures->file.Size() == owner.Identity().file_size && !captures->file.CheckUnchanged() &&
+          captures->header.file_size == owner.Identity().file_size && captures->header.profile == owner.Identity().profile && captures->header.version == owner.Identity().abc_version &&
+          captures->lookup.Find(owner.Target()) == owner.Position() && owner.Position().value < captures->index.methods.size() &&
+          captures->index.methods[owner.Position().value].offset == owner.Target() &&
+          captures->index.methods[owner.Position().value].owner_offset == function.input.Record(), Error::kOwner);
+      MethodConstants constants(captures->file, captures->header, captures->index, owner.Target(), {});
+      auto checked = ProveCapturePreservation(function.body, constants, &captures->lookup, budget);
+      if (const auto* error = std::get_if<SourceFailure>(&checked)) {
+        Require(error->kind != SourceError::kResourceLimit, Error::kResourceLimit);
+        throw Error::kProtocol;
+      }
+      preserved = std::get<CapturePreservations>(std::move(checked));
+      Require(preserved.AllocatedBytes() <= budget.bytes && preserved.work_units <= budget.work, Error::kResourceLimit);
+      budget.bytes -= preserved.AllocatedBytes(); budget.work -= preserved.work_units;
+    }
     bool spread = false;
     for (const auto& instruction : function.input.Input().instructions)
       spread |= std::holds_alternative<SuperSpread>(instruction.operation);
@@ -21,12 +41,12 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
     const auto proof = [&]() -> std::variant<abc::CodeOffset, DerivedConstructorError> {
       if (spread) {
         const auto checked = ProveSpreadDerivedConstructor(function.body, function.frame,
-            {budget.bytes, budget.work}, function.input.Identity().profile);
+            {budget.bytes, budget.work}, function.input.Identity().profile, preserved.sites);
         if (const auto* error = std::get_if<DerivedConstructorError>(&checked)) return *error;
         return std::get<SpreadDerivedConstructor>(checked).super_pc;
       }
       const auto checked = ProveRangeDerivedConstructor(function.body, function.frame,
-          {budget.bytes, budget.work}, function.input.Identity().profile);
+          {budget.bytes, budget.work}, function.input.Identity().profile, preserved.sites);
       if (const auto* error = std::get_if<DerivedConstructorError>(&checked)) return *error;
       return std::get<RangeDerivedConstructor>(checked).super_pc;
     }();
@@ -38,15 +58,6 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
     const auto& input = function.input.Input();
     Require(graph.input.sites.size() == input.instructions.size(), Error::kOrigin);
     const auto step = [&] { Require(budget.work != 0, Error::kWorkLimit); --budget.work; };
-    // One cached walk per value, no guard-by-guard traversal of shared chains.
-    constexpr auto width = sizeof(State) + sizeof(ValueId);
-    Require(graph.values.size() <= budget.bytes / width, Error::kResourceLimit);
-    std::vector<State> states(graph.values.size(), State::kUnseen);
-    std::vector<ValueId> path; path.reserve(graph.values.size());
-    Require(states.capacity() <= budget.bytes / sizeof(State), Error::kResourceLimit);
-    budget.bytes -= states.capacity() * sizeof(State);
-    Require(path.capacity() <= budget.bytes / sizeof(ValueId), Error::kResourceLimit);
-    budget.bytes -= path.capacity() * sizeof(ValueId);
     DerivedProjection result{graph.revision, graph.cfg_revision, {}};
     bool found = false;
     for (std::size_t i = 0; i < input.instructions.size(); ++i) {
@@ -57,39 +68,19 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
       result.call = *graph.input.sites[i]; found = true; break;
     }
     Require(found && result.call.value < graph.ops.size(), Error::kOrigin);
-    const auto classify = [&](ValueOperand operand) {
-      path.clear(); State state = State::kOther;
-      while (const auto* id = std::get_if<ValueId>(&operand)) {
-        step(); Require(id->value < graph.values.size(), Error::kOperand);
-        const auto& value = graph.values[id->value];
-        Require(value.life == ValueLife::kLive, Error::kOperand);
-        if (states[id->value] != State::kUnseen) {
-          state = states[id->value]; Require(state != State::kActive, Error::kOperand); break;
-        }
-        states[id->value] = State::kActive; path.push_back(*id);
-        // The actual derived invocation starts with the VM's undefined
-        // receiver. This is an owner premise, never a general ABI inference.
-        if (const auto* entry = std::get_if<EntryDefinition>(&value.origin)) {
-          if (std::holds_alternative<ReceiverEntry>(*entry)) state = State::kUndefined;
-          else if (std::holds_alternative<CallableEntry>(*entry)) state = State::kConstructor;
-          break;
-        }
-        const auto* origin = std::get_if<OpResult>(&value.origin);
-        if (!origin) break;
-        Require(origin->op.value < graph.ops.size(), Error::kOrigin);
-        const auto& op = graph.ops[origin->op.value];
-        Require(op.life == ValueLife::kLive && op.result == *id, Error::kOrigin);
-        if (origin->op == result.call) { state = State::kSuper; break; }
-        if (!std::holds_alternative<ValueCopy>(op.operation)) break;
-        Require(op.normal == LanguageEffect::kNone && op.before_throw == LanguageEffect::kNone &&
-            op.exceptional == ExceptionalCompletion::kImpossible && op.use_count == 1 &&
-            op.first_use.value < graph.uses.size(), Error::kOperand);
-        operand = graph.uses[op.first_use.value].operand;
+    auto classified = BuildDerivedValueStates(function, result.call, preserved.sites, budget);
+    if (const auto* error = std::get_if<Error>(&classified)) throw *error;
+    const auto& states = std::get<DerivedValueStates>(classified);
+    Require(states.allocated_bytes <= budget.bytes && states.work <= budget.work, Error::kResourceLimit);
+    budget.bytes -= states.allocated_bytes; budget.work -= states.work;
+    const auto classify = [&](const ValueOperand& operand) {
+      step();
+      if (const auto* value = std::get_if<ValueId>(&operand)) {
+        Require(value->value < states.values.size() && graph.values[value->value].life == ValueLife::kLive, Error::kOperand);
+        return states.values[value->value];
       }
-      if (const auto* literal = std::get_if<SpecialValue>(&operand); literal && *literal == SpecialValue::kUndefined)
-        state = State::kUndefined;
-      for (const auto id : path) { step(); states[id.value] = state; }
-      return state;
+      const auto* special = std::get_if<SpecialValue>(&operand);
+      return special && *special == SpecialValue::kUndefined ? State::kUndefined : State::kOther;
     };
     std::size_t guard_count = 0;
     for (const auto& original : input.instructions) { step(); guard_count += std::holds_alternative<SuperCheck>(original.operation); }
@@ -151,10 +142,10 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
 }
 std::optional<DerivedProjectionError> VerifyDerivedProjection(
     const FileFunction& function, const FunctionContext& owner, const DerivedProjection& projection,
-    analysis::SemanticBudget budget) {
+    analysis::SemanticBudget budget, const DerivedCaptureInput* captures) {
   if (projection.revision != function.values.graph.revision ||
       projection.cfg_revision != function.values.graph.cfg_revision) return Error::kRevision;
-  const auto checked = ProjectDerivedConstructor(function, owner, budget);
+  const auto checked = ProjectDerivedConstructor(function, owner, budget, captures);
   if (const auto* error = std::get_if<Error>(&checked)) return *error;
   const auto& expected = std::get<DerivedProjection>(checked);
   if (expected.call != projection.call || expected.guards != projection.guards) return Error::kCoverage;

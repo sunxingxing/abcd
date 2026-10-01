@@ -12,6 +12,41 @@
 
 ## 当前阶段
 
+### 2026-10-01：派生构造器接收者贯通保留的词法 cell
+
+- FamilyTrees 将同一不可变 ABC/index/lookup 交给派生构造器投影，独立调用
+  现有可达子模板捕获保留证明，并同时用于原始 range/spread 协议及当前工作图。
+  原始 local SSA 只选择 reaching stores；实际工作 load/store 的地址、效果、
+  来源和 stored operand 仍逐项核对。值/cell 共用有界来源格与稀疏依赖传播，
+  guard 仅消费真正的 super 结果或初始 undefined；子闭包写入、环境 escape、
+  未证明的 capture、混合来源和不可用反馈继续拒绝，不授权一般捕获恒定。
+- 捕获保留状态改为只索引可达目标的受计费平衡树，不再为每个构造器分配和
+  扫描全文件 method 状态表；保留反向依赖固定点。新增来源传播为
+  O(graph values/uses + original instructions + local SSA values/inputs)，
+  每节点至多两次状态变化，循环无具体来源不能获得初始化证明。
+- 真正 pasteboard Home/5851 在旧工作投影以 kProtocol 失败，
+  /tmp/abcd-derived-cell-red-tests.log；现在同一 ABC 的原始及工作协议均通过，
+  并重验完整 guards，缺少同文件捕获输入仍拒绝。三 profile 序列化构造器
+  测试覆盖 1/200/201/400/800 个读取、同源及混合 cell 分支、实际 operand/
+  地址/PC 篡改、不可用反馈及缺失 guard；200/201/400/800 个无关方法不再
+  导致线性状态 census。完整 file/class/family/printer 输出通过 **630 个**
+  constructor/capture/父返回对象/Proxy/异常对照场景，
+  /tmp/abcd-derived-cells-verified-behavior.log，独立输出 mutation 被拒绝。
+- 相关构建退出0，/tmp/abcd-derived-cells-verified-build.log；**16/16 定向
+  回归通过10.53秒**，/tmp/abcd-derived-cells-verified-tests.log。扩大检查中
+  base_constructor_js_test 在旧 writer 的 assignments 用例失败；临时将本次
+  生产改动还原 HEAD 后同位置仍失败，基线构建退出0、测试退出8，
+  /tmp/abcd-derived-cells-base-baseline-{build,tests}.log。未把该测试计入通过，
+  当前实现已恢复重建；全库测试/RSS/基准/DFX/代理仍暂停。
+- 五输入 build/stage-one/value-derived-cells-pass-1 全部退出0，维持
+  **50 complete / 3 incomplete / 53 failure / 46 no-module**，没有 complete
+  回退及 legacy writer，/tmp/abcd-derived-cells-batch-summary.json。本任务
+  消除真实协议缺口，但尚未新增完整 record 或配对语义/表示验收。
+  Home/5851 现进入 EvaluationPlan，具体在 LiteralPlan 的 EarlyValue 以
+  kLateValue 拒绝：allocation value136/order91 与 later stored value138。
+  /tmp/abcd-derived-cells-home-literal.log。下一步处理真正的字面量 initializer
+  求值顺序，不能通过删除效果或放宽 LateValue 检查绕过；Goal 保持 active。
+
 ### 2026-10-01：PageA完整record的独立配对语义回归
 
 - 新增pagea_record_source_test。生产abc_semantic只读取固定SHA的ABC并退出，
