@@ -255,7 +255,8 @@ class OperandCheck {
           const auto previous = edge_input_; edge_input_ = true;
           Input(input(1), property.value); edge_input_ = previous;
         } else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
-          if (IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, current_)) {
+          if (IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, current_) &&
+              evaluation_.operations[i].kind != EvaluationKind::kInitializer) {
             const auto& assignment = Node<AssignmentExpr>(expression);
             const auto* member = std::get_if<MemberTarget>(&assignment.target);
             RequireMeaning(member != nullptr, Error::kOperand);
@@ -276,7 +277,8 @@ class OperandCheck {
           RequireMeaning(name && name->value < constants_.name_count && property.key == *name, Error::kConstant);
           // LiteralPlan proved the receiver's allocation; only its stored value
           // appears in syntax, always as a pre-allocation snapshot or leaf.
-          const auto previous = edge_input_; edge_input_ = true;
+          const auto previous = edge_input_;
+          edge_input_ = !IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, current_);
           Input(input(1), property.value);
           edge_input_ = previous;
         } else if constexpr (std::is_same_v<T, analysis::ValueString>) {

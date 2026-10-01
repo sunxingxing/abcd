@@ -398,6 +398,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = plan.operations.capacity() * sizeof(OpEvaluation) +
         plan.logical_values.capacity() * sizeof(std::optional<analysis::OpId>) +
+        plan.logical_objects.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.aliases.capacity() * sizeof(analysis::ValueId) +
         plan.functions.capacity() * sizeof(FunctionBinding) +
         plan.modules.capacity() * sizeof(ModuleEvaluation) +

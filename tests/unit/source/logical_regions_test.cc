@@ -121,7 +121,9 @@ analysis::ValueProgram OptionalCall(bool method_first) {
   bytes.insert(bytes.end(), {0x60, 0, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 1, 0x64});
   return Import(bytes, 3);
 }
-analysis::ValueProgram BufferedOptionalAccess(bool call = false, bool method_first = false) {
+enum class BufferedBarrier { kNone, kBeforeAllocation, kAfterAllocation, kBeforeCall };
+analysis::ValueProgram BufferedOptionalAccess(bool call = false, bool method_first = false,
+    BufferedBarrier barrier = BufferedBarrier::kNone, bool shared = false) {
   // Buffered {probe: null} is allocated before the optional RHS, then the
   // existing own field is initialized after its branch/phi join.
   std::vector<std::uint8_t> bytes{0x07, 0, 0, 0, 0x61, 0,
@@ -139,8 +141,15 @@ analysis::ValueProgram BufferedOptionalAccess(bool call = false, bool method_fir
   const std::vector<std::uint8_t> method{0x60, 3, 0x42, 0, 1, 0, 0x61, 1};
   if (method_first) bytes.insert(bytes.begin(), method.begin(), method.end());
   else bytes.insert(bytes.end(), method.begin(), method.end());
-  bytes.insert(bytes.end(), {0x60, 1,
-      static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 0, 0x64});
+  const auto debugger = static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER);
+  if (barrier == BufferedBarrier::kBeforeCall) bytes.push_back(debugger);
+  const auto allocation = method_first ? method.size() : 0;
+  if (barrier == BufferedBarrier::kBeforeAllocation) bytes.insert(bytes.begin() + allocation, debugger);
+  if (barrier == BufferedBarrier::kAfterAllocation) bytes.insert(bytes.begin() + allocation + 6, debugger);
+  bytes.insert(bytes.end(), {0x60, 1});
+  if (shared) bytes.insert(bytes.end(), {static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS2_IMM8_V8_V8_V8), 0, 3, 0, 0});
+  else bytes.insert(bytes.end(), {static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 0});
+  bytes.push_back(0x64);
   return Import(bytes, 3);
 }
 analysis::ValueProgram Diamond(bool negate, unsigned count = 1, bool direct = false, bool getter = false, bool barrier = false, bool invoke = false, bool left_getter = false) {
@@ -218,6 +227,16 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true) {
   Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, view)));
+  for (std::size_t i = 0; i < evaluation.logical_objects.size(); ++i) {
+    if (!evaluation.logical_objects[i]) continue;
+    for (const auto& placement : tree.operations) {
+      if (placement.operation != *evaluation.logical_objects[i]) continue;
+      auto wrong = tree;
+      const auto property = std::get<PropertyId>(placement.node);
+      wrong.properties[property.value].origin = TreeOriginId{graph.ops[i].origin.value};
+      Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, view)));
+    }
+  }
   for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
     if (!std::holds_alternative<ConditionalExpr>(tree.expressions[i].expression)) continue;
     auto wrong = tree;
@@ -437,14 +456,41 @@ int main(int argc, char** argv) {
     std::cout << Source(BufferedOptionalAccess(true, true)) << "\n";
     return 0;
   }
-  // Until region composition owns the whole argument, reject a saved member
-  // Reference rather than re-reading the property after the optional getter.
+  // Native object arguments must retain the original early member Reference.
   const auto buffered_call = BufferedOptionalAccess(true, true);
   const auto buffered_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(buffered_call));
   const auto buffered_binding = BuildCallPlan(buffered_call, buffered_evaluation);
-  Check(std::holds_alternative<CallPlanError>(buffered_binding));
-  Check(std::get<CallPlanError>(buffered_binding) == CallPlanError::kReference);
+  Check(std::holds_alternative<CallPlan>(buffered_binding));
+  Check(Source(buffered_call).find("$value") == std::string::npos);
+  Check(Source(buffered_call).find("value.items(({probe:") != std::string::npos);
   Check(!Source(BufferedOptionalAccess(true, false)).empty());
+  Check(Source(BufferedOptionalAccess()).find("$value") == std::string::npos);
+  for (const auto barrier : {BufferedBarrier::kBeforeAllocation, BufferedBarrier::kAfterAllocation,
+                            BufferedBarrier::kBeforeCall}) {
+    const auto blocked = BufferedOptionalAccess(true, true, barrier);
+    const auto plan = std::get<EvaluationPlan>(BuildEvaluationPlan(blocked));
+    Check(std::get<CallPlanError>(BuildCallPlan(blocked, plan)) == CallPlanError::kReference);
+  }
+  const auto shared_object = BufferedOptionalAccess(true, true, BufferedBarrier::kNone, true);
+  const auto shared_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(shared_object));
+  Check(shared_plan.logical_objects.empty());
+  Check(std::get<CallPlanError>(BuildCallPlan(shared_object, shared_plan)) == CallPlanError::kReference);
+  Check(!buffered_evaluation.logical_objects.empty());
+  for (std::size_t i = 0; i < buffered_evaluation.logical_objects.size(); ++i) {
+    if (!buffered_evaluation.logical_objects[i]) continue;
+    const auto field = *buffered_evaluation.logical_objects[i];
+    auto forged = buffered_evaluation;
+    forged.logical_objects.clear();
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(buffered_call, forged)));
+    forged = buffered_evaluation; forged.logical_objects.resize(1);
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(buffered_call, forged)));
+    forged = buffered_evaluation; forged.logical_objects[i] = analysis::OpId{static_cast<std::uint32_t>(i)};
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(buffered_call, forged)));
+    forged = buffered_evaluation; forged.operations[i].consumer = buffered_call.ops[field.value].first_use;
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(buffered_call, forged)));
+    forged = buffered_evaluation; forged.operations[field.value] = {EvaluationKind::kRoot, {}, {}};
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(buffered_call, forged)));
+  }
   for (unsigned count : {2U, 3U, 200U, 201U}) {
     const auto text = Source(ConditionalDiamond(false, count));
     std::size_t found = 0, offset = 0;
@@ -515,7 +561,7 @@ int main(int argc, char** argv) {
               << "," << Source(CallDiamond(false, false)) << "," << Source(CallDiamond(true, false))
               << "," << Source(CallDiamond(false, false, false, true))
               << "," << Source(CallDiamond(true, false, false, true))
-              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "," << Source(ConditionalDiamond()) << "," << Source(ConditionalDiamond(true)) << "," << Source(ConditionalCall(true)) << "," << Source(ConditionalCall(false)) << "," << Source(OptionalAccess(false, 1, true)) << "," << Source(OptionalCall(true)) << "," << Source(OptionalCall(false)) << "," << Source(NestedSelections(3)) << "]\n";
+              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "," << Source(ConditionalDiamond()) << "," << Source(ConditionalDiamond(true)) << "," << Source(ConditionalCall(true)) << "," << Source(ConditionalCall(false)) << "," << Source(OptionalAccess(false, 1, true)) << "," << Source(OptionalCall(true)) << "," << Source(OptionalCall(false)) << "," << Source(NestedSelections(3)) << "," << Source(buffered_call) << "]\n";
     return 0;
   }
   for (const bool negate : {false, true}) for (const bool direct : {false, true}) {

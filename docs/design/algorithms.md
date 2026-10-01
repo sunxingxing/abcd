@@ -254,3 +254,29 @@ trees, distinct short-circuit results, malformed child origins/arms, effectful
 headers and ordered member getter tests cover the extension. This supersedes the
 previous nested-selection exclusion; object initializer fusion remains separate.
 No peak-RSS or benchmark claim is made.
+
+### Selected buffered object arguments (2026-10-01)
+
+A normal staged buffer with one own definition and one external use can enclose
+an already proved conditional selection. The backwards event-interval builder
+combines allocation, conditional RHS and definition, then consumes the whole
+interval in the join. The independent forwards checker proves contiguous child
+intervals and unique consumption, including an earlier member callee. Original
+local placements are still checked with the allocation's multiple-use snapshot
+and the definition at its original site. Constants and TreeFlow retain the
+existing writable-own-key, property-order and source-origin obligations.
+
+One allocation-indexed definition table is built from LiteralPlan. Only a sole
+eligible definition traverses each object's use chain, so this adds O(I+D+U)
+work and O(I) auxiliary space to the existing selection-domain passes. Literal
+property construction keeps its separately documented sorting/text costs.
+Budgets include both the persistent projection and temporary indexes. This is
+an internal extension of the existing event-interval proof, without a new
+library or dependency. It does not yet compose multiple staged definitions or
+multiple adjacent selection domains into one object argument.
+
+Evidence: decoded early/late member call and direct-return fixtures, getter and
+method replacement/throw behavior comparisons, intervening debugger and shared
+object rejections, and corrupted projection/property-origin negatives. Existing
+200/201/deep selection specifications remain exercised; no RSS or performance
+measurement is claimed.

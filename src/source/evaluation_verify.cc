@@ -26,6 +26,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     Require(plan.flow == flow, Error::kUnsupportedOperation);
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
     Require(plan.operations.size() == graph.ops.size(), Error::kInvalidGraph);
+    Require(plan.logical_objects.empty() || plan.logical_objects.size() == graph.ops.size(), Error::kOwnership);
     Require(plan.arguments == graph.arguments, Error::kOwnership);
     auto work = budget.work;
     const auto step = [&](std::size_t count = 1) {

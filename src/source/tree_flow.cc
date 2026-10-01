@@ -451,7 +451,8 @@ class FlowCheck {
     std::vector<std::uint8_t> grouped;
     budget_.Array(grouped, graph_.ops.size());
     if (evaluation_.literals) for (const auto& object : evaluation_.literals->objects) {
-      budget_.Step(); if (object.form == LiteralForm::kStatements) continue;
+      budget_.Step(); if (object.form == LiteralForm::kStatements &&
+          (evaluation_.logical_objects.empty() || !evaluation_.logical_objects[object.allocation.value])) continue;
       const auto expression = flow_.expressions[object.allocation.value];
       Require(expression.has_value(), Error::kPlacement);
       const auto* syntax = std::get_if<ObjectExpr>(&tree_.expressions[expression->value].expression);
@@ -634,7 +635,7 @@ class FlowCheck {
         Require(std::holds_alternative<AnchorId>(placement), Error::kPlacement);
         continue;
       }
-      if (!IsReceiverField(graph_, op) && !IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, {static_cast<std::uint32_t>(i)}) && (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
+      if (!IsReceiverField(graph_, op) && (!IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, {static_cast<std::uint32_t>(i)}) || evaluation_.operations[i].kind == EvaluationKind::kInitializer) && (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
         const auto* property = std::get_if<PropertyId>(&placement);
         Require(property != nullptr, Error::kPlacement);
         Require(!flow_.defined_properties[property->value], Error::kPlacement);

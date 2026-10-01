@@ -108,6 +108,11 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
         std::holds_alternative<analysis::ValueReturn>(op.operation) || IsEnvironmentState(op.operation) ||
         (std::holds_alternative<analysis::ValueModuleWrite>(op.operation) && flow.statements[i] &&
          std::holds_alternative<DeclarationStmt>(tree.statements[flow.statements[i]->value].statement))) continue;
+    // Selected staged definitions keep their store PC on the DataProperty;
+    // the conditional child retains its separately verified branch origin.
+    if (evaluation.operations[i].kind == EvaluationKind::kInitializer &&
+        IsStagedLiteral(evaluation.literals ? &*evaluation.literals : nullptr,
+            analysis::OpId{static_cast<std::uint32_t>(i)})) continue;
     if (evaluation.operations[i].kind == EvaluationKind::kInitializer && evaluation.literals &&
         !evaluation.literals->nested.empty()) {
       const analysis::UseId rhs{op.first_use.value + 1};

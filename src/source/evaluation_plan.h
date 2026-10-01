@@ -76,6 +76,9 @@ struct EvaluationPlan {
   // Phi values exclusively owned by native logical or conditional expressions, indexed by
   // ValueId. Each entry points to its original conditional branch operation.
   std::vector<std::optional<analysis::OpId>> logical_values;
+  // Selected buffered allocations own one staged definition across a selection.
+  // Indexed by allocation; original local snapshots remain independently checked.
+  std::vector<std::optional<analysis::OpId>> logical_objects;
 };
 inline analysis::ValueId ResolveEvaluationValue(const EvaluationPlan& plan, analysis::ValueId value) {
   return plan.aliases.empty() ? value : plan.aliases[value.value];

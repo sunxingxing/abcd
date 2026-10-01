@@ -180,7 +180,8 @@ class ForestBuilder {
     Reserve(forest_.properties, defined_properties + buffered_properties);
     if (evaluation_.literals) {
       for (std::size_t i = 0; i < evaluation_.literals->objects.size(); ++i) {
-        Step(); if (evaluation_.literals->objects[i].form == LiteralForm::kExpression)
+        Step(); if (evaluation_.literals->objects[i].form == LiteralForm::kExpression ||
+            (!evaluation_.logical_objects.empty() && evaluation_.logical_objects[evaluation_.literals->objects[i].allocation.value]))
           objects_[evaluation_.literals->objects[i].allocation.value] = i;
       }
     }
@@ -263,6 +264,16 @@ class ForestBuilder {
         if (evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
             evaluation_.operations[i].kind == EvaluationKind::kAlias)
           continue;
+        if (!evaluation_.logical_objects.empty() && evaluation_.logical_objects[i]) continue;
+        if (evaluation_.operations[i].kind == EvaluationKind::kInitializer &&
+            IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, {static_cast<std::uint32_t>(i)})) {
+          const auto base = std::get<analysis::ValueId>(graph_.uses[op.first_use.value].operand);
+          const auto allocation = std::get<analysis::OpResult>(graph_.values[base.value].origin).op;
+          Require(objects_[allocation.value].has_value(), Error::kOwnership);
+          forest_.operations[allocation.value] = Object(evaluation_.literals->objects[*objects_[allocation.value]],
+              TreeOriginId{graph_.ops[allocation.value].origin.value});
+          continue;
+        }
         if (evaluation_.operations[i].kind == EvaluationKind::kInitializer ||
             evaluation_.operations[i].kind == EvaluationKind::kNestedLiteral) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kEnvironment ||

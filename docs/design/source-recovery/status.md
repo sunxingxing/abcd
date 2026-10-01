@@ -12,6 +12,34 @@
 
 ## 当前阶段
 
+### 2026-10-01：条件字段与原生成员调用对象参数贯通
+
+- 在既有选择树和事件区间证明中，接入单个staged own-definition的缓冲对象：
+  对象只有该初始化base用途及一个join外部用途，原分配、条件RHS和写入必须形成
+  连续区间。逆向构建候选，独立正向核对区间及唯一消费；原局部验证仍恢复并检查
+  multiple-use对象快照和原位置写入。独立常量检查继续要求原缓冲区已有可写own数据键。
+- 共享表达式森林延迟到条件RHS可用时构建ObjectExpr，DataProperty保留原写入PC，
+  条件子树保留分支来源；TreeFlow、TreeOperands及来源验证分别核对该映射。
+  未通过移动调用、重新读取callee或调用call/apply/bind绕过成员Reference检查。
+- 原先 --buffered-call-source 的真实解码拒绝例现输出原生
+  value.items({probe: 条件表达式})；对象直接return亦无对象临时变量。
+  迟读方法仍保持原字段初始化后再读取方法的顺序。源码证据
+  /tmp/abcd-selected-object-sources.js；8354组JS行为对照通过，覆盖getter、方法
+  替换、抛出对象身份、返回身份、属性描述符、receiver和被污染的调用辅助属性。
+- 插入debugger、重复使用对象继续拒绝不合法提前成员调用；篡改投影尺寸、定义、
+  消费者、initializer放置及属性来源均被拒绝。一次定义索引避免每个字段重复
+  遍历对象use-chain，新增索引/持久表均计入预算，算法约束见algorithms.md。
+- 构建 /tmp/abcd-selected-object-final-build.log；14项定向回归全通过，11.48秒，
+  /tmp/abcd-selected-object-tests.log。新增属性来源反例后2项重跑通过，3.25秒，
+  /tmp/abcd-selected-object-origin-tests.log。全量测试、RSS、基准仍暂停。
+- 五输入正式导出 build/stage-one/value-selected-object-pass-1 均退出0，保持
+  43 complete / 63 failure / 46 no-module，无完整项退化、无legacy writer；
+  /tmp/abcd-selected-object-batch-summary.json。尚无新增完整record，本轮不是
+  阶段一配对源码/平台最终验收。
+- 下一缺口仍是多字段及连续选择域的对象组合。当前证明仅覆盖一个条件定义，
+  不接受ShoppingAvoid那类多个条件属性作为已完成；原生?.及完整风格验收也未完成。
+  阶段一Goal继续开放。
+
 ### 2026-10-01：嵌套选择树及可选访问调用参数贯通
 
 - SelectionOperand 用类型化 SelectionChild 表达子选择，不伪造SSA值或代表边。

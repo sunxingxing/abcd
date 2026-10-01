@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // tree and semantic checks. No source text supplies the engine's expression.
 const source = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8'});
 const generated = vm.runInNewContext(source, {Array() { throw new Error('mutable Array binding'); }});
-assert.equal(generated.length, 24);
+assert.equal(generated.length, 25);
 const reference = [value => value || [], value => value && []];
 const object = {[Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }};
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), object];
@@ -248,7 +248,9 @@ for (const payload of values) for (const fail of ['', 'probe', 'method', 'call']
   for (const replace of [false, true]) {
     assert.deepEqual(bufferedCall(generated[15], payload, fail, replace),
                      bufferedCall(bufferedLateReference, payload, fail, replace));
-    ++scenarios;
+    assert.deepEqual(bufferedCall(generated[24], payload, fail, replace),
+                     bufferedCall(value => value.items({probe: value?.probe}), payload, fail, replace));
+    scenarios += 2;
   }
 // Sensitivity check: moving a method read across the argument getter changes
 // which callable is selected, even when the receiver itself remains identical.
