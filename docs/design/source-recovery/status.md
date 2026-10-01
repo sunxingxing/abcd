@@ -12,6 +12,55 @@
 
 ## 当前阶段
 
+### 2026-10-02：共享 decision 中保留 RHS 条件求值
+
+- 三 profile 的实际解码条件调用夹具，在成功构建后 RED 于原
+  EmitDecision 的 kOwnership，与真实9193 Less115的阻断相同。
+  /tmp/abcd-decision-snapshot-red-build.log、red-test.log、red-cause.log。
+  测试最初的 MethodBody 字段拼写编译错误不计作语义 RED。
+- 在共同 FunctionTree 的每个后续 predicate 内，用已有 SequenceExpr 保留
+  原始单入口线性路径上的 expression roots 和快照 assignment，然后汇入
+  原有 LogicalExpr。RHS 仍条件执行，每个 root 只执行一次且原顺序不变；
+  快照只在 operand 正常完成后更新，不将 throwing child 融入无 dispatch
+  的 phase branch。普通 normal 路线维持原有纯表达式准入。
+- builder 和独立 TreeFlow 对照原始 protected/handler scope、实际 sequence
+  顺序、快照目标/声明/一次 assignment、原 PC/origin、原始 normal edge；
+  catch Stage 对空序列独立消费，非空仍拒绝。debugger、环境/声明和不支持
+  的 root shape 不变成逗号语句；没有新最终IR、writer、发布许可或平台。
+  原有 origin verifier 对无独立 statement 的快照避免解引用空 statement；
+  实际 assignment origin 已在独立 RootExpression 中严格核对。
+- 容量按 C/O/R（control nodes/operations/RHS roots）一次预留，保留 byte/
+  strong-ID 准入；额外 O(C+O+R) 工作/空间，避免逐 root reserve 引起反复
+  复制。algorithms.md 记录算法和边界，无新增依赖/许可证变化。
+- 96份完整解码函数覆盖三profile、call/Less、2/200/201/400谓词、两种极性、
+  protected/unprotected；完整 draft work 检查200→201及201→400增长。
+  独立 Node oracle 已通过5688个场景及3个合法语法mutation：原生receiver/
+  零参数、调用次数/顺序、number-hint coercion一次、任意throw身份、catch
+  返回值、typed VM branch（不是通用JS truthiness）、BigInt及Symbol比较。
+  typed tree反例核对outer短路、逗号倒序、user参数目标和错误wrapper origin。
+- 额外拒绝夹具含6个debugger场景，以及6个catch-carried状态场景；后者具有
+  selected-arm phi copies，先在control preflight以kControl拒绝，不能宣称
+  它验证了新RHS staging guard已触发。跨 protected 尝试也在更早控制阶段
+  拒绝，未将它报告为恢复特性。普通未知快照不能因此被移出短路。
+- 真实 pasteboard record8383（parent9277）首次 abc_semantic 退出0，
+  source_complete=true，没有 __cxa_throw；/tmp/abcd-decision-snapshot-real-next.log。
+  LLDB 随后对已退出进程执行 bt 的命令失败不是引擎失败。此证据不是配对
+  应用的语义/风格 Accepted，scratch comma和其他结构表达仍需独立验收。
+- 最终相关48个构建目标退出0，85/85项定向回归通过218.10秒；
+  /tmp/abcd-decision-snapshot-final-verified-build.log、final-verified-tests.log，
+  selected.json保存实际测试/构建清单。不是全库回归。
+- 五输入顺序导出全部退出0，52 complete / 3 incomplete / 51 failure /
+  46 no-module；pasteboard record8383新增完整源码，原完整项零回退，
+  legacy writer为0。build/stage-one/value-decision-snapshots-pass-1，
+  /tmp/abcd-decision-snapshot-final-batch.log、final-batch-summary.json。
+  这是完整结构/函数族导出进展，尚未提供该record的配对行为/风格验收。
+- 剩余 EntryAbility record4767（entry5001）的首个真实 throw 是
+  ForestBuilder 显式拒绝 ValueSuperSpread，op9，normal路线/derived constructor。
+  /tmp/abcd-decision-snapshot-next-entryability.log、next-entryability-cause.log。
+  下一步贯通 native super spread 与派生 receiver/构造语义，并继续配对验收；
+  Goal仍active。
+  全库、扩大语料、RSS/基准、DFX、调度器和代理仍暂停，内存实测未验证。
+
 ### 2026-10-02：共同源码树的原生 numeric update
 
 - 实际解码对象返回 old/updated 两值的用例，在成功编译并修正测试编码后，

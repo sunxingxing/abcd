@@ -51,9 +51,11 @@ inline abc::MethodBody SharedExitBody() {
   }
   return Body(bytes);
 }
-inline abc::MethodBody SharedDecisionBody(std::uint32_t count, bool select_false, bool calls = false) {
-  // Distinct strict comparisons share one selected() arm. The optional calls
-  // exercise the still-unproved conditional snapshot boundary as a refusal.
+enum class DecisionInput : std::uint8_t { kStrictComparison, kCall, kLess };
+inline abc::MethodBody SharedDecisionBody(std::uint32_t count, bool select_false,
+    DecisionInput input = DecisionInput::kStrictComparison, bool statement = false) {
+  // Comparisons or calls share one selected() arm. Roots in later predicates
+  // must execute inside their short-circuit RHS; a debugger remains a statement.
   // Wide jumps keep 200/201 about graph size, not immediate-width overflow.
   struct Patch { std::size_t pc; bool selected; };
   std::vector<Patch> patches;
@@ -73,12 +75,15 @@ inline abc::MethodBody SharedDecisionBody(std::uint32_t count, bool select_false
     // Keep a real jump block between normal predicates too; its PC anchor and
     // transfer must survive conditional ownership, without an invented effect.
     if (i != 0) { op(abc::Opcode::kJMP_IMM8); bytes.push_back(2); }
-    if (calls) call(0);
+    if (statement && i != 0) op(abc::Opcode::kDEBUGGER);
+    if (input == DecisionInput::kCall) call(0);
     else {
       op(abc::Opcode::kLDAI_IMM32);
       for (unsigned byte = 0; byte < sizeof(i); ++byte)
         bytes.push_back(static_cast<std::uint8_t>(i >> (byte * kByteBits)));
-      op(select_false ? abc::Opcode::kSTRICTNOTEQ_IMM8_V8 : abc::Opcode::kSTRICTEQ_IMM8_V8); bytes.push_back(0); bytes.push_back(0);
+      op(input == DecisionInput::kLess ? abc::Opcode::kLESS_IMM8_V8 :
+          select_false ? abc::Opcode::kSTRICTNOTEQ_IMM8_V8 : abc::Opcode::kSTRICTEQ_IMM8_V8);
+      bytes.push_back(0); bytes.push_back(0);
     }
     jump(select_false ? abc::Opcode::kJEQZ_IMM32 : abc::Opcode::kJNEZ_IMM32, true);
   }
@@ -95,6 +100,25 @@ inline abc::MethodBody SharedDecisionBody(std::uint32_t count, bool select_false
       bytes[patch.pc + 1 + byte] = static_cast<std::uint8_t>(bits >> (byte * kByteBits));
   }
   return Body(bytes);
+}
+inline abc::MethodBody SharedStagedDecisionBody(bool select_false) {
+  // The catch reads the last completed call result in local0. A throw in the
+  // second conditional call needs staging before that call, inside its RHS.
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  const auto branch = select_false ? abc::Opcode::kJEQZ_IMM8 : abc::Opcode::kJNEZ_IMM8;
+  auto body = Body({op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kSTA_V8), 0,
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kSTA_V8), 0, op(branch), 12,
+      op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kSTA_V8), 0, op(branch), 4,
+      op(abc::Opcode::kJMP_IMM8), 6,
+      op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kCALLARG0_IMM8), 0,
+      op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kRETURN),
+      op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kRETURN)});
+  abc::TryRegion region; region.offset = {4}; region.length = 29; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {33}; handler.length = 3;
+  body.tries = {region}; body.handlers = {handler}; return body;
 }
 }  // namespace abcd::test
 #endif

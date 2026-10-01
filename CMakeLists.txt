@@ -1156,6 +1156,8 @@ if(BUILD_TESTING)
     add_test(NAME phased_shared_decision_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_decision.mjs $<TARGET_FILE:control_composition_test>)
     add_test(NAME phased_shared_decision_refusal_test COMMAND control_composition_test --effectful-decision)
+    add_test(NAME decision_snapshots_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_snapshots.mjs $<TARGET_FILE:control_composition_test>)
     add_test(NAME phased_shared_loop_exit_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_loop_exit.mjs $<TARGET_FILE:control_composition_test> --phased)
     add_test(NAME loop_closure_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

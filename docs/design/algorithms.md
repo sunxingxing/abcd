@@ -442,3 +442,26 @@ ProveLocalAccesses沿既有指令/环境绑定扫描记录新环境的连续无�
 加载、外部存储及可能观察的操作终止前缀。此实现复用项目环境身份/SSA/完整族
 Language写入合同，无外部依赖；1/2/200/201闭包及独立cell行为用例见
 creation_tree_context_test、capture_plan_test和deferred_capture.mjs。
+
+### Conditional retained roots in shared decisions (2026-10-02)
+
+The existing checked ControlDecision path owns each later predicate's original
+single-entry linear corridor. In phased trees, retain expression roots as a
+right-associated native comma prefix inside that predicate's logical RHS.
+Snapshot assignments publish only after their operand completes normally;
+phase evaluation is unchanged and a branch still owns no throwing subtree.
+Require the original protected/handler scope to match the decision header,
+no normal edge copies and no nonempty catch staging. Statements, environment
+changes, declarations and unsupported root shapes remain refusals.
+
+Let C/O/R denote control nodes, operations and retained RHS roots. One scan
+reserves O(C+O) expression/scratch capacity, with byte and strong-ID admission;
+no reserve(size+1) per root. Each corridor operation and root is consumed once,
+so extra construction/checking work is O(C+O+R), space O(C+O+R); the independent
+flow consumer parses actual comma operands in original order without a subtree
+walk per root. Existing exception/control/operand/origin checks retain their
+own costs. This is a local implementation of structural short-circuit recovery
+using the existing common AST and printer, with no new dependency or license.
+Tests cover 2/200/201/400 predicates and complete draft work growth, both
+polarities and protected/unprotected calls and coercing comparisons. No RSS or
+benchmark run is implied by these bounded regression measurements.

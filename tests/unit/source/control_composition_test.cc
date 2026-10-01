@@ -41,7 +41,7 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     std::optional<ScopeKind> cell_scope = {}, std::size_t expected_loops = 1,
     bool expect_finalizer = false, std::optional<ExpectedCompletion> expected_completions = {},
     CompositionStage stage = CompositionStage::kSource, std::size_t finalizer_count = 1,
-    std::span<const AwaitSite> awaits = {}, bool reject_decision = false);
+    std::span<const AwaitSite> awaits = {}, bool reject_decision = false, std::uint64_t* draft_work = nullptr);
 
 void LoopCarried(abc::ProfileId profile, std::ostream* output) {
   // x = initial; try { while (next()) { x = step(x); next(); } } catch (_) {}
@@ -72,7 +72,7 @@ void LoopCarried(abc::ProfileId profile, std::ostream* output) {
 void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t locals,
     std::uint32_t parameters, bool staging, std::ostream* output, std::optional<ScopeKind> cell_scope,
     std::size_t expected_loops, bool expect_finalizer, std::optional<ExpectedCompletion> expected_completions,
-    CompositionStage stage, std::size_t finalizer_count, std::span<const AwaitSite> awaits, bool reject_decision) {
+    CompositionStage stage, std::size_t finalizer_count, std::span<const AwaitSite> awaits, bool reject_decision, std::uint64_t* draft_work) {
   const auto frame = Take<abc::FrameLayout>(abc::BuildFrameLayout(locals, parameters, {}));
   const auto flow = Take<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers, {}, awaits, &frame));
   IdfQuota quota{kDefaultSemanticWork};
@@ -213,13 +213,16 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
   const ExceptionTreeInput context{body, input, regions, control};
   const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, resolved);
   if (reject_decision) {
-    test::Check(std::get_if<FunctionTreeError>(&built) &&
-        std::get<FunctionTreeError>(built) == FunctionTreeError::kOwnership);
-    return; // An arbitrary call result needs a conditional snapshot, not hoisting.
+    // Catch-carried state also creates selected-arm phi copies; the current
+    // control preflight refuses those before RHS staging is considered.
+    const auto expected = staging ? FunctionTreeError::kControl : FunctionTreeError::kOwnership;
+    test::Check(std::get_if<FunctionTreeError>(&built) && std::get<FunctionTreeError>(built) == expected);
+    return; // Neither refusal permits hoisting statements or catch state.
   }
   if (const auto* error = std::get_if<FunctionTreeError>(&built))
     std::cerr << "loop-carried tree error " << static_cast<unsigned>(*error) << '\n';
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
+  if (draft_work) *draft_work = std::get<ExceptionFunctionDraft>(built).work;
   const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
   if (!awaits.empty()) {
     auto changed = tree;
@@ -379,6 +382,10 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
       const auto* condition = std::get_if<LogicalExpr>(&tree.expressions[i].expression);
       if (!condition || condition->operation != TreeLogical::kOr) continue;
+      if (std::none_of(tree.statements.begin(), tree.statements.end(), [&](const auto& statement) {
+            const auto* branch = std::get_if<IfStmt>(&statement.statement);
+            return branch && branch->condition.value == i;
+          })) continue;
       auto changed = tree;
       std::get<LogicalExpr>(changed.expressions[i].expression).operation = TreeLogical::kAnd;
       test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(changed)));
@@ -386,6 +393,26 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
       logical = true; break;
     }
     test::Check(logical);
+    for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
+      const auto* sequence = std::get_if<SequenceExpr>(&tree.expressions[i].expression);
+      if (!sequence) continue;
+      auto changed = tree;
+      auto& reordered = std::get<SequenceExpr>(changed.expressions[i].expression);
+      std::swap(reordered.left, reordered.right);
+      test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(changed)));
+      test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph, context, evaluation, changed)));
+      const auto* saved = std::get_if<AssignmentExpr>(&tree.expressions[sequence->left.value].expression);
+      if (saved) {
+        changed = tree;
+        auto& target = std::get<SymbolTarget>(std::get<AssignmentExpr>(changed.expressions[sequence->left.value].expression).target);
+        target.symbol = tree.parameters.front().symbol;
+        test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph, context, evaluation, changed)));
+        changed = tree;
+        changed.expressions[sequence->left.value].origin = tree.expressions[sequence->right.value].origin;
+        test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph, context, evaluation, changed)));
+      }
+      break;
+    }
     for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
       const auto* binary = std::get_if<BinaryExpr>(&tree.expressions[i].expression);
       if (!binary || (binary->operation != BinaryOperator::kStrictEqual &&
@@ -1126,9 +1153,41 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--effectful-decision") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const bool select_false : {false, true})
-        Emit(test::SharedDecisionBody(2, select_false, true), profile, 0, 4, false, nullptr,
+        Emit(test::SharedDecisionBody(2, select_false, test::DecisionInput::kCall, true), profile, 0, 4, false, nullptr,
+            {}, 0, false, ExpectedCompletion{0, 0}, CompositionStage::kSource, 1, {}, true);
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const bool select_false : {false, true})
+        Emit(test::SharedStagedDecisionBody(select_false), profile, 1, 4, true, nullptr,
             {}, 0, false, ExpectedCompletion{0, 0}, CompositionStage::kSource, 1, {}, true);
     return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--snapshot-decision") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto kind : {test::DecisionInput::kCall, test::DecisionInput::kLess}) {
+        std::array<std::uint64_t, 4> previous{};
+        for (const std::uint32_t count : {2U, 200U, 201U, 400U})
+          for (const bool select_false : {false, true}) for (const bool caught : {false, true}) {
+            auto body = test::SharedDecisionBody(count, select_false, kind);
+            if (caught) {
+              const auto length = body.instructions.back().offset.value + body.instructions.back().decoded.size;
+              auto returned = test::Body({static_cast<std::uint8_t>(abc::Opcode::kRETURN)}).instructions.front();
+              returned.offset = {length};
+              body.instructions.push_back(returned);
+              abc::TryRegion region; region.offset = {0}; region.length = length; region.handler_count = 1;
+              abc::CatchHandler handler; handler.offset = {length}; handler.length = 1;
+              body.tries = {region}; body.handlers = {handler};
+            }
+            const auto variant = static_cast<std::size_t>(select_false) * 2 + static_cast<std::size_t>(caught);
+            std::uint64_t work = 0;
+            Emit(body, profile, 0, 4, false, &std::cout, {}, 0, false, ExpectedCompletion{0, 0},
+                CompositionStage::kSource, 1, {}, false, &work);
+            if (count == 201) test::Check(work < previous[variant] * 2);
+            if (count == 400) test::Check(work < previous[variant] * 3);
+            previous[variant] = work;
+          }
+      }
+    std::cout << "];\n"; return 0;
   }
   if (argc == 2 && std::string_view(argv[1]) == "--shared-decision") {
     std::cout << "export const functions = [\n";

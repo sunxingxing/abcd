@@ -317,9 +317,19 @@ class TreeBuilder {
             tree_.origins.size() <= kMaxId - symbols &&
             synthetic <= kMaxId - symbols - tree_.origins.size() &&
             tree_.expressions.size() <= kMaxId - symbols, Error::kResourceLimit);
+    bool decisions = false;
+    for (const auto& node : control_.nodes) { Step(); decisions |= node.decision.has_value(); }
+    // Reserve every possible comma and logical link once. Per-root reserve(size
+    // + 1) would repeatedly copy the expression arena on long predicate chains.
+    std::size_t decision_expressions = 0;
+    if (decisions) {
+      Require(graph_.ops.size() <= kMaxId - control_.nodes.size(), Error::kResourceLimit);
+      decision_expressions = graph_.ops.size() + control_.nodes.size();
+      Require(decision_expressions <= kMaxId - symbols - tree_.expressions.size(), Error::kResourceLimit);
+    }
     Grow(tree_.names, tree_.names.size() + symbols);
     Grow(tree_.origins, tree_.origins.size() + symbols + synthetic);
-    Grow(tree_.expressions, tree_.expressions.size() + symbols);
+    Grow(tree_.expressions, tree_.expressions.size() + symbols + decision_expressions);
     Grow(tree_.symbols, symbols);
     Grow(tree_.parameters, syntax_.parameters.size());
     Grow(tree_.captures, syntax_.captures.size());
@@ -333,6 +343,7 @@ class TreeBuilder {
     Grow(links_, statements);
     Grow(tasks_, blocks);
     Grow(decision_path_, control_.nodes.size());
+    if (decisions) Grow(decision_roots_, graph_.ops.size());
     Grow(name_order_, syntax_.parameters.size());
     Grow(reserved_names_, constants_.name_count);
     Grow(loops_, control_.loops.size());
@@ -750,14 +761,7 @@ class TreeBuilder {
         tree_.operations.push_back({id, *expression});
         if (evaluation.kind == EvaluationKind::kInline || evaluation.kind == EvaluationKind::kPredicateSnapshot || evaluation.kind == EvaluationKind::kNestedLiteral ||
             evaluation.kind == EvaluationKind::kPhiInput || evaluation.kind == EvaluationKind::kLogicalLeft) continue;
-        auto evaluated = *expression;
-        if (evaluation.temporary) {
-          Require(op.result.has_value(), Error::kBinding);
-          const auto* symbol = std::get_if<SymbolId>(&forest_.bindings.values[op.result->value]);
-          Require(symbol != nullptr, Error::kBinding);
-          evaluated = ExprId{static_cast<std::uint32_t>(tree_.expressions.size())};
-          tree_.expressions.push_back({AssignmentExpr{SymbolTarget{*symbol}, *expression}, origin});
-        }
+        const auto evaluated = RootExpression(id, *expression);
         Append(draft, Statement(ExpressionStmt{evaluated}, origin));
       }
     }
@@ -771,6 +775,60 @@ class TreeBuilder {
         Require(++normal == 1, Error::kControl);
         EmitEdge(edge, draft);
       }
+    }
+  }
+  ExprId RootExpression(analysis::OpId id, ExprId expression) {
+    if (!evaluation_.operations[id.value].temporary) return expression;
+    const auto& op = graph_.ops[id.value];
+    Require(op.result.has_value(), Error::kBinding);
+    const auto* symbol = std::get_if<SymbolId>(&forest_.bindings.values[op.result->value]);
+    Require(symbol != nullptr, Error::kBinding);
+    Require(tree_.expressions.size() < tree_.expressions.capacity(), Error::kResourceLimit);
+    const ExprId evaluated{static_cast<std::uint32_t>(tree_.expressions.size())};
+    tree_.expressions.push_back({AssignmentExpr{SymbolTarget{*symbol}, expression}, TreeOriginId{op.origin.value}});
+    return evaluated;
+  }
+  void EmitDecisionBlock(const ControlNode& linear, std::size_t draft, analysis::OpId root) {
+    const auto& path = DecisionBlock(linear);
+    for (std::uint32_t i = 0; i < path.op_count; ++i) {
+      Step(); const analysis::OpId id{path.first_op.value + i};
+      const auto& op = graph_.ops[id.value];
+      if (op.life != analysis::ValueLife::kLive) continue;
+      Require(!forest_.recovery_stop || id != *forest_.recovery_stop, Error::kOwnership);
+      const auto& placement = evaluation_.operations[id.value];
+      if (exceptions_) {
+        const auto site = graph_.phases[op.block.value].instruction.value;
+        const auto parent = graph_.phases[graph_.ops[root.value].block.value].instruction.value;
+        const auto& scope = exceptions_->regions.layout.scopes[site];
+        const auto& enclosing = exceptions_->regions.layout.scopes[parent];
+        Require(scope.has_value() == enclosing.has_value() &&
+            (!scope || (scope->region == enclosing->region && scope->part == enclosing->part)), Error::kOwnership);
+        // Catch copies are still statements. Never move them before the LHS or
+        // after a throwing RHS; a nonempty staging bundle remains unsupported.
+        Require(!throw_ranges_[id.value] || forest_.throws[*throw_ranges_[id.value]].count == 0, Error::kOwnership);
+        if (std::holds_alternative<analysis::ValueBranch>(op.operation)) {
+          Require(placement.kind == EvaluationKind::kRoot && path.edge_count == 1 &&
+              !HasCopies(path.first_edge), Error::kControl);
+          continue;
+        }
+      }
+      if (placement.kind == EvaluationKind::kAlias || placement.kind == EvaluationKind::kElidedPure ||
+          std::holds_alternative<analysis::ValueJump>(op.operation)) {
+        const AnchorId anchor{static_cast<std::uint32_t>(tree_.anchors.size())};
+        tree_.anchors.push_back({BlockBoundary{drafts_[draft].statement, drafts_[draft].count}, TreeOriginId{op.origin.value}});
+        tree_.operations.push_back({id, anchor}); continue;
+      }
+      const auto expression = forest_.operations[id.value];
+      Require(expression.has_value(), Error::kOwnership);
+      if (placement.kind != EvaluationKind::kInline) {
+        const auto shape = DescribeEvaluation(op.operation);
+        Require(exceptions_ && placement.kind == EvaluationKind::kRoot && shape && shape->expression &&
+            !forest_.module_initializations[id.value] && !IsReceiverGuard(tree_, id) &&
+            !std::holds_alternative<analysis::ValueReturn>(op.operation) &&
+            !std::holds_alternative<analysis::ValueThrow>(op.operation), Error::kOwnership);
+        decision_roots_.push_back(RootExpression(id, *expression));
+      }
+      tree_.operations.push_back({id, *expression});
     }
   }
   void EmitAssignments(const std::vector<ExprId>& roots, std::uint32_t first,
@@ -837,7 +895,7 @@ class TreeBuilder {
   }
   void EmitDecision(analysis::OpId op, const ControlNode& node, std::size_t draft) {
     Require(node.decision && node.arms, Error::kControl);
-    decision_path_.clear();
+    decision_path_.clear(); decision_roots_.clear();
     const auto* part = &node;
     bool selected_taken = node.arms->taken.has_value();
     while (true) {
@@ -846,11 +904,10 @@ class TreeBuilder {
           !HasCopies(analysis::EdgeId{block.first_edge.value + 1}), Error::kControl);
       const auto branch = DecisionPredicate(*part);
       Require(forest_.operations[branch.value].has_value(), Error::kControl);
-      decision_path_.push_back(branch);
+
       if (part != &node) {
-        // Only an already-owned expression subtree may become the conditional
-        // RHS. Snapshots, independent roots, cell/env changes and edge copies
-        // require a richer region; never run them outside this condition.
+        // Normal blocks retain their existing pure-expression ownership.
+        // Phased RHS roots were retained in the preceding linear path.
         for (std::uint32_t i = 0; !exceptions_ && i + 1 < block.op_count; ++i) {
           Step(); const analysis::OpId at{block.first_op.value + i};
           const auto& original = graph_.ops[at.value];
@@ -868,6 +925,15 @@ class TreeBuilder {
         }
         tree_.operations.push_back({branch, *forest_.operations[branch.value]});
       }
+      auto condition = *forest_.operations[branch.value];
+      Grow(tree_.expressions, tree_.expressions.size() + decision_roots_.size());
+      for (auto i = decision_roots_.size(); i != 0; --i) {
+        Step(); const auto prefix = decision_roots_[i - 1];
+        const ExprId combined{static_cast<std::uint32_t>(tree_.expressions.size())};
+        tree_.expressions.push_back({SequenceExpr{prefix, condition}, TreeOriginId{graph_.ops[branch.value].origin.value}});
+        condition = combined;
+      }
+      decision_roots_.clear(); decision_path_.push_back({branch, condition});
       if (!part->decision) break;
       const auto& decision = *part->decision;
       auto next = decision.evaluate;
@@ -881,24 +947,21 @@ class TreeBuilder {
           if (graph_.edges[edge.value].kind != analysis::FlowEdgeKind::kException)
             Require(!HasCopies(edge), Error::kControl);
         }
-        // Existing expression ownership and phase fusion authorize inline
-        // operations. An emitted snapshot/effect/staging statement cannot be
-        // hoisted out of the conditional RHS, so refuse that candidate.
-        const auto count = drafts_[draft].count;
-        EmitBlock(linear, draft);
-        Require(drafts_[draft].count == count, Error::kOwnership);
+        // Keep retained roots in the conditional RHS, in original path order.
+        // Native comma syntax preserves each snapshot's normal-completion write.
+        EmitDecisionBlock(linear, draft, op);
         next = *linear.next;
       }
       selected_taken = decision.shared_on_taken;
       part = &control_.nodes[predicate.value];
     }
-    auto condition = *forest_.operations[decision_path_.back().value];
+    auto condition = decision_path_.back().condition;
     Grow(tree_.expressions, tree_.expressions.size() + decision_path_.size() - 1);
     for (std::size_t i = decision_path_.size() - 1; i != 0; --i) {
       Step(); const auto left = decision_path_[i - 1];
       const ExprId combined{static_cast<std::uint32_t>(tree_.expressions.size())};
-      tree_.expressions.push_back({LogicalExpr{TreeLogical::kOr, *forest_.operations[left.value], condition},
-          TreeOriginId{graph_.ops[left.value].origin.value}});
+      tree_.expressions.push_back({LogicalExpr{TreeLogical::kOr, left.condition, condition},
+          TreeOriginId{graph_.ops[left.branch.value].origin.value}});
       condition = combined;
     }
     const TreeOriginId origin{graph_.ops[op.value].origin.value};
@@ -1165,7 +1228,9 @@ class TreeBuilder {
   std::vector<SelectionPath> selection_paths_;
   std::vector<SelectionRegion> logicals_;
   std::vector<BranchPolarity> branch_polarity_;
-  std::vector<analysis::OpId> decision_path_;
+  struct DecisionPart { analysis::OpId branch; ExprId condition; };
+  std::vector<DecisionPart> decision_path_;
+  std::vector<ExprId> decision_roots_;
   std::vector<std::optional<std::size_t>> logical_branches_;
   const EvaluationPlan& evaluation_;
   FunctionSyntax syntax_;
